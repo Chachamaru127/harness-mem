@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Harness Mem UI</title>
+    <style>
+      :root {
+        --bg-top: #f6efe2;
+        --bg-bottom: #dce7f7;
+        --ink: #182026;
+        --panel: rgba(255, 255, 255, 0.82);
+        --line: rgba(24, 32, 38, 0.15);
+        --accent: #0f766e;
+        --accent-2: #b45309;
+      }
+      body {
+        margin: 0;
+        color: var(--ink);
+        font-family: "IBM Plex Sans", "Noto Sans JP", sans-serif;
+        background: linear-gradient(140deg, var(--bg-top), var(--bg-bottom));
+        min-height: 100vh;
+      }
+      .shell {
+        max-width: 1080px;
+        margin: 24px auto;
+        padding: 20px;
+      }
+      .title {
+        font-family: "IBM Plex Serif", "Noto Serif JP", serif;
+        letter-spacing: 0.02em;
+        margin: 0 0 16px;
+      }
+      .status {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 14px;
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #ef4444;
+      }
+      .dot.ok {
+        background: #16a34a;
+      }
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08);
+        backdrop-filter: blur(8px);
+      }
+      .tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 14px;
+        border-bottom: 1px solid var(--line);
+      }
+      .tab {
+        border: 1px solid var(--line);
+        background: #fff;
+        color: var(--ink);
+        border-radius: 999px;
+        padding: 7px 14px;
+        cursor: pointer;
+      }
+      .tab.active {
+        background: var(--accent);
+        color: #fff;
+        border-color: var(--accent);
+      }
+      .content {
+        padding: 14px;
+      }
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-bottom: 10px;
+      }
+      input, button {
+        font: inherit;
+      }
+      input {
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 7px 10px;
+      }
+      button.action {
+        border: 0;
+        background: var(--accent-2);
+        color: #fff;
+        border-radius: 8px;
+        padding: 8px 12px;
+        cursor: pointer;
+      }
+      .results {
+        display: grid;
+        gap: 8px;
+      }
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+      .meta {
+        font-size: 12px;
+        opacity: 0.72;
+      }
+      .pill {
+        display: inline-block;
+        margin-right: 6px;
+        margin-top: 4px;
+        font-size: 11px;
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 2px 8px;
+      }
+      @media (max-width: 700px) {
+        .shell { margin: 0; padding: 10px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <h1 class="title">Harness Memory Viewer</h1>
+      <div class="status">
+        <span class="dot" id="health-dot"></span>
+        <span id="health-text">daemon checking...</span>
+        <label><input type="checkbox" id="include-private" /> include private</label>
+      </div>
+
+      <div class="panel">
+        <div class="tabs">
+          <button class="tab active" data-tab="search">Search</button>
+          <button class="tab" data-tab="timeline">Timeline</button>
+          <button class="tab" data-tab="observation">Observation</button>
+          <button class="tab" data-tab="session">Session</button>
+        </div>
+        <div class="content" id="content"></div>
+      </div>
+    </div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
