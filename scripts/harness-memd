@@ -1,0 +1,392 @@
+#!/bin/bash
+# harness-memd
+# Harness memory daemon lifecycle manager
+#
+# Usage:
+#   scripts/harness-memd start [--quiet]
+#   scripts/harness-memd stop [--quiet]
+#   scripts/harness-memd restart [--quiet]
+#   scripts/harness-memd status
+#   scripts/harness-memd cleanup-stale
+#   scripts/harness-memd doctor
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
+PID_FILE="${STATE_DIR}/daemon.pid"
+LOCK_FILE="${STATE_DIR}/daemon.lock"
+LOG_FILE="${STATE_DIR}/daemon.log"
+HEARTBEAT_FILE="${STATE_DIR}/daemon.heartbeat"
+DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
+HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
+PORT="${HARNESS_MEM_PORT:-37888}"
+HEALTH_URL="http://${HOST}:${PORT}/health"
+START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
+STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
+QUIET="false"
+
+DAEMON_ENTRY="${REPO_ROOT}/memory-server/src/index.ts"
+PROJECT_ROOT="${HARNESS_MEM_CODEX_PROJECT_ROOT:-$PWD}"
+
+log() {
+  if [ "$QUIET" = "true" ]; then
+    return
+  fi
+  echo "$@"
+}
+
+warn() {
+  if [ "$QUIET" = "true" ]; then
+    return
+  fi
+  echo "[WARN] $@" >&2
+}
+
+is_pid_running() {
+  local pid="$1"
+  if [ -z "$pid" ]; then
+    return 1
+  fi
+  kill -0 "$pid" >/dev/null 2>&1
+}
+
+read_pid_file() {
+  if [ -f "$PID_FILE" ]; then
+    tr -dc '0-9' < "$PID_FILE" 2>/dev/null || true
+  fi
+}
+
+read_lock_pid() {
+  if [ -f "$LOCK_FILE" ]; then
+    tr -dc '0-9' < "$LOCK_FILE" 2>/dev/null || true
+  fi
+}
+
+ensure_state_dir() {
+  mkdir -p "$STATE_DIR"
+  chmod 700 "$STATE_DIR" 2>/dev/null || true
+}
+
+cleanup_stale_pid() {
+  local pid
+  pid="$(read_pid_file)"
+  if [ -n "$pid" ] && ! is_pid_running "$pid"; then
+    rm -f "$PID_FILE"
+    warn "Removed stale pid file (pid=${pid})"
+  fi
+}
+
+cleanup_stale_lock() {
+  local lock_pid
+  lock_pid="$(read_lock_pid)"
+
+  if [ -z "$lock_pid" ]; then
+    rm -f "$LOCK_FILE"
+    return
+  fi
+
+  if ! is_pid_running "$lock_pid"; then
+    rm -f "$LOCK_FILE"
+    warn "Removed stale lock file (pid=${lock_pid})"
+  fi
+}
+
+cleanup_runtime_artifacts() {
+  rm -f "$PID_FILE" "$LOCK_FILE"
+}
+
+acquire_lock() {
+  ensure_state_dir
+  cleanup_stale_lock
+
+  if [ -f "$LOCK_FILE" ]; then
+    local lock_pid
+    lock_pid="$(read_lock_pid)"
+    if [ -n "$lock_pid" ] && is_pid_running "$lock_pid"; then
+      warn "Another harness-memd operation is in progress (pid=${lock_pid})"
+      return 1
+    fi
+    rm -f "$LOCK_FILE"
+  fi
+
+  if ( set -o noclobber; echo "$$" > "$LOCK_FILE" ) 2>/dev/null; then
+    return 0
+  fi
+
+  warn "Failed to acquire daemon lock"
+  return 1
+}
+
+release_lock() {
+  local lock_pid
+  lock_pid="$(read_lock_pid)"
+  if [ "$lock_pid" = "$$" ]; then
+    rm -f "$LOCK_FILE"
+  fi
+}
+
+wait_for_health() {
+  local retries=$((START_TIMEOUT_SEC * 2))
+  local attempt=0
+
+  while [ "$attempt" -lt "$retries" ]; do
+    if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
+start_daemon() {
+  ensure_state_dir
+
+  if [ ! -f "$DAEMON_ENTRY" ]; then
+    echo "[ERR] memory daemon entry not found: $DAEMON_ENTRY" >&2
+    return 1
+  fi
+
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "[ERR] bun is required but not found" >&2
+    return 1
+  fi
+
+  local pid
+  pid="$(read_pid_file)"
+  if [ -n "$pid" ] && is_pid_running "$pid"; then
+    if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+      log "harness-memd already running (pid=${pid})"
+      return 0
+    fi
+    warn "Pid exists but health check failed. restarting stale daemon..."
+    stop_daemon || true
+  fi
+
+  cleanup_stale_pid
+
+  log "Starting harness-memd..."
+  (
+    cd "$REPO_ROOT"
+    nohup env \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      HARNESS_MEM_HOST="$HOST" \
+      HARNESS_MEM_PORT="$PORT" \
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$PROJECT_ROOT" \
+      bun run "$DAEMON_ENTRY" >> "$LOG_FILE" 2>&1 &
+    echo $! > "$PID_FILE"
+  )
+
+  local new_pid
+  new_pid="$(read_pid_file)"
+  if [ -z "$new_pid" ]; then
+    echo "[ERR] Failed to create pid file" >&2
+    return 1
+  fi
+
+  if wait_for_health; then
+    log "harness-memd started (pid=${new_pid}, port=${PORT})"
+    return 0
+  fi
+
+  warn "Health check failed after start timeout"
+  if is_pid_running "$new_pid"; then
+    kill -TERM "$new_pid" >/dev/null 2>&1 || true
+    sleep 1
+    if is_pid_running "$new_pid"; then
+      kill -KILL "$new_pid" >/dev/null 2>&1 || true
+    fi
+  fi
+
+  cleanup_runtime_artifacts
+  return 1
+}
+
+stop_daemon() {
+  ensure_state_dir
+
+  local pid
+  pid="$(read_pid_file)"
+
+  if [ -z "$pid" ]; then
+    cleanup_runtime_artifacts
+    log "harness-memd is not running"
+    return 0
+  fi
+
+  if ! is_pid_running "$pid"; then
+    cleanup_runtime_artifacts
+    log "harness-memd pid file was stale and has been cleaned"
+    return 0
+  fi
+
+  log "Stopping harness-memd (pid=${pid})..."
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+
+  local waited=0
+  while is_pid_running "$pid" && [ "$waited" -lt "$STOP_TIMEOUT_SEC" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if is_pid_running "$pid"; then
+    warn "Daemon did not exit in ${STOP_TIMEOUT_SEC}s, sending SIGKILL"
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+    sleep 0.5
+  fi
+
+  cleanup_runtime_artifacts
+  log "harness-memd stopped"
+  return 0
+}
+
+status_daemon() {
+  ensure_state_dir
+
+  local pid
+  pid="$(read_pid_file)"
+
+  if [ -z "$pid" ]; then
+    echo "stopped"
+    return 1
+  fi
+
+  if ! is_pid_running "$pid"; then
+    echo "stale (pid file exists but process is dead)"
+    return 1
+  fi
+
+  if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+    local heartbeat_info=""
+    if [ -f "$HEARTBEAT_FILE" ]; then
+      heartbeat_info=" heartbeat=$(cat "$HEARTBEAT_FILE" 2>/dev/null | tr '\n' ' ')"
+    fi
+    echo "running pid=${pid} port=${PORT}${heartbeat_info}"
+    return 0
+  fi
+
+  echo "degraded (pid=${pid} running but health endpoint unreachable)"
+  return 1
+}
+
+cleanup_stale() {
+  ensure_state_dir
+  cleanup_stale_pid
+  cleanup_stale_lock
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(read_pid_file)"
+    if [ -n "$pid" ] && ! is_pid_running "$pid"; then
+      rm -f "$PID_FILE"
+    fi
+  fi
+  if [ -f "$LOCK_FILE" ]; then
+    local lock_pid
+    lock_pid="$(read_lock_pid)"
+    if [ -n "$lock_pid" ] && ! is_pid_running "$lock_pid"; then
+      rm -f "$LOCK_FILE"
+    fi
+  fi
+  log "stale artifacts cleaned"
+}
+
+doctor_daemon() {
+  ensure_state_dir
+  local ok=0
+
+  echo "== harness-memd doctor =="
+  echo "state_dir: $STATE_DIR"
+  echo "db_path: $DB_PATH"
+  echo "health_url: $HEALTH_URL"
+
+  if command -v bun >/dev/null 2>&1; then
+    echo "[ok] bun available: $(bun --version 2>/dev/null || echo unknown)"
+  else
+    echo "[ng] bun is not installed"
+    ok=1
+  fi
+
+  if command -v curl >/dev/null 2>&1; then
+    echo "[ok] curl available"
+  else
+    echo "[ng] curl is not installed"
+    ok=1
+  fi
+
+  if [ -f "$PID_FILE" ]; then
+    local pid
+    pid="$(read_pid_file)"
+    if [ -n "$pid" ] && is_pid_running "$pid"; then
+      echo "[ok] pid file points to running process: $pid"
+    else
+      echo "[warn] pid file is stale"
+      ok=1
+    fi
+  else
+    echo "[info] pid file not found"
+  fi
+
+  if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+    echo "[ok] health endpoint reachable"
+  else
+    echo "[warn] health endpoint not reachable"
+    ok=1
+  fi
+
+  return "$ok"
+}
+
+main() {
+  local cmd="${1:-status}"
+  shift || true
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --quiet)
+        QUIET="true"
+        ;;
+      *)
+        ;;
+    esac
+    shift || true
+  done
+
+  case "$cmd" in
+    start)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      start_daemon
+      ;;
+    stop)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      stop_daemon
+      ;;
+    restart)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      stop_daemon || true
+      start_daemon
+      ;;
+    status)
+      status_daemon
+      ;;
+    cleanup-stale)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      cleanup_stale
+      ;;
+    doctor)
+      doctor_daemon
+      ;;
+    *)
+      echo "Usage: $0 {start|stop|restart|status|cleanup-stale|doctor} [--quiet]" >&2
+      exit 1
+      ;;
+  esac
+}
+
+main "$@"

@@ -1,0 +1,966 @@
+#!/bin/bash
+# Unified Harness Memory helper CLI.
+#
+# Usage:
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude>] [--fix]
+#   scripts/harness-mem smoke [--project <path>]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude>] [--purge-db]
+#   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
+#   scripts/harness-mem verify-import --job <job_id>
+#   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
+
+set -euo pipefail
+IFS=$'\n\t'
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+TARGET_DIR="${HARNESS_MEM_TARGET_DIR:-$PWD}"
+PLATFORM="all"
+FIX_MODE=0
+PURGE_DB=0
+SKIP_START=0
+SKIP_SMOKE=0
+SKIP_QUALITY=0
+QUIET=0
+IMPORT_SOURCE=""
+IMPORT_JOB_ID=""
+IMPORT_PROJECT=""
+IMPORT_DRY_RUN=0
+STOP_NOW=0
+
+MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
+MEM_PORT="${HARNESS_MEM_PORT:-37888}"
+STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
+DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
+
+BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
+END_CODEX_NOTIFY="# <<< harness-mem codex notify"
+BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
+END_CODEX_MCP="# <<< harness-mem codex mcp"
+
+usage() {
+  cat <<'EOF'
+Unified Harness Memory helper
+
+Commands:
+  setup      Configure Codex/OpenCode wiring, start daemon, run smoke and quality checks.
+  doctor     Validate wiring and daemon health (optionally repair with --fix).
+  smoke      Run isolated daemon smoke test against record/search privacy flow.
+  uninstall  Remove memory wiring and optionally purge local memory DB.
+  import-claude-mem  One-shot import from Claude-mem SQLite into harness-mem.
+  verify-import      Verify imported data quality/privacy checks by job id.
+  cutover-claude-mem Stop Claude-mem only after verify passed.
+
+Common options:
+  --project <path>      Target project path (default: current directory)
+  --platform <value>    all|codex|opencode|claude (default: all)
+  --source <path>       Source SQLite path for import-claude-mem
+  --job <job_id>        Import job id for verify/cutover
+  --import-project <s>  Override project name on import
+  --dry-run             Plan import without writing events
+  --stop-now            Required by cutover-claude-mem to actually stop Claude-mem
+  --quiet               Reduce logs
+
+Command options:
+  setup:
+    --skip-start        Do not start daemon
+    --skip-smoke        Do not run smoke test
+    --skip-quality      Do not run search quality test
+  doctor:
+    --fix               Attempt to repair missing wiring
+  uninstall:
+    --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
+EOF
+}
+
+log() {
+  if [ "$QUIET" -eq 1 ]; then
+    return
+  fi
+  echo "[harness-mem] $*"
+}
+
+warn() {
+  if [ "$QUIET" -eq 1 ]; then
+    return
+  fi
+  echo "[harness-mem][warn] $*" >&2
+}
+
+fail() {
+  echo "[harness-mem][error] $*" >&2
+  exit 1
+}
+
+abs_dir() {
+  local input="$1"
+  if [ -d "$input" ]; then
+    (cd "$input" && pwd)
+    return
+  fi
+  fail "Directory not found: $input"
+}
+
+parse_options() {
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --project)
+        shift
+        [ "$#" -gt 0 ] || fail "--project requires a path"
+        TARGET_DIR="$1"
+        ;;
+      --platform)
+        shift
+        [ "$#" -gt 0 ] || fail "--platform requires a value"
+        PLATFORM="$1"
+        ;;
+      --fix)
+        FIX_MODE=1
+        ;;
+      --purge-db)
+        PURGE_DB=1
+        ;;
+      --skip-start)
+        SKIP_START=1
+        ;;
+      --skip-smoke)
+        SKIP_SMOKE=1
+        ;;
+      --skip-quality)
+        SKIP_QUALITY=1
+        ;;
+      --quiet)
+        QUIET=1
+        ;;
+      --source)
+        shift
+        [ "$#" -gt 0 ] || fail "--source requires a path"
+        IMPORT_SOURCE="$1"
+        ;;
+      --job)
+        shift
+        [ "$#" -gt 0 ] || fail "--job requires a value"
+        IMPORT_JOB_ID="$1"
+        ;;
+      --import-project)
+        shift
+        [ "$#" -gt 0 ] || fail "--import-project requires a value"
+        IMPORT_PROJECT="$1"
+        ;;
+      --dry-run)
+        IMPORT_DRY_RUN=1
+        ;;
+      --stop-now)
+        STOP_NOW=1
+        ;;
+      -h|--help)
+        usage
+        exit 0
+        ;;
+      *)
+        fail "Unknown option: $1"
+        ;;
+    esac
+    shift
+  done
+}
+
+is_platform_enabled() {
+  local target="$1"
+  if [ "$PLATFORM" = "all" ]; then
+    return 0
+  fi
+  [ "$PLATFORM" = "$target" ]
+}
+
+require_cmd() {
+  local name="$1"
+  if ! command -v "$name" >/dev/null 2>&1; then
+    fail "Required command not found: $name"
+  fi
+}
+
+check_cmd() {
+  local name="$1"
+  command -v "$name" >/dev/null 2>&1
+}
+
+ensure_dependencies() {
+  require_cmd bun
+  require_cmd curl
+  require_cmd jq
+  require_cmd node
+  require_cmd npm
+}
+
+ensure_mcp_runtime() {
+  local mcp_dir="${HARNESS_ROOT}/mcp-server"
+  local mcp_dist="${mcp_dir}/dist/index.js"
+  local mcp_sdk="${mcp_dir}/node_modules/@modelcontextprotocol/sdk/package.json"
+
+  [ -f "$mcp_dist" ] || fail "MCP dist entry missing: $mcp_dist"
+
+  if [ -f "$mcp_sdk" ]; then
+    return
+  fi
+
+  log "Installing MCP server dependencies (one-time)"
+  (
+    cd "$mcp_dir"
+    npm install --silent
+  )
+}
+
+remove_marked_block() {
+  local file="$1"
+  local begin="$2"
+  local end="$3"
+  local tmp
+  tmp="$(mktemp)"
+  awk -v begin="$begin" -v end="$end" '
+    index($0, begin) { skip = 1; next }
+    index($0, end) { skip = 0; next }
+    skip != 1 { print $0 }
+  ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+}
+
+setup_codex_wiring() {
+  local codex_dir="${TARGET_DIR}/.codex"
+  local cfg="${codex_dir}/config.toml"
+  local rules_src="${HARNESS_ROOT}/codex/.codex/rules/harness.rules"
+  local rules_dst="${codex_dir}/rules/harness.rules"
+  local notify_value="bash ${HARNESS_ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+
+  mkdir -p "$codex_dir"
+
+  if [ ! -f "$cfg" ]; then
+    cat >"$cfg" <<EOF
+# Codex Team Config (generated by harness-mem)
+
+$BEGIN_CODEX_NOTIFY
+notify = "${notify_value}"
+$END_CODEX_NOTIFY
+
+$BEGIN_CODEX_MCP
+[mcp_servers.harness]
+command = "node"
+args = ["${HARNESS_ROOT}/mcp-server/dist/index.js"]
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "${MEM_HOST}"
+HARNESS_MEM_PORT = "${MEM_PORT}"
+HARNESS_MEM_DB_PATH = "${DB_PATH}"
+$END_CODEX_MCP
+EOF
+    log "Created Codex config: $cfg"
+  else
+    if ! rg -q 'memory-codex-notify\.sh' "$cfg"; then
+      if rg -q '^\s*notify\s*=' "$cfg"; then
+        warn "Codex config already has notify=. Add memory notify manually: $cfg"
+      else
+        cat >>"$cfg" <<EOF
+
+$BEGIN_CODEX_NOTIFY
+notify = "${notify_value}"
+$END_CODEX_NOTIFY
+EOF
+        log "Added Codex notify wiring: $cfg"
+      fi
+    fi
+
+    if rg -q 'notify[[:space:]]*=[[:space:]]*\[[[:space:]]*"bash"[[:space:]]*,[[:space:]]*".*memory-codex-notify\.sh"[[:space:]]*\]' "$cfg"; then
+      local tmp
+      tmp="$(mktemp)"
+      sed -E 's|notify[[:space:]]*=[[:space:]]*\[[[:space:]]*"bash"[[:space:]]*,[[:space:]]*"([^"]*memory-codex-notify\.sh)"[[:space:]]*\]|notify = "bash \1"|' "$cfg" >"$tmp"
+      mv "$tmp" "$cfg"
+      log "Normalized Codex notify wiring format: $cfg"
+    fi
+
+    if ! rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
+      cat >>"$cfg" <<EOF
+
+$BEGIN_CODEX_MCP
+[mcp_servers.harness]
+command = "node"
+args = ["${HARNESS_ROOT}/mcp-server/dist/index.js"]
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "${MEM_HOST}"
+HARNESS_MEM_PORT = "${MEM_PORT}"
+HARNESS_MEM_DB_PATH = "${DB_PATH}"
+$END_CODEX_MCP
+EOF
+      log "Added Codex MCP wiring: $cfg"
+    fi
+  fi
+
+  if [ -f "$rules_src" ] && [ ! -f "$rules_dst" ]; then
+    mkdir -p "$(dirname "$rules_dst")"
+    cp "$rules_src" "$rules_dst"
+    log "Copied memory-aware Codex rules: $rules_dst"
+  fi
+}
+
+check_codex_wiring() {
+  local cfg="${TARGET_DIR}/.codex/config.toml"
+  local failed=0
+
+  if [ ! -f "$cfg" ]; then
+    warn "Missing Codex config: $cfg"
+    return 1
+  fi
+
+  if rg -q 'memory-codex-notify\.sh' "$cfg"; then
+    log "Codex notify wiring: OK"
+  else
+    warn "Codex notify wiring is missing in: $cfg"
+    failed=1
+  fi
+
+  if rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
+    log "Codex MCP wiring: OK"
+  else
+    warn "Codex MCP wiring is missing in: $cfg"
+    failed=1
+  fi
+
+  return "$failed"
+}
+
+upsert_opencode_json() {
+  local file="$1"
+  local entry="$2"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local tmp
+
+  mkdir -p "$(dirname "$file")"
+
+  if [ ! -f "$file" ]; then
+    cat >"$file" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "mcp": {
+    "harness": {
+      "type": "local",
+      "enabled": true,
+      "command": ["node", "${mcp_entry}"],
+      "env": {
+        "HARNESS_MEM_HOST": "${MEM_HOST}",
+        "HARNESS_MEM_PORT": "${MEM_PORT}",
+        "HARNESS_MEM_DB_PATH": "${DB_PATH}"
+      }
+    }
+  },
+  "plugins": {
+    "harness-memory": {
+      "enabled": true,
+      "entry": "${entry}"
+    }
+  }
+}
+EOF
+    log "Created OpenCode config: $file"
+    return
+  fi
+
+  tmp="$(mktemp)"
+  jq \
+    --arg mcp_entry "$mcp_entry" \
+    --arg entry "$entry" \
+    --arg host "$MEM_HOST" \
+    --arg port "$MEM_PORT" \
+    --arg db_path "$DB_PATH" \
+    '
+      .["$schema"] = (.["$schema"] // "https://opencode.ai/config.json")
+      | .mcp = (.mcp // {})
+      | .mcp.harness = (.mcp.harness // {})
+      | .mcp.harness.type = "local"
+      | .mcp.harness.enabled = true
+      | .mcp.harness.command = ["node", $mcp_entry]
+      | .mcp.harness.env = ((.mcp.harness.env // {}) + {
+          "HARNESS_MEM_HOST": $host,
+          "HARNESS_MEM_PORT": $port,
+          "HARNESS_MEM_DB_PATH": $db_path
+        })
+      | .plugins = (.plugins // {})
+      | .plugins["harness-memory"] = ((.plugins["harness-memory"] // {}) + {
+          "enabled": true,
+          "entry": $entry
+        })
+    ' "$file" >"$tmp"
+  mv "$tmp" "$file"
+  log "Updated OpenCode config: $file"
+}
+
+setup_opencode_wiring() {
+  local plugin_src1="${HARNESS_ROOT}/opencode/plugins/harness-memory/index.ts"
+  local plugin_src2="${HARNESS_ROOT}/.opencode/plugins/harness-memory/index.ts"
+  local plugin_dst1="${TARGET_DIR}/opencode/plugins/harness-memory/index.ts"
+  local plugin_dst2="${TARGET_DIR}/.opencode/plugins/harness-memory/index.ts"
+
+  [ -f "$plugin_src1" ] || fail "OpenCode plugin template missing: $plugin_src1"
+  [ -f "$plugin_src2" ] || fail "OpenCode plugin template missing: $plugin_src2"
+
+  mkdir -p "$(dirname "$plugin_dst1")"
+  mkdir -p "$(dirname "$plugin_dst2")"
+  cp "$plugin_src1" "$plugin_dst1"
+  cp "$plugin_src2" "$plugin_dst2"
+  log "Installed OpenCode memory plugins"
+
+  upsert_opencode_json "${TARGET_DIR}/opencode.json" "./opencode/plugins/harness-memory/index.ts"
+  upsert_opencode_json "${TARGET_DIR}/.opencode/opencode.json" "./.opencode/plugins/harness-memory/index.ts"
+}
+
+check_opencode_wiring() {
+  local failed=0
+  local cfg1="${TARGET_DIR}/opencode.json"
+  local cfg2="${TARGET_DIR}/.opencode/opencode.json"
+  local plugin1="${TARGET_DIR}/opencode/plugins/harness-memory/index.ts"
+  local plugin2="${TARGET_DIR}/.opencode/plugins/harness-memory/index.ts"
+
+  if [ ! -f "$plugin1" ] || [ ! -f "$plugin2" ]; then
+    warn "OpenCode memory plugin file missing"
+    failed=1
+  else
+    log "OpenCode plugins: OK"
+  fi
+
+  if [ ! -f "$cfg1" ] || [ ! -f "$cfg2" ]; then
+    warn "OpenCode config missing (opencode.json and/or .opencode/opencode.json)"
+    failed=1
+  else
+    if jq -e '.plugins["harness-memory"].enabled == true' "$cfg1" >/dev/null 2>&1 &&
+      jq -e '.mcp.harness.enabled == true' "$cfg1" >/dev/null 2>&1 &&
+      jq -e '.plugins["harness-memory"].enabled == true' "$cfg2" >/dev/null 2>&1 &&
+      jq -e '.mcp.harness.enabled == true' "$cfg2" >/dev/null 2>&1; then
+      log "OpenCode JSON wiring: OK"
+    else
+      warn "OpenCode config exists but memory wiring is incomplete"
+      failed=1
+    fi
+  fi
+
+  return "$failed"
+}
+
+check_claude_wiring() {
+  local hooks="${HARNESS_ROOT}/hooks/hooks.json"
+  if [ ! -f "$hooks" ]; then
+    warn "Claude hooks config missing in harness: $hooks"
+    return 1
+  fi
+
+  if rg -q 'memory-session-start|memory-user-prompt|memory-post-tool-use|memory-stop' "$hooks"; then
+    log "Claude memory hooks in harness plugin: OK"
+    return 0
+  fi
+
+  warn "Claude hooks found but memory handlers are missing in: $hooks"
+  return 1
+}
+
+start_daemon() {
+  HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    "$HARNESS_ROOT/scripts/harness-memd" start --quiet
+}
+
+run_smoke() {
+  log "Running isolated smoke test"
+
+  (
+    set -euo pipefail
+    tmp_home=""
+    smoke_port=""
+    project_name=""
+    marker=""
+    health=""
+    default_search=""
+    private_search=""
+    cleanup_done=0
+
+    tmp_home="$(mktemp -d)"
+    smoke_port="$((40000 + RANDOM % 2000))"
+    project_name="$(basename "$TARGET_DIR")"
+    marker="smoke-$(date +%s)-$RANDOM"
+
+    cleanup() {
+      if [ "$cleanup_done" -eq 0 ]; then
+        HARNESS_MEM_HOME="$tmp_home" \
+          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+          HARNESS_MEM_HOST="127.0.0.1" \
+          HARNESS_MEM_PORT="$smoke_port" \
+          HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          "$HARNESS_ROOT/scripts/harness-memd" stop --quiet >/dev/null 2>&1 || true
+        rm -rf "$tmp_home"
+        cleanup_done=1
+      fi
+    }
+
+    trap cleanup EXIT
+
+    HARNESS_MEM_HOME="$tmp_home" \
+      HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+      HARNESS_MEM_HOST="127.0.0.1" \
+      HARNESS_MEM_PORT="$smoke_port" \
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      "$HARNESS_ROOT/scripts/harness-memd" start --quiet
+
+    health="$(
+      HARNESS_MEM_HOME="$tmp_home" \
+      HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+      HARNESS_MEM_HOST="127.0.0.1" \
+      HARNESS_MEM_PORT="$smoke_port" \
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      "$HARNESS_ROOT/scripts/harness-mem-client.sh" health
+    )"
+    printf '%s' "$health" | jq -e '.ok == true' >/dev/null
+
+    jq -nc \
+      --arg project "$project_name" \
+      --arg marker "$marker" \
+      '{event:{platform:"codex",project:$project,session_id:"smoke-session",event_type:"user_prompt",payload:{content:("public " + $marker)},tags:["smoke"],privacy_tags:[]}}' \
+      | HARNESS_MEM_HOME="$tmp_home" \
+        HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+        HARNESS_MEM_HOST="127.0.0.1" \
+        HARNESS_MEM_PORT="$smoke_port" \
+        HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+        "$HARNESS_ROOT/scripts/harness-mem-client.sh" record-event >/dev/null
+
+    jq -nc \
+      --arg project "$project_name" \
+      --arg marker "$marker" \
+      '{event:{platform:"codex",project:$project,session_id:"smoke-session",event_type:"user_prompt",payload:{content:("private " + $marker)},tags:["smoke"],privacy_tags:["private"]}}' \
+      | HARNESS_MEM_HOME="$tmp_home" \
+        HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+        HARNESS_MEM_HOST="127.0.0.1" \
+        HARNESS_MEM_PORT="$smoke_port" \
+        HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+        "$HARNESS_ROOT/scripts/harness-mem-client.sh" record-event >/dev/null
+
+    default_search="$(
+      jq -nc --arg q "$marker" --arg project "$project_name" '{query:$q,project:$project,limit:10,include_private:false}' \
+        | HARNESS_MEM_HOME="$tmp_home" \
+          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+          HARNESS_MEM_HOST="127.0.0.1" \
+          HARNESS_MEM_PORT="$smoke_port" \
+          HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          "$HARNESS_ROOT/scripts/harness-mem-client.sh" search
+    )"
+    printf '%s' "$default_search" | jq -e '.ok == true and (.items | length) >= 1' >/dev/null
+    printf '%s' "$default_search" | jq -e '[.items[] | (.privacy_tags // []) | index("private")] | map(select(. != null)) | length == 0' >/dev/null
+
+    private_search="$(
+      jq -nc --arg q "$marker" --arg project "$project_name" '{query:$q,project:$project,limit:10,include_private:true}' \
+        | HARNESS_MEM_HOME="$tmp_home" \
+          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+          HARNESS_MEM_HOST="127.0.0.1" \
+          HARNESS_MEM_PORT="$smoke_port" \
+          HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          "$HARNESS_ROOT/scripts/harness-mem-client.sh" search
+    )"
+    printf '%s' "$private_search" | jq -e '[.items[] | (.privacy_tags // []) | index("private")] | map(select(. != null)) | length >= 1' >/dev/null
+  )
+
+  log "Smoke test: OK"
+}
+
+run_quality_tests() {
+  local quality_script="${HARNESS_ROOT}/tests/test-memory-search-quality.sh"
+  [ -x "$quality_script" ] || fail "Quality test script missing or not executable: $quality_script"
+  log "Running search quality test suite"
+  "$quality_script"
+}
+
+run_import_request() {
+  local payload="$1"
+  HARNESS_MEM_HOME="$STATE_DIR" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" import-claude-mem "$payload"
+}
+
+run_verify_request() {
+  local payload="$1"
+  HARNESS_MEM_HOME="$STATE_DIR" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" verify-import "$payload"
+}
+
+import_claude_mem_impl() {
+  ensure_dependencies
+  [ -n "$IMPORT_SOURCE" ] || fail "import-claude-mem requires --source <sqlite path>"
+  [ -f "$IMPORT_SOURCE" ] || fail "source db not found: $IMPORT_SOURCE"
+
+  start_daemon
+
+  local payload
+  payload="$(jq -nc \
+    --arg source "$IMPORT_SOURCE" \
+    --arg project "$IMPORT_PROJECT" \
+    --argjson dry_run "$([ "$IMPORT_DRY_RUN" -eq 1 ] && echo true || echo false)" \
+    '{
+      source_db_path: $source,
+      dry_run: $dry_run
+    } + (if $project == "" then {} else {project: $project} end)')"
+
+  local response
+  response="$(run_import_request "$payload")"
+  printf '%s\n' "$response"
+
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "import request failed"
+  local job_id
+  job_id="$(echo "$response" | jq -r '.items[0].job_id // empty')"
+  [ -n "$job_id" ] || fail "import response did not include job_id"
+  log "Import job: $job_id"
+}
+
+verify_import_impl() {
+  ensure_dependencies
+  [ -n "$IMPORT_JOB_ID" ] || fail "verify-import requires --job <job_id>"
+  start_daemon
+
+  local payload
+  payload="$(jq -nc --arg job_id "$IMPORT_JOB_ID" '{job_id: $job_id}')"
+  local response
+  response="$(run_verify_request "$payload")"
+  printf '%s\n' "$response"
+
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "verify API call failed"
+  echo "$response" | jq -e '.items[0].ok == true' >/dev/null || fail "import verification failed"
+  log "Import verification passed: $IMPORT_JOB_ID"
+}
+
+disable_claude_mem_json_refs() {
+  local file="$1"
+  [ -f "$file" ] || return
+  local tmp backup
+  tmp="$(mktemp)"
+  backup="${file}.pre-harness-cutover.$(date +%s)"
+  cp "$file" "$backup" >/dev/null 2>&1 || true
+
+  if jq '
+      def scrub:
+        if type == "object" then
+          with_entries(.value |= scrub)
+          | with_entries(
+              select(
+                (
+                  (.value | tostring | ascii_downcase | contains("claude-mem"))
+                  or
+                  (.key | ascii_downcase | contains("claude-mem"))
+                ) | not
+              )
+            )
+        elif type == "array" then
+          map(scrub)
+          | map(
+              select(
+                (. | tostring | ascii_downcase | contains("claude-mem")) | not
+              )
+            )
+        else .
+        end;
+      scrub
+    ' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Removed claude-mem references from $file (backup: $backup)"
+  else
+    rm -f "$tmp"
+    warn "Could not sanitize $file (invalid JSON?)"
+  fi
+}
+
+stop_claude_mem_runtime() {
+  local stopped=0
+  if command -v claude-mem >/dev/null 2>&1; then
+    claude-mem stop >/dev/null 2>&1 || true
+    stopped=1
+  fi
+
+  local pids
+  pids="$(pgrep -f '(^|[ /])claude-mem([[:space:]]|$)' || true)"
+  if [ -n "$pids" ]; then
+    echo "$pids" | while read -r pid; do
+      [ -n "$pid" ] || continue
+      kill -TERM "$pid" >/dev/null 2>&1 || true
+    done
+    sleep 1
+    local remaining
+    remaining="$(pgrep -f '(^|[ /])claude-mem([[:space:]]|$)' || true)"
+    if [ -n "$remaining" ]; then
+      echo "$remaining" | while read -r pid; do
+        [ -n "$pid" ] || continue
+        kill -KILL "$pid" >/dev/null 2>&1 || true
+      done
+    fi
+    stopped=1
+  fi
+
+  local plist
+  for plist in "$HOME"/Library/LaunchAgents/*claude*mem*.plist; do
+    [ -e "$plist" ] || continue
+    launchctl unload "$plist" >/dev/null 2>&1 || true
+    mv "$plist" "${plist}.disabled" >/dev/null 2>&1 || true
+    stopped=1
+  done
+
+  disable_claude_mem_json_refs "$HOME/.claude/hooks.json"
+  disable_claude_mem_json_refs "$HOME/.claude/settings.json"
+
+  if [ "$stopped" -eq 1 ]; then
+    log "Claude-mem runtime/autostart disabled"
+  else
+    warn "No running Claude-mem process or launch agent was found"
+  fi
+}
+
+cutover_claude_mem_impl() {
+  ensure_dependencies
+  [ -n "$IMPORT_JOB_ID" ] || fail "cutover-claude-mem requires --job <job_id>"
+  [ "$STOP_NOW" -eq 1 ] || fail "cutover requires explicit --stop-now"
+  start_daemon
+
+  local payload verify_response
+  payload="$(jq -nc --arg job_id "$IMPORT_JOB_ID" '{job_id: $job_id}')"
+  verify_response="$(run_verify_request "$payload")"
+  echo "$verify_response" | jq -e '.ok == true and .items[0].ok == true' >/dev/null \
+    || fail "verify failed; cutover aborted"
+
+  stop_claude_mem_runtime
+  log "Cutover completed for job: $IMPORT_JOB_ID"
+}
+
+doctor_impl() {
+  local failed=0
+
+  if ! check_cmd bun; then
+    warn "bun is missing"
+    failed=1
+  fi
+  if ! check_cmd curl; then
+    warn "curl is missing"
+    failed=1
+  fi
+  if ! check_cmd jq; then
+    warn "jq is missing"
+    failed=1
+  fi
+  if ! check_cmd node; then
+    warn "node is missing"
+    failed=1
+  fi
+  if ! check_cmd npm; then
+    warn "npm is missing"
+    failed=1
+  fi
+
+  if check_cmd bun && check_cmd curl && check_cmd npm; then
+    ensure_mcp_runtime || failed=1
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      HARNESS_MEM_HOST="$MEM_HOST" \
+      HARNESS_MEM_PORT="$MEM_PORT" \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      "$HARNESS_ROOT/scripts/harness-memd" start --quiet >/dev/null 2>&1 || true
+
+    if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      HARNESS_MEM_HOST="$MEM_HOST" \
+      HARNESS_MEM_PORT="$MEM_PORT" \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      "$HARNESS_ROOT/scripts/harness-memd" doctor >/dev/null; then
+      log "Daemon doctor: OK"
+    else
+      warn "Daemon doctor reported warnings"
+      failed=1
+    fi
+  fi
+
+  if is_platform_enabled codex; then
+    check_codex_wiring || failed=1
+  fi
+  if is_platform_enabled opencode; then
+    check_opencode_wiring || failed=1
+  fi
+  if is_platform_enabled claude; then
+    check_claude_wiring || failed=1
+  fi
+
+  if [ "$failed" -eq 0 ]; then
+    log "Doctor result: healthy"
+    return 0
+  fi
+
+  if [ "$FIX_MODE" -eq 1 ]; then
+    warn "Doctor found issues. Running auto-fix."
+    setup_impl
+    return
+  fi
+
+  fail "Doctor found issues. Run with --fix to auto-repair."
+}
+
+setup_impl() {
+  ensure_dependencies
+  ensure_mcp_runtime
+
+  if is_platform_enabled codex; then
+    setup_codex_wiring
+  fi
+  if is_platform_enabled opencode; then
+    setup_opencode_wiring
+  fi
+  if is_platform_enabled claude; then
+    check_claude_wiring || true
+  fi
+
+  if [ "$SKIP_START" -eq 0 ]; then
+    start_daemon
+    log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
+  fi
+
+  if [ "$SKIP_SMOKE" -eq 0 ]; then
+    run_smoke
+  fi
+
+  if [ "$SKIP_QUALITY" -eq 0 ]; then
+    run_quality_tests
+  fi
+
+  log "Setup complete (project=${TARGET_DIR}, platform=${PLATFORM})"
+}
+
+uninstall_codex_wiring() {
+  local cfg="${TARGET_DIR}/.codex/config.toml"
+  local tmp
+  if [ ! -f "$cfg" ]; then
+    return
+  fi
+
+  remove_marked_block "$cfg" "$BEGIN_CODEX_NOTIFY" "$END_CODEX_NOTIFY"
+  remove_marked_block "$cfg" "$BEGIN_CODEX_MCP" "$END_CODEX_MCP"
+  tmp="$(mktemp)"
+  awk '
+    /^\[mcp_servers\.harness(\.env)?\]/ { skip = 1; next }
+    skip == 1 {
+      if ($0 ~ /^\[/) {
+        skip = 0
+        print $0
+      }
+      next
+    }
+    /memory-codex-notify\.sh/ { next }
+    { print $0 }
+  ' "$cfg" >"$tmp"
+  mv "$tmp" "$cfg"
+  log "Removed Codex marker-managed wiring: $cfg"
+}
+
+remove_opencode_wiring_json() {
+  local file="$1"
+  local tmp
+  if [ ! -f "$file" ]; then
+    return
+  fi
+  tmp="$(mktemp)"
+  if jq 'del(.plugins["harness-memory"]) | del(.mcp.harness)' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Removed OpenCode memory wiring from: $file"
+  else
+    rm -f "$tmp"
+    warn "Could not parse JSON for cleanup: $file"
+  fi
+}
+
+uninstall_opencode_wiring() {
+  remove_opencode_wiring_json "${TARGET_DIR}/opencode.json"
+  remove_opencode_wiring_json "${TARGET_DIR}/.opencode/opencode.json"
+
+  rm -f "${TARGET_DIR}/opencode/plugins/harness-memory/index.ts"
+  rm -f "${TARGET_DIR}/.opencode/plugins/harness-memory/index.ts"
+  log "Removed OpenCode memory plugin files"
+}
+
+uninstall_impl() {
+  if check_cmd bun; then
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      HARNESS_MEM_HOST="$MEM_HOST" \
+      HARNESS_MEM_PORT="$MEM_PORT" \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      "$HARNESS_ROOT/scripts/harness-memd" stop --quiet >/dev/null 2>&1 || true
+  fi
+
+  if is_platform_enabled codex; then
+    uninstall_codex_wiring
+  fi
+  if is_platform_enabled opencode; then
+    uninstall_opencode_wiring
+  fi
+
+  rm -f "${STATE_DIR}/daemon.pid" "${STATE_DIR}/daemon.lock" "${STATE_DIR}/daemon.heartbeat"
+  if [ "$PURGE_DB" -eq 1 ]; then
+    rm -f "$DB_PATH"
+    log "Purged DB: $DB_PATH"
+  fi
+
+  log "Uninstall complete (project=${TARGET_DIR}, platform=${PLATFORM})"
+}
+
+main() {
+  local command="${1:-help}"
+  shift || true
+
+  parse_options "$@"
+
+  TARGET_DIR="$(abs_dir "$TARGET_DIR")"
+
+  case "$PLATFORM" in
+    all|codex|opencode|claude) ;;
+    *) fail "Invalid --platform: $PLATFORM" ;;
+  esac
+
+  case "$command" in
+    setup)
+      setup_impl
+      ;;
+    doctor)
+      doctor_impl
+      ;;
+    smoke)
+      ensure_dependencies
+      ensure_mcp_runtime
+      run_smoke
+      ;;
+    uninstall)
+      uninstall_impl
+      ;;
+    import-claude-mem)
+      import_claude_mem_impl
+      ;;
+    verify-import)
+      verify_import_impl
+      ;;
+    cutover-claude-mem)
+      cutover_claude_mem_impl
+      ;;
+    help|-h|--help)
+      usage
+      ;;
+    *)
+      fail "Unknown command: $command"
+      ;;
+  esac
+}
+
+main "$@"
