@@ -26,6 +26,8 @@ type FeedCategoryId =
 type PlatformBadgeId = "codex" | "claude" | "opencode" | "other";
 
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
+const CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD = 4;
+const CLAUDE_TOOL_USE_COLLAPSE_GAP_MS = 3 * 60 * 1000;
 
 const KEYWORDS = {
   discovery: ["discovery", "investigate", "analysis", "root cause", "調査", "特定", "原因", "確認", "検証", "learned"],
@@ -88,6 +90,112 @@ function inferCategory(item: FeedItem): FeedCategoryId {
   return "other";
 }
 
+function toEpochMs(value: string | undefined): number {
+  if (!value) {
+    return 0;
+  }
+  const parsed = Date.parse(value);
+  if (Number.isNaN(parsed)) {
+    return 0;
+  }
+  return parsed;
+}
+
+function isClaudeToolUse(item: FeedItem): boolean {
+  const platform = normalizeText(item.platform);
+  const eventType = normalizeText(item.event_type || item.card_type);
+  return platform.includes("claude") && eventType === "tool_use";
+}
+
+function summarizeClaudeToolUseRun(items: FeedItem[], language: UiLanguage): FeedItem {
+  const latest = items[0] || {};
+  const oldest = items[items.length - 1] || {};
+
+  const uniqueHints = Array.from(
+    new Set(
+      items
+        .map((item) => (typeof item.title === "string" ? item.title.trim() : ""))
+        .filter((title) => title.length > 0 && title.toLowerCase() !== "tool_use")
+    )
+  ).slice(0, 3);
+
+  const latestAt = formatTimestamp(latest.created_at, language);
+  const oldestAt = formatTimestamp(oldest.created_at, language);
+  const title =
+    language === "ja"
+      ? `Claude Code ツール実行 ${items.length}件`
+      : `Claude Code Tool Use (${items.length})`;
+  const timeRange =
+    language === "ja"
+      ? `期間: ${oldestAt} 〜 ${latestAt}`
+      : `Range: ${oldestAt} - ${latestAt}`;
+  const hintPrefix = language === "ja" ? "代表ツール:" : "Sample tools:";
+  const hintText = uniqueHints.length > 0 ? `${hintPrefix} ${uniqueHints.join(" / ")}` : "";
+
+  return {
+    id: `${latest.id || "claude-tool-use"}__grouped_${items.length}`,
+    event_id: latest.event_id,
+    platform: latest.platform || "claude",
+    project: latest.project,
+    session_id: latest.session_id,
+    event_type: "tool_use",
+    card_type: "tool_use",
+    title,
+    content: hintText ? `${timeRange}\n${hintText}` : timeRange,
+    created_at: latest.created_at,
+    tags: latest.tags || [],
+    privacy_tags: latest.privacy_tags || [],
+  };
+}
+
+function collapseClaudeToolUseItems(items: FeedItem[], language: UiLanguage): FeedItem[] {
+  const collapsed: FeedItem[] = [];
+  let index = 0;
+
+  while (index < items.length) {
+    const current = items[index];
+    if (!current) {
+      index += 1;
+      continue;
+    }
+
+    if (!isClaudeToolUse(current)) {
+      collapsed.push(current);
+      index += 1;
+      continue;
+    }
+
+    const run: FeedItem[] = [current];
+    let cursor = index + 1;
+    while (cursor < items.length) {
+      const next = items[cursor];
+      if (!next || !isClaudeToolUse(next)) {
+        break;
+      }
+
+      const sameProject = (next.project || "") === (current.project || "");
+      const sameSession = (next.session_id || "") === (current.session_id || "");
+      const prev = run[run.length - 1];
+      const gapMs = Math.abs(toEpochMs(prev?.created_at) - toEpochMs(next.created_at));
+      if (!sameProject || !sameSession || (gapMs > 0 && gapMs > CLAUDE_TOOL_USE_COLLAPSE_GAP_MS)) {
+        break;
+      }
+
+      run.push(next);
+      cursor += 1;
+    }
+
+    if (run.length >= CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD) {
+      collapsed.push(summarizeClaudeToolUseRun(run, language));
+    } else {
+      collapsed.push(...run);
+    }
+    index = cursor;
+  }
+
+  return collapsed;
+}
+
 function categoryLabel(category: FeedCategoryId, language: UiLanguage): string {
   const copy = getUiCopy(language);
   return copy.category[category] || copy.category.other;
@@ -128,21 +236,23 @@ export function FeedPanel(props: FeedPanelProps) {
     return () => observer.disconnect();
   }, [onLoadMore]);
 
+  const displayItems = useMemo(() => collapseClaudeToolUseItems(items, language), [items, language]);
+
   const categorizedItems = useMemo(() => {
-    return items.map((item) => ({
+    return displayItems.map((item) => ({
       item,
       category: inferCategory(item),
     }));
-  }, [items]);
+  }, [displayItems]);
 
   return (
     <section className="feed-panel">
       <div className="feed-summary">
         <strong>{copy.feed}</strong>
-        <span>{items.length} {copy.itemsLoadedSuffix}</span>
+        <span>{displayItems.length} {copy.itemsLoadedSuffix}</span>
       </div>
 
-      {items.length === 0 && !loading ? (
+      {displayItems.length === 0 && !loading ? (
         <div className="empty">
           {copy.noFeedItems} {copy.noFeedItemsHint}
         </div>
@@ -197,7 +307,7 @@ export function FeedPanel(props: FeedPanelProps) {
           {copy.loadMore}
         </button>
       ) : null}
-      {!hasMore && items.length > 0 ? <div className="done">{copy.noMoreItems}</div> : null}
+      {!hasMore && displayItems.length > 0 ? <div className="done">{copy.noMoreItems}</div> : null}
       <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" />
     </section>
   );
