@@ -22,6 +22,8 @@ function platformOptions(allLabel: string): PlatformOption[] {
     { id: "claude", label: "Claude" },
     { id: "codex", label: "Codex" },
     { id: "opencode", label: "OpenCode" },
+    { id: "cursor", label: "Cursor" },
+    { id: "antigravity", label: "Antigravity" },
   ];
 }
 

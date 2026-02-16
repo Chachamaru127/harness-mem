@@ -75,6 +75,10 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/codex-sessions",
     "/v1/ingest/opencode-history",
     "/v1/ingest/opencode-sessions",
+    "/v1/ingest/cursor-history",
+    "/v1/ingest/cursor-events",
+    "/v1/ingest/antigravity-history",
+    "/v1/ingest/antigravity-files",
   ].includes(pathname);
 }
 
@@ -526,6 +530,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         (url.pathname === "/v1/ingest/opencode-history" || url.pathname === "/v1/ingest/opencode-sessions")
       ) {
         return jsonResponse(core.ingestOpencodeHistory());
+      }
+
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/ingest/cursor-history" || url.pathname === "/v1/ingest/cursor-events")
+      ) {
+        return jsonResponse(core.ingestCursorHistory());
+      }
+
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/ingest/antigravity-history" || url.pathname === "/v1/ingest/antigravity-files")
+      ) {
+        return jsonResponse(core.ingestAntigravityHistory());
       }
 
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {

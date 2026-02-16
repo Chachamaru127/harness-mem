@@ -99,7 +99,7 @@ npm run build
 | `harness_mem_get_observations` | Get observations by ids |
 | `harness_mem_record_checkpoint` | Record checkpoint memory |
 | `harness_mem_finalize_session` | Finalize session summary |
-| `harness_mem_record_event` | Record normalized event envelope |
+| `harness_mem_record_event` | Record normalized event envelope (`platform` supports `claude`, `codex`, `opencode`, `cursor`, `antigravity`) |
 | `harness_mem_health` | Check memory daemon health |
 | `harness_mem_admin_reindex_vectors` | Rebuild vector index from observations |
 | `harness_mem_admin_metrics` | Get memory coverage and queue metrics |

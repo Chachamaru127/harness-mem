@@ -23,11 +23,13 @@ type FeedCategoryId =
   | "tool_use"
   | "other";
 
-type PlatformBadgeId = "codex" | "claude" | "opencode" | "other";
+type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "other";
 
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
 const CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD = 4;
 const CLAUDE_TOOL_USE_COLLAPSE_GAP_MS = 3 * 60 * 1000;
+const CONSECUTIVE_SAME_CARD_COLLAPSE_THRESHOLD = 2;
+const CONSECUTIVE_SAME_CARD_COLLAPSE_GAP_MS = 3 * 60 * 1000;
 
 const KEYWORDS = {
   discovery: ["discovery", "investigate", "analysis", "root cause", "調査", "特定", "原因", "確認", "検証", "learned"],
@@ -63,8 +65,9 @@ function inferCategory(item: FeedItem): FeedCategoryId {
   const eventType = normalizeText(item.event_type || item.card_type);
   const title = normalizeText(item.title);
   const content = normalizeText(item.content);
+  const summary = normalizeText(item.summary);
   const tags = (item.tags || []).map((tag) => normalizeText(tag)).join(" ");
-  const text = `${title} ${content} ${tags}`;
+  const text = `${title} ${content} ${summary} ${tags}`;
 
   if (eventType.includes("session_end") || includesAnyKeyword(text, KEYWORDS.sessionSummary)) {
     return "session_summary";
@@ -107,6 +110,40 @@ function isClaudeToolUse(item: FeedItem): boolean {
   return platform.includes("claude") && eventType === "tool_use";
 }
 
+function parseSummaryFromContent(content: string | undefined): string {
+  if (typeof content !== "string") {
+    return "";
+  }
+  const trimmed = content.trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return "";
+  }
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    return typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+  } catch {
+    return "";
+  }
+}
+
+function resolveCardContent(item: FeedItem, category: FeedCategoryId): string {
+  if (category !== "session_summary") {
+    return item.content || "";
+  }
+
+  const explicitSummary = typeof item.summary === "string" ? item.summary.trim() : "";
+  if (explicitSummary) {
+    return explicitSummary;
+  }
+
+  const parsedSummary = parseSummaryFromContent(item.content);
+  if (parsedSummary) {
+    return parsedSummary;
+  }
+
+  return item.content || "";
+}
+
 function summarizeClaudeToolUseRun(items: FeedItem[], language: UiLanguage): FeedItem {
   const latest = items[0] || {};
   const oldest = items[items.length - 1] || {};
@@ -145,6 +182,63 @@ function summarizeClaudeToolUseRun(items: FeedItem[], language: UiLanguage): Fee
     created_at: latest.created_at,
     tags: latest.tags || [],
     privacy_tags: latest.privacy_tags || [],
+  };
+}
+
+function shouldCollapseConsecutiveItems(base: FeedItem, next: FeedItem): boolean {
+  const baseType = normalizeText(base.event_type || base.card_type);
+  const nextType = normalizeText(next.event_type || next.card_type);
+  const baseTitle = normalizeText(base.title);
+  const nextTitle = normalizeText(next.title);
+  if (!baseType || !baseTitle) {
+    return false;
+  }
+
+  const baseCreatedAt = toEpochMs(base.created_at);
+  const nextCreatedAt = toEpochMs(next.created_at);
+  if (baseCreatedAt <= 0 || nextCreatedAt <= 0) {
+    return false;
+  }
+  const gapMs = Math.abs(baseCreatedAt - nextCreatedAt);
+
+  return (
+    baseType === nextType &&
+    baseTitle === nextTitle &&
+    normalizeText(base.platform) === normalizeText(next.platform) &&
+    normalizeText(base.project) === normalizeText(next.project) &&
+    normalizeText(base.session_id) === normalizeText(next.session_id) &&
+    gapMs <= CONSECUTIVE_SAME_CARD_COLLAPSE_GAP_MS
+  );
+}
+
+function summarizeConsecutiveItems(items: FeedItem[], language: UiLanguage): FeedItem {
+  const latest = items[0] || {};
+  const oldest = items[items.length - 1] || {};
+  const latestAt = formatTimestamp(latest.created_at, language);
+  const oldestAt = formatTimestamp(oldest.created_at, language);
+  const baseTitle = (typeof latest.title === "string" && latest.title.trim()) || latest.event_type || latest.card_type || "event";
+  const title = language === "ja" ? `${baseTitle} (${items.length}件)` : `${baseTitle} (${items.length})`;
+  const timeRange = language === "ja" ? `期間: ${oldestAt} 〜 ${latestAt}` : `Range: ${oldestAt} - ${latestAt}`;
+  const latestCategory = inferCategory(latest);
+  const latestContent = resolveCardContent(latest, latestCategory).replace(/\s+/g, " ").trim().slice(0, 260);
+  const latestPrefix = language === "ja" ? "最新:" : "Latest:";
+
+  const tags = Array.from(new Set(items.flatMap((item) => item.tags || []))).slice(0, 8);
+  const privacyTags = Array.from(new Set(items.flatMap((item) => item.privacy_tags || []))).slice(0, 8);
+
+  return {
+    id: `${latest.id || "grouped"}__same_card_${items.length}`,
+    event_id: latest.event_id,
+    platform: latest.platform,
+    project: latest.project,
+    session_id: latest.session_id,
+    event_type: latest.event_type,
+    card_type: latest.card_type,
+    title,
+    content: latestContent ? `${timeRange}\n${latestPrefix} ${latestContent}` : timeRange,
+    created_at: latest.created_at,
+    tags,
+    privacy_tags: privacyTags,
   };
 }
 
@@ -196,6 +290,39 @@ function collapseClaudeToolUseItems(items: FeedItem[], language: UiLanguage): Fe
   return collapsed;
 }
 
+function collapseConsecutiveSameCards(items: FeedItem[], language: UiLanguage): FeedItem[] {
+  const collapsed: FeedItem[] = [];
+  let index = 0;
+
+  while (index < items.length) {
+    const current = items[index];
+    if (!current) {
+      index += 1;
+      continue;
+    }
+
+    const run: FeedItem[] = [current];
+    let cursor = index + 1;
+    while (cursor < items.length) {
+      const next = items[cursor];
+      if (!next || !shouldCollapseConsecutiveItems(current, next)) {
+        break;
+      }
+      run.push(next);
+      cursor += 1;
+    }
+
+    if (run.length >= CONSECUTIVE_SAME_CARD_COLLAPSE_THRESHOLD) {
+      collapsed.push(summarizeConsecutiveItems(run, language));
+    } else {
+      collapsed.push(...run);
+    }
+    index = cursor;
+  }
+
+  return collapsed;
+}
+
 function categoryLabel(category: FeedCategoryId, language: UiLanguage): string {
   const copy = getUiCopy(language);
   return copy.category[category] || copy.category.other;
@@ -211,6 +338,12 @@ function normalizePlatformBadge(platform: string | undefined): { id: PlatformBad
   }
   if (raw.includes("opencode")) {
     return { id: "opencode", label: "OpenCode" };
+  }
+  if (raw.includes("cursor")) {
+    return { id: "cursor", label: "Cursor" };
+  }
+  if (raw.includes("antigravity")) {
+    return { id: "antigravity", label: "Antigravity" };
   }
   if (platform && platform.trim().length > 0) {
     return { id: "other", label: platform.trim() };
@@ -236,7 +369,10 @@ export function FeedPanel(props: FeedPanelProps) {
     return () => observer.disconnect();
   }, [onLoadMore]);
 
-  const displayItems = useMemo(() => collapseClaudeToolUseItems(items, language), [items, language]);
+  const displayItems = useMemo(() => {
+    const toolCollapsed = collapseClaudeToolUseItems(items, language);
+    return collapseConsecutiveSameCards(toolCollapsed, language);
+  }, [items, language]);
 
   const categorizedItems = useMemo(() => {
     return displayItems.map((item) => ({
@@ -262,7 +398,7 @@ export function FeedPanel(props: FeedPanelProps) {
 
       <div className="feed-list">
         {categorizedItems.map(({ item, category }) => {
-          const content = item.content || "";
+          const content = resolveCardContent(item, category);
           const platform = normalizePlatformBadge(item.platform);
           return (
             <article

@@ -2,10 +2,10 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude>] [--skip-start] [--skip-smoke] [--skip-quality]
-#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude>] [--fix]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
-#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude>] [--purge-db]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--purge-db]
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
@@ -39,6 +39,7 @@ BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
 BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
 END_CODEX_MCP="# <<< harness-mem codex mcp"
+CURSOR_HOOKS_COMMAND="bash .cursor/hooks/memory-cursor-event.sh"
 
 usage() {
   cat <<'EOF'
@@ -55,7 +56,7 @@ Commands:
 
 Common options:
   --project <path>      Target project path (default: current directory)
-  --platform <value>    all|codex|opencode|claude (default: all)
+  --platform <value>    all|codex|opencode|claude|cursor|antigravity (default: all)
   --source <path>       Source SQLite path for import-claude-mem
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
@@ -329,6 +330,152 @@ check_codex_wiring() {
     failed=1
   fi
 
+  return "$failed"
+}
+
+upsert_cursor_hooks_json() {
+  local file="$1"
+  local tmp
+  local template="${HARNESS_ROOT}/.cursor/hooks.json.example"
+
+  mkdir -p "$(dirname "$file")"
+
+  if [ ! -f "$file" ]; then
+    if [ -f "$template" ]; then
+      cp "$template" "$file"
+    else
+      cat >"$file" <<EOF
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      { "command": "${CURSOR_HOOKS_COMMAND}" }
+    ],
+    "afterMCPExecution": [
+      { "command": "${CURSOR_HOOKS_COMMAND}" }
+    ],
+    "afterShellExecution": [
+      { "command": "${CURSOR_HOOKS_COMMAND}" }
+    ],
+    "afterFileEdit": [
+      { "command": "${CURSOR_HOOKS_COMMAND}" }
+    ],
+    "stop": [
+      { "command": "${CURSOR_HOOKS_COMMAND}" }
+    ]
+  }
+}
+EOF
+    fi
+    log "Created Cursor hooks config: $file"
+  fi
+
+  tmp="$(mktemp)"
+  if jq --arg cmd "$CURSOR_HOOKS_COMMAND" '
+    .version = (.version // 1)
+    | .hooks = (.hooks // {})
+    | .hooks.beforeSubmitPrompt = (((.hooks.beforeSubmitPrompt // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+    | .hooks.afterMCPExecution = (((.hooks.afterMCPExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+    | .hooks.afterShellExecution = (((.hooks.afterShellExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+    | .hooks.afterFileEdit = (((.hooks.afterFileEdit // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+    | .hooks.stop = (((.hooks.stop // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+  ' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Updated Cursor hooks config: $file"
+  else
+    rm -f "$tmp"
+    warn "Could not parse Cursor hooks JSON: $file"
+  fi
+}
+
+setup_cursor_hook_script() {
+  local script_path="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  local template="${HARNESS_ROOT}/.cursor/hooks/memory-cursor-event.sh"
+
+  mkdir -p "$(dirname "$script_path")"
+
+  if [ -f "$template" ]; then
+    cp "$template" "$script_path"
+  else
+    cat >"$script_path" <<'EOF'
+#!/bin/bash
+set +e
+exit 0
+EOF
+  fi
+
+  local escaped_root
+  escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
+  local tmp
+  tmp="$(mktemp)"
+  sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$script_path" >"$tmp"
+  mv "$tmp" "$script_path"
+  chmod +x "$script_path"
+}
+
+setup_cursor_wiring() {
+  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  setup_cursor_hook_script
+  upsert_cursor_hooks_json "$hooks_json"
+}
+
+check_cursor_wiring() {
+  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  local hook_script="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  local failed=0
+
+  if [ ! -f "$hook_script" ]; then
+    warn "Cursor hook script missing: $hook_script"
+    failed=1
+  else
+    log "Cursor hook script: OK"
+  fi
+
+  if [ ! -f "$hooks_json" ]; then
+    warn "Cursor hooks config missing: $hooks_json"
+    failed=1
+  else
+    if jq -e '
+      (.hooks.beforeSubmitPrompt // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+      and (.hooks.afterMCPExecution // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+      and (.hooks.afterShellExecution // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+      and (.hooks.afterFileEdit // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+      and (.hooks.stop // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+    ' "$hooks_json" >/dev/null 2>&1; then
+      log "Cursor hooks JSON wiring: OK"
+    else
+      warn "Cursor hooks wiring is incomplete: $hooks_json"
+      failed=1
+    fi
+  fi
+
+  return "$failed"
+}
+
+setup_antigravity_wiring() {
+  log "Antigravity ingest uses workspace file scanning (docs/checkpoints + logs/codex-responses)"
+}
+
+check_antigravity_wiring() {
+  local roots="${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}"
+  if [ -z "$roots" ]; then
+    log "Antigravity roots are not configured (HARNESS_MEM_ANTIGRAVITY_ROOTS is empty)"
+    return 0
+  fi
+
+  local failed=0
+  local IFS=','
+  for raw in $roots; do
+    local root
+    root="$(printf '%s' "$raw" | xargs)"
+    [ -z "$root" ] && continue
+    if [ -d "$root" ]; then
+      log "Antigravity root: OK ($root)"
+    else
+      warn "Antigravity root not found: $root"
+      failed=1
+    fi
+  done
   return "$failed"
 }
 
@@ -796,6 +943,12 @@ doctor_impl() {
   if is_platform_enabled claude; then
     check_claude_wiring || failed=1
   fi
+  if is_platform_enabled cursor; then
+    check_cursor_wiring || failed=1
+  fi
+  if is_platform_enabled antigravity; then
+    check_antigravity_wiring || failed=1
+  fi
 
   if [ "$failed" -eq 0 ]; then
     log "Doctor result: healthy"
@@ -823,6 +976,12 @@ setup_impl() {
   fi
   if is_platform_enabled claude; then
     check_claude_wiring || true
+  fi
+  if is_platform_enabled cursor; then
+    setup_cursor_wiring
+  fi
+  if is_platform_enabled antigravity; then
+    setup_antigravity_wiring
   fi
 
   if [ "$SKIP_START" -eq 0 ]; then
@@ -892,6 +1051,35 @@ uninstall_opencode_wiring() {
   log "Removed OpenCode memory plugin files"
 }
 
+uninstall_cursor_wiring() {
+  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  local tmp
+  if [ -f "$hooks_json" ]; then
+    tmp="$(mktemp)"
+    if jq '
+      .hooks = (.hooks // {})
+      | .hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+      | .hooks.afterMCPExecution = ((.hooks.afterMCPExecution // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+      | .hooks.afterShellExecution = ((.hooks.afterShellExecution // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+      | .hooks.afterFileEdit = ((.hooks.afterFileEdit // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+      | .hooks.stop = ((.hooks.stop // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+    ' "$hooks_json" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$hooks_json"
+      log "Removed Cursor memory hooks from: $hooks_json"
+    else
+      rm -f "$tmp"
+      warn "Could not parse Cursor hooks JSON for cleanup: $hooks_json"
+    fi
+  fi
+
+  rm -f "${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  log "Removed Cursor memory hook script"
+}
+
+uninstall_antigravity_wiring() {
+  log "Antigravity wiring cleanup: no project files to remove"
+}
+
 uninstall_impl() {
   if check_cmd bun; then
     HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
@@ -906,6 +1094,12 @@ uninstall_impl() {
   fi
   if is_platform_enabled opencode; then
     uninstall_opencode_wiring
+  fi
+  if is_platform_enabled cursor; then
+    uninstall_cursor_wiring
+  fi
+  if is_platform_enabled antigravity; then
+    uninstall_antigravity_wiring
   fi
 
   rm -f "${STATE_DIR}/daemon.pid" "${STATE_DIR}/daemon.lock" "${STATE_DIR}/daemon.heartbeat"
@@ -926,7 +1120,7 @@ main() {
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
 
   case "$PLATFORM" in
-    all|codex|opencode|claude) ;;
+    all|codex|opencode|claude|cursor|antigravity) ;;
     *) fail "Invalid --platform: $PLATFORM" ;;
   esac
 

@@ -1,9 +1,9 @@
 # Unified Harness Memory 完成計画 v2（情報粒度MAX・UI分離版）
 
 ## Summary
-この計画は、`Claude Code / Codex / OpenCode` の3環境で同一メモリ機能を1実装で運用するための、実装直前レベルの決定版です。  
+この計画は、`Claude Code / Codex / OpenCode / Cursor / Antigravity` の5環境で同一メモリ機能を1実装で運用するための、実装直前レベルの決定版です。
 `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/harness-ui` には統合せず、**メモリUIは完全に別アプリ**として新設します。  
-既存実装を活かしつつ、未完成部分（OpenCode hooks、実運用級ベクトル検索、テスト網、UI）を埋め、`Claude-mem` 比較で不足している点を解消します。
+既存実装を活かしつつ、未完成部分（OpenCode hooks、Cursor spool ingest、Antigravity file ingest、実運用級ベクトル検索、テスト網、UI）を埋め、`Claude-mem` 比較で不足している点を解消します。
 
 ## 1. 固定決定事項
 1. DBは単一固定で `~/.harness-mem/harness-mem.db` を全プラットフォーム共有で使用する。  
@@ -21,7 +21,7 @@
 2. Transport  
 `http://127.0.0.1:37888` をローカル限定公開し、MCPは `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/mcp-server/src/tools/memory.ts` からフォワードする。  
 3. Adapter  
-Claudeは hooks、Codexは sessions ingest（主系）+ notify hook（補助）+ rules+skills、OpenCodeは plugin hooks で同一APIを叩く。  
+Claudeは hooks、Codexは sessions ingest（主系）+ notify hook（補助）+ rules+skills、OpenCodeは plugin hooks、Cursorは hooks->spool ingest、Antigravityは workspace files ingest で同一APIを叩く。
 4. UI  
 `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/harness-mem-ui` を新規作成し、daemon API専用ビューアとして運用する。  
 
@@ -69,7 +69,7 @@ Claudeは hooks、Codexは sessions ingest（主系）+ notify hook（補助）+
 ```json
 {
   "event_id": "ulid",
-  "platform": "claude|codex|opencode",
+  "platform": "claude|codex|opencode|cursor|antigravity",
   "project": "string",
   "session_id": "string",
   "event_type": "session_start|user_prompt|tool_use|checkpoint|session_end",

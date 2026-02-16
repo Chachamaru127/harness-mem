@@ -6,8 +6,10 @@ import { configureDatabase as configureDb, initFtsIndex as initFtsFromDb, initSc
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
+import { parseCursorHooksChunk } from "../ingest/cursor-hooks";
 import { parseOpencodeDbMessageRow, type OpencodeDbMessageRow } from "../ingest/opencode-db";
 import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
+import { parseAntigravityFile } from "../ingest/antigravity-files";
 import {
   resolveVectorEngine,
   upsertSqliteVecRow,
@@ -25,10 +27,15 @@ const DEFAULT_OPENCODE_STORAGE_ROOT = "~/.local/share/opencode/storage";
 const DEFAULT_OPENCODE_DB_PATH = "~/.local/share/opencode/opencode.db";
 const DEFAULT_OPENCODE_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_OPENCODE_BACKFILL_HOURS = 24;
+const DEFAULT_CURSOR_EVENTS_PATH = "~/.harness-mem/adapters/cursor/events.jsonl";
+const DEFAULT_CURSOR_INGEST_INTERVAL_MS = 5000;
+const DEFAULT_CURSOR_BACKFILL_HOURS = 24;
+const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 5000;
+const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const SQLITE_HEADER = "SQLite format 3\u0000";
 
-type Platform = "claude" | "codex" | "opencode";
+type Platform = "claude" | "codex" | "opencode" | "cursor" | "antigravity";
 type EventType = "session_start" | "user_prompt" | "tool_use" | "checkpoint" | "session_end";
 
 export interface EventEnvelope {
@@ -179,6 +186,14 @@ export interface Config {
   opencodeDbPath?: string;
   opencodeIngestIntervalMs?: number;
   opencodeBackfillHours?: number;
+  cursorIngestEnabled?: boolean;
+  cursorEventsPath?: string;
+  cursorIngestIntervalMs?: number;
+  cursorBackfillHours?: number;
+  antigravityIngestEnabled?: boolean;
+  antigravityWorkspaceRoots?: string[];
+  antigravityIngestIntervalMs?: number;
+  antigravityBackfillHours?: number;
 }
 
 function envFlag(name: string, defaultValue: boolean): boolean {
@@ -622,6 +637,58 @@ function mergeOpencodeIngestSummary(target: OpencodeIngestSummary, partial: Open
   target.storageEventsImported += partial.storageEventsImported;
 }
 
+interface CursorIngestSummary {
+  eventsImported: number;
+  filesScanned: number;
+  filesSkippedBackfill: number;
+  hooksEventsImported: number;
+}
+
+function emptyCursorIngestSummary(): CursorIngestSummary {
+  return {
+    eventsImported: 0,
+    filesScanned: 0,
+    filesSkippedBackfill: 0,
+    hooksEventsImported: 0,
+  };
+}
+
+function mergeCursorIngestSummary(target: CursorIngestSummary, partial: CursorIngestSummary): void {
+  target.eventsImported += partial.eventsImported;
+  target.filesScanned += partial.filesScanned;
+  target.filesSkippedBackfill += partial.filesSkippedBackfill;
+  target.hooksEventsImported += partial.hooksEventsImported;
+}
+
+interface AntigravityIngestSummary {
+  eventsImported: number;
+  filesScanned: number;
+  filesSkippedBackfill: number;
+  rootsScanned: number;
+  checkpointEventsImported: number;
+  toolEventsImported: number;
+}
+
+function emptyAntigravityIngestSummary(): AntigravityIngestSummary {
+  return {
+    eventsImported: 0,
+    filesScanned: 0,
+    filesSkippedBackfill: 0,
+    rootsScanned: 0,
+    checkpointEventsImported: 0,
+    toolEventsImported: 0,
+  };
+}
+
+function mergeAntigravityIngestSummary(target: AntigravityIngestSummary, partial: AntigravityIngestSummary): void {
+  target.eventsImported += partial.eventsImported;
+  target.filesScanned += partial.filesScanned;
+  target.filesSkippedBackfill += partial.filesSkippedBackfill;
+  target.rootsScanned += partial.rootsScanned;
+  target.checkpointEventsImported += partial.checkpointEventsImported;
+  target.toolEventsImported += partial.toolEventsImported;
+}
+
 function listOpencodeMessageFiles(rootDir: string): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
@@ -704,6 +771,47 @@ function listOpencodeSessionFiles(rootDir: string): string[] {
   return files;
 }
 
+function listMarkdownFiles(rootDir: string): string[] {
+  const files: string[] = [];
+  const stack: string[] = [rootDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+    try {
+      entries = readdirSync(current, { withFileTypes: true, encoding: "utf8" }) as Array<{
+        name: string;
+        isDirectory: () => boolean;
+        isFile: () => boolean;
+      }>;
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (!/\.md$/i.test(entry.name)) {
+        continue;
+      }
+      files.push(resolve(fullPath));
+    }
+  }
+
+  files.sort((lhs, rhs) => lhs.localeCompare(rhs));
+  return files;
+}
+
 export class HarnessMemCore {
   private readonly db: Database;
   private ftsEnabled = false;
@@ -713,6 +821,8 @@ export class HarnessMemCore {
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private ingestTimer: ReturnType<typeof setInterval> | null = null;
   private opencodeIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
@@ -786,6 +896,62 @@ export class HarnessMemCore {
     );
   }
 
+  private isCursorIngestEnabled(): boolean {
+    return this.config.cursorIngestEnabled !== false;
+  }
+
+  private getCursorEventsPath(): string {
+    return resolveHomePath(this.config.cursorEventsPath || DEFAULT_CURSOR_EVENTS_PATH);
+  }
+
+  private getCursorIngestIntervalMs(): number {
+    return clampLimit(
+      Number(this.config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS),
+      DEFAULT_CURSOR_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    );
+  }
+
+  private getCursorBackfillHours(): number {
+    return clampLimit(
+      Number(this.config.cursorBackfillHours || DEFAULT_CURSOR_BACKFILL_HOURS),
+      DEFAULT_CURSOR_BACKFILL_HOURS,
+      1,
+      24 * 365
+    );
+  }
+
+  private isAntigravityIngestEnabled(): boolean {
+    return this.config.antigravityIngestEnabled !== false;
+  }
+
+  private getAntigravityWorkspaceRoots(): string[] {
+    const roots = Array.isArray(this.config.antigravityWorkspaceRoots) ? this.config.antigravityWorkspaceRoots : [];
+    return roots
+      .map((root) => (typeof root === "string" ? root.trim() : ""))
+      .filter((root) => root.length > 0)
+      .map((root) => resolveHomePath(root));
+  }
+
+  private getAntigravityIngestIntervalMs(): number {
+    return clampLimit(
+      Number(this.config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS),
+      DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    );
+  }
+
+  private getAntigravityBackfillHours(): number {
+    return clampLimit(
+      Number(this.config.antigravityBackfillHours || DEFAULT_ANTIGRAVITY_BACKFILL_HOURS),
+      DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
+      1,
+      24 * 365
+    );
+  }
+
   private startBackgroundWorkers(): void {
     this.heartbeatTimer = setInterval(() => {
       this.writeHeartbeat();
@@ -801,6 +967,18 @@ export class HarnessMemCore {
       this.opencodeIngestTimer = setInterval(() => {
         this.ingestOpencodeHistory();
       }, this.getOpencodeIngestIntervalMs());
+    }
+
+    if (this.isCursorIngestEnabled()) {
+      this.cursorIngestTimer = setInterval(() => {
+        this.ingestCursorHistory();
+      }, this.getCursorIngestIntervalMs());
+    }
+
+    if (this.isAntigravityIngestEnabled()) {
+      this.antigravityIngestTimer = setInterval(() => {
+        this.ingestAntigravityHistory();
+      }, this.getAntigravityIngestIntervalMs());
     }
 
     this.retryTimer = setInterval(() => {
@@ -2216,6 +2394,14 @@ export class HarnessMemCore {
             opencode_db_path: this.getOpencodeDbPath(),
             opencode_ingest_interval_ms: this.getOpencodeIngestIntervalMs(),
             opencode_backfill_hours: this.getOpencodeBackfillHours(),
+            cursor_history_ingest: this.isCursorIngestEnabled(),
+            cursor_events_path: this.getCursorEventsPath(),
+            cursor_ingest_interval_ms: this.getCursorIngestIntervalMs(),
+            cursor_backfill_hours: this.getCursorBackfillHours(),
+            antigravity_history_ingest: this.isAntigravityIngestEnabled(),
+            antigravity_workspace_roots: this.getAntigravityWorkspaceRoots(),
+            antigravity_ingest_interval_ms: this.getAntigravityIngestIntervalMs(),
+            antigravity_backfill_hours: this.getAntigravityBackfillHours(),
           },
           counts: {
             sessions: Number(sessions.count || 0),
@@ -3360,6 +3546,280 @@ export class HarnessMemCore {
     );
   }
 
+  private ingestCursorHooksEvents(): CursorIngestSummary {
+    const summary = emptyCursorIngestSummary();
+    const eventsPath = this.getCursorEventsPath();
+    if (!existsSync(eventsPath)) {
+      return summary;
+    }
+
+    summary.filesScanned += 1;
+    const sourceKey = `cursor_hooks:${resolve(eventsPath)}`;
+    const cutoffMs = Date.now() - Math.max(0, this.getCursorBackfillHours()) * 60 * 60 * 1000;
+
+    let fileSize = 0;
+    let mtimeMs = Date.now();
+    try {
+      const stats = statSync(eventsPath);
+      fileSize = stats.size;
+      mtimeMs = stats.mtimeMs;
+    } catch {
+      return summary;
+    }
+
+    const offsetRow = this.db
+      .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+      .get(sourceKey) as { offset: number } | null;
+    const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+    let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+    if (!hasOffset && mtimeMs < cutoffMs) {
+      this.updateIngestOffset(sourceKey, fileSize);
+      summary.filesSkippedBackfill += 1;
+      return summary;
+    }
+
+    if (offset > fileSize) {
+      offset = 0;
+    }
+    if (offset === fileSize) {
+      return summary;
+    }
+
+    let chunk = "";
+    try {
+      const buffer = readFileSync(eventsPath);
+      chunk = buffer.subarray(offset).toString("utf8");
+    } catch {
+      return summary;
+    }
+
+    const parsedChunk = parseCursorHooksChunk({
+      sourceKey,
+      baseOffset: offset,
+      chunk,
+      fallbackNowIso: nowIso,
+    });
+
+    let imported = 0;
+    for (const entry of parsedChunk.events) {
+      const result = this.recordEvent(
+        {
+          platform: "cursor",
+          project: entry.project,
+          session_id: entry.sessionId,
+          event_type: entry.eventType,
+          ts: entry.timestamp,
+          payload: entry.payload,
+          tags: ["cursor_hooks_ingest"],
+          privacy_tags: [],
+          dedupe_hash: entry.dedupeHash,
+        },
+        { allowQueue: false }
+      );
+      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+      if (result.ok && !deduped) {
+        imported += 1;
+      }
+    }
+
+    summary.eventsImported += imported;
+    summary.hooksEventsImported += imported;
+
+    if (parsedChunk.consumedBytes > 0) {
+      this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
+    }
+
+    return summary;
+  }
+
+  ingestCursorHistory(): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.isCursorIngestEnabled()) {
+      return makeResponse(
+        startedAt,
+        [
+          {
+            events_imported: 0,
+            files_scanned: 0,
+            files_skipped_backfill: 0,
+            hooks_events_imported: 0,
+          },
+        ],
+        {},
+        { ingest_mode: "disabled" }
+      );
+    }
+
+    const summary = emptyCursorIngestSummary();
+    mergeCursorIngestSummary(summary, this.ingestCursorHooksEvents());
+    return makeResponse(
+      startedAt,
+      [
+        {
+          events_imported: summary.eventsImported,
+          files_scanned: summary.filesScanned,
+          files_skipped_backfill: summary.filesSkippedBackfill,
+          hooks_events_imported: summary.hooksEventsImported,
+        },
+      ],
+      {},
+      { ingest_mode: "cursor_spool_v1" }
+    );
+  }
+
+  private ingestAntigravityWorkspace(rootDir: string): AntigravityIngestSummary {
+    const summary = emptyAntigravityIngestSummary();
+    if (!existsSync(rootDir)) {
+      return summary;
+    }
+    summary.rootsScanned += 1;
+
+    const candidates: string[] = [];
+    const checkpointRoot = join(rootDir, "docs", "checkpoints");
+    const responsesRoot = join(rootDir, "logs", "codex-responses");
+    if (existsSync(checkpointRoot)) {
+      candidates.push(...listMarkdownFiles(checkpointRoot));
+    }
+    if (existsSync(responsesRoot)) {
+      candidates.push(...listMarkdownFiles(responsesRoot));
+    }
+
+    const uniqueFiles = [...new Set(candidates)].sort((lhs, rhs) => lhs.localeCompare(rhs));
+    const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
+
+    for (const filePath of uniqueFiles) {
+      summary.filesScanned += 1;
+      const sourceKey = `antigravity_file:${resolve(filePath)}`;
+
+      let fileSize = 0;
+      let mtimeMs = Date.now();
+      try {
+        const stats = statSync(filePath);
+        fileSize = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch {
+        continue;
+      }
+
+      const offsetRow = this.db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(sourceKey) as { offset: number } | null;
+      const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+      let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+      if (!hasOffset && mtimeMs < cutoffMs) {
+        this.updateIngestOffset(sourceKey, fileSize);
+        summary.filesSkippedBackfill += 1;
+        continue;
+      }
+
+      if (offset > fileSize) {
+        offset = 0;
+      }
+      if (offset === fileSize) {
+        continue;
+      }
+
+      let content = "";
+      try {
+        content = readFileSync(filePath, "utf8");
+      } catch {
+        continue;
+      }
+
+      const parsed = parseAntigravityFile({
+        sourceKey,
+        filePath,
+        workspaceRoot: rootDir,
+        content,
+        mtimeMs,
+        fallbackNowIso: nowIso,
+      });
+
+      if (parsed) {
+        const tags =
+          parsed.eventType === "checkpoint"
+            ? ["antigravity_files_ingest", "checkpoint_file"]
+            : ["antigravity_files_ingest", "codex_response_file"];
+
+        const result = this.recordEvent(
+          {
+            platform: "antigravity",
+            project: parsed.project,
+            session_id: parsed.sessionId,
+            event_type: parsed.eventType,
+            ts: parsed.timestamp,
+            payload: parsed.payload,
+            tags,
+            privacy_tags: [],
+            dedupe_hash: parsed.dedupeHash,
+          },
+          { allowQueue: false }
+        );
+        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+        if (result.ok && !deduped) {
+          summary.eventsImported += 1;
+          if (parsed.eventType === "checkpoint") {
+            summary.checkpointEventsImported += 1;
+          } else {
+            summary.toolEventsImported += 1;
+          }
+        }
+      }
+
+      this.updateIngestOffset(sourceKey, fileSize);
+    }
+
+    return summary;
+  }
+
+  ingestAntigravityHistory(): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.isAntigravityIngestEnabled()) {
+      return makeResponse(
+        startedAt,
+        [
+          {
+            events_imported: 0,
+            files_scanned: 0,
+            files_skipped_backfill: 0,
+            roots_scanned: 0,
+            checkpoint_events_imported: 0,
+            tool_events_imported: 0,
+          },
+        ],
+        {},
+        { ingest_mode: "disabled" }
+      );
+    }
+
+    const roots = this.getAntigravityWorkspaceRoots();
+    const summary = emptyAntigravityIngestSummary();
+    for (const root of roots) {
+      mergeAntigravityIngestSummary(summary, this.ingestAntigravityWorkspace(root));
+    }
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          events_imported: summary.eventsImported,
+          files_scanned: summary.filesScanned,
+          files_skipped_backfill: summary.filesSkippedBackfill,
+          roots_scanned: summary.rootsScanned,
+          checkpoint_events_imported: summary.checkpointEventsImported,
+          tool_events_imported: summary.toolEventsImported,
+        },
+      ],
+      {},
+      {
+        ingest_mode: "antigravity_files_v1",
+        workspace_roots: roots,
+      }
+    );
+  }
+
   shutdown(signal: string): void {
     if (this.shuttingDown) {
       return;
@@ -3377,6 +3837,14 @@ export class HarnessMemCore {
     if (this.opencodeIngestTimer) {
       clearInterval(this.opencodeIngestTimer);
       this.opencodeIngestTimer = null;
+    }
+    if (this.cursorIngestTimer) {
+      clearInterval(this.cursorIngestTimer);
+      this.cursorIngestTimer = null;
+    }
+    if (this.antigravityIngestTimer) {
+      clearInterval(this.antigravityIngestTimer);
+      this.antigravityIngestTimer = null;
     }
     if (this.retryTimer) {
       clearInterval(this.retryTimer);
@@ -3425,6 +3893,24 @@ export function getConfig(): Config {
   const opencodeBackfillRaw = Number(
     process.env.HARNESS_MEM_OPENCODE_BACKFILL_HOURS || DEFAULT_OPENCODE_BACKFILL_HOURS
   );
+  const cursorIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS || DEFAULT_CURSOR_INGEST_INTERVAL_MS
+  );
+  const cursorBackfillRaw = Number(
+    process.env.HARNESS_MEM_CURSOR_BACKFILL_HOURS || DEFAULT_CURSOR_BACKFILL_HOURS
+  );
+  const antigravityIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS
+  );
+  const antigravityBackfillRaw = Number(
+    process.env.HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS || DEFAULT_ANTIGRAVITY_BACKFILL_HOURS
+  );
+  const antigravityRootsRaw = process.env.HARNESS_MEM_ANTIGRAVITY_ROOTS || "";
+  const antigravityWorkspaceRoots = antigravityRootsRaw
+    .split(/[,\n]/)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0)
+    .map((root) => resolveHomePath(root));
 
   return {
     dbPath,
@@ -3451,5 +3937,28 @@ export function getConfig(): Config {
       300000
     ),
     opencodeBackfillHours: clampLimit(opencodeBackfillRaw, DEFAULT_OPENCODE_BACKFILL_HOURS, 1, 24 * 365),
+    cursorIngestEnabled: envFlag("HARNESS_MEM_ENABLE_CURSOR_INGEST", true),
+    cursorEventsPath: resolveHomePath(process.env.HARNESS_MEM_CURSOR_EVENTS_PATH || DEFAULT_CURSOR_EVENTS_PATH),
+    cursorIngestIntervalMs: clampLimit(
+      cursorIngestIntervalRaw,
+      DEFAULT_CURSOR_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    cursorBackfillHours: clampLimit(cursorBackfillRaw, DEFAULT_CURSOR_BACKFILL_HOURS, 1, 24 * 365),
+    antigravityIngestEnabled: envFlag("HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST", true),
+    antigravityWorkspaceRoots,
+    antigravityIngestIntervalMs: clampLimit(
+      antigravityIngestIntervalRaw,
+      DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    antigravityBackfillHours: clampLimit(
+      antigravityBackfillRaw,
+      DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
+      1,
+      24 * 365
+    ),
   };
 }

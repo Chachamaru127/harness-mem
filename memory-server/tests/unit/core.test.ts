@@ -30,6 +30,9 @@ function createConfig(name: string): Config {
     codexSessionsRoot: process.cwd(),
     codexIngestIntervalMs: 5000,
     codexBackfillHours: 24,
+    opencodeIngestEnabled: false,
+    cursorIngestEnabled: false,
+    antigravityIngestEnabled: false,
   };
 }
 

@@ -20,6 +20,7 @@ function normalizeFeedItem(raw: Record<string, unknown>): FeedItem {
     card_type: typeof raw.card_type === "string" ? raw.card_type : undefined,
     title: typeof raw.title === "string" ? raw.title : undefined,
     content: typeof raw.content === "string" ? raw.content : undefined,
+    summary: typeof raw.summary === "string" ? raw.summary : undefined,
     created_at: typeof raw.created_at === "string" ? raw.created_at : undefined,
     tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === "string") : [],
     privacy_tags: Array.isArray(raw.privacy_tags)

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "afterMCPExecution": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "afterShellExecution": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "afterFileEdit": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "stop": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ]
+  }
+}

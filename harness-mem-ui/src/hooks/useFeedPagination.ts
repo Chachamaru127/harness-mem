@@ -5,7 +5,7 @@ import type { FeedItem } from "../lib/types";
 
 interface FeedOptions {
   project: string;
-  platformFilter: "__all__" | "claude" | "codex" | "opencode";
+  platformFilter: "__all__" | "claude" | "codex" | "opencode" | "cursor" | "antigravity";
   includePrivate: boolean;
   limit: number;
 }

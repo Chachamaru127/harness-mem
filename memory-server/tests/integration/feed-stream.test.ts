@@ -26,6 +26,9 @@ function createRuntime(name: string): {
     codexSessionsRoot: process.cwd(),
     codexIngestIntervalMs: 5000,
     codexBackfillHours: 24,
+    opencodeIngestEnabled: false,
+    cursorIngestEnabled: false,
+    antigravityIngestEnabled: false,
   };
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);

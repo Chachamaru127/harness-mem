@@ -1,6 +1,6 @@
 # Harness Memory Setup Guide
 
-`harness-mem` is the unified setup/operation entrypoint for shared memory across Claude Code, Codex, and OpenCode.
+`harness-mem` is the unified setup/operation entrypoint for shared memory across Claude Code, Codex, OpenCode, Cursor, and Antigravity.
 
 ## Quick Start
 
@@ -14,10 +14,12 @@ What `setup` does:
 1. Validates dependencies (`bun`, `node`, `curl`, `jq`)
 2. Wires Codex memory bridge (`.codex/config.toml`)
 3. Wires OpenCode memory bridge (`opencode.json`, `.opencode/opencode.json`, plugin files)
-4. Validates Claude memory hook availability in harness plugin
-5. Starts `harness-memd`
-6. Runs isolated smoke test
-7. Runs search quality guard test suite
+4. Wires Cursor memory hooks (`.cursor/hooks.json`, `.cursor/hooks/memory-cursor-event.sh`)
+5. Validates Claude memory hook availability in harness plugin
+6. Configures Antigravity ingest mode (workspace file scanning)
+7. Starts `harness-memd`
+8. Runs isolated smoke test
+9. Runs search quality guard test suite
 
 ## Commands
 
@@ -26,6 +28,8 @@ What `setup` does:
 ```bash
 scripts/harness-mem setup
 scripts/harness-mem setup --platform codex
+scripts/harness-mem setup --platform cursor
+scripts/harness-mem setup --platform antigravity
 scripts/harness-mem setup --skip-quality
 ```
 
@@ -42,6 +46,8 @@ Checks:
 - Codex wiring (`notify`, `mcp_servers.harness`)
 - Codex ingest primary path (`~/.codex/sessions/**/rollout-*.jsonl`)
 - OpenCode wiring (`harness-memory` plugin + MCP)
+- Cursor hook wiring (`beforeSubmitPrompt/afterMCPExecution/afterShellExecution/afterFileEdit/stop`)
+- Antigravity roots validation (`HARNESS_MEM_ANTIGRAVITY_ROOTS`)
 - Claude memory hook availability
 
 ### Smoke
@@ -118,13 +124,41 @@ Codex ingest envs:
 - `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` (default: `5000`)
 - `HARNESS_MEM_CODEX_BACKFILL_HOURS` (default: `24`)
 
+OpenCode ingest envs:
+
+- `HARNESS_MEM_ENABLE_OPENCODE_INGEST` (default: `true`)
+- `HARNESS_MEM_OPENCODE_DB_PATH` (default: `~/.local/share/opencode/opencode.db`)
+- `HARNESS_MEM_OPENCODE_STORAGE_ROOT` (default: `~/.local/share/opencode/storage`)
+- `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
+
+Cursor ingest envs:
+
+- `HARNESS_MEM_ENABLE_CURSOR_INGEST` (default: `true`)
+- `HARNESS_MEM_CURSOR_EVENTS_PATH` (default: `~/.harness-mem/adapters/cursor/events.jsonl`)
+- `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_CURSOR_BACKFILL_HOURS` (default: `24`)
+
+Antigravity ingest envs:
+
+- `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` (default: `true`)
+- `HARNESS_MEM_ANTIGRAVITY_ROOTS` (default: empty; comma/newline separated roots)
+- `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` (default: `24`)
+
 Notes:
 
 - Codex record ingest primary path is sessions rollout ingest.
 - `notify` hook is optional low-latency assist path (best effort); ingest does not depend on it.
+- Cursor record ingest primary path is hook spool ingest (`HARNESS_MEM_CURSOR_EVENTS_PATH`).
+- Antigravity record ingest primary path is workspace file ingest (`docs/checkpoints/*.md`, `logs/codex-responses/*.md`).
 - Manual ingest endpoints:
   - `POST /v1/ingest/codex-history` (compat route, hybrid ingest)
   - `POST /v1/ingest/codex-sessions` (alias)
+  - `POST /v1/ingest/opencode-history` / `POST /v1/ingest/opencode-sessions`
+  - `POST /v1/ingest/cursor-history` / `POST /v1/ingest/cursor-events`
+  - `POST /v1/ingest/antigravity-history` / `POST /v1/ingest/antigravity-files`
+- `POST /v1/events/record` supports `platform=cursor|antigravity` as compatible supplemental path.
 
 Parity UI uses:
 

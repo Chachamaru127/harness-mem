@@ -19,6 +19,9 @@ function createCore(name: string): { core: HarnessMemCore; dir: string } {
     codexSessionsRoot: process.cwd(),
     codexIngestIntervalMs: 5000,
     codexBackfillHours: 24,
+    opencodeIngestEnabled: false,
+    cursorIngestEnabled: false,
+    antigravityIngestEnabled: false,
   };
   return { core: new HarnessMemCore(config), dir };
 }

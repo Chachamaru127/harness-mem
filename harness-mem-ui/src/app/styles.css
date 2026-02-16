@@ -409,6 +409,18 @@ select:focus-visible,
   border-color: #93c5fd;
 }
 
+.platform-chip.cursor {
+  color: #0f766e;
+  background: #e6fff9;
+  border-color: #5eead4;
+}
+
+.platform-chip.antigravity {
+  color: #991b1b;
+  background: #fff1f2;
+  border-color: #fda4af;
+}
+
 .platform-chip.other {
   color: var(--text-subtle);
   background: color-mix(in srgb, var(--bg-muted) 70%, var(--bg-panel));
@@ -431,6 +443,18 @@ select:focus-visible,
   color: #bfdbfe;
   background: rgba(30, 64, 175, 0.25);
   border-color: rgba(59, 130, 246, 0.55);
+}
+
+:root[data-theme="dark"] .platform-chip.cursor {
+  color: #99f6e4;
+  background: rgba(13, 148, 136, 0.26);
+  border-color: rgba(45, 212, 191, 0.56);
+}
+
+:root[data-theme="dark"] .platform-chip.antigravity {
+  color: #fecdd3;
+  background: rgba(190, 24, 93, 0.24);
+  border-color: rgba(244, 63, 94, 0.55);
 }
 
 .category-chip {

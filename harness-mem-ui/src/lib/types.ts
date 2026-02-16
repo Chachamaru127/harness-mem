@@ -1,7 +1,7 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
 export type UiTab = "feed" | "search" | "observation" | "session";
-export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode";
+export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "antigravity";
 
 export interface UiSettings {
   includePrivate: boolean;
@@ -31,6 +31,7 @@ export interface FeedItem {
   card_type?: string;
   title?: string;
   content?: string;
+  summary?: string;
   created_at?: string;
   tags?: string[];
   privacy_tags?: string[];
