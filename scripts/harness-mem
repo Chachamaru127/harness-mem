@@ -39,7 +39,7 @@ BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
 BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
 END_CODEX_MCP="# <<< harness-mem codex mcp"
-CURSOR_HOOKS_COMMAND="bash .cursor/hooks/memory-cursor-event.sh"
+CURSOR_HOOKS_COMMAND_REL="bash .cursor/hooks/memory-cursor-event.sh"
 
 usage() {
   cat <<'EOF'
@@ -186,6 +186,14 @@ require_cmd() {
 check_cmd() {
   local name="$1"
   command -v "$name" >/dev/null 2>&1
+}
+
+get_cursor_hooks_command() {
+  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
+    printf 'bash %s/scripts/hook-handlers/memory-cursor-event.sh' "$HARNESS_ROOT"
+    return
+  fi
+  printf '%s' "$CURSOR_HOOKS_COMMAND_REL"
 }
 
 ensure_dependencies() {
@@ -335,6 +343,11 @@ check_codex_wiring() {
 
 upsert_cursor_hooks_json() {
   local file="$1"
+  local hook_command="$2"
+  local remove_relative=0
+  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
+    remove_relative=1
+  fi
   local tmp
   local template="${HARNESS_ROOT}/.cursor/hooks.json.example"
 
@@ -349,19 +362,19 @@ upsert_cursor_hooks_json() {
   "version": 1,
   "hooks": {
     "beforeSubmitPrompt": [
-      { "command": "${CURSOR_HOOKS_COMMAND}" }
+      { "command": "${hook_command}" }
     ],
     "afterMCPExecution": [
-      { "command": "${CURSOR_HOOKS_COMMAND}" }
+      { "command": "${hook_command}" }
     ],
     "afterShellExecution": [
-      { "command": "${CURSOR_HOOKS_COMMAND}" }
+      { "command": "${hook_command}" }
     ],
     "afterFileEdit": [
-      { "command": "${CURSOR_HOOKS_COMMAND}" }
+      { "command": "${hook_command}" }
     ],
     "stop": [
-      { "command": "${CURSOR_HOOKS_COMMAND}" }
+      { "command": "${hook_command}" }
     ]
   }
 }
@@ -371,14 +384,34 @@ EOF
   fi
 
   tmp="$(mktemp)"
-  if jq --arg cmd "$CURSOR_HOOKS_COMMAND" '
+  if jq --arg cmd "$hook_command" --arg rel "$CURSOR_HOOKS_COMMAND_REL" --argjson remove_relative "$remove_relative" '
     .version = (.version // 1)
     | .hooks = (.hooks // {})
-    | .hooks.beforeSubmitPrompt = (((.hooks.beforeSubmitPrompt // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
-    | .hooks.afterMCPExecution = (((.hooks.afterMCPExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
-    | .hooks.afterShellExecution = (((.hooks.afterShellExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
-    | .hooks.afterFileEdit = (((.hooks.afterFileEdit // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
-    | .hooks.stop = (((.hooks.stop // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}] | unique_by(.command))
+    | .hooks.beforeSubmitPrompt = (
+        ((.hooks.beforeSubmitPrompt // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        | unique_by(.command)
+        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
+      )
+    | .hooks.afterMCPExecution = (
+        ((.hooks.afterMCPExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        | unique_by(.command)
+        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
+      )
+    | .hooks.afterShellExecution = (
+        ((.hooks.afterShellExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        | unique_by(.command)
+        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
+      )
+    | .hooks.afterFileEdit = (
+        ((.hooks.afterFileEdit // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        | unique_by(.command)
+        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
+      )
+    | .hooks.stop = (
+        ((.hooks.stop // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        | unique_by(.command)
+        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
+      )
   ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
     log "Updated Cursor hooks config: $file"
@@ -391,6 +424,10 @@ EOF
 setup_cursor_hook_script() {
   local script_path="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
   local template="${HARNESS_ROOT}/.cursor/hooks/memory-cursor-event.sh"
+
+  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
+    return
+  fi
 
   mkdir -p "$(dirname "$script_path")"
 
@@ -415,32 +452,40 @@ EOF
 
 setup_cursor_wiring() {
   local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  local hook_command
+  hook_command="$(get_cursor_hooks_command)"
   setup_cursor_hook_script
-  upsert_cursor_hooks_json "$hooks_json"
+  upsert_cursor_hooks_json "$hooks_json" "$hook_command"
 }
 
 check_cursor_wiring() {
   local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
   local hook_script="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  local hook_command
+  hook_command="$(get_cursor_hooks_command)"
   local failed=0
 
-  if [ ! -f "$hook_script" ]; then
-    warn "Cursor hook script missing: $hook_script"
-    failed=1
+  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
+    log "Cursor hook script: using direct harness handler command"
   else
-    log "Cursor hook script: OK"
+    if [ ! -f "$hook_script" ]; then
+      warn "Cursor hook script missing: $hook_script"
+      failed=1
+    else
+      log "Cursor hook script: OK"
+    fi
   fi
 
   if [ ! -f "$hooks_json" ]; then
     warn "Cursor hooks config missing: $hooks_json"
     failed=1
   else
-    if jq -e '
-      (.hooks.beforeSubmitPrompt // [] | any((.command // "") | contains("memory-cursor-event.sh")))
-      and (.hooks.afterMCPExecution // [] | any((.command // "") | contains("memory-cursor-event.sh")))
-      and (.hooks.afterShellExecution // [] | any((.command // "") | contains("memory-cursor-event.sh")))
-      and (.hooks.afterFileEdit // [] | any((.command // "") | contains("memory-cursor-event.sh")))
-      and (.hooks.stop // [] | any((.command // "") | contains("memory-cursor-event.sh")))
+    if jq -e --arg cmd "$hook_command" '
+      (.hooks.beforeSubmitPrompt // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
+      and (.hooks.afterMCPExecution // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
+      and (.hooks.afterShellExecution // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
+      and (.hooks.afterFileEdit // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
+      and (.hooks.stop // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
     ' "$hooks_json" >/dev/null 2>&1; then
       log "Cursor hooks JSON wiring: OK"
     else
@@ -477,6 +522,31 @@ check_antigravity_wiring() {
     fi
   done
   return "$failed"
+}
+
+print_post_setup_next_steps() {
+  log "Next step: verify wiring with doctor"
+  log "  ./scripts/harness-mem doctor --project ${TARGET_DIR} --platform ${PLATFORM}"
+
+  if is_platform_enabled cursor; then
+    local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+    if [ -f "$hooks_json" ]; then
+      log "Cursor wiring file: ${hooks_json}"
+    else
+      warn "Cursor wiring file is missing: ${hooks_json}"
+    fi
+    log "Cursor verification: send one prompt in Cursor, then check feed"
+    log "  curl -sS 'http://${MEM_HOST}:${MEM_PORT}/v1/feed?project=$(basename "$TARGET_DIR")&limit=5&include_private=false' | jq '.ok, .meta.count'"
+  fi
+
+  if is_platform_enabled antigravity; then
+    if [ -z "${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}" ]; then
+      warn "Antigravity roots are empty. Set HARNESS_MEM_ANTIGRAVITY_ROOTS and restart daemon."
+      log "  export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace"
+    else
+      log "Antigravity roots: ${HARNESS_MEM_ANTIGRAVITY_ROOTS}"
+    fi
+  fi
 }
 
 upsert_opencode_json() {
@@ -916,11 +986,22 @@ doctor_impl() {
 
   if check_cmd bun && check_cmd curl && check_cmd npm; then
     ensure_mcp_runtime || failed=1
+    local health_url="http://${MEM_HOST}:${MEM_PORT}/health"
+    if curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+      log "Daemon endpoint already reachable: ${health_url}"
+    else
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+        HARNESS_MEM_HOST="$MEM_HOST" \
+        HARNESS_MEM_PORT="$MEM_PORT" \
+        HARNESS_MEM_DB_PATH="$DB_PATH" \
+        "$HARNESS_ROOT/scripts/harness-memd" start --quiet >/dev/null 2>&1 || true
+    fi
+
     HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
       HARNESS_MEM_HOST="$MEM_HOST" \
       HARNESS_MEM_PORT="$MEM_PORT" \
       HARNESS_MEM_DB_PATH="$DB_PATH" \
-      "$HARNESS_ROOT/scripts/harness-memd" start --quiet >/dev/null 2>&1 || true
+      "$HARNESS_ROOT/scripts/harness-memd" cleanup-stale --quiet >/dev/null 2>&1 || true
 
     if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
       HARNESS_MEM_HOST="$MEM_HOST" \
@@ -998,6 +1079,7 @@ setup_impl() {
   fi
 
   log "Setup complete (project=${TARGET_DIR}, platform=${PLATFORM})"
+  print_post_setup_next_steps
 }
 
 uninstall_codex_wiring() {

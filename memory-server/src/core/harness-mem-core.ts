@@ -1332,8 +1332,12 @@ export class HarnessMemCore {
         project: event.project,
         session_id: event.session_id,
         event_type: event.event_type,
+        card_type: event.event_type === "session_end" ? "session_summary" : event.event_type,
         ts: timestamp,
+        created_at: timestamp,
         title: observationBase.title,
+        content: redactedContent.slice(0, 1200),
+        tags,
         privacy_tags: privacyTags,
       };
 

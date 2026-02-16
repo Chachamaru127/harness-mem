@@ -9,6 +9,37 @@
 /absolute/path/to/harness-mem/scripts/harness-mem setup
 ```
 
+## Install After-Flow (Beginner Friendly)
+
+`harness-mem` install alone is not enough.  
+You must run project wiring once per workspace.
+
+1. Run setup in the target project.
+
+```bash
+cd /your/project
+/absolute/path/to/harness-mem/scripts/harness-mem setup --project "$PWD" --platform cursor --skip-start --skip-smoke --skip-quality
+```
+
+2. Validate wiring.
+
+```bash
+/absolute/path/to/harness-mem/scripts/harness-mem doctor --project "$PWD" --platform cursor
+```
+
+3. Send one message from Cursor, then verify feed count.
+
+```bash
+curl -sS 'http://127.0.0.1:37901/api/feed?project='$(basename "$PWD")'&limit=5&include_private=false' | jq '.ok, .meta.count'
+```
+
+Antigravity users need one extra step before validation:
+
+```bash
+export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace
+# then restart daemon and run doctor --platform antigravity
+```
+
 What `setup` does:
 
 1. Validates dependencies (`bun`, `node`, `curl`, `jq`)
