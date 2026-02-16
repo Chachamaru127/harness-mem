@@ -1,0 +1,21 @@
+# OS
+.DS_Store
+
+# Local tool/runtime state
+.external_refs/
+.firecrawl/
+.opencode/
+.claude/state/
+.claude/sessions/
+.claude/logs/
+**/.claude/state/
+**/.claude/sessions/
+**/.claude/logs/
+
+# Build/dependency artifacts
+**/node_modules/
+**/dist/
+
+# Local Codex runtime files
+.codex/history.jsonl
+.codex/history*.jsonl

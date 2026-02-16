@@ -1,0 +1,122 @@
+# Temporary guardrails for Codex CLI.
+# When Hooks are supported, migrate rules with the same HOOK:<id> tag.
+
+# NOTE: `match` / `not_match` examples are validated at parse time.
+# Keep patterns narrow enough that "safe" examples do not accidentally match.
+
+# Memory bridge policy (Codex notify hook + fallback):
+# - `.codex/config.toml` の `notify` で after_agent イベントを memory bridge に流す。
+# - セッション開始時に `harness_mem_resume_pack(project, session_id)` を必ず実行する。
+# - 作業中の重要節目で `harness_mem_record_checkpoint(...)` を記録する。
+# - ハンドオフ/終了時に `harness_mem_finalize_session(session_id)` を必ず実行する。
+# - `.codex/history.jsonl` は daemon が自動インジェストするため、削除しないこと。
+# - 上記のいずれかが失敗した場合は `scripts/harness-memd doctor` → `scripts/harness-memd cleanup-stale` → `scripts/harness-memd start` の順で復旧する。
+
+prefix_rule(
+  pattern = ["rm", ["-rf", "-fr"]],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "rm -rf build",
+    "rm -fr /tmp/cache",
+  ],
+  not_match = [
+    "rm -r build",
+  ],
+)
+
+prefix_rule(
+  pattern = ["sudo", "rm", ["-rf", "-fr"]],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "sudo rm -rf /tmp",
+    "sudo rm -fr /tmp",
+  ],
+  not_match = [
+    "sudo -n true",
+  ],
+)
+
+prefix_rule(
+  pattern = ["git", "reset", "--hard"],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "git reset --hard HEAD~1",
+  ],
+  not_match = [
+    "git reset --soft HEAD~1",
+  ],
+)
+
+prefix_rule(
+  pattern = ["sudo", "git", "reset", "--hard"],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "sudo git reset --hard HEAD~1",
+  ],
+  not_match = [
+    "sudo git reset --soft HEAD~1",
+  ],
+)
+
+prefix_rule(
+  pattern = ["git", "clean", ["-f", "-ff", "-fd", "-fdx", "-fx", "-xdf", "-ffdx"]],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "git clean -fdx",
+    "git clean -f -d -x",
+    "git clean -fx",
+  ],
+  not_match = [
+    "git clean -n",
+  ],
+)
+
+prefix_rule(
+  pattern = ["sudo", "git", "clean", ["-f", "-ff", "-fd", "-fdx", "-fx", "-xdf", "-ffdx"]],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "sudo git clean -fdx",
+  ],
+)
+
+prefix_rule(
+  pattern = ["git", "push", ["-f", "--force", "--force-with-lease"]],
+  decision = "prompt",
+  justification = "HOOK:dangerous-commands",
+  match = [
+    "git push --force-with-lease origin main",
+    "git push -f origin main",
+  ],
+  not_match = [
+    "git push origin main",
+  ],
+)
+
+prefix_rule(
+  pattern = ["rm", ["-rf", "-fr"], ["~/.harness-mem", "$HOME/.harness-mem", ".harness-mem"]],
+  decision = "prompt",
+  justification = "HOOK:memory-data-protection",
+  match = [
+    "rm -rf ~/.harness-mem",
+    "rm -fr $HOME/.harness-mem",
+  ],
+  not_match = [
+    "rm -rf .cache",
+  ],
+)
+
+prefix_rule(
+  pattern = ["pkill", "-f", ["harness-memd", "memory-server/src/index.ts"]],
+  decision = "prompt",
+  justification = "HOOK:memory-daemon-safety",
+  match = [
+    "pkill -f harness-memd",
+    "pkill -f memory-server/src/index.ts",
+  ],
+)
