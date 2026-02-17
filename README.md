@@ -74,12 +74,14 @@ npm publish --dry-run
 
 ## Automated GitHub + npm release
 
-When you push a SemVer tag (example: `v0.1.2`), GitHub Actions will:
+When you push a SemVer tag (example: `v0.1.3`), GitHub Actions will:
 
-1. Verify `package.json` version matches the tag version
-2. Run `npm pack --dry-run`
-3. Publish to npm
-4. Create GitHub Release notes
+1. Verify tag commit is included in `origin/main`
+2. Verify `package.json` version matches the tag version
+3. Run quality gates (`harness-mem-ui` + `memory-server` tests/typecheck)
+4. Run `npm pack --dry-run`
+5. Publish to npm
+6. Create GitHub Release notes
 
 Required repository secret:
 

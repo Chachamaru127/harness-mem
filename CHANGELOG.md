@@ -1,3 +1,22 @@
+## [0.1.3] - 2026-02-17
+
+### 🎯 What's Changed for You
+
+Release automation is now safer and prevents accidental mismatched or off-branch releases.
+
+| Before | After |
+|--------|-------|
+| A tag could trigger release without checking whether it belonged to `main`. | Release now fails unless the tag commit is contained in `origin/main`. |
+| npm publish path did not run full quality gates before publishing. | UI and memory-server tests/type checks run before `npm publish`. |
+
+### Fixed
+
+- Corrective release version prepared as `0.1.3` after earlier tag/commit mismatches.
+
+### Internal
+
+- GitHub Actions release workflow now includes Bun setup and mandatory verification gates.
+
 ## [0.1.1] - 2026-02-17
 
 ### 🎯 What's Changed for You
