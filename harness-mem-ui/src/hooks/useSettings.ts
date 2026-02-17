@@ -12,6 +12,7 @@ export const defaultSettings: UiSettings = {
   pageSize: 40,
   autoScroll: true,
   theme: "light",
+  designPreset: "bento",
   language: "en",
   activeTab: "feed",
 };
@@ -38,6 +39,10 @@ function readSettings(): UiSettings {
           : "__all__",
       compactFeed: typeof parsed.compactFeed === "boolean" ? parsed.compactFeed : defaultSettings.compactFeed,
       pageSize: typeof parsed.pageSize === "number" ? Math.max(10, Math.min(100, Math.trunc(parsed.pageSize))) : defaultSettings.pageSize,
+      designPreset:
+        parsed.designPreset === "liquid" || parsed.designPreset === "night" || parsed.designPreset === "bento"
+          ? parsed.designPreset
+          : defaultSettings.designPreset,
       language: parsed.language === "ja" ? "ja" : "en",
     };
   } catch {
@@ -58,6 +63,14 @@ export function useSettings() {
     const effective = settings.theme === "system" ? (prefersDark ? "dark" : "light") : settings.theme;
     root.dataset.theme = effective;
   }, [settings.theme]);
+
+  useEffect(() => {
+    document.documentElement.dataset.design = settings.designPreset;
+  }, [settings.designPreset]);
+
+  useEffect(() => {
+    document.documentElement.lang = settings.language === "ja" ? "ja" : "en";
+  }, [settings.language]);
 
   const updateSetting = useMemo(
     () =>

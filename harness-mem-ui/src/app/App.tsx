@@ -141,6 +141,31 @@ export default function App() {
     return () => clearInterval(timer);
   }, [refreshStatus]);
 
+  useEffect(() => {
+    let frame = 0;
+    const updateParallax = () => {
+      frame = 0;
+      const shift = Math.round(window.scrollY * 0.22);
+      document.documentElement.style.setProperty("--parallax-y", `${shift}px`);
+    };
+    const onScroll = () => {
+      if (frame !== 0) {
+        return;
+      }
+      frame = window.requestAnimationFrame(updateParallax);
+    };
+
+    updateParallax();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame !== 0) {
+        window.cancelAnimationFrame(frame);
+      }
+      document.documentElement.style.removeProperty("--parallax-y");
+    };
+  }, []);
+
   const handleStreamEvent = useCallback(
     (event: SseUiEvent) => {
       if (event.event === "observation.created") {

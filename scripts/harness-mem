@@ -29,6 +29,10 @@ HARNESS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 TARGET_DIR="${HARNESS_MEM_TARGET_DIR:-$PWD}"
 PLATFORM="all"
 PLATFORM_EXPLICIT=0
+UI_LANG="${HARNESS_MEM_LANG:-ja}"
+SETUP_INTERACTIVE_PROMPT_USED=0
+SETUP_IMPORT_CLAUDE_MEM=0
+SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
 FIX_MODE=0
 PURGE_DB=0
 SKIP_START=0
@@ -81,7 +85,11 @@ Command options:
     --skip-start        Do not start daemon
     --skip-smoke        Do not run smoke test
     --skip-quality      Do not run search quality test
-    (no --platform)     Interactive multi-select prompt (default: codex,cursor)
+    (no --platform)     Interactive setup prompt:
+                        1) language (Japanese/English)
+                        2) target tools (multi-select)
+                        3) import from Claude-mem (yes/no)
+                        4) stop Claude-mem after import (yes/no)
   doctor:
     --fix               Attempt to repair missing wiring
   uninstall:
@@ -211,6 +219,21 @@ csv_append_unique() {
   printf '%s,%s' "$csv" "$value"
 }
 
+normalize_ui_lang() {
+  case "$UI_LANG" in
+    en|EN|english|English)
+      UI_LANG="en"
+      ;;
+    *)
+      UI_LANG="ja"
+      ;;
+  esac
+}
+
+ui_is_en() {
+  [ "$UI_LANG" = "en" ]
+}
+
 should_prompt_platform_selection() {
   local command="$1"
   if [ "$command" != "setup" ]; then
@@ -231,7 +254,18 @@ should_prompt_platform_selection() {
 prompt_platform_selection() {
   local input choices token selected valid
   while true; do
-    cat <<'EOF'
+    if ui_is_en; then
+      cat <<'EOF'
+[harness-mem] Select setup targets (multiple allowed)
+  1) codex     (global: ~/.codex/config.toml)
+  2) cursor    (global: ~/.cursor/hooks.json)
+  3) opencode  (global: ~/.config/opencode/opencode.json)
+  4) claude    (plugin hooks check)
+  a) all
+Example: 1,2   (Enter=1,2)
+EOF
+    else
+      cat <<'EOF'
 [harness-mem] setup 対象を選択してください（複数可）
   1) codex     (global: ~/.codex/config.toml)
   2) cursor    (global: ~/.cursor/hooks.json)
@@ -240,6 +274,7 @@ prompt_platform_selection() {
   a) all
 入力例: 1,2   (Enter=1,2)
 EOF
+    fi
     printf "> "
     read -r input || input=""
     input="$(printf '%s' "$input" | tr -d '[:space:]')"
@@ -276,7 +311,11 @@ EOF
           selected="$(csv_append_unique "$selected" "claude")"
           ;;
         *)
-          warn "Invalid selection: ${token}. Use 1,2,3,4 or a"
+          if ui_is_en; then
+            warn "Invalid selection: ${token}. Use 1,2,3,4 or a"
+          else
+            warn "無効な選択: ${token}。1,2,3,4 または a を入力してください"
+          fi
           valid=0
           ;;
       esac
@@ -288,6 +327,95 @@ EOF
       return
     fi
   done
+}
+
+prompt_language_selection() {
+  local input
+  while true; do
+    cat <<'EOF'
+[harness-mem] 言語を選択してください / Select language
+  1) 日本語
+  2) English
+入力例: 1   (Enter=1)
+EOF
+    printf "> "
+    read -r input || input=""
+    input="$(printf '%s' "$input" | tr -d '[:space:]')"
+    case "$input" in
+      ""|1|ja|JA|jp|JP|japanese|Japanese)
+        UI_LANG="ja"
+        log "言語を日本語に設定しました"
+        return
+        ;;
+      2|en|EN|english|English)
+        UI_LANG="en"
+        log "Language set to English"
+        return
+        ;;
+      *)
+        warn "Invalid selection: ${input}. Use 1 or 2"
+        ;;
+    esac
+  done
+}
+
+prompt_yes_no_default_no() {
+  local question="$1"
+  local answer=""
+  while true; do
+    printf "%s [y/N]: " "$question"
+    read -r answer || answer=""
+    answer="$(printf '%s' "$answer" | tr -d '[:space:]')"
+    if [ -z "$answer" ]; then
+      return 1
+    fi
+    case "$answer" in
+      y|Y|yes|YES|Yes)
+        return 0
+        ;;
+      n|N|no|NO|No)
+        return 1
+        ;;
+      *)
+        if ui_is_en; then
+          warn "Invalid input: ${answer}. Use y or n"
+        else
+          warn "無効な入力: ${answer}。y または n を入力してください"
+        fi
+        ;;
+    esac
+  done
+}
+
+should_prompt_setup_migration_selection() {
+  local command="$1"
+  if [ "$command" != "setup" ]; then
+    return 1
+  fi
+  if [ "$SETUP_INTERACTIVE_PROMPT_USED" -ne 1 ]; then
+    return 1
+  fi
+  return 0
+}
+
+prompt_setup_migration_selection() {
+  local import_question stop_question
+  if ui_is_en; then
+    import_question="Import existing data from Claude-mem?"
+    stop_question="Stop Claude-mem after import completes?"
+  else
+    import_question="Claude-memから既存データをインポートしますか?"
+    stop_question="インポート完了後にClaude-memを停止しますか?"
+  fi
+
+  if prompt_yes_no_default_no "$import_question"; then
+    SETUP_IMPORT_CLAUDE_MEM=1
+    if prompt_yes_no_default_no "$stop_question"; then
+      SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=1
+    fi
+  fi
+
+  log "Migration options: import_claude_mem=${SETUP_IMPORT_CLAUDE_MEM}, stop_after_import=${SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT}"
 }
 
 is_platform_enabled() {
@@ -1109,6 +1237,44 @@ cutover_claude_mem_impl() {
   log "Cutover completed for job: $IMPORT_JOB_ID"
 }
 
+run_setup_claude_mem_import_if_requested() {
+  if [ "$SETUP_IMPORT_CLAUDE_MEM" -ne 1 ]; then
+    return
+  fi
+
+  local source_db="${HOME}/.claude-mem/claude-mem.db"
+  [ -f "$source_db" ] || fail "Claude-mem source DB not found: $source_db"
+
+  start_daemon
+
+  local payload response job_id verify_payload verify_response imported_count
+  payload="$(jq -nc \
+    --arg source "$source_db" \
+    '{
+      source_db_path: $source,
+      dry_run: false
+    }')"
+
+  response="$(run_import_request "$payload")"
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Claude-mem import request failed during setup"
+
+  job_id="$(echo "$response" | jq -r '.items[0].job_id // empty')"
+  [ -n "$job_id" ] || fail "Claude-mem import did not return job_id during setup"
+  log "Claude-mem import requested (job=${job_id})"
+
+  verify_payload="$(jq -nc --arg job_id "$job_id" '{job_id: $job_id}')"
+  verify_response="$(run_verify_request "$verify_payload")"
+  echo "$verify_response" | jq -e '.ok == true and .items[0].ok == true' >/dev/null \
+    || fail "Claude-mem import verification failed during setup"
+  imported_count="$(echo "$verify_response" | jq -r '.items[0].imported_observations // 0')"
+  log "Claude-mem import verified (job=${job_id}, imported_observations=${imported_count})"
+
+  if [ "$SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT" -eq 1 ]; then
+    stop_claude_mem_runtime
+    log "Claude-mem stop completed after setup import"
+  fi
+}
+
 doctor_impl() {
   local failed=0
 
@@ -1226,6 +1392,8 @@ setup_impl() {
   if [ "$SKIP_QUALITY" -eq 0 ]; then
     run_quality_tests
   fi
+
+  run_setup_claude_mem_import_if_requested
 
   log "Setup complete (project=${TARGET_DIR}, platform=${PLATFORM})"
   print_post_setup_next_steps
@@ -1347,8 +1515,14 @@ main() {
   shift || true
 
   parse_options "$@"
+  normalize_ui_lang
   if should_prompt_platform_selection "$command"; then
+    prompt_language_selection
     prompt_platform_selection
+    SETUP_INTERACTIVE_PROMPT_USED=1
+  fi
+  if should_prompt_setup_migration_selection "$command"; then
+    prompt_setup_migration_selection
   fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"

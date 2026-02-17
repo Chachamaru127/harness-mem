@@ -188,6 +188,21 @@ export function SettingsModal(props: SettingsModalProps) {
               <h3>{copy.displaySection}</h3>
               <p className="section-help">{copy.displayHelp}</p>
               <label>
+                {copy.designPreset}
+                <small>{copy.designPresetHelp}</small>
+                <select
+                  aria-label={copy.designPreset}
+                  value={draft.designPreset}
+                  onChange={(event) =>
+                    setDraft((prev) => ({ ...prev, designPreset: event.target.value as UiSettings["designPreset"] }))
+                  }
+                >
+                  <option value="bento">{copy.designPresetBento}</option>
+                  <option value="liquid">{copy.designPresetLiquid}</option>
+                  <option value="night">{copy.designPresetNight}</option>
+                </select>
+              </label>
+              <label>
                 {copy.language}
                 <select
                   aria-label={copy.language}

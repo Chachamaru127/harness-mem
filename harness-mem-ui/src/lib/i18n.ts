@@ -52,12 +52,20 @@ interface UiCopy {
   includePrivateHelp: string;
   displaySection: string;
   displayHelp: string;
+  designPreset: string;
+  designPresetHelp: string;
+  designPresetBento: string;
+  designPresetLiquid: string;
+  designPresetNight: string;
   language: string;
   theme: string;
   compactCards: string;
   compactCardsHelp: string;
   autoScroll: string;
   autoScrollHelp: string;
+  detailDialogTitle: string;
+  detailClose: string;
+  detailHint: string;
   languageEnglish: string;
   languageJapanese: string;
   category: Record<CategoryKey, string>;
@@ -106,12 +114,20 @@ const COPY: Record<UiLanguage, UiCopy> = {
     includePrivateHelp: "Include private and sensitive observations in view.",
     displaySection: "Display",
     displayHelp: "Visual and interaction preferences.",
+    designPreset: "Design style",
+    designPresetHelp: "Pick a visual direction for cards, layout, and atmosphere.",
+    designPresetBento: "Bento Canvas",
+    designPresetLiquid: "Liquid Glass",
+    designPresetNight: "Night Signal",
     language: "Language",
     theme: "Theme",
     compactCards: "Compact cards",
     compactCardsHelp: "Reduce card height and keep feed denser.",
     autoScroll: "Auto scroll",
     autoScrollHelp: "Automatically keep latest item in view.",
+    detailDialogTitle: "Full record",
+    detailClose: "Close",
+    detailHint: "Click to view full text",
     languageEnglish: "English",
     languageJapanese: "Japanese",
     category: {
@@ -167,12 +183,20 @@ const COPY: Record<UiLanguage, UiCopy> = {
     includePrivateHelp: "private / sensitive タグ付きの記録も表示します。",
     displaySection: "表示",
     displayHelp: "見た目と表示動作を調整します。",
+    designPreset: "デザインスタイル",
+    designPresetHelp: "カード、背景、質感の方向性を選びます。",
+    designPresetBento: "Bento Canvas",
+    designPresetLiquid: "Liquid Glass",
+    designPresetNight: "Night Signal",
     language: "表示言語",
     theme: "テーマ",
     compactCards: "カードをコンパクト表示",
     compactCardsHelp: "カード高さを抑えて一覧性を上げます。",
     autoScroll: "自動スクロール",
     autoScrollHelp: "新着時に最新カードを追従表示します。",
+    detailDialogTitle: "全文表示",
+    detailClose: "閉じる",
+    detailHint: "クリックで全文を表示",
     languageEnglish: "English",
     languageJapanese: "日本語",
     category: {

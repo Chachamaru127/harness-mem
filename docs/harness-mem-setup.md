@@ -24,7 +24,12 @@ Run setup once to wire global config for Codex/OpenCode/Cursor.
 harness-mem setup --platform codex,cursor --skip-start --skip-smoke --skip-quality
 ```
 
-`--platform` を省略すると、`setup` 実行時に対話形式で対象ツールを複数選択できます（Enter 既定: `codex,cursor`）。
+`--platform` を省略すると、`setup` 実行時に対話形式で以下を順に確認します。
+
+1. 言語（日本語/English）
+2. 導入先ツール（複数選択可、Enter 既定: `codex,cursor`）
+3. Claude-mem から既存データをインポートするか（yes/no）
+4. （3で yes の場合）インポート完了後に Claude-mem を停止するか（yes/no）
 
 2. Validate wiring.
 
@@ -57,6 +62,7 @@ What `setup` does:
 6. Starts `harness-memd`
 7. Runs isolated smoke test
 8. Runs search quality guard test suite
+9. (Optional, interactive) Imports from `~/.claude-mem/claude-mem.db` and optionally stops Claude-mem after verify
 
 ## Commands
 

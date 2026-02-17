@@ -5,6 +5,7 @@
 .external_refs/
 .firecrawl/
 .opencode/
+.tmp/
 .claude/
 .claude/state/
 .claude/sessions/

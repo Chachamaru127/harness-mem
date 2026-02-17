@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, test, vi } from "vitest";
 import { FeedPanel } from "../../src/components/FeedPanel";
 import type { FeedItem } from "../../src/lib/types";
@@ -327,5 +327,43 @@ describe("FeedPanel", () => {
     expect(screen.getByText("Antigravity")).toBeDefined();
     expect(container.querySelectorAll(".platform-chip.cursor").length).toBe(1);
     expect(container.querySelectorAll(".platform-chip.antigravity").length).toBe(1);
+  });
+
+  test("expands inline detail with full content on card click", () => {
+    const fullText = "line-1\nline-2\nline-3 full detail";
+    const { container } = render(
+      <FeedPanel
+        items={[
+          {
+            id: "detail-1",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "detail-session",
+            event_type: "user_prompt",
+            title: "Open detail",
+            content: fullText,
+            created_at: "2026-02-16T04:10:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+        ]}
+        compact={true}
+        language="en"
+        loading={false}
+        error=""
+        hasMore={false}
+        onLoadMore={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Open detail"));
+    expect(container.querySelectorAll(".feed-card.expanded").length).toBe(1);
+    const detail = container.querySelector(".feed-inline-detail");
+    expect(detail).toBeTruthy();
+    expect(detail?.textContent).toContain("line-3 full detail");
+
+    fireEvent.click(screen.getByText("Open detail"));
+    expect(container.querySelectorAll(".feed-card.expanded").length).toBe(0);
+    expect(container.querySelectorAll(".feed-inline-detail").length).toBe(0);
   });
 });

@@ -2,6 +2,7 @@ export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
 export type UiTab = "feed" | "search" | "observation" | "session";
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor";
+export type UiDesignPreset = "bento" | "liquid" | "night";
 
 export interface UiSettings {
   includePrivate: boolean;
@@ -12,6 +13,7 @@ export interface UiSettings {
   pageSize: number;
   autoScroll: boolean;
   theme: UiTheme;
+  designPreset: UiDesignPreset;
   language: UiLanguage;
   activeTab: UiTab;
 }

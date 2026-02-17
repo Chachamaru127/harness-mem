@@ -18,7 +18,12 @@ harness-mem setup
 harness-mem doctor
 ```
 
-`setup` without `--platform` opens an interactive multi-select prompt.
+`setup` without `--platform` opens an interactive flow:
+
+1. Language (Japanese / English)
+2. Target tools (multi-select)
+3. Import existing data from Claude-mem (optional)
+4. Stop Claude-mem after import (optional)
 
 ## Main components
 

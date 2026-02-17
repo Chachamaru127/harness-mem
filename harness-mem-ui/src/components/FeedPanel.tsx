@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getUiCopy } from "../lib/i18n";
 import type { FeedItem } from "../lib/types";
 import type { UiLanguage } from "../lib/types";
@@ -23,7 +23,7 @@ type FeedCategoryId =
   | "tool_use"
   | "other";
 
-type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "other";
+type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "other";
 
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
 const CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD = 4;
@@ -342,6 +342,9 @@ function normalizePlatformBadge(platform: string | undefined): { id: PlatformBad
   if (raw.includes("cursor")) {
     return { id: "cursor", label: "Cursor" };
   }
+  if (raw.includes("antigravity")) {
+    return { id: "antigravity", label: "Antigravity" };
+  }
   if (platform && platform.trim().length > 0) {
     return { id: "other", label: platform.trim() };
   }
@@ -352,6 +355,7 @@ export function FeedPanel(props: FeedPanelProps) {
   const { items, compact, language, loading, error, hasMore, onLoadMore } = props;
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const copy = getUiCopy(language);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -378,6 +382,15 @@ export function FeedPanel(props: FeedPanelProps) {
     }));
   }, [displayItems]);
 
+  useEffect(() => {
+    if (!expandedCardId) {
+      return;
+    }
+    if (!displayItems.some((item) => item.id === expandedCardId)) {
+      setExpandedCardId(null);
+    }
+  }, [displayItems, expandedCardId]);
+
   return (
     <section className="feed-panel">
       <div className="feed-summary">
@@ -397,10 +410,24 @@ export function FeedPanel(props: FeedPanelProps) {
         {categorizedItems.map(({ item, category }) => {
           const content = resolveCardContent(item, category);
           const platform = normalizePlatformBadge(item.platform);
+          const isExpanded = expandedCardId === item.id;
+          const expandRegionId = `feed-expand-${item.id}`;
           return (
             <article
               key={item.id}
-              className={`feed-card feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}`}
+              className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}`}
+              role="button"
+              tabIndex={0}
+              aria-expanded={isExpanded}
+              aria-controls={expandRegionId}
+              aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
+              onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  setExpandedCardId((prev) => (prev === item.id ? null : item.id));
+                }
+              }}
             >
               <div className="card-top">
                 <div className="card-top-left">
@@ -412,6 +439,11 @@ export function FeedPanel(props: FeedPanelProps) {
 
               <h3>{item.title || item.id}</h3>
               {content ? <p>{content}</p> : null}
+              {isExpanded ? (
+                <pre id={expandRegionId} className="feed-inline-detail">
+                  {content || "-"}
+                </pre>
+              ) : null}
 
               <div className="card-meta">
                 <span>{item.project || "-"}</span>
