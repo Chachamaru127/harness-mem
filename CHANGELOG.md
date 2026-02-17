@@ -1,4 +1,4 @@
-## [0.1.3] - 2026-02-17
+## [0.1.4] - 2026-02-17
 
 ### 🎯 What's Changed for You
 
@@ -11,7 +11,7 @@ Release automation is now safer and prevents accidental mismatched or off-branch
 
 ### Fixed
 
-- Corrective release version prepared as `0.1.3` after earlier tag/commit mismatches.
+- Corrective release version prepared as `0.1.4` after earlier tag/commit mismatches.
 
 ### Internal
 
