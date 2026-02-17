@@ -75,7 +75,10 @@ export function SessionPanel(props: SessionPanelProps) {
         include_private: includePrivate,
         limit: 100,
       });
-      setSessions(result as unknown as SessionListItem[]);
+      const filtered = (result as unknown as SessionListItem[]).filter(
+        (session) => (session.platform || "").toLowerCase() !== "antigravity"
+      );
+      setSessions(filtered);
     } catch (errorInput) {
       setError(errorInput instanceof Error ? errorInput.message : String(errorInput));
       setSessions([]);

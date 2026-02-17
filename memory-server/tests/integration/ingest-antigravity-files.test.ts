@@ -36,6 +36,8 @@ function createRuntime(name: string): {
     cursorIngestEnabled: false,
     antigravityIngestEnabled: true,
     antigravityWorkspaceRoots: [workspaceRoot],
+    antigravityLogsRoot: join(dir, "isolated-antigravity-logs"),
+    antigravityWorkspaceStorageRoot: join(dir, "isolated-workspace-storage"),
     antigravityIngestIntervalMs: 3600000,
     antigravityBackfillHours: 24,
   };

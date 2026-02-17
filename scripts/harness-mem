@@ -2,10 +2,10 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--skip-start] [--skip-smoke] [--skip-quality]
-#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--fix]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
-#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity>] [--purge-db]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor>] [--purge-db]
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
@@ -56,7 +56,7 @@ Commands:
 
 Common options:
   --project <path>      Target project path (default: current directory)
-  --platform <value>    all|codex|opencode|claude|cursor|antigravity (default: all)
+  --platform <value>    all|codex|opencode|claude|cursor (default: all)
   --source <path>       Source SQLite path for import-claude-mem
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
@@ -170,6 +170,9 @@ parse_options() {
 
 is_platform_enabled() {
   local target="$1"
+  if [ "$target" = "antigravity" ]; then
+    return 1
+  fi
   if [ "$PLATFORM" = "all" ]; then
     return 0
   fi
@@ -504,7 +507,7 @@ setup_antigravity_wiring() {
 check_antigravity_wiring() {
   local roots="${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}"
   if [ -z "$roots" ]; then
-    log "Antigravity roots are not configured (HARNESS_MEM_ANTIGRAVITY_ROOTS is empty)"
+    log "Antigravity roots are not explicitly configured (auto-discovery mode)"
     return 0
   fi
 
@@ -541,8 +544,8 @@ print_post_setup_next_steps() {
 
   if is_platform_enabled antigravity; then
     if [ -z "${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}" ]; then
-      warn "Antigravity roots are empty. Set HARNESS_MEM_ANTIGRAVITY_ROOTS and restart daemon."
-      log "  export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace"
+      log "Antigravity roots: auto-discovery from Antigravity workspaceStorage"
+      log "  (optional) export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace"
     else
       log "Antigravity roots: ${HARNESS_MEM_ANTIGRAVITY_ROOTS}"
     fi
@@ -1202,7 +1205,7 @@ main() {
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
 
   case "$PLATFORM" in
-    all|codex|opencode|claude|cursor|antigravity) ;;
+    all|codex|opencode|claude|cursor) ;;
     *) fail "Invalid --platform: $PLATFORM" ;;
   esac
 

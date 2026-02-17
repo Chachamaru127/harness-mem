@@ -32,7 +32,11 @@ export function SearchPanel(props: SearchPanelProps) {
         limit,
         include_private: includePrivate,
       });
-      setItems(result);
+      const filtered = result.filter((item) => {
+        const platform = typeof item.platform === "string" ? item.platform.toLowerCase() : "";
+        return platform !== "antigravity";
+      });
+      setItems(filtered);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

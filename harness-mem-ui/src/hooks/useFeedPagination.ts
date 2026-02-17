@@ -5,7 +5,7 @@ import type { FeedItem } from "../lib/types";
 
 interface FeedOptions {
   project: string;
-  platformFilter: "__all__" | "claude" | "codex" | "opencode" | "cursor" | "antigravity";
+  platformFilter: "__all__" | "claude" | "codex" | "opencode" | "cursor";
   includePrivate: boolean;
   limit: number;
 }
@@ -22,6 +22,10 @@ export function useFeedPagination(options: FeedOptions) {
 
   const shouldIncludeByPlatform = useCallback(
     (item: FeedItem): boolean => {
+      const platform = (item.platform || "").toLowerCase();
+      if (platform.includes("antigravity")) {
+        return false;
+      }
       if (platformFilter === "__all__") {
         return true;
       }

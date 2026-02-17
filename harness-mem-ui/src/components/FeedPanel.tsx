@@ -23,7 +23,7 @@ type FeedCategoryId =
   | "tool_use"
   | "other";
 
-type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "other";
+type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "other";
 
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
 const CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD = 4;
@@ -341,9 +341,6 @@ function normalizePlatformBadge(platform: string | undefined): { id: PlatformBad
   }
   if (raw.includes("cursor")) {
     return { id: "cursor", label: "Cursor" };
-  }
-  if (raw.includes("antigravity")) {
-    return { id: "antigravity", label: "Antigravity" };
   }
   if (platform && platform.trim().length > 0) {
     return { id: "other", label: platform.trim() };

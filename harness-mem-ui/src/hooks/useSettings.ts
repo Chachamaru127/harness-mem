@@ -33,8 +33,7 @@ function readSettings(): UiSettings {
         parsed.platformFilter === "claude" ||
         parsed.platformFilter === "codex" ||
         parsed.platformFilter === "opencode" ||
-        parsed.platformFilter === "cursor" ||
-        parsed.platformFilter === "antigravity"
+        parsed.platformFilter === "cursor"
           ? parsed.platformFilter
           : "__all__",
       compactFeed: typeof parsed.compactFeed === "boolean" ? parsed.compactFeed : defaultSettings.compactFeed,

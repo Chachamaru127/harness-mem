@@ -33,11 +33,13 @@ cd /your/project
 curl -sS 'http://127.0.0.1:37901/api/feed?project='$(basename "$PWD")'&limit=5&include_private=false' | jq '.ok, .meta.count'
 ```
 
-Antigravity users need one extra step before validation:
+Antigravity ingest is currently pending by default (hidden). If you temporarily enable it for verification, set envs explicitly:
 
 ```bash
+export HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST=true
 export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace
-# then restart daemon and run doctor --platform antigravity
+# then restart daemon and run manual ingest endpoint
+curl -sS -X POST http://127.0.0.1:37888/v1/ingest/antigravity-history | jq '.ok, .items[0]'
 ```
 
 What `setup` does:
@@ -47,10 +49,9 @@ What `setup` does:
 3. Wires OpenCode memory bridge (`opencode.json`, `.opencode/opencode.json`, plugin files)
 4. Wires Cursor memory hooks (`.cursor/hooks.json`, `.cursor/hooks/memory-cursor-event.sh`)
 5. Validates Claude memory hook availability in harness plugin
-6. Configures Antigravity ingest mode (workspace file scanning)
-7. Starts `harness-memd`
-8. Runs isolated smoke test
-9. Runs search quality guard test suite
+6. Starts `harness-memd`
+7. Runs isolated smoke test
+8. Runs search quality guard test suite
 
 ## Commands
 
@@ -60,7 +61,6 @@ What `setup` does:
 scripts/harness-mem setup
 scripts/harness-mem setup --platform codex
 scripts/harness-mem setup --platform cursor
-scripts/harness-mem setup --platform antigravity
 scripts/harness-mem setup --skip-quality
 ```
 
@@ -78,7 +78,6 @@ Checks:
 - Codex ingest primary path (`~/.codex/sessions/**/rollout-*.jsonl`)
 - OpenCode wiring (`harness-memory` plugin + MCP)
 - Cursor hook wiring (`beforeSubmitPrompt/afterMCPExecution/afterShellExecution/afterFileEdit/stop`)
-- Antigravity roots validation (`HARNESS_MEM_ANTIGRAVITY_ROOTS`)
 - Claude memory hook availability
 
 ### Smoke
@@ -172,8 +171,10 @@ Cursor ingest envs:
 
 Antigravity ingest envs:
 
-- `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` (default: `true`)
-- `HARNESS_MEM_ANTIGRAVITY_ROOTS` (default: empty; comma/newline separated roots)
+- `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` (default: `false`)
+- `HARNESS_MEM_ANTIGRAVITY_ROOTS` (default: auto-detect from Antigravity workspaceStorage; comma/newline separated roots for override)
+- `HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT` (default: `~/Library/Application Support/Antigravity/logs`)
+- `HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT` (default: `~/Library/Application Support/Antigravity/User/workspaceStorage`)
 - `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` (default: `5000`)
 - `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` (default: `24`)
 
@@ -182,7 +183,9 @@ Notes:
 - Codex record ingest primary path is sessions rollout ingest.
 - `notify` hook is optional low-latency assist path (best effort); ingest does not depend on it.
 - Cursor record ingest primary path is hook spool ingest (`HARNESS_MEM_CURSOR_EVENTS_PATH`).
-- Antigravity record ingest primary path is workspace file ingest (`docs/checkpoints/*.md`, `logs/codex-responses/*.md`).
+- Antigravity support is currently pending and hidden by default until official hooks are available.
+- If you explicitly enable Antigravity ingest, primary path is workspace file ingest (`docs/checkpoints/*.md`, `logs/codex-responses/*.md`).
+- Planner log fallback does not include raw prompt body; it records activity metadata only.
 - Manual ingest endpoints:
   - `POST /v1/ingest/codex-history` (compat route, hybrid ingest)
   - `POST /v1/ingest/codex-sessions` (alias)

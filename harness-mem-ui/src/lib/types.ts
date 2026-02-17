@@ -1,7 +1,7 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
 export type UiTab = "feed" | "search" | "observation" | "session";
-export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "antigravity";
+export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor";
 
 export interface UiSettings {
   includePrivate: boolean;

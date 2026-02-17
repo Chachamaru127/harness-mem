@@ -21,7 +21,7 @@
 2. Transport  
 `http://127.0.0.1:37888` をローカル限定公開し、MCPは `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/mcp-server/src/tools/memory.ts` からフォワードする。  
 3. Adapter  
-Claudeは hooks、Codexは sessions ingest（主系）+ notify hook（補助）+ rules+skills、OpenCodeは plugin hooks、Cursorは hooks->spool ingest、Antigravityは workspace files ingest で同一APIを叩く。
+Claudeは hooks、Codexは sessions ingest（主系）+ notify hook（補助）+ rules+skills、OpenCodeは plugin hooks、Cursorは hooks->spool ingest、Antigravityは workspace files ingest（主系）+ planner logs ingest（補助）で同一APIを叩く。※Antigravityは公式hooks待ちのため既定では非表示/無効。
 4. UI  
 `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/harness-mem-ui` を新規作成し、daemon API専用ビューアとして運用する。  
 

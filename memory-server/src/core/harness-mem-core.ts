@@ -10,6 +10,7 @@ import { parseCursorHooksChunk } from "../ingest/cursor-hooks";
 import { parseOpencodeDbMessageRow, type OpencodeDbMessageRow } from "../ingest/opencode-db";
 import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
 import { parseAntigravityFile } from "../ingest/antigravity-files";
+import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
 import {
   resolveVectorEngine,
   upsertSqliteVecRow,
@@ -30,6 +31,8 @@ const DEFAULT_OPENCODE_BACKFILL_HOURS = 24;
 const DEFAULT_CURSOR_EVENTS_PATH = "~/.harness-mem/adapters/cursor/events.jsonl";
 const DEFAULT_CURSOR_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_CURSOR_BACKFILL_HOURS = 24;
+const DEFAULT_ANTIGRAVITY_LOGS_ROOT = "~/Library/Application Support/Antigravity/logs";
+const DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT = "~/Library/Application Support/Antigravity/User/workspaceStorage";
 const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
@@ -192,6 +195,8 @@ export interface Config {
   cursorBackfillHours?: number;
   antigravityIngestEnabled?: boolean;
   antigravityWorkspaceRoots?: string[];
+  antigravityLogsRoot?: string;
+  antigravityWorkspaceStorageRoot?: string;
   antigravityIngestIntervalMs?: number;
   antigravityBackfillHours?: number;
 }
@@ -667,6 +672,8 @@ interface AntigravityIngestSummary {
   rootsScanned: number;
   checkpointEventsImported: number;
   toolEventsImported: number;
+  logEventsImported: number;
+  logFilesScanned: number;
 }
 
 function emptyAntigravityIngestSummary(): AntigravityIngestSummary {
@@ -677,6 +684,8 @@ function emptyAntigravityIngestSummary(): AntigravityIngestSummary {
     rootsScanned: 0,
     checkpointEventsImported: 0,
     toolEventsImported: 0,
+    logEventsImported: 0,
+    logFilesScanned: 0,
   };
 }
 
@@ -687,6 +696,8 @@ function mergeAntigravityIngestSummary(target: AntigravityIngestSummary, partial
   target.rootsScanned += partial.rootsScanned;
   target.checkpointEventsImported += partial.checkpointEventsImported;
   target.toolEventsImported += partial.toolEventsImported;
+  target.logEventsImported += partial.logEventsImported;
+  target.logFilesScanned += partial.logFilesScanned;
 }
 
 function listOpencodeMessageFiles(rootDir: string): string[] {
@@ -812,6 +823,133 @@ function listMarkdownFiles(rootDir: string): string[] {
   return files;
 }
 
+function listAntigravityPlannerLogFiles(logsRoot: string): string[] {
+  const files: string[] = [];
+  const stack: string[] = [logsRoot];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current) {
+      continue;
+    }
+
+    let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+    try {
+      entries = readdirSync(current, { withFileTypes: true, encoding: "utf8" }) as Array<{
+        name: string;
+        isDirectory: () => boolean;
+        isFile: () => boolean;
+      }>;
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      const fullPath = join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+        continue;
+      }
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (entry.name !== "Antigravity.log") {
+        continue;
+      }
+      if (!fullPath.replace(/\\/g, "/").includes("/google.antigravity/")) {
+        continue;
+      }
+      files.push(resolve(fullPath));
+    }
+  }
+
+  files.sort((lhs, rhs) => lhs.localeCompare(rhs));
+  return files;
+}
+
+function fileUriToPath(uriOrPath: string): string {
+  const raw = uriOrPath.trim();
+  if (!raw) {
+    return "";
+  }
+
+  if (/^file:\/\//i.test(raw)) {
+    let value = raw.replace(/^file:\/\//i, "");
+    if (value.startsWith("localhost/")) {
+      value = value.slice("localhost".length);
+    }
+    if (!value.startsWith("/")) {
+      value = `/${value}`;
+    }
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+
+  return raw;
+}
+
+function resolveWorkspaceRootFromWorkspaceFile(workspacePath: string): string {
+  try {
+    const raw = readFileSync(workspacePath, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const folders = Array.isArray(parsed.folders) ? parsed.folders : [];
+    for (const folder of folders) {
+      if (typeof folder !== "object" || folder === null || Array.isArray(folder)) {
+        continue;
+      }
+      const pathValue = (folder as Record<string, unknown>).path;
+      if (typeof pathValue !== "string" || !pathValue.trim()) {
+        continue;
+      }
+      const normalized = pathValue.trim();
+      if (normalized.startsWith("/")) {
+        return resolve(normalized);
+      }
+      return resolve(join(dirname(workspacePath), normalized));
+    }
+  } catch {
+    // best effort fallback below
+  }
+
+  return dirname(workspacePath);
+}
+
+function resolveWorkspaceRootFromWorkspaceJson(workspaceJsonPath: string): string {
+  let parsed: Record<string, unknown>;
+  try {
+    const raw = readFileSync(workspaceJsonPath, "utf8");
+    const value = JSON.parse(raw) as unknown;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return "";
+    }
+    parsed = value as Record<string, unknown>;
+  } catch {
+    return "";
+  }
+
+  const folder = typeof parsed.folder === "string" ? parsed.folder : "";
+  if (folder) {
+    const folderPath = fileUriToPath(folder);
+    return folderPath ? resolve(folderPath) : "";
+  }
+
+  const workspace = typeof parsed.workspace === "string" ? parsed.workspace : "";
+  if (!workspace) {
+    return "";
+  }
+  const workspacePath = fileUriToPath(workspace);
+  if (!workspacePath) {
+    return "";
+  }
+  if (workspacePath.endsWith(".code-workspace")) {
+    return resolveWorkspaceRootFromWorkspaceFile(workspacePath);
+  }
+  return resolve(workspacePath);
+}
+
 export class HarnessMemCore {
   private readonly db: Database;
   private ftsEnabled = false;
@@ -926,12 +1064,128 @@ export class HarnessMemCore {
     return this.config.antigravityIngestEnabled !== false;
   }
 
-  private getAntigravityWorkspaceRoots(): string[] {
+  private getAntigravityLogsRoot(): string {
+    return resolveHomePath(this.config.antigravityLogsRoot || DEFAULT_ANTIGRAVITY_LOGS_ROOT);
+  }
+
+  private getAntigravityWorkspaceStorageRoot(): string {
+    return resolveHomePath(
+      this.config.antigravityWorkspaceStorageRoot || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
+    );
+  }
+
+  private getConfiguredAntigravityWorkspaceRoots(): string[] {
     const roots = Array.isArray(this.config.antigravityWorkspaceRoots) ? this.config.antigravityWorkspaceRoots : [];
     return roots
       .map((root) => (typeof root === "string" ? root.trim() : ""))
       .filter((root) => root.length > 0)
       .map((root) => resolveHomePath(root));
+  }
+
+  private discoverAntigravityWorkspaceRootsFromStorage(): string[] {
+    const storageRoot = this.getAntigravityWorkspaceStorageRoot();
+    if (!existsSync(storageRoot)) {
+      return [];
+    }
+
+    let entries: Array<{ name: string; isDirectory: () => boolean }>;
+    try {
+      entries = readdirSync(storageRoot, { withFileTypes: true, encoding: "utf8" }) as Array<{
+        name: string;
+        isDirectory: () => boolean;
+      }>;
+    } catch {
+      return [];
+    }
+
+    const discovered: string[] = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const workspaceJsonPath = join(storageRoot, entry.name, "workspace.json");
+      if (!existsSync(workspaceJsonPath)) {
+        continue;
+      }
+      const resolvedRoot = resolveWorkspaceRootFromWorkspaceJson(workspaceJsonPath);
+      if (!resolvedRoot || !existsSync(resolvedRoot)) {
+        continue;
+      }
+      discovered.push(resolve(resolvedRoot));
+    }
+
+    return [...new Set(discovered)].sort((lhs, rhs) => lhs.localeCompare(rhs));
+  }
+
+  private getAntigravityWorkspaceRoots(): string[] {
+    const configuredRoots = this.getConfiguredAntigravityWorkspaceRoots();
+    if (configuredRoots.length > 0) {
+      return [...new Set(configuredRoots)].sort((lhs, rhs) => lhs.localeCompare(rhs));
+    }
+
+    const discovered = this.discoverAntigravityWorkspaceRootsFromStorage();
+    if (discovered.length > 0) {
+      return discovered;
+    }
+
+    const fallbackRoot = resolve(this.config.codexProjectRoot || process.cwd());
+    if (fallbackRoot && existsSync(fallbackRoot)) {
+      return [fallbackRoot];
+    }
+
+    return [];
+  }
+
+  private resolveAntigravityWorkspaceStorageIdFromLogFile(logFilePath: string): string {
+    const exthostDir = dirname(dirname(logFilePath));
+    const exthostLog = join(exthostDir, "exthost.log");
+    if (!existsSync(exthostLog)) {
+      return "";
+    }
+
+    let text = "";
+    try {
+      text = readFileSync(exthostLog, "utf8");
+    } catch {
+      return "";
+    }
+    if (!text) {
+      return "";
+    }
+
+    const matches = [...text.matchAll(/workspaceStorage\/([0-9a-z]{8,})/gi)];
+    if (matches.length === 0) {
+      return "";
+    }
+    const latest = matches[matches.length - 1];
+    return (latest?.[1] || "").trim();
+  }
+
+  private resolveAntigravityWorkspaceRootByStorageId(storageId: string): string {
+    const normalized = (storageId || "").trim();
+    if (!normalized) {
+      return "";
+    }
+    const workspaceJsonPath = join(this.getAntigravityWorkspaceStorageRoot(), normalized, "workspace.json");
+    if (!existsSync(workspaceJsonPath)) {
+      return "";
+    }
+    const resolvedRoot = resolveWorkspaceRootFromWorkspaceJson(workspaceJsonPath);
+    if (!resolvedRoot || !existsSync(resolvedRoot)) {
+      return "";
+    }
+    return resolve(resolvedRoot);
+  }
+
+  private resolveAntigravityLogProject(logFilePath: string): { project: string; workspaceRoot: string; sessionSeed: string } {
+    const storageId = this.resolveAntigravityWorkspaceStorageIdFromLogFile(logFilePath);
+    const workspaceRoot = this.resolveAntigravityWorkspaceRootByStorageId(storageId);
+    const fallbackProject = basename(resolve(this.config.codexProjectRoot || process.cwd())) || "unknown";
+    const project = workspaceRoot ? basename(workspaceRoot) : fallbackProject;
+
+    const sessionDir = basename(dirname(dirname(dirname(dirname(logFilePath)))));
+    const sessionSeed = [project || "unknown", storageId || sessionDir || "planner"].filter(Boolean).join(":");
+    return { project, workspaceRoot, sessionSeed };
   }
 
   private getAntigravityIngestIntervalMs(): number {
@@ -1372,6 +1626,14 @@ export class HarnessMemCore {
     return ` AND ${alias}.privacy_tags_json NOT LIKE '%"private"%' AND ${alias}.privacy_tags_json NOT LIKE '%"sensitive"%' `;
   }
 
+  private platformVisibilityFilterSql(alias: string): string {
+    // Antigravity is currently hidden by default until official hooks are available.
+    if (!this.isAntigravityIngestEnabled()) {
+      return ` AND ${alias}.platform <> 'antigravity' `;
+    }
+    return "";
+  }
+
   private applyCommonFilters(
     sql: string,
     params: unknown[],
@@ -1406,6 +1668,7 @@ export class HarnessMemCore {
       params.push(filters.until);
     }
 
+    nextSql += this.platformVisibilityFilterSql(alias);
     nextSql += this.visibilityFilterSql(alias, Boolean(filters.include_private));
     return nextSql;
   }
@@ -1759,6 +2022,7 @@ export class HarnessMemCore {
       params.push(typeFilter);
     }
 
+    sql += this.platformVisibilityFilterSql("o");
     sql += this.visibilityFilterSql("o", includePrivate);
 
     if (cursor) {
@@ -1847,6 +2111,7 @@ export class HarnessMemCore {
       sql += " AND s.project = ?";
       params.push(request.project);
     }
+    sql += this.platformVisibilityFilterSql("s");
 
     sql += `
       GROUP BY
@@ -1914,6 +2179,7 @@ export class HarnessMemCore {
       params.push(request.project);
     }
 
+    sql += this.platformVisibilityFilterSql("o");
     sql += this.visibilityFilterSql("o", includePrivate);
     sql += " ORDER BY o.created_at ASC, o.id ASC LIMIT ?";
     params.push(limit);
@@ -1968,6 +2234,7 @@ export class HarnessMemCore {
       params.push(request.project);
     }
 
+    sql += this.platformVisibilityFilterSql("o");
     sql += this.visibilityFilterSql("o", includePrivate);
 
     const query = (request.query || "").trim();
@@ -2404,6 +2671,8 @@ export class HarnessMemCore {
             cursor_backfill_hours: this.getCursorBackfillHours(),
             antigravity_history_ingest: this.isAntigravityIngestEnabled(),
             antigravity_workspace_roots: this.getAntigravityWorkspaceRoots(),
+            antigravity_logs_root: this.getAntigravityLogsRoot(),
+            antigravity_workspace_storage_root: this.getAntigravityWorkspaceStorageRoot(),
             antigravity_ingest_interval_ms: this.getAntigravityIngestIntervalMs(),
             antigravity_backfill_hours: this.getAntigravityBackfillHours(),
           },
@@ -2468,6 +2737,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
     const visibility = this.visibilityFilterSql("o", includePrivate);
+    const platformVisibility = this.platformVisibilityFilterSql("o");
 
     const rows = this.db
       .query(`
@@ -2478,6 +2748,7 @@ export class HarnessMemCore {
           MAX(o.created_at) AS updated_at
         FROM mem_observations o
         WHERE 1 = 1
+        ${platformVisibility}
         ${visibility}
         GROUP BY o.project
         ORDER BY updated_at DESC
@@ -3778,6 +4049,106 @@ export class HarnessMemCore {
     return summary;
   }
 
+  private ingestAntigravityLogEvents(): AntigravityIngestSummary {
+    const summary = emptyAntigravityIngestSummary();
+    const logsRoot = this.getAntigravityLogsRoot();
+    if (!existsSync(logsRoot)) {
+      return summary;
+    }
+
+    const logFiles = listAntigravityPlannerLogFiles(logsRoot);
+    const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
+
+    for (const filePath of logFiles) {
+      summary.filesScanned += 1;
+      summary.logFilesScanned += 1;
+      const sourceKey = `antigravity_log:${resolve(filePath)}`;
+
+      let fileSize = 0;
+      let mtimeMs = Date.now();
+      try {
+        const stats = statSync(filePath);
+        fileSize = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch {
+        continue;
+      }
+
+      const offsetRow = this.db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(sourceKey) as { offset: number } | null;
+      const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+      let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+      if (!hasOffset && mtimeMs < cutoffMs) {
+        this.updateIngestOffset(sourceKey, fileSize);
+        summary.filesSkippedBackfill += 1;
+        continue;
+      }
+
+      if (offset > fileSize) {
+        offset = 0;
+      }
+      if (offset === fileSize) {
+        continue;
+      }
+
+      let chunk = "";
+      try {
+        const buffer = readFileSync(filePath);
+        chunk = buffer.subarray(offset).toString("utf8");
+      } catch {
+        continue;
+      }
+
+      const resolved = this.resolveAntigravityLogProject(filePath);
+      const parsedChunk = parseAntigravityLogChunk({
+        sourceKey,
+        baseOffset: offset,
+        chunk,
+        fallbackNowIso: nowIso,
+        project: resolved.project || "unknown",
+        sessionSeed: resolved.sessionSeed || "planner",
+        filePath,
+      });
+
+      let imported = 0;
+      for (const entry of parsedChunk.events) {
+        const result = this.recordEvent(
+          {
+            platform: "antigravity",
+            project: entry.project,
+            session_id: entry.sessionId,
+            event_type: entry.eventType,
+            ts: entry.timestamp,
+            payload: {
+              ...entry.payload,
+              workspace_root: resolved.workspaceRoot || undefined,
+            },
+            tags: ["antigravity_logs_ingest", "planner_request"],
+            privacy_tags: [],
+            dedupe_hash: entry.dedupeHash,
+          },
+          { allowQueue: false }
+        );
+
+        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+        if (result.ok && !deduped) {
+          imported += 1;
+        }
+      }
+
+      summary.eventsImported += imported;
+      summary.logEventsImported += imported;
+
+      if (parsedChunk.consumedBytes > 0) {
+        this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
+      }
+    }
+
+    return summary;
+  }
+
   ingestAntigravityHistory(): ApiResponse {
     const startedAt = performance.now();
     if (!this.isAntigravityIngestEnabled()) {
@@ -3791,6 +4162,8 @@ export class HarnessMemCore {
             roots_scanned: 0,
             checkpoint_events_imported: 0,
             tool_events_imported: 0,
+            log_events_imported: 0,
+            log_files_scanned: 0,
           },
         ],
         {},
@@ -3803,6 +4176,7 @@ export class HarnessMemCore {
     for (const root of roots) {
       mergeAntigravityIngestSummary(summary, this.ingestAntigravityWorkspace(root));
     }
+    mergeAntigravityIngestSummary(summary, this.ingestAntigravityLogEvents());
 
     return makeResponse(
       startedAt,
@@ -3814,12 +4188,15 @@ export class HarnessMemCore {
           roots_scanned: summary.rootsScanned,
           checkpoint_events_imported: summary.checkpointEventsImported,
           tool_events_imported: summary.toolEventsImported,
+          log_events_imported: summary.logEventsImported,
+          log_files_scanned: summary.logFilesScanned,
         },
       ],
       {},
       {
-        ingest_mode: "antigravity_files_v1",
+        ingest_mode: "antigravity_hybrid_v1",
         workspace_roots: roots,
+        logs_root: this.getAntigravityLogsRoot(),
       }
     );
   }
@@ -3915,6 +4292,12 @@ export function getConfig(): Config {
     .map((root) => root.trim())
     .filter((root) => root.length > 0)
     .map((root) => resolveHomePath(root));
+  const antigravityLogsRoot = resolveHomePath(
+    process.env.HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT || DEFAULT_ANTIGRAVITY_LOGS_ROOT
+  );
+  const antigravityWorkspaceStorageRoot = resolveHomePath(
+    process.env.HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
+  );
 
   return {
     dbPath,
@@ -3950,8 +4333,10 @@ export function getConfig(): Config {
       300000
     ),
     cursorBackfillHours: clampLimit(cursorBackfillRaw, DEFAULT_CURSOR_BACKFILL_HOURS, 1, 24 * 365),
-    antigravityIngestEnabled: envFlag("HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST", true),
+    antigravityIngestEnabled: envFlag("HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST", false),
     antigravityWorkspaceRoots,
+    antigravityLogsRoot,
+    antigravityWorkspaceStorageRoot,
     antigravityIngestIntervalMs: clampLimit(
       antigravityIngestIntervalRaw,
       DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS,
