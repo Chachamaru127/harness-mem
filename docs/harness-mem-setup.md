@@ -12,19 +12,19 @@
 ## Install After-Flow (Beginner Friendly)
 
 `harness-mem` install alone is not enough.  
-You must run project wiring once per workspace.
+Run setup once to wire global config for Codex/Cursor.
+OpenCode wiring remains project-local (`opencode.json` / `.opencode/opencode.json`).
 
-1. Run setup in the target project.
+1. Run setup once.
 
 ```bash
-cd /your/project
-/absolute/path/to/harness-mem/scripts/harness-mem setup --project "$PWD" --platform cursor --skip-start --skip-smoke --skip-quality
+/absolute/path/to/harness-mem/scripts/harness-mem setup --platform cursor --skip-start --skip-smoke --skip-quality
 ```
 
 2. Validate wiring.
 
 ```bash
-/absolute/path/to/harness-mem/scripts/harness-mem doctor --project "$PWD" --platform cursor
+/absolute/path/to/harness-mem/scripts/harness-mem doctor --platform cursor
 ```
 
 3. Send one message from Cursor, then verify feed count.
@@ -45,9 +45,9 @@ curl -sS -X POST http://127.0.0.1:37888/v1/ingest/antigravity-history | jq '.ok,
 What `setup` does:
 
 1. Validates dependencies (`bun`, `node`, `curl`, `jq`)
-2. Wires Codex memory bridge (`.codex/config.toml`)
+2. Wires Codex memory bridge (`~/.codex/config.toml`)
 3. Wires OpenCode memory bridge (`opencode.json`, `.opencode/opencode.json`, plugin files)
-4. Wires Cursor memory hooks (`.cursor/hooks.json`, `.cursor/hooks/memory-cursor-event.sh`)
+4. Wires Cursor memory hooks (`~/.cursor/hooks.json`, `~/.cursor/hooks/memory-cursor-event.sh`)
 5. Validates Claude memory hook availability in harness plugin
 6. Starts `harness-memd`
 7. Runs isolated smoke test

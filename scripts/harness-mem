@@ -39,7 +39,7 @@ BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
 BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
 END_CODEX_MCP="# <<< harness-mem codex mcp"
-CURSOR_HOOKS_COMMAND_REL="bash .cursor/hooks/memory-cursor-event.sh"
+CURSOR_HOOKS_COMMAND_REL="bash ./hooks/memory-cursor-event.sh"
 
 usage() {
   cat <<'EOF'
@@ -192,10 +192,6 @@ check_cmd() {
 }
 
 get_cursor_hooks_command() {
-  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
-    printf 'bash %s/scripts/hook-handlers/memory-cursor-event.sh' "$HARNESS_ROOT"
-    return
-  fi
   printf '%s' "$CURSOR_HOOKS_COMMAND_REL"
 }
 
@@ -240,7 +236,7 @@ remove_marked_block() {
 }
 
 setup_codex_wiring() {
-  local codex_dir="${TARGET_DIR}/.codex"
+  local codex_dir="${HOME}/.codex"
   local cfg="${codex_dir}/config.toml"
   local rules_src="${HARNESS_ROOT}/codex/.codex/rules/harness.rules"
   local rules_dst="${codex_dir}/rules/harness.rules"
@@ -319,7 +315,7 @@ EOF
 }
 
 check_codex_wiring() {
-  local cfg="${TARGET_DIR}/.codex/config.toml"
+  local cfg="${HOME}/.codex/config.toml"
   local failed=0
 
   if [ ! -f "$cfg" ]; then
@@ -347,10 +343,6 @@ check_codex_wiring() {
 upsert_cursor_hooks_json() {
   local file="$1"
   local hook_command="$2"
-  local remove_relative=0
-  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
-    remove_relative=1
-  fi
   local tmp
   local template="${HARNESS_ROOT}/.cursor/hooks.json.example"
 
@@ -387,33 +379,48 @@ EOF
   fi
 
   tmp="$(mktemp)"
-  if jq --arg cmd "$hook_command" --arg rel "$CURSOR_HOOKS_COMMAND_REL" --argjson remove_relative "$remove_relative" '
+  if jq --arg cmd "$hook_command" '
     .version = (.version // 1)
     | .hooks = (.hooks // {})
     | .hooks.beforeSubmitPrompt = (
-        ((.hooks.beforeSubmitPrompt // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        (
+          (.hooks.beforeSubmitPrompt // [])
+          | map(if type == "object" then . else {} end)
+          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
+        ) + [{command:$cmd}]
         | unique_by(.command)
-        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
       )
     | .hooks.afterMCPExecution = (
-        ((.hooks.afterMCPExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        (
+          (.hooks.afterMCPExecution // [])
+          | map(if type == "object" then . else {} end)
+          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
+        ) + [{command:$cmd}]
         | unique_by(.command)
-        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
       )
     | .hooks.afterShellExecution = (
-        ((.hooks.afterShellExecution // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        (
+          (.hooks.afterShellExecution // [])
+          | map(if type == "object" then . else {} end)
+          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
+        ) + [{command:$cmd}]
         | unique_by(.command)
-        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
       )
     | .hooks.afterFileEdit = (
-        ((.hooks.afterFileEdit // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        (
+          (.hooks.afterFileEdit // [])
+          | map(if type == "object" then . else {} end)
+          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
+        ) + [{command:$cmd}]
         | unique_by(.command)
-        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
       )
     | .hooks.stop = (
-        ((.hooks.stop // []) | map(if type == "object" then . else {} end)) + [{command:$cmd}]
+        (
+          (.hooks.stop // [])
+          | map(if type == "object" then . else {} end)
+          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
+        ) + [{command:$cmd}]
         | unique_by(.command)
-        | (if $remove_relative == 1 then map(select((.command // "") != $rel)) else . end)
       )
   ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
@@ -425,12 +432,8 @@ EOF
 }
 
 setup_cursor_hook_script() {
-  local script_path="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  local script_path="${HOME}/.cursor/hooks/memory-cursor-event.sh"
   local template="${HARNESS_ROOT}/.cursor/hooks/memory-cursor-event.sh"
-
-  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
-    return
-  fi
 
   mkdir -p "$(dirname "$script_path")"
 
@@ -454,7 +457,7 @@ EOF
 }
 
 setup_cursor_wiring() {
-  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  local hooks_json="${HOME}/.cursor/hooks.json"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   setup_cursor_hook_script
@@ -462,21 +465,17 @@ setup_cursor_wiring() {
 }
 
 check_cursor_wiring() {
-  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
-  local hook_script="${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  local hooks_json="${HOME}/.cursor/hooks.json"
+  local hook_script="${HOME}/.cursor/hooks/memory-cursor-event.sh"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   local failed=0
 
-  if [ "$TARGET_DIR" = "$HARNESS_ROOT" ]; then
-    log "Cursor hook script: using direct harness handler command"
+  if [ ! -f "$hook_script" ]; then
+    warn "Cursor hook script missing: $hook_script"
+    failed=1
   else
-    if [ ! -f "$hook_script" ]; then
-      warn "Cursor hook script missing: $hook_script"
-      failed=1
-    else
-      log "Cursor hook script: OK"
-    fi
+    log "Cursor hook script: OK"
   fi
 
   if [ ! -f "$hooks_json" ]; then
@@ -532,7 +531,7 @@ print_post_setup_next_steps() {
   log "  ./scripts/harness-mem doctor --project ${TARGET_DIR} --platform ${PLATFORM}"
 
   if is_platform_enabled cursor; then
-    local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+    local hooks_json="${HOME}/.cursor/hooks.json"
     if [ -f "$hooks_json" ]; then
       log "Cursor wiring file: ${hooks_json}"
     else
@@ -1086,7 +1085,7 @@ setup_impl() {
 }
 
 uninstall_codex_wiring() {
-  local cfg="${TARGET_DIR}/.codex/config.toml"
+  local cfg="${HOME}/.codex/config.toml"
   local tmp
   if [ ! -f "$cfg" ]; then
     return
@@ -1137,7 +1136,7 @@ uninstall_opencode_wiring() {
 }
 
 uninstall_cursor_wiring() {
-  local hooks_json="${TARGET_DIR}/.cursor/hooks.json"
+  local hooks_json="${HOME}/.cursor/hooks.json"
   local tmp
   if [ -f "$hooks_json" ]; then
     tmp="$(mktemp)"
@@ -1157,7 +1156,7 @@ uninstall_cursor_wiring() {
     fi
   fi
 
-  rm -f "${TARGET_DIR}/.cursor/hooks/memory-cursor-event.sh"
+  rm -f "${HOME}/.cursor/hooks/memory-cursor-event.sh"
   log "Removed Cursor memory hook script"
 }
 
