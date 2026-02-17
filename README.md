@@ -1,15 +1,33 @@
 # harness-mem
 
-Unified memory runtime for Claude Code / Codex / OpenCode.
+Unified memory runtime for Claude Code / Codex / OpenCode / Cursor.
+
+## Install (npm / npx)
+
+Run without global install:
+
+```bash
+npx -y --package @claude-code-harness/harness-mem harness-mem setup
+```
+
+Install globally:
+
+```bash
+npm install -g @claude-code-harness/harness-mem
+harness-mem setup
+harness-mem doctor
+```
+
+`setup` without `--platform` opens an interactive multi-select prompt.
 
 ## Main components
 
 - `memory-server/`: Bun daemon + SQLite storage + hybrid retrieval
 - `mcp-server/`: MCP tools (`harness_mem_*`) bridge
-- `harness-mem-ui/`: standalone viewer UI (separate from harness-ui)
+- `harness-mem-ui/`: standalone viewer UI
 - `scripts/harness-mem`: setup/doctor/smoke/import/cutover CLI
 
-## Quick start
+## Local repository usage
 
 ```bash
 cd /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem
@@ -30,8 +48,21 @@ URL: `http://127.0.0.1:37901`
 ## Migration from Claude-mem
 
 ```bash
-cd /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem
 scripts/harness-mem import-claude-mem --source /absolute/path/to/claude-mem.db
 scripts/harness-mem verify-import --job <job_id>
 scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
+```
+
+## Publish (npm)
+
+```bash
+npm login
+npm publish
+```
+
+Pre-check:
+
+```bash
+npm pack --dry-run
+npm publish --dry-run
 ```

@@ -1,0 +1,46 @@
+{
+  "name": "@claude-code-harness/harness-mem",
+  "version": "0.1.0",
+  "description": "Unified memory runtime setup CLI for Claude Code, Codex, OpenCode, and Cursor",
+  "license": "MIT",
+  "type": "commonjs",
+  "bin": {
+    "harness-mem": "scripts/harness-mem",
+    "harness-memd": "scripts/harness-memd",
+    "harness-mem-client": "scripts/harness-mem-client.sh"
+  },
+  "files": [
+    "README.md",
+    "docs/harness-mem-setup.md",
+    "scripts/",
+    "tests/test-memory-search-quality.sh",
+    "memory-server/src/",
+    "memory-server/tests/",
+    "memory-server/package.json",
+    "memory-server/tsconfig.json",
+    "mcp-server/dist/",
+    "mcp-server/package.json",
+    "hooks/",
+    "codex/",
+    "opencode/plugins/",
+    ".cursor/hooks.json.example",
+    ".cursor/hooks/"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "harness",
+    "memory",
+    "codex",
+    "claude-code",
+    "cursor",
+    "opencode"
+  ]
+}

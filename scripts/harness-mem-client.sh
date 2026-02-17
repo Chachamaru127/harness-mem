@@ -4,7 +4,17 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_SOURCE="${BASH_SOURCE[0]}"
+while [ -L "$SCRIPT_SOURCE" ]; do
+  SCRIPT_SOURCE_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
+  SCRIPT_TARGET="$(readlink "$SCRIPT_SOURCE")"
+  if [[ "$SCRIPT_TARGET" != /* ]]; then
+    SCRIPT_SOURCE="${SCRIPT_SOURCE_DIR}/${SCRIPT_TARGET}"
+  else
+    SCRIPT_SOURCE="$SCRIPT_TARGET"
+  fi
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 DAEMON_SCRIPT="${SCRIPT_DIR}/harness-memd"
 HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 PORT="${HARNESS_MEM_PORT:-37888}"

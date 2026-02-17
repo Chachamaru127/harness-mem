@@ -5,26 +5,31 @@
 ## Quick Start
 
 ```bash
-# from any project directory
-/absolute/path/to/harness-mem/scripts/harness-mem setup
+# npx (no global install)
+npx -y --package @claude-code-harness/harness-mem harness-mem setup
+
+# or global install
+npm install -g @claude-code-harness/harness-mem
+harness-mem setup
 ```
 
 ## Install After-Flow (Beginner Friendly)
 
 `harness-mem` install alone is not enough.  
-Run setup once to wire global config for Codex/Cursor.
-OpenCode wiring remains project-local (`opencode.json` / `.opencode/opencode.json`).
+Run setup once to wire global config for Codex/OpenCode/Cursor.
 
 1. Run setup once.
 
 ```bash
-/absolute/path/to/harness-mem/scripts/harness-mem setup --platform cursor --skip-start --skip-smoke --skip-quality
+harness-mem setup --platform codex,cursor --skip-start --skip-smoke --skip-quality
 ```
+
+`--platform` を省略すると、`setup` 実行時に対話形式で対象ツールを複数選択できます（Enter 既定: `codex,cursor`）。
 
 2. Validate wiring.
 
 ```bash
-/absolute/path/to/harness-mem/scripts/harness-mem doctor --platform cursor
+harness-mem doctor --platform codex,cursor
 ```
 
 3. Send one message from Cursor, then verify feed count.
@@ -46,7 +51,7 @@ What `setup` does:
 
 1. Validates dependencies (`bun`, `node`, `curl`, `jq`)
 2. Wires Codex memory bridge (`~/.codex/config.toml`)
-3. Wires OpenCode memory bridge (`opencode.json`, `.opencode/opencode.json`, plugin files)
+3. Wires OpenCode memory bridge (`~/.config/opencode/opencode.json`, `~/.config/opencode/plugins/harness-memory/index.ts`)
 4. Wires Cursor memory hooks (`~/.cursor/hooks.json`, `~/.cursor/hooks/memory-cursor-event.sh`)
 5. Validates Claude memory hook availability in harness plugin
 6. Starts `harness-memd`
@@ -60,7 +65,8 @@ What `setup` does:
 ```bash
 scripts/harness-mem setup
 scripts/harness-mem setup --platform codex
-scripts/harness-mem setup --platform cursor
+scripts/harness-mem setup --platform codex,cursor
+scripts/harness-mem setup --platform opencode,cursor
 scripts/harness-mem setup --skip-quality
 ```
 
@@ -76,7 +82,7 @@ Checks:
 - daemon readiness (`scripts/harness-memd doctor`)
 - Codex wiring (`notify`, `mcp_servers.harness`)
 - Codex ingest primary path (`~/.codex/sessions/**/rollout-*.jsonl`)
-- OpenCode wiring (`harness-memory` plugin + MCP)
+- OpenCode global wiring (`~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/harness-memory/index.ts`)
 - Cursor hook wiring (`beforeSubmitPrompt/afterMCPExecution/afterShellExecution/afterFileEdit/stop`)
 - Claude memory hook availability
 
@@ -103,7 +109,7 @@ Behavior:
 
 - stops daemon
 - removes marker-managed Codex wiring blocks
-- removes OpenCode memory wiring
+- removes OpenCode global memory wiring
 - optional DB purge (`~/.harness-mem/harness-mem.db`)
 
 ### Claude-mem Import (One-shot)
