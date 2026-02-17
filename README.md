@@ -7,13 +7,13 @@ Unified memory runtime for Claude Code / Codex / OpenCode / Cursor.
 Run without global install:
 
 ```bash
-npx -y --package @claude-code-harness/harness-mem harness-mem setup
+npx -y --package @chachamaru127/harness-mem harness-mem setup
 ```
 
 Install globally:
 
 ```bash
-npm install -g @claude-code-harness/harness-mem
+npm install -g @chachamaru127/harness-mem
 harness-mem setup
 harness-mem doctor
 ```

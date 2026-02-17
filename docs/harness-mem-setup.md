@@ -6,10 +6,10 @@
 
 ```bash
 # npx (no global install)
-npx -y --package @claude-code-harness/harness-mem harness-mem setup
+npx -y --package @chachamaru127/harness-mem harness-mem setup
 
 # or global install
-npm install -g @claude-code-harness/harness-mem
+npm install -g @chachamaru127/harness-mem
 harness-mem setup
 ```
 
