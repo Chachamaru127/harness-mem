@@ -54,6 +54,20 @@ jobs:
             exit 1
           fi
 
+      - name: Install UI dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd harness-mem-ui
+          bun install --frozen-lockfile
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
       - name: Run UI quality gates
         shell: bash
         run: |

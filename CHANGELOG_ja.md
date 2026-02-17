@@ -1,4 +1,4 @@
-## [0.1.4] - 2026-02-17
+## [0.1.5] - 2026-02-17
 
 ### 🎯 What's Changed for You
 
@@ -16,6 +16,7 @@
 ### Internal
 
 - GitHub Actions の release workflow に Bun セットアップと必須検証ステップを追加。
+- release workflow で品質ゲート実行前に `harness-mem-ui` / `memory-server` の依存解決を必須化。
 
 ## [0.1.1] - 2026-02-17
 

@@ -1,4 +1,4 @@
-## [0.1.4] - 2026-02-17
+## [0.1.5] - 2026-02-17
 
 ### 🎯 What's Changed for You
 
@@ -16,6 +16,7 @@ Release automation is now safer and prevents accidental mismatched or off-branch
 ### Internal
 
 - GitHub Actions release workflow now includes Bun setup and mandatory verification gates.
+- Release workflow now installs `harness-mem-ui` and `memory-server` dependencies before running quality gates.
 
 ## [0.1.1] - 2026-02-17
 
