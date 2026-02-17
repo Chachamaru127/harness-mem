@@ -831,7 +831,6 @@ print_post_setup_next_steps() {
 
 upsert_opencode_json() {
   local file="$1"
-  local entry="$2"
   local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
   local tmp
 
@@ -846,17 +845,11 @@ upsert_opencode_json() {
       "type": "local",
       "enabled": true,
       "command": ["node", "${mcp_entry}"],
-      "env": {
+      "environment": {
         "HARNESS_MEM_HOST": "${MEM_HOST}",
         "HARNESS_MEM_PORT": "${MEM_PORT}",
         "HARNESS_MEM_DB_PATH": "${DB_PATH}"
       }
-    }
-  },
-  "plugins": {
-    "harness-memory": {
-      "enabled": true,
-      "entry": "${entry}"
     }
   }
 }
@@ -868,7 +861,6 @@ EOF
   tmp="$(mktemp)"
   jq \
     --arg mcp_entry "$mcp_entry" \
-    --arg entry "$entry" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
@@ -879,16 +871,13 @@ EOF
       | .mcp.harness.type = "local"
       | .mcp.harness.enabled = true
       | .mcp.harness.command = ["node", $mcp_entry]
-      | .mcp.harness.env = ((.mcp.harness.env // {}) + {
+      | .mcp.harness.environment = ((.mcp.harness.environment // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
           "HARNESS_MEM_DB_PATH": $db_path
         })
-      | .plugins = (.plugins // {})
-      | .plugins["harness-memory"] = ((.plugins["harness-memory"] // {}) + {
-          "enabled": true,
-          "entry": $entry
-        })
+      | .mcp.harness |= del(.env)
+      | del(.plugins)
     ' "$file" >"$tmp"
   mv "$tmp" "$file"
   log "Updated OpenCode config: $file"
@@ -906,7 +895,7 @@ setup_opencode_wiring() {
   cp "$plugin_src" "$plugin_dst"
   log "Installed OpenCode memory plugin: $plugin_dst"
 
-  upsert_opencode_json "$cfg" "./plugins/harness-memory/index.ts"
+  upsert_opencode_json "$cfg"
 }
 
 check_opencode_wiring() {
@@ -932,11 +921,7 @@ check_opencode_wiring() {
       failed=1
     fi
 
-    if jq -e '.plugins["harness-memory"].enabled == true' "$cfg" >/dev/null 2>&1; then
-      log "OpenCode plugin config wiring: OK"
-    else
-      log "OpenCode plugin loading: global plugins directory mode"
-    fi
+    log "OpenCode plugin loading: global plugins directory mode"
   fi
 
   return "$failed"

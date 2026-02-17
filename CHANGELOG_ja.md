@@ -1,3 +1,21 @@
+## [0.1.6] - 2026-02-18
+
+### 🎯 What's Changed for You
+
+OpenCode の setup/doctor が、起動不能になる不正キーを書き込まないようになりました。
+
+| Before | After |
+|--------|-------|
+| `scripts/harness-mem doctor --fix --platform opencode` で、未対応の `plugins` や旧 `env` が書かれ、OpenCode が起動失敗することがあった。 | OpenCode の設定は `mcp.harness.environment` に正規化され、未対応キーは除去される。 |
+
+### Fixed
+
+- setup/doctor 後に `opencode` が正常起動できるよう、OpenCode 設定生成・修復フローを修正。
+
+### Internal
+
+- `scripts/harness-mem` の OpenCode JSON 正規化ロジックを更新し、旧 `plugins`/`env` パターンを除去。
+
 ## [0.1.5] - 2026-02-17
 
 ### 🎯 What's Changed for You

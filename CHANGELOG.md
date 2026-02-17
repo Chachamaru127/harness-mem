@@ -1,3 +1,21 @@
+## [0.1.6] - 2026-02-18
+
+### 🎯 What's Changed for You
+
+OpenCode setup/doctor no longer writes invalid config keys that can prevent OpenCode from starting.
+
+| Before | After |
+|--------|-------|
+| `scripts/harness-mem doctor --fix --platform opencode` could write unsupported `plugins` and legacy `env`, causing OpenCode startup failure. | OpenCode wiring now writes schema-compliant `mcp.harness.environment` and removes unsupported keys. |
+
+### Fixed
+
+- Corrected OpenCode config generation and repair flow so `opencode` starts normally after setup/doctor.
+
+### Internal
+
+- Updated `scripts/harness-mem` OpenCode JSON normalization logic to remove legacy `plugins`/`env` patterns.
+
 ## [0.1.5] - 2026-02-17
 
 ### 🎯 What's Changed for You
