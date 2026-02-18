@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.1.10",
+  "version": "0.1.11",
   "description": "Unified memory runtime setup CLI for Claude Code, Codex, OpenCode, and Cursor",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -28,6 +28,8 @@
     "memory-server/package.json",
     "memory-server/tsconfig.json",
     "mcp-server/dist/",
+    "mcp-server/src/",
+    "mcp-server/tsconfig.json",
     "mcp-server/package.json",
     "hooks/",
     "codex/",

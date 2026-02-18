@@ -39,6 +39,44 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.11] - 2026-02-18
+
+### What changed for users
+
+`setup` no longer fails on global npm installs when `mcp-server/dist` is missing from the package.
+
+### Added
+
+- Included `mcp-server/src/` and `mcp-server/tsconfig.json` in npm package files for deterministic local MCP builds.
+
+### Changed
+
+- None.
+
+### Fixed
+
+- `ensure_mcp_runtime` now bootstraps and builds MCP locally if `mcp-server/dist/index.js` is absent.
+- Prevented setup hard-failure pattern: `MCP dist entry missing: .../mcp-server/dist/index.js`.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- Upgrade and run setup again:
+  - `npm install -g @chachamaru127/harness-mem@0.1.11`
+  - `harness-mem setup --platform codex,claude,cursor,opencode`
+
+### Verification
+
+- `npm pack --dry-run`
+- `harness-mem setup --platform claude --skip-start --skip-smoke --skip-quality` from a fresh global install path.
+
 ## [0.1.10] - 2026-02-18
 
 ### What changed for users

@@ -512,8 +512,19 @@ ensure_mcp_runtime() {
   local mcp_dist="${mcp_dir}/dist/index.js"
   local mcp_sdk_local="${mcp_dir}/node_modules/@modelcontextprotocol/sdk/package.json"
   local mcp_sdk_root="${HARNESS_ROOT}/node_modules/@modelcontextprotocol/sdk/package.json"
+  local mcp_src_entry="${mcp_dir}/src/index.ts"
 
-  [ -f "$mcp_dist" ] || fail "MCP dist entry missing: $mcp_dist"
+  if [ ! -f "$mcp_dist" ]; then
+    [ -f "$mcp_src_entry" ] || fail "MCP dist entry missing and source unavailable: $mcp_dist"
+    log "MCP dist entry missing. Bootstrapping local MCP build."
+    (
+      cd "$mcp_dir"
+      npm install --silent
+      npm run build --silent
+    )
+  fi
+
+  [ -f "$mcp_dist" ] || fail "MCP dist build failed: $mcp_dist"
 
   if [ -f "$mcp_sdk_local" ] || [ -f "$mcp_sdk_root" ]; then
     return
