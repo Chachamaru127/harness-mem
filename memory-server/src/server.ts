@@ -37,7 +37,7 @@ function badRequest(message: string): Response {
       count: 0,
       latency_ms: 0,
       filters: {},
-      ranking: "hybrid_v1",
+      ranking: "hybrid_v3",
     },
     error: message,
   };
@@ -53,7 +53,7 @@ function unauthorized(message: string): Response {
       count: 0,
       latency_ms: 0,
       filters: {},
-      ranking: "hybrid_v1",
+      ranking: "hybrid_v3",
     },
     error: message,
   };
@@ -131,6 +131,33 @@ function parseBoolean(value: string | null, fallback = false): boolean {
     return false;
   }
   return fallback;
+}
+
+function parseBooleanLike(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") {
+    return value;
+  }
+  if (typeof value === "string") {
+    return parseBoolean(value, fallback);
+  }
+  return fallback;
+}
+
+function parseIntegerLike(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return Math.trunc(value);
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+    const parsed = Number(normalized);
+    if (Number.isFinite(parsed)) {
+      return Math.trunc(parsed);
+    }
+  }
+  return undefined;
 }
 
 function parseInteger(value: string | null, fallback: number): number {
@@ -228,8 +255,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           since: typeof body.since === "string" ? body.since : undefined,
           until: typeof body.until === "string" ? body.until : undefined,
-          limit: typeof body.limit === "number" ? body.limit : undefined,
-          include_private: Boolean(body.include_private),
+          limit: parseIntegerLike(body.limit),
+          include_private: parseBooleanLike(body.include_private, false),
+          expand_links: parseBooleanLike(body.expand_links, true),
+          strict_project: parseBooleanLike(body.strict_project, true),
+          debug: parseBooleanLike(body.debug, false),
         };
         return jsonResponse(core.search(req));
       }

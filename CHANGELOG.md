@@ -1,97 +1,269 @@
-## [0.1.8] - 2026-02-18
+# Changelog
 
-### 🎯 What's Changed for You
+All notable changes to this project are documented in this file.
 
-`uninstall` now removes the cached runtime copy used by `npx` setup, so your environment is fully cleaned up.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-| Before | After |
-|--------|-------|
-| `uninstall` removed wiring and daemon files, but left `~/.harness-mem/runtime/` on disk. | `uninstall` now removes `~/.harness-mem/runtime/` as part of normal cleanup. |
-
-### Fixed
-
-- Added runtime cache cleanup in `uninstall_impl` to avoid leftover package copies after removal.
-
-### Internal
-
-- Follow-up hardening from review feedback to complete npx runtime lifecycle (setup + uninstall).
-
-## [0.1.7] - 2026-02-18
-
-### 🎯 What's Changed for You
-
-`npx` setup now writes stable runtime paths, so OpenCode/Codex wiring does not break when npm cache paths change.
-
-| Before | After |
-|--------|-------|
-| Running `npx ... harness-mem setup` could wire MCP paths under `~/.npm/_npx/...`, which may disappear later. | Setup now syncs runtime assets into `~/.harness-mem/runtime/harness-mem` and wires config to that stable path. |
-
-### Fixed
-
-- Eliminated ephemeral `_npx` path dependency in generated setup wiring for npm/npx installations.
-
-### Internal
-
-- Added stable runtime-root sync in `scripts/harness-mem` for package-executed setup/doctor flows.
-
-## [0.1.6] - 2026-02-18
-
-### 🎯 What's Changed for You
-
-OpenCode setup/doctor no longer writes invalid config keys that can prevent OpenCode from starting.
-
-| Before | After |
-|--------|-------|
-| `scripts/harness-mem doctor --fix --platform opencode` could write unsupported `plugins` and legacy `env`, causing OpenCode startup failure. | OpenCode wiring now writes schema-compliant `mcp.harness.environment` and removes unsupported keys. |
-
-### Fixed
-
-- Corrected OpenCode config generation and repair flow so `opencode` starts normally after setup/doctor.
-
-### Internal
-
-- Updated `scripts/harness-mem` OpenCode JSON normalization logic to remove legacy `plugins`/`env` patterns.
-
-## [0.1.5] - 2026-02-17
-
-### 🎯 What's Changed for You
-
-Release automation is now safer and prevents accidental mismatched or off-branch releases.
-
-| Before | After |
-|--------|-------|
-| A tag could trigger release without checking whether it belonged to `main`. | Release now fails unless the tag commit is contained in `origin/main`. |
-| npm publish path did not run full quality gates before publishing. | UI and memory-server tests/type checks run before `npm publish`. |
-
-### Fixed
-
-- Corrective release version prepared as `0.1.4` after earlier tag/commit mismatches.
-
-### Internal
-
-- GitHub Actions release workflow now includes Bun setup and mandatory verification gates.
-- Release workflow now installs `harness-mem-ui` and `memory-server` dependencies before running quality gates.
-
-## [0.1.1] - 2026-02-17
-
-### 🎯 What's Changed for You
-
-Harness-mem setup and feed viewing are now easier to complete without guesswork.
-
-| Before | After |
-|--------|-------|
-| `setup` only asked target platform selection. | `setup` now asks language, target tools, optional Claude-mem import, and optional Claude-mem stop. |
-| Clicking a feed card opened a dimmed overlay that could feel off-screen in long scroll views. | Clicking a feed card expands full text inline at the clicked card (accordion behavior). |
+## [Unreleased]
 
 ### Added
 
-- Settings now include design presets (`Bento Canvas`, `Liquid Glass`, `Night Signal`) and language-aware copy updates.
-- Feed platform badges now include dedicated visual labels for `cursor` and `antigravity`.
+- None.
 
 ### Changed
 
-- UI default language handling and document language metadata were aligned to English-by-default with runtime language switching.
+- None.
 
-### Internal
+### Fixed
 
-- Added and updated UI tests for inline detail expansion, settings persistence, and platform badge rendering.
+- None.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- None.
+
+### Verification
+
+- None.
+
+## [0.1.9] - 2026-02-18
+
+### 🎯 What's Changed for You
+
+Search now returns more relevant results while preventing cross-project leakage.
+
+| Before | After |
+|--------|-------|
+| Search scoring was simpler (`hybrid_v1`) and could not use graph/entity context safely. | Search uses `hybrid_v3` with richer scoring (`tag_boost`, `importance`, `graph`) and stricter filters. |
+| Link expansion risked including unrelated project records. | `strict_project` keeps results isolated to the requested project. |
+| Privacy filtering relied on string matching and could misclassify edge cases. | Privacy filtering now uses strict JSON tag evaluation for `private` / `sensitive`. |
+| Vector search could mix incompatible model/dimension rows. | Vector candidates are restricted to current model + dimension, with coverage-aware fallback weighting. |
+
+### Added
+
+- `/v1/search` request fields: `expand_links`, `strict_project`, `debug`.
+- `/v1/search` response fields: `scores.graph`, `meta.candidate_counts`, `meta.vector_coverage`.
+- Entity extraction and observation linking (`follows`, `shared_entity`) as search signals.
+- New integration coverage for project isolation, privacy strictness, vector compatibility, and coverage-based weighting.
+
+### Changed
+
+- Search ranking upgraded from `hybrid_v1` to `hybrid_v3`.
+- Default vector dimension increased to `256`.
+- Default vector model updated to `local-hash-v3`.
+- Synonym expansion and bigram-aware hashing improve lexical/vector recall.
+
+### Fixed
+
+- Prevented cross-project result contamination during link expansion.
+- Removed privacy false-positives from naive substring matching.
+- Prevented ranking drift from mixed vector model/dimension datasets.
+
+### Removed
+
+- None.
+
+### Security
+
+- Stricter privacy filtering reduces accidental exposure of sensitive entries in default search.
+
+### Migration Notes
+
+- No destructive DB migration.
+- Existing DBs are migrated safely (`observation_type`, entity tables, and new indices are created if missing).
+- Optional: run vector reindex for best `vector_coverage` if old vectors dominate.
+
+### Verification
+
+- `cd memory-server && bun test && bun run typecheck`
+- Confirm `/v1/search` returns `meta.ranking = "hybrid_v3"` and includes `candidate_counts`, `vector_coverage`.
+
+## [0.1.8] - 2026-02-18
+
+### What changed for users
+
+`uninstall` now removes the npx runtime cache, so local cleanup is complete.
+
+### Added
+
+- None.
+
+### Changed
+
+- Uninstall lifecycle now includes package runtime cache cleanup.
+
+### Fixed
+
+- Removed leftover `~/.harness-mem/runtime/` artifacts after uninstall.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration required.
+- If you previously uninstalled on `<=0.1.7`, run uninstall once more to clear old runtime cache.
+
+### Verification
+
+- Run `harness-mem uninstall`.
+- Confirm `~/.harness-mem/runtime/` is removed.
+
+## [0.1.7] - 2026-02-18
+
+### What changed for users
+
+npx setup now writes stable runtime paths so MCP wiring does not break after npm cache cleanup.
+
+### Added
+
+- None.
+
+### Changed
+
+- Setup and doctor flows now synchronize runtime files into `~/.harness-mem/runtime/harness-mem`.
+
+### Fixed
+
+- Removed dependency on ephemeral `~/.npm/_npx/...` paths in generated wiring.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- Re-run `harness-mem setup` if you installed via npx before `0.1.7`.
+
+### Verification
+
+- Run `harness-mem doctor`.
+- Confirm generated paths point to `~/.harness-mem/runtime/harness-mem`.
+
+## [0.1.6] - 2026-02-18
+
+### What changed for users
+
+OpenCode setup and doctor no longer write unsupported keys that can block startup.
+
+### Added
+
+- None.
+
+### Changed
+
+- OpenCode repair flow now normalizes to `mcp.harness.environment`.
+
+### Fixed
+
+- Removed legacy `plugins` and `env` key patterns from OpenCode wiring.
+
+### Removed
+
+- Unsupported legacy OpenCode config key usage.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- Run `harness-mem doctor --fix --platform opencode` to normalize existing OpenCode config.
+
+### Verification
+
+- Run `harness-mem doctor --platform opencode`.
+- Confirm OpenCode starts without config schema errors.
+
+## [0.1.5] - 2026-02-17
+
+### What changed for users
+
+Release automation now blocks off-branch or mismatched-tag publishes and runs quality gates before npm publish.
+
+### Added
+
+- Mandatory pre-publish quality gates for UI and memory-server.
+
+### Changed
+
+- Release workflow now verifies tag commit ancestry against `origin/main`.
+- Release workflow now verifies tag version matches `package.json`.
+
+### Fixed
+
+- Corrective release handling for earlier tag and commit mismatches.
+
+### Removed
+
+- None.
+
+### Security
+
+- Reduced accidental release risk by enforcing branch and version checks.
+
+### Migration Notes
+
+- Maintainers should use SemVer tags that match `package.json` exactly.
+
+### Verification
+
+- Trigger release with a SemVer tag.
+- Confirm workflow runs: ancestry check, version check, quality gates, `npm pack --dry-run`, publish.
+
+## [0.1.1] - 2026-02-17
+
+### What changed for users
+
+Setup and feed browsing became easier through an interactive setup flow and inline feed detail expansion.
+
+### Added
+
+- Interactive setup prompts for language, target tools, import choice, and post-import stop choice.
+- UI design presets: `Bento Canvas`, `Liquid Glass`, `Night Signal`.
+- Dedicated platform badge labels for `cursor` and `antigravity`.
+
+### Changed
+
+- Feed detail view now opens inline at the selected card (accordion behavior).
+- UI language defaults and `document.lang` behavior were aligned for stable switching.
+
+### Fixed
+
+- Reduced scroll-position confusion caused by modal overlay detail behavior.
+
+### Removed
+
+- Previous overlay-first card detail behavior.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No breaking migration required.
+- Re-run `harness-mem setup` to use the new interactive onboarding path.
+
+### Verification
+
+- Run `harness-mem setup` and confirm interactive prompts appear in sequence.
+- Open feed UI and confirm card details expand inline.

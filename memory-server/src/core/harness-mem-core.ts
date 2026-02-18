@@ -2,7 +2,12 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { configureDatabase as configureDb, initFtsIndex as initFtsFromDb, initSchema as initDbSchema } from "../db/schema";
+import {
+  configureDatabase as configureDb,
+  initFtsIndex as initFtsFromDb,
+  initSchema as initDbSchema,
+  migrateSchema as migrateDbSchema,
+} from "../db/schema";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
@@ -20,7 +25,7 @@ import {
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
 const DEFAULT_BIND_PORT = 37888;
-const DEFAULT_VECTOR_DIM = 64;
+const DEFAULT_VECTOR_DIM = 256;
 const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
 const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_CODEX_BACKFILL_HOURS = 24;
@@ -35,6 +40,9 @@ const DEFAULT_ANTIGRAVITY_LOGS_ROOT = "~/Library/Application Support/Antigravity
 const DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT = "~/Library/Application Support/Antigravity/User/workspaceStorage";
 const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
+const DEFAULT_SEARCH_RANKING = "hybrid_v3";
+const DEFAULT_SEARCH_EXPAND_LINKS = true;
+const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const SQLITE_HEADER = "SQLite format 3\u0000";
 
@@ -62,6 +70,9 @@ export interface SearchRequest {
   until?: string;
   limit?: number;
   include_private?: boolean;
+  expand_links?: boolean;
+  strict_project?: boolean;
+  debug?: boolean;
 }
 
 export interface FeedRequest {
@@ -168,7 +179,11 @@ interface SearchCandidate {
   lexical: number;
   vector: number;
   recency: number;
+  tag_boost: number;
+  importance: number;
+  graph: number;
   final: number;
+  created_at: string;
 }
 
 export interface Config {
@@ -199,7 +214,45 @@ export interface Config {
   antigravityWorkspaceStorageRoot?: string;
   antigravityIngestIntervalMs?: number;
   antigravityBackfillHours?: number;
+  searchRanking?: string;
+  searchExpandLinks?: boolean;
 }
+
+const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
+  checkpoint: 0.9,
+  session_end: 0.8,
+  tool_use: 0.5,
+  user_prompt: 0.4,
+  session_start: 0.2,
+};
+
+const SYNONYM_MAP: Record<string, string[]> = {
+  typescript: ["ts"],
+  javascript: ["js"],
+  ts: ["typescript"],
+  js: ["javascript"],
+  react: ["jsx", "tsx"],
+  test: ["spec", "jest", "vitest"],
+  spec: ["test"],
+  error: ["bug", "exception", "failure"],
+  bug: ["error", "issue", "defect"],
+  fix: ["patch", "repair", "resolve"],
+  api: ["endpoint", "route"],
+  endpoint: ["api", "route"],
+  database: ["db", "sqlite"],
+  db: ["database", "sqlite"],
+  config: ["configuration", "settings"],
+  deploy: ["deployment", "release"],
+  auth: ["authentication", "login"],
+  env: ["environment"],
+  dep: ["dependency"],
+  deps: ["dependencies"],
+  dependency: ["dep", "package"],
+  dependencies: ["deps", "packages"],
+  refactor: ["restructure", "reorganize"],
+  migrate: ["migration"],
+  migration: ["migrate"],
+};
 
 function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -394,11 +447,18 @@ function embedText(text: string, dim: number): number[] {
     return vector;
   }
 
-  for (const token of tokens) {
-    const hash = hashToken(token);
-    const index = hash % dim;
-    const sign = hash % 2 === 0 ? 1 : -1;
-    vector[index] += sign;
+  const ngrams: string[] = [...tokens];
+  if (dim >= 128) {
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      ngrams.push(`${tokens[i]}_${tokens[i + 1]}`);
+    }
+  }
+
+  for (const gram of ngrams) {
+    const h1 = hashToken(gram);
+    const h2 = hashToken(`${gram}\u0001`);
+    vector[h1 % dim] += (h1 & 1) === 0 ? 1 : -1;
+    vector[h2 % dim] += (h2 & 1) === 0 ? 1 : -1;
   }
 
   let norm = 0;
@@ -464,6 +524,80 @@ function normalizeScoreMap(raw: Map<string, number>): Map<string, number> {
   }
 
   return normalized;
+}
+
+interface ExtractedEntity {
+  name: string;
+  type: string;
+}
+
+interface VectorSearchResult {
+  scores: Map<string, number>;
+  coverage: number;
+}
+
+interface RankingWeights {
+  lexical: number;
+  vector: number;
+  recency: number;
+  tag_boost: number;
+  importance: number;
+  graph: number;
+}
+
+const FILE_EXT_RE = /(?:^|\s|["'`(])([\w./\\-]+\.(?:ts|js|py|rs|go|tsx|jsx|vue|sql|css|scss|html|json|yaml|yml|toml|md|sh))\b/g;
+const PACKAGE_RE = /(?:npm|yarn|pnpm|pip|cargo|bun)\s+(?:install|add|i|remove)\s+([\w@/.+\-]+)/g;
+const FUNC_RE = /(?:function|def|fn|func|const|let|var)\s+([A-Za-z_]\w{2,})/g;
+const URL_RE = /https?:\/\/[^\s"'`<>)\]]+/g;
+
+function extractEntities(content: string): ExtractedEntity[] {
+  const seen = new Set<string>();
+  const entities: ExtractedEntity[] = [];
+
+  function add(name: string, type: string): void {
+    const key = `${type}:${name}`;
+    if (!seen.has(key) && entities.length < 50) {
+      seen.add(key);
+      entities.push({ name: name.slice(0, 255), type });
+    }
+  }
+
+  for (const match of content.matchAll(FILE_EXT_RE)) {
+    if (match[1]) add(match[1], "file");
+  }
+  for (const match of content.matchAll(PACKAGE_RE)) {
+    if (match[1]) add(match[1], "package");
+  }
+  for (const match of content.matchAll(FUNC_RE)) {
+    if (match[1]) add(match[1], "symbol");
+  }
+  for (const match of content.matchAll(URL_RE)) {
+    if (match[0]) add(match[0].replace(/[.,;:!?]+$/, "").slice(0, 255), "url");
+  }
+
+  return entities;
+}
+
+function hasPrivateVisibilityTag(tags: string[]): boolean {
+  return tags.some((tag) => {
+    const normalized = tag.toLowerCase();
+    return normalized === "private" || normalized === "sensitive";
+  });
+}
+
+function normalizeWeights(weights: RankingWeights): RankingWeights {
+  const total = weights.lexical + weights.vector + weights.recency + weights.tag_boost + weights.importance + weights.graph;
+  if (total <= 0) {
+    return { lexical: 0, vector: 0, recency: 0, tag_boost: 0, importance: 0, graph: 0 };
+  }
+  return {
+    lexical: weights.lexical / total,
+    vector: weights.vector / total,
+    recency: weights.recency / total,
+    tag_boost: weights.tag_boost / total,
+    importance: weights.importance / total,
+    graph: weights.graph / total,
+  };
 }
 
 function makeResponse(
@@ -991,6 +1125,7 @@ export class HarnessMemCore {
 
   private initSchema(): void {
     initDbSchema(this.db);
+    migrateDbSchema(this.db);
     this.ftsEnabled = initFtsFromDb(this.db);
   }
 
@@ -1282,6 +1417,95 @@ export class HarnessMemCore {
       .map((event) => ({ ...event, data: { ...event.data } }));
   }
 
+  private autoLinkObservation(observationId: string, sessionId: string, createdAt: string): void {
+    try {
+      const previous = this.db
+        .query(`
+          SELECT id
+          FROM mem_observations
+          WHERE session_id = ? AND id <> ? AND created_at <= ?
+          ORDER BY created_at DESC
+          LIMIT 1
+        `)
+        .get(sessionId, observationId, createdAt) as { id: string } | null;
+
+      if (previous?.id) {
+        this.db
+          .query(`
+            INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+            VALUES (?, ?, 'follows', 1.0, ?)
+          `)
+          .run(observationId, previous.id, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+
+    try {
+      const sharedRows = this.db
+        .query(`
+          SELECT DISTINCT oe2.observation_id AS id
+          FROM mem_observation_entities oe1
+          JOIN mem_observation_entities oe2 ON oe1.entity_id = oe2.entity_id
+          WHERE oe1.observation_id = ? AND oe2.observation_id <> ?
+          ORDER BY oe2.observation_id ASC
+          LIMIT 20
+        `)
+        .all(observationId, observationId) as Array<{ id: string }>;
+
+      for (const row of sharedRows) {
+        this.db
+          .query(`
+            INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+            VALUES (?, ?, 'shared_entity', 0.7, ?)
+          `)
+          .run(observationId, row.id, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+  }
+
+  private extractAndStoreEntities(observationId: string, content: string, createdAt: string): void {
+    const entities = extractEntities(content);
+    for (const entity of entities) {
+      try {
+        this.db
+          .query(`INSERT OR IGNORE INTO mem_entities(name, entity_type, created_at) VALUES (?, ?, ?)`)
+          .run(entity.name, entity.type, createdAt);
+
+        const stored = this.db
+          .query(`SELECT id FROM mem_entities WHERE name = ? AND entity_type = ?`)
+          .get(entity.name, entity.type) as { id: number } | null;
+        if (stored?.id) {
+          this.db
+            .query(`
+              INSERT OR IGNORE INTO mem_observation_entities(observation_id, entity_id, created_at)
+              VALUES (?, ?, ?)
+            `)
+            .run(observationId, stored.id, createdAt);
+        }
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  private classifyObservation(eventType: string, title: string, content: string): string {
+    if (eventType === "session_end") return "summary";
+    if (eventType === "session_start") return "context";
+    if (eventType === "tool_use") return "action";
+
+    const text = `${title} ${content}`.toLowerCase();
+
+    if (/(decided|chose|picked|switched to|方針|決定|採用|選択)/.test(text)) return "decision";
+    if (/(pattern|usually|consistently|repeatedly|傾向|パターン|毎回|常に)/.test(text)) return "pattern";
+    if (/(prefer|dislike|avoid|rather|preference|好み|希望|避けたい)/.test(text)) return "preference";
+    if (/(learned|lesson|realized|gotcha|mistake|学び|反省|気づき|教訓)/.test(text)) return "lesson";
+    if (/(next step|todo|next action|次対応|次の対応|アクション)/.test(text)) return "action";
+    return "context";
+  }
+
   private buildObservationFromEvent(event: EventEnvelope, redactedContent: string): { title: string; content: string } {
     const payload = parseJsonSafe(event.payload);
 
@@ -1397,7 +1621,7 @@ export class HarnessMemCore {
           vector_json = excluded.vector_json,
           updated_at = excluded.updated_at
       `)
-      .run(observationId, "local-hash-v1", this.config.vectorDimension, vectorJson, createdAt, updatedAt);
+      .run(observationId, VECTOR_MODEL_VERSION, this.config.vectorDimension, vectorJson, createdAt, updatedAt);
 
     if (this.vectorEngine === "sqlite-vec" && this.vecTableReady) {
       const ok = upsertSqliteVecRow(this.db, observationId, vectorJson, updatedAt);
@@ -1485,6 +1709,7 @@ export class HarnessMemCore {
 
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     const redactedContent = redactContent(observationBase.content, privacyTags);
+    const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
@@ -1523,14 +1748,15 @@ export class HarnessMemCore {
           .query(`
             INSERT INTO mem_observations(
               id, event_id, platform, project, session_id,
-              title, content, content_redacted,
+              title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              observation_type = excluded.observation_type,
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               updated_at = excluded.updated_at
@@ -1544,6 +1770,7 @@ export class HarnessMemCore {
             observationBase.title,
             observationBase.content,
             redactedContent,
+            observationType,
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
             timestamp,
@@ -1569,6 +1796,8 @@ export class HarnessMemCore {
         }
 
         this.upsertVector(observationId, redactedContent, timestamp);
+        this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+        this.autoLinkObservation(observationId, event.session_id, timestamp);
 
         return { duplicated: false, observationId };
       });
@@ -1623,7 +1852,18 @@ export class HarnessMemCore {
       return "";
     }
 
-    return ` AND ${alias}.privacy_tags_json NOT LIKE '%"private"%' AND ${alias}.privacy_tags_json NOT LIKE '%"sensitive"%' `;
+    return `
+      AND NOT EXISTS (
+        SELECT 1
+        FROM json_each(
+          CASE
+            WHEN json_valid(COALESCE(${alias}.privacy_tags_json, '[]')) THEN COALESCE(${alias}.privacy_tags_json, '[]')
+            ELSE '["private"]'
+          END
+        ) AS jt
+        WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'sensitive')
+      )
+    `;
   }
 
   private platformVisibilityFilterSql(alias: string): string {
@@ -1644,11 +1884,16 @@ export class HarnessMemCore {
       since?: string;
       until?: string;
       include_private?: boolean;
-    }
+      strict_project?: boolean;
+    },
+    options: {
+      skipPrivacy?: boolean;
+    } = {}
   ): string {
     let nextSql = sql;
+    const strictProject = filters.strict_project !== false;
 
-    if (filters.project) {
+    if (filters.project && strictProject) {
       nextSql += ` AND ${alias}.project = ?`;
       params.push(filters.project);
     }
@@ -1669,7 +1914,9 @@ export class HarnessMemCore {
     }
 
     nextSql += this.platformVisibilityFilterSql(alias);
-    nextSql += this.visibilityFilterSql(alias, Boolean(filters.include_private));
+    if (!options.skipPrivacy) {
+      nextSql += this.visibilityFilterSql(alias, Boolean(filters.include_private));
+    }
     return nextSql;
   }
 
@@ -1684,7 +1931,21 @@ export class HarnessMemCore {
     if (escaped.length === 0) {
       return '""';
     }
-    return escaped.map((token) => `"${token}"`).join(" OR ");
+
+    const expanded = new Set<string>(escaped);
+    for (const token of escaped) {
+      const synonyms = SYNONYM_MAP[token];
+      if (synonyms) {
+        for (const synonym of synonyms) {
+          expanded.add(synonym);
+        }
+      }
+    }
+    for (let i = 0; i < escaped.length - 1; i += 1) {
+      expanded.add(`${escaped[i]} ${escaped[i + 1]}`);
+    }
+
+    return [...expanded].map((token) => `"${token}"`).join(" OR ");
   }
 
   private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
@@ -1757,9 +2018,9 @@ export class HarnessMemCore {
     return normalizeScoreMap(raw);
   }
 
-  private vectorSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
+  private vectorSearch(request: SearchRequest, internalLimit: number): VectorSearchResult {
     if (this.vectorEngine === "disabled") {
-      return new Map<string, number>();
+      return { scores: new Map<string, number>(), coverage: 0 };
     }
 
     const queryVector = embedText(request.query, this.config.vectorDimension);
@@ -1767,7 +2028,7 @@ export class HarnessMemCore {
 
     if (this.vectorEngine === "sqlite-vec" && this.vecTableReady) {
       try {
-        const params: unknown[] = [queryVectorJson, internalLimit * 3];
+        const params: unknown[] = [queryVectorJson, internalLimit * 3, VECTOR_MODEL_VERSION, this.config.vectorDimension];
         let sql = `
           SELECT
             c.id AS id,
@@ -1781,6 +2042,10 @@ export class HarnessMemCore {
             JOIN mem_vectors_vec_map m ON m.rowid = v.rowid
             WHERE v.embedding MATCH ? AND k = ?
           ) c
+          JOIN mem_vectors mv
+            ON mv.observation_id = c.id
+            AND mv.model = ?
+            AND mv.dimension = ?
           JOIN mem_observations o ON o.id = c.id
           WHERE 1 = 1
         `;
@@ -1800,13 +2065,17 @@ export class HarnessMemCore {
           }
           raw.set(row.id, 1 / (1 + Math.max(0, distance)));
         }
-        return normalizeScoreMap(raw);
+        const normalized = normalizeScoreMap(raw);
+        return {
+          scores: normalized,
+          coverage: rows.length === 0 ? 0 : normalized.size / rows.length,
+        };
       } catch {
         this.vecTableReady = false;
       }
     }
 
-    const params: unknown[] = [];
+    const params: unknown[] = [VECTOR_MODEL_VERSION, this.config.vectorDimension];
     let sql = `
       SELECT
         v.observation_id AS id,
@@ -1814,7 +2083,7 @@ export class HarnessMemCore {
         o.created_at AS created_at
       FROM mem_vectors v
       JOIN mem_observations o ON o.id = v.observation_id
-      WHERE 1 = 1
+      WHERE v.model = ? AND v.dimension = ?
     `;
 
     sql = this.applyCommonFilters(sql, params, "o", request);
@@ -1849,7 +2118,11 @@ export class HarnessMemCore {
       raw.set(entry.id, entry.score);
     }
 
-    return normalizeScoreMap(raw);
+    const normalized = normalizeScoreMap(raw);
+    return {
+      scores: normalized,
+      coverage: scored.length === 0 ? 0 : normalized.size / scored.length,
+    };
   }
 
   private recencyScore(createdAt: string): number {
@@ -1864,6 +2137,26 @@ export class HarnessMemCore {
     return Math.exp(-ageHours / halfLifeHours);
   }
 
+  private tagMatchScore(tagsJson: unknown, queryTokens: string[]): number {
+    const tags = parseArrayJson(tagsJson);
+    if (tags.length === 0 || queryTokens.length === 0) {
+      return 0;
+    }
+
+    let matches = 0;
+    for (const tag of tags) {
+      const normalizedTag = tag.toLowerCase();
+      for (const token of queryTokens) {
+        if (normalizedTag === token || normalizedTag.includes(token) || token.includes(normalizedTag)) {
+          matches += 1;
+          break;
+        }
+      }
+    }
+
+    return matches / Math.max(tags.length, queryTokens.length);
+  }
+
   private loadObservations(ids: string[]): Map<string, Record<string, unknown>> {
     if (ids.length === 0) {
       return new Map<string, Record<string, unknown>>();
@@ -1874,19 +2167,22 @@ export class HarnessMemCore {
       .query(
         `
           SELECT
-            id,
-            event_id,
-            platform,
-            project,
-            session_id,
-            title,
-            content_redacted,
-            tags_json,
-            privacy_tags_json,
-            created_at,
-            updated_at
-          FROM mem_observations
-          WHERE id IN (${placeholders})
+            o.id,
+            o.event_id,
+            o.platform,
+            o.project,
+            o.session_id,
+            o.title,
+            o.content_redacted,
+            o.observation_type,
+            o.tags_json,
+            o.privacy_tags_json,
+            o.created_at,
+            o.updated_at,
+            e.event_type
+          FROM mem_observations o
+          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE o.id IN (${placeholders})
         `
       )
       .all(...ids) as Array<Record<string, unknown>>;
@@ -1899,6 +2195,59 @@ export class HarnessMemCore {
       }
     }
     return mapped;
+  }
+
+  private expandByLinks(topIds: string[], request: SearchRequest, existingIds: Set<string>): Map<string, number> {
+    if (topIds.length === 0) {
+      return new Map<string, number>();
+    }
+
+    const placeholders = topIds.map(() => "?").join(", ");
+    const params: unknown[] = [...topIds];
+
+    let sql = `
+      SELECT
+        o.id AS id,
+        MAX(l.weight) AS weight
+      FROM mem_links l
+      JOIN mem_observations o ON o.id = l.to_observation_id
+      WHERE l.from_observation_id IN (${placeholders})
+        AND l.relation IN ('shared_entity', 'follows')
+    `;
+
+    sql = this.applyCommonFilters(sql, params, "o", request);
+    sql += " GROUP BY o.id ORDER BY weight DESC, o.created_at DESC LIMIT 40";
+
+    try {
+      const rows = this.db.query(sql).all(...(params as any[])) as Array<{ id: string; weight: number }>;
+      const raw = new Map<string, number>();
+      for (const row of rows) {
+        const id = typeof row.id === "string" ? row.id : "";
+        const weight = Number(row.weight ?? 0);
+        if (!id || existingIds.has(id) || Number.isNaN(weight)) {
+          continue;
+        }
+        raw.set(id, weight);
+      }
+      return normalizeScoreMap(raw);
+    } catch {
+      return new Map<string, number>();
+    }
+  }
+
+  private resolveSearchWeights(vectorCoverage: number): RankingWeights {
+    const base: RankingWeights = {
+      lexical: 0.32,
+      vector: 0.28,
+      recency: 0.10,
+      tag_boost: 0.12,
+      importance: 0.08,
+      graph: 0.10,
+    };
+    if (vectorCoverage < 0.2) {
+      return normalizeWeights({ ...base, vector: 0 });
+    }
+    return normalizeWeights(base);
   }
 
   search(request: SearchRequest): ApiResponse {
@@ -1914,36 +2263,104 @@ export class HarnessMemCore {
 
     const limit = clampLimit(request.limit, 20, 1, 100);
     const internalLimit = Math.min(500, limit * 5);
+    const includePrivate = Boolean(request.include_private);
+    const strictProject = request.strict_project !== false;
+    const expandLinks = (this.config.searchExpandLinks !== false) && request.expand_links !== false;
+    const normalizedRequest: SearchRequest = {
+      ...request,
+      include_private: includePrivate,
+      strict_project: strictProject,
+      expand_links: expandLinks,
+    };
 
-    const lexical = this.lexicalSearch(request, internalLimit);
-    const vector = this.vectorSearch(request, internalLimit);
+    const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
+    const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);
+    const vector = vectorResult.scores;
+    const graph = new Map<string, number>();
 
     const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys()]);
+    if (expandLinks && candidateIds.size > 0) {
+      const topIds = [...candidateIds]
+        .sort((lhs, rhs) => {
+          const lhsScore = (lexical.get(lhs) ?? 0) + (vector.get(lhs) ?? 0);
+          const rhsScore = (lexical.get(rhs) ?? 0) + (vector.get(rhs) ?? 0);
+          return rhsScore - lhsScore;
+        })
+        .slice(0, 10);
+      const linked = this.expandByLinks(topIds, normalizedRequest, candidateIds);
+      for (const [id, score] of linked.entries()) {
+        candidateIds.add(id);
+        graph.set(id, score);
+      }
+    }
     const observations = this.loadObservations([...candidateIds]);
+    const queryTokens = tokenize(request.query);
 
     const ranked: SearchCandidate[] = [];
+    let vectorCandidateCount = 0;
     for (const id of candidateIds) {
       const observation = observations.get(id);
       if (!observation) {
         continue;
       }
 
+      const observationProject = typeof observation.project === "string" ? observation.project : "";
+      if (strictProject && request.project && observationProject !== request.project) {
+        continue;
+      }
+
+      const privacyTags = parseArrayJson(observation.privacy_tags_json);
+      if (!includePrivate && hasPrivateVisibilityTag(privacyTags)) {
+        continue;
+      }
+
       const createdAt = typeof observation.created_at === "string" ? observation.created_at : nowIso();
       const lexicalScore = lexical.get(id) ?? 0;
       const vectorScore = vector.get(id) ?? 0;
+      if (vector.has(id)) {
+        vectorCandidateCount += 1;
+      }
       const recency = this.recencyScore(createdAt);
-      const final = 0.45 * lexicalScore + 0.4 * vectorScore + 0.15 * recency;
+      const tagBoost = this.tagMatchScore(observation.tags_json, queryTokens);
+      const eventType = typeof observation.event_type === "string" ? observation.event_type : "";
+      const importance = EVENT_TYPE_IMPORTANCE[eventType] ?? 0.5;
+      const graphScore = graph.get(id) ?? 0;
 
       ranked.push({
         id,
         lexical: lexicalScore,
         vector: vectorScore,
         recency,
-        final,
+        tag_boost: tagBoost,
+        importance,
+        graph: graphScore,
+        final: 0,
+        created_at: createdAt,
       });
     }
 
-    ranked.sort((lhs, rhs) => rhs.final - lhs.final);
+    const vectorCoverage = ranked.length === 0 ? 0 : vectorCandidateCount / ranked.length;
+    const weights = this.resolveSearchWeights(vectorCoverage);
+
+    for (const item of ranked) {
+      item.final =
+        weights.lexical * item.lexical +
+        weights.vector * item.vector +
+        weights.recency * item.recency +
+        weights.tag_boost * item.tag_boost +
+        weights.importance * item.importance +
+        weights.graph * item.graph;
+    }
+
+    ranked.sort((lhs, rhs) => {
+      if (rhs.final !== lhs.final) {
+        return rhs.final - lhs.final;
+      }
+      if (rhs.created_at !== lhs.created_at) {
+        return String(rhs.created_at).localeCompare(String(lhs.created_at));
+      }
+      return lhs.id.localeCompare(rhs.id);
+    });
 
     const items = ranked.slice(0, limit).map((entry) => {
       const observation = observations.get(entry.id) ?? {};
@@ -1960,6 +2377,7 @@ export class HarnessMemCore {
         content: typeof observation.content_redacted === "string"
           ? observation.content_redacted.slice(0, 2000)
           : "",
+        observation_type: observation.observation_type || "context",
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
@@ -1967,18 +2385,39 @@ export class HarnessMemCore {
           lexical: Number(entry.lexical.toFixed(6)),
           vector: Number(entry.vector.toFixed(6)),
           recency: Number(entry.recency.toFixed(6)),
+          tag_boost: Number(entry.tag_boost.toFixed(6)),
+          importance: Number(entry.importance.toFixed(6)),
+          graph: Number(entry.graph.toFixed(6)),
           final: Number(entry.final.toFixed(6)),
         },
       };
     });
 
-    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
-      ranking: "hybrid_v1",
+    const meta: Record<string, unknown> = {
+      ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
       vector_engine: this.vectorEngine,
       fts_enabled: this.ftsEnabled,
       lexical_candidates: lexical.size,
       vector_candidates: vector.size,
-    });
+      graph_candidates: graph.size,
+      candidate_counts: {
+        lexical: lexical.size,
+        vector: vector.size,
+        graph: graph.size,
+        final: ranked.length,
+      },
+      vector_coverage: Number(vectorCoverage.toFixed(6)),
+    };
+    if (request.debug) {
+      meta.debug = {
+        strict_project: strictProject,
+        expand_links: expandLinks,
+        weights,
+        vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
+      };
+    }
+
+    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
   }
 
   feed(request: FeedRequest): ApiResponse {
@@ -2675,6 +3114,8 @@ export class HarnessMemCore {
             antigravity_workspace_storage_root: this.getAntigravityWorkspaceStorageRoot(),
             antigravity_ingest_interval_ms: this.getAntigravityIngestIntervalMs(),
             antigravity_backfill_hours: this.getAntigravityBackfillHours(),
+            search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
+            search_expand_links: this.config.searchExpandLinks !== false,
           },
           counts: {
             sessions: Number(sessions.count || 0),
@@ -4298,6 +4739,8 @@ export function getConfig(): Config {
   const antigravityWorkspaceStorageRoot = resolveHomePath(
     process.env.HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
   );
+  const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
+  const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
 
   return {
     dbPath,
@@ -4349,5 +4792,7 @@ export function getConfig(): Config {
       1,
       24 * 365
     ),
+    searchRanking,
+    searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
   };
 }
