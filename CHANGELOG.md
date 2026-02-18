@@ -1,3 +1,21 @@
+## [0.1.8] - 2026-02-18
+
+### 🎯 What's Changed for You
+
+`uninstall` now removes the cached runtime copy used by `npx` setup, so your environment is fully cleaned up.
+
+| Before | After |
+|--------|-------|
+| `uninstall` removed wiring and daemon files, but left `~/.harness-mem/runtime/` on disk. | `uninstall` now removes `~/.harness-mem/runtime/` as part of normal cleanup. |
+
+### Fixed
+
+- Added runtime cache cleanup in `uninstall_impl` to avoid leftover package copies after removal.
+
+### Internal
+
+- Follow-up hardening from review feedback to complete npx runtime lifecycle (setup + uninstall).
+
 ## [0.1.7] - 2026-02-18
 
 ### 🎯 What's Changed for You

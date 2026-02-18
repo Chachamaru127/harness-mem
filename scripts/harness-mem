@@ -1515,6 +1515,8 @@ uninstall_impl() {
   fi
 
   rm -f "${STATE_DIR}/daemon.pid" "${STATE_DIR}/daemon.lock" "${STATE_DIR}/daemon.heartbeat"
+  rm -rf "${STATE_DIR}/runtime"
+  log "Removed runtime cache: ${STATE_DIR}/runtime"
   if [ "$PURGE_DB" -eq 1 ]; then
     rm -f "$DB_PATH"
     log "Purged DB: $DB_PATH"
