@@ -80,8 +80,10 @@ describe("search quality integration", () => {
         const lexical = Number(scores.lexical ?? 0);
         const vector = Number(scores.vector ?? 0);
         const recency = Number(scores.recency ?? 0);
+        const tagBoost = Number(scores.tag_boost ?? 0);
+        const importance = Number(scores.importance ?? 0);
         const final = Number(scores.final ?? 0);
-        const recomputed = 0.45 * lexical + 0.4 * vector + 0.15 * recency;
+        const recomputed = 0.35 * lexical + 0.30 * vector + 0.10 * recency + 0.15 * tagBoost + 0.10 * importance;
         expect(Math.abs(final - recomputed)).toBeLessThan(0.00001);
       }
     } finally {

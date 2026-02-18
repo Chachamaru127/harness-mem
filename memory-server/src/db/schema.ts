@@ -52,6 +52,7 @@ export function initSchema(db: Database): void {
       title TEXT,
       content TEXT NOT NULL,
       content_redacted TEXT NOT NULL,
+      observation_type TEXT NOT NULL DEFAULT 'context',
       tags_json TEXT NOT NULL,
       privacy_tags_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -72,6 +73,26 @@ export function initSchema(db: Database): void {
       FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS mem_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(name, entity_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS mem_observation_entities (
+      observation_id TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(observation_id, entity_id),
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
+      FOREIGN KEY(entity_id) REFERENCES mem_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_observation_entities_entity
+      ON mem_observation_entities(entity_id);
+
     CREATE TABLE IF NOT EXISTS mem_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       from_observation_id TEXT NOT NULL,
@@ -79,6 +100,7 @@ export function initSchema(db: Database): void {
       relation TEXT NOT NULL,
       weight REAL NOT NULL DEFAULT 1.0,
       created_at TEXT NOT NULL,
+      UNIQUE(from_observation_id, to_observation_id, relation),
       FOREIGN KEY(from_observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
       FOREIGN KEY(to_observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
     );
@@ -147,6 +169,14 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_vec_map_observation
       ON mem_vectors_vec_map(observation_id);
   `);
+}
+
+export function migrateSchema(db: Database): void {
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN observation_type TEXT NOT NULL DEFAULT 'context'`);
+  } catch {
+    // Column already exists — safe to ignore
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {

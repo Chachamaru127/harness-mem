@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
-import { configureDatabase as configureDb, initFtsIndex as initFtsFromDb, initSchema as initDbSchema } from "../db/schema";
+import { configureDatabase as configureDb, initFtsIndex as initFtsFromDb, initSchema as initDbSchema, migrateSchema as migrateDbSchema } from "../db/schema";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
@@ -20,7 +20,7 @@ import {
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
 const DEFAULT_BIND_PORT = 37888;
-const DEFAULT_VECTOR_DIM = 64;
+const DEFAULT_VECTOR_DIM = 256;
 const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
 const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_CODEX_BACKFILL_HOURS = 24;
@@ -168,8 +168,46 @@ interface SearchCandidate {
   lexical: number;
   vector: number;
   recency: number;
+  tag_boost: number;
+  importance: number;
   final: number;
 }
+
+const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
+  checkpoint: 0.9,
+  session_end: 0.8,
+  tool_use: 0.5,
+  user_prompt: 0.4,
+  session_start: 0.2,
+};
+
+const SYNONYM_MAP: Record<string, string[]> = {
+  typescript: ["ts"],
+  javascript: ["js"],
+  ts: ["typescript"],
+  js: ["javascript"],
+  react: ["jsx", "tsx"],
+  test: ["spec", "jest", "vitest"],
+  spec: ["test"],
+  error: ["bug", "exception", "failure"],
+  bug: ["error", "issue", "defect"],
+  fix: ["patch", "repair", "resolve"],
+  api: ["endpoint", "route"],
+  endpoint: ["api", "route"],
+  database: ["db", "sqlite"],
+  db: ["database", "sqlite"],
+  config: ["configuration", "settings"],
+  deploy: ["deployment", "release"],
+  auth: ["authentication", "login"],
+  env: ["environment"],
+  dep: ["dependency"],
+  deps: ["dependencies"],
+  dependency: ["dep", "package"],
+  dependencies: ["deps", "packages"],
+  refactor: ["restructure", "reorganize"],
+  migrate: ["migration"],
+  migration: ["migrate"],
+};
 
 export interface Config {
   dbPath: string;
@@ -394,11 +432,21 @@ function embedText(text: string, dim: number): number[] {
     return vector;
   }
 
-  for (const token of tokens) {
-    const hash = hashToken(token);
-    const index = hash % dim;
-    const sign = hash % 2 === 0 ? 1 : -1;
-    vector[index] += sign;
+  // Build n-gram list: always unigrams, bigrams only when dim >= 128
+  // to avoid excessive hash collisions at low dimensions
+  const ngrams: string[] = [...tokens];
+  if (dim >= 128) {
+    for (let i = 0; i < tokens.length - 1; i += 1) {
+      ngrams.push(tokens[i] + "_" + tokens[i + 1]);
+    }
+  }
+
+  for (const gram of ngrams) {
+    // Two hash functions to reduce collisions
+    const h1 = hashToken(gram);
+    const h2 = hashToken(gram + "\x01");
+    vector[h1 % dim] += (h1 & 1) === 0 ? 1 : -1;
+    vector[h2 % dim] += (h2 & 1) === 0 ? 1 : -1;
   }
 
   let norm = 0;
@@ -464,6 +512,44 @@ function normalizeScoreMap(raw: Map<string, number>): Map<string, number> {
   }
 
   return normalized;
+}
+
+interface ExtractedEntity {
+  name: string;
+  type: string;
+}
+
+const FILE_EXT_RE = /(?:^|\s|["'`(])([\w.\/\\-]+\.(?:ts|js|py|rs|go|tsx|jsx|vue|sql|css|scss|html|json|yaml|yml|toml|md|sh))\b/g;
+const PACKAGE_RE = /(?:npm|yarn|pnpm|pip|cargo|bun)\s+(?:install|add|i|remove)\s+([\w@\/.+-]+)/g;
+const FUNC_RE = /(?:function|def|fn|func|const|let|var)\s+([A-Za-z_]\w{2,})/g;
+const URL_RE = /https?:\/\/[^\s"'`<>)\]]+/g;
+
+function extractEntities(content: string): ExtractedEntity[] {
+  const seen = new Set<string>();
+  const entities: ExtractedEntity[] = [];
+
+  function add(name: string, type: string): void {
+    const key = `${type}:${name}`;
+    if (!seen.has(key) && entities.length < 50) {
+      seen.add(key);
+      entities.push({ name: name.slice(0, 255), type });
+    }
+  }
+
+  for (const m of content.matchAll(FILE_EXT_RE)) {
+    add(m[1], "file");
+  }
+  for (const m of content.matchAll(PACKAGE_RE)) {
+    add(m[1], "package");
+  }
+  for (const m of content.matchAll(FUNC_RE)) {
+    if (m[1].length > 2) add(m[1], "symbol");
+  }
+  for (const m of content.matchAll(URL_RE)) {
+    add(m[0].slice(0, 255), "url");
+  }
+
+  return entities;
 }
 
 function makeResponse(
@@ -991,6 +1077,7 @@ export class HarnessMemCore {
 
   private initSchema(): void {
     initDbSchema(this.db);
+    migrateDbSchema(this.db);
     this.ftsEnabled = initFtsFromDb(this.db);
   }
 
@@ -1282,6 +1369,88 @@ export class HarnessMemCore {
       .map((event) => ({ ...event, data: { ...event.data } }));
   }
 
+  private autoLinkObservation(observationId: string, sessionId: string, createdAt: string): void {
+    // 1. Session-sequential link: connect to the previous observation in the same session
+    try {
+      const prev = this.db
+        .query(`
+          SELECT id FROM mem_observations
+          WHERE session_id = ? AND id <> ? AND created_at <= ?
+          ORDER BY created_at DESC LIMIT 1
+        `)
+        .get(sessionId, observationId, createdAt) as { id: string } | null;
+
+      if (prev) {
+        this.db
+          .query(`
+            INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+            VALUES (?, ?, 'follows', 1.0, ?)
+          `)
+          .run(observationId, prev.id, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+
+    // 2. Shared-entity links: connect to other observations that share the same entities
+    try {
+      const shared = this.db
+        .query(`
+          SELECT DISTINCT oe2.observation_id AS id
+          FROM mem_observation_entities oe1
+          JOIN mem_observation_entities oe2 ON oe1.entity_id = oe2.entity_id
+          WHERE oe1.observation_id = ? AND oe2.observation_id <> ?
+          LIMIT 10
+        `)
+        .all(observationId, observationId) as Array<{ id: string }>;
+
+      for (const row of shared) {
+        this.db
+          .query(`
+            INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+            VALUES (?, ?, 'shared_entity', 0.7, ?)
+          `)
+          .run(observationId, row.id, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+  }
+
+  private extractAndStoreEntities(observationId: string, content: string, createdAt: string): void {
+    const entities = extractEntities(content);
+    for (const entity of entities) {
+      try {
+        this.db
+          .query(`INSERT OR IGNORE INTO mem_entities(name, entity_type, created_at) VALUES (?, ?, ?)`)
+          .run(entity.name, entity.type, createdAt);
+        const row = this.db
+          .query(`SELECT id FROM mem_entities WHERE name = ? AND entity_type = ?`)
+          .get(entity.name, entity.type) as { id: number } | null;
+        if (row) {
+          this.db
+            .query(`INSERT OR IGNORE INTO mem_observation_entities(observation_id, entity_id, created_at) VALUES (?, ?, ?)`)
+            .run(observationId, row.id, createdAt);
+        }
+      } catch {
+        // best effort — skip on error
+      }
+    }
+  }
+
+  private classifyObservation(eventType: string, title: string, content: string): string {
+    if (eventType === "session_end") return "summary";
+    if (eventType === "session_start") return "context";
+
+    const text = (title + " " + content).toLowerCase();
+    if (/\b(?:decided|chose|picked|went with|let's use|let us use|switched to|chosen)\b/.test(text)) return "decision";
+    if (/\b(?:always|every time|pattern|tend to|usually|consistently|repeatedly)\b/.test(text)) return "pattern";
+    if (/\b(?:prefer|like to|want to|dislike|avoid|rather|favorite)\b/.test(text)) return "preference";
+    if (/\b(?:learned|lesson|realized|found out|turns out|discovered|mistake|gotcha)\b/.test(text)) return "lesson";
+    if (eventType === "tool_use") return "action";
+    return "context";
+  }
+
   private buildObservationFromEvent(event: EventEnvelope, redactedContent: string): { title: string; content: string } {
     const payload = parseJsonSafe(event.payload);
 
@@ -1397,7 +1566,7 @@ export class HarnessMemCore {
           vector_json = excluded.vector_json,
           updated_at = excluded.updated_at
       `)
-      .run(observationId, "local-hash-v1", this.config.vectorDimension, vectorJson, createdAt, updatedAt);
+      .run(observationId, "local-hash-v2", this.config.vectorDimension, vectorJson, createdAt, updatedAt);
 
     if (this.vectorEngine === "sqlite-vec" && this.vecTableReady) {
       const ok = upsertSqliteVecRow(this.db, observationId, vectorJson, updatedAt);
@@ -1485,6 +1654,7 @@ export class HarnessMemCore {
 
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     const redactedContent = redactContent(observationBase.content, privacyTags);
+    const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
@@ -1523,14 +1693,15 @@ export class HarnessMemCore {
           .query(`
             INSERT INTO mem_observations(
               id, event_id, platform, project, session_id,
-              title, content, content_redacted,
+              title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              observation_type = excluded.observation_type,
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               updated_at = excluded.updated_at
@@ -1544,6 +1715,7 @@ export class HarnessMemCore {
             observationBase.title,
             observationBase.content,
             redactedContent,
+            observationType,
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
             timestamp,
@@ -1569,6 +1741,8 @@ export class HarnessMemCore {
         }
 
         this.upsertVector(observationId, redactedContent, timestamp);
+        this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+        this.autoLinkObservation(observationId, event.session_id, timestamp);
 
         return { duplicated: false, observationId };
       });
@@ -1684,7 +1858,24 @@ export class HarnessMemCore {
     if (escaped.length === 0) {
       return '""';
     }
-    return escaped.map((token) => `"${token}"`).join(" OR ");
+
+    // Expand with synonyms
+    const expanded = new Set<string>(escaped);
+    for (const token of escaped) {
+      const synonyms = SYNONYM_MAP[token];
+      if (synonyms) {
+        for (const syn of synonyms) {
+          expanded.add(syn);
+        }
+      }
+    }
+
+    // Add bigrams for phrase-aware matching
+    for (let i = 0; i < escaped.length - 1; i += 1) {
+      expanded.add(escaped[i] + escaped[i + 1]);
+    }
+
+    return [...expanded].map((token) => `"${token}"`).join(" OR ");
   }
 
   private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
@@ -1852,6 +2043,24 @@ export class HarnessMemCore {
     return normalizeScoreMap(raw);
   }
 
+  private tagMatchScore(tagsJson: unknown, queryTokens: string[]): number {
+    const tags = parseArrayJson(tagsJson);
+    if (tags.length === 0 || queryTokens.length === 0) {
+      return 0;
+    }
+    let matches = 0;
+    for (const tag of tags) {
+      const normalizedTag = tag.toLowerCase();
+      for (const token of queryTokens) {
+        if (normalizedTag === token || normalizedTag.includes(token) || token.includes(normalizedTag)) {
+          matches += 1;
+          break;
+        }
+      }
+    }
+    return matches / Math.max(tags.length, queryTokens.length);
+  }
+
   private recencyScore(createdAt: string): number {
     const created = Date.parse(createdAt);
     if (Number.isNaN(created)) {
@@ -1874,19 +2083,22 @@ export class HarnessMemCore {
       .query(
         `
           SELECT
-            id,
-            event_id,
-            platform,
-            project,
-            session_id,
-            title,
-            content_redacted,
-            tags_json,
-            privacy_tags_json,
-            created_at,
-            updated_at
-          FROM mem_observations
-          WHERE id IN (${placeholders})
+            o.id,
+            o.event_id,
+            o.platform,
+            o.project,
+            o.session_id,
+            o.title,
+            o.content_redacted,
+            o.observation_type,
+            o.tags_json,
+            o.privacy_tags_json,
+            o.created_at,
+            o.updated_at,
+            e.event_type
+          FROM mem_observations o
+          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE o.id IN (${placeholders})
         `
       )
       .all(...ids) as Array<Record<string, unknown>>;
@@ -1899,6 +2111,35 @@ export class HarnessMemCore {
       }
     }
     return mapped;
+  }
+
+  private expandByLinks(topIds: string[], existingIds: Set<string>): Map<string, number> {
+    const linked = new Map<string, number>();
+    if (topIds.length === 0) {
+      return linked;
+    }
+    try {
+      const placeholders = topIds.map(() => "?").join(", ");
+      const rows = this.db
+        .query(`
+          SELECT to_observation_id AS id, weight
+          FROM mem_links
+          WHERE from_observation_id IN (${placeholders})
+            AND relation IN ('shared_entity', 'follows')
+          ORDER BY weight DESC
+          LIMIT 20
+        `)
+        .all(...topIds) as Array<{ id: string; weight: number }>;
+
+      for (const row of rows) {
+        if (!existingIds.has(row.id) && !linked.has(row.id)) {
+          linked.set(row.id, Number(row.weight) * 0.3);
+        }
+      }
+    } catch {
+      // best effort
+    }
+    return linked;
   }
 
   search(request: SearchRequest): ApiResponse {
@@ -1919,8 +2160,20 @@ export class HarnessMemCore {
     const vector = this.vectorSearch(request, internalLimit);
 
     const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys()]);
-    const observations = this.loadObservations([...candidateIds]);
 
+    // Expand candidates via graph links from top lexical+vector hits
+    const topHitIds = [...candidateIds].slice(0, 10);
+    const linkedScores = this.expandByLinks(topHitIds, candidateIds);
+    for (const [linkedId, score] of linkedScores) {
+      candidateIds.add(linkedId);
+      // Inject link-expanded candidates with a baseline vector score
+      vector.set(linkedId, score);
+    }
+
+    const observations = this.loadObservations([...candidateIds]);
+    const queryTokens = tokenize(request.query);
+
+    const includePrivate = Boolean(request.include_private);
     const ranked: SearchCandidate[] = [];
     for (const id of candidateIds) {
       const observation = observations.get(id);
@@ -1928,17 +2181,30 @@ export class HarnessMemCore {
         continue;
       }
 
+      // Apply privacy filter for link-expanded candidates
+      if (!includePrivate) {
+        const privJson = typeof observation.privacy_tags_json === "string" ? observation.privacy_tags_json : "";
+        if (privJson.includes('"private"') || privJson.includes('"sensitive"')) {
+          continue;
+        }
+      }
+
       const createdAt = typeof observation.created_at === "string" ? observation.created_at : nowIso();
+      const eventType = typeof observation.event_type === "string" ? observation.event_type : "";
       const lexicalScore = lexical.get(id) ?? 0;
       const vectorScore = vector.get(id) ?? 0;
       const recency = this.recencyScore(createdAt);
-      const final = 0.45 * lexicalScore + 0.4 * vectorScore + 0.15 * recency;
+      const tagBoost = this.tagMatchScore(observation.tags_json, queryTokens);
+      const importance = EVENT_TYPE_IMPORTANCE[eventType] ?? 0.5;
+      const final = 0.35 * lexicalScore + 0.30 * vectorScore + 0.10 * recency + 0.15 * tagBoost + 0.10 * importance;
 
       ranked.push({
         id,
         lexical: lexicalScore,
         vector: vectorScore,
         recency,
+        tag_boost: tagBoost,
+        importance,
         final,
       });
     }
@@ -1960,6 +2226,7 @@ export class HarnessMemCore {
         content: typeof observation.content_redacted === "string"
           ? observation.content_redacted.slice(0, 2000)
           : "",
+        observation_type: observation.observation_type || "context",
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
@@ -1967,13 +2234,15 @@ export class HarnessMemCore {
           lexical: Number(entry.lexical.toFixed(6)),
           vector: Number(entry.vector.toFixed(6)),
           recency: Number(entry.recency.toFixed(6)),
+          tag_boost: Number(entry.tag_boost.toFixed(6)),
+          importance: Number(entry.importance.toFixed(6)),
           final: Number(entry.final.toFixed(6)),
         },
       };
     });
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
-      ranking: "hybrid_v1",
+      ranking: "hybrid_v2",
       vector_engine: this.vectorEngine,
       fts_enabled: this.ftsEnabled,
       lexical_candidates: lexical.size,
