@@ -1,3 +1,21 @@
+## [0.1.7] - 2026-02-18
+
+### 🎯 What's Changed for You
+
+`npx` setup now writes stable runtime paths, so OpenCode/Codex wiring does not break when npm cache paths change.
+
+| Before | After |
+|--------|-------|
+| Running `npx ... harness-mem setup` could wire MCP paths under `~/.npm/_npx/...`, which may disappear later. | Setup now syncs runtime assets into `~/.harness-mem/runtime/harness-mem` and wires config to that stable path. |
+
+### Fixed
+
+- Eliminated ephemeral `_npx` path dependency in generated setup wiring for npm/npx installations.
+
+### Internal
+
+- Added stable runtime-root sync in `scripts/harness-mem` for package-executed setup/doctor flows.
+
 ## [0.1.6] - 2026-02-18
 
 ### 🎯 What's Changed for You

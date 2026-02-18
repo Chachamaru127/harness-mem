@@ -74,7 +74,7 @@ npm publish --dry-run
 
 ## Automated GitHub + npm release
 
-When you push a SemVer tag (example: `v0.1.6`), GitHub Actions will:
+When you push a SemVer tag (example: `v0.1.7`), GitHub Actions will:
 
 1. Verify tag commit is included in `origin/main`
 2. Verify `package.json` version matches the tag version

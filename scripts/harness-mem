@@ -24,7 +24,8 @@ while [ -L "$SCRIPT_SOURCE" ]; do
   fi
 done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
-HARNESS_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+SOURCE_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+HARNESS_ROOT="$SOURCE_ROOT"
 
 TARGET_DIR="${HARNESS_MEM_TARGET_DIR:-$PWD}"
 PLATFORM="all"
@@ -461,6 +462,33 @@ require_cmd() {
   if ! command -v "$name" >/dev/null 2>&1; then
     fail "Required command not found: $name"
   fi
+}
+
+should_use_stable_runtime_root() {
+  case "$SOURCE_ROOT" in
+    */.npm/_npx/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+sync_to_stable_runtime_root() {
+  local runtime_root="${STATE_DIR}/runtime/harness-mem"
+
+  mkdir -p "${STATE_DIR}/runtime"
+
+  if check_cmd rsync; then
+    rsync -a --delete --exclude '.git' "${SOURCE_ROOT}/" "${runtime_root}/"
+  else
+    rm -rf "${runtime_root}"
+    mkdir -p "${runtime_root}"
+    cp -R "${SOURCE_ROOT}/." "${runtime_root}/"
+    rm -rf "${runtime_root}/.git"
+  fi
+
+  HARNESS_ROOT="${runtime_root}"
+  log "Using stable runtime root: ${HARNESS_ROOT}"
 }
 
 check_cmd() {
@@ -1511,6 +1539,10 @@ main() {
   fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
+
+  if should_use_stable_runtime_root; then
+    sync_to_stable_runtime_root
+  fi
 
   validate_platform_selection
 
