@@ -49,7 +49,7 @@ If you omit `--platform`, `setup` runs an interactive flow:
 
 | Capability | What it gives you |
 |---|---|
-| `setup` | Automated wiring for Codex, OpenCode, Cursor, and runtime startup |
+| `setup` | Automated wiring for Codex, OpenCode, Cursor, Claude MCP, and runtime startup |
 | `doctor` | Deterministic health and wiring checks with optional repair |
 | `smoke` | End-to-end privacy and retrieval sanity check |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Controlled migration that blocks unsafe cutover |
@@ -61,8 +61,8 @@ If you omit `--platform`, `setup` runs an interactive flow:
 |---|---|---|
 | Codex | Supported | Config wiring, ingestion, doctor checks |
 | OpenCode | Supported | Global wiring + schema-safe config repair |
-| Cursor | Supported | Hook-based ingestion + doctor checks |
-| Claude workflows | Supported | Compatibility checks and migration/cutover path |
+| Cursor | Supported | Global hooks + global MCP wiring + doctor checks |
+| Claude workflows | Supported | Global MCP wiring (`~/.claude.json`) + migration/cutover path |
 | Antigravity | Experimental | Hidden by default, opt-in via environment flags |
 
 ## Common Use Cases

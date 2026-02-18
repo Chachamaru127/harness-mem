@@ -24,7 +24,7 @@ harness-mem setup
 `harness-mem setup` performs:
 
 1. Dependency checks (`bun`, `node`, `curl`, `jq`)
-2. Tool wiring (Codex, OpenCode, Cursor)
+2. Tool wiring (Codex, OpenCode, Cursor, Claude)
 3. Daemon start (`harness-memd`)
 4. Smoke test
 5. Search quality guard
@@ -157,10 +157,13 @@ Options:
 
 - Uses `~/.cursor/hooks.json`
 - Uses `~/.cursor/hooks/memory-cursor-event.sh`
+- Uses `~/.cursor/mcp.json` (`mcpServers.harness`)
 - Ingests events from hook spool path
 
 ### Claude workflows
 
+- Configures `mcpServers.harness` in `~/.claude.json` (global)
+- If `~/.claude/settings.json` already has `mcpServers`, it is updated too
 - Validates compatibility hooks through harness plugin checks
 - Supports import/verify/cutover migration flow
 
