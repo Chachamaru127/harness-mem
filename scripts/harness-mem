@@ -55,14 +55,13 @@ BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
 BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
 END_CODEX_MCP="# <<< harness-mem codex mcp"
-CURSOR_HOOKS_COMMAND_REL="bash ./hooks/memory-cursor-event.sh"
 
 usage() {
   cat <<'EOF'
 Unified Harness Memory helper
 
 Commands:
-  setup      Configure Codex/OpenCode wiring, start daemon, run smoke and quality checks.
+  setup      Configure Codex/OpenCode/Cursor/Claude wiring, start daemon, run smoke and quality checks.
   doctor     Validate wiring and daemon health (optionally repair with --fix).
   smoke      Run isolated daemon smoke test against record/search privacy flow.
   uninstall  Remove memory wiring and optionally purge local memory DB.
@@ -259,9 +258,9 @@ prompt_platform_selection() {
       cat <<'EOF'
 [harness-mem] Select setup targets (multiple allowed)
   1) codex     (global: ~/.codex/config.toml)
-  2) cursor    (global: ~/.cursor/hooks.json)
+  2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
   3) opencode  (global: ~/.config/opencode/opencode.json)
-  4) claude    (plugin hooks check)
+  4) claude    (global: ~/.claude.json mcpServers)
   a) all
 Example: 1,2   (Enter=1,2)
 EOF
@@ -269,9 +268,9 @@ EOF
       cat <<'EOF'
 [harness-mem] setup 対象を選択してください（複数可）
   1) codex     (global: ~/.codex/config.toml)
-  2) cursor    (global: ~/.cursor/hooks.json)
+  2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
   3) opencode  (global: ~/.config/opencode/opencode.json)
-  4) claude    (plugin hooks check)
+  4) claude    (global: ~/.claude.json mcpServers)
   a) all
 入力例: 1,2   (Enter=1,2)
 EOF
@@ -497,7 +496,7 @@ check_cmd() {
 }
 
 get_cursor_hooks_command() {
-  printf '%s' "$CURSOR_HOOKS_COMMAND_REL"
+  printf '%s' "bash ${HOME}/.cursor/hooks/memory-cursor-event.sh"
 }
 
 ensure_dependencies() {
@@ -646,6 +645,86 @@ check_codex_wiring() {
   return "$failed"
 }
 
+get_claude_config_targets() {
+  local primary="${HOME}/.claude.json"
+  local secondary="${HOME}/.claude/settings.json"
+  local emitted=0
+
+  if [ -f "$primary" ]; then
+    printf '%s\n' "$primary"
+    emitted=1
+  fi
+
+  if [ -f "$secondary" ]; then
+    if jq -e 'has("mcpServers")' "$secondary" >/dev/null 2>&1; then
+      printf '%s\n' "$secondary"
+      emitted=1
+    fi
+  fi
+
+  if [ "$emitted" -eq 0 ]; then
+    printf '%s\n' "$primary"
+  fi
+}
+
+upsert_claude_json() {
+  local file="$1"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local tmp
+
+  mkdir -p "$(dirname "$file")"
+
+  if [ ! -f "$file" ]; then
+    cat >"$file" <<'EOF'
+{
+  "mcpServers": {}
+}
+EOF
+    log "Created Claude config: $file"
+  fi
+
+  tmp="$(mktemp)"
+  if jq \
+    --arg mcp_entry "$mcp_entry" \
+    --arg host "$MEM_HOST" \
+    --arg port "$MEM_PORT" \
+    --arg db_path "$DB_PATH" \
+    '
+      .mcpServers = (.mcpServers // {})
+      | .mcpServers.harness = (.mcpServers.harness // {})
+      | .mcpServers.harness.command = "node"
+      | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.enabled = true
+      | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
+          "HARNESS_MEM_HOST": $host,
+          "HARNESS_MEM_PORT": $port,
+          "HARNESS_MEM_DB_PATH": $db_path
+        })
+    ' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Updated Claude MCP wiring: $file"
+    return 0
+  fi
+
+  rm -f "$tmp"
+  warn "Could not parse Claude config JSON: $file"
+  return 1
+}
+
+setup_claude_wiring() {
+  local failed=0
+  local any_target=0
+  while IFS= read -r cfg; do
+    [ -n "$cfg" ] || continue
+    any_target=1
+    upsert_claude_json "$cfg" || failed=1
+  done < <(get_claude_config_targets)
+
+  if [ "$any_target" -eq 0 ] || [ "$failed" -ne 0 ]; then
+    fail "Failed to set up Claude MCP wiring"
+  fi
+}
+
 upsert_cursor_hooks_json() {
   local file="$1"
   local hook_command="$2"
@@ -764,15 +843,63 @@ EOF
 
 setup_cursor_wiring() {
   local hooks_json="${HOME}/.cursor/hooks.json"
+  local mcp_json="${HOME}/.cursor/mcp.json"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   setup_cursor_hook_script
   upsert_cursor_hooks_json "$hooks_json" "$hook_command"
+  upsert_cursor_mcp_json "$mcp_json"
+}
+
+upsert_cursor_mcp_json() {
+  local file="$1"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local tmp
+
+  mkdir -p "$(dirname "$file")"
+
+  if [ ! -f "$file" ]; then
+    cat >"$file" <<'EOF'
+{
+  "mcpServers": {}
+}
+EOF
+    log "Created Cursor MCP config: $file"
+  fi
+
+  tmp="$(mktemp)"
+  if jq \
+    --arg mcp_entry "$mcp_entry" \
+    --arg host "$MEM_HOST" \
+    --arg port "$MEM_PORT" \
+    --arg db_path "$DB_PATH" \
+    '
+      .mcpServers = (.mcpServers // {})
+      | .mcpServers.harness = (.mcpServers.harness // {})
+      | .mcpServers.harness.type = (.mcpServers.harness.type // "stdio")
+      | .mcpServers.harness.command = "node"
+      | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
+          "HARNESS_MEM_HOST": $host,
+          "HARNESS_MEM_PORT": $port,
+          "HARNESS_MEM_DB_PATH": $db_path
+        })
+    ' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Updated Cursor MCP wiring: $file"
+    return 0
+  fi
+
+  rm -f "$tmp"
+  warn "Could not parse Cursor MCP JSON: $file"
+  return 1
 }
 
 check_cursor_wiring() {
   local hooks_json="${HOME}/.cursor/hooks.json"
+  local mcp_json="${HOME}/.cursor/mcp.json"
   local hook_script="${HOME}/.cursor/hooks/memory-cursor-event.sh"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   local failed=0
@@ -798,6 +925,30 @@ check_cursor_wiring() {
       log "Cursor hooks JSON wiring: OK"
     else
       warn "Cursor hooks wiring is incomplete: $hooks_json"
+      failed=1
+    fi
+  fi
+
+  if [ ! -f "$mcp_json" ]; then
+    warn "Cursor MCP config missing: $mcp_json"
+    failed=1
+  else
+    if jq -e --arg mcp_entry "$mcp_entry" '
+      .mcpServers.harness != null
+      and (
+        (
+          (.mcpServers.harness.command // "") == "node"
+          and ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
+        )
+        or (
+          (.mcpServers.harness.command // "") == "npx"
+          and ((.mcpServers.harness.args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
+        )
+      )
+    ' "$mcp_json" >/dev/null 2>&1; then
+      log "Cursor MCP wiring: OK"
+    else
+      warn "Cursor MCP wiring is incomplete: $mcp_json"
       failed=1
     fi
   fi
@@ -838,10 +989,16 @@ print_post_setup_next_steps() {
 
   if is_platform_enabled cursor; then
     local hooks_json="${HOME}/.cursor/hooks.json"
+    local mcp_json="${HOME}/.cursor/mcp.json"
     if [ -f "$hooks_json" ]; then
       log "Cursor wiring file: ${hooks_json}"
     else
       warn "Cursor wiring file is missing: ${hooks_json}"
+    fi
+    if [ -f "$mcp_json" ]; then
+      log "Cursor MCP file: ${mcp_json}"
+    else
+      warn "Cursor MCP file is missing: ${mcp_json}"
     fi
     log "Cursor verification: send one prompt in Cursor, then check feed"
     log "  curl -sS 'http://${MEM_HOST}:${MEM_PORT}/v1/feed?project=$(basename "$TARGET_DIR")&limit=5&include_private=false' | jq '.ok, .meta.count'"
@@ -956,19 +1113,54 @@ check_opencode_wiring() {
 }
 
 check_claude_wiring() {
+  local failed=0
   local hooks="${HARNESS_ROOT}/hooks/hooks.json"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local found_mcp=0
+
   if [ ! -f "$hooks" ]; then
     warn "Claude hooks config missing in harness: $hooks"
-    return 1
-  fi
-
-  if rg -q 'memory-session-start|memory-user-prompt|memory-post-tool-use|memory-stop' "$hooks"; then
+    failed=1
+  elif rg -q 'memory-session-start|memory-user-prompt|memory-post-tool-use|memory-stop' "$hooks"; then
     log "Claude memory hooks in harness plugin: OK"
-    return 0
+  else
+    warn "Claude hooks found but memory handlers are missing in: $hooks"
+    failed=1
   fi
 
-  warn "Claude hooks found but memory handlers are missing in: $hooks"
-  return 1
+  while IFS= read -r cfg; do
+    [ -n "$cfg" ] || continue
+    if [ ! -f "$cfg" ]; then
+      warn "Claude config missing: $cfg"
+      continue
+    fi
+
+    if jq -e --arg mcp_entry "$mcp_entry" '
+      .mcpServers.harness != null
+      and ((.mcpServers.harness.enabled // true) != false)
+      and (
+        (
+          (.mcpServers.harness.command // "") == "node"
+          and ((.mcpServers.harness.args // []) | type == "array")
+          and ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
+        )
+        or (
+          (.mcpServers.harness.command // "") == "npx"
+          and ((.mcpServers.harness.args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
+        )
+      )
+    ' "$cfg" >/dev/null 2>&1; then
+      log "Claude MCP wiring: OK ($cfg)"
+      found_mcp=1
+    fi
+  done < <(get_claude_config_targets)
+
+  if [ "$found_mcp" -eq 0 ]; then
+    warn "Claude MCP wiring is missing or incomplete (expected mcpServers.harness)"
+    failed=1
+  fi
+
+  return "$failed"
 }
 
 start_daemon() {
@@ -1384,6 +1576,7 @@ setup_impl() {
     setup_opencode_wiring
   fi
   if is_platform_enabled claude; then
+    setup_claude_wiring
     check_claude_wiring || true
   fi
   if is_platform_enabled cursor; then
@@ -1454,6 +1647,27 @@ remove_opencode_wiring_json() {
   fi
 }
 
+remove_claude_wiring_json() {
+  local file="$1"
+  local tmp
+  if [ ! -f "$file" ]; then
+    return
+  fi
+  tmp="$(mktemp)"
+  if jq 'if has("mcpServers") then .mcpServers |= del(.harness) else . end' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Removed Claude harness MCP wiring from: $file"
+  else
+    rm -f "$tmp"
+    warn "Could not parse JSON for cleanup: $file"
+  fi
+}
+
+uninstall_claude_wiring() {
+  remove_claude_wiring_json "${HOME}/.claude.json"
+  remove_claude_wiring_json "${HOME}/.claude/settings.json"
+}
+
 uninstall_opencode_wiring() {
   local cfg="${HOME}/.config/opencode/opencode.json"
   local plugin="${HOME}/.config/opencode/plugins/harness-memory/index.ts"
@@ -1465,6 +1679,7 @@ uninstall_opencode_wiring() {
 
 uninstall_cursor_wiring() {
   local hooks_json="${HOME}/.cursor/hooks.json"
+  local mcp_json="${HOME}/.cursor/mcp.json"
   local tmp
   if [ -f "$hooks_json" ]; then
     tmp="$(mktemp)"
@@ -1486,6 +1701,17 @@ uninstall_cursor_wiring() {
 
   rm -f "${HOME}/.cursor/hooks/memory-cursor-event.sh"
   log "Removed Cursor memory hook script"
+
+  if [ -f "$mcp_json" ]; then
+    tmp="$(mktemp)"
+    if jq 'if has("mcpServers") then .mcpServers |= del(.harness) else . end' "$mcp_json" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$mcp_json"
+      log "Removed Cursor harness MCP wiring from: $mcp_json"
+    else
+      rm -f "$tmp"
+      warn "Could not parse Cursor MCP JSON for cleanup: $mcp_json"
+    fi
+  fi
 }
 
 uninstall_antigravity_wiring() {
@@ -1506,6 +1732,9 @@ uninstall_impl() {
   fi
   if is_platform_enabled opencode; then
     uninstall_opencode_wiring
+  fi
+  if is_platform_enabled claude; then
+    uninstall_claude_wiring
   fi
   if is_platform_enabled cursor; then
     uninstall_cursor_wiring

@@ -1,7 +1,15 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.1.8",
+  "version": "0.1.10",
   "description": "Unified memory runtime setup CLI for Claude Code, Codex, OpenCode, and Cursor",
+  "homepage": "https://github.com/Chachamaru127/harness-mem",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chachamaru127/harness-mem.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Chachamaru127/harness-mem/issues"
+  },
   "license": "MIT",
   "type": "commonjs",
   "bin": {
@@ -11,6 +19,7 @@
   },
   "files": [
     "README.md",
+    "CHANGELOG.md",
     "docs/harness-mem-setup.md",
     "scripts/",
     "tests/test-memory-search-quality.sh",

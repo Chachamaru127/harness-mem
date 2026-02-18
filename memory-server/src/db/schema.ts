@@ -52,6 +52,7 @@ export function initSchema(db: Database): void {
       title TEXT,
       content TEXT NOT NULL,
       content_redacted TEXT NOT NULL,
+      observation_type TEXT NOT NULL DEFAULT 'context',
       tags_json TEXT NOT NULL,
       privacy_tags_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
@@ -63,6 +64,9 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_observations_lookup
       ON mem_observations(platform, project, session_id, created_at);
 
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
+      ON mem_observations(project, session_id, created_at, id);
+
     CREATE TABLE IF NOT EXISTS mem_tags (
       observation_id TEXT NOT NULL,
       tag TEXT NOT NULL,
@@ -71,6 +75,26 @@ export function initSchema(db: Database): void {
       PRIMARY KEY(observation_id, tag, tag_type),
       FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS mem_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(name, entity_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS mem_observation_entities (
+      observation_id TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(observation_id, entity_id),
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
+      FOREIGN KEY(entity_id) REFERENCES mem_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_observation_entities_entity
+      ON mem_observation_entities(entity_id);
 
     CREATE TABLE IF NOT EXISTS mem_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -86,6 +110,12 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_links_from_to
       ON mem_links(from_observation_id, to_observation_id);
 
+    CREATE INDEX IF NOT EXISTS idx_mem_links_from_relation
+      ON mem_links(from_observation_id, relation, to_observation_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_links_unique_relation
+      ON mem_links(from_observation_id, to_observation_id, relation);
+
     CREATE TABLE IF NOT EXISTS mem_vectors (
       observation_id TEXT PRIMARY KEY,
       model TEXT NOT NULL,
@@ -95,6 +125,9 @@ export function initSchema(db: Database): void {
       updated_at TEXT NOT NULL,
       FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
     );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
+      ON mem_vectors(model, dimension, observation_id);
 
     CREATE TABLE IF NOT EXISTS mem_retry_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -146,6 +179,48 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_vec_map_observation
       ON mem_vectors_vec_map(observation_id);
+  `);
+}
+
+export function migrateSchema(db: Database): void {
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN observation_type TEXT NOT NULL DEFAULT 'context'`);
+  } catch {
+    // already exists
+  }
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_entities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      entity_type TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      UNIQUE(name, entity_type)
+    );
+
+    CREATE TABLE IF NOT EXISTS mem_observation_entities (
+      observation_id TEXT NOT NULL,
+      entity_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(observation_id, entity_id),
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
+      FOREIGN KEY(entity_id) REFERENCES mem_entities(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_observation_entities_entity
+      ON mem_observation_entities(entity_id);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
+      ON mem_observations(project, session_id, created_at, id);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_links_from_relation
+      ON mem_links(from_observation_id, relation, to_observation_id);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_links_unique_relation
+      ON mem_links(from_observation_id, to_observation_id, relation);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
+      ON mem_vectors(model, dimension, observation_id);
   `);
 }
 

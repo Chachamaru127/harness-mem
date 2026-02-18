@@ -1,146 +1,279 @@
-# Harness Memory Setup Guide
+# Harness-mem Setup Guide
 
-`harness-mem` is the unified setup/operation entrypoint for shared memory across Claude Code, Codex, OpenCode, Cursor, and Antigravity.
+This guide is the detailed reference for setup, diagnostics, migration, and environment tuning.
 
-## Quick Start
+If you only want to get started quickly, use `/README.md` first.
+
+## 1. Installation Paths
+
+### npx (no global install)
 
 ```bash
-# npx (no global install)
 npx -y --package @chachamaru127/harness-mem harness-mem setup
+```
 
-# or global install
+### global install
+
+```bash
 npm install -g @chachamaru127/harness-mem
 harness-mem setup
 ```
 
-## Install After-Flow (Beginner Friendly)
+## 2. Setup Flow
 
-`harness-mem` install alone is not enough.  
-Run setup once to wire global config for Codex/OpenCode/Cursor.
+`harness-mem setup` performs:
 
-1. Run setup once.
+1. Dependency checks (`bun`, `node`, `curl`, `jq`)
+2. Tool wiring (Codex, OpenCode, Cursor, Claude)
+3. Daemon start (`harness-memd`)
+4. Smoke test
+5. Search quality guard
+6. Optional Claude-mem import + optional Claude-mem stop
+
+When `--platform` is omitted, setup is interactive:
+
+1. Language
+2. Target tools (multi-select)
+3. Import from Claude-mem (yes/no)
+4. Stop Claude-mem after verified import (yes/no)
+
+## 3. Command Reference
+
+### `setup`
+
+Configure wiring, start daemon, and run verification checks.
 
 ```bash
-harness-mem setup --platform codex,cursor --skip-start --skip-smoke --skip-quality
+harness-mem setup
+harness-mem setup --platform codex,cursor
+harness-mem setup --platform opencode,cursor --skip-quality
 ```
 
-`--platform` を省略すると、`setup` 実行時に対話形式で以下を順に確認します。
+Options:
 
-1. 言語（日本語/English）
-2. 導入先ツール（複数選択可、Enter 既定: `codex,cursor`）
-3. Claude-mem から既存データをインポートするか（yes/no）
-4. （3で yes の場合）インポート完了後に Claude-mem を停止するか（yes/no）
+- `--platform <all|codex|opencode|claude|cursor|comma-list>`
+- `--skip-start`
+- `--skip-smoke`
+- `--skip-quality`
+- `--project <path>`
+- `--quiet`
 
-2. Validate wiring.
+### `doctor`
+
+Validate wiring and daemon health.
 
 ```bash
+harness-mem doctor
 harness-mem doctor --platform codex,cursor
+harness-mem doctor --fix --platform opencode
+harness-mem doctor --fix --platform claude,cursor
 ```
 
-3. Send one message from Cursor, then verify feed count.
+Options:
+
+- `--fix`
+- `--platform <all|codex|opencode|claude|cursor|comma-list>`
+- `--project <path>`
+- `--quiet`
+
+### `smoke`
+
+Run isolated end-to-end validation for record/search + privacy behavior.
 
 ```bash
-curl -sS 'http://127.0.0.1:37901/api/feed?project='$(basename "$PWD")'&limit=5&include_private=false' | jq '.ok, .meta.count'
+harness-mem smoke
 ```
 
-Antigravity ingest is currently pending by default (hidden). If you temporarily enable it for verification, set envs explicitly:
+### `uninstall`
+
+Remove wiring and optionally purge local DB.
 
 ```bash
-export HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST=true
-export HARNESS_MEM_ANTIGRAVITY_ROOTS=/absolute/path/to/antigravity-workspace
-# then restart daemon and run manual ingest endpoint
-curl -sS -X POST http://127.0.0.1:37888/v1/ingest/antigravity-history | jq '.ok, .items[0]'
+harness-mem uninstall
+harness-mem uninstall --purge-db
 ```
 
-What `setup` does:
+Options:
 
-1. Validates dependencies (`bun`, `node`, `curl`, `jq`)
-2. Wires Codex memory bridge (`~/.codex/config.toml`)
-3. Wires OpenCode memory bridge (`~/.config/opencode/opencode.json`, `~/.config/opencode/plugins/harness-memory/index.ts`)
-4. Wires Cursor memory hooks (`~/.cursor/hooks.json`, `~/.cursor/hooks/memory-cursor-event.sh`)
-5. Validates Claude memory hook availability in harness plugin
-6. Starts `harness-memd`
-7. Runs isolated smoke test
-8. Runs search quality guard test suite
-9. (Optional, interactive) Imports from `~/.claude-mem/claude-mem.db` and optionally stops Claude-mem after verify
+- `--purge-db`
+- `--platform <all|codex|opencode|claude|cursor|comma-list>`
 
-## Commands
+### `import-claude-mem`
 
-### Setup
+Import from existing Claude-mem SQLite.
 
 ```bash
+harness-mem import-claude-mem --source /absolute/path/to/claude-mem.db
+harness-mem import-claude-mem --source /absolute/path/to/claude-mem.db --dry-run
+```
+
+Options:
+
+- `--source <path>`
+- `--import-project <name>`
+- `--dry-run`
+- `--quiet`
+
+### `verify-import`
+
+Verify an import job before cutover.
+
+```bash
+harness-mem verify-import --job <job_id>
+```
+
+Options:
+
+- `--job <job_id>`
+- `--quiet`
+
+### `cutover-claude-mem`
+
+Stop Claude-mem only after verification passed.
+
+```bash
+harness-mem cutover-claude-mem --job <job_id> --stop-now
+```
+
+Options:
+
+- `--job <job_id>`
+- `--stop-now`
+- `--quiet`
+
+## 4. Platform Wiring Details
+
+### Codex
+
+- Verifies memory bridge entries in `~/.codex/config.toml`
+- Checks ingest primary path from sessions rollout logs
+
+### OpenCode
+
+- Uses `~/.config/opencode/opencode.json`
+- Uses `~/.config/opencode/plugins/harness-memory/index.ts`
+- `doctor --fix --platform opencode` normalizes config schema
+
+### Cursor
+
+- Uses `~/.cursor/hooks.json`
+- Uses `~/.cursor/hooks/memory-cursor-event.sh`
+- Uses `~/.cursor/mcp.json` (`mcpServers.harness`)
+- Ingests events from hook spool path
+
+### Claude workflows
+
+- Configures `mcpServers.harness` in `~/.claude.json` (global)
+- If `~/.claude/settings.json` already has `mcpServers`, it is updated too
+- Validates compatibility hooks through harness plugin checks
+- Supports import/verify/cutover migration flow
+
+### Antigravity
+
+- Experimental and hidden by default
+- Requires explicit enable flags
+
+## 5. Environment Variables
+
+### Core runtime
+
+- `HARNESS_MEM_HOST` (default: `127.0.0.1`)
+- `HARNESS_MEM_PORT` (default: `37888`)
+
+### Codex ingest
+
+- `HARNESS_MEM_CODEX_SESSIONS_ROOT` (default: `~/.codex/sessions`)
+- `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_CODEX_BACKFILL_HOURS` (default: `24`)
+
+### OpenCode ingest
+
+- `HARNESS_MEM_ENABLE_OPENCODE_INGEST` (default: `true`)
+- `HARNESS_MEM_OPENCODE_DB_PATH` (default: `~/.local/share/opencode/opencode.db`)
+- `HARNESS_MEM_OPENCODE_STORAGE_ROOT` (default: `~/.local/share/opencode/storage`)
+- `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
+
+### Cursor ingest
+
+- `HARNESS_MEM_ENABLE_CURSOR_INGEST` (default: `true`)
+- `HARNESS_MEM_CURSOR_EVENTS_PATH` (default: `~/.harness-mem/adapters/cursor/events.jsonl`)
+- `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_CURSOR_BACKFILL_HOURS` (default: `24`)
+
+### Antigravity ingest
+
+- `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` (default: `false`)
+- `HARNESS_MEM_ANTIGRAVITY_ROOTS` (default: auto-detect)
+- `HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT` (default: `~/Library/Application Support/Antigravity/logs`)
+- `HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT` (default: `~/Library/Application Support/Antigravity/User/workspaceStorage`)
+- `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` (default: `24`)
+
+## 6. API Endpoints Used by UI / Diagnostics
+
+- `GET /v1/feed`
+- `GET /v1/stream`
+- `GET /v1/projects/stats`
+- `GET /v1/sessions/list`
+- `GET /v1/sessions/thread`
+- `GET /v1/search/facets`
+- `POST /v1/ingest/codex-history`
+- `POST /v1/ingest/codex-sessions`
+- `POST /v1/ingest/opencode-history`
+- `POST /v1/ingest/opencode-sessions`
+- `POST /v1/ingest/cursor-history`
+- `POST /v1/ingest/cursor-events`
+- `POST /v1/ingest/antigravity-history`
+- `POST /v1/ingest/antigravity-files`
+- `POST /v1/events/record`
+
+## 7. Import and Cutover Playbook
+
+1. Import data:
+
+```bash
+harness-mem import-claude-mem --source /absolute/path/to/claude-mem.db
+```
+
+2. Verify quality and privacy checks:
+
+```bash
+harness-mem verify-import --job <job_id>
+```
+
+3. Cut over only after verification passes:
+
+```bash
+harness-mem cutover-claude-mem --job <job_id> --stop-now
+```
+
+## 8. Validation Checklist
+
+Run these after setup:
+
+```bash
+harness-mem doctor
+harness-mem smoke
+./tests/test-memory-search-quality.sh
+```
+
+Expected outcome:
+
+- daemon is healthy
+- wiring is present for selected platforms
+- private/sensitive records stay hidden by default
+- quality guard checks pass
+
+## 9. Local Repository Usage
+
+```bash
+cd /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem
 scripts/harness-mem setup
-scripts/harness-mem setup --platform codex
-scripts/harness-mem setup --platform codex,cursor
-scripts/harness-mem setup --platform opencode,cursor
-scripts/harness-mem setup --skip-quality
-```
-
-### Doctor
-
-```bash
 scripts/harness-mem doctor
-scripts/harness-mem doctor --fix
 ```
 
-Checks:
-
-- daemon readiness (`scripts/harness-memd doctor`)
-- Codex wiring (`notify`, `mcp_servers.harness`)
-- Codex ingest primary path (`~/.codex/sessions/**/rollout-*.jsonl`)
-- OpenCode global wiring (`~/.config/opencode/opencode.json` + `~/.config/opencode/plugins/harness-memory/index.ts`)
-- Cursor hook wiring (`beforeSubmitPrompt/afterMCPExecution/afterShellExecution/afterFileEdit/stop`)
-- Claude memory hook availability
-
-### Smoke
-
-```bash
-scripts/harness-mem smoke
-```
-
-Isolated end-to-end check:
-
-- record public/private events
-- default search hides private
-- `include_private=true` reveals private
-
-### Uninstall
-
-```bash
-scripts/harness-mem uninstall
-scripts/harness-mem uninstall --purge-db
-```
-
-Behavior:
-
-- stops daemon
-- removes marker-managed Codex wiring blocks
-- removes OpenCode global memory wiring
-- optional DB purge (`~/.harness-mem/harness-mem.db`)
-
-### Claude-mem Import (One-shot)
-
-```bash
-# 1) import
-scripts/harness-mem import-claude-mem --source /absolute/path/to/claude-mem.db
-
-# 2) verify
-scripts/harness-mem verify-import --job <job_id>
-
-# 3) cutover (stop Claude-mem immediately after verify pass)
-scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
-```
-
-Behavior:
-
-- imports `observations`, `session_summaries`, `sdk_sessions` via schema introspection
-- preserves privacy tags (`private/sensitive`) with default-hidden behavior
-- blocks cutover unless verify checks pass
-- cutover performs Claude-mem stop + launch-agent disable + known JSON config cleanup
-
-## Mem UI (Separated App)
-
-`harness-mem-ui` is a standalone app and does not depend on `harness-ui`.
+## 10. Mem UI (Standalone)
 
 ```bash
 cd /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/harness-mem-ui
@@ -150,86 +283,21 @@ bun run dev
 
 Default URL: `http://127.0.0.1:37901`
 
-UI feature flag:
-
-- `HARNESS_MEM_UI_PARITY_V1=true` (default): React + TypeScript parity UI
-- `HARNESS_MEM_UI_PARITY_V1=false`: legacy static fallback
-
-Required daemon connection envs:
-
-- `HARNESS_MEM_HOST` (default: `127.0.0.1`)
-- `HARNESS_MEM_PORT` (default: `37888`)
-
-Codex ingest envs:
-
-- `HARNESS_MEM_CODEX_SESSIONS_ROOT` (default: `~/.codex/sessions`)
-- `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` (default: `5000`)
-- `HARNESS_MEM_CODEX_BACKFILL_HOURS` (default: `24`)
-
-OpenCode ingest envs:
-
-- `HARNESS_MEM_ENABLE_OPENCODE_INGEST` (default: `true`)
-- `HARNESS_MEM_OPENCODE_DB_PATH` (default: `~/.local/share/opencode/opencode.db`)
-- `HARNESS_MEM_OPENCODE_STORAGE_ROOT` (default: `~/.local/share/opencode/storage`)
-- `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `5000`)
-- `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
-
-Cursor ingest envs:
-
-- `HARNESS_MEM_ENABLE_CURSOR_INGEST` (default: `true`)
-- `HARNESS_MEM_CURSOR_EVENTS_PATH` (default: `~/.harness-mem/adapters/cursor/events.jsonl`)
-- `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` (default: `5000`)
-- `HARNESS_MEM_CURSOR_BACKFILL_HOURS` (default: `24`)
-
-Antigravity ingest envs:
-
-- `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` (default: `false`)
-- `HARNESS_MEM_ANTIGRAVITY_ROOTS` (default: auto-detect from Antigravity workspaceStorage; comma/newline separated roots for override)
-- `HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT` (default: `~/Library/Application Support/Antigravity/logs`)
-- `HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT` (default: `~/Library/Application Support/Antigravity/User/workspaceStorage`)
-- `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` (default: `5000`)
-- `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` (default: `24`)
-
-Notes:
-
-- Codex record ingest primary path is sessions rollout ingest.
-- `notify` hook is optional low-latency assist path (best effort); ingest does not depend on it.
-- Cursor record ingest primary path is hook spool ingest (`HARNESS_MEM_CURSOR_EVENTS_PATH`).
-- Antigravity support is currently pending and hidden by default until official hooks are available.
-- If you explicitly enable Antigravity ingest, primary path is workspace file ingest (`docs/checkpoints/*.md`, `logs/codex-responses/*.md`).
-- Planner log fallback does not include raw prompt body; it records activity metadata only.
-- Manual ingest endpoints:
-  - `POST /v1/ingest/codex-history` (compat route, hybrid ingest)
-  - `POST /v1/ingest/codex-sessions` (alias)
-  - `POST /v1/ingest/opencode-history` / `POST /v1/ingest/opencode-sessions`
-  - `POST /v1/ingest/cursor-history` / `POST /v1/ingest/cursor-events`
-  - `POST /v1/ingest/antigravity-history` / `POST /v1/ingest/antigravity-files`
-- `POST /v1/events/record` supports `platform=cursor|antigravity` as compatible supplemental path.
-
-Parity UI uses:
-
-- `GET /v1/feed`
-- `GET /v1/stream`
-- `GET /v1/projects/stats`
-- `GET /v1/sessions/list`
-- `GET /v1/sessions/thread`
-- `GET /v1/search/facets`
-- existing `search/timeline/get_observations/resume-pack/metrics`
-
-## Search Quality Guard
-
-Run directly:
+## 11. Uninstall and Cleanup
 
 ```bash
-./tests/test-memory-search-quality.sh
+harness-mem uninstall
+harness-mem uninstall --purge-db
 ```
 
-This runs:
+This will:
 
-1. `memory-server` unit/integration tests for hybrid ranking and privacy filtering
-2. isolated daemon/client HTTP-path quality checks
+- stop daemon
+- remove managed wiring blocks
+- remove OpenCode plugin wiring
+- optionally remove `~/.harness-mem/harness-mem.db`
 
-## Related Files
+## 12. Related Files
 
 - `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/scripts/harness-mem`
 - `/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/scripts/harness-memd`
