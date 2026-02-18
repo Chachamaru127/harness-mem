@@ -520,7 +520,7 @@ interface ExtractedEntity {
 }
 
 const FILE_EXT_RE = /(?:^|\s|["'`(])([\w.\/\\-]+\.(?:ts|js|py|rs|go|tsx|jsx|vue|sql|css|scss|html|json|yaml|yml|toml|md|sh))\b/g;
-const PACKAGE_RE = /(?:npm|yarn|pnpm|pip|cargo|bun)\s+(?:install|add|i|remove)\s+([\w@\/.+-]+)/g;
+const PACKAGE_RE = /(?:npm|yarn|pnpm|pip|cargo|bun)\s+(?:install|add|i|remove)\s+([\w@\/.+\-]+)/g;
 const FUNC_RE = /(?:function|def|fn|func|const|let|var)\s+([A-Za-z_]\w{2,})/g;
 const URL_RE = /https?:\/\/[^\s"'`<>)\]]+/g;
 
@@ -543,10 +543,10 @@ function extractEntities(content: string): ExtractedEntity[] {
     add(m[1], "package");
   }
   for (const m of content.matchAll(FUNC_RE)) {
-    if (m[1].length > 2) add(m[1], "symbol");
+    add(m[1], "symbol");
   }
   for (const m of content.matchAll(URL_RE)) {
-    add(m[0].slice(0, 255), "url");
+    add(m[0].replace(/[.,;:!?]+$/, "").slice(0, 255), "url");
   }
 
   return entities;
@@ -1870,9 +1870,9 @@ export class HarnessMemCore {
       }
     }
 
-    // Add bigrams for phrase-aware matching
+    // Add bigrams for phrase-aware matching (FTS5 phrase syntax requires space)
     for (let i = 0; i < escaped.length - 1; i += 1) {
-      expanded.add(escaped[i] + escaped[i + 1]);
+      expanded.add(escaped[i] + " " + escaped[i + 1]);
     }
 
     return [...expanded].map((token) => `"${token}"`).join(" OR ");
@@ -2272,6 +2272,7 @@ export class HarnessMemCore {
         o.session_id,
         o.title,
         o.content_redacted,
+        o.observation_type,
         o.tags_json,
         o.privacy_tags_json,
         o.created_at,
@@ -2321,6 +2322,7 @@ export class HarnessMemCore {
         session_id: row.session_id,
         event_type: eventType,
         card_type: cardType,
+        observation_type: row.observation_type || "context",
         title: row.title || eventType,
         content: content.slice(0, 1200),
         created_at: row.created_at,
@@ -2606,7 +2608,7 @@ export class HarnessMemCore {
     const center = this.db
       .query(
         `
-          SELECT id, project, session_id, created_at, title, content_redacted, tags_json, privacy_tags_json
+          SELECT id, project, session_id, created_at, title, content_redacted, observation_type, tags_json, privacy_tags_json
           FROM mem_observations
           WHERE id = ?
         `
@@ -2629,7 +2631,7 @@ export class HarnessMemCore {
     const beforeRows = this.db
       .query(
         `
-          SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
+          SELECT o.id, o.created_at, o.title, o.content_redacted, o.observation_type, o.tags_json, o.privacy_tags_json
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at < ?
           ${visibility}
@@ -2642,7 +2644,7 @@ export class HarnessMemCore {
     const afterRows = this.db
       .query(
         `
-          SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
+          SELECT o.id, o.created_at, o.title, o.content_redacted, o.observation_type, o.tags_json, o.privacy_tags_json
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at > ?
           ${visibility}
@@ -2657,6 +2659,7 @@ export class HarnessMemCore {
       position,
       created_at: row.created_at,
       title: row.title,
+      observation_type: row.observation_type || "context",
       content: typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 1200) : "",
       tags: parseArrayJson(row.tags_json),
       privacy_tags: parseArrayJson(row.privacy_tags_json),
@@ -2852,6 +2855,7 @@ export class HarnessMemCore {
             o.session_id,
             o.title,
             o.content_redacted,
+            o.observation_type,
             o.tags_json,
             o.privacy_tags_json,
             o.created_at
@@ -2886,6 +2890,7 @@ export class HarnessMemCore {
         project: row.project,
         session_id: row.session_id,
         title: row.title,
+        observation_type: row.observation_type || "context",
         content: typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 800) : "",
         created_at: row.created_at,
         tags: parseArrayJson(row.tags_json),
