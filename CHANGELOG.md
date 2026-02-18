@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### What changed for users
+
+- None.
+
 ### Added
 
 - None.
@@ -35,9 +39,47 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.10] - 2026-02-18
+
+### What changed for users
+
+Fresh installs now wire Claude and Cursor MCP entries automatically, reducing post-setup missing-server cases.
+
+### Added
+
+- Cursor setup now writes `~/.cursor/mcp.json` with `mcpServers.harness`.
+- Cursor doctor now validates MCP wiring, not only hook wiring.
+
+### Changed
+
+- Setup prompts now describe Cursor as global hooks plus global MCP wiring.
+- Cursor hook command is now written as an absolute path for stable execution.
+
+### Fixed
+
+- Claude setup now writes `mcpServers.harness` to `~/.claude.json` automatically.
+- `doctor --fix --platform claude` now repairs missing Claude MCP wiring.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- Run `harness-mem doctor --fix --platform claude,cursor` after upgrading to normalize existing global config files.
+
+### Verification
+
+- `./scripts/harness-mem doctor --platform claude --skip-smoke --skip-quality`
+- `./scripts/harness-mem doctor --platform cursor --skip-smoke --skip-quality`
+
 ## [0.1.9] - 2026-02-18
 
-### 🎯 What's Changed for You
+### What changed for users
 
 Search now returns more relevant results while preventing cross-project leakage.
 

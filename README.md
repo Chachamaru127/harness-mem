@@ -126,6 +126,14 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 harness-mem uninstall --purge-db
 ```
 
+### 6) Claude or Cursor does not show Harness MCP after setup
+
+Repair global wiring and restart the client:
+
+```bash
+harness-mem doctor --fix --platform claude,cursor
+```
+
 ## FAQ
 
 ### Is this a hosted service?

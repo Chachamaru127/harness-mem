@@ -66,6 +66,7 @@ Validate wiring and daemon health.
 harness-mem doctor
 harness-mem doctor --platform codex,cursor
 harness-mem doctor --fix --platform opencode
+harness-mem doctor --fix --platform claude,cursor
 ```
 
 Options:
