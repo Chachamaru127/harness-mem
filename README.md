@@ -274,7 +274,7 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 
 ### 2) `doctor` reports missing dependencies
 
-Install required tools (`bun`, `node`, `curl`, `jq`) and run:
+Install required tools (`bun`, `node`, `curl`, `jq`, `ripgrep`) and run:
 
 ```bash
 harness-mem doctor

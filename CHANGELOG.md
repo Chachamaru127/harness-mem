@@ -39,6 +39,43 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.16] - 2026-02-22
+
+### What changed for users
+
+`harness-mem doctor --fix` now recovers environments missing ripgrep (`rg`) by automatically installing it via Homebrew during setup repair.
+
+### Added
+
+- Automatic `ripgrep` install path in dependency bootstrap (`brew install ripgrep`) when `rg` is missing.
+
+### Changed
+
+- Setup dependency failure hint now includes `ripgrep`.
+- Troubleshooting docs now include `ripgrep` in required dependency list.
+
+### Fixed
+
+- Prevented `doctor_post_check` false-failures caused by `rg: command not found` in hook/wiring checks.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- `bash -n scripts/harness-mem`
+- `bun test tests/doctor-json-contract.test.ts tests/readme-plans-rules.test.ts`
+- `npm pack --dry-run`
+
 ## [0.1.15] - 2026-02-22
 
 ### What changed for users

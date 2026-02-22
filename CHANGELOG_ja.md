@@ -5,6 +5,18 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.16] - 2026-02-22
+
+### ユーザー向け要約
+
+- `harness-mem doctor --fix` 実行時に `rg`（ripgrep）が未導入でも、Homebrew で自動導入して復旧を継続できるように改善。
+- これにより `rg: command not found` 起因の `doctor_post_check` 失敗を回避。
+
+### 補足
+
+- 依存関係の案内文にも `ripgrep` を追加。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.15] - 2026-02-22
 
 ### ユーザー向け要約

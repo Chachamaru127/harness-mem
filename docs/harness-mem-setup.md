@@ -461,6 +461,7 @@ This will:
 | `bun is missing` | bun 未インストール | `brew install bun` または https://bun.sh |
 | `jq is missing` | jq 未インストール | `brew install jq` |
 | `node is missing` | Node.js 未インストール | `brew install node` |
+| `rg (ripgrep) is missing` | ripgrep 未インストール | `brew install ripgrep`（setup時は自動導入を試行） |
 | `Codex notify wiring is missing` | Codex 配線なし | `harness-mem setup --platform codex` |
 | `Cursor hooks wiring is incomplete` | Cursor 配線なし | `harness-mem setup --platform cursor` |
 | `Claude MCP wiring is missing` | Claude 配線なし | `harness-mem setup --platform claude` |
@@ -507,7 +508,7 @@ harness-mem doctor --json
 依存コマンドのインストール:
 
 ```bash
-brew install bun curl jq node
+brew install bun curl jq node ripgrep
 ```
 
 Codex 配線の手動確認:
