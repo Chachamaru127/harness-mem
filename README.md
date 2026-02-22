@@ -85,6 +85,26 @@ If you omit `--platform`, `setup` runs an interactive flow:
 - Japanese changelog summary: `CHANGELOG_ja.md`
 - Benchmark runbooks: `docs/benchmarks/`
 
+## Planned Next (EN / JA)
+
+### EN
+
+Next release track includes a dedicated **System Inventory** screen in Mem UI:
+
+- Local server list with `port`, `protocol`, `pid`, and bind address.
+- Installed language/runtime list (for example Python / Node / Go / Rust).
+- Installed CLI tool list with short descriptions.
+- Read-only endpoint for LLM queries: `GET /v1/admin/system/llm-context`.
+
+### 日本語
+
+次のリリーストラックでは、Mem UI に **System Inventory** 画面を追加予定です。
+
+- ローカルサーバー一覧（`port` / `protocol` / `pid` / bind address を表示）。
+- インストール済み言語ランタイム一覧（Python / Node / Go / Rust など）。
+- インストール済みCLIツール一覧（短い説明付き）。
+- LLMからの問い合わせ用 read-only エンドポイント: `GET /v1/admin/system/llm-context`。
+
 ## Plans Workflow Rules
 
 `Plans.md` is the implementation SSOT (single source of truth) for this repository.

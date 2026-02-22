@@ -39,7 +39,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
-## [0.1.18] - 2026-02-22
+## [0.1.19] - 2026-02-22
 
 ### What changed for users
 
@@ -82,6 +82,42 @@ Project names in memory are now normalized to a single canonical value, so the s
 - `bun run --cwd harness-mem-ui test:ui`
 - `npm pack --dry-run`
 
+## [0.1.18] - 2026-02-22
+
+### What changed for users
+
+Release documentation now clearly defines the upcoming System Inventory experience and the LLM query endpoint contract.
+
+### Added
+
+- README roadmap section for the planned System Inventory screen.
+- Planned server inventory detail requirements: `port`, `protocol`, `pid`, and bind address.
+- Planned LLM read-only endpoint contract: `GET /v1/admin/system/llm-context`.
+
+### Changed
+
+- Clarified EN/JA documentation coverage for release notes and planning visibility.
+
+### Fixed
+
+- Reduced ambiguity about whether System Inventory requirements are implemented vs planned.
+
+### Removed
+
+- None.
+
+### Security
+
+- Documented that LLM-facing system context is designed as read-only under `v1/admin/*` scope.
+
+### Migration Notes
+
+- No runtime migration is required.
+
+### Verification
+
+- Confirm README includes `Planned Next (EN / JA)` section.
+- Confirm release notes include server-port visibility and `system/llm-context` endpoint contract.
 ## [0.1.17] - 2026-02-22
 
 ### What changed for users
