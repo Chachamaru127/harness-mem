@@ -12,11 +12,8 @@
 import { describe, expect, test, afterEach } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
-
-const MEMORY_SERVER_ROOT = resolve(import.meta.dir, "../..");
-const REPO_ROOT = resolve(MEMORY_SERVER_ROOT, "..");
 
 function createConfig(overrides: Partial<Config> = {}): Config {
   const tempDir = mkdtempSync(join(tmpdir(), "managed-wiring-"));
@@ -455,7 +452,7 @@ describe("daemon config script", () => {
   test("harness-memd script reads managed endpoint from config", () => {
     const fs = require("node:fs");
     const script = fs.readFileSync(
-      join(REPO_ROOT, "scripts/harness-memd"),
+      join(process.cwd(), "scripts/harness-memd"),
       "utf8"
     );
     expect(script).toContain("HARNESS_MEM_MANAGED_ENDPOINT");
@@ -467,7 +464,7 @@ describe("daemon config script", () => {
   test("promote script has shadow metrics gate", () => {
     const fs = require("node:fs");
     const script = fs.readFileSync(
-      join(REPO_ROOT, "scripts/harness-mem"),
+      join(process.cwd(), "scripts/harness-mem"),
       "utf8"
     );
     expect(script).toContain("_check_shadow_metrics_gate");
@@ -480,7 +477,7 @@ describe("daemon config script", () => {
   test("promote gate script sends admin token header when set", () => {
     const fs = require("node:fs");
     const script = fs.readFileSync(
-      join(REPO_ROOT, "scripts/harness-mem"),
+      join(process.cwd(), "scripts/harness-mem"),
       "utf8"
     );
     expect(script).toContain("HARNESS_MEM_ADMIN_TOKEN");
@@ -572,7 +569,7 @@ describe("Fix 2: event-store session FK upsert", () => {
   test("PostgresEventStore.append includes session upsert SQL", () => {
     const fs = require("node:fs");
     const source = fs.readFileSync(
-      join(MEMORY_SERVER_ROOT, "src/projector/event-store.ts"),
+      join(process.cwd(), "memory-server/src/projector/event-store.ts"),
       "utf8"
     );
     // Must upsert mem_sessions before inserting mem_events

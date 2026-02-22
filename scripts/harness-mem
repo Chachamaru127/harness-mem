@@ -52,7 +52,6 @@ VERSION_CHECK_IN_SETUP=1
 
 MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
-MEM_UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
 VERSIONS_DIR="${STATE_DIR}/versions"
@@ -991,19 +990,8 @@ ensure_mcp_runtime() {
   local mcp_dist="${mcp_dir}/dist/index.js"
   local mcp_sdk_local="${mcp_dir}/node_modules/@modelcontextprotocol/sdk/package.json"
   local mcp_sdk_root="${HARNESS_ROOT}/node_modules/@modelcontextprotocol/sdk/package.json"
-  local mcp_src_entry="${mcp_dir}/src/index.ts"
 
-  if [ ! -f "$mcp_dist" ]; then
-    [ -f "$mcp_src_entry" ] || fail "MCP dist entry missing and source unavailable: $mcp_dist"
-    log "MCP dist entry missing. Bootstrapping local MCP build."
-    (
-      cd "$mcp_dir"
-      npm install --silent
-      npm run build --silent
-    )
-  fi
-
-  [ -f "$mcp_dist" ] || fail "MCP dist build failed: $mcp_dist"
+  [ -f "$mcp_dist" ] || fail "MCP dist entry missing: $mcp_dist"
 
   if [ -f "$mcp_sdk_local" ] || [ -f "$mcp_sdk_root" ]; then
     return
@@ -2445,7 +2433,6 @@ setup_impl() {
     if start_daemon 2>/dev/null; then
       _setup_record "daemon_start" "ok" ""
       log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
-      log "Mem UI started: http://${MEM_HOST}:${MEM_UI_PORT}"
     else
       start_daemon || true
       _setup_record "daemon_start" "failed" "harness-memd start"

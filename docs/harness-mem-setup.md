@@ -84,14 +84,13 @@ harness-mem setup
 
 `harness-mem setup` performs:
 
-1. Dependency checks (`bun`, `node`, `curl`, `jq`, `ripgrep`)
+1. Dependency checks (`bun`, `node`, `curl`, `jq`)
 2. Tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
-3. Daemon start (`harness-memd`, API: `127.0.0.1:37888`)
-4. Mem UI start (`127.0.0.1:37901`)
-5. Smoke test
-6. Search quality guard
-7. Optional Claude-mem import + optional Claude-mem stop
-8. Version snapshot (local vs upstream)
+3. Daemon start (`harness-memd`)
+4. Smoke test
+5. Search quality guard
+6. Optional Claude-mem import + optional Claude-mem stop
+7. Version snapshot (local vs upstream)
 
 When `--platform` is omitted, setup is interactive:
 
@@ -259,7 +258,6 @@ Options:
 - `HARNESS_MEM_HOST` (default: `127.0.0.1`)
 - `HARNESS_MEM_PORT` (default: `37888`)
 - `HARNESS_MEM_UI_PORT` (default: `37901`)
-- `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)
 - `HARNESS_MEM_LOG_ROTATE_KEEP` (default: `5`)
 
@@ -417,22 +415,15 @@ scripts/harness-mem setup
 scripts/harness-mem doctor
 ```
 
-## 10. Mem UI
-
-`harness-mem setup` / `harness-memd start` で UI は自動起動します。
-
-```bash
-# default
-open http://127.0.0.1:37901
-```
-
-手動で standalone 起動したい場合:
+## 10. Mem UI (Standalone)
 
 ```bash
 cd /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/harness-mem-ui
 bun install
 bun run dev
 ```
+
+Default URL: `http://127.0.0.1:37901`
 
 ## 11. Uninstall and Cleanup
 
@@ -477,7 +468,6 @@ This will:
 | `Daemon doctor reported warnings` | daemon 停止中 | `harness-memd start` |
 | `Port <port> is already in use by another process` | 既存プロセスがポート占有 | 競合プロセス停止または `HARNESS_MEM_PORT` / `HARNESS_MEM_UI_PORT` を変更 |
 | `doctor_post_check` failed | セットアップ後の診断で不整合 | `harness-mem doctor --fix` |
-| 同じプロジェクトが `harness-mem` と `/.../harness-mem` に分かれる | 旧データが basename / 絶対パスで混在 | `harness-memd restart`（v0.1.18+ で起動時に自動統一） |
 
 ### doctor --fix を使った自動修復
 
