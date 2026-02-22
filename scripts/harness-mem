@@ -579,6 +579,34 @@ check_cmd() {
   command -v "$name" >/dev/null 2>&1
 }
 
+ensure_ripgrep() {
+  if check_cmd rg; then
+    return 0
+  fi
+
+  warn "ripgrep (rg) is missing"
+  if check_cmd brew; then
+    log "Installing ripgrep via Homebrew..."
+    if brew install ripgrep; then
+      hash -r
+      if check_cmd rg; then
+        log "ripgrep installed: $(command -v rg)"
+        return 0
+      fi
+
+      local rg_prefix
+      rg_prefix="$(brew --prefix ripgrep 2>/dev/null || true)"
+      if [ -n "$rg_prefix" ] && [ -d "$rg_prefix/bin" ]; then
+        fail "ripgrep installed but rg is not on PATH. Add ${rg_prefix}/bin to PATH and retry."
+      fi
+      fail "ripgrep installation finished but rg command is still unavailable."
+    fi
+    fail "Failed to install ripgrep automatically. Install it manually: brew install ripgrep"
+  fi
+
+  fail "Required command not found: rg (ripgrep). Install it first (macOS: brew install ripgrep)."
+}
+
 get_cursor_hooks_command() {
   printf '%s' "bash ${HOME}/.cursor/hooks/memory-cursor-event.sh"
 }
@@ -589,6 +617,7 @@ ensure_dependencies() {
   require_cmd jq
   require_cmd node
   require_cmd npm
+  ensure_ripgrep
 }
 
 ensure_version_dependencies() {
@@ -2039,6 +2068,10 @@ doctor_impl() {
   fi
 
   # 依存コマンドチェック
+  if [ "$FIX_MODE" -eq 1 ]; then
+    ensure_ripgrep
+  fi
+
   if check_cmd bun; then
     _doctor_record "bun" "ok" ""
   else
@@ -2072,6 +2105,13 @@ doctor_impl() {
   else
     warn "npm is missing"
     _doctor_record "npm" "missing" "brew install node"
+    failed=1
+  fi
+  if check_cmd rg; then
+    _doctor_record "rg" "ok" ""
+  else
+    warn "rg (ripgrep) is missing"
+    _doctor_record "rg" "missing" "brew install ripgrep"
     failed=1
   fi
 
@@ -2344,7 +2384,7 @@ setup_impl() {
     _setup_record "dependencies" "ok" ""
   else
     ensure_dependencies  # エラーメッセージを出す
-    _setup_record "dependencies" "failed" "brew install bun curl jq node"
+    _setup_record "dependencies" "failed" "brew install bun curl jq node ripgrep"
     _setup_print_repair_suggestions "${SETUP_RESULTS[@]}"
     return 1
   fi
