@@ -5,6 +5,19 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.18] - 2026-02-22
+
+### ユーザー向け要約
+
+- 同じワークスペースが `harness-mem` と `/.../harness-mem` に分裂して表示される問題を修正。
+- `project` 名の正規化を統一し、同一プロジェクトのフィード/検索が1つの名前空間にまとまるよう改善。
+
+### 補足
+
+- 起動時に legacy データ（basename 側）を canonical path 側へ自動統一するマイグレーションを追加。
+- `search` / `feed` / `sessions` / `resume-pack` / `session chain` で同一の project 正規化を適用。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.17] - 2026-02-22
 
 ### ユーザー向け要約

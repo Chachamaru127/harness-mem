@@ -931,3 +931,18 @@ Optional:
 1. 4提出物JSON + 人間評価サマリが揃う
 2. 必須項目を満たす run が 3回連続で再現
 3. 失敗時に `原因/影響/次コマンド` を1画面で確認できる
+
+---
+
+## 17. project名分断修正 + 配信（2026-02-22）
+
+- [x] `cc:完了 [feature:tdd]` REL-001 `project` 正規化統一（`harness-mem` と絶対パスの分断解消）
+  - 依頼内容: `session_id`（UUID）と `project` の混同を防ぎ、`project` が basename/絶対パスで分断されないよう修正して配信まで完了する。
+  - 受入条件:
+    1. `project='harness-mem'` と `project='/.../harness-mem'` が自動統一される（少なくとも codexProjectRoot 対象）
+    2. 既存DBでも統一マイグレーションが動作する
+    3. 回帰テストが追加され、CI相当テストが通る
+    4. release tag 作成後、GitHub Release workflow が成功する
+  - 変更: `memory-server/src/core/harness-mem-core.ts`, `memory-server/tests/unit/workspace-boundary.test.ts`, `README.md`, `docs/harness-mem-setup.md`, `CHANGELOG.md`, `CHANGELOG_ja.md`, `package.json`
+  - 変更理由: basename と絶対パスの project 混在を canonical path に統一し、起動時に legacy alias を自動移行することでフィード/検索の分断を解消した。
+  - 検証: `bun test memory-server/tests/unit/workspace-boundary.test.ts`, `bun test memory-server/tests/unit/core.test.ts`, `bun test`(memory-server), `bun run --cwd memory-server typecheck`, `bun run --cwd harness-mem-ui typecheck`, `bun run --cwd harness-mem-ui test:ui`, `npm pack --dry-run`

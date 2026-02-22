@@ -39,6 +39,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.18] - 2026-02-22
+
+### What changed for users
+
+Project names in memory are now normalized to a single canonical value, so the same workspace no longer splits into separate entries like `harness-mem` and `/.../harness-mem`.
+
+### Added
+
+- Startup migration that rewrites legacy basename project rows to the canonical `codexProjectRoot` path for `mem_sessions`, `mem_events`, `mem_observations`, `mem_facts`, and `mem_consolidation_queue`.
+- Regression tests for basename-to-path canonicalization and legacy project alias migration.
+
+### Changed
+
+- Project normalization now resolves basename-style project values to the configured workspace root when names match.
+- API-side project filters (`search`, `feed`, `sessions`, `resume-pack`, and chain resolution) now use the same canonical project normalization path.
+
+### Fixed
+
+- Prevented feed/project sidebar fragmentation caused by mixed project identifiers (`basename` vs absolute path).
+- Prevented confusion between `session_id` UUID values and project buckets by keeping project namespaces consistent.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration command is required. Existing legacy project aliases are normalized automatically on daemon startup.
+
+### Verification
+
+- `bun test memory-server/tests/unit/workspace-boundary.test.ts`
+- `bun test memory-server/tests/unit/core.test.ts`
+- `bun test` (cwd: `memory-server`)
+- `bun run --cwd memory-server typecheck`
+- `bun run --cwd harness-mem-ui typecheck`
+- `bun run --cwd harness-mem-ui test:ui`
+- `npm pack --dry-run`
+
 ## [0.1.17] - 2026-02-22
 
 ### What changed for users

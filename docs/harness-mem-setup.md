@@ -477,6 +477,7 @@ This will:
 | `Daemon doctor reported warnings` | daemon 停止中 | `harness-memd start` |
 | `Port <port> is already in use by another process` | 既存プロセスがポート占有 | 競合プロセス停止または `HARNESS_MEM_PORT` / `HARNESS_MEM_UI_PORT` を変更 |
 | `doctor_post_check` failed | セットアップ後の診断で不整合 | `harness-mem doctor --fix` |
+| 同じプロジェクトが `harness-mem` と `/.../harness-mem` に分かれる | 旧データが basename / 絶対パスで混在 | `harness-memd restart`（v0.1.18+ で起動時に自動統一） |
 
 ### doctor --fix を使った自動修復
 
