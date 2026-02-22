@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.18] - 2026-02-22
+
+### ユーザー向け要約
+
+- READMEに英日併記で「Planned Next」を追加し、System Inventoryの計画要件を明確化。
+- ローカルサーバー表示要件として `port` / `protocol` / `pid` / bind address を明記。
+- LLM問い合わせ向け read-only エンドポイント `GET /v1/admin/system/llm-context` の契約を追記。
+
+### 補足
+
+- 本リリースでの変更はドキュメント更新が中心です。
+- 実装状況と計画の境界が分かるように記述を整理しました。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.17] - 2026-02-22
 
 ### ユーザー向け要約
