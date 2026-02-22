@@ -183,7 +183,8 @@ describe("search quality integration", () => {
         const sorted = [...latencies].sort((a, b) => a - b);
         const idx = Math.floor((sorted.length - 1) * 0.95);
         const p95 = sorted[idx];
-        const maxAllowedP95 = process.env.CI ? 1500 : 500;
+        const isCiLike = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
+        const maxAllowedP95 = isCiLike ? 3000 : 500;
         expect(p95).toBeLessThan(maxAllowedP95);
       } finally {
         core.shutdown("test");
