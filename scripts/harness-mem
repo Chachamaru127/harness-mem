@@ -52,6 +52,7 @@ VERSION_CHECK_IN_SETUP=1
 
 MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
+MEM_UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
 VERSIONS_DIR="${STATE_DIR}/versions"
@@ -2444,6 +2445,7 @@ setup_impl() {
     if start_daemon 2>/dev/null; then
       _setup_record "daemon_start" "ok" ""
       log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
+      log "Mem UI started: http://${MEM_HOST}:${MEM_UI_PORT}"
     else
       start_daemon || true
       _setup_record "daemon_start" "failed" "harness-memd start"

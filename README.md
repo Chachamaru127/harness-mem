@@ -43,6 +43,11 @@ harness-mem doctor --platform codex,cursor,claude
 harness-mem doctor --fix --platform codex,cursor,claude
 ```
 
+```bash
+# メモリUI（setupで自動起動）
+open http://127.0.0.1:37901
+```
+
 ### setup 失敗時の復旧
 
 `setup` が失敗した場合、失敗ステップと修復コマンドが自動表示されます:
@@ -102,7 +107,7 @@ Execution order:
 
 | Capability | What it gives you |
 |---|---|
-| `setup` | Automated wiring for Codex, OpenCode, Cursor, Claude MCP, and runtime startup |
+| `setup` | Automated wiring for Codex, OpenCode, Cursor, Claude MCP, plus daemon + Mem UI startup |
 | `doctor` | Deterministic health and wiring checks with optional repair (`--fix`), structured JSON output (`--json`) |
 | `versions` | Local/Upstream version snapshot + status tracking for all supported tools |
 | `smoke` | End-to-end privacy and retrieval sanity check |
