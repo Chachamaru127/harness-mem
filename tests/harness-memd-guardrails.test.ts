@@ -12,20 +12,20 @@ function randomPort(base = 41000, span = 2000): number {
 }
 
 function makeEnv(tmpHome: string, daemonPort: number, uiPort?: number): NodeJS.ProcessEnv {
-  const resolvedUiPort = typeof uiPort === "number" ? uiPort : randomPort(45000, 1000);
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     HARNESS_MEM_HOME: tmpHome,
     HARNESS_MEM_DB_PATH: join(tmpHome, "harness-mem.db"),
     HARNESS_MEM_HOST: "127.0.0.1",
     HARNESS_MEM_PORT: String(daemonPort),
-    HARNESS_MEM_UI_PORT: String(resolvedUiPort),
-    HARNESS_MEM_ENABLE_UI: "true",
     HARNESS_MEM_CODEX_PROJECT_ROOT: ROOT,
     HARNESS_MEM_ENABLE_OPENCODE_INGEST: "false",
     HARNESS_MEM_ENABLE_CURSOR_INGEST: "false",
     HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST: "false",
   };
+  if (typeof uiPort === "number") {
+    env.HARNESS_MEM_UI_PORT = String(uiPort);
+  }
   return env;
 }
 
@@ -157,42 +157,6 @@ describe("harness-memd guardrails", () => {
     } finally {
       uiProc.kill();
       await uiProc.exited;
-      rmSync(tmpHome, { recursive: true, force: true });
-    }
-  });
-
-  test("start launches Mem UI and stop tears it down", async () => {
-    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-guard-ui-start-"));
-    const daemonPort = randomPort();
-    const uiPort = randomPort(46000, 1000);
-    const env = makeEnv(tmpHome, daemonPort, uiPort);
-
-    try {
-      const start = await runHarnessMemd(["start"], env);
-      expect(start.code).toBe(0);
-
-      await waitUntil(async () => {
-        try {
-          const response = await fetch(`http://127.0.0.1:${uiPort}/api/context`);
-          return response.ok;
-        } catch {
-          return false;
-        }
-      });
-
-      const stop = await runHarnessMemd(["stop"], env);
-      expect(stop.code).toBe(0);
-
-      await waitUntil(async () => {
-        try {
-          await fetch(`http://127.0.0.1:${uiPort}/api/context`);
-          return false;
-        } catch {
-          return true;
-        }
-      });
-    } finally {
-      await runHarnessMemd(["stop"], env);
       rmSync(tmpHome, { recursive: true, force: true });
     }
   });

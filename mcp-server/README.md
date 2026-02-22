@@ -14,7 +14,7 @@ Enables cross-client session communication between Claude Code, Codex, Cursor, a
 
 ```bash
 # From npm (when published)
-npm install -g @claude-code-harness/mcp-server
+npm install -g @anthropic-ai/harness-mcp-server
 
 # From source
 cd mcp-server
@@ -32,7 +32,7 @@ npm run build
   "mcpServers": {
     "harness": {
       "command": "npx",
-      "args": ["@claude-code-harness/mcp-server"]
+      "args": ["@anthropic-ai/harness-mcp-server"]
     }
   }
 }
@@ -46,7 +46,7 @@ npm run build
   "servers": {
     "harness": {
       "command": "npx",
-      "args": ["@claude-code-harness/mcp-server"]
+      "args": ["@anthropic-ai/harness-mcp-server"]
     }
   }
 }
@@ -59,7 +59,7 @@ npm run build
 {
   "harness": {
     "command": "npx",
-    "args": ["@claude-code-harness/mcp-server"]
+    "args": ["@anthropic-ai/harness-mcp-server"]
   }
 }
 ```

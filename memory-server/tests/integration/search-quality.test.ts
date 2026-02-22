@@ -144,55 +144,49 @@ describe("search quality integration", () => {
     }
   });
 
-  test(
-    "search latency p95 stays below 500ms on medium synthetic corpus",
-    () => {
-      const { core, dir } = createCore("latency");
-      try {
-        const baseTs = Date.parse("2026-01-01T00:00:00.000Z");
-        const total = 1500;
-        for (let i = 0; i < total; i += 1) {
-          const ts = new Date(baseTs + i * 60_000).toISOString();
-          core.recordEvent(
-            makeEvent({
-              event_id: `sq-bulk-${i}`,
-              session_id: `sq-session-${i % 5}`,
-              ts,
-              payload: {
-                content: `feature-${i % 40} migration note ${i} search quality benchmark`,
-              },
-              tags: ["quality", `feature-${i % 40}`],
-            })
-          );
-        }
-
-        const latencies: number[] = [];
-        for (let i = 0; i < 40; i += 1) {
-          const query = `feature-${i % 40} migration note`;
-          const response = core.search({
-            query,
-            project: "search-quality",
-            limit: 20,
-            include_private: false,
-          });
-          expect(response.ok).toBe(true);
-          expect(response.items.length).toBeGreaterThan(0);
-          latencies.push(Number(response.meta.latency_ms));
-        }
-
-        const sorted = [...latencies].sort((a, b) => a - b);
-        const idx = Math.floor((sorted.length - 1) * 0.95);
-        const p95 = sorted[idx];
-        const isCiLike = process.env.CI === "true" || process.env.GITHUB_ACTIONS === "true";
-        const maxAllowedP95 = isCiLike ? 3000 : 500;
-        expect(p95).toBeLessThan(maxAllowedP95);
-      } finally {
-        core.shutdown("test");
-        rmSync(dir, { recursive: true, force: true });
+  test("search latency p95 stays below 500ms on medium synthetic corpus", () => {
+    const { core, dir } = createCore("latency");
+    try {
+      const baseTs = Date.parse("2026-01-01T00:00:00.000Z");
+      const total = 1500;
+      for (let i = 0; i < total; i += 1) {
+        const ts = new Date(baseTs + i * 60_000).toISOString();
+        core.recordEvent(
+          makeEvent({
+            event_id: `sq-bulk-${i}`,
+            session_id: `sq-session-${i % 5}`,
+            ts,
+            payload: {
+              content: `feature-${i % 40} migration note ${i} search quality benchmark`,
+            },
+            tags: ["quality", `feature-${i % 40}`],
+          })
+        );
       }
-    },
-    120000
-  );
+
+      const latencies: number[] = [];
+      for (let i = 0; i < 40; i += 1) {
+        const query = `feature-${i % 40} migration note`;
+        const response = core.search({
+          query,
+          project: "search-quality",
+          limit: 20,
+          include_private: false,
+        });
+        expect(response.ok).toBe(true);
+        expect(response.items.length).toBeGreaterThan(0);
+        latencies.push(Number(response.meta.latency_ms));
+      }
+
+      const sorted = [...latencies].sort((a, b) => a - b);
+      const idx = Math.floor((sorted.length - 1) * 0.95);
+      const p95 = sorted[idx];
+      expect(p95).toBeLessThan(500);
+    } finally {
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 
   const heavyTest = process.env.HARNESS_MEM_RUN_HEAVY_SEARCH_BENCH === "1" ? test : test.skip;
   heavyTest("search latency p95 stays below 650ms on 30k corpus with link expansion", () => {

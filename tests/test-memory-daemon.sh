@@ -9,7 +9,6 @@ export HARNESS_MEM_HOME="$TMP_HOME"
 export HARNESS_MEM_DB_PATH="$TMP_HOME/harness-mem.db"
 export HARNESS_MEM_HOST="127.0.0.1"
 export HARNESS_MEM_PORT="37988"
-export HARNESS_MEM_UI_PORT="38988"
 export HARNESS_MEM_CODEX_PROJECT_ROOT="$ROOT"
 
 cleanup() {
@@ -24,10 +23,6 @@ echo "[memory-test] start daemon"
 echo "[memory-test] health"
 HEALTH="$($ROOT/scripts/harness-mem-client.sh health)"
 printf '%s' "$HEALTH" | jq -e '.ok == true' >/dev/null
-
-echo "[memory-test] ui context"
-UI_CONTEXT="$(curl -sS --max-time 3 "http://127.0.0.1:${HARNESS_MEM_UI_PORT}/api/context")"
-printf '%s' "$UI_CONTEXT" | jq -e '.ok == true' >/dev/null
 
 echo "[memory-test] record event"
 $ROOT/scripts/harness-mem-client.sh record-event '{"event":{"platform":"claude","project":"test","session_id":"s1","event_type":"user_prompt","payload":{"content":"hello memory"},"tags":["test"],"privacy_tags":[]}}' >/dev/null

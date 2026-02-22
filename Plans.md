@@ -934,15 +934,161 @@ Optional:
 
 ---
 
-## 17. project名分断修正 + 配信（2026-02-22）
+## 17. ローカル環境インベントリ画面 企画・実装プラン（2026-02-22）
 
-- [x] `cc:完了 [feature:tdd]` REL-001 `project` 正規化統一（`harness-mem` と絶対パスの分断解消）
-  - 依頼内容: `session_id`（UUID）と `project` の混同を防ぎ、`project` が basename/絶対パスで分断されないよう修正して配信まで完了する。
+### 17.1 目的
+
+`harness-mem-ui` に「システムインベントリ」画面を1つ追加し、以下を説明付きで扱えるようにする。
+
+1. ローカルで起動中のサーバー一覧（ポート/プロトコル/PID/バインド先を含む）
+2. インストール済み言語一覧（Python / Node / Go / Rust など）
+3. インストール済みCLIツール一覧
+4. LLMからの問い合わせに対して現状を返す専用エンドポイント（出口）
+
+加えて、チームで批判的レビューを回しながら、安全に操作できる仕様へ収束させる。
+
+### 17.2 チーム編成と批判レビュー運用
+
+1. PM（要件と優先順位の最終決定）
+2. Security Reviewer（権限境界・監査・コマンド実行の脅威分析）
+3. Architecture Reviewer（`memory-server` / `harness-mem-ui` の責務分離）
+4. UX Reviewer（情報設計、誤操作防止、a11y）
+5. QA Reviewer（契約テスト、E2E、回帰戦略）
+
+レビュー会（設計着手時に固定）:
+1. Gate A: 要件凍結レビュー（非機能要件・禁止事項を先に確定）
+2. Gate B: 脅威モデルレビュー（admin token境界、allowlist、監査ログ）
+3. Gate C: UXレビュー（説明文、操作導線、エラー時文言）
+4. Gate D: 実装準備レビュー（API契約・テスト観点・DoD合意）
+
+### 17.3 Priority Matrix（本件）
+
+Required:
+1. インベントリ画面を追加し、3カテゴリを同一画面で表示する
+2. すべての取得/操作APIを `v1/admin/*` 配下に置き、admin token必須にする
+3. データは「説明」「状態」「最終更新時刻」を含める（サーバーはポート/プロトコル/PID/バインド先を必須）
+4. 操作は最初に `dry-run` と明示確認を必須化する
+5. 監査ログに `who/when/what(result)` を残す
+6. LLM問い合わせ向けの read-only エンドポイントを提供し、短いサマリと詳細参照IDを返す
+
+Recommended:
+1. カテゴリ別TTLキャッシュ（例: サーバー30秒、言語/CLI 5分）
+2. タブ切り替え（`Feed` / `Inventory`）とキーボード操作対応
+3. 失敗時の復旧ガイド表示（権限不足 / タイムアウト / 未インストール）
+
+Optional:
+1. 追加言語マネージャ（asdf / pyenv / rbenv）検出の詳細化
+2. 実行結果の差分表示（前回比較）
+3. エクスポート（JSON/Markdown）
+
+### 17.4 TDD採用判定（本件）
+
+判定: 採用する（理由: 条件分岐が多い / 外部コマンド呼び出しを伴う / 権限・安全性が重要）
+
+テスト設計（合意してから実装）:
+1. Normal: 3カテゴリが取得でき、説明文付きで表示される（サーバー項目はポート/プロトコル/PID/バインド先を含む）
+2. Boundary: 一部カテゴリ取得失敗時でも他カテゴリは表示継続し、失敗理由を明示する
+3. Error: 無効トークン時は 401、allowlist外の操作要求は 400/403 で拒否する
+4. Security: 引数に `;`, `&&` を含んでもシェル連結されず拒否される
+5. Performance: 連続リフレッシュ時もTTL内はキャッシュ応答になる
+6. LLM Endpoint: `system/llm-context` が短い要約 + 詳細メタを返し、トークン超過を防ぐ
+
+### 17.5 実装バックログ（Team Critique付き）
+
+#### Phase INV-0: 仕様確定と設計批判（2日）
+
+- [ ] `cc:TODO [feature:tdd] [feature:security]` INV-001 批判レビュー会の実施とADR作成
+  - 変更予定: `docs/plans/system-inventory-adr.md`（新規）
   - 受入条件:
-    1. `project='harness-mem'` と `project='/.../harness-mem'` が自動統一される（少なくとも codexProjectRoot 対象）
-    2. 既存DBでも統一マイグレーションが動作する
-    3. 回帰テストが追加され、CI相当テストが通る
-    4. release tag 作成後、GitHub Release workflow が成功する
-  - 変更: `memory-server/src/core/harness-mem-core.ts`, `memory-server/tests/unit/workspace-boundary.test.ts`, `README.md`, `docs/harness-mem-setup.md`, `CHANGELOG.md`, `CHANGELOG_ja.md`, `package.json`
-  - 変更理由: basename と絶対パスの project 混在を canonical path に統一し、起動時に legacy alias を自動移行することでフィード/検索の分断を解消した。
-  - 検証: `bun test memory-server/tests/unit/workspace-boundary.test.ts`, `bun test memory-server/tests/unit/core.test.ts`, `bun test`(memory-server), `bun run --cwd memory-server typecheck`, `bun run --cwd harness-mem-ui typecheck`, `bun run --cwd harness-mem-ui test:ui`, `npm pack --dry-run`
+    1. Gate A-D の合否と論点が1ファイルに残る
+    2. 「今回はやらないこと（非対応操作）」が明記される
+
+- [ ] `cc:TODO [feature:security]` INV-002 脅威モデルと禁止ルール固定
+  - 変更予定: `docs/plans/system-inventory-threat-model.md`（新規）
+  - 受入条件:
+    1. 認証・認可・監査・コマンド実行の脅威一覧がある
+    2. `shell=true` 禁止、allowlist必須、dry-run必須が文書化される
+
+#### Phase INV-1: API/Collector基盤（3日）
+
+- [ ] `cc:TODO [feature:security] [feature:tdd]` INV-003 System Inventory API契約追加
+  - 変更予定: `memory-server/src/server.ts`, `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. `GET /v1/admin/system/inventory` が追加される
+    2. `GET /v1/admin/system/llm-context` が追加される（LLM向け短文サマリ）
+    3. `POST /v1/admin/system/actions` は dry-run/confirm なしで実行不可
+    4. すべて admin token 検証を通る
+
+- [ ] `[P] cc:TODO [feature:tdd]` INV-004 macOS向けCollector実装（read-only優先）
+  - 変更予定: `memory-server/src/system-inventory/collectors.ts`（新規）
+  - 受入条件:
+    1. サーバー一覧、言語一覧、CLI一覧を収集できる
+    2. サーバー一覧は `port/protocol/pid/process_name/bind_address` を返す
+    3. コマンド失敗時にカテゴリ単位で劣化表示可能なエラー情報を返す
+
+- [ ] `[P] cc:TODO [feature:tdd]` INV-012 LLM問い合わせ用サマリ整形ロジック追加
+  - 変更予定: `memory-server/src/system-inventory/llm-context.ts`（新規）
+  - 受入条件:
+    1. サマリは「現在の主要サーバー状況 + 言語/CLI概要」を短文化して返す
+    2. 詳細確認用に `inventory_snapshot_id` を返し、UI/APIで追跡できる
+    3. 1レスポンスが過大にならない上限制御（例: 件数上限/文字数上限）がある
+
+- [ ] `[P] cc:TODO [feature:tdd]` INV-005 TTLキャッシュとタイムアウト制御
+  - 変更予定: `memory-server/src/system-inventory/cache.ts`（新規）
+  - 受入条件:
+    1. サーバー30秒、言語/CLI 5分のTTLが設定可能
+    2. タイムアウト超過時は stale キャッシュまたは明示エラーを返す
+    3. `system/llm-context` も同一スナップショット基盤を参照する
+
+- [ ] `cc:TODO [feature:security]` INV-006 監査ログ統合
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. inventory取得/操作/llm-context取得の監査イベントが `admin audit-log` で追跡できる
+    2. 取得者・対象・結果・実行時刻が記録される
+
+#### Phase INV-2: UI画面実装（2日）
+
+- [ ] `cc:TODO [feature:a11y]` INV-007 `Inventory` タブ追加
+  - 変更予定: `harness-mem-ui/src/app/App.tsx`, `harness-mem-ui/src/lib/types.ts`, `harness-mem-ui/src/hooks/useSettings.ts`
+  - 受入条件:
+    1. `Feed` と `Inventory` を切り替え可能
+    2. キーボード操作と `aria-selected` が有効
+
+- [ ] `cc:TODO [feature:a11y]` INV-008 Inventory Panel 実装（説明付き）
+  - 変更予定: `harness-mem-ui/src/components/SystemInventoryPanel.tsx`（新規）, `harness-mem-ui/src/lib/i18n.ts`, `harness-mem-ui/src/lib/api.ts`
+  - 受入条件:
+    1. 3カテゴリのカードに「説明」「状態」「最終更新」を表示
+    2. サーバーカードに `port/protocol/pid/bind_address` を表示
+    3. LLM向けエンドポイントの最終応答サマリを確認できる
+    4. 操作ボタンに `dry-run` 表示と確認UIがある
+    5. 権限不足/失敗時のガイダンス文言が表示される
+
+#### Phase INV-3: 検証とドキュメント（2日）
+
+- [ ] `cc:TODO [feature:tdd] [feature:security]` INV-009 API統合テスト追加
+  - 変更予定: `memory-server/tests/integration/system-inventory-api.test.ts`（新規）
+  - 受入条件:
+    1. トークン必須、allowlist、dry-run制約をテストで固定
+    2. 一部カテゴリ失敗時の劣化応答を固定
+    3. `system/llm-context` が短文サマリ + snapshot参照IDを返すことを固定
+
+- [ ] `cc:TODO [feature:tdd] [feature:a11y]` INV-010 UIテスト追加
+  - 変更予定: `harness-mem-ui/tests/ui/system-inventory-panel.test.tsx`（新規）, `harness-mem-ui/tests/e2e/inventory.spec.ts`（新規）
+  - 受入条件:
+    1. タブ切替、表示、エラー表示、操作確認が通る
+    2. ポート番号などサーバー詳細項目の表示を固定
+    3. 日本語/英語文言切替で崩れない
+
+- [ ] `cc:TODO` INV-011 運用ドキュメント更新
+  - 変更予定: `docs/harness-mem-setup.md`, `README.md`
+  - 受入条件:
+    1. 画面用途、操作制約、監査ログ確認手順を追記
+    2. 既知制約（macOS優先対応、非対応操作）を明記
+
+### 17.6 完了判定（DoD）
+
+1. Gate A-D のレビュー記録が残っている
+2. Inventory 画面で3カテゴリが説明付きで表示され、サーバーはポート等詳細を確認できる
+3. `system/llm-context` でLLM問い合わせに現状サマリを返せる
+4. 操作APIが admin token + dry-run + allowlist + 監査ログを満たす
+5. API/UI/E2E テストが追加され、回帰テストで再現可能

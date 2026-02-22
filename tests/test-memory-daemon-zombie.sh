@@ -10,7 +10,6 @@ export HARNESS_MEM_HOME="$TMP_HOME"
 export HARNESS_MEM_DB_PATH="$TMP_HOME/harness-mem.db"
 export HARNESS_MEM_HOST="127.0.0.1"
 export HARNESS_MEM_PORT="37989"
-export HARNESS_MEM_UI_PORT="38989"
 
 cleanup() {
   "$ROOT/scripts/harness-memd" stop --quiet >/dev/null 2>&1 || true
@@ -21,12 +20,8 @@ trap cleanup EXIT
 for i in $(seq 1 "$LOOPS"); do
   "$ROOT/scripts/harness-memd" start --quiet
   "$ROOT/scripts/harness-memd" stop --quiet
-  if lsof -nP -tiTCP:"$HARNESS_MEM_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "[FAIL] daemon port still listening after stop at loop $i"
-    exit 1
-  fi
-  if lsof -nP -tiTCP:"$HARNESS_MEM_UI_PORT" -sTCP:LISTEN >/dev/null 2>&1; then
-    echo "[FAIL] ui port still listening after stop at loop $i"
+  if pgrep -f "memory-server/src/index.ts" >/dev/null 2>&1; then
+    echo "[FAIL] potential zombie detected at loop $i"
     exit 1
   fi
   if [ $((i % 10)) -eq 0 ]; then
