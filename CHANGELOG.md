@@ -39,6 +39,46 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.17] - 2026-02-22
+
+### What changed for users
+
+`harness-mem setup` now installs and starts the Mem UI alongside the API daemon, so first-time setup immediately provides both endpoints.
+
+### Added
+
+- npm package now ships Mem UI runtime files (`harness-mem-ui/src/*`) required for standalone UI server startup.
+- `harness-memd start` now launches Mem UI on `HARNESS_MEM_UI_PORT` (default `37901`) when `HARNESS_MEM_ENABLE_UI` is enabled.
+
+### Changed
+
+- setup success logs now show both API (`:37888`) and Mem UI (`:37901`) URLs.
+- setup/docs now document that Mem UI is auto-started by default.
+
+### Fixed
+
+- Removed first-setup UX gap where users had to manually clone the repository and run `harness-mem-ui` separately.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+- To disable auto UI startup explicitly: `HARNESS_MEM_ENABLE_UI=false`.
+
+### Verification
+
+- `bash -n scripts/harness-memd`
+- `bash -n scripts/harness-mem`
+- `bun test tests/harness-memd-guardrails.test.ts`
+- `npm pack --dry-run`
+
 ## [0.1.16] - 2026-02-22
 
 ### What changed for users

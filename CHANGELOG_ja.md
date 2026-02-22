@@ -5,6 +5,19 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.17] - 2026-02-22
+
+### ユーザー向け要約
+
+- `harness-mem setup` で API だけでなく Mem UI も同時に導入・起動されるように改善。
+- 初回セットアップ直後から `http://127.0.0.1:37901` にアクセス可能になり、UIの手動セットアップが不要に。
+
+### 補足
+
+- npm 配布物に UI 実行ファイル群（`harness-mem-ui/src/*`）を同梱。
+- 自動起動を止めたい場合は `HARNESS_MEM_ENABLE_UI=false` を設定。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.16] - 2026-02-22
 
 ### ユーザー向け要約

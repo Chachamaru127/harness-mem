@@ -36,16 +36,37 @@ HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 PORT="${HARNESS_MEM_PORT:-37888}"
 UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
+UI_CONTEXT_URL="http://${HOST}:${UI_PORT}/api/context"
 START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
 STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
 LOG_MAX_BYTES="${HARNESS_MEM_LOG_MAX_BYTES:-5242880}"
 LOG_ROTATE_KEEP="${HARNESS_MEM_LOG_ROTATE_KEEP:-5}"
+UI_ENABLED_RAW="${HARNESS_MEM_ENABLE_UI:-true}"
 QUIET="false"
 
 DAEMON_ENTRY="${REPO_ROOT}/memory-server/src/index.ts"
 UI_ENTRY="${REPO_ROOT}/harness-mem-ui/src/server.ts"
 PROJECT_ROOT="${HARNESS_MEM_CODEX_PROJECT_ROOT:-$PWD}"
 CONFIG_PATH="${STATE_DIR}/config.json"
+
+to_lower() {
+  printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
+}
+
+is_trueish() {
+  case "$(to_lower "$1")" in
+    1|true|yes|on)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+is_ui_enabled() {
+  is_trueish "$UI_ENABLED_RAW"
+}
 
 read_backend_mode() {
   if [ -f "$CONFIG_PATH" ]; then
@@ -229,6 +250,21 @@ wait_for_health() {
   return 1
 }
 
+wait_for_ui() {
+  local retries=$((START_TIMEOUT_SEC * 2))
+  local attempt=0
+
+  while [ "$attempt" -lt "$retries" ]; do
+    if is_ui_reachable; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
 is_health_reachable() {
   local response
   response="$(curl --silent --show-error --max-time 1 "$HEALTH_URL" 2>/dev/null || true)"
@@ -238,6 +274,21 @@ is_health_reachable() {
 
   if command -v jq >/dev/null 2>&1; then
     printf '%s' "$response" | jq -e '.ok == true and (.items | type == "array")' >/dev/null 2>&1
+    return $?
+  fi
+
+  printf '%s' "$response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+}
+
+is_ui_reachable() {
+  local response
+  response="$(curl --silent --show-error --max-time 1 "$UI_CONTEXT_URL" 2>/dev/null || true)"
+  if [ -z "$response" ]; then
+    return 1
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$response" | jq -e '.ok == true' >/dev/null 2>&1
     return $?
   fi
 
@@ -324,19 +375,24 @@ discover_ui_pid_from_port() {
   return 1
 }
 
-discover_listener_pid_from_port() {
+discover_listener_pid_for_port() {
+  local target_port="$1"
   if ! command -v lsof >/dev/null 2>&1; then
     return 1
   fi
 
   local pid
-  pid="$(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+  pid="$(lsof -nP -tiTCP:"$target_port" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
   if [ -z "$pid" ]; then
     return 1
   fi
 
   echo "$pid"
   return 0
+}
+
+discover_listener_pid_from_port() {
+  discover_listener_pid_for_port "$PORT"
 }
 
 read_process_args() {
@@ -389,6 +445,122 @@ refresh_pid_file_from_runtime() {
   return 0
 }
 
+start_ui() {
+  if ! is_ui_enabled; then
+    rm -f "$UI_PID_FILE"
+    log "harness-mem-ui startup disabled (HARNESS_MEM_ENABLE_UI=false)"
+    return 0
+  fi
+
+  if [ ! -f "$UI_ENTRY" ]; then
+    echo "[ERR] harness-mem-ui entry not found: $UI_ENTRY" >&2
+    return 1
+  fi
+
+  if ! command -v bun >/dev/null 2>&1; then
+    echo "[ERR] bun is required but not found (for harness-mem-ui)" >&2
+    return 1
+  fi
+
+  local runtime_pid
+  runtime_pid="$(discover_ui_pid_from_port || true)"
+  if [ -n "$runtime_pid" ]; then
+    echo "$runtime_pid" > "$UI_PID_FILE"
+    if wait_for_ui; then
+      log "harness-mem-ui already running (pid=${runtime_pid}, port=${UI_PORT})"
+      return 0
+    fi
+    warn "UI listener exists on port ${UI_PORT} (pid=${runtime_pid}) but /api/context is unreachable"
+    warn "Refusing to spawn duplicate UI process. Check runtime with: scripts/harness-memd doctor"
+    return 1
+  fi
+
+  local listener_pid
+  listener_pid="$(discover_listener_pid_for_port "$UI_PORT" || true)"
+  if [ -n "$listener_pid" ]; then
+    local listener_args
+    listener_args="$(read_process_args "$listener_pid")"
+    warn "UI port ${UI_PORT} is already in use by another process (pid=${listener_pid})"
+    if [ -n "$listener_args" ]; then
+      warn "Process args: ${listener_args}"
+    fi
+    warn "Resolve the UI port conflict before starting harness-mem-ui"
+    return 1
+  fi
+
+  log "Starting harness-mem-ui... (port=${UI_PORT})"
+  (
+    cd "$REPO_ROOT"
+    nohup env \
+      HARNESS_MEM_HOST="$HOST" \
+      HARNESS_MEM_PORT="$PORT" \
+      HARNESS_MEM_UI_PORT="$UI_PORT" \
+      HARNESS_MEM_UI_PARITY_V1="${HARNESS_MEM_UI_PARITY_V1:-true}" \
+      bun run "$UI_ENTRY" >> "$UI_LOG_FILE" 2>&1 &
+    echo $! > "$UI_PID_FILE"
+  )
+
+  local new_ui_pid
+  new_ui_pid="$(read_ui_pid_file)"
+  if [ -z "$new_ui_pid" ]; then
+    echo "[ERR] Failed to create UI pid file" >&2
+    return 1
+  fi
+
+  if wait_for_ui; then
+    log "harness-mem-ui started (pid=${new_ui_pid}, url=http://${HOST}:${UI_PORT})"
+    return 0
+  fi
+
+  warn "UI health check failed after start timeout"
+  if is_pid_running "$new_ui_pid"; then
+    kill -TERM "$new_ui_pid" >/dev/null 2>&1 || true
+    sleep 1
+    if is_pid_running "$new_ui_pid"; then
+      kill -KILL "$new_ui_pid" >/dev/null 2>&1 || true
+    fi
+  fi
+  rm -f "$UI_PID_FILE"
+  return 1
+}
+
+stop_ui() {
+  local ui_pid
+  ui_pid="$(read_ui_pid_file)"
+  if [ -z "$ui_pid" ]; then
+    ui_pid="$(discover_ui_pid_from_port || true)"
+  fi
+
+  if [ -z "$ui_pid" ]; then
+    rm -f "$UI_PID_FILE"
+    return 0
+  fi
+
+  if ! is_pid_running "$ui_pid"; then
+    rm -f "$UI_PID_FILE"
+    return 0
+  fi
+
+  log "Stopping harness-mem-ui (pid=${ui_pid})..."
+  kill -TERM "$ui_pid" >/dev/null 2>&1 || true
+
+  local waited=0
+  while is_pid_running "$ui_pid" && [ "$waited" -lt "$STOP_TIMEOUT_SEC" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if is_pid_running "$ui_pid"; then
+    warn "UI did not exit in ${STOP_TIMEOUT_SEC}s, sending SIGKILL"
+    kill -KILL "$ui_pid" >/dev/null 2>&1 || true
+    sleep 0.5
+  fi
+
+  rm -f "$UI_PID_FILE"
+  log "harness-mem-ui stopped"
+  return 0
+}
+
 start_daemon() {
   ensure_state_dir
   apply_log_rotation
@@ -416,13 +588,19 @@ start_daemon() {
     else
       log "harness-memd already running (health endpoint reachable)"
     fi
-    return 0
+    if start_ui; then
+      return 0
+    fi
+    return 1
   fi
 
   if [ -n "$pid" ] && is_pid_running "$pid"; then
     if is_health_reachable; then
       log "harness-memd already running (pid=${pid})"
-      return 0
+      if start_ui; then
+        return 0
+      fi
+      return 1
     fi
     if is_pid_listening_on_port "$pid"; then
       warn "Pid exists but health check failed. restarting stale daemon..."
@@ -442,7 +620,10 @@ start_daemon() {
     echo "$runtime_pid" > "$PID_FILE"
     if wait_for_health; then
       log "harness-memd already running (pid=${runtime_pid})"
-      return 0
+      if start_ui; then
+        return 0
+      fi
+      return 1
     fi
     warn "Daemon listener exists on port ${PORT} (pid=${runtime_pid}) but health endpoint is unreachable"
     warn "Refusing to spawn duplicate daemon. Check runtime with: scripts/harness-memd status"
@@ -493,7 +674,10 @@ start_daemon() {
 
   if wait_for_health; then
     log "harness-memd started (pid=${new_pid}, port=${PORT})"
-    return 0
+    if start_ui; then
+      return 0
+    fi
+    return 1
   fi
 
   warn "Health check failed after start timeout"
@@ -511,6 +695,8 @@ start_daemon() {
 
 stop_daemon() {
   ensure_state_dir
+
+  stop_ui || true
 
   local pid
   pid="$(read_pid_file)"
@@ -678,14 +864,27 @@ doctor_daemon() {
     ok=1
   fi
 
-  local ui_pid
-  ui_pid="$(read_ui_pid_file)"
-  if [ -n "$ui_pid" ] && is_pid_running "$ui_pid"; then
-    echo "[ok] ui pid file points to running process: $ui_pid (port=${UI_PORT})"
-  elif [ -n "$ui_pid" ]; then
-    echo "[warn] ui pid file is stale"
+  if is_ui_enabled; then
+    if is_ui_reachable; then
+      echo "[ok] ui endpoint reachable: http://${HOST}:${UI_PORT}"
+    else
+      echo "[warn] ui endpoint not reachable: http://${HOST}:${UI_PORT}"
+      ok=1
+    fi
+
+    local ui_pid
+    ui_pid="$(read_ui_pid_file)"
+    if [ -n "$ui_pid" ] && is_pid_running "$ui_pid"; then
+      echo "[ok] ui pid file points to running process: $ui_pid (port=${UI_PORT})"
+    elif [ -n "$ui_pid" ]; then
+      echo "[warn] ui pid file is stale"
+      ok=1
+    else
+      echo "[warn] ui pid not found"
+      ok=1
+    fi
   else
-    echo "[info] ui pid not found (ui may be stopped)"
+    echo "[info] ui startup disabled (HARNESS_MEM_ENABLE_UI=false)"
   fi
 
   return "$ok"
