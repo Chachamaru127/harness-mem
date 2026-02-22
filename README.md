@@ -327,6 +327,14 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 harness-mem uninstall --purge-db
 ```
 
+### 6) Same workspace appears as both `harness-mem` and `/.../harness-mem`
+
+Restart daemon once to run automatic alias normalization (v0.1.18+):
+
+```bash
+harness-memd restart
+```
+
 ## FAQ
 
 ### Is this a hosted service?

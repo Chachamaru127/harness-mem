@@ -5,6 +5,7 @@
  * 別フォルダのデータ混入 0件を保証する。
  */
 import { afterEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -20,7 +21,7 @@ afterEach(() => {
   }
 });
 
-function createConfig(name: string): Config {
+function createConfig(name: string, overrides: Partial<Config> = {}): Config {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-wb-${name}-`));
   cleanupPaths.push(dir);
   return {
@@ -39,6 +40,7 @@ function createConfig(name: string): Config {
     opencodeIngestEnabled: false,
     cursorIngestEnabled: false,
     antigravityIngestEnabled: false,
+    ...overrides,
   };
 }
 
@@ -207,6 +209,107 @@ describe("workspace boundary", () => {
       }
     } finally {
       core.shutdown("test");
+    }
+  });
+
+  test("basename project that matches codexProjectRoot is canonicalized to absolute path", () => {
+    const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-root-"));
+    cleanupPaths.push(rootBase);
+    const projectRoot = join(rootBase, "harness-mem");
+    mkdirSync(projectRoot, { recursive: true });
+    const canonicalRoot = realpathSync(projectRoot);
+
+    const core = new HarnessMemCore(
+      createConfig("canonical-basename", {
+        codexProjectRoot: projectRoot,
+        codexSessionsRoot: projectRoot,
+      })
+    );
+    try {
+      const result = core.recordEvent(
+        baseEvent({
+          event_id: "ev-canonical",
+          session_id: "sess-canonical",
+          project: "harness-mem",
+          payload: { prompt: "canonical project test" },
+        })
+      );
+      expect(result.ok).toBe(true);
+      const inserted = result.items[0] as { project: string };
+      expect(inserted.project).toBe(canonicalRoot);
+
+      const byBasename = core.search({
+        query: "canonical project test",
+        project: "harness-mem",
+        strict_project: true,
+        include_private: true,
+      });
+      expect(byBasename.ok).toBe(true);
+      for (const item of byBasename.items as Array<{ project: string }>) {
+        expect(item.project).toBe(canonicalRoot);
+      }
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("startup migration rewrites legacy basename project rows to canonical root", () => {
+    const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-legacy-"));
+    cleanupPaths.push(rootBase);
+    const projectRoot = join(rootBase, "harness-mem");
+    mkdirSync(projectRoot, { recursive: true });
+    const canonicalRoot = realpathSync(projectRoot);
+
+    const config = createConfig("legacy-migrate", {
+      codexProjectRoot: projectRoot,
+      codexSessionsRoot: projectRoot,
+    });
+
+    const seedCore = new HarnessMemCore(config);
+    try {
+      const seed = seedCore.recordEvent(
+        baseEvent({
+          event_id: "ev-legacy-seed",
+          session_id: "sess-legacy-seed",
+          project: "harness-mem",
+          payload: { prompt: "legacy project migration test" },
+        })
+      );
+      expect(seed.ok).toBe(true);
+    } finally {
+      seedCore.shutdown("test");
+    }
+
+    const db = new Database(config.dbPath);
+    try {
+      db.query(`UPDATE mem_sessions SET project = ? WHERE session_id = ?`).run("harness-mem", "sess-legacy-seed");
+      db.query(`UPDATE mem_events SET project = ? WHERE session_id = ?`).run("harness-mem", "sess-legacy-seed");
+      db.query(`UPDATE mem_observations SET project = ? WHERE session_id = ?`).run("harness-mem", "sess-legacy-seed");
+    } finally {
+      db.close();
+    }
+
+    const migratedCore = new HarnessMemCore(config);
+    try {
+      const stats = migratedCore.projectsStats({ include_private: true });
+      const items = stats.items as Array<{ project: string; observations: number }>;
+      expect(items.some((item) => item.project === "harness-mem")).toBe(false);
+      const canonical = items.find((item) => item.project === canonicalRoot);
+      expect(canonical).toBeDefined();
+      expect((canonical?.observations || 0) >= 1).toBe(true);
+
+      const searchByBasename = migratedCore.search({
+        query: "legacy project migration test",
+        project: "harness-mem",
+        strict_project: true,
+        include_private: true,
+      });
+      expect(searchByBasename.ok).toBe(true);
+      for (const item of searchByBasename.items as Array<{ project: string }>) {
+        expect(item.project).toBe(canonicalRoot);
+      }
+    } finally {
+      migratedCore.shutdown("test");
     }
   });
 });

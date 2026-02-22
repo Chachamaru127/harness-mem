@@ -376,7 +376,11 @@ function normalizeTags(tags: unknown): string[] {
   return [...deduped];
 }
 
-function normalizeProjectName(name: string): string {
+interface ProjectNormalizationOptions {
+  preferredRoots?: string[];
+}
+
+function normalizeProjectName(name: string, options: ProjectNormalizationOptions = {}): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("project name must not be empty");
   // trailing slashを除去、normalize path
@@ -387,6 +391,28 @@ function normalizeProjectName(name: string): string {
     const real = realpathSync(normalized);
     return real.replace(/\/+$/, "").replace(/\\/g, "/");
   } catch {
+    // basenameのみの入力は、既知のworkspace root basenameと一致する場合に
+    // そのworkspace root(絶対パス)へ寄せる。
+    if (!normalized.includes("/")) {
+      const roots = Array.isArray(options.preferredRoots) ? options.preferredRoots : [];
+      const target = normalized.toLowerCase();
+      for (const root of roots) {
+        if (typeof root !== "string" || !root.trim()) {
+          continue;
+        }
+        const rootNormalized = root.trim().replace(/\/+$/, "").replace(/\\/g, "/");
+        const rootBase = basename(rootNormalized).toLowerCase();
+        if (rootBase === target) {
+          try {
+            const { realpathSync } = require("node:fs") as typeof import("node:fs");
+            const real = realpathSync(rootNormalized);
+            return real.replace(/\/+$/, "").replace(/\\/g, "/");
+          } catch {
+            return rootNormalized;
+          }
+        }
+      }
+    }
     // ディレクトリが存在しない場合はnormalized文字列をそのまま返す
     return normalized;
   }
@@ -1157,6 +1183,7 @@ export class HarnessMemCore {
   private streamEvents: StreamEvent[] = [];
   private readonly streamEventRetention = 600;
   private readonly codexRolloutContextCache = new Map<string, CodexSessionsContext>();
+  private readonly projectNormalizationRoots: string[];
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -1164,6 +1191,7 @@ export class HarnessMemCore {
 
     this.heartbeatPath = resolveHomePath(HEARTBEAT_FILE);
     ensureDir(resolve(join(this.heartbeatPath, "..")));
+    this.projectNormalizationRoots = this.buildProjectNormalizationRoots();
 
     // Create storage adapter based on backend mode.
     const { adapter, managedRequired } = createStorageAdapter({
@@ -1197,6 +1225,96 @@ export class HarnessMemCore {
     initDbSchema(this.db);
     migrateDbSchema(this.db);
     this.ftsEnabled = initFtsFromDb(this.db);
+    this.migrateLegacyProjectAliases();
+  }
+
+  private buildProjectNormalizationRoots(): string[] {
+    const candidates = [this.config.codexProjectRoot, process.cwd()];
+    const roots: string[] = [];
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string" || !candidate.trim()) {
+        continue;
+      }
+      const resolved = resolveHomePath(candidate);
+      try {
+        roots.push(normalizeProjectName(resolve(resolved)));
+      } catch {
+        // ignore invalid candidate
+      }
+    }
+    return [...new Set(roots)];
+  }
+
+  private normalizeProjectInput(project: string): string {
+    return normalizeProjectName(project, {
+      preferredRoots: this.projectNormalizationRoots,
+    });
+  }
+
+  private migrateLegacyProjectAliases(): void {
+    const canonicalRoot = this.projectNormalizationRoots[0];
+    if (!canonicalRoot) {
+      return;
+    }
+    const legacyAlias = basename(canonicalRoot);
+    if (!legacyAlias || legacyAlias === canonicalRoot) {
+      return;
+    }
+
+    let changed = 0;
+    try {
+      const apply = this.db.transaction(() => {
+        const projectTables = [
+          "mem_sessions",
+          "mem_events",
+          "mem_observations",
+          "mem_facts",
+          "mem_consolidation_queue",
+        ];
+
+        for (const table of projectTables) {
+          const result = this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(canonicalRoot, legacyAlias);
+          changed += Number((result as { changes?: number }).changes || 0);
+        }
+
+        const metaRows = this.db
+          .query(`SELECT key, value FROM mem_meta WHERE key LIKE 'codex_rollout_context:%'`)
+          .all() as Array<{ key: string; value: string }>;
+        for (const row of metaRows) {
+          if (typeof row.value !== "string" || !row.value.trim()) {
+            continue;
+          }
+          let parsed: Record<string, unknown>;
+          try {
+            const value = JSON.parse(row.value) as unknown;
+            if (typeof value !== "object" || value === null || Array.isArray(value)) {
+              continue;
+            }
+            parsed = value as Record<string, unknown>;
+          } catch {
+            continue;
+          }
+          const currentProject = typeof parsed.project === "string" ? parsed.project.trim() : "";
+          if (currentProject !== legacyAlias) {
+            continue;
+          }
+          parsed.project = canonicalRoot;
+          this.db
+            .query(`UPDATE mem_meta SET value = ?, updated_at = ? WHERE key = ?`)
+            .run(JSON.stringify(parsed), nowIso(), row.key);
+          changed += 1;
+        }
+      });
+      apply();
+    } catch {
+      return;
+    }
+
+    if (changed > 0) {
+      console.log(
+        `[harness-mem] normalized legacy project alias '${legacyAlias}' -> '${canonicalRoot}' (rows=${changed})`
+      );
+    }
   }
 
   private initVectorEngine(): void {
@@ -1872,7 +1990,7 @@ export class HarnessMemCore {
 
     let normalizedProject: string;
     try {
-      normalizedProject = normalizeProjectName(event.project);
+      normalizedProject = this.normalizeProjectInput(event.project);
     } catch (e) {
       return makeErrorResponse(startedAt, e instanceof Error ? e.message : String(e), { project: event.project });
     }
@@ -2585,7 +2703,7 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks = (this.config.searchExpandLinks !== false) && request.expand_links !== false;
-    const normalizedProject = request.project ? normalizeProjectName(request.project) : request.project;
+    const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : request.project;
     const normalizedRequest: SearchRequest = {
       ...request,
       project: normalizedProject,
@@ -2861,7 +2979,7 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const cursor = decodeFeedCursor(request.cursor);
     const typeFilter = typeof request.type === "string" && request.type.trim() ? request.type.trim() : undefined;
-    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
+    const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : undefined;
 
     const params: unknown[] = [];
     let sql = `
@@ -2951,7 +3069,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const limit = clampLimit(request.limit, 50, 1, 200);
     const includePrivate = Boolean(request.include_private);
-    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
+    const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : undefined;
 
     const params: unknown[] = [];
     let sql = `
@@ -3026,7 +3144,7 @@ export class HarnessMemCore {
 
     const includePrivate = Boolean(request.include_private);
     const limit = clampLimit(request.limit, 200, 1, 1000);
-    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
+    const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : undefined;
     const params: unknown[] = [request.session_id];
     let sql = `
       SELECT
@@ -3087,7 +3205,7 @@ export class HarnessMemCore {
   searchFacets(request: SearchFacetsRequest): ApiResponse {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
-    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
+    const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : undefined;
     const params: unknown[] = [];
 
     let sql = `
@@ -3476,6 +3594,7 @@ export class HarnessMemCore {
       return makeErrorResponse(startedAt, "correlation_id and project are required", { correlation_id: correlationId, project });
     }
 
+    const normalizedProject = this.normalizeProjectInput(project);
     const sessions = this.db
       .query(
         `
@@ -3485,7 +3604,7 @@ export class HarnessMemCore {
           ORDER BY started_at ASC
         `
       )
-      .all(correlationId, project) as Array<{ session_id: string; platform: string; project: string; started_at: string; ended_at: string | null; correlation_id: string }>;
+      .all(correlationId, normalizedProject) as Array<{ session_id: string; platform: string; project: string; started_at: string; ended_at: string | null; correlation_id: string }>;
 
     const items = sessions.map((s) => ({
       session_id: s.session_id,
@@ -3496,7 +3615,7 @@ export class HarnessMemCore {
       correlation_id: s.correlation_id,
     }));
 
-    return makeResponse(startedAt, items, { correlation_id: correlationId, project }, { chain_length: items.length });
+    return makeResponse(startedAt, items, { correlation_id: correlationId, project: normalizedProject }, { chain_length: items.length });
   }
 
   resumePack(request: ResumePackRequest): ApiResponse {
@@ -3510,7 +3629,7 @@ export class HarnessMemCore {
       return makeErrorResponse(startedAt, "project is required", request as unknown as Record<string, unknown>);
     }
 
-    const normalizedProject = normalizeProjectName(request.project);
+    const normalizedProject = this.normalizeProjectInput(request.project);
     const limit = clampLimit(request.limit, 5, 1, 20);
     const includePrivate = Boolean(request.include_private);
     const visibility = this.visibilityFilterSql("o", includePrivate);
