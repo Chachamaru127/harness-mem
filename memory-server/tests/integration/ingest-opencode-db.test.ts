@@ -187,7 +187,8 @@ describe("opencode db ingest integration", () => {
       expect(ingest1.items[0]?.db_events_imported).toBe(2);
       expect(ingest1.items[0]?.files_skipped_backfill).toBeGreaterThanOrEqual(1);
 
-      const feedRes = await fetch(`${baseUrl}/v1/feed?project=Context-Harness&limit=10&include_private=false`);
+      const expectedProject = "/Users/test/Desktop/Code/CC-harness/Context-Harness";
+      const feedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(expectedProject)}&limit=10&include_private=false`);
       expect(feedRes.ok).toBe(true);
       const feed = (await feedRes.json()) as {
         ok: boolean;
@@ -196,7 +197,7 @@ describe("opencode db ingest integration", () => {
       expect(feed.ok).toBe(true);
       expect(feed.items.length).toBe(2);
       expect(feed.items.every((item) => item.platform === "opencode")).toBe(true);
-      expect(feed.items.every((item) => item.project === "Context-Harness")).toBe(true);
+      expect(feed.items.every((item) => item.project === expectedProject)).toBe(true);
 
       const sourceDb = new Database(dbPath, { create: false, readonly: false, strict: false });
       try {

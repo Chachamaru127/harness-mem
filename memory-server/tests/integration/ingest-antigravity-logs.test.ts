@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
@@ -20,7 +20,7 @@ function createRuntime(name: string): {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-antigravity-logs-${name}-`));
   const workspaceRoot = join(dir, "harness-mem");
   mkdirSync(workspaceRoot, { recursive: true });
-  const project = "harness-mem";
+  const project = realpathSync(workspaceRoot);
 
   const logsRoot = join(dir, "Library", "Application Support", "Antigravity", "logs");
   const storageRoot = join(dir, "Library", "Application Support", "Antigravity", "User", "workspaceStorage");
@@ -115,7 +115,7 @@ describe("antigravity logs ingest integration", () => {
       expect(ingest.items[0]?.log_files_scanned).toBeGreaterThanOrEqual(1);
       expect(ingest.meta.ingest_mode).toBe("antigravity_hybrid_v1");
 
-      const feedRes = await fetch(`${baseUrl}/v1/feed?project=${project}&limit=10&include_private=false`);
+      const feedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(project)}&limit=10&include_private=false`);
       expect(feedRes.ok).toBe(true);
       const feed = (await feedRes.json()) as {
         ok: boolean;

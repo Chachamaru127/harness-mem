@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 export interface CodexSessionsContext {
   sessionId?: string;
@@ -257,11 +256,7 @@ function extractInputText(content: unknown): string {
 }
 
 function normalizeProjectFromCwd(value: unknown): string {
-  const cwd = normalizeString(value);
-  if (!cwd) {
-    return "";
-  }
-  return basename(cwd);
+  return normalizeString(value);
 }
 
 function normalizeString(value: unknown): string {

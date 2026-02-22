@@ -143,6 +143,18 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
   throw new Error("harness-memd health check failed after 10 retries");
 }
 
+function buildApiHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    "content-type": "application/json",
+  };
+  const token = process.env.HARNESS_MEM_ADMIN_TOKEN?.trim();
+  if (token) {
+    headers["x-harness-mem-token"] = token;
+    headers.authorization = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 async function callMemoryApi(
   endpoint: string,
   payload: Record<string, unknown> | null,
@@ -154,7 +166,7 @@ async function callMemoryApi(
 
   const response = await fetch(`${baseUrl}${endpoint}`, {
     method,
-    headers: { "content-type": "application/json" },
+    headers: buildApiHeaders(),
     body: method === "POST" ? JSON.stringify(payload ?? {}) : undefined,
   });
 
@@ -228,12 +240,13 @@ export const memoryTools: Tool[] = [
   {
     name: "harness_mem_resume_pack",
     description:
-      "Get cross-platform resume context pack for a project/session.",
+      "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions.",
     inputSchema: {
       type: "object",
       properties: {
         project: { type: "string" },
         session_id: { type: "string" },
+        correlation_id: { type: "string" },
         limit: { type: "number" },
         include_private: { type: "boolean" },
       },
@@ -242,7 +255,8 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_search",
-    description: "Hybrid lexical + vector search on unified harness memory.",
+    description:
+      "Step 1 of 3-layer workflow (search -> timeline -> get_observations). Returns candidate IDs with meta.token_estimate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -259,7 +273,8 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_timeline",
-    description: "Expand an observation into before/after timeline context.",
+    description:
+      "Step 2 of 3-layer workflow. Expands one observation into before/after context with meta.token_estimate.",
     inputSchema: {
       type: "object",
       properties: {
@@ -273,7 +288,8 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_get_observations",
-    description: "Get observation details by id list.",
+    description:
+      "Step 3 of 3-layer workflow. Fetch full details only for filtered IDs. Returns meta.token_estimate and warnings for large batches.",
     inputSchema: {
       type: "object",
       properties: {
@@ -377,6 +393,7 @@ export const memoryTools: Tool[] = [
             tags: { type: "array", items: { type: "string" } },
             privacy_tags: { type: "array", items: { type: "string" } },
             dedupe_hash: { type: "string" },
+            correlation_id: { type: "string" },
           },
           required: ["platform", "project", "session_id", "event_type"],
         },
@@ -448,6 +465,42 @@ export const memoryTools: Tool[] = [
       required: [],
     },
   },
+  {
+    name: "harness_mem_admin_consolidation_run",
+    description: "Run consolidation worker (extract + dedupe) immediately.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: { type: "string" },
+        project: { type: "string" },
+        session_id: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "harness_mem_admin_consolidation_status",
+    description: "Get consolidation queue/facts status.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "harness_mem_admin_audit_log",
+    description: "Get audit log entries for retrieval/admin actions.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number" },
+        action: { type: "string" },
+        target_type: { type: "string" },
+      },
+      required: [],
+    },
+  },
 ];
 
 export async function handleMemoryTool(
@@ -467,6 +520,7 @@ export async function handleMemoryTool(
         const response = await callMemoryApi("/v1/resume-pack", {
           project,
           session_id: toStringOrUndefined(input.session_id),
+          correlation_id: toStringOrUndefined(input.correlation_id),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
         });
@@ -658,6 +712,33 @@ export async function handleMemoryTool(
 
       case "harness_mem_admin_metrics": {
         const response = await callMemoryApi("/v1/admin/metrics", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_admin_consolidation_run": {
+        const response = await callMemoryApi("/v1/admin/consolidation/run", {
+          reason: toStringOrUndefined(input.reason),
+          project: toStringOrUndefined(input.project),
+          session_id: toStringOrUndefined(input.session_id),
+          limit: toNumberOrUndefined(input.limit),
+        });
+        return successResult(response);
+      }
+
+      case "harness_mem_admin_consolidation_status": {
+        const response = await callMemoryApi("/v1/admin/consolidation/status", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_admin_audit_log": {
+        const query = new URLSearchParams();
+        const limit = toNumberOrUndefined(input.limit);
+        if (typeof limit === "number") query.set("limit", String(limit));
+        const action = toStringOrUndefined(input.action);
+        if (action) query.set("action", action);
+        const targetType = toStringOrUndefined(input.target_type);
+        if (targetType) query.set("target_type", targetType);
+        const response = await callMemoryApi(`/v1/admin/audit-log?${query.toString()}`, null, "GET");
         return successResult(response);
       }
 

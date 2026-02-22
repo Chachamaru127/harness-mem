@@ -22,7 +22,7 @@ describe("opencode db ingest parser", () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.eventType).toBe("user_prompt");
-    expect(parsed?.project).toBe("Context-Harness");
+    expect(parsed?.project).toBe("/Users/test/Desktop/Code/CC-harness/Context-Harness");
     expect(parsed?.payload.prompt).toBe("Hello from message part");
     expect(parsed?.timestamp).toBe("2026-02-16T02:56:41.750Z");
     expect(parsed?.dedupeHash.length).toBe(64);
@@ -49,7 +49,7 @@ describe("opencode db ingest parser", () => {
 
     expect(parsed).not.toBeNull();
     expect(parsed?.eventType).toBe("checkpoint");
-    expect(parsed?.project).toBe("harness-mem");
+    expect(parsed?.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
     expect(parsed?.payload.content).toBe("(assistant completed)");
   });
 

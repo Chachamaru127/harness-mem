@@ -1,0 +1,62 @@
+name: Python SDK and LangChain Adapter
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  python-sdk-langchain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Run Python SDK tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd python-sdk
+          python3 -m unittest tests/test_client.py
+
+      - name: Run LangChain adapter unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd integrations/langchain
+          python3 -m unittest tests/test_adapter.py
+
+      - name: Run LangChain sample against daemon
+        shell: bash
+        run: |
+          set -euo pipefail
+          TMP_HOME="$(mktemp -d)"
+          export HARNESS_MEM_HOME="$TMP_HOME"
+          export HARNESS_MEM_DB_PATH="$TMP_HOME/harness-mem.db"
+          export HARNESS_MEM_HOST="127.0.0.1"
+          export HARNESS_MEM_PORT="37888"
+          export HARNESS_MEM_ENABLE_OPENCODE_INGEST="false"
+          export HARNESS_MEM_ENABLE_CURSOR_INGEST="false"
+          export HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST="false"
+          trap 'scripts/harness-memd stop --quiet || true; rm -rf "$TMP_HOME"' EXIT
+
+          scripts/harness-memd start --quiet
+          PYTHONPATH="integrations/langchain" python3 integrations/langchain/examples/chat_memory_sample.py

@@ -125,14 +125,17 @@ describe("cursor hooks ingest integration", () => {
       expect(secondIngest.ok).toBe(true);
       expect(secondIngest.items[0]?.events_imported).toBe(3);
 
-      const harnessFeedRes = await fetch(`${baseUrl}/v1/feed?project=harness-mem&limit=20&include_private=false`);
+      const harnessProject = "/Users/test/Desktop/Code/CC-harness/harness-mem";
+      const contextProject = "/Users/test/Desktop/Code/CC-harness/Context-Harness";
+
+      const harnessFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(harnessProject)}&limit=20&include_private=false`);
       expect(harnessFeedRes.ok).toBe(true);
       const harnessFeed = (await harnessFeedRes.json()) as { ok: boolean; items: Array<{ project: string }> };
       expect(harnessFeed.ok).toBe(true);
       expect(harnessFeed.items.length).toBe(1);
-      expect(harnessFeed.items[0]?.project).toBe("harness-mem");
+      expect(harnessFeed.items[0]?.project).toBe(harnessProject);
 
-      const contextFeedRes = await fetch(`${baseUrl}/v1/feed?project=Context-Harness&limit=20&include_private=false`);
+      const contextFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(contextProject)}&limit=20&include_private=false`);
       expect(contextFeedRes.ok).toBe(true);
       const contextFeed = (await contextFeedRes.json()) as {
         ok: boolean;
@@ -140,7 +143,7 @@ describe("cursor hooks ingest integration", () => {
       };
       expect(contextFeed.ok).toBe(true);
       expect(contextFeed.items.length).toBe(2);
-      expect(contextFeed.items.every((item) => item.project === "Context-Harness")).toBe(true);
+      expect(contextFeed.items.every((item) => item.project === contextProject)).toBe(true);
       expect(contextFeed.items.some((item) => item.event_type === "tool_use")).toBe(true);
       expect(contextFeed.items.some((item) => item.event_type === "session_end")).toBe(true);
     } finally {

@@ -1,0 +1,431 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`API contract snapshot major endpoints keep stable response shape 1`] = `
+{
+  "events_record": {
+    "items": [
+      {
+        "card_type": "string",
+        "content": "string",
+        "created_at": "string",
+        "dedupe_hash": "string",
+        "event_id": "string",
+        "event_type": "string",
+        "id": "string",
+        "platform": "string",
+        "privacy_tags": [
+          "empty",
+        ],
+        "project": "string",
+        "session_id": "string",
+        "tags": [
+          "string",
+        ],
+        "title": "string",
+        "ts": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "embedding_provider": "string",
+      "embedding_provider_status": "string",
+      "filters": {
+        "event_type": "string",
+        "project": "string",
+        "session_id": "string",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+      "vector_engine": "string",
+      "write_durability": "string",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "finalize": {
+    "items": [
+      {
+        "finalized_at": "string",
+        "session_id": "string",
+        "summary": "string",
+        "summary_mode": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {
+        "platform": "string",
+        "project": "string",
+        "session_id": "string",
+        "summary_mode": "string",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "health": {
+    "items": [
+      {
+        "counts": {
+          "events": "number",
+          "observations": "number",
+          "retry_queue": "number",
+          "sessions": "number",
+        },
+        "fts_enabled": "boolean",
+        "host": "string",
+        "port": "number",
+        "status": "string",
+        "vector_engine": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {},
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "observations": {
+    "items": [
+      {
+        "content": "string",
+        "created_at": "string",
+        "event_id": "string",
+        "id": "string",
+        "platform": "string",
+        "privacy_tags": [
+          "empty",
+        ],
+        "project": "string",
+        "session_id": "string",
+        "tags": [
+          "string",
+        ],
+        "title": "string",
+        "updated_at": "string",
+      },
+    ],
+    "meta": {
+      "compact": "boolean",
+      "count": "number",
+      "filters": {
+        "compact": "boolean",
+        "ids": [
+          "string",
+        ],
+        "include_private": "boolean",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+      "token_estimate": {
+        "estimated_input_tokens": "number",
+        "estimated_output_tokens": "number",
+        "estimated_total_tokens": "number",
+        "strategy": "string",
+      },
+      "warnings": [
+        "empty",
+      ],
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "projects_stats": {
+    "items": [
+      {
+        "observations": "number",
+        "project": "string",
+        "sessions": "number",
+        "updated_at": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {
+        "include_private": "boolean",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "resume_pack": {
+    "items": [
+      {
+        "ended_at": "string",
+        "id": "string",
+        "session_id": "string",
+        "summary": "string",
+        "type": "string",
+      },
+    ],
+    "meta": {
+      "correlation_id": "null",
+      "count": "number",
+      "filters": {
+        "include_private": "boolean",
+        "limit": "number",
+        "project": "string",
+        "session_id": "string",
+      },
+      "include_summary": "boolean",
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "search": {
+    "items": [
+      {
+        "content": "string",
+        "created_at": "string",
+        "event_id": "string",
+        "id": "string",
+        "observation_type": "string",
+        "platform": "string",
+        "privacy_tags": [
+          "empty",
+        ],
+        "project": "string",
+        "scores": {
+          "final": "number",
+          "graph": "number",
+          "importance": "number",
+          "lexical": "number",
+          "recency": "number",
+          "rerank": "number",
+          "tag_boost": "number",
+          "vector": "number",
+        },
+        "session_id": "string",
+        "tags": [
+          "string",
+        ],
+        "title": "string",
+      },
+    ],
+    "meta": {
+      "candidate_counts": {
+        "final": "number",
+        "graph": "number",
+        "lexical": "number",
+        "vector": "number",
+      },
+      "compiled": {
+        "cross_session": "boolean",
+        "evidence_count": "number",
+        "platforms": [
+          "string",
+        ],
+        "privacy_excluded": "number",
+        "projects": [
+          "string",
+        ],
+        "question_kind": "string",
+        "time_span": {
+          "newest": "string",
+          "oldest": "string",
+        },
+      },
+      "count": "number",
+      "embedding_provider": "string",
+      "embedding_provider_status": "string",
+      "filters": {
+        "debug": "boolean",
+        "expand_links": "boolean",
+        "include_private": "boolean",
+        "limit": "number",
+        "project": "string",
+        "query": "string",
+        "strict_project": "boolean",
+      },
+      "fts_enabled": "boolean",
+      "graph_candidates": "number",
+      "latency_ms": "number",
+      "lexical_candidates": "number",
+      "question_kind": "string",
+      "question_kind_confidence": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+      "token_estimate": {
+        "estimated_input_tokens": "number",
+        "estimated_output_tokens": "number",
+        "estimated_total_tokens": "number",
+        "strategy": "string",
+      },
+      "vector_candidates": "number",
+      "vector_coverage": "number",
+      "vector_engine": "string",
+      "vector_model": "string",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "search_facets": {
+    "items": [
+      {
+        "event_types": [
+          {
+            "count": "number",
+            "value": "string",
+          },
+        ],
+        "projects": [
+          {
+            "count": "number",
+            "value": "string",
+          },
+        ],
+        "query": "string",
+        "tags": [
+          {
+            "count": "number",
+            "value": "string",
+          },
+        ],
+        "time_buckets": [
+          {
+            "count": "number",
+            "value": "string",
+          },
+        ],
+        "total_candidates": "number",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {
+        "include_private": "boolean",
+        "project": "string",
+        "query": "string",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "sessions_list": {
+    "items": [
+      {
+        "counts": {
+          "checkpoints": "number",
+          "observations": "number",
+          "prompts": "number",
+          "summaries": "number",
+          "tools": "number",
+        },
+        "ended_at": "string",
+        "last_event_at": "string",
+        "platform": "string",
+        "project": "string",
+        "session_id": "string",
+        "started_at": "string",
+        "summary": "string",
+        "summary_mode": "string",
+        "updated_at": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {
+        "include_private": "boolean",
+        "limit": "number",
+        "project": "string",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "sessions_thread": {
+    "items": [
+      {
+        "content": "string",
+        "created_at": "string",
+        "event_id": "string",
+        "event_type": "string",
+        "id": "string",
+        "platform": "string",
+        "privacy_tags": [
+          "empty",
+        ],
+        "project": "string",
+        "session_id": "string",
+        "step": "number",
+        "tags": [
+          "string",
+        ],
+        "title": "string",
+      },
+    ],
+    "meta": {
+      "count": "number",
+      "filters": {
+        "include_private": "boolean",
+        "project": "string",
+        "session_id": "string",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+  "timeline": {
+    "items": [
+      {
+        "content": "string",
+        "created_at": "string",
+        "id": "string",
+        "position": "string",
+        "privacy_tags": [
+          "empty",
+        ],
+        "tags": [
+          "string",
+        ],
+        "title": "string",
+      },
+    ],
+    "meta": {
+      "center_id": "string",
+      "count": "number",
+      "filters": {
+        "after": "number",
+        "before": "number",
+        "id": "string",
+        "include_private": "boolean",
+      },
+      "latency_ms": "number",
+      "ranking": "string",
+      "sla_latency_ms": "number",
+      "token_estimate": {
+        "estimated_input_tokens": "number",
+        "estimated_output_tokens": "number",
+        "estimated_total_tokens": "number",
+        "strategy": "string",
+      },
+    },
+    "ok": "boolean",
+    "source": "string",
+  },
+}
+`;

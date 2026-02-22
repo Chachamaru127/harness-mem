@@ -8,6 +8,9 @@ import {
   initSchema as initDbSchema,
   migrateSchema as migrateDbSchema,
 } from "../db/schema";
+import type { StorageAdapter } from "../db/storage-adapter";
+import { SqliteStorageAdapter } from "../db/sqlite-adapter";
+import { createStorageAdapter, type AdapterFactoryResult } from "../db/adapter-factory";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
@@ -21,6 +24,30 @@ import {
   upsertSqliteVecRow,
   type VectorEngine,
 } from "../vector/providers";
+import {
+  createEmbeddingProviderRegistry,
+} from "../embedding/registry";
+import {
+  type EmbeddingProvider,
+  type EmbeddingHealth,
+} from "../embedding/types";
+import { createRerankerRegistry } from "../rerank/registry";
+import {
+  type Reranker,
+  type RerankInputItem,
+  type RerankOutputItem,
+} from "../rerank/types";
+import { buildTokenEstimateMeta } from "../utils/token-estimate";
+import {
+  enqueueConsolidationJob,
+  runConsolidationOnce,
+  type ConsolidationRunOptions,
+  type ConsolidationRunStats,
+} from "../consolidation/worker";
+import { routeQuery, type RouteDecision } from "../retrieval/router";
+import { compileAnswer, type CompiledAnswer } from "../answer/compiler";
+import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
+import type { StoredEvent } from "../projector/types";
 
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
@@ -60,6 +87,7 @@ export interface EventEnvelope {
   tags?: string[];
   privacy_tags?: string[];
   dedupe_hash?: string;
+  correlation_id?: string;
 }
 
 export interface SearchRequest {
@@ -73,6 +101,8 @@ export interface SearchRequest {
   expand_links?: boolean;
   strict_project?: boolean;
   debug?: boolean;
+  /** Explicit question kind for retrieval routing: profile|timeline|graph|vector|hybrid */
+  question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid";
 }
 
 export interface FeedRequest {
@@ -114,6 +144,19 @@ export interface VerifyImportRequest {
   job_id: string;
 }
 
+export interface ConsolidationRunRequest {
+  reason?: string;
+  project?: string;
+  session_id?: string;
+  limit?: number;
+}
+
+export interface AuditLogRequest {
+  limit?: number;
+  action?: string;
+  target_type?: string;
+}
+
 export interface StreamEvent {
   id: number;
   type: "observation.created" | "session.finalized" | "health.changed";
@@ -131,6 +174,7 @@ export interface TimelineRequest {
 export interface ResumePackRequest {
   project: string;
   session_id?: string;
+  correlation_id?: string;
   limit?: number;
   include_private?: boolean;
 }
@@ -161,6 +205,7 @@ export interface FinalizeSessionRequest {
 export interface ApiMeta {
   count: number;
   latency_ms: number;
+  sla_latency_ms: number;
   filters: Record<string, unknown>;
   ranking: string;
   [key: string]: unknown;
@@ -183,6 +228,7 @@ interface SearchCandidate {
   importance: number;
   graph: number;
   final: number;
+  rerank: number;
   created_at: string;
 }
 
@@ -191,6 +237,11 @@ export interface Config {
   bindHost: string;
   bindPort: number;
   vectorDimension: number;
+  embeddingProvider?: string;
+  openaiApiKey?: string;
+  openaiEmbedModel?: string;
+  ollamaBaseUrl?: string;
+  ollamaEmbedModel?: string;
   captureEnabled: boolean;
   retrievalEnabled: boolean;
   injectionEnabled: boolean;
@@ -216,6 +267,12 @@ export interface Config {
   antigravityBackfillHours?: number;
   searchRanking?: string;
   searchExpandLinks?: boolean;
+  rerankerEnabled?: boolean;
+  consolidationEnabled?: boolean;
+  consolidationIntervalMs?: number;
+  backendMode?: "local" | "managed" | "hybrid";
+  managedEndpoint?: string;
+  managedApiKey?: string;
 }
 
 const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
@@ -317,6 +374,22 @@ function normalizeTags(tags: unknown): string[] {
     deduped.add(normalized);
   }
   return [...deduped];
+}
+
+function normalizeProjectName(name: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) throw new Error("project name must not be empty");
+  // trailing slashを除去、normalize path
+  const normalized = trimmed.replace(/\/+$/, "").replace(/\\/g, "/");
+  // パスとして存在する場合はsymlink解決してbasename相当の正規パスを返す
+  try {
+    const { realpathSync } = require("node:fs") as typeof import("node:fs");
+    const real = realpathSync(normalized);
+    return real.replace(/\/+$/, "").replace(/\\/g, "/");
+  } catch {
+    // ディレクトリが存在しない場合はnormalized文字列をそのまま返す
+    return normalized;
+  }
 }
 
 function isPrivateTag(tags: string[]): boolean {
@@ -430,51 +503,7 @@ function escapeLikePattern(input: string): string {
   return input.replace(/([\\%_])/g, "\\$1");
 }
 
-function hashToken(token: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < token.length; i += 1) {
-    hash ^= token.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function embedText(text: string, dim: number): number[] {
-  const vector = new Array<number>(dim).fill(0);
-  const tokens = tokenize(text);
-
-  if (tokens.length === 0) {
-    return vector;
-  }
-
-  const ngrams: string[] = [...tokens];
-  if (dim >= 128) {
-    for (let i = 0; i < tokens.length - 1; i += 1) {
-      ngrams.push(`${tokens[i]}_${tokens[i + 1]}`);
-    }
-  }
-
-  for (const gram of ngrams) {
-    const h1 = hashToken(gram);
-    const h2 = hashToken(`${gram}\u0001`);
-    vector[h1 % dim] += (h1 & 1) === 0 ? 1 : -1;
-    vector[h2 % dim] += (h2 & 1) === 0 ? 1 : -1;
-  }
-
-  let norm = 0;
-  for (const value of vector) {
-    norm += value * value;
-  }
-  norm = Math.sqrt(norm);
-  if (norm === 0) {
-    return vector;
-  }
-
-  for (let i = 0; i < vector.length; i += 1) {
-    vector[i] = vector[i] / norm;
-  }
-  return vector;
-}
+// hashToken + embedText moved to memory-server/src/vector/providers.ts
 
 function cosineSimilarity(lhs: number[], rhs: number[]): number {
   const dim = Math.min(lhs.length, rhs.length);
@@ -600,19 +629,32 @@ function normalizeWeights(weights: RankingWeights): RankingWeights {
   };
 }
 
+function normalizeVectorDimension(vector: number[], dimension: number): number[] {
+  const normalized = vector.filter((value): value is number => typeof value === "number");
+  if (normalized.length === dimension) {
+    return normalized;
+  }
+  if (normalized.length > dimension) {
+    return normalized.slice(0, dimension);
+  }
+  return [...normalized, ...new Array<number>(dimension - normalized.length).fill(0)];
+}
+
 function makeResponse(
   startedAt: number,
   items: unknown[],
   filters: Record<string, unknown>,
   extras: Record<string, unknown> = {}
 ): ApiResponse {
+  const latencyMs = Math.round(performance.now() - startedAt);
   return {
     ok: true,
     source: "core",
     items,
     meta: {
       count: items.length,
-      latency_ms: Math.round(performance.now() - startedAt),
+      latency_ms: latencyMs,
+      sla_latency_ms: latencyMs,
       filters,
       ranking: "hybrid_v1",
       ...extras,
@@ -621,13 +663,15 @@ function makeResponse(
 }
 
 function makeErrorResponse(startedAt: number, message: string, filters: Record<string, unknown>): ApiResponse {
+  const latencyMs = Math.round(performance.now() - startedAt);
   return {
     ok: false,
     source: "core",
     items: [],
     meta: {
       count: 0,
-      latency_ms: Math.round(performance.now() - startedAt),
+      latency_ms: latencyMs,
+      sla_latency_ms: latencyMs,
       filters,
       ranking: "hybrid_v1",
     },
@@ -1085,16 +1129,27 @@ function resolveWorkspaceRootFromWorkspaceJson(workspaceJsonPath: string): strin
 }
 
 export class HarnessMemCore {
+  private readonly storage: StorageAdapter;
   private readonly db: Database;
+  /** True when backend mode is "managed" and ManagedBackend MUST be connected for durable writes. */
+  private readonly managedRequired: boolean;
   private ftsEnabled = false;
   private vectorEngine: VectorEngine = "js-fallback";
   private vecTableReady = false;
+  private embeddingProvider!: EmbeddingProvider;
+  private embeddingHealth: EmbeddingHealth = { status: "healthy", details: "not-initialized" };
+  private embeddingWarnings: string[] = [];
+  private vectorModelVersion = VECTOR_MODEL_VERSION;
+  private reranker: Reranker | null = null;
+  private rerankerEnabled = false;
+  private managedBackend: ManagedBackend | null = null;
   private readonly heartbeatPath: string;
   private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
   private ingestTimer: ReturnType<typeof setInterval> | null = null;
   private opencodeIngestTimer: ReturnType<typeof setInterval> | null = null;
   private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
   private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private consolidationTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
@@ -1110,13 +1165,28 @@ export class HarnessMemCore {
     this.heartbeatPath = resolveHomePath(HEARTBEAT_FILE);
     ensureDir(resolve(join(this.heartbeatPath, "..")));
 
-    this.db = new Database(dbPath, { create: true, strict: false });
+    // Create storage adapter based on backend mode.
+    const { adapter, managedRequired } = createStorageAdapter({
+      backendMode: config.backendMode || "local",
+      dbPath,
+      managedEndpoint: config.managedEndpoint,
+      managedApiKey: config.managedApiKey,
+    });
+    this.storage = adapter;
+    this.managedRequired = managedRequired;
+
+    // Expose raw SQLite Database for backward compat and SQLite-specific features
+    // (FTS5, sqlite-vec, PRAGMA).  Will be removed once all methods migrate to storage.
+    this.db = (this.storage as SqliteStorageAdapter).raw;
 
     this.configureDatabase();
     this.initSchema();
     this.initVectorEngine();
+    this.initEmbeddingProvider();
+    this.initReranker();
 
     this.startBackgroundWorkers();
+    this.initManagedBackend();
   }
 
   private configureDatabase(): void {
@@ -1133,6 +1203,84 @@ export class HarnessMemCore {
     const resolved = resolveVectorEngine(this.db, this.config.retrievalEnabled, this.config.vectorDimension);
     this.vectorEngine = resolved.engine;
     this.vecTableReady = resolved.vecTableReady;
+  }
+
+  private initEmbeddingProvider(): void {
+    const registry = createEmbeddingProviderRegistry({
+      providerName: this.config.embeddingProvider,
+      dimension: this.config.vectorDimension,
+      openaiApiKey: this.config.openaiApiKey,
+      openaiEmbedModel: this.config.openaiEmbedModel,
+      ollamaBaseUrl: this.config.ollamaBaseUrl,
+      ollamaEmbedModel: this.config.ollamaEmbedModel,
+    });
+    this.embeddingProvider = registry.provider;
+    this.embeddingWarnings = [...registry.warnings];
+    this.vectorModelVersion = `${registry.provider.name}:${registry.provider.model}`;
+    this.embeddingHealth = registry.provider.health();
+  }
+
+  private refreshEmbeddingHealth(): void {
+    try {
+      this.embeddingHealth = this.embeddingProvider.health();
+    } catch {
+      this.embeddingHealth = {
+        status: "degraded",
+        details: "embedding provider health call failed",
+      };
+    }
+  }
+
+  private initReranker(): void {
+    const rerankerSetting =
+      typeof this.config.rerankerEnabled === "boolean"
+        ? this.config.rerankerEnabled
+        : envFlag("HARNESS_MEM_RERANKER_ENABLED", false);
+    const registry = createRerankerRegistry(rerankerSetting);
+    this.rerankerEnabled = registry.enabled;
+    this.reranker = registry.reranker;
+    if (registry.warnings.length > 0) {
+      this.embeddingWarnings.push(...registry.warnings);
+    }
+  }
+
+  private initManagedBackend(): void {
+    const mode = this.config.backendMode;
+    if (mode !== "hybrid" && mode !== "managed") {
+      return;
+    }
+    if (!this.config.managedEndpoint) {
+      if (mode === "managed") {
+        // managed mode MUST have an endpoint — fail loudly
+        throw new Error(
+          "backend_mode=managed requires managedEndpoint. " +
+          "Set HARNESS_MEM_MANAGED_ENDPOINT or configure managed.endpoint in config.json"
+        );
+      }
+      this.embeddingWarnings.push(
+        `backend_mode=${mode} but managedEndpoint not configured. ` +
+        "Managed backend will not be initialized."
+      );
+      return;
+    }
+
+    this.managedBackend = new ManagedBackend({
+      endpoint: this.config.managedEndpoint,
+      apiKey: this.config.managedApiKey || "",
+      backendMode: mode,
+    });
+
+    // Fire-and-forget initialization
+    this.managedBackend.initialize().catch((err) => {
+      this.embeddingWarnings.push(
+        `managed backend init failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    });
+  }
+
+  /** Get managed backend status (null if not in managed/hybrid mode). */
+  getManagedStatus(): ManagedBackendStatus | null {
+    return this.managedBackend?.getStatus() ?? null;
   }
 
   private isOpencodeIngestEnabled(): boolean {
@@ -1315,8 +1463,8 @@ export class HarnessMemCore {
   private resolveAntigravityLogProject(logFilePath: string): { project: string; workspaceRoot: string; sessionSeed: string } {
     const storageId = this.resolveAntigravityWorkspaceStorageIdFromLogFile(logFilePath);
     const workspaceRoot = this.resolveAntigravityWorkspaceRootByStorageId(storageId);
-    const fallbackProject = basename(resolve(this.config.codexProjectRoot || process.cwd())) || "unknown";
-    const project = workspaceRoot ? basename(workspaceRoot) : fallbackProject;
+    const fallbackProject = normalizeProjectName(resolve(this.config.codexProjectRoot || process.cwd()));
+    const project = workspaceRoot ? normalizeProjectName(resolve(workspaceRoot)) : fallbackProject;
 
     const sessionDir = basename(dirname(dirname(dirname(dirname(logFilePath)))));
     const sessionSeed = [project || "unknown", storageId || sessionDir || "planner"].filter(Boolean).join(":");
@@ -1339,6 +1487,14 @@ export class HarnessMemCore {
       1,
       24 * 365
     );
+  }
+
+  private isConsolidationEnabled(): boolean {
+    return this.config.consolidationEnabled !== false;
+  }
+
+  private getConsolidationIntervalMs(): number {
+    return clampLimit(Number(this.config.consolidationIntervalMs || 60000), 60000, 5000, 600000);
   }
 
   private startBackgroundWorkers(): void {
@@ -1368,6 +1524,12 @@ export class HarnessMemCore {
       this.antigravityIngestTimer = setInterval(() => {
         this.ingestAntigravityHistory();
       }, this.getAntigravityIngestIntervalMs());
+    }
+
+    if (this.isConsolidationEnabled()) {
+      this.consolidationTimer = setInterval(() => {
+        this.runConsolidation({ reason: "scheduler", limit: 10 });
+      }, this.getConsolidationIntervalMs());
     }
 
     this.retryTimer = setInterval(() => {
@@ -1533,21 +1695,22 @@ export class HarnessMemCore {
     };
   }
 
-  private ensureSession(sessionId: string, platform: string, project: string, ts: string): void {
+  private ensureSession(sessionId: string, platform: string, project: string, ts: string, correlationId?: string | null): void {
     const current = nowIso();
     this.db
       .query(`
         INSERT INTO mem_sessions(
-          session_id, platform, project, started_at, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?)
+          session_id, platform, project, started_at, correlation_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
           started_at = CASE
             WHEN mem_sessions.started_at <= excluded.started_at THEN mem_sessions.started_at
             ELSE excluded.started_at
           END,
+          correlation_id = COALESCE(mem_sessions.correlation_id, excluded.correlation_id),
           updated_at = excluded.updated_at
       `)
-      .run(sessionId, platform, project, ts, current, current);
+      .run(sessionId, platform, project, ts, correlationId ?? null, current, current);
   }
 
   private upsertSessionSummary(
@@ -1602,12 +1765,27 @@ export class HarnessMemCore {
       );
   }
 
+  private writeAuditLog(
+    action: string,
+    targetType: string,
+    targetId: string,
+    details: Record<string, unknown>
+  ): void {
+    this.db
+      .query(`
+        INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
+        VALUES (?, 'system', ?, ?, ?, ?)
+      `)
+      .run(action, targetType, targetId, JSON.stringify(details), nowIso());
+  }
+
   private upsertVector(observationId: string, content: string, createdAt: string): void {
     if (this.vectorEngine === "disabled") {
       return;
     }
 
-    const vector = embedText(content, this.config.vectorDimension);
+    const vector = normalizeVectorDimension(this.embeddingProvider.embed(content), this.config.vectorDimension);
+    this.refreshEmbeddingHealth();
     const vectorJson = JSON.stringify(vector);
     const updatedAt = nowIso();
 
@@ -1621,7 +1799,7 @@ export class HarnessMemCore {
           vector_json = excluded.vector_json,
           updated_at = excluded.updated_at
       `)
-      .run(observationId, VECTOR_MODEL_VERSION, this.config.vectorDimension, vectorJson, createdAt, updatedAt);
+      .run(observationId, this.vectorModelVersion, this.config.vectorDimension, vectorJson, createdAt, updatedAt);
 
     if (this.vectorEngine === "sqlite-vec" && this.vecTableReady) {
       const ok = upsertSqliteVecRow(this.db, observationId, vectorJson, updatedAt);
@@ -1692,11 +1870,33 @@ export class HarnessMemCore {
       return makeErrorResponse(startedAt, "event.project / event.session_id / event.event_type / event.platform are required", {});
     }
 
+    let normalizedProject: string;
+    try {
+      normalizedProject = normalizeProjectName(event.project);
+    } catch (e) {
+      return makeErrorResponse(startedAt, e instanceof Error ? e.message : String(e), { project: event.project });
+    }
+
     const tags = normalizeTags(event.tags);
     const privacyTags = normalizeTags(event.privacy_tags);
 
     if (isBlockedTag(privacyTags)) {
       return makeResponse(startedAt, [], { blocked: true }, { skipped: true });
+    }
+
+    // Fail-close in managed mode: do not accept local-only writes when
+    // the managed backend is unavailable.
+    if (this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected())) {
+      return makeErrorResponse(
+        startedAt,
+        "managed backend is required but not connected; write blocked (fail-close)",
+        {
+          project: normalizedProject,
+          session_id: event.session_id,
+          backend_mode: this.config.backendMode || "local",
+          write_durability: "blocked",
+        }
+      );
     }
 
     const timestamp = event.ts || nowIso();
@@ -1715,19 +1915,19 @@ export class HarnessMemCore {
 
     try {
       const transaction = this.db.transaction(() => {
-        this.ensureSession(event.session_id, event.platform, event.project, timestamp);
+        this.ensureSession(event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id);
 
         const eventInsert = this.db
           .query(`
             INSERT OR IGNORE INTO mem_events(
               event_id, platform, project, session_id, event_type, ts,
-              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             eventId,
             event.platform,
-            event.project,
+            normalizedProject,
             event.session_id,
             event.event_type,
             timestamp,
@@ -1736,6 +1936,7 @@ export class HarnessMemCore {
             JSON.stringify(privacyTags),
             dedupeHash,
             observationId,
+            event.correlation_id ?? null,
             current
           );
 
@@ -1765,7 +1966,7 @@ export class HarnessMemCore {
             observationId,
             eventId,
             event.platform,
-            event.project,
+            normalizedProject,
             event.session_id,
             observationBase.title,
             observationBase.content,
@@ -1799,6 +2000,18 @@ export class HarnessMemCore {
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
 
+        if (isPrivateTag(privacyTags)) {
+          this.db.query(`
+            INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
+            VALUES ('privacy_filter', ?, 'event', ?, ?, ?)
+          `).run(
+            event.platform,
+            eventId,
+            JSON.stringify({ reason: "private_tag", path: `${event.platform}/${normalizedProject}`, privacy_tags: privacyTags }),
+            current
+          );
+        }
+
         return { duplicated: false, observationId };
       });
 
@@ -1812,7 +2025,7 @@ export class HarnessMemCore {
         event_id: eventId,
         dedupe_hash: dedupeHash,
         platform: event.platform,
-        project: event.project,
+        project: normalizedProject,
         session_id: event.session_id,
         event_type: event.event_type,
         card_type: event.event_type === "session_end" ? "session_summary" : event.event_type,
@@ -1826,22 +2039,50 @@ export class HarnessMemCore {
 
       this.appendStreamEvent("observation.created", item as unknown as Record<string, unknown>);
 
+      // Dual-write: replicate to managed backend if hybrid/managed
+      if (this.managedBackend) {
+        const storedEvent: StoredEvent = {
+          event_id: eventId,
+          platform: event.platform,
+          project: normalizedProject,
+          workspace_uid: "",
+          session_id: event.session_id,
+          event_type: event.event_type,
+          ts: timestamp,
+          payload_json: redactedPayload,
+          tags_json: JSON.stringify(tags),
+          privacy_tags_json: JSON.stringify(privacyTags),
+          dedupe_hash: dedupeHash,
+          observation_id: observationId,
+          correlation_id: event.correlation_id || undefined,
+          created_at: current,
+        };
+        this.managedBackend.replicateEvent(storedEvent);
+      }
+
+      const writeDurability = this.managedRequired ? "managed" : "local";
+
       return makeResponse(
         startedAt,
         [item],
         {
-          project: event.project,
+          project: normalizedProject,
           session_id: event.session_id,
           event_type: event.event_type,
         },
-        { vector_engine: this.vectorEngine }
+        {
+          vector_engine: this.vectorEngine,
+          embedding_provider: this.embeddingProvider.name,
+          embedding_provider_status: this.embeddingHealth.status,
+          write_durability: writeDurability,
+        }
       );
     } catch (error) {
       if (options.allowQueue) {
         this.enqueueRetry(event, error instanceof Error ? error.message : String(error));
       }
       return makeErrorResponse(startedAt, error instanceof Error ? error.message : String(error), {
-        project: event.project,
+        project: normalizedProject,
         session_id: event.session_id,
       });
     }
@@ -2023,12 +2264,13 @@ export class HarnessMemCore {
       return { scores: new Map<string, number>(), coverage: 0 };
     }
 
-    const queryVector = embedText(request.query, this.config.vectorDimension);
+    const queryVector = normalizeVectorDimension(this.embeddingProvider.embed(request.query), this.config.vectorDimension);
+    this.refreshEmbeddingHealth();
     const queryVectorJson = JSON.stringify(queryVector);
 
     if (this.vectorEngine === "sqlite-vec" && this.vecTableReady) {
       try {
-        const params: unknown[] = [queryVectorJson, internalLimit * 3, VECTOR_MODEL_VERSION, this.config.vectorDimension];
+        const params: unknown[] = [queryVectorJson, internalLimit * 3, this.vectorModelVersion, this.config.vectorDimension];
         let sql = `
           SELECT
             c.id AS id,
@@ -2075,7 +2317,7 @@ export class HarnessMemCore {
       }
     }
 
-    const params: unknown[] = [VECTOR_MODEL_VERSION, this.config.vectorDimension];
+    const params: unknown[] = [this.vectorModelVersion, this.config.vectorDimension];
     let sql = `
       SELECT
         v.observation_id AS id,
@@ -2088,7 +2330,11 @@ export class HarnessMemCore {
 
     sql = this.applyCommonFilters(sql, params, "o", request);
     sql += " ORDER BY o.created_at DESC LIMIT ?";
-    params.push(Math.min(2000, Math.max(800, internalLimit * 20)));
+    const strictProjectWindow =
+      request.project && request.strict_project !== false
+        ? Math.min(1500, Math.max(600, internalLimit * 12))
+        : Math.min(2000, Math.max(800, internalLimit * 20));
+    params.push(strictProjectWindow);
 
     const rows = this.db.query(sql).all(...(params as any[])) as Array<{ id: string; vector_json: string; created_at: string }>;
     const scored: Array<{ id: string; score: number }> = [];
@@ -2250,6 +2496,79 @@ export class HarnessMemCore {
     return normalizeWeights(base);
   }
 
+  private buildRerankInput(
+    ranked: SearchCandidate[],
+    observations: Map<string, Record<string, unknown>>
+  ): RerankInputItem[] {
+    return ranked.map((item, index) => {
+      const observation = observations.get(item.id) ?? {};
+      return {
+        id: item.id,
+        score: item.final,
+        created_at: item.created_at,
+        title: typeof observation.title === "string" ? observation.title : "",
+        content: typeof observation.content_redacted === "string" ? observation.content_redacted : "",
+        source_index: index,
+      };
+    });
+  }
+
+  private applyRerank(
+    query: string,
+    ranked: SearchCandidate[],
+    observations: Map<string, Record<string, unknown>>
+  ): { ranked: SearchCandidate[]; pre: Array<Record<string, unknown>>; post: Array<Record<string, unknown>> } {
+    const pre = ranked.slice(0, 25).map((item, index) => ({
+      rank: index + 1,
+      id: item.id,
+      score: Number(item.final.toFixed(6)),
+    }));
+
+    if (!this.rerankerEnabled || !this.reranker || ranked.length === 0) {
+      for (const item of ranked) {
+        item.rerank = item.final;
+      }
+      return { ranked, pre, post: pre };
+    }
+
+    const reranked = this.reranker.rerank({
+      query,
+      items: this.buildRerankInput(ranked, observations),
+    });
+    const rerankScoreById = new Map<string, number>();
+    const rerankOrderById = new Map<string, number>();
+    reranked.forEach((item: RerankOutputItem, index) => {
+      rerankScoreById.set(item.id, item.rerank_score);
+      rerankOrderById.set(item.id, index);
+    });
+
+    ranked.sort((lhs, rhs) => {
+      const lhsOrder = rerankOrderById.get(lhs.id);
+      const rhsOrder = rerankOrderById.get(rhs.id);
+      if (typeof lhsOrder === "number" && typeof rhsOrder === "number" && lhsOrder !== rhsOrder) {
+        return lhsOrder - rhsOrder;
+      }
+      const lhsScore = rerankScoreById.get(lhs.id) ?? lhs.final;
+      const rhsScore = rerankScoreById.get(rhs.id) ?? rhs.final;
+      if (rhsScore !== lhsScore) {
+        return rhsScore - lhsScore;
+      }
+      return lhs.id.localeCompare(rhs.id);
+    });
+
+    for (const item of ranked) {
+      item.rerank = rerankScoreById.get(item.id) ?? item.final;
+    }
+
+    const post = ranked.slice(0, 25).map((item, index) => ({
+      rank: index + 1,
+      id: item.id,
+      score: Number((item.rerank ?? item.final).toFixed(6)),
+    }));
+
+    return { ranked, pre, post };
+  }
+
   search(request: SearchRequest): ApiResponse {
     const startedAt = performance.now();
 
@@ -2266,8 +2585,10 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks = (this.config.searchExpandLinks !== false) && request.expand_links !== false;
+    const normalizedProject = request.project ? normalizeProjectName(request.project) : request.project;
     const normalizedRequest: SearchRequest = {
       ...request,
+      project: normalizedProject,
       include_private: includePrivate,
       strict_project: strictProject,
       expand_links: expandLinks,
@@ -2298,6 +2619,8 @@ export class HarnessMemCore {
 
     const ranked: SearchCandidate[] = [];
     let vectorCandidateCount = 0;
+    let privacyExcludedCount = 0;
+    let boundaryExcludedCount = 0;
     for (const id of candidateIds) {
       const observation = observations.get(id);
       if (!observation) {
@@ -2305,12 +2628,14 @@ export class HarnessMemCore {
       }
 
       const observationProject = typeof observation.project === "string" ? observation.project : "";
-      if (strictProject && request.project && observationProject !== request.project) {
+      if (strictProject && normalizedProject && observationProject !== normalizedProject) {
+        boundaryExcludedCount++;
         continue;
       }
 
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
       if (!includePrivate && hasPrivateVisibilityTag(privacyTags)) {
+        privacyExcludedCount++;
         continue;
       }
 
@@ -2335,12 +2660,21 @@ export class HarnessMemCore {
         importance,
         graph: graphScore,
         final: 0,
+        rerank: 0,
         created_at: createdAt,
       });
     }
 
     const vectorCoverage = ranked.length === 0 ? 0 : vectorCandidateCount / ranked.length;
-    const weights = this.resolveSearchWeights(vectorCoverage);
+
+    // Route query to determine retrieval strategy and weight overrides
+    const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
+    const baseWeights = this.resolveSearchWeights(vectorCoverage);
+    // Blend router weights with existing weights: router takes precedence
+    // when a specific question kind is detected (confidence > 0.5)
+    const weights = routeDecision.confidence > 0.5
+      ? routeDecision.weights
+      : baseWeights;
 
     for (const item of ranked) {
       item.final =
@@ -2362,7 +2696,10 @@ export class HarnessMemCore {
       return lhs.id.localeCompare(rhs.id);
     });
 
-    const items = ranked.slice(0, limit).map((entry) => {
+    const rerankResult = this.applyRerank(request.query, ranked, observations);
+    const rankedAfterRerank = rerankResult.ranked;
+
+    const items = rankedAfterRerank.slice(0, limit).map((entry) => {
       const observation = observations.get(entry.id) ?? {};
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
@@ -2389,14 +2726,20 @@ export class HarnessMemCore {
           importance: Number(entry.importance.toFixed(6)),
           graph: Number(entry.graph.toFixed(6)),
           final: Number(entry.final.toFixed(6)),
+          rerank: Number((entry.rerank || entry.final).toFixed(6)),
         },
       };
     });
 
     const meta: Record<string, unknown> = {
       ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
+      question_kind: routeDecision.kind,
+      question_kind_confidence: Number(routeDecision.confidence.toFixed(3)),
       vector_engine: this.vectorEngine,
+      vector_model: this.vectorModelVersion,
       fts_enabled: this.ftsEnabled,
+      embedding_provider: this.embeddingProvider.name,
+      embedding_provider_status: this.embeddingHealth.status,
       lexical_candidates: lexical.size,
       vector_candidates: vector.size,
       graph_candidates: graph.size,
@@ -2404,18 +2747,105 @@ export class HarnessMemCore {
         lexical: lexical.size,
         vector: vector.size,
         graph: graph.size,
-        final: ranked.length,
+        final: rankedAfterRerank.length,
       },
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };
+    meta.token_estimate = buildTokenEstimateMeta({
+      input: {
+        query: request.query,
+        limit,
+        project: request.project,
+      },
+      output: items.map((item) => ({
+        id: item.id,
+        title: item.title,
+      })),
+      strategy: "index",
+    });
     if (request.debug) {
       meta.debug = {
         strict_project: strictProject,
         expand_links: expandLinks,
         weights,
         vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
+        embedding_provider: this.embeddingProvider.name,
+        embedding_model: this.embeddingProvider.model,
+        reranker: {
+          enabled: this.rerankerEnabled,
+          name: this.reranker?.name || null,
+        },
+        rerank_pre: rerankResult.pre,
+        rerank_post: rerankResult.post,
       };
     }
+
+    try {
+      this.writeAuditLog("read.search", "project", normalizedProject || "", {
+        query: request.query,
+        limit,
+        include_private: includePrivate,
+        count: items.length,
+        privacy_excluded_count: privacyExcludedCount,
+        boundary_excluded_count: boundaryExcludedCount,
+      });
+      if (privacyExcludedCount > 0) {
+        this.writeAuditLog("privacy_filter", "search", normalizedProject || "", {
+          reason: "include_private_false",
+          query: request.query,
+          returned_count: items.length,
+          excluded_count: privacyExcludedCount,
+          path: `search/${normalizedProject || "global"}`,
+          ts: nowIso(),
+        });
+      }
+      if (boundaryExcludedCount > 0) {
+        this.writeAuditLog("boundary_filter", "search", normalizedProject || "", {
+          reason: "workspace_boundary",
+          excluded_count: boundaryExcludedCount,
+          project: normalizedProject,
+        });
+      }
+    } catch {
+      // best effort
+    }
+
+    // Shadow-read: compare results with managed backend (fire-and-forget)
+    if (this.managedBackend) {
+      const resultIds = items.map((item) => item.id);
+      this.managedBackend.shadowRead(request.query, resultIds, {
+        project: normalizedProject,
+        limit,
+      }).catch(() => {
+        // fire-and-forget, errors tracked in shadow metrics
+      });
+    }
+
+    // Evidence-bound answer compilation
+    const compiled = compileAnswer({
+      question_kind: routeDecision.kind,
+      observations: items.map((item) => ({
+        id: item.id,
+        platform: item.platform as string,
+        project: item.project as string,
+        title: item.title as string | null,
+        content_redacted: item.content as string,
+        created_at: item.created_at as string,
+        tags_json: JSON.stringify(item.tags),
+        session_id: item.session_id as string,
+        final_score: item.scores.final,
+      })),
+      privacy_excluded_count: privacyExcludedCount,
+    });
+    meta.compiled = {
+      question_kind: compiled.question_kind,
+      evidence_count: compiled.evidence_count,
+      platforms: compiled.meta.platforms,
+      projects: compiled.meta.projects,
+      time_span: compiled.meta.time_span,
+      cross_session: compiled.meta.cross_session,
+      privacy_excluded: compiled.meta.privacy_excluded,
+    };
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
   }
@@ -2431,6 +2861,7 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const cursor = decodeFeedCursor(request.cursor);
     const typeFilter = typeof request.type === "string" && request.type.trim() ? request.type.trim() : undefined;
+    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
 
     const params: unknown[] = [];
     let sql = `
@@ -2451,9 +2882,9 @@ export class HarnessMemCore {
       WHERE 1 = 1
     `;
 
-    if (request.project) {
+    if (normalizedProject) {
       sql += " AND o.project = ?";
-      params.push(request.project);
+      params.push(normalizedProject);
     }
 
     if (typeFilter) {
@@ -2520,6 +2951,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const limit = clampLimit(request.limit, 50, 1, 200);
     const includePrivate = Boolean(request.include_private);
+    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
 
     const params: unknown[] = [];
     let sql = `
@@ -2546,9 +2978,9 @@ export class HarnessMemCore {
       WHERE 1 = 1
     `;
 
-    if (request.project) {
+    if (normalizedProject) {
       sql += " AND s.project = ?";
-      params.push(request.project);
+      params.push(normalizedProject);
     }
     sql += this.platformVisibilityFilterSql("s");
 
@@ -2594,6 +3026,7 @@ export class HarnessMemCore {
 
     const includePrivate = Boolean(request.include_private);
     const limit = clampLimit(request.limit, 200, 1, 1000);
+    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
     const params: unknown[] = [request.session_id];
     let sql = `
       SELECT
@@ -2613,9 +3046,9 @@ export class HarnessMemCore {
       WHERE o.session_id = ?
     `;
 
-    if (request.project) {
+    if (normalizedProject) {
       sql += " AND o.project = ?";
-      params.push(request.project);
+      params.push(normalizedProject);
     }
 
     sql += this.platformVisibilityFilterSql("o");
@@ -2644,7 +3077,7 @@ export class HarnessMemCore {
       items,
       {
         session_id: request.session_id,
-        project: request.project,
+        project: normalizedProject,
         include_private: includePrivate,
       },
       { ranking: "session_thread_v1" }
@@ -2654,6 +3087,7 @@ export class HarnessMemCore {
   searchFacets(request: SearchFacetsRequest): ApiResponse {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
+    const normalizedProject = request.project ? normalizeProjectName(request.project) : undefined;
     const params: unknown[] = [];
 
     let sql = `
@@ -2668,9 +3102,9 @@ export class HarnessMemCore {
       WHERE 1 = 1
     `;
 
-    if (request.project) {
+    if (normalizedProject) {
       sql += " AND o.project = ?";
-      params.push(request.project);
+      params.push(normalizedProject);
     }
 
     sql += this.platformVisibilityFilterSql("o");
@@ -2838,8 +3272,28 @@ export class HarnessMemCore {
       ...afterRows.map((row) => normalizeItem(row, "after")),
     ];
 
+    try {
+      this.writeAuditLog("read.timeline", "observation", request.id, {
+        before,
+        after,
+        include_private: includePrivate,
+        count: items.length,
+      });
+    } catch {
+      // best effort
+    }
+
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       center_id: request.id,
+      token_estimate: buildTokenEstimateMeta({
+        input: {
+          id: request.id,
+          before,
+          after,
+        },
+        output: items,
+        strategy: "timeline",
+      }),
     });
   }
 
@@ -2848,7 +3302,13 @@ export class HarnessMemCore {
     const ids = Array.isArray(request.ids) ? request.ids.filter((id): id is string => typeof id === "string") : [];
 
     if (ids.length === 0) {
-      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>);
+      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
+        token_estimate: buildTokenEstimateMeta({
+          input: { ids: [] },
+          output: [],
+          strategy: "details",
+        }),
+      });
     }
 
     const observationMap = this.loadObservations(ids);
@@ -2884,8 +3344,32 @@ export class HarnessMemCore {
       });
     }
 
+    const warnings: string[] = [];
+    if (ids.length >= 20) {
+      warnings.push(
+        "Large details request detected. Prefer 3-layer workflow: search -> timeline -> get_observations (targeted IDs)."
+      );
+    }
+
+    try {
+      this.writeAuditLog("read.get_observations", "observation", ids[0] || "", {
+        requested_ids: ids.length,
+        returned_ids: items.length,
+        include_private: includePrivate,
+        compact,
+      });
+    } catch {
+      // best effort
+    }
+
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       compact,
+      token_estimate: buildTokenEstimateMeta({
+        input: { ids, compact },
+        output: items,
+        strategy: "details",
+      }),
+      warnings,
     });
   }
 
@@ -2969,6 +3453,7 @@ export class HarnessMemCore {
       summary_mode: summaryMode,
       finalized_at: current,
     });
+    this.enqueueConsolidation(request.project || basename(process.cwd()), request.session_id, "finalize");
 
     return makeResponse(
       startedAt,
@@ -2984,6 +3469,36 @@ export class HarnessMemCore {
     );
   }
 
+  resolveSessionChain(correlationId: string, project: string): ApiResponse {
+    const startedAt = performance.now();
+
+    if (!correlationId || !project) {
+      return makeErrorResponse(startedAt, "correlation_id and project are required", { correlation_id: correlationId, project });
+    }
+
+    const sessions = this.db
+      .query(
+        `
+          SELECT session_id, platform, project, started_at, ended_at, correlation_id
+          FROM mem_sessions
+          WHERE correlation_id = ? AND project = ?
+          ORDER BY started_at ASC
+        `
+      )
+      .all(correlationId, project) as Array<{ session_id: string; platform: string; project: string; started_at: string; ended_at: string | null; correlation_id: string }>;
+
+    const items = sessions.map((s) => ({
+      session_id: s.session_id,
+      platform: s.platform,
+      project: s.project,
+      started_at: s.started_at,
+      ended_at: s.ended_at,
+      correlation_id: s.correlation_id,
+    }));
+
+    return makeResponse(startedAt, items, { correlation_id: correlationId, project }, { chain_length: items.length });
+  }
+
   resumePack(request: ResumePackRequest): ApiResponse {
     const startedAt = performance.now();
 
@@ -2995,45 +3510,83 @@ export class HarnessMemCore {
       return makeErrorResponse(startedAt, "project is required", request as unknown as Record<string, unknown>);
     }
 
+    const normalizedProject = normalizeProjectName(request.project);
     const limit = clampLimit(request.limit, 5, 1, 20);
     const includePrivate = Boolean(request.include_private);
     const visibility = this.visibilityFilterSql("o", includePrivate);
 
+    // correlation_id 指定時: 同じ相関IDを持つ全セッションから文脈を取得
+    const useCorrelationId = Boolean(request.correlation_id);
+
+    const correlationId = request.correlation_id ?? null;
+
     const latestSummary = this.db
       .query(
         `
-          SELECT session_id, summary, ended_at
-          FROM mem_sessions
-          WHERE project = ? AND summary IS NOT NULL
-          ORDER BY ended_at DESC
+          SELECT s.session_id, s.summary, s.ended_at
+          FROM mem_sessions s
+          WHERE s.project = ?
+          ${useCorrelationId ? "AND s.correlation_id = ?" : "AND s.summary IS NOT NULL"}
+          ORDER BY s.ended_at DESC
           LIMIT 1
         `
       )
-      .get(request.project) as { session_id: string; summary: string; ended_at: string } | null;
+      .get(...(useCorrelationId ? [normalizedProject, correlationId as string] : [normalizedProject])) as { session_id: string; summary: string; ended_at: string } | null;
 
-    const rows = this.db
-      .query(
-        `
-          SELECT
-            o.id,
-            o.event_id,
-            o.platform,
-            o.project,
-            o.session_id,
-            o.title,
-            o.content_redacted,
-            o.tags_json,
-            o.privacy_tags_json,
-            o.created_at
-          FROM mem_observations o
-          WHERE o.project = ?
-          ${request.session_id ? "AND o.session_id <> ?" : ""}
-          ${visibility}
-          ORDER BY o.created_at DESC
-          LIMIT ?
-        `
-      )
-      .all(...(request.session_id ? [request.project, request.session_id, limit] : [request.project, limit])) as Array<Record<string, unknown>>;
+    let rows: Array<Record<string, unknown>>;
+
+    if (useCorrelationId) {
+      // correlation_id が指定された場合: 全関連セッションから観測を取得
+      rows = this.db
+        .query(
+          `
+            SELECT
+              o.id,
+              o.event_id,
+              o.platform,
+              o.project,
+              o.session_id,
+              o.title,
+              o.content_redacted,
+              o.tags_json,
+              o.privacy_tags_json,
+              o.created_at
+            FROM mem_observations o
+            JOIN mem_sessions s ON o.session_id = s.session_id
+            WHERE o.project = ?
+              AND s.correlation_id = ?
+              ${request.session_id ? "AND o.session_id <> ?" : ""}
+            ${visibility}
+            ORDER BY o.created_at DESC
+            LIMIT ?
+          `
+        )
+        .all(...(request.session_id ? [normalizedProject, correlationId as string, request.session_id, limit] : [normalizedProject, correlationId as string, limit])) as Array<Record<string, unknown>>;
+    } else {
+      rows = this.db
+        .query(
+          `
+            SELECT
+              o.id,
+              o.event_id,
+              o.platform,
+              o.project,
+              o.session_id,
+              o.title,
+              o.content_redacted,
+              o.tags_json,
+              o.privacy_tags_json,
+              o.created_at
+            FROM mem_observations o
+            WHERE o.project = ?
+            ${request.session_id ? "AND o.session_id <> ?" : ""}
+            ${visibility}
+            ORDER BY o.created_at DESC
+            LIMIT ?
+          `
+        )
+        .all(...(request.session_id ? [normalizedProject, request.session_id, limit] : [normalizedProject, limit])) as Array<Record<string, unknown>>;
+    }
 
     const items: Array<Record<string, unknown>> = [];
 
@@ -3065,11 +3618,13 @@ export class HarnessMemCore {
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
+      correlation_id: request.correlation_id ?? null,
     });
   }
 
   health(): ApiResponse {
     const startedAt = performance.now();
+    this.refreshEmbeddingHealth();
 
     const sessions = this.db.query(`SELECT COUNT(*) AS count FROM mem_sessions`).get() as { count: number };
     const events = this.db.query(`SELECT COUNT(*) AS count FROM mem_events`).get() as { count: number };
@@ -3087,14 +3642,25 @@ export class HarnessMemCore {
           pid: process.pid,
           host: this.config.bindHost,
           port: this.config.bindPort,
+          backend_mode: this.config.backendMode || "local",
           db_path: dbPath,
           db_size_bytes: dbSize,
           vector_engine: this.vectorEngine,
+          vector_model: this.vectorModelVersion,
           fts_enabled: this.ftsEnabled,
+          embedding_provider: this.embeddingProvider.name,
+          embedding_provider_status: this.embeddingHealth.status,
+          embedding_provider_details: this.embeddingHealth.details,
           features: {
             capture: this.config.captureEnabled,
             retrieval: this.config.retrievalEnabled,
             injection: this.config.injectionEnabled,
+            embedding_provider: this.embeddingProvider.name,
+            embedding_model: this.embeddingProvider.model,
+            reranker_enabled: this.rerankerEnabled,
+            reranker_name: this.reranker?.name || null,
+            consolidation_enabled: this.isConsolidationEnabled(),
+            consolidation_interval_ms: this.getConsolidationIntervalMs(),
             codex_history_ingest: this.config.codexHistoryEnabled,
             codex_sessions_root: resolveHomePath(this.config.codexSessionsRoot),
             codex_ingest_interval_ms: this.config.codexIngestIntervalMs,
@@ -3117,6 +3683,13 @@ export class HarnessMemCore {
             search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
             search_expand_links: this.config.searchExpandLinks !== false,
           },
+          managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
+          warnings: [
+            ...this.embeddingWarnings,
+            ...(this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected())
+              ? ["managed mode active but ManagedBackend not connected — writes are BLOCKED (fail-close)"]
+              : []),
+          ],
           counts: {
             sessions: Number(sessions.count || 0),
             events: Number(events.count || 0),
@@ -3132,6 +3705,7 @@ export class HarnessMemCore {
 
   metrics(): ApiResponse {
     const startedAt = performance.now();
+    this.refreshEmbeddingHealth();
 
     const vectorCoverage = this.db
       .query(`
@@ -3151,13 +3725,41 @@ export class HarnessMemCore {
       `)
       .get() as { count: number; max_retry_count: number } | null;
 
+    const consolidationStats = this.db
+      .query(`
+        SELECT
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_jobs,
+          SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running_jobs,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_jobs,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_jobs
+        FROM mem_consolidation_queue
+      `)
+      .get() as
+      | { pending_jobs?: number; running_jobs?: number; failed_jobs?: number; completed_jobs?: number }
+      | null;
+
+    const factStats = this.db
+      .query(`
+        SELECT
+          COUNT(*) AS facts_total,
+          SUM(CASE WHEN merged_into_fact_id IS NULL THEN 0 ELSE 1 END) AS facts_merged
+        FROM mem_facts
+      `)
+      .get() as { facts_total?: number; facts_merged?: number } | null;
+
     return makeResponse(
       startedAt,
       [
         {
           vector_engine: this.vectorEngine,
+          vector_model: this.vectorModelVersion,
           vec_table_ready: this.vecTableReady,
           fts_enabled: this.ftsEnabled,
+          embedding_provider: this.embeddingProvider.name,
+          embedding_provider_status: this.embeddingHealth.status,
+          embedding_provider_details: this.embeddingHealth.details,
+          reranker_enabled: this.rerankerEnabled,
+          reranker_name: this.reranker?.name || null,
           coverage: {
             observations: Number(vectorCoverage?.observations_count ?? 0),
             mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
@@ -3167,11 +3769,162 @@ export class HarnessMemCore {
             count: Number(queueStats?.count ?? 0),
             max_retry_count: Number(queueStats?.max_retry_count ?? 0),
           },
+          consolidation_queue: {
+            pending: Number(consolidationStats?.pending_jobs ?? 0),
+            running: Number(consolidationStats?.running_jobs ?? 0),
+            failed: Number(consolidationStats?.failed_jobs ?? 0),
+            completed: Number(consolidationStats?.completed_jobs ?? 0),
+          },
+          facts: {
+            total: Number(factStats?.facts_total ?? 0),
+            merged: Number(factStats?.facts_merged ?? 0),
+          },
+          managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
         },
       ],
       {},
       { ranking: "metrics_v1" }
     );
+  }
+
+  private enqueueConsolidation(project: string, sessionId: string, reason: string): void {
+    if (!this.isConsolidationEnabled()) {
+      return;
+    }
+    enqueueConsolidationJob(this.db, project, sessionId, reason);
+  }
+
+  runConsolidation(request: ConsolidationRunRequest = {}): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.isConsolidationEnabled()) {
+      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
+        skipped: "consolidation_disabled",
+      });
+    }
+
+    const options: ConsolidationRunOptions = {
+      reason: request.reason || "manual",
+      project: request.project,
+      session_id: request.session_id,
+      limit: request.limit,
+    };
+
+    const stats: ConsolidationRunStats = runConsolidationOnce(this.db, options);
+    try {
+      this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
+        ...stats,
+        reason: options.reason,
+      });
+    } catch {
+      // best effort
+    }
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          ...stats,
+          reason: options.reason,
+        },
+      ],
+      request as unknown as Record<string, unknown>,
+      { ranking: "consolidation_v1" }
+    );
+  }
+
+  getConsolidationStatus(): ApiResponse {
+    const startedAt = performance.now();
+    const queue = this.db
+      .query(`
+        SELECT
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending_jobs,
+          SUM(CASE WHEN status = 'running' THEN 1 ELSE 0 END) AS running_jobs,
+          SUM(CASE WHEN status = 'failed' THEN 1 ELSE 0 END) AS failed_jobs,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_jobs
+        FROM mem_consolidation_queue
+      `)
+      .get() as
+      | {
+          pending_jobs?: number;
+          running_jobs?: number;
+          failed_jobs?: number;
+          completed_jobs?: number;
+        }
+      | null;
+
+    const facts = this.db
+      .query(`
+        SELECT
+          COUNT(*) AS facts_total,
+          SUM(CASE WHEN merged_into_fact_id IS NULL THEN 0 ELSE 1 END) AS facts_merged
+        FROM mem_facts
+      `)
+      .get() as { facts_total?: number; facts_merged?: number } | null;
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          pending_jobs: Number(queue?.pending_jobs ?? 0),
+          running_jobs: Number(queue?.running_jobs ?? 0),
+          failed_jobs: Number(queue?.failed_jobs ?? 0),
+          completed_jobs: Number(queue?.completed_jobs ?? 0),
+          facts_total: Number(facts?.facts_total ?? 0),
+          facts_merged: Number(facts?.facts_merged ?? 0),
+          enabled: this.isConsolidationEnabled(),
+          interval_ms: this.getConsolidationIntervalMs(),
+        },
+      ],
+      {},
+      { ranking: "consolidation_status_v1" }
+    );
+  }
+
+  getAuditLog(request: AuditLogRequest = {}): ApiResponse {
+    const startedAt = performance.now();
+    const limit = clampLimit(request.limit, 50, 1, 500);
+    const params: unknown[] = [];
+
+    let sql = `
+      SELECT id, action, actor, target_type, target_id, details_json, created_at
+      FROM mem_audit_log
+      WHERE 1 = 1
+    `;
+
+    if (request.action) {
+      sql += " AND action = ?";
+      params.push(request.action);
+    }
+    if (request.target_type) {
+      sql += " AND target_type = ?";
+      params.push(request.target_type);
+    }
+    sql += " ORDER BY created_at DESC, id DESC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.db.query(sql).all(...(params as any[])) as Array<{
+      id: number;
+      action: string;
+      actor: string;
+      target_type: string;
+      target_id: string;
+      details_json: string;
+      created_at: string;
+    }>;
+
+    const items = rows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      actor: row.actor,
+      target_type: row.target_type,
+      target_id: row.target_id,
+      details: parseJsonSafe(row.details_json),
+      created_at: row.created_at,
+    }));
+
+    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
+      ranking: "audit_log_v1",
+    });
   }
 
   projectsStats(request: ProjectsStatsRequest = {}): ApiResponse {
@@ -3581,7 +4334,11 @@ export class HarnessMemCore {
         },
       ],
       { limit },
-      { vector_engine: this.vectorEngine }
+      {
+        vector_engine: this.vectorEngine,
+        embedding_provider: this.embeddingProvider.name,
+        embedding_provider_status: this.embeddingHealth.status,
+      }
     );
   }
 
@@ -3666,7 +4423,7 @@ export class HarnessMemCore {
     }
 
     const files = listCodexRolloutFiles(sessionsRoot);
-    const defaultProject = basename(resolve(this.config.codexProjectRoot));
+    const defaultProject = normalizeProjectName(resolve(this.config.codexProjectRoot));
     const cutoffMs = Date.now() - Math.max(0, this.config.codexBackfillHours) * 60 * 60 * 1000;
 
     for (const rolloutPath of files) {
@@ -3795,7 +4552,7 @@ export class HarnessMemCore {
       chunk,
       fallbackNowIso: nowIso,
     });
-    const project = basename(resolve(this.config.codexProjectRoot));
+    const project = normalizeProjectName(resolve(this.config.codexProjectRoot));
 
     let imported = 0;
     for (const entry of parsedChunk.events) {
@@ -4668,6 +5425,10 @@ export class HarnessMemCore {
       clearInterval(this.antigravityIngestTimer);
       this.antigravityIngestTimer = null;
     }
+    if (this.consolidationTimer) {
+      clearInterval(this.consolidationTimer);
+      this.consolidationTimer = null;
+    }
     if (this.retryTimer) {
       clearInterval(this.retryTimer);
       this.retryTimer = null;
@@ -4678,6 +5439,12 @@ export class HarnessMemCore {
     }
 
     this.processRetryQueue(true);
+
+    // Shutdown managed backend (fire-and-forget, best effort)
+    if (this.managedBackend) {
+      this.managedBackend.shutdown().catch(() => {});
+      this.managedBackend = null;
+    }
 
     try {
       this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
@@ -4741,12 +5508,24 @@ export function getConfig(): Config {
   );
   const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
   const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
+  const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
+  const embeddingProvider = embeddingProviderRaw || "fallback";
+  const openaiApiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
+  const openaiEmbedModel = (process.env.HARNESS_MEM_OPENAI_EMBED_MODEL || "text-embedding-3-small").trim();
+  const ollamaBaseUrl = (process.env.HARNESS_MEM_OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim();
+  const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
+  const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
 
   return {
     dbPath,
     bindHost,
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,
-    vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 1024),
+    vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 4096),
+    embeddingProvider,
+    openaiApiKey,
+    openaiEmbedModel,
+    ollamaBaseUrl,
+    ollamaEmbedModel,
     captureEnabled: envFlag("HARNESS_MEM_ENABLE_CAPTURE", true),
     retrievalEnabled: envFlag("HARNESS_MEM_ENABLE_RETRIEVAL", true),
     injectionEnabled: envFlag("HARNESS_MEM_ENABLE_INJECTION", true),
@@ -4794,5 +5573,17 @@ export function getConfig(): Config {
     ),
     searchRanking,
     searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
+    rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),
+    consolidationEnabled: envFlag("HARNESS_MEM_CONSOLIDATION_ENABLED", true),
+    consolidationIntervalMs: clampLimit(consolidationIntervalRaw, 60000, 5000, 600000),
+    backendMode: parseBackendMode(process.env.HARNESS_MEM_BACKEND_MODE),
+    managedEndpoint: (process.env.HARNESS_MEM_MANAGED_ENDPOINT || "").trim() || undefined,
+    managedApiKey: (process.env.HARNESS_MEM_MANAGED_API_KEY || "").trim() || undefined,
   };
+}
+
+function parseBackendMode(value: string | undefined): "local" | "managed" | "hybrid" {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "managed" || normalized === "hybrid") return normalized;
+  return "local";
 }

@@ -28,17 +28,37 @@ STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
 PID_FILE="${STATE_DIR}/daemon.pid"
 LOCK_FILE="${STATE_DIR}/daemon.lock"
 LOG_FILE="${STATE_DIR}/daemon.log"
+UI_LOG_FILE="${STATE_DIR}/harness-mem-ui.log"
 HEARTBEAT_FILE="${STATE_DIR}/daemon.heartbeat"
+UI_PID_FILE="${STATE_DIR}/harness-mem-ui.pid"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
 HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 PORT="${HARNESS_MEM_PORT:-37888}"
+UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
 START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
 STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
+LOG_MAX_BYTES="${HARNESS_MEM_LOG_MAX_BYTES:-5242880}"
+LOG_ROTATE_KEEP="${HARNESS_MEM_LOG_ROTATE_KEEP:-5}"
 QUIET="false"
 
 DAEMON_ENTRY="${REPO_ROOT}/memory-server/src/index.ts"
+UI_ENTRY="${REPO_ROOT}/harness-mem-ui/src/server.ts"
 PROJECT_ROOT="${HARNESS_MEM_CODEX_PROJECT_ROOT:-$PWD}"
+CONFIG_PATH="${STATE_DIR}/config.json"
+
+read_backend_mode() {
+  if [ -f "$CONFIG_PATH" ]; then
+    local mode
+    mode="$(jq -r '.backend_mode // "local"' "$CONFIG_PATH" 2>/dev/null || echo "local")"
+    case "$mode" in
+      local|managed|hybrid) echo "$mode" ;;
+      *) echo "local" ;;
+    esac
+  else
+    echo "local"
+  fi
+}
 
 log() {
   if [ "$QUIET" = "true" ]; then
@@ -52,6 +72,57 @@ warn() {
     return
   fi
   echo "[WARN] $@" >&2
+}
+
+is_uint() {
+  case "$1" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+normalize_rotation_settings() {
+  if ! is_uint "$LOG_MAX_BYTES" || [ "$LOG_MAX_BYTES" -lt 1024 ]; then
+    LOG_MAX_BYTES=5242880
+  fi
+  if ! is_uint "$LOG_ROTATE_KEEP" || [ "$LOG_ROTATE_KEEP" -lt 1 ]; then
+    LOG_ROTATE_KEEP=5
+  fi
+}
+
+file_size_bytes() {
+  local file="$1"
+  stat -f "%z" "$file" 2>/dev/null || stat -c "%s" "$file" 2>/dev/null || wc -c < "$file"
+}
+
+rotate_log_file_if_needed() {
+  local file="$1"
+  local label="$2"
+  if [ ! -f "$file" ] || [ "$LOG_MAX_BYTES" -le 0 ]; then
+    return 0
+  fi
+
+  local size
+  size="$(file_size_bytes "$file" | tr -dc '0-9' || true)"
+  if ! is_uint "$size" || [ "$size" -lt "$LOG_MAX_BYTES" ]; then
+    return 0
+  fi
+
+  local i
+  for ((i=LOG_ROTATE_KEEP; i>=2; i--)); do
+    if [ -f "${file}.$((i-1))" ]; then
+      mv -f "${file}.$((i-1))" "${file}.${i}" 2>/dev/null || true
+    fi
+  done
+
+  cp "$file" "${file}.1" 2>/dev/null || cat "$file" > "${file}.1" 2>/dev/null || true
+  : > "$file"
+  log "rotated ${label} log (size=${size}, max=${LOG_MAX_BYTES})"
+}
+
+apply_log_rotation() {
+  rotate_log_file_if_needed "$LOG_FILE" "daemon"
+  rotate_log_file_if_needed "$UI_LOG_FILE" "ui"
 }
 
 is_pid_running() {
@@ -71,6 +142,12 @@ read_pid_file() {
 read_lock_pid() {
   if [ -f "$LOCK_FILE" ]; then
     tr -dc '0-9' < "$LOCK_FILE" 2>/dev/null || true
+  fi
+}
+
+read_ui_pid_file() {
+  if [ -f "$UI_PID_FILE" ]; then
+    tr -dc '0-9' < "$UI_PID_FILE" 2>/dev/null || true
   fi
 }
 
@@ -142,7 +219,7 @@ wait_for_health() {
   local attempt=0
 
   while [ "$attempt" -lt "$retries" ]; do
-    if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+    if is_health_reachable; then
       return 0
     fi
     sleep 0.5
@@ -152,8 +229,169 @@ wait_for_health() {
   return 1
 }
 
+is_health_reachable() {
+  local response
+  response="$(curl --silent --show-error --max-time 1 "$HEALTH_URL" 2>/dev/null || true)"
+  if [ -z "$response" ]; then
+    return 1
+  fi
+
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$response" | jq -e '.ok == true and (.items | type == "array")' >/dev/null 2>&1
+    return $?
+  fi
+
+  printf '%s' "$response" | grep -Eq '"ok"[[:space:]]*:[[:space:]]*true'
+}
+
+is_expected_daemon_pid() {
+  local pid="$1"
+  if [ -z "$pid" ] || ! is_pid_running "$pid"; then
+    return 1
+  fi
+
+  local args
+  args="$(ps -p "$pid" -o args= 2>/dev/null || true)"
+  if [ -z "$args" ]; then
+    return 1
+  fi
+
+  if [[ "$args" == *"$DAEMON_ENTRY"* ]]; then
+    return 0
+  fi
+
+  if [[ "$args" == *"memory-server/src/index.ts"* ]] && [[ "$args" == *"harness-mem"* ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+discover_daemon_pid_from_port() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local pid
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if is_expected_daemon_pid "$pid"; then
+      echo "$pid"
+      return 0
+    fi
+  done < <(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null || true)
+
+  return 1
+}
+
+is_expected_ui_pid() {
+  local pid="$1"
+  if [ -z "$pid" ] || ! is_pid_running "$pid"; then
+    return 1
+  fi
+
+  local args
+  args="$(read_process_args "$pid")"
+  if [ -z "$args" ]; then
+    return 1
+  fi
+
+  if [[ "$args" == *"$UI_ENTRY"* ]]; then
+    return 0
+  fi
+
+  if [[ "$args" == *"harness-mem-ui/src/server.ts"* ]] && [[ "$args" == *"harness-mem"* ]]; then
+    return 0
+  fi
+
+  return 1
+}
+
+discover_ui_pid_from_port() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local pid
+  while IFS= read -r pid; do
+    [ -n "$pid" ] || continue
+    if is_expected_ui_pid "$pid"; then
+      echo "$pid"
+      return 0
+    fi
+  done < <(lsof -nP -tiTCP:"$UI_PORT" -sTCP:LISTEN 2>/dev/null || true)
+
+  return 1
+}
+
+discover_listener_pid_from_port() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local pid
+  pid="$(lsof -nP -tiTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | head -n1 || true)"
+  if [ -z "$pid" ]; then
+    return 1
+  fi
+
+  echo "$pid"
+  return 0
+}
+
+read_process_args() {
+  local pid="$1"
+  if [ -z "$pid" ]; then
+    return 0
+  fi
+  ps -p "$pid" -o args= 2>/dev/null || true
+}
+
+sync_ui_pid_file() {
+  local runtime_pid
+  runtime_pid="$(discover_ui_pid_from_port || true)"
+  if [ -n "$runtime_pid" ]; then
+    if [ "$(read_ui_pid_file)" != "$runtime_pid" ]; then
+      echo "$runtime_pid" > "$UI_PID_FILE"
+    fi
+    echo "$runtime_pid"
+    return 0
+  fi
+
+  local file_pid
+  file_pid="$(read_ui_pid_file)"
+  if [ -n "$file_pid" ] && ! is_pid_running "$file_pid"; then
+    rm -f "$UI_PID_FILE"
+  fi
+  return 1
+}
+
+is_pid_listening_on_port() {
+  local pid="$1"
+  if [ -z "$pid" ] || ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+  lsof -nP -a -p "$pid" -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+refresh_pid_file_from_runtime() {
+  local runtime_pid
+  runtime_pid="$(discover_daemon_pid_from_port || true)"
+  if [ -z "$runtime_pid" ]; then
+    return 1
+  fi
+
+  if [ "$(read_pid_file)" != "$runtime_pid" ]; then
+    echo "$runtime_pid" > "$PID_FILE"
+  fi
+
+  echo "$runtime_pid"
+  return 0
+}
+
 start_daemon() {
   ensure_state_dir
+  apply_log_rotation
 
   if [ ! -f "$DAEMON_ENTRY" ]; then
     echo "[ERR] memory daemon entry not found: $DAEMON_ENTRY" >&2
@@ -167,18 +405,71 @@ start_daemon() {
 
   local pid
   pid="$(read_pid_file)"
+
+  # If another manager (e.g. launchctl) already runs the daemon on this port,
+  # trust runtime health and re-sync the pid file instead of spawning duplicates.
+  if is_health_reachable; then
+    local runtime_pid
+    runtime_pid="$(refresh_pid_file_from_runtime || true)"
+    if [ -n "$runtime_pid" ]; then
+      log "harness-memd already running (pid=${runtime_pid})"
+    else
+      log "harness-memd already running (health endpoint reachable)"
+    fi
+    return 0
+  fi
+
   if [ -n "$pid" ] && is_pid_running "$pid"; then
-    if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+    if is_health_reachable; then
       log "harness-memd already running (pid=${pid})"
       return 0
     fi
-    warn "Pid exists but health check failed. restarting stale daemon..."
-    stop_daemon || true
+    if is_pid_listening_on_port "$pid"; then
+      warn "Pid exists but health check failed. restarting stale daemon..."
+      stop_daemon || true
+    else
+      warn "Pid file points to running process not listening on target port ${PORT}; preserving existing process"
+    fi
   fi
 
   cleanup_stale_pid
 
-  log "Starting harness-memd..."
+  # Guard against duplicate spawn when listener exists but health probe is
+  # temporarily lagging. This avoids noisy EADDRINUSE restart storms.
+  local runtime_pid
+  runtime_pid="$(discover_daemon_pid_from_port || true)"
+  if [ -n "$runtime_pid" ]; then
+    echo "$runtime_pid" > "$PID_FILE"
+    if wait_for_health; then
+      log "harness-memd already running (pid=${runtime_pid})"
+      return 0
+    fi
+    warn "Daemon listener exists on port ${PORT} (pid=${runtime_pid}) but health endpoint is unreachable"
+    warn "Refusing to spawn duplicate daemon. Check runtime with: scripts/harness-memd status"
+    return 1
+  fi
+
+  local listener_pid
+  listener_pid="$(discover_listener_pid_from_port || true)"
+  if [ -n "$listener_pid" ]; then
+    local listener_args
+    listener_args="$(read_process_args "$listener_pid")"
+    warn "Port ${PORT} is already in use by another process (pid=${listener_pid})"
+    if [ -n "$listener_args" ]; then
+      warn "Process args: ${listener_args}"
+    fi
+    warn "Resolve the port conflict before starting harness-memd"
+    return 1
+  fi
+
+  local backend_mode managed_endpoint managed_api_key
+  backend_mode="$(read_backend_mode)"
+  managed_endpoint="$(jq -r '.managed.endpoint // ""' "$CONFIG_PATH" 2>/dev/null || echo "")"
+  managed_api_key="$(jq -r '.managed.api_key // ""' "$CONFIG_PATH" 2>/dev/null || echo "")"
+  log "Starting harness-memd... (backend: ${backend_mode})"
+  if [ "$backend_mode" != "local" ] && [ -n "$managed_endpoint" ]; then
+    log "  managed endpoint: ${managed_endpoint}"
+  fi
   (
     cd "$REPO_ROOT"
     nohup env \
@@ -186,6 +477,9 @@ start_daemon() {
       HARNESS_MEM_HOST="$HOST" \
       HARNESS_MEM_PORT="$PORT" \
       HARNESS_MEM_CODEX_PROJECT_ROOT="$PROJECT_ROOT" \
+      HARNESS_MEM_BACKEND_MODE="$backend_mode" \
+      HARNESS_MEM_MANAGED_ENDPOINT="$managed_endpoint" \
+      HARNESS_MEM_MANAGED_API_KEY="$managed_api_key" \
       bun run "$DAEMON_ENTRY" >> "$LOG_FILE" 2>&1 &
     echo $! > "$PID_FILE"
   )
@@ -255,21 +549,33 @@ stop_daemon() {
 
 status_daemon() {
   ensure_state_dir
+  apply_log_rotation
+  sync_ui_pid_file >/dev/null 2>&1 || true
 
   local pid
   pid="$(read_pid_file)"
 
-  if [ -z "$pid" ]; then
-    echo "stopped"
-    return 1
+  if [ -z "$pid" ] || ! is_pid_running "$pid"; then
+    if is_health_reachable; then
+      local runtime_pid
+      runtime_pid="$(refresh_pid_file_from_runtime || true)"
+      if [ -n "$runtime_pid" ]; then
+        pid="$runtime_pid"
+      else
+        echo "running (health endpoint reachable, pid unresolved)"
+        return 0
+      fi
+    else
+      if [ -z "$pid" ]; then
+        echo "stopped"
+      else
+        echo "stale (pid file exists but process is dead)"
+      fi
+      return 1
+    fi
   fi
 
-  if ! is_pid_running "$pid"; then
-    echo "stale (pid file exists but process is dead)"
-    return 1
-  fi
-
-  if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+  if is_health_reachable; then
     local heartbeat_info=""
     if [ -f "$HEARTBEAT_FILE" ]; then
       heartbeat_info=" heartbeat=$(cat "$HEARTBEAT_FILE" 2>/dev/null | tr '\n' ' ')"
@@ -284,8 +590,10 @@ status_daemon() {
 
 cleanup_stale() {
   ensure_state_dir
+  apply_log_rotation
   cleanup_stale_pid
   cleanup_stale_lock
+  sync_ui_pid_file >/dev/null 2>&1 || true
   if [ -f "$PID_FILE" ]; then
     local pid
     pid="$(read_pid_file)"
@@ -305,7 +613,10 @@ cleanup_stale() {
 
 doctor_daemon() {
   ensure_state_dir
+  apply_log_rotation
+  sync_ui_pid_file >/dev/null 2>&1 || true
   local ok=0
+  local health_ok=0
 
   echo "== harness-memd doctor =="
   echo "state_dir: $STATE_DIR"
@@ -326,24 +637,55 @@ doctor_daemon() {
     ok=1
   fi
 
+  if is_health_reachable; then
+    health_ok=1
+  fi
+
   if [ -f "$PID_FILE" ]; then
     local pid
     pid="$(read_pid_file)"
     if [ -n "$pid" ] && is_pid_running "$pid"; then
       echo "[ok] pid file points to running process: $pid"
+    elif [ "$health_ok" -eq 1 ]; then
+      local runtime_pid
+      runtime_pid="$(refresh_pid_file_from_runtime || true)"
+      if [ -n "$runtime_pid" ]; then
+        echo "[ok] refreshed stale pid file from active runtime: $runtime_pid"
+      else
+        echo "[warn] pid file is stale"
+        ok=1
+      fi
     else
       echo "[warn] pid file is stale"
       ok=1
+    fi
+  elif [ "$health_ok" -eq 1 ]; then
+    local runtime_pid
+    runtime_pid="$(refresh_pid_file_from_runtime || true)"
+    if [ -n "$runtime_pid" ]; then
+      echo "[ok] reconstructed pid file from active runtime: $runtime_pid"
+    else
+      echo "[info] pid file not found"
     fi
   else
     echo "[info] pid file not found"
   fi
 
-  if curl --silent --show-error --fail --max-time 1 "$HEALTH_URL" >/dev/null 2>&1; then
+  if [ "$health_ok" -eq 1 ]; then
     echo "[ok] health endpoint reachable"
   else
     echo "[warn] health endpoint not reachable"
     ok=1
+  fi
+
+  local ui_pid
+  ui_pid="$(read_ui_pid_file)"
+  if [ -n "$ui_pid" ] && is_pid_running "$ui_pid"; then
+    echo "[ok] ui pid file points to running process: $ui_pid (port=${UI_PORT})"
+  elif [ -n "$ui_pid" ]; then
+    echo "[warn] ui pid file is stale"
+  else
+    echo "[info] ui pid not found (ui may be stopped)"
   fi
 
   return "$ok"
@@ -363,6 +705,8 @@ main() {
     esac
     shift || true
   done
+
+  normalize_rotation_settings
 
   case "$cmd" in
     start)

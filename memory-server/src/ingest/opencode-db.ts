@@ -1,4 +1,3 @@
-import { basename } from "node:path";
 import { createHash } from "node:crypto";
 
 interface OpencodeDbMessageData {
@@ -38,7 +37,7 @@ export function parseOpencodeDbMessageRow(params: {
   }
 
   const cwd = normalize(params.row.sessionDirectory) || data.cwd;
-  const project = basename(cwd || "unknown");
+  const project = cwd || "unknown";
   const text = normalize(params.resolveMessageText(params.row.messageId));
 
   // Ignore intermediate assistant turns that only signal tool calls and

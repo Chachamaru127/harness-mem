@@ -17,6 +17,7 @@ export function initSchema(db: Database): void {
       ended_at TEXT,
       summary TEXT,
       summary_mode TEXT,
+      correlation_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -36,6 +37,7 @@ export function initSchema(db: Database): void {
       privacy_tags_json TEXT NOT NULL,
       dedupe_hash TEXT NOT NULL UNIQUE,
       observation_id TEXT,
+      correlation_id TEXT,
       created_at TEXT NOT NULL,
       FOREIGN KEY(session_id) REFERENCES mem_sessions(session_id) ON DELETE CASCADE
     );
@@ -129,6 +131,59 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
 
+    CREATE TABLE IF NOT EXISTS mem_facts (
+      fact_id TEXT PRIMARY KEY,
+      observation_id TEXT,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      fact_type TEXT NOT NULL,
+      fact_key TEXT NOT NULL,
+      fact_value TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.5,
+      merged_into_fact_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE SET NULL,
+      FOREIGN KEY(merged_into_fact_id) REFERENCES mem_facts(fact_id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_project_session_type
+      ON mem_facts(project, session_id, fact_type, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
+      ON mem_facts(merged_into_fact_id);
+
+    CREATE TABLE IF NOT EXISTS mem_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_action_created
+      ON mem_audit_log(action, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_target_created
+      ON mem_audit_log(target_type, target_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mem_consolidation_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      requested_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_consolidation_queue_status_requested
+      ON mem_consolidation_queue(status, requested_at ASC, id ASC);
+
     CREATE TABLE IF NOT EXISTS mem_retry_queue (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       event_json TEXT NOT NULL,
@@ -189,6 +244,30 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  try {
+    db.exec(`ALTER TABLE mem_events ADD COLUMN correlation_id TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_sessions ADD COLUMN correlation_id TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_events_correlation_id ON mem_events(correlation_id, project, ts)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_sessions_correlation_id ON mem_sessions(correlation_id, project, started_at)`);
+  } catch {
+    // already exists
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS mem_entities (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -221,7 +300,66 @@ export function migrateSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
+
+    CREATE TABLE IF NOT EXISTS mem_facts (
+      fact_id TEXT PRIMARY KEY,
+      observation_id TEXT,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      fact_type TEXT NOT NULL,
+      fact_key TEXT NOT NULL,
+      fact_value TEXT NOT NULL,
+      confidence REAL NOT NULL DEFAULT 0.5,
+      merged_into_fact_id TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE SET NULL,
+      FOREIGN KEY(merged_into_fact_id) REFERENCES mem_facts(fact_id) ON DELETE SET NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_project_session_type
+      ON mem_facts(project, session_id, fact_type, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
+      ON mem_facts(merged_into_fact_id);
+
+    CREATE TABLE IF NOT EXISTS mem_audit_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL DEFAULT '',
+      details_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_action_created
+      ON mem_audit_log(action, created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_target_created
+      ON mem_audit_log(target_type, target_id, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mem_consolidation_queue (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      reason TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      requested_at TEXT NOT NULL,
+      started_at TEXT,
+      finished_at TEXT,
+      error TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_consolidation_queue_status_requested
+      ON mem_consolidation_queue(status, requested_at ASC, id ASC);
   `);
+
+  // プロジェクト名空文字のレコードがあれば警告ログ
+  const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};
+  if (emptyProjects.cnt > 0) {
+    console.warn(`[harness-mem] WARNING: ${emptyProjects.cnt} events with empty project name detected`);
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {

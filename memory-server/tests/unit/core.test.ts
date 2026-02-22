@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { HarnessMemCore, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
+import { HarnessMemCore, getConfig, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
 
 const cleanupPaths: string[] = [];
 
@@ -220,6 +220,54 @@ describe("HarnessMemCore unit", () => {
 
       expect(hiddenProject?.observations).toBe(1);
       expect(visibleProject?.observations).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("HARNESS_MEM_VECTOR_DIM supports 1536 and caps at 4096", () => {
+    const previous = process.env.HARNESS_MEM_VECTOR_DIM;
+    try {
+      process.env.HARNESS_MEM_VECTOR_DIM = "1536";
+      expect(getConfig().vectorDimension).toBe(1536);
+
+      process.env.HARNESS_MEM_VECTOR_DIM = "99999";
+      expect(getConfig().vectorDimension).toBe(4096);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.HARNESS_MEM_VECTOR_DIM;
+      } else {
+        process.env.HARNESS_MEM_VECTOR_DIM = previous;
+      }
+    }
+  });
+
+  test("workspace boundary: different projects do not mix", () => {
+    const core = new HarnessMemCore(createConfig("boundary"));
+    try {
+      core.recordEvent(baseEvent({ project: "project-a", payload: { prompt: "alpha secret" } }));
+      core.recordEvent(baseEvent({ project: "project-b", payload: { prompt: "beta secret" } }));
+
+      const searchA = core.search({ query: "secret", project: "project-a", strict_project: true });
+      const searchB = core.search({ query: "secret", project: "project-b", strict_project: true });
+
+      // project-a の検索結果に project-b のデータが混入しないこと
+      for (const item of searchA.items as any[]) {
+        expect(item.project).toBe("project-a");
+      }
+      for (const item of searchB.items as any[]) {
+        expect(item.project).toBe("project-b");
+      }
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("workspace boundary: empty project name is rejected", () => {
+    const core = new HarnessMemCore(createConfig("empty-project"));
+    try {
+      const result = core.recordEvent(baseEvent({ project: "" }));
+      expect(result.ok).toBe(false);
     } finally {
       core.shutdown("test");
     }

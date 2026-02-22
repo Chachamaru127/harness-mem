@@ -138,8 +138,9 @@ describe("codex sessions ingest integration", () => {
       expect(firstIngest.items[0]?.files_scanned).toBeGreaterThanOrEqual(2);
       expect(firstIngest.items[0]?.files_skipped_backfill).toBeGreaterThanOrEqual(1);
 
+      const harnessProject = "/Users/example/Desktop/Code/CC-harness/harness-mem";
       const harnessFeedRes = await fetch(
-        `${baseUrl}/v1/feed?project=harness-mem&limit=10&include_private=false`
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(harnessProject)}&limit=10&include_private=false`
       );
       expect(harnessFeedRes.ok).toBe(true);
       const harnessFeed = (await harnessFeedRes.json()) as {
@@ -151,8 +152,9 @@ describe("codex sessions ingest integration", () => {
       expect(harnessFeed.items.some((item) => item.event_type === "user_prompt")).toBe(true);
       expect(harnessFeed.items.some((item) => item.event_type === "checkpoint")).toBe(true);
 
+      const otherProject = "/Users/example/Desktop/Code/CC-harness/other-project";
       const oldFeedRes = await fetch(
-        `${baseUrl}/v1/feed?project=other-project&limit=10&include_private=false`
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(otherProject)}&limit=10&include_private=false`
       );
       expect(oldFeedRes.ok).toBe(true);
       const oldFeed = (await oldFeedRes.json()) as { ok: boolean; items: Array<unknown> };
@@ -185,7 +187,7 @@ describe("codex sessions ingest integration", () => {
       expect(secondIngest.items[0]?.events_imported).toBe(1);
 
       const harnessFeedAfterRes = await fetch(
-        `${baseUrl}/v1/feed?project=harness-mem&limit=10&include_private=false`
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(harnessProject)}&limit=10&include_private=false`
       );
       const harnessFeedAfter = (await harnessFeedAfterRes.json()) as {
         ok: boolean;

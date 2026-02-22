@@ -79,20 +79,53 @@ function buildSessionId(payload: HookPayload): string {
   );
 }
 
+function buildCorrelationId(payload: HookPayload): string | undefined {
+  const id =
+    toString(payload.correlation_id) ||
+    toString(payload.correlationId) ||
+    toString(payload.trace_id) ||
+    toString(payload.traceId);
+  return id || undefined;
+}
+
 export default {
   name: "harness-memory",
   version: "0.1.0",
   hooks: {
+    async "tool.definition"(payload: HookPayload) {
+      const sessionId = buildSessionId(payload);
+      const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
+
+      await post("/v1/events/record", {
+        event: {
+          platform: "opencode",
+          project: project.root,
+          session_id: sessionId,
+          event_type: "tool_definition",
+          ts: new Date().toISOString(),
+          payload: {
+            ...payload,
+            project_root: project.root,
+          },
+          tags: ["opencode_hook", "tool.definition"],
+          privacy_tags: safeArray(payload.privacy_tags),
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+        },
+      });
+    },
+
     async "chat.message"(payload: HookPayload) {
       const role = toString(payload.role, "user");
       const eventType = role === "assistant" || role === "tool" ? "tool_use" : "user_prompt";
       const sessionId = buildSessionId(payload);
       const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
 
       await post("/v1/events/record", {
         event: {
           platform: "opencode",
-          project: project.name,
+          project: project.root,
           session_id: sessionId,
           event_type: eventType,
           ts: new Date().toISOString(),
@@ -102,6 +135,7 @@ export default {
           },
           tags: ["opencode_hook", "chat.message"],
           privacy_tags: safeArray(payload.privacy_tags),
+          ...(correlationId ? { correlation_id: correlationId } : {}),
         },
       });
     },
@@ -111,7 +145,7 @@ export default {
       const project = resolveProject(payload);
       await post("/v1/checkpoints/record", {
         platform: "opencode",
-        project: project.name,
+        project: project.root,
         session_id: sessionId,
         title: "OpenCode idle checkpoint",
         content: toString(payload.summary, "session became idle"),
@@ -125,7 +159,7 @@ export default {
       const project = resolveProject(payload);
       await post("/v1/sessions/finalize", {
         platform: "opencode",
-        project: project.name,
+        project: project.root,
         session_id: sessionId,
         summary_mode: "standard",
       });
