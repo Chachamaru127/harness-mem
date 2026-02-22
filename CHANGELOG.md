@@ -39,6 +39,43 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.15] - 2026-02-22
+
+### What changed for users
+
+Release pipeline reliability improved again by fixing CI-environment detection in the medium-corpus latency quality gate.
+
+### Added
+
+- None.
+
+### Changed
+
+- Latency benchmark gate now detects CI using both `CI` and `GITHUB_ACTIONS`.
+- CI threshold for the medium corpus gate is now `p95 < 3000ms` (local/dev remains `p95 < 500ms`).
+
+### Fixed
+
+- Prevented false release failures when GitHub Actions did not present `process.env.CI` as expected in Bun tests.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- `cd memory-server && bun test tests/integration/search-quality.test.ts`
+- `cd memory-server && bun test && bun run typecheck`
+- `npm pack --dry-run`
+
 ## [0.1.14] - 2026-02-22
 
 ### What changed for users
