@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.1.13",
+  "version": "0.1.14",
   "description": "Unified memory runtime setup CLI for Claude Code, Codex, OpenCode, and Cursor",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
