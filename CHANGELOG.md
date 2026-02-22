@@ -39,6 +39,43 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.13] - 2026-02-22
+
+### What changed for users
+
+Release automation no longer fails due benchmark timeout defaults during memory-server quality gates.
+
+### Added
+
+- None.
+
+### Changed
+
+- None.
+
+### Fixed
+
+- Increased timeout budget for benchmark-heavy tests used by CI quality gates:
+  - `memory-server/tests/integration/search-quality.test.ts`
+  - `tests/benchmarks/rerank-quality-gate.test.ts`
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- `cd memory-server && bun test tests/integration/search-quality.test.ts`
+- `bun test tests/benchmarks/baseline-output.test.ts tests/benchmarks/rerank-quality-gate.test.ts`
+
 ## [0.1.12] - 2026-02-22
 
 ### What changed for users
