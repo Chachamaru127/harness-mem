@@ -1,0 +1,45 @@
+name: LOCOMO Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 4 * * 1"
+
+jobs:
+  locomo-benchmark:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun install --frozen-lockfile
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Run LOCOMO benchmark (harness-mem)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          bun run tests/benchmarks/run-locomo-benchmark.ts \
+            --system harness-mem \
+            --dataset tests/benchmarks/fixtures/locomo10.sample.json \
+            --output artifacts/locomo-harness-mem.json \
+            | tee artifacts/locomo-harness-mem.log
+
+      - name: Upload LOCOMO artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: locomo-benchmark-artifacts
+          path: artifacts/

@@ -42,12 +42,12 @@ describe("codex sessions ingest parser", () => {
 
     expect(parsed.events.length).toBe(2);
     expect(parsed.context.sessionId).toBe("session-abc");
-    expect(parsed.context.project).toBe("harness-mem");
+    expect(parsed.context.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
 
     const prompt = parsed.events[0];
     expect(prompt.eventType).toBe("user_prompt");
     expect(prompt.sessionId).toBe("session-abc");
-    expect(prompt.project).toBe("harness-mem");
+    expect(prompt.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
     expect(prompt.timestamp).toBe("2026-02-15T10:00:01.000Z");
     expect(prompt.payload.prompt).toBe("今まさに日本語でテスト中です");
     expect(prompt.dedupeHash.length).toBe(64);
@@ -55,7 +55,7 @@ describe("codex sessions ingest parser", () => {
     const checkpoint = parsed.events[1];
     expect(checkpoint.eventType).toBe("checkpoint");
     expect(checkpoint.sessionId).toBe("session-abc");
-    expect(checkpoint.project).toBe("harness-mem");
+    expect(checkpoint.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
     expect(checkpoint.payload.last_agent_message).toBe("完了しました");
   });
 
@@ -98,7 +98,7 @@ describe("codex sessions ingest parser", () => {
     expect(parsed.events.length).toBe(1);
     expect(parsed.events[0]?.eventType).toBe("user_prompt");
     expect(parsed.events[0]?.sessionId).toBe("session-x");
-    expect(parsed.events[0]?.project).toBe("project-x");
+    expect(parsed.events[0]?.project).toBe("/tmp/project-x");
 
     const expectedConsumedBytes = Buffer.byteLength(`${line1}\n${line2}\n${line3}\n`, "utf8");
     expect(parsed.consumedBytes).toBe(expectedConsumedBytes);

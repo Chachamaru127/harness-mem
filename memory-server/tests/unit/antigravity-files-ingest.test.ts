@@ -15,8 +15,8 @@ describe("antigravity file ingest parser", () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.kind).toBe("checkpoint");
     expect(parsed?.eventType).toBe("checkpoint");
-    expect(parsed?.project).toBe("harness-mem");
-    expect(parsed?.sessionId).toBe("antigravity:harness-mem:20260216");
+    expect(parsed?.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
+    expect(parsed?.sessionId).toBe("antigravity:/Users/test/Desktop/Code/CC-harness/harness-mem:20260216");
     expect(parsed?.payload.title).toBe("Checkpoint: 2026-02-16");
     expect(parsed?.dedupeHash.length).toBe(64);
   });
@@ -34,7 +34,7 @@ describe("antigravity file ingest parser", () => {
     expect(parsed).not.toBeNull();
     expect(parsed?.kind).toBe("codex_response");
     expect(parsed?.eventType).toBe("tool_use");
-    expect(parsed?.project).toBe("Context-Harness");
+    expect(parsed?.project).toBe("/Users/test/Desktop/Code/CC-harness/Context-Harness");
     expect(parsed?.payload.tool_name).toBe("codex-debug");
     expect(parsed?.payload.source_type).toBe("antigravity_codex_response");
   });

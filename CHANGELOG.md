@@ -39,6 +39,65 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.12] - 2026-02-22
+
+### What changed for users
+
+Harness-mem now ships a larger retrieval/runtime toolkit (managed backend routing, embedding/rerank/router modules, and stronger daemon guardrails) together with updated release docs and benchmark workflows.
+
+### Added
+
+- Backend abstraction and adapters for SQLite/PostgreSQL (`storage-adapter`, adapter factory, managed-mode schema helpers).
+- Retrieval/quality modules:
+  - embedding provider registry (`fallback`, `openai`, `ollama`)
+  - reranker registry
+  - retrieval router
+  - answer compiler
+  - consolidation worker/extractor/deduper
+  - token estimate utility
+- New integration and contract coverage:
+  - API contract / token-estimate / managed-mode / security hardening tests
+  - 100k performance benchmark and LOCOMO workflow scaffolding
+  - Python SDK and LangChain integration starter packages
+
+### Changed
+
+- `README.md` and setup docs were expanded with benchmark, guardrail, and proof-pack workflows.
+- `mcp-server/README.md` npm package examples now point to `@claude-code-harness/mcp-server`.
+- Hook and ingestion coverage was extended for Codex/Cursor/OpenCode/Antigravity paths.
+
+### Fixed
+
+- `harness-memd` now avoids false healthy states from non-JSON health responses.
+- `harness-memd` now detects port conflicts/stale pid states earlier and self-heals UI pid drift.
+- Added daemon/UI log rotation controls:
+  - `HARNESS_MEM_LOG_MAX_BYTES`
+  - `HARNESS_MEM_LOG_ROTATE_KEEP`
+- Kept MCP runtime bootstrap safety for missing `mcp-server/dist` by retaining package source/build metadata in npm files.
+
+### Removed
+
+- None.
+
+### Security
+
+- Expanded test coverage for workspace boundary and security-hardening behaviors.
+
+### Migration Notes
+
+- No destructive migration is required.
+- If you use managed/hybrid backend mode, verify your backend env wiring before production rollout.
+
+### Verification
+
+- `cd harness-mem-ui && bun run test:ui && bun run typecheck`
+- `cd memory-server && bun test && bun run typecheck`
+- `bun test tests/harness-memd-guardrails.test.ts`
+- `bun test tests/doctor-json-contract.test.ts`
+- `./tests/test-memory-daemon-chaos.sh 2`
+- `./tests/test-memory-daemon.sh`
+- `npm pack --dry-run`
+
 ## [0.1.11] - 2026-02-18
 
 ### What changed for users

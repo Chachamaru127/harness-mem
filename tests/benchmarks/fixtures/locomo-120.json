@@ -1,0 +1,622 @@
+[
+  {
+    "sample_id": "full-001",
+    "conversation": [
+      { "speaker": "user", "text": "I started learning Python in January 2024." },
+      { "speaker": "assistant", "text": "That's great! Python is a versatile language." },
+      { "speaker": "user", "text": "I'm using it for my data science project at MIT." },
+      { "speaker": "assistant", "text": "MIT has excellent data science programs." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "When did I start learning Python?", "answer": "January 2024", "category": "cat-1" },
+      { "question_id": "q2", "question": "What am I using Python for?", "answer": "data science project", "category": "cat-1" },
+      { "question_id": "q3", "question": "Where am I studying?", "answer": "MIT", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-002",
+    "conversation": [
+      { "speaker": "user", "text": "I adopted a golden retriever named Buddy last March." },
+      { "speaker": "assistant", "text": "Buddy sounds wonderful!" },
+      { "speaker": "user", "text": "He loves the park near my apartment in Austin, Texas." },
+      { "speaker": "assistant", "text": "Austin has great parks for dogs." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What kind of dog did I adopt?", "answer": "golden retriever", "category": "cat-1" },
+      { "question_id": "q2", "question": "What is my dog's name?", "answer": "Buddy", "category": "cat-1" },
+      { "question_id": "q3", "question": "Where do I live?", "answer": "Austin, Texas", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-003",
+    "conversation": [
+      { "speaker": "user", "text": "I joined a startup called NeuralBridge in February 2024." },
+      { "speaker": "assistant", "text": "Congratulations on the new role!" },
+      { "speaker": "user", "text": "I work as a backend engineer focusing on distributed systems." },
+      { "speaker": "assistant", "text": "Distributed systems is fascinating." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What company did I join?", "answer": "NeuralBridge", "category": "cat-1" },
+      { "question_id": "q2", "question": "When did I join the startup?", "answer": "February 2024", "category": "cat-1" },
+      { "question_id": "q3", "question": "What is my role at the company?", "answer": "backend engineer", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-004",
+    "conversation": [
+      { "speaker": "user", "text": "I finished reading Dune last weekend." },
+      { "speaker": "assistant", "text": "What did you think?" },
+      { "speaker": "user", "text": "I loved it. Now I'm reading Foundation by Isaac Asimov." },
+      { "speaker": "assistant", "text": "Foundation is another great sci-fi series." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What book did I finish last weekend?", "answer": "Dune", "category": "cat-1" },
+      { "question_id": "q2", "question": "What am I reading now?", "answer": "Foundation", "category": "cat-1" },
+      { "question_id": "q3", "question": "Who wrote the book I am currently reading?", "answer": "Isaac Asimov", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-005",
+    "conversation": [
+      { "speaker": "user", "text": "My sister Emma got married in Kyoto last June." },
+      { "speaker": "assistant", "text": "What a beautiful city for a wedding!" },
+      { "speaker": "user", "text": "Yes, we all flew from Toronto to attend the ceremony." },
+      { "speaker": "assistant", "text": "That must have been an amazing trip." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is my sister's name?", "answer": "Emma", "category": "cat-1" },
+      { "question_id": "q2", "question": "Where did my sister get married?", "answer": "Kyoto", "category": "cat-1" },
+      { "question_id": "q3", "question": "Where did we fly from to attend the wedding?", "answer": "Toronto", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-006",
+    "conversation": [
+      { "speaker": "user", "text": "I graduated from Stanford University in June 2022 with a degree in computer science." },
+      { "speaker": "assistant", "text": "Stanford is a prestigious institution." },
+      { "speaker": "user", "text": "My thesis was on natural language processing for low-resource languages." },
+      { "speaker": "assistant", "text": "That is a very impactful research area." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Which university did I graduate from?", "answer": "Stanford University", "category": "cat-1" },
+      { "question_id": "q2", "question": "When did I graduate?", "answer": "June 2022", "category": "cat-1" },
+      { "question_id": "q3", "question": "What was my thesis topic?", "answer": "natural language processing for low-resource languages", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-007",
+    "conversation": [
+      { "speaker": "user", "text": "I live in Amsterdam and have been here for two years." },
+      { "speaker": "assistant", "text": "Amsterdam is a wonderful city!" },
+      { "speaker": "user", "text": "I work at a fintech company called Flowpay as a senior data analyst." },
+      { "speaker": "assistant", "text": "The fintech scene in Amsterdam is very active." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "In which city do I live?", "answer": "Amsterdam", "category": "cat-1" },
+      { "question_id": "q2", "question": "What company do I work for?", "answer": "Flowpay", "category": "cat-1" },
+      { "question_id": "q3", "question": "What is my job title?", "answer": "senior data analyst", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-008",
+    "conversation": [
+      { "speaker": "user", "text": "My brother Leo is a marine biologist studying coral reefs in Hawaii." },
+      { "speaker": "assistant", "text": "That sounds like a fascinating and important career." },
+      { "speaker": "user", "text": "He works for the Pacific Marine Institute and publishes research regularly." },
+      { "speaker": "assistant", "text": "The Pacific Marine Institute does great work." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is my brother's name?", "answer": "Leo", "category": "cat-1" },
+      { "question_id": "q2", "question": "What does my brother study?", "answer": "coral reefs", "category": "cat-1" },
+      { "question_id": "q3", "question": "Where does my brother work?", "answer": "Pacific Marine Institute", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-009",
+    "conversation": [
+      { "speaker": "user", "text": "I speak four languages: English, French, Mandarin, and Arabic." },
+      { "speaker": "assistant", "text": "That is an impressive linguistic range!" },
+      { "speaker": "user", "text": "I grew up in Montreal, which helped me become bilingual early." },
+      { "speaker": "assistant", "text": "Montreal is a very multicultural environment." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "How many languages do I speak?", "answer": "four", "category": "cat-1" },
+      { "question_id": "q2", "question": "Where did I grow up?", "answer": "Montreal", "category": "cat-1" },
+      { "question_id": "q3", "question": "What language helped me become bilingual early?", "answer": "French", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-010",
+    "conversation": [
+      { "speaker": "user", "text": "I have been vegan for three years since January 2021." },
+      { "speaker": "assistant", "text": "That is a meaningful lifestyle choice." },
+      { "speaker": "user", "text": "I started for health reasons after reading the book How Not to Die by Dr. Greger." },
+      { "speaker": "assistant", "text": "Dr. Greger's book has inspired many people." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "When did I become vegan?", "answer": "January 2021", "category": "cat-1" },
+      { "question_id": "q2", "question": "Why did I become vegan?", "answer": "health reasons", "category": "cat-1" },
+      { "question_id": "q3", "question": "What book inspired my veganism?", "answer": "How Not to Die", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "full-011",
+    "conversation": [
+      { "speaker": "user", "text": "I started a vegetable garden on my balcony three months ago." },
+      { "speaker": "assistant", "text": "That's a great hobby! What are you growing?" },
+      { "speaker": "user", "text": "Tomatoes, basil, and peppers mostly. The tomatoes are doing really well." },
+      { "speaker": "assistant", "text": "Tomatoes can thrive in containers with enough sunlight." },
+      { "speaker": "user", "text": "I bought special containers from the GreenThumb store downtown." },
+      { "speaker": "assistant", "text": "Having the right containers makes a big difference." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What vegetables am I growing on my balcony?", "answer": "tomatoes, basil, and peppers", "category": "cat-2" },
+      { "question_id": "q2", "question": "Which vegetable is doing really well?", "answer": "tomatoes", "category": "cat-2" },
+      { "question_id": "q3", "question": "Where did I buy the containers?", "answer": "GreenThumb store", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-012",
+    "conversation": [
+      { "speaker": "user", "text": "I run every morning before work. I started in October 2023." },
+      { "speaker": "assistant", "text": "That's impressive consistency!" },
+      { "speaker": "user", "text": "I completed my first 10K race last April in 52 minutes." },
+      { "speaker": "assistant", "text": "52 minutes is a solid time for a first 10K!" },
+      { "speaker": "user", "text": "Now I'm training for a half marathon in November." },
+      { "speaker": "assistant", "text": "That's a great next step." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "When did I start running every morning?", "answer": "October 2023", "category": "cat-2" },
+      { "question_id": "q2", "question": "How long did my first 10K race take?", "answer": "52 minutes", "category": "cat-2" },
+      { "question_id": "q3", "question": "What race am I training for now?", "answer": "half marathon", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-013",
+    "conversation": [
+      { "speaker": "user", "text": "I moved from New York to Berlin for research at Humboldt University." },
+      { "speaker": "assistant", "text": "When did you relocate?" },
+      { "speaker": "user", "text": "I arrived in September 2023. My project is on quantum computing algorithms." },
+      { "speaker": "assistant", "text": "Quantum computing research sounds exciting." },
+      { "speaker": "user", "text": "My supervisor is Professor Müller who has published over 80 papers." },
+      { "speaker": "assistant", "text": "Professor Müller is well-known in the field." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where did I move from?", "answer": "New York", "category": "cat-2" },
+      { "question_id": "q2", "question": "What university did I join for research?", "answer": "Humboldt University", "category": "cat-2" },
+      { "question_id": "q3", "question": "Who is my research supervisor?", "answer": "Professor Müller", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-014",
+    "conversation": [
+      { "speaker": "user", "text": "I launched my online bakery called SweetByte last summer." },
+      { "speaker": "assistant", "text": "What a fun business idea!" },
+      { "speaker": "user", "text": "We specialize in vegan pastries. Our best seller is the almond croissant." },
+      { "speaker": "assistant", "text": "Vegan baked goods are popular right now." },
+      { "speaker": "user", "text": "I bake from my home kitchen in Portland, Oregon and ship nationally." },
+      { "speaker": "assistant", "text": "Portland is great for foodie entrepreneurs." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is the name of my online bakery?", "answer": "SweetByte", "category": "cat-2" },
+      { "question_id": "q2", "question": "What is the best-selling item at my bakery?", "answer": "almond croissant", "category": "cat-2" },
+      { "question_id": "q3", "question": "In which city do I operate my bakery?", "answer": "Portland, Oregon", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-015",
+    "conversation": [
+      { "speaker": "user", "text": "I took a solo trip to Japan in March 2024." },
+      { "speaker": "assistant", "text": "Japan is a wonderful destination for solo travel." },
+      { "speaker": "user", "text": "I visited Tokyo, Osaka, and Hiroshima over three weeks." },
+      { "speaker": "assistant", "text": "Three weeks is a great amount of time." },
+      { "speaker": "user", "text": "The highlight was attending the cherry blossom festival in Ueno Park." },
+      { "speaker": "assistant", "text": "Hanami in Ueno Park is truly special." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "When did I travel to Japan?", "answer": "March 2024", "category": "cat-2" },
+      { "question_id": "q2", "question": "How long was my trip to Japan?", "answer": "three weeks", "category": "cat-2" },
+      { "question_id": "q3", "question": "What was the highlight of my Japan trip?", "answer": "cherry blossom festival", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-016",
+    "conversation": [
+      { "speaker": "user", "text": "I adopted two cats last year. Their names are Pixel and Vector." },
+      { "speaker": "assistant", "text": "What creative names for cats!" },
+      { "speaker": "user", "text": "Pixel is orange and Vector is grey. They both came from the same shelter." },
+      { "speaker": "assistant", "text": "It is great that you adopted from a shelter." },
+      { "speaker": "user", "text": "I adopted them from the Happy Paws shelter in Chicago." },
+      { "speaker": "assistant", "text": "Happy Paws does excellent work in Chicago." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What are the names of my two cats?", "answer": "Pixel and Vector", "category": "cat-2" },
+      { "question_id": "q2", "question": "What color is Pixel?", "answer": "orange", "category": "cat-2" },
+      { "question_id": "q3", "question": "From which shelter did I adopt my cats?", "answer": "Happy Paws", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-017",
+    "conversation": [
+      { "speaker": "user", "text": "I studied abroad in Buenos Aires for six months in 2022." },
+      { "speaker": "assistant", "text": "Buenos Aires is a vibrant city!" },
+      { "speaker": "user", "text": "I improved my Spanish significantly and learned tango dancing." },
+      { "speaker": "assistant", "text": "Tango is iconic in Argentina." },
+      { "speaker": "user", "text": "I stayed with a host family in the Palermo neighborhood." },
+      { "speaker": "assistant", "text": "Palermo is a lovely area." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "In which city did I study abroad?", "answer": "Buenos Aires", "category": "cat-2" },
+      { "question_id": "q2", "question": "What dance did I learn while studying abroad?", "answer": "tango", "category": "cat-2" },
+      { "question_id": "q3", "question": "In which neighborhood did I stay in Buenos Aires?", "answer": "Palermo", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-018",
+    "conversation": [
+      { "speaker": "user", "text": "I built a custom mechanical keyboard last winter." },
+      { "speaker": "assistant", "text": "Custom keyboards are a fun hobby!" },
+      { "speaker": "user", "text": "I used Gateron Blue switches and a 65% layout. It took about 8 hours to assemble." },
+      { "speaker": "assistant", "text": "Gateron Blues are satisfying to type on." },
+      { "speaker": "user", "text": "The total cost was around $180 for all the parts." },
+      { "speaker": "assistant", "text": "That is a reasonable budget for a custom build." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What switches did I use for my keyboard?", "answer": "Gateron Blue", "category": "cat-2" },
+      { "question_id": "q2", "question": "How long did it take to assemble the keyboard?", "answer": "8 hours", "category": "cat-2" },
+      { "question_id": "q3", "question": "How much did the custom keyboard cost?", "answer": "$180", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-019",
+    "conversation": [
+      { "speaker": "user", "text": "I started a podcast called Mind the Gap about career transitions." },
+      { "speaker": "assistant", "text": "Career transitions is a very relatable topic!" },
+      { "speaker": "user", "text": "We released our first episode in July 2023 and now have over 40 episodes." },
+      { "speaker": "assistant", "text": "40 episodes is great traction." },
+      { "speaker": "user", "text": "We interview professionals who switched industries, mostly into tech." },
+      { "speaker": "assistant", "text": "Tech career switchers have very compelling stories." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is my podcast called?", "answer": "Mind the Gap", "category": "cat-2" },
+      { "question_id": "q2", "question": "When did we release the first episode?", "answer": "July 2023", "category": "cat-2" },
+      { "question_id": "q3", "question": "What kind of professionals do we interview?", "answer": "professionals who switched industries", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-020",
+    "conversation": [
+      { "speaker": "user", "text": "I completed a wilderness survival course in Montana last August." },
+      { "speaker": "assistant", "text": "That sounds like an intense experience!" },
+      { "speaker": "user", "text": "It was a 5-day course with no electronics allowed." },
+      { "speaker": "assistant", "text": "No electronics for five days is a real challenge." },
+      { "speaker": "user", "text": "I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge." },
+      { "speaker": "assistant", "text": "Wild Edge has a good reputation for survival training." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where did I take the survival course?", "answer": "Montana", "category": "cat-2" },
+      { "question_id": "q2", "question": "How long was the wilderness survival course?", "answer": "5 days", "category": "cat-2" },
+      { "question_id": "q3", "question": "What company ran the survival course?", "answer": "Wild Edge", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "full-021",
+    "conversation": [
+      { "speaker": "user", "text": "My team at work is called Project Phoenix. We're building a logistics platform." },
+      { "speaker": "assistant", "text": "Logistics platforms are complex but important." },
+      { "speaker": "user", "text": "We use Go and Kubernetes. The project started in December 2023." },
+      { "speaker": "assistant", "text": "Go is well-suited for infrastructure work." },
+      { "speaker": "user", "text": "Our first production release is planned for July 2024." },
+      { "speaker": "assistant", "text": "That gives you a solid runway to build." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is my team's project called?", "answer": "Project Phoenix", "category": "cat-3" },
+      { "question_id": "q2", "question": "What programming language does my team use?", "answer": "Go", "category": "cat-3" },
+      { "question_id": "q3", "question": "When is the first production release planned?", "answer": "July 2024", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-022",
+    "conversation": [
+      { "speaker": "user", "text": "I enrolled in an online Spanish course at Coursera in January 2024." },
+      { "speaker": "assistant", "text": "Spanish is a very useful language to learn!" },
+      { "speaker": "user", "text": "I practice 30 minutes every day using Duolingo alongside the course." },
+      { "speaker": "assistant", "text": "Consistent daily practice is the key to language learning." },
+      { "speaker": "user", "text": "My goal is to reach B2 level by December 2024." },
+      { "speaker": "assistant", "text": "B2 is conversational proficiency, a great target." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What language am I learning?", "answer": "Spanish", "category": "cat-3" },
+      { "question_id": "q2", "question": "How long do I practice every day?", "answer": "30 minutes", "category": "cat-3" },
+      { "question_id": "q3", "question": "What proficiency level is my goal?", "answer": "B2", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-023",
+    "conversation": [
+      { "speaker": "user", "text": "I mentor two junior developers at my company named Carlos and Priya." },
+      { "speaker": "assistant", "text": "Mentoring is a great way to give back." },
+      { "speaker": "user", "text": "Carlos focuses on frontend with React, while Priya is learning cloud infrastructure." },
+      { "speaker": "assistant", "text": "Both are highly valuable skills." },
+      { "speaker": "user", "text": "We meet every Tuesday for a 45-minute session." },
+      { "speaker": "assistant", "text": "Regular scheduled sessions are very effective." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What technology does Carlos focus on?", "answer": "React", "category": "cat-3" },
+      { "question_id": "q2", "question": "What is Priya learning?", "answer": "cloud infrastructure", "category": "cat-3" },
+      { "question_id": "q3", "question": "How long are the mentoring sessions?", "answer": "45 minutes", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-024",
+    "conversation": [
+      { "speaker": "user", "text": "I redesigned the checkout flow at my company and reduced cart abandonment by 18%." },
+      { "speaker": "assistant", "text": "An 18% reduction is a significant business impact." },
+      { "speaker": "user", "text": "The main change was simplifying the form from 12 fields to 5 fields." },
+      { "speaker": "assistant", "text": "Reducing form complexity is often very effective." },
+      { "speaker": "user", "text": "We ran an A/B test for six weeks before rolling it out fully in March 2024." },
+      { "speaker": "assistant", "text": "A six-week A/B test gives robust results." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "By how much did I reduce cart abandonment?", "answer": "18%", "category": "cat-3" },
+      { "question_id": "q2", "question": "How many fields did the new checkout form have?", "answer": "5 fields", "category": "cat-3" },
+      { "question_id": "q3", "question": "When was the redesign rolled out fully?", "answer": "March 2024", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-025",
+    "conversation": [
+      { "speaker": "user", "text": "I am writing a novel set in 1920s Shanghai." },
+      { "speaker": "assistant", "text": "That is a rich historical setting." },
+      { "speaker": "user", "text": "My protagonist is a female jazz musician named Mei who uncovers a smuggling ring." },
+      { "speaker": "assistant", "text": "That sounds like a compelling story." },
+      { "speaker": "user", "text": "I started writing it in August 2023 and I'm 60,000 words in now." },
+      { "speaker": "assistant", "text": "60,000 words is a full novel's worth of progress." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where is my novel set?", "answer": "1920s Shanghai", "category": "cat-3" },
+      { "question_id": "q2", "question": "What is my protagonist's name?", "answer": "Mei", "category": "cat-3" },
+      { "question_id": "q3", "question": "When did I start writing the novel?", "answer": "August 2023", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-026",
+    "conversation": [
+      { "speaker": "user", "text": "I switched from coffee to green tea about eight months ago." },
+      { "speaker": "assistant", "text": "Green tea has many health benefits." },
+      { "speaker": "user", "text": "I drink three cups per day. My favorite brand is Ippodo from Kyoto." },
+      { "speaker": "assistant", "text": "Ippodo is a highly regarded tea brand." },
+      { "speaker": "user", "text": "I noticed my sleep improved significantly within the first two weeks." },
+      { "speaker": "assistant", "text": "Reducing caffeine often improves sleep quality." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "How many cups of green tea do I drink per day?", "answer": "three", "category": "cat-3" },
+      { "question_id": "q2", "question": "What is my favorite green tea brand?", "answer": "Ippodo", "category": "cat-3" },
+      { "question_id": "q3", "question": "What health benefit did I notice after switching to green tea?", "answer": "sleep improved", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-027",
+    "conversation": [
+      { "speaker": "user", "text": "I gave a talk at PyCon US 2024 in Pittsburgh on async Python patterns." },
+      { "speaker": "assistant", "text": "PyCon is a great venue for technical talks." },
+      { "speaker": "user", "text": "The talk was 30 minutes and attended by about 200 people." },
+      { "speaker": "assistant", "text": "An audience of 200 is very impressive." },
+      { "speaker": "user", "text": "The slides and video are now published on the PyCon YouTube channel." },
+      { "speaker": "assistant", "text": "Great that it is publicly available." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where was PyCon US 2024 held?", "answer": "Pittsburgh", "category": "cat-3" },
+      { "question_id": "q2", "question": "What was my talk topic?", "answer": "async Python patterns", "category": "cat-3" },
+      { "question_id": "q3", "question": "How many people attended my talk?", "answer": "200", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-028",
+    "conversation": [
+      { "speaker": "user", "text": "My apartment in Seoul is in the Mapo district near Hongdae." },
+      { "speaker": "assistant", "text": "Hongdae is a lively area." },
+      { "speaker": "user", "text": "I rent a 45 square meter studio and pay 900,000 won per month." },
+      { "speaker": "assistant", "text": "That is a reasonable rate for central Seoul." },
+      { "speaker": "user", "text": "I've been here for 18 months since I moved from Busan." },
+      { "speaker": "assistant", "text": "Busan to Seoul is quite a change of pace." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "In which district of Seoul do I live?", "answer": "Mapo", "category": "cat-3" },
+      { "question_id": "q2", "question": "How large is my apartment?", "answer": "45 square meters", "category": "cat-3" },
+      { "question_id": "q3", "question": "Where did I move from before Seoul?", "answer": "Busan", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-029",
+    "conversation": [
+      { "speaker": "user", "text": "I lead a team of eight engineers at CloudScale Inc." },
+      { "speaker": "assistant", "text": "Leading a team of eight is a significant responsibility." },
+      { "speaker": "user", "text": "We do weekly 1:1s every Monday and a team retrospective every two weeks." },
+      { "speaker": "assistant", "text": "Those are solid team rituals." },
+      { "speaker": "user", "text": "Our current sprint velocity is 42 story points and we target 40." },
+      { "speaker": "assistant", "text": "Slightly above target is a healthy place to be." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "How many engineers are on my team?", "answer": "eight", "category": "cat-3" },
+      { "question_id": "q2", "question": "What company do I work at?", "answer": "CloudScale Inc", "category": "cat-3" },
+      { "question_id": "q3", "question": "What is our current sprint velocity?", "answer": "42 story points", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-030",
+    "conversation": [
+      { "speaker": "user", "text": "I am restoring a 1972 Volkswagen Beetle as a weekend project." },
+      { "speaker": "assistant", "text": "Classic car restoration is a rewarding hobby." },
+      { "speaker": "user", "text": "I bought it at an auction in Phoenix for $3,400 last October." },
+      { "speaker": "assistant", "text": "That is a reasonable price for a Beetle project car." },
+      { "speaker": "user", "text": "The engine needs a full rebuild. I plan to paint it racing green." },
+      { "speaker": "assistant", "text": "Racing green is a classic and elegant color choice." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What year is the Volkswagen Beetle I am restoring?", "answer": "1972", "category": "cat-3" },
+      { "question_id": "q2", "question": "How much did I pay for the Beetle?", "answer": "$3,400", "category": "cat-3" },
+      { "question_id": "q3", "question": "What color do I plan to paint the Beetle?", "answer": "racing green", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "full-031",
+    "conversation": [
+      { "speaker": "user", "text": "I play guitar in a band called The Amber Keys." },
+      { "speaker": "assistant", "text": "What kind of music does your band play?" },
+      { "speaker": "user", "text": "We play indie rock. We've been together since 2021." },
+      { "speaker": "assistant", "text": "Four years is a good run for a band." },
+      { "speaker": "user", "text": "We released our debut EP titled Drift last November with five tracks." },
+      { "speaker": "assistant", "text": "Congratulations on the EP release!" }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is the name of my band?", "answer": "The Amber Keys", "category": "cat-4" },
+      { "question_id": "q2", "question": "What genre of music does my band play?", "answer": "indie rock", "category": "cat-4" },
+      { "question_id": "q3", "question": "What is the title of our debut EP?", "answer": "Drift", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-032",
+    "conversation": [
+      { "speaker": "user", "text": "I volunteer at the Harvest Hope food bank every Saturday since 2022." },
+      { "speaker": "assistant", "text": "That is a meaningful commitment." },
+      { "speaker": "user", "text": "It serves about 300 families per week." },
+      { "speaker": "assistant", "text": "Harvest Hope sounds like an essential resource." },
+      { "speaker": "user", "text": "Last month we raised $12,000 in donations during our annual fundraiser." },
+      { "speaker": "assistant", "text": "That is an impressive fundraising result." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is the name of the food bank I volunteer at?", "answer": "Harvest Hope", "category": "cat-4" },
+      { "question_id": "q2", "question": "How many families does the food bank serve per week?", "answer": "300 families", "category": "cat-4" },
+      { "question_id": "q3", "question": "How much was raised in the annual fundraiser?", "answer": "$12,000", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-033",
+    "conversation": [
+      { "speaker": "user", "text": "I built a home studio for recording music in my spare bedroom." },
+      { "speaker": "assistant", "text": "A home studio is a great creative space." },
+      { "speaker": "user", "text": "I use an Apollo Twin interface and KRK Rokit 5 monitors." },
+      { "speaker": "assistant", "text": "Apollo Twin is a professional-grade interface." },
+      { "speaker": "user", "text": "I spent about $2,200 setting it all up over six months." },
+      { "speaker": "assistant", "text": "That is a well-invested budget for a home studio." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What audio interface do I use in my home studio?", "answer": "Apollo Twin", "category": "cat-4" },
+      { "question_id": "q2", "question": "What monitors do I use?", "answer": "KRK Rokit 5", "category": "cat-4" },
+      { "question_id": "q3", "question": "How much did I spend on my home studio?", "answer": "$2,200", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-034",
+    "conversation": [
+      { "speaker": "user", "text": "I started a photography business last year shooting weddings and portraits." },
+      { "speaker": "assistant", "text": "Photography is a wonderful creative business." },
+      { "speaker": "user", "text": "I use a Sony A7IV camera with a 35mm and 85mm lens." },
+      { "speaker": "assistant", "text": "The A7IV is excellent for low-light work." },
+      { "speaker": "user", "text": "In my first year I photographed 14 weddings and earned around $48,000." },
+      { "speaker": "assistant", "text": "That is a strong first year for a photography business." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What camera do I use for my photography business?", "answer": "Sony A7IV", "category": "cat-4" },
+      { "question_id": "q2", "question": "How many weddings did I photograph in my first year?", "answer": "14 weddings", "category": "cat-4" },
+      { "question_id": "q3", "question": "How much did I earn in my first year?", "answer": "$48,000", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-035",
+    "conversation": [
+      { "speaker": "user", "text": "I am training to become a certified yoga instructor." },
+      { "speaker": "assistant", "text": "That is a wonderful pursuit." },
+      { "speaker": "user", "text": "I enrolled in a 200-hour program at the Shanti Yoga School in Bali." },
+      { "speaker": "assistant", "text": "Bali is a beautiful place to deepen a yoga practice." },
+      { "speaker": "user", "text": "The training runs for four weeks starting in May 2024." },
+      { "speaker": "assistant", "text": "Four weeks of intensive training will be transformative." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "How many hours is my yoga instructor certification program?", "answer": "200 hours", "category": "cat-4" },
+      { "question_id": "q2", "question": "At which school am I training for yoga?", "answer": "Shanti Yoga School", "category": "cat-4" },
+      { "question_id": "q3", "question": "In which country is the yoga training school?", "answer": "Bali", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-036",
+    "conversation": [
+      { "speaker": "user", "text": "I co-founded a nonprofit called CodeBridge that teaches coding to underserved youth." },
+      { "speaker": "assistant", "text": "That is an impactful mission." },
+      { "speaker": "user", "text": "We have taught over 500 students across three cities since founding in 2020." },
+      { "speaker": "assistant", "text": "500 students in four years is a significant reach." },
+      { "speaker": "user", "text": "Our curriculum focuses on Python, web development, and computational thinking." },
+      { "speaker": "assistant", "text": "Those are practical and marketable skills." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is the name of the nonprofit I co-founded?", "answer": "CodeBridge", "category": "cat-4" },
+      { "question_id": "q2", "question": "How many students has CodeBridge taught?", "answer": "over 500", "category": "cat-4" },
+      { "question_id": "q3", "question": "When was CodeBridge founded?", "answer": "2020", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-037",
+    "conversation": [
+      { "speaker": "user", "text": "I hiked the Camino de Santiago in Spain last September." },
+      { "speaker": "assistant", "text": "The Camino is a life-changing experience for many." },
+      { "speaker": "user", "text": "I walked the French route which is about 800 kilometers." },
+      { "speaker": "assistant", "text": "The French route is the most classic path." },
+      { "speaker": "user", "text": "It took me 33 days to complete and I walked alone the entire time." },
+      { "speaker": "assistant", "text": "33 days of solo walking is remarkable." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Which route of the Camino did I walk?", "answer": "French route", "category": "cat-4" },
+      { "question_id": "q2", "question": "How long is the French route?", "answer": "800 kilometers", "category": "cat-4" },
+      { "question_id": "q3", "question": "How many days did it take to complete the Camino?", "answer": "33 days", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-038",
+    "conversation": [
+      { "speaker": "user", "text": "I recently completed a machine learning certification from deeplearning.ai." },
+      { "speaker": "assistant", "text": "deeplearning.ai offers excellent courses." },
+      { "speaker": "user", "text": "The specialization took me four months and covered neural networks, CNNs, and NLP." },
+      { "speaker": "assistant", "text": "Four months is a solid investment in learning." },
+      { "speaker": "user", "text": "I now apply these skills at my job at DataVision Corp." },
+      { "speaker": "assistant", "text": "Practical application is the best way to solidify learning." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where did I get my machine learning certification?", "answer": "deeplearning.ai", "category": "cat-4" },
+      { "question_id": "q2", "question": "How long did the ML certification take?", "answer": "four months", "category": "cat-4" },
+      { "question_id": "q3", "question": "Where do I apply my ML skills now?", "answer": "DataVision Corp", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-039",
+    "conversation": [
+      { "speaker": "user", "text": "I competed in my first triathlon last summer in Lake Tahoe." },
+      { "speaker": "assistant", "text": "A triathlon in Lake Tahoe sounds stunning." },
+      { "speaker": "user", "text": "It was a sprint distance: 750m swim, 20km bike, 5km run." },
+      { "speaker": "assistant", "text": "Sprint triathlons are a great entry point." },
+      { "speaker": "user", "text": "I finished in 1 hour 24 minutes and placed 47th out of 200 participants." },
+      { "speaker": "assistant", "text": "Finishing in the top quarter is an excellent result for a first triathlon." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where did I compete in my first triathlon?", "answer": "Lake Tahoe", "category": "cat-4" },
+      { "question_id": "q2", "question": "What was my finishing time in the triathlon?", "answer": "1 hour 24 minutes", "category": "cat-4" },
+      { "question_id": "q3", "question": "How many participants were in the triathlon?", "answer": "200", "category": "cat-4" }
+    ]
+  },
+  {
+    "sample_id": "full-040",
+    "conversation": [
+      { "speaker": "user", "text": "I am learning to paint watercolors. I started last winter." },
+      { "speaker": "assistant", "text": "Watercolor is a beautiful but challenging medium." },
+      { "speaker": "user", "text": "I take a weekly class at the Riverside Art Center every Thursday evening." },
+      { "speaker": "assistant", "text": "A weekly class is a great structure for learning." },
+      { "speaker": "user", "text": "My teacher is an artist named Diane Cho who has exhibited internationally." },
+      { "speaker": "assistant", "text": "Learning from an internationally exhibited artist is a privilege." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What art medium am I learning?", "answer": "watercolors", "category": "cat-4" },
+      { "question_id": "q2", "question": "Where do I take my art class?", "answer": "Riverside Art Center", "category": "cat-4" },
+      { "question_id": "q3", "question": "What is my art teacher's name?", "answer": "Diane Cho", "category": "cat-4" }
+    ]
+  }
+]

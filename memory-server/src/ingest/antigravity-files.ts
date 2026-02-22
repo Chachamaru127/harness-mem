@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, extname } from "node:path";
+// basename is still used for file stem extraction, not for project identification
 
 export type AntigravityFileKind = "checkpoint" | "codex_response";
 
@@ -33,7 +34,7 @@ export function parseAntigravityFile(params: {
     return null;
   }
 
-  const project = basename(params.workspaceRoot) || "unknown";
+  const project = params.workspaceRoot || "unknown";
   const fileStem = getFileStem(params.filePath) || "unknown";
   const timestamp = toIsoFromUnixMs(params.mtimeMs) || params.fallbackNowIso();
   const titleFromDoc = extractMarkdownHeading(trimmed);

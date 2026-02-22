@@ -4,9 +4,11 @@ import {
   type ImportJobStatusRequest,
   type ApiResponse,
   type Config,
+  type ConsolidationRunRequest,
   type EventEnvelope,
   type FinalizeSessionRequest,
   type GetObservationsRequest,
+  type AuditLogRequest,
   type RecordCheckpointRequest,
   type ResumePackRequest,
   type SearchFacetsRequest,
@@ -36,6 +38,7 @@ function badRequest(message: string): Response {
     meta: {
       count: 0,
       latency_ms: 0,
+      sla_latency_ms: 0,
       filters: {},
       ranking: "hybrid_v3",
     },
@@ -52,6 +55,7 @@ function unauthorized(message: string): Response {
     meta: {
       count: 0,
       latency_ms: 0,
+      sla_latency_ms: 0,
       filters: {},
       ranking: "hybrid_v3",
     },
@@ -201,6 +205,48 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.metrics());
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/admin/shadow-metrics") {
+        const status = core.getManagedStatus();
+        if (!status) {
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [{ backend_mode: "local", managed_backend: null }],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "shadow_v1" },
+          });
+        }
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: [status],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "shadow_v1" },
+        });
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
+        const body = await parseRequestJson(request);
+        const req: ConsolidationRunRequest = {
+          reason: typeof body.reason === "string" ? body.reason : undefined,
+          project: typeof body.project === "string" ? body.project : undefined,
+          session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          limit: parseIntegerLike(body.limit),
+        };
+        return jsonResponse(core.runConsolidation(req));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/admin/consolidation/status") {
+        return jsonResponse(core.getConsolidationStatus());
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/admin/audit-log") {
+        const req: AuditLogRequest = {
+          limit: parseInteger(url.searchParams.get("limit"), 50),
+          action: url.searchParams.get("action") || undefined,
+          target_type: url.searchParams.get("target_type") || undefined,
+        };
+        return jsonResponse(core.getAuditLog(req));
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/admin/imports/claude-mem") {
         const body = await parseRequestJson(request);
         const sourceDbPath = typeof body.source_db_path === "string" ? body.source_db_path : "";
@@ -249,6 +295,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("query is required");
         }
 
+        const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
+        const validKinds = ["profile", "timeline", "graph", "vector", "hybrid"];
         const req: SearchRequest = {
           query,
           project: typeof body.project === "string" ? body.project : undefined,
@@ -260,6 +308,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           expand_links: parseBooleanLike(body.expand_links, true),
           strict_project: parseBooleanLike(body.strict_project, true),
           debug: parseBooleanLike(body.debug, false),
+          question_kind: questionKind && validKinds.includes(questionKind)
+            ? questionKind as SearchRequest["question_kind"]
+            : undefined,
         };
         return jsonResponse(core.search(req));
       }
@@ -383,10 +434,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const req: ResumePackRequest = {
           project,
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          correlation_id: typeof body.correlation_id === "string" ? body.correlation_id : undefined,
           limit: typeof body.limit === "number" ? body.limit : undefined,
           include_private: Boolean(body.include_private),
         };
         return jsonResponse(core.resumePack(req));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/sessions/chain") {
+        const correlationId = url.searchParams.get("correlation_id") || "";
+        const project = url.searchParams.get("project") || "";
+        if (!correlationId || !project) {
+          return badRequest("correlation_id and project are required");
+        }
+        return jsonResponse(core.resolveSessionChain(correlationId, project));
       }
 
       if (request.method === "GET" && url.pathname === "/v1/projects/stats") {

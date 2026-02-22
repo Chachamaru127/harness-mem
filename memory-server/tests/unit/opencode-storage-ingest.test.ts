@@ -25,7 +25,7 @@ describe("opencode storage ingest parser", () => {
     const event = parsed.events[0];
     expect(event?.eventType).toBe("user_prompt");
     expect(event?.sessionId).toBe("ses_1");
-    expect(event?.project).toBe("Context-Harness");
+    expect(event?.project).toBe("/Users/test/Desktop/Code/CC-harness/Context-Harness");
     expect(event?.payload.prompt).toBe("opencode interactive ingest test");
     expect(event?.dedupeHash.length).toBe(64);
   });
@@ -55,7 +55,7 @@ describe("opencode storage ingest parser", () => {
     expect(parsed.events.length).toBe(1);
     const event = parsed.events[0];
     expect(event?.eventType).toBe("checkpoint");
-    expect(event?.project).toBe("harness-mem");
+    expect(event?.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
     expect(event?.payload.content).toBe("assistant final answer");
     expect(event?.timestamp).toBe("2026-02-16T02:17:14.999Z");
   });

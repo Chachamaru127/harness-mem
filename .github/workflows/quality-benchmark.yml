@@ -1,0 +1,80 @@
+name: Quality Benchmark
+
+on:
+  pull_request:
+    paths:
+      - "memory-server/**"
+      - "tests/benchmarks/**"
+      - ".github/workflows/quality-benchmark.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "memory-server/**"
+      - "tests/benchmarks/**"
+      - ".github/workflows/quality-benchmark.yml"
+
+jobs:
+  rerank-quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Generate before/after benchmark snapshots
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p tests/benchmarks/output
+          bun run tests/benchmarks/baseline-runner.ts \
+            --run-label before \
+            --project ci-world1-before \
+            --reranker off \
+            --output tests/benchmarks/output/ci-before.json >/dev/null
+          bun run tests/benchmarks/baseline-runner.ts \
+            --run-label after \
+            --project ci-world1-after \
+            --reranker on \
+            --output tests/benchmarks/output/ci-after.json >/dev/null
+
+      - name: Enforce rerank quality gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun test \
+            tests/benchmarks/baseline-output.test.ts \
+            tests/benchmarks/rerank-quality-gate.test.ts
+
+      - name: Run security hardening tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun test tests/integration/security-hardening.test.ts
+
+      - name: Run chaos smoke and hardening artifact tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash tests/test-memory-daemon-chaos.sh 2
+          bun test tests/hardening-artifacts.test.ts
+
+      - name: Upload benchmark snapshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-snapshots
+          path: tests/benchmarks/output/ci-*.json
+          if-no-files-found: warn

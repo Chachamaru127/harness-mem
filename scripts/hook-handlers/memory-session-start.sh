@@ -35,6 +35,7 @@ SESSION_FILE="${STATE_DIR}/session.json"
 RESUME_FILE="${STATE_DIR}/memory-resume-context.md"
 RESUME_JSON_FILE="${STATE_DIR}/memory-resume-pack.json"
 RESUME_PENDING_FLAG="${STATE_DIR}/.memory-resume-pending"
+RESUME_ERROR_FILE="${STATE_DIR}/memory-resume-error.md"
 
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 
@@ -56,6 +57,24 @@ if [ -z "$HARNESS_SESSION_ID" ]; then
   HARNESS_SESSION_ID="session-$(date +%s)"
 fi
 
+cleanup_resume_stale_context() {
+  rm -f "$RESUME_FILE" "$RESUME_JSON_FILE" "$RESUME_PENDING_FLAG" 2>/dev/null || true
+}
+
+write_resume_error_file() {
+  local error_code="${1:-resume_pack_failed}"
+  local error_message="${2:-resume-pack failed}"
+  local next_command="${3:-harness-mem doctor --fix}"
+  {
+    echo "# Memory Resume Error"
+    echo ""
+    echo "- 原因: resume-pack の取得に失敗しました (${error_code})"
+    echo "- 詳細: ${error_message}"
+    echo "- 影響: 前回セッションの再開コンテキスト注入をスキップしました。"
+    echo "- 次コマンド: \`${next_command}\`"
+  } > "$RESUME_ERROR_FILE" 2>/dev/null || true
+}
+
 if [ -x "$CLIENT_SCRIPT" ]; then
   EVENT_PAYLOAD=$(jq -nc \
     --arg platform "claude" \
@@ -75,10 +94,36 @@ if [ -x "$CLIENT_SCRIPT" ]; then
     --arg session_id "$HARNESS_SESSION_ID" \
     '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
 
-  if [ -n "$RESUME_PAYLOAD" ]; then
+  if [ -z "$RESUME_PAYLOAD" ]; then
+    cleanup_resume_stale_context
+    write_resume_error_file "resume_pack_payload_build_failed" "failed to build resume-pack payload (jq unavailable or invalid state)" "harness-mem doctor --fix"
+  else
     RESUME_RESPONSE="$(printf '%s' "$RESUME_PAYLOAD" | "$CLIENT_SCRIPT" resume-pack 2>/dev/null || true)"
+    RESUME_FAILED=false
+    RESUME_ERROR_CODE=""
+    RESUME_ERROR_MESSAGE=""
 
-    if [ -n "$RESUME_RESPONSE" ]; then
+    if [ -z "$RESUME_RESPONSE" ]; then
+      RESUME_FAILED=true
+      RESUME_ERROR_CODE="resume_pack_empty_response"
+      RESUME_ERROR_MESSAGE="resume-pack returned an empty response"
+    elif command -v jq >/dev/null 2>&1; then
+      if ! printf '%s' "$RESUME_RESPONSE" | jq -e '.' >/dev/null 2>&1; then
+        RESUME_FAILED=true
+        RESUME_ERROR_CODE="resume_pack_invalid_json"
+        RESUME_ERROR_MESSAGE="resume-pack returned invalid JSON"
+      elif printf '%s' "$RESUME_RESPONSE" | jq -e '.ok == false' >/dev/null 2>&1; then
+        RESUME_FAILED=true
+        RESUME_ERROR_CODE="$(printf '%s' "$RESUME_RESPONSE" | jq -r '.error_code // "resume_pack_failed"' 2>/dev/null)"
+        RESUME_ERROR_MESSAGE="$(printf '%s' "$RESUME_RESPONSE" | jq -r '.error // "resume-pack failed"' 2>/dev/null)"
+      fi
+    fi
+
+    if [ "$RESUME_FAILED" = "true" ]; then
+      cleanup_resume_stale_context
+      write_resume_error_file "$RESUME_ERROR_CODE" "$RESUME_ERROR_MESSAGE" "harness-mem doctor --fix"
+    else
+      rm -f "$RESUME_ERROR_FILE" 2>/dev/null || true
       printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
 
       if command -v jq >/dev/null 2>&1; then

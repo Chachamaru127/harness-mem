@@ -2,10 +2,11 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|codex,cursor>] [--skip-start] [--skip-smoke] [--skip-quality]
-#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|codex,cursor>] [--fix]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
-#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|codex,cursor>] [--purge-db]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--purge-db]
+#   scripts/harness-mem versions [--project <path>]
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
@@ -30,11 +31,13 @@ HARNESS_ROOT="$SOURCE_ROOT"
 TARGET_DIR="${HARNESS_MEM_TARGET_DIR:-$PWD}"
 PLATFORM="all"
 PLATFORM_EXPLICIT=0
+BACKEND_MODE=""
 UI_LANG="${HARNESS_MEM_LANG:-ja}"
 SETUP_INTERACTIVE_PROMPT_USED=0
 SETUP_IMPORT_CLAUDE_MEM=0
 SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
 FIX_MODE=0
+JSON_OUTPUT=0
 PURGE_DB=0
 SKIP_START=0
 SKIP_SMOKE=0
@@ -45,11 +48,15 @@ IMPORT_JOB_ID=""
 IMPORT_PROJECT=""
 IMPORT_DRY_RUN=0
 STOP_NOW=0
+VERSION_CHECK_IN_SETUP=1
 
 MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
 STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
+VERSIONS_DIR="${STATE_DIR}/versions"
+VERSIONS_SNAPSHOT_PATH="${VERSIONS_DIR}/tool-versions.json"
+VERSIONS_HISTORY_PATH="${VERSIONS_DIR}/tool-versions-history.jsonl"
 
 BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
@@ -63,21 +70,27 @@ Unified Harness Memory helper
 Commands:
   setup      Configure Codex/OpenCode/Cursor/Claude wiring, start daemon, run smoke and quality checks.
   doctor     Validate wiring and daemon health (optionally repair with --fix).
+  versions   Snapshot local/upstream versions for Codex/OpenCode/Cursor/Claude/Antigravity.
   smoke      Run isolated daemon smoke test against record/search privacy flow.
   uninstall  Remove memory wiring and optionally purge local memory DB.
-  import-claude-mem  One-shot import from Claude-mem SQLite into harness-mem.
-  verify-import      Verify imported data quality/privacy checks by job id.
-  cutover-claude-mem Stop Claude-mem only after verify passed.
+  import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
+  verify-import              Verify imported data quality/privacy checks by job id.
+  cutover-claude-mem         Stop Claude-mem only after verify passed.
+  migrate-from-claude-mem    1-command migration: import -> verify -> cutover from Claude-mem.
+  rollback-claude-mem        Rollback: restart Claude-mem and re-enable LaunchAgent.
+  promote                    Promote backend mode: local → hybrid → managed.
+  rollback                   Rollback backend mode to local.
 
 Common options:
   --project <path>      Target project path (default: current directory)
-  --platform <value>    all|codex|opencode|claude|cursor or comma list (default: all)
+  --platform <value>    all|codex|opencode|claude|cursor|antigravity or comma list (default: all)
                         examples: codex,cursor  /  opencode,cursor
   --source <path>       Source SQLite path for import-claude-mem
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
   --dry-run             Plan import without writing events
   --stop-now            Required by cutover-claude-mem to actually stop Claude-mem
+  --skip-version-check  Skip automatic version snapshot at end of setup/doctor
   --quiet               Reduce logs
 
 Command options:
@@ -92,8 +105,11 @@ Command options:
                         4) stop Claude-mem after import (yes/no)
   doctor:
     --fix               Attempt to repair missing wiring
+    --json              Output structured JSON result
   uninstall:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
+  versions:
+    no additional options
 EOF
 }
 
@@ -114,6 +130,57 @@ warn() {
 fail() {
   echo "[harness-mem][error] $*" >&2
   exit 1
+}
+
+# --- Backend config management ---
+CONFIG_PATH="${STATE_DIR}/config.json"
+
+ensure_config() {
+  mkdir -p "$STATE_DIR"
+  if [ ! -f "$CONFIG_PATH" ]; then
+    cat > "$CONFIG_PATH" <<'CONF'
+{
+  "backend_mode": "local",
+  "managed": {
+    "endpoint": "",
+    "api_key": ""
+  }
+}
+CONF
+  fi
+}
+
+read_backend_mode() {
+  ensure_config
+  local mode
+  mode="$(jq -r '.backend_mode // "local"' "$CONFIG_PATH" 2>/dev/null || echo "local")"
+  case "$mode" in
+    local|managed|hybrid) echo "$mode" ;;
+    *) echo "local" ;;
+  esac
+}
+
+write_backend_mode() {
+  local new_mode="$1"
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq --arg m "$new_mode" '.backend_mode = $m' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+}
+
+read_managed_endpoint() {
+  ensure_config
+  jq -r '.managed.endpoint // ""' "$CONFIG_PATH" 2>/dev/null || echo ""
+}
+
+read_managed_api_key() {
+  ensure_config
+  jq -r '.managed.api_key // ""' "$CONFIG_PATH" 2>/dev/null || echo ""
+}
+
+fetch() {
+  local url="$1"
+  local out="$2"
+  curl -fsSL --compressed "$url" -o "$out"
 }
 
 abs_dir() {
@@ -142,6 +209,10 @@ parse_options() {
       --fix)
         FIX_MODE=1
         ;;
+      --json)
+        JSON_OUTPUT=1
+        QUIET=1
+        ;;
       --purge-db)
         PURGE_DB=1
         ;;
@@ -157,6 +228,9 @@ parse_options() {
       --quiet)
         QUIET=1
         ;;
+      --skip-version-check)
+        VERSION_CHECK_IN_SETUP=0
+        ;;
       --source)
         shift
         [ "$#" -gt 0 ] || fail "--source requires a path"
@@ -171,6 +245,14 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--import-project requires a value"
         IMPORT_PROJECT="$1"
+        ;;
+      --backend)
+        shift
+        [ "$#" -gt 0 ] || fail "--backend requires a value (local|managed|hybrid)"
+        case "$1" in
+          local|managed|hybrid) BACKEND_MODE="$1" ;;
+          *) fail "--backend must be one of: local, managed, hybrid" ;;
+        esac
         ;;
       --dry-run)
         IMPORT_DRY_RUN=1
@@ -261,6 +343,7 @@ prompt_platform_selection() {
   2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
   3) opencode  (global: ~/.config/opencode/opencode.json)
   4) claude    (global: ~/.claude.json mcpServers)
+  5) antigravity (experimental workspace scanning)
   a) all
 Example: 1,2   (Enter=1,2)
 EOF
@@ -271,6 +354,7 @@ EOF
   2) cursor    (global: ~/.cursor/hooks.json + ~/.cursor/mcp.json)
   3) opencode  (global: ~/.config/opencode/opencode.json)
   4) claude    (global: ~/.claude.json mcpServers)
+  5) antigravity (experimental workspace scanning)
   a) all
 入力例: 1,2   (Enter=1,2)
 EOF
@@ -310,11 +394,14 @@ EOF
         4|claude)
           selected="$(csv_append_unique "$selected" "claude")"
           ;;
+        5|antigravity)
+          selected="$(csv_append_unique "$selected" "antigravity")"
+          ;;
         *)
           if ui_is_en; then
-            warn "Invalid selection: ${token}. Use 1,2,3,4 or a"
+            warn "Invalid selection: ${token}. Use 1,2,3,4,5 or a"
           else
-            warn "無効な選択: ${token}。1,2,3,4 または a を入力してください"
+            warn "無効な選択: ${token}。1,2,3,4,5 または a を入力してください"
           fi
           valid=0
           ;;
@@ -420,9 +507,6 @@ prompt_setup_migration_selection() {
 
 is_platform_enabled() {
   local target="$1"
-  if [ "$target" = "antigravity" ]; then
-    return 1
-  fi
   local entry
   IFS=',' read -r -a entries <<<"$PLATFORM"
   for entry in "${entries[@]}"; do
@@ -445,11 +529,11 @@ validate_platform_selection() {
     normalized="$(printf '%s' "$entry" | xargs)"
     [ -z "$normalized" ] && continue
     case "$normalized" in
-      all|codex|opencode|claude|cursor)
+      all|codex|opencode|claude|cursor|antigravity)
         seen=1
         ;;
       *)
-        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor)"
+        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor,antigravity)"
         ;;
     esac
   done
@@ -505,6 +589,371 @@ ensure_dependencies() {
   require_cmd jq
   require_cmd node
   require_cmd npm
+}
+
+ensure_version_dependencies() {
+  require_cmd curl
+  require_cmd jq
+  require_cmd python3
+}
+
+first_line() {
+  local output
+  output="$("$@" 2>/dev/null | head -n 1 || true)"
+  output="$(printf '%s' "$output" | tr -d '\r')"
+  printf '%s' "$output"
+}
+
+detect_cli_version() {
+  local cmd="$1"
+  shift || true
+  if ! check_cmd "$cmd"; then
+    printf ''
+    return
+  fi
+  first_line "$cmd" "$@"
+}
+
+detect_cursor_local_version() {
+  local value
+  value="$(detect_cli_version cursor --version)"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+
+  local plist
+  for plist in \
+    "/Applications/Cursor.app/Contents/Info.plist" \
+    "$HOME/Applications/Cursor.app/Contents/Info.plist"; do
+    if [ -f "$plist" ]; then
+      value="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)"
+      if [ -n "$value" ]; then
+        printf '%s' "$value"
+        return
+      fi
+    fi
+  done
+  printf ''
+}
+
+detect_antigravity_local_version() {
+  local value
+  value="$(detect_cli_version antigravity --version)"
+  if [ -n "$value" ]; then
+    printf '%s' "$value"
+    return
+  fi
+
+  local plist
+  for plist in \
+    "/Applications/Antigravity.app/Contents/Info.plist" \
+    "$HOME/Applications/Antigravity.app/Contents/Info.plist"; do
+    if [ -f "$plist" ]; then
+      value="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist" 2>/dev/null || true)"
+      if [ -n "$value" ]; then
+        printf '%s' "$value"
+        return
+      fi
+    fi
+  done
+  printf ''
+}
+
+normalize_version_hint() {
+  local value="$1"
+  local extracted
+  extracted="$(printf '%s' "$value" | sed -nE 's/.*(rust-v|v)?([0-9]+\.[0-9]+\.[0-9]+([-.][A-Za-z0-9.]+)?).*/\2/p' | head -n 1)"
+  if [ -z "$extracted" ]; then
+    printf '%s' "$value" | tr '[:upper:]' '[:lower:]' | xargs
+    return
+  fi
+  printf '%s' "$extracted" | tr '[:upper:]' '[:lower:]'
+}
+
+version_status_hint() {
+  local installed="$1"
+  local latest="$2"
+  if [ -z "$installed" ] || [ -z "$latest" ]; then
+    printf 'unknown'
+    return
+  fi
+  local ni nl
+  ni="$(normalize_version_hint "$installed")"
+  nl="$(normalize_version_hint "$latest")"
+  if [ "$ni" = "$nl" ]; then
+    printf 'up_to_date'
+    return
+  fi
+  if [[ "$ni" == *"$nl"* ]] || [[ "$nl" == *"$ni"* ]]; then
+    printf 'up_to_date'
+    return
+  fi
+  printf 'needs_review'
+}
+
+detect_antigravity_hooks_signal() {
+  local releases_json="$1"
+  local hooks_key_present="false"
+  local first_hooks_key_version=""
+  local signal_version=""
+  local signal_excerpt=""
+  local signal_type=""
+  local detected="false"
+
+  hooks_key_present="$(jq -r '
+    def items:
+      if type == "array" then .
+      elif type == "object" and ((.versions // null) | type == "array") then .versions
+      else [] end;
+    [items[] | has("hooks")] | any
+  ' "$releases_json" 2>/dev/null || printf 'false')"
+  [ "$hooks_key_present" = "true" ] || hooks_key_present="false"
+
+  first_hooks_key_version="$(jq -r '
+    def items:
+      if type == "array" then .
+      elif type == "object" and ((.versions // null) | type == "array") then .versions
+      else [] end;
+    [items[] | select(has("hooks")) | (.version // .tag_name // .name // empty | tostring)] | .[0] // empty
+  ' "$releases_json" 2>/dev/null || true)"
+
+  if [ "$hooks_key_present" = "true" ]; then
+    detected="true"
+    signal_type="hooks_key"
+    signal_version="$first_hooks_key_version"
+  fi
+
+  while IFS=$'\t' read -r parsed_version parsed_text; do
+    [ -n "$parsed_text" ] || continue
+    if printf '%s' "$parsed_text" \
+      | grep -Eiq '(^|[^a-z])hooks?([^a-z]|$)|tool[._ -]?definition|chat[._ -]?message|session[._ -]?(idle|compacted)|フック'; then
+      signal_version="$parsed_version"
+      signal_excerpt="$parsed_text"
+      signal_type="keyword"
+      detected="true"
+      break
+    fi
+  done < <(jq -r '
+    def stringify:
+      if . == null then ""
+      elif type == "string" then .
+      else tostring end;
+    def items:
+      if type == "array" then .
+      elif type == "object" and ((.versions // null) | type == "array") then .versions
+      else [] end;
+    items[]
+    | [
+        ((.version // .tag_name // .name // "") | tostring),
+        (
+          [
+            (.name // ""),
+            (.title // ""),
+            (.notes // ""),
+            (.releaseNotes // ""),
+            (.changelog // ""),
+            (.body // ""),
+            (.description // ""),
+            (.summary // ""),
+            (.features | stringify),
+            (.changes | stringify),
+            (.highlights | stringify),
+            (.hooks | stringify)
+          ]
+          | map(select(length > 0))
+          | join(" ")
+        )
+      ]
+    | @tsv
+  ' "$releases_json" 2>/dev/null || true)
+
+  signal_excerpt="$(printf '%s' "$signal_excerpt" | sed -E 's/[[:space:]]+/ /g' | cut -c1-160)"
+
+  jq -nc \
+    --argjson detected "$detected" \
+    --arg signal_version "$signal_version" \
+    --arg signal_type "$signal_type" \
+    --arg signal_excerpt "$signal_excerpt" \
+    '{
+      detected: $detected,
+      signal_version: ($signal_version | select(. != "") // null),
+      signal_type: ($signal_type | select(. != "") // null),
+      signal_excerpt: ($signal_excerpt | select(. != "") // null)
+    }'
+}
+
+versions_impl() {
+  ensure_version_dependencies
+
+  mkdir -p "$VERSIONS_DIR"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${tmp_dir:-}"' RETURN
+
+  fetch "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md" \
+    "$tmp_dir/claude-code-CHANGELOG.md" &
+  fetch "https://api.github.com/repos/openai/codex/releases?per_page=50" \
+    "$tmp_dir/codex-releases.json" &
+  fetch "https://api.github.com/repos/anomalyco/opencode/releases?per_page=50" \
+    "$tmp_dir/opencode-releases.json" &
+  fetch "https://cursor.com/changelog" \
+    "$tmp_dir/cursor-changelog.html" &
+  fetch "https://antigravity-auto-updater-974169037036.us-central1.run.app/releases" \
+    "$tmp_dir/antigravity-releases-api.json" &
+  wait
+
+  local prev_antigravity_hooks
+  prev_antigravity_hooks="$(jq -r '.upstream.antigravity.hooks_detected // false' "$VERSIONS_SNAPSHOT_PATH" 2>/dev/null || printf 'false')"
+  [ "$prev_antigravity_hooks" = "true" ] || prev_antigravity_hooks="false"
+
+  local claude_latest codex_latest_stable codex_latest_any opencode_latest antigravity_latest
+  local cursor_latest_date cursor_latest_title
+
+  claude_latest="$(awk '/^## [0-9]+\.[0-9]+\.[0-9]+$/ {print $2; exit}' "$tmp_dir/claude-code-CHANGELOG.md" || true)"
+  codex_latest_stable="$(jq -r 'map(select((.draft|not) and (.prerelease|not))) | sort_by(.published_at) | reverse | .[0].tag_name // empty' "$tmp_dir/codex-releases.json")"
+  codex_latest_any="$(jq -r 'map(select(.draft|not)) | sort_by(.published_at) | reverse | .[0].tag_name // empty' "$tmp_dir/codex-releases.json")"
+  opencode_latest="$(jq -r 'map(select((.draft|not) and (.prerelease|not))) | sort_by(.published_at) | reverse | .[0].tag_name // empty' "$tmp_dir/opencode-releases.json")"
+  antigravity_latest="$(jq -r '.[0].version // empty' "$tmp_dir/antigravity-releases-api.json")"
+
+  local cursor_parsed
+  cursor_parsed="$(python3 - "$tmp_dir/cursor-changelog.html" <<'PY'
+import re
+import sys
+from pathlib import Path
+text = Path(sys.argv[1]).read_text(encoding="utf-8", errors="ignore")
+m = re.search(r'href="(/changelog/[^"]+)"><time dateTime="([^"]+)"[^>]*>[^<]*</time>.*?<h1[^>]*>\s*<a[^>]*>\s*([^<]+)', text, flags=re.DOTALL|re.IGNORECASE)
+if not m:
+    print("\t")
+else:
+    print(f"{m.group(2)}\t{m.group(3).strip()}")
+PY
+)"
+  cursor_latest_date="$(printf '%s' "$cursor_parsed" | awk -F'\t' '{print $1}')"
+  cursor_latest_title="$(printf '%s' "$cursor_parsed" | awk -F'\t' '{print $2}')"
+
+  local antigravity_hooks_json antigravity_hooks_detected antigravity_hooks_signal_version
+  local antigravity_hooks_signal_type antigravity_hooks_signal_excerpt antigravity_hooks_introduced
+  antigravity_hooks_json="$(detect_antigravity_hooks_signal "$tmp_dir/antigravity-releases-api.json")"
+  antigravity_hooks_detected="$(printf '%s' "$antigravity_hooks_json" | jq -r '.detected')"
+  antigravity_hooks_signal_version="$(printf '%s' "$antigravity_hooks_json" | jq -r '.signal_version // empty')"
+  antigravity_hooks_signal_type="$(printf '%s' "$antigravity_hooks_json" | jq -r '.signal_type // empty')"
+  antigravity_hooks_signal_excerpt="$(printf '%s' "$antigravity_hooks_json" | jq -r '.signal_excerpt // empty')"
+  antigravity_hooks_introduced="false"
+  if [ "$antigravity_hooks_detected" = "true" ] && [ "$prev_antigravity_hooks" != "true" ]; then
+    antigravity_hooks_introduced="true"
+  fi
+
+  local codex_local claude_local opencode_local cursor_local antigravity_local
+  codex_local="$(detect_cli_version codex --version)"
+  claude_local="$(detect_cli_version claude --version)"
+  opencode_local="$(detect_cli_version opencode --version)"
+  cursor_local="$(detect_cursor_local_version)"
+  antigravity_local="$(detect_antigravity_local_version)"
+
+  local codex_status claude_status opencode_status antigravity_status cursor_status
+  codex_status="$(version_status_hint "$codex_local" "$codex_latest_stable")"
+  claude_status="$(version_status_hint "$claude_local" "$claude_latest")"
+  opencode_status="$(version_status_hint "$opencode_local" "$opencode_latest")"
+  antigravity_status="$(version_status_hint "$antigravity_local" "$antigravity_latest")"
+  cursor_status="unknown"
+
+  local snapshot
+  snapshot="$(jq -nc \
+    --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    --arg codex_local "$codex_local" \
+    --arg claude_local "$claude_local" \
+    --arg opencode_local "$opencode_local" \
+    --arg cursor_local "$cursor_local" \
+    --arg antigravity_local "$antigravity_local" \
+    --arg claude_latest "$claude_latest" \
+    --arg codex_latest_stable "$codex_latest_stable" \
+    --arg codex_latest_any "$codex_latest_any" \
+    --arg opencode_latest "$opencode_latest" \
+    --arg cursor_latest_date "$cursor_latest_date" \
+    --arg cursor_latest_title "$cursor_latest_title" \
+    --arg antigravity_latest "$antigravity_latest" \
+    --arg antigravity_hooks_signal_version "$antigravity_hooks_signal_version" \
+    --arg antigravity_hooks_signal_type "$antigravity_hooks_signal_type" \
+    --arg antigravity_hooks_signal_excerpt "$antigravity_hooks_signal_excerpt" \
+    --arg codex_status "$codex_status" \
+    --arg claude_status "$claude_status" \
+    --arg opencode_status "$opencode_status" \
+    --arg cursor_status "$cursor_status" \
+    --arg antigravity_status "$antigravity_status" \
+    --argjson antigravity_hooks_detected "$antigravity_hooks_detected" \
+    --argjson antigravity_hooks_introduced "$antigravity_hooks_introduced" \
+    '{
+      generated_at: $generated_at,
+      local: {
+        codex: {installed: ($codex_local | select(. != "") // null)},
+        claude_code: {installed: ($claude_local | select(. != "") // null)},
+        opencode: {installed: ($opencode_local | select(. != "") // null)},
+        cursor: {installed: ($cursor_local | select(. != "") // null)},
+        antigravity: {installed: ($antigravity_local | select(. != "") // null)}
+      },
+      upstream: {
+        claude_code: {
+          latest_stable: ($claude_latest | select(. != "") // null),
+          source: "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"
+        },
+        codex: {
+          latest_stable: ($codex_latest_stable | select(. != "") // null),
+          latest_any: ($codex_latest_any | select(. != "") // null),
+          source: "https://github.com/openai/codex/releases"
+        },
+        opencode: {
+          latest_stable: ($opencode_latest | select(. != "") // null),
+          source: "https://github.com/anomalyco/opencode/releases"
+        },
+        cursor: {
+          latest_entry_date: ($cursor_latest_date | select(. != "") // null),
+          latest_entry_title: ($cursor_latest_title | select(. != "") // null),
+          source: "https://cursor.com/changelog"
+        },
+        antigravity: {
+          latest_stable: ($antigravity_latest | select(. != "") // null),
+          source: "https://antigravity.google/releases",
+          hooks_detected: $antigravity_hooks_detected,
+          hooks_signal_version: ($antigravity_hooks_signal_version | select(. != "") // null),
+          hooks_signal_type: ($antigravity_hooks_signal_type | select(. != "") // null),
+          hooks_signal_excerpt: ($antigravity_hooks_signal_excerpt | select(. != "") // null)
+        }
+      },
+      status: {
+        codex: $codex_status,
+        claude_code: $claude_status,
+        opencode: $opencode_status,
+        cursor: $cursor_status,
+        antigravity: $antigravity_status
+      },
+      alerts: {
+        antigravity_hooks_introduced: $antigravity_hooks_introduced
+      }
+    }')"
+
+  printf '%s\n' "$snapshot" >"$VERSIONS_SNAPSHOT_PATH"
+  printf '%s\n' "$snapshot" | jq -c . >>"$VERSIONS_HISTORY_PATH"
+
+  log "Version snapshot saved: ${VERSIONS_SNAPSHOT_PATH}"
+  log "Version history appended: ${VERSIONS_HISTORY_PATH}"
+  if [ "$antigravity_hooks_introduced" = "true" ]; then
+    warn "Antigravity hooks signal detected upstream (version: ${antigravity_hooks_signal_version:-unknown}). Review hook wiring requirements."
+  fi
+
+  printf '%s\n' "$snapshot" \
+    | jq -r '
+      "Tool versions:",
+      "  codex        local=\(.local.codex.installed // "n/a") upstream=\(.upstream.codex.latest_stable // "n/a") status=\(.status.codex)",
+      "  claude_code  local=\(.local.claude_code.installed // "n/a") upstream=\(.upstream.claude_code.latest_stable // "n/a") status=\(.status.claude_code)",
+      "  opencode     local=\(.local.opencode.installed // "n/a") upstream=\(.upstream.opencode.latest_stable // "n/a") status=\(.status.opencode)",
+      "  cursor       local=\(.local.cursor.installed // "n/a") upstream_date=\(.upstream.cursor.latest_entry_date // "n/a") status=\(.status.cursor)",
+      "  antigravity  local=\(.local.antigravity.installed // "n/a") upstream=\(.upstream.antigravity.latest_stable // "n/a") status=\(.status.antigravity)",
+      "  antigravity_hooks detected=\(.upstream.antigravity.hooks_detected) introduced=\(.alerts.antigravity_hooks_introduced) version=\(.upstream.antigravity.hooks_signal_version // "n/a")"
+    '
+
+  trap - RETURN
+  rm -rf "$tmp_dir"
 }
 
 ensure_mcp_runtime() {
@@ -653,6 +1102,18 @@ check_codex_wiring() {
     failed=1
   fi
 
+  local prepare_hook
+  prepare_hook="$(git -C "$TARGET_DIR" rev-parse --git-path hooks/prepare-commit-msg 2>/dev/null || true)"
+  if [ -n "$prepare_hook" ] && [ -f "$prepare_hook" ]; then
+    if rg -qi 'codex|command_attribution|prepare-commit-msg' "$prepare_hook"; then
+      log "Codex git hook coexistence: prepare-commit-msg detected ($prepare_hook)"
+    else
+      log "Git prepare-commit-msg hook detected (left untouched by harness-mem): $prepare_hook"
+    fi
+  else
+    log "Git prepare-commit-msg hook: not found in current repository (coexistence check skipped)"
+  fi
+
   return "$failed"
 }
 
@@ -776,48 +1237,26 @@ EOF
 
   tmp="$(mktemp)"
   if jq --arg cmd "$hook_command" '
+    def strip_memory_hook:
+      map(
+        if type == "object" then
+          select(((.command // "") | contains("memory-cursor-event.sh")) | not)
+        else
+          .
+        end
+      );
+    def has_exact_cmd($cmd):
+      any(type == "object" and ((.command // "") == $cmd));
+    def ensure_cmd($cmd):
+      if has_exact_cmd($cmd) then . else . + [{command: $cmd}] end;
+
     .version = (.version // 1)
     | .hooks = (.hooks // {})
-    | .hooks.beforeSubmitPrompt = (
-        (
-          (.hooks.beforeSubmitPrompt // [])
-          | map(if type == "object" then . else {} end)
-          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
-        ) + [{command:$cmd}]
-        | unique_by(.command)
-      )
-    | .hooks.afterMCPExecution = (
-        (
-          (.hooks.afterMCPExecution // [])
-          | map(if type == "object" then . else {} end)
-          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
-        ) + [{command:$cmd}]
-        | unique_by(.command)
-      )
-    | .hooks.afterShellExecution = (
-        (
-          (.hooks.afterShellExecution // [])
-          | map(if type == "object" then . else {} end)
-          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
-        ) + [{command:$cmd}]
-        | unique_by(.command)
-      )
-    | .hooks.afterFileEdit = (
-        (
-          (.hooks.afterFileEdit // [])
-          | map(if type == "object" then . else {} end)
-          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
-        ) + [{command:$cmd}]
-        | unique_by(.command)
-      )
-    | .hooks.stop = (
-        (
-          (.hooks.stop // [])
-          | map(if type == "object" then . else {} end)
-          | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not))
-        ) + [{command:$cmd}]
-        | unique_by(.command)
-      )
+    | .hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.afterMCPExecution = ((.hooks.afterMCPExecution // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.afterShellExecution = ((.hooks.afterShellExecution // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.afterFileEdit = ((.hooks.afterFileEdit // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.stop = ((.hooks.stop // []) | strip_memory_hook | ensure_cmd($cmd))
   ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
     log "Updated Cursor hooks config: $file"
@@ -1104,6 +1543,17 @@ check_opencode_wiring() {
     failed=1
   else
     log "OpenCode global plugin: OK"
+    if rg -q '"chat.message"|"session.idle"|"session.compacted"' "$plugin"; then
+      log "OpenCode hook compatibility baseline: OK (chat.message/session.idle/session.compacted)"
+    else
+      warn "OpenCode plugin hook compatibility baseline is incomplete: $plugin"
+      failed=1
+    fi
+    if rg -qi 'tool\.definition|shell\.env' "$plugin"; then
+      log "OpenCode extended hook surface: detected (tool.definition/shell.env)"
+    else
+      log "OpenCode extended hook surface: not configured (baseline mode)"
+    fi
   fi
 
   if [ ! -f "$cfg" ]; then
@@ -1453,6 +1903,59 @@ cutover_claude_mem_impl() {
   log "Cutover completed for job: $IMPORT_JOB_ID"
 }
 
+migrate_from_claude_mem_impl() {
+  local source_db="${HOME}/.claude-mem/claude-mem.db"
+  [ -f "$source_db" ] || fail "Claude-mem source DB not found: $source_db"
+
+  ensure_dependencies
+  start_daemon
+
+  # Step 1: import
+  log "Step 1/3: Importing from Claude-mem..."
+  local import_payload import_response job_id
+  import_payload="$(jq -nc --arg source "$source_db" '{ source_db_path: $source, dry_run: false }')"
+  import_response="$(run_import_request "$import_payload")"
+  echo "$import_response" | jq -e '.ok == true' >/dev/null || fail "Import failed"
+  job_id="$(echo "$import_response" | jq -r '.items[0].job_id // empty')"
+  [ -n "$job_id" ] || fail "Import did not return job_id"
+  log "Import started: job=$job_id"
+
+  # Step 2: verify
+  log "Step 2/3: Verifying import..."
+  local verify_payload verify_response
+  verify_payload="$(jq -nc --arg job_id "$job_id" '{job_id: $job_id}')"
+  verify_response="$(run_verify_request "$verify_payload")"
+  echo "$verify_response" | jq -e '.ok == true and .items[0].ok == true' >/dev/null || fail "Verification failed. Run: harness-mem verify-import --job $job_id"
+  log "Verification passed"
+
+  # Step 3: cutover
+  log "Step 3/3: Cutting over from Claude-mem..."
+  stop_claude_mem_runtime
+  log "Migration complete! Claude-mem has been stopped."
+  log "Rollback: harness-mem rollback-claude-mem"
+}
+
+rollback_claude_mem_impl() {
+  log "Rolling back to Claude-mem..."
+  # Restart Claude-mem if available
+  if command -v claude-mem >/dev/null 2>&1; then
+    claude-mem start 2>/dev/null || true
+    log "Claude-mem restarted"
+  else
+    warn "claude-mem command not found. Manual restart required."
+  fi
+  # Re-enable LaunchAgent if disabled
+  local plist
+  for plist in "$HOME"/Library/LaunchAgents/*claude*mem*.plist.disabled; do
+    [ -e "$plist" ] || continue
+    local original="${plist%.disabled}"
+    mv "$plist" "$original" 2>/dev/null || true
+    launchctl load "$original" 2>/dev/null || true
+    log "Re-enabled: $original"
+  done
+  log "Rollback complete. Verify with: claude-mem status"
+}
+
 run_setup_claude_mem_import_if_requested() {
   if [ "$SETUP_IMPORT_CLAUDE_MEM" -ne 1 ]; then
     return
@@ -1493,25 +1996,82 @@ run_setup_claude_mem_import_if_requested() {
 
 doctor_impl() {
   local failed=0
+  # JSON出力用チェック結果配列
+  local -a doctor_checks=()
 
-  if ! check_cmd bun; then
+  # ヘルパー: チェック結果を記録する
+  # 引数: name status fix
+  _doctor_record() {
+    local name="$1" status="$2" fix="$3"
+    doctor_checks+=("$(printf '%s\t%s\t%s' "$name" "$status" "$fix")")
+  }
+
+  # Backend mode check
+  local current_backend
+  current_backend="$(read_backend_mode)"
+  _doctor_record "backend_mode" "ok:${current_backend}" ""
+  log "Backend mode: ${current_backend}"
+
+  # config.json existence
+  if [ -f "$CONFIG_PATH" ]; then
+    _doctor_record "config" "ok" ""
+  else
+    ensure_config
+    _doctor_record "config" "ok" ""
+    log "Created default config at ${CONFIG_PATH}"
+  fi
+
+  # managed backend connectivity (only for managed/hybrid)
+  if [ "$current_backend" = "managed" ] || [ "$current_backend" = "hybrid" ]; then
+    local managed_ep
+    managed_ep="$(read_managed_endpoint)"
+    if [ -n "$managed_ep" ]; then
+      if curl --silent --show-error --fail --max-time 3 "${managed_ep}/health" >/dev/null 2>&1; then
+        _doctor_record "managed_backend" "ok" ""
+      else
+        _doctor_record "managed_backend" "unreachable" "check managed endpoint: ${managed_ep}"
+        failed=1
+      fi
+    else
+      _doctor_record "managed_backend" "not_configured" "set managed.endpoint in ${CONFIG_PATH}"
+      failed=1
+    fi
+  fi
+
+  # 依存コマンドチェック
+  if check_cmd bun; then
+    _doctor_record "bun" "ok" ""
+  else
     warn "bun is missing"
+    _doctor_record "bun" "missing" "brew install bun"
     failed=1
   fi
-  if ! check_cmd curl; then
+  if check_cmd curl; then
+    _doctor_record "curl" "ok" ""
+  else
     warn "curl is missing"
+    _doctor_record "curl" "missing" "brew install curl"
     failed=1
   fi
-  if ! check_cmd jq; then
+  if check_cmd jq; then
+    _doctor_record "jq" "ok" ""
+  else
     warn "jq is missing"
+    _doctor_record "jq" "missing" "brew install jq"
     failed=1
   fi
-  if ! check_cmd node; then
+  if check_cmd node; then
+    _doctor_record "node" "ok" ""
+  else
     warn "node is missing"
+    _doctor_record "node" "missing" "brew install node"
     failed=1
   fi
-  if ! check_cmd npm; then
+  if check_cmd npm; then
+    _doctor_record "npm" "ok" ""
+  else
     warn "npm is missing"
+    _doctor_record "npm" "missing" "brew install node"
     failed=1
   fi
 
@@ -1540,26 +2100,100 @@ doctor_impl() {
       HARNESS_MEM_DB_PATH="$DB_PATH" \
       "$HARNESS_ROOT/scripts/harness-memd" doctor >/dev/null; then
       log "Daemon doctor: OK"
+      _doctor_record "daemon" "ok" ""
     else
       warn "Daemon doctor reported warnings"
+      _doctor_record "daemon" "unhealthy" "harness-memd start"
       failed=1
     fi
   fi
 
   if is_platform_enabled codex; then
-    check_codex_wiring || failed=1
+    if check_codex_wiring; then
+      _doctor_record "codex_wiring" "ok" ""
+    else
+      _doctor_record "codex_wiring" "missing" "harness-mem setup --platform codex"
+      failed=1
+    fi
   fi
   if is_platform_enabled opencode; then
-    check_opencode_wiring || failed=1
+    if check_opencode_wiring; then
+      _doctor_record "opencode_wiring" "ok" ""
+    else
+      _doctor_record "opencode_wiring" "missing" "harness-mem setup --platform opencode"
+      failed=1
+    fi
   fi
   if is_platform_enabled claude; then
-    check_claude_wiring || failed=1
+    if check_claude_wiring; then
+      _doctor_record "claude_wiring" "ok" ""
+    else
+      _doctor_record "claude_wiring" "missing" "harness-mem setup --platform claude"
+      failed=1
+    fi
   fi
   if is_platform_enabled cursor; then
-    check_cursor_wiring || failed=1
+    if check_cursor_wiring; then
+      _doctor_record "cursor_wiring" "ok" ""
+    else
+      _doctor_record "cursor_wiring" "missing" "harness-mem setup --platform cursor"
+      failed=1
+    fi
   fi
   if is_platform_enabled antigravity; then
-    check_antigravity_wiring || failed=1
+    if check_antigravity_wiring; then
+      _doctor_record "antigravity_wiring" "ok" ""
+    else
+      _doctor_record "antigravity_wiring" "missing" "harness-mem setup --platform antigravity"
+      failed=1
+    fi
+  fi
+
+  # Managed backend connectivity check
+  local _doctor_backend_mode
+  _doctor_backend_mode="$(read_backend_mode)"
+  if [ "$_doctor_backend_mode" = "hybrid" ] || [ "$_doctor_backend_mode" = "managed" ]; then
+    local _doctor_managed_ep
+    _doctor_managed_ep="$(jq -r '.managed.endpoint // ""' "$CONFIG_PATH" 2>/dev/null || echo "")"
+    if [ -z "$_doctor_managed_ep" ]; then
+      _doctor_record "managed_endpoint" "missing" "Set managed.endpoint in ${CONFIG_PATH}"
+      failed=1
+    else
+      # Check if daemon reports managed backend status
+      local _doctor_shadow_json
+      _doctor_shadow_json="$(curl -sf "http://127.0.0.1:${HARNESS_MEM_PORT:-37888}/v1/admin/shadow-metrics" 2>/dev/null)"
+      if [ -n "$_doctor_shadow_json" ]; then
+        local _doctor_conn_state
+        _doctor_conn_state="$(echo "$_doctor_shadow_json" | jq -r '.items[0].connection_state // "unknown"' 2>/dev/null)"
+        case "$_doctor_conn_state" in
+          connected)
+            _doctor_record "managed_endpoint" "ok:${_doctor_backend_mode}" ""
+            ;;
+          degraded)
+            _doctor_record "managed_endpoint" "degraded" "Managed backend connection degraded"
+            ;;
+          *)
+            _doctor_record "managed_endpoint" "ok:configured" "endpoint configured but daemon connection state: ${_doctor_conn_state}"
+            ;;
+        esac
+      else
+        _doctor_record "managed_endpoint" "ok:configured" "endpoint configured (daemon not reachable for status check)"
+      fi
+    fi
+  fi
+
+  if [ "$VERSION_CHECK_IN_SETUP" -eq 1 ] && [ "$JSON_OUTPUT" -ne 1 ]; then
+    versions_impl || warn "Version snapshot failed during doctor (non-fatal)"
+  fi
+
+  # JSON出力モード
+  if [ "$JSON_OUTPUT" -eq 1 ]; then
+    _doctor_emit_json "$failed" "${doctor_checks[@]}"
+    if [ "$failed" -ne 0 ] && [ "$FIX_MODE" -eq 1 ]; then
+      warn "Doctor found issues. Running auto-fix."
+      setup_impl
+    fi
+    return 0
   fi
 
   if [ "$failed" -eq 0 ]; then
@@ -1573,47 +2207,309 @@ doctor_impl() {
     return
   fi
 
+  # 失敗時のガイド出力
+  _doctor_print_next_steps "${doctor_checks[@]}"
+
   fail "Doctor found issues. Run with --fix to auto-repair."
 }
 
+# doctor JSON出力
+_doctor_emit_json() {
+  local failed="$1"
+  shift
+  local -a checks=("$@")
+  local status_str all_green_str
+  local checked_count="${#checks[@]}"
+  local failed_count=0
+  if [ "$failed" -eq 0 ]; then
+    status_str="healthy"
+    all_green_str="true"
+  else
+    status_str="unhealthy"
+    all_green_str="false"
+  fi
+
+  local checks_json="["
+  local first=1
+  local entry name status fix
+  for entry in "${checks[@]}"; do
+    IFS=$'\t' read -r name status fix <<<"$entry"
+    if [ "$status" != "ok" ] && [[ "$status" != ok:* ]]; then
+      failed_count=$((failed_count + 1))
+    fi
+    if [ "$first" -eq 0 ]; then
+      checks_json+=","
+    fi
+    checks_json+="$(jq -nc \
+      --arg name "$name" \
+      --arg status "$status" \
+      --arg fix "$fix" \
+      '{name: $name, status: $status, fix: (if $fix == "" then null else $fix end)}')"
+    first=0
+  done
+  checks_json+="]"
+
+  local ts
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+  local current_backend
+  current_backend="$(read_backend_mode)"
+
+  jq -n \
+    --arg status "$status_str" \
+    --argjson all_green "$all_green_str" \
+    --argjson failed_count "$failed_count" \
+    --argjson checked_count "$checked_count" \
+    --arg timestamp "$ts" \
+    --arg backend_mode "$current_backend" \
+    --argjson checks "$checks_json" \
+    '{
+      status: $status,
+      all_green: $all_green,
+      backend_mode: $backend_mode,
+      failed_count: $failed_count,
+      checked_count: $checked_count,
+      timestamp: $timestamp,
+      checks: $checks,
+      fix_command: "harness-mem doctor --fix"
+    }'
+}
+
+# doctor失敗時のガイド表示
+_doctor_print_next_steps() {
+  local -a checks=("$@")
+  local entry name status fix
+  local has_missing=0
+  for entry in "${checks[@]}"; do
+    IFS=$'\t' read -r name status fix <<<"$entry"
+    if [ "$status" != "ok" ]; then
+      has_missing=1
+      break
+    fi
+  done
+  [ "$has_missing" -eq 0 ] && return
+
+  if ui_is_en; then
+    echo ""
+    echo "[harness-mem] Next steps to reach doctor all-green:"
+  else
+    echo ""
+    echo "[harness-mem] doctor 全green到達のための次のアクション:"
+  fi
+
+  for entry in "${checks[@]}"; do
+    IFS=$'\t' read -r name status fix <<<"$entry"
+    [ "$status" = "ok" ] && continue
+    if ui_is_en; then
+      printf "  [FAIL] %s => %s\n" "$name" "$fix"
+    else
+      printf "  [FAIL] %s => %s\n" "$name" "$fix"
+    fi
+  done
+
+  echo ""
+  if ui_is_en; then
+    echo "  Quick fix: harness-mem doctor --fix"
+  else
+    echo "  まとめて修復: harness-mem doctor --fix"
+  fi
+  echo ""
+}
+
 setup_impl() {
-  ensure_dependencies
-  ensure_mcp_runtime
+  # 各ステップの成否を追跡する配列
+  # 形式: "step_name\tstatus\tfix_command"
+  local -a SETUP_RESULTS=()
+
+  _setup_record() {
+    local step="$1" status="$2" fix="$3"
+    SETUP_RESULTS+=("$(printf '%s\t%s\t%s' "$step" "$status" "$fix")")
+  }
+
+  # Backend mode 設定
+  ensure_config
+  if [ -n "$BACKEND_MODE" ]; then
+    write_backend_mode "$BACKEND_MODE"
+    log "Backend mode set to: ${BACKEND_MODE}"
+    _setup_record "backend_mode" "ok:${BACKEND_MODE}" ""
+  else
+    local current_backend
+    current_backend="$(read_backend_mode)"
+    log "Backend mode: ${current_backend}"
+    _setup_record "backend_mode" "ok:${current_backend}" ""
+  fi
+
+  # 依存チェック
+  if ensure_dependencies 2>/dev/null; then
+    _setup_record "dependencies" "ok" ""
+  else
+    ensure_dependencies  # エラーメッセージを出す
+    _setup_record "dependencies" "failed" "brew install bun curl jq node"
+    _setup_print_repair_suggestions "${SETUP_RESULTS[@]}"
+    return 1
+  fi
+
+  if ensure_mcp_runtime 2>/dev/null; then
+    _setup_record "mcp_runtime" "ok" ""
+  else
+    ensure_mcp_runtime
+    _setup_record "mcp_runtime" "failed" "cd ${HARNESS_ROOT}/mcp-server && npm install"
+    _setup_print_repair_suggestions "${SETUP_RESULTS[@]}"
+    return 1
+  fi
 
   if is_platform_enabled codex; then
-    setup_codex_wiring
+    if setup_codex_wiring 2>/dev/null; then
+      _setup_record "codex_wiring" "ok" ""
+    else
+      setup_codex_wiring
+      _setup_record "codex_wiring" "failed" "harness-mem setup --platform codex"
+    fi
   fi
   if is_platform_enabled opencode; then
-    setup_opencode_wiring
+    if setup_opencode_wiring 2>/dev/null; then
+      _setup_record "opencode_wiring" "ok" ""
+    else
+      setup_opencode_wiring
+      _setup_record "opencode_wiring" "failed" "harness-mem setup --platform opencode"
+    fi
   fi
   if is_platform_enabled claude; then
-    setup_claude_wiring
-    check_claude_wiring || true
+    if setup_claude_wiring 2>/dev/null; then
+      _setup_record "claude_wiring" "ok" ""
+      check_claude_wiring || true
+    else
+      setup_claude_wiring
+      _setup_record "claude_wiring" "failed" "harness-mem setup --platform claude"
+    fi
   fi
   if is_platform_enabled cursor; then
-    setup_cursor_wiring
+    if setup_cursor_wiring 2>/dev/null; then
+      _setup_record "cursor_wiring" "ok" ""
+    else
+      setup_cursor_wiring
+      _setup_record "cursor_wiring" "failed" "harness-mem setup --platform cursor"
+    fi
   fi
   if is_platform_enabled antigravity; then
-    setup_antigravity_wiring
+    if setup_antigravity_wiring 2>/dev/null; then
+      _setup_record "antigravity_wiring" "ok" ""
+    else
+      setup_antigravity_wiring
+      _setup_record "antigravity_wiring" "failed" "harness-mem setup --platform antigravity"
+    fi
   fi
 
   if [ "$SKIP_START" -eq 0 ]; then
-    start_daemon
-    log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
+    if start_daemon 2>/dev/null; then
+      _setup_record "daemon_start" "ok" ""
+      log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
+    else
+      start_daemon || true
+      _setup_record "daemon_start" "failed" "harness-memd start"
+    fi
   fi
 
   if [ "$SKIP_SMOKE" -eq 0 ]; then
-    run_smoke
+    if run_smoke 2>/dev/null; then
+      _setup_record "smoke_test" "ok" ""
+    else
+      run_smoke || true
+      _setup_record "smoke_test" "failed" "harness-mem smoke"
+    fi
   fi
 
   if [ "$SKIP_QUALITY" -eq 0 ]; then
-    run_quality_tests
+    if run_quality_tests 2>/dev/null; then
+      _setup_record "quality_test" "ok" ""
+    else
+      run_quality_tests || true
+      _setup_record "quality_test" "failed" "harness-mem smoke"
+    fi
   fi
 
   run_setup_claude_mem_import_if_requested
 
-  log "Setup complete (project=${TARGET_DIR}, platform=${PLATFORM})"
-  print_post_setup_next_steps
+  if [ "$VERSION_CHECK_IN_SETUP" -eq 1 ]; then
+    versions_impl || warn "Version snapshot failed during setup (non-fatal)"
+  fi
+
+  # Doctor JSON 診断を保存（セットアップ時チェック標準化）
+  local doctor_artifact="${STATE_DIR}/runtime/doctor-last.json"
+  mkdir -p "$(dirname "$doctor_artifact")"
+  if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+     HARNESS_MEM_HOST="$MEM_HOST" \
+     HARNESS_MEM_PORT="$MEM_PORT" \
+     HARNESS_MEM_DB_PATH="$DB_PATH" \
+     "$HARNESS_ROOT/scripts/harness-mem" doctor --json --skip-version-check --platform "$PLATFORM" > "$doctor_artifact" 2>/dev/null; then
+    if grep -q '"all_green"\s*:\s*true' "$doctor_artifact" 2>/dev/null; then
+      _setup_record "doctor_post_check" "ok" ""
+      log "Doctor artifact saved: $doctor_artifact"
+    else
+      _setup_record "doctor_post_check" "failed" "harness-mem doctor --fix"
+      log "Doctor post-check: not all green (artifact: $doctor_artifact)"
+    fi
+  else
+    _setup_record "doctor_post_check" "failed" "harness-mem doctor --fix"
+    warn "Doctor post-check failed (artifact: $doctor_artifact)"
+  fi
+
+  # 失敗ステップがあれば修復提案を出す
+  local has_failure=0
+  local entry step status fix
+  for entry in "${SETUP_RESULTS[@]}"; do
+    IFS=$'\t' read -r step status fix <<<"$entry"
+    if [ "$status" = "failed" ]; then
+      has_failure=1
+      break
+    fi
+  done
+
+  if [ "$has_failure" -eq 1 ]; then
+    _setup_print_repair_suggestions "${SETUP_RESULTS[@]}"
+  else
+    log "Setup complete (project=${TARGET_DIR}, platform=${PLATFORM})"
+    print_post_setup_next_steps
+  fi
+}
+
+# setup失敗時の修復提案を表示する
+_setup_print_repair_suggestions() {
+  local -a results=("$@")
+  local entry step status fix
+  local has_failure=0
+  for entry in "${results[@]}"; do
+    IFS=$'\t' read -r step status fix <<<"$entry"
+    if [ "$status" = "failed" ]; then
+      has_failure=1
+      break
+    fi
+  done
+  [ "$has_failure" -eq 0 ] && return
+
+  echo ""
+  if ui_is_en; then
+    echo "[harness-mem] Setup had failures. Suggested repair steps:"
+  else
+    echo "[harness-mem] セットアップで失敗がありました。修復手順:"
+  fi
+
+  for entry in "${results[@]}"; do
+    IFS=$'\t' read -r step status fix <<<"$entry"
+    if [ "$status" = "failed" ]; then
+      printf "  [FAIL] %-20s => %s\n" "$step" "$fix"
+    fi
+  done
+
+  echo ""
+  if ui_is_en; then
+    echo "  Auto-repair: harness-mem doctor --fix --platform ${PLATFORM}"
+    echo "  Re-run:      harness-mem setup --platform ${PLATFORM} --skip-smoke --skip-quality"
+  else
+    echo "  自動修復:    harness-mem doctor --fix --platform ${PLATFORM}"
+    echo "  再実行:      harness-mem setup --platform ${PLATFORM} --skip-smoke --skip-quality"
+  fi
+  echo ""
 }
 
 uninstall_codex_wiring() {
@@ -1765,6 +2661,163 @@ uninstall_impl() {
   log "Uninstall complete (project=${TARGET_DIR}, platform=${PLATFORM})"
 }
 
+_check_shadow_metrics_gate() {
+  # Query daemon shadow metrics and check promotion SLA.
+  # Returns 0 if SLA met, 1 if not. Outputs reasons to stderr.
+  local port="${HARNESS_MEM_PORT:-37888}"
+  local token="${HARNESS_MEM_ADMIN_TOKEN:-}"
+  local curl_opts=(-sf --max-time 5)
+  if [ -n "$token" ]; then
+    curl_opts+=(-H "x-harness-mem-token: ${token}")
+  fi
+  local shadow_json
+  shadow_json="$(curl "${curl_opts[@]}" "http://127.0.0.1:${port}/v1/admin/shadow-metrics" 2>/dev/null)" || {
+    warn "Cannot reach daemon at port ${port}. Is it running?"
+    return 1
+  }
+
+  local managed_backend
+  managed_backend="$(echo "$shadow_json" | jq -r '.items[0].managed_backend // empty' 2>/dev/null)"
+  if [ -z "$managed_backend" ] || [ "$managed_backend" = "null" ]; then
+    warn "Managed backend not initialized. Start daemon in hybrid mode first."
+    return 1
+  fi
+
+  local shadow_reads shadow_match_rate managed_replications replication_failures
+  shadow_reads="$(echo "$shadow_json" | jq -r '.items[0].shadow_metrics.shadow_reads // 0')"
+  shadow_match_rate="$(echo "$shadow_json" | jq -r '.items[0].shadow_metrics.shadow_match_rate // 0')"
+  managed_replications="$(echo "$shadow_json" | jq -r '.items[0].shadow_metrics.managed_replications // 0')"
+  replication_failures="$(echo "$shadow_json" | jq -r '.items[0].shadow_metrics.replication_failures // 0')"
+
+  local gate_pass=true
+  local reasons=""
+
+  # Gate 1: minimum shadow reads >= 100
+  if [ "$shadow_reads" -lt 100 ] 2>/dev/null; then
+    gate_pass=false
+    reasons="${reasons}  - Insufficient shadow reads: ${shadow_reads}/100\n"
+  fi
+
+  # Gate 2: shadow match rate >= 95%
+  local match_pct
+  match_pct="$(echo "$shadow_match_rate * 100" | bc -l 2>/dev/null || echo "0")"
+  local match_check
+  match_check="$(echo "$shadow_match_rate < 0.95" | bc -l 2>/dev/null || echo "1")"
+  if [ "$match_check" = "1" ]; then
+    gate_pass=false
+    reasons="${reasons}  - Shadow match rate too low: ${match_pct}% (need >=95%)\n"
+  fi
+
+  # Gate 3: replication failure rate < 1%
+  local total_rep failure_rate failure_check
+  total_rep="$(( managed_replications + replication_failures ))"
+  if [ "$total_rep" -gt 0 ] 2>/dev/null; then
+    failure_rate="$(echo "scale=4; $replication_failures / $total_rep" | bc -l 2>/dev/null || echo "0")"
+    failure_check="$(echo "$failure_rate > 0.01" | bc -l 2>/dev/null || echo "0")"
+    if [ "$failure_check" = "1" ]; then
+      gate_pass=false
+      local failure_pct
+      failure_pct="$(echo "$failure_rate * 100" | bc -l 2>/dev/null || echo "0")"
+      reasons="${reasons}  - Replication failure rate too high: ${failure_pct}% (need <1%)\n"
+    fi
+  fi
+
+  if [ "$gate_pass" = "false" ]; then
+    warn "Shadow metrics gate FAILED. Promotion denied."
+    warn "Current metrics:"
+    warn "  shadow_reads:        ${shadow_reads}"
+    warn "  shadow_match_rate:   ${match_pct}%"
+    warn "  replications:        ${managed_replications}"
+    warn "  replication_failures: ${replication_failures}"
+    warn ""
+    warn "Reasons:"
+    printf "$reasons" >&2
+    return 1
+  fi
+
+  log "Shadow metrics gate PASSED."
+  log "  shadow_reads:        ${shadow_reads}"
+  log "  shadow_match_rate:   ${match_pct}%"
+  log "  replications:        ${managed_replications}"
+  log "  replication_failures: ${replication_failures}"
+  return 0
+}
+
+promote_impl() {
+  ensure_config
+  local current_backend
+  current_backend="$(read_backend_mode)"
+
+  case "$current_backend" in
+    local)
+      log "Current backend mode: local"
+      log "Promoting to hybrid (shadow phase)..."
+      write_backend_mode "hybrid"
+      log "Backend mode set to: hybrid"
+      log ""
+      log "Next steps:"
+      log "  1. Configure managed endpoint: set managed.endpoint in ${CONFIG_PATH}"
+      log "  2. Restart daemon: scripts/harness-memd restart"
+      log "  3. Run proof-pack to verify: scripts/harness-mem-proof-pack.sh"
+      log "  4. Once shadow metrics pass SLA, run: harness-mem promote (again)"
+      ;;
+    hybrid)
+      log "Current backend mode: hybrid"
+      local managed_ep
+      managed_ep="$(read_managed_endpoint)"
+      if [ -z "$managed_ep" ]; then
+        warn "Cannot promote to managed: managed endpoint not configured"
+        warn "Set managed.endpoint in ${CONFIG_PATH}"
+        return 1
+      fi
+
+      # Shadow metrics gate: must pass SLA before promotion
+      log "Checking shadow metrics gate..."
+      if ! _check_shadow_metrics_gate; then
+        warn ""
+        warn "Promotion blocked: shadow metrics SLA not met."
+        warn "Continue running in hybrid mode to accumulate metrics."
+        warn "Required: shadow_reads >= 100, match_rate >= 95%, repl_failure < 1%"
+        return 1
+      fi
+
+      log "Promoting to managed..."
+      write_backend_mode "managed"
+      log "Backend mode set to: managed"
+      log ""
+      log "Next steps:"
+      log "  1. Restart daemon: scripts/harness-memd restart"
+      log "  2. Run proof-pack to verify: scripts/harness-mem-proof-pack.sh"
+      log "  3. If issues arise, run: harness-mem rollback"
+      ;;
+    managed)
+      log "Already at managed backend mode. No further promotion available."
+      ;;
+  esac
+}
+
+rollback_impl() {
+  ensure_config
+  local current_backend
+  current_backend="$(read_backend_mode)"
+
+  case "$current_backend" in
+    local)
+      log "Already at local backend mode. Nothing to rollback."
+      ;;
+    hybrid|managed)
+      log "Current backend mode: ${current_backend}"
+      log "Rolling back to local..."
+      write_backend_mode "local"
+      log "Backend mode set to: local"
+      log ""
+      log "Next steps:"
+      log "  1. Restart daemon: scripts/harness-memd restart"
+      log "  2. Run doctor to verify: harness-mem doctor"
+      ;;
+  esac
+}
+
 main() {
   local command="${1:-help}"
   shift || true
@@ -1800,6 +2853,9 @@ main() {
       ensure_mcp_runtime
       run_smoke
       ;;
+    versions)
+      versions_impl
+      ;;
     uninstall)
       uninstall_impl
       ;;
@@ -1811,6 +2867,18 @@ main() {
       ;;
     cutover-claude-mem)
       cutover_claude_mem_impl
+      ;;
+    migrate-from-claude-mem)
+      migrate_from_claude_mem_impl
+      ;;
+    rollback-claude-mem)
+      rollback_claude_mem_impl
+      ;;
+    promote)
+      promote_impl
+      ;;
+    rollback)
+      rollback_impl
       ;;
     help|-h|--help)
       usage

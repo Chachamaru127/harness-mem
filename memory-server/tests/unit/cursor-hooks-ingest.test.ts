@@ -39,7 +39,7 @@ describe("cursor hooks ingest parser", () => {
     expect(parsed.events.length).toBe(3);
     expect(parsed.events[0]?.eventType).toBe("user_prompt");
     expect(parsed.events[0]?.sessionId).toBe("cursor-conv-1");
-    expect(parsed.events[0]?.project).toBe("harness-mem");
+    expect(parsed.events[0]?.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
     expect(parsed.events[0]?.payload.prompt).toBe("今これ手動でのテストです。Helloとだけ回答して");
     expect(parsed.events[1]?.eventType).toBe("tool_use");
     expect(parsed.events[1]?.payload.tool_name).toBe("Read");
@@ -64,8 +64,8 @@ describe("cursor hooks ingest parser", () => {
     });
 
     expect(parsed.events.length).toBe(1);
-    expect(parsed.events[0]?.project).toBe("Context-Harness");
-    expect(parsed.events[0]?.sessionId).toBe("cursor:Context-Harness:2026-02-16");
+    expect(parsed.events[0]?.project).toBe("/Users/test/Desktop/Code/CC-harness/Context-Harness");
+    expect(parsed.events[0]?.sessionId).toBe("cursor:/Users/test/Desktop/Code/CC-harness/Context-Harness:2026-02-16");
   });
 
   test("ignores malformed/incomplete lines safely", () => {

@@ -225,7 +225,7 @@ function resolveProject(parsed: Record<string, unknown>): string {
       if (!candidate) {
         continue;
       }
-      return basename(candidate);
+      return candidate;
     }
   }
 
@@ -235,12 +235,6 @@ function resolveProject(parsed: Record<string, unknown>): string {
     normalizeString(toRecord(parsed.path).cwd) ||
     normalizeString(parsed.project);
 
-  if (!direct) {
-    return "";
-  }
-  if (direct.includes("/") || direct.includes("\\")) {
-    return basename(direct);
-  }
   return direct;
 }
 

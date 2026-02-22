@@ -1,0 +1,23 @@
+[
+  {
+    "sample_id": "sample-001",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "I moved to Seattle in 2024."
+      },
+      {
+        "speaker": "assistant",
+        "text": "Got it. You moved to Seattle in 2024."
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "q1",
+        "question": "Where did I move in 2024?",
+        "answer": "Seattle",
+        "category": "profile"
+      }
+    ]
+  }
+]

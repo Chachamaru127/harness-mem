@@ -1,5 +1,4 @@
 import { createHash } from "node:crypto";
-import { basename } from "node:path";
 
 export interface OpencodeStorageEvent {
   lineOffset: number;
@@ -48,7 +47,7 @@ export function parseOpencodeMessageChunk(params: {
   const cwd =
     normalizePath((parsed.path as Record<string, unknown> | undefined)?.cwd) ||
     normalizePath(params.resolveSessionDirectory(sessionId));
-  const project = basename(cwd || normalizeString(params.fallbackProject) || "unknown");
+  const project = cwd || normalizeString(params.fallbackProject) || "unknown";
 
   const summary = toRecord(parsed.summary);
   const summaryTitle = normalizeString(summary.title);
