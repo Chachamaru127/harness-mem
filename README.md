@@ -40,6 +40,8 @@ harness-mem setup --platform codex,cursor,claude
 npm install -g @chachamaru127/harness-mem@latest
 ```
 
+When running interactive `harness-mem setup` (without `--platform`), you can opt in to automatic updates with a prompt: "Enable opt-in automatic updates for harness-mem?".
+
 ### Verify setup
 
 ```bash
@@ -52,6 +54,17 @@ harness-mem doctor --fix --platform codex,cursor,claude
 ```bash
 open 'http://127.0.0.1:37901'
 ```
+
+### Environment Tab (for non-specialists)
+
+The Mem UI includes an `Environment` tab that explains:
+
+1. Internal servers currently running
+2. Installed languages and runtimes
+3. Installed CLI tools
+4. AI / MCP tool wiring status
+
+The tab is read-only in V1 and masks sensitive values before rendering.
 
 ## Core Commands
 
@@ -105,6 +118,7 @@ harness-memd restart
 ## Documentation
 
 - Setup reference: `docs/harness-mem-setup.md`
+- Environment API contract: `docs/plans/environment-tab-v1-contract.md`
 - Changelog (source of truth): `CHANGELOG.md`
 - Japanese changelog summary: `CHANGELOG_ja.md`
 - Japanese README: `README_ja.md`

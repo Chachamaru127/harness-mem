@@ -5,6 +5,22 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.26] - 2026-02-23
+
+### ユーザー向け要約
+
+- Mem UI に、非専門家向けの `Environment` タブを追加。
+- 対話型 `harness-mem setup` で CLI 自動更新（opt-in）を選択できるよう改善。
+
+### 補足
+
+- read-only API `GET /v1/admin/environment`（admin token 必須）を追加し、UI では `/api/environment` 経由で表示。
+- Environment タブは「内部サーバー / 言語・ランタイム / CLI / AI・MCP」を 5秒サマリー付きで表示。
+- API 出力内の token / secret / api_key など機密値はマスク。
+- `tool-versions.json` や `doctor-last.json` 欠損時は、劣化表示で継続し全体が落ちないよう改善。
+- 自動更新は既定で無効。opt-in ユーザーのみ定期チェックして更新を試行。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.25] - 2026-02-23
 
 ### ユーザー向け要約

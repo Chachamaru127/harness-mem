@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { EnvironmentPanel } from "../components/EnvironmentPanel";
 import { FeedPanel } from "../components/FeedPanel";
 import { HeaderBar } from "../components/HeaderBar";
 import { ProjectSidebar } from "../components/ProjectSidebar";
@@ -6,8 +7,9 @@ import { SettingsModal } from "../components/SettingsModal";
 import { useFeedPagination } from "../hooks/useFeedPagination";
 import { useSSE } from "../hooks/useSSE";
 import { useSettings } from "../hooks/useSettings";
-import { fetchHealth, fetchProjectsStats, fetchUiContext } from "../lib/api";
-import type { FeedItem, ProjectsStatsItem, SseUiEvent } from "../lib/types";
+import { fetchEnvironment, fetchHealth, fetchProjectsStats, fetchUiContext } from "../lib/api";
+import { getUiCopy } from "../lib/i18n";
+import type { EnvironmentSnapshot, FeedItem, ProjectsStatsItem, SseUiEvent } from "../lib/types";
 
 function normalizeFeedItem(raw: Record<string, unknown>): FeedItem {
   return {
@@ -46,6 +48,10 @@ export default function App() {
   const [healthDegraded, setHealthDegraded] = useState(false);
   const [defaultProject, setDefaultProject] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
+  const [environmentLoading, setEnvironmentLoading] = useState(false);
+  const [environmentError, setEnvironmentError] = useState("");
+  const copy = getUiCopy(settings.language);
 
   const selectedProject = settings.selectedProject;
 
@@ -86,6 +92,20 @@ export default function App() {
       const message = errorInput instanceof Error ? errorInput.message : String(errorInput);
       setHealthLabel(`daemon unreachable (${message})`);
       setHealthDegraded(true);
+    }
+  }, []);
+
+  const loadEnvironment = useCallback(async () => {
+    setEnvironmentLoading(true);
+    setEnvironmentError("");
+    try {
+      const payload = await fetchEnvironment();
+      setEnvironmentSnapshot(payload.items[0] || null);
+    } catch (errorInput) {
+      const message = errorInput instanceof Error ? errorInput.message : String(errorInput);
+      setEnvironmentError(message);
+    } finally {
+      setEnvironmentLoading(false);
     }
   }, []);
 
@@ -166,6 +186,17 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (settings.activeTab !== "environment") {
+      return;
+    }
+    void loadEnvironment();
+    const timer = setInterval(() => {
+      void loadEnvironment();
+    }, 60_000);
+    return () => clearInterval(timer);
+  }, [settings.activeTab, loadEnvironment]);
+
   const handleStreamEvent = useCallback(
     (event: SseUiEvent) => {
       if (event.event === "observation.created") {
@@ -210,6 +241,9 @@ export default function App() {
           refresh();
           void loadProjects();
           void refreshStatus();
+          if (settings.activeTab === "environment") {
+            void loadEnvironment();
+          }
         }}
         onOpenSettings={() => setSettingsOpen(true)}
       />
@@ -223,17 +257,58 @@ export default function App() {
         />
 
         <main className="content">
-          <FeedPanel
-            items={feedItems}
-            compact={settings.compactFeed}
-            language={settings.language}
-            loading={loading}
-            error={error}
-            hasMore={hasMore}
-            onLoadMore={() => {
-              void loadMore();
-            }}
-          />
+          <div className="tabs" role="tablist" aria-label={copy.tabsAria}>
+            <button
+              type="button"
+              role="tab"
+              id="tab-feed"
+              className={`tab ${settings.activeTab === "feed" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "feed"}
+              aria-controls="panel-feed"
+              onClick={() => updateSetting("activeTab", "feed")}
+            >
+              {copy.feedTab}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-environment"
+              className={`tab ${settings.activeTab === "environment" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "environment"}
+              aria-controls="panel-environment"
+              onClick={() => updateSetting("activeTab", "environment")}
+            >
+              {copy.environmentTab}
+            </button>
+          </div>
+
+          {settings.activeTab === "environment" ? (
+            <div role="tabpanel" id="panel-environment" aria-labelledby="tab-environment">
+              <EnvironmentPanel
+                snapshot={environmentSnapshot}
+                loading={environmentLoading}
+                error={environmentError}
+                language={settings.language}
+                onRefresh={() => {
+                  void loadEnvironment();
+                }}
+              />
+            </div>
+          ) : (
+            <div role="tabpanel" id="panel-feed" aria-labelledby="tab-feed">
+              <FeedPanel
+                items={feedItems}
+                compact={settings.compactFeed}
+                language={settings.language}
+                loading={loading}
+                error={error}
+                hasMore={hasMore}
+                onLoadMore={() => {
+                  void loadMore();
+                }}
+              />
+            </div>
+          )}
         </main>
       </div>
 
@@ -248,6 +323,9 @@ export default function App() {
           setSettingsOpen(false);
           refresh();
           void loadProjects();
+          if (next.activeTab === "environment") {
+            void loadEnvironment();
+          }
         }}
       />
     </div>

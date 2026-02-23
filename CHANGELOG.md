@@ -39,6 +39,61 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.26] - 2026-02-23
+
+### What changed for users
+
+- Mem UI now includes an `Environment` tab for non-specialists to quickly inspect runtime state.
+- Interactive `harness-mem setup` can now opt in to automatic CLI updates.
+
+### Added
+
+- New read-only environment snapshot API: `GET /v1/admin/environment` (admin token required).
+- New UI proxy endpoint: `GET /api/environment`.
+- New `Environment` tab and `EnvironmentPanel` with:
+  - 5-second summary cards
+  - Internal servers / languages-runtimes / CLI tools / AI-MCP tool sections
+  - FAQ and beginner-friendly explanations
+- New environment API contract doc: `docs/plans/environment-tab-v1-contract.md`.
+- New tests:
+  - `memory-server/tests/integration/environment-api.test.ts`
+  - `harness-mem-ui/tests/ui/environment-panel.test.tsx`
+  - `harness-mem-ui/tests/e2e/environment.spec.ts`
+
+### Changed
+
+- `scripts/harness-mem setup` interactive flow now includes auto-update opt-in selection.
+- Auto-update state is persisted in `~/.harness-mem/config.json` under `auto_update.enabled`.
+- CLI startup now performs periodic npm version checks for opt-in users and can auto-install newer versions.
+- README, Japanese README, and setup guide now document both Environment tab usage and auto-update behavior.
+
+### Fixed
+
+- Sensitive values in environment snapshots are masked before API/UI rendering.
+- Environment collection now degrades gracefully when `tool-versions.json` or `doctor-last.json` is missing.
+
+### Removed
+
+- None.
+
+### Security
+
+- Admin token protection is enforced for the environment snapshot endpoint.
+- Secret/token-like values are redacted in environment output.
+
+### Migration Notes
+
+- No manual database migration is required.
+- Existing users can continue as-is; auto-update remains opt-in (disabled by default).
+
+### Verification
+
+- `bun run --cwd memory-server typecheck`
+- `bun test --cwd memory-server tests/integration/environment-api.test.ts`
+- `bun run --cwd harness-mem-ui typecheck`
+- `bun run --cwd harness-mem-ui test:ui -- tests/ui/environment-panel.test.tsx tests/ui/useSettings.test.tsx`
+- `bun run --cwd harness-mem-ui test:e2e -- tests/e2e/feed.spec.ts tests/e2e/environment.spec.ts`
+
 ## [0.1.25] - 2026-02-23
 
 ### What changed for users

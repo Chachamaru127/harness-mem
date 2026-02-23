@@ -43,6 +43,18 @@ When `--platform` is omitted, setup is interactive:
 2. Target tools (multi-select)
 3. Import from Claude-mem (yes/no)
 4. Stop Claude-mem after verified import (yes/no)
+5. Enable auto-update opt-in (yes/no)
+
+If auto-update opt-in is enabled, `harness-mem` checks npm for newer versions periodically (default: every 24 hours) before command execution and runs:
+
+```bash
+npm install -g @chachamaru127/harness-mem@latest
+```
+
+Notes:
+- Config is stored in `~/.harness-mem/config.json` (`auto_update.enabled`).
+- Auto-update checks are skipped in repo checkout mode and npx runtime mode.
+- Temporarily disable auto-update checks per command with `HARNESS_MEM_SKIP_AUTO_UPDATE=1`.
 
 ## 3. Command Reference
 
@@ -217,7 +229,25 @@ Options:
 - `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `5000`)
 - `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
 
-## 6. Troubleshooting
+## 6. Environment Tab (read-only)
+
+Mem UI now includes an `Environment` tab for non-specialists.
+
+- Purpose:
+  - Show current internal servers
+  - Show installed languages/runtimes
+  - Show installed CLI tools
+  - Show AI/MCP tool status
+- API:
+  - daemon: `GET /v1/admin/environment` (admin token required)
+  - UI proxy: `GET /api/environment`
+- Safety:
+  - V1 is read-only
+  - API masks sensitive values (`token`, `api_key`, `secret`, etc.)
+
+Contract details: `docs/plans/environment-tab-v1-contract.md`
+
+## 7. Troubleshooting
 
 ### Command not found
 
@@ -246,10 +276,11 @@ curl -sS http://127.0.0.1:37901/api/health | jq '.ok'
 harness-mem uninstall --purge-db
 ```
 
-## 7. Related Docs
+## 8. Related Docs
 
 - `README.md`
 - `README_ja.md`
+- `docs/plans/environment-tab-v1-contract.md`
 - `CHANGELOG.md`
 - `CHANGELOG_ja.md`
 - `docs/benchmarks/`

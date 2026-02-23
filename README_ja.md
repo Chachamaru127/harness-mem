@@ -33,6 +33,8 @@ harness-mem setup --platform codex,cursor,claude
 npm install -g @chachamaru127/harness-mem@latest
 ```
 
+`--platform` を省略した対話型 `harness-mem setup` では、「harness-mem の自動更新（opt-in）を有効化しますか?」という確認が表示されます。
+
 ### セットアップ確認
 
 ```bash
@@ -45,6 +47,17 @@ harness-mem doctor --fix --platform codex,cursor,claude
 ```bash
 open 'http://127.0.0.1:37901'
 ```
+
+### Environment タブ（非専門家向け）
+
+Mem UI の `Environment` タブでは、次を1画面で確認できます。
+
+1. 現在動作中の内部サーバー
+2. インストール済みの言語 / ランタイム
+3. CLI ツール
+4. AI / MCP ツールの配線状態
+
+V1 は read-only（閲覧専用）で、機密値は表示前にマスクされます。
 
 ## 主なコマンド
 
@@ -98,6 +111,7 @@ harness-memd restart
 ## ドキュメント
 
 - セットアップ詳細: `docs/harness-mem-setup.md`
+- Environment API 契約: `docs/plans/environment-tab-v1-contract.md`
 - 変更履歴（英語・正本）: `CHANGELOG.md`
 - 変更履歴（日本語要約）: `CHANGELOG_ja.md`
 - 英語 README（デフォルト）: `README.md`

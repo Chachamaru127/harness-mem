@@ -36,6 +36,7 @@ UI_LANG="${HARNESS_MEM_LANG:-ja}"
 SETUP_INTERACTIVE_PROMPT_USED=0
 SETUP_IMPORT_CLAUDE_MEM=0
 SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
+SETUP_AUTO_UPDATE_OPT_IN=-1
 FIX_MODE=0
 JSON_OUTPUT=0
 PURGE_DB=0
@@ -49,6 +50,9 @@ IMPORT_PROJECT=""
 IMPORT_DRY_RUN=0
 STOP_NOW=0
 VERSION_CHECK_IN_SETUP=1
+AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
+AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
+AUTO_UPDATE_CHECK_INTERVAL_SEC="${HARNESS_MEM_AUTO_UPDATE_INTERVAL_SEC:-86400}"
 
 MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
@@ -57,6 +61,7 @@ DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
 VERSIONS_DIR="${STATE_DIR}/versions"
 VERSIONS_SNAPSHOT_PATH="${VERSIONS_DIR}/tool-versions.json"
 VERSIONS_HISTORY_PATH="${VERSIONS_DIR}/tool-versions-history.jsonl"
+AUTO_UPDATE_STATE_PATH="${STATE_DIR}/runtime/auto-update-state.json"
 
 BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
@@ -103,6 +108,7 @@ Command options:
                         2) target tools (multi-select)
                         3) import from Claude-mem (yes/no)
                         4) stop Claude-mem after import (yes/no)
+                        5) enable auto-update opt-in (yes/no)
   doctor:
     --fix               Attempt to repair missing wiring
     --json              Output structured JSON result
@@ -144,6 +150,11 @@ ensure_config() {
   "managed": {
     "endpoint": "",
     "api_key": ""
+  },
+  "auto_update": {
+    "enabled": false,
+    "package_name": "@chachamaru127/harness-mem",
+    "channel": "latest"
   }
 }
 CONF
@@ -175,6 +186,40 @@ read_managed_endpoint() {
 read_managed_api_key() {
   ensure_config
   jq -r '.managed.api_key // ""' "$CONFIG_PATH" 2>/dev/null || echo ""
+}
+
+read_auto_update_enabled() {
+  ensure_config
+  local value
+  value="$(jq -r '.auto_update.enabled // false' "$CONFIG_PATH" 2>/dev/null || echo "false")"
+  case "$value" in
+    true|1|yes|on) echo "1" ;;
+    *) echo "0" ;;
+  esac
+}
+
+write_auto_update_enabled() {
+  local enabled="$1"
+  local enabled_json
+  if [ "$enabled" -eq 1 ]; then
+    enabled_json="true"
+  else
+    enabled_json="false"
+  fi
+
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq \
+    --argjson enabled "$enabled_json" \
+    --arg package_name "$AUTO_UPDATE_PACKAGE" \
+    --arg channel "$AUTO_UPDATE_CHANNEL" \
+    '
+      .auto_update = ((.auto_update // {}) + {
+        enabled: $enabled,
+        package_name: $package_name,
+        channel: $channel
+      })
+    ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
 }
 
 fetch() {
@@ -505,6 +550,34 @@ prompt_setup_migration_selection() {
   log "Migration options: import_claude_mem=${SETUP_IMPORT_CLAUDE_MEM}, stop_after_import=${SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT}"
 }
 
+should_prompt_setup_auto_update_selection() {
+  local command="$1"
+  if [ "$command" != "setup" ]; then
+    return 1
+  fi
+  if [ "$SETUP_INTERACTIVE_PROMPT_USED" -ne 1 ]; then
+    return 1
+  fi
+  return 0
+}
+
+prompt_setup_auto_update_selection() {
+  local auto_update_question
+  if ui_is_en; then
+    auto_update_question="Enable opt-in automatic updates for harness-mem?"
+  else
+    auto_update_question="harness-mem の自動更新（opt-in）を有効化しますか?"
+  fi
+
+  if prompt_yes_no_default_no "$auto_update_question"; then
+    SETUP_AUTO_UPDATE_OPT_IN=1
+    log "Auto-update opt-in: enabled"
+  else
+    SETUP_AUTO_UPDATE_OPT_IN=0
+    log "Auto-update opt-in: disabled"
+  fi
+}
+
 is_platform_enabled() {
   local target="$1"
   local entry
@@ -624,6 +697,125 @@ ensure_version_dependencies() {
   require_cmd curl
   require_cmd jq
   require_cmd python3
+}
+
+is_repo_checkout() {
+  [ -d "${SOURCE_ROOT}/.git" ]
+}
+
+is_npx_runtime_source() {
+  case "$SOURCE_ROOT" in
+    */.npm/_npx/*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+
+read_current_harness_mem_version() {
+  local pkg_json="${HARNESS_ROOT}/package.json"
+  if [ ! -f "$pkg_json" ]; then
+    printf ''
+    return
+  fi
+  jq -r '.version // ""' "$pkg_json" 2>/dev/null || printf ''
+}
+
+write_auto_update_state() {
+  local checked_epoch="$1"
+  local installed="$2"
+  local latest="$3"
+  local status="$4"
+
+  mkdir -p "$(dirname "$AUTO_UPDATE_STATE_PATH")"
+  jq -nc \
+    --arg checked_at_epoch "$checked_epoch" \
+    --arg checked_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+    --arg installed "$installed" \
+    --arg latest "$latest" \
+    --arg status "$status" \
+    '{
+      last_checked_at_epoch: ($checked_at_epoch | tonumber),
+      last_checked_at: $checked_at,
+      installed_version: ($installed | select(. != "") // null),
+      latest_version: ($latest | select(. != "") // null),
+      status: $status
+    }' > "$AUTO_UPDATE_STATE_PATH"
+}
+
+should_attempt_auto_update() {
+  local command="$1"
+
+  case "$command" in
+    help|-h|--help|uninstall|versions)
+      return 1
+      ;;
+  esac
+
+  if [ "${HARNESS_MEM_SKIP_AUTO_UPDATE:-0}" = "1" ]; then
+    return 1
+  fi
+  if is_repo_checkout; then
+    return 1
+  fi
+  if is_npx_runtime_source; then
+    return 1
+  fi
+  if [ "$(read_auto_update_enabled)" -ne 1 ]; then
+    return 1
+  fi
+  if ! check_cmd npm; then
+    return 1
+  fi
+
+  local interval="$AUTO_UPDATE_CHECK_INTERVAL_SEC"
+  if ! [[ "$interval" =~ ^[0-9]+$ ]] || [ "$interval" -lt 60 ]; then
+    interval=86400
+  fi
+
+  local now last_checked elapsed
+  now="$(date +%s)"
+  last_checked="$(jq -r '.last_checked_at_epoch // 0' "$AUTO_UPDATE_STATE_PATH" 2>/dev/null || echo "0")"
+  if ! [[ "$last_checked" =~ ^[0-9]+$ ]]; then
+    last_checked=0
+  fi
+  elapsed=$((now - last_checked))
+  if [ "$elapsed" -lt "$interval" ]; then
+    return 1
+  fi
+  return 0
+}
+
+maybe_auto_update() {
+  local command="$1"
+  if ! should_attempt_auto_update "$command"; then
+    return 0
+  fi
+
+  local now current_version latest_version
+  now="$(date +%s)"
+  current_version="$(read_current_harness_mem_version)"
+  latest_version="$(npm view "$AUTO_UPDATE_PACKAGE" version 2>/dev/null | tr -d '\r' | head -n 1 || true)"
+
+  if [ -z "$latest_version" ]; then
+    warn "Auto-update check failed: unable to resolve latest version for ${AUTO_UPDATE_PACKAGE}"
+    write_auto_update_state "$now" "$current_version" "" "check_failed"
+    return 0
+  fi
+
+  if [ -n "$current_version" ] && [ "$current_version" = "$latest_version" ]; then
+    write_auto_update_state "$now" "$current_version" "$latest_version" "up_to_date"
+    return 0
+  fi
+
+  log "Auto-update: installing ${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL} (current=${current_version:-unknown}, latest=${latest_version})"
+  if npm install -g "${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}" >/dev/null 2>&1; then
+    log "Auto-update completed. Updated version will be used on the next command."
+    write_auto_update_state "$now" "$current_version" "$latest_version" "updated"
+  else
+    warn "Auto-update failed. Run manually: npm install -g ${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
+    write_auto_update_state "$now" "$current_version" "$latest_version" "update_failed"
+  fi
 }
 
 first_line() {
@@ -2384,6 +2576,25 @@ setup_impl() {
     _setup_record "backend_mode" "ok:${current_backend}" ""
   fi
 
+  local auto_update_enabled
+  if [ "$SETUP_AUTO_UPDATE_OPT_IN" -eq 1 ]; then
+    write_auto_update_enabled 1
+    auto_update_enabled=1
+  elif [ "$SETUP_AUTO_UPDATE_OPT_IN" -eq 0 ]; then
+    write_auto_update_enabled 0
+    auto_update_enabled=0
+  else
+    auto_update_enabled="$(read_auto_update_enabled)"
+  fi
+
+  if [ "$auto_update_enabled" -eq 1 ]; then
+    log "Auto-update opt-in: enabled"
+    _setup_record "auto_update_opt_in" "ok:enabled" ""
+  else
+    log "Auto-update opt-in: disabled"
+    _setup_record "auto_update_opt_in" "ok:disabled" ""
+  fi
+
   # 依存チェック
   if ensure_dependencies 2>/dev/null; then
     _setup_record "dependencies" "ok" ""
@@ -2891,6 +3102,9 @@ main() {
   if should_prompt_setup_migration_selection "$command"; then
     prompt_setup_migration_selection
   fi
+  if should_prompt_setup_auto_update_selection "$command"; then
+    prompt_setup_auto_update_selection
+  fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
 
@@ -2899,6 +3113,7 @@ main() {
   fi
 
   validate_platform_selection
+  maybe_auto_update "$command"
 
   case "$command" in
     setup)

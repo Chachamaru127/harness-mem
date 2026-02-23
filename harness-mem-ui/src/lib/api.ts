@@ -1,4 +1,10 @@
-import type { ApiResponse, FeedItem, ProjectsStatsItem, UiContext } from "./types";
+import type {
+  ApiResponse,
+  EnvironmentSnapshot,
+  FeedItem,
+  ProjectsStatsItem,
+  UiContext,
+} from "./types";
 
 async function parseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -47,6 +53,10 @@ export async function fetchHealth(): Promise<ApiResponse<Record<string, unknown>
 
 export async function fetchMetrics(): Promise<ApiResponse<Record<string, unknown>>> {
   return request<ApiResponse<Record<string, unknown>>>("/api/metrics");
+}
+
+export async function fetchEnvironment(): Promise<ApiResponse<EnvironmentSnapshot>> {
+  return request<ApiResponse<EnvironmentSnapshot>>("/api/environment");
 }
 
 export async function fetchUiContext(): Promise<UiContext> {
