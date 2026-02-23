@@ -33,13 +33,39 @@ jobs:
 
       - name: Verify tag commit is on main
         shell: bash
+        env:
+          MAIN_ANCESTOR_WAIT_SEC: "900"
+          MAIN_ANCESTOR_INTERVAL_SEC: "15"
         run: |
           set -euo pipefail
-          git fetch origin main --depth=1
-          if ! git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
-            echo "::error::Release tag must point to a commit contained in origin/main."
-            exit 1
+          wait_sec="${MAIN_ANCESTOR_WAIT_SEC:-900}"
+          interval_sec="${MAIN_ANCESTOR_INTERVAL_SEC:-15}"
+          if ! [[ "${wait_sec}" =~ ^[0-9]+$ ]] || [ "${wait_sec}" -lt 0 ]; then
+            wait_sec=900
           fi
+          if ! [[ "${interval_sec}" =~ ^[0-9]+$ ]] || [ "${interval_sec}" -lt 1 ]; then
+            interval_sec=15
+          fi
+
+          deadline=$(( $(date +%s) + wait_sec ))
+          while true; do
+            git fetch origin main
+            if git merge-base --is-ancestor "${GITHUB_SHA}" "origin/main"; then
+              echo "Tag commit is contained in origin/main: ${GITHUB_SHA}"
+              break
+            fi
+
+            now=$(date +%s)
+            if [ "${now}" -ge "${deadline}" ]; then
+              echo "::error::Release tag commit is still not contained in origin/main: ${GITHUB_SHA}"
+              echo "::error::Merge the release branch into main and rerun this workflow."
+              exit 1
+            fi
+
+            remaining=$(( deadline - now ))
+            echo "Tag commit not in origin/main yet. Retrying in ${interval_sec}s (remaining ${remaining}s)..."
+            sleep "${interval_sec}"
+          done
 
       - name: Verify tag/version match
         shell: bash
