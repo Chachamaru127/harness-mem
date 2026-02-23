@@ -12,5 +12,6 @@ describe("harness-memd UI autostart contract", () => {
     expect(script).toContain("if start_ui; then");
     expect(script).toContain("stop_ui || true");
     expect(script).toContain("is_ui_reachable()");
+    expect(script).not.toContain("HARNESS_MEM_UI_PARITY_V1");
   });
 });

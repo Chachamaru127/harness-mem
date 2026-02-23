@@ -39,6 +39,48 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.23] - 2026-02-23
+
+### What changed for users
+
+- Legacy Mem UI has been removed. `harness-mem` now serves only one UI design everywhere.
+- npm installs and local runs now use the same `static-parity` bundle path with no runtime fallback switch.
+
+### Added
+
+- Contract test: `tests/harness-mem-ui-static-contract.test.ts` to prevent reintroducing legacy UI fallback paths.
+
+### Changed
+
+- `harness-mem-ui/src/server.ts` now serves only `src/static-parity` and fails fast when the bundle is missing.
+- Removed `HARNESS_MEM_UI_PARITY_V1` runtime wiring from `scripts/harness-memd`.
+- Updated UI dev/test docs and Playwright config to remove parity toggle usage.
+
+### Fixed
+
+- Eliminated root cause of mixed UI rendering (new UI vs legacy UI) across environments.
+
+### Removed
+
+- Deleted legacy static UI files:
+  - `harness-mem-ui/src/static/index.html`
+  - `harness-mem-ui/src/static/app.js`
+- Removed parity toggle behavior that could silently fall back to legacy UI.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration is required.
+- Update command: `npm install -g @chachamaru127/harness-mem@latest`
+
+### Verification
+
+- `bun test tests/harness-memd-ui-autostart-contract.test.ts tests/harness-mem-ui-static-contract.test.ts tests/mcp-runtime-bootstrap-contract.test.ts`
+- `npm pack --dry-run` (verify `harness-mem-ui/src/static-parity/*` is included and legacy `harness-mem-ui/src/static/*` is absent)
+
 ## [0.1.22] - 2026-02-23
 
 ### What changed for users

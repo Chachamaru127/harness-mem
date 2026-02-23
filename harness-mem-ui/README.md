@@ -20,9 +20,6 @@ It stays fully separate from any `harness-ui` app and only talks to `harness-mem
 - Daemon host/port defaults:
   - `HARNESS_MEM_HOST=127.0.0.1`
   - `HARNESS_MEM_PORT=37888`
-- Feature flag:
-  - `HARNESS_MEM_UI_PARITY_V1=true` (default)
-  - `HARNESS_MEM_UI_PARITY_V1=false` falls back to legacy static UI
 
 ## Setup
 
@@ -34,10 +31,10 @@ bun install
 ## Commands
 
 ```bash
-# parity build only
+# build UI static bundle
 bun run build:web
 
-# bundled mode (build parity assets, then run BFF/static server)
+# bundled mode (build assets, then run BFF/static server)
 bun run dev
 
 # run only server (expects static assets already built)

@@ -495,7 +495,6 @@ start_ui() {
       HARNESS_MEM_HOST="$HOST" \
       HARNESS_MEM_PORT="$PORT" \
       HARNESS_MEM_UI_PORT="$UI_PORT" \
-      HARNESS_MEM_UI_PARITY_V1="${HARNESS_MEM_UI_PARITY_V1:-true}" \
       bun run "$UI_ENTRY" >> "$UI_LOG_FILE" 2>&1 &
     echo $! > "$UI_PID_FILE"
   )

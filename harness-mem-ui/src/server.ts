@@ -5,12 +5,16 @@ const UI_PORT = Number(process.env.HARNESS_MEM_UI_PORT || 37901);
 const MEM_HOST = process.env.HARNESS_MEM_HOST || "127.0.0.1";
 const MEM_PORT = process.env.HARNESS_MEM_PORT || "37888";
 const MEM_BASE = `http://${MEM_HOST}:${MEM_PORT}`;
-const PARITY_ENABLED = (process.env.HARNESS_MEM_UI_PARITY_V1 || "true").toLowerCase() !== "false";
 const DEFAULT_PROJECT = detectDefaultProject();
 
-const staticLegacyDir = join(import.meta.dir, "static");
-const staticParityDir = join(import.meta.dir, "static-parity");
-const staticDir = PARITY_ENABLED && existsSync(staticParityDir) ? staticParityDir : staticLegacyDir;
+const staticDir = join(import.meta.dir, "static-parity");
+const staticIndexPath = join(staticDir, "index.html");
+
+if (!existsSync(staticIndexPath)) {
+  throw new Error(
+    `UI static bundle missing: ${staticIndexPath}. Run 'bun run --cwd harness-mem-ui build:web' before starting the UI server.`
+  );
+}
 
 function detectDefaultProject(): string | null {
   const fromEnv = (process.env.HARNESS_MEM_UI_DEFAULT_PROJECT || "").trim();
@@ -240,20 +244,11 @@ Bun.serve({
       });
     }
 
-    if (PARITY_ENABLED) {
-      const fallback = join(staticDir, "index.html");
-      if (existsSync(fallback)) {
-        const content = readFileSync(fallback);
-        return new Response(content, {
-          headers: { "content-type": "text/html; charset=utf-8" },
-        });
-      }
-    }
-
-    return new Response("Not found", { status: 404 });
+    const content = readFileSync(staticIndexPath);
+    return new Response(content, {
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
   },
 });
 
-console.log(
-  `harness-mem-ui running on http://127.0.0.1:${UI_PORT} (parity=${PARITY_ENABLED ? "on" : "off"}, static=${staticDir})`
-);
+console.log(`harness-mem-ui running on http://127.0.0.1:${UI_PORT} (static=${staticDir})`);

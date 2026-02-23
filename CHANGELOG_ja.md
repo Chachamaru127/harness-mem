@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.23] - 2026-02-23
+
+### ユーザー向け要約
+
+- 旧UIを削除し、Mem UI は `static-parity`（新UI）のみ配信する構成に統一。
+- 環境ごとに新旧UIが混在する根本原因（fallback分岐とトグル）を除去。
+
+### 補足
+
+- `harness-mem-ui/src/server.ts` は `src/static-parity` のみ配信し、バンドル欠落時は fail-fast するよう変更。
+- `scripts/harness-memd` から `HARNESS_MEM_UI_PARITY_V1` 注入を削除。
+- 旧UIファイル `harness-mem-ui/src/static/index.html` と `harness-mem-ui/src/static/app.js` を削除。
+- 回帰防止として `tests/harness-mem-ui-static-contract.test.ts` を追加。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.22] - 2026-02-23
 
 ### ユーザー向け要約

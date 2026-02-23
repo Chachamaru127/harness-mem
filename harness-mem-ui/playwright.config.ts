@@ -12,7 +12,7 @@ export default defineConfig({
     headless: true,
   },
   webServer: {
-    command: "HARNESS_MEM_UI_PARITY_V1=true HARNESS_MEM_UI_PORT=37911 bun run dev",
+    command: "HARNESS_MEM_UI_PORT=37911 bun run dev",
     cwd,
     port: 37911,
     reuseExistingServer: false,
