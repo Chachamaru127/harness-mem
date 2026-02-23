@@ -385,4 +385,159 @@ describe("workspace boundary", () => {
       migratedCore.shutdown("test");
     }
   });
+
+  test("observed absolute project is reused to canonicalize later basename project without restart", () => {
+    const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-observed-root-"));
+    cleanupPaths.push(rootBase);
+    const observedProjectRoot = join(rootBase, "claude-code-harness");
+    const unrelatedRoot = join(rootBase, "unrelated-workspace");
+    mkdirSync(observedProjectRoot, { recursive: true });
+    mkdirSync(unrelatedRoot, { recursive: true });
+    const canonicalRoot = realpathSync(observedProjectRoot);
+
+    const core = new HarnessMemCore(
+      createConfig("observed-root", {
+        codexProjectRoot: unrelatedRoot,
+        codexSessionsRoot: unrelatedRoot,
+      })
+    );
+    try {
+      const seed = core.recordEvent(
+        baseEvent({
+          event_id: "ev-observed-seed",
+          session_id: "sess-observed-seed",
+          project: observedProjectRoot,
+          payload: { prompt: "observed absolute root event" },
+        })
+      );
+      expect(seed.ok).toBe(true);
+
+      const mapped = core.recordEvent(
+        baseEvent({
+          event_id: "ev-observed-short",
+          session_id: "sess-observed-short",
+          project: "claude-code-harness",
+          payload: { prompt: "basename should map to observed absolute root" },
+        })
+      );
+      expect(mapped.ok).toBe(true);
+      const inserted = mapped.items[0] as { project: string };
+      expect(inserted.project).toBe(canonicalRoot);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("startup migration rewrites legacy short key to unique observed absolute basename", () => {
+    const rootBase = mkdtempSync(join(tmpdir(), "harness-mem-wb-legacy-short-"));
+    cleanupPaths.push(rootBase);
+    const observedProjectRoot = join(rootBase, "claude-code-harness");
+    const unrelatedRoot = join(rootBase, "unrelated-workspace");
+    mkdirSync(observedProjectRoot, { recursive: true });
+    mkdirSync(unrelatedRoot, { recursive: true });
+    const canonicalRoot = realpathSync(observedProjectRoot);
+
+    const config = createConfig("legacy-short-abs", {
+      codexProjectRoot: unrelatedRoot,
+      codexSessionsRoot: unrelatedRoot,
+    });
+
+    const seedCore = new HarnessMemCore(config);
+    try {
+      const first = seedCore.recordEvent(
+        baseEvent({
+          event_id: "ev-legacy-abs-1",
+          session_id: "sess-legacy-abs-1",
+          project: observedProjectRoot,
+          payload: { prompt: "legacy short alias migration target" },
+        })
+      );
+      expect(first.ok).toBe(true);
+
+      const second = seedCore.recordEvent(
+        baseEvent({
+          event_id: "ev-legacy-abs-2",
+          session_id: "sess-legacy-abs-2",
+          project: observedProjectRoot,
+          payload: { prompt: "legacy short alias migration source" },
+        })
+      );
+      expect(second.ok).toBe(true);
+    } finally {
+      seedCore.shutdown("test");
+    }
+
+    const db = new Database(config.dbPath);
+    try {
+      db.query(`UPDATE mem_sessions SET project = ? WHERE session_id = ?`).run("claude-code-harness", "sess-legacy-abs-2");
+      db.query(`UPDATE mem_events SET project = ? WHERE session_id = ?`).run("claude-code-harness", "sess-legacy-abs-2");
+      db.query(`UPDATE mem_observations SET project = ? WHERE session_id = ?`).run("claude-code-harness", "sess-legacy-abs-2");
+    } finally {
+      db.close();
+    }
+
+    const migratedCore = new HarnessMemCore(config);
+    try {
+      const stats = migratedCore.projectsStats({ include_private: true });
+      const items = stats.items as Array<{ project: string; observations: number }>;
+      expect(items.some((item) => item.project === "claude-code-harness")).toBe(false);
+      const canonical = items.find((item) => item.project === canonicalRoot);
+      expect(canonical).toBeDefined();
+      expect((canonical?.observations || 0) >= 2).toBe(true);
+    } finally {
+      migratedCore.shutdown("test");
+    }
+  });
+
+  test("startup migration collapses case-only short project variants", () => {
+    const config = createConfig("legacy-case-collapse");
+
+    const seedCore = new HarnessMemCore(config);
+    try {
+      expect(
+        seedCore.recordEvent(
+          baseEvent({
+            event_id: "ev-jarvis-1",
+            session_id: "sess-jarvis-1",
+            project: "Jarvis",
+            payload: { prompt: "jarvis canonical 1" },
+          })
+        ).ok
+      ).toBe(true);
+      expect(
+        seedCore.recordEvent(
+          baseEvent({
+            event_id: "ev-jarvis-2",
+            session_id: "sess-jarvis-2",
+            project: "Jarvis",
+            payload: { prompt: "jarvis canonical 2" },
+          })
+        ).ok
+      ).toBe(true);
+      expect(
+        seedCore.recordEvent(
+          baseEvent({
+            event_id: "ev-jarvis-3",
+            session_id: "sess-jarvis-3",
+            project: "JARVIS",
+            payload: { prompt: "jarvis uppercase alias" },
+          })
+        ).ok
+      ).toBe(true);
+    } finally {
+      seedCore.shutdown("test");
+    }
+
+    const migratedCore = new HarnessMemCore(config);
+    try {
+      const stats = migratedCore.projectsStats({ include_private: true });
+      const items = stats.items as Array<{ project: string; observations: number }>;
+      const jarvis = items.filter((item) => item.project.toLowerCase() === "jarvis");
+      expect(jarvis.length).toBe(1);
+      expect(jarvis[0]?.project).toBe("Jarvis");
+      expect((jarvis[0]?.observations || 0) >= 3).toBe(true);
+    } finally {
+      migratedCore.shutdown("test");
+    }
+  });
 });

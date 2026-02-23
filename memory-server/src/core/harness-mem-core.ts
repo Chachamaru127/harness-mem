@@ -387,6 +387,16 @@ function normalizePathLike(inputPath: string): string {
   return inputPath.replace(/\/+$/, "").replace(/\\/g, "/");
 }
 
+function isAbsoluteProjectPath(project: string): boolean {
+  const normalized = normalizePathLike(project.trim());
+  return normalized.startsWith("/") || /^[A-Za-z]:\//.test(normalized);
+}
+
+function projectBasenameKey(project: string): string {
+  const normalized = normalizePathLike(project.trim());
+  return (basename(normalized) || normalized).toLowerCase();
+}
+
 function realpathOrNormalized(inputPath: string): string {
   try {
     const { realpathSync } = require("node:fs") as typeof import("node:fs");
@@ -1370,6 +1380,36 @@ export class HarnessMemCore {
     });
   }
 
+  private extendProjectNormalizationRoots(candidates: string[]): void {
+    if (!Array.isArray(candidates) || candidates.length === 0) {
+      return;
+    }
+
+    const merged = new Set(this.projectNormalizationRoots);
+    for (const candidate of candidates) {
+      if (typeof candidate !== "string" || !candidate.trim()) {
+        continue;
+      }
+      let normalized = normalizePathLike(resolveHomePath(candidate.trim()));
+      try {
+        normalized = normalizeProjectName(normalized, {
+          preferredRoots: [...merged],
+        });
+      } catch {
+        // keep normalized fallback
+      }
+      if (!isAbsoluteProjectPath(normalized)) {
+        continue;
+      }
+      merged.add(normalized);
+    }
+
+    if (merged.size === this.projectNormalizationRoots.length) {
+      return;
+    }
+    this.projectNormalizationRoots.splice(0, this.projectNormalizationRoots.length, ...merged);
+  }
+
   private migrateLegacyProjectAliases(): void {
     const projectTables = [
       "mem_sessions",
@@ -1397,19 +1437,108 @@ export class HarnessMemCore {
       `)
       .all() as Array<{ project: string }>;
 
+    const projectWeightsRows = this.db
+      .query(`
+        SELECT project, COUNT(*) AS weight
+        FROM mem_observations
+        GROUP BY project
+      `)
+      .all() as Array<{ project: string; weight: number }>;
+    const projectWeights = new Map<string, number>();
+    for (const row of projectWeightsRows) {
+      const key = typeof row.project === "string" ? row.project.trim() : "";
+      if (!key) {
+        continue;
+      }
+      projectWeights.set(key, Number(row.weight || 0));
+    }
+
     const aliasMap = new Map<string, string>();
+    const absoluteProjectsByBasename = new Map<string, Set<string>>();
+    const variantsByLower = new Map<string, Set<string>>();
+    const observedAbsoluteProjects = new Set<string>();
+
+    const registerAbsoluteCandidate = (project: string): void => {
+      if (!isAbsoluteProjectPath(project)) {
+        return;
+      }
+      observedAbsoluteProjects.add(project);
+      const baseKey = projectBasenameKey(project);
+      if (!absoluteProjectsByBasename.has(baseKey)) {
+        absoluteProjectsByBasename.set(baseKey, new Set());
+      }
+      absoluteProjectsByBasename.get(baseKey)!.add(project);
+    };
+
     for (const row of distinctProjects) {
       const original = typeof row.project === "string" ? row.project.trim() : "";
       if (!original) {
         continue;
       }
+      const lowerKey = normalizePathLike(original).toLowerCase();
+      if (!variantsByLower.has(lowerKey)) {
+        variantsByLower.set(lowerKey, new Set());
+      }
+      variantsByLower.get(lowerKey)!.add(original);
       try {
         const normalized = this.normalizeProjectInput(original);
+        registerAbsoluteCandidate(normalized);
         if (normalized && normalized !== original) {
           aliasMap.set(original, normalized);
         }
       } catch {
         // ignore invalid project keys
+      }
+      registerAbsoluteCandidate(original);
+    }
+
+    this.extendProjectNormalizationRoots([...observedAbsoluteProjects]);
+
+    for (const row of distinctProjects) {
+      const original = typeof row.project === "string" ? row.project.trim() : "";
+      if (!original || isAbsoluteProjectPath(original)) {
+        continue;
+      }
+      const normalized = normalizePathLike(original);
+      if (normalized.includes("/")) {
+        continue;
+      }
+      const candidates = absoluteProjectsByBasename.get(normalized.toLowerCase());
+      if (!candidates || candidates.size !== 1) {
+        continue;
+      }
+      const [target] = [...candidates];
+      if (target && target !== original) {
+        aliasMap.set(original, target);
+      }
+    }
+
+    const chooseCanonicalVariant = (variants: string[]): string => {
+      return [...variants].sort((lhs, rhs) => {
+        const lhsWeight = projectWeights.get(lhs) || 0;
+        const rhsWeight = projectWeights.get(rhs) || 0;
+        if (rhsWeight !== lhsWeight) {
+          return rhsWeight - lhsWeight;
+        }
+        const lhsAbs = isAbsoluteProjectPath(lhs) ? 1 : 0;
+        const rhsAbs = isAbsoluteProjectPath(rhs) ? 1 : 0;
+        if (rhsAbs !== lhsAbs) {
+          return rhsAbs - lhsAbs;
+        }
+        return lhs.localeCompare(rhs);
+      })[0] || variants[0] || "";
+    };
+
+    for (const variantsSet of variantsByLower.values()) {
+      const variants = [...variantsSet];
+      if (variants.length <= 1) {
+        continue;
+      }
+      const canonical = chooseCanonicalVariant(variants);
+      for (const variant of variants) {
+        if (variant !== canonical) {
+          aliasMap.set(variant, canonical);
+        }
       }
     }
 
@@ -2159,6 +2288,9 @@ export class HarnessMemCore {
       normalizedProject = this.normalizeProjectInput(event.project);
     } catch (e) {
       return makeErrorResponse(startedAt, e instanceof Error ? e.message : String(e), { project: event.project });
+    }
+    if (isAbsoluteProjectPath(normalizedProject)) {
+      this.extendProjectNormalizationRoots([normalizedProject]);
     }
 
     const tags = normalizeTags(event.tags);
