@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.28] - 2026-02-24
+
+### ユーザー向け要約
+
+- `publish-npm` を止めていた memory-server 品質ゲートの誤失敗を修正し、再配信を安定化。
+- UI の Claude フィードで、`claude-*` 表記や project alias 差分による取りこぼしを防止。
+
+### 補足
+
+- `managed-mode-wiring` 統合テストの参照パスを `cwd` 非依存に修正（`cd memory-server` 実行でも成功）。
+- Antigravity 取込テストの期待 project を、現行の正規化キー仕様へ更新。
+- 中規模検索レイテンシテストは CI 環境向けに現実的な閾値と負荷へ調整（CI: 1500ms / local: 500ms）。
+- `useFeedPagination` に回帰テストを追加（`platformFilter=claude` と live feed の alias project）。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.27] - 2026-02-24
 
 ### ユーザー向け要約
