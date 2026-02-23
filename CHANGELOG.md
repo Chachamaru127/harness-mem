@@ -39,6 +39,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.29] - 2026-02-24
+
+### What changed for users
+
+- Duplicate project entries are now auto-collapsed more aggressively (short name vs absolute path, and case-only variants).
+- Project filters and counts are more stable because project keys converge to canonical roots.
+
+### Added
+
+- Added workspace-boundary tests for:
+  - runtime canonicalization using observed absolute project roots
+  - startup migration from short legacy keys to unique observed absolute roots
+  - startup collapse of case-only short-name variants
+
+### Changed
+
+- Project alias migration now uses observed absolute project roots as canonical targets when basename match is unique.
+- Runtime project normalization now learns absolute project roots seen in incoming events and reuses them for subsequent basename-only events.
+
+### Fixed
+
+- Fixed split project lists such as `claude-code-harness` vs `/Users/.../claude-code-harness`.
+- Fixed split project lists such as `kage-bunshin` vs `/Users/.../kage-bunshin`.
+- Fixed case-only project key drift such as `Jarvis` vs `JARVIS`.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- Existing databases are normalized automatically at startup.
+- For immediate effect in long-running environments, restart `harness-memd` once.
+
+### Verification
+
+- `cd memory-server && bun test tests/unit/workspace-boundary.test.ts`
+- `cd memory-server && bun test && bun run typecheck`
+
 ## [0.1.28] - 2026-02-24
 
 ### What changed for users

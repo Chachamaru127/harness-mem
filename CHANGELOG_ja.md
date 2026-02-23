@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.29] - 2026-02-24
+
+### ユーザー向け要約
+
+- `プロジェクト短名` と `絶対パス` の二重表示（例: `claude-code-harness` と `/Users/.../claude-code-harness`）を自動統合。
+- 大文字小文字だけ異なる project key（例: `Jarvis` / `JARVIS`）も起動時に統合。
+
+### 補足
+
+- 起動時の legacy alias 正規化を拡張し、既存DBから観測できる絶対パスを canonical key として優先採用。
+- 実行中も、絶対パスの project を観測した時点で正規化候補として学習し、以降の basename-only イベントを同一キーへ寄せる。
+- 既存環境では `harness-memd` 再起動で反映。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.28] - 2026-02-24
 
 ### ユーザー向け要約
