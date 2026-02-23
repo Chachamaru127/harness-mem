@@ -1,4 +1,5 @@
 import { getUiCopy } from "../lib/i18n";
+import { buildProjectDisplayNameMap, getProjectDisplayName } from "../lib/project-label";
 import type { ProjectsStatsItem } from "../lib/types";
 import type { UiLanguage } from "../lib/types";
 
@@ -14,6 +15,7 @@ export function ProjectSidebar(props: ProjectSidebarProps) {
   const copy = getUiCopy(language);
   const totalObservations = projects.reduce((acc, item) => acc + item.observations, 0);
   const totalSessions = projects.reduce((acc, item) => acc + item.sessions, 0);
+  const labelMap = buildProjectDisplayNameMap(projects.map((project) => project.project));
 
   return (
     <aside className="project-sidebar">
@@ -36,8 +38,9 @@ export function ProjectSidebar(props: ProjectSidebarProps) {
             key={project.project}
             className={`project-item ${selectedProject === project.project ? "active" : ""}`}
             onClick={() => onSelectProject(project.project)}
+            title={project.project}
           >
-            <span className="project-name">{project.project}</span>
+            <span className="project-name">{getProjectDisplayName(project.project, labelMap)}</span>
             <span className="stats">
               {project.observations} {copy.observationsUnit} / {project.sessions} {copy.sessionsUnit}
             </span>

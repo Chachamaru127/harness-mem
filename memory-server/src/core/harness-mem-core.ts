@@ -380,16 +380,130 @@ interface ProjectNormalizationOptions {
   preferredRoots?: string[];
 }
 
+function normalizePathLike(inputPath: string): string {
+  return inputPath.replace(/\/+$/, "").replace(/\\/g, "/");
+}
+
+function realpathOrNormalized(inputPath: string): string {
+  try {
+    const { realpathSync } = require("node:fs") as typeof import("node:fs");
+    return normalizePathLike(realpathSync(inputPath));
+  } catch {
+    return normalizePathLike(inputPath);
+  }
+}
+
+function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: string[] = []): string | null {
+  const normalizedPath = normalizePathLike(existingPath);
+  for (const root of preferredRoots) {
+    if (typeof root !== "string" || !root.trim()) {
+      continue;
+    }
+    const normalizedRoot = normalizePathLike(root.trim());
+    if (!normalizedRoot) {
+      continue;
+    }
+    if (normalizedPath === normalizedRoot || normalizedPath.startsWith(`${normalizedRoot}/`)) {
+      return normalizedRoot;
+    }
+  }
+  return null;
+}
+
+function resolveGitWorkspaceRoot(existingPath: string): string | null {
+  let cursor = normalizePathLike(existingPath);
+  if (!cursor.startsWith("/")) {
+    return null;
+  }
+
+  while (true) {
+    const gitMarker = join(cursor, ".git");
+    if (existsSync(gitMarker)) {
+      try {
+        const markerStat = statSync(gitMarker);
+        if (markerStat.isDirectory()) {
+          return realpathOrNormalized(cursor);
+        }
+        if (markerStat.isFile()) {
+          const markerBody = readFileSync(gitMarker, "utf8");
+          const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
+          if (!match) {
+            return realpathOrNormalized(cursor);
+          }
+          const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
+          const worktreeToken = "/.git/worktrees/";
+          const worktreeIndex = gitDirPath.indexOf(worktreeToken);
+          if (worktreeIndex > 0) {
+            return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
+          }
+          return realpathOrNormalized(cursor);
+        }
+      } catch {
+        return realpathOrNormalized(cursor);
+      }
+      return realpathOrNormalized(cursor);
+    }
+
+    const parent = normalizePathLike(dirname(cursor));
+    if (!parent || parent === cursor) {
+      break;
+    }
+    cursor = parent;
+  }
+  return null;
+}
+
+function resolveWorkspaceRoot(existingPath: string, options: ProjectNormalizationOptions = {}): string | null {
+  const gitRoot = resolveGitWorkspaceRoot(existingPath);
+  if (gitRoot) {
+    return normalizePathLike(gitRoot);
+  }
+  const preferredRoot = resolvePreferredWorkspaceRoot(existingPath, options.preferredRoots || []);
+  if (preferredRoot) {
+    return normalizePathLike(preferredRoot);
+  }
+  return null;
+}
+
+function shouldExposeProjectInStats(project: string): boolean {
+  const normalized = normalizePathLike(project.trim());
+  if (!normalized) {
+    return false;
+  }
+
+  const lower = normalized.toLowerCase();
+  if (lower === "unknown") {
+    return false;
+  }
+
+  const withoutLeadingSlash = lower.startsWith("/") ? lower.slice(1) : lower;
+  if (withoutLeadingSlash.startsWith("shadow-")) {
+    return false;
+  }
+
+  if (normalized.startsWith("/")) {
+    const segments = normalized.split("/").filter(Boolean);
+    for (const segment of segments) {
+      if (segment.startsWith(".")) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
 function normalizeProjectName(name: string, options: ProjectNormalizationOptions = {}): string {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("project name must not be empty");
   // trailing slashを除去、normalize path
-  const normalized = trimmed.replace(/\/+$/, "").replace(/\\/g, "/");
+  const normalized = normalizePathLike(trimmed);
   // パスとして存在する場合はsymlink解決してbasename相当の正規パスを返す
   try {
     const { realpathSync } = require("node:fs") as typeof import("node:fs");
-    const real = realpathSync(normalized);
-    return real.replace(/\/+$/, "").replace(/\\/g, "/");
+    const real = normalizePathLike(realpathSync(normalized));
+    const workspaceRoot = resolveWorkspaceRoot(real, options);
+    return workspaceRoot || real;
   } catch {
     // basenameのみの入力は、既知のworkspace root basenameと一致する場合に
     // そのworkspace root(絶対パス)へ寄せる。
@@ -400,13 +514,14 @@ function normalizeProjectName(name: string, options: ProjectNormalizationOptions
         if (typeof root !== "string" || !root.trim()) {
           continue;
         }
-        const rootNormalized = root.trim().replace(/\/+$/, "").replace(/\\/g, "/");
+        const rootNormalized = normalizePathLike(root.trim());
         const rootBase = basename(rootNormalized).toLowerCase();
         if (rootBase === target) {
           try {
             const { realpathSync } = require("node:fs") as typeof import("node:fs");
-            const real = realpathSync(rootNormalized);
-            return real.replace(/\/+$/, "").replace(/\\/g, "/");
+            const real = normalizePathLike(realpathSync(rootNormalized));
+            const workspaceRoot = resolveWorkspaceRoot(real, options);
+            return workspaceRoot || real;
           } catch {
             return rootNormalized;
           }
@@ -1252,29 +1367,77 @@ export class HarnessMemCore {
   }
 
   private migrateLegacyProjectAliases(): void {
-    const canonicalRoot = this.projectNormalizationRoots[0];
-    if (!canonicalRoot) {
+    const projectTables = [
+      "mem_sessions",
+      "mem_events",
+      "mem_observations",
+      "mem_facts",
+      "mem_consolidation_queue",
+    ] as const;
+
+    const distinctProjects = this.db
+      .query(`
+        SELECT DISTINCT project
+        FROM (
+          SELECT project FROM mem_sessions
+          UNION
+          SELECT project FROM mem_events
+          UNION
+          SELECT project FROM mem_observations
+          UNION
+          SELECT project FROM mem_facts
+          UNION
+          SELECT project FROM mem_consolidation_queue
+        )
+        WHERE project IS NOT NULL AND TRIM(project) <> ''
+      `)
+      .all() as Array<{ project: string }>;
+
+    const aliasMap = new Map<string, string>();
+    for (const row of distinctProjects) {
+      const original = typeof row.project === "string" ? row.project.trim() : "";
+      if (!original) {
+        continue;
+      }
+      try {
+        const normalized = this.normalizeProjectInput(original);
+        if (normalized && normalized !== original) {
+          aliasMap.set(original, normalized);
+        }
+      } catch {
+        // ignore invalid project keys
+      }
+    }
+
+    if (aliasMap.size === 0) {
       return;
     }
-    const legacyAlias = basename(canonicalRoot);
-    if (!legacyAlias || legacyAlias === canonicalRoot) {
+
+    const resolvedAliasMap = new Map<string, string>();
+    for (const [source] of aliasMap) {
+      let target = aliasMap.get(source) || source;
+      const seen = new Set<string>([source]);
+      while (aliasMap.has(target) && !seen.has(target)) {
+        seen.add(target);
+        target = aliasMap.get(target) || target;
+      }
+      if (target !== source) {
+        resolvedAliasMap.set(source, target);
+      }
+    }
+
+    if (resolvedAliasMap.size === 0) {
       return;
     }
 
     let changed = 0;
     try {
       const apply = this.db.transaction(() => {
-        const projectTables = [
-          "mem_sessions",
-          "mem_events",
-          "mem_observations",
-          "mem_facts",
-          "mem_consolidation_queue",
-        ];
-
-        for (const table of projectTables) {
-          const result = this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(canonicalRoot, legacyAlias);
-          changed += Number((result as { changes?: number }).changes || 0);
+        for (const [fromProject, toProject] of resolvedAliasMap) {
+          for (const table of projectTables) {
+            const result = this.db.query(`UPDATE ${table} SET project = ? WHERE project = ?`).run(toProject, fromProject);
+            changed += Number((result as { changes?: number }).changes || 0);
+          }
         }
 
         const metaRows = this.db
@@ -1295,10 +1458,11 @@ export class HarnessMemCore {
             continue;
           }
           const currentProject = typeof parsed.project === "string" ? parsed.project.trim() : "";
-          if (currentProject !== legacyAlias) {
+          const mappedProject = currentProject ? resolvedAliasMap.get(currentProject) : undefined;
+          if (!mappedProject || mappedProject === currentProject) {
             continue;
           }
-          parsed.project = canonicalRoot;
+          parsed.project = mappedProject;
           this.db
             .query(`UPDATE mem_meta SET value = ?, updated_at = ? WHERE key = ?`)
             .run(JSON.stringify(parsed), nowIso(), row.key);
@@ -1311,9 +1475,7 @@ export class HarnessMemCore {
     }
 
     if (changed > 0) {
-      console.log(
-        `[harness-mem] normalized legacy project alias '${legacyAlias}' -> '${canonicalRoot}' (rows=${changed})`
-      );
+      console.log(`[harness-mem] normalized legacy project aliases (aliases=${resolvedAliasMap.size}, rows=${changed})`);
     }
   }
 
@@ -4073,7 +4235,7 @@ export class HarnessMemCore {
       observations: Number(row.observations || 0),
       sessions: Number(row.sessions || 0),
       updated_at: row.updated_at || null,
-    }));
+    })).filter((row) => shouldExposeProjectInStats(row.project));
 
     return makeResponse(startedAt, items, { include_private: includePrivate }, { ranking: "projects_stats_v1" });
   }

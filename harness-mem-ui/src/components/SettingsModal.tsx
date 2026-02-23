@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { getUiCopy } from "../lib/i18n";
+import { buildProjectDisplayNameMap, getProjectDisplayName } from "../lib/project-label";
 import type { FeedItem, ProjectsStatsItem, UiPlatformFilter, UiSettings } from "../lib/types";
 
 interface SettingsModalProps {
@@ -71,6 +72,10 @@ export function SettingsModal(props: SettingsModalProps) {
     const values = new Set<string>(["__all__", ...projects.map((project) => project.project), draft.selectedProject]);
     return Array.from(values);
   }, [projects, draft.selectedProject]);
+  const projectLabelMap = useMemo(
+    () => buildProjectDisplayNameMap(projectOptions.filter((project) => project !== "__all__")),
+    [projectOptions]
+  );
 
   if (!open) {
     return null;
@@ -106,7 +111,7 @@ export function SettingsModal(props: SettingsModalProps) {
               >
                 {projectOptions.map((project) => (
                   <option key={project} value={project}>
-                    {project === "__all__" ? copy.previewAllProjects : project}
+                    {project === "__all__" ? copy.previewAllProjects : getProjectDisplayName(project, projectLabelMap)}
                   </option>
                 ))}
               </select>
@@ -127,7 +132,11 @@ export function SettingsModal(props: SettingsModalProps) {
               </div>
               <div className="preview-shell-body">
                 <p className="preview-title">
-                  [{draft.selectedProject === "__all__" ? copy.previewAllProjects : draft.selectedProject}] {copy.previewLatestContext}
+                  [
+                  {draft.selectedProject === "__all__"
+                    ? copy.previewAllProjects
+                    : getProjectDisplayName(draft.selectedProject, projectLabelMap)}
+                  ] {copy.previewLatestContext}
                 </p>
                 <h3>{previewTitle}</h3>
                 <p>{previewContent}</p>

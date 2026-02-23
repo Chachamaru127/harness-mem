@@ -39,6 +39,52 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.25] - 2026-02-23
+
+### What changed for users
+
+- Project labels in the UI now display readable repository names (for example `Context-Harness`) instead of full absolute paths.
+- Subdirectories and linked Git worktrees are now canonicalized to the same workspace project key, preventing project-list fragmentation.
+- Synthetic/noise project rows such as `shadow-*` and hidden-directory paths are now excluded from project stats display.
+
+### Added
+
+- UI project label utility with collision-safe fallback logic (`basename` -> `parent/basename` -> full path).
+- New UI tests for project label rendering and collision handling.
+- New core tests for git-root/worktree canonicalization and project-stats noise filtering.
+
+### Changed
+
+- Strengthened project normalization in core to resolve Git workspace roots (including linked worktrees) for existing paths.
+- Expanded startup legacy project alias migration to normalize all existing project keys to canonical roots.
+- Updated project sidebar/settings preview to use display labels while preserving canonical project keys internally.
+
+### Fixed
+
+- Fixed issue where one workspace appeared as multiple projects due to subfolder/worktree path differences.
+- Fixed issue where absolute path project labels reduced readability in project selection UI.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual database migration is required.
+- Restart `harness-memd` after upgrade so startup alias normalization can apply to existing project keys.
+
+### Verification
+
+- `bun test tests/unit/core.test.ts tests/unit/workspace-boundary.test.ts`
+- `bun test tests/integration/feed-stream.test.ts`
+- `bun run --cwd harness-mem-ui test:ui`
+- `bun run --cwd harness-mem-ui typecheck`
+- `bun run --cwd harness-mem-ui build:web`
+
 ## [0.1.24] - 2026-02-23
 
 ### What changed for users
