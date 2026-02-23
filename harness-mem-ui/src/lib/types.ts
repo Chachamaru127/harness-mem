@@ -1,6 +1,6 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
-export type UiTab = "feed" | "search" | "observation" | "session";
+export type UiTab = "feed" | "environment" | "search" | "observation" | "session";
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 
@@ -106,4 +106,60 @@ export interface ApiResponse<T> {
 export interface SseUiEvent<T = Record<string, unknown>> {
   event: string;
   data: T;
+}
+
+export type EnvironmentStatus = "ok" | "warning" | "missing";
+
+export interface EnvironmentSummary {
+  total: number;
+  ok: number;
+  warning: number;
+  missing: number;
+  servers: number;
+  languages: number;
+  cli_tools: number;
+  ai_tools: number;
+}
+
+export interface EnvironmentServerItem {
+  id: string;
+  name: string;
+  description: string;
+  status: EnvironmentStatus;
+  last_checked_at: string;
+  pid: number | null;
+  port: number | null;
+  protocol: string | null;
+  bind_address: string | null;
+  process_name: string | null;
+  message: string | null;
+  details?: Record<string, unknown>;
+}
+
+export interface EnvironmentItem {
+  id: string;
+  name: string;
+  description: string;
+  status: EnvironmentStatus;
+  last_checked_at: string;
+  installed: boolean | null;
+  version: string | null;
+  message: string | null;
+  details?: Record<string, unknown>;
+}
+
+export interface EnvironmentErrorItem {
+  section: string;
+  message: string;
+}
+
+export interface EnvironmentSnapshot {
+  snapshot_id: string;
+  generated_at: string;
+  summary: EnvironmentSummary;
+  servers: EnvironmentServerItem[];
+  languages: EnvironmentItem[];
+  cli_tools: EnvironmentItem[];
+  ai_tools: EnvironmentItem[];
+  errors: EnvironmentErrorItem[];
 }

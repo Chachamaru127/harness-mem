@@ -452,6 +452,188 @@ select:focus-visible,
   gap: 12px;
 }
 
+.environment-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.env-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.env-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.env-header p {
+  margin: 4px 0 0;
+  color: var(--text-subtle);
+}
+
+.env-stamp {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+}
+
+.env-summary {
+  display: grid;
+  gap: 8px;
+}
+
+.env-summary h3,
+.env-section h3,
+.env-faq h3,
+.env-errors h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.env-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.env-summary-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 6px;
+  background: color-mix(in srgb, var(--bg-panel) calc(var(--panel-alpha) * 100%), transparent);
+}
+
+.env-summary-card strong {
+  font-size: 0.86rem;
+  color: var(--text-subtle);
+}
+
+.env-summary-card span {
+  font-size: 1.3rem;
+  font-weight: 700;
+}
+
+.env-section {
+  display: grid;
+  gap: 8px;
+}
+
+.env-section-description {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.9rem;
+}
+
+.env-card-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.env-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  gap: 8px;
+  background: color-mix(in srgb, var(--bg-panel) calc(var(--panel-alpha) * 100%), transparent);
+}
+
+.env-card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.env-card-top h4 {
+  margin: 0;
+  font-size: 0.98rem;
+}
+
+.env-card-description {
+  margin: 0;
+  color: var(--text-subtle);
+  font-size: 0.86rem;
+}
+
+.env-meta-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 10px;
+  font-size: 0.84rem;
+}
+
+.env-note {
+  margin: 0;
+  font-size: 0.84rem;
+  color: var(--text-subtle);
+}
+
+.env-status {
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.env-status.ok {
+  color: #065f46;
+  background: #d1fae5;
+  border-color: #34d399;
+}
+
+.env-status.warning {
+  color: #92400e;
+  background: #fef3c7;
+  border-color: #f59e0b;
+}
+
+.env-status.missing {
+  color: #9f1239;
+  background: #ffe4e6;
+  border-color: #fb7185;
+}
+
+.env-errors ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-subtle);
+}
+
+.env-faq-list {
+  display: grid;
+  gap: 10px;
+}
+
+.env-faq-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-muted) 24%, var(--bg-panel));
+}
+
+.env-faq-item h4 {
+  margin: 0 0 6px;
+  font-size: 0.92rem;
+}
+
+.env-faq-item p {
+  margin: 0;
+  color: var(--text-subtle);
+  line-height: 1.45;
+}
+
 .feed-summary {
   display: flex;
   align-items: center;
@@ -1093,6 +1275,12 @@ select:focus-visible,
 
   .project-list {
     max-height: 260px;
+  }
+
+  .env-summary-grid,
+  .env-card-grid,
+  .env-meta-grid {
+    grid-template-columns: 1fr;
   }
 
   .card-top {

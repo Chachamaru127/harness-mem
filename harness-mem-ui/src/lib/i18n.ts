@@ -11,6 +11,9 @@ type CategoryKey =
   | "other";
 
 interface UiCopy {
+  feedTab: string;
+  environmentTab: string;
+  tabsAria: string;
   appTitle: string;
   appSubtitle: string;
   settingsButton: string;
@@ -69,10 +72,47 @@ interface UiCopy {
   languageEnglish: string;
   languageJapanese: string;
   category: Record<CategoryKey, string>;
+  environment: {
+    title: string;
+    subtitle: string;
+    refresh: string;
+    generatedAt: string;
+    snapshotId: string;
+    summaryTitle: string;
+    noData: string;
+    errorsTitle: string;
+    status: {
+      ok: string;
+      warning: string;
+      missing: string;
+    };
+    sections: {
+      servers: { title: string; description: string; empty: string };
+      languages: { title: string; description: string; empty: string };
+      cli: { title: string; description: string; empty: string };
+      ai: { title: string; description: string; empty: string };
+    };
+    fieldLabels: {
+      version: string;
+      status: string;
+      pid: string;
+      port: string;
+      bind: string;
+      protocol: string;
+      process: string;
+      installed: string;
+      message: string;
+    };
+    faqTitle: string;
+    faq: Array<{ question: string; answer: string }>;
+  };
 }
 
 const COPY: Record<UiLanguage, UiCopy> = {
   en: {
+    feedTab: "Feed",
+    environmentTab: "Environment",
+    tabsAria: "Main tabs",
     appTitle: "Harness Memory Viewer",
     appSubtitle: "Project memory feed",
     settingsButton: "settings",
@@ -140,8 +180,86 @@ const COPY: Record<UiLanguage, UiCopy> = {
       tool_use: "TOOL USE",
       other: "OTHER",
     },
+    environment: {
+      title: "Environment status",
+      subtitle: "What is installed and what is currently running.",
+      refresh: "Refresh environment",
+      generatedAt: "Updated",
+      snapshotId: "Snapshot",
+      summaryTitle: "5-second summary",
+      noData: "Environment snapshot is not available yet.",
+      errorsTitle: "Collection warnings",
+      status: {
+        ok: "Normal",
+        warning: "Needs attention",
+        missing: "Not detected",
+      },
+      sections: {
+        servers: {
+          title: "Internal servers",
+          description: "Services running in this local environment.",
+          empty: "No server data found.",
+        },
+        languages: {
+          title: "Languages / runtimes",
+          description: "Programming runtimes and package ecosystems available here.",
+          empty: "No language runtime detected.",
+        },
+        cli: {
+          title: "CLI tools",
+          description: "Command line tools used for operations and diagnostics.",
+          empty: "No CLI tool data found.",
+        },
+        ai: {
+          title: "AI / MCP tools",
+          description: "Agent tools and MCP wiring status.",
+          empty: "No AI tool data found.",
+        },
+      },
+      fieldLabels: {
+        version: "Version",
+        status: "Status",
+        pid: "PID",
+        port: "Port",
+        bind: "Bind",
+        protocol: "Protocol",
+        process: "Process",
+        installed: "Installed",
+        message: "Note",
+      },
+      faqTitle: "FAQ for non-specialists",
+      faq: [
+        {
+          question: "What does this page show?",
+          answer: "It summarizes local servers, runtimes, CLI tools, and AI tool wiring in one place.",
+        },
+        {
+          question: "What is \"Normal / Needs attention / Not detected\"?",
+          answer: "Normal means healthy, Needs attention means found but not healthy, Not detected means missing.",
+        },
+        {
+          question: "Is this page read-only?",
+          answer: "Yes. V1 only reads diagnostics and does not run start/stop actions.",
+        },
+        {
+          question: "Why can a tool be installed but still yellow?",
+          answer: "Installed only confirms presence. Yellow usually means version drift or wiring issues.",
+        },
+        {
+          question: "Where do these values come from?",
+          answer: "Daemon health, doctor snapshot, versions snapshot, and local process checks.",
+        },
+        {
+          question: "Can this expose secrets?",
+          answer: "Sensitive keys/tokens are masked before API responses are returned.",
+        },
+      ],
+    },
   },
   ja: {
+    feedTab: "フィード",
+    environmentTab: "環境",
+    tabsAria: "メインタブ",
     appTitle: "Harness メモリビューア",
     appSubtitle: "プロジェクト別メモリフィード",
     settingsButton: "設定",
@@ -208,6 +326,81 @@ const COPY: Record<UiLanguage, UiCopy> = {
       checkpoint: "チェックポイント",
       tool_use: "ツール実行",
       other: "その他",
+    },
+    environment: {
+      title: "環境ステータス",
+      subtitle: "何が入っていて、今どれが動いているかを一覧表示します。",
+      refresh: "環境を更新",
+      generatedAt: "更新時刻",
+      snapshotId: "スナップショット",
+      summaryTitle: "5秒サマリー",
+      noData: "環境スナップショットがまだ取得できていません。",
+      errorsTitle: "収集時の注意",
+      status: {
+        ok: "正常",
+        warning: "注意",
+        missing: "未検出",
+      },
+      sections: {
+        servers: {
+          title: "内部サーバー",
+          description: "このローカル環境で動いている主要サービスです。",
+          empty: "サーバー情報を取得できませんでした。",
+        },
+        languages: {
+          title: "言語 / ランタイム",
+          description: "開発で使う言語実行環境とパッケージ基盤です。",
+          empty: "言語ランタイムを検出できませんでした。",
+        },
+        cli: {
+          title: "CLI ツール",
+          description: "運用・診断で使うコマンドラインツールです。",
+          empty: "CLI情報を取得できませんでした。",
+        },
+        ai: {
+          title: "AI / MCP ツール",
+          description: "AIツール本体とMCP配線状態です。",
+          empty: "AIツール情報を取得できませんでした。",
+        },
+      },
+      fieldLabels: {
+        version: "バージョン",
+        status: "状態",
+        pid: "PID",
+        port: "ポート",
+        bind: "バインド先",
+        protocol: "プロトコル",
+        process: "プロセス",
+        installed: "導入",
+        message: "補足",
+      },
+      faqTitle: "非専門家向け FAQ",
+      faq: [
+        {
+          question: "このページは何を示していますか？",
+          answer: "内部サーバー、言語/ランタイム、CLI、AI/MCP状況を1画面にまとめて表示します。",
+        },
+        {
+          question: "「正常 / 注意 / 未検出」の違いは？",
+          answer: "正常は問題なし、注意は検出済みだが要確認、未検出は見つからない状態です。",
+        },
+        {
+          question: "このページから操作はできますか？",
+          answer: "できません。V1は read-only（閲覧専用）です。",
+        },
+        {
+          question: "導入済みなのに「注意」になるのはなぜ？",
+          answer: "導入の有無と正常性は別です。配線不整合やバージョン差分で注意になります。",
+        },
+        {
+          question: "表示データの出どころは？",
+          answer: "daemon health / doctor snapshot / versions snapshot / プロセス確認結果です。",
+        },
+        {
+          question: "機密情報は見えてしまいませんか？",
+          answer: "API key や token などの値は API 応答前にマスクしています。",
+        },
+      ],
     },
   },
 };

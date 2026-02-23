@@ -205,6 +205,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.metrics());
       }
 
+      if (request.method === "GET" && url.pathname === "/v1/admin/environment") {
+        return jsonResponse(core.environmentSnapshot());
+      }
+
       if (request.method === "GET" && url.pathname === "/v1/admin/shadow-metrics") {
         const status = core.getManagedStatus();
         if (!status) {

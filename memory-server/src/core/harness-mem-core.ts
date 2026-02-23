@@ -48,6 +48,8 @@ import { routeQuery, type RouteDecision } from "../retrieval/router";
 import { compileAnswer, type CompiledAnswer } from "../answer/compiler";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import type { StoredEvent } from "../projector/types";
+import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
+import { TtlCache } from "../system-environment/cache";
 
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
@@ -72,6 +74,7 @@ const DEFAULT_SEARCH_EXPAND_LINKS = true;
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const SQLITE_HEADER = "SQLite format 3\u0000";
+const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 
 type Platform = "claude" | "codex" | "opencode" | "cursor" | "antigravity";
 type EventType = "session_start" | "user_prompt" | "tool_use" | "checkpoint" | "session_end";
@@ -1299,6 +1302,7 @@ export class HarnessMemCore {
   private readonly streamEventRetention = 600;
   private readonly codexRolloutContextCache = new Map<string, CodexSessionsContext>();
   private readonly projectNormalizationRoots: string[];
+  private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -4065,6 +4069,49 @@ export class HarnessMemCore {
       ],
       {},
       { ranking: "metrics_v1" }
+    );
+  }
+
+  environmentSnapshot(): ApiResponse {
+    const startedAt = performance.now();
+    const uiPortRaw = Number(process.env.HARNESS_MEM_UI_PORT || 37901);
+    const uiPort = Number.isFinite(uiPortRaw) ? Math.trunc(uiPortRaw) : 37901;
+    const healthPayload = this.health();
+    const healthItem = (healthPayload.items[0] || {}) as Record<string, unknown>;
+    const managedStatus = this.managedBackend ? (this.managedBackend.getStatus() as unknown as Record<string, unknown>) : null;
+
+    const cache = this.environmentSnapshotCache.getOrCreate(() =>
+      collectEnvironmentSnapshot({
+        state_dir: process.env.HARNESS_MEM_HOME,
+        mem_host: this.config.bindHost,
+        mem_port: this.config.bindPort,
+        ui_port: uiPort,
+        health_item: healthItem,
+        managed_backend: managedStatus,
+      })
+    );
+
+    try {
+      this.writeAuditLog("read.environment", "system", cache.value.snapshot_id, {
+        cache_hit: cache.cache_hit,
+        cache_age_ms: cache.age_ms,
+        cache_ttl_ms: cache.ttl_ms,
+      });
+    } catch {
+      // best effort
+    }
+
+    return makeResponse(
+      startedAt,
+      [cache.value],
+      {},
+      {
+        ranking: "environment_v1",
+        cache_hit: cache.cache_hit,
+        cache_age_ms: cache.age_ms,
+        cache_ttl_ms: cache.ttl_ms,
+        snapshot_id: cache.value.snapshot_id,
+      }
     );
   }
 

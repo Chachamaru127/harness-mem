@@ -44,6 +44,7 @@ function readSettings(): UiSettings {
           ? parsed.designPreset
           : defaultSettings.designPreset,
       language: parsed.language === "ja" ? "ja" : "en",
+      activeTab: parsed.activeTab === "environment" || parsed.activeTab === "feed" ? parsed.activeTab : defaultSettings.activeTab,
     };
   } catch {
     return defaultSettings;

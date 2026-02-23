@@ -5,6 +5,7 @@ const UI_PORT = Number(process.env.HARNESS_MEM_UI_PORT || 37901);
 const MEM_HOST = process.env.HARNESS_MEM_HOST || "127.0.0.1";
 const MEM_PORT = process.env.HARNESS_MEM_PORT || "37888";
 const MEM_BASE = `http://${MEM_HOST}:${MEM_PORT}`;
+const ADMIN_TOKEN = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
 const DEFAULT_PROJECT = detectDefaultProject();
 
 const staticDir = join(import.meta.dir, "static-parity");
@@ -64,11 +65,16 @@ function safePathname(pathname: string): string {
 
 async function proxyJson(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<Response> {
   try {
+    const headers: Record<string, string> = {
+      "content-type": "application/json",
+    };
+    if (path.startsWith("/v1/admin/") && ADMIN_TOKEN) {
+      headers["x-harness-mem-token"] = ADMIN_TOKEN;
+    }
+
     const response = await fetch(`${MEM_BASE}${path}`, {
       method,
-      headers: {
-        "content-type": "application/json",
-      },
+      headers,
       body: method === "POST" ? JSON.stringify(body || {}) : undefined,
     });
     const text = await response.text();
@@ -197,6 +203,9 @@ Bun.serve({
     }
     if (url.pathname === "/api/metrics") {
       return proxyJson("/v1/admin/metrics", "GET");
+    }
+    if (url.pathname === "/api/environment") {
+      return proxyJson("/v1/admin/environment", "GET");
     }
     if (url.pathname === "/api/feed") {
       return proxyJson(`/v1/feed${url.search || ""}`, "GET");

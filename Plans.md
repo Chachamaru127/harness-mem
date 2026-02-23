@@ -997,65 +997,74 @@ Optional:
 
 #### Phase INV-0: 仕様確定と設計批判（2日）
 
-- [ ] `cc:TODO [feature:tdd] [feature:security]` INV-001 批判レビュー会の実施とADR作成
+- [ ] `blocked [feature:tdd] [feature:security]` INV-001 批判レビュー会の実施とADR作成
   - 変更予定: `docs/plans/system-inventory-adr.md`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. Gate A-D の合否と論点が1ファイルに残る
     2. 「今回はやらないこと（非対応操作）」が明記される
 
-- [ ] `cc:TODO [feature:security]` INV-002 脅威モデルと禁止ルール固定
+- [ ] `blocked [feature:security]` INV-002 脅威モデルと禁止ルール固定
   - 変更予定: `docs/plans/system-inventory-threat-model.md`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. 認証・認可・監査・コマンド実行の脅威一覧がある
     2. `shell=true` 禁止、allowlist必須、dry-run必須が文書化される
 
 #### Phase INV-1: API/Collector基盤（3日）
 
-- [ ] `cc:TODO [feature:security] [feature:tdd]` INV-003 System Inventory API契約追加
+- [ ] `blocked [feature:security] [feature:tdd]` INV-003 System Inventory API契約追加
   - 変更予定: `memory-server/src/server.ts`, `memory-server/src/core/harness-mem-core.ts`
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. `GET /v1/admin/system/inventory` が追加される
     2. `GET /v1/admin/system/llm-context` が追加される（LLM向け短文サマリ）
     3. `POST /v1/admin/system/actions` は dry-run/confirm なしで実行不可
     4. すべて admin token 検証を通る
 
-- [ ] `[P] cc:TODO [feature:tdd]` INV-004 macOS向けCollector実装（read-only優先）
+- [ ] `[P] blocked [feature:tdd]` INV-004 macOS向けCollector実装（read-only優先）
   - 変更予定: `memory-server/src/system-inventory/collectors.ts`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. サーバー一覧、言語一覧、CLI一覧を収集できる
     2. サーバー一覧は `port/protocol/pid/process_name/bind_address` を返す
     3. コマンド失敗時にカテゴリ単位で劣化表示可能なエラー情報を返す
 
-- [ ] `[P] cc:TODO [feature:tdd]` INV-012 LLM問い合わせ用サマリ整形ロジック追加
+- [ ] `[P] blocked [feature:tdd]` INV-012 LLM問い合わせ用サマリ整形ロジック追加
   - 変更予定: `memory-server/src/system-inventory/llm-context.ts`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. サマリは「現在の主要サーバー状況 + 言語/CLI概要」を短文化して返す
     2. 詳細確認用に `inventory_snapshot_id` を返し、UI/APIで追跡できる
     3. 1レスポンスが過大にならない上限制御（例: 件数上限/文字数上限）がある
 
-- [ ] `[P] cc:TODO [feature:tdd]` INV-005 TTLキャッシュとタイムアウト制御
+- [ ] `[P] blocked [feature:tdd]` INV-005 TTLキャッシュとタイムアウト制御
   - 変更予定: `memory-server/src/system-inventory/cache.ts`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. サーバー30秒、言語/CLI 5分のTTLが設定可能
     2. タイムアウト超過時は stale キャッシュまたは明示エラーを返す
     3. `system/llm-context` も同一スナップショット基盤を参照する
 
-- [ ] `cc:TODO [feature:security]` INV-006 監査ログ統合
+- [ ] `blocked [feature:security]` INV-006 監査ログ統合
   - 変更予定: `memory-server/src/core/harness-mem-core.ts`
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. inventory取得/操作/llm-context取得の監査イベントが `admin audit-log` で追跡できる
     2. 取得者・対象・結果・実行時刻が記録される
 
 #### Phase INV-2: UI画面実装（2日）
 
-- [ ] `cc:TODO [feature:a11y]` INV-007 `Inventory` タブ追加
+- [ ] `blocked [feature:a11y]` INV-007 `Inventory` タブ追加
   - 変更予定: `harness-mem-ui/src/app/App.tsx`, `harness-mem-ui/src/lib/types.ts`, `harness-mem-ui/src/hooks/useSettings.ts`
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. `Feed` と `Inventory` を切り替え可能
     2. キーボード操作と `aria-selected` が有効
 
-- [ ] `cc:TODO [feature:a11y]` INV-008 Inventory Panel 実装（説明付き）
+- [ ] `blocked [feature:a11y]` INV-008 Inventory Panel 実装（説明付き）
   - 変更予定: `harness-mem-ui/src/components/SystemInventoryPanel.tsx`（新規）, `harness-mem-ui/src/lib/i18n.ts`, `harness-mem-ui/src/lib/api.ts`
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. 3カテゴリのカードに「説明」「状態」「最終更新」を表示
     2. サーバーカードに `port/protocol/pid/bind_address` を表示
@@ -1065,22 +1074,25 @@ Optional:
 
 #### Phase INV-3: 検証とドキュメント（2日）
 
-- [ ] `cc:TODO [feature:tdd] [feature:security]` INV-009 API統合テスト追加
+- [ ] `blocked [feature:tdd] [feature:security]` INV-009 API統合テスト追加
   - 変更予定: `memory-server/tests/integration/system-inventory-api.test.ts`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. トークン必須、allowlist、dry-run制約をテストで固定
     2. 一部カテゴリ失敗時の劣化応答を固定
     3. `system/llm-context` が短文サマリ + snapshot参照IDを返すことを固定
 
-- [ ] `cc:TODO [feature:tdd] [feature:a11y]` INV-010 UIテスト追加
+- [ ] `blocked [feature:tdd] [feature:a11y]` INV-010 UIテスト追加
   - 変更予定: `harness-mem-ui/tests/ui/system-inventory-panel.test.tsx`（新規）, `harness-mem-ui/tests/e2e/inventory.spec.ts`（新規）
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. タブ切替、表示、エラー表示、操作確認が通る
     2. ポート番号などサーバー詳細項目の表示を固定
     3. 日本語/英語文言切替で崩れない
 
-- [ ] `cc:TODO` INV-011 運用ドキュメント更新
+- [ ] `blocked` INV-011 運用ドキュメント更新
   - 変更予定: `docs/harness-mem-setup.md`, `README.md`
+  - ブロック理由: 18章の Environment V1（read-only）へスコープを置換したため。INV は再定義待ち。
   - 受入条件:
     1. 画面用途、操作制約、監査ログ確認手順を追記
     2. 既知制約（macOS優先対応、非対応操作）を明記
@@ -1092,3 +1104,134 @@ Optional:
 3. `system/llm-context` でLLM問い合わせに現状サマリを返せる
 4. 操作APIが admin token + dry-run + allowlist + 監査ログを満たす
 5. API/UI/E2E テストが追加され、回帰テストで再現可能
+
+---
+
+## 18. 環境ステータスタブ V1（非専門家向け / 2026-02-23）
+
+### 18.1 目的
+
+`harness-mem-ui` に「環境ステータス」タブを追加し、非専門家が 5 秒で以下を理解できる状態にする。
+
+1. 今動いている内部サーバー
+2. インストール済み言語・ランタイム・主要ライブラリ基盤
+3. CLI ツール
+4. AI 関連ツール（MCP 含む）の導入状況
+
+前提:
+1. V1 は **read-only** を原則とし、操作系（実行/停止/変更）は含めない。
+2. 秘匿値（API key/token/path の機微部分）は必ずマスク表示する。
+
+### 18.2 Priority Matrix（本件確定）
+
+Required:
+1. `Feed` と切り替え可能な `Environment` タブを追加
+2. 「サーバー」「言語/ランタイム」「CLI」「AI/MCP」の4セクション表示
+3. 各セクションに「これは何か」の1行説明を必須表示
+4. ステータスを `正常/注意/未検出` の3値で統一
+5. すべて read-only API 経由で表示し、秘匿情報をマスク
+
+Recommended:
+1. 先頭に「5秒サマリー」（件数カード）を表示
+2. FAQ（非専門家向け）を 6-8 問設置
+3. 60 秒自動更新 + 手動更新ボタン
+
+Optional:
+1. 前回スナップショットとの差分表示
+2. JSON/Markdown エクスポート
+3. コレクタのプラットフォーム拡張（Linux/Windowsの詳細最適化）
+
+### 18.3 実装方針（V1）
+
+1. データは `memory-server` 側で集約し、UI は1つの read-only API を読む。
+2. 既存再利用:
+   - `/v1/admin/metrics`（稼働・内部状態）
+   - `~/.harness-mem/versions/tool-versions.json`（CLI/上流比較）
+   - `~/.harness-mem/runtime/doctor-last.json`（言語/依存の直近診断）
+3. 追加 API:
+   - `GET /v1/admin/environment`（admin token 必須）
+   - UI プロキシ: `GET /api/environment`
+4. キャッシュ方針:
+   - サーバー側 TTL 20 秒
+   - UI 側ポーリング 60 秒（手動更新で即時再取得）
+
+### 18.4 実装バックログ（V1）
+
+#### Phase ENV-0: 契約確定（0.5日）
+
+- [x] `cc:完了 [feature:tdd] [feature:security]` ENV-001 Environment API 契約定義（JSON schema）
+  - 変更予定: `docs/plans/environment-tab-v1-contract.md`（新規）
+  - 受入条件:
+    1. `servers/languages/cli/ai_tools/summary` の必須キーが定義される
+    2. マスク対象（api_key/token/path）が明文化される
+
+#### Phase ENV-1: Backend集約API（1-2日）
+
+- [x] `cc:完了 [feature:security] [feature:tdd]` ENV-002 `GET /v1/admin/environment` 実装
+  - 変更予定: `memory-server/src/server.ts`, `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. admin token 検証を通過した場合のみ応答
+    2. `metrics + versions + doctor` が単一レスポンスで取得できる
+    3. 秘匿値はマスク済みで返る
+
+- [x] `[P] cc:完了 [feature:tdd]` ENV-003 環境スナップショット収集ヘルパー追加
+  - 変更予定: `memory-server/src/system-environment/collector.ts`（新規）
+  - 受入条件:
+    1. サーバー一覧に `pid/port/bind/status` を含む
+    2. CLI/AIツールに `installed/version/status` を含む
+    3. 収集失敗時はカテゴリ単位で劣化表示用エラーを返す
+
+- [x] `[P] cc:完了 [feature:tdd]` ENV-004 TTL キャッシュ追加
+  - 変更予定: `memory-server/src/system-environment/cache.ts`（新規）
+  - 受入条件:
+    1. TTL 20 秒以内は再計測せずキャッシュ返却
+    2. 期限切れ後は自動再計測
+
+#### Phase ENV-2: UIタブ実装（1-2日）
+
+- [x] `cc:完了 [feature:a11y]` ENV-005 `Environment` タブ追加
+  - 変更予定: `harness-mem-ui/src/app/App.tsx`, `harness-mem-ui/src/lib/types.ts`, `harness-mem-ui/src/hooks/useSettings.ts`
+  - 受入条件:
+    1. `Feed` / `Environment` の切替が可能
+    2. キーボード操作 + `aria-selected` が有効
+
+- [x] `cc:完了 [feature:a11y]` ENV-006 `EnvironmentPanel` 実装（非専門家向け説明つき）
+  - 変更予定: `harness-mem-ui/src/components/EnvironmentPanel.tsx`（新規）, `harness-mem-ui/src/lib/api.ts`, `harness-mem-ui/src/lib/i18n.ts`
+  - 受入条件:
+    1. 4セクション（サーバー/言語/CLI/AI-MCP）が表示される
+    2. 各セクションに「これは何か」説明文を表示
+    3. ステータス `正常/注意/未検出` を統一表示
+    4. 5秒サマリーカードを先頭に表示（Recommended）
+
+- [x] `cc:完了` ENV-007 FAQ/用語ガイドの表示追加
+  - 変更予定: `harness-mem-ui/src/components/EnvironmentPanel.tsx`, `harness-mem-ui/src/lib/i18n.ts`
+  - 受入条件:
+    1. FAQ 6-8 問を表示
+    2. `CLI/MCP/ランタイム` の用語説明がある
+
+#### Phase ENV-3: テストとドキュメント（1日）
+
+- [x] `cc:完了 [feature:tdd] [feature:security]` ENV-008 API統合テスト追加
+  - 変更予定: `memory-server/tests/integration/environment-api.test.ts`（新規）
+  - 受入条件:
+    1. token 必須とマスク挙動を固定
+    2. 一部データ欠損時の劣化応答を固定
+
+- [x] `cc:完了 [feature:tdd] [feature:a11y]` ENV-009 UIテスト追加
+  - 変更予定: `harness-mem-ui/tests/ui/environment-panel.test.tsx`（新規）, `harness-mem-ui/tests/e2e/environment.spec.ts`（新規）
+  - 受入条件:
+    1. タブ切替・セクション表示・FAQ表示が通る
+    2. ステータス3値表示が崩れない
+
+- [x] `cc:完了` ENV-010 ドキュメント更新
+  - 変更予定: `README.md`, `README_ja.md`, `docs/harness-mem-setup.md`
+  - 受入条件:
+    1. 新タブの目的と見方を追記
+    2. 「非専門家向けの読み方」節を追加
+
+### 18.5 完了判定（DoD）
+
+1. `Environment` タブで 4 セクション + 5秒サマリー + FAQ が表示される
+2. サーバー稼働情報とツール情報が read-only で取得・表示できる
+3. 秘匿値マスクが API と UI の両方で担保される
+4. API/UI テストが追加され、回帰確認できる

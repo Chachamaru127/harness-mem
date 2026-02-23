@@ -109,7 +109,7 @@ test("renders simplified feed", async ({ page }) => {
 
   await expect(page.getByText("Harness Memory Viewer")).toBeVisible();
   await expect(page.getByText("Project memory feed")).toBeVisible();
-  await expect(page.getByText("Feed", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Feed" })).toBeVisible();
   await expect(page.getByText("PROMPT", { exact: true })).toBeVisible();
   await expect(page.locator(".platform-chip.claude")).toContainText("Claude Code");
   await expect(page.getByText("Initial prompt")).toBeVisible();
