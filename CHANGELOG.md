@@ -39,6 +39,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.22] - 2026-02-23
+
+### What changed for users
+
+- Mem UI design is now consistent across local repo runs and npm global installs.
+- `harness-mem setup` users now get the same parity UI bundle by default (no unexpected fallback to the legacy look).
+
+### Added
+
+- npm package now ships `harness-mem-ui/src/static-parity/*` parity bundle assets.
+
+### Changed
+
+- Removed `harness-mem-ui/src/static-parity` from UI local ignore rules so release artifacts are included in source and package outputs.
+- Rebuilt parity static assets from the current React UI build.
+
+### Fixed
+
+- Fixed distribution mismatch where npm installs served the legacy `src/static` UI while local dev served `src/static-parity`.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration is required.
+- Existing users can update with: `npm install -g @chachamaru127/harness-mem@latest`.
+
+### Verification
+
+- `bun run --cwd harness-mem-ui build:web`
+- `npm pack --dry-run`
+- Verify tarball contains `harness-mem-ui/src/static-parity/index.html` and `harness-mem-ui/src/static-parity/assets/*`
+
 ## [0.1.21] - 2026-02-23
 
 ### What changed for users

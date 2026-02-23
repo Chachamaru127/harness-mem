@@ -5,6 +5,19 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.22] - 2026-02-23
+
+### ユーザー向け要約
+
+- npm グローバル導入時にも `static-parity`（新UI）を同梱し、ローカル実行と配布版で UI デザインが一致するよう修正。
+- `harness-mem setup` 後に環境ごとで見た目が変わる問題（新UI vs 旧UI）を解消。
+
+### 補足
+
+- `harness-mem-ui/.gitignore` から `src/static-parity` の除外を削除し、配布物に確実に入るよう調整。
+- `bun run --cwd harness-mem-ui build:web` で parity アセットを再生成。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.21] - 2026-02-23
 
 ### ユーザー向け要約
