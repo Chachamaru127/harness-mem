@@ -39,6 +39,42 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.27] - 2026-02-24
+
+### What changed for users
+
+- Release automation is now resilient when a release tag is pushed shortly before the release branch merge reaches `main`.
+
+### Added
+
+- None.
+
+### Changed
+
+- `Release` workflow now retries main-containment verification for up to 15 minutes (`15s` interval).
+- Main-containment verification now uses a non-shallow `git fetch origin main` to avoid shallow-history false negatives.
+
+### Fixed
+
+- Fixed repeated `publish-npm` failures at `Verify tag commit is on main` that could occur with merge commits under `--depth=1` fetch.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- Confirmed recurring failure signature in previous release runs (`v0.1.25`, `v0.1.26`) at `Verify tag commit is on main`.
+- Merged workflow fix in PR `#18` and released this patch version to apply the corrected guard in future releases.
+
 ## [0.1.26] - 2026-02-23
 
 ### What changed for users
