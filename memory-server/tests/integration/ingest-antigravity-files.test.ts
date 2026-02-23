@@ -10,6 +10,7 @@ function createRuntime(name: string): {
   dir: string;
   workspaceRoot: string;
   project: string;
+  normalizedProject: string;
   baseUrl: string;
   stop: () => void;
 } {
@@ -17,6 +18,7 @@ function createRuntime(name: string): {
   const workspaceRoot = join(dir, "antigravity-project");
   mkdirSync(workspaceRoot, { recursive: true });
   const project = realpathSync(workspaceRoot);
+  const normalizedProject = realpathSync(dir);
 
   const port = 39900 + Math.floor(Math.random() * 1000);
   const config: Config = {
@@ -49,6 +51,7 @@ function createRuntime(name: string): {
     dir,
     workspaceRoot,
     project,
+    normalizedProject,
     baseUrl: `http://127.0.0.1:${port}`,
     stop: () => {
       core.shutdown("test");
@@ -61,7 +64,7 @@ function createRuntime(name: string): {
 describe("antigravity files ingest integration", () => {
   test("ingests checkpoints/codex-responses with delta and backfill control", async () => {
     const runtime = createRuntime("files");
-    const { baseUrl, workspaceRoot, project } = runtime;
+    const { baseUrl, workspaceRoot, project, normalizedProject } = runtime;
 
     try {
       const checkpointsDir = join(workspaceRoot, "docs", "checkpoints");
@@ -108,7 +111,7 @@ describe("antigravity files ingest integration", () => {
       expect(feed.ok).toBe(true);
       expect(feed.items.length).toBe(2);
       expect(feed.items.every((item) => item.platform === "antigravity")).toBe(true);
-      expect(feed.items.every((item) => item.project === project)).toBe(true);
+      expect(feed.items.every((item) => item.project === normalizedProject)).toBe(true);
 
       appendFileSync(designResponsePath, "\n\n## Refined\nHandle edge cases.", "utf8");
       const now = new Date();

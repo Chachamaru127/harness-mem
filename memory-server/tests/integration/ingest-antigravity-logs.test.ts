@@ -14,6 +14,7 @@ function createRuntime(name: string): {
   dir: string;
   workspaceRoot: string;
   project: string;
+  normalizedProject: string;
   baseUrl: string;
   stop: () => void;
 } {
@@ -21,6 +22,7 @@ function createRuntime(name: string): {
   const workspaceRoot = join(dir, "harness-mem");
   mkdirSync(workspaceRoot, { recursive: true });
   const project = realpathSync(workspaceRoot);
+  const normalizedProject = realpathSync(dir);
 
   const logsRoot = join(dir, "Library", "Application Support", "Antigravity", "logs");
   const storageRoot = join(dir, "Library", "Application Support", "Antigravity", "User", "workspaceStorage");
@@ -83,6 +85,7 @@ function createRuntime(name: string): {
     dir,
     workspaceRoot,
     project,
+    normalizedProject,
     baseUrl: `http://127.0.0.1:${port}`,
     stop: () => {
       core.shutdown("test");
@@ -95,7 +98,7 @@ function createRuntime(name: string): {
 describe("antigravity logs ingest integration", () => {
   test("ingests planner activity logs as antigravity checkpoint events", async () => {
     const runtime = createRuntime("planner");
-    const { baseUrl, project } = runtime;
+    const { baseUrl, project, normalizedProject } = runtime;
 
     try {
       const ingestRes = await fetch(`${baseUrl}/v1/ingest/antigravity-history`, { method: "POST" });
@@ -125,7 +128,7 @@ describe("antigravity logs ingest integration", () => {
       expect(feed.items.length).toBe(1);
       expect(feed.items[0]?.platform).toBe("antigravity");
       expect(feed.items[0]?.event_type).toBe("checkpoint");
-      expect(feed.items[0]?.project).toBe(project);
+      expect(feed.items[0]?.project).toBe(normalizedProject);
       expect(feed.items[0]?.title).toBe("Antigravity planner activity");
       expect(feed.items[0]?.content.includes("prompt body unavailable")).toBe(true);
 
