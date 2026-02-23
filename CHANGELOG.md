@@ -39,6 +39,44 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.20] - 2026-02-23
+
+### What changed for users
+
+- `harness-mem doctor --fix` and setup now recover automatically when the npm package is missing `mcp-server/dist/index.js`.
+- setup post-check no longer reports false failures when daemon doctor warns but `/health` is still reachable.
+
+### Added
+
+- Contract test: `tests/mcp-runtime-bootstrap-contract.test.ts` to keep MCP runtime bootstrap behavior stable.
+
+### Changed
+
+- `ensure_mcp_runtime` now bootstraps MCP runtime locally (`npm install --include=dev` + `npm run build`) when `mcp-server/dist/index.js` is absent.
+- setup repair hint for MCP runtime now points to the full rebuild command.
+
+### Fixed
+
+- Prevented hard failure pattern on global installs: `MCP dist entry missing: .../mcp-server/dist/index.js`.
+- Reduced false `doctor_post_check` failures caused by stale daemon PID warnings.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration is required.
+
+### Verification
+
+- `bun test tests/mcp-runtime-bootstrap-contract.test.ts`
+- `npm pack --dry-run`
+
 ## [0.1.19] - 2026-02-22
 
 ### What changed for users
