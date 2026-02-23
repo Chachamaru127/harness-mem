@@ -2132,8 +2132,13 @@ doctor_impl() {
       _doctor_record "daemon" "ok" ""
     else
       warn "Daemon doctor reported warnings"
-      _doctor_record "daemon" "unhealthy" "harness-memd start"
-      failed=1
+      if curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+        warn "Daemon health endpoint is reachable; treating daemon doctor result as warning only"
+        _doctor_record "daemon" "ok:reachable_with_warnings" "harness-memd cleanup-stale"
+      else
+        _doctor_record "daemon" "unhealthy" "harness-memd start"
+        failed=1
+      fi
     fi
   fi
 
@@ -2471,12 +2476,18 @@ setup_impl() {
      HARNESS_MEM_PORT="$MEM_PORT" \
      HARNESS_MEM_DB_PATH="$DB_PATH" \
      "$HARNESS_ROOT/scripts/harness-mem" doctor --json --skip-version-check --platform "$PLATFORM" > "$doctor_artifact" 2>/dev/null; then
-    if grep -q '"all_green"\s*:\s*true' "$doctor_artifact" 2>/dev/null; then
+    if jq -e '.all_green == true' "$doctor_artifact" >/dev/null 2>&1; then
       _setup_record "doctor_post_check" "ok" ""
       log "Doctor artifact saved: $doctor_artifact"
     else
       _setup_record "doctor_post_check" "failed" "harness-mem doctor --fix"
-      log "Doctor post-check: not all green (artifact: $doctor_artifact)"
+      local failed_checks
+      failed_checks="$(jq -r '.checks[]? | select(.status != "ok" and (.status | startswith("ok:") | not)) | .name' "$doctor_artifact" 2>/dev/null | paste -sd ',' -)"
+      if [ -n "$failed_checks" ]; then
+        log "Doctor post-check: not all green (checks: ${failed_checks}, artifact: $doctor_artifact)"
+      else
+        log "Doctor post-check: not all green (artifact: $doctor_artifact)"
+      fi
     fi
   else
     _setup_record "doctor_post_check" "failed" "harness-mem doctor --fix"
