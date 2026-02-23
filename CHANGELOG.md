@@ -39,6 +39,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.24] - 2026-02-23
+
+### What changed for users
+
+- Documentation is now cleaner and easier to follow for first-time setup and upgrades.
+- English docs are now consistently the default entrypoint, with Japanese content clearly separated.
+
+### Added
+
+- README section for explicit upgrade command (`npm install -g @chachamaru127/harness-mem@latest`).
+
+### Changed
+
+- Reorganized `README.md` into a user-facing structure (quick start, core commands, supported tools, troubleshooting).
+- Reorganized `README_ja.md` to mirror the same structure in Japanese.
+- Rewrote `docs/harness-mem-setup.md` as a clean English operational guide and removed mixed-language/internal planning noise.
+
+### Fixed
+
+- Removed stale/confusing documentation fragments that mixed internal workflow notes with end-user setup instructions.
+
+### Removed
+
+- Removed internal Phase/KPI spec notes from `docs/harness-mem-setup.md` user documentation surface.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No runtime migration required.
+- Existing users can update with: `npm install -g @chachamaru127/harness-mem@latest`.
+
+### Verification
+
+- Manual doc review: `README.md`, `README_ja.md`, `docs/harness-mem-setup.md`
+- `npm pack --dry-run`
+
 ## [0.1.23] - 2026-02-23
 
 ### What changed for users

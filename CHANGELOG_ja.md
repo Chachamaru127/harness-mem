@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.24] - 2026-02-23
+
+### ユーザー向け要約
+
+- README / セットアップガイドを利用者向けに再整理し、初回導入とアップデート手順を分かりやすく統一。
+- 英語をデフォルト導線に固定し、日本語ページを分離した構成を明確化。
+
+### 補足
+
+- `README.md` を Quick Start / Core Commands / Troubleshooting 中心に再構成。
+- `README_ja.md` も同じ構造に揃えて更新。
+- `docs/harness-mem-setup.md` から混在言語・内部計画メモを除去し、運用手順ガイドとして再整理。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.23] - 2026-02-23
 
 ### ユーザー向け要約

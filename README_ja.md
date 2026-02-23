@@ -10,7 +10,7 @@
   <a href="README.md">English</a> | 日本語
 </p>
 
-Harness-mem は、複数の開発ツール間でメモリ挙動を一貫させるためのローカル実行ランタイムです。
+Harness-mem は、複数ツール間でメモリ挙動を統一するためのローカル実行ランタイムです。
 
 ## クイックスタート
 
@@ -27,6 +27,12 @@ npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,cursor,claude
 ```
 
+### 既存インストールを更新
+
+```bash
+npm install -g @chachamaru127/harness-mem@latest
+```
+
 ### セットアップ確認
 
 ```bash
@@ -34,43 +40,32 @@ harness-mem doctor --platform codex,cursor,claude
 harness-mem doctor --fix --platform codex,cursor,claude
 ```
 
+### Mem UI を開く
+
 ```bash
-# Mem UI
-open http://127.0.0.1:37901
+open 'http://127.0.0.1:37901'
 ```
 
-## できること
+## 主なコマンド
 
-| 機能 | 説明 |
+| コマンド | 用途 |
 |---|---|
-| `setup` | Codex / OpenCode / Cursor / Claude の配線を自動セットアップ |
-| `doctor` | 設定・配線・稼働状態を検査し、`--fix` で修復 |
-| `versions` | 各ツールのローカル/上流バージョン差分を記録 |
-| `smoke` | プライバシーと検索品質の最小E2E確認 |
-| `import-claude-mem` ほか | Claude-mem からの安全移行 |
+| `setup` | ツール配線を自動設定し、daemon + Mem UI を起動 |
+| `doctor` | 配線/稼働状態を検査し、`--fix` で修復 |
+| `versions` | 各ツールの local / upstream バージョン差分を記録 |
+| `smoke` | プライバシーと検索品質の最小 E2E 検証 |
+| `uninstall` | 配線解除と必要時の DB 削除（`--purge-db`） |
+| `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Claude-mem からの安全移行 |
 
-## Plans 運用ルール
+## 対応ツール
 
-`Plans.md` は実装管理のSSOT（Single Source of Truth）です。
-
-- `cc:TODO`: 未着手
-- `cc:WIP`: 作業中
-- `cc:完了`: 実装完了
-- `blocked`: ブロック中
-
-基本フロー:
-
-1. `Phase` 順で実行する
-2. 着手時は `cc:TODO` -> `cc:WIP`
-3. 完了時は `cc:完了` に更新し、理由を1-3行記録
-4. ブロック時は原因/試行/次アクションを残す
-
-## ドキュメント
-
-- セットアップ詳細: `docs/harness-mem-setup.md`
-- 変更履歴（英語）: `CHANGELOG.md`
-- 変更履歴（日本語要約）: `CHANGELOG_ja.md`
-- 英語README（デフォルト）: `README.md`
+| ツール | 状態 | 補足 |
+|---|---|---|
+| Codex | Supported | 設定配線、取り込み、doctor チェック |
+| OpenCode | Supported | グローバル配線 + 設定修復 |
+| Cursor | Supported | グローバル hooks + MCP 配線 + doctor |
+| Claude workflows | Supported | `~/.claude.json` MCP 配線 + 移行/cutover |
+| Antigravity | Experimental | 既定では無効、明示有効化で利用 |
 
 ## トラブルシューティング
 
@@ -82,10 +77,16 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 
 ### `doctor` で依存不足が出る
 
-`bun`, `node`, `curl`, `jq`, `ripgrep` をインストール後に再実行:
+`bun`, `node`, `curl`, `jq`, `ripgrep` をインストールして再実行:
 
 ```bash
-harness-mem doctor
+harness-mem doctor --fix
+```
+
+### 完全リセットしたい
+
+```bash
+harness-mem uninstall --purge-db
 ```
 
 ### ワークスペースが `harness-mem` と絶対パスに分断される
@@ -93,6 +94,13 @@ harness-mem doctor
 ```bash
 harness-memd restart
 ```
+
+## ドキュメント
+
+- セットアップ詳細: `docs/harness-mem-setup.md`
+- 変更履歴（英語・正本）: `CHANGELOG.md`
+- 変更履歴（日本語要約）: `CHANGELOG_ja.md`
+- 英語 README（デフォルト）: `README.md`
 
 ## 公式マスコット
 
