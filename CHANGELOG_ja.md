@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.21] - 2026-02-23
+
+### ユーザー向け要約
+
+- `harness-mem setup` 実行後に Mem UI が起動しない回帰を修正し、再び `http://127.0.0.1:37901` が自動で利用可能に。
+- setup ログに `Mem UI started: ...` を追加し、起動確認がすぐ分かるよう改善。
+
+### 補足
+
+- `scripts/harness-memd` に UI ライフサイクル（`start_ui` / `stop_ui` / `doctor` UIチェック）を復元。
+- `HARNESS_MEM_ENABLE_UI=false` による明示無効化をサポート。
+- 回帰防止として `tests/harness-memd-ui-autostart-contract.test.ts` を追加。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.20] - 2026-02-23
 
 ### ユーザー向け要約

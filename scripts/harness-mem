@@ -2449,6 +2449,14 @@ setup_impl() {
     if start_daemon 2>/dev/null; then
       _setup_record "daemon_start" "ok" ""
       log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
+      local setup_ui_port setup_ui_health
+      setup_ui_port="${HARNESS_MEM_UI_PORT:-37901}"
+      setup_ui_health="http://${MEM_HOST}:${setup_ui_port}/api/health"
+      if curl --silent --show-error --fail --max-time 1 "$setup_ui_health" >/dev/null 2>&1; then
+        log "Mem UI started: http://${MEM_HOST}:${setup_ui_port}"
+      else
+        warn "Mem UI endpoint is not reachable: http://${MEM_HOST}:${setup_ui_port}"
+      fi
     else
       start_daemon || true
       _setup_record "daemon_start" "failed" "harness-memd start"

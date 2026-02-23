@@ -258,6 +258,7 @@ Options:
 - `HARNESS_MEM_HOST` (default: `127.0.0.1`)
 - `HARNESS_MEM_PORT` (default: `37888`)
 - `HARNESS_MEM_UI_PORT` (default: `37901`)
+- `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)
 - `HARNESS_MEM_LOG_ROTATE_KEEP` (default: `5`)
 

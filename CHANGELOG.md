@@ -39,6 +39,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.21] - 2026-02-23
+
+### What changed for users
+
+- Restored Mem UI auto-start during `harness-mem setup` so `http://127.0.0.1:37901` is available again after successful setup.
+- setup output now includes an explicit Mem UI startup line (`Mem UI started: ...`) for faster troubleshooting.
+
+### Added
+
+- Contract test: `tests/harness-memd-ui-autostart-contract.test.ts` to prevent future regressions where UI lifecycle wiring is accidentally removed.
+
+### Changed
+
+- `scripts/harness-memd` now reinstates full UI lifecycle management:
+  - auto-start UI on daemon start (`start_ui`)
+  - stop UI on daemon stop (`stop_ui`)
+  - include UI endpoint checks in `doctor`
+  - support explicit UI disable with `HARNESS_MEM_ENABLE_UI=false`
+- Setup guide now documents `HARNESS_MEM_ENABLE_UI` in runtime environment variables.
+
+### Fixed
+
+- Fixed regression in `0.1.20` where setup completed successfully but Mem UI process was not launched.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No manual migration is required.
+- If running headless intentionally, set `HARNESS_MEM_ENABLE_UI=false`.
+
+### Verification
+
+- `bun test tests/harness-memd-ui-autostart-contract.test.ts tests/mcp-runtime-bootstrap-contract.test.ts`
+- `bun test tests/harness-memd-guardrails.test.ts`
+- `HARNESS_MEM_PORT=<port> HARNESS_MEM_UI_PORT=<port> harness-mem setup --platform codex,cursor,claude --skip-smoke --skip-quality`
+
 ## [0.1.20] - 2026-02-23
 
 ### What changed for users
