@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, getConfig, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
@@ -220,6 +220,46 @@ describe("HarnessMemCore unit", () => {
 
       expect(hiddenProject?.observations).toBe(1);
       expect(visibleProject?.observations).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("project stats hide synthetic and hidden-directory projects", () => {
+    const core = new HarnessMemCore(createConfig("project-stats-noise"));
+    const hiddenRoot = mkdtempSync(join(tmpdir(), "harness-mem-hidden-project-"));
+    cleanupPaths.push(hiddenRoot);
+    const hiddenProject = join(hiddenRoot, ".codex");
+    mkdirSync(hiddenProject, { recursive: true });
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "stats-visible",
+          project: "visible-project",
+          payload: { content: "visible stats event" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "stats-shadow",
+          project: `/shadow-perf-${Date.now()}`,
+          payload: { content: "shadow stats event" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "stats-hidden-dir",
+          project: hiddenProject,
+          payload: { content: "hidden directory stats event" },
+        })
+      );
+
+      const stats = core.projectsStats({ include_private: true });
+      const projects = (stats.items as Array<{ project: string }>).map((item) => item.project);
+
+      expect(projects).toContain("visible-project");
+      expect(projects.some((project) => project.includes("shadow-"))).toBe(false);
+      expect(projects).not.toContain(hiddenProject);
     } finally {
       core.shutdown("test");
     }

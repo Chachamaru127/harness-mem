@@ -6,7 +6,7 @@
  */
 import { afterEach, describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync } from "node:fs";
+import { mkdtempSync, mkdirSync, symlinkSync, rmSync, realpathSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
@@ -148,6 +148,79 @@ describe("workspace boundary", () => {
       const itemSym = rViaSymlink.items[0] as { project: string };
       const itemReal = rViaReal.items[0] as { project: string };
       expect(itemSym.project).toBe(itemReal.project);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("nested directory inside git workspace is canonicalized to workspace root", () => {
+    const workspaceRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-git-root-"));
+    cleanupPaths.push(workspaceRoot);
+    mkdirSync(join(workspaceRoot, ".git"), { recursive: true });
+
+    const nestedWorkspaceDir = join(workspaceRoot, "apps", "api");
+    mkdirSync(nestedWorkspaceDir, { recursive: true });
+
+    const canonicalRoot = realpathSync(workspaceRoot);
+
+    const core = new HarnessMemCore(
+      createConfig("git-root-subdir", {
+        codexProjectRoot: workspaceRoot,
+        codexSessionsRoot: workspaceRoot,
+      })
+    );
+    try {
+      const result = core.recordEvent(
+        baseEvent({
+          event_id: "ev-git-root-subdir",
+          session_id: "sess-git-root-subdir",
+          project: nestedWorkspaceDir,
+          payload: { prompt: "git workspace root canonicalization test" },
+        })
+      );
+      expect(result.ok).toBe(true);
+      const inserted = result.items[0] as { project: string };
+      expect(inserted.project).toBe(canonicalRoot);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("linked worktree path is canonicalized to common git root", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-worktree-"));
+    cleanupPaths.push(fixtureRoot);
+
+    const mainRepoRoot = join(fixtureRoot, "main-repo");
+    mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature"), { recursive: true });
+    const canonicalMainRoot = realpathSync(mainRepoRoot);
+
+    const worktreeRoot = join(fixtureRoot, "feature-worktree");
+    const worktreeNested = join(worktreeRoot, "src");
+    mkdirSync(worktreeNested, { recursive: true });
+    writeFileSync(
+      join(worktreeRoot, ".git"),
+      `gitdir: ${join(mainRepoRoot, ".git", "worktrees", "feature")}\n`,
+      "utf8"
+    );
+
+    const core = new HarnessMemCore(
+      createConfig("git-worktree-common-root", {
+        codexProjectRoot: mainRepoRoot,
+        codexSessionsRoot: worktreeRoot,
+      })
+    );
+    try {
+      const result = core.recordEvent(
+        baseEvent({
+          event_id: "ev-worktree-root",
+          session_id: "sess-worktree-root",
+          project: worktreeNested,
+          payload: { prompt: "worktree canonicalization test" },
+        })
+      );
+      expect(result.ok).toBe(true);
+      const inserted = result.items[0] as { project: string };
+      expect(inserted.project).toBe(canonicalMainRoot);
     } finally {
       core.shutdown("test");
     }
