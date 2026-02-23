@@ -39,6 +39,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.28] - 2026-02-24
+
+### What changed for users
+
+- Release publishing is no longer blocked by false-negative test failures in the memory-server quality gate.
+- Claude feed visibility in the UI is more reliable when platform labels or project aliases vary.
+
+### Added
+
+- Added UI regression tests for Claude feed platform filtering and live-feed alias project matching.
+
+### Changed
+
+- Medium search-latency benchmark now uses a CI-aware budget (`1500ms` on CI, `500ms` locally) with reduced synthetic corpus load.
+- Antigravity ingest integration tests now assert against the normalized project key behavior.
+
+### Fixed
+
+- Fixed `managed-mode-wiring` test path resolution so it works when CI runs from `memory-server/`.
+- Fixed feed filtering to match `claude-*` platform labels when `platformFilter=claude`.
+- Fixed live feed prepend drops caused by strict string mismatch between selected project and normalized alias project paths.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- None.
+
+### Verification
+
+- `cd memory-server && bun test && bun run typecheck`
+- `cd harness-mem-ui && bun run test:ui && bun run typecheck`
+
 ## [0.1.27] - 2026-02-24
 
 ### What changed for users
