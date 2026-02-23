@@ -39,6 +39,41 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.30] - 2026-02-24
+
+### What changed for users
+
+- System/tool envelope prompts are no longer shown as normal user prompts in Feed cards.
+
+### Added
+
+- Added a UI unit test that verifies system-envelope `user_prompt` cards are categorized as `other`.
+
+### Changed
+
+- Feed categorization now checks known system-envelope prefixes (e.g. `# AGENTS.md instructions`, `<environment_context>`) before classifying `user_prompt` cards as `prompt`.
+
+### Fixed
+
+- Fixed noisy prompt labeling where setup/instruction envelopes were misclassified as user prompts.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- `bun run --cwd harness-mem-ui test:ui tests/ui/feed-panel.test.tsx`
+- `bun run --cwd harness-mem-ui typecheck`
+
 ## [0.1.29] - 2026-02-24
 
 ### What changed for users
