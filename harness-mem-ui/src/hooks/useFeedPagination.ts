@@ -10,6 +10,46 @@ interface FeedOptions {
   limit: number;
 }
 
+function normalizeProjectKey(value: string | undefined): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+}
+
+function projectMatchesSelection(selectedProject: string, itemProject: string | undefined): boolean {
+  if (selectedProject === "__all__") {
+    return true;
+  }
+  if (!itemProject) {
+    return false;
+  }
+  const selected = normalizeProjectKey(selectedProject);
+  const item = normalizeProjectKey(itemProject);
+  if (!selected || !item) {
+    return false;
+  }
+  return item === selected || item.startsWith(`${selected}/`) || selected.startsWith(`${item}/`);
+}
+
+function normalizePlatform(value: string | undefined): string {
+  return (value || "").trim().toLowerCase();
+}
+
+function platformMatchesFilter(platform: string | undefined, filter: FeedOptions["platformFilter"]): boolean {
+  const normalized = normalizePlatform(platform);
+  if (normalized.includes("antigravity")) {
+    return false;
+  }
+  if (filter === "__all__") {
+    return true;
+  }
+  if (!normalized) {
+    return false;
+  }
+  return normalized === filter || normalized.startsWith(`${filter}-`) || normalized.includes(filter);
+}
+
 export function useFeedPagination(options: FeedOptions) {
   const { project, platformFilter, includePrivate, limit } = options;
   const [items, setItems] = useState<FeedItem[]>([]);
@@ -22,14 +62,7 @@ export function useFeedPagination(options: FeedOptions) {
 
   const shouldIncludeByPlatform = useCallback(
     (item: FeedItem): boolean => {
-      const platform = (item.platform || "").toLowerCase();
-      if (platform.includes("antigravity")) {
-        return false;
-      }
-      if (platformFilter === "__all__") {
-        return true;
-      }
-      return item.platform === platformFilter;
+      return platformMatchesFilter(item.platform, platformFilter);
     },
     [platformFilter]
   );
@@ -83,7 +116,7 @@ export function useFeedPagination(options: FeedOptions) {
       if (!item.id) {
         return;
       }
-      if (project !== "__all__" && item.project && item.project !== project) {
+      if (!projectMatchesSelection(project, item.project)) {
         return;
       }
       if (!shouldIncludeByPlatform(item)) {
