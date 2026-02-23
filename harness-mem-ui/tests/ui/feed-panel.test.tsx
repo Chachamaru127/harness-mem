@@ -366,4 +366,46 @@ describe("FeedPanel", () => {
     expect(container.querySelectorAll(".feed-card.expanded").length).toBe(0);
     expect(container.querySelectorAll(".feed-inline-detail").length).toBe(0);
   });
+
+  test("classifies system envelope user_prompt cards as other", () => {
+    const { container } = render(
+      <FeedPanel
+        items={[
+          {
+            id: "sys-1",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "sys-session",
+            event_type: "user_prompt",
+            title: "# AGENTS.md instructions for /tmp/project",
+            content: "# AGENTS.md instructions for /tmp/project\n\n<INSTRUCTIONS>",
+            created_at: "2026-02-16T04:20:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+          {
+            id: "sys-2",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "sys-session",
+            event_type: "user_prompt",
+            title: "<environment_context>",
+            content: "<environment_context>\n  <cwd>/tmp</cwd>\n</environment_context>",
+            created_at: "2026-02-16T04:19:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+        ]}
+        compact={false}
+        language="en"
+        loading={false}
+        error=""
+        hasMore={false}
+        onLoadMore={() => undefined}
+      />
+    );
+
+    expect(container.querySelectorAll(".feed-card.feed-kind-other").length).toBe(2);
+    expect(container.querySelectorAll(".feed-card.feed-kind-prompt").length).toBe(0);
+  });
 });

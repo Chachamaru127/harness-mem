@@ -38,6 +38,17 @@ const KEYWORDS = {
   sessionSummary: ["session summary", "summary", "finalize", "完了要約", "セッション要約", "サマリー"],
 };
 
+const SYSTEM_PROMPT_PREFIXES = [
+  "# agents.md instructions",
+  "<environment_context>",
+  "<turn_aborted>",
+  "<user_action>",
+  "# context from my ide setup:",
+  "## memory writing agent:",
+  "<instructions>",
+  "<skill>",
+];
+
 function formatTimestamp(value: string | undefined, language: UiLanguage): string {
   if (!value) return "-";
   const date = new Date(value);
@@ -61,6 +72,19 @@ function includesAnyKeyword(text: string, keywords: string[]): boolean {
   return false;
 }
 
+function isSystemEnvelopePrompt(item: FeedItem): boolean {
+  const merged = `${normalizeText(item.title)}\n${normalizeText(item.content)}`.trim();
+  if (!merged) {
+    return false;
+  }
+  for (const prefix of SYSTEM_PROMPT_PREFIXES) {
+    if (merged.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function inferCategory(item: FeedItem): FeedCategoryId {
   const eventType = normalizeText(item.event_type || item.card_type);
   const title = normalizeText(item.title);
@@ -76,6 +100,9 @@ function inferCategory(item: FeedItem): FeedCategoryId {
     return "tool_use";
   }
   if (eventType.includes("user_prompt")) {
+    if (isSystemEnvelopePrompt(item)) {
+      return "other";
+    }
     return "prompt";
   }
   if (includesAnyKeyword(text, KEYWORDS.bugfix)) {
