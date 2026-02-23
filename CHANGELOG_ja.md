@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.27] - 2026-02-24
+
+### ユーザー向け要約
+
+- タグ push と main 反映タイミングのズレで `publish-npm` が誤検知で失敗する問題を修正。
+- リリース時の main 含有チェックを待機リトライ化し、浅い fetch 起因の偽陰性を回避。
+
+### 補足
+
+- `Release` ワークフローの `Verify tag commit is on main` を改善（最大15分待機、15秒間隔）。
+- `git fetch origin main --depth=1` を廃止し、非 shallow fetch で祖先判定を実施。
+- 過去の失敗パターン（`v0.1.25`, `v0.1.26`）の再発防止が目的。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.26] - 2026-02-23
 
 ### ユーザー向け要約
