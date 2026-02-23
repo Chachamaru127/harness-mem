@@ -5,6 +5,18 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.30] - 2026-02-24
+
+### ユーザー向け要約
+
+- Feed で、`# AGENTS.md instructions` や `<environment_context>` などのシステム包み込み入力を通常のユーザープロンプトとして表示しないよう修正。
+
+### 補足
+
+- `user_prompt` 判定の前にシステム包み込みプレフィックスを判定し、該当カードは `other` として分類。
+- 回帰防止として `harness-mem-ui/tests/ui/feed-panel.test.tsx` に専用テストを追加。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.29] - 2026-02-24
 
 ### ユーザー向け要約
