@@ -39,6 +39,43 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.32] - 2026-02-24
+
+### What changed for users
+
+- `harness-mem update` now asks the auto-update opt-in question only when auto-update is currently disabled.
+
+### Added
+
+- None.
+
+### Changed
+
+- Update-time prompt gate now checks existing `auto_update.enabled` state before asking.
+- Documentation wording for `harness-mem update` now matches the gated prompt behavior.
+
+### Fixed
+
+- Fixed repeated opt-in prompts for users who had already enabled auto-update.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+- For users with auto-update already enabled, `harness-mem update` proceeds without asking the opt-in question.
+
+### Verification
+
+- `bash -n scripts/harness-mem`
+- `bun test tests/update-command-contract.test.ts`
+
 ## [0.1.31] - 2026-02-24
 
 ### What changed for users

@@ -5,6 +5,18 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.32] - 2026-02-24
+
+### ユーザー向け要約
+
+- `harness-mem update` の確認ダイアログを改善し、自動更新が無効なユーザーにだけ opt-in 質問を表示するよう修正。
+
+### 補足
+
+- 自動更新がすでに有効なユーザーは、`harness-mem update` 実行時に毎回質問されずそのまま更新処理へ進む。
+- README / README_ja / setup guide の説明文を実装仕様に合わせて更新。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.31] - 2026-02-24
 
 ### ユーザー向け要約
