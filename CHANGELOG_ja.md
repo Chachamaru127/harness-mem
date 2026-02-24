@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.31] - 2026-02-24
+
+### ユーザー向け要約
+
+- 既存ユーザー向けに `harness-mem update` コマンドを追加。
+- 更新時に「自動更新（opt-in）を有効化するか」を対話で確認できるよう改善。
+
+### 補足
+
+- `harness-mem update` は、オプトイン確認後にグローバル更新を実行。
+- 選択結果は `~/.harness-mem/config.json` の `auto_update.enabled` に保存。
+- README / README_ja / setup guide の更新手順を `harness-mem update` ベースに統一。
+- 従来の手動更新 `npm install -g @chachamaru127/harness-mem@latest` も引き続き利用可能。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.30] - 2026-02-24
 
 ### ユーザー向け要約

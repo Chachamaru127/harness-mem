@@ -39,6 +39,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.31] - 2026-02-24
+
+### What changed for users
+
+- Existing users can now run `harness-mem update` to update and set auto-update opt-in in one flow.
+
+### Added
+
+- Added new CLI command: `harness-mem update`.
+- Added update-command contract test: `tests/update-command-contract.test.ts`.
+
+### Changed
+
+- Update guidance now defaults to `harness-mem update` in README and setup guide.
+- `update` command is excluded from background auto-update checks to avoid nested self-update behavior.
+
+### Fixed
+
+- Fixed the gap where update-time auto-update opt-in prompt was unavailable unless users re-ran interactive setup.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required.
+- Existing users can keep using manual update (`npm install -g @chachamaru127/harness-mem@latest`) if preferred.
+
+### Verification
+
+- `bash -n scripts/harness-mem`
+- `bun test tests/update-command-contract.test.ts`
+- Interactive check: `bash scripts/harness-mem update` (prompt appears)
+
 ## [0.1.30] - 2026-02-24
 
 ### What changed for users
