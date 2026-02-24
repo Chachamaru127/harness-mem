@@ -37,10 +37,11 @@ harness-mem setup --platform codex,cursor,claude
 ### Update existing install
 
 ```bash
-npm install -g @chachamaru127/harness-mem@latest
+harness-mem update
 ```
 
-When running interactive `harness-mem setup` (without `--platform`), you can opt in to automatic updates with a prompt: "Enable opt-in automatic updates for harness-mem?".
+`harness-mem update` prompts for auto-update opt-in: "Enable opt-in automatic updates for harness-mem?", then updates the global package.
+You can still update manually with `npm install -g @chachamaru127/harness-mem@latest`.
 
 ### Verify setup
 
@@ -73,6 +74,7 @@ The tab is read-only in V1 and masks sensitive values before rendering.
 | `setup` | Configure tool wiring and start daemon + Mem UI |
 | `doctor` | Validate wiring/health and optionally repair with `--fix` |
 | `versions` | Snapshot local vs upstream tool versions |
+| `update` | Update global package and prompt auto-update opt-in |
 | `smoke` | Run isolated privacy/search sanity checks |
 | `uninstall` | Remove wiring and optional local DB (`--purge-db`) |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Safe migration from Claude-mem |

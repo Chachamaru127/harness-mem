@@ -21,6 +21,12 @@ harness-mem setup
 ### update existing install
 
 ```bash
+harness-mem update
+```
+
+`harness-mem update` asks whether to enable auto-update opt-in, then runs:
+
+```bash
 npm install -g @chachamaru127/harness-mem@latest
 ```
 
@@ -95,6 +101,19 @@ Options:
 - `--skip-version-check`
 - `--project <path>`
 - `--quiet`
+
+### `update`
+
+Update the global package and set auto-update opt-in interactively.
+
+```bash
+harness-mem update
+```
+
+Notes:
+
+- On interactive TTY, it prompts: `Enable opt-in automatic updates for harness-mem?` (`y/N`).
+- The selected value is stored in `~/.harness-mem/config.json` (`auto_update.enabled`).
 
 ### `versions`
 
