@@ -7,6 +7,7 @@
 #   scripts/harness-mem smoke [--project <path>]
 #   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--purge-db]
 #   scripts/harness-mem versions [--project <path>]
+#   scripts/harness-mem update
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
@@ -37,6 +38,7 @@ SETUP_INTERACTIVE_PROMPT_USED=0
 SETUP_IMPORT_CLAUDE_MEM=0
 SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
 SETUP_AUTO_UPDATE_OPT_IN=-1
+UPDATE_AUTO_UPDATE_OPT_IN=-1
 FIX_MODE=0
 JSON_OUTPUT=0
 PURGE_DB=0
@@ -76,6 +78,7 @@ Commands:
   setup      Configure Codex/OpenCode/Cursor/Claude wiring, start daemon, run smoke and quality checks.
   doctor     Validate wiring and daemon health (optionally repair with --fix).
   versions   Snapshot local/upstream versions for Codex/OpenCode/Cursor/Claude/Antigravity.
+  update     Update global harness-mem package and prompt auto-update opt-in (interactive).
   smoke      Run isolated daemon smoke test against record/search privacy flow.
   uninstall  Remove memory wiring and optionally purge local memory DB.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
@@ -116,6 +119,8 @@ Command options:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
   versions:
     no additional options
+  update:
+    (interactive tty)  Prompt auto-update opt-in (yes/no), then run npm install -g @chachamaru127/harness-mem@latest
 EOF
 }
 
@@ -561,6 +566,20 @@ should_prompt_setup_auto_update_selection() {
   return 0
 }
 
+should_prompt_update_auto_update_selection() {
+  local command="$1"
+  if [ "$command" != "update" ]; then
+    return 1
+  fi
+  if [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
+    return 1
+  fi
+  if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_UPDATE_PROMPT:-0}" = "1" ]; then
+    return 0
+  fi
+  return 1
+}
+
 prompt_setup_auto_update_selection() {
   local auto_update_question
   if ui_is_en; then
@@ -575,6 +594,21 @@ prompt_setup_auto_update_selection() {
   else
     SETUP_AUTO_UPDATE_OPT_IN=0
     log "Auto-update opt-in: disabled"
+  fi
+}
+
+prompt_update_auto_update_selection() {
+  local auto_update_question
+  if ui_is_en; then
+    auto_update_question="Enable opt-in automatic updates for harness-mem?"
+  else
+    auto_update_question="harness-mem の自動更新（opt-in）を有効化しますか?"
+  fi
+
+  if prompt_yes_no_default_no "$auto_update_question"; then
+    UPDATE_AUTO_UPDATE_OPT_IN=1
+  else
+    UPDATE_AUTO_UPDATE_OPT_IN=0
   fi
 }
 
@@ -747,7 +781,7 @@ should_attempt_auto_update() {
   local command="$1"
 
   case "$command" in
-    help|-h|--help|uninstall|versions)
+    help|-h|--help|uninstall|versions|update)
       return 1
       ;;
   esac
@@ -3088,6 +3122,32 @@ rollback_impl() {
   esac
 }
 
+update_impl() {
+  ensure_config
+  require_cmd npm
+
+  local auto_update_enabled
+  if [ "$UPDATE_AUTO_UPDATE_OPT_IN" -eq 1 ]; then
+    write_auto_update_enabled 1
+    auto_update_enabled=1
+  elif [ "$UPDATE_AUTO_UPDATE_OPT_IN" -eq 0 ]; then
+    write_auto_update_enabled 0
+    auto_update_enabled=0
+  else
+    auto_update_enabled="$(read_auto_update_enabled)"
+  fi
+
+  if [ "$auto_update_enabled" -eq 1 ]; then
+    log "Auto-update opt-in: enabled"
+  else
+    log "Auto-update opt-in: disabled"
+  fi
+
+  log "Updating harness-mem: npm install -g ${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
+  npm install -g "${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
+  log "Update complete. Restart daemon/UI if running: harness-memd restart"
+}
+
 main() {
   local command="${1:-help}"
   shift || true
@@ -3104,6 +3164,9 @@ main() {
   fi
   if should_prompt_setup_auto_update_selection "$command"; then
     prompt_setup_auto_update_selection
+  fi
+  if should_prompt_update_auto_update_selection "$command"; then
+    prompt_update_auto_update_selection
   fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
@@ -3129,6 +3192,9 @@ main() {
       ;;
     versions)
       versions_impl
+      ;;
+    update)
+      update_impl
       ;;
     uninstall)
       uninstall_impl
