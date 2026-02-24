@@ -585,7 +585,6 @@ should_prompt_update_auto_update_selection() {
   fi
   return 1
 }
-
 prompt_setup_auto_update_selection() {
   local auto_update_question
   if ui_is_en; then
@@ -617,7 +616,6 @@ prompt_update_auto_update_selection() {
     UPDATE_AUTO_UPDATE_OPT_IN=0
   fi
 }
-
 is_platform_enabled() {
   local target="$1"
   local entry

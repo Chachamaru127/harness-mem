@@ -11,21 +11,33 @@ export class PostgresEventStore implements EventStore {
   constructor(private readonly adapter: PostgresStorageAdapter) {}
 
   async append(events: StoredEvent[]): Promise<{ inserted: number; deduplicated: number }> {
-    let inserted = 0;
-    let deduplicated = 0;
+    if (events.length === 0) return { inserted: 0, deduplicated: 0 };
 
+    // Batch-upsert unique sessions first to satisfy FK and avoid per-event overhead.
+    // Uses the earliest event timestamp as started_at for each session.
+    const sessionMap = new Map<string, StoredEvent>();
     for (const event of events) {
-      const count = await this.adapter.transactionAsync(async () => {
-        // Ensure session exists before inserting event (FK: mem_events.session_id → mem_sessions).
-        // started_at = first event's timestamp. ON CONFLICT DO NOTHING keeps the original.
+      if (!sessionMap.has(event.session_id)) {
+        sessionMap.set(event.session_id, event);
+      }
+    }
+
+    return this.adapter.transactionAsync(async () => {
+      // Upsert all unique sessions in one pass
+      for (const [, representative] of sessionMap) {
         await this.adapter.runAsync(
           `INSERT INTO mem_sessions (session_id, platform, project, workspace_uid, started_at, created_at, updated_at)
            VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
            ON CONFLICT (session_id) DO NOTHING`,
-          [event.session_id, event.platform, event.project, event.workspace_uid, event.ts]
+          [representative.session_id, representative.platform, representative.project, representative.workspace_uid, representative.ts]
         );
+      }
 
-        return this.adapter.runAsync(
+      // Insert events (FK is now guaranteed)
+      let inserted = 0;
+      let deduplicated = 0;
+      for (const event of events) {
+        const count = await this.adapter.runAsync(
           `INSERT INTO mem_events (
             event_id, platform, project, workspace_uid, session_id,
             event_type, ts, payload_json, tags_json, privacy_tags_json,
@@ -49,15 +61,14 @@ export class PostgresEventStore implements EventStore {
             event.created_at,
           ]
         );
-      });
-      if (count > 0) {
-        inserted++;
-      } else {
-        deduplicated++;
+        if (count > 0) {
+          inserted++;
+        } else {
+          deduplicated++;
+        }
       }
-    }
-
-    return { inserted, deduplicated };
+      return { inserted, deduplicated };
+    });
   }
 
   async read(filter: EventStoreFilter): Promise<StoredEvent[]> {

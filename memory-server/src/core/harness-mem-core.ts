@@ -10,7 +10,7 @@ import {
 } from "../db/schema";
 import type { StorageAdapter } from "../db/storage-adapter";
 import { SqliteStorageAdapter } from "../db/sqlite-adapter";
-import { createStorageAdapter, type AdapterFactoryResult } from "../db/adapter-factory";
+import { createStorageAdapter } from "../db/adapter-factory";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
@@ -4051,11 +4051,13 @@ export class HarnessMemCore {
     const dbPath = resolveHomePath(this.config.dbPath);
     const dbSize = existsSync(dbPath) ? statSync(dbPath).size : 0;
 
+    const managedDegraded = this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected());
+
     return makeResponse(
       startedAt,
       [
         {
-          status: "ok",
+          status: managedDegraded ? "degraded" : "ok",
           pid: process.pid,
           host: this.config.bindHost,
           port: this.config.bindPort,

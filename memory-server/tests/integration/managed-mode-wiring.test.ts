@@ -633,3 +633,81 @@ describe("Fix 4: shadow match threshold = 95%", () => {
     expect(result.phase).toBe("verified");
   });
 });
+
+// --- Risk mitigation: session upsert batch optimization ---
+
+describe("Risk 1: session upsert batch optimization", () => {
+  test("event-store batches session upserts before event inserts", () => {
+    const fs = require("node:fs");
+    const source = fs.readFileSync(
+      join(process.cwd(), "memory-server/src/projector/event-store.ts"),
+      "utf8"
+    );
+    // sessionMap collects unique sessions for batch upsert
+    expect(source).toContain("sessionMap");
+    // Wrapped in a single transaction
+    expect(source).toContain("transactionAsync");
+  });
+});
+
+// --- Risk mitigation: managed mode fail-close and health degraded ---
+
+describe("Risk 2: managed mode fail-close", () => {
+  test("recordEvent returns error when managed backend not connected", () => {
+    const config = createConfig({
+      backendMode: "managed",
+      managedEndpoint: "postgresql://test@localhost:5432/test",
+    });
+    const core = new HarnessMemCore(config);
+    try {
+      const result = core.recordEvent({
+        platform: "test",
+        project: "test-project",
+        session_id: "test-session",
+        event_type: "tool_use",
+        payload: JSON.stringify({ content: "test" }),
+      });
+      // ManagedBackend won't connect (no pg), so fail-close should trigger
+      expect(result.ok).toBe(false);
+      expect(result.error).toContain("managed backend");
+      expect(result.error).toContain("fail-close");
+      const filters = (result.meta as Record<string, unknown>).filters as Record<string, unknown>;
+      expect(filters.write_durability).toBe("blocked");
+    } finally {
+      cleanupCore(core, config);
+    }
+  });
+
+  test("health returns degraded status when managed backend not connected", () => {
+    const config = createConfig({
+      backendMode: "managed",
+      managedEndpoint: "postgresql://test@localhost:5432/test",
+    });
+    const core = new HarnessMemCore(config);
+    try {
+      const health = core.health();
+      const item = health.items[0] as Record<string, unknown>;
+      expect(item.status).toBe("degraded");
+    } finally {
+      cleanupCore(core, config);
+    }
+  });
+
+  test("local mode does NOT fail-close — writes succeed normally", () => {
+    const config = createConfig({ backendMode: "local" });
+    const core = new HarnessMemCore(config);
+    try {
+      const result = core.recordEvent({
+        platform: "test",
+        project: "test-project",
+        session_id: "test-session",
+        event_type: "tool_use",
+        payload: JSON.stringify({ content: "test" }),
+      });
+      expect(result.ok).toBe(true);
+      expect((result.meta as Record<string, unknown>).write_durability).toBe("local");
+    } finally {
+      cleanupCore(core, config);
+    }
+  });
+});
