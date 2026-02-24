@@ -33,7 +33,7 @@ harness-mem setup --platform codex,cursor,claude
 harness-mem update
 ```
 
-`harness-mem update` 実行時に「harness-mem の自動更新（opt-in）を有効化しますか?」の確認が表示され、選択後にグローバル更新を実行します。
+`harness-mem update` 実行時は、自動更新が無効な場合のみ「harness-mem の自動更新（opt-in）を有効化しますか?」の確認が表示され、選択後にグローバル更新を実行します。
 従来どおり `npm install -g @chachamaru127/harness-mem@latest` で手動更新も可能です。
 
 ### セットアップ確認
@@ -67,7 +67,7 @@ V1 は read-only（閲覧専用）で、機密値は表示前にマスクされ�
 | `setup` | ツール配線を自動設定し、daemon + Mem UI を起動 |
 | `doctor` | 配線/稼働状態を検査し、`--fix` で修復 |
 | `versions` | 各ツールの local / upstream バージョン差分を記録 |
-| `update` | グローバル更新を実行し、自動更新の opt-in を確認 |
+| `update` | グローバル更新を実行（自動更新が無効な場合のみ opt-in を確認） |
 | `smoke` | プライバシーと検索品質の最小 E2E 検証 |
 | `uninstall` | 配線解除と必要時の DB 削除（`--purge-db`） |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Claude-mem からの安全移行 |

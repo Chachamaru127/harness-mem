@@ -40,7 +40,7 @@ harness-mem setup --platform codex,cursor,claude
 harness-mem update
 ```
 
-`harness-mem update` prompts for auto-update opt-in: "Enable opt-in automatic updates for harness-mem?", then updates the global package.
+`harness-mem update` prompts for auto-update opt-in only when auto-update is currently disabled, then updates the global package.
 You can still update manually with `npm install -g @chachamaru127/harness-mem@latest`.
 
 ### Verify setup
@@ -74,7 +74,7 @@ The tab is read-only in V1 and masks sensitive values before rendering.
 | `setup` | Configure tool wiring and start daemon + Mem UI |
 | `doctor` | Validate wiring/health and optionally repair with `--fix` |
 | `versions` | Snapshot local vs upstream tool versions |
-| `update` | Update global package and prompt auto-update opt-in |
+| `update` | Update global package; prompt auto-update opt-in only if currently disabled |
 | `smoke` | Run isolated privacy/search sanity checks |
 | `uninstall` | Remove wiring and optional local DB (`--purge-db`) |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Safe migration from Claude-mem |

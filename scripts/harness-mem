@@ -574,7 +574,13 @@ should_prompt_update_auto_update_selection() {
   if [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
     return 1
   fi
-  if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_UPDATE_PROMPT:-0}" = "1" ]; then
+  if [ "${HARNESS_MEM_FORCE_UPDATE_PROMPT:-0}" = "1" ]; then
+    return 0
+  fi
+  if [ "$(read_auto_update_enabled)" -eq 1 ]; then
+    return 1
+  fi
+  if [ -t 0 ]; then
     return 0
   fi
   return 1
