@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.33] - 2026-02-25
+
+### ユーザー向け要約
+
+- managed モードで PostgreSQL 未接続時に書き込みを fail-close でブロックするよう改善。SQLite のみでのサイレント動作を防止。
+
+### 補足
+
+- `recordEvent` レスポンスに `write_durability` フィールドを追加（`"managed"` / `"local"` / `"blocked"`）。
+- health エンドポイントが managed 未接続時に `"degraded"` ステータスを返すよう改善。
+- promote gate で `HARNESS_MEM_ADMIN_TOKEN` 設定時に認証ヘッダを送信。
+- event-store のセッション upsert をバッチ化し、FK 違反を防止。
+- shadow read の一致閾値を 70% → 95% に統一し、promotion SLA と整合。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.32] - 2026-02-24
 
 ### ユーザー向け要約

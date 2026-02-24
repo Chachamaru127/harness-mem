@@ -39,6 +39,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.33] - 2026-02-25
+
+### What changed for users
+
+- Managed mode now enforces fail-close: writes are blocked when PostgreSQL backend is unreachable, preventing silent fallback to local-only storage.
+
+### Added
+
+- **Managed mode write durability indicator**: `recordEvent` response now includes `write_durability` field (`"managed"`, `"local"`, or `"blocked"`).
+- **Health degraded status**: health endpoint reports `"degraded"` when managed backend is required but not connected.
+- **Admin token in promote gate**: `_check_shadow_metrics_gate` sends `x-harness-mem-token` header when `HARNESS_MEM_ADMIN_TOKEN` is set.
+
+### Fixed
+
+- **Managed hidden fallback**: adapter-factory returns `managedRequired` flag; core throws when managed mode lacks endpoint instead of silently using SQLite only.
+- **Session FK violation in replication**: event-store now batch-upserts sessions in a single transaction before inserting events, preventing FK constraint failures.
+- **Shadow match threshold mismatch**: aligned shadow read match threshold from 70% to 95%, matching promotion SLA gate criteria.
+
 ## [0.1.32] - 2026-02-24
 
 ### What changed for users
