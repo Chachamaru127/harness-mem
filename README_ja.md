@@ -12,6 +12,29 @@
 
 Harness-mem は、複数ツール間でメモリ挙動を統一するためのローカル実行ランタイムです。
 
+## なぜ harness-mem？
+
+Claude 組み込みメモリは Claude の中でしか使えません。[claude-mem](https://github.com/thedotmack/claude-mem) は永続化を追加しますが Claude Code 専用です。[Mem0](https://github.com/mem0ai/mem0) はクロスアプリ対応ですがクラウド基盤と API 統合が必要です。
+
+**harness-mem のアプローチ**: ローカルデーモン1つ、SQLite 1ファイル、6プラットフォーム対応 — クラウド不要、Python不要、APIキー不要。
+
+| | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
+|---|:---:|:---:|:---:|:---:|
+| **対応ツール** | Claude, Codex, Cursor, OpenCode, Gemini CLI, Antigravity | Claude のみ | Claude のみ | API経由でカスタム統合 |
+| **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
+| **クロスツール記憶共有** | 自動 — Claude で学習、Codex で想起 | 不可 | 不可 | アプリごとに手動接続 |
+| **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
+| **検索方式** | ハイブリッド（lexical + vector + recency + tag + graph） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
+| **外部依存** | Node.js + Bun | なし | Node.js + Python + uv + Chroma | Python + APIキー |
+| **移行パス** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
+| **ワークスペース分離** | 厳格（symlink 解決済みパス） | グローバル | basename のみ | ユーザー / エージェント単位 |
+
+### つまり、こういうことです
+
+- **複数の AI ツールを使っている** → Claude / Codex / Cursor / OpenCode / Gemini で記憶を共有できるのは harness-mem だけです。
+- **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。LLM 強化はオプション。
+- **今 claude-mem を使っている** → 1コマンドで移行でき、ロールバックも可能。データ損失もダウンタイムもありません。
+
 ## クイックスタート
 
 ### A) npx で実行（グローバルインストール不要）

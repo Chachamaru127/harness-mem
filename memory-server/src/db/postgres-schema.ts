@@ -156,6 +156,9 @@ export const POSTGRES_INIT_SQL = `
     fact_value TEXT NOT NULL,
     confidence DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     merged_into_fact_id TEXT REFERENCES mem_facts(fact_id) ON DELETE SET NULL,
+    superseded_by TEXT REFERENCES mem_facts(fact_id) ON DELETE SET NULL,
+    valid_from TIMESTAMPTZ,
+    valid_to TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -166,6 +169,10 @@ export const POSTGRES_INIT_SQL = `
     ON mem_facts(workspace_uid);
   CREATE INDEX IF NOT EXISTS idx_pg_facts_merged_into
     ON mem_facts(merged_into_fact_id);
+  CREATE INDEX IF NOT EXISTS idx_pg_facts_superseded_by
+    ON mem_facts(superseded_by);
+  CREATE INDEX IF NOT EXISTS idx_pg_facts_valid_to
+    ON mem_facts(valid_to);
 
   CREATE TABLE IF NOT EXISTS mem_audit_log (
     id SERIAL PRIMARY KEY,

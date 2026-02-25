@@ -3,6 +3,7 @@ import {
   HarnessMemCore,
   type ImportJobStatusRequest,
   type ApiResponse,
+  type BackupRequest,
   type Config,
   type ConsolidationRunRequest,
   type EventEnvelope,
@@ -235,7 +236,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           limit: parseIntegerLike(body.limit),
         };
-        return jsonResponse(core.runConsolidation(req));
+        return jsonResponse(await core.runConsolidation(req));
       }
 
       if (request.method === "GET" && url.pathname === "/v1/admin/consolidation/status") {
@@ -289,7 +290,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       if (request.method === "POST" && url.pathname === "/v1/events/record") {
         const body = await parseRequestJson(request);
         const event = toRecord(body.event) as unknown as EventEnvelope;
-        return jsonResponse(core.recordEvent(event));
+        const result = await core.recordEventQueued(event);
+        if (result === "queue_full") {
+          return new Response(
+            JSON.stringify({ ok: false, error: "write queue full, retry later" }),
+            {
+              status: 503,
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                "retry-after": "1",
+              },
+            }
+          );
+        }
+        return jsonResponse(result);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/search") {
@@ -646,6 +660,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
       ) {
         return jsonResponse(core.ingestGeminiHistory());
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/admin/backup") {
+        const body = await parseRequestJson(request);
+        const req: BackupRequest = {
+          dest_dir: typeof body.dest_dir === "string" ? body.dest_dir : undefined,
+        };
+        return jsonResponse(core.backup(req.dest_dir ? { destDir: req.dest_dir } : undefined));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {

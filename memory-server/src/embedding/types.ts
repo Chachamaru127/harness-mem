@@ -1,4 +1,4 @@
-export type EmbeddingProviderName = "fallback" | "openai" | "ollama";
+export type EmbeddingProviderName = "fallback" | "openai" | "ollama" | "local";
 
 export interface EmbeddingHealth {
   status: "healthy" | "degraded";
@@ -20,6 +20,8 @@ export interface EmbeddingRegistryOptions {
   openaiEmbedModel?: string;
   ollamaBaseUrl?: string;
   ollamaEmbedModel?: string;
+  localModelId?: string;
+  localModelsDir?: string;
 }
 
 export interface EmbeddingRegistryResult {

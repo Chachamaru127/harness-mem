@@ -38,7 +38,7 @@ import {
   type RerankInputItem,
   type RerankOutputItem,
 } from "../rerank/types";
-import { buildTokenEstimateMeta } from "../utils/token-estimate";
+import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import {
   enqueueConsolidationJob,
   runConsolidationOnce,
@@ -164,6 +164,10 @@ export interface AuditLogRequest {
   target_type?: string;
 }
 
+export interface BackupRequest {
+  dest_dir?: string;
+}
+
 export interface StreamEvent {
   id: number;
   type: "observation.created" | "session.finalized" | "health.changed";
@@ -184,6 +188,7 @@ export interface ResumePackRequest {
   correlation_id?: string;
   limit?: number;
   include_private?: boolean;
+  resume_pack_max_tokens?: number;
 }
 
 export interface GetObservationsRequest {
@@ -284,6 +289,7 @@ export interface Config {
   backendMode?: "local" | "managed" | "hybrid";
   managedEndpoint?: string;
   managedApiKey?: string;
+  resumePackMaxTokens?: number;
 }
 
 const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
@@ -725,6 +731,7 @@ interface ExtractedEntity {
 interface VectorSearchResult {
   scores: Map<string, number>;
   coverage: number;
+  migrationWarning?: string;
 }
 
 interface RankingWeights {
@@ -1330,6 +1337,10 @@ export class HarnessMemCore {
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
+  /** Application-level write serialization queue */
+  private writeQueue: Promise<void> = Promise.resolve();
+  private writeQueuePending = 0;
+  private readonly writeQueueLimit = 100;
   private streamEventCounter = 0;
   private streamEvents: StreamEvent[] = [];
   private readonly streamEventRetention = 600;
@@ -1995,8 +2006,13 @@ export class HarnessMemCore {
     }
 
     if (this.isConsolidationEnabled()) {
+      let consolidationRunning = false;
       this.consolidationTimer = setInterval(() => {
-        this.runConsolidation({ reason: "scheduler", limit: 10 });
+        if (consolidationRunning) return;
+        consolidationRunning = true;
+        void this.runConsolidation({ reason: "scheduler", limit: 10 }).finally(() => {
+          consolidationRunning = false;
+        });
       }, this.getConsolidationIntervalMs());
     }
 
@@ -2559,6 +2575,47 @@ export class HarnessMemCore {
     }
   }
 
+  /**
+   * Enqueue a write operation for application-level serialization.
+   * All SQLite writes are funneled through this queue to prevent
+   * concurrent write conflicts between HTTP handlers and background workers.
+   */
+  private enqueueWrite<T>(fn: () => T): Promise<T> {
+    this.writeQueuePending += 1;
+    let resolve!: (value: T) => void;
+    let reject!: (reason: unknown) => void;
+    const resultPromise = new Promise<T>((res, rej) => {
+      resolve = res;
+      reject = rej;
+    });
+
+    this.writeQueue = this.writeQueue.then(() => {
+      this.writeQueuePending -= 1;
+      try {
+        resolve(fn());
+      } catch (err) {
+        reject(err);
+      }
+    });
+
+    return resultPromise;
+  }
+
+  /**
+   * Queue-backed variant of recordEvent for use in HTTP handlers.
+   * Returns "queue_full" when the pending queue exceeds the limit,
+   * so callers can respond with 503 + Retry-After.
+   */
+  async recordEventQueued(
+    event: EventEnvelope,
+    options: { allowQueue: boolean } = { allowQueue: true }
+  ): Promise<ApiResponse | "queue_full"> {
+    if (this.writeQueuePending >= this.writeQueueLimit) {
+      return "queue_full";
+    }
+    return this.enqueueWrite(() => this.recordEvent(event, options));
+  }
+
   private visibilityFilterSql(alias: string, includePrivate: boolean): string {
     if (includePrivate) {
       return "";
@@ -2779,53 +2836,64 @@ export class HarnessMemCore {
           raw.set(row.id, 1 / (1 + Math.max(0, distance)));
         }
         const normalized = normalizeScoreMap(raw);
+        const migrationWarning = this.getMigrationProgress(this.vectorModelVersion) ?? undefined;
         return {
           scores: normalized,
           coverage: rows.length === 0 ? 0 : normalized.size / rows.length,
+          migrationWarning,
         };
       } catch {
         this.vecTableReady = false;
       }
     }
 
-    const params: unknown[] = [this.vectorModelVersion, this.config.vectorDimension];
-    let sql = `
-      SELECT
-        v.observation_id AS id,
-        v.vector_json AS vector_json,
-        o.created_at AS created_at
-      FROM mem_vectors v
-      JOIN mem_observations o ON o.id = v.observation_id
-      WHERE v.model = ? AND v.dimension = ?
-    `;
-
-    sql = this.applyCommonFilters(sql, params, "o", request);
-    sql += " ORDER BY o.created_at DESC LIMIT ?";
+    // JS brute-force path with migration fallback support
     const strictProjectWindow =
       request.project && request.strict_project !== false
         ? Math.min(1500, Math.max(600, internalLimit * 12))
         : Math.min(2000, Math.max(800, internalLimit * 20));
-    params.push(strictProjectWindow);
 
-    const rows = this.db.query(sql).all(...(params as any[])) as Array<{ id: string; vector_json: string; created_at: string }>;
-    const scored: Array<{ id: string; score: number }> = [];
+    const runBruteForce = (model: string): Array<{ id: string; score: number }> => {
+      const p: unknown[] = [model, this.config.vectorDimension];
+      let q = `
+        SELECT
+          v.observation_id AS id,
+          v.vector_json AS vector_json,
+          o.created_at AS created_at
+        FROM mem_vectors v
+        JOIN mem_observations o ON o.id = v.observation_id
+        WHERE v.model = ? AND v.dimension = ?
+      `;
+      q = this.applyCommonFilters(q, p, "o", request);
+      q += " ORDER BY o.created_at DESC LIMIT ?";
+      p.push(strictProjectWindow);
 
-    for (const row of rows) {
-      let vector: number[];
-      try {
-        const parsed = JSON.parse(row.vector_json);
-        if (!Array.isArray(parsed)) {
+      const bfRows = this.db.query(q).all(...(p as any[])) as Array<{ id: string; vector_json: string; created_at: string }>;
+      const bfScored: Array<{ id: string; score: number }> = [];
+      for (const row of bfRows) {
+        let vector: number[];
+        try {
+          const parsed = JSON.parse(row.vector_json);
+          if (!Array.isArray(parsed)) {
+            continue;
+          }
+          vector = parsed.filter((value): value is number => typeof value === "number");
+        } catch {
           continue;
         }
-        vector = parsed.filter((value): value is number => typeof value === "number");
-      } catch {
-        continue;
+        const cosine = cosineSimilarity(queryVector, vector);
+        bfScored.push({ id: row.id, score: (cosine + 1) / 2 });
       }
+      return bfScored;
+    };
 
-      const cosine = cosineSimilarity(queryVector, vector);
-      const score = (cosine + 1) / 2;
-      scored.push({ id: row.id, score });
-    }
+    const scored = runBruteForce(this.vectorModelVersion);
+
+    // Emit a migration warning when vectors are in a mixed-model state.
+    // We do NOT score candidates from the legacy model to avoid cross-model
+    // cosine similarity distortion. When coverage is low (<0.2), the ranking
+    // layer zeros out vector weight and lexical search handles retrieval.
+    const migrationWarning: string | undefined = this.getMigrationProgress(this.vectorModelVersion) ?? undefined;
 
     scored.sort((lhs, rhs) => rhs.score - lhs.score);
     const sliced = scored.slice(0, internalLimit);
@@ -2839,7 +2907,53 @@ export class HarnessMemCore {
     return {
       scores: normalized,
       coverage: scored.length === 0 ? 0 : normalized.size / scored.length,
+      migrationWarning,
     };
+  }
+
+  /**
+   * Returns the model name with the most vectors that differs from currentModel,
+   * or null if no other models exist. Used for migration fallback during provider switch.
+   */
+  private resolveFallbackVectorModel(currentModel: string): string | null {
+    const row = this.db
+      .query(
+        `SELECT model, COUNT(*) AS cnt
+         FROM mem_vectors
+         WHERE model != ?
+         GROUP BY model
+         ORDER BY cnt DESC
+         LIMIT 1`
+      )
+      .get(currentModel) as { model: string; cnt: number } | null;
+    return row?.model ?? null;
+  }
+
+  /**
+   * Returns migration progress as a human-readable string when vectors are mixed
+   * (i.e. some vectors use a different model than the current one),
+   * or null when all vectors already belong to the current model.
+   */
+  private getMigrationProgress(currentModel: string): string | null {
+    const totals = this.db
+      .query(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_count
+         FROM mem_vectors`
+      )
+      .get(currentModel) as { total: number; current_count: number } | null;
+
+    if (!totals || totals.total === 0) {
+      return null;
+    }
+    const total = Number(totals.total);
+    const current = Number(totals.current_count);
+    if (current >= total) {
+      return null;
+    }
+    const pct = Math.round((current / total) * 100);
+    return `vector_migration: ${current}/${total} vectors reindexed (${pct}%)`;
   }
 
   private recencyScore(createdAt: string): number {
@@ -2850,7 +2964,9 @@ export class HarnessMemCore {
 
     const ageMs = Math.max(0, Date.now() - created);
     const ageHours = ageMs / (1000 * 60 * 60);
-    const halfLifeHours = 24 * 7;
+    const envDays = Number(process.env.HARNESS_MEM_RECENCY_HALF_LIFE_DAYS);
+    const halfLifeDays = Number.isFinite(envDays) && envDays > 0 ? envDays : 14;
+    const halfLifeHours = 24 * halfLifeDays;
     return Math.exp(-ageHours / halfLifeHours);
   }
 
@@ -3119,7 +3235,7 @@ export class HarnessMemCore {
       const recency = this.recencyScore(createdAt);
       const tagBoost = this.tagMatchScore(observation.tags_json, queryTokens);
       const eventType = typeof observation.event_type === "string" ? observation.event_type : "";
-      const importance = EVENT_TYPE_IMPORTANCE[eventType] ?? 0.5;
+      const baseImportance = EVENT_TYPE_IMPORTANCE[eventType] ?? 0.5;
       const graphScore = graph.get(id) ?? 0;
 
       ranked.push({
@@ -3128,12 +3244,40 @@ export class HarnessMemCore {
         vector: vectorScore,
         recency,
         tag_boost: tagBoost,
-        importance,
+        importance: baseImportance,
         graph: graphScore,
         final: 0,
         rerank: 0,
         created_at: createdAt,
       });
+    }
+
+    // アクセス頻度による importance 加点（mem_audit_log の search_hit を一括集計）
+    if (ranked.length > 0) {
+      const ids = ranked.map((r) => r.id);
+      const placeholders = ids.map(() => "?").join(",");
+      try {
+        const hitCounts = this.db
+          .query(
+            `SELECT target_id, COUNT(*) AS cnt
+             FROM mem_audit_log
+             WHERE action = 'search_hit' AND target_type = 'observation' AND target_id IN (${placeholders})
+             GROUP BY target_id`
+          )
+          .all(...ids) as Array<{ target_id: string; cnt: number }>;
+        const hitMap = new Map<string, number>();
+        for (const row of hitCounts) {
+          hitMap.set(row.target_id, Number(row.cnt));
+        }
+        for (const item of ranked) {
+          const cnt = hitMap.get(item.id) ?? 0;
+          // access_count >= 10 → +0.2, >= 5 → +0.1（上限 +0.2）
+          const boost = cnt >= 10 ? 0.2 : cnt >= 5 ? 0.1 : 0;
+          item.importance = Math.min(1.0, item.importance + boost);
+        }
+      } catch {
+        // best effort: アクセス頻度加点に失敗しても検索は継続
+      }
     }
 
     const vectorCoverage = ranked.length === 0 ? 0 : vectorCandidateCount / ranked.length;
@@ -3175,7 +3319,7 @@ export class HarnessMemCore {
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
 
-      return {
+      const item: Record<string, unknown> = {
         id: entry.id,
         event_id: observation.event_id,
         platform: observation.platform,
@@ -3200,6 +3344,21 @@ export class HarnessMemCore {
           rerank: Number((entry.rerank || entry.final).toFixed(6)),
         },
       };
+
+      if (request.debug) {
+        const total = entry.final;
+        item.recall_trace = {
+          lexical: Number((weights.lexical * entry.lexical).toFixed(6)),
+          vector: Number((weights.vector * entry.vector).toFixed(6)),
+          recency: Number((weights.recency * entry.recency).toFixed(6)),
+          tag_boost: Number((weights.tag_boost * entry.tag_boost).toFixed(6)),
+          importance: Number((weights.importance * entry.importance).toFixed(6)),
+          graph: Number((weights.graph * entry.graph).toFixed(6)),
+          total: Number(total.toFixed(6)),
+        };
+      }
+
+      return item;
     });
 
     const meta: Record<string, unknown> = {
@@ -3222,6 +3381,11 @@ export class HarnessMemCore {
       },
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };
+    // Append migration warning when vectors are in a mixed-model state
+    if (vectorResult.migrationWarning) {
+      const existingWarnings = Array.isArray(meta.warnings) ? (meta.warnings as string[]) : [];
+      meta.warnings = [...existingWarnings, vectorResult.migrationWarning];
+    }
     meta.token_estimate = buildTokenEstimateMeta({
       input: {
         query: request.query,
@@ -3277,13 +3441,23 @@ export class HarnessMemCore {
           project: normalizedProject,
         });
       }
+      // 返却した observation ごとに search_hit を記録（アクセス頻度集計用）
+      for (const item of items) {
+        const itemId = item.id as string;
+        if (itemId) {
+          this.writeAuditLog("search_hit", "observation", itemId, {
+            query: request.query,
+            project: normalizedProject,
+          });
+        }
+      }
     } catch {
       // best effort
     }
 
     // Shadow-read: compare results with managed backend (fire-and-forget)
     if (this.managedBackend) {
-      const resultIds = items.map((item) => item.id);
+      const resultIds = items.map((item) => item.id as string);
       this.managedBackend.shadowRead(request.query, resultIds, {
         project: normalizedProject,
         limit,
@@ -3296,7 +3470,7 @@ export class HarnessMemCore {
     const compiled = compileAnswer({
       question_kind: routeDecision.kind,
       observations: items.map((item) => ({
-        id: item.id,
+        id: item.id as string,
         platform: item.platform as string,
         project: item.project as string,
         title: item.title as string | null,
@@ -3304,7 +3478,7 @@ export class HarnessMemCore {
         created_at: item.created_at as string,
         tags_json: JSON.stringify(item.tags),
         session_id: item.session_id as string,
-        final_score: item.scores.final,
+        final_score: (item.scores as { final: number }).final,
       })),
       privacy_excluded_count: privacyExcludedCount,
     });
@@ -3987,6 +4161,21 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const visibility = this.visibilityFilterSql("o", includePrivate);
 
+    // max_tokens: request > config > env > default (4000)
+    const maxTokens: number = (() => {
+      if (typeof request.resume_pack_max_tokens === "number" && request.resume_pack_max_tokens > 0) {
+        return request.resume_pack_max_tokens;
+      }
+      if (typeof this.config.resumePackMaxTokens === "number" && this.config.resumePackMaxTokens > 0) {
+        return this.config.resumePackMaxTokens;
+      }
+      const envRaw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
+      if (Number.isFinite(envRaw) && envRaw > 0) {
+        return envRaw;
+      }
+      return 4000;
+    })();
+
     // correlation_id 指定時: 同じ相関IDを持つ全セッションから文脈を取得
     const useCorrelationId = Boolean(request.correlation_id);
 
@@ -4022,9 +4211,11 @@ export class HarnessMemCore {
               o.content_redacted,
               o.tags_json,
               o.privacy_tags_json,
-              o.created_at
+              o.created_at,
+              e.event_type
             FROM mem_observations o
             JOIN mem_sessions s ON o.session_id = s.session_id
+            LEFT JOIN mem_events e ON o.event_id = e.event_id
             WHERE o.project = ?
               AND s.correlation_id = ?
               ${request.session_id ? "AND o.session_id <> ?" : ""}
@@ -4048,8 +4239,10 @@ export class HarnessMemCore {
               o.content_redacted,
               o.tags_json,
               o.privacy_tags_json,
-              o.created_at
+              o.created_at,
+              e.event_type
             FROM mem_observations o
+            LEFT JOIN mem_events e ON o.event_id = e.event_id
             WHERE o.project = ?
             ${request.session_id ? "AND o.session_id <> ?" : ""}
             ${visibility}
@@ -4059,6 +4252,72 @@ export class HarnessMemCore {
         )
         .all(...(request.session_id ? [normalizedProject, request.session_id, limit] : [normalizedProject, limit])) as Array<Record<string, unknown>>;
     }
+
+    // Progressive Compaction: importance × recency でランク付け
+    interface RankedRow {
+      row: Record<string, unknown>;
+      score: number;
+    }
+    const rankedRows: RankedRow[] = rows.map((row) => {
+      const eventType = typeof row.event_type === "string" ? row.event_type : "";
+      const importance = typeof EVENT_TYPE_IMPORTANCE[eventType] === "number" ? EVENT_TYPE_IMPORTANCE[eventType] : 0.5;
+      const recency = this.recencyScore(typeof row.created_at === "string" ? row.created_at : "");
+      return { row, score: importance * recency };
+    });
+    rankedRows.sort((a, b) => b.score - a.score);
+
+    // トークン予算を計算（session_summary が存在すればそのトークン数を差し引く）
+    const summaryTokens = latestSummary ? estimateTokenCount(latestSummary.summary ?? "") : 0;
+    const observationBudget = Math.max(0, maxTokens - summaryTokens);
+
+    // 上位から詳細出力、予算を超えたら 1行サマリに圧縮
+    const detailedItems: Array<Record<string, unknown>> = [];
+    const compactItems: Array<Record<string, unknown>> = [];
+    let usedTokens = 0;
+    let originalTokens = 0;
+
+    for (const { row } of rankedRows) {
+      const content = typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 800) : "";
+      const fullItem = {
+        id: row.id,
+        type: "observation",
+        event_id: row.event_id,
+        platform: row.platform,
+        project: row.project,
+        session_id: row.session_id,
+        title: row.title,
+        content,
+        created_at: row.created_at,
+        tags: parseArrayJson(row.tags_json),
+        privacy_tags: parseArrayJson(row.privacy_tags_json),
+      };
+      const fullTokens = estimateTokenCount(JSON.stringify(fullItem));
+      originalTokens += fullTokens;
+
+      if (usedTokens + fullTokens <= observationBudget) {
+        detailedItems.push(fullItem);
+        usedTokens += fullTokens;
+      } else {
+        // 1行サマリに圧縮: "- {title} ({date})"
+        const title = typeof row.title === "string" && row.title.length > 0 ? row.title : typeof row.id === "string" ? row.id : "observation";
+        const date = typeof row.created_at === "string" ? row.created_at.slice(0, 10) : "";
+        const summaryLine = `- ${title} (${date})`;
+        compactItems.push({
+          id: row.id,
+          type: "observation_summary",
+          title,
+          created_at: row.created_at,
+          summary: summaryLine,
+        });
+        usedTokens += estimateTokenCount(summaryLine);
+      }
+    }
+
+    const compressedTokens = summaryTokens + usedTokens;
+    const totalOriginalTokens = summaryTokens + originalTokens;
+    const compaction_ratio = totalOriginalTokens > 0
+      ? Math.max(0, 1 - compressedTokens / totalOriginalTokens)
+      : 0;
 
     const items: Array<Record<string, unknown>> = [];
 
@@ -4072,25 +4331,105 @@ export class HarnessMemCore {
       });
     }
 
-    for (const row of rows) {
-      items.push({
-        id: row.id,
-        type: "observation",
-        event_id: row.event_id,
-        platform: row.platform,
-        project: row.project,
-        session_id: row.session_id,
-        title: row.title,
-        content: typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 800) : "",
-        created_at: row.created_at,
-        tags: parseArrayJson(row.tags_json),
-        privacy_tags: parseArrayJson(row.privacy_tags_json),
-      });
+    for (const item of detailedItems) {
+      items.push(item);
+    }
+    for (const item of compactItems) {
+      items.push(item);
+    }
+
+    // static_section: 有効なファクト（変化しにくいプロジェクト知識）をまとめてキャッシュ可能な形式で提供
+    const activeFacts = this.db
+      .query(
+        `
+          SELECT fact_type, fact_key, fact_value, confidence
+          FROM mem_facts
+          WHERE project = ?
+            AND merged_into_fact_id IS NULL
+            AND superseded_by IS NULL
+          ORDER BY fact_type ASC, fact_key ASC, created_at ASC
+        `
+      )
+      .all(normalizedProject) as Array<{
+        fact_type: string;
+        fact_key: string;
+        fact_value: string;
+        confidence: number;
+      }>;
+
+    interface StaticSection {
+      content: string;
+      content_hash: string;
+      cache_hint: "stable";
+      fact_count: number;
+    }
+
+    interface DynamicSection {
+      content: string;
+      cache_hint: "volatile";
+      observation_count: number;
+    }
+
+    let static_section: StaticSection | undefined;
+    let dynamic_section: DynamicSection | undefined;
+
+    if (activeFacts.length > 0) {
+      // ファクトを決定論的な順序でテキスト化（同じファクトセット → 同じテキスト）
+      const factLines = activeFacts.map(
+        (f) => `[${f.fact_type}] ${f.fact_key}: ${f.fact_value} (confidence=${f.confidence.toFixed(2)})`
+      );
+      const staticContent = `# Project Facts\n\n${factLines.join("\n")}`;
+      const contentHash = createHash("sha256").update(staticContent, "utf8").digest("hex");
+      static_section = {
+        content: staticContent,
+        content_hash: contentHash,
+        cache_hint: "stable",
+        fact_count: activeFacts.length,
+      };
+    }
+
+    // dynamic_section: Progressive Compaction 済みの直近観測（セッションごとに変化する）
+    const dynamicLines: string[] = [];
+    if (latestSummary) {
+      dynamicLines.push(`## Session Summary (${latestSummary.session_id})\n${latestSummary.summary}`);
+    }
+    if (detailedItems.length > 0) {
+      dynamicLines.push(
+        "## Recent Observations\n" +
+          detailedItems
+            .map((item) => {
+              const title = typeof item.title === "string" ? item.title : String(item.id);
+              const content = typeof item.content === "string" ? item.content.slice(0, 200) : "";
+              const date = typeof item.created_at === "string" ? item.created_at.slice(0, 10) : "";
+              return `### ${title} (${date})\n${content}`;
+            })
+            .join("\n\n")
+      );
+    }
+    if (compactItems.length > 0) {
+      dynamicLines.push(
+        "## Compacted Observations\n" +
+          compactItems.map((item) => (typeof item.summary === "string" ? item.summary : String(item.id))).join("\n")
+      );
+    }
+
+    if (dynamicLines.length > 0) {
+      dynamic_section = {
+        content: dynamicLines.join("\n\n"),
+        cache_hint: "volatile",
+        observation_count: detailedItems.length + compactItems.length,
+      };
     }
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
       correlation_id: request.correlation_id ?? null,
+      compaction_ratio: Math.round(compaction_ratio * 1000) / 1000,
+      resume_pack_max_tokens: maxTokens,
+      detailed_count: detailedItems.length,
+      compacted_count: compactItems.length,
+      ...(static_section !== undefined ? { static_section } : {}),
+      ...(dynamic_section !== undefined ? { dynamic_section } : {}),
     });
   }
 
@@ -4222,6 +4561,7 @@ export class HarnessMemCore {
           COUNT(*) AS facts_total,
           SUM(CASE WHEN merged_into_fact_id IS NULL THEN 0 ELSE 1 END) AS facts_merged
         FROM mem_facts
+        WHERE valid_to IS NULL
       `)
       .get() as { facts_total?: number; facts_merged?: number } | null;
 
@@ -4315,7 +4655,7 @@ export class HarnessMemCore {
     enqueueConsolidationJob(this.db, project, sessionId, reason);
   }
 
-  runConsolidation(request: ConsolidationRunRequest = {}): ApiResponse {
+  async runConsolidation(request: ConsolidationRunRequest = {}): Promise<ApiResponse> {
     const startedAt = performance.now();
     if (!this.isConsolidationEnabled()) {
       return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
@@ -4330,7 +4670,7 @@ export class HarnessMemCore {
       limit: request.limit,
     };
 
-    const stats: ConsolidationRunStats = runConsolidationOnce(this.db, options);
+    const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options);
     try {
       this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
         ...stats,
@@ -4379,6 +4719,7 @@ export class HarnessMemCore {
           COUNT(*) AS facts_total,
           SUM(CASE WHEN merged_into_fact_id IS NULL THEN 0 ELSE 1 END) AS facts_merged
         FROM mem_facts
+        WHERE valid_to IS NULL
       `)
       .get() as { facts_total?: number; facts_merged?: number } | null;
 
@@ -4824,21 +5165,91 @@ export class HarnessMemCore {
     );
   }
 
+  backup(options?: { destDir?: string }): ApiResponse {
+    if (!this.db) {
+      throw new Error("Backup is only supported in local (SQLite) mode");
+    }
+    const startedAt = performance.now();
+    const resolvedDbPath = resolveHomePath(this.config.dbPath);
+    const defaultDestDir = dirname(resolvedDbPath);
+    const destDir = options?.destDir ? resolveHomePath(options.destDir) : defaultDestDir;
+
+    ensureDir(destDir);
+
+    // ISO timestamp: 2026-02-26T12-34-56-789Z (colons replaced for filesystem compat)
+    const ts = new Date().toISOString().replace(/:/g, "-").replace(/\./g, "-");
+    const filename = `harness-mem-backup-${ts}.db`;
+    const destPath = join(destDir, filename);
+
+    try {
+      this.db.exec(`VACUUM INTO '${destPath.replace(/'/g, "''")}'`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return makeErrorResponse(startedAt, `backup failed: ${message}`, {});
+    }
+
+    let size = 0;
+    try {
+      size = statSync(destPath).size;
+    } catch {
+      // best effort
+    }
+
+    this.writeAuditLog("admin.backup", "backup", destPath, { size_bytes: size });
+
+    return makeResponse(
+      startedAt,
+      [{ path: destPath, size_bytes: size }],
+      {},
+      { backup_path: destPath, size_bytes: size }
+    );
+  }
+
   reindexVectors(limitInput?: number): ApiResponse {
     const startedAt = performance.now();
     if (this.vectorEngine === "disabled") {
       return makeResponse(startedAt, [], {}, { reindexed: 0, skipped: "vector_disabled" });
     }
 
-    const limit = clampLimit(limitInput, 5000, 1, 1000000);
-    const rows = this.db
+    const limit = clampLimit(limitInput, 100, 1, 1000000);
+
+    // Prioritize observations whose vectors are on a legacy model (not the current one).
+    // This enables incremental, no-downtime migration: each call processes a batch of
+    // stale vectors first, then falls back to all observations if none are stale.
+    // Searches continue to serve results from the legacy model during migration.
+    const legacyRows = this.db
       .query(`
-        SELECT id, content_redacted, created_at
-        FROM mem_observations
-        ORDER BY created_at DESC
+        SELECT o.id, o.content_redacted, o.created_at
+        FROM mem_observations o
+        JOIN mem_vectors v ON v.observation_id = o.id
+        WHERE v.model != ?
+        ORDER BY o.created_at DESC
         LIMIT ?
       `)
-      .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
+      .all(this.vectorModelVersion, limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
+
+    const rows: Array<{ id: string; content_redacted: string; created_at: string }> = legacyRows.length > 0
+      ? legacyRows
+      : (this.db
+          .query(`
+            SELECT id, content_redacted, created_at
+            FROM mem_observations
+            ORDER BY created_at DESC
+            LIMIT ?
+          `)
+          .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>);
+
+    // Count total legacy vectors before reindexing for progress reporting
+    const beforeCounts = this.db
+      .query(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_count
+         FROM mem_vectors`
+      )
+      .get(this.vectorModelVersion) as { total: number; current_count: number } | null;
+    const totalBefore = Number(beforeCounts?.total ?? 0);
+    const currentBefore = Number(beforeCounts?.current_count ?? 0);
 
     let reindexed = 0;
     for (const row of rows) {
@@ -4846,19 +5257,29 @@ export class HarnessMemCore {
       reindexed += 1;
     }
 
+    const currentAfter = currentBefore + reindexed;
+    const remaining = Math.max(0, totalBefore - currentAfter);
+    const pct = totalBefore === 0 ? 100 : Math.round((currentAfter / totalBefore) * 100);
+
     return makeResponse(
       startedAt,
       [
         {
           reindexed,
           limit,
+          total_vectors: totalBefore,
+          current_model_vectors: currentAfter,
+          legacy_vectors_remaining: remaining,
+          progress_pct: pct,
         },
       ],
       { limit },
       {
         vector_engine: this.vectorEngine,
         embedding_provider: this.embeddingProvider.name,
+        embedding_provider_model: this.vectorModelVersion,
         embedding_provider_status: this.embeddingHealth.status,
+        migration_complete: remaining === 0,
       }
     );
   }
@@ -6244,6 +6665,10 @@ export function getConfig(): Config {
     backendMode: parseBackendMode(process.env.HARNESS_MEM_BACKEND_MODE),
     managedEndpoint: (process.env.HARNESS_MEM_MANAGED_ENDPOINT || "").trim() || undefined,
     managedApiKey: (process.env.HARNESS_MEM_MANAGED_API_KEY || "").trim() || undefined,
+    resumePackMaxTokens: (() => {
+      const raw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
+      return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+    })(),
   };
 }
 

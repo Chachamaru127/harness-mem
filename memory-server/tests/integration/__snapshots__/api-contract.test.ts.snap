@@ -171,8 +171,16 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       },
     ],
     "meta": {
+      "compacted_count": "number",
+      "compaction_ratio": "number",
       "correlation_id": "null",
       "count": "number",
+      "detailed_count": "number",
+      "dynamic_section": {
+        "cache_hint": "string",
+        "content": "string",
+        "observation_count": "number",
+      },
       "filters": {
         "include_private": "boolean",
         "limit": "number",
@@ -182,6 +190,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "include_summary": "boolean",
       "latency_ms": "number",
       "ranking": "string",
+      "resume_pack_max_tokens": "number",
       "sla_latency_ms": "number",
     },
     "ok": "boolean",

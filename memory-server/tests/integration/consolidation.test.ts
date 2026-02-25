@@ -48,7 +48,7 @@ describe("consolidation worker integration", () => {
     }
   });
 
-  test("extracts facts and dedupes similar facts on consolidation run", () => {
+  test("extracts facts and dedupes similar facts on consolidation run", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-consolidation-run-"));
     const core = new HarnessMemCore(makeConfig(dir));
 
@@ -74,7 +74,7 @@ describe("consolidation worker integration", () => {
         privacy_tags: [],
       });
 
-      const run = core.runConsolidation({ reason: "test" });
+      const run = await core.runConsolidation({ reason: "test" });
       expect(run.ok).toBe(true);
 
       const status = core.getConsolidationStatus();

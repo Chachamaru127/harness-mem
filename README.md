@@ -19,6 +19,29 @@
 
 Harness-mem keeps memory behavior consistent across coding tools without hand-editing each tool config.
 
+## Why harness-mem?
+
+Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration.
+
+**harness-mem takes a different approach**: one local daemon, one SQLite database, six platforms — no cloud, no Python, no API keys required.
+
+| | harness-mem | Claude built-in memory | claude-mem | Mem0 |
+|---|:---:|:---:|:---:|:---:|
+| **Supported tools** | Claude, Codex, Cursor, OpenCode, Gemini CLI, Antigravity | Claude only | Claude only | Custom API integration |
+| **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
+| **Cross-tool memory** | Automatic — work in Claude, recall in Codex | N/A | N/A | Manual wiring per app |
+| **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
+| **Search** | Hybrid (lexical + vector + recency + tag + graph) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
+| **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
+| **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
+| **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
+
+### What this means in practice
+
+- **You use multiple AI tools** → harness-mem is the only option that shares memory across Claude, Codex, Cursor, OpenCode, and Gemini in a single project.
+- **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls by default. Optional LLM enhancement if you choose.
+- **You're on claude-mem today** → One-command migration with rollback. No data loss, no downtime.
+
 ## Quick Start
 
 ### Option A: Run with npx (no global install)

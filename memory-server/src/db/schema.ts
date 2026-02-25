@@ -140,6 +140,9 @@ export function initSchema(db: Database): void {
       fact_key TEXT NOT NULL,
       fact_value TEXT NOT NULL,
       confidence REAL NOT NULL DEFAULT 0.5,
+      superseded_by TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
       merged_into_fact_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -152,6 +155,12 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
       ON mem_facts(merged_into_fact_id);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_superseded_by
+      ON mem_facts(superseded_by);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_valid_to
+      ON mem_facts(valid_to);
 
     CREATE TABLE IF NOT EXISTS mem_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -310,6 +319,9 @@ export function migrateSchema(db: Database): void {
       fact_key TEXT NOT NULL,
       fact_value TEXT NOT NULL,
       confidence REAL NOT NULL DEFAULT 0.5,
+      superseded_by TEXT,
+      valid_from TEXT,
+      valid_to TEXT,
       merged_into_fact_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -322,6 +334,12 @@ export function migrateSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
       ON mem_facts(merged_into_fact_id);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_superseded_by
+      ON mem_facts(superseded_by);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_valid_to
+      ON mem_facts(valid_to);
 
     CREATE TABLE IF NOT EXISTS mem_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -354,6 +372,38 @@ export function migrateSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_consolidation_queue_status_requested
       ON mem_consolidation_queue(status, requested_at ASC, id ASC);
   `);
+
+  // W2-004: mem_facts に superseded_by カラムを追加（矛盾ファクト追跡用）
+  try {
+    db.exec(`ALTER TABLE mem_facts ADD COLUMN superseded_by TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_facts_superseded_by ON mem_facts(superseded_by)`);
+  } catch {
+    // already exists
+  }
+
+  // W2-005: mem_facts に valid_from / valid_to カラムを追加（時間的有効期間管理）
+  try {
+    db.exec(`ALTER TABLE mem_facts ADD COLUMN valid_from TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_facts ADD COLUMN valid_to TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_facts_valid_to ON mem_facts(valid_to)`);
+  } catch {
+    // already exists
+  }
 
   // プロジェクト名空文字のレコードがあれば警告ログ
   const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};

@@ -1398,3 +1398,248 @@ Optional:
 3. Hook 4 イベント（SessionStart/End, AfterTool, PreCompress）が正常に記録される
 4. 既存 5 プラットフォームのテストが回帰しない
 5. 契約テスト + Hook 単体テストが通過する
+
+---
+
+## 20. World-2 競合分析ベース改善プラン（2026-02-26）
+
+最終更新: 2026-02-26
+目的: 競合6ツール（mem0 / OpenMemory / supermemory / memvid / Memori / claude-mem）との比較分析と Plan Critic による批判的検証を経て、harness-mem の弱点を解消する改善プランを実行する。
+
+### 20.1 分析サマリー
+
+#### 競合採点結果（1-10, 比較対象のみ）
+
+| 観点 | harness-mem | mem0 | OpenMemory | supermemory | claude-mem(plugin) |
+|------|:-----------:|:----:|:----------:|:-----------:|:------------------:|
+| 検索品質 | 6 | **9** | 7 | 7 | 5 |
+| メモリ構造 | 7 | 8 | **9** | 6 | 5 |
+| MCP統合 | **8** | **8** | 7 | 7 | 4 |
+| ローカルファースト | **8** | 4 | 8 | 3 | 7 |
+| スケーラビリティ | 6 | **9** | 5 | 8 | 4 |
+| エージェント特化 | **9** | 5 | 4 | 6 | 7 |
+| セットアップ容易性 | 7 | 6 | 7 | 8 | 6 |
+| エコシステム | 5 | **10** | 4 | 7 | 4 |
+| 合計 | 56 | **59** | 51 | 52 | 42 |
+
+#### Plan Critic 指摘事項（反映済み）
+
+1. P0-1 ONNX Embedding: `EmbeddingProvider.embed()` が同期 → ONNX 非同期の不整合。サイドカー方式を推奨
+2. P0-2 LLM ファクト抽出: `extractor.ts` に `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` が既存。スコープ縮小
+3. P1-5 適応的忘却: `simple-reranker.ts` に指数減衰(14日半減)が既存。パラメータ調整で検証
+4. P1-6 セクター分類: `observation_type` + `fact_type` + `mem_tags` と重複。タグ自動推薦で代替
+5. 見落とし: ベクトルマイグレーション / マルチエージェント競合制御 / バックアップ / resume-pack圧縮
+
+#### 追加競合（初回調査で見落とし）
+
+- **Letta (旧 MemGPT)**: Letta Code が Terminal-Bench OSS 1位。LLM自律メモリ管理
+- **Zep / Graphiti**: 時系列知識グラフ(MIT)、20K+ stars、MCP対応
+- **memsearch (Zilliz)**: MCPレス・Claude Code Hooks のみ。設計思想が最も近い直接競合
+
+### 20.2 成功条件
+
+1. 検索品質: fallback embedding でも Recall@10 改善（現状比 +20% 以上）
+2. 安全性: Embedding プロバイダ切替時にベクトル混在による検索破壊 0
+3. 運用性: Consolidation がデフォルト ON で動作し、API コスト爆発なし
+4. 堅牢性: マルチエージェント同時書き込み時のデータ破損 0
+5. 回復性: WAL モード下の安全なバックアップが1コマンドで実行可能
+
+### 20.3 実装バックログ
+
+凡例:
+- `[P]` = 並列実行可能
+- `cc:TODO` / `cc:WIP` / `cc:完了` / `blocked`
+
+#### Phase W2-0: 基盤整備（リスク軽減 + 即効施策）
+
+- [x] `cc:完了` W2-001 Consolidation デフォルト ON（heuristic モードのみ）
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`（`HARNESS_MEM_CONSOLIDATION_ENABLED` デフォルト値変更）
+  - 受入条件:
+    1. 新規インストール時に heuristic 抽出の Consolidation が自動有効化される
+    2. LLM モード (`HARNESS_MEM_FACT_EXTRACTOR_MODE=llm`) は明示有効化のまま維持
+    3. 既存ユーザーの設定を上書きしない（環境変数未設定時のみデフォルト適用）
+  - 工数: S
+
+- [x] `cc:完了` W2-002 ベクトルマイグレーション戦略
+  - 変更予定: `memory-server/src/vector/`, `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. `mem_vectors.model` カラムを活用し、検索時は同一モデルのベクトルのみ比較する
+    2. Embedding プロバイダ変更時に `/v1/admin/reindex` がバックグラウンドで段階的にベクトルを再計算する
+    3. 移行中も旧モデルのベクトルで検索が継続動作する（ダウンタイムなし）
+    4. vector coverage が混在状態では `meta.warnings[]` に移行進捗を返す
+  - 工数: M
+
+- [x] `[P] cc:完了` W2-003 Embedding Model Registry + Transformers.js v4 ローカル推論
+  - 変更予定:
+    - `memory-server/src/embedding/local-onnx.ts`（新規）: Transformers.js v4 による ONNX 推論プロバイダ
+    - `memory-server/src/embedding/model-manager.ts`（新規）: モデル DL/キャッシュ/切替管理
+    - `memory-server/src/embedding/model-catalog.ts`（新規）: curated モデルリスト定義
+    - `memory-server/src/embedding/registry.ts`: `local` プロバイダ追加
+    - `scripts/harness-mem`: `model list|pull|use|status` サブコマンド追加
+  - 技術選定: **Transformers.js v4** (`@huggingface/transformers`) の WASM バックエンドで ONNX モデルを Bun 上で直接推論。Python 依存なし。
+  - curated モデルカタログ（初期）:
+    | ID | HuggingFace | 次元 | サイズ | 言語 | 備考 |
+    |---|---|---|---|---|---|
+    | `minilm-v2` | `all-MiniLM-L6-v2` | 384 | 22MB | en | 英語デフォルト |
+    | `ruri-v3-30m` | `cl-nagoya/ruri-v3-30m` | 256 | ~80MB | ja | 日本語推奨（OpenAI超え, JMTEB 72.95） |
+    | `ruri-v3-130m` | `cl-nagoya/ruri-v3-130m` | 512 | ~300MB | ja | 日本語高精度（JMTEB 75.52） |
+    | `multilingual-e5-small` | `intfloat/multilingual-e5-small` | 384 | 118MB | multi | 多言語軽量 |
+    | `bge-m3` | `BAAI/bge-m3` | 1024 | 2.2GB | multi | 多言語・長文対応 |
+  - CLI UX:
+    ```
+    harness-mem model list              # 利用可能モデル一覧（installed/not installed 表示）
+    harness-mem model pull ruri-v3-30m  # DL（サイズ確認プロンプト + 進捗バー）
+    harness-mem model use ruri-v3-30m   # アクティブモデル切替（→ W2-002 で自動再計算）
+    harness-mem model status            # 現在のモデル・キャッシュサイズ・移行進捗
+    ```
+  - モデル保存先: `~/.harness-mem/models/<model-id>/` (model.onnx + tokenizer.json + config.json)
+  - 環境変数:
+    - `HARNESS_MEM_EMBEDDING_PROVIDER=local` — ローカル ONNX 推論を有効化
+    - `HARNESS_MEM_EMBEDDING_MODEL=ruri-v3-30m` — 使用モデル指定
+  - 受入条件:
+    1. `HARNESS_MEM_EMBEDDING_PROVIDER=local` で APIキー不要・Python不要のセマンティック Embedding が動作する
+    2. `EmbeddingProvider.embed()` の同期インターフェースを維持する（Bun の Worker または同期 WASM 呼び出し）
+    3. `harness-mem model pull <id>` でモデル DL、サイズ確認プロンプト付き
+    4. `harness-mem model use <id>` でモデル切替、W2-002 のベクトルマイグレーションが自動トリガーされる
+    5. モデル未 DL 時は fallback へ自動劣化（警告付き）
+    6. health() でモデル名・次元数・ステータス・キャッシュサイズを返す
+    7. `ruri-v3-30m` で `query:` / `passage:` プレフィックスが自動付与される（モデル別設定）
+  - **実装ノート（2026-02-26 PoC 検証済み）**:
+    - **Transformers.js v3.8.1（安定版）で ModernBert サポート確認済み** — v4 待ちは不要
+    - `pipeline("feature-extraction")` は ModernBert の出力構造に未対応 → **`AutoModel` + 手動 mean pooling + L2 normalize** が必要
+    - tokenizer: `WariHima/ruri-v3-30m-onnx` の `tokenizer.json` は WordPiece に誤変換されている → **tokenizer は公式 `cl-nagoya/ruri-v3-30m` から取得必須**
+    - ONNX モデル本体: `WariHima/ruri-v3-30m-onnx/model.onnx`（139MB、config.json は公式から別途取得）
+    - 推論速度: ~2.5ms/件（Node.js v24, fp32）→ **sync interface 維持可能**（spawnSync 不要、直接呼出し）
+    - スコア分散: spread 0.063（30M param の anisotropy）→ hybrid search の他シグナルが補完するため実用上問題なし
+    - モデルキャッシュ先: `~/.harness-mem/models/ruri-v3-30m/`（onnx/ サブディレクトリに model.onnx）
+    - バイリンガル処理: 日本語/英語混在コンテンツは **単一モデルで統一処理**（ベクトル空間の一貫性を優先）
+  - 技術リスク:
+    - ~~Transformers.js v4 の Bun 互換性~~ → **v3.8.1 で検証済み、リスク解消**
+    - 同期インターフェース維持: ~~WASM は本質的に同期実行可能だが、モデルロード時のみ非同期になる可能性~~ → **2.5ms/件で同期実行可能を確認**。初回ロード（0.3秒）は起動時に完了させる
+    - ONNX 版のファイル構成: コミュニティ ONNX 変換版は tokenizer が壊れているケースあり → **モデルレジストリに正しいダウンロード元マッピングを持たせる**
+  - フォールバック戦略: Transformers.js が動作しない環境では FastEmbed パターン（Python ONNX Runtime、PyTorch不要）をフォールバックとして用意
+  - 依存: W2-002（マイグレーション戦略が先に必要）
+  - 工数: L
+
+#### Phase W2-1: 差別化強化
+
+- [x] `cc:完了` W2-004 ファクト差分更新 + Ollama ファクト抽出対応
+  - 変更: `memory-server/src/consolidation/extractor.ts`, `memory-server/src/consolidation/deduper.ts`, `memory-server/src/consolidation/worker.ts`, `memory-server/src/db/schema.ts`
+  - 受入条件:
+    1. LLM モードで既存ファクトとの比較による UPDATE/DELETE 差分判定が動作する ✅
+    2. Ollama をファクト抽出 LLM プロバイダとして使用可能（`HARNESS_MEM_FACT_LLM_PROVIDER=ollama`）✅
+    3. finalize 時に LLM モード有効なら自動でファクト抽出がトリガーされる ✅（既存実装で対応済み）
+    4. 矛盾ファクト検出時に旧ファクトが `superseded_by` で紐付けられる ✅
+  - 工数: M
+
+- [x] `cc:完了` W2-005 時間的知識管理（mem_facts 拡張）
+  - 変更予定: `memory-server/src/db/schema.ts`, `memory-server/src/consolidation/extractor.ts`, `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. `mem_facts` に `valid_from` / `valid_to` カラムが追加される
+    2. ファクト更新時に旧レコードの `valid_to` が自動設定される
+    3. 検索時にデフォルトで `valid_to IS NULL`（現在有効なファクトのみ）がフィルタされる
+    4. `include_historical=true` で過去ファクトも含めて取得可能
+  - 依存: W2-004（LLM ファクト抽出による `valid_from` 自動設定）
+  - 工数: M
+
+- [x] `cc:完了` W2-006 マルチエージェント書き込み競合制御
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`（書き込み経路）
+  - 受入条件:
+    1. `/v1/events/record` への同時書き込みが application-level キューで直列化される
+    2. SQLite busy_timeout (5000ms) 内でキュー処理が完了する
+    3. キューオーバーフロー時は 503 + Retry-After ヘッダで応答する
+    4. Consolidation バックグラウンドワーカーとの書き込み競合が発生しない
+  - 工数: M
+
+- [x] `[P] cc:完了` W2-007 バックアップ/エクスポート
+  - 変更: `memory-server/src/core/harness-mem-core.ts`, `memory-server/src/server.ts`, `scripts/harness-mem-client.sh`, `scripts/harness-mem`
+  - 変更理由: VACUUM INTO を使った WAL 安全なスナップショット生成を backup() メソッドとして実装し、HTTP API と CLI から実行可能にした。タイムスタンプ付きファイル名で上書きを防止する。
+  - 工数: S
+
+- [x] `[P] cc:完了` W2-008 resume-pack 圧縮（Progressive Compaction）
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`（resume-pack 生成ロジック）
+  - 受入条件:
+    1. observation を `importance × recency` でランク付けし、上位N件のみを詳細出力する
+    2. 残りの observation は 1行サマリに圧縮する
+    3. 圧縮前後のトークン削減率を `meta.compaction_ratio` で返す
+    4. `resume_pack_max_tokens` 設定で出力上限を制御可能
+  - 工数: M
+
+#### Phase W2-2: 精度・体験向上
+
+- [x] `[P] cc:完了` W2-009 説明可能な想起（recall_trace）
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`（search レスポンス拡張）
+  - 受入条件:
+    1. 検索レスポンスの各結果に `recall_trace` オブジェクトが含まれる
+    2. `recall_trace` に各スコア成分（lexical/vector/recency/tag/importance/graph）の寄与率が含まれる
+    3. `debug=true` 時のみ返す（デフォルト OFF）
+  - 工数: S
+
+- [x] `[P] cc:完了` W2-010 プロンプトキャッシュ最適化
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts`（resume-pack 出力構造）
+  - 受入条件:
+    1. resume-pack 出力が「静的部分（プロジェクト知識・ファクト）」と「動的部分（直近セッション）」に分離される
+    2. 静的部分は内容ハッシュ付きで、変更がなければ同一テキストを返す（キャッシュ効率向上）
+    3. Gemini / Claude のプロンプトキャッシュ API で静的部分が再利用可能
+  - 工数: M
+
+- [x] `[P] cc:完了` W2-011 既存機能チューニング（減衰・タグ・頻度）
+  - 変更予定: `memory-server/src/rerank/simple-reranker.ts`, `memory-server/src/core/harness-mem-core.ts`
+  - 受入条件:
+    1. recency 減衰の半減期が環境変数 `HARNESS_MEM_RECENCY_HALF_LIFE_DAYS` で設定可能（デフォルト14日）
+    2. `mem_tags` の自動推薦: ファクト抽出時に関連タグを自動付与するロジックが追加される
+    3. `mem_audit_log` のアクセス頻度を集計し、よく参照される observation の importance スコアを加点する
+  - 工数: S
+
+### 20.4 依存関係グラフ
+
+```
+W2-001 (Consolidation ON) ─────────→ W2-006 (書き込み競合制御: 書き込み頻度増加のため)
+W2-002 (ベクトルマイグレーション) ←── W2-003 (ローカル Embedding: 切替前にマイグレーション必須)
+W2-004 (ファクト差分更新) ──────────→ W2-005 (時間的知識管理: valid_from 自動設定に LLM 必要)
+W2-008 (resume-pack 圧縮) ─────────→ W2-010 (プロンプトキャッシュ: 圧縮構造が分離の基盤)
+```
+
+### 20.5 実行順序
+
+1. Phase W2-0（並列可能なものは同時着手）:
+   - W2-001 [S] + W2-007 [S]: 即着手可
+   - W2-002 [M]: W2-003 の前提
+   - W2-003 [L]: W2-002 完了後（Transformers.js v4 + Model Registry）
+
+2. Phase W2-1:
+   - W2-004 [M] → W2-005 [M]: 順序依存
+   - W2-006 [M]: W2-001 完了後
+   - W2-008 [M]: 独立
+
+3. Phase W2-2（全て並列可能）:
+   - W2-009 [S] + W2-010 [M] + W2-011 [S]
+
+### 20.6 Out of Scope（本プランでは実施しない）
+
+1. Cross-Encoder リランカー: 20件規模の結果セットにはオーバーキル
+2. TypeScript SDK 公開: 内部 HTTP API がそのまま利用可能
+3. 固定メモリセクター分類: 既存 `fact_type` + `mem_tags` で代替
+4. Letta 型の LLM 自律メモリ管理パラダイム: Phase W2 以降の戦略課題として別途検討
+5. Graphiti (Neo4j) 統合: ローカルファースト原則と衝突。SQLite 上の軽量グラフで代替
+
+### 20.8 バグ修正・品質改善
+
+- [x] `cc:完了` W2-FIX-001 extractor.ts: spawnSync("curl") を fetch に置換 + LLM モードへ auto_tags 付与
+  - 変更: `memory-server/src/consolidation/extractor.ts`
+  - 依頼内容: callOpenAI/callOllama の spawnSync を Bun ネイティブ fetch(async) に置換。parseFactsFromContent で auto_tags を付与
+  - 受入条件:
+    1. callOpenAI / callOllama が async 関数になり fetch を使用する
+    2. fetch でタイムアウト・接続失敗のエラーハンドリングがある
+    3. LLM モードのファクトに auto_tags が付与される
+    4. `bunx tsc --noEmit` が通過する
+  - 追加日時: 2026-02-26
+
+### 20.7 完了判定（DoD）
+
+1. W2-001〜W2-011 の全タスクが `cc:完了`
+2. Embedding プロバイダ切替時の安全性テストが追加され、回帰検知可能
+3. Consolidation デフォルト ON で 1000 イベント記録時に API コスト異常なし
+4. マルチエージェント同時書き込みテスト（3並列 × 100イベント）で破損 0
+5. バックアップ → リストアの E2E テストが通過
+6. 検索品質ベンチ（LoCoMo）で fallback → local 移行時に Recall@10 改善を確認

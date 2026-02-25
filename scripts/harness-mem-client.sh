@@ -118,6 +118,7 @@ fallback_error_code() {
     record-checkpoint) printf 'record_checkpoint_failed' ;;
     finalize-session) printf 'finalize_session_failed' ;;
     ingest-codex-history) printf 'ingest_codex_history_failed' ;;
+    admin-backup) printf 'admin_backup_failed' ;;
     admin-reindex-vectors) printf 'admin_reindex_vectors_failed' ;;
     admin-metrics) printf 'admin_metrics_failed' ;;
     admin-consolidation-run) printf 'admin_consolidation_run_failed' ;;
@@ -208,6 +209,9 @@ main() {
     ingest-codex-history)
       call_post "/v1/ingest/codex-history" "$payload" || fallback_error "ingest-codex-history" "ingest-codex-history failed"
       ;;
+    admin-backup)
+      call_post "/v1/admin/backup" "$payload" || fallback_error "admin-backup" "admin-backup failed"
+      ;;
     admin-reindex-vectors)
       call_post "/v1/admin/reindex-vectors" "$payload" || fallback_error "admin-reindex-vectors" "admin-reindex-vectors failed"
       ;;
@@ -270,7 +274,7 @@ main() {
       call_post "/v1/admin/imports/${verify_job_id}/verify" "{}" || fallback_error "verify-import" "verify-import failed"
       ;;
     *)
-      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|ingest-codex-history|admin-reindex-vectors|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
+      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|ingest-codex-history|admin-backup|admin-reindex-vectors|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
       exit 1
       ;;
   esac

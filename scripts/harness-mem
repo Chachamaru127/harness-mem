@@ -52,6 +52,7 @@ IMPORT_JOB_ID=""
 IMPORT_PROJECT=""
 IMPORT_DRY_RUN=0
 STOP_NOW=0
+BACKUP_DEST_DIR=""
 VERSION_CHECK_IN_SETUP=1
 AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
 AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
@@ -82,6 +83,7 @@ Commands:
   update     Update global harness-mem package and prompt auto-update opt-in (interactive).
   smoke      Run isolated daemon smoke test against record/search privacy flow.
   uninstall  Remove memory wiring and optionally purge local memory DB.
+  backup                     Create a WAL-safe snapshot of the memory DB via VACUUM INTO.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
   verify-import              Verify imported data quality/privacy checks by job id.
   cutover-claude-mem         Stop Claude-mem only after verify passed.
@@ -89,11 +91,16 @@ Commands:
   rollback-claude-mem        Rollback: restart Claude-mem and re-enable LaunchAgent.
   promote                    Promote backend mode: local → hybrid → managed.
   rollback                   Rollback backend mode to local.
+  model list                 List available models in the catalog.
+  model pull <id>            Download a model (~size confirmation required).
+  model use <id>             Set active local embedding model (writes env hint).
+  model status [<id>]        Show install status of a model (or all installed).
 
 Common options:
   --project <path>      Target project path (default: current directory)
   --platform <value>    all|codex|opencode|claude|cursor|antigravity|gemini or comma list (default: all)
                         examples: codex,cursor  /  opencode,cursor
+  --dest-dir <path>     Destination directory for backup (default: same dir as DB)
   --source <path>       Source SQLite path for import-claude-mem
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
@@ -281,6 +288,11 @@ parse_options() {
         ;;
       --skip-version-check)
         VERSION_CHECK_IN_SETUP=0
+        ;;
+      --dest-dir)
+        shift
+        [ "$#" -gt 0 ] || fail "--dest-dir requires a path"
+        BACKUP_DEST_DIR="$1"
         ;;
       --source)
         shift
@@ -2260,6 +2272,31 @@ run_verify_request() {
     "$HARNESS_ROOT/scripts/harness-mem-client.sh" verify-import "$payload"
 }
 
+backup_impl() {
+  ensure_dependencies
+  start_daemon
+
+  local payload="{}"
+  if [ -n "${BACKUP_DEST_DIR:-}" ]; then
+    payload="$(jq -nc --arg dest_dir "$BACKUP_DEST_DIR" '{"dest_dir": $dest_dir}')"
+  fi
+
+  local response
+  response="$(
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" admin-backup "$payload"
+  )"
+  echo "$response"
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Backup failed"
+  local backup_path
+  backup_path="$(echo "$response" | jq -r '.items[0].path // .meta.backup_path // ""' 2>/dev/null || true)"
+  if [ -n "$backup_path" ]; then
+    log "Backup created: $backup_path"
+  fi
+}
+
 import_claude_mem_impl() {
   ensure_dependencies
   [ -n "$IMPORT_SOURCE" ] || fail "import-claude-mem requires --source <sqlite path>"
@@ -3416,9 +3453,179 @@ update_impl() {
   log "Update complete. Restart daemon/UI if running: harness-memd restart"
 }
 
+# ---------------------------------------------------------------------------
+# model subcommand: list / pull / use / status
+# ---------------------------------------------------------------------------
+MODEL_CATALOG_IDS=("ruri-v3-30m")
+MODEL_CATALOG_DISPLAY_NAMES=("Ruri V3 30M (Japanese)")
+MODEL_CATALOG_SIZES=("~153MB")
+MODEL_CATALOG_LANGS=("ja")
+MODEL_CATALOG_DIMS=("256")
+
+model_dir_for_id() {
+  local model_id="$1"
+  echo "${STATE_DIR}/models/${model_id}"
+}
+
+model_is_installed() {
+  local model_id="$1"
+  local dir
+  dir="$(model_dir_for_id "$model_id")"
+  [ -f "${dir}/tokenizer.json" ] && [ -f "${dir}/onnx/model.onnx" ]
+}
+
+model_impl() {
+  local subcmd="${1:-list}"
+  shift || true
+
+  case "$subcmd" in
+    list)
+      echo "Available models:"
+      echo ""
+      for i in "${!MODEL_CATALOG_IDS[@]}"; do
+        local id="${MODEL_CATALOG_IDS[$i]}"
+        local display="${MODEL_CATALOG_DISPLAY_NAMES[$i]}"
+        local size="${MODEL_CATALOG_SIZES[$i]}"
+        local lang="${MODEL_CATALOG_LANGS[$i]}"
+        local dim="${MODEL_CATALOG_DIMS[$i]}"
+        local status="not installed"
+        if model_is_installed "$id"; then
+          status="installed"
+        fi
+        printf "  %-20s  %-30s  %-6s  %-6s  dim=%-4s  [%s]\n" \
+          "$id" "$display" "$size" "$lang" "$dim" "$status"
+      done
+      echo ""
+      echo "To download a model: harness-mem model pull <id>"
+      echo "To activate:         harness-mem model use <id>"
+      ;;
+
+    pull)
+      local model_id="${1:-}"
+      [ -n "$model_id" ] || fail "Usage: harness-mem model pull <id>"
+
+      # Validate id is in catalog
+      local found=0
+      local display="" size="" dim=""
+      for i in "${!MODEL_CATALOG_IDS[@]}"; do
+        if [ "${MODEL_CATALOG_IDS[$i]}" = "$model_id" ]; then
+          found=1
+          display="${MODEL_CATALOG_DISPLAY_NAMES[$i]}"
+          size="${MODEL_CATALOG_SIZES[$i]}"
+          dim="${MODEL_CATALOG_DIMS[$i]}"
+          break
+        fi
+      done
+      [ "$found" -eq 1 ] || fail "Unknown model id: \"${model_id}\". Run 'harness-mem model list' for available models."
+
+      local model_dir
+      model_dir="$(model_dir_for_id "$model_id")"
+
+      if model_is_installed "$model_id"; then
+        log "Model \"${model_id}\" is already installed at ${model_dir}"
+        return 0
+      fi
+
+      echo ""
+      echo "  Model : ${display}"
+      echo "  Size  : ${size}"
+      echo "  Dim   : ${dim}"
+      echo "  Dest  : ${model_dir}"
+      echo ""
+      printf "Download this model? [y/N] "
+      local answer=""
+      read -r answer </dev/tty || true
+      case "$answer" in
+        y|Y|yes|Yes|YES) ;;
+        *) echo "Aborted."; return 1 ;;
+      esac
+
+      log "Pulling model ${model_id}..."
+      bun --eval "
+        import { ModelManager } from '${HARNESS_ROOT}/memory-server/src/embedding/model-manager.ts';
+        const mgr = new ModelManager('${STATE_DIR}/models');
+        mgr.pullModel('${model_id}').then(p => {
+          console.error('[harness-mem] Model downloaded to: ' + p);
+        }).catch(e => {
+          console.error('[harness-mem][error] ' + e.message);
+          process.exit(1);
+        });
+      " 2>&1
+      log "Done. Activate with: harness-mem model use ${model_id}"
+      ;;
+
+    use)
+      local model_id="${1:-}"
+      [ -n "$model_id" ] || fail "Usage: harness-mem model use <id>"
+
+      if ! model_is_installed "$model_id"; then
+        warn "Model \"${model_id}\" is not installed. Run: harness-mem model pull ${model_id}"
+        return 1
+      fi
+
+      # Write active model to config
+      ensure_config
+      local tmp="${CONFIG_PATH}.tmp.$$"
+      jq --arg m "$model_id" '.embedding_model = $m' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+      log "Active local embedding model set to: ${model_id}"
+      echo ""
+      echo "  Set HARNESS_MEM_EMBEDDING_PROVIDER=local"
+      echo "  Set HARNESS_MEM_EMBEDDING_MODEL=${model_id}"
+      echo "  in your environment or .env to activate local inference."
+      ;;
+
+    status)
+      local model_id="${1:-}"
+      if [ -n "$model_id" ]; then
+        if model_is_installed "$model_id"; then
+          local dir
+          dir="$(model_dir_for_id "$model_id")"
+          local size_kb
+          size_kb="$(du -sk "$dir" 2>/dev/null | awk '{print $1}' || echo "?")"
+          echo "Model: ${model_id}"
+          echo "  Status : installed"
+          echo "  Path   : ${dir}"
+          echo "  Size   : ${size_kb} KB on disk"
+        else
+          echo "Model: ${model_id}"
+          echo "  Status : not installed"
+        fi
+      else
+        echo "Installed models:"
+        local any_found=0
+        for id in "${MODEL_CATALOG_IDS[@]}"; do
+          if model_is_installed "$id"; then
+            any_found=1
+            local dir
+            dir="$(model_dir_for_id "$id")"
+            local size_kb
+            size_kb="$(du -sk "$dir" 2>/dev/null | awk '{print $1}' || echo "?")"
+            echo "  ${id}  (${size_kb} KB)  ${dir}"
+          fi
+        done
+        if [ "$any_found" -eq 0 ]; then
+          echo "  (none)"
+          echo ""
+          echo "Run 'harness-mem model pull <id>' to download a model."
+        fi
+      fi
+      ;;
+
+    *)
+      fail "Unknown model subcommand: ${subcmd}. Use: list | pull | use | status"
+      ;;
+  esac
+}
+
 main() {
   local command="${1:-help}"
   shift || true
+
+  # model subcommand uses positional args, bypass parse_options
+  if [ "$command" = "model" ]; then
+    model_impl "$@"
+    return
+  fi
 
   parse_options "$@"
   normalize_ui_lang
@@ -3469,6 +3676,9 @@ main() {
       ;;
     uninstall)
       uninstall_impl
+      ;;
+    backup)
+      backup_impl
       ;;
     import-claude-mem)
       import_claude_mem_impl

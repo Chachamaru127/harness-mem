@@ -14,6 +14,12 @@ export interface FactMergeDecision {
   similarity: number;
 }
 
+/** 矛盾ファクトの superseded_by 更新要求 */
+export interface FactSupersededDecision {
+  fact_id: string;
+  superseded_by: string;
+}
+
 function tokenize(text: string): Set<string> {
   const tokens = text
     .toLowerCase()
@@ -75,4 +81,22 @@ export function dedupeFacts(facts: ConsolidationFact[], threshold = 0.3): FactMe
   }
 
   return merges;
+}
+
+/**
+ * LLM 差分抽出で検出された矛盾ファクトに superseded_by を設定する決定を返す。
+ *
+ * @param newFactId - 新しく挿入されたファクトの fact_id
+ * @param oldFactIds - 新ファクトによって上書きされる旧 fact_id 一覧
+ */
+export function buildSupersededDecisions(
+  newFactId: string,
+  oldFactIds: string[]
+): FactSupersededDecision[] {
+  return oldFactIds
+    .filter((id) => id && id !== newFactId)
+    .map((id) => ({
+      fact_id: id,
+      superseded_by: newFactId,
+    }));
 }

@@ -9,13 +9,19 @@ function tokenize(text: string): string[] {
     .slice(0, 64);
 }
 
+function getHalfLifeHours(): number {
+  const envDays = Number(process.env.HARNESS_MEM_RECENCY_HALF_LIFE_DAYS);
+  const days = Number.isFinite(envDays) && envDays > 0 ? envDays : 14;
+  return 24 * days;
+}
+
 function recencyBoost(createdAt: string): number {
   const ts = Date.parse(createdAt);
   if (Number.isNaN(ts)) {
     return 0;
   }
   const ageHours = Math.max(0, Date.now() - ts) / (1000 * 60 * 60);
-  return Math.exp(-ageHours / (24 * 14));
+  return Math.exp(-ageHours / getHalfLifeHours());
 }
 
 function computeRerankScore(query: string, item: RerankOutputItem): number {

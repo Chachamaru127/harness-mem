@@ -1,6 +1,9 @@
 import { createFallbackEmbeddingProvider } from "./fallback";
 import { createOllamaEmbeddingProvider } from "./ollama";
 import { createOpenAiEmbeddingProvider } from "./openai";
+import { createLocalOnnxEmbeddingProvider } from "./local-onnx";
+import { ModelManager } from "./model-manager";
+import { findModelById, formatSize } from "./model-catalog";
 import {
   type EmbeddingProvider,
   type EmbeddingProviderName,
@@ -13,7 +16,7 @@ function normalizeProviderName(name: string | undefined): EmbeddingProviderName 
     return "fallback";
   }
   const normalized = name.trim().toLowerCase();
-  if (normalized === "fallback" || normalized === "openai" || normalized === "ollama") {
+  if (normalized === "fallback" || normalized === "openai" || normalized === "ollama" || normalized === "local") {
     return normalized;
   }
   return null;
@@ -51,6 +54,35 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       model: options.ollamaEmbedModel,
       fallback,
     });
+  } else if (providerName === "local") {
+    const modelId = (options.localModelId || process.env.HARNESS_MEM_EMBEDDING_MODEL || "ruri-v3-30m").trim();
+    const catalogEntry = findModelById(modelId);
+
+    if (!catalogEntry) {
+      warnings.push(
+        `Unknown local model id "${modelId}". Falling back to "fallback". Run 'harness-mem model list' to see available models.`
+      );
+    } else {
+      const manager = new ModelManager(options.localModelsDir);
+      const modelPath = manager.getModelPath(modelId);
+
+      if (!modelPath) {
+        warnings.push(
+          `Local model "${modelId}" (${formatSize(catalogEntry.sizeBytes)}) is not installed. ` +
+          `Run 'harness-mem model pull ${modelId}' to download it. Falling back to "fallback".`
+        );
+      } else {
+        const localDimension = catalogEntry.dimension;
+        provider = createLocalOnnxEmbeddingProvider({
+          modelId,
+          modelPath,
+          dimension: localDimension,
+          queryPrefix: catalogEntry.queryPrefix,
+          passagePrefix: catalogEntry.passagePrefix,
+          fallback,
+        });
+      }
+    }
   }
 
   return {
