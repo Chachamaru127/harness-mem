@@ -75,7 +75,6 @@ function buildSessionId(payload: HookPayload): string {
     toString(payload.conversationId) ||
     toString(payload.thread_id) ||
     toString(payload.threadId) ||
-    toString(payload.id) ||
     `opencode-${Date.now()}`
   );
 }
@@ -87,6 +86,21 @@ function buildCorrelationId(payload: HookPayload): string | undefined {
     toString(payload.trace_id) ||
     toString(payload.traceId);
   return id || undefined;
+}
+
+const MAX_TOOL_INPUT_LENGTH = 2000;
+
+function sanitizeToolInput(raw: unknown): unknown {
+  if (raw == null) return undefined;
+  const str = typeof raw === "string" ? raw : JSON.stringify(raw);
+  if (!str) return undefined;
+  const redacted = str.replace(
+    /("(?:[^"]*(?:secret|token|password|api_key|apikey|auth|credential|private_key|access_key)[^"]*)":\s*)"[^"]*"/gi,
+    '$1"[REDACTED]"'
+  );
+  return redacted.length > MAX_TOOL_INPUT_LENGTH
+    ? redacted.slice(0, MAX_TOOL_INPUT_LENGTH) + "...[truncated]"
+    : redacted;
 }
 
 function extractMcpMeta(payload: HookPayload): { messageId?: string; attachmentId?: string } {
@@ -208,7 +222,7 @@ export default {
           ts: new Date().toISOString(),
           payload: {
             tool_name: toString(payload.tool_name) || toString(payload.toolName) || toString(payload.name),
-            tool_input: payload.input || payload.args || payload.parameters,
+            tool_input: sanitizeToolInput(payload.input || payload.args || payload.parameters),
             project_root: project.root,
           },
           tags: ["opencode_hook", "tool.execute.before"],
@@ -234,7 +248,7 @@ export default {
           ts: new Date().toISOString(),
           payload: {
             tool_name: toString(payload.tool_name) || toString(payload.toolName) || toString(payload.name),
-            success: payload.success ?? payload.ok ?? true,
+            success: payload.success ?? payload.ok ?? undefined,
             duration_ms: payload.duration_ms ?? payload.durationMs ?? payload.duration,
             project_root: project.root,
           },
