@@ -5,6 +5,19 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.35] - 2026-02-25
+
+### ユーザー向け要約
+
+- `harness-mem setup` / `harness-mem update` 実行時に、Codex Agent Skill のインストールを対話的に確認するプロンプトを追加。
+
+### 補足
+
+- Codex プラットフォームが有効かつスキル未インストール時に、`~/.codex/skills/harness-mem/` へのインストールを提案。
+- `harness-mem doctor` がスキルのインストール状態を報告するよう改善。
+- バイリンガル対応（EN/JA）、デフォルトは No（安全側）。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.34] - 2026-02-25
 
 ### ユーザー向け要約

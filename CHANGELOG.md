@@ -39,6 +39,41 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.35] - 2026-02-25
+
+### What changed for users
+
+- `harness-mem setup` and `harness-mem update` now ask whether to install the Codex Agent Skill when Codex platform is enabled but the skill is not yet installed.
+
+### Added
+
+- **Interactive Codex Skill install prompt**: During `setup` or `update`, users with Codex enabled are asked whether to install the harness-mem Codex Agent Skill to `~/.codex/skills/`.
+- **Codex skill wiring check**: `harness-mem doctor` reports whether the Codex Agent Skill is installed.
+
+### Changed
+
+- None.
+
+### Fixed
+
+- None.
+
+### Removed
+
+- None.
+
+### Security
+
+- None.
+
+### Migration Notes
+
+- No migration is required. Run `harness-mem update` to be prompted for skill installation.
+
+### Verification
+
+- `bash -n scripts/harness-mem`
+
 ## [0.1.34] - 2026-02-25
 
 ### What changed for users
