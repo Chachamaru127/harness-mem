@@ -578,6 +578,30 @@ select:focus-visible,
   color: var(--text-subtle);
 }
 
+.env-card.not-installed {
+  opacity: 0.45;
+  filter: grayscale(0.5);
+}
+
+.env-warning-reason {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #92400e;
+  background: #fef3c7;
+  border: 1px solid #f5d78040;
+  line-height: 1.4;
+}
+
+.env-warning-reason-icon {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
 .env-status {
   border-radius: 999px;
   padding: 3px 9px;

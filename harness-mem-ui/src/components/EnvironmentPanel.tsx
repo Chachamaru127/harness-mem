@@ -57,17 +57,31 @@ function renderInstalled(value: boolean | null, language: UiLanguage): string {
   return "-";
 }
 
+function cardClassName(item: EnvironmentItem): string {
+  const classes = ["env-card"];
+  if (item.installed === false) {
+    classes.push("not-installed");
+  }
+  return classes.join(" ");
+}
+
 function GenericItemCard(props: { item: EnvironmentItem; language: UiLanguage }) {
   const { item, language } = props;
   const copy = getUiCopy(language);
 
   return (
-    <article className="env-card" key={item.id}>
+    <article className={cardClassName(item)} key={item.id}>
       <div className="env-card-top">
         <h4>{item.name}</h4>
         <span className={statusClass(item.status)}>{statusLabel(item.status, language)}</span>
       </div>
       <p className="env-card-description">{item.description}</p>
+      {item.status === "warning" && item.message ? (
+        <div className="env-warning-reason">
+          <span className="env-warning-reason-icon" aria-hidden="true">⚠</span>
+          <span>{item.message}</span>
+        </div>
+      ) : null}
       <div className="env-meta-grid">
         <span>
           <strong>{copy.environment.fieldLabels.version}:</strong> {item.version || "-"}
@@ -79,7 +93,7 @@ function GenericItemCard(props: { item: EnvironmentItem; language: UiLanguage })
           <strong>{copy.environment.generatedAt}:</strong> {formatTimestamp(item.last_checked_at, language)}
         </span>
       </div>
-      {item.message ? (
+      {item.status !== "warning" && item.message ? (
         <p className="env-note">
           <strong>{copy.environment.fieldLabels.message}:</strong> {item.message}
         </p>
@@ -99,6 +113,12 @@ function ServerItemCard(props: { item: EnvironmentServerItem; language: UiLangua
         <span className={statusClass(item.status)}>{statusLabel(item.status, language)}</span>
       </div>
       <p className="env-card-description">{item.description}</p>
+      {item.status === "warning" && item.message ? (
+        <div className="env-warning-reason">
+          <span className="env-warning-reason-icon" aria-hidden="true">⚠</span>
+          <span>{item.message}</span>
+        </div>
+      ) : null}
       <div className="env-meta-grid">
         <span>
           <strong>{copy.environment.fieldLabels.pid}:</strong> {item.pid ?? "-"}
@@ -119,7 +139,7 @@ function ServerItemCard(props: { item: EnvironmentServerItem; language: UiLangua
           <strong>{copy.environment.generatedAt}:</strong> {formatTimestamp(item.last_checked_at, language)}
         </span>
       </div>
-      {item.message ? (
+      {item.status !== "warning" && item.message ? (
         <p className="env-note">
           <strong>{copy.environment.fieldLabels.message}:</strong> {item.message}
         </p>
