@@ -33,6 +33,7 @@
     "mcp-server/package.json",
     "hooks/",
     "codex/",
+    "codex/skills/",
     "opencode/plugins/",
     "harness-mem-ui/src/",
     "harness-mem-ui/package.json",

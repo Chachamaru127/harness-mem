@@ -1802,8 +1802,8 @@ check_opencode_wiring() {
     failed=1
   else
     log "OpenCode global plugin: OK"
-    if rg -q '"chat.message"|"session.idle"|"session.compacted"' "$plugin"; then
-      log "OpenCode hook compatibility baseline: OK (chat.message/session.idle/session.compacted)"
+    if rg -q '"chat.message"|"session.idle"|"session.compacted"|"tool.execute.before"|"tool.execute.after"' "$plugin"; then
+      log "OpenCode hook compatibility baseline: OK (chat.message/session.idle/session.compacted/tool.execute.before/tool.execute.after)"
     else
       warn "OpenCode plugin hook compatibility baseline is incomplete: $plugin"
       failed=1
@@ -1841,7 +1841,7 @@ check_claude_wiring() {
   if [ ! -f "$hooks" ]; then
     warn "Claude hooks config missing in harness: $hooks"
     failed=1
-  elif rg -q 'memory-session-start|memory-user-prompt|memory-post-tool-use|memory-stop' "$hooks"; then
+  elif rg -q 'memory-session-start|memory-user-prompt|memory-post-tool-use|memory-stop|memory-worktree-event|memory-config-change' "$hooks"; then
     log "Claude memory hooks in harness plugin: OK"
   else
     warn "Claude hooks found but memory handlers are missing in: $hooks"

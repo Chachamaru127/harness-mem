@@ -75,6 +75,7 @@ function buildSessionId(payload: HookPayload): string {
     toString(payload.conversationId) ||
     toString(payload.thread_id) ||
     toString(payload.threadId) ||
+    toString(payload.id) ||
     `opencode-${Date.now()}`
   );
 }
@@ -88,14 +89,30 @@ function buildCorrelationId(payload: HookPayload): string | undefined {
   return id || undefined;
 }
 
+function extractMcpMeta(payload: HookPayload): { messageId?: string; attachmentId?: string } {
+  const messageId =
+    toString(payload.messageID) ||
+    toString(payload.messageId) ||
+    toString(payload.message_id);
+  const attachmentId =
+    toString(payload.attachmentID) ||
+    toString(payload.attachmentId) ||
+    toString(payload.attachment_id);
+  return {
+    ...(messageId ? { messageId } : {}),
+    ...(attachmentId ? { attachmentId } : {}),
+  };
+}
+
 export default {
   name: "harness-memory",
-  version: "0.1.0",
+  version: "0.2.0",
   hooks: {
     async "tool.definition"(payload: HookPayload) {
       const sessionId = buildSessionId(payload);
       const project = resolveProject(payload);
       const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
 
       await post("/v1/events/record", {
         event: {
@@ -111,6 +128,7 @@ export default {
           tags: ["opencode_hook", "tool.definition"],
           privacy_tags: safeArray(payload.privacy_tags),
           ...(correlationId ? { correlation_id: correlationId } : {}),
+          ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
         },
       });
     },
@@ -121,6 +139,7 @@ export default {
       const sessionId = buildSessionId(payload);
       const project = resolveProject(payload);
       const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
 
       await post("/v1/events/record", {
         event: {
@@ -136,6 +155,7 @@ export default {
           tags: ["opencode_hook", "chat.message"],
           privacy_tags: safeArray(payload.privacy_tags),
           ...(correlationId ? { correlation_id: correlationId } : {}),
+          ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
         },
       });
     },
@@ -143,6 +163,8 @@ export default {
     async "session.idle"(payload: HookPayload) {
       const sessionId = buildSessionId(payload);
       const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
       await post("/v1/checkpoints/record", {
         platform: "opencode",
         project: project.root,
@@ -151,17 +173,76 @@ export default {
         content: toString(payload.summary, "session became idle"),
         tags: ["opencode_hook", "session.idle"],
         privacy_tags: safeArray(payload.privacy_tags),
+        ...(correlationId ? { correlation_id: correlationId } : {}),
+        ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
       });
     },
 
     async "session.compacted"(payload: HookPayload) {
       const sessionId = buildSessionId(payload);
       const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
       await post("/v1/sessions/finalize", {
         platform: "opencode",
         project: project.root,
         session_id: sessionId,
         summary_mode: "standard",
+        ...(correlationId ? { correlation_id: correlationId } : {}),
+        ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
+      });
+    },
+
+    async "tool.execute.before"(payload: HookPayload) {
+      const sessionId = buildSessionId(payload);
+      const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
+
+      await post("/v1/events/record", {
+        event: {
+          platform: "opencode",
+          project: project.root,
+          session_id: sessionId,
+          event_type: "tool_execute_before",
+          ts: new Date().toISOString(),
+          payload: {
+            tool_name: toString(payload.tool_name) || toString(payload.toolName) || toString(payload.name),
+            tool_input: payload.input || payload.args || payload.parameters,
+            project_root: project.root,
+          },
+          tags: ["opencode_hook", "tool.execute.before"],
+          privacy_tags: safeArray(payload.privacy_tags),
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+          ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
+        },
+      });
+    },
+
+    async "tool.execute.after"(payload: HookPayload) {
+      const sessionId = buildSessionId(payload);
+      const project = resolveProject(payload);
+      const correlationId = buildCorrelationId(payload);
+      const mcpMeta = extractMcpMeta(payload);
+
+      await post("/v1/events/record", {
+        event: {
+          platform: "opencode",
+          project: project.root,
+          session_id: sessionId,
+          event_type: "tool_execute_after",
+          ts: new Date().toISOString(),
+          payload: {
+            tool_name: toString(payload.tool_name) || toString(payload.toolName) || toString(payload.name),
+            success: payload.success ?? payload.ok ?? true,
+            duration_ms: payload.duration_ms ?? payload.durationMs ?? payload.duration,
+            project_root: project.root,
+          },
+          tags: ["opencode_hook", "tool.execute.after"],
+          privacy_tags: safeArray(payload.privacy_tags),
+          ...(correlationId ? { correlation_id: correlationId } : {}),
+          ...(Object.keys(mcpMeta).length > 0 ? { mcp_meta: mcpMeta } : {}),
+        },
       });
     },
   },
