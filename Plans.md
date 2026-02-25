@@ -1235,3 +1235,166 @@ Optional:
 2. サーバー稼働情報とツール情報が read-only で取得・表示できる
 3. 秘匿値マスクが API と UI の両方で担保される
 4. API/UI テストが追加され、回帰確認できる
+
+---
+
+## 19. Gemini CLI 統合
+
+最終更新: 2026-02-25
+目的: harness-mem の6番目のプラットフォームとして Gemini CLI を統合し、Gemini CLI ユーザーもメモリ検索・記録・セッション管理が使えるようにする。
+
+### 19.1 背景
+
+- Gemini CLI は Google の AI コーディングアシスタント CLI (`@google/gemini-cli`)
+- MCP サーバー対応（`~/.gemini/settings.json` の `mcpServers`）、Hook システム、Extension 機構、Agent Skills をサポート
+- 設定形式が Claude Code と類似（JSON の `mcpServers`）のため、既存パターン流用可能
+- 段階的導入: Phase G1 (MCP only) → G2 (Hooks) → G3 (Skills/GEMINI.md) → G4 (Extension)
+
+### 19.2 成功条件
+
+1. `harness-mem setup --platform gemini` で MCP wiring が完了する
+2. `harness-mem doctor --platform gemini` で設定正常性を検証できる
+3. Gemini CLI から `harness_mem_search` / `harness_mem_resume_pack` 等のメモリツールが使える
+4. Hook によりセッション開始/終了/ツール使用イベントが自動記録される
+5. `harness-mem uninstall --platform gemini` でクリーンアップできる
+6. 既存5プラットフォームの動作に影響しない
+
+### 19.3 タスク一覧
+
+#### Phase G1: MCP Only 統合 (MVP)
+
+- [x] `cc:完了` G1-001 Platform 型拡張 — `"gemini"` を Platform union に追加
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts` (79行目 Platform型, 238行目 Config)
+  - 受入条件:
+    1. `Platform` 型に `"gemini"` が含まれる
+    2. `Config` に `geminiIngestEnabled?`, `geminiEventsPath?`, `geminiIngestIntervalMs?`, `geminiBackfillHours?` が追加される
+
+- [x] `cc:完了` G1-002 System Environment に Gemini 検出追加
+  - 変更予定: `memory-server/src/system-environment/collector.ts` (645-686行目 ai_tools, 743-749行目 doctor)
+  - 受入条件:
+    1. `ai_tools` mappings に `gemini` エントリが追加される
+    2. doctor check に `gemini_wiring` が追加される
+    3. Gemini CLI のバージョン検出が動作する
+
+- [x] `cc:完了` G1-003 CLI スクリプト — platform 選択に gemini 追加
+  - 変更予定: `scripts/harness-mem` (validate_platform_selection, prompt_platform_selection, usage テキスト)
+  - 受入条件:
+    1. `--platform gemini` が有効な値として受け付けられる
+    2. 対話式プロンプトに `6) gemini` が表示される
+    3. `all` 指定時に gemini が含まれる
+
+- [x] `cc:完了` G1-004 `setup_gemini_wiring()` 実装 — MCP サーバー登録
+  - 変更予定: `scripts/harness-mem` (新規関数 setup_gemini_wiring, upsert_gemini_json)
+  - 受入条件:
+    1. `~/.gemini/settings.json` に `mcpServers.harness` が非破壊的に upsert される
+    2. `command`, `args`, `env` (HARNESS_MEM_HOST/PORT/DB_PATH) が正しく設定される
+    3. `includeTools` でメモリ系ツールのみ公開される
+    4. 既存の settings.json 内容を破壊しない
+
+- [x] `cc:完了` G1-005 `check_gemini_wiring()` 実装 — doctor チェック
+  - 変更予定: `scripts/harness-mem` (新規関数 check_gemini_wiring)
+  - 受入条件:
+    1. `mcpServers.harness` の存在と args パスを検証
+    2. 未設定時に適切な警告を出力
+
+- [x] `cc:完了` G1-006 `uninstall_gemini_wiring()` 実装 — クリーンアップ
+  - 変更予定: `scripts/harness-mem` (新規関数 uninstall_gemini_wiring)
+  - 受入条件:
+    1. `settings.json` から `mcpServers.harness` を削除
+    2. Skills/Extension ディレクトリも削除
+
+- [x] `cc:完了` G1-007 setup/doctor/uninstall メインフローに gemini ブロック追加
+  - 変更予定: `scripts/harness-mem` (setup_impl, doctor_impl, uninstall_impl, versions_impl)
+  - 受入条件:
+    1. `is_platform_enabled gemini` で各 impl 関数が gemini 処理を実行
+    2. `versions_impl` で Gemini CLI バージョンを検出・表示
+
+- [x] `cc:完了` G1-008 package.json メタデータ更新
+  - 変更予定: `package.json`
+  - 受入条件:
+    1. `keywords` に `"gemini"`, `"gemini-cli"` 追加
+    2. `description` に "Gemini CLI" 追記
+    3. `files` に `"gemini/"` 追加
+
+#### Phase G2: Hook 統合
+
+- [x] `cc:完了` G2-001 Gemini Hook ハンドラ作成
+  - 変更予定: `scripts/hook-handlers/memory-gemini-event.sh` (新規)
+  - 受入条件:
+    1. SessionStart/SessionEnd/AfterTool/PreCompress の4イベントを処理
+    2. `GEMINI_SESSION_ID` / `GEMINI_PROJECT_DIR` 環境変数を使用
+    3. stdin JSON を読み、`harness-mem-client.sh record-event` に送信
+    4. platform は常に `"gemini"`
+
+- [x] `cc:完了` G2-002 setup_gemini_wiring に hooks セクション追加
+  - 変更予定: `scripts/harness-mem` (upsert_gemini_json 拡張)
+  - 受入条件:
+    1. `settings.json` の `hooks` に SessionStart/SessionEnd/AfterTool/PreCompress エントリ追加
+    2. 既存 hooks を破壊しない（重複チェック付き）
+    3. check_gemini_wiring で hooks の存在も検証
+
+- [x] `cc:完了` G2-003 Gemini ingest パーサー作成
+  - 変更予定: `memory-server/src/ingest/gemini-events.ts` (新規)
+  - 受入条件:
+    1. JSONL スプールファイルをパースして EventEnvelope に変換
+    2. Cursor ingest パターン (`cursor-hooks.ts`) に準拠
+    3. 不正 JSON / 空行を graceful にスキップ
+
+- [x] `cc:完了` G2-004 Core に Gemini ingest タイマー追加
+  - 変更予定: `memory-server/src/core/harness-mem-core.ts` (ingest timer 周辺)
+  - 受入条件:
+    1. `geminiIngestEnabled` が true のとき定期ポーリング開始
+    2. `geminiEventsPath` から JSONL を読み込み
+
+#### Phase G3: Skills & GEMINI.md
+
+- [x] `cc:完了` G3-001 Gemini Agent Skill 作成
+  - 変更予定: `gemini/skills/harness-mem/SKILL.md` (新規)
+  - 受入条件:
+    1. YAML frontmatter に name, description を記載
+    2. harness-mem のメモリ操作ベストプラクティス (3層取得パターン) を記述
+    3. `gemini mcp add/remove` の手順を記載
+
+- [x] `cc:完了` G3-002 GEMINI.md コンテキストファイル作成
+  - 変更予定: `gemini/GEMINI.md` (新規)
+  - 受入条件:
+    1. harness-mem のメモリ操作ガイダンスを記述
+    2. 自己完結型（@import なし）
+
+- [x] `cc:完了` G3-003 setup_gemini_wiring に Skill コピーロジック追加
+  - 変更予定: `scripts/harness-mem` (setup_gemini_wiring 拡張)
+  - 受入条件:
+    1. `gemini/skills/harness-mem/SKILL.md` を `~/.gemini/skills/harness-mem/SKILL.md` にコピー
+    2. 既存ファイルがあれば上書き確認またはバックアップ
+
+#### Phase G-Test: 統合テスト
+
+- [x] `cc:完了` GT-001 Wiring 契約テスト作成
+  - 変更予定: `tests/gemini-wiring-contract.test.ts` (新規)
+  - 受入条件:
+    1. `scripts/harness-mem` に `setup_gemini_wiring` / `check_gemini_wiring` / `uninstall_gemini_wiring` が含まれることを検証
+    2. platform リストに `gemini` が含まれることを検証
+    3. `collector.ts` に gemini エントリがあることを検証
+
+- [x] `cc:完了` GT-002 Hook ハンドラの単体テスト
+  - 変更予定: `tests/gemini-hook-handler.test.sh` (新規)
+  - 受入条件:
+    1. モック JSON を stdin に流し込み、期待される出力を検証
+    2. SessionStart/SessionEnd/AfterTool/PreCompress の4イベントをテスト
+
+### 19.4 リスク緩和策
+
+| リスク | 影響度 | 緩和策 |
+|--------|--------|--------|
+| Hook fingerprinting 衝突 | 高 | Phase G2 で実機検証後に判断。衝突する場合は MCP only で運用 |
+| Gemini CLI の破壊的変更 | 中 | 最小バージョンピンニング + 契約テスト CI |
+| `trust: true` の安全性 | 中 | `includeTools` でメモリ系ツールのみ公開（admin 排除） |
+| 環境変数リダクション | 低 | `HARNESS_MEM_*` がリダクト対象外であることを事前検証 |
+
+### 19.5 完了判定（DoD）
+
+1. `harness-mem setup --platform gemini` → `~/.gemini/settings.json` に MCP wiring が設定される
+2. `harness-mem doctor --platform gemini` → 全チェック PASS
+3. Hook 4 イベント（SessionStart/End, AfterTool, PreCompress）が正常に記録される
+4. 既存 5 プラットフォームのテストが回帰しない
+5. 契約テスト + Hook 単体テストが通過する

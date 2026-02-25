@@ -683,6 +683,14 @@ function collectAiToolEntries(
         latest_path: ["antigravity", "latest_stable"],
         description: "Antigravity 連携環境です。",
       },
+      {
+        id: "gemini_cli",
+        name: "Gemini CLI",
+        local_key: "gemini_cli",
+        status_key: "gemini_cli",
+        latest_path: ["gemini_cli", "latest_stable"],
+        description: "Gemini CLI 実装エージェントです。",
+      },
     ] as const;
 
     for (const mapping of mappings) {
@@ -746,6 +754,7 @@ function collectAiToolEntries(
       { id: "mcp-opencode", check: "opencode_wiring", name: "OpenCode Wiring" },
       { id: "mcp-claude", check: "claude_wiring", name: "Claude Wiring" },
       { id: "mcp-antigravity", check: "antigravity_wiring", name: "Antigravity Wiring" },
+      { id: "mcp-gemini", check: "gemini_wiring", name: "Gemini Wiring" },
     ] as const;
 
     for (const mapping of mappings) {

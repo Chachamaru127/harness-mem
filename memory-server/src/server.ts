@@ -641,6 +641,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.ingestAntigravityHistory());
       }
 
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
+      ) {
+        return jsonResponse(core.ingestGeminiHistory());
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
         const body = await parseRequestJson(request);
         return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));

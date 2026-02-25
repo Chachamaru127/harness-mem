@@ -19,6 +19,7 @@ import { parseOpencodeDbMessageRow, type OpencodeDbMessageRow } from "../ingest/
 import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
 import { parseAntigravityFile } from "../ingest/antigravity-files";
 import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
+import { parseGeminiEventsChunk } from "../ingest/gemini-events";
 import {
   resolveVectorEngine,
   upsertSqliteVecRow,
@@ -69,6 +70,9 @@ const DEFAULT_ANTIGRAVITY_LOGS_ROOT = "~/Library/Application Support/Antigravity
 const DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT = "~/Library/Application Support/Antigravity/User/workspaceStorage";
 const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
+const DEFAULT_GEMINI_EVENTS_PATH = "~/.harness-mem/adapters/gemini/events.jsonl";
+const DEFAULT_GEMINI_INGEST_INTERVAL_MS = 5000;
+const DEFAULT_GEMINI_BACKFILL_HOURS = 24;
 const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 const DEFAULT_SEARCH_EXPAND_LINKS = true;
 const VECTOR_MODEL_VERSION = "local-hash-v3";
@@ -76,7 +80,7 @@ const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const SQLITE_HEADER = "SQLite format 3\u0000";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 
-type Platform = "claude" | "codex" | "opencode" | "cursor" | "antigravity";
+type Platform = "claude" | "codex" | "opencode" | "cursor" | "antigravity" | "gemini";
 type EventType = "session_start" | "user_prompt" | "tool_use" | "checkpoint" | "session_end";
 
 export interface EventEnvelope {
@@ -268,6 +272,10 @@ export interface Config {
   antigravityWorkspaceStorageRoot?: string;
   antigravityIngestIntervalMs?: number;
   antigravityBackfillHours?: number;
+  geminiIngestEnabled?: boolean;
+  geminiEventsPath?: string;
+  geminiIngestIntervalMs?: number;
+  geminiBackfillHours?: number;
   searchRanking?: string;
   searchExpandLinks?: boolean;
   rerankerEnabled?: boolean;
@@ -1032,6 +1040,20 @@ function mergeAntigravityIngestSummary(target: AntigravityIngestSummary, partial
   target.logFilesScanned += partial.logFilesScanned;
 }
 
+interface GeminiIngestSummary {
+  eventsImported: number;
+  filesScanned: number;
+  filesSkippedBackfill: number;
+}
+
+function emptyGeminiIngestSummary(): GeminiIngestSummary {
+  return {
+    eventsImported: 0,
+    filesScanned: 0,
+    filesSkippedBackfill: 0,
+  };
+}
+
 function listOpencodeMessageFiles(rootDir: string): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
@@ -1303,6 +1325,7 @@ export class HarnessMemCore {
   private opencodeIngestTimer: ReturnType<typeof setInterval> | null = null;
   private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
   private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private geminiIngestTimer: ReturnType<typeof setInterval> | null = null;
   private consolidationTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
@@ -1902,6 +1925,32 @@ export class HarnessMemCore {
     );
   }
 
+  private isGeminiIngestEnabled(): boolean {
+    return this.config.geminiIngestEnabled !== false;
+  }
+
+  private getGeminiEventsPath(): string {
+    return resolveHomePath(this.config.geminiEventsPath || DEFAULT_GEMINI_EVENTS_PATH);
+  }
+
+  private getGeminiIngestIntervalMs(): number {
+    return clampLimit(
+      Number(this.config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS),
+      DEFAULT_GEMINI_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    );
+  }
+
+  private getGeminiBackfillHours(): number {
+    return clampLimit(
+      Number(this.config.geminiBackfillHours || DEFAULT_GEMINI_BACKFILL_HOURS),
+      DEFAULT_GEMINI_BACKFILL_HOURS,
+      1,
+      24 * 365
+    );
+  }
+
   private isConsolidationEnabled(): boolean {
     return this.config.consolidationEnabled !== false;
   }
@@ -1937,6 +1986,12 @@ export class HarnessMemCore {
       this.antigravityIngestTimer = setInterval(() => {
         this.ingestAntigravityHistory();
       }, this.getAntigravityIngestIntervalMs());
+    }
+
+    if (this.isGeminiIngestEnabled()) {
+      this.geminiIngestTimer = setInterval(() => {
+        this.ingestGeminiHistory();
+      }, this.getGeminiIngestIntervalMs());
     }
 
     if (this.isConsolidationEnabled()) {
@@ -4099,6 +4154,10 @@ export class HarnessMemCore {
             antigravity_workspace_storage_root: this.getAntigravityWorkspaceStorageRoot(),
             antigravity_ingest_interval_ms: this.getAntigravityIngestIntervalMs(),
             antigravity_backfill_hours: this.getAntigravityBackfillHours(),
+            gemini_history_ingest: this.isGeminiIngestEnabled(),
+            gemini_events_path: this.getGeminiEventsPath(),
+            gemini_ingest_interval_ms: this.getGeminiIngestIntervalMs(),
+            gemini_backfill_hours: this.getGeminiBackfillHours(),
             search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
             search_expand_links: this.config.searchExpandLinks !== false,
           },
@@ -5861,6 +5920,131 @@ export class HarnessMemCore {
     );
   }
 
+  private ingestGeminiEvents(): GeminiIngestSummary {
+    const summary = emptyGeminiIngestSummary();
+    const eventsPath = this.getGeminiEventsPath();
+    if (!existsSync(eventsPath)) {
+      return summary;
+    }
+
+    summary.filesScanned += 1;
+    const sourceKey = `gemini_events:${resolve(eventsPath)}`;
+    const cutoffMs = Date.now() - Math.max(0, this.getGeminiBackfillHours()) * 60 * 60 * 1000;
+
+    let fileSize = 0;
+    let mtimeMs = Date.now();
+    try {
+      const stats = statSync(eventsPath);
+      fileSize = stats.size;
+      mtimeMs = stats.mtimeMs;
+    } catch {
+      return summary;
+    }
+
+    const offsetRow = this.db
+      .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+      .get(sourceKey) as { offset: number } | null;
+    const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+    let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+    if (!hasOffset && mtimeMs < cutoffMs) {
+      this.updateIngestOffset(sourceKey, fileSize);
+      summary.filesSkippedBackfill += 1;
+      return summary;
+    }
+
+    if (offset > fileSize) {
+      offset = 0;
+    }
+    if (offset === fileSize) {
+      return summary;
+    }
+
+    let chunk = "";
+    try {
+      const bytesToRead = fileSize - offset;
+      const buf = Buffer.alloc(bytesToRead);
+      const fd = openSync(eventsPath, "r");
+      try {
+        readSync(fd, buf, 0, bytesToRead, offset);
+      } finally {
+        closeSync(fd);
+      }
+      chunk = buf.toString("utf8");
+    } catch {
+      return summary;
+    }
+
+    const parsedChunk = parseGeminiEventsChunk({
+      sourceKey,
+      baseOffset: offset,
+      chunk,
+      fallbackNowIso: nowIso,
+    });
+
+    let imported = 0;
+    for (const entry of parsedChunk.events) {
+      const result = this.recordEvent(
+        {
+          platform: "gemini",
+          project: entry.project,
+          session_id: entry.sessionId,
+          event_type: entry.eventType,
+          ts: entry.timestamp,
+          payload: entry.payload,
+          tags: ["gemini_events_ingest"],
+          privacy_tags: [],
+          dedupe_hash: entry.dedupeHash,
+        },
+        { allowQueue: false }
+      );
+      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+      if (result.ok && !deduped) {
+        imported += 1;
+      }
+    }
+
+    summary.eventsImported += imported;
+
+    if (parsedChunk.consumedBytes > 0) {
+      this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
+    }
+
+    return summary;
+  }
+
+  ingestGeminiHistory(): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.isGeminiIngestEnabled()) {
+      return makeResponse(
+        startedAt,
+        [
+          {
+            events_imported: 0,
+            files_scanned: 0,
+            files_skipped_backfill: 0,
+          },
+        ],
+        {},
+        { ingest_mode: "disabled" }
+      );
+    }
+
+    const summary = this.ingestGeminiEvents();
+    return makeResponse(
+      startedAt,
+      [
+        {
+          events_imported: summary.eventsImported,
+          files_scanned: summary.filesScanned,
+          files_skipped_backfill: summary.filesSkippedBackfill,
+        },
+      ],
+      {},
+      { ingest_mode: "gemini_spool_v1" }
+    );
+  }
+
   shutdown(signal: string): void {
     if (this.shuttingDown) {
       return;
@@ -5886,6 +6070,10 @@ export class HarnessMemCore {
     if (this.antigravityIngestTimer) {
       clearInterval(this.antigravityIngestTimer);
       this.antigravityIngestTimer = null;
+    }
+    if (this.geminiIngestTimer) {
+      clearInterval(this.geminiIngestTimer);
+      this.geminiIngestTimer = null;
     }
     if (this.consolidationTimer) {
       clearInterval(this.consolidationTimer);
@@ -5968,6 +6156,12 @@ export function getConfig(): Config {
   const antigravityWorkspaceStorageRoot = resolveHomePath(
     process.env.HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
   );
+  const geminiIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS || DEFAULT_GEMINI_INGEST_INTERVAL_MS
+  );
+  const geminiBackfillRaw = Number(
+    process.env.HARNESS_MEM_GEMINI_BACKFILL_HOURS || DEFAULT_GEMINI_BACKFILL_HOURS
+  );
   const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
   const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
   const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
@@ -6033,6 +6227,15 @@ export function getConfig(): Config {
       1,
       24 * 365
     ),
+    geminiIngestEnabled: envFlag("HARNESS_MEM_ENABLE_GEMINI_INGEST", true),
+    geminiEventsPath: resolveHomePath(process.env.HARNESS_MEM_GEMINI_EVENTS_PATH || DEFAULT_GEMINI_EVENTS_PATH),
+    geminiIngestIntervalMs: clampLimit(
+      geminiIngestIntervalRaw,
+      DEFAULT_GEMINI_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    geminiBackfillHours: clampLimit(geminiBackfillRaw, DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
     searchRanking,
     searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
     rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),
