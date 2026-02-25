@@ -36,6 +36,7 @@ BACKEND_MODE=""
 UI_LANG="${HARNESS_MEM_LANG:-ja}"
 SETUP_INTERACTIVE_PROMPT_USED=0
 SETUP_IMPORT_CLAUDE_MEM=0
+SETUP_INSTALL_CODEX_SKILL=0
 SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
 SETUP_AUTO_UPDATE_OPT_IN=-1
 UPDATE_AUTO_UPDATE_OPT_IN=-1
@@ -600,6 +601,58 @@ prompt_setup_auto_update_selection() {
     SETUP_AUTO_UPDATE_OPT_IN=0
     log "Auto-update opt-in: disabled"
   fi
+}
+
+should_prompt_codex_skill_install() {
+  local command="$1"
+  if [ "$command" != "setup" ] && [ "$command" != "update" ]; then
+    return 1
+  fi
+  if ! is_platform_enabled "codex"; then
+    return 1
+  fi
+  if [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
+    return 1
+  fi
+  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
+  if [ -f "$skill_dst" ]; then
+    return 1
+  fi
+  if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_SKILL_PROMPT:-0}" = "1" ]; then
+    return 0
+  fi
+  return 1
+}
+
+prompt_codex_skill_install() {
+  local question
+  if ui_is_en; then
+    question="Install harness-mem Codex Agent Skill to ~/.codex/skills/?"
+  else
+    question="harness-mem の Codex Agent Skill を ~/.codex/skills/ にインストールしますか?"
+  fi
+
+  if prompt_yes_no_default_no "$question"; then
+    SETUP_INSTALL_CODEX_SKILL=1
+    log "Codex skill install: enabled"
+  else
+    SETUP_INSTALL_CODEX_SKILL=0
+    log "Codex skill install: skipped"
+  fi
+}
+
+install_codex_skill() {
+  local skill_src="${HARNESS_ROOT}/codex/skills/harness-mem/SKILL.md"
+  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
+
+  if [ ! -f "$skill_src" ]; then
+    warn "Codex skill source not found: $skill_src"
+    return 1
+  fi
+
+  mkdir -p "$(dirname "$skill_dst")"
+  cp "$skill_src" "$skill_dst"
+  log "Installed Codex Agent Skill: $skill_dst"
 }
 
 prompt_update_auto_update_selection() {
@@ -1336,6 +1389,10 @@ EOF
     cp "$rules_src" "$rules_dst"
     log "Copied memory-aware Codex rules: $rules_dst"
   fi
+
+  if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
+    install_codex_skill
+  fi
 }
 
 check_codex_wiring() {
@@ -1359,6 +1416,13 @@ check_codex_wiring() {
   else
     warn "Codex MCP wiring is missing in: $cfg"
     failed=1
+  fi
+
+  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
+  if [ -f "$skill_dst" ]; then
+    log "Codex Agent Skill: OK ($skill_dst)"
+  else
+    log "Codex Agent Skill: not installed (run setup or update to install)"
   fi
 
   local prepare_hook
@@ -3161,6 +3225,9 @@ update_impl() {
 
   log "Updating harness-mem: npm install -g ${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
   npm install -g "${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
+  if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
+    install_codex_skill
+  fi
   log "Update complete. Restart daemon/UI if running: harness-memd restart"
 }
 
@@ -3183,6 +3250,9 @@ main() {
   fi
   if should_prompt_update_auto_update_selection "$command"; then
     prompt_update_auto_update_selection
+  fi
+  if should_prompt_codex_skill_install "$command"; then
+    prompt_codex_skill_install
   fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"
