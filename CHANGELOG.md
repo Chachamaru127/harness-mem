@@ -39,6 +39,47 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.1.34] - 2026-02-25
+
+### What changed for users
+
+- harness-mem now tracks Claude Code worktree and config-change events, enriches OpenCode memory with MCP session metadata, and is distributable as a Codex Agent Skill.
+
+### Added
+
+- **Claude Code v2.1 hook handlers**: `WorktreeCreate`, `WorktreeRemove`, `ConfigChange` event coverage.
+- **OpenCode lifecycle hooks**: `tool.execute.before` / `tool.execute.after` with MCP `sessionID`/`messageID` enrichment.
+- **Codex Agent Skill**: `codex/skills/harness-mem/SKILL.md` for native Codex skill distribution.
+- **Tool input sanitization**: `sanitizeToolInput()` redacts secret-like keys and truncates at 2000 chars.
+
+### Changed
+
+- Wiring checks now verify each required hook individually instead of a single OR pattern.
+
+### Fixed
+
+- OpenCode plugin `success` field now defaults to `undefined` instead of `true` for honest telemetry.
+- Removed `payload.id` from session ID candidates (not session-stable in MCP attachments).
+- Environment panel dims uninstalled items and shows warning reasons inline.
+
+### Removed
+
+- None.
+
+### Security
+
+- Tool input sanitization prevents accidental persistence of secrets/tokens in memory events.
+
+### Migration Notes
+
+- No migration is required.
+
+### Verification
+
+- `bash -n scripts/harness-mem`
+- `python3 -c "import json; json.load(open('hooks/hooks.json'))"`
+- `bun test memory-server/tests/`
+
 ## [0.1.33] - 2026-02-25
 
 ### What changed for users

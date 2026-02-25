@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.1.34] - 2026-02-25
+
+### ユーザー向け要約
+
+- Claude Code v2.1 の worktree/config 変更イベントを記録対応。OpenCode の MCP セッションメタデータ連携を強化。Codex Agent Skill として配布可能に。
+
+### 補足
+
+- Claude Code hooks に `WorktreeCreate`, `WorktreeRemove`, `ConfigChange` を追加。
+- OpenCode プラグインに `tool.execute.before/after` フックと `sessionID`/`messageID` 取得を追加。
+- ツール入力のサニタイズ（秘密キーのマスク + 2000文字制限）を実装。
+- wiring check を個別パターン検証に改善（OR 条件の偽陽性を防止）。
+- `success` のデフォルト値を `true` → `undefined` に変更（監査精度向上）。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.33] - 2026-02-25
 
 ### ユーザー向け要約
