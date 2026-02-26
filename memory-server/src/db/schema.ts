@@ -156,12 +156,6 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
       ON mem_facts(merged_into_fact_id);
 
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_superseded_by
-      ON mem_facts(superseded_by);
-
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_valid_to
-      ON mem_facts(valid_to);
-
     CREATE TABLE IF NOT EXISTS mem_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       action TEXT NOT NULL,
