@@ -277,100 +277,18 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // Tables and indexes below are already created by initSchema (CREATE TABLE/INDEX IF NOT EXISTS).
+  // For pre-existing DBs that were created before these tables existed, initSchema is always called
+  // first, so no duplicate DDL is needed here. Only ALTER TABLE and genuinely new indexes belong
+  // in migrateSchema.
+
+  // Additional indexes that may not exist in older DBs (safe idempotent creation)
   db.exec(`
-    CREATE TABLE IF NOT EXISTS mem_entities (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      entity_type TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      UNIQUE(name, entity_type)
-    );
-
-    CREATE TABLE IF NOT EXISTS mem_observation_entities (
-      observation_id TEXT NOT NULL,
-      entity_id INTEGER NOT NULL,
-      created_at TEXT NOT NULL,
-      PRIMARY KEY(observation_id, entity_id),
-      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
-      FOREIGN KEY(entity_id) REFERENCES mem_entities(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_mem_observation_entities_entity
-      ON mem_observation_entities(entity_id);
-
     CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
       ON mem_observations(project, session_id, created_at, id);
 
-    CREATE INDEX IF NOT EXISTS idx_mem_links_from_relation
-      ON mem_links(from_observation_id, relation, to_observation_id);
-
-    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_links_unique_relation
-      ON mem_links(from_observation_id, to_observation_id, relation);
-
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
-
-    CREATE TABLE IF NOT EXISTS mem_facts (
-      fact_id TEXT PRIMARY KEY,
-      observation_id TEXT,
-      project TEXT NOT NULL,
-      session_id TEXT NOT NULL,
-      fact_type TEXT NOT NULL,
-      fact_key TEXT NOT NULL,
-      fact_value TEXT NOT NULL,
-      confidence REAL NOT NULL DEFAULT 0.5,
-      superseded_by TEXT,
-      valid_from TEXT,
-      valid_to TEXT,
-      merged_into_fact_id TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL,
-      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE SET NULL,
-      FOREIGN KEY(merged_into_fact_id) REFERENCES mem_facts(fact_id) ON DELETE SET NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_project_session_type
-      ON mem_facts(project, session_id, fact_type, created_at DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
-      ON mem_facts(merged_into_fact_id);
-
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_superseded_by
-      ON mem_facts(superseded_by);
-
-    CREATE INDEX IF NOT EXISTS idx_mem_facts_valid_to
-      ON mem_facts(valid_to);
-
-    CREATE TABLE IF NOT EXISTS mem_audit_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      action TEXT NOT NULL,
-      actor TEXT NOT NULL,
-      target_type TEXT NOT NULL,
-      target_id TEXT NOT NULL DEFAULT '',
-      details_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_action_created
-      ON mem_audit_log(action, created_at DESC);
-
-    CREATE INDEX IF NOT EXISTS idx_mem_audit_log_target_created
-      ON mem_audit_log(target_type, target_id, created_at DESC);
-
-    CREATE TABLE IF NOT EXISTS mem_consolidation_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      project TEXT NOT NULL,
-      session_id TEXT NOT NULL,
-      reason TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL DEFAULT 'pending',
-      requested_at TEXT NOT NULL,
-      started_at TEXT,
-      finished_at TEXT,
-      error TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_mem_consolidation_queue_status_requested
-      ON mem_consolidation_queue(status, requested_at ASC, id ASC);
   `);
 
   // W2-004: mem_facts に superseded_by カラムを追加（矛盾ファクト追跡用）

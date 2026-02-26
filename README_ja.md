@@ -133,6 +133,27 @@ harness-mem uninstall --purge-db
 harness-memd restart
 ```
 
+## Plans.md ワークフロー
+
+harness-mem ではタスク管理の正本として `Plans.md` を使用します。
+
+### Phase マーカー
+
+| マーカー | 意味 |
+|---|---|
+| `cc:TODO` | 未着手 |
+| `cc:WIP` | 作業中 |
+| `cc:完了` | 完了 |
+| `blocked` | ブロック（理由を記載） |
+
+### 着手時
+
+Plans.md のマーカーを `cc:TODO` → `cc:WIP` に変更してから作業を開始します。各 Phase 内のタスクは並列実行が可能です。
+
+### 完了時
+
+マーカーを `cc:完了` に変更し、未解決の課題があれば記載します。
+
 ## ドキュメント
 
 - セットアップ詳細: `docs/harness-mem-setup.md`

@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, readSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import {
   configureDatabase as configureDb,
@@ -413,7 +413,7 @@ function projectBasenameKey(project: string): string {
 
 function realpathOrNormalized(inputPath: string): string {
   try {
-    const { realpathSync } = require("node:fs") as typeof import("node:fs");
+
     return normalizePathLike(realpathSync(inputPath));
   } catch {
     return normalizePathLike(inputPath);
@@ -527,7 +527,7 @@ function normalizeProjectName(name: string, options: ProjectNormalizationOptions
   const normalized = normalizePathLike(trimmed);
   // パスとして存在する場合はsymlink解決してbasename相当の正規パスを返す
   try {
-    const { realpathSync } = require("node:fs") as typeof import("node:fs");
+
     const real = normalizePathLike(realpathSync(normalized));
     const workspaceRoot = resolveWorkspaceRoot(real, options);
     return workspaceRoot || real;
@@ -545,7 +545,7 @@ function normalizeProjectName(name: string, options: ProjectNormalizationOptions
         const rootBase = basename(rootNormalized).toLowerCase();
         if (rootBase === target) {
           try {
-            const { realpathSync } = require("node:fs") as typeof import("node:fs");
+        
             const real = normalizePathLike(realpathSync(rootNormalized));
             const workspaceRoot = resolveWorkspaceRoot(real, options);
             return workspaceRoot || real;
@@ -2114,26 +2114,36 @@ export class HarnessMemCore {
 
   private extractAndStoreEntities(observationId: string, content: string, createdAt: string): void {
     const entities = extractEntities(content);
-    for (const entity of entities) {
-      try {
-        this.db
-          .query(`INSERT OR IGNORE INTO mem_entities(name, entity_type, created_at) VALUES (?, ?, ?)`)
-          .run(entity.name, entity.type, createdAt);
+    if (entities.length === 0) return;
 
-        const stored = this.db
-          .query(`SELECT id FROM mem_entities WHERE name = ? AND entity_type = ?`)
-          .get(entity.name, entity.type) as { id: number } | null;
-        if (stored?.id) {
-          this.db
-            .query(`
-              INSERT OR IGNORE INTO mem_observation_entities(observation_id, entity_id, created_at)
-              VALUES (?, ?, ?)
-            `)
-            .run(observationId, stored.id, createdAt);
-        }
-      } catch {
-        // best effort
+    try {
+      // Batch INSERT all entities first
+      const insertStmt = this.db.query(
+        `INSERT OR IGNORE INTO mem_entities(name, entity_type, created_at) VALUES (?, ?, ?)`
+      );
+      for (const entity of entities) {
+        insertStmt.run(entity.name, entity.type, createdAt);
       }
+
+      // Single SELECT to fetch all entity IDs at once
+      const placeholders = entities.map(() => "(?, ?)").join(", ");
+      const params: string[] = [];
+      for (const entity of entities) {
+        params.push(entity.name, entity.type);
+      }
+      const storedEntities = this.db
+        .query(`SELECT id FROM mem_entities WHERE (name, entity_type) IN (VALUES ${placeholders})`)
+        .all(...params) as Array<{ id: number }>;
+
+      // Batch INSERT observation-entity links
+      const linkStmt = this.db.query(
+        `INSERT OR IGNORE INTO mem_observation_entities(observation_id, entity_id, created_at) VALUES (?, ?, ?)`
+      );
+      for (const stored of storedEntities) {
+        linkStmt.run(observationId, stored.id, createdAt);
+      }
+    } catch {
+      // best effort
     }
   }
 

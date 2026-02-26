@@ -140,6 +140,27 @@ harness-mem uninstall --purge-db
 harness-memd restart
 ```
 
+## Plans.md Workflow
+
+harness-mem uses `Plans.md` as the single source of truth for task management.
+
+### Phase markers
+
+| Marker | Meaning |
+|---|---|
+| `cc:TODO` | Not started |
+| `cc:WIP` | Work in progress |
+| `cc:完了` | Worker completed |
+| `blocked` | Blocked (reason noted) |
+
+### When starting a task
+
+Update the marker from `cc:TODO` to `cc:WIP` in Plans.md before beginning implementation. Each Phase groups related tasks that can be executed in parallel.
+
+### When complete
+
+Update the marker to `cc:完了` and note any unresolved issues.
+
 ## Documentation
 
 - Setup reference: `docs/harness-mem-setup.md`

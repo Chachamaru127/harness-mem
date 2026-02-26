@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import {
   type FeedRequest,
   HarnessMemCore,
@@ -95,7 +96,10 @@ function hasValidAdminToken(request: Request): boolean {
   const rawAuth = request.headers.get("authorization");
   const bearer = rawAuth?.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";
   const provided = request.headers.get("x-harness-mem-token") || bearer || "";
-  return provided === configured;
+  if (provided.length !== configured.length) {
+    return false;
+  }
+  return timingSafeEqual(Buffer.from(provided), Buffer.from(configured));
 }
 
 async function parseRequestJson(request: Request): Promise<Record<string, unknown>> {

@@ -160,7 +160,7 @@ function parseFactsFromContent(content: string): FactCandidate[] {
       return {
         fact_type,
         fact_key,
-        fact_value: typeof fact.fact_value === "string" ? fact.fact_value : "",
+        fact_value: typeof fact.fact_value === "string" ? fact.fact_value.slice(0, 500) : "",
         confidence: typeof fact.confidence === "number" ? fact.confidence : 0.5,
         auto_tags: inferAutoTags(fact_type, fact_key),
       };
@@ -264,6 +264,10 @@ async function callOllama(
   model: string
 ): Promise<string | null> {
   const host = (process.env.HARNESS_MEM_OLLAMA_HOST || "http://127.0.0.1:11434").trim();
+  if (!/^https?:\/\//i.test(host)) {
+    process.stderr.write(`[harness-mem][warn] HARNESS_MEM_OLLAMA_HOST must use http or https scheme, got: ${host}\n`);
+    return null;
+  }
   const body = JSON.stringify({
     model,
     stream: false,

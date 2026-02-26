@@ -118,6 +118,15 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     }
   })();
 
+  // KNOWN LIMITATION: Transformers.js model inference (model.__call__) is async
+  // (returns a Promise). The sync embed() interface cannot await it directly.
+  // We cache the last inference result from the async path (embedAsync).
+  // If cachedResult is available and matches this text, use it; otherwise fall back.
+  // This means the FIRST call for any new text always returns fallback/zeros;
+  // subsequent calls for the same text will return the real ONNX embedding.
+  // The single-entry cache is intentional to keep memory bounded, but it means
+  // alternating query/passage texts will always miss. A future improvement would
+  // be to expose an async embedQueryAsync() on the EmbeddingProvider interface.
   function embedSync(text: string, prefix: string): number[] {
     if (initError !== null || tokenizer === null || model === null) {
       // Fallback: if a fallback provider is given use it, otherwise return zeros
