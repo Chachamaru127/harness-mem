@@ -1823,19 +1823,27 @@ EOF
       | .hooks = (.hooks // {})
       | .hooks.SessionStart = (.hooks.SessionStart // [])
       | (if (.hooks.SessionStart | tostring | test("memory-gemini-event")) then .
-         else .hooks.SessionStart += [[{"matcher": "*"}, [{"name": "harness-mem-session-start", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionStart")}]]]
+         else .hooks.SessionStart += [{"matcher": "*", "hooks": [{"name": "harness-mem-session-start", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionStart")}]}]
          end)
       | .hooks.SessionEnd = (.hooks.SessionEnd // [])
       | (if (.hooks.SessionEnd | tostring | test("memory-gemini-event")) then .
-         else .hooks.SessionEnd += [[{"matcher": "*"}, [{"name": "harness-mem-session-end", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionEnd")}]]]
+         else .hooks.SessionEnd += [{"matcher": "*", "hooks": [{"name": "harness-mem-session-end", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionEnd")}]}]
+         end)
+      | .hooks.BeforeAgent = (.hooks.BeforeAgent // [])
+      | (if (.hooks.BeforeAgent | tostring | test("memory-gemini-event")) then .
+         else .hooks.BeforeAgent += [{"matcher": "*", "hooks": [{"name": "harness-mem-before-agent", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' BeforeAgent")}]}]
+         end)
+      | .hooks.AfterAgent = (.hooks.AfterAgent // [])
+      | (if (.hooks.AfterAgent | tostring | test("memory-gemini-event")) then .
+         else .hooks.AfterAgent += [{"matcher": "*", "hooks": [{"name": "harness-mem-after-agent", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' AfterAgent")}]}]
          end)
       | .hooks.AfterTool = (.hooks.AfterTool // [])
       | (if (.hooks.AfterTool | tostring | test("memory-gemini-event")) then .
-         else .hooks.AfterTool += [[{"matcher": ".*"}, [{"name": "harness-mem-after-tool", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' AfterTool")}]]]
+         else .hooks.AfterTool += [{"matcher": ".*", "hooks": [{"name": "harness-mem-after-tool", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' AfterTool")}]}]
          end)
       | .hooks.PreCompress = (.hooks.PreCompress // [])
       | (if (.hooks.PreCompress | tostring | test("memory-gemini-event")) then .
-         else .hooks.PreCompress += [[{"matcher": "*"}, [{"name": "harness-mem-pre-compress", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' PreCompress")}]]]
+         else .hooks.PreCompress += [{"matcher": "*", "hooks": [{"name": "harness-mem-pre-compress", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' PreCompress")}]}]
          end)
     ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
@@ -1880,7 +1888,7 @@ check_gemini_wiring() {
     failed=1
   fi
 
-  local hook_types=("SessionStart" "SessionEnd" "AfterTool" "PreCompress")
+  local hook_types=("SessionStart" "SessionEnd" "BeforeAgent" "AfterAgent" "AfterTool" "PreCompress")
   local hooks_ok=0
   local hooks_missing=0
   for ht in "${hook_types[@]}"; do

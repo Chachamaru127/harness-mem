@@ -36,6 +36,12 @@ describe("Gemini CLI wiring contract", () => {
     expect(harnessMemScript).toContain("upsert_gemini_json");
   });
 
+  test("gemini hooks include all 6 event types", () => {
+    for (const event of ["SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent", "AfterTool", "PreCompress"]) {
+      expect(harnessMemScript).toContain(`.hooks.${event}`);
+    }
+  });
+
   const collectorTs = readFileSync("memory-server/src/system-environment/collector.ts", "utf8");
 
   test("collector includes gemini in ai_tools", () => {

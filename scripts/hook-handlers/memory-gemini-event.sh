@@ -44,6 +44,7 @@ map_event_type() {
     AfterTool)     echo "tool_use" ;;
     PreCompress)   echo "checkpoint" ;;
     BeforeAgent)   echo "user_prompt" ;;
+    AfterAgent)    echo "assistant_response" ;;
     *)             echo "checkpoint" ;;
   esac
 }

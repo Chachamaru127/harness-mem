@@ -54,7 +54,7 @@ fi
 
 # Test 4: All event types are handled
 echo "--- Test 4: Event type mapping ---"
-for event in SessionStart SessionEnd AfterTool PreCompress BeforeAgent; do
+for event in SessionStart SessionEnd AfterTool PreCompress BeforeAgent AfterAgent; do
   OUTPUT=$(echo '{}' | \
     GEMINI_SESSION_ID="test-$$" \
     GEMINI_PROJECT_DIR="/tmp/test" \
