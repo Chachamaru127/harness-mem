@@ -7,6 +7,13 @@
 <p align="center"><strong>Codex / OpenCode / Cursor / Claude で共通利用できるメモリランタイム。</strong></p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/dm/@chachamaru127/harness-mem" alt="npm downloads" /></a>
+  <a href="https://github.com/Chachamaru127/harness-mem/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Chachamaru127/harness-mem/release.yml?label=release" alt="release workflow" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/github/license/Chachamaru127/harness-mem" alt="license" /></a>
+</p>
+
+<p align="center">
   <a href="README.md">English</a> | 日本語
 </p>
 
@@ -161,6 +168,7 @@ Plans.md のマーカーを `cc:TODO` → `cc:WIP` に変更してから作業�
 - 変更履歴（英語・正本）: `CHANGELOG.md`
 - 変更履歴（日本語要約）: `CHANGELOG_ja.md`
 - 英語 README（デフォルト）: `README.md`
+- ベンチマーク手順書: `docs/benchmarks/`
 
 ## 公式マスコット
 
