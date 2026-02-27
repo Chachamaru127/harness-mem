@@ -317,6 +317,13 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // IMP-009: Signal Extraction - キーワード検出による重要度スコアを保存
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN signal_score REAL NOT NULL DEFAULT 0`);
+  } catch {
+    // already exists
+  }
+
   // プロジェクト名空文字のレコードがあれば警告ログ
   const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};
   if (emptyProjects.cnt > 0) {

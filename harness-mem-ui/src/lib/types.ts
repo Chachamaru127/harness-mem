@@ -1,7 +1,7 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
 export type UiTab = "feed" | "environment" | "search" | "observation" | "session";
-export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor";
+export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "gemini";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 
 export interface UiSettings {

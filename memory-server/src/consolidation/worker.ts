@@ -15,6 +15,8 @@ export interface ConsolidationRunStats {
   facts_extracted: number;
   facts_merged: number;
   pending_jobs: number;
+  /** IMP-011: derives リンクとして生成されたリンク数 */
+  derives_links_created?: number;
 }
 
 interface QueueRow {
@@ -301,6 +303,115 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
   return inserted;
 }
 
+/**
+ * IMP-011: Derives 関係性（推論リンク）の自動生成
+ *
+ * 同一プロジェクトのファクト間で Jaccard 類似度を計算し、
+ * - 類似度が低い (< 0.15) にも関わらず同じ fact_type を持つファクトは
+ *   「別の視点から同じ結論を導いた」推論リンク (derives) として結合する
+ * - derives リンクは mem_links テーブルに relation='derives' で保存する
+ * - 自己参照・重複リンクは OR IGNORE で排除する
+ *
+ * LLM モードの有無にかかわらず heuristic ベースで動作する。
+ */
+function generateDerivesLinks(db: Database, project: string, sessionId: string): number {
+  // 同一プロジェクトのアクティブなファクトとその観察IDを取得
+  const facts = db
+    .query(
+      `
+        SELECT
+          f.fact_id,
+          f.observation_id,
+          f.fact_type,
+          f.fact_key,
+          f.fact_value
+        FROM mem_facts f
+        WHERE f.project = ?
+          AND f.merged_into_fact_id IS NULL
+          AND f.superseded_by IS NULL
+          AND f.valid_to IS NULL
+        ORDER BY f.created_at ASC
+        LIMIT 200
+      `
+    )
+    .all(project) as Array<{
+    fact_id: string;
+    observation_id: string;
+    fact_type: string;
+    fact_key: string;
+    fact_value: string;
+  }>;
+
+  if (facts.length < 2) {
+    return 0;
+  }
+
+  function tokenize(text: string): Set<string> {
+    const tokens = text
+      .toLowerCase()
+      .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\s]/g, " ")
+      .split(/\s+/)
+      .filter((t) => t.length > 1)
+      .slice(0, 64);
+    return new Set(tokens);
+  }
+
+  function jaccard(lhs: Set<string>, rhs: Set<string>): number {
+    if (lhs.size === 0 || rhs.size === 0) return 0;
+    let intersection = 0;
+    for (const token of lhs) {
+      if (rhs.has(token)) intersection += 1;
+    }
+    const union = lhs.size + rhs.size - intersection;
+    return union === 0 ? 0 : intersection / union;
+  }
+
+  let linksCreated = 0;
+  const nowTs = new Date().toISOString();
+
+  for (let i = 0; i < facts.length; i++) {
+    const fi = facts[i];
+    const fiTokens = tokenize(`${fi.fact_key} ${fi.fact_value}`);
+
+    for (let j = i + 1; j < facts.length; j++) {
+      const fj = facts[j];
+
+      // 異なる観察 ID かつ同じ fact_type のファクト間でリンクを検討
+      if (fi.observation_id === fj.observation_id) continue;
+      if (fi.fact_type !== fj.fact_type) continue;
+
+      const fjTokens = tokenize(`${fj.fact_key} ${fj.fact_value}`);
+      const similarity = jaccard(fiTokens, fjTokens);
+
+      // 低類似度 (0.05 〜 0.35) の同型ファクト = 「異なる観点から導かれた洞察」
+      // 0.05 未満は無関係、0.35 超は同一ファクトの重複（dedupe 済みのはず）
+      if (similarity < 0.05 || similarity > 0.35) continue;
+
+      // derives リンクを双方向に挿入
+      const weight = Number((0.5 + similarity).toFixed(4)); // 0.55〜0.85
+      const row1 = db
+        .query(
+          `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+           VALUES (?, ?, 'derives', ?, ?)`
+        )
+        .run(fi.observation_id, fj.observation_id, weight, nowTs);
+      const changes1 = Number((row1 as { changes?: number }).changes ?? 0);
+
+      const row2 = db
+        .query(
+          `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+           VALUES (?, ?, 'derives', ?, ?)`
+        )
+        .run(fj.observation_id, fi.observation_id, weight, nowTs);
+      const changes2 = Number((row2 as { changes?: number }).changes ?? 0);
+
+      linksCreated += changes1 + changes2;
+    }
+  }
+
+  return linksCreated;
+}
+
 function dedupeSessionFacts(db: Database, project: string, sessionId: string): number {
   const facts = db
     .query(
@@ -341,6 +452,7 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
   let jobsProcessed = 0;
   let factsExtracted = 0;
   let factsMerged = 0;
+  let derivesLinksTotal = 0;
 
   for (const job of jobs) {
     if (job.id > 0) {
@@ -349,9 +461,12 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
 
     const extracted = await upsertFactsForSession(db, job.project, job.session_id);
     const merged = dedupeSessionFacts(db, job.project, job.session_id);
+    // IMP-011: derives リンクの自動生成（heuristic ベース）
+    const derivesLinks = generateDerivesLinks(db, job.project, job.session_id);
 
     factsExtracted += extracted;
     factsMerged += merged;
+    derivesLinksTotal += derivesLinks;
     jobsProcessed += 1;
 
     writeAudit(
@@ -362,6 +477,7 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
         session_id: job.session_id,
         facts_extracted: extracted,
         facts_merged: merged,
+        derives_links_created: derivesLinks,
         reason: options.reason || "manual",
       },
       "session",
@@ -388,6 +504,7 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
     facts_extracted: factsExtracted,
     facts_merged: factsMerged,
     pending_jobs: Number(pendingRow?.count ?? 0),
+    derives_links_created: derivesLinksTotal,
   };
 }
 

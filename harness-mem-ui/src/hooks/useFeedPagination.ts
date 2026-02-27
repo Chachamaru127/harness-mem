@@ -3,9 +3,11 @@ import { fetchFeed } from "../lib/api";
 import { mergeFeedItems } from "../lib/merge";
 import type { FeedItem } from "../lib/types";
 
+import type { UiPlatformFilter } from "../lib/types";
+
 interface FeedOptions {
   project: string;
-  platformFilter: "__all__" | "claude" | "codex" | "opencode" | "cursor";
+  platformFilter: UiPlatformFilter;
   includePrivate: boolean;
   limit: number;
 }

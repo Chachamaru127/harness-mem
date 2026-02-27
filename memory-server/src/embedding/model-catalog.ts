@@ -22,6 +22,26 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     queryPrefix: "query: ",
     passagePrefix: "passage: ",
   },
+  {
+    id: "gte-small",
+    displayName: "GTE Small (English)",
+    onnxRepo: "Xenova/gte-small",
+    tokenizerRepo: "Xenova/gte-small",
+    dimension: 384,
+    sizeBytes: 67_000_000,
+    language: "en",
+  },
+  {
+    id: "e5-small-v2",
+    displayName: "E5 Small v2 (English)",
+    onnxRepo: "Xenova/e5-small-v2",
+    tokenizerRepo: "Xenova/e5-small-v2",
+    dimension: 384,
+    sizeBytes: 67_000_000,
+    language: "en",
+    queryPrefix: "query: ",
+    passagePrefix: "passage: ",
+  },
 ];
 
 export function findModelById(id: string): ModelCatalogEntry | undefined {

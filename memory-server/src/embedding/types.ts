@@ -22,6 +22,8 @@ export interface EmbeddingRegistryOptions {
   ollamaEmbedModel?: string;
   localModelId?: string;
   localModelsDir?: string;
+  /** IMP-008: 言語自動選択時のデフォルト言語 ("ja" | "en") */
+  defaultLanguage?: "ja" | "en";
 }
 
 export interface EmbeddingRegistryResult {

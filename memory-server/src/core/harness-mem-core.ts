@@ -20,6 +20,8 @@ import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
 import { parseAntigravityFile } from "../ingest/antigravity-files";
 import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
 import { parseGeminiEventsChunk } from "../ingest/gemini-events";
+import { parseGitHubIssues, type GitHubIssueObservation } from "../connectors/github-issues";
+import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
 import {
   resolveVectorEngine,
   upsertSqliteVecRow,
@@ -51,6 +53,11 @@ import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-
 import type { StoredEvent } from "../projector/types";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
+import { SessionManager } from "./session-manager";
+import { EventRecorder } from "./event-recorder";
+import { ObservationStore } from "./observation-store";
+import { IngestCoordinator } from "./ingest-coordinator";
+import { ConfigManager } from "./config-manager";
 
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
@@ -110,6 +117,8 @@ export interface SearchRequest {
   debug?: boolean;
   /** Explicit question kind for retrieval routing: profile|timeline|graph|vector|hybrid */
   question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid";
+  /** updatesリンクで上書きされた旧観察を検索結果から除外する (IMP-002) */
+  exclude_updated?: boolean;
 }
 
 export interface FeedRequest {
@@ -195,6 +204,21 @@ export interface GetObservationsRequest {
   ids: string[];
   include_private?: boolean;
   compact?: boolean;
+}
+
+/** IMP-002: メモリリンク作成リクエスト */
+export interface CreateLinkRequest {
+  from_observation_id: string;
+  to_observation_id: string;
+  /** 関係性タイプ: updates(上書き) / extends(補足) / derives(推論) / follows / shared_entity */
+  relation: "updates" | "extends" | "derives" | "follows" | "shared_entity";
+  weight?: number;
+}
+
+/** IMP-002: メモリリンク取得リクエスト */
+export interface GetLinksRequest {
+  observation_id: string;
+  relation?: string;
 }
 
 export interface RecordCheckpointRequest {
@@ -299,6 +323,46 @@ const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
   user_prompt: 0.4,
   session_start: 0.2,
 };
+
+// IMP-009: Signal Extraction - キーワードパターンによる重要度自動判定
+const SIGNAL_BOOST_PATTERNS: RegExp[] = [
+  /\bremember\b/i,
+  /\barchitecture\b/i,
+  /\bdecision\b/i,
+  /\bbug\b/i,
+  /\bfix\b/i,
+];
+const SIGNAL_BOOST_AMOUNT = 0.3;
+
+const NOISE_DAMPEN_PATTERNS: RegExp[] = [
+  /<environment_context>/i,
+  /<AGENTS\.md>/i,
+];
+const NOISE_DAMPEN_AMOUNT = 0.2;
+
+/**
+ * コンテンツのシグナルスコアを計算する。
+ * - 重要キーワードを検出: importance += 0.3 (複数シグナルでも加算は1回)
+ * - ノイズパターンを検出: importance -= 0.2
+ * - 結果は [-1, 1] の範囲に収める
+ */
+function extractSignalScore(content: string): number {
+  let score = 0;
+
+  // 重要シグナル検出（1回だけ加算）
+  const hasSignal = SIGNAL_BOOST_PATTERNS.some((pattern) => pattern.test(content));
+  if (hasSignal) {
+    score += SIGNAL_BOOST_AMOUNT;
+  }
+
+  // ノイズ減衰（1回だけ減算）
+  const hasNoise = NOISE_DAMPEN_PATTERNS.some((pattern) => pattern.test(content));
+  if (hasNoise) {
+    score -= NOISE_DAMPEN_AMOUNT;
+  }
+
+  return score;
+}
 
 const SYNONYM_MAP: Record<string, string[]> = {
   typescript: ["ts"],
@@ -1348,6 +1412,16 @@ export class HarnessMemCore {
   private readonly projectNormalizationRoots: string[];
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
 
+  // ---------------------------------------------------------------------------
+  // モジュールインスタンス (facade パターン)
+  // コンストラクタ末尾で initModules() を呼び出して初期化する
+  // ---------------------------------------------------------------------------
+  private sessionMgr!: SessionManager;
+  private eventRec!: EventRecorder;
+  private obsStore!: ObservationStore;
+  private ingestCoord!: IngestCoordinator;
+  private cfgMgr!: ConfigManager;
+
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
     ensureDir(resolve(join(dbPath, "..")));
@@ -1378,6 +1452,68 @@ export class HarnessMemCore {
 
     this.startBackgroundWorkers();
     this.initManagedBackend();
+    this.initModules();
+  }
+
+  /** モジュールインスタンスを初期化する (コンストラクタ末尾で呼ぶ) */
+  private initModules(): void {
+    this.eventRec = new EventRecorder({
+      db: this.db,
+      config: this.config,
+      normalizeProject: (p) => this.normalizeProjectInput(p),
+      doRecordEvent: (event, options) => this.recordEvent(event, options),
+    });
+
+    this.sessionMgr = new SessionManager({
+      db: this.db,
+      config: this.config,
+      normalizeProject: (p) => this.normalizeProjectInput(p),
+      visibilityFilterSql: (alias, inc) => this.visibilityFilterSql(alias, inc),
+      platformVisibilityFilterSql: (alias) => this.platformVisibilityFilterSql(alias),
+      recordEvent: (event) => this.recordEvent(event),
+      appendStreamEvent: (type, data) => this.eventRec.appendStreamEvent(type, data),
+      enqueueConsolidation: (proj, sess, reason) => this.enqueueConsolidation(proj, sess, reason),
+    });
+
+    this.obsStore = new ObservationStore({
+      db: this.db,
+      config: this.config,
+      ftsEnabled: this.ftsEnabled,
+      normalizeProject: (p) => this.normalizeProjectInput(p),
+      visibilityFilterSql: (alias, inc) => this.visibilityFilterSql(alias, inc),
+      platformVisibilityFilterSql: (alias) => this.platformVisibilityFilterSql(alias),
+      buildFtsQuery: (q) => this.buildFtsQuery(q),
+      loadObservations: (ids) => this.loadObservations(ids),
+      writeAuditLog: (action, targetType, targetId, details) =>
+        this.writeAuditLog(action, targetType, targetId, details),
+      doSearch: (request) => this.search(request),
+    });
+
+    this.ingestCoord = new IngestCoordinator({
+      doIngestCodexHistory: () => this.ingestCodexHistory(),
+      doIngestOpencodeHistory: () => this.ingestOpencodeHistory(),
+      doIngestCursorHistory: () => this.ingestCursorHistory(),
+      doIngestAntigravityHistory: () => this.ingestAntigravityHistory(),
+      doIngestGeminiHistory: () => this.ingestGeminiHistory(),
+      doStartClaudeMemImport: (req) => this.startClaudeMemImport(req),
+      doGetImportJobStatus: (req) => this.getImportJobStatus(req),
+      doVerifyClaudeMemImport: (req) => this.verifyClaudeMemImport(req),
+    });
+
+    this.cfgMgr = new ConfigManager({
+      db: this.db,
+      config: this.config,
+      doHealth: () => this.health(),
+      doMetrics: () => this.metrics(),
+      doEnvironmentSnapshot: () => this.environmentSnapshot(),
+      doRunConsolidation: (req) => this.runConsolidation(req),
+      doBackup: (opts) => this.backup(opts),
+      doReindexVectors: (limit) => this.reindexVectors(limit),
+      doGetManagedStatus: () => this.getManagedStatus(),
+      doShutdown: (signal) => this.shutdown(signal),
+      isConsolidationEnabled: () => this.isConsolidationEnabled(),
+      getConsolidationIntervalMs: () => this.getConsolidationIntervalMs(),
+    });
   }
 
   private configureDatabase(): void {
@@ -2039,6 +2175,11 @@ export class HarnessMemCore {
     type: StreamEvent["type"],
     data: Record<string, unknown>
   ): StreamEvent {
+    // eventRec が初期化済みの場合は委譲する
+    if (this.eventRec) {
+      return this.eventRec.appendStreamEvent(type, data);
+    }
+    // initModules() 前の呼び出しに備えてフォールバック (通常は発生しない)
     const event: StreamEvent = {
       id: ++this.streamEventCounter,
       type,
@@ -2053,6 +2194,10 @@ export class HarnessMemCore {
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
+    // eventRec が初期化済みの場合は委譲する
+    if (this.eventRec) {
+      return this.eventRec.getStreamEventsSince(lastEventId, limitInput);
+    }
     const limit = clampLimit(limitInput, 100, 1, 500);
     if (this.streamEvents.length === 0) {
       return [];
@@ -2067,21 +2212,46 @@ export class HarnessMemCore {
     try {
       const previous = this.db
         .query(`
-          SELECT id
+          SELECT id, title, content_redacted
           FROM mem_observations
           WHERE session_id = ? AND id <> ? AND created_at <= ?
           ORDER BY created_at DESC
           LIMIT 1
         `)
-        .get(sessionId, observationId, createdAt) as { id: string } | null;
+        .get(sessionId, observationId, createdAt) as { id: string; title: string | null; content_redacted: string } | null;
 
       if (previous?.id) {
+        // IMP-002: 現在の観察のタイトル・コンテンツを取得して関係性を自動判定
+        const current = this.db
+          .query(`SELECT title, content_redacted FROM mem_observations WHERE id = ?`)
+          .get(observationId) as { title: string | null; content_redacted: string } | null;
+
+        let relation = "follows";
+        if (current && previous.title && current.title) {
+          const prevTitle = previous.title.toLowerCase();
+          const currTitle = current.title.toLowerCase();
+          // タイトルが共通単語を多く持つ場合、updates または extends と判定
+          const prevWords = new Set(prevTitle.split(/\s+/).filter((w) => w.length > 2));
+          const currWords = currTitle.split(/\s+/).filter((w) => w.length > 2);
+          if (prevWords.size > 0 && currWords.length > 0) {
+            const overlap = currWords.filter((w) => prevWords.has(w)).length;
+            const similarity = overlap / Math.max(prevWords.size, currWords.length);
+            if (similarity >= 0.6) {
+              // 高い類似度 → 同一トピックの更新 (updates)
+              relation = "updates";
+            } else if (similarity >= 0.3) {
+              // 中程度の類似度 → 補足情報 (extends)
+              relation = "extends";
+            }
+          }
+        }
+
         this.db
           .query(`
             INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
-            VALUES (?, ?, 'follows', 1.0, ?)
+            VALUES (?, ?, ?, 1.0, ?)
           `)
-          .run(observationId, previous.id, createdAt);
+          .run(observationId, previous.id, relation, createdAt);
       }
     } catch {
       // best effort
@@ -2410,6 +2580,9 @@ export class HarnessMemCore {
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
+    // IMP-009: Signal Extraction - コンテンツからシグナルスコアを計算
+    const signalScore = extractSignalScore(observationBase.content);
+
     try {
       const transaction = this.db.transaction(() => {
         this.ensureSession(event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id);
@@ -2448,8 +2621,9 @@ export class HarnessMemCore {
               id, event_id, platform, project, session_id,
               title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
+              signal_score,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -2457,6 +2631,7 @@ export class HarnessMemCore {
               observation_type = excluded.observation_type,
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
+              signal_score = excluded.signal_score,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -2471,6 +2646,7 @@ export class HarnessMemCore {
             observationType,
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
+            signalScore,
             timestamp,
             current
           );
@@ -3020,6 +3196,7 @@ export class HarnessMemCore {
             o.observation_type,
             o.tags_json,
             o.privacy_tags_json,
+            o.signal_score,
             o.created_at,
             o.updated_at,
             e.event_type
@@ -3055,7 +3232,7 @@ export class HarnessMemCore {
       FROM mem_links l
       JOIN mem_observations o ON o.id = l.to_observation_id
       WHERE l.from_observation_id IN (${placeholders})
-        AND l.relation IN ('shared_entity', 'follows')
+        AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
     `;
 
     sql = this.applyCommonFilters(sql, params, "o", request);
@@ -3211,6 +3388,25 @@ export class HarnessMemCore {
         graph.set(id, score);
       }
     }
+    // IMP-002: exclude_updated=true の場合、updatesリンクで上書きされた旧観察を除外する
+    const updatedObsIds = new Set<string>();
+    if (request.exclude_updated && candidateIds.size > 0) {
+      try {
+        const placeholders = [...candidateIds].map(() => "?").join(", ");
+        const updatedRows = this.db
+          .query(
+            `SELECT from_observation_id FROM mem_links
+             WHERE relation = 'updates' AND from_observation_id IN (${placeholders})`
+          )
+          .all(...[...candidateIds]) as Array<{ from_observation_id: string }>;
+        for (const row of updatedRows) {
+          updatedObsIds.add(row.from_observation_id);
+        }
+      } catch {
+        // best effort
+      }
+    }
+
     const observations = this.loadObservations([...candidateIds]);
     const queryTokens = tokenize(request.query);
 
@@ -3221,6 +3417,11 @@ export class HarnessMemCore {
     for (const id of candidateIds) {
       const observation = observations.get(id);
       if (!observation) {
+        continue;
+      }
+
+      // IMP-002: updatesリンクで上書きされた旧観察を除外
+      if (request.exclude_updated && updatedObsIds.has(id)) {
         continue;
       }
 
@@ -3246,6 +3447,9 @@ export class HarnessMemCore {
       const tagBoost = this.tagMatchScore(observation.tags_json, queryTokens);
       const eventType = typeof observation.event_type === "string" ? observation.event_type : "";
       const baseImportance = EVENT_TYPE_IMPORTANCE[eventType] ?? 0.5;
+      // IMP-009: signal_score を加算 (上限1.0、下限0.0)
+      const signalAdj = typeof observation.signal_score === "number" ? observation.signal_score : 0;
+      const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj));
       const graphScore = graph.get(id) ?? 0;
 
       ranked.push({
@@ -3254,7 +3458,7 @@ export class HarnessMemCore {
         vector: vectorScore,
         recency,
         tag_boost: tagBoost,
-        importance: baseImportance,
+        importance,
         graph: graphScore,
         final: 0,
         rerank: 0,
@@ -4028,6 +4232,91 @@ export class HarnessMemCore {
     });
   }
 
+  /**
+   * IMP-002: メモリ関係性リンクを作成する (updates/extends/derives/follows/shared_entity)
+   * - 自己参照（from === to）はエラーを返す
+   */
+  createLink(request: CreateLinkRequest): ApiResponse {
+    const startedAt = performance.now();
+    const { from_observation_id, to_observation_id, relation, weight = 1.0 } = request;
+
+    if (!from_observation_id || !to_observation_id || !relation) {
+      return makeErrorResponse(startedAt, "from_observation_id, to_observation_id, relation are required", request as unknown as Record<string, unknown>);
+    }
+
+    // 自己参照チェック
+    if (from_observation_id === to_observation_id) {
+      return makeErrorResponse(startedAt, "self-referential link is not allowed", {
+        from_observation_id,
+        to_observation_id,
+        relation,
+      });
+    }
+
+    const validRelations = ["updates", "extends", "derives", "follows", "shared_entity"];
+    if (!validRelations.includes(relation)) {
+      return makeErrorResponse(startedAt, `invalid relation type: ${relation}. Must be one of: ${validRelations.join(", ")}`, request as unknown as Record<string, unknown>);
+    }
+
+    try {
+      const current = nowIso();
+      this.db
+        .query(`
+          INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `)
+        .run(from_observation_id, to_observation_id, relation, weight, current);
+
+      return makeResponse(
+        startedAt,
+        [{ from_observation_id, to_observation_id, relation, weight, created_at: current }],
+        { from_observation_id, to_observation_id, relation }
+      );
+    } catch (err) {
+      return makeErrorResponse(startedAt, `failed to create link: ${String(err)}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
+  /**
+   * IMP-002: 指定observationのリンクを取得する
+   */
+  getLinks(request: GetLinksRequest): ApiResponse {
+    const startedAt = performance.now();
+    const { observation_id, relation } = request;
+
+    if (!observation_id) {
+      return makeErrorResponse(startedAt, "observation_id is required", request as unknown as Record<string, unknown>);
+    }
+
+    try {
+      let sql = `
+        SELECT from_observation_id, to_observation_id, relation, weight, created_at
+        FROM mem_links
+        WHERE from_observation_id = ?
+      `;
+      const params: unknown[] = [observation_id];
+
+      if (relation) {
+        sql += ` AND relation = ?`;
+        params.push(relation);
+      }
+
+      sql += ` ORDER BY created_at DESC`;
+
+      const rows = this.db.query(sql).all(...(params as any[])) as Array<{
+        from_observation_id: string;
+        to_observation_id: string;
+        relation: string;
+        weight: number;
+        created_at: string;
+      }>;
+
+      return makeResponse(startedAt, rows, { observation_id, relation });
+    } catch (err) {
+      return makeErrorResponse(startedAt, `failed to get links: ${String(err)}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
   recordCheckpoint(request: RecordCheckpointRequest): ApiResponse {
     const event: EventEnvelope = {
       platform: request.platform || "claude",
@@ -4171,10 +4460,12 @@ export class HarnessMemCore {
     const includePrivate = Boolean(request.include_private);
     const visibility = this.visibilityFilterSql("o", includePrivate);
 
-    // max_tokens: request > config > env > default (4000)
+    // max_tokens: request > config > env > default (2000)
+    // budget=0 is treated as "return nothing" (explicit zero budget)
+    const requestedBudget = request.resume_pack_max_tokens;
     const maxTokens: number = (() => {
-      if (typeof request.resume_pack_max_tokens === "number" && request.resume_pack_max_tokens > 0) {
-        return request.resume_pack_max_tokens;
+      if (typeof requestedBudget === "number" && requestedBudget >= 0) {
+        return requestedBudget;
       }
       if (typeof this.config.resumePackMaxTokens === "number" && this.config.resumePackMaxTokens > 0) {
         return this.config.resumePackMaxTokens;
@@ -4183,8 +4474,20 @@ export class HarnessMemCore {
       if (Number.isFinite(envRaw) && envRaw > 0) {
         return envRaw;
       }
-      return 4000;
+      return 2000;
     })();
+
+    // budget=0: return empty resume_pack immediately
+    if (maxTokens === 0) {
+      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
+        include_summary: false,
+        correlation_id: request.correlation_id ?? null,
+        compaction_ratio: 0,
+        resume_pack_max_tokens: 0,
+        detailed_count: 0,
+        compacted_count: 0,
+      });
+    }
 
     // correlation_id 指定時: 同じ相関IDを持つ全セッションから文脈を取得
     const useCorrelationId = Boolean(request.correlation_id);
@@ -6473,6 +6776,160 @@ export class HarnessMemCore {
       ],
       {},
       { ingest_mode: "gemini_spool_v1" }
+    );
+  }
+
+  /**
+   * IMP-010: GitHub Issues を harness-mem に取り込む。
+   *
+   * request.json に `gh issue list --json ...` の出力を渡す。
+   * request.repo に "owner/repo" 形式のリポジトリ名を渡す。
+   */
+  ingestGitHubIssues(request: {
+    repo: string;
+    json: string;
+    project?: string;
+    platform?: string;
+    session_id?: string;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    if (!request.repo || !request.json) {
+      return makeErrorResponse(startedAt, "repo and json are required", request as Record<string, unknown>);
+    }
+
+    const { observations, errors } = parseGitHubIssues({
+      repo: request.repo,
+      json: request.json,
+      project: request.project,
+    });
+
+    const platform = request.platform ?? "github";
+    const sessionId = request.session_id ?? `github-issues-${request.repo.replace("/", "-")}`;
+    const project = request.project ?? request.repo;
+
+    let imported = 0;
+    let skipped = 0;
+    for (const obs of observations) {
+      const result = this.recordEvent(
+        {
+          platform,
+          project,
+          session_id: sessionId,
+          event_type: "context",
+          ts: obs.updated_at ?? obs.created_at,
+          payload: { content: obs.content, title: obs.title, metadata: obs.metadata },
+          tags: obs.tags,
+          privacy_tags: [],
+          dedupe_hash: obs.dedupeHash,
+        },
+        { allowQueue: false }
+      );
+      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+      if (result.ok && !deduped) {
+        imported += 1;
+      } else if (deduped) {
+        skipped += 1;
+      }
+    }
+
+    return makeResponse(
+      startedAt,
+      [{ issues_imported: imported, issues_skipped: skipped, parse_errors: errors.length }],
+      request as unknown as Record<string, unknown>,
+      { ingest_mode: "github_issues_v1" }
+    );
+  }
+
+  /**
+   * IMP-010: decisions.md または ADR ファイルを harness-mem に取り込む。
+   *
+   * request.file_path にファイルパス、request.content にファイル内容を渡す。
+   * request.kind に "decisions_md" または "adr" を渡す（省略時は自動判定）。
+   */
+  ingestKnowledgeFile(request: {
+    file_path: string;
+    content: string;
+    kind?: "decisions_md" | "adr";
+    project?: string;
+    platform?: string;
+    session_id?: string;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    if (!request.file_path || !request.content) {
+      return makeErrorResponse(startedAt, "file_path and content are required", request as Record<string, unknown>);
+    }
+
+    // kind を自動判定: ファイル名が "decisions" を含む場合は decisions_md
+    const kind =
+      request.kind ??
+      (request.file_path.toLowerCase().includes("decisions") ? "decisions_md" : "adr");
+
+    const platform = request.platform ?? "knowledge";
+    const project = request.project ?? "default";
+    const sessionId =
+      request.session_id ??
+      `knowledge-${kind}-${request.file_path.replace(/[^a-z0-9]/gi, "-").slice(0, 32)}`;
+
+    let observations: AdrObservation[];
+    let parseErrors: Array<{ section?: string; error: string }> = [];
+
+    if (kind === "decisions_md") {
+      const result = parseDecisionsMd({
+        filePath: request.file_path,
+        content: request.content,
+        project: request.project,
+      });
+      observations = result.observations;
+      parseErrors = result.errors;
+    } else {
+      const result = parseAdrFile({
+        filePath: request.file_path,
+        content: request.content,
+        project: request.project,
+      });
+      observations = result.observation ? [result.observation] : [];
+      if (result.error) {
+        parseErrors = [{ error: result.error }];
+      }
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    for (const obs of observations) {
+      const result = this.recordEvent(
+        {
+          platform,
+          project,
+          session_id: sessionId,
+          event_type: "context",
+          ts: obs.created_at,
+          payload: { content: obs.content, title: obs.title, metadata: obs.metadata },
+          tags: obs.tags,
+          privacy_tags: [],
+          dedupe_hash: obs.dedupeHash,
+        },
+        { allowQueue: false }
+      );
+      const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+      if (result.ok && !deduped) {
+        imported += 1;
+      } else if (deduped) {
+        skipped += 1;
+      }
+    }
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          entries_imported: imported,
+          entries_skipped: skipped,
+          parse_errors: parseErrors.length,
+          kind,
+        },
+      ],
+      request as unknown as Record<string, unknown>,
+      { ingest_mode: "knowledge_file_v1" }
     );
   }
 

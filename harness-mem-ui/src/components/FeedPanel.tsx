@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getUiCopy } from "../lib/i18n";
-import type { FeedItem } from "../lib/types";
+import type { FeedItem, UiPlatformFilter } from "../lib/types";
 import type { UiLanguage } from "../lib/types";
+import { SessionGroup } from "./SessionGroup";
 
 interface FeedPanelProps {
   items: FeedItem[];
@@ -11,6 +12,8 @@ interface FeedPanelProps {
   error: string;
   hasMore: boolean;
   onLoadMore: () => void;
+  platformFilter?: UiPlatformFilter;
+  onPlatformChange?: (filter: UiPlatformFilter) => void;
 }
 
 type FeedCategoryId =
@@ -23,9 +26,20 @@ type FeedCategoryId =
   | "tool_use"
   | "other";
 
-type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "other";
+type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "gemini" | "other";
 
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
+
+// W3-004: プラットフォームタブの定義
+const PLATFORM_TABS: Array<{ id: UiPlatformFilter; label: string }> = [
+  { id: "__all__", label: "All" },
+  { id: "claude", label: "Claude" },
+  { id: "codex", label: "Codex" },
+  { id: "cursor", label: "Cursor" },
+  { id: "opencode", label: "OpenCode" },
+  { id: "gemini", label: "Gemini" },
+];
+
 const CLAUDE_TOOL_USE_COLLAPSE_THRESHOLD = 4;
 const CLAUDE_TOOL_USE_COLLAPSE_GAP_MS = 3 * 60 * 1000;
 const CONSECUTIVE_SAME_CARD_COLLAPSE_THRESHOLD = 2;
@@ -350,6 +364,34 @@ function collapseConsecutiveSameCards(items: FeedItem[], language: UiLanguage): 
   return collapsed;
 }
 
+interface SessionGroupEntry {
+  sessionId: string | undefined;
+  platform: string | undefined;
+  items: Array<{ item: FeedItem; category: FeedCategoryId }>;
+}
+
+function groupBySession(categorizedItems: Array<{ item: FeedItem; category: FeedCategoryId }>): SessionGroupEntry[] {
+  const groups: SessionGroupEntry[] = [];
+  const keyOf = (item: FeedItem): string => item.session_id || "__no_session__";
+
+  for (const entry of categorizedItems) {
+    const key = keyOf(entry.item);
+    const last = groups[groups.length - 1];
+    const lastKey = last ? (last.sessionId ?? "__no_session__") : null;
+    if (lastKey === key && last) {
+      last.items.push(entry);
+    } else {
+      groups.push({
+        sessionId: entry.item.session_id,
+        platform: entry.item.platform,
+        items: [entry],
+      });
+    }
+  }
+
+  return groups;
+}
+
 function categoryLabel(category: FeedCategoryId, language: UiLanguage): string {
   const copy = getUiCopy(language);
   return copy.category[category] || copy.category.other;
@@ -372,14 +414,29 @@ function normalizePlatformBadge(platform: string | undefined): { id: PlatformBad
   if (raw.includes("antigravity")) {
     return { id: "antigravity", label: "Antigravity" };
   }
+  if (raw.includes("gemini")) {
+    return { id: "gemini", label: "Gemini" };
+  }
   if (platform && platform.trim().length > 0) {
     return { id: "other", label: platform.trim() };
   }
   return { id: "other", label: "Unknown" };
 }
 
+function PlatformBadge({ platform }: { platform: ReturnType<typeof normalizePlatformBadge> }) {
+  return (
+    <span
+      className={`platform-chip ${platform.id}`}
+      aria-label={`Platform: ${platform.label}`}
+      role="img"
+    >
+      {platform.label}
+    </span>
+  );
+}
+
 export function FeedPanel(props: FeedPanelProps) {
-  const { items, compact, language, loading, error, hasMore, onLoadMore } = props;
+  const { items, compact, language, loading, error, hasMore, onLoadMore, platformFilter = "__all__", onPlatformChange } = props;
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const copy = getUiCopy(language);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -409,6 +466,8 @@ export function FeedPanel(props: FeedPanelProps) {
     }));
   }, [displayItems]);
 
+  const sessionGroups = useMemo(() => groupBySession(categorizedItems), [categorizedItems]);
+
   useEffect(() => {
     if (!expandedCardId) {
       return;
@@ -425,6 +484,29 @@ export function FeedPanel(props: FeedPanelProps) {
         <span>{displayItems.length} {copy.itemsLoadedSuffix}</span>
       </div>
 
+      {onPlatformChange ? (
+        <div className="platform-tabs" role="tablist" aria-label={language === "ja" ? "プラットフォーム絞り込み" : "Filter by platform"}>
+          {PLATFORM_TABS.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={platformFilter === tab.id}
+              className={`platform-tab${platformFilter === tab.id ? " active" : ""}`}
+              onClick={() => onPlatformChange(tab.id)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onPlatformChange(tab.id);
+                }
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
       {displayItems.length === 0 && !loading ? (
         <div className="empty">
           {copy.noFeedItems} {copy.noFeedItemsHint}
@@ -434,62 +516,84 @@ export function FeedPanel(props: FeedPanelProps) {
       {loading ? <div className="loading" aria-live="polite">{copy.loading}</div> : null}
 
       <div className="feed-list">
-        {categorizedItems.map(({ item, category }) => {
-          const content = resolveCardContent(item, category);
-          const platform = normalizePlatformBadge(item.platform);
-          const isExpanded = expandedCardId === item.id;
-          const expandRegionId = `feed-expand-${item.id}`;
-          return (
-            <article
-              key={item.id}
-              className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}`}
-              role="button"
-              tabIndex={0}
-              aria-expanded={isExpanded}
-              aria-controls={expandRegionId}
-              aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
-              onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  setExpandedCardId((prev) => (prev === item.id ? null : item.id));
-                }
-              }}
-            >
-              <div className="card-top">
-                <div className="card-top-left">
-                  <span className={`platform-chip ${platform.id}`}>{platform.label}</span>
-                  <span className={`category-chip ${category}`}>{categoryLabel(category, language)}</span>
+        {sessionGroups.map((group) => {
+          const groupKey = group.sessionId ?? "__no_session__";
+          const cards = group.items.map(({ item, category }) => {
+            const content = resolveCardContent(item, category);
+            const platform = normalizePlatformBadge(item.platform);
+            const isExpanded = expandedCardId === item.id;
+            const expandRegionId = `feed-expand-${item.id}`;
+            const isSystemEnvelope = isSystemEnvelopePrompt(item);
+            const showContent = isExpanded || !isSystemEnvelope;
+            return (
+              <article
+                key={item.id}
+                className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}${isSystemEnvelope ? " system-envelope" : ""}`}
+                role="button"
+                tabIndex={0}
+                aria-expanded={isExpanded}
+                aria-controls={expandRegionId}
+                aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
+                onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    setExpandedCardId((prev) => (prev === item.id ? null : item.id));
+                  }
+                }}
+              >
+                <div className="card-top">
+                  <div className="card-top-left">
+                    <PlatformBadge platform={platform} />
+                    <span className={`category-chip ${category}`}>{categoryLabel(category, language)}</span>
+                    {isSystemEnvelope && !isExpanded ? (
+                      <span className="system-envelope-hint" aria-hidden="true">
+                        {language === "ja" ? "▶ 展開" : "▶ expand"}
+                      </span>
+                    ) : null}
+                  </div>
+                  <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
                 </div>
-                <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
-              </div>
 
-              <h3>{item.title || item.id}</h3>
-              {content ? <p>{content}</p> : null}
-              {isExpanded ? (
-                <pre id={expandRegionId} className="feed-inline-detail">
-                  {content || "-"}
-                </pre>
-              ) : null}
+                <h3>{item.title || item.id}</h3>
+                {showContent && content ? <p>{content}</p> : null}
+                {isExpanded ? (
+                  <pre id={expandRegionId} className="feed-inline-detail">
+                    {content || "-"}
+                  </pre>
+                ) : null}
 
-              <div className="card-meta">
-                <span>{item.project || "-"}</span>
-                <span>{item.session_id || "-"}</span>
-              </div>
+                <div className="card-meta">
+                  <span>{item.project || "-"}</span>
+                  <span>{item.session_id || "-"}</span>
+                </div>
 
-              <div className="card-tags">
-                {(item.tags || []).map((tag) => (
-                  <span key={`${item.id}-tag-${tag}`} className="pill">
-                    {tag}
-                  </span>
-                ))}
-                {(item.privacy_tags || []).map((tag) => (
-                  <span key={`${item.id}-privacy-${tag}`} className="pill privacy">
-                    {copy.privacyPrefix}:{tag}
-                  </span>
-                ))}
-              </div>
-            </article>
+                <div className="card-tags">
+                  {(item.tags || []).map((tag) => (
+                    <span key={`${item.id}-tag-${tag}`} className="pill">
+                      {tag}
+                    </span>
+                  ))}
+                  {(item.privacy_tags || []).map((tag) => (
+                    <span key={`${item.id}-privacy-${tag}`} className="pill privacy">
+                      {copy.privacyPrefix}:{tag}
+                    </span>
+                  ))}
+                </div>
+              </article>
+            );
+          });
+
+          return (
+            <SessionGroup
+              key={groupKey}
+              sessionId={group.sessionId}
+              platform={group.platform}
+              items={group.items.map(({ item }) => item)}
+              language={language}
+            >
+              {cards}
+            </SessionGroup>
           );
         })}
       </div>

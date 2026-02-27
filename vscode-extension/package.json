@@ -1,0 +1,103 @@
+{
+  "name": "harness-mem",
+  "displayName": "Harness Mem",
+  "description": "Memory search and timeline for harness-mem",
+  "version": "0.1.0",
+  "publisher": "harness-mem",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "memory",
+    "ai",
+    "claude",
+    "harness"
+  ],
+  "license": "MIT",
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "harness-mem-sidebar",
+          "title": "Harness Mem",
+          "icon": "$(database)"
+        }
+      ]
+    },
+    "views": {
+      "harness-mem-sidebar": [
+        {
+          "id": "harness-mem.search",
+          "name": "Memory Search",
+          "type": "webview"
+        },
+        {
+          "id": "harness-mem.timeline",
+          "name": "Timeline",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "harness-mem.search",
+        "title": "Harness Mem: Search Memories",
+        "icon": "$(search)"
+      },
+      {
+        "command": "harness-mem.timeline",
+        "title": "Harness Mem: Show Timeline",
+        "icon": "$(history)"
+      },
+      {
+        "command": "harness-mem.configureServer",
+        "title": "Harness Mem: Configure Server URL"
+      }
+    ],
+    "configuration": {
+      "title": "Harness Mem",
+      "properties": {
+        "harness-mem.serverUrl": {
+          "type": "string",
+          "default": "http://localhost:37888",
+          "description": "harness-mem server URL"
+        },
+        "harness-mem.defaultProject": {
+          "type": "string",
+          "default": "",
+          "description": "Default project name (defaults to workspace folder name)"
+        },
+        "harness-mem.includePrivate": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include private observations in search results"
+        }
+      }
+    },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "harness-mem.search",
+          "group": "harness-mem@1"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p tsconfig.json",
+    "package": "vsce package --no-dependencies",
+    "test": "node tests/suite.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.7.0"
+  },
+  "dependencies": {}
+}

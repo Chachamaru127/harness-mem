@@ -671,6 +671,43 @@ select:focus-visible,
   gap: 12px;
 }
 
+/* W3-004: プラットフォームタブ */
+.platform-tabs {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.platform-tab {
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-subtle);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+}
+
+.platform-tab:hover {
+  background: color-mix(in srgb, var(--bg-muted) 60%, transparent);
+  color: var(--text);
+}
+
+.platform-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+:root[data-theme="dark"] .platform-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
 .load-more {
   justify-self: flex-start;
 }
@@ -767,6 +804,31 @@ select:focus-visible,
   border-left-color: var(--kind-other);
 }
 
+/* W3-002: 環境コンテキスト / AGENTS.md 系カードのデフォルト折りたたみスタイル */
+.feed-card.system-envelope {
+  opacity: 0.6;
+  padding-block: 8px;
+}
+
+.feed-card.system-envelope:hover,
+.feed-card.system-envelope.expanded {
+  opacity: 1;
+}
+
+.feed-card.system-envelope h3 {
+  font-size: 0.8rem;
+  color: var(--text-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.system-envelope-hint {
+  font-size: 0.7rem;
+  color: var(--text-subtle);
+  letter-spacing: 0.04em;
+}
+
 .card-top,
 .card-meta,
 .card-actions,
@@ -836,6 +898,12 @@ select:focus-visible,
   border-color: #fda4af;
 }
 
+.platform-chip.gemini {
+  color: #1565a7;
+  background: #e8f4fd;
+  border-color: #90caf9;
+}
+
 .platform-chip.other {
   color: var(--text-subtle);
   background: color-mix(in srgb, var(--bg-muted) 70%, var(--bg-panel));
@@ -870,6 +938,12 @@ select:focus-visible,
   color: #fecdd3;
   background: rgba(190, 24, 93, 0.24);
   border-color: rgba(244, 63, 94, 0.55);
+}
+
+:root[data-theme="dark"] .platform-chip.gemini {
+  color: #90caf9;
+  background: rgba(21, 101, 167, 0.25);
+  border-color: rgba(66, 165, 245, 0.55);
 }
 
 .category-chip {
@@ -1324,4 +1398,72 @@ select:focus-visible,
   .settings-modal-actions select {
     min-width: 160px;
   }
+}
+
+/* W3-003: Session Group Accordion */
+.session-group {
+  margin-bottom: 8px;
+}
+
+.session-group-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 14px;
+  background: color-mix(in srgb, var(--bg-muted) 60%, var(--bg-panel));
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-subtle);
+  text-align: left;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.session-group-header:hover,
+.session-group-header.expanded {
+  background: color-mix(in srgb, var(--accent-soft) 60%, var(--bg-panel));
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.session-group-header:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.session-group-toggle {
+  font-size: 0.72rem;
+  flex-shrink: 0;
+  transition: transform 200ms ease;
+}
+
+.session-group-header.expanded .session-group-toggle {
+  transform: rotate(0deg);
+}
+
+.session-group-label {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.session-group-items {
+  padding-top: 4px;
+  padding-left: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+:root[data-theme="dark"] .session-group-header {
+  background: color-mix(in srgb, var(--bg-muted) 50%, var(--bg-panel));
+}
+
+:root[data-theme="dark"] .session-group-header:hover,
+:root[data-theme="dark"] .session-group-header.expanded {
+  background: color-mix(in srgb, var(--accent-soft) 50%, var(--bg-panel));
 }

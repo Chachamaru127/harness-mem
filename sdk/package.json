@@ -1,0 +1,36 @@
+{
+  "name": "@harness-mem/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK for harness-mem memory server",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "test": "bun test",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "keywords": [
+    "harness-mem",
+    "memory",
+    "sdk",
+    "ai",
+    "claude"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0"
+  }
+}

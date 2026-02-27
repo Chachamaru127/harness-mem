@@ -459,6 +459,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           correlation_id: typeof body.correlation_id === "string" ? body.correlation_id : undefined,
           limit: typeof body.limit === "number" ? body.limit : undefined,
           include_private: Boolean(body.include_private),
+          resume_pack_max_tokens: typeof body.resume_pack_max_tokens === "number" ? body.resume_pack_max_tokens : undefined,
         };
         return jsonResponse(core.resumePack(req));
       }
@@ -664,6 +665,34 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
       ) {
         return jsonResponse(core.ingestGeminiHistory());
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/ingest/github-issues") {
+        const body = await parseRequestJson(request);
+        return jsonResponse(
+          core.ingestGitHubIssues({
+            repo: typeof body.repo === "string" ? body.repo : "",
+            json: typeof body.json === "string" ? body.json : "",
+            project: typeof body.project === "string" ? body.project : undefined,
+            platform: typeof body.platform === "string" ? body.platform : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          })
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/ingest/knowledge-file") {
+        const body = await parseRequestJson(request);
+        return jsonResponse(
+          core.ingestKnowledgeFile({
+            file_path: typeof body.file_path === "string" ? body.file_path : "",
+            content: typeof body.content === "string" ? body.content : "",
+            kind:
+              body.kind === "decisions_md" || body.kind === "adr" ? body.kind : undefined,
+            project: typeof body.project === "string" ? body.project : undefined,
+            platform: typeof body.platform === "string" ? body.platform : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          })
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/v1/admin/backup") {
