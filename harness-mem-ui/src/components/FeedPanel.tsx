@@ -485,21 +485,44 @@ export function FeedPanel(props: FeedPanelProps) {
       </div>
 
       {onPlatformChange ? (
-        <div className="platform-tabs" role="tablist" aria-label={language === "ja" ? "プラットフォーム絞り込み" : "Filter by platform"}>
+        <div
+          className="platform-tabs"
+          role="tablist"
+          aria-label={language === "ja" ? "プラットフォーム絞り込み" : "Filter by platform"}
+          onKeyDown={(event) => {
+            const tabs = PLATFORM_TABS;
+            const currentIndex = tabs.findIndex((t) => t.id === platformFilter);
+            let nextIndex = -1;
+            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+              event.preventDefault();
+              nextIndex = (currentIndex + 1) % tabs.length;
+            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+              event.preventDefault();
+              nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+            } else if (event.key === "Home") {
+              event.preventDefault();
+              nextIndex = 0;
+            } else if (event.key === "End") {
+              event.preventDefault();
+              nextIndex = tabs.length - 1;
+            }
+            if (nextIndex >= 0) {
+              onPlatformChange(tabs[nextIndex].id);
+              const target = (event.currentTarget as HTMLElement).querySelector(`[data-tab-id="${tabs[nextIndex].id}"]`) as HTMLElement | null;
+              target?.focus();
+            }
+          }}
+        >
           {PLATFORM_TABS.map((tab) => (
             <button
               key={tab.id}
               type="button"
               role="tab"
+              data-tab-id={tab.id}
               aria-selected={platformFilter === tab.id}
+              tabIndex={platformFilter === tab.id ? 0 : -1}
               className={`platform-tab${platformFilter === tab.id ? " active" : ""}`}
               onClick={() => onPlatformChange(tab.id)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  onPlatformChange(tab.id);
-                }
-              }}
             >
               {tab.label}
             </button>
@@ -529,19 +552,15 @@ export function FeedPanel(props: FeedPanelProps) {
               <article
                 key={item.id}
                 className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}${isSystemEnvelope ? " system-envelope" : ""}`}
-                role="button"
-                tabIndex={0}
-                aria-expanded={isExpanded}
-                aria-controls={expandRegionId}
-                aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
-                onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    setExpandedCardId((prev) => (prev === item.id ? null : item.id));
-                  }
-                }}
               >
+                <button
+                  type="button"
+                  className="card-toggle"
+                  aria-expanded={isExpanded}
+                  aria-controls={expandRegionId}
+                  aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
+                  onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
+                >
                 <div className="card-top">
                   <div className="card-top-left">
                     <PlatformBadge platform={platform} />
@@ -554,8 +573,9 @@ export function FeedPanel(props: FeedPanelProps) {
                   </div>
                   <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
                 </div>
-
                 <h3>{item.title || item.id}</h3>
+                </button>
+                {/* Content area outside button for proper a11y */}
                 {showContent && content ? <p>{content}</p> : null}
                 {isExpanded ? (
                   <pre id={expandRegionId} className="feed-inline-detail">

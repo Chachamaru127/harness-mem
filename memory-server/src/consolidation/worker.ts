@@ -369,9 +369,12 @@ function generateDerivesLinks(db: Database, project: string, sessionId: string):
   let linksCreated = 0;
   const nowTs = new Date().toISOString();
 
+  // O(n) で全ファクトのトークンセットを事前計算（O(n^2) の内部ループ再計算を回避）
+  const tokenSets = facts.map((f) => tokenize(`${f.fact_key} ${f.fact_value}`));
+
   for (let i = 0; i < facts.length; i++) {
     const fi = facts[i];
-    const fiTokens = tokenize(`${fi.fact_key} ${fi.fact_value}`);
+    const fiTokens = tokenSets[i];
 
     for (let j = i + 1; j < facts.length; j++) {
       const fj = facts[j];
@@ -380,7 +383,7 @@ function generateDerivesLinks(db: Database, project: string, sessionId: string):
       if (fi.observation_id === fj.observation_id) continue;
       if (fi.fact_type !== fj.fact_type) continue;
 
-      const fjTokens = tokenize(`${fj.fact_key} ${fj.fact_value}`);
+      const fjTokens = tokenSets[j];
       const similarity = jaccard(fiTokens, fjTokens);
 
       // 低類似度 (0.05 〜 0.35) の同型ファクト = 「異なる観点から導かれた洞察」

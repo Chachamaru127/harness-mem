@@ -306,6 +306,8 @@ export default function App() {
                 onLoadMore={() => {
                   void loadMore();
                 }}
+                platformFilter={settings.platformFilter}
+                onPlatformChange={(filter) => updateSetting("platformFilter", filter)}
               />
             </div>
           )}

@@ -2807,6 +2807,11 @@ export class HarnessMemCore {
       return "";
     }
 
+    // alias はコードパス内部で固定値 ("o" 等) が渡されるが、安全のためバリデーション
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
+      throw new Error(`Invalid SQL alias: ${alias}`);
+    }
+
     return `
       AND NOT EXISTS (
         SELECT 1
@@ -3181,37 +3186,43 @@ export class HarnessMemCore {
       return new Map<string, Record<string, unknown>>();
     }
 
-    const placeholders = ids.map(() => "?").join(", ");
-    const rows = this.db
-      .query(
-        `
-          SELECT
-            o.id,
-            o.event_id,
-            o.platform,
-            o.project,
-            o.session_id,
-            o.title,
-            o.content_redacted,
-            o.observation_type,
-            o.tags_json,
-            o.privacy_tags_json,
-            o.signal_score,
-            o.created_at,
-            o.updated_at,
-            e.event_type
-          FROM mem_observations o
-          LEFT JOIN mem_events e ON e.event_id = o.event_id
-          WHERE o.id IN (${placeholders})
-        `
-      )
-      .all(...ids) as Array<Record<string, unknown>>;
-
+    // SQLite のバインド変数上限を考慮し、バッチ処理で安全に取得
+    const MAX_BATCH = 500;
     const mapped = new Map<string, Record<string, unknown>>();
-    for (const row of rows) {
-      const id = typeof row.id === "string" ? row.id : "";
-      if (id) {
-        mapped.set(id, row);
+
+    for (let offset = 0; offset < ids.length; offset += MAX_BATCH) {
+      const batch = ids.slice(offset, offset + MAX_BATCH);
+      const placeholders = batch.map(() => "?").join(", ");
+      const rows = this.db
+        .query(
+          `
+            SELECT
+              o.id,
+              o.event_id,
+              o.platform,
+              o.project,
+              o.session_id,
+              o.title,
+              o.content_redacted,
+              o.observation_type,
+              o.tags_json,
+              o.privacy_tags_json,
+              o.signal_score,
+              o.created_at,
+              o.updated_at,
+              e.event_type
+            FROM mem_observations o
+            LEFT JOIN mem_events e ON e.event_id = o.event_id
+            WHERE o.id IN (${placeholders})
+          `
+        )
+        .all(...batch) as Array<Record<string, unknown>>;
+
+      for (const row of rows) {
+        const id = typeof row.id === "string" ? row.id : "";
+        if (id) {
+          mapped.set(id, row);
+        }
       }
     }
     return mapped;

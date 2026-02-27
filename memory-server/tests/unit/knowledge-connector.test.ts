@@ -168,7 +168,7 @@ describe("IMP-010: github-issues コネクタ (ユニット)", () => {
       limit: 50,
     });
     expect(cmd).toContain("gh issue list");
-    expect(cmd).toContain("--repo owner/repo");
+    expect(cmd).toContain("--repo 'owner/repo'");
     expect(cmd).toContain("--state open");
     expect(cmd).toContain("--limit 50");
     expect(cmd).toContain("--json");

@@ -137,7 +137,7 @@ describe("buildGhIssueListCommand()", () => {
   it("デフォルトコマンドを生成する", () => {
     const cmd = buildGhIssueListCommand({ repo: "example/repo" });
     expect(cmd).toContain("gh issue list");
-    expect(cmd).toContain("--repo example/repo");
+    expect(cmd).toContain("--repo 'example/repo'");
     expect(cmd).toContain("--state all");
     expect(cmd).toContain("--limit 100");
     expect(cmd).toContain("--json");
@@ -148,7 +148,17 @@ describe("buildGhIssueListCommand()", () => {
       repo: "example/repo",
       labels: ["bug", "priority:high"],
     });
-    expect(cmd).toContain("--label bug,priority:high");
+    expect(cmd).toContain("--label 'bug,priority:high'");
+  });
+
+  it("不正な repo 形式を拒否する", () => {
+    expect(() => buildGhIssueListCommand({ repo: "invalid; rm -rf /" })).toThrow("Invalid repo format");
+    expect(() => buildGhIssueListCommand({ repo: "../escape" })).toThrow("Invalid repo format");
+  });
+
+  it("limit を 1-1000 の範囲にクランプする", () => {
+    const cmd = buildGhIssueListCommand({ repo: "owner/repo", limit: 99999 });
+    expect(cmd).toContain("--limit 1000");
   });
 });
 

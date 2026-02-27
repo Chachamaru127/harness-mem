@@ -727,6 +727,21 @@ select:focus-visible,
   cursor: pointer;
 }
 
+/* A-001: カード内のトグルボタン（セマンティクス修正） */
+.card-toggle {
+  all: unset;
+  display: block;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+}
+
+.card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 .feed-card:hover {
   transform: translateY(-2px) scale(1.003);
   box-shadow: 0 12px 26px rgba(17, 24, 39, 0.13);

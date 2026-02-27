@@ -1,4 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
+import { resolve } from "node:path";
 import {
   type FeedRequest,
   HarnessMemCore,
@@ -88,9 +89,19 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   ].includes(pathname);
 }
 
+let adminTokenWarningLogged = false;
+
 function hasValidAdminToken(request: Request): boolean {
   const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
   if (!configured) {
+    if (!adminTokenWarningLogged) {
+      console.warn(
+        "[harness-mem] WARNING: HARNESS_MEM_ADMIN_TOKEN is not set. " +
+        "All admin endpoints are accessible without authentication. " +
+        "Set HARNESS_MEM_ADMIN_TOKEN to secure admin routes in production."
+      );
+      adminTokenWarningLogged = true;
+    }
     return true;
   }
   const rawAuth = request.headers.get("authorization");
@@ -262,9 +273,16 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!sourceDbPath) {
           return badRequest("source_db_path is required");
         }
+        const resolvedPath = resolve(sourceDbPath);
+        if (resolvedPath.includes("\0")) {
+          return badRequest("source_db_path contains invalid characters");
+        }
+        if (!resolvedPath.endsWith(".db") && !resolvedPath.endsWith(".sqlite") && !resolvedPath.endsWith(".sqlite3")) {
+          return badRequest("source_db_path must point to a .db, .sqlite, or .sqlite3 file");
+        }
         return jsonResponse(
           core.startClaudeMemImport({
-            source_db_path: sourceDbPath,
+            source_db_path: resolvedPath,
             project: typeof body.project === "string" ? body.project : undefined,
             dry_run: Boolean(body.dry_run),
           })
@@ -697,10 +715,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "POST" && url.pathname === "/v1/admin/backup") {
         const body = await parseRequestJson(request);
-        const req: BackupRequest = {
-          dest_dir: typeof body.dest_dir === "string" ? body.dest_dir : undefined,
-        };
-        return jsonResponse(core.backup(req.dest_dir ? { destDir: req.dest_dir } : undefined));
+        let destDir: string | undefined;
+        if (typeof body.dest_dir === "string" && body.dest_dir.trim()) {
+          const resolvedDir = resolve(body.dest_dir);
+          if (resolvedDir.includes("\0")) {
+            return badRequest("dest_dir contains invalid characters");
+          }
+          destDir = resolvedDir;
+        }
+        return jsonResponse(core.backup(destDir ? { destDir } : undefined));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {

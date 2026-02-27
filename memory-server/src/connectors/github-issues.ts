@@ -130,7 +130,30 @@ export function parseGitHubIssues(params: {
 }
 
 /**
+ * シェル引数を安全にエスケープする。シングルクォートで囲み、内部のシングルクォートをエスケープ。
+ */
+function shellEscape(arg: string): string {
+  return `'${arg.replace(/'/g, "'\\''")}'`;
+}
+
+/**
+ * repo 文字列が owner/name 形式であることをバリデーションする。
+ */
+function isValidRepoFormat(repo: string): boolean {
+  // owner/name 形式。先頭/末尾のドット・ハイフン、連続ドット（..）を禁止
+  return /^[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?\/[a-zA-Z0-9]([a-zA-Z0-9._-]*[a-zA-Z0-9])?$/.test(repo) && !repo.includes("..");
+}
+
+/**
+ * ラベル文字列が安全な文字のみ含むことをバリデーションする。
+ */
+function isValidLabel(label: string): boolean {
+  return /^[a-zA-Z0-9 _.\-:\/]+$/.test(label) && label.length <= 128;
+}
+
+/**
  * gh CLI コマンドを生成する（実行は呼び出し元に委譲）。
+ * すべてのパラメータはバリデーションとシェルエスケープを経由する。
  */
 export function buildGhIssueListCommand(params: {
   repo: string;
@@ -138,12 +161,24 @@ export function buildGhIssueListCommand(params: {
   limit?: number;
   labels?: string[];
 }): string {
-  const state = params.state ?? "all";
-  const limit = params.limit ?? 100;
+  if (!isValidRepoFormat(params.repo)) {
+    throw new Error(`Invalid repo format: expected "owner/name", got "${params.repo}"`);
+  }
+
+  const validStates = ["open", "closed", "all"] as const;
+  const state = validStates.includes(params.state as typeof validStates[number])
+    ? (params.state as string)
+    : "all";
+
+  const limit = Math.max(1, Math.min(1000, Math.floor(params.limit ?? 100)));
   const fields = "number,title,body,state,labels,url,createdAt,updatedAt,author";
-  let cmd = `gh issue list --repo ${params.repo} --state ${state} --limit ${limit} --json ${fields}`;
+
+  let cmd = `gh issue list --repo ${shellEscape(params.repo)} --state ${state} --limit ${limit} --json ${fields}`;
   if (params.labels && params.labels.length > 0) {
-    cmd += ` --label ${params.labels.join(",")}`;
+    const safeLabels = params.labels.filter(isValidLabel);
+    if (safeLabels.length > 0) {
+      cmd += ` --label ${shellEscape(safeLabels.join(","))}`;
+    }
   }
   return cmd;
 }
