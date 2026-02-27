@@ -5,6 +5,22 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.2.0] - 2026-02-27
+
+### ユーザー向け要約
+
+- Gemini CLI を6番目のプラットフォームとして追加。Claude, Codex, Cursor, OpenCode, Gemini CLI, Antigravity の全6ツールでクロスツールメモリが動作。
+- 11件のメモリ品質改善: ローカル ONNX 埋め込み (Ruri V3-30M)、LLM ベースファクト抽出、時間的ファクト管理、プログレッシブ resume-pack 圧縮、検索スコア分析など。
+
+### 補足
+
+- Gemini CLI: MCP 配線、フックハンドラ (6イベント)、エージェントスキル、GEMINI.md を含む完全対応。
+- ローカル ONNX 埋め込み: Ruri V3-30M モデルによる日本語最適化ベクトル検索。クラウド不要。
+- LLM ファクト抽出: Ollama 経由のコンソリデーション + 既存ファクトとの差分比較。
+- 時間的ファクト管理: `valid_from`/`valid_to`、`superseded_by` によるライフサイクル追跡。
+- セキュリティ修正: タイミング攻撃対策 (`crypto.timingSafeEqual`)、SSRF ガード、入力バリデーション (500文字制限)。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.1.35] - 2026-02-25
 
 ### ユーザー向け要約

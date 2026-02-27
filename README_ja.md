@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/logos/harness-mem/official/harness-mem-logo-official.jpg" alt="Harness-mem official logo" width="560" />
 </p>
 
-<p align="center"><strong>Codex / OpenCode / Cursor / Claude で共通利用できるメモリランタイム。</strong></p>
+<p align="center"><strong>Claude / Codex / Cursor / OpenCode / Gemini CLI で共通利用できるメモリランタイム。</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>

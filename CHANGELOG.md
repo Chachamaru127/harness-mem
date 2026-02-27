@@ -39,6 +39,63 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.2.0] - 2026-02-27
+
+### 🎯 What's Changed for You
+
+**Gemini CLI joins as the 6th platform, and 11 memory quality improvements add local ONNX embeddings, LLM-based fact extraction, and temporal fact management.**
+
+| Before | After |
+|--------|-------|
+| 5 platforms (Claude, Codex, Cursor, OpenCode, Antigravity) | 6 platforms (+Gemini CLI with full hook/MCP/skill support) |
+| Cloud API required for vector embeddings | Local ONNX inference (Ruri V3-30M) — zero API calls |
+| Heuristic-only consolidation | LLM-based fact extraction with diff comparison (Ollama) |
+| Facts have no expiry | Temporal facts with `valid_from`/`valid_to` and `superseded_by` |
+
+### Added
+
+- **Gemini CLI integration**: Full platform support including MCP wiring, hook handler (SessionStart/End, BeforeAgent/AfterAgent, AfterTool, PreCompress), agent skill, and GEMINI.md context file.
+- **Local ONNX embedding**: Ruri V3-30M model for Japanese-optimized vector search with model catalog, automatic download, and async inference.
+- **LLM-based fact extraction**: Ollama-powered consolidation with diff comparison against existing facts.
+- **Temporal fact management**: `valid_from`/`valid_to` and `superseded_by` fields for fact lifecycle tracking.
+- **Write queue**: Promise-based async queue with 503 overflow protection for high-throughput recording.
+- **Database backup**: `VACUUM INTO` based backup via CLI (`harness-mem backup`) and API endpoint.
+- **Progressive compaction**: Resume-pack now ranks facts by importance × recency for smarter context.
+- **Recall trace**: 6 score components exposed in debug mode for search quality analysis.
+- **Prompt cache optimization**: Static/dynamic section splitting with SHA-256 hash for cache hits.
+- **Configurable recency**: Half-life, auto tag inference, and access frequency tracking.
+
+### Changed
+
+- Consolidation is now enabled by default (previously opt-in).
+- Vector model migration includes progress reporting.
+
+### Fixed
+
+- **Timing attack prevention**: Admin token comparison uses `crypto.timingSafeEqual`.
+- **SSRF prevention**: Ollama host URL validated to http/https scheme only.
+- **N+1 query**: Entity INSERT/SELECT batched (N+1 → 3 queries).
+- **Input validation**: LLM fact_value capped at 500 characters.
+- **Schema**: `superseded_by`/`valid_to` indexes moved to `migrateSchema` for correct upgrade path.
+- **Gemini hooks**: Updated from deprecated array-of-arrays format to v0.30.0 object format.
+
+### Security
+
+- `crypto.timingSafeEqual` for admin token comparison (timing attack mitigation).
+- Ollama host URL scheme validation (SSRF prevention).
+- LLM fact_value length limit (500 characters).
+
+### Migration Notes
+
+- No breaking changes. Run `harness-mem update` to upgrade.
+- New Gemini CLI support: run `harness-mem setup --platform gemini` or add `gemini` to existing platforms.
+
+### Verification
+
+- 22 Gemini-specific tests (13 vitest + 9 bash).
+- Resume-pack cache section integration tests.
+- All existing tests continue to pass.
+
 ## [0.1.35] - 2026-02-25
 
 ### What changed for users
