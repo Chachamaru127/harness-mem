@@ -3410,12 +3410,12 @@ export class HarnessMemCore {
           const placeholders = batch.map(() => "?").join(", ");
           const updatedRows = this.db
             .query(
-              `SELECT from_observation_id FROM mem_links
-               WHERE relation = 'updates' AND from_observation_id IN (${placeholders})`
+              `SELECT to_observation_id FROM mem_links
+               WHERE relation = 'updates' AND to_observation_id IN (${placeholders})`
             )
-            .all(...batch) as Array<{ from_observation_id: string }>;
+            .all(...batch) as Array<{ to_observation_id: string }>;
           for (const row of updatedRows) {
-            updatedObsIds.add(row.from_observation_id);
+            updatedObsIds.add(row.to_observation_id);
           }
         }
       } catch {

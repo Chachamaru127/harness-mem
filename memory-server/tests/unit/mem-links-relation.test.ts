@@ -175,10 +175,10 @@ describe("IMP-002: メモリ関係性タイプ拡張 (updates/extends/derives)",
       );
       const newObsId = (newResult.items[0] as { id: string }).id;
 
-      // updates リンクを作成（旧→新）
+      // updates リンクを作成（新→旧: 新しい観察が古い観察をupdatesする）
       core.createLink({
-        from_observation_id: oldObsId,
-        to_observation_id: newObsId,
+        from_observation_id: newObsId,
+        to_observation_id: oldObsId,
         relation: "updates",
         weight: 1.0,
       });
