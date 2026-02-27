@@ -148,7 +148,7 @@ function isValidRepoFormat(repo: string): boolean {
  * ラベル文字列が安全な文字のみ含むことをバリデーションする。
  */
 function isValidLabel(label: string): boolean {
-  return /^[a-zA-Z0-9 _.\-:\/]+$/.test(label) && label.length <= 128;
+  return /^[a-zA-Z0-9 _.\-:]+$/.test(label) && label.length <= 128;
 }
 
 /**

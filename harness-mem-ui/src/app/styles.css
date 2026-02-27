@@ -724,7 +724,7 @@ select:focus-visible,
 }
 
 .feed-card.interactive {
-  cursor: pointer;
+  /* cursor: pointer は .card-toggle ボタンにのみ設定 */
 }
 
 /* A-001: カード内のトグルボタン（セマンティクス修正） */

@@ -573,15 +573,12 @@ export function FeedPanel(props: FeedPanelProps) {
                   </div>
                   <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
                 </div>
-                <h3>{item.title || item.id}</h3>
                 </button>
-                {/* Content area outside button for proper a11y */}
+                <h3>{item.title || item.id}</h3>
                 {showContent && content ? <p>{content}</p> : null}
-                {isExpanded ? (
-                  <pre id={expandRegionId} className="feed-inline-detail">
-                    {content || "-"}
-                  </pre>
-                ) : null}
+                <pre id={expandRegionId} className="feed-inline-detail" hidden={!isExpanded}>
+                  {content || "-"}
+                </pre>
 
                 <div className="card-meta">
                   <span>{item.project || "-"}</span>

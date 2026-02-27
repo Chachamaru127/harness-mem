@@ -3403,15 +3403,20 @@ export class HarnessMemCore {
     const updatedObsIds = new Set<string>();
     if (request.exclude_updated && candidateIds.size > 0) {
       try {
-        const placeholders = [...candidateIds].map(() => "?").join(", ");
-        const updatedRows = this.db
-          .query(
-            `SELECT from_observation_id FROM mem_links
-             WHERE relation = 'updates' AND from_observation_id IN (${placeholders})`
-          )
-          .all(...[...candidateIds]) as Array<{ from_observation_id: string }>;
-        for (const row of updatedRows) {
-          updatedObsIds.add(row.from_observation_id);
+        const MAX_BATCH = 500;
+        const allCandidates = [...candidateIds];
+        for (let i = 0; i < allCandidates.length; i += MAX_BATCH) {
+          const batch = allCandidates.slice(i, i + MAX_BATCH);
+          const placeholders = batch.map(() => "?").join(", ");
+          const updatedRows = this.db
+            .query(
+              `SELECT from_observation_id FROM mem_links
+               WHERE relation = 'updates' AND from_observation_id IN (${placeholders})`
+            )
+            .all(...batch) as Array<{ from_observation_id: string }>;
+          for (const row of updatedRows) {
+            updatedObsIds.add(row.from_observation_id);
+          }
         }
       } catch {
         // best effort

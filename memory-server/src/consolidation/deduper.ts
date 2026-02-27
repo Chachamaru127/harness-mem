@@ -51,17 +51,19 @@ export function dedupeFacts(facts: ConsolidationFact[], threshold = 0.3): FactMe
 
   const merges: FactMergeDecision[] = [];
   const active: ConsolidationFact[] = [];
+  const activeTokenSets: Set<string>[] = [];
 
   for (const candidate of sorted) {
     let mergedInto: ConsolidationFact | null = null;
     let bestSimilarity = 0;
     const candidateTokens = tokenize(`${candidate.fact_key} ${candidate.fact_value}`);
 
-    for (const existing of active) {
+    for (let idx = 0; idx < active.length; idx++) {
+      const existing = active[idx];
       if (existing.project !== candidate.project || existing.fact_type !== candidate.fact_type) {
         continue;
       }
-      const similarity = jaccard(candidateTokens, tokenize(`${existing.fact_key} ${existing.fact_value}`));
+      const similarity = jaccard(candidateTokens, activeTokenSets[idx]);
       if (similarity >= threshold && similarity > bestSimilarity) {
         bestSimilarity = similarity;
         mergedInto = existing;
@@ -78,6 +80,7 @@ export function dedupeFacts(facts: ConsolidationFact[], threshold = 0.3): FactMe
     }
 
     active.push(candidate);
+    activeTokenSets.push(candidateTokens);
   }
 
   return merges;

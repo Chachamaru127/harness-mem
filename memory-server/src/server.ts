@@ -86,6 +86,10 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/cursor-events",
     "/v1/ingest/antigravity-history",
     "/v1/ingest/antigravity-files",
+    "/v1/ingest/github-issues",
+    "/v1/ingest/knowledge-file",
+    "/v1/ingest/gemini-history",
+    "/v1/ingest/gemini-events",
   ].includes(pathname);
 }
 
