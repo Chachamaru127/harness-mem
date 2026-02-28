@@ -6,11 +6,13 @@
 .firecrawl/
 .opencode/
 .tmp/
-.claude/
-.claude/state/
-.claude/sessions/
-.claude/logs/
 tests/benchmarks/output/
+
+# Claude Code — runtime state is ignored, rules and settings are committed
+.claude/*
+!.claude/rules/
+!.claude/settings.json
+!.claude/CLAUDE.md
 **/.claude/state/
 **/.claude/sessions/
 **/.claude/logs/
