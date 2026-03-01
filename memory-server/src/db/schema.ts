@@ -417,6 +417,19 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // NEXT-001: Cognitive セクター自動分類 - cognitive_sector カラムを追加
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN cognitive_sector TEXT NOT NULL DEFAULT 'meta'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_cognitive_sector ON mem_observations(cognitive_sector)`);
+  } catch {
+    // already exists
+  }
+
   // プロジェクト名空文字のレコードがあれば警告ログ
   const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};
   if (emptyProjects.cnt > 0) {

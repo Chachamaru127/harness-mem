@@ -166,6 +166,77 @@ export class PostgresStorageAdapter implements StorageAdapter {
       throw err;
     }
   }
+
+  /**
+   * NEXT-008: pgvector を使ったコサイン距離ベースのベクトル検索。
+   *
+   * @param vector     クエリベクトル（number[]）
+   * @param dimension  ベクトルの次元数
+   * @param limit      最大取得件数
+   * @returns          観察ID と距離のリスト（距離昇順）
+   */
+  async pgvectorSearchAsync(
+    vector: number[],
+    dimension: number,
+    limit: number
+  ): Promise<PgvectorSearchResult[]> {
+    const sql = buildPgvectorSearchSql(dimension, limit);
+    const vectorStr = formatVectorForPg(vector);
+    const result = await this.client.query(sql, [vectorStr]);
+    return parsePgvectorResult(
+      result.rows as Array<{ observation_id: string; distance: string | number }>
+    );
+  }
+}
+
+// ---- pgvector ベクトル検索ヘルパー ----
+
+/**
+ * pgvector のコサイン距離検索 SQL を生成する。
+ *
+ * <=> 演算子はコサイン距離（1 - cosine_similarity）を返す。
+ * 小さい値ほど類似度が高い。
+ *
+ * @param dimension  ベクトルの次元数
+ * @param limit      最大取得件数
+ * @returns          パラメータ化された SQL 文字列（$1 = ベクトル文字列）
+ */
+export function buildPgvectorSearchSql(dimension: number, limit: number): string {
+  return `
+    SELECT
+      v.observation_id,
+      -- cosine distance: <=> operator (smaller = more similar)
+      (v.embedding <=> $1::vector(${dimension})) AS distance
+    FROM mem_vectors v
+    ORDER BY distance ASC
+    LIMIT ${limit}
+  `.trim();
+}
+
+/**
+ * JavaScript の number[] を pgvector 互換の文字列形式に変換する。
+ * 例: [0.1, 0.2, 0.3] → "[0.1,0.2,0.3]"
+ */
+export function formatVectorForPg(vector: number[]): string {
+  return `[${vector.join(",")}]`;
+}
+
+/** pgvector 検索結果の1件 */
+export interface PgvectorSearchResult {
+  observationId: string;
+  distance: number;
+}
+
+/**
+ * pgvector クエリの生結果行を型付きオブジェクト配列に変換する。
+ */
+export function parsePgvectorResult(
+  rows: Array<{ observation_id: string; distance: string | number }>
+): PgvectorSearchResult[] {
+  return rows.map((row) => ({
+    observationId: row.observation_id,
+    distance: typeof row.distance === "string" ? parseFloat(row.distance) : row.distance,
+  }));
 }
 
 /** Export the SQL rewrite helpers for testing. */

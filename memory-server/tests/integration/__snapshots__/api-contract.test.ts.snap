@@ -200,6 +200,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     "items": [
       {
         "access_count": "number",
+        "cognitive_sector": "string",
         "content": "string",
         "created_at": "string",
         "decay_tier": "string",
@@ -235,6 +236,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "lexical": "number",
         "vector": "number",
       },
+      "cognitive_sector": "null",
       "compiled": {
         "cross_session": "boolean",
         "evidence_count": "number",

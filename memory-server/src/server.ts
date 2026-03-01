@@ -72,6 +72,13 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   if (pathname.startsWith("/v1/admin/")) {
     return true;
   }
+  // GET エンドポイントで admin 認証が必要なもの
+  if (method === "GET") {
+    return [
+      "/v1/export",
+      "/v1/graph/neighbors",
+    ].includes(pathname);
+  }
   if (method !== "POST") {
     return false;
   }
@@ -91,6 +98,9 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/knowledge-file",
     "/v1/ingest/gemini-history",
     "/v1/ingest/gemini-events",
+    "/v1/links/create",
+    "/v1/observations/bulk-delete",
+    "/v1/ingest/document",
   ].includes(pathname);
 }
 
@@ -422,6 +432,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           question_kind: questionKind && validKinds.includes(questionKind)
             ? questionKind as SearchRequest["question_kind"]
             : undefined,
+          sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
         };
         return jsonResponse(core.search(req));
       }
@@ -803,6 +814,58 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
         const body = await parseRequestJson(request);
         return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/links/create") {
+        const body = await parseRequestJson(request);
+        const fromId = typeof body.from_observation_id === "string" ? body.from_observation_id : "";
+        const toId = typeof body.to_observation_id === "string" ? body.to_observation_id : "";
+        const relation = typeof body.relation === "string" ? body.relation : "";
+        if (!fromId || !toId || !relation) {
+          return badRequest("from_observation_id, to_observation_id, relation are required");
+        }
+        const weight = typeof body.weight === "number" ? body.weight : 1.0;
+        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity", weight }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/observations/bulk-delete") {
+        const body = await parseRequestJson(request);
+        const ids = toStringArray(body.ids);
+        if (ids.length === 0) {
+          return badRequest("ids is required and must not be empty");
+        }
+        return jsonResponse(core.bulkDeleteObservations({ ids }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/export") {
+        const project = url.searchParams.get("project") || undefined;
+        const limit = parseInteger(url.searchParams.get("limit"), 1000);
+        const includePrivate = parseBoolean(url.searchParams.get("include_private"), false);
+        return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/graph/neighbors") {
+        const observationId = url.searchParams.get("observation_id") || "";
+        if (!observationId) {
+          return badRequest("observation_id is required");
+        }
+        const relation = url.searchParams.get("relation") || undefined;
+        return jsonResponse(core.getLinks({ observation_id: observationId, relation }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/ingest/document") {
+        const body = await parseRequestJson(request);
+        return jsonResponse(
+          core.ingestKnowledgeFile({
+            file_path: typeof body.file_path === "string" ? body.file_path : "",
+            content: typeof body.content === "string" ? body.content : "",
+            kind:
+              body.kind === "decisions_md" || body.kind === "adr" ? body.kind : undefined,
+            project: typeof body.project === "string" ? body.project : undefined,
+            platform: typeof body.platform === "string" ? body.platform : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          })
+        );
       }
 
       return new Response("Not Found", { status: 404 });

@@ -158,3 +158,48 @@ export function upsertSqliteVecRow(
     return false;
   }
 }
+
+// ---- NEXT-008: pgvector バックエンド統合ヘルパー ----
+
+/**
+ * number[] を pgvector が受け付ける文字列表現に変換する。
+ * 例: [0.1, 0.2, 0.3] → "[0.1,0.2,0.3]"
+ */
+export function formatVectorForPg(vector: number[]): string {
+  return `[${vector.join(",")}]`;
+}
+
+/**
+ * mem_vectors テーブルへのベクトル UPSERT SQL を返す。
+ * パラメータ順: (observation_id, model, dimension, embedding::vector)
+ */
+export function buildPgVectorUpsertSql(): string {
+  return `
+    INSERT INTO mem_vectors(observation_id, model, dimension, embedding, created_at, updated_at)
+    VALUES ($1, $2, $3, $4::vector, NOW(), NOW())
+    ON CONFLICT(observation_id) DO UPDATE SET
+      model = EXCLUDED.model,
+      dimension = EXCLUDED.dimension,
+      embedding = EXCLUDED.embedding,
+      updated_at = NOW()
+  `.trim();
+}
+
+/**
+ * pgvector コサイン距離でベクトル検索する SQL を返す。
+ * パラメータ順: (query_embedding::vector, [limit])
+ *
+ * @param _dimension  ベクトル次元数（将来の型指定用、現在は参照のみ）
+ * @param limit       返却件数上限（デフォルト 50）
+ */
+export function buildPgVectorSearchSql(_dimension: number, limit = 50): string {
+  const safeLimit = Math.trunc(limit);
+  return `
+    SELECT
+      v.observation_id,
+      1 - (v.embedding <=> $1::vector) AS cosine_similarity
+    FROM mem_vectors v
+    ORDER BY v.embedding <=> $1::vector
+    LIMIT ${safeLimit}
+  `.trim();
+}

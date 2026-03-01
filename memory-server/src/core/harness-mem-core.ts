@@ -47,7 +47,7 @@ import {
   type ConsolidationRunOptions,
   type ConsolidationRunStats,
 } from "../consolidation/worker";
-import { routeQuery, type RouteDecision } from "../retrieval/router";
+import { routeQuery, routeQueryWithSector, classifySector, type RouteDecision, type CognitiveSector } from "../retrieval/router";
 import { compileAnswer, type CompiledAnswer } from "../answer/compiler";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import type { StoredEvent } from "../projector/types";
@@ -126,6 +126,8 @@ export interface SearchRequest {
   exclude_updated?: boolean;
   /** COMP-003: 指定時点以前の観察のみを返す Point-in-time クエリ（ISO 8601） */
   as_of?: string;
+  /** NEXT-001: Cognitive セクターでフィルタリング: work|people|health|hobby|meta */
+  sector?: "work" | "people" | "health" | "hobby" | "meta";
 }
 
 export interface FeedRequest {
@@ -2598,6 +2600,8 @@ export class HarnessMemCore {
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     const redactedContent = redactContent(observationBase.content, privacyTags);
     const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
+    // NEXT-001: Cognitive セクター自動分類
+    const cognitiveSector: CognitiveSector = classifySector(observationBase.title, observationBase.content);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
@@ -2653,8 +2657,8 @@ export class HarnessMemCore {
               title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
-              created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              created_at, updated_at, cognitive_sector
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -2663,6 +2667,7 @@ export class HarnessMemCore {
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
+              cognitive_sector = excluded.cognitive_sector,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -2681,7 +2686,8 @@ export class HarnessMemCore {
             userId,
             teamId,
             timestamp,
-            current
+            current,
+            cognitiveSector
           );
 
         for (const tag of tags) {
@@ -2879,6 +2885,7 @@ export class HarnessMemCore {
       as_of?: string;
       include_private?: boolean;
       strict_project?: boolean;
+      sector?: string;
     },
     options: {
       skipPrivacy?: boolean;
@@ -2911,6 +2918,12 @@ export class HarnessMemCore {
     if (filters.as_of) {
       nextSql += ` AND ${alias}.created_at <= ?`;
       params.push(filters.as_of);
+    }
+
+    // NEXT-001: Cognitive セクターフィルター
+    if (filters.sector) {
+      nextSql += ` AND ${alias}.cognitive_sector = ?`;
+      params.push(filters.sector);
     }
 
     nextSql += this.platformVisibilityFilterSql(alias);
@@ -3254,6 +3267,7 @@ export class HarnessMemCore {
               o.last_accessed_at,
               o.user_id,
               o.team_id,
+              o.cognitive_sector,
               o.created_at,
               o.updated_at,
               e.event_type
@@ -3604,11 +3618,12 @@ export class HarnessMemCore {
     const vectorCoverage = ranked.length === 0 ? 0 : vectorCandidateCount / ranked.length;
 
     // Route query to determine retrieval strategy and weight overrides
-    const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
+    // NEXT-001: sector フィルターが指定された場合はセクター重みを優先して適用
+    const routeDecision: RouteDecision = routeQueryWithSector(request.query, request.sector as CognitiveSector | undefined, request.question_kind);
     const baseWeights = this.resolveSearchWeights(vectorCoverage);
     // Blend router weights with existing weights: router takes precedence
-    // when a specific question kind is detected (confidence > 0.5)
-    const weights = routeDecision.confidence > 0.5
+    // when a specific question kind is detected (confidence > 0.5) or sector is specified
+    const weights = (routeDecision.confidence > 0.5 || request.sector)
       ? routeDecision.weights
       : baseWeights;
 
@@ -3661,6 +3676,7 @@ export class HarnessMemCore {
           ? observation.content_redacted.slice(0, 2000)
           : "",
         observation_type: observation.observation_type || "context",
+        cognitive_sector: observation.cognitive_sector || "meta",
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
@@ -3698,6 +3714,7 @@ export class HarnessMemCore {
       ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
       question_kind: routeDecision.kind,
       question_kind_confidence: Number(routeDecision.confidence.toFixed(3)),
+      cognitive_sector: routeDecision.sector ?? null,
       vector_engine: this.vectorEngine,
       vector_model: this.vectorModelVersion,
       fts_enabled: this.ftsEnabled,
@@ -4505,6 +4522,76 @@ export class HarnessMemCore {
       return makeResponse(startedAt, rows, { observation_id, relation });
     } catch (err) {
       return makeErrorResponse(startedAt, `failed to get links: ${String(err)}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
+  /**
+   * 複数の observation を一括ソフトデリート（privacy_tags に "deleted" を付与）する。
+   */
+  bulkDeleteObservations(request: { ids: string[] }): ApiResponse {
+    const startedAt = performance.now();
+    const { ids } = request;
+    if (!ids || ids.length === 0) {
+      return makeErrorResponse(startedAt, "ids is required and must not be empty", request as unknown as Record<string, unknown>);
+    }
+    if (ids.length > 500) {
+      return makeErrorResponse(startedAt, `ids length exceeds maximum of 500 (got ${ids.length})`, request as unknown as Record<string, unknown>);
+    }
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+    for (const id of ids) {
+      try {
+        const existing = this.db.query(`SELECT id, privacy_tags FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string } | null;
+        if (!existing) {
+          skipped.push(id);
+          continue;
+        }
+        const tags: string[] = existing.privacy_tags ? JSON.parse(existing.privacy_tags) : [];
+        if (!tags.includes("deleted")) {
+          tags.push("deleted");
+        }
+        this.db.query(`UPDATE mem_observations SET privacy_tags = ? WHERE id = ?`).run(JSON.stringify(tags), id);
+        deleted.push(id);
+      } catch {
+        skipped.push(id);
+      }
+    }
+    return makeResponse(
+      startedAt,
+      [{ deleted, skipped }],
+      { ids },
+      { deleted_count: deleted.length, skipped_count: skipped.length }
+    );
+  }
+
+  /**
+   * 観察データを JSON 形式でエクスポートする。
+   */
+  exportObservations(request: { project?: string; limit?: number; include_private?: boolean }): ApiResponse {
+    const startedAt = performance.now();
+    const { project, limit = 1000, include_private = false } = request;
+    try {
+      let sql = `
+        SELECT id, platform, project, session_id, event_type, title, content,
+               created_at, tags, privacy_tags
+        FROM mem_observations
+        WHERE 1=1
+      `;
+      const params: unknown[] = [];
+      if (project) {
+        sql += ` AND project = ?`;
+        params.push(project);
+      }
+      if (!include_private) {
+        sql += ` AND (privacy_tags IS NULL OR privacy_tags NOT LIKE '%"deleted"%')`;
+      }
+      sql += ` ORDER BY created_at DESC LIMIT ?`;
+      params.push(limit);
+
+      const rows = this.db.query(sql).all(...(params as any[]));
+      return makeResponse(startedAt, rows as Record<string, unknown>[], { project, limit, include_private }, { ranking: "export_v1" });
+    } catch (err) {
+      return makeErrorResponse(startedAt, `export failed: ${String(err)}`, request as unknown as Record<string, unknown>);
     }
   }
 

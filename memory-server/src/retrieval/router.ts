@@ -8,9 +8,19 @@
  * - "graph"    : How-related/connection questions → link-graph traversal
  * - "vector"   : Semantic similarity → embedding-based retrieval
  * - "hybrid"   : Default / unknown → combine all strategies (current behavior)
+ *
+ * Cognitive Sectors:
+ * - "work"   : Work / coding / project related observations
+ * - "people" : People / team / social interactions
+ * - "health" : Health / sleep / exercise / diet
+ * - "hobby"  : Hobbies / entertainment / personal interests
+ * - "meta"   : Meta / other / uncategorized
  */
 
 export type QuestionKind = "profile" | "timeline" | "graph" | "vector" | "hybrid";
+
+/** Cognitive sector for classifying observations by life domain. */
+export type CognitiveSector = "work" | "people" | "health" | "hobby" | "meta";
 
 export interface RouteDecision {
   /** Primary retrieval strategy to use. */
@@ -21,6 +31,8 @@ export interface RouteDecision {
   reason: string;
   /** Weight overrides for the search scoring. */
   weights: SearchWeights;
+  /** Optional sector filter applied to this query. */
+  sector?: CognitiveSector;
 }
 
 export interface SearchWeights {
@@ -30,6 +42,8 @@ export interface SearchWeights {
   tag_boost: number;
   importance: number;
   graph: number;
+  /** Boost applied when filtering/prioritizing by cognitive sector (0 = no boost). */
+  sector_boost: number;
 }
 
 /** Default hybrid weights (balanced). */
@@ -40,6 +54,7 @@ const HYBRID_WEIGHTS: SearchWeights = {
   tag_boost: 0.1,
   importance: 0.1,
   graph: 0.05,
+  sector_boost: 0,
 };
 
 /** Profile-focused weights: boost lexical + tag matching for entity retrieval. */
@@ -50,6 +65,7 @@ const PROFILE_WEIGHTS: SearchWeights = {
   tag_boost: 0.2,
   importance: 0.05,
   graph: 0.05,
+  sector_boost: 0,
 };
 
 /** Timeline-focused weights: boost recency for chronological queries. */
@@ -60,6 +76,7 @@ const TIMELINE_WEIGHTS: SearchWeights = {
   tag_boost: 0.05,
   importance: 0.15,
   graph: 0.05,
+  sector_boost: 0,
 };
 
 /** Graph-focused weights: boost graph traversal score. */
@@ -70,6 +87,7 @@ const GRAPH_WEIGHTS: SearchWeights = {
   tag_boost: 0.05,
   importance: 0.1,
   graph: 0.45,
+  sector_boost: 0,
 };
 
 /** Vector-focused weights: boost semantic similarity. */
@@ -80,6 +98,7 @@ const VECTOR_WEIGHTS: SearchWeights = {
   tag_boost: 0.05,
   importance: 0.15,
   graph: 0.05,
+  sector_boost: 0,
 };
 
 const WEIGHT_MAP: Record<QuestionKind, SearchWeights> = {
@@ -194,3 +213,145 @@ export function routeQuery(query: string, explicitKind?: QuestionKind): RouteDec
 }
 
 export { WEIGHT_MAP, HYBRID_WEIGHTS };
+
+// ---- Cognitive Sector Classification ----
+
+/**
+ * Keyword patterns for each cognitive sector.
+ * Patterns match against lowercased title + content.
+ * Note: \b word boundaries do not work for Japanese text, so patterns use
+ * simple substring matching for Japanese keywords.
+ */
+const SECTOR_PATTERNS: Record<CognitiveSector, RegExp[]> = {
+  work: [
+    // Japanese work keywords (no \b for Unicode compatibility)
+    /(実装|コード|バグ|修正|デプロイ|プロジェクト|タスク|仕事|業務|開発|レビュー|ビルド|リファクタ)/,
+    // English work keywords (ASCII, \b works)
+    /\b(code|coding|implement|bug|fix|deploy|project|task|work|develop|review|commit|pull request|api|test|build|refactor)\b/i,
+    // Tech stack keywords
+    /\b(typescript|javascript|python|rust|golang|sql|docker|kubernetes|aws|gcp|azure|github|gitlab|ci|cd)\b/i,
+    // File extensions
+    /\.(ts|js|py|rs|go|tsx|jsx|vue|sql|yaml|yml|json|toml|sh|md)\b/,
+  ],
+  people: [
+    // Japanese honorifics / social keywords
+    /(さん|くん|ちゃん|チーム|同僚|メンター|上司|部下|会議|ミーティング|面談|フィードバック|コミュニケーション|友達|友人|家族|パートナー|恋人|知人|社内|社外)/,
+    // English people / social keywords
+    /\b(team|colleague|mentor|manager|meeting|feedback|communication|friend|family|partner|engineer|designer|product|ceo|cto|mr\.|ms\.|dr\.)\b/i,
+  ],
+  health: [
+    // Japanese health keywords
+    /(睡眠|起床|就寝|体重|体調|健康|運動|ジョギング|ランニング|ジム|筋トレ|ヨガ|食事|カロリー|水分|サプリ|病院|クリニック|医者|症状|疲労|ストレス|メンタル|気分|リラックス|瞑想)/,
+    // English health keywords
+    /\b(sleep|exercise|jogging|running|gym|workout|yoga|diet|nutrition|calorie|hydration|supplement|doctor|medicine|symptom|fatigue|stress|mental|mood|relax|meditation|breathing|health)\b/i,
+  ],
+  hobby: [
+    // Japanese hobby keywords
+    /(ゲーム|アニメ|マンガ|読書|小説|映画|音楽|楽器|ギター|ピアノ|趣味|旅行|料理|写真|スポーツ|レベルアップ|クリア|ステージ)/,
+    // English hobby keywords
+    /\b(game|play|anime|manga|book|novel|movie|music|instrument|guitar|piano|hobby|travel|cooking|photo|photography|art|sport|level up|youtube|netflix|spotify|twitch)\b/i,
+  ],
+  meta: [],
+};
+
+/**
+ * Classify an observation into a cognitive sector based on title and content.
+ * Returns the first matching sector, or "meta" as fallback.
+ */
+export function classifySector(title: string, content: string): CognitiveSector {
+  const text = `${title} ${content}`.toLowerCase();
+
+  for (const sector of ["work", "people", "health", "hobby"] as const) {
+    const patterns = SECTOR_PATTERNS[sector];
+    for (const pattern of patterns) {
+      if (pattern.test(text)) {
+        return sector;
+      }
+    }
+  }
+
+  return "meta";
+}
+
+/**
+ * Sector-specific search weight overrides.
+ * All weights (including sector_boost) sum to 1.0.
+ * sector_boost is applied as a bonus multiplier when filtering by this sector.
+ */
+export const SECTOR_WEIGHTS: Record<CognitiveSector, SearchWeights> = {
+  work: {
+    lexical: 0.3,
+    vector: 0.25,
+    recency: 0.08,
+    tag_boost: 0.1,
+    importance: 0.1,
+    graph: 0.05,
+    sector_boost: 0.12,
+  },
+  people: {
+    lexical: 0.3,
+    vector: 0.15,
+    recency: 0.12,
+    tag_boost: 0.15,
+    importance: 0.12,
+    graph: 0.04,
+    sector_boost: 0.12,
+  },
+  health: {
+    lexical: 0.25,
+    vector: 0.2,
+    recency: 0.2,
+    tag_boost: 0.1,
+    importance: 0.1,
+    graph: 0.03,
+    sector_boost: 0.12,
+  },
+  hobby: {
+    lexical: 0.25,
+    vector: 0.25,
+    recency: 0.16,
+    tag_boost: 0.1,
+    importance: 0.1,
+    graph: 0.02,
+    sector_boost: 0.12,
+  },
+  meta: {
+    lexical: 0.27,
+    vector: 0.27,
+    recency: 0.13,
+    tag_boost: 0.1,
+    importance: 0.1,
+    graph: 0.05,
+    sector_boost: 0.08,
+  },
+};
+
+/**
+ * Alias for SECTOR_WEIGHTS - exported for backward compatibility with tests.
+ */
+export const SECTOR_WEIGHT_MAP: Record<CognitiveSector, SearchWeights> = SECTOR_WEIGHTS;
+
+/**
+ * Get search weights for a specific cognitive sector.
+ * Returns undefined if the sector is not recognized.
+ */
+export function getSectorWeights(sector: CognitiveSector): SearchWeights | undefined {
+  return SECTOR_WEIGHTS[sector];
+}
+
+/**
+ * Route a query with an optional sector filter.
+ * When a sector is provided, blends sector-specific weights into the route decision.
+ */
+export function routeQueryWithSector(query: string, sector?: CognitiveSector, explicitKind?: QuestionKind): RouteDecision {
+  const base = routeQuery(query, explicitKind);
+  if (!sector) {
+    return base;
+  }
+  const sectorWeights = SECTOR_WEIGHTS[sector];
+  return {
+    ...base,
+    weights: sectorWeights,
+    sector,
+  };
+}
