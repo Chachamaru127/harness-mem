@@ -39,6 +39,70 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 - None.
 
+## [0.2.1] - 2026-03-01
+
+### 🎯 What's Changed for You
+
+**Memory quality improvements with 15 tasks across 3 phases, plus comprehensive security/performance/accessibility hardening from 4-expert Harness review.**
+
+| Before | After |
+|--------|-------|
+| No command injection protection for `gh` CLI integration | Shell-escaped parameters + repo/label validation |
+| SQL alias injection possible in visibility filter | Alias validated with `/^[a-zA-Z_][a-zA-Z0-9_]*$/` |
+| Ingest endpoints (GitHub Issues, Knowledge File, Gemini) unprotected | All ingest endpoints require admin token |
+| O(n²) tokenization in deduper/derives link generation | Pre-computed token sets eliminate redundant work |
+| `<h3>` nested inside `<button>` (WCAG violation) | Semantic heading outside button + roving tabindex |
+| `exclude_updated` returned wrong observations | Correct link direction (to_observation_id) |
+
+### Added
+
+- **Memory relation links**: `createLink` / `getLinks` API for `updates`, `extends`, and `derives` relationships between observations.
+- **Exclude updated search**: `exclude_updated` option in search to filter out superseded observations.
+- **GitHub Issues connector**: `parseGitHubIssues` and `buildGhIssueListCommand` for ingesting GitHub Issues as observations.
+- **Knowledge file connector**: Ingest markdown/text knowledge files as observations with deduplication.
+- **Gemini history/events ingest**: Dedicated endpoints for Gemini CLI session history and event ingestion.
+- **Database backup verification**: Backup integrity check with row-count comparison.
+- **Consolidation session tracking**: `consolidation_session_id` column for batch traceability.
+
+### Changed
+
+- Deduper tokenization pre-computes `activeTokenSets` to avoid O(n²) re-tokenization.
+- `generateDerivesLinks` pre-computes token sets for all facts before comparison.
+- `loadObservations` uses batched queries (MAX_BATCH=500) instead of unbounded IN clauses.
+- Feed card UI refactored: heading outside button, `<pre>` always in DOM with `hidden` attribute.
+- Tab navigation uses roving tabindex with full keyboard support (Arrow keys, Home, End).
+
+### Fixed
+
+- **`exclude_updated` link direction**: Query now correctly uses `to_observation_id` (superseded observation) instead of `from_observation_id`.
+- **Shell injection in `buildGhIssueListCommand`**: All parameters shell-escaped; repo format and label content validated.
+- **SQL alias injection in `visibilityFilterSql`**: Alias parameter validated against safe identifier regex.
+- **Path traversal in admin endpoints**: `source_db_path` resolved and extension-checked (`.db`, `.sqlite`, `.sqlite3`).
+- **Missing admin token warning**: Server logs warning at startup when `HARNESS_MEM_ADMIN_TOKEN` is not set.
+- **`isValidLabel` slash injection**: Removed `/` from allowed label characters.
+- **Feed card accessibility**: `<h3>` moved outside `<button>`; `cursor: pointer` restricted to `.card-toggle` only.
+- **Tab panel visibility**: `<pre>` element always present in DOM (using `hidden` attr) so `aria-controls` target exists.
+- **Focus management**: Added `focus-visible` outline styles for card toggle and tab buttons.
+
+### Security
+
+- **Command injection prevention**: `shellEscape()` wraps all CLI parameters; `isValidRepoFormat()` rejects `..` sequences.
+- **SQL injection prevention**: Alias validation + batched IN clauses (MAX_BATCH=500) in `exclude_updated` and `loadObservations`.
+- **Admin token enforcement**: GitHub Issues, Knowledge File, Gemini History, and Gemini Events endpoints added to `requiresAdminToken` whitelist.
+- **Path traversal prevention**: Admin import endpoint validates resolved path and file extension.
+- **Timing attack prevention**: Admin token comparison uses `crypto.timingSafeEqual` (carried forward from v0.2.0).
+
+### Migration Notes
+
+- No breaking changes. All new features are additive.
+- `mem_links` table is created automatically via `migrateSchema` if not present.
+
+### Verification
+
+- 286 unit tests passing (175 memory-server + 111 UI).
+- 4-expert Harness review: Security A, Performance A, Accessibility A, Quality B.
+- All Critical/High findings resolved across 3 review rounds.
+
 ## [0.2.0] - 2026-02-27
 
 ### 🎯 What's Changed for You

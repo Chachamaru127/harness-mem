@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.2.1] - 2026-03-01
+
+### ユーザー向け要約
+
+- 15タスク3フェーズのメモリ品質改善を実施。観察間の関係性リンク（updates/extends/derives）、検索時のsuperseded除外、GitHub Issues/Knowledge File/Gemini 取り込みコネクタを追加。
+- 4エキスパート Harness レビュー（Security/Performance/Quality/Accessibility）を3ラウンド実施し、全 Critical/High 指摘を解消。最終スコア: Security A, Performance A, Accessibility A, Quality B。
+
+### 補足
+
+- セキュリティ: `gh` CLI コマンドインジェクション防止（shellEscape + repo/label バリデーション）、SQL エイリアスインジェクション防止、全 ingest エンドポイントに admin token 必須化、パストラバーサル防止。
+- パフォーマンス: deduper/derives リンク生成の O(n^2) トークナイズを事前計算で解消、`loadObservations` と `exclude_updated` のバッチ化（MAX_BATCH=500）。
+- アクセシビリティ: `<h3>` を `<button>` 外に移動（WCAG 準拠）、roving tabindex によるキーボードナビゲーション、`focus-visible` スタイル追加。
+- バグ修正: `exclude_updated` のリンク方向を `to_observation_id`（旧観察）に修正、`isValidLabel` からスラッシュを除去。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.2.0] - 2026-02-27
 
 ### ユーザー向け要約
