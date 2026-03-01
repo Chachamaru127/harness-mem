@@ -291,6 +291,19 @@ export function migrateSchema(db: Database): void {
       ON mem_vectors(model, dimension, observation_id);
   `);
 
+  // MAJOR-4: user_id / team_id 複合インデックス（プロジェクト横断検索の高速化）
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_user ON mem_observations(project, user_id, created_at DESC)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_team ON mem_observations(project, team_id, created_at DESC)`);
+  } catch {
+    // already exists
+  }
+
   // W2-004: mem_facts に superseded_by カラムを追加（矛盾ファクト追跡用）
   try {
     db.exec(`ALTER TABLE mem_facts ADD COLUMN superseded_by TEXT`);

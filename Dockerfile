@@ -12,8 +12,14 @@ RUN bun install --frozen-lockfile
 # ソースコードをコピー
 COPY memory-server/ ./memory-server/
 
-# データディレクトリ作成
-RUN mkdir -p /data
+# non-root ユーザーを追加
+RUN addgroup --system --gid 1001 harness && \
+    adduser --system --uid 1001 --ingroup harness harness
+
+# データディレクトリ作成（所有者を harness に設定）
+RUN mkdir -p /data && chown harness:harness /data
+
+USER harness
 
 # ポート
 EXPOSE 37888

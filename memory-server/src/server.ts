@@ -144,11 +144,11 @@ function hasValidAdminToken(request: Request): boolean {
     return true;
   }
 
-  // AuthConfig が存在する場合はマルチトークン認証を使用（admin or member どちらでも通す）
+  // AuthConfig が存在する場合はマルチトークン認証を使用（admin ロールのみ許可）
   const authConfig = getAuthConfig();
   if (authConfig) {
     const identity = resolveTokenIdentity(extractBearerToken(request), authConfig);
-    return identity !== null;
+    return identity !== null && identity.role === "admin";
   }
 
   const rawAuth = request.headers.get("authorization");
@@ -255,16 +255,14 @@ function toSseChunk(event: string, data: Record<string, unknown>, id?: number): 
  * エラーメッセージを返す。安全な場合は null を返す。
  */
 export function checkRemoteBindSafety(host: string): string | null {
-  const isLocal = host === "127.0.0.1" || host === "localhost";
-  if (isLocal) {
-    return null;
-  }
-  const token = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
-  if (!token) {
+  if (host === "127.0.0.1" || host === "localhost" || host === "::1") return null;
+  const adminToken = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  const authConfig = getAuthConfig();
+  if (!adminToken && !authConfig) {
     return (
-      `[harness-mem] FATAL: リモートモードで起動しようとしていますが HARNESS_MEM_ADMIN_TOKEN が未設定です。` +
-      ` host=${host} でのリモートバインドにはトークン認証が必須です。` +
-      ` HARNESS_MEM_ADMIN_TOKEN 環境変数を設定してから再起動してください。`
+      `[harness-mem] FATAL: リモートモードで起動しようとしていますが認証設定がありません。` +
+      ` host=${host} でのリモートバインドには HARNESS_MEM_ADMIN_TOKEN または auth_config.json の設定が必須です。` +
+      ` HARNESS_MEM_ADMIN_TOKEN 環境変数を設定するか auth_config.json を配置してから再起動してください。`
     );
   }
   console.warn(

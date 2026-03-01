@@ -391,12 +391,8 @@ async function callGemini(
 }
 
 async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
-  const apiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
-  if (!apiKey) {
-    return [];
-  }
+  const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "openai").trim().toLowerCase();
 
-  const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gpt-4o-mini").trim();
   const systemPrompt = "Return JSON object only.";
   const prompt = [
     "Extract up to 5 stable memory facts as compact JSON array.",
@@ -406,7 +402,37 @@ async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
     `content: ${input.content.slice(0, 2000)}`,
   ].join("\n");
 
-  const content = await callOpenAI(prompt, systemPrompt, apiKey, model);
+  let content: string | null = null;
+
+  if (provider === "ollama") {
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "llama3.2").trim();
+    content = await callOllama(prompt, systemPrompt, model);
+  } else if (provider === "anthropic") {
+    const apiKey = (process.env.HARNESS_MEM_ANTHROPIC_API_KEY || "").trim();
+    if (!apiKey) {
+      return [];
+    }
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "claude-haiku-4-5-20251001").trim();
+    content = await callAnthropic(prompt, systemPrompt, apiKey, model);
+  } else if (provider === "gemini") {
+    const apiKey = (process.env.HARNESS_MEM_GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      return [];
+    }
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gemini-2.0-flash").trim();
+    content = await callGemini(prompt, systemPrompt, apiKey, model);
+  } else if (provider === "openai") {
+    const apiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
+    if (!apiKey) {
+      return [];
+    }
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gpt-4o-mini").trim();
+    content = await callOpenAI(prompt, systemPrompt, apiKey, model);
+  } else {
+    // 不明なプロバイダーは graceful に空を返す
+    return [];
+  }
+
   if (!content) {
     return [];
   }

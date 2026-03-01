@@ -17,6 +17,8 @@ export interface QueuedEvent {
   reason: string;
   /** エンキュー時刻（ISO 8601）*/
   queued_at?: string;
+  /** フラッシュ失敗によるリトライ回数 */
+  retry_count?: number;
 }
 
 export type FailureType = "retryable" | "non_retryable";
@@ -34,6 +36,17 @@ export function classifyHttpFailure(statusCode: number): FailureType {
 }
 
 /**
+ * キューの最大保持件数。超過した場合は最古のイベントをドロップする。
+ * VPS の長時間ダウンによる OOM を防ぐ。
+ */
+const MAX_QUEUE_SIZE = 10_000;
+
+/**
+ * フラッシュ時の最大リトライ回数。これを超えたイベントは再エンキューしない。
+ */
+const MAX_RETRY_COUNT = 3;
+
+/**
  * インメモリのリトライキュー。
  * VPS がダウンしている間のイベントを保持し、復旧後に flush() で取り出す。
  */
@@ -42,12 +55,18 @@ export class LocalRetryQueue {
 
   /**
    * イベントをキューに追加する。
+   * キューが MAX_QUEUE_SIZE に達した場合は最古のイベントをドロップして追加する。
+   * @returns 追加成功時は true（常に true を返す）
    */
-  enqueue(event: QueuedEvent): void {
+  enqueue(event: QueuedEvent): boolean {
+    if (this.queue.length >= MAX_QUEUE_SIZE) {
+      this.queue.shift(); // 最古をドロップ
+    }
     this.queue.push({
       ...event,
       queued_at: event.queued_at ?? new Date().toISOString(),
     });
+    return true;
   }
 
   /**
@@ -140,8 +159,12 @@ export async function flushRetryQueue(
     if (ok) {
       successCount++;
     } else {
-      // 失敗したイベントは再度キューに積む
-      queue.enqueue({ ...item, reason: `retry_flush_failed` });
+      // 失敗したイベントはリトライ回数を確認して再度キューに積む
+      const retryCount = (item.retry_count ?? 0) + 1;
+      if (retryCount <= MAX_RETRY_COUNT) {
+        queue.enqueue({ ...item, reason: `retry_flush_failed`, retry_count: retryCount });
+      }
+      // MAX_RETRY_COUNT を超えたイベントはドロップ（無限ループ防止）
     }
   }
 

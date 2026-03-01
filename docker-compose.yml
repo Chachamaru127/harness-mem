@@ -17,9 +17,9 @@ services:
     environment:
       - HARNESS_MEM_HOST=0.0.0.0
       - HARNESS_MEM_PORT=37888
-      - HARNESS_MEM_ADMIN_TOKEN=${ADMIN_TOKEN}
+      - HARNESS_MEM_ADMIN_TOKEN=${HARNESS_MEM_ADMIN_TOKEN:?Set HARNESS_MEM_ADMIN_TOKEN in .env}
       - HARNESS_MEM_DB_BACKEND=postgres
-      - HARNESS_MEM_PG_URL=postgres://harness:${DB_PASSWORD:-changeme}@db:5432/harness_mem
+      - HARNESS_MEM_PG_URL=postgres://harness:${DB_PASSWORD:?Set DB_PASSWORD in .env}@db:5432/harness_mem
     depends_on:
       - db
     # Caddy 経由でのみ外部公開 (直接ポート開放不要)
@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
     environment:
       - POSTGRES_USER=harness
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-changeme}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?Set DB_PASSWORD in .env}
       - POSTGRES_DB=harness_mem
     volumes:
       - pgdata:/var/lib/postgresql/data

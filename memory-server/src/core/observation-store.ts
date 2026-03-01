@@ -294,95 +294,102 @@ export class ObservationStore {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : undefined;
-    const params: unknown[] = [];
-
-    let sql = `
-      SELECT
-        o.project,
-        o.created_at,
-        o.tags_json,
-        o.privacy_tags_json,
-        e.event_type
-      FROM mem_observations o
-      LEFT JOIN mem_events e ON e.event_id = o.event_id
-      WHERE 1 = 1
-    `;
-
-    if (normalizedProject) {
-      sql += " AND o.project = ?";
-      params.push(normalizedProject);
-    }
-
-    sql += this.deps.platformVisibilityFilterSql("o");
-    sql += this.deps.visibilityFilterSql("o", includePrivate);
-
-    if (this.deps.accessFilter?.sql) {
-      sql += " " + this.deps.accessFilter.sql;
-      params.push(...this.deps.accessFilter.params);
-    }
-
     const query = (request.query || "").trim();
-    if (query) {
-      if (this.deps.ftsEnabled) {
-        sql += `
-          AND o.rowid IN (
-            SELECT rowid
-            FROM mem_observations_fts
-            WHERE mem_observations_fts MATCH ?
-          )
-        `;
-        params.push(this.deps.buildFtsQuery(query));
-      } else {
-        const escapedLike = escapeLikePattern(query);
-        sql += " AND (o.title LIKE ? ESCAPE '\\' OR o.content_redacted LIKE ? ESCAPE '\\')";
-        params.push(`%${escapedLike}%`, `%${escapedLike}%`);
+
+    // MAJOR-5: SQL GROUP BY で project・event_type・時間バケットを集計し、
+    // JS 側の全件ループを排除する。tags_json のみ JS でパースが必要なため
+    // 別途 LIMIT 付きで取得する。
+
+    // 共通 WHERE 条件を構築するヘルパー
+    const buildBaseFilter = (): { whereClauses: string; baseParams: unknown[] } => {
+      const baseParams: unknown[] = [];
+      let whereClauses = " WHERE 1 = 1";
+      if (normalizedProject) {
+        whereClauses += " AND o.project = ?";
+        baseParams.push(normalizedProject);
       }
-    }
+      whereClauses += this.deps.platformVisibilityFilterSql("o");
+      whereClauses += this.deps.visibilityFilterSql("o", includePrivate);
+      if (this.deps.accessFilter?.sql) {
+        whereClauses += " " + this.deps.accessFilter.sql;
+        baseParams.push(...this.deps.accessFilter.params);
+      }
+      if (query) {
+        if (this.deps.ftsEnabled) {
+          whereClauses += ` AND o.rowid IN (SELECT rowid FROM mem_observations_fts WHERE mem_observations_fts MATCH ?)`;
+          baseParams.push(this.deps.buildFtsQuery(query));
+        } else {
+          const escapedLike = escapeLikePattern(query);
+          whereClauses += " AND (o.title LIKE ? ESCAPE '\\' OR o.content_redacted LIKE ? ESCAPE '\\')";
+          baseParams.push(`%${escapedLike}%`, `%${escapedLike}%`);
+        }
+      }
+      return { whereClauses, baseParams };
+    };
 
-    sql += " ORDER BY o.created_at DESC LIMIT 5000";
+    const { whereClauses, baseParams } = buildBaseFilter();
 
-    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<{
-      project: string;
-      created_at: string;
-      tags_json: string;
-      privacy_tags_json: string;
-      event_type: string;
-    }>;
+    // (1) project 集計: SQL GROUP BY
+    const projectRows = this.deps.db
+      .query(
+        `SELECT COALESCE(o.project,'unknown') AS value, COUNT(*) AS cnt
+         FROM mem_observations o${whereClauses}
+         GROUP BY o.project
+         ORDER BY cnt DESC
+         LIMIT 30`
+      )
+      .all(...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
 
-    const projectCounts = new Map<string, number>();
-    const eventTypeCounts = new Map<string, number>();
+    // (2) event_type 集計: SQL GROUP BY
+    const eventTypeRows = this.deps.db
+      .query(
+        `SELECT COALESCE(e.event_type,'unknown') AS value, COUNT(*) AS cnt
+         FROM mem_observations o
+         LEFT JOIN mem_events e ON e.event_id = o.event_id${whereClauses}
+         GROUP BY e.event_type
+         ORDER BY cnt DESC
+         LIMIT 20`
+      )
+      .all(...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
+
+    // (3) 時間バケット集計: SQL CASE 式で分類
+    const nowIsoForSql = new Date().toISOString();
+    const bucketRows = this.deps.db
+      .query(
+        `SELECT
+           CASE
+             WHEN o.created_at >= datetime(?, '-1 day')   THEN '24h'
+             WHEN o.created_at >= datetime(?, '-7 days')  THEN '7d'
+             WHEN o.created_at >= datetime(?, '-30 days') THEN '30d'
+             ELSE 'older'
+           END AS value,
+           COUNT(*) AS cnt
+         FROM mem_observations o${whereClauses}
+         GROUP BY value`
+      )
+      .all(nowIsoForSql, nowIsoForSql, nowIsoForSql, ...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
+
+    // (4) total_candidates
+    const totalRow = this.deps.db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_observations o${whereClauses}`)
+      .get(...(baseParams as any[])) as { cnt: number } | null;
+    const totalCandidates = Number(totalRow?.cnt ?? 0);
+
+    // (5) tags_json: JS パースが必要なため LIMIT 付きで取得
+    const tagRows = this.deps.db
+      .query(
+        `SELECT o.tags_json
+         FROM mem_observations o${whereClauses}
+         ORDER BY o.created_at DESC
+         LIMIT 5000`
+      )
+      .all(...(baseParams as any[])) as Array<{ tags_json: string }>;
+
     const tagCounts = new Map<string, number>();
-    const timeBucketCounts = new Map<string, number>([
-      ["24h", 0],
-      ["7d", 0],
-      ["30d", 0],
-      ["older", 0],
-    ]);
-
-    const now = Date.now();
-    for (const row of rows) {
-      const project = row.project || "unknown";
-      const eventType = row.event_type || "unknown";
-      projectCounts.set(project, (projectCounts.get(project) || 0) + 1);
-      eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
-
+    for (const row of tagRows) {
       const tags = parseArrayJson(row.tags_json);
       for (const tag of tags) {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-      }
-
-      const createdMs = Date.parse(row.created_at || "");
-      if (!Number.isNaN(createdMs)) {
-        const ageHours = (now - createdMs) / (1000 * 60 * 60);
-        if (ageHours <= 24) {
-          timeBucketCounts.set("24h", (timeBucketCounts.get("24h") || 0) + 1);
-        } else if (ageHours <= 24 * 7) {
-          timeBucketCounts.set("7d", (timeBucketCounts.get("7d") || 0) + 1);
-        } else if (ageHours <= 24 * 30) {
-          timeBucketCounts.set("30d", (timeBucketCounts.get("30d") || 0) + 1);
-        } else {
-          timeBucketCounts.set("older", (timeBucketCounts.get("older") || 0) + 1);
-        }
       }
     }
 
@@ -391,16 +398,30 @@ export class ObservationStore {
         .map(([value, count]) => ({ value, count }))
         .sort((lhs, rhs) => rhs.count - lhs.count || lhs.value.localeCompare(rhs.value));
 
+    const toFacetArrayFromRows = (rows: Array<{ value: string; cnt: number }>) =>
+      rows.map((r) => ({ value: r.value, count: Number(r.cnt) }));
+
+    // 時間バケットは固定順で返す
+    const bucketMap = new Map<string, number>(
+      bucketRows.map((r) => [r.value, Number(r.cnt)])
+    );
+    const timeBuckets = [
+      { value: "24h", count: bucketMap.get("24h") ?? 0 },
+      { value: "7d", count: bucketMap.get("7d") ?? 0 },
+      { value: "30d", count: bucketMap.get("30d") ?? 0 },
+      { value: "older", count: bucketMap.get("older") ?? 0 },
+    ];
+
     return makeResponse(
       startedAt,
       [
         {
           query: query || null,
-          total_candidates: rows.length,
-          projects: toFacetArray(projectCounts).slice(0, 30),
-          event_types: toFacetArray(eventTypeCounts).slice(0, 20),
+          total_candidates: totalCandidates,
+          projects: toFacetArrayFromRows(projectRows),
+          event_types: toFacetArrayFromRows(eventTypeRows),
           tags: toFacetArray(tagCounts).slice(0, 50),
-          time_buckets: toFacetArray(timeBucketCounts),
+          time_buckets: timeBuckets,
         },
       ],
       {
