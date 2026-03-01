@@ -32,7 +32,7 @@ function createConfig(name: string, overrides: Partial<Config> = {}): Config {
   return {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: 37888,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -215,7 +215,7 @@ describe("ingest-coordinator: startClaudeMemImport", () => {
     const config: Config = {
       dbPath,
       bindHost: "127.0.0.1",
-      bindPort: 37888,
+      bindPort: 0,
       vectorDimension: 64,
       captureEnabled: true,
       retrievalEnabled: true,

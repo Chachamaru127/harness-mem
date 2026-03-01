@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
+import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
 import {
   type FeedRequest,
   HarnessMemCore,
@@ -95,6 +96,40 @@ function requiresAdminToken(method: string, pathname: string): boolean {
 
 let adminTokenWarningLogged = false;
 
+// キャッシュされた AuthConfig（起動後に loadAuthConfig で一度だけ読み込む）
+let _cachedAuthConfig: AuthConfig | null | undefined = undefined;
+
+function getAuthConfig(): AuthConfig | null {
+  if (_cachedAuthConfig !== undefined) return _cachedAuthConfig;
+  const configPath = process.env.HARNESS_MEM_CONFIG_PATH ||
+    `${process.env.HOME || "~"}/.harness-mem/config.json`;
+  _cachedAuthConfig = loadAuthConfig(configPath);
+  return _cachedAuthConfig;
+}
+
+/**
+ * リクエストの Bearer Token を AuthConfig / HARNESS_MEM_ADMIN_TOKEN で解決する。
+ * - AuthConfig が存在すればマルチトークン認証を使用
+ * - AuthConfig がなければ HARNESS_MEM_ADMIN_TOKEN のみで認証
+ */
+export function resolveRequestIdentity(request: Request): ResolvedIdentity | null {
+  const token = extractBearerToken(request);
+  const authConfig = getAuthConfig();
+
+  if (authConfig) {
+    return resolveTokenIdentity(token, authConfig);
+  }
+
+  // フォールバック: 従来の HARNESS_MEM_ADMIN_TOKEN のみ
+  const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  if (!configured) return { user_id: "admin", role: "admin" }; // 未設定は全許可
+  if (!token || token.length !== configured.length) return null;
+  if (timingSafeEqual(Buffer.from(token), Buffer.from(configured))) {
+    return { user_id: "admin", role: "admin" };
+  }
+  return null;
+}
+
 function hasValidAdminToken(request: Request): boolean {
   const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
   if (!configured) {
@@ -108,6 +143,14 @@ function hasValidAdminToken(request: Request): boolean {
     }
     return true;
   }
+
+  // AuthConfig が存在する場合はマルチトークン認証を使用（admin or member どちらでも通す）
+  const authConfig = getAuthConfig();
+  if (authConfig) {
+    const identity = resolveTokenIdentity(extractBearerToken(request), authConfig);
+    return identity !== null;
+  }
+
   const rawAuth = request.headers.get("authorization");
   const bearer = rawAuth?.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";
   const provided = request.headers.get("x-harness-mem-token") || bearer || "";
@@ -204,6 +247,31 @@ function toSseChunk(event: string, data: Record<string, unknown>, id?: number): 
   lines.push(`data: ${JSON.stringify(data)}`);
   lines.push("");
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
+}
+
+/**
+ * リモートバインド安全チェック。
+ * host が 127.0.0.1 / localhost 以外でかつ HARNESS_MEM_ADMIN_TOKEN が未設定の場合、
+ * エラーメッセージを返す。安全な場合は null を返す。
+ */
+export function checkRemoteBindSafety(host: string): string | null {
+  const isLocal = host === "127.0.0.1" || host === "localhost";
+  if (isLocal) {
+    return null;
+  }
+  const token = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  if (!token) {
+    return (
+      `[harness-mem] FATAL: リモートモードで起動しようとしていますが HARNESS_MEM_ADMIN_TOKEN が未設定です。` +
+      ` host=${host} でのリモートバインドにはトークン認証が必須です。` +
+      ` HARNESS_MEM_ADMIN_TOKEN 環境変数を設定してから再起動してください。`
+    );
+  }
+  console.warn(
+    `[harness-mem] リモートモード (remote mode) で起動: host=${host}. ` +
+    "TLS リバースプロキシ（Caddy / Nginx）経由での接続を推奨します。"
+  );
+  return null;
 }
 
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
@@ -347,6 +415,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           since: typeof body.since === "string" ? body.since : undefined,
           until: typeof body.until === "string" ? body.until : undefined,
+          as_of: typeof body.as_of === "string" ? body.as_of : undefined,
           limit: parseIntegerLike(body.limit),
           include_private: parseBooleanLike(body.include_private, false),
           expand_links: parseBooleanLike(body.expand_links, true),
@@ -366,6 +435,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           project: url.searchParams.get("project") || undefined,
           type: url.searchParams.get("type") || undefined,
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          // TEAM-009: ユーザー/チームフィルター
+          user_id: url.searchParams.get("user_id") || undefined,
+          team_id: url.searchParams.get("team_id") || undefined,
         };
         return jsonResponse(core.feed(req));
       }

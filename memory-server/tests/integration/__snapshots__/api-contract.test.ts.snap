@@ -199,8 +199,10 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
   "search": {
     "items": [
       {
+        "access_count": "number",
         "content": "string",
         "created_at": "string",
+        "decay_tier": "string",
         "event_id": "string",
         "id": "string",
         "observation_type": "string",

@@ -31,7 +31,7 @@ function createConfig(name: string): Config {
   return {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: 37888,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -117,7 +117,7 @@ describe("event-recorder: recordEvent", () => {
     const config: Config = {
       dbPath: join(dir, "harness-mem.db"),
       bindHost: "127.0.0.1",
-      bindPort: 37888,
+      bindPort: 0,
       vectorDimension: 64,
       captureEnabled: false,
       retrievalEnabled: true,

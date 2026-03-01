@@ -9,7 +9,7 @@ function createCore(name: string): { core: HarnessMemCore; dir: string } {
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: 37888,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,

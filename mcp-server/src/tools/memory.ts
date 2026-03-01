@@ -10,6 +10,7 @@ import * as path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getProjectRoot } from "../utils.js";
+import { applyPiiFilter, getActivePiiRules } from "../pii/pii-filter.js";
 
 interface MemoryApiResponse {
   ok: boolean;
@@ -34,7 +35,15 @@ const execFileAsync = promisify(execFile);
 const HEALTH_CACHE_MS = 5000;
 let lastHealthyAt = 0;
 
-function getBaseUrl(): string {
+export function isRemoteMode(): boolean {
+  return !!(process.env.HARNESS_MEM_REMOTE_URL || "").trim();
+}
+
+export function getBaseUrl(): string {
+  const remoteUrl = (process.env.HARNESS_MEM_REMOTE_URL || "").trim();
+  if (remoteUrl) {
+    return remoteUrl.replace(/\/$/, "");
+  }
   const host = process.env.HARNESS_MEM_HOST || "127.0.0.1";
   const port = process.env.HARNESS_MEM_PORT || "37888";
   return `http://${host}:${port}`;
@@ -123,6 +132,16 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
     return;
   }
 
+  // リモートモードではローカルデーモン起動をスキップし、リモートの /v1/health を確認する
+  if (isRemoteMode()) {
+    const healthy = await tryHealthCheck(baseUrl);
+    if (healthy) {
+      lastHealthyAt = Date.now();
+      return;
+    }
+    throw new Error(`リモート memory server (${baseUrl}) へのヘルスチェックに失敗しました。VPS が起動しているか確認してください。`);
+  }
+
   const healthy = await tryHealthCheck(baseUrl);
   if (healthy) {
     lastHealthyAt = Date.now();
@@ -143,11 +162,16 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
   throw new Error("harness-memd health check failed after 10 retries");
 }
 
-function buildApiHeaders(): Record<string, string> {
+export function buildApiHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  const token = process.env.HARNESS_MEM_ADMIN_TOKEN?.trim();
+  // リモートモードでは HARNESS_MEM_REMOTE_TOKEN を優先使用
+  const remoteToken = isRemoteMode()
+    ? (process.env.HARNESS_MEM_REMOTE_TOKEN || "").trim()
+    : "";
+  const localToken = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  const token = remoteToken || localToken;
   if (token) {
     headers["x-harness-mem-token"] = token;
     headers.authorization = `Bearer ${token}`;
@@ -158,7 +182,7 @@ function buildApiHeaders(): Record<string, string> {
 async function callMemoryApi(
   endpoint: string,
   payload: Record<string, unknown> | null,
-  method: "GET" | "POST" = "POST"
+  method: "GET" | "POST" | "DELETE" = "POST"
 ): Promise<MemoryApiResponse> {
   const baseUrl = getBaseUrl();
 
@@ -411,6 +435,20 @@ export const memoryTools: Tool[] = [
     },
   },
   {
+    name: "harness_mem_delete_observation",
+    description: "Soft-delete (archive) a specific observation by ID. The observation is marked as deleted and excluded from search results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        observation_id: {
+          type: "string",
+          description: "The ID of the observation to delete",
+        },
+      },
+      required: ["observation_id"],
+    },
+  },
+  {
     name: "harness_mem_admin_import_claude_mem",
     description: "Run one-shot import from Claude-mem SQLite.",
     inputSchema: {
@@ -618,11 +656,15 @@ export async function handleMemoryTool(
       case "harness_mem_record_checkpoint": {
         const sessionId = toStringOrUndefined(input.session_id);
         const title = toStringOrUndefined(input.title);
-        const content = toStringOrUndefined(input.content);
+        const rawContent = toStringOrUndefined(input.content);
 
-        if (!sessionId || !title || !content) {
+        if (!sessionId || !title || !rawContent) {
           return errorResult("session_id, title, content are required");
         }
+
+        // PII フィルタ適用（HARNESS_MEM_PII_FILTER=true の場合のみ有効）
+        const piiRules = getActivePiiRules();
+        const content = piiRules ? applyPiiFilter(rawContent, piiRules) : rawContent;
 
         const response = await callMemoryApi("/v1/checkpoints/record", {
           platform: toStringOrUndefined(input.platform),
@@ -665,6 +707,15 @@ export async function handleMemoryTool(
 
       case "harness_mem_health": {
         const response = await callMemoryApi("/health", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_delete_observation": {
+        const observationId = toStringOrUndefined(input.observation_id);
+        if (!observationId) {
+          return errorResult("observation_id is required");
+        }
+        const response = await callMemoryApi(`/v1/observations/${encodeURIComponent(observationId)}`, null, "DELETE");
         return successResult(response);
       }
 

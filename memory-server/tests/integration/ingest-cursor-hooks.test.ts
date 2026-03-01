@@ -16,11 +16,10 @@ function createRuntime(name: string): {
   const cursorEventsPath = join(dir, "cursor", "events.jsonl");
   mkdirSync(join(dir, "cursor"), { recursive: true });
 
-  const port = 39800 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -44,7 +43,7 @@ function createRuntime(name: string): {
   return {
     dir,
     cursorEventsPath,
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://127.0.0.1:${server.port}`,
     stop: () => {
       core.shutdown("test");
       server.stop(true);

@@ -1,0 +1,31 @@
+# Harness Memory Server - Caddyfile
+# Let's Encrypt による TLS 自動発行 + memory-server へのリバースプロキシ
+#
+# 使い方:
+#   YOUR_DOMAIN を実際のドメイン名に置き換えてください
+#   例: vps.example.com
+
+{$HARNESS_MEM_DOMAIN:vps.example.com} {
+    # TLS: Let's Encrypt 自動発行（80/443 ポート開放が必要）
+    tls {$HARNESS_MEM_TLS_EMAIL:admin@example.com}
+
+    # memory-server へのリバースプロキシ
+    reverse_proxy memory-server:37888 {
+        # ヘルスチェック
+        health_uri /health
+        health_interval 30s
+    }
+
+    # セキュリティヘッダー
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+    }
+
+    # ログ
+    log {
+        output stdout
+        format console
+    }
+}

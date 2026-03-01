@@ -12,11 +12,10 @@ function createRuntime(name: string): {
   stop: () => void;
 } {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-environment-api-${name}-`));
-  const port = 42200 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -36,7 +35,7 @@ function createRuntime(name: string): {
   return {
     core,
     dir,
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://127.0.0.1:${server.port}`,
     stop: () => {
       core.shutdown("test");
       server.stop(true);
@@ -47,11 +46,16 @@ function createRuntime(name: string): {
 
 describe("environment API integration", () => {
   test("requires admin token and returns masked environment payload", async () => {
-    const runtime = createRuntime("auth");
     const prevToken = process.env.HARNESS_MEM_ADMIN_TOKEN;
     const prevHome = process.env.HARNESS_MEM_HOME;
     const stateDir = mkdtempSync(join(tmpdir(), "harness-mem-env-state-"));
 
+    // 環境変数を先に設定してからサーバーを起動することで
+    // 並列実行時に他テストのサーバーへの影響を最小化する
+    process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
+    process.env.HARNESS_MEM_HOME = stateDir;
+
+    const runtime = createRuntime("auth");
     try {
       mkdirSync(join(stateDir, "versions"), { recursive: true });
       mkdirSync(join(stateDir, "runtime"), { recursive: true });
@@ -86,9 +90,6 @@ describe("environment API integration", () => {
           2
         )
       );
-
-      process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
-      process.env.HARNESS_MEM_HOME = stateDir;
 
       const withoutToken = await fetch(`${runtime.baseUrl}/v1/admin/environment`);
       expect(withoutToken.status).toBe(401);
@@ -129,14 +130,15 @@ describe("environment API integration", () => {
   });
 
   test("returns degraded ai_tools data when snapshots are missing", async () => {
-    const runtime = createRuntime("degraded");
     const prevToken = process.env.HARNESS_MEM_ADMIN_TOKEN;
     const prevHome = process.env.HARNESS_MEM_HOME;
     const stateDir = mkdtempSync(join(tmpdir(), "harness-mem-env-empty-"));
 
+    process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
+    process.env.HARNESS_MEM_HOME = stateDir;
+
+    const runtime = createRuntime("degraded");
     try {
-      process.env.HARNESS_MEM_ADMIN_TOKEN = "test-admin-token";
-      process.env.HARNESS_MEM_HOME = stateDir;
 
       const response = await fetch(`${runtime.baseUrl}/v1/admin/environment`, {
         headers: {

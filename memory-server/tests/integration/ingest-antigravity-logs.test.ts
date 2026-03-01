@@ -54,11 +54,10 @@ function createRuntime(name: string): {
     "utf8"
   );
 
-  const port = 41000 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -86,10 +85,11 @@ function createRuntime(name: string): {
     workspaceRoot,
     project,
     normalizedProject,
-    baseUrl: `http://127.0.0.1:${port}`,
-    stop: () => {
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    stop: async () => {
       core.shutdown("test");
       server.stop(true);
+      await new Promise((r) => setTimeout(r, 50));
       rmSync(dir, { recursive: true, force: true });
     },
   };
@@ -138,7 +138,7 @@ describe("antigravity logs ingest integration", () => {
       expect(ingestAgain.ok).toBe(true);
       expect(ingestAgain.items[0]?.events_imported).toBe(0);
     } finally {
-      runtime.stop();
+      await runtime.stop();
     }
   });
 });

@@ -640,7 +640,7 @@ describe("Risk 1: session upsert batch optimization", () => {
   test("event-store batches session upserts before event inserts", () => {
     const fs = require("node:fs");
     const source = fs.readFileSync(
-      join(process.cwd(), "memory-server/src/projector/event-store.ts"),
+      join(import.meta.dir, "../../src/projector/event-store.ts"),
       "utf8"
     );
     // sessionMap collects unique sessions for batch upsert

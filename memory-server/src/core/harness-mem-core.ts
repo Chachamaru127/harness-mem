@@ -58,6 +58,7 @@ import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
+import { getDecayTier, getDecayMultiplier } from "./adaptive-decay";
 
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
@@ -102,6 +103,10 @@ export interface EventEnvelope {
   privacy_tags?: string[];
   dedupe_hash?: string;
   correlation_id?: string;
+  /** TEAM-009: イベント送信者のユーザーID（config の userId より優先） */
+  user_id?: string;
+  /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
+  team_id?: string;
 }
 
 export interface SearchRequest {
@@ -119,6 +124,8 @@ export interface SearchRequest {
   question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid";
   /** updatesリンクで上書きされた旧観察を検索結果から除外する (IMP-002) */
   exclude_updated?: boolean;
+  /** COMP-003: 指定時点以前の観察のみを返す Point-in-time クエリ（ISO 8601） */
+  as_of?: string;
 }
 
 export interface FeedRequest {
@@ -127,6 +134,10 @@ export interface FeedRequest {
   project?: string;
   type?: string;
   include_private?: boolean;
+  /** TEAM-009: ユーザーフィルター */
+  user_id?: string;
+  /** TEAM-009: チームフィルター */
+  team_id?: string;
 }
 
 export interface ProjectsStatsRequest {
@@ -314,6 +325,10 @@ export interface Config {
   managedEndpoint?: string;
   managedApiKey?: string;
   resumePackMaxTokens?: number;
+  /** TEAM-003: ユーザー識別 - 環境変数 HARNESS_MEM_USER_ID から設定 */
+  userId?: string;
+  /** TEAM-003: チーム識別 - 環境変数 HARNESS_MEM_TEAM_ID から設定 */
+  teamId?: string;
 }
 
 const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
@@ -2361,11 +2376,13 @@ export class HarnessMemCore {
 
   private ensureSession(sessionId: string, platform: string, project: string, ts: string, correlationId?: string | null): void {
     const current = nowIso();
+    const userId = this.config.userId || "default";
+    const teamId = this.config.teamId ?? null;
     this.db
       .query(`
         INSERT INTO mem_sessions(
-          session_id, platform, project, started_at, correlation_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          session_id, platform, project, started_at, correlation_id, user_id, team_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(session_id) DO UPDATE SET
           started_at = CASE
             WHEN mem_sessions.started_at <= excluded.started_at THEN mem_sessions.started_at
@@ -2374,7 +2391,7 @@ export class HarnessMemCore {
           correlation_id = COALESCE(mem_sessions.correlation_id, excluded.correlation_id),
           updated_at = excluded.updated_at
       `)
-      .run(sessionId, platform, project, ts, correlationId ?? null, current, current);
+      .run(sessionId, platform, project, ts, correlationId ?? null, userId, teamId, current, current);
   }
 
   private upsertSessionSummary(
@@ -2587,12 +2604,20 @@ export class HarnessMemCore {
       const transaction = this.db.transaction(() => {
         this.ensureSession(event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id);
 
+        // TEAM-009: イベントの user_id/team_id を config より優先して使用
+        const userId = (typeof event.user_id === "string" && event.user_id.trim() ? event.user_id.trim() : null)
+          ?? this.config.userId
+          ?? "default";
+        const teamId = (typeof event.team_id === "string" && event.team_id.trim() ? event.team_id.trim() : null)
+          ?? this.config.teamId
+          ?? null;
         const eventInsert = this.db
           .query(`
             INSERT OR IGNORE INTO mem_events(
               event_id, platform, project, session_id, event_type, ts,
-              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id,
+              user_id, team_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             eventId,
@@ -2607,6 +2632,8 @@ export class HarnessMemCore {
             dedupeHash,
             observationId,
             event.correlation_id ?? null,
+            userId,
+            teamId,
             current
           );
 
@@ -2621,9 +2648,9 @@ export class HarnessMemCore {
               id, event_id, platform, project, session_id,
               title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
-              signal_score,
+              signal_score, user_id, team_id,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -2647,6 +2674,8 @@ export class HarnessMemCore {
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
             signalScore,
+            userId,
+            teamId,
             timestamp,
             current
           );
@@ -2843,6 +2872,7 @@ export class HarnessMemCore {
       session_id?: string;
       since?: string;
       until?: string;
+      as_of?: string;
       include_private?: boolean;
       strict_project?: boolean;
     },
@@ -2871,6 +2901,12 @@ export class HarnessMemCore {
     if (filters.until) {
       nextSql += ` AND ${alias}.created_at <= ?`;
       params.push(filters.until);
+    }
+
+    // COMP-003: Point-in-time クエリ - as_of 時点以前の観察のみを対象とする
+    if (filters.as_of) {
+      nextSql += ` AND ${alias}.created_at <= ?`;
+      params.push(filters.as_of);
     }
 
     nextSql += this.platformVisibilityFilterSql(alias);
@@ -3208,6 +3244,10 @@ export class HarnessMemCore {
               o.tags_json,
               o.privacy_tags_json,
               o.signal_score,
+              o.access_count,
+              o.last_accessed_at,
+              o.user_id,
+              o.team_id,
               o.created_at,
               o.updated_at,
               e.event_type
@@ -3228,42 +3268,84 @@ export class HarnessMemCore {
     return mapped;
   }
 
+  /**
+   * COMP-001: N-hop グラフ探索（activation spreading）。
+   * BFS で最大 MAX_DEPTH ホップ先まで辿り、hop ごとに DECAY を乗算してスコアを減衰させる。
+   * visited セットで循環リンクを防ぎ、既存候補(existingIds)に含まれるIDは
+   * candidateIds への追加対象外だが、graph スコアは返す（呼び出し元で判断）。
+   */
   private expandByLinks(topIds: string[], request: SearchRequest, existingIds: Set<string>): Map<string, number> {
     if (topIds.length === 0) {
       return new Map<string, number>();
     }
 
-    const placeholders = topIds.map(() => "?").join(", ");
-    const params: unknown[] = [...topIds];
+    const MAX_DEPTH = 3;
+    const DECAY = 0.5;
 
-    let sql = `
-      SELECT
-        o.id AS id,
-        MAX(l.weight) AS weight
-      FROM mem_links l
-      JOIN mem_observations o ON o.id = l.to_observation_id
-      WHERE l.from_observation_id IN (${placeholders})
-        AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
-    `;
+    const graphScores = new Map<string, number>();
+    // processedAsSource: フロンティアとして発信元として処理済みのID（循環防止）
+    const processedAsSource = new Set<string>(topIds);
+    let frontier = new Map<string, number>(topIds.map((id) => [id, 1.0]));
 
-    sql = this.applyCommonFilters(sql, params, "o", request);
-    sql += " GROUP BY o.id ORDER BY weight DESC, o.created_at DESC LIMIT 40";
+    for (let depth = 1; depth <= MAX_DEPTH; depth++) {
+      if (frontier.size === 0) break;
 
-    try {
-      const rows = this.db.query(sql).all(...(params as any[])) as Array<{ id: string; weight: number }>;
-      const raw = new Map<string, number>();
+      const frontierIds = [...frontier.keys()];
+      const placeholders = frontierIds.map(() => "?").join(", ");
+      const params: unknown[] = [...frontierIds];
+
+      let sql = `
+        SELECT
+          o.id AS id,
+          MAX(l.weight) AS link_weight,
+          l.from_observation_id AS from_id
+        FROM mem_links l
+        JOIN mem_observations o ON o.id = l.to_observation_id
+        WHERE l.from_observation_id IN (${placeholders})
+          AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
+      `;
+      sql = this.applyCommonFilters(sql, params, "o", request);
+      sql += " GROUP BY o.id, l.from_observation_id ORDER BY link_weight DESC LIMIT 200";
+
+      let rows: Array<{ id: string; link_weight: number; from_id: string }>;
+      try {
+        rows = this.db.query(sql).all(...(params as any[])) as typeof rows;
+      } catch {
+        break;
+      }
+
+      const nextFrontier = new Map<string, number>();
       for (const row of rows) {
         const id = typeof row.id === "string" ? row.id : "";
-        const weight = Number(row.weight ?? 0);
-        if (!id || existingIds.has(id) || Number.isNaN(weight)) {
-          continue;
+        const fromId = typeof row.from_id === "string" ? row.from_id : "";
+        const linkWeight = Number(row.link_weight ?? 0);
+        if (!id || !fromId || id === fromId || Number.isNaN(linkWeight)) continue;
+
+        const parentScore = frontier.get(fromId) ?? 1.0;
+        const hopScore = parentScore * linkWeight * (DECAY ** (depth - 1));
+
+        // graph スコアを記録（from と to が異なるノード間のリンクのみ対象）
+        const existingGraph = graphScores.get(id) ?? 0;
+        if (hopScore > existingGraph) {
+          graphScores.set(id, hopScore);
         }
-        raw.set(id, weight);
+
+        // 次フロンティアには「まだ発信元として使っていない」IDのみ追加（循環防止）
+        if (!processedAsSource.has(id)) {
+          const existingFrontier = nextFrontier.get(id) ?? 0;
+          if (hopScore > existingFrontier) {
+            nextFrontier.set(id, hopScore);
+          }
+        }
       }
-      return normalizeScoreMap(raw);
-    } catch {
-      return new Map<string, number>();
+
+      for (const id of nextFrontier.keys()) {
+        processedAsSource.add(id);
+      }
+      frontier = nextFrontier;
     }
+
+    return normalizeScoreMap(graphScores);
   }
 
   private resolveSearchWeights(vectorCoverage: number): RankingWeights {
@@ -3395,7 +3477,10 @@ export class HarnessMemCore {
         .slice(0, 10);
       const linked = this.expandByLinks(topIds, normalizedRequest, candidateIds);
       for (const [id, score] of linked.entries()) {
-        candidateIds.add(id);
+        // 新規IDは candidateIds に追加、既存IDは graph スコアのみ更新
+        if (!candidateIds.has(id)) {
+          candidateIds.add(id);
+        }
         graph.set(id, score);
       }
     }
@@ -3521,14 +3606,21 @@ export class HarnessMemCore {
       ? routeDecision.weights
       : baseWeights;
 
+    const nowMs = Date.now();
     for (const item of ranked) {
-      item.final =
+      const rawScore =
         weights.lexical * item.lexical +
         weights.vector * item.vector +
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
         weights.importance * item.importance +
         weights.graph * item.graph;
+      // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
+      const obs = observations.get(item.id);
+      const lastAccessedAt = (obs?.last_accessed_at as string | null | undefined) ?? null;
+      const decayTier = getDecayTier(lastAccessedAt, nowMs);
+      const decayMult = getDecayMultiplier(decayTier);
+      item.final = rawScore * decayMult;
     }
 
     ranked.sort((lhs, rhs) => {
@@ -3549,6 +3641,9 @@ export class HarnessMemCore {
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
 
+      // COMP-002: decay tier を算出して返却アイテムに含める
+      const lastAccessedAt = (observation.last_accessed_at as string | null | undefined) ?? null;
+      const decayTier = getDecayTier(lastAccessedAt, nowMs);
       const item: Record<string, unknown> = {
         id: entry.id,
         event_id: observation.event_id,
@@ -3563,6 +3658,8 @@ export class HarnessMemCore {
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
+        decay_tier: decayTier,
+        access_count: Number(observation.access_count ?? 0),
         scores: {
           lexical: Number(entry.lexical.toFixed(6)),
           vector: Number(entry.vector.toFixed(6)),
@@ -3679,6 +3776,17 @@ export class HarnessMemCore {
             query: request.query,
             project: normalizedProject,
           });
+          // COMP-002: access_count インクリメント + last_accessed_at 更新（best effort）
+          try {
+            this.db.query(`
+              UPDATE mem_observations
+              SET access_count = COALESCE(access_count, 0) + 1,
+                  last_accessed_at = ?
+              WHERE id = ?
+            `).run(new Date().toISOString(), itemId);
+          } catch {
+            // best effort: アクセス記録失敗は無視
+          }
         }
       }
     } catch {
@@ -3737,6 +3845,9 @@ export class HarnessMemCore {
     const cursor = decodeFeedCursor(request.cursor);
     const typeFilter = typeof request.type === "string" && request.type.trim() ? request.type.trim() : undefined;
     const normalizedProject = request.project ? this.normalizeProjectInput(request.project) : undefined;
+    // TEAM-009: user_id / team_id フィルター
+    const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
+    const teamIdFilter = typeof request.team_id === "string" && request.team_id.trim() ? request.team_id.trim() : undefined;
 
     const params: unknown[] = [];
     let sql = `
@@ -3746,6 +3857,8 @@ export class HarnessMemCore {
         o.platform,
         o.project,
         o.session_id,
+        o.user_id,
+        o.team_id,
         o.title,
         o.content_redacted,
         o.tags_json,
@@ -3765,6 +3878,17 @@ export class HarnessMemCore {
     if (typeFilter) {
       sql += " AND COALESCE(e.event_type, '') = ?";
       params.push(typeFilter);
+    }
+
+    // TEAM-009: ユーザー/チームフィルター
+    if (userIdFilter) {
+      sql += " AND o.user_id = ?";
+      params.push(userIdFilter);
+    }
+
+    if (teamIdFilter) {
+      sql += " AND o.team_id = ?";
+      params.push(teamIdFilter);
     }
 
     sql += this.platformVisibilityFilterSql("o");
@@ -3802,6 +3926,8 @@ export class HarnessMemCore {
         created_at: row.created_at,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: privacyTags,
+        user_id: row.user_id,
+        team_id: row.team_id,
       };
     });
 
@@ -5857,6 +5983,9 @@ export class HarnessMemCore {
 
   ingestCodexHistory(): ApiResponse {
     const startedAt = performance.now();
+    if (this.shuttingDown) {
+      return makeResponse(startedAt, [], {}, { ingest_mode: "shutting_down" });
+    }
     const summary = emptyCodexIngestSummary();
 
     if (!this.config.codexHistoryEnabled) {
@@ -6253,6 +6382,9 @@ export class HarnessMemCore {
 
   ingestOpencodeHistory(): ApiResponse {
     const startedAt = performance.now();
+    if (this.shuttingDown) {
+      return makeResponse(startedAt, [], {}, { ingest_mode: "shutting_down" });
+    }
     if (!this.isOpencodeIngestEnabled()) {
       return makeResponse(
         startedAt,
@@ -6379,6 +6511,9 @@ export class HarnessMemCore {
 
   ingestCursorHistory(): ApiResponse {
     const startedAt = performance.now();
+    if (this.shuttingDown) {
+      return makeResponse(startedAt, [], {}, { ingest_mode: "shutting_down" });
+    }
     if (!this.isCursorIngestEnabled()) {
       return makeResponse(
         startedAt,
@@ -6414,6 +6549,9 @@ export class HarnessMemCore {
 
   private ingestAntigravityWorkspace(rootDir: string): AntigravityIngestSummary {
     const summary = emptyAntigravityIngestSummary();
+    if (this.shuttingDown) {
+      return summary;
+    }
     if (!existsSync(rootDir)) {
       return summary;
     }
@@ -6433,6 +6571,9 @@ export class HarnessMemCore {
     const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
 
     for (const filePath of uniqueFiles) {
+      if (this.shuttingDown) {
+        break;
+      }
       summary.filesScanned += 1;
       const sourceKey = `antigravity_file:${resolve(filePath)}`;
 
@@ -6446,9 +6587,18 @@ export class HarnessMemCore {
         continue;
       }
 
-      const offsetRow = this.db
-        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
-        .get(sourceKey) as { offset: number } | null;
+      if (this.shuttingDown) {
+        break;
+      }
+      let offsetRow: { offset: number } | null;
+      try {
+        offsetRow = this.db
+          .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+          .get(sourceKey) as { offset: number } | null;
+      } catch {
+        // DB was closed during shutdown
+        break;
+      }
       const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
       let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
 
@@ -6520,6 +6670,9 @@ export class HarnessMemCore {
 
   private ingestAntigravityLogEvents(): AntigravityIngestSummary {
     const summary = emptyAntigravityIngestSummary();
+    if (this.shuttingDown) {
+      return summary;
+    }
     const logsRoot = this.getAntigravityLogsRoot();
     if (!existsSync(logsRoot)) {
       return summary;
@@ -6529,6 +6682,9 @@ export class HarnessMemCore {
     const cutoffMs = Date.now() - Math.max(0, this.getAntigravityBackfillHours()) * 60 * 60 * 1000;
 
     for (const filePath of logFiles) {
+      if (this.shuttingDown) {
+        break;
+      }
       summary.filesScanned += 1;
       summary.logFilesScanned += 1;
       const sourceKey = `antigravity_log:${resolve(filePath)}`;
@@ -6543,9 +6699,18 @@ export class HarnessMemCore {
         continue;
       }
 
-      const offsetRow = this.db
-        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
-        .get(sourceKey) as { offset: number } | null;
+      if (this.shuttingDown) {
+        break;
+      }
+      let offsetRow: { offset: number } | null;
+      try {
+        offsetRow = this.db
+          .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+          .get(sourceKey) as { offset: number } | null;
+      } catch {
+        // DB was closed during shutdown
+        break;
+      }
       const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
       let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
 
@@ -6620,6 +6785,9 @@ export class HarnessMemCore {
 
   ingestAntigravityHistory(): ApiResponse {
     const startedAt = performance.now();
+    if (this.shuttingDown) {
+      return makeResponse(startedAt, [], {}, { ingest_mode: "shutting_down" });
+    }
     if (!this.isAntigravityIngestEnabled()) {
       return makeResponse(
         startedAt,
@@ -6765,6 +6933,9 @@ export class HarnessMemCore {
 
   ingestGeminiHistory(): ApiResponse {
     const startedAt = performance.now();
+    if (this.shuttingDown) {
+      return makeResponse(startedAt, [], {}, { ingest_mode: "shutting_down" });
+    }
     if (!this.isGeminiIngestEnabled()) {
       return makeResponse(
         startedAt,
@@ -7018,14 +7189,228 @@ export class HarnessMemCore {
       // best effort
     }
   }
+
+  /**
+   * COMP-006: メモリ圧縮エンジン
+   * strategy: "prune" | "merge" | "none"
+   * - prune: 低 confidence (<0.5) のファクトを soft-delete（superseded_by を設定）
+   * - merge: 同一 fact_key の重複ファクトを最新1件に統合（merged_into_fact_id を設定）
+   * - none: 統計のみ返す
+   * dry_run=true: 実際には変更しない
+   *
+   * observations_before/after はアクティブなファクト数を返す（ファクト圧縮のため）
+   */
+  compressMemory(request: {
+    strategy: "prune" | "merge" | "none";
+    project?: string;
+    dry_run?: boolean;
+  }): { ok: boolean; strategy: string; observations_before: number; observations_after: number; pruned_count: number; merged_count: number } {
+    const { strategy, project, dry_run = false } = request;
+
+    const countActiveFacts = (proj?: string): number => {
+      if (proj) {
+        const row = this.db.query(
+          `SELECT COUNT(*) AS c FROM mem_facts
+           WHERE project = ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL`
+        ).get(proj) as { c?: number } | null;
+        return Number(row?.c ?? 0);
+      }
+      const row = this.db.query(
+        `SELECT COUNT(*) AS c FROM mem_facts
+         WHERE merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL`
+      ).get() as { c?: number } | null;
+      return Number(row?.c ?? 0);
+    };
+
+    const obsBefore = countActiveFacts(project);
+
+    if (strategy === "none" || dry_run) {
+      return {
+        ok: true,
+        strategy,
+        observations_before: obsBefore,
+        observations_after: obsBefore,
+        pruned_count: 0,
+        merged_count: 0,
+      };
+    }
+
+    let prunedCount = 0;
+    let mergedCount = 0;
+    const now = nowIso();
+
+    if (strategy === "prune") {
+      // prune: confidence < 0.5 のアクティブなファクトを valid_to で soft-delete
+      const projectClause = project ? `AND project = ?` : "";
+      const pruneParams: unknown[] = project ? [now, now, project] : [now, now];
+
+      const result = this.db.query(
+        `UPDATE mem_facts
+         SET valid_to = ?, updated_at = ?
+         WHERE confidence < 0.5
+           AND merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL
+           ${projectClause}`
+      ).run(...(pruneParams as []));
+      prunedCount = Number((result as { changes?: number }).changes ?? 0);
+    }
+
+    if (strategy === "merge") {
+      // merge: 同一 project + fact_key の重複ファクトを最新1件に統合
+      const projectClause = project ? `AND project = ?` : "";
+      const mergeParams: unknown[] = project ? [project] : [];
+
+      // 重複する fact_key ごとに、最新を除く古いファクトを merged_into_fact_id で統合
+      const duplicates = this.db.query(
+        `SELECT fact_key, MAX(created_at) AS latest_at, COUNT(*) AS cnt
+         FROM mem_facts
+         WHERE merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL
+           ${projectClause}
+         GROUP BY fact_key
+         HAVING COUNT(*) > 1
+         LIMIT 200`
+      ).all(...(mergeParams as [])) as Array<{ fact_key: string; latest_at: string; cnt: number }>;
+
+      for (const dup of duplicates) {
+        const keepParams: unknown[] = project
+          ? [dup.fact_key, dup.latest_at, project]
+          : [dup.fact_key, dup.latest_at];
+        const projectFilt = project ? `AND project = ?` : "";
+
+        const keepRow = this.db.query(
+          `SELECT fact_id FROM mem_facts
+           WHERE fact_key = ?
+             AND created_at = ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL
+             ${projectFilt}
+           LIMIT 1`
+        ).get(...(keepParams as [])) as { fact_id: string } | null;
+
+        if (!keepRow) continue;
+        const keepId = keepRow.fact_id;
+
+        const dupFactParams: unknown[] = project
+          ? [dup.fact_key, keepId, project]
+          : [dup.fact_key, keepId];
+        const projectFilt2 = project ? `AND project = ?` : "";
+
+        const dupResult = this.db.query(
+          `UPDATE mem_facts
+           SET merged_into_fact_id = ?, updated_at = ?
+           WHERE fact_key = ?
+             AND fact_id != ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL
+             ${projectFilt2}`
+        ).run(keepId, now, ...(dupFactParams as []));
+        mergedCount += Number((dupResult as { changes?: number }).changes ?? 0);
+      }
+    }
+
+    const obsAfter = countActiveFacts(project);
+
+    try {
+      this.writeAuditLog("admin.compress", "facts", "", {
+        strategy,
+        project: project || "*",
+        observations_before: obsBefore,
+        observations_after: obsAfter,
+        pruned_count: prunedCount,
+        merged_count: mergedCount,
+      });
+    } catch {
+      // best effort
+    }
+
+    return {
+      ok: true,
+      strategy,
+      observations_before: obsBefore,
+      observations_after: obsAfter,
+      pruned_count: prunedCount,
+      merged_count: mergedCount,
+    };
+  }
+
+  /**
+   * TEAM-010: ナレッジマップ + 利用統計
+   * ファクト分布（fact_type 別）、プロジェクト別観察数、総合統計を返す。
+   */
+  knowledgeStats(_request: Record<string, unknown>): ApiResponse {
+    const startedAt = performance.now();
+
+    // ファクト分布（fact_type 別カウント）
+    const factsByType = this.db.query(
+      `SELECT fact_type, COUNT(*) AS count
+       FROM mem_facts
+       WHERE merged_into_fact_id IS NULL
+         AND superseded_by IS NULL
+         AND valid_to IS NULL
+       GROUP BY fact_type
+       ORDER BY count DESC`
+    ).all() as Array<{ fact_type: string; count: number }>;
+
+    // プロジェクト別観察数
+    const obsByProject = this.db.query(
+      `SELECT project, COUNT(*) AS count
+       FROM mem_observations
+       GROUP BY project
+       ORDER BY count DESC
+       LIMIT 50`
+    ).all() as Array<{ project: string; count: number }>;
+
+    // 総合統計
+    const totals = this.db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM mem_observations) AS total_observations,
+         (SELECT COUNT(*) FROM mem_facts
+          WHERE merged_into_fact_id IS NULL AND superseded_by IS NULL AND valid_to IS NULL) AS total_active_facts,
+         (SELECT COUNT(*) FROM mem_facts) AS total_facts_all,
+         (SELECT COUNT(*) FROM mem_sessions) AS total_sessions,
+         (SELECT COUNT(*) FROM mem_links) AS total_links`
+    ).get() as {
+      total_observations: number;
+      total_active_facts: number;
+      total_facts_all: number;
+      total_sessions: number;
+      total_links: number;
+    } | null;
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          facts_by_type: factsByType.map((r) => ({ fact_type: r.fact_type, count: Number(r.count) })),
+          observations_by_project: obsByProject.map((r) => ({ project: r.project, count: Number(r.count) })),
+          total_observations: Number(totals?.total_observations ?? 0),
+          total_facts: Number(totals?.total_active_facts ?? 0),
+          total_facts_including_merged: Number(totals?.total_facts_all ?? 0),
+          total_sessions: Number(totals?.total_sessions ?? 0),
+          total_links: Number(totals?.total_links ?? 0),
+        },
+      ],
+      _request,
+      { ranking: "knowledge_stats_v1" }
+    );
+  }
 }
 
 export function getConfig(): Config {
   const dbPath = process.env.HARNESS_MEM_DB_PATH || DEFAULT_DB_PATH;
   const rawBindHost = (process.env.HARNESS_MEM_HOST || DEFAULT_BIND_HOST).trim();
-  const bindHost = rawBindHost === "127.0.0.1" || rawBindHost === "localhost"
-    ? rawBindHost
-    : DEFAULT_BIND_HOST;
+  // リモートバインドを許可する（起動時の安全チェックは index.ts / startHarnessMemServer 側で実施）
+  const bindHost = rawBindHost || DEFAULT_BIND_HOST;
   const bindPortRaw = process.env.HARNESS_MEM_PORT;
   const bindPort = bindPortRaw ? Number(bindPortRaw) : DEFAULT_BIND_PORT;
   const codexIngestIntervalRaw = Number(process.env.HARNESS_MEM_CODEX_INGEST_INTERVAL_MS || DEFAULT_CODEX_INGEST_INTERVAL_MS);
@@ -7152,6 +7537,9 @@ export function getConfig(): Config {
       const raw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
       return Number.isFinite(raw) && raw > 0 ? raw : undefined;
     })(),
+    // TEAM-003: ユーザー・チーム識別
+    userId: (process.env.HARNESS_MEM_USER_ID || "").trim() || undefined,
+    teamId: (process.env.HARNESS_MEM_TEAM_ID || "").trim() || undefined,
   };
 }
 

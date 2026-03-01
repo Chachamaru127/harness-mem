@@ -14,6 +14,7 @@
 
 import type { Database } from "bun:sqlite";
 import { buildTokenEstimateMeta } from "../utils/token-estimate";
+import { type AccessFilter } from "../auth/access-control";
 import type {
   ApiResponse,
   Config,
@@ -46,6 +47,8 @@ export interface ObservationStoreDeps {
   writeAuditLog: (action: string, targetType: string, targetId: string, details: Record<string, unknown>) => void;
   /** search の内部実装への委譲 */
   doSearch: (request: SearchRequest) => ApiResponse;
+  /** アクセス制御フィルタ（TEAM-005）。未設定時は全許可 */
+  accessFilter?: AccessFilter;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,6 +203,8 @@ export class ObservationStore {
         o.content_redacted,
         o.tags_json,
         o.privacy_tags_json,
+        o.user_id,
+        o.team_id,
         o.created_at,
         e.event_type AS event_type
       FROM mem_observations o
@@ -219,6 +224,11 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += this.deps.visibilityFilterSql("o", includePrivate);
+
+    if (this.deps.accessFilter?.sql) {
+      sql += " " + this.deps.accessFilter.sql;
+      params.push(...this.deps.accessFilter.params);
+    }
 
     if (cursor) {
       sql += " AND (o.created_at < ? OR (o.created_at = ? AND o.id < ?))";
@@ -252,6 +262,8 @@ export class ObservationStore {
         created_at: row.created_at,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: privacyTags,
+        user_id: row.user_id,
+        team_id: row.team_id,
       };
     });
 
@@ -303,6 +315,11 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += this.deps.visibilityFilterSql("o", includePrivate);
+
+    if (this.deps.accessFilter?.sql) {
+      sql += " " + this.deps.accessFilter.sql;
+      params.push(...this.deps.accessFilter.params);
+    }
 
     const query = (request.query || "").trim();
     if (query) {
@@ -521,12 +538,27 @@ export class ObservationStore {
     const observationMap = this.deps.loadObservations(ids);
     const includePrivate = Boolean(request.include_private);
     const compact = request.compact !== false;
+    const accessFilter = this.deps.accessFilter;
 
     const items: Array<Record<string, unknown>> = [];
     for (const id of ids) {
       const row = observationMap.get(id);
       if (!row) {
         continue;
+      }
+
+      // アクセス制御: admin は全許可、member は自分 or 同チームのみ
+      if (accessFilter?.sql) {
+        const rowUserId = typeof row.user_id === "string" ? row.user_id : "";
+        const rowTeamId = typeof row.team_id === "string" ? row.team_id : null;
+        const params = accessFilter.params as string[];
+        const allowedUserId = params[0] ?? "";
+        const allowedTeamId = params[1] ?? null;
+        const allowed = rowUserId === allowedUserId ||
+          (allowedTeamId !== null && rowTeamId === allowedTeamId);
+        if (!allowed) {
+          continue;
+        }
       }
 
       const privacyTags = parseArrayJson(row.privacy_tags_json);

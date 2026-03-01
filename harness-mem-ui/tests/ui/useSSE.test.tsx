@@ -49,13 +49,15 @@ function Probe(props: { onEvent: (event: SseUiEvent) => void }) {
   );
 }
 
+const originalEventSource = globalThis.EventSource;
+
 beforeEach(() => {
   MockEventSource.instances = [];
-  vi.stubGlobal("EventSource", MockEventSource as unknown as typeof EventSource);
+  globalThis.EventSource = MockEventSource as unknown as typeof EventSource;
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
+  globalThis.EventSource = originalEventSource;
 });
 
 describe("useSSE", () => {

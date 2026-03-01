@@ -305,6 +305,91 @@ async function callOllama(
   }
 }
 
+/** Anthropic Messages API を呼び出してファクトを抽出する */
+async function callAnthropic(
+  prompt: string,
+  systemPrompt: string,
+  apiKey: string,
+  model: string
+): Promise<string | null> {
+  const body = JSON.stringify({
+    model,
+    max_tokens: 1024,
+    system: systemPrompt,
+    messages: [{ role: "user", content: prompt }],
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await response.json() as { content?: Array<{ type?: string; text?: unknown }> };
+    const textBlock = parsed?.content?.find((b) => b.type === "text");
+    const text = textBlock?.text;
+    return typeof text === "string" ? text : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/** Gemini generateContent API を呼び出してファクトを抽出する */
+async function callGemini(
+  prompt: string,
+  systemPrompt: string,
+  apiKey: string,
+  model: string
+): Promise<string | null> {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const body = JSON.stringify({
+    system_instruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: { responseMimeType: "application/json" },
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8_000);
+
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body,
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const parsed = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: unknown }> } }>;
+    };
+    const text = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+    return typeof text === "string" ? text : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
   const apiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
   if (!apiKey) {
@@ -381,14 +466,30 @@ export async function llmExtractWithDiff(
   if (provider === "ollama") {
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "llama3.2").trim();
     content = await callOllama(prompt, systemPrompt, model);
-  } else {
-    // openai がデフォルト
+  } else if (provider === "anthropic") {
+    const apiKey = (process.env.HARNESS_MEM_ANTHROPIC_API_KEY || "").trim();
+    if (!apiKey) {
+      return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+    }
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "claude-haiku-4-5-20251001").trim();
+    content = await callAnthropic(prompt, systemPrompt, apiKey, model);
+  } else if (provider === "gemini") {
+    const apiKey = (process.env.HARNESS_MEM_GEMINI_API_KEY || "").trim();
+    if (!apiKey) {
+      return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+    }
+    const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gemini-2.0-flash").trim();
+    content = await callGemini(prompt, systemPrompt, apiKey, model);
+  } else if (provider === "openai") {
     const apiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
     if (!apiKey) {
       return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
     }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gpt-4o-mini").trim();
     content = await callOpenAI(prompt, systemPrompt, apiKey, model);
+  } else {
+    // 不明なプロバイダーは graceful に空を返す
+    return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
   }
 
   if (!content) {

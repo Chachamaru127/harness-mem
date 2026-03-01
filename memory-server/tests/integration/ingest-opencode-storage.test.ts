@@ -16,11 +16,10 @@ function createRuntime(name: string): {
   const opencodeStorageRoot = join(dir, "opencode-storage");
   mkdirSync(opencodeStorageRoot, { recursive: true });
 
-  const port = 39700 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -42,7 +41,7 @@ function createRuntime(name: string): {
   return {
     dir,
     opencodeStorageRoot,
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://127.0.0.1:${server.port}`,
     stop: () => {
       core.shutdown("test");
       server.stop(true);

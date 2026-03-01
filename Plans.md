@@ -1,10 +1,10 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-02-27
+最終更新: 2026-03-02（Plans.mdをTaskList実態に同期）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-17, §18-20 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
-> §17 INV-001〜012 は全て `blocked`（再定義待ち）のためアーカイブ。
+> **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
+> §22 (IMP-001〜011 全完了) → [`docs/archive/Plans-s22-2026-02-27.md`](docs/archive/Plans-s22-2026-02-27.md)
 > **テストケース設計**: [`docs/test-designs-s22.md`](docs/test-designs-s22.md)
 
 ---
@@ -15,94 +15,159 @@
 
 ---
 
-## 22. メモリ品質改善（競合分析ベース）
+## 23. 競合分析ベース改善（2026-03 5ツール比較）
 
-目的: mem0, OpenMemory, supermemory, claude-mem との比較分析に基づき、harness-mem のメモリ品質・DX・エコシステムを段階的に強化する。
-
-**独自価値**: 6つの AI コーディングツール横断の統合メモリを完全ローカルで実現。
-**主な課題**: ~~コンソリデーション精度 / 関係性タイプ不足 / トークン最適化なし / SDK なし / コア6689行モノリス。~~ → §22 で全て解決済み。
-
----
-
-#### Phase 1: コア品質強化（Required） — 全完了
-
-> 依存: IMP-004 → IMP-001 の順が推奨。IMP-002/003 は並列可。
-
-- [x] `cc:完了 [feature:tdd]` **IMP-004**: コアモジュール分割
-  - `harness-mem-core.ts` (6689行) → 5モジュールに分割
-  - `session-manager.ts` (419行) / `event-recorder.ts` (140行) / `observation-store.ts` (582行) / `ingest-coordinator.ts` (82行) / `config-manager.ts` (328行)
-  - DoD: 各1500行以下 ✓、既存API互換 ✓、テスト全通過 (87 core-split + 134 unit) ✓
-
-- [x] `cc:完了 [feature:tdd]` **IMP-001**: LLM 駆動コンソリデーション強化 (AUDN)
-  - mem0 の ADD/UPDATE/DELETE/NOOP 4操作判定を参考に LLM モードを進化
-  - 既存 `heuristic` モードは残す（フォールバック）
-  - DoD: ファクト重複率 50%以下 ✓、heuristic からの回帰なし ✓、9テスト通過 ✓
-
-- [x] `cc:完了 [feature:tdd]` **IMP-002**: メモリ関係性タイプ拡張
-  - `mem_links.relation` に `updates`/`extends`/`derives` 追加。自動判定 (Jaccard類似度)
-  - DoD: 3種類の関係性が記録・検索・表示される ✓、5テスト通過 ✓
-
-- [x] `cc:完了 [feature:tdd]` **IMP-003**: トークン最適化レイヤー
-  - `resume_pack` にトークンバジェット制御追加（デフォルト2000トークン）
-  - DoD: resume_pack が設定バジェット以下 ✓、想起精度の回帰なし ✓、6テスト通過 ✓
+目的: 5ツール14軸比較で B-(84/140) → A(120+) を目指す。
+**ベンチマーク**: [`docs/benchmarks/competitive-analysis-2026-03-01.md`](docs/benchmarks/competitive-analysis-2026-03-01.md)
+**スコア**: mem0(119) > supermemory(103) > OpenMemory(96) > **harness-mem(84)** > claude-mem(66)
 
 ---
 
-#### Phase 2: エコシステム・DX 拡充（Recommended） — 全完了
+#### Phase 1: グラフ強化 + 適応的忘却（Required, +12pt）
 
-- [x] `cc:完了 [feature:tdd] [feature:security]` **IMP-005**: TypeScript SDK 公開
-  - `@harness-mem/sdk`: search/record/resumePack/timeline/getObservations/health
-  - DoD: npm publish 可能 ✓、README + テスト付き (11テスト) ✓
+- [x] `cc:完了 [feature:tdd]` **COMP-001**: Multi-hop グラフ探索
+  - 1-hop → N-hop(max_depth=3) 拡張、activation spreading(decay=0.5/hop)
+  - DoD: 1-hop 比 +15% 再現率、6テスト
 
-- [x] `cc:完了 [feature:tdd]` **IMP-006**: 想起品質ベンチマーク
-  - LOCOMO 風: Single-Hop/Multi-Hop/Temporal/Cross-Platform
-  - DoD: CI 実行可能 ✓、ベースラインスコア記録済み ✓、5テスト通過 ✓
+- [x] `cc:完了 [feature:tdd]` **COMP-002**: 適応的メモリ減衰（Adaptive Decay）
+  - 3-tier decay (hot/warm/cold)、アクセス時自動強化、60分間隔で再計算
+  - DoD: 未アクセス観察が自然に順位低下、5テスト
 
-- [x] `cc:完了 [feature:a11y]` **W3-001**: フィードにプラットフォームバッジ表示
-  - PlatformBadge コンポーネント (claude/codex/cursor/opencode/gemini)、aria-label 付き
-  - DoD: プラットフォームが一目で区別できる ✓
-
-- [x] `cc:完了 [feature:a11y]` **W3-002**: Codex 環境コンテキスト折りたたみ
-  - デフォルト折りたたみ、クリック/Enter/Space で展開
-  - DoD: 情報密度向上 ✓
-
-- [x] `cc:完了 [feature:a11y]` **W3-003**: セッション単位グルーピング表示
-  - SessionGroup コンポーネント、アコーディオン展開、キーボード操作対応
-  - DoD: 粒度均等化 ✓
-
-- [x] `cc:完了 [feature:a11y]` **W3-004**: プラットフォーム別タブ切替
-  - All/Claude/Codex/Cursor/OpenCode/Gemini タブ、platformFilter 連動
-  - DoD: ワンクリック切替 ✓
-
-- [x] `cc:完了 [feature:a11y]` **IMP-007**: VS Code 拡張
-  - サイドバーにメモリ検索・タイムライン。SDK 使用。VSIX ローカル動作
-  - DoD: 検索 + タイムライン動作 ✓、10テスト通過 ✓
-
-- [x] `cc:完了 [feature:tdd]` **IMP-008**: 埋め込みプロバイダー拡張
-  - gte-small/e5-small-v2 追加、言語検出 (日本語≥10% → ruri、それ以外 → gte) 自動選択
-  - DoD: 日本語=ruri / 英語=gte 自動選択 ✓、12テスト通過 ✓
+- [x] `cc:完了 [feature:tdd]` **COMP-003**: Point-in-time クエリ
+  - `search` API に `as_of` パラメータ、valid_from/valid_to + updates リンク活用
+  - DoD: 過去時点のファクトのみ返却、4テスト
 
 ---
 
-#### Phase 3: 差別化強化（Optional） — 全完了
+#### Phase 2: LLM 柔軟化 + 埋め込み拡張（Required, +8pt）
 
-- [x] `cc:完了 [feature:tdd]` **IMP-009**: Signal Extraction（重要度自動判定）
-  - キーワード検出 +0.3、環境コンテキスト -0.2、上限 1.0
-  - DoD: シグナル付きイベントが検索上位に浮上 ✓、6テスト通過 ✓
+- [x] `cc:完了 [feature:tdd]` **COMP-004**: LLM コンソリデーション マルチプロバイダー
+  - Ollama + OpenAI / Anthropic / Gemini API 選択可能、LlmProvider 抽象化
+  - DoD: 3プロバイダーでファクト抽出動作、8テスト
 
-- [x] `cc:完了 [feature:tdd] [feature:security]` **IMP-010**: 外部ナレッジコネクタ
-  - GitHub Issues コネクタ + ADR/decisions.md コネクタ、重複排除ハッシュ付き
-  - DoD: 取り込み動作 ✓、重複排除あり ✓、19テスト通過 ✓
-
-- [x] `cc:完了 [feature:tdd]` **IMP-011**: Derives 関係性（推論リンク）
-  - Jaccard 類似度 0.05-0.35 の同型ファクト間に双方向 derives リンク自動生成
-  - DoD: 推論リンクが検索で活用される ✓、5テスト通過 ✓
+- [x] `cc:完了 [feature:tdd]` **COMP-005**: 埋め込みカタログ拡張
+  - 3→6モデル（+bge-small/multilingual-e5/nomic-embed）、多言語自動選択
+  - DoD: 6モデル自動選択+多言語テスト、6テスト
 
 ---
 
-### 22.3 完了判定（DoD） — 全達成
+#### Phase 3: メモリ圧縮 + マルチモーダル（Recommended, +10pt）
 
-1. ✅ Phase 1: コアが5モジュールに分割済み、LLM コンソリデーション + heuristic フォールバック
-2. ✅ Phase 2: SDK npm 公開可能、UI フィードで全プラットフォームが視覚的に均等
-3. ✅ Phase 3: Signal Extraction でノイズ削減、derives 推論リンクが検索で活用
-4. ✅ 全 Phase: 286テスト全通過 (unit 173 + core-split 87 + benchmark 5 + SDK 11 + VS Code 10)
+- [x] `cc:完了 [feature:tdd]` **COMP-006**: メモリ圧縮エンジン
+  - merge/summarize/prune 3戦略、`/v1/admin/compress` + 定期自動実行
+  - DoD: 観察数 30%以上削減かつ検索品質維持、6テスト
+
+- [x] `cc:完了 [feature:tdd]` **COMP-007**: PDF/Markdown ドキュメント取り込み
+  - `/v1/ingest/document`、MD(見出し分割)/HTML(タグ除去)/text の3形式（外部ライブラリ不使用）
+  - DoD: 3形式の取り込み動作、8テスト
+
+- [x] `cc:完了 [feature:tdd]` **COMP-008**: URL コネクター
+  - `/v1/ingest/url`、robots.txt 尊重、SSRF 防止（プライベートIPブロック）
+  - DoD: 公開 URL 取り込み動作、6テスト（12テスト実装）
+
+---
+
+#### Phase 4: 公開ベンチマーク + MCP サーバー（Recommended, +8pt）
+
+- [x] `cc:完了 [feature:tdd]` **COMP-009**: LongMemEval / LoCoMo ベンチマーク
+  - 4タスク(Single-Hop/Multi-Hop/Temporal/Open-Domain)、CI 定期実行
+  - DoD: スコア記録+CI 統合、4テスト
+
+- [x] `cc:完了 [feature:tdd]` **COMP-010**: MCP サーバー公開
+  - stdio/HTTP 両対応、search/add/list/get/delete ツール（+harness_mem_delete_observation追加）
+  - DoD: Claude Desktop + Cursor から動作確認、8テスト
+
+---
+
+#### Phase 5: 外部コネクター + 自動リフレクション（Optional, +3pt）
+
+> COMP-011（ユーザースコープ分離）は **§24 TEAM-003〜005** に統合・大幅拡張。
+
+- [x] `cc:完了` **COMP-012**: Notion / Google Drive コネクター — DoD: 取り込み動作、8テスト
+- [x] `cc:完了` **COMP-013**: 自動リフレクション — DoD: 矛盾ファクト検出・解消、5テスト
+
+**Phase 1-4 完了時見込み**: 84 + 38 = **122/140 (87.1%)** → mem0(119) に迫る水準
+
+---
+
+## 24. VPS/チームデプロイ（2026-03 顧問先導入）
+
+目的: 顧問先企業（IT4名+マーケ3名+役員2名）への harness-mem チーム導入。
+**要件詳細**: [`docs/specs/vps-team-deploy-spec.md`](docs/specs/vps-team-deploy-spec.md)
+
+**原則**: PII はクライアント側フィルタ / 生データはチーム内、ファクトは全社共有 / VPS ダウン時もローカル継続
+
+---
+
+#### Phase 1: VPS 基盤（P0 — VPS化の最低条件）
+
+- [x] `cc:完了 [feature:security]` **TEAM-001**: リモートバインド + トークン認証必須化
+  - `0.0.0.0` バインド時 `ADMIN_TOKEN` 必須、TLS はリバースプロキシ方式（Caddy/Nginx ドキュメント）
+  - DoD: リモートバインド+トークン必須+TLSドキュメント、4テスト
+
+- [x] `cc:完了` **TEAM-002**: MCP Server リモート接続対応
+  - `HARNESS_MEM_REMOTE_URL` / `REMOTE_TOKEN` 追加、ensureDaemon スキップ→/health 確認
+  - DoD: MCP 経由でリモート VPS に記録・検索動作、5テスト
+
+---
+
+#### Phase 2: マルチユーザー + NDA 対応（P1 — チーム運用の前提）
+
+- [x] `cc:完了 [feature:tdd]` **TEAM-003**: ユーザー識別スキーマ拡張
+  - mem_sessions/events/observations に `user_id` + `team_id`、環境変数で MCP から付与
+  - DoD: ユーザー・チーム別データ記録+マイグレーション、5テスト
+
+- [x] `cc:完了 [feature:security]` **TEAM-004**: マルチトークン認証
+  - config.json トークンマップ（token → user_id + team_id）、admin は全アクセス可
+  - DoD: 複数トークンでユーザー解決+不正トークン拒否、6テスト
+
+- [x] `cc:完了 [feature:tdd]` **TEAM-005**: データアクセス制御
+  - 自分:R/W、同チーム:R、別チーム:❌、ファクト:全社R
+  - DoD: スコープ別アクセス制御動作、8テスト
+
+- [x] `cc:完了 [feature:security]` **TEAM-006**: PII フィルタリング
+  - MCP→VPS 送信前フィルタ（電話/メール/住所/LINE ID）、pii-rules.json カスタマイズ可
+  - DoD: PII が VPS に到達しない、6テスト
+
+---
+
+#### Phase 3: デプロイ自動化（P1）
+
+- [x] `cc:完了` **TEAM-007**: Docker compose + セットアップ自動化
+  - Dockerfile + docker-compose.yml (PostgreSQL+Caddy)、`harness-mem deploy` サブコマンド
+  - DoD: `docker compose up` でワンコマンド起動、4テスト
+
+---
+
+#### Phase 4: 耐障害性 + チーム UI（P2）
+
+- [x] `cc:完了 [feature:tdd]` **TEAM-008**: ローカル⇔リモート ハイブリッドモード
+  - VPS ダウン→ローカル SQLite 退避→復旧後フラッシュ（dedupe_hash 重複排除）
+  - DoD: VPS停止→退避→復旧→フラッシュの一連動作、6テスト
+
+- [x] `cc:完了 [feature:tdd]` **TEAM-009**: チームフィード + ユーザーフィルター
+  - 全メンバーのリアルタイム表示（既存SSE活用）+ user_id/team_id フィルター UI
+  - DoD: 複数ユーザーのデータ表示・フィルタ可能、5テスト
+
+---
+
+#### Phase 5: 運用強化（P3）
+
+- [x] `cc:完了` **TEAM-010**: ナレッジマップ + 利用統計 — DoD: ファクト分布・利用統計表示、4テスト
+- [x] `cc:完了` **TEAM-011**: クライアント設定配布コマンド — DoD: 設定スニペット出力、3テスト
+
+---
+
+## 25. UI テスト環境修正
+
+- [x] `cc:完了` **UI-TEST-001**: bun:test で DOM 環境が未定義になる問題を修正
+  - 依頼内容: bun test 実行時に document/localStorage 未定義、vi.stubGlobal 非対応エラーを修正
+  - 追加日時: 2026-03-02
+  - 解決: bunfig.toml + tests/setup.ts（jsdom 注入）作成、vi.stubGlobal → globalThis 直接代入に変更
+
+### 24.1 完了判定（DoD）
+
+1. P0: VPS 上で TLS 越し動作、MCP からリモート接続可能
+2. P1: 9名が個別トークンで接続、スコープ分離、PII フィルタ、Docker ワンコマンド起動
+3. P2: VPS 停止時ローカルフォールバック→復旧同期、チーム UI フィルタ表示
+4. P3: ナレッジマップ・統計ダッシュボード・設定配布コマンド
