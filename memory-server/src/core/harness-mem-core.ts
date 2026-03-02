@@ -403,7 +403,10 @@ export class HarnessMemCore {
     this.initEmbeddingProvider();
     this.initReranker();
 
-    this.startBackgroundWorkers();
+    const shouldStartWorkers = this.config.backgroundWorkersEnabled ?? (process.env.NODE_ENV !== "test");
+    if (shouldStartWorkers) {
+      this.startBackgroundWorkers();
+    }
     this.initManagedBackend();
     this.initModules();
   }
@@ -848,35 +851,41 @@ export class HarnessMemCore {
 
   private startBackgroundWorkers(): void {
     this.heartbeatTimer = setInterval(() => {
+      if (this.shuttingDown) return;
       this.writeHeartbeat();
     }, 5000);
 
     if (this.config.codexHistoryEnabled) {
       this.ingestTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         this.ingestCodexHistory();
       }, this.config.codexIngestIntervalMs);
     }
 
     if (this.config.opencodeIngestEnabled !== false) {
       this.opencodeIngestTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         this.ingestOpencodeHistory();
       }, clampLimit(Number(this.config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.cursorIngestEnabled !== false) {
       this.cursorIngestTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         this.ingestCursorHistory();
       }, clampLimit(Number(this.config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.antigravityIngestEnabled !== false) {
       this.antigravityIngestTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         this.ingestAntigravityHistory();
       }, clampLimit(Number(this.config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.geminiIngestEnabled !== false) {
       this.geminiIngestTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         this.ingestGeminiHistory();
       }, clampLimit(Number(this.config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
@@ -884,6 +893,7 @@ export class HarnessMemCore {
     if (this.config.consolidationEnabled !== false) {
       let consolidationRunning = false;
       this.consolidationTimer = setInterval(() => {
+        if (this.shuttingDown) return;
         if (consolidationRunning) return;
         consolidationRunning = true;
         void this.runConsolidation({ reason: "scheduler", limit: 10 }).finally(() => {
@@ -893,10 +903,12 @@ export class HarnessMemCore {
     }
 
     this.retryTimer = setInterval(() => {
+      if (this.shuttingDown) return;
       this.processRetryQueue();
     }, 15000);
 
     this.checkpointTimer = setInterval(() => {
+      if (this.shuttingDown) return;
       this.db.exec("PRAGMA wal_checkpoint(PASSIVE);");
     }, 60000);
 

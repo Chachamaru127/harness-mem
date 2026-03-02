@@ -234,4 +234,6 @@ export interface Config {
   userId?: string;
   /** TEAM-003: チーム識別 - 環境変数 HARNESS_MEM_TEAM_ID から設定 */
   teamId?: string;
+  /** テスト時に false を設定し、バックグラウンドワーカー（heartbeat, WAL checkpoint 等）を無効化する */
+  backgroundWorkersEnabled?: boolean;
 }
