@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-02（§27.1 完了、v3 再評価、§28 v3 分析に基づき優先度最終調整）
+最終更新: 2026-03-03（FIX-001 Bun並列テストSQLiteフラッキー修正）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
@@ -9,6 +9,16 @@
 > §27 (NEXT-001〜014 全完了、品質監査済) → [`docs/archive/Plans-s27-2026-03-02.md`](docs/archive/Plans-s27-2026-03-02.md)
 > §22 IMP-001〜011, W3-001〜004, §27.2 QH-001〜006, §28 CQRS-001〜007, Quality H1/M5, M4, H2 → [`docs/archive/Plans-2026-03-02.md`](docs/archive/Plans-2026-03-02.md)
 > **テストケース設計**: [`docs/test-designs-s22.md`](docs/test-designs-s22.md) / [`docs/test-designs-s27.1.md`](docs/test-designs-s27.1.md)
+
+---
+
+## FIX-001: Bun並列テストSQLiteフラッキー修正 `cc:完了`
+
+- 依頼内容: `bun test` 並列実行時に統合テストが断続的に `SQLiteError: disk I/O error` で失敗する問題を修正
+- 原因: バックグラウンドタイマーコールバックが shutdown 後もDBにアクセスし続ける race condition
+- 修正: `startBackgroundWorkers()` の各タイマーコールバックに `shuttingDown` ガード + `try-catch` を追加
+- 検証: `bun test memory-server/tests/` を3回実行、全600テストパス（0失敗）
+- 追加日時: 2026-03-03
 
 ---
 

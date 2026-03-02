@@ -858,35 +858,35 @@ export class HarnessMemCore {
     if (this.config.codexHistoryEnabled) {
       this.ingestTimer = setInterval(() => {
         if (this.shuttingDown) return;
-        this.ingestCodexHistory();
+        try { this.ingestCodexHistory(); } catch { /* ignore post-shutdown DB errors */ }
       }, this.config.codexIngestIntervalMs);
     }
 
     if (this.config.opencodeIngestEnabled !== false) {
       this.opencodeIngestTimer = setInterval(() => {
         if (this.shuttingDown) return;
-        this.ingestOpencodeHistory();
+        try { this.ingestOpencodeHistory(); } catch { /* ignore post-shutdown DB errors */ }
       }, clampLimit(Number(this.config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.cursorIngestEnabled !== false) {
       this.cursorIngestTimer = setInterval(() => {
         if (this.shuttingDown) return;
-        this.ingestCursorHistory();
+        try { this.ingestCursorHistory(); } catch { /* ignore post-shutdown DB errors */ }
       }, clampLimit(Number(this.config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.antigravityIngestEnabled !== false) {
       this.antigravityIngestTimer = setInterval(() => {
         if (this.shuttingDown) return;
-        this.ingestAntigravityHistory();
+        try { this.ingestAntigravityHistory(); } catch { /* ignore post-shutdown DB errors */ }
       }, clampLimit(Number(this.config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (this.config.geminiIngestEnabled !== false) {
       this.geminiIngestTimer = setInterval(() => {
         if (this.shuttingDown) return;
-        this.ingestGeminiHistory();
+        try { this.ingestGeminiHistory(); } catch { /* ignore post-shutdown DB errors */ }
       }, clampLimit(Number(this.config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -904,12 +904,12 @@ export class HarnessMemCore {
 
     this.retryTimer = setInterval(() => {
       if (this.shuttingDown) return;
-      this.processRetryQueue();
+      try { this.processRetryQueue(); } catch { /* ignore post-shutdown DB errors */ }
     }, 15000);
 
     this.checkpointTimer = setInterval(() => {
       if (this.shuttingDown) return;
-      this.db.exec("PRAGMA wal_checkpoint(PASSIVE);");
+      try { this.db.exec("PRAGMA wal_checkpoint(PASSIVE);"); } catch { /* ignore post-shutdown DB errors */ }
     }, 60000);
 
     this.writeHeartbeat();
