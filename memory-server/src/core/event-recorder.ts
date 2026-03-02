@@ -465,13 +465,19 @@ export class EventRecorder {
         `)
         .all(observationId, observationId) as Array<{ id: string }>;
 
-      for (const row of sharedRows) {
+      if (sharedRows.length > 0) {
+        // バッチ INSERT で N+1 ループを解消
+        const placeholders = sharedRows.map(() => "(?, ?, 'shared_entity', 0.7, ?)").join(", ");
+        const params: (string | number)[] = [];
+        for (const row of sharedRows) {
+          params.push(observationId, row.id, createdAt);
+        }
         this.deps.db
           .query(`
             INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
-            VALUES (?, ?, 'shared_entity', 0.7, ?)
+            VALUES ${placeholders}
           `)
-          .run(observationId, row.id, createdAt);
+          .run(...params);
       }
     } catch {
       // best effort

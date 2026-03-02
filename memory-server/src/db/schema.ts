@@ -430,6 +430,13 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // PERF-001: search() 内 audit_log フルスキャン対策 - action/target_type/target_id の複合インデックス
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_audit_log_action_target ON mem_audit_log(action, target_type, target_id)`);
+  } catch {
+    // already exists
+  }
+
   // プロジェクト名空文字のレコードがあれば警告ログ
   const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};
   if (emptyProjects.cnt > 0) {

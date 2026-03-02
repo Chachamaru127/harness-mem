@@ -27,6 +27,10 @@ export interface AccessFilter {
   sql: string;
   /** sql 中の ? に対応するパラメータ配列 */
   params: unknown[];
+  /** アクセスを許可するユーザーID（member ロール時に設定） */
+  user_id?: string;
+  /** アクセスを許可するチームID（member ロール時に team_id がある場合に設定） */
+  team_id?: string | null;
 }
 
 /**
@@ -66,5 +70,5 @@ export function buildAccessFilter(
   }
 
   const sql = `AND (${conditions.join(" OR ")})`;
-  return { sql, params };
+  return { sql, params, user_id: ctx.user_id, team_id: ctx.team_id ?? null };
 }

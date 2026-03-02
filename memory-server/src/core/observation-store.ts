@@ -1298,22 +1298,20 @@ export class ObservationStore {
       .get(...(baseParams as any[])) as { cnt: number } | null;
     const totalCandidates = Number(totalRow?.cnt ?? 0);
 
-    // (5) tags_json: JS パースが必要なため LIMIT 付きで取得
+    // (5) tags_json: JSON_EACH で SQL 側で GROUP BY 集計（LIMIT 5000 JS集計を廃止）
     const tagRows = this.deps.db
       .query(
-        `SELECT o.tags_json
-         FROM mem_observations o${whereClauses}
-         ORDER BY o.created_at DESC
-         LIMIT 5000`
+        `SELECT jt.value AS tag, COUNT(*) AS cnt
+         FROM mem_observations o, json_each(o.tags_json) AS jt${whereClauses}
+         GROUP BY jt.value
+         ORDER BY cnt DESC
+         LIMIT 50`
       )
-      .all(...(baseParams as any[])) as Array<{ tags_json: string }>;
+      .all(...(baseParams as any[])) as Array<{ tag: string; cnt: number }>;
 
     const tagCounts = new Map<string, number>();
     for (const row of tagRows) {
-      const tags = parseArrayJson(row.tags_json);
-      for (const tag of tags) {
-        tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-      }
+      tagCounts.set(row.tag, Number(row.cnt));
     }
 
     const toFacetArray = (map: Map<string, number>) =>
@@ -1512,9 +1510,8 @@ export class ObservationStore {
       if (accessFilter?.sql) {
         const rowUserId = typeof row.user_id === "string" ? row.user_id : "";
         const rowTeamId = typeof row.team_id === "string" ? row.team_id : null;
-        const params = accessFilter.params as string[];
-        const allowedUserId = params[0] ?? "";
-        const allowedTeamId = params[1] ?? null;
+        const allowedUserId = accessFilter.user_id ?? "";
+        const allowedTeamId = accessFilter.team_id ?? null;
         const allowed = rowUserId === allowedUserId ||
           (allowedTeamId !== null && rowTeamId === allowedTeamId);
         if (!allowed) {

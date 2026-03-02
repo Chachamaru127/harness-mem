@@ -12,6 +12,27 @@
 
 ---
 
+## PERF-001〜003: Performance High 3件修正 `cc:完了`
+
+- 依頼内容: search() audit_log インデックス不足、searchFacets() tags LIMIT 5000 JS集計、autoLinkObservation() N+1 INSERT を修正
+- P-1: idx_mem_audit_log_action_target インデックス追加 (schema.ts migrateSchema)
+- P-2: searchFacets() の tags を SQL GROUP BY で集計 (observation-store.ts)
+- P-3: autoLinkObservation() の INSERT ループをバッチ化 (event-recorder.ts)
+- 検証: bun test 811 pass / 0 fail
+- 追加日時: 2026-03-03
+
+---
+
+## SEC-001: Security High 2件の修正 `cc:完了`
+
+- 依頼内容: S-1 (getObservations の params 添字依存) と S-2 (匿名モードでの user_id フィルタ迂回) の修正
+- S-1: AccessFilter インターフェースに user_id / team_id フィールドを追加し、params 添字参照を排除
+- S-2: server.ts の /v1/feed ハンドラで AuthConfig がない匿名モード時は user_id / team_id クエリパラメータを無視
+- 検証: bun test 811 pass / 0 fail
+- 追加日時: 2026-03-03
+
+---
+
 ## FIX-001: Bun並列テストSQLiteフラッキー修正 `cc:完了`
 
 - 依頼内容: `bun test` 並列実行時に統合テストが断続的に `SQLiteError: disk I/O error` で失敗する問題を修正

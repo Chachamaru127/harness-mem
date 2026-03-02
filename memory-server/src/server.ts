@@ -451,15 +451,18 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/feed") {
+        // TEAM-009 + S-2: user_id / team_id フィルターは認証設定がある場合（AuthConfig）のみ受け付ける。
+        // 匿名モード（AuthConfig なし）では任意の user_id を渡すと他ユーザーのデータを参照できるため、
+        // クエリパラメータの user_id / team_id を無視する。
+        const feedAuthConfig = getAuthConfig();
         const req: FeedRequest = {
           cursor: url.searchParams.get("cursor") || undefined,
           limit: parseInteger(url.searchParams.get("limit"), 40),
           project: url.searchParams.get("project") || undefined,
           type: url.searchParams.get("type") || undefined,
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
-          // TEAM-009: ユーザー/チームフィルター
-          user_id: url.searchParams.get("user_id") || undefined,
-          team_id: url.searchParams.get("team_id") || undefined,
+          user_id: feedAuthConfig ? (url.searchParams.get("user_id") || undefined) : undefined,
+          team_id: feedAuthConfig ? (url.searchParams.get("team_id") || undefined) : undefined,
         };
         return jsonResponse(core.feed(req));
       }
