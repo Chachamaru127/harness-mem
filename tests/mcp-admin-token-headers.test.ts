@@ -34,6 +34,13 @@ function normalizeHeaders(raw: HeadersInit | undefined): Record<string, string> 
 function installFetchMock(calls: FetchCall[]): void {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    // localhost パススルー（並列実行中の統合テストを破壊しない）
+    if (url.includes("127.0.0.1") || url.includes("localhost")) {
+      // MCP の callMemoryApi は 127.0.0.1:37888 を叩くので、それはキャプチャする
+      if (!url.includes(":37888")) {
+        return originalFetch(input, init);
+      }
+    }
     calls.push({ url, headers: normalizeHeaders(init?.headers) });
 
     if (url.endsWith("/health")) {

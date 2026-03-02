@@ -12,11 +12,10 @@ function createRuntime(name: string): {
   stop: () => void;
 } {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-contract-${name}-`));
-  const port = 40100 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -32,6 +31,7 @@ function createRuntime(name: string): {
   };
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
+  const port = server.port;
   return {
     core,
     dir,

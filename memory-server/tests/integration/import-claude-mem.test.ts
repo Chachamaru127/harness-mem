@@ -15,8 +15,6 @@ function createRuntime(name: string): {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-import-${name}-`));
   const sourceDbPath = join(dir, "claude-mem.db");
   const targetDbPath = join(dir, "harness-mem.db");
-  const port = 39500 + Math.floor(Math.random() * 1000);
-
   const sourceDb = new Database(sourceDbPath, { create: true });
   sourceDb.exec(`
     CREATE TABLE observations (
@@ -84,7 +82,7 @@ function createRuntime(name: string): {
   const config: Config = {
     dbPath: targetDbPath,
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -97,6 +95,7 @@ function createRuntime(name: string): {
   };
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
+  const port = server.port;
 
   return {
     dir,

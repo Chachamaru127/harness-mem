@@ -68,10 +68,16 @@ function baseEvent(overrides: Partial<EventEnvelope> = {}): EventEnvelope {
 }
 
 // LLM API レスポンスをモックするためのフェッチモック設定
+// 注意: LLM API 宛てのリクエストだけインターセプトし、localhost 等の他リクエストはパススルーする
 function mockLlmResponse(responseBody: object): void {
   const originalFetch = globalThis.fetch;
   (globalThis as Record<string, unknown>).__originalFetch = originalFetch;
-  globalThis.fetch = async (_url: string | URL | Request, _options?: RequestInit): Promise<Response> => {
+  globalThis.fetch = async (url: string | URL | Request, options?: RequestInit): Promise<Response> => {
+    const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+    // localhost 宛てはパススルー（並列実行中の統合テストを破壊しない）
+    if (urlStr.includes("127.0.0.1") || urlStr.includes("localhost")) {
+      return originalFetch(url, options);
+    }
     const body = JSON.stringify({
       choices: [
         {
@@ -316,8 +322,14 @@ describe("IMP-001a/001b: LLM コンソリデーション (AUDN) - TDD テスト 
     const prevModel = process.env.HARNESS_MEM_FACT_LLM_MODEL;
     setLlmMode();
 
-    // 不正な JSON を返す
-    globalThis.fetch = async (_url: string | URL | Request, _options?: RequestInit): Promise<Response> => {
+    // 不正な JSON を返す（localhost パススルー付き）
+    const originalFetch = globalThis.fetch;
+    (globalThis as Record<string, unknown>).__originalFetch = originalFetch;
+    globalThis.fetch = async (url: string | URL | Request, options?: RequestInit): Promise<Response> => {
+      const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
+      if (urlStr.includes("127.0.0.1") || urlStr.includes("localhost")) {
+        return originalFetch(url, options);
+      }
       const body = JSON.stringify({
         choices: [
           {

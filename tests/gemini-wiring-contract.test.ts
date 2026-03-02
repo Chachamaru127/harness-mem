@@ -53,15 +53,15 @@ describe("Gemini CLI wiring contract", () => {
     expect(collectorTs).toContain("gemini_wiring");
   });
 
-  const coreTs = readFileSync("memory-server/src/core/harness-mem-core.ts", "utf8");
+  const typesTs = readFileSync("memory-server/src/core/types.ts", "utf8");
 
   test("Platform type includes gemini", () => {
-    expect(coreTs).toMatch(/"gemini"/);
+    expect(typesTs).toMatch(/"gemini"/);
   });
 
   test("Config includes gemini ingest fields", () => {
-    expect(coreTs).toContain("geminiIngestEnabled");
-    expect(coreTs).toContain("geminiEventsPath");
+    expect(typesTs).toContain("geminiIngestEnabled");
+    expect(typesTs).toContain("geminiEventsPath");
   });
 
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));

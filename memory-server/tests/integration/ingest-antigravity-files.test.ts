@@ -20,11 +20,10 @@ function createRuntime(name: string): {
   const project = realpathSync(workspaceRoot);
   const normalizedProject = realpathSync(dir);
 
-  const port = 39900 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -46,6 +45,7 @@ function createRuntime(name: string): {
 
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
+  const port = server.port;
 
   return {
     dir,

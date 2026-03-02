@@ -16,11 +16,10 @@ function createRuntime(name: string): {
   const cursorEventsPath = join(dir, "cursor", "events.jsonl");
   mkdirSync(join(dir, "cursor"), { recursive: true });
 
-  const port = 39800 + Math.floor(Math.random() * 1000);
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: port,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -40,6 +39,7 @@ function createRuntime(name: string): {
 
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
+  const port = server.port;
 
   return {
     dir,
