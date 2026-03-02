@@ -9,7 +9,7 @@ class MockIntersectionObserver {
   unobserve() {}
 }
 
-vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+globalThis.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver;
 
 function claudeToolUse(index: number): FeedItem {
   return {

@@ -1,5 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
+import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
+import { createSyncStore, handleSyncPush, handleSyncPull, type SyncStore } from "./sync/sync-store";
+import type { Changeset, ConflictPolicy } from "./sync/engine";
 import { HarnessMemCore } from "./core/harness-mem-core";
 import type {
   FeedRequest,
@@ -71,6 +74,13 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   if (pathname.startsWith("/v1/admin/")) {
     return true;
   }
+  // GET エンドポイントで admin 認証が必要なもの
+  if (method === "GET") {
+    return [
+      "/v1/export",
+      "/v1/graph/neighbors",
+    ].includes(pathname);
+  }
   if (method !== "POST") {
     return false;
   }
@@ -90,6 +100,9 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/knowledge-file",
     "/v1/ingest/gemini-history",
     "/v1/ingest/gemini-events",
+    "/v1/links/create",
+    "/v1/observations/bulk-delete",
+    "/v1/ingest/document",
   ].includes(pathname);
 }
 
@@ -100,6 +113,40 @@ function isLocalhostRequest(remoteAddress: string | null): boolean {
     return false;
   }
   return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "localhost";
+}
+
+// キャッシュされた AuthConfig（起動後に loadAuthConfig で一度だけ読み込む）
+let _cachedAuthConfig: AuthConfig | null | undefined = undefined;
+
+function getAuthConfig(): AuthConfig | null {
+  if (_cachedAuthConfig !== undefined) return _cachedAuthConfig;
+  const configPath = process.env.HARNESS_MEM_CONFIG_PATH ||
+    `${process.env.HOME || "~"}/.harness-mem/config.json`;
+  _cachedAuthConfig = loadAuthConfig(configPath);
+  return _cachedAuthConfig;
+}
+
+/**
+ * リクエストの Bearer Token を AuthConfig / HARNESS_MEM_ADMIN_TOKEN で解決する。
+ * - AuthConfig が存在すればマルチトークン認証を使用
+ * - AuthConfig がなければ HARNESS_MEM_ADMIN_TOKEN のみで認証
+ */
+export function resolveRequestIdentity(request: Request): ResolvedIdentity | null {
+  const token = extractBearerToken(request);
+  const authConfig = getAuthConfig();
+
+  if (authConfig) {
+    return resolveTokenIdentity(token, authConfig);
+  }
+
+  // フォールバック: 従来の HARNESS_MEM_ADMIN_TOKEN のみ
+  const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  if (!configured) return { user_id: "admin", role: "admin" }; // 未設定は全許可
+  if (!token || token.length !== configured.length) return null;
+  if (timingSafeEqual(Buffer.from(token), Buffer.from(configured))) {
+    return { user_id: "admin", role: "admin" };
+  }
+  return null;
 }
 
 function hasValidAdminToken(request: Request, remoteAddress: string | null): boolean {
@@ -115,6 +162,14 @@ function hasValidAdminToken(request: Request, remoteAddress: string | null): boo
     // When no token is configured, allow only localhost requests
     return isLocalhostRequest(remoteAddress);
   }
+
+  // AuthConfig が存在する場合はマルチトークン認証を使用（admin ロールのみ許可）
+  const authConfig = getAuthConfig();
+  if (authConfig) {
+    const identity = resolveTokenIdentity(extractBearerToken(request), authConfig);
+    return identity !== null && identity.role === "admin";
+  }
+
   const rawAuth = request.headers.get("authorization");
   const bearer = rawAuth?.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";
   const provided = request.headers.get("x-harness-mem-token") || bearer || "";
@@ -213,7 +268,33 @@ function toSseChunk(event: string, data: Record<string, unknown>, id?: number): 
   return new TextEncoder().encode(`${lines.join("\n")}\n`);
 }
 
+/**
+ * リモートバインド安全チェック。
+ * host が 127.0.0.1 / localhost 以外でかつ HARNESS_MEM_ADMIN_TOKEN が未設定の場合、
+ * エラーメッセージを返す。安全な場合は null を返す。
+ */
+export function checkRemoteBindSafety(host: string): string | null {
+  if (host === "127.0.0.1" || host === "localhost" || host === "::1") return null;
+  const adminToken = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  const authConfig = getAuthConfig();
+  if (!adminToken && !authConfig) {
+    return (
+      `[harness-mem] FATAL: リモートモードで起動しようとしていますが認証設定がありません。` +
+      ` host=${host} でのリモートバインドには HARNESS_MEM_ADMIN_TOKEN または auth_config.json の設定が必須です。` +
+      ` HARNESS_MEM_ADMIN_TOKEN 環境変数を設定するか auth_config.json を配置してから再起動してください。`
+    );
+  }
+  console.warn(
+    `[harness-mem] リモートモード (remote mode) で起動: host=${host}. ` +
+    "TLS リバースプロキシ（Caddy / Nginx）経由での接続を推奨します。"
+  );
+  return null;
+}
+
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
+  // HARDEN-003: Sync エンドポイント用インメモリストア（サーバー起動時に初期化）
+  const syncStore: SyncStore = createSyncStore();
+
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
@@ -355,6 +436,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           since: typeof body.since === "string" ? body.since : undefined,
           until: typeof body.until === "string" ? body.until : undefined,
+          as_of: typeof body.as_of === "string" ? body.as_of : undefined,
           limit: parseIntegerLike(body.limit),
           include_private: parseBooleanLike(body.include_private, false),
           expand_links: parseBooleanLike(body.expand_links, true),
@@ -363,6 +445,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           question_kind: questionKind && validKinds.includes(questionKind)
             ? questionKind as SearchRequest["question_kind"]
             : undefined,
+          sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
         };
         return jsonResponse(core.search(req));
       }
@@ -374,6 +457,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           project: url.searchParams.get("project") || undefined,
           type: url.searchParams.get("type") || undefined,
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          // TEAM-009: ユーザー/チームフィルター
+          user_id: url.searchParams.get("user_id") || undefined,
+          team_id: url.searchParams.get("team_id") || undefined,
         };
         return jsonResponse(core.feed(req));
       }
@@ -741,6 +827,132 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
         const body = await parseRequestJson(request);
         return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/links/create") {
+        const body = await parseRequestJson(request);
+        const fromId = typeof body.from_observation_id === "string" ? body.from_observation_id : "";
+        const toId = typeof body.to_observation_id === "string" ? body.to_observation_id : "";
+        const relation = typeof body.relation === "string" ? body.relation : "";
+        if (!fromId || !toId || !relation) {
+          return badRequest("from_observation_id, to_observation_id, relation are required");
+        }
+        const weight = typeof body.weight === "number" ? body.weight : 1.0;
+        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity", weight }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/observations/bulk-delete") {
+        const body = await parseRequestJson(request);
+        const ids = toStringArray(body.ids);
+        if (ids.length === 0) {
+          return badRequest("ids is required and must not be empty");
+        }
+        return jsonResponse(core.bulkDeleteObservations({ ids }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/export") {
+        const project = url.searchParams.get("project") || undefined;
+        const limit = parseInteger(url.searchParams.get("limit"), 1000);
+        const includePrivate = parseBoolean(url.searchParams.get("include_private"), false);
+        return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/graph/neighbors") {
+        const observationId = url.searchParams.get("observation_id") || "";
+        if (!observationId) {
+          return badRequest("observation_id is required");
+        }
+        const relation = url.searchParams.get("relation") || undefined;
+        return jsonResponse(core.getLinks({ observation_id: observationId, relation }));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/ingest/document") {
+        const body = await parseRequestJson(request);
+        return jsonResponse(
+          core.ingestKnowledgeFile({
+            file_path: typeof body.file_path === "string" ? body.file_path : "",
+            content: typeof body.content === "string" ? body.content : "",
+            kind:
+              body.kind === "decisions_md" || body.kind === "adr" ? body.kind : undefined,
+            project: typeof body.project === "string" ? body.project : undefined,
+            platform: typeof body.platform === "string" ? body.platform : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+          })
+        );
+      }
+
+      // HARDEN-003: POST /v1/sync/push — リモート changeset を受信してマージ
+      if (request.method === "POST" && url.pathname === "/v1/sync/push") {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const body = await parseRequestJson(request);
+        const deviceId = typeof body.device_id === "string" ? body.device_id : "";
+        const since = typeof body.since === "string" ? body.since : null;
+        const rawRecords = Array.isArray(body.records) ? body.records : [];
+        if (!deviceId) {
+          return badRequest("device_id is required");
+        }
+        const records = rawRecords.filter(
+          (r): r is Record<string, unknown> => typeof r === "object" && r !== null
+        );
+        if (records.length > 10000) {
+          return badRequest("records must not exceed 10000 items per push");
+        }
+        const changeset: Changeset = {
+          device_id: deviceId,
+          since,
+          records: records.map((r) => ({
+            id: typeof r.id === "string" ? r.id : "",
+            content: typeof r.content === "string" ? r.content : "",
+            updated_at: typeof r.updated_at === "string" ? r.updated_at : new Date().toISOString(),
+            device_id: typeof r.device_id === "string" ? r.device_id : deviceId,
+          })),
+        };
+        const policy: ConflictPolicy =
+          body.conflict_policy === "local-wins" || body.conflict_policy === "remote-wins"
+            ? (body.conflict_policy as ConflictPolicy)
+            : "last-write-wins";
+        const result = handleSyncPush(syncStore, changeset, policy);
+        return jsonResponse({
+          ok: result.ok,
+          source: "sync",
+          items: [{ merged: result.merged, conflicts: result.conflicts }],
+          meta: {
+            count: result.merged.length,
+            latency_ms: 0,
+            sla_latency_ms: 0,
+            filters: {},
+            ranking: "sync_v1",
+          },
+        });
+      }
+
+      // HARDEN-003: GET /v1/sync/pull — since 以降の差分 changeset を返す
+      if (request.method === "GET" && url.pathname === "/v1/sync/pull") {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const sinceParam = url.searchParams.get("since") || null;
+        // ISO 8601 簡易バリデーション: 指定された場合は "YYYY-" で始まる有効な日付文字列であること
+        if (sinceParam !== null && (!/^\d{4}-/.test(sinceParam) || Number.isNaN(Date.parse(sinceParam)))) {
+          return badRequest("since must be a valid ISO 8601 date string");
+        }
+        const since = sinceParam;
+        const deviceId = url.searchParams.get("device_id") || "server";
+        const changeset = handleSyncPull(syncStore, deviceId, since);
+        return jsonResponse({
+          ok: true,
+          source: "sync",
+          items: [changeset],
+          meta: {
+            count: changeset.records.length,
+            latency_ms: 0,
+            sla_latency_ms: 0,
+            filters: {},
+            ranking: "sync_v1",
+          },
+        });
       }
 
       return new Response("Not Found", { status: 404 });

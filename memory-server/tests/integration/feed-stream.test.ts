@@ -35,7 +35,7 @@ function createRuntime(name: string): {
   return {
     core,
     dir,
-    port,
+    port: server.port,
     stop: () => {
       core.shutdown("test");
       server.stop(true);

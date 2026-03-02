@@ -26,6 +26,7 @@ import {
   handleCodeIntelligenceTool,
 } from "./tools/code-intelligence.js";
 import { memoryTools, handleMemoryTool } from "./tools/memory.js";
+import { injectAuthFromEnvironment } from "./auth-inject.js";
 
 // Server instance
 const server = new Server(
@@ -105,9 +106,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start server
 async function main() {
+  // 認証情報を自動注入（HARNESS_MEM_USER_ID / HARNESS_MEM_TEAM_ID）
+  const identity = injectAuthFromEnvironment();
+  console.error(`Harness MCP Server started (user_id=${identity.user_id}, team_id=${identity.team_id})`);
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Harness MCP Server started");
 }
 
 main().catch((error) => {

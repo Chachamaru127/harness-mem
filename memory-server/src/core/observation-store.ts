@@ -15,10 +15,12 @@
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
+import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 import { routeQuery, type RouteDecision } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import type { VectorEngine } from "../vector/providers";
+import { type AccessFilter } from "../auth/access-control";
 import type {
   ApiResponse,
   Config,
@@ -97,6 +99,8 @@ export interface ObservationStoreDeps {
   // ---- search config ----
   searchRanking: string;
   searchExpandLinks: boolean;
+  /** アクセス制御フィルタ（TEAM-005）。未設定時は全許可 */
+  accessFilter?: AccessFilter;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,6 +161,7 @@ export class ObservationStore {
       session_id?: string;
       since?: string;
       until?: string;
+      as_of?: string;
       include_private?: boolean;
       strict_project?: boolean;
     },
@@ -183,6 +188,12 @@ export class ObservationStore {
     if (filters.until) {
       nextSql += ` AND ${alias}.created_at <= ?`;
       params.push(filters.until);
+    }
+
+    // COMP-003: Point-in-time クエリ - as_of 時点以前の観察のみを対象とする
+    if (filters.as_of) {
+      nextSql += ` AND ${alias}.created_at <= ?`;
+      params.push(filters.as_of);
     }
 
     nextSql += this.deps.platformVisibilityFilterSql(alias);
@@ -457,6 +468,12 @@ export class ObservationStore {
     return matches / Math.max(tags.length, queryTokens.length);
   }
 
+  /**
+   * COMP-001: N-hop グラフ探索（activation spreading）。
+   * BFS で最大 MAX_DEPTH ホップ先まで辿り、hop ごとに DECAY を乗算してスコアを減衰させる。
+   * visited セットで循環リンクを防ぎ、既存候補(existingIds)に含まれるIDは
+   * candidateIds への追加対象外だが、graph スコアは返す（呼び出し元で判断）。
+   */
   private expandByLinks(
     topIds: string[],
     request: SearchRequest,
@@ -464,38 +481,73 @@ export class ObservationStore {
   ): Map<string, number> {
     if (topIds.length === 0) return new Map<string, number>();
 
-    const placeholders = topIds.map(() => "?").join(", ");
-    const params: unknown[] = [...topIds];
+    const MAX_DEPTH = 3;
+    const DECAY = 0.5;
 
-    let sql = `
-      SELECT
-        o.id AS id,
-        MAX(l.weight) AS weight
-      FROM mem_links l
-      JOIN mem_observations o ON o.id = l.to_observation_id
-      WHERE l.from_observation_id IN (${placeholders})
-        AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
-    `;
+    const graphScores = new Map<string, number>();
+    // processedAsSource: フロンティアとして発信元として処理済みのID（循環防止）
+    const processedAsSource = new Set<string>(topIds);
+    let frontier = new Map<string, number>(topIds.map((id) => [id, 1.0]));
 
-    sql = this.applyCommonFilters(sql, params, "o", request);
-    sql += " GROUP BY o.id ORDER BY weight DESC, o.created_at DESC LIMIT 40";
+    for (let depth = 1; depth <= MAX_DEPTH; depth++) {
+      if (frontier.size === 0) break;
 
-    try {
-      const rows = this.deps.db
-        .query(sql)
-        .all(...(params as any[])) as Array<{ id: string; weight: number }>;
+      const frontierIds = [...frontier.keys()];
+      const placeholders = frontierIds.map(() => "?").join(", ");
+      const params: unknown[] = [...frontierIds];
 
-      const raw = new Map<string, number>();
+      let sql = `
+        SELECT
+          o.id AS id,
+          MAX(l.weight) AS link_weight,
+          l.from_observation_id AS from_id
+        FROM mem_links l
+        JOIN mem_observations o ON o.id = l.to_observation_id
+        WHERE l.from_observation_id IN (${placeholders})
+          AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
+      `;
+      sql = this.applyCommonFilters(sql, params, "o", request);
+      sql += " GROUP BY o.id, l.from_observation_id ORDER BY link_weight DESC LIMIT 200";
+
+      let rows: Array<{ id: string; link_weight: number; from_id: string }>;
+      try {
+        rows = this.deps.db.query(sql).all(...(params as any[])) as typeof rows;
+      } catch {
+        break;
+      }
+
+      const nextFrontier = new Map<string, number>();
       for (const row of rows) {
         const id = typeof row.id === "string" ? row.id : "";
-        const weight = Number(row.weight ?? 0);
-        if (!id || existingIds.has(id) || Number.isNaN(weight)) continue;
-        raw.set(id, weight);
+        const fromId = typeof row.from_id === "string" ? row.from_id : "";
+        const linkWeight = Number(row.link_weight ?? 0);
+        if (!id || !fromId || id === fromId || Number.isNaN(linkWeight)) continue;
+
+        const parentScore = frontier.get(fromId) ?? 1.0;
+        const hopScore = parentScore * linkWeight * (DECAY ** (depth - 1));
+
+        // graph スコアを記録（from と to が異なるノード間のリンクのみ対象）
+        const existingGraph = graphScores.get(id) ?? 0;
+        if (hopScore > existingGraph) {
+          graphScores.set(id, hopScore);
+        }
+
+        // 次フロンティアには「まだ発信元として使っていない」IDのみ追加（循環防止）
+        if (!processedAsSource.has(id)) {
+          const existingFrontier = nextFrontier.get(id) ?? 0;
+          if (hopScore > existingFrontier) {
+            nextFrontier.set(id, hopScore);
+          }
+        }
       }
-      return normalizeScoreMap(raw);
-    } catch {
-      return new Map<string, number>();
+
+      for (const id of nextFrontier.keys()) {
+        processedAsSource.add(id);
+      }
+      frontier = nextFrontier;
     }
+
+    return normalizeScoreMap(graphScores);
   }
 
   private resolveSearchWeights(vectorCoverage: number): RankingWeights {
@@ -643,7 +695,10 @@ export class ObservationStore {
         .slice(0, 10);
       const linked = this.expandByLinks(topIds, normalizedRequest, candidateIds);
       for (const [id, score] of linked.entries()) {
-        candidateIds.add(id);
+        // 新規IDは candidateIds に追加、既存IDは graph スコアのみ更新
+        if (!candidateIds.has(id)) {
+          candidateIds.add(id);
+        }
         graph.set(id, score);
       }
     }
@@ -766,14 +821,21 @@ export class ObservationStore {
     // when a specific question kind is detected (confidence > 0.5)
     const weights = routeDecision.confidence > 0.5 ? routeDecision.weights : baseWeights;
 
+    const nowMs = Date.now();
     for (const item of ranked) {
-      item.final =
+      const rawScore =
         weights.lexical * item.lexical +
         weights.vector * item.vector +
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
         weights.importance * item.importance +
         weights.graph * item.graph;
+      // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
+      const obs = observations.get(item.id);
+      const lastAccessedAt = (obs?.last_accessed_at as string | null | undefined) ?? null;
+      const decayTier = getDecayTier(lastAccessedAt, nowMs);
+      const decayMult = getDecayMultiplier(decayTier);
+      item.final = rawScore * decayMult;
     }
 
     ranked.sort((lhs, rhs) => {
@@ -792,6 +854,9 @@ export class ObservationStore {
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
 
+      // COMP-002: decay tier を算出して返却アイテムに含める
+      const lastAccessedAt = (observation.last_accessed_at as string | null | undefined) ?? null;
+      const decayTier = getDecayTier(lastAccessedAt, nowMs);
       const item: Record<string, unknown> = {
         id: entry.id,
         event_id: observation.event_id,
@@ -807,6 +872,8 @@ export class ObservationStore {
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
+        decay_tier: decayTier,
+        access_count: Number(observation.access_count ?? 0),
         scores: {
           lexical: Number(entry.lexical.toFixed(6)),
           vector: Number(entry.vector.toFixed(6)),
@@ -927,15 +994,43 @@ export class ObservationStore {
           }
         );
       }
-      // 返却した observation の search_hit をバッチで1件記録（write amplification 対策）
-      if (items.length > 0) {
-        const resultIds = items.map((item) => item.id as string).filter(Boolean);
-        this.deps.writeAuditLog("search_hit", "observation", "", {
-          query: request.query,
-          project: normalizedProject,
-          result_ids: resultIds,
-          count: resultIds.length,
-        });
+      // 返却した observation ごとに search_hit を記録し、access_count をインクリメント
+      const hitIds = (items as Array<{ id?: unknown }>)
+        .map((item) => item.id as string)
+        .filter((id): id is string => Boolean(id));
+      if (hitIds.length > 0) {
+        try {
+          this.deps.db.transaction(() => {
+            const now = new Date().toISOString();
+            const ph = hitIds.map(() => "?").join(",");
+            // COMP-002: access_count インクリメント + last_accessed_at 更新（バッチ）
+            this.deps.db
+              .query(
+                `UPDATE mem_observations SET access_count = COALESCE(access_count,0)+1, last_accessed_at=? WHERE id IN (${ph})`
+              )
+              .run(now, ...hitIds);
+            // audit_log バッチ INSERT
+            const auditValues = hitIds.map(() => "(?,?,?,?,?,?)").join(",");
+            const auditParams: unknown[] = [];
+            for (const id of hitIds) {
+              auditParams.push(
+                "search_hit",
+                "system",
+                "observation",
+                id,
+                JSON.stringify({ query: request.query?.substring(0, 100), project: normalizedProject }),
+                now
+              );
+            }
+            this.deps.db
+              .query(
+                `INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at) VALUES ${auditValues}`
+              )
+              .run(...auditParams);
+          })();
+        } catch {
+          // best effort: access_count 更新に失敗しても検索結果は返す
+        }
       }
     } catch {
       // best effort
@@ -1017,6 +1112,8 @@ export class ObservationStore {
         o.content_redacted,
         o.tags_json,
         o.privacy_tags_json,
+        o.user_id,
+        o.team_id,
         o.created_at,
         e.event_type AS event_type
       FROM mem_observations o
@@ -1036,6 +1133,23 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
+
+    if (this.deps.accessFilter?.sql) {
+      sql += " " + this.deps.accessFilter.sql;
+      params.push(...this.deps.accessFilter.params);
+    }
+
+    // TEAM-009: user_id / team_id フィルター
+    const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
+    const teamIdFilter = typeof request.team_id === "string" && request.team_id.trim() ? request.team_id.trim() : undefined;
+    if (userIdFilter) {
+      sql += " AND o.user_id = ?";
+      params.push(userIdFilter);
+    }
+    if (teamIdFilter) {
+      sql += " AND o.team_id = ?";
+      params.push(teamIdFilter);
+    }
 
     if (cursor) {
       sql += " AND (o.created_at < ? OR (o.created_at = ? AND o.id < ?))";
@@ -1071,6 +1185,8 @@ export class ObservationStore {
         created_at: row.created_at,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: privacyTags,
+        user_id: row.user_id,
+        team_id: row.team_id,
       };
     });
 
@@ -1101,91 +1217,102 @@ export class ObservationStore {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : undefined;
-    const params: unknown[] = [];
-
-    let sql = `
-      SELECT
-        o.project,
-        o.created_at,
-        o.tags_json,
-        o.privacy_tags_json,
-        e.event_type
-      FROM mem_observations o
-      LEFT JOIN mem_events e ON e.event_id = o.event_id
-      WHERE 1 = 1
-    `;
-
-    if (normalizedProject) {
-      sql += " AND o.project = ?";
-      params.push(normalizedProject);
-    }
-
-    sql += this.deps.platformVisibilityFilterSql("o");
-    sql += visibilityFilterSql("o", includePrivate);
-
     const query = (request.query || "").trim();
-    if (query) {
-      if (this.deps.ftsEnabled) {
-        sql += `
-          AND o.rowid IN (
-            SELECT rowid
-            FROM mem_observations_fts
-            WHERE mem_observations_fts MATCH ?
-          )
-        `;
-        params.push(buildFtsQuery(query));
-      } else {
-        const escapedLike = escapeLikePattern(query);
-        sql +=
-          " AND (o.title LIKE ? ESCAPE '\\' OR o.content_redacted LIKE ? ESCAPE '\\')";
-        params.push(`%${escapedLike}%`, `%${escapedLike}%`);
+
+    // MAJOR-5: SQL GROUP BY で project・event_type・時間バケットを集計し、
+    // JS 側の全件ループを排除する。tags_json のみ JS でパースが必要なため
+    // 別途 LIMIT 付きで取得する。
+
+    // 共通 WHERE 条件を構築するヘルパー
+    const buildBaseFilter = (): { whereClauses: string; baseParams: unknown[] } => {
+      const baseParams: unknown[] = [];
+      let whereClauses = " WHERE 1 = 1";
+      if (normalizedProject) {
+        whereClauses += " AND o.project = ?";
+        baseParams.push(normalizedProject);
       }
-    }
+      whereClauses += this.deps.platformVisibilityFilterSql("o");
+      whereClauses += visibilityFilterSql("o", includePrivate);
+      if (this.deps.accessFilter?.sql) {
+        whereClauses += " " + this.deps.accessFilter.sql;
+        baseParams.push(...this.deps.accessFilter.params);
+      }
+      if (query) {
+        if (this.deps.ftsEnabled) {
+          whereClauses += ` AND o.rowid IN (SELECT rowid FROM mem_observations_fts WHERE mem_observations_fts MATCH ?)`;
+          baseParams.push(buildFtsQuery(query));
+        } else {
+          const escapedLike = escapeLikePattern(query);
+          whereClauses += " AND (o.title LIKE ? ESCAPE '\\' OR o.content_redacted LIKE ? ESCAPE '\\')";
+          baseParams.push(`%${escapedLike}%`, `%${escapedLike}%`);
+        }
+      }
+      return { whereClauses, baseParams };
+    };
 
-    sql += " ORDER BY o.created_at DESC LIMIT 5000";
+    const { whereClauses, baseParams } = buildBaseFilter();
 
-    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<{
-      project: string;
-      created_at: string;
-      tags_json: string;
-      privacy_tags_json: string;
-      event_type: string;
-    }>;
+    // (1) project 集計: SQL GROUP BY
+    const projectRows = this.deps.db
+      .query(
+        `SELECT COALESCE(o.project,'unknown') AS value, COUNT(*) AS cnt
+         FROM mem_observations o${whereClauses}
+         GROUP BY o.project
+         ORDER BY cnt DESC
+         LIMIT 30`
+      )
+      .all(...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
 
-    const projectCounts = new Map<string, number>();
-    const eventTypeCounts = new Map<string, number>();
+    // (2) event_type 集計: SQL GROUP BY
+    const eventTypeRows = this.deps.db
+      .query(
+        `SELECT COALESCE(e.event_type,'unknown') AS value, COUNT(*) AS cnt
+         FROM mem_observations o
+         LEFT JOIN mem_events e ON e.event_id = o.event_id${whereClauses}
+         GROUP BY e.event_type
+         ORDER BY cnt DESC
+         LIMIT 20`
+      )
+      .all(...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
+
+    // (3) 時間バケット集計: SQL CASE 式で分類
+    const nowIsoForSql = new Date().toISOString();
+    const bucketRows = this.deps.db
+      .query(
+        `SELECT
+           CASE
+             WHEN o.created_at >= datetime(?, '-1 day')   THEN '24h'
+             WHEN o.created_at >= datetime(?, '-7 days')  THEN '7d'
+             WHEN o.created_at >= datetime(?, '-30 days') THEN '30d'
+             ELSE 'older'
+           END AS value,
+           COUNT(*) AS cnt
+         FROM mem_observations o${whereClauses}
+         GROUP BY value`
+      )
+      .all(nowIsoForSql, nowIsoForSql, nowIsoForSql, ...(baseParams as any[])) as Array<{ value: string; cnt: number }>;
+
+    // (4) total_candidates
+    const totalRow = this.deps.db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_observations o${whereClauses}`)
+      .get(...(baseParams as any[])) as { cnt: number } | null;
+    const totalCandidates = Number(totalRow?.cnt ?? 0);
+
+    // (5) tags_json: JS パースが必要なため LIMIT 付きで取得
+    const tagRows = this.deps.db
+      .query(
+        `SELECT o.tags_json
+         FROM mem_observations o${whereClauses}
+         ORDER BY o.created_at DESC
+         LIMIT 5000`
+      )
+      .all(...(baseParams as any[])) as Array<{ tags_json: string }>;
+
     const tagCounts = new Map<string, number>();
-    const timeBucketCounts = new Map<string, number>([
-      ["24h", 0],
-      ["7d", 0],
-      ["30d", 0],
-      ["older", 0],
-    ]);
-
-    const now = Date.now();
-    for (const row of rows) {
-      const project = row.project || "unknown";
-      const eventType = row.event_type || "unknown";
-      projectCounts.set(project, (projectCounts.get(project) || 0) + 1);
-      eventTypeCounts.set(eventType, (eventTypeCounts.get(eventType) || 0) + 1);
-
+    for (const row of tagRows) {
       const tags = parseArrayJson(row.tags_json);
       for (const tag of tags) {
         tagCounts.set(tag, (tagCounts.get(tag) || 0) + 1);
-      }
-
-      const createdMs = Date.parse(row.created_at || "");
-      if (!Number.isNaN(createdMs)) {
-        const ageHours = (now - createdMs) / (1000 * 60 * 60);
-        if (ageHours <= 24) {
-          timeBucketCounts.set("24h", (timeBucketCounts.get("24h") || 0) + 1);
-        } else if (ageHours <= 24 * 7) {
-          timeBucketCounts.set("7d", (timeBucketCounts.get("7d") || 0) + 1);
-        } else if (ageHours <= 24 * 30) {
-          timeBucketCounts.set("30d", (timeBucketCounts.get("30d") || 0) + 1);
-        } else {
-          timeBucketCounts.set("older", (timeBucketCounts.get("older") || 0) + 1);
-        }
       }
     }
 
@@ -1196,16 +1323,30 @@ export class ObservationStore {
           (lhs, rhs) => rhs.count - lhs.count || lhs.value.localeCompare(rhs.value)
         );
 
+    const toFacetArrayFromRows = (rows: Array<{ value: string; cnt: number }>) =>
+      rows.map((r) => ({ value: r.value, count: Number(r.cnt) }));
+
+    // 時間バケットは固定順で返す
+    const bucketMap = new Map<string, number>(
+      bucketRows.map((r) => [r.value, Number(r.cnt)])
+    );
+    const timeBuckets = [
+      { value: "24h", count: bucketMap.get("24h") ?? 0 },
+      { value: "7d", count: bucketMap.get("7d") ?? 0 },
+      { value: "30d", count: bucketMap.get("30d") ?? 0 },
+      { value: "older", count: bucketMap.get("older") ?? 0 },
+    ];
+
     return makeResponse(
       startedAt,
       [
         {
           query: query || null,
-          total_candidates: rows.length,
-          projects: toFacetArray(projectCounts).slice(0, 30),
-          event_types: toFacetArray(eventTypeCounts).slice(0, 20),
+          total_candidates: totalCandidates,
+          projects: toFacetArrayFromRows(projectRows),
+          event_types: toFacetArrayFromRows(eventTypeRows),
           tags: toFacetArray(tagCounts).slice(0, 50),
-          time_buckets: toFacetArray(timeBucketCounts),
+          time_buckets: timeBuckets,
         },
       ],
       {
@@ -1360,11 +1501,26 @@ export class ObservationStore {
     const observationMap = loadObservations(this.deps.db, ids);
     const includePrivate = Boolean(request.include_private);
     const compact = request.compact !== false;
+    const accessFilter = this.deps.accessFilter;
 
     const items: Array<Record<string, unknown>> = [];
     for (const id of ids) {
       const row = observationMap.get(id);
       if (!row) continue;
+
+      // アクセス制御: admin は全許可、member は自分 or 同チームのみ
+      if (accessFilter?.sql) {
+        const rowUserId = typeof row.user_id === "string" ? row.user_id : "";
+        const rowTeamId = typeof row.team_id === "string" ? row.team_id : null;
+        const params = accessFilter.params as string[];
+        const allowedUserId = params[0] ?? "";
+        const allowedTeamId = params[1] ?? null;
+        const allowed = rowUserId === allowedUserId ||
+          (allowedTeamId !== null && rowTeamId === allowedTeamId);
+        if (!allowed) {
+          continue;
+        }
+      }
 
       const privacyTags = parseArrayJson(row.privacy_tags_json);
       if (!includePrivate && isPrivateTag(privacyTags)) continue;

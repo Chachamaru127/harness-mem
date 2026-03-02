@@ -100,7 +100,7 @@ function createRuntime(name: string): {
   return {
     dir,
     sourceDbPath,
-    baseUrl: `http://127.0.0.1:${port}`,
+    baseUrl: `http://127.0.0.1:${server.port}`,
     stop: () => {
       core.shutdown("test");
       server.stop(true);

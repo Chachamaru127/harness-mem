@@ -5,7 +5,7 @@ export interface ModelCatalogEntry {
   tokenizerRepo: string;
   dimension: number;
   sizeBytes: number;
-  language: string;
+  language: "ja" | "en" | "multilingual";
   queryPrefix?: string;
   passagePrefix?: string;
 }
@@ -41,6 +41,39 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     language: "en",
     queryPrefix: "query: ",
     passagePrefix: "passage: ",
+  },
+  // COMP-005: 追加3モデル（計6モデル）
+  {
+    id: "bge-small",
+    displayName: "BGE Small v1.5 (English/Chinese)",
+    onnxRepo: "Xenova/bge-small-en-v1.5",
+    tokenizerRepo: "Xenova/bge-small-en-v1.5",
+    dimension: 384,
+    sizeBytes: 67_000_000,
+    language: "en",
+    queryPrefix: "Represent this sentence for searching relevant passages: ",
+  },
+  {
+    id: "multilingual-e5",
+    displayName: "Multilingual E5 Small (100+ languages)",
+    onnxRepo: "Xenova/multilingual-e5-small",
+    tokenizerRepo: "Xenova/multilingual-e5-small",
+    dimension: 384,
+    sizeBytes: 117_000_000,
+    language: "multilingual",
+    queryPrefix: "query: ",
+    passagePrefix: "passage: ",
+  },
+  {
+    id: "nomic-embed",
+    displayName: "Nomic Embed Text v1 (English)",
+    onnxRepo: "nomic-ai/nomic-embed-text-v1",
+    tokenizerRepo: "nomic-ai/nomic-embed-text-v1",
+    dimension: 768,
+    sizeBytes: 274_000_000,
+    language: "en",
+    queryPrefix: "search_query: ",
+    passagePrefix: "search_document: ",
   },
 ];
 

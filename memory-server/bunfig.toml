@@ -1,0 +1,3 @@
+[test]
+# memory-server のテストは Node/Bun ネイティブ環境で実行するため
+# ルートの bunfig.toml で設定された jsdom preload を上書きして無効化する

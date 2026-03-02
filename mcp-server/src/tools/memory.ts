@@ -10,6 +10,7 @@ import * as path from "path";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { getProjectRoot } from "../utils.js";
+import { applyPiiFilter, getActivePiiRules } from "../pii/pii-filter.js";
 
 interface MemoryApiResponse {
   ok: boolean;
@@ -34,7 +35,15 @@ const execFileAsync = promisify(execFile);
 const HEALTH_CACHE_MS = 5000;
 let lastHealthyAt = 0;
 
-function getBaseUrl(): string {
+export function isRemoteMode(): boolean {
+  return !!(process.env.HARNESS_MEM_REMOTE_URL || "").trim();
+}
+
+export function getBaseUrl(): string {
+  const remoteUrl = (process.env.HARNESS_MEM_REMOTE_URL || "").trim();
+  if (remoteUrl) {
+    return remoteUrl.replace(/\/$/, "");
+  }
   const host = process.env.HARNESS_MEM_HOST || "127.0.0.1";
   const port = process.env.HARNESS_MEM_PORT || "37888";
   return `http://${host}:${port}`;
@@ -123,6 +132,16 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
     return;
   }
 
+  // リモートモードではローカルデーモン起動をスキップし、リモートの /v1/health を確認する
+  if (isRemoteMode()) {
+    const healthy = await tryHealthCheck(baseUrl);
+    if (healthy) {
+      lastHealthyAt = Date.now();
+      return;
+    }
+    throw new Error(`リモート memory server (${baseUrl}) へのヘルスチェックに失敗しました。VPS が起動しているか確認してください。`);
+  }
+
   const healthy = await tryHealthCheck(baseUrl);
   if (healthy) {
     lastHealthyAt = Date.now();
@@ -143,11 +162,16 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
   throw new Error("harness-memd health check failed after 10 retries");
 }
 
-function buildApiHeaders(): Record<string, string> {
+export function buildApiHeaders(): Record<string, string> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
   };
-  const token = process.env.HARNESS_MEM_ADMIN_TOKEN?.trim();
+  // リモートモードでは HARNESS_MEM_REMOTE_TOKEN を優先使用
+  const remoteToken = isRemoteMode()
+    ? (process.env.HARNESS_MEM_REMOTE_TOKEN || "").trim()
+    : "";
+  const localToken = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
+  const token = remoteToken || localToken;
   if (token) {
     headers["x-harness-mem-token"] = token;
     headers.authorization = `Bearer ${token}`;
@@ -158,7 +182,7 @@ function buildApiHeaders(): Record<string, string> {
 async function callMemoryApi(
   endpoint: string,
   payload: Record<string, unknown> | null,
-  method: "GET" | "POST" = "POST"
+  method: "GET" | "POST" | "DELETE" = "POST"
 ): Promise<MemoryApiResponse> {
   const baseUrl = getBaseUrl();
 
@@ -411,6 +435,20 @@ export const memoryTools: Tool[] = [
     },
   },
   {
+    name: "harness_mem_delete_observation",
+    description: "Soft-delete (archive) a specific observation by ID. The observation is marked as deleted and excluded from search results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        observation_id: {
+          type: "string",
+          description: "The ID of the observation to delete",
+        },
+      },
+      required: ["observation_id"],
+    },
+  },
+  {
     name: "harness_mem_admin_import_claude_mem",
     description: "Run one-shot import from Claude-mem SQLite.",
     inputSchema: {
@@ -499,6 +537,124 @@ export const memoryTools: Tool[] = [
         target_type: { type: "string" },
       },
       required: [],
+    },
+  },
+  {
+    name: "harness_mem_add_relation",
+    description: "Add a directed relation (link) between two observations.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        from_observation_id: { type: "string", description: "Source observation ID" },
+        to_observation_id: { type: "string", description: "Target observation ID" },
+        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Relation type" },
+        weight: { type: "number", description: "Link weight (default: 1.0)" },
+      },
+      required: ["from_observation_id", "to_observation_id", "relation"],
+    },
+  },
+  {
+    name: "harness_mem_bulk_add",
+    description: "Record multiple observations in a single batch operation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        events: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              platform: { type: "string" },
+              project: { type: "string" },
+              session_id: { type: "string" },
+              event_type: { type: "string" },
+              title: { type: "string" },
+              content: { type: "string" },
+              tags: { type: "array", items: { type: "string" } },
+            },
+            required: ["platform", "project", "session_id", "event_type"],
+          },
+          description: "Array of events to record",
+        },
+      },
+      required: ["events"],
+    },
+  },
+  {
+    name: "harness_mem_bulk_delete",
+    description: "Soft-delete multiple observations by ID in a single batch operation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        ids: { type: "array", items: { type: "string" }, description: "Array of observation IDs to delete" },
+      },
+      required: ["ids"],
+    },
+  },
+  {
+    name: "harness_mem_export",
+    description: "Export observations as JSON for backup or analysis.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Filter by project (optional)" },
+        limit: { type: "number", description: "Maximum number of observations to export (default: 1000)" },
+        include_private: { type: "boolean", description: "Include deleted/private observations" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "harness_mem_compress",
+    description: "Run consolidation (compress/dedupe) worker immediately to extract facts and reduce redundancy.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        reason: { type: "string" },
+        project: { type: "string" },
+        session_id: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "harness_mem_stats",
+    description: "Get per-project memory statistics including observation counts and session summaries.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        include_private: { type: "boolean" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "harness_mem_ingest",
+    description: "Ingest a document (knowledge file, ADR, decisions.md) into memory.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        file_path: { type: "string", description: "Path identifier for the document" },
+        content: { type: "string", description: "Text content of the document" },
+        kind: { type: "string", enum: ["decisions_md", "adr"], description: "Document kind (auto-detected if omitted)" },
+        project: { type: "string" },
+        platform: { type: "string" },
+        session_id: { type: "string" },
+      },
+      required: ["file_path", "content"],
+    },
+  },
+  {
+    name: "harness_mem_graph",
+    description: "Explore graph neighbors of an observation (linked observations by relation).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        observation_id: { type: "string", description: "Source observation ID to explore neighbors from" },
+        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Filter by relation type" },
+      },
+      required: ["observation_id"],
     },
   },
 ];
@@ -618,11 +774,15 @@ export async function handleMemoryTool(
       case "harness_mem_record_checkpoint": {
         const sessionId = toStringOrUndefined(input.session_id);
         const title = toStringOrUndefined(input.title);
-        const content = toStringOrUndefined(input.content);
+        const rawContent = toStringOrUndefined(input.content);
 
-        if (!sessionId || !title || !content) {
+        if (!sessionId || !title || !rawContent) {
           return errorResult("session_id, title, content are required");
         }
+
+        // PII フィルタ適用（HARNESS_MEM_PII_FILTER=true の場合のみ有効）
+        const piiRules = getActivePiiRules();
+        const content = piiRules ? applyPiiFilter(rawContent, piiRules) : rawContent;
 
         const response = await callMemoryApi("/v1/checkpoints/record", {
           platform: toStringOrUndefined(input.platform),
@@ -665,6 +825,15 @@ export async function handleMemoryTool(
 
       case "harness_mem_health": {
         const response = await callMemoryApi("/health", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_delete_observation": {
+        const observationId = toStringOrUndefined(input.observation_id);
+        if (!observationId) {
+          return errorResult("observation_id is required");
+        }
+        const response = await callMemoryApi(`/v1/observations/${encodeURIComponent(observationId)}`, null, "DELETE");
         return successResult(response);
       }
 
@@ -739,6 +908,106 @@ export async function handleMemoryTool(
         const targetType = toStringOrUndefined(input.target_type);
         if (targetType) query.set("target_type", targetType);
         const response = await callMemoryApi(`/v1/admin/audit-log?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_add_relation": {
+        const fromId = toStringOrUndefined(input.from_observation_id);
+        const toId = toStringOrUndefined(input.to_observation_id);
+        const relation = toStringOrUndefined(input.relation);
+        if (!fromId || !toId || !relation) {
+          return errorResult("from_observation_id, to_observation_id, relation are required");
+        }
+        const response = await callMemoryApi("/v1/links/create", {
+          from_observation_id: fromId,
+          to_observation_id: toId,
+          relation,
+          weight: toNumberOrUndefined(input.weight),
+        });
+        return successResult(response);
+      }
+
+      case "harness_mem_bulk_add": {
+        const events = Array.isArray(input.events) ? (input.events as Record<string, unknown>[]) : [];
+        if (events.length === 0) {
+          return errorResult("events is required and must not be empty");
+        }
+        const results = await Promise.all(
+          events.map((event) => callMemoryApi("/v1/events/record", { event }))
+        );
+        const combinedResponse = {
+          ok: true,
+          source: "core" as const,
+          items: results,
+          meta: { count: results.length, latency_ms: 0, filters: {}, ranking: "bulk_add_v1" },
+        };
+        return successResult(combinedResponse);
+      }
+
+      case "harness_mem_bulk_delete": {
+        const ids = toStringArray(input.ids);
+        if (ids.length === 0) {
+          return errorResult("ids is required and must not be empty");
+        }
+        const response = await callMemoryApi("/v1/observations/bulk-delete", { ids });
+        return successResult(response);
+      }
+
+      case "harness_mem_export": {
+        const query = new URLSearchParams();
+        const project = toStringOrUndefined(input.project);
+        if (project) query.set("project", project);
+        const limit = toNumberOrUndefined(input.limit);
+        if (typeof limit === "number") query.set("limit", String(limit));
+        query.set("include_private", toBoolean(input.include_private, false) ? "true" : "false");
+        const response = await callMemoryApi(`/v1/export?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_compress": {
+        const response = await callMemoryApi("/v1/admin/consolidation/run", {
+          reason: toStringOrUndefined(input.reason),
+          project: toStringOrUndefined(input.project),
+          session_id: toStringOrUndefined(input.session_id),
+          limit: toNumberOrUndefined(input.limit),
+        });
+        return successResult(response);
+      }
+
+      case "harness_mem_stats": {
+        const query = new URLSearchParams();
+        query.set("include_private", toBoolean(input.include_private, false) ? "true" : "false");
+        const response = await callMemoryApi(`/v1/projects/stats?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_ingest": {
+        const filePath = toStringOrUndefined(input.file_path);
+        const content = toStringOrUndefined(input.content);
+        if (!filePath || !content) {
+          return errorResult("file_path and content are required");
+        }
+        const response = await callMemoryApi("/v1/ingest/document", {
+          file_path: filePath,
+          content,
+          kind: toStringOrUndefined(input.kind),
+          project: toStringOrUndefined(input.project),
+          platform: toStringOrUndefined(input.platform),
+          session_id: toStringOrUndefined(input.session_id),
+        });
+        return successResult(response);
+      }
+
+      case "harness_mem_graph": {
+        const observationId = toStringOrUndefined(input.observation_id);
+        if (!observationId) {
+          return errorResult("observation_id is required");
+        }
+        const query = new URLSearchParams();
+        query.set("observation_id", observationId);
+        const relation = toStringOrUndefined(input.relation);
+        if (relation) query.set("relation", relation);
+        const response = await callMemoryApi(`/v1/graph/neighbors?${query.toString()}`, null, "GET");
         return successResult(response);
       }
 

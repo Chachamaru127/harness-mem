@@ -24,6 +24,17 @@
  */
 
 export { HarnessMemClient } from "./client.js";
+export { HarnessMemLangChainMemory } from "./langchain-memory.js";
+// NEXT-009: フレームワーク統合（integrations.ts）
+export {
+  HarnessMemLangChainMemory as LangChainMemory,
+  HarnessMemLlamaIndexMemory,
+} from "./integrations.js";
+export type {
+  LangChainMemoryOptions,
+  LlamaIndexMemoryOptions,
+  ChatMessage,
+} from "./integrations.js";
 export type {
   HarnessMemClientOptions,
   ApiResponse,
@@ -42,3 +53,4 @@ export type {
   AuditLogItem,
   SearchFacetsInput,
 } from "./types.js";
+export type { HarnessMemLangChainMemoryOptions } from "./langchain-memory.js";

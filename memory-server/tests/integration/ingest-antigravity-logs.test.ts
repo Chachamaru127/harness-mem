@@ -86,10 +86,11 @@ function createRuntime(name: string): {
     workspaceRoot,
     project,
     normalizedProject,
-    baseUrl: `http://127.0.0.1:${port}`,
-    stop: () => {
+    baseUrl: `http://127.0.0.1:${server.port}`,
+    stop: async () => {
       core.shutdown("test");
       server.stop(true);
+      await new Promise((r) => setTimeout(r, 50));
       rmSync(dir, { recursive: true, force: true });
     },
   };
@@ -138,7 +139,7 @@ describe("antigravity logs ingest integration", () => {
       expect(ingestAgain.ok).toBe(true);
       expect(ingestAgain.items[0]?.events_imported).toBe(0);
     } finally {
-      runtime.stop();
+      await runtime.stop();
     }
   });
 });

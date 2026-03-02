@@ -494,13 +494,17 @@ export function ensureSession(
   platform: string,
   project: string,
   ts: string,
-  correlationId?: string | null
+  correlationId?: string | null,
+  userId?: string | null,
+  teamId?: string | null
 ): void {
   const current = new Date().toISOString();
+  const resolvedUserId = userId ?? "default";
+  const resolvedTeamId = teamId ?? null;
   db.query(`
     INSERT INTO mem_sessions(
-      session_id, platform, project, started_at, correlation_id, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+      session_id, platform, project, started_at, correlation_id, user_id, team_id, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(session_id) DO UPDATE SET
       started_at = CASE
         WHEN mem_sessions.started_at <= excluded.started_at THEN mem_sessions.started_at
@@ -508,7 +512,7 @@ export function ensureSession(
       END,
       correlation_id = COALESCE(mem_sessions.correlation_id, excluded.correlation_id),
       updated_at = excluded.updated_at
-  `).run(sessionId, platform, project, ts, correlationId ?? null, current, current);
+  `).run(sessionId, platform, project, ts, correlationId ?? null, resolvedUserId, resolvedTeamId, current, current);
 }
 
 // ---------------------------------------------------------------------------
@@ -546,6 +550,8 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
             o.tags_json,
             o.privacy_tags_json,
             o.signal_score,
+            o.access_count,
+            o.last_accessed_at,
             o.created_at,
             o.updated_at,
             e.event_type

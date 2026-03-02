@@ -7,7 +7,10 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test"
+    "test": "bun test tests/unit && bun test tests/integration",
+    "test:unit": "bun test tests/unit",
+    "test:integration": "bun test tests/integration",
+    "test:benchmark": "bun test tests/benchmark"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -15,6 +18,7 @@
     "typescript": "^5.7.2"
   },
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1"
+    "@huggingface/transformers": "^3.8.1",
+    "pdf-parse": "^2.4.5"
   }
 }

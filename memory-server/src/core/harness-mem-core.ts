@@ -118,6 +118,7 @@ export type {
   TimelineRequest,
   VerifyImportRequest,
 } from "./types.js";
+import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 const DEFAULT_BIND_HOST = "127.0.0.1";
@@ -1032,6 +1033,76 @@ export class HarnessMemCore {
     return this.sessionMgr.sessionThread(request);
   }
 
+  /**
+   * 複数の observation を一括ソフトデリート（privacy_tags に "deleted" を付与）する。
+   */
+  bulkDeleteObservations(request: { ids: string[] }): ApiResponse {
+    const startedAt = performance.now();
+    const { ids } = request;
+    if (!ids || ids.length === 0) {
+      return makeErrorResponse(startedAt, "ids is required and must not be empty", request as unknown as Record<string, unknown>);
+    }
+    if (ids.length > 500) {
+      return makeErrorResponse(startedAt, `ids length exceeds maximum of 500 (got ${ids.length})`, request as unknown as Record<string, unknown>);
+    }
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+    for (const id of ids) {
+      try {
+        const existing = this.db.query(`SELECT id, privacy_tags FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string } | null;
+        if (!existing) {
+          skipped.push(id);
+          continue;
+        }
+        const tags: string[] = existing.privacy_tags ? JSON.parse(existing.privacy_tags) : [];
+        if (!tags.includes("deleted")) {
+          tags.push("deleted");
+        }
+        this.db.query(`UPDATE mem_observations SET privacy_tags = ? WHERE id = ?`).run(JSON.stringify(tags), id);
+        deleted.push(id);
+      } catch {
+        skipped.push(id);
+      }
+    }
+    return makeResponse(
+      startedAt,
+      [{ deleted, skipped }],
+      { ids },
+      { deleted_count: deleted.length, skipped_count: skipped.length }
+    );
+  }
+
+  /**
+   * 観察データを JSON 形式でエクスポートする。
+   */
+  exportObservations(request: { project?: string; limit?: number; include_private?: boolean }): ApiResponse {
+    const startedAt = performance.now();
+    const { project, limit = 1000, include_private = false } = request;
+    try {
+      let sql = `
+        SELECT id, platform, project, session_id, event_type, title, content,
+               created_at, tags, privacy_tags
+        FROM mem_observations
+        WHERE 1=1
+      `;
+      const params: unknown[] = [];
+      if (project) {
+        sql += ` AND project = ?`;
+        params.push(project);
+      }
+      if (!include_private) {
+        sql += ` AND (privacy_tags IS NULL OR privacy_tags NOT LIKE '%"deleted"%')`;
+      }
+      sql += ` ORDER BY created_at DESC LIMIT ?`;
+      params.push(limit);
+
+      const rows = this.db.query(sql).all(...(params as any[]));
+      return makeResponse(startedAt, rows as Record<string, unknown>[], { project, limit, include_private }, { ranking: "export_v1" });
+    } catch (err) {
+      return makeErrorResponse(startedAt, `export failed: ${String(err)}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
   recordCheckpoint(request: RecordCheckpointRequest): ApiResponse {
     return this.sessionMgr.recordCheckpoint(request);
   }
@@ -1535,14 +1606,228 @@ export class HarnessMemCore {
       // best effort
     }
   }
+
+  /**
+   * COMP-006: メモリ圧縮エンジン
+   * strategy: "prune" | "merge" | "none"
+   * - prune: 低 confidence (<0.5) のファクトを soft-delete（superseded_by を設定）
+   * - merge: 同一 fact_key の重複ファクトを最新1件に統合（merged_into_fact_id を設定）
+   * - none: 統計のみ返す
+   * dry_run=true: 実際には変更しない
+   *
+   * observations_before/after はアクティブなファクト数を返す（ファクト圧縮のため）
+   */
+  compressMemory(request: {
+    strategy: "prune" | "merge" | "none";
+    project?: string;
+    dry_run?: boolean;
+  }): { ok: boolean; strategy: string; observations_before: number; observations_after: number; pruned_count: number; merged_count: number } {
+    const { strategy, project, dry_run = false } = request;
+
+    const countActiveFacts = (proj?: string): number => {
+      if (proj) {
+        const row = this.db.query(
+          `SELECT COUNT(*) AS c FROM mem_facts
+           WHERE project = ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL`
+        ).get(proj) as { c?: number } | null;
+        return Number(row?.c ?? 0);
+      }
+      const row = this.db.query(
+        `SELECT COUNT(*) AS c FROM mem_facts
+         WHERE merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL`
+      ).get() as { c?: number } | null;
+      return Number(row?.c ?? 0);
+    };
+
+    const obsBefore = countActiveFacts(project);
+
+    if (strategy === "none" || dry_run) {
+      return {
+        ok: true,
+        strategy,
+        observations_before: obsBefore,
+        observations_after: obsBefore,
+        pruned_count: 0,
+        merged_count: 0,
+      };
+    }
+
+    let prunedCount = 0;
+    let mergedCount = 0;
+    const now = nowIso();
+
+    if (strategy === "prune") {
+      // prune: confidence < 0.5 のアクティブなファクトを valid_to で soft-delete
+      const projectClause = project ? `AND project = ?` : "";
+      const pruneParams: unknown[] = project ? [now, now, project] : [now, now];
+
+      const result = this.db.query(
+        `UPDATE mem_facts
+         SET valid_to = ?, updated_at = ?
+         WHERE confidence < 0.5
+           AND merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL
+           ${projectClause}`
+      ).run(...(pruneParams as []));
+      prunedCount = Number((result as { changes?: number }).changes ?? 0);
+    }
+
+    if (strategy === "merge") {
+      // merge: 同一 project + fact_key の重複ファクトを最新1件に統合
+      const projectClause = project ? `AND project = ?` : "";
+      const mergeParams: unknown[] = project ? [project] : [];
+
+      // 重複する fact_key ごとに、最新を除く古いファクトを merged_into_fact_id で統合
+      const duplicates = this.db.query(
+        `SELECT fact_key, MAX(created_at) AS latest_at, COUNT(*) AS cnt
+         FROM mem_facts
+         WHERE merged_into_fact_id IS NULL
+           AND superseded_by IS NULL
+           AND valid_to IS NULL
+           ${projectClause}
+         GROUP BY fact_key
+         HAVING COUNT(*) > 1
+         LIMIT 200`
+      ).all(...(mergeParams as [])) as Array<{ fact_key: string; latest_at: string; cnt: number }>;
+
+      for (const dup of duplicates) {
+        const keepParams: unknown[] = project
+          ? [dup.fact_key, dup.latest_at, project]
+          : [dup.fact_key, dup.latest_at];
+        const projectFilt = project ? `AND project = ?` : "";
+
+        const keepRow = this.db.query(
+          `SELECT fact_id FROM mem_facts
+           WHERE fact_key = ?
+             AND created_at = ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL
+             ${projectFilt}
+           LIMIT 1`
+        ).get(...(keepParams as [])) as { fact_id: string } | null;
+
+        if (!keepRow) continue;
+        const keepId = keepRow.fact_id;
+
+        const dupFactParams: unknown[] = project
+          ? [dup.fact_key, keepId, project]
+          : [dup.fact_key, keepId];
+        const projectFilt2 = project ? `AND project = ?` : "";
+
+        const dupResult = this.db.query(
+          `UPDATE mem_facts
+           SET merged_into_fact_id = ?, updated_at = ?
+           WHERE fact_key = ?
+             AND fact_id != ?
+             AND merged_into_fact_id IS NULL
+             AND superseded_by IS NULL
+             AND valid_to IS NULL
+             ${projectFilt2}`
+        ).run(keepId, now, ...(dupFactParams as []));
+        mergedCount += Number((dupResult as { changes?: number }).changes ?? 0);
+      }
+    }
+
+    const obsAfter = countActiveFacts(project);
+
+    try {
+      this.writeAuditLog("admin.compress", "facts", "", {
+        strategy,
+        project: project || "*",
+        observations_before: obsBefore,
+        observations_after: obsAfter,
+        pruned_count: prunedCount,
+        merged_count: mergedCount,
+      });
+    } catch {
+      // best effort
+    }
+
+    return {
+      ok: true,
+      strategy,
+      observations_before: obsBefore,
+      observations_after: obsAfter,
+      pruned_count: prunedCount,
+      merged_count: mergedCount,
+    };
+  }
+
+  /**
+   * TEAM-010: ナレッジマップ + 利用統計
+   * ファクト分布（fact_type 別）、プロジェクト別観察数、総合統計を返す。
+   */
+  knowledgeStats(_request: Record<string, unknown>): ApiResponse {
+    const startedAt = performance.now();
+
+    // ファクト分布（fact_type 別カウント）
+    const factsByType = this.db.query(
+      `SELECT fact_type, COUNT(*) AS count
+       FROM mem_facts
+       WHERE merged_into_fact_id IS NULL
+         AND superseded_by IS NULL
+         AND valid_to IS NULL
+       GROUP BY fact_type
+       ORDER BY count DESC`
+    ).all() as Array<{ fact_type: string; count: number }>;
+
+    // プロジェクト別観察数
+    const obsByProject = this.db.query(
+      `SELECT project, COUNT(*) AS count
+       FROM mem_observations
+       GROUP BY project
+       ORDER BY count DESC
+       LIMIT 50`
+    ).all() as Array<{ project: string; count: number }>;
+
+    // 総合統計
+    const totals = this.db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM mem_observations) AS total_observations,
+         (SELECT COUNT(*) FROM mem_facts
+          WHERE merged_into_fact_id IS NULL AND superseded_by IS NULL AND valid_to IS NULL) AS total_active_facts,
+         (SELECT COUNT(*) FROM mem_facts) AS total_facts_all,
+         (SELECT COUNT(*) FROM mem_sessions) AS total_sessions,
+         (SELECT COUNT(*) FROM mem_links) AS total_links`
+    ).get() as {
+      total_observations: number;
+      total_active_facts: number;
+      total_facts_all: number;
+      total_sessions: number;
+      total_links: number;
+    } | null;
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          facts_by_type: factsByType.map((r) => ({ fact_type: r.fact_type, count: Number(r.count) })),
+          observations_by_project: obsByProject.map((r) => ({ project: r.project, count: Number(r.count) })),
+          total_observations: Number(totals?.total_observations ?? 0),
+          total_facts: Number(totals?.total_active_facts ?? 0),
+          total_facts_including_merged: Number(totals?.total_facts_all ?? 0),
+          total_sessions: Number(totals?.total_sessions ?? 0),
+          total_links: Number(totals?.total_links ?? 0),
+        },
+      ],
+      _request,
+      { ranking: "knowledge_stats_v1" }
+    );
+  }
 }
 
 export function getConfig(): Config {
   const dbPath = process.env.HARNESS_MEM_DB_PATH || DEFAULT_DB_PATH;
   const rawBindHost = (process.env.HARNESS_MEM_HOST || DEFAULT_BIND_HOST).trim();
-  const bindHost = rawBindHost === "127.0.0.1" || rawBindHost === "localhost"
-    ? rawBindHost
-    : DEFAULT_BIND_HOST;
+  // リモートバインドを許可する（起動時の安全チェックは index.ts / startHarnessMemServer 側で実施）
+  const bindHost = rawBindHost || DEFAULT_BIND_HOST;
   const bindPortRaw = process.env.HARNESS_MEM_PORT;
   const bindPort = bindPortRaw ? Number(bindPortRaw) : DEFAULT_BIND_PORT;
   const codexIngestIntervalRaw = Number(process.env.HARNESS_MEM_CODEX_INGEST_INTERVAL_MS || DEFAULT_CODEX_INGEST_INTERVAL_MS);
@@ -1669,6 +1954,9 @@ export function getConfig(): Config {
       const raw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
       return Number.isFinite(raw) && raw > 0 ? raw : undefined;
     })(),
+    // TEAM-003: ユーザー・チーム識別
+    userId: (process.env.HARNESS_MEM_USER_ID || "").trim() || undefined,
+    teamId: (process.env.HARNESS_MEM_TEAM_ID || "").trim() || undefined,
   };
 }
 

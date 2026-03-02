@@ -1,0 +1,65 @@
+name: pgvector Integration Tests
+
+on:
+  pull_request:
+    paths:
+      - "memory-server/src/db/**"
+      - "tests/unit/pgvector-search.test.ts"
+      - ".github/workflows/pgvector-integration.yml"
+      - "docker-compose.test.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "memory-server/src/db/**"
+      - "tests/unit/pgvector-search.test.ts"
+      - ".github/workflows/pgvector-integration.yml"
+      - "docker-compose.test.yml"
+
+jobs:
+  pgvector-integration:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: harness
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: harness_test
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U harness -d harness_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_URL: postgres://harness:test@localhost:5433/harness_test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install dependencies
+        shell: bash
+        run: bun install --frozen-lockfile
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Run pgvector integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun test tests/unit/pgvector-search.test.ts

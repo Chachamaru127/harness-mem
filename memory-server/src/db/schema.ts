@@ -18,6 +18,8 @@ export function initSchema(db: Database): void {
       summary TEXT,
       summary_mode TEXT,
       correlation_id TEXT,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      team_id TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -38,6 +40,8 @@ export function initSchema(db: Database): void {
       dedupe_hash TEXT NOT NULL UNIQUE,
       observation_id TEXT,
       correlation_id TEXT,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      team_id TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY(session_id) REFERENCES mem_sessions(session_id) ON DELETE CASCADE
     );
@@ -57,6 +61,8 @@ export function initSchema(db: Database): void {
       observation_type TEXT NOT NULL DEFAULT 'context',
       tags_json TEXT NOT NULL,
       privacy_tags_json TEXT NOT NULL,
+      user_id TEXT NOT NULL DEFAULT 'default',
+      team_id TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(event_id) REFERENCES mem_events(event_id) ON DELETE SET NULL,
@@ -285,6 +291,19 @@ export function migrateSchema(db: Database): void {
       ON mem_vectors(model, dimension, observation_id);
   `);
 
+  // MAJOR-4: user_id / team_id 複合インデックス（プロジェクト横断検索の高速化）
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_user ON mem_observations(project, user_id, created_at DESC)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_team ON mem_observations(project, team_id, created_at DESC)`);
+  } catch {
+    // already exists
+  }
+
   // W2-004: mem_facts に superseded_by カラムを追加（矛盾ファクト追跡用）
   try {
     db.exec(`ALTER TABLE mem_facts ADD COLUMN superseded_by TEXT`);
@@ -320,6 +339,93 @@ export function migrateSchema(db: Database): void {
   // IMP-009: Signal Extraction - キーワード検出による重要度スコアを保存
   try {
     db.exec(`ALTER TABLE mem_observations ADD COLUMN signal_score REAL NOT NULL DEFAULT 0`);
+  } catch {
+    // already exists
+  }
+
+  // COMP-002: Adaptive Decay - アクセス頻度と最終アクセス時刻を管理
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN access_count INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN last_accessed_at TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_last_accessed ON mem_observations(last_accessed_at)`);
+  } catch {
+    // already exists
+  }
+
+  // TEAM-003: ユーザー識別 - user_id / team_id カラムを追加
+  try {
+    db.exec(`ALTER TABLE mem_sessions ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_sessions ADD COLUMN team_id TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_events ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_events ADD COLUMN team_id TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN user_id TEXT NOT NULL DEFAULT 'default'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN team_id TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_observations_user ON mem_observations(user_id)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_observations_team ON mem_observations(team_id)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_sessions_user ON mem_sessions(user_id)`);
+  } catch {
+    // already exists
+  }
+
+  // NEXT-001: Cognitive セクター自動分類 - cognitive_sector カラムを追加
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN cognitive_sector TEXT NOT NULL DEFAULT 'meta'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_cognitive_sector ON mem_observations(cognitive_sector)`);
   } catch {
     // already exists
   }

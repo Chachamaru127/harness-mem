@@ -1,0 +1,55 @@
+# Harness Memory Server - Docker Compose
+# VPS チームデプロイ構成: memory-server + PostgreSQL + Caddy (TLS)
+#
+# 使い方:
+#   cp .env.example .env  # ADMIN_TOKEN などを設定
+#   docker compose up -d
+
+version: "3.9"
+
+volumes:
+  pgdata:
+
+services:
+  memory-server:
+    build: .
+    restart: unless-stopped
+    environment:
+      - HARNESS_MEM_HOST=0.0.0.0
+      - HARNESS_MEM_PORT=37888
+      - HARNESS_MEM_ADMIN_TOKEN=${HARNESS_MEM_ADMIN_TOKEN:?Set HARNESS_MEM_ADMIN_TOKEN in .env}
+      - HARNESS_MEM_DB_BACKEND=postgres
+      - HARNESS_MEM_PG_URL=postgres://harness:${DB_PASSWORD:?Set DB_PASSWORD in .env}@db:5432/harness_mem
+    depends_on:
+      - db
+    # Caddy 経由でのみ外部公開 (直接ポート開放不要)
+    expose:
+      - "37888"
+
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=harness
+      - POSTGRES_PASSWORD=${DB_PASSWORD:?Set DB_PASSWORD in .env}
+      - POSTGRES_DB=harness_mem
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  caddy:
+    image: caddy:latest
+    restart: unless-stopped
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - memory-server
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

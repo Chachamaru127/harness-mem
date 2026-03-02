@@ -10,7 +10,7 @@ function createCore(name: string): { core: HarnessMemCore; dir: string } {
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: 37888,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,
@@ -87,7 +87,11 @@ describe("search quality integration", () => {
         const importance = Number(scores.importance ?? 0);
         const graph = Number(scores.graph ?? 0);
         const final = Number(scores.final ?? 0);
-        const recomputed = 0.32 * lexical + 0.28 * vector + 0.10 * recency + 0.12 * tagBoost + 0.08 * importance + 0.10 * graph;
+        const rawScore = 0.32 * lexical + 0.28 * vector + 0.10 * recency + 0.12 * tagBoost + 0.08 * importance + 0.10 * graph;
+        // COMP-002: decay 乗数（hot=1.0, warm=0.7, cold=0.4）を考慮して再計算
+        const decayTier = (item as Record<string, unknown>).decay_tier as string | undefined;
+        const decayMult = decayTier === "hot" ? 1.0 : decayTier === "warm" ? 0.7 : 0.4;
+        const recomputed = rawScore * decayMult;
         expect(Math.abs(final - recomputed)).toBeLessThan(0.00001);
       }
     } finally {

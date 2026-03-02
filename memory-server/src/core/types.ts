@@ -19,6 +19,10 @@ export interface EventEnvelope {
   privacy_tags?: string[];
   dedupe_hash?: string;
   correlation_id?: string;
+  /** TEAM-009: イベント送信者のユーザーID（config の userId より優先） */
+  user_id?: string;
+  /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
+  team_id?: string;
 }
 
 export interface SearchRequest {
@@ -36,6 +40,10 @@ export interface SearchRequest {
   question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid";
   /** updatesリンクで上書きされた旧観察を検索結果から除外する (IMP-002) */
   exclude_updated?: boolean;
+  /** COMP-003: 指定時点以前の観察のみを返す Point-in-time クエリ（ISO 8601） */
+  as_of?: string;
+  /** NEXT-001: Cognitive セクターでフィルタリング: work|people|health|hobby|meta */
+  sector?: "work" | "people" | "health" | "hobby" | "meta";
 }
 
 export interface FeedRequest {
@@ -44,6 +52,10 @@ export interface FeedRequest {
   project?: string;
   type?: string;
   include_private?: boolean;
+  /** TEAM-009: ユーザーフィルター */
+  user_id?: string;
+  /** TEAM-009: チームフィルター */
+  team_id?: string;
 }
 
 export interface ProjectsStatsRequest {
@@ -166,7 +178,7 @@ export interface ApiMeta {
 
 export interface ApiResponse {
   ok: boolean;
-  source: "core" | "merged";
+  source: "core" | "merged" | "sync";
   items: unknown[];
   meta: ApiMeta;
   error?: string;
@@ -218,4 +230,8 @@ export interface Config {
   managedEndpoint?: string;
   managedApiKey?: string;
   resumePackMaxTokens?: number;
+  /** TEAM-003: ユーザー識別 - 環境変数 HARNESS_MEM_USER_ID から設定 */
+  userId?: string;
+  /** TEAM-003: チーム識別 - 環境変数 HARNESS_MEM_TEAM_ID から設定 */
+  teamId?: string;
 }

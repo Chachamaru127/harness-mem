@@ -245,3 +245,17 @@ export const POSTGRES_INIT_SQL = `
   CREATE INDEX IF NOT EXISTS idx_pg_import_jobs_status_requested
     ON mem_import_jobs(status, requested_at DESC);
 `;
+
+/**
+ * NEXT-008: pgvector HNSW インデックス作成 SQL。
+ * initSql の後に別途実行する（テーブルとデータが揃ってから）。
+ * HNSW は IVFFlat より構築コストが高いが、クエリ性能・精度が優れる。
+ *
+ * m=16, ef_construction=64 は一般的な推奨デフォルト値。
+ */
+export const POSTGRES_VECTOR_INDEX_SQL = `
+  CREATE INDEX IF NOT EXISTS idx_pg_vectors_embedding_hnsw
+    ON mem_vectors
+    USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
+`;

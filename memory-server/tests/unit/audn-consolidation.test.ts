@@ -21,8 +21,14 @@ import { tmpdir } from "node:os";
 import { HarnessMemCore, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
 
 const cleanupPaths: string[] = [];
+const originalFetchRef = globalThis.fetch;
 
 afterEach(() => {
+  // fetch モックが残らないよう必ず復元する
+  if (globalThis.fetch !== originalFetchRef) {
+    globalThis.fetch = originalFetchRef;
+    delete (globalThis as Record<string, unknown>).__originalFetch;
+  }
   while (cleanupPaths.length > 0) {
     const dir = cleanupPaths.pop();
     if (!dir) continue;
@@ -36,7 +42,7 @@ function createConfig(name: string): Config {
   return {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
-    bindPort: 37888,
+    bindPort: 0,
     vectorDimension: 64,
     captureEnabled: true,
     retrievalEnabled: true,

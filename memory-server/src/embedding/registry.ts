@@ -23,28 +23,49 @@ function normalizeProviderName(name: string | undefined): EmbeddingProviderName 
 }
 
 /**
- * IMP-008: テキストの言語を検出する。
- * 日本語文字（ひらがな・カタカナ・漢字）の比率が閾値以上なら "ja"、それ以外は "en"。
+ * COMP-005: テキストの言語を検出する。
+ * - 日本語文字（ひらがな・カタカナ）の比率が閾値以上なら "ja"
+ * - ハングル（U+AC00-U+D7AF）が含まれれば "multilingual"
+ * - それ以外は "en"
+ *
+ * 注意: CJK漢字は日本語・中国語・韓国語で共通するため、ひらがな/カタカナで日本語を識別する。
  */
-export function detectLanguage(text: string): "ja" | "en" {
+export function detectLanguage(text: string): "ja" | "en" | "multilingual" {
   if (!text || text.length === 0) {
     return "en";
   }
-  // 日本語文字：ひらがな (U+3040-U+309F)、カタカナ (U+30A0-U+30FF)、CJK漢字 (U+4E00-U+9FFF)
-  const japanesePattern = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFF]/g;
-  const matches = text.match(japanesePattern);
-  const japaneseCount = matches ? matches.length : 0;
-  const ratio = japaneseCount / text.length;
-  return ratio >= 0.1 ? "ja" : "en";
+  // ひらがな (U+3040-U+309F) またはカタカナ (U+30A0-U+30FF) で日本語を識別
+  const kanaPattern = /[\u3040-\u309F\u30A0-\u30FF]/g;
+  const kanaMatches = text.match(kanaPattern);
+  const kanaCount = kanaMatches ? kanaMatches.length : 0;
+  if (kanaCount / text.length >= 0.05) {
+    return "ja";
+  }
+  // ハングル (U+AC00-U+D7AF, U+1100-U+11FF) → multilingual
+  const hangulPattern = /[\uAC00-\uD7AF\u1100-\u11FF]/g;
+  if (hangulPattern.test(text)) {
+    return "multilingual";
+  }
+  // CJK漢字のみ（中国語等）も multilingual へ
+  const cjkPattern = /[\u4E00-\u9FFF\u3400-\u4DBF]/g;
+  const cjkMatches = text.match(cjkPattern);
+  const cjkCount = cjkMatches ? cjkMatches.length : 0;
+  if (cjkCount / text.length >= 0.1) {
+    return "multilingual";
+  }
+  return "en";
 }
 
 /**
- * IMP-008: 言語に応じてデフォルトモデルIDを選択する。
+ * COMP-005: 言語に応じてデフォルトモデルIDを選択する。
  * - 日本語: ruri-v3-30m
+ * - 多言語（韓国語/中国語等）: multilingual-e5
  * - 英語: gte-small
  */
-export function selectModelByLanguage(language: "ja" | "en"): string {
-  return language === "ja" ? "ruri-v3-30m" : "gte-small";
+export function selectModelByLanguage(language: "ja" | "en" | "multilingual"): string {
+  if (language === "ja") return "ruri-v3-30m";
+  if (language === "multilingual") return "multilingual-e5";
+  return "gte-small";
 }
 
 export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOptions): EmbeddingRegistryResult {
