@@ -554,16 +554,25 @@ export class EventRecorder {
     // IMP-009: Signal Extraction
     const signalScore = extractSignalScore(observationBase.content);
 
+    // TEAM-009: イベントの user_id/team_id を config より優先して使用
+    const userId = (typeof event.user_id === "string" && event.user_id.trim() ? event.user_id.trim() : null)
+      ?? this.deps.config.userId
+      ?? "default";
+    const teamId = (typeof event.team_id === "string" && event.team_id.trim() ? event.team_id.trim() : null)
+      ?? this.deps.config.teamId
+      ?? null;
+
     try {
       const transaction = this.deps.db.transaction(() => {
-        ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id);
+        ensureSession(this.deps.db, event.session_id, event.platform, normalizedProject, timestamp, event.correlation_id, userId, teamId);
 
         const eventInsert = this.deps.db
           .query(`
             INSERT OR IGNORE INTO mem_events(
               event_id, platform, project, session_id, event_type, ts,
-              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id,
+              user_id, team_id, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             eventId,
@@ -578,6 +587,8 @@ export class EventRecorder {
             dedupeHash,
             observationId,
             event.correlation_id ?? null,
+            userId,
+            teamId,
             current
           );
 
@@ -592,9 +603,9 @@ export class EventRecorder {
               id, event_id, platform, project, session_id,
               title, content, content_redacted, observation_type,
               tags_json, privacy_tags_json,
-              signal_score,
+              signal_score, user_id, team_id,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -618,6 +629,8 @@ export class EventRecorder {
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
             signalScore,
+            userId,
+            teamId,
             timestamp,
             current
           );
