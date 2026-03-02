@@ -8,22 +8,27 @@
  * 2. save_context が HarnessMemClient.record を呼び出す
  * 3. load_memory_variables が search 結果を文字列にフォーマットして返す
  * 4. HarnessMemLlamaIndexMemory が put / get インターフェースを持つ
+ * 5. (追加) HarnessMemClientLike 型互換性 — satisfies コンパイル時検証
  */
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import {
   HarnessMemLangChainMemory,
   HarnessMemLlamaIndexMemory,
+  type HarnessMemClientLike,
 } from "../../sdk/src/integrations";
+import type { RecordEventInput, SearchInput, ApiResponse, SearchResultItem } from "../../sdk/src/types";
 
 describe("NEXT-009: LangChain 互換メモリインターフェース", () => {
   // テスト1: HarnessMemLangChainMemory が LangChain Memory インターフェースを実装する
   test("HarnessMemLangChainMemory が save_context / load_memory_variables メソッドを持つ", () => {
-    const mockClient = {
-      record: async () => ({ ok: true, items: [], source: "mock", meta: {} }),
-      search: async () => ({ ok: true, items: [], source: "mock", meta: {} }),
+    const mockClient: HarnessMemClientLike = {
+      record: async (_input: RecordEventInput): Promise<ApiResponse<unknown>> =>
+        ({ ok: true, items: [], source: "mock", meta: {} }),
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> =>
+        ({ ok: true, items: [], source: "mock", meta: {} }),
     };
     const memory = new HarnessMemLangChainMemory({
-      client: mockClient as never,
+      client: mockClient,
       project: "test-project",
       session_id: "test-session",
     });
@@ -38,17 +43,18 @@ describe("NEXT-009: LangChain 互換メモリインターフェース", () => {
     let recordCalled = false;
     let recordedPayload: Record<string, unknown> = {};
 
-    const mockClient = {
-      record: async (input: { payload: Record<string, unknown> }) => {
+    const mockClient: HarnessMemClientLike = {
+      record: async (input: RecordEventInput): Promise<ApiResponse<unknown>> => {
         recordCalled = true;
         recordedPayload = input.payload;
         return { ok: true, items: [], source: "mock", meta: {} };
       },
-      search: async () => ({ ok: true, items: [], source: "mock", meta: {} }),
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> =>
+        ({ ok: true, items: [], source: "mock", meta: {} }),
     };
 
     const memory = new HarnessMemLangChainMemory({
-      client: mockClient as never,
+      client: mockClient,
       project: "test-project",
       session_id: "test-session",
     });
@@ -65,9 +71,10 @@ describe("NEXT-009: LangChain 互換メモリインターフェース", () => {
 
   // テスト3: load_memory_variables が検索結果を文字列に変換して返す
   test("load_memory_variables が search 結果をフォーマットして返す", async () => {
-    const mockClient = {
-      record: async () => ({ ok: true, items: [], source: "mock", meta: {} }),
-      search: async () => ({
+    const mockClient: HarnessMemClientLike = {
+      record: async (_input: RecordEventInput): Promise<ApiResponse<unknown>> =>
+        ({ ok: true, items: [], source: "mock", meta: {} }),
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> => ({
         ok: true,
         source: "mock",
         meta: {},
@@ -79,7 +86,7 @@ describe("NEXT-009: LangChain 互換メモリインターフェース", () => {
     };
 
     const memory = new HarnessMemLangChainMemory({
-      client: mockClient as never,
+      client: mockClient,
       project: "test-project",
       session_id: "test-session",
     });
@@ -97,12 +104,12 @@ describe("NEXT-009: LlamaIndex 互換メモリインターフェース", () => {
     let recorded: unknown[] = [];
     let searched = false;
 
-    const mockClient = {
-      record: async (input: unknown) => {
+    const mockClient: HarnessMemClientLike = {
+      record: async (input: RecordEventInput): Promise<ApiResponse<unknown>> => {
         recorded.push(input);
         return { ok: true, items: [], source: "mock", meta: {} };
       },
-      search: async () => {
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> => {
         searched = true;
         return {
           ok: true,
@@ -114,7 +121,7 @@ describe("NEXT-009: LlamaIndex 互換メモリインターフェース", () => {
     };
 
     const memory = new HarnessMemLlamaIndexMemory({
-      client: mockClient as never,
+      client: mockClient,
       project: "llama-project",
       session_id: "llama-session",
     });
@@ -131,5 +138,36 @@ describe("NEXT-009: LlamaIndex 互換メモリインターフェース", () => {
     const results = await memory.get("こんにちは");
     expect(searched).toBe(true);
     expect(Array.isArray(results)).toBe(true);
+  });
+});
+
+describe("NEXT-009: HarnessMemClientLike 型互換性検証", () => {
+  // テスト5: satisfies によるコンパイル時型互換性検証（LangChain 用モック）
+  test("LangChain 用モックが HarnessMemClientLike を satisfies で満たす", () => {
+    // satisfies 演算子でコンパイル時に型チェック
+    const mockClient = {
+      record: async (_input: RecordEventInput): Promise<ApiResponse<unknown>> =>
+        ({ ok: true as const, items: [], source: "mock", meta: {} }),
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> =>
+        ({ ok: true as const, items: [], source: "mock", meta: {} }),
+    } satisfies HarnessMemClientLike;
+
+    // ランタイム検証: 必須メソッドが存在する
+    expect(typeof mockClient.record).toBe("function");
+    expect(typeof mockClient.search).toBe("function");
+  });
+
+  // テスト6: satisfies によるコンパイル時型互換性検証（LlamaIndex 用モック）
+  test("LlamaIndex 用モックが HarnessMemClientLike を satisfies で満たす", () => {
+    const llamaMockClient = {
+      record: async (_input: RecordEventInput): Promise<ApiResponse<unknown>> =>
+        ({ ok: true as const, items: [], source: "llamaindex-mock", meta: {} }),
+      search: async (_input: SearchInput): Promise<ApiResponse<SearchResultItem>> =>
+        ({ ok: true as const, items: [], source: "llamaindex-mock", meta: {} }),
+    } satisfies HarnessMemClientLike;
+
+    // ランタイム検証: 型チェックが通った証明
+    expect(typeof llamaMockClient.record).toBe("function");
+    expect(typeof llamaMockClient.search).toBe("function");
   });
 });

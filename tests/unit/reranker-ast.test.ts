@@ -113,7 +113,7 @@ describe("NEXT-002: Cross-encoder Reranker", () => {
       },
     ];
     const result = reranker.rerank({ query: "TypeScript バグ修正", items });
-    expect(result[0].rerank_score).toBeLessThan(0.8);
+    expect(result[0].rerank_score).toBeLessThan(0.3);
   });
 
   // テスト6: 複数候補から最も関連するアイテムが上位に来る
@@ -139,5 +139,33 @@ describe("NEXT-002: Cross-encoder Reranker", () => {
     ];
     const result = reranker.rerank({ query: "TypeScript 型エラー", items });
     expect(result[0].id).toBe("relevant");
+  });
+
+  // テスト7: 日本語テキストのバイグラムオーバーラップが機能する
+  test("日本語テキストのバイグラムオーバーラップが類似度を正しく評価する", () => {
+    const reranker = createCrossEncoderReranker();
+    const items = [
+      {
+        id: "japanese-match",
+        score: 0.5,
+        source_index: 0,
+        created_at: new Date().toISOString(),
+        title: "データベース接続エラー",
+        content: "データベースへの接続でタイムアウトエラーが発生した。接続プールの設定を見直す必要がある。",
+      },
+      {
+        id: "japanese-no-match",
+        score: 0.5,
+        source_index: 1,
+        created_at: new Date().toISOString(),
+        title: "フロントエンド実装",
+        content: "ボタンのスタイルをCSSで変更した。レスポンシブデザインを適用した。",
+      },
+    ];
+    const result = reranker.rerank({ query: "データベース 接続 タイムアウト", items });
+    // 日本語クエリと一致するアイテムが上位に来る
+    expect(result[0].id).toBe("japanese-match");
+    // 一致するアイテムのスコアが不一致アイテムより高い
+    expect(result[0].rerank_score).toBeGreaterThan(result[1].rerank_score);
   });
 });

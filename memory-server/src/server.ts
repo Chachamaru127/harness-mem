@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
+import { createSyncStore, handleSyncPush, handleSyncPull, type SyncStore } from "./sync/sync-store";
+import type { Changeset, ConflictPolicy } from "./sync/engine";
 import {
   type FeedRequest,
   HarnessMemCore,
@@ -283,6 +285,9 @@ export function checkRemoteBindSafety(host: string): string | null {
 }
 
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
+  // HARDEN-003: Sync エンドポイント用インメモリストア（サーバー起動時に初期化）
+  const syncStore: SyncStore = createSyncStore();
+
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
@@ -866,6 +871,80 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           })
         );
+      }
+
+      // HARDEN-003: POST /v1/sync/push — リモート changeset を受信してマージ
+      if (request.method === "POST" && url.pathname === "/v1/sync/push") {
+        if (!hasValidAdminToken(request)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const body = await parseRequestJson(request);
+        const deviceId = typeof body.device_id === "string" ? body.device_id : "";
+        const since = typeof body.since === "string" ? body.since : null;
+        const rawRecords = Array.isArray(body.records) ? body.records : [];
+        if (!deviceId) {
+          return badRequest("device_id is required");
+        }
+        const records = rawRecords.filter(
+          (r): r is Record<string, unknown> => typeof r === "object" && r !== null
+        );
+        if (records.length > 10000) {
+          return badRequest("records must not exceed 10000 items per push");
+        }
+        const changeset: Changeset = {
+          device_id: deviceId,
+          since,
+          records: records.map((r) => ({
+            id: typeof r.id === "string" ? r.id : "",
+            content: typeof r.content === "string" ? r.content : "",
+            updated_at: typeof r.updated_at === "string" ? r.updated_at : new Date().toISOString(),
+            device_id: typeof r.device_id === "string" ? r.device_id : deviceId,
+          })),
+        };
+        const policy: ConflictPolicy =
+          body.conflict_policy === "local-wins" || body.conflict_policy === "remote-wins"
+            ? (body.conflict_policy as ConflictPolicy)
+            : "last-write-wins";
+        const result = handleSyncPush(syncStore, changeset, policy);
+        return jsonResponse({
+          ok: result.ok,
+          source: "sync",
+          items: [{ merged: result.merged, conflicts: result.conflicts }],
+          meta: {
+            count: result.merged.length,
+            latency_ms: 0,
+            sla_latency_ms: 0,
+            filters: {},
+            ranking: "sync_v1",
+          },
+        });
+      }
+
+      // HARDEN-003: GET /v1/sync/pull — since 以降の差分 changeset を返す
+      if (request.method === "GET" && url.pathname === "/v1/sync/pull") {
+        if (!hasValidAdminToken(request)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const sinceParam = url.searchParams.get("since") || null;
+        // ISO 8601 簡易バリデーション: 指定された場合は "YYYY-" で始まる有効な日付文字列であること
+        if (sinceParam !== null && (!/^\d{4}-/.test(sinceParam) || Number.isNaN(Date.parse(sinceParam)))) {
+          return badRequest("since must be a valid ISO 8601 date string");
+        }
+        const since = sinceParam;
+        const deviceId = url.searchParams.get("device_id") || "server";
+        const changeset = handleSyncPull(syncStore, deviceId, since);
+        return jsonResponse({
+          ok: true,
+          source: "sync",
+          items: [changeset],
+          meta: {
+            count: changeset.records.length,
+            latency_ms: 0,
+            sla_latency_ms: 0,
+            filters: {},
+            ranking: "sync_v1",
+          },
+        });
       }
 
       return new Response("Not Found", { status: 404 });

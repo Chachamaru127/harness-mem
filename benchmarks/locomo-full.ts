@@ -12,6 +12,7 @@ import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runLocomoBenchmark, type LocomoBenchmarkResult } from "../tests/benchmarks/run-locomo-benchmark";
+import { loadLocomoDataset } from "../tests/benchmarks/locomo-loader";
 
 export interface LocomoFullBenchmarkOptions {
   /** データセットパス（省略時はデフォルトフィクスチャを使用） */
@@ -74,9 +75,13 @@ export function resolveDatasetPath(preferredPath?: string): { path: string; isFu
 export async function runLocomoFullBenchmark(
   options: LocomoFullBenchmarkOptions = {}
 ): Promise<LocomoFullBenchmarkResult> {
-  const { datasetPath, outputPath } = options;
+  const { datasetPath, maxSamples, outputPath } = options;
 
   const resolved = resolveDatasetPath(datasetPath);
+
+  // 全件数を事前に取得（maxSamples による制限前）
+  const allSamples = loadLocomoDataset(resolved.path);
+  const totalSamples = allSamples.length;
 
   const tempDir = mkdtempSync(join(tmpdir(), "locomo-full-"));
   try {
@@ -84,16 +89,16 @@ export async function runLocomoFullBenchmark(
       system: "harness-mem",
       datasetPath: resolved.path,
       outputPath: outputPath ?? join(tempDir, "locomo-full-result.json"),
+      maxSamples,
     });
 
-    const evaluatedSamples = options.maxSamples
-      ? Math.min(options.maxSamples, result.dataset.sample_count)
-      : result.dataset.sample_count;
+    // result.dataset.sample_count は maxSamples 適用後のサンプル数
+    const evaluatedSamples = result.dataset.sample_count;
 
     return {
       ...result,
       dataset_info: {
-        total_samples: result.dataset.sample_count,
+        total_samples: totalSamples,
         evaluated_samples: evaluatedSamples,
         dataset_path: resolved.path,
         is_full_dataset: resolved.isFullDataset,

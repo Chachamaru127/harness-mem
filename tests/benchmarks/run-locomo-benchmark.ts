@@ -74,6 +74,8 @@ export interface RunLocomoBenchmarkOptions {
   datasetPath: string;
   outputPath?: string;
   project?: string;
+  /** 評価する最大サンプル数（省略時は全件） */
+  maxSamples?: number;
 }
 
 function normalize(value: string): string {
@@ -182,7 +184,8 @@ function createCore(tempDir: string): HarnessMemCore {
 
 async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promise<LocomoBenchmarkResult> {
   const datasetPath = resolve(options.datasetPath);
-  const samples = loadLocomoDataset(datasetPath);
+  const allSamples = loadLocomoDataset(datasetPath);
+  const samples = options.maxSamples != null ? allSamples.slice(0, options.maxSamples) : allSamples;
   const missingAnswers = samples.flatMap((sample) =>
     sample.qa.filter((qa) => !qa.answer.trim()).map((qa) => `${sample.sample_id}:${qa.question_id}`)
   );

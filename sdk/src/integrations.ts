@@ -13,13 +13,22 @@
  */
 
 import type { HarnessMemClient } from "./client.js";
-import type { SearchResultItem } from "./types.js";
+import type { RecordEventInput, SearchInput, SearchResultItem, ApiResponse } from "./types.js";
+
+/**
+ * HarnessMemClient の最小インターフェース。
+ * テストでモックを構成する際や、部分的な実装に使用する。
+ */
+export interface HarnessMemClientLike {
+  record(input: RecordEventInput): Promise<ApiResponse<unknown>>;
+  search(input: SearchInput): Promise<ApiResponse<SearchResultItem>>;
+}
 
 // ---- LangChain 互換 ----
 
 export interface LangChainMemoryOptions {
   /** harness-mem クライアント */
-  client: HarnessMemClient;
+  client: HarnessMemClientLike;
   /** プロジェクト名 */
   project: string;
   /** セッション ID */
@@ -38,7 +47,7 @@ export interface LangChainMemoryOptions {
  */
 export class HarnessMemLangChainMemory {
   readonly memory_key: string;
-  private readonly client: HarnessMemClient;
+  private readonly client: HarnessMemClientLike;
   private readonly project: string;
   private readonly session_id: string;
   private readonly searchLimit: number;
@@ -118,7 +127,7 @@ export class HarnessMemLangChainMemory {
 
 export interface LlamaIndexMemoryOptions {
   /** harness-mem クライアント */
-  client: HarnessMemClient;
+  client: HarnessMemClientLike;
   /** プロジェクト名 */
   project: string;
   /** セッション ID */
@@ -141,7 +150,7 @@ export interface ChatMessage {
  * （put / get / getAll）を実装し、harness-mem にメッセージを永続化する。
  */
 export class HarnessMemLlamaIndexMemory {
-  private readonly client: HarnessMemClient;
+  private readonly client: HarnessMemClientLike;
   private readonly project: string;
   private readonly session_id: string;
   private readonly searchLimit: number;
