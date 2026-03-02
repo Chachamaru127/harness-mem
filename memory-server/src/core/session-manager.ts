@@ -23,7 +23,15 @@ import type {
   SessionsListRequest,
   SessionThreadRequest,
   StreamEvent,
-} from "./harness-mem-core";
+} from "./types.js";
+import {
+  clampLimit,
+  makeErrorResponse,
+  makeResponse,
+  nowIso,
+  parseArrayJson,
+  visibilityFilterSql,
+} from "./core-utils.js";
 
 // ---------------------------------------------------------------------------
 // CoreDependencies: HarnessMemCore から渡される内部依存
@@ -34,8 +42,6 @@ export interface SessionManagerDeps {
   config: Config;
   /** normalizeProjectInput のバインド済みバージョン */
   normalizeProject: (project: string) => string;
-  /** visibilityFilterSql のバインド済みバージョン */
-  visibilityFilterSql: (alias: string, includePrivate: boolean) => string;
   /** platformVisibilityFilterSql のバインド済みバージョン */
   platformVisibilityFilterSql: (alias: string) => string;
   /** recordEvent への参照（recordCheckpoint が内部で使用） */
@@ -44,74 +50,6 @@ export interface SessionManagerDeps {
   appendStreamEvent: (type: StreamEvent["type"], data: Record<string, unknown>) => StreamEvent;
   /** enqueueConsolidation への参照 */
   enqueueConsolidation: (project: string, sessionId: string, reason: string) => void;
-}
-
-// ---------------------------------------------------------------------------
-// ユーティリティ（このモジュール内でのみ使用）
-// ---------------------------------------------------------------------------
-
-function nowIso(): string {
-  return new Date().toISOString();
-}
-
-function clampLimit(input: unknown, fallback: number, min = 1, max = 200): number {
-  const n = typeof input === "number" ? input : Number(input);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
-function parseArrayJson(value: unknown): string[] {
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
-  if (typeof value !== "string") return [];
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function makeResponse(
-  startedAt: number,
-  items: unknown[],
-  filters: Record<string, unknown>,
-  extra: Record<string, unknown> = {}
-): ApiResponse {
-  const latency = performance.now() - startedAt;
-  return {
-    ok: true,
-    source: "core",
-    items,
-    meta: {
-      count: items.length,
-      latency_ms: Math.round(latency * 100) / 100,
-      sla_latency_ms: 200,
-      filters,
-      ranking: "default",
-      ...extra,
-    },
-  };
-}
-
-function makeErrorResponse(
-  startedAt: number,
-  message: string,
-  filters: Record<string, unknown>
-): ApiResponse {
-  const latency = performance.now() - startedAt;
-  return {
-    ok: false,
-    source: "core",
-    items: [],
-    meta: {
-      count: 0,
-      latency_ms: Math.round(latency * 100) / 100,
-      sla_latency_ms: 200,
-      filters,
-      ranking: "error",
-    },
-    error: message,
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -149,7 +87,7 @@ export class SessionManager {
       FROM mem_sessions s
       LEFT JOIN mem_observations o
         ON o.session_id = s.session_id
-        ${this.deps.visibilityFilterSql("o", includePrivate)}
+        ${visibilityFilterSql("o", includePrivate)}
       LEFT JOIN mem_events e ON e.event_id = o.event_id
       WHERE 1 = 1
     `;
@@ -230,7 +168,7 @@ export class SessionManager {
     }
 
     sql += this.deps.platformVisibilityFilterSql("o");
-    sql += this.deps.visibilityFilterSql("o", includePrivate);
+    sql += visibilityFilterSql("o", includePrivate);
     sql += " ORDER BY o.created_at ASC, o.id ASC LIMIT ?";
     params.push(limit);
 

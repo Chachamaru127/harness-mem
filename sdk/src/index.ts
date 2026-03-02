@@ -34,4 +34,11 @@ export type {
   TimelineInput,
   GetObservationsInput,
   ObservationItem,
+  RecordCheckpointInput,
+  FinalizeSessionInput,
+  SessionFinalizeItem,
+  ConsolidationRunInput,
+  AuditLogInput,
+  AuditLogItem,
+  SearchFacetsInput,
 } from "./types.js";

@@ -11,13 +11,15 @@
  *   - getConsolidationStatus
  *   - getAuditLog
  *   - projectsStats
- *   - backup (委譲)
- *   - reindexVectors (委譲)
+ *   - backup (実装)
+ *   - reindexVectors (実装)
  *   - getManagedStatus (委譲)
  *   - runConsolidation (委譲)
  *   - shutdown (委譲)
  */
 
+import { dirname, join } from "node:path";
+import { statSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import type { ManagedBackendStatus } from "../projector/managed-backend";
 import type {
@@ -26,7 +28,17 @@ import type {
   Config,
   ConsolidationRunRequest,
   ProjectsStatsRequest,
-} from "./harness-mem-core";
+} from "./types.js";
+import {
+  clampLimit,
+  ensureDir,
+  makeErrorResponse,
+  makeResponse,
+  nowIso,
+  parseJsonSafe,
+  resolveHomePath,
+  visibilityFilterSql as visibilityFilterSqlUtil,
+} from "./core-utils.js";
 
 // ---------------------------------------------------------------------------
 // ConfigManagerDeps: HarnessMemCore から渡される内部依存
@@ -43,10 +55,6 @@ export interface ConfigManagerDeps {
   doEnvironmentSnapshot: () => ApiResponse;
   /** runConsolidation() の実装委譲 */
   doRunConsolidation: (request: ConsolidationRunRequest) => Promise<ApiResponse>;
-  /** backup() の実装委譲 */
-  doBackup: (options?: { destDir?: string }) => ApiResponse;
-  /** reindexVectors() の実装委譲 */
-  doReindexVectors: (limitInput?: number) => ApiResponse;
   /** getManagedStatus() の実装委譲 */
   doGetManagedStatus: () => ManagedBackendStatus | null;
   /** shutdown() の実装委譲 */
@@ -55,39 +63,25 @@ export interface ConfigManagerDeps {
   isConsolidationEnabled: () => boolean;
   /** getConsolidationIntervalMs のバインド済みバージョン */
   getConsolidationIntervalMs: () => number;
+  /** 監査ログ書き込み */
+  writeAuditLog: (action: string, targetType: string, targetId: string, details?: Record<string, unknown>) => void;
+  /** ベクトルエンジン ("disabled" | "sqlite-vec" など) — 呼び出し時に現在値を取得 */
+  getVectorEngine: () => string;
+  /** 現在のベクトルモデルバージョン — 呼び出し時に現在値を取得 */
+  getVectorModelVersion: () => string;
+  /** 埋め込みプロバイダー名 */
+  embeddingProviderName: string;
+  /** 埋め込みヘルスステータス（呼び出し時に現在値を取得） */
+  getEmbeddingHealthStatus: () => string;
+  /** 観察ベクトルを再インデックスするコールバック */
+  reindexObservationVector: (id: string, content: string, createdAt: string) => void;
+  /** Antigravity ingest が有効か（platformVisibilityFilterSql 用） */
+  isAntigravityIngestEnabled: () => boolean;
 }
 
 // ---------------------------------------------------------------------------
 // ユーティリティ
 // ---------------------------------------------------------------------------
-
-function clampLimit(input: unknown, fallback: number, min = 1, max = 500): number {
-  const n = typeof input === "number" ? input : Number(input);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.floor(n)));
-}
-
-function makeResponse(
-  startedAt: number,
-  items: unknown[],
-  filters: Record<string, unknown>,
-  extra: Record<string, unknown> = {}
-): ApiResponse {
-  const latency = performance.now() - startedAt;
-  return {
-    ok: true,
-    source: "core",
-    items,
-    meta: {
-      count: items.length,
-      latency_ms: Math.round(latency * 100) / 100,
-      sla_latency_ms: 200,
-      filters,
-      ranking: "default",
-      ...extra,
-    },
-  };
-}
 
 function shouldExposeProjectInStats(project: string): boolean {
   const normalized = project.trim();
@@ -132,20 +126,139 @@ export class ConfigManager {
     return this.deps.doRunConsolidation(request);
   }
 
-  backup(options?: { destDir?: string }): ApiResponse {
-    return this.deps.doBackup(options);
-  }
-
-  reindexVectors(limitInput?: number): ApiResponse {
-    return this.deps.doReindexVectors(limitInput);
-  }
-
   getManagedStatus(): ManagedBackendStatus | null {
     return this.deps.doGetManagedStatus();
   }
 
   shutdown(signal: string): void {
     return this.deps.doShutdown(signal);
+  }
+
+  // ---------------------------------------------------------------------------
+  // backup
+  // ---------------------------------------------------------------------------
+
+  backup(options?: { destDir?: string }): ApiResponse {
+    if (!this.deps.db) {
+      throw new Error("Backup is only supported in local (SQLite) mode");
+    }
+    const startedAt = performance.now();
+    const resolvedDbPath = resolveHomePath(this.deps.config.dbPath);
+    const defaultDestDir = dirname(resolvedDbPath);
+    const destDir = options?.destDir ? resolveHomePath(options.destDir) : defaultDestDir;
+
+    ensureDir(destDir);
+
+    // ISO timestamp: 2026-02-26T12-34-56-789Z (colons replaced for filesystem compat)
+    const ts = new Date().toISOString().replace(/:/g, "-").replace(/\./g, "-");
+    const filename = `harness-mem-backup-${ts}.db`;
+    const destPath = join(destDir, filename);
+
+    try {
+      this.deps.db.exec(`VACUUM INTO '${destPath.replace(/'/g, "''")}'`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return makeErrorResponse(startedAt, `backup failed: ${message}`, {});
+    }
+
+    let size = 0;
+    try {
+      size = statSync(destPath).size;
+    } catch {
+      // best effort
+    }
+
+    this.deps.writeAuditLog("admin.backup", "backup", destPath, { size_bytes: size });
+
+    return makeResponse(
+      startedAt,
+      [{ path: destPath, size_bytes: size }],
+      {},
+      { backup_path: destPath, size_bytes: size }
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // reindexVectors
+  // ---------------------------------------------------------------------------
+
+  reindexVectors(limitInput?: number): ApiResponse {
+    const startedAt = performance.now();
+    if (this.deps.getVectorEngine() === "disabled") {
+      return makeResponse(startedAt, [], {}, { reindexed: 0, skipped: "vector_disabled" });
+    }
+
+    const limit = clampLimit(limitInput, 100, 1, 10000);
+
+    // Prioritize observations whose vectors are on a legacy model (not the current one).
+    // This enables incremental, no-downtime migration: each call processes a batch of
+    // stale vectors first, then falls back to all observations if none are stale.
+    // Searches continue to serve results from the legacy model during migration.
+    const legacyRows = this.deps.db
+      .query(`
+        SELECT o.id, o.content_redacted, o.created_at
+        FROM mem_observations o
+        JOIN mem_vectors v ON v.observation_id = o.id
+        WHERE v.model != ?
+        ORDER BY o.created_at DESC
+        LIMIT ?
+      `)
+      .all(this.deps.getVectorModelVersion(), limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
+
+    const rows: Array<{ id: string; content_redacted: string; created_at: string }> = legacyRows.length > 0
+      ? legacyRows
+      : (this.deps.db
+          .query(`
+            SELECT id, content_redacted, created_at
+            FROM mem_observations
+            ORDER BY created_at DESC
+            LIMIT ?
+          `)
+          .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>);
+
+    // Count total legacy vectors before reindexing for progress reporting
+    const beforeCounts = this.deps.db
+      .query(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_count
+         FROM mem_vectors`
+      )
+      .get(this.deps.getVectorModelVersion()) as { total: number; current_count: number } | null;
+    const totalBefore = Number(beforeCounts?.total ?? 0);
+    const currentBefore = Number(beforeCounts?.current_count ?? 0);
+
+    let reindexed = 0;
+    for (const row of rows) {
+      this.deps.reindexObservationVector(row.id, row.content_redacted || "", row.created_at || nowIso());
+      reindexed += 1;
+    }
+
+    const currentAfter = currentBefore + reindexed;
+    const remaining = Math.max(0, totalBefore - currentAfter);
+    const pct = totalBefore === 0 ? 100 : Math.round((currentAfter / totalBefore) * 100);
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          reindexed,
+          limit,
+          total_vectors: totalBefore,
+          current_model_vectors: currentAfter,
+          legacy_vectors_remaining: remaining,
+          progress_pct: pct,
+        },
+      ],
+      { limit },
+      {
+        vector_engine: this.deps.getVectorEngine(),
+        embedding_provider: this.deps.embeddingProviderName,
+        embedding_provider_model: this.deps.getVectorModelVersion(),
+        embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
+        migration_complete: remaining === 0,
+      }
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -233,27 +346,25 @@ export class ConfigManager {
     sql += " ORDER BY created_at DESC, id DESC LIMIT ?";
     params.push(limit);
 
-    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<Record<string, unknown>>;
+    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<{
+      id: number;
+      action: string;
+      actor: string;
+      target_type: string;
+      target_id: string;
+      details_json: string;
+      created_at: string;
+    }>;
 
-    const items = rows.map((row) => {
-      let details: Record<string, unknown> = {};
-      try {
-        if (typeof row.details_json === "string") {
-          details = JSON.parse(row.details_json) as Record<string, unknown>;
-        }
-      } catch {
-        // ignore
-      }
-      return {
-        id: row.id,
-        action: row.action,
-        actor: row.actor,
-        target_type: row.target_type,
-        target_id: row.target_id,
-        details,
-        created_at: row.created_at,
-      };
-    });
+    const items = rows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      actor: row.actor,
+      target_type: row.target_type,
+      target_id: row.target_id,
+      details: parseJsonSafe(row.details_json),
+      created_at: row.created_at,
+    }));
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       ranking: "audit_log_v1",
@@ -267,62 +378,36 @@ export class ConfigManager {
   projectsStats(request: ProjectsStatsRequest = {}): ApiResponse {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
-
-    const privacyFilter = includePrivate
+    const visibility = visibilityFilterSqlUtil("o", includePrivate);
+    const platformVisibility = this.deps.isAntigravityIngestEnabled()
       ? ""
-      : `
-        AND NOT EXISTS (
-          SELECT 1
-          FROM json_each(
-            CASE
-              WHEN json_valid(COALESCE(o.privacy_tags_json, '[]')) THEN COALESCE(o.privacy_tags_json, '[]')
-              ELSE '["private"]'
-            END
-          ) AS jt
-          WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'sensitive')
-        )
-      `;
+      : ` AND o.platform <> 'antigravity' `;
 
     const rows = this.deps.db
-      .query(
-        `
+      .query(`
         SELECT
-          o.project,
+          o.project AS project,
+          COUNT(*) AS observations,
           COUNT(DISTINCT o.session_id) AS sessions,
-          COUNT(o.id) AS observations,
-          MIN(o.created_at) AS first_seen,
-          MAX(o.created_at) AS last_seen,
-          GROUP_CONCAT(DISTINCT o.platform) AS platforms_csv
+          MAX(o.created_at) AS updated_at
         FROM mem_observations o
         WHERE 1 = 1
-        ${privacyFilter}
+        ${platformVisibility}
+        ${visibility}
         GROUP BY o.project
-        ORDER BY MAX(o.created_at) DESC
-        LIMIT 100
-      `
-      )
-      .all() as Array<{
-      project: string;
-      sessions: number;
-      observations: number;
-      first_seen: string;
-      last_seen: string;
-      platforms_csv: string | null;
-    }>;
+        ORDER BY updated_at DESC
+      `)
+      .all() as Array<{ project: string; observations: number; sessions: number; updated_at: string | null }>;
 
     const items = rows
-      .filter((row) => shouldExposeProjectInStats(row.project))
       .map((row) => ({
         project: row.project,
-        sessions: Number(row.sessions || 0),
         observations: Number(row.observations || 0),
-        first_seen: row.first_seen,
-        last_seen: row.last_seen,
-        platforms: row.platforms_csv ? row.platforms_csv.split(",").filter(Boolean) : [],
-      }));
+        sessions: Number(row.sessions || 0),
+        updated_at: row.updated_at || null,
+      }))
+      .filter((row) => shouldExposeProjectInStats(row.project));
 
-    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
-      ranking: "projects_stats_v1",
-    });
+    return makeResponse(startedAt, items, { include_private: includePrivate }, { ranking: "projects_stats_v1" });
   }
 }

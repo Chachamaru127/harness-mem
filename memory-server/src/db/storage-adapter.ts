@@ -40,6 +40,18 @@ export interface StorageAdapter {
   close(): void;
 }
 
+/**
+ * Async storage operations for backends that require asynchronous I/O (e.g. PostgreSQL).
+ * Adapters implementing this interface can be used by the Repository layer (Phase 2+).
+ */
+export interface AsyncStorageAdapter {
+  queryAllAsync<T = unknown>(sql: string, params?: unknown[]): Promise<T[]>;
+  queryOneAsync<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>;
+  runAsync(sql: string, params?: unknown[]): Promise<number>;
+  execAsync(sql: string): Promise<void>;
+  transactionAsync<T>(fn: () => Promise<T>): Promise<T>;
+}
+
 /** Factory signature consumed by HarnessMemCore. */
 export type StorageAdapterFactory = (config: StorageAdapterConfig) => StorageAdapter;
 

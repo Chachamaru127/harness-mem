@@ -13,7 +13,7 @@
  * with a thin wrapper.  A future optimization may adopt connection pooling or
  * prepared statements at the adapter level.
  */
-import type { StorageAdapter, PreparedLike } from "./storage-adapter";
+import type { StorageAdapter, AsyncStorageAdapter, PreparedLike } from "./storage-adapter";
 
 /** Minimal subset of pg.Pool / pg.Client we depend on. */
 export interface PgClientLike {
@@ -72,7 +72,7 @@ function translateSql(sql: string): string {
  * the managed backend will be accessed through the projector pattern
  * which naturally handles the async boundary.
  */
-export class PostgresStorageAdapter implements StorageAdapter {
+export class PostgresStorageAdapter implements StorageAdapter, AsyncStorageAdapter {
   readonly backend = "postgres" as const;
   private client: PgClientLike;
 

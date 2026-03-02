@@ -1,312 +1,306 @@
 /**
  * IMP-004a: 観察ストアモジュール境界テスト
  *
- * 分割後の observation-store.ts が担当する API を TDD で定義する。
+ * ObservationStore を直接インスタンス化して単体テストする。
  * getObservations / search / feed / searchFacets / timeline を対象とする。
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
-import { tmpdir } from "node:os";
+import type { Database } from "bun:sqlite";
+import { ObservationStore, type ObservationStoreDeps } from "../../src/core/observation-store";
+import type { Config } from "../../src/core/harness-mem-core";
 import {
-  HarnessMemCore,
-  type Config,
-  type EventEnvelope,
-} from "../../src/core/harness-mem-core";
+  createTestDb,
+  createTestConfig,
+  insertTestObservation,
+} from "./test-helpers";
 
-const cleanupPaths: string[] = [];
+// ---------------------------------------------------------------------------
+// ヘルパー
+// ---------------------------------------------------------------------------
+
+function normalizeProject(project: string): string {
+  return project.toLowerCase();
+}
+
+function platformVisibilityFilterSql(_alias: string): string {
+  return " AND 1=1";
+}
+
+function createDeps(db: Database, config: Config): ObservationStoreDeps {
+  return {
+    db,
+    config,
+    ftsEnabled: false,
+    normalizeProject,
+    platformVisibilityFilterSql,
+    writeAuditLog: () => {},
+    getVectorEngine: () => "disabled",
+    getVectorModelVersion: () => "test-model",
+    vectorDimension: 256,
+    getVecTableReady: () => false,
+    setVecTableReady: () => {},
+    embedContent: (content: string) => {
+      // テスト用: 単純なゼロベクトルを返す
+      return new Array(256).fill(0);
+    },
+    refreshEmbeddingHealth: () => {},
+    getEmbeddingProviderName: () => "test",
+    embeddingProviderModel: "test-model",
+    getEmbeddingHealthStatus: () => "ok",
+    getRerankerEnabled: () => false,
+    getReranker: () => null,
+    managedShadowRead: null,
+    searchRanking: "hybrid_v3",
+    searchExpandLinks: false,
+  };
+}
+
+const testDbs: Database[] = [];
 
 afterEach(() => {
-  while (cleanupPaths.length > 0) {
-    const dir = cleanupPaths.pop();
-    if (!dir) continue;
-    rmSync(dir, { recursive: true, force: true });
+  while (testDbs.length > 0) {
+    const db = testDbs.pop();
+    db?.close();
   }
 });
 
-function createConfig(name: string): Config {
-  const dir = mkdtempSync(join(tmpdir(), `obs-store-${name}-`));
-  cleanupPaths.push(dir);
-  return {
-    dbPath: join(dir, "harness-mem.db"),
-    bindHost: "127.0.0.1",
-    bindPort: 37888,
-    vectorDimension: 64,
-    captureEnabled: true,
-    retrievalEnabled: true,
-    injectionEnabled: true,
-    codexHistoryEnabled: false,
-    codexProjectRoot: process.cwd(),
-    codexSessionsRoot: process.cwd(),
-    codexIngestIntervalMs: 5000,
-    codexBackfillHours: 24,
-    opencodeIngestEnabled: false,
-    cursorIngestEnabled: false,
-    antigravityIngestEnabled: false,
-  };
+function makeStore(
+  configOverrides: Partial<Config> = {}
+): { store: ObservationStore; db: Database } {
+  const db = createTestDb();
+  testDbs.push(db);
+  const config = createTestConfig(configOverrides);
+  const deps = createDeps(db, config);
+  const store = new ObservationStore(deps);
+  return { store, db };
 }
 
-function makeEvent(overrides: Partial<EventEnvelope> = {}): EventEnvelope {
-  return {
-    platform: "claude",
-    project: "proj-obs",
-    session_id: "sess-obs-001",
-    event_type: "user_prompt",
-    ts: "2026-02-20T00:00:00.000Z",
-    payload: { prompt: "observation store test" },
-    tags: [],
-    privacy_tags: [],
-    ...overrides,
-  };
-}
+// ---------------------------------------------------------------------------
+// getObservations
+// ---------------------------------------------------------------------------
 
 describe("observation-store: getObservations", () => {
   test("空の ids は空配列を返す", () => {
-    const core = new HarnessMemCore(createConfig("get-obs-empty"));
-    try {
-      const res = core.getObservations({ ids: [] });
-      expect(res.ok).toBe(true);
-      expect(res.items).toEqual([]);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store } = makeStore();
+    const res = store.getObservations({ ids: [] });
+    expect(res.ok).toBe(true);
+    expect(res.items).toEqual([]);
   });
 
   test("記録された観察が ID で取得できる", () => {
-    const core = new HarnessMemCore(createConfig("get-obs-basic"));
-    try {
-      core.recordEvent(makeEvent({ payload: { prompt: "special content for retrieval" } }));
-      // 検索経由でIDを取得
-      const searchRes = core.search({ query: "special content for retrieval", project: "proj-obs" });
-      expect(searchRes.ok).toBe(true);
-      if (searchRes.items.length > 0) {
-        const id = (searchRes.items[0] as Record<string, unknown>).id as string;
-        const getRes = core.getObservations({ ids: [id] });
-        expect(getRes.ok).toBe(true);
-        expect(getRes.items.length).toBe(1);
-        expect((getRes.items[0] as Record<string, unknown>).id).toBe(id);
-      }
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    const id = insertTestObservation(db, {
+      title: "special content for retrieval",
+      content: "special content for retrieval",
+    });
+    const res = store.getObservations({ ids: [id] });
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBe(1);
+    expect((res.items[0] as Record<string, unknown>).id).toBe(id);
   });
 
   test("存在しない ID はスキップされる", () => {
-    const core = new HarnessMemCore(createConfig("get-obs-nonexistent"));
-    try {
-      const res = core.getObservations({ ids: ["nonexistent-id-12345"] });
-      expect(res.ok).toBe(true);
-      expect(res.items).toEqual([]);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store } = makeStore();
+    const res = store.getObservations({ ids: ["nonexistent-id-12345"] });
+    expect(res.ok).toBe(true);
+    expect(res.items).toEqual([]);
   });
 
   test("compact=false で全コンテンツが返る", () => {
-    const core = new HarnessMemCore(createConfig("get-obs-compact"));
-    try {
-      const longContent = "A".repeat(1000);
-      core.recordCheckpoint({
-        session_id: "sess-obs-001",
-        title: "long content checkpoint",
-        content: longContent,
-        project: "proj-obs",
-      });
-      const searchRes = core.search({ query: "long content checkpoint", project: "proj-obs" });
-      if (searchRes.items.length > 0) {
-        const id = (searchRes.items[0] as Record<string, unknown>).id as string;
-        const getRes = core.getObservations({ ids: [id], compact: false });
-        expect(getRes.ok).toBe(true);
-        if (getRes.items.length > 0) {
-          const content = (getRes.items[0] as Record<string, unknown>).content as string;
-          expect(content.length).toBeGreaterThan(800);
-        }
-      }
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    const longContent = "A".repeat(1000);
+    const id = insertTestObservation(db, {
+      title: "long content checkpoint",
+      content: longContent,
+    });
+    const res = store.getObservations({ ids: [id], compact: false });
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBe(1);
+    const content = (res.items[0] as Record<string, unknown>).content as string;
+    expect(content.length).toBeGreaterThan(800);
   });
 
   test("private 観察は include_private=false で除外される", () => {
-    const core = new HarnessMemCore(createConfig("get-obs-private"));
-    try {
-      core.recordEvent(makeEvent({ privacy_tags: ["private"], payload: { prompt: "private data" } }));
-      const searchRes = core.search({ query: "private data", project: "proj-obs", include_private: true });
-      if (searchRes.items.length > 0) {
-        const id = (searchRes.items[0] as Record<string, unknown>).id as string;
-        const getResPrivate = core.getObservations({ ids: [id], include_private: false });
-        expect(getResPrivate.ok).toBe(true);
-        // プライベートなので含まれない
-        expect(getResPrivate.items).toEqual([]);
-      }
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    const id = insertTestObservation(db, {
+      title: "private data",
+      content: "private data",
+      privacy_tags: ["private"],
+    });
+    const res = store.getObservations({ ids: [id], include_private: false });
+    expect(res.ok).toBe(true);
+    expect(res.items).toEqual([]);
   });
 });
 
+// ---------------------------------------------------------------------------
+// search
+// ---------------------------------------------------------------------------
+
 describe("observation-store: search", () => {
   test("クエリにマッチする観察が返る", () => {
-    const core = new HarnessMemCore(createConfig("search-basic"));
-    try {
-      core.recordEvent(makeEvent({ payload: { prompt: "unique search term xyz987" } }));
-      const res = core.search({ query: "unique search term xyz987", project: "proj-obs" });
-      expect(res.ok).toBe(true);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      title: "unique search term xyz987",
+      content: "unique search term xyz987",
+      project: "proj-obs",
+    });
+    const res = store.search({ query: "unique search term xyz987", project: "proj-obs" });
+    expect(res.ok).toBe(true);
   });
 
   test("project でフィルタリングされる", () => {
-    const core = new HarnessMemCore(createConfig("search-project-filter"));
-    try {
-      core.recordEvent(makeEvent({ project: "proj-a", session_id: "sess-a", payload: { prompt: "project filter test" } }));
-      core.recordEvent(
-        makeEvent({ project: "proj-b", session_id: "sess-b", ts: "2026-02-20T01:00:00.000Z", payload: { prompt: "project filter test" } })
-      );
-      const res = core.search({ query: "project filter test", project: "proj-a", strict_project: true });
-      expect(res.ok).toBe(true);
-      for (const item of res.items as Array<Record<string, unknown>>) {
-        expect(item.project).toBe("proj-a");
-      }
-    } finally {
-      core.shutdown("test");
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      title: "project filter test item",
+      content: "project filter test item",
+      project: "proj-a",
+    });
+    insertTestObservation(db, {
+      title: "project filter test item",
+      content: "project filter test item",
+      project: "proj-b",
+    });
+    const res = store.search({ query: "project filter test", project: "proj-a", strict_project: true });
+    expect(res.ok).toBe(true);
+    for (const item of res.items as Array<Record<string, unknown>>) {
+      expect(item.project).toBe("proj-a");
     }
   });
 
   test("limit パラメータが反映される", () => {
-    const core = new HarnessMemCore(createConfig("search-limit"));
-    try {
-      for (let i = 0; i < 5; i++) {
-        core.recordEvent(
-          makeEvent({ ts: `2026-02-20T0${i}:00:00.000Z`, payload: { prompt: `search limit test item ${i}` } })
-        );
-      }
-      const res = core.search({ query: "search limit test", project: "proj-obs", limit: 2 });
-      expect(res.ok).toBe(true);
-      expect(res.items.length).toBeLessThanOrEqual(2);
-    } finally {
-      core.shutdown("test");
+    const { store, db } = makeStore();
+    for (let i = 0; i < 5; i++) {
+      insertTestObservation(db, {
+        title: `search limit test item ${i}`,
+        content: `search limit test item ${i}`,
+        project: "proj-obs",
+        created_at: `2026-02-20T0${i}:00:00.000Z`,
+      });
     }
+    const res = store.search({ query: "search limit test", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeLessThanOrEqual(2);
   });
 
-  test("空クエリでもエラーにならない", () => {
-    const core = new HarnessMemCore(createConfig("search-empty-query"));
-    try {
-      const res = core.search({ query: "", project: "proj-obs" });
-      expect(typeof res.ok).toBe("boolean");
-    } finally {
-      core.shutdown("test");
-    }
+  test("空クエリでもエラーにならない（ok=false）", () => {
+    const { store } = makeStore();
+    const res = store.search({ query: "", project: "proj-obs" });
+    // 空クエリは error レスポンス (ok=false) が正常
+    expect(typeof res.ok).toBe("boolean");
   });
 
   test("debug=true でデバッグ情報が含まれる", () => {
-    const core = new HarnessMemCore(createConfig("search-debug"));
-    try {
-      const res = core.search({ query: "debug test", project: "proj-obs", debug: true });
-      expect(res.ok).toBe(true);
-      // debug モードでは meta に追加情報が含まれる
-      expect(res.meta).toBeTruthy();
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      title: "debug test observation",
+      content: "debug test observation",
+      project: "proj-obs",
+    });
+    const res = store.search({ query: "debug test", project: "proj-obs", debug: true });
+    expect(res.ok).toBe(true);
+    expect(res.meta).toBeTruthy();
   });
 });
 
+// ---------------------------------------------------------------------------
+// feed
+// ---------------------------------------------------------------------------
+
 describe("observation-store: feed", () => {
   test("フィードが ok=true を返す", () => {
-    const core = new HarnessMemCore(createConfig("feed-basic"));
-    try {
-      core.recordEvent(makeEvent());
-      const res = core.feed({});
-      expect(res.ok).toBe(true);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    insertTestObservation(db, { project: "proj-obs" });
+    const res = store.feed({});
+    expect(res.ok).toBe(true);
   });
 
   test("project フィルタが機能する", () => {
-    const core = new HarnessMemCore(createConfig("feed-project"));
-    try {
-      core.recordEvent(makeEvent({ project: "proj-feed-a", session_id: "sess-fa" }));
-      core.recordEvent(
-        makeEvent({ project: "proj-feed-b", session_id: "sess-fb", ts: "2026-02-20T01:00:00.000Z" })
-      );
-      const res = core.feed({ project: "proj-feed-a" });
-      expect(res.ok).toBe(true);
-      for (const item of res.items as Array<Record<string, unknown>>) {
-        expect(item.project).toBe("proj-feed-a");
-      }
-    } finally {
-      core.shutdown("test");
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      project: "proj-feed-a",
+      session_id: "sess-fa",
+      created_at: "2026-02-20T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      project: "proj-feed-b",
+      session_id: "sess-fb",
+      created_at: "2026-02-20T01:00:00.000Z",
+    });
+    const res = store.feed({ project: "proj-feed-a" });
+    expect(res.ok).toBe(true);
+    for (const item of res.items as Array<Record<string, unknown>>) {
+      expect(item.project).toBe("proj-feed-a");
     }
   });
 
   test("limit パラメータが機能する", () => {
-    const core = new HarnessMemCore(createConfig("feed-limit"));
-    try {
-      for (let i = 0; i < 5; i++) {
-        core.recordEvent(
-          makeEvent({ ts: `2026-02-20T0${i}:00:00.000Z`, payload: { prompt: `feed item ${i}` } })
-        );
-      }
-      const res = core.feed({ limit: 2 });
-      expect(res.ok).toBe(true);
-      expect(res.items.length).toBeLessThanOrEqual(2);
-    } finally {
-      core.shutdown("test");
+    const { store, db } = makeStore();
+    for (let i = 0; i < 5; i++) {
+      insertTestObservation(db, {
+        project: "proj-obs",
+        created_at: `2026-02-20T0${i}:00:00.000Z`,
+      });
     }
+    const res = store.feed({ limit: 2 });
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeLessThanOrEqual(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// searchFacets
+// ---------------------------------------------------------------------------
 
 describe("observation-store: searchFacets", () => {
   test("ファセット検索が ok=true を返す", () => {
-    const core = new HarnessMemCore(createConfig("facets-basic"));
-    try {
-      core.recordEvent(makeEvent({ tags: ["tag-a", "tag-b"] }));
-      const res = core.searchFacets({ project: "proj-obs" });
-      expect(res.ok).toBe(true);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      project: "proj-obs",
+      tags: ["tag-a", "tag-b"],
+    });
+    const res = store.searchFacets({ project: "proj-obs" });
+    expect(res.ok).toBe(true);
   });
 
   test("クエリ付きファセット検索が動作する", () => {
-    const core = new HarnessMemCore(createConfig("facets-query"));
-    try {
-      core.recordEvent(makeEvent({ payload: { prompt: "facet query test" } }));
-      const res = core.searchFacets({ query: "facet query test", project: "proj-obs" });
-      expect(res.ok).toBe(true);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      project: "proj-obs",
+      title: "facet query test",
+      content: "facet query test",
+    });
+    const res = store.searchFacets({ query: "facet query test", project: "proj-obs" });
+    expect(res.ok).toBe(true);
   });
 });
 
+// ---------------------------------------------------------------------------
+// timeline
+// ---------------------------------------------------------------------------
+
 describe("observation-store: timeline", () => {
   test("存在しない観察 ID では ok=false を返す", () => {
-    const core = new HarnessMemCore(createConfig("timeline-nonexistent"));
-    try {
-      const res = core.timeline({ id: "nonexistent-obs-id" });
-      expect(res.ok).toBe(false);
-    } finally {
-      core.shutdown("test");
-    }
+    const { store } = makeStore();
+    const res = store.timeline({ id: "nonexistent-obs-id" });
+    expect(res.ok).toBe(false);
   });
 
   test("有効な観察 ID でタイムラインが返る", () => {
-    const core = new HarnessMemCore(createConfig("timeline-valid"));
-    try {
-      core.recordEvent(makeEvent({ payload: { prompt: "timeline test event" } }));
-      const searchRes = core.search({ query: "timeline test event", project: "proj-obs" });
-      if (searchRes.ok && searchRes.items.length > 0) {
-        const id = (searchRes.items[0] as Record<string, unknown>).id as string;
-        const timelineRes = core.timeline({ id });
-        expect(timelineRes.ok).toBe(true);
-      }
-    } finally {
-      core.shutdown("test");
-    }
+    const { store, db } = makeStore();
+    const id = insertTestObservation(db, {
+      project: "proj-obs",
+      session_id: "sess-timeline",
+      title: "timeline test event",
+      content: "timeline test event",
+      created_at: "2026-02-20T00:00:00.000Z",
+    });
+    const res = store.timeline({ id });
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeGreaterThan(0);
+    const center = (res.items as Array<Record<string, unknown>>).find((i) => i.position === "center");
+    expect(center).toBeDefined();
+    expect(center?.id).toBe(id);
   });
 });

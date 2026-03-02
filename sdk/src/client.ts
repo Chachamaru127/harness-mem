@@ -14,6 +14,13 @@ import type {
   TimelineInput,
   GetObservationsInput,
   ObservationItem,
+  RecordCheckpointInput,
+  FinalizeSessionInput,
+  SessionFinalizeItem,
+  ConsolidationRunInput,
+  AuditLogInput,
+  AuditLogItem,
+  SearchFacetsInput,
 } from "./types.js";
 
 export class HarnessMemClient {
@@ -107,10 +114,68 @@ export class HarnessMemClient {
   }
 
   /**
+   * Record a checkpoint for a session.
+   * Maps to POST /v1/checkpoints/record
+   */
+  async recordCheckpoint(input: RecordCheckpointInput): Promise<ApiResponse<ObservationItem>> {
+    return this.request<ObservationItem>("POST", "/v1/checkpoints/record", input);
+  }
+
+  /**
+   * Finalize a session (generate summary and close).
+   * Maps to POST /v1/sessions/finalize
+   */
+  async finalizeSession(input: FinalizeSessionInput): Promise<ApiResponse<SessionFinalizeItem>> {
+    return this.request<SessionFinalizeItem>("POST", "/v1/sessions/finalize", input);
+  }
+
+  /**
+   * Trigger a consolidation run.
+   * Maps to POST /v1/admin/consolidation/run
+   */
+  async runConsolidation(input: ConsolidationRunInput = {}): Promise<ApiResponse<Record<string, unknown>>> {
+    return this.request<Record<string, unknown>>("POST", "/v1/admin/consolidation/run", input);
+  }
+
+  /**
+   * Get consolidation queue status.
+   * Maps to GET /v1/admin/consolidation/status
+   */
+  async consolidationStatus(): Promise<ApiResponse<Record<string, unknown>>> {
+    return this.request<Record<string, unknown>>("GET", "/v1/admin/consolidation/status");
+  }
+
+  /**
+   * Get audit log entries.
+   * Maps to GET /v1/admin/audit-log
+   */
+  async auditLog(input: AuditLogInput = {}): Promise<ApiResponse<AuditLogItem>> {
+    const params = new URLSearchParams();
+    if (input.limit !== undefined) params.set("limit", String(input.limit));
+    if (input.action) params.set("action", input.action);
+    if (input.target_type) params.set("target_type", input.target_type);
+    const qs = params.toString();
+    return this.request<AuditLogItem>("GET", `/v1/admin/audit-log${qs ? `?${qs}` : ""}`);
+  }
+
+  /**
+   * Get search facets (aggregated metadata about search results).
+   * Maps to GET /v1/search/facets
+   */
+  async searchFacets(input: SearchFacetsInput = {}): Promise<ApiResponse<Record<string, unknown>>> {
+    const params = new URLSearchParams();
+    if (input.query) params.set("query", input.query);
+    if (input.project) params.set("project", input.project);
+    if (input.include_private) params.set("include_private", "true");
+    const qs = params.toString();
+    return this.request<Record<string, unknown>>("GET", `/v1/search/facets${qs ? `?${qs}` : ""}`);
+  }
+
+  /**
    * Check server health.
-   * Maps to GET /v1/health
+   * Maps to GET /health
    */
   async health(): Promise<ApiResponse<Record<string, unknown>>> {
-    return this.request<Record<string, unknown>>("GET", "/v1/health");
+    return this.request<Record<string, unknown>>("GET", "/health");
   }
 }

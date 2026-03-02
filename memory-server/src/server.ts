@@ -1,27 +1,27 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
-import {
-  type FeedRequest,
-  HarnessMemCore,
-  type ImportJobStatusRequest,
-  type ApiResponse,
-  type BackupRequest,
-  type Config,
-  type ConsolidationRunRequest,
-  type EventEnvelope,
-  type FinalizeSessionRequest,
-  type GetObservationsRequest,
-  type AuditLogRequest,
-  type RecordCheckpointRequest,
-  type ResumePackRequest,
-  type SearchFacetsRequest,
-  type SearchRequest,
-  type SessionThreadRequest,
-  type SessionsListRequest,
-  type StreamEvent,
-  type TimelineRequest,
-  type VerifyImportRequest,
-} from "./core/harness-mem-core";
+import { HarnessMemCore } from "./core/harness-mem-core";
+import type {
+  FeedRequest,
+  ImportJobStatusRequest,
+  ApiResponse,
+  BackupRequest,
+  Config,
+  ConsolidationRunRequest,
+  EventEnvelope,
+  FinalizeSessionRequest,
+  GetObservationsRequest,
+  AuditLogRequest,
+  RecordCheckpointRequest,
+  ResumePackRequest,
+  SearchFacetsRequest,
+  SearchRequest,
+  SessionThreadRequest,
+  SessionsListRequest,
+  StreamEvent,
+  TimelineRequest,
+  VerifyImportRequest,
+} from "./core/types.js";
 
 function jsonResponse(body: ApiResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -95,18 +95,25 @@ function requiresAdminToken(method: string, pathname: string): boolean {
 
 let adminTokenWarningLogged = false;
 
-function hasValidAdminToken(request: Request): boolean {
+function isLocalhostRequest(remoteAddress: string | null): boolean {
+  if (!remoteAddress) {
+    return false;
+  }
+  return remoteAddress === "127.0.0.1" || remoteAddress === "::1" || remoteAddress === "localhost";
+}
+
+function hasValidAdminToken(request: Request, remoteAddress: string | null): boolean {
   const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
   if (!configured) {
     if (!adminTokenWarningLogged) {
       console.warn(
         "[harness-mem] WARNING: HARNESS_MEM_ADMIN_TOKEN is not set. " +
-        "All admin endpoints are accessible without authentication. " +
-        "Set HARNESS_MEM_ADMIN_TOKEN to secure admin routes in production."
+        "Admin API is only accessible from localhost."
       );
       adminTokenWarningLogged = true;
     }
-    return true;
+    // When no token is configured, allow only localhost requests
+    return isLocalhostRequest(remoteAddress);
   }
   const rawAuth = request.headers.get("authorization");
   const bearer = rawAuth?.startsWith("Bearer ") ? rawAuth.slice(7).trim() : "";
@@ -210,10 +217,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
-    fetch: async (request: Request): Promise<Response> => {
+    fetch: async (request: Request, server): Promise<Response> => {
       const url = new URL(request.url);
+      const remoteAddress = server?.requestIP(request)?.address ?? null;
 
-      if (requiresAdminToken(request.method, url.pathname) && !hasValidAdminToken(request)) {
+      if (requiresAdminToken(request.method, url.pathname) && !hasValidAdminToken(request, remoteAddress)) {
         return unauthorized("missing or invalid admin token");
       }
 
@@ -288,7 +296,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           core.startClaudeMemImport({
             source_db_path: resolvedPath,
             project: typeof body.project === "string" ? body.project : undefined,
-            dry_run: Boolean(body.dry_run),
+            dry_run: parseBooleanLike(body.dry_run, false),
           })
         );
       }
@@ -412,7 +420,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           id: body.id,
           before: typeof body.before === "number" ? body.before : undefined,
           after: typeof body.after === "number" ? body.after : undefined,
-          include_private: Boolean(body.include_private),
+          include_private: parseBooleanLike(body.include_private, false),
         };
         return jsonResponse(core.timeline(req));
       }
@@ -421,7 +429,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const body = await parseRequestJson(request);
         const req: GetObservationsRequest = {
           ids: toStringArray(body.ids),
-          include_private: Boolean(body.include_private),
+          include_private: parseBooleanLike(body.include_private, false),
           compact: body.compact !== false,
         };
         return jsonResponse(core.getObservations(req));
@@ -480,7 +488,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           correlation_id: typeof body.correlation_id === "string" ? body.correlation_id : undefined,
           limit: typeof body.limit === "number" ? body.limit : undefined,
-          include_private: Boolean(body.include_private),
+          include_private: parseBooleanLike(body.include_private, false),
           resume_pack_max_tokens: typeof body.resume_pack_max_tokens === "number" ? body.resume_pack_max_tokens : undefined,
         };
         return jsonResponse(core.resumePack(req));

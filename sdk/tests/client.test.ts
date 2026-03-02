@@ -17,9 +17,14 @@ type MockFetchResult = {
   error?: string;
 };
 
+let lastFetchUrl = "";
+let lastFetchOptions: RequestInit | undefined;
+
 function mockFetch(response: MockFetchResult): void {
   (globalThis as Record<string, unknown>).__originalFetch = globalThis.fetch;
-  globalThis.fetch = async (): Promise<Response> => {
+  globalThis.fetch = async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+    lastFetchUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    lastFetchOptions = init;
     return new Response(JSON.stringify(response), {
       status: 200,
       headers: { "content-type": "application/json" },
@@ -195,6 +200,128 @@ describe("HarnessMemClient", () => {
 
     expect(result.ok).toBe(true);
     expect(result.items).toHaveLength(1);
+  });
+
+  test("health() - /health パスを使用する（/v1/health ではない）", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ status: "ok" }],
+      meta: {},
+    });
+
+    const client = new HarnessMemClient({ baseUrl: "http://localhost:37888" });
+    await client.health();
+
+    expect(lastFetchUrl).toBe("http://localhost:37888/health");
+    expect(lastFetchOptions?.method).toBe("GET");
+  });
+
+  test("recordCheckpoint() - チェックポイントを記録する", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ id: "obs_checkpoint-1", title: "進捗チェックポイント" }],
+      meta: { deduped: false },
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.recordCheckpoint({
+      session_id: "session-456",
+      title: "進捗チェックポイント",
+      content: "認証機能の実装が完了した",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.items).toHaveLength(1);
+    expect(lastFetchUrl).toContain("/v1/checkpoints/record");
+    expect(lastFetchOptions?.method).toBe("POST");
+  });
+
+  test("finalizeSession() - セッションをファイナライズする", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ session_id: "session-789", summary_mode: "standard", finalized_at: "2026-03-01T00:00:00Z" }],
+      meta: {},
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.finalizeSession({
+      session_id: "session-789",
+      summary_mode: "standard",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.items).toHaveLength(1);
+    expect(lastFetchUrl).toContain("/v1/sessions/finalize");
+  });
+
+  test("runConsolidation() - 統合実行をトリガーする", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ queued: true }],
+      meta: {},
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.runConsolidation({ reason: "test", project: "my-project" });
+
+    expect(result.ok).toBe(true);
+    expect(lastFetchUrl).toContain("/v1/admin/consolidation/run");
+    expect(lastFetchOptions?.method).toBe("POST");
+  });
+
+  test("consolidationStatus() - 統合ステータスを取得する", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ pending_count: 3, last_run: "2026-03-01T00:00:00Z" }],
+      meta: {},
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.consolidationStatus();
+
+    expect(result.ok).toBe(true);
+    expect(lastFetchUrl).toContain("/v1/admin/consolidation/status");
+    expect(lastFetchOptions?.method).toBe("GET");
+  });
+
+  test("auditLog() - 監査ログを取得する", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ id: 1, action: "record_event", target_type: "observation", created_at: "2026-03-01T00:00:00Z" }],
+      meta: { count: 1 },
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.auditLog({ limit: 10, action: "record_event" });
+
+    expect(result.ok).toBe(true);
+    expect(result.items).toHaveLength(1);
+    expect(lastFetchUrl).toContain("/v1/admin/audit-log");
+    expect(lastFetchUrl).toContain("limit=10");
+    expect(lastFetchUrl).toContain("action=record_event");
+  });
+
+  test("searchFacets() - 検索ファセットを取得する", async () => {
+    mockFetch({
+      ok: true,
+      source: "core",
+      items: [{ projects: ["proj-a", "proj-b"], platforms: ["claude-code"] }],
+      meta: {},
+    });
+
+    const client = new HarnessMemClient();
+    const result = await client.searchFacets({ project: "proj-a", include_private: true });
+
+    expect(result.ok).toBe(true);
+    expect(lastFetchUrl).toContain("/v1/search/facets");
+    expect(lastFetchUrl).toContain("project=proj-a");
+    expect(lastFetchUrl).toContain("include_private=true");
   });
 
   test("ネットワークエラー時は ok=false を返す", async () => {

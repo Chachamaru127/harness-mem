@@ -110,3 +110,62 @@ export interface ObservationItem {
   tags?: string[];
   privacy_tags?: string[];
 }
+
+/** Record checkpoint request */
+export interface RecordCheckpointInput {
+  session_id: string;
+  title: string;
+  content: string;
+  platform?: string;
+  project?: string;
+  tags?: string[];
+  privacy_tags?: string[];
+}
+
+/** Finalize session request */
+export interface FinalizeSessionInput {
+  session_id: string;
+  platform?: string;
+  project?: string;
+  summary_mode?: "standard" | "brief" | "detailed";
+}
+
+/** Session finalize result item */
+export interface SessionFinalizeItem {
+  session_id: string;
+  summary_mode?: string;
+  summary?: string;
+  finalized_at?: string;
+}
+
+/** Consolidation run request */
+export interface ConsolidationRunInput {
+  reason?: string;
+  project?: string;
+  session_id?: string;
+  limit?: number;
+}
+
+/** Audit log request */
+export interface AuditLogInput {
+  limit?: number;
+  action?: string;
+  target_type?: string;
+}
+
+/** Audit log item */
+export interface AuditLogItem {
+  id: number;
+  action: string;
+  target_type?: string;
+  target_id?: string;
+  details_json?: string;
+  created_at: string;
+}
+
+/** Search facets request */
+export interface SearchFacetsInput {
+  query?: string;
+  project?: string;
+  include_private?: boolean;
+}
