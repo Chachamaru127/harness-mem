@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-02（§27 完了+品質監査、§27.1 品質強化 + §28 改善プラン追加）
+最終更新: 2026-03-02（§27.1 完了、v3 再評価、§28 v3 分析に基づき優先度最終調整）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
@@ -18,11 +18,12 @@
 
 ---
 
-## §27 結果サマリー
+## §27 + §27.1 結果サマリー
 
-**申告値**: 103 + 11 = **114/140 (81.4%)** → 首位獲得（mem0: 109, supermemory: 105）
-**品質監査後の実態値**: **~110/140**（OCR モック、SDK 型未検証、Sync HTTP 未実装、pgvector スタブの影響）
-**ベンチマーク**: [`docs/benchmarks/competitive-analysis-2026-03-02-v2.md`](docs/benchmarks/competitive-analysis-2026-03-02-v2.md)
+**§27 申告値**: 103 + 11 = 114/140 → §27.1 品質強化後: **118/140 (84.3%)**
+**v3 ランキング**: **harness-mem(118)** > supermemory(115) > mem0(110) > OpenMemory(106) > claude-mem(76)
+**ベンチマーク v3**: [`docs/benchmarks/competitive-analysis-2026-03-02-v3.md`](docs/benchmarks/competitive-analysis-2026-03-02-v3.md)
+**警告**: supermemory が +10pt 急成長で 3pt 差に迫る。Graph(10)/Benchmark(10) で逆転されている
 
 > テスト品質監査の結果:
 > - **C 評価（モック過多）**: NEXT-007 OCR, NEXT-009 SDK, NEXT-004 Graph viz
@@ -65,36 +66,53 @@
 
 ---
 
-## 28. 首位維持＋圧倒的リード確立（2026-03 114→126/140）
+## 28. supermemory 逆転阻止＋圧倒的リード確立（2026-03 118→130/140）
 
-目的: §27.1 で品質を固めた上で、2位 mem0（109）との差を 5pt→17pt に広げ、圧倒的リードを確立する。
-**前提**: §27.1 全タスク完了後に着手。
-**ベンチマーク**: [`docs/benchmarks/competitive-analysis-2026-03-02-v2.md`](docs/benchmarks/competitive-analysis-2026-03-02-v2.md)
-**スコア**: **harness-mem(114)** > mem0(109) > OpenMemory(105) = supermemory(105) > claude-mem(69)
+目的: supermemory が +10pt 急成長で 3pt 差に迫る中、逆転を阻止し圧倒的リードを確立する。
+**前提**: §27.1 全タスク完了済み。
+**ベンチマーク v3**: [`docs/benchmarks/competitive-analysis-2026-03-02-v3.md`](docs/benchmarks/competitive-analysis-2026-03-02-v3.md)
+**スコア**: harness-mem(118) > **supermemory(115, +10急成長)** > mem0(110) > OpenMemory(106) > claude-mem(76)
 
----
-
-#### Phase 1: 基盤完成 — ストレージ＋同期の本格化（P0, +3pt → 117）
-
-- [ ] `cc:TODO [feature:tdd]` **GAP-001**: pgvector StorageAdapter 非同期対応完成
-  - async StorageAdapter v2 導入 → フル CRUD。**前提**: HARDEN-004 完了
-  - DoD: pgvector フル CRUD、8テスト
-
-- [ ] `cc:TODO [feature:tdd]` **GAP-002**: Cloud Sync WebSocket リアルタイム同期
-  - WS リアルタイム通知 + 再接続差分同期。**前提**: HARDEN-003 完了
-  - DoD: WS 接続 + 通知 + 再接続同期、6テスト
+**harness-mem が負けている軸**: Graph(-2), Platform(-1), Benchmark(-1), MemoryModel(-1), Storage(-1), Privacy(-1)
 
 ---
 
-#### Phase 2: 認知+SDK+マルチモーダル拡張（P1, +3pt → 120）
+#### Phase 1: supermemory 逆転阻止 + スタブ解消（P0, +5pt → 123）
+
+- [ ] `cc:TODO [feature:tdd] [P]` **GAP-006**: Graph 強化 — Embeddable コンポーネント + データモデル拡張
+  - `<HarnessMemGraph />` npm パッケージ（WebGL + React）+ typed relations 6種追加
+  - relation types: `updates`/`extends`/`derives`/`contradicts`/`causes`/`part_of`
+  - **対抗**: supermemory Graph(10) に **-2pt 差（CRITICAL）**
+  - DoD: npm ビルド + typed relations CRUD + 埋め込みデモ + 統合テスト、8テスト
+
+- [ ] `cc:TODO [feature:tdd] [P]` **GAP-001**: pgvector StorageAdapter 完成（スタブ解消）
+  - `query().all()/.get()/.run()` スタブ → async StorageAdapter v2 フル CRUD + Core 統合
+  - **理由**: §27→§27.1 と2フェーズ未解決。3度目で確実に完了させる
+  - DoD: pgvector フル CRUD + HarnessMemCore 経由の読み書き動作、8テスト
+
+- [ ] `cc:TODO [feature:tdd] [P]` **GAP-004**: Vercel AI SDK + CrewAI プロバイダー
+  - MemoryProvider 互換 + CrewAI Memory ラッパー
+  - **対抗**: mem0/supermemory Platform(10) に -1pt 差
+  - DoD: 2 SDK から記録・検索動作、6テスト
+
+- [ ] `cc:TODO [P]` **GAP-007**: ベンチマーク公開 + CI + MemoryBench 対抗
+  - LoCoMo/LongMemEval CI 週次実行 + スコア推移 + 公開ダッシュボード
+  - **対抗**: supermemory Benchmark(10) に -1pt 差
+  - DoD: CI 自動実行+結果公開+スコア比較表、5テスト
+
+---
+
+#### Phase 2: 全軸9以上達成（P1, +3pt → 126）
 
 - [ ] `cc:TODO [feature:tdd]` **GAP-003**: エピソード/意味記憶の型分類
   - episodic/semantic/procedural 自動分類 + 型フィルタ検索
+  - **対抗**: supermemory/OpenMemory MemoryModel(9) に -1pt 差
   - DoD: 3記憶型の自動分類+フィルタ検索、8テスト
 
-- [ ] `cc:TODO [feature:tdd]` **GAP-004**: Vercel AI SDK + CrewAI プロバイダー
-  - MemoryProvider 互換 + CrewAI Memory ラッパー
-  - DoD: 2 SDK から記録・検索動作、6テスト
+- [ ] `cc:TODO [feature:security]` **GAP-008**: オフライン LLM 対応（Ollama ファーストクラス）
+  - Ollama API でファクト抽出・圧縮・リフレクションを完全ローカル実行
+  - **対抗**: OpenMemory Privacy(10) に -1pt 差
+  - DoD: API キーなしで全 LLM 機能動作、6テスト
 
 - [ ] `cc:TODO [feature:tdd]` **GAP-005**: 音声トランスクリプション取り込み
   - Whisper で音声→テキスト→観察登録、話者分離対応
@@ -102,39 +120,26 @@
 
 ---
 
-#### Phase 3: グラフ強化+ベンチマーク公開+プライバシー（P2, +3pt → 123）
-
-- [ ] `cc:TODO` **GAP-006**: Embeddable グラフ React コンポーネント
-  - `<HarnessMemGraph />` npm パッケージ（iframe + React 両対応）
-  - DoD: npm ビルド + 統合テスト、5テスト
-
-- [ ] `cc:TODO [feature:tdd]` **GAP-007**: ベンチマーク結果公開 + CI 自動実行
-  - LoCoMo/LongMemEval を GitHub Actions 週次実行 + スコア推移記録
-  - DoD: CI 自動実行+結果記録、4テスト
-
-- [ ] `cc:TODO [feature:security]` **GAP-008**: オフライン LLM 対応（Ollama ファーストクラス）
-  - Ollama API でファクト抽出・圧縮・リフレクションを完全ローカル実行
-  - DoD: API キーなしで全 LLM 機能動作、6テスト
-
----
-
-#### Phase 4: UX 革新（P3, +2~3pt → 126）
+#### Phase 3: リード拡大（P2, +2pt → 128）
 
 - [ ] `cc:TODO` **GAP-009**: ネイティブデスクトップアプリ（Tauri）
   - Tauri v2 + React UI、システムトレイ常駐+グローバル検索
-  - DoD: macOS/Windows/Linux ビルド+起動、4テスト
+  - **対抗**: supermemory Nova(9)
+  - DoD: macOS ビルド+起動+基本操作、4テスト
 
-- [ ] `cc:TODO [feature:tdd]` **GAP-010**: ストリーミング圧縮エンジン
-  - リアルタイム増分圧縮 + Working→Archive 自動昇格
-  - DoD: ストリーミング圧縮+自動昇格動作、6テスト
+- [ ] `cc:TODO [feature:tdd]` **GAP-002**: Cloud Sync 永続化 + クライアント SDK
+  - SyncStore DB 永続化 + Core observations 統合 + WS リアルタイム通知
+  - **注意**: Cloud Sync は既に 9pt（同率首位）。Phase 1-2 完了後に着手
+  - DoD: DB永続化 + WS 接続 + クライアント SDK、8テスト
+
+> **削除**: ~~GAP-010 ストリーミング圧縮~~ — Consolidation(8)は既に全競合と同率首位。勝っている軸の強化は不要。
 
 ---
 
 ### 28.1 完了判定（DoD）
 
-1. Phase 1: pgvector フル CRUD + Cloud Sync WebSocket
-2. Phase 2: 記憶型分類 + 2 SDK 追加 + 音声取り込み
-3. Phase 3: 組み込みグラフ + CI ベンチマーク + オフライン LLM
-4. Phase 4: Tauri デスクトップ + ストリーミング圧縮
+1. Phase 1: Graph 強化(+2) + pgvector 完成(+1) + SDK(+1) + ベンチマーク公開(+1)
+2. Phase 2: 記憶型分類(+1) + Ollama(+1) + 音声(+1)
+3. Phase 3: Tauri(+1) + Sync 永続化(+1)
 
-**Phase 1-4 完了目標**: 114 + 12 = **126/140 (90.0%)** — 全ツール中の圧倒的首位
+**Phase 1-3 完了目標**: 118 + 10 = **128/140 (91.4%)** — 2位に13pt差
