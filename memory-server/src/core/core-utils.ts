@@ -737,5 +737,11 @@ export function getConfig(): Config {
     // TEAM-003: ユーザー・チーム識別
     userId: (process.env.HARNESS_MEM_USER_ID || "").trim() || undefined,
     teamId: (process.env.HARNESS_MEM_TEAM_ID || "").trim() || undefined,
+    // GRAPH-003: グラフ探索最大ホップ数
+    graphMaxHops: (() => {
+      const raw = Number(process.env.HARNESS_MEM_GRAPH_MAX_HOPS);
+      if (!Number.isFinite(raw) || raw <= 0) return undefined;
+      return Math.min(Math.max(Math.floor(raw), 1), 5);
+    })(),
   };
 }

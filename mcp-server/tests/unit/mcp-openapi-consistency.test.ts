@@ -304,6 +304,47 @@ describe("ARC-014: MCP ツール定義と OpenAPI スキーマの整合性", () 
     expect(openApiRequired).toContain("content");
   });
 
+  test("GRAPH-004: harness_mem_graph の depth パラメータが OpenAPI に存在すること", () => {
+    const operation = openApiDoc.paths["/v1/graph/neighbors"]?.["get"];
+    expect(operation).toBeDefined();
+
+    const openApiProps = getOpenApiProperties(operation!);
+    expect(openApiProps).toContain("depth");
+  });
+
+  test("GRAPH-004: harness_mem_graph MCP ツールに depth プロパティが定義されていること", () => {
+    const tool = memoryTools.find((t) => t.name === "harness_mem_graph");
+    expect(tool).toBeDefined();
+
+    const properties = (tool!.inputSchema as { properties?: Record<string, unknown> }).properties ?? {};
+    expect(properties).toHaveProperty("depth");
+
+    const depthSchema = properties.depth as { type?: string; minimum?: number; maximum?: number; default?: number };
+    expect(depthSchema.type).toBe("integer");
+    expect(depthSchema.minimum).toBe(1);
+    expect(depthSchema.maximum).toBe(5);
+    expect(depthSchema.default).toBe(1);
+  });
+
+  test("GRAPH-004: depth=3 の場合 OpenAPI のスキーマ制約（minimum=1, maximum=5）を満たすこと", () => {
+    const operation = openApiDoc.paths["/v1/graph/neighbors"]?.["get"];
+    expect(operation).toBeDefined();
+
+    const depthParam = (operation!.parameters ?? []).find((p) => p.name === "depth");
+    expect(depthParam).toBeDefined();
+
+    const depthParamTyped = depthParam as { name: string; in: string; schema?: { type?: string; minimum?: number; maximum?: number; default?: number } };
+    expect(depthParamTyped.schema?.type).toBe("integer");
+    expect(depthParamTyped.schema?.minimum).toBe(1);
+    expect(depthParamTyped.schema?.maximum).toBe(5);
+    expect(depthParamTyped.schema?.default).toBe(1);
+
+    // depth=3 は制約範囲内
+    const testDepth = 3;
+    expect(testDepth).toBeGreaterThanOrEqual(depthParamTyped.schema!.minimum!);
+    expect(testDepth).toBeLessThanOrEqual(depthParamTyped.schema!.maximum!);
+  });
+
   test("TOOL_ENDPOINT_MAP にないツールは harness_mem_ プレフィックスを持つこと", () => {
     const unmappedTools = memoryTools.filter(
       (t) => !(t.name in TOOL_ENDPOINT_MAP)

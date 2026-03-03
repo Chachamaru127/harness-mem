@@ -1393,36 +1393,58 @@ export class HarnessMemCore {
 
   getLinks(request: GetLinksRequest): ApiResponse {
     const startedAt = performance.now();
-    const { observation_id, relation } = request;
+    const { observation_id, relation, depth: rawDepth } = request;
+    const depth = Math.min(Math.max(rawDepth ?? 1, 1), 5);
 
     if (!observation_id) {
       return makeErrorResponse(startedAt, "observation_id is required", request as unknown as Record<string, unknown>);
     }
 
     try {
-      let sql = `
-        SELECT from_observation_id, to_observation_id, relation, weight, created_at
-        FROM mem_links
-        WHERE from_observation_id = ?
-      `;
-      const params: unknown[] = [observation_id];
-
-      if (relation) {
-        sql += ` AND relation = ?`;
-        params.push(relation);
-      }
-
-      sql += ` ORDER BY created_at DESC`;
-
-      const rows = this.db.query(sql).all(...(params as any[])) as Array<{
+      type LinkRow = {
         from_observation_id: string;
         to_observation_id: string;
         relation: string;
         weight: number;
         created_at: string;
-      }>;
+      };
 
-      return makeResponse(startedAt, rows, { observation_id, relation });
+      const allRows: LinkRow[] = [];
+      // BFS: フロンティアとして処理済みの observation_id を管理（循環防止）
+      const processedIds = new Set<string>([observation_id]);
+      let frontier = [observation_id];
+
+      for (let d = 0; d < depth && frontier.length > 0; d++) {
+        const placeholders = frontier.map(() => "?").join(", ");
+        let sql = `
+          SELECT from_observation_id, to_observation_id, relation, weight, created_at
+          FROM mem_links
+          WHERE from_observation_id IN (${placeholders})
+        `;
+        const params: unknown[] = [...frontier];
+
+        if (relation) {
+          sql += ` AND relation = ?`;
+          params.push(relation);
+        }
+
+        sql += ` ORDER BY created_at DESC`;
+
+        const rows = this.db.query(sql).all(...(params as any[])) as LinkRow[];
+        allRows.push(...rows);
+
+        // 次フロンティア: 未処理の to_observation_id のみ
+        const nextFrontier: string[] = [];
+        for (const row of rows) {
+          if (!processedIds.has(row.to_observation_id)) {
+            processedIds.add(row.to_observation_id);
+            nextFrontier.push(row.to_observation_id);
+          }
+        }
+        frontier = nextFrontier;
+      }
+
+      return makeResponse(startedAt, allRows, { observation_id, relation, depth });
     } catch (err) {
       return makeErrorResponse(startedAt, `failed to get links: ${String(err)}`, request as unknown as Record<string, unknown>);
     }

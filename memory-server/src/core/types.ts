@@ -166,6 +166,8 @@ export interface CreateLinkRequest {
 export interface GetLinksRequest {
   observation_id: string;
   relation?: string;
+  /** BFS 探索深度 (1-5, デフォルト 1) */
+  depth?: number;
 }
 
 export interface RecordCheckpointRequest {
@@ -254,4 +256,6 @@ export interface Config {
   teamId?: string;
   /** テスト時に false を設定し、バックグラウンドワーカー（heartbeat, WAL checkpoint 等）を無効化する */
   backgroundWorkersEnabled?: boolean;
+  /** GRAPH-003: グラフ探索の最大ホップ数（環境変数 HARNESS_MEM_GRAPH_MAX_HOPS、デフォルト3、上限5） */
+  graphMaxHops?: number;
 }

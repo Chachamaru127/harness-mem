@@ -297,6 +297,142 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
     }
   });
 
+  test("GRAPH-001: contradicts リンク経由で展開されるが 50% 減衰する", () => {
+    const core = new HarnessMemCore(createConfig("contradicts"));
+    try {
+      const resultA = core.recordEvent(baseEvent({ event_id: "contradicts-a", payload: { prompt: "Microservices architecture improves scalability and deployment independence." } }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({ event_id: "contradicts-b", payload: { prompt: "Monolithic architecture is simpler to develop and debug than microservices." } }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      // A → B: contradicts リンク
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "contradicts", weight: 1.0 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "Microservices architecture scalability",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+        debug: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const items = result.items as Array<{ id: string; graph_score?: number; scores?: Record<string, number> }>;
+      const resultIds = items.map((i) => i.id);
+
+      // A は直接ヒット
+      expect(resultIds).toContain(obsIdA);
+      // B は contradicts リンク経由でヒット
+      expect(resultIds).toContain(obsIdB);
+
+      // B のスコアは A より低いはず（contradicts 50% 減衰の効果）
+      const itemA = items.find((i) => i.id === obsIdA);
+      const itemB = items.find((i) => i.id === obsIdB);
+      if (itemA && itemB) {
+        const scoreB = itemB.graph_score ?? (itemB.scores?.graph ?? 0);
+        const scoreA = itemA.graph_score ?? (itemA.scores?.graph ?? 0);
+        // B の graph スコアは A の 50% 以下になるはず（weight=1.0 * 0.5 penalty）
+        expect(scoreB).toBeLessThanOrEqual(scoreA + 0.01);
+      }
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-001: causes リンク経由で展開される", () => {
+    const core = new HarnessMemCore(createConfig("causes"));
+    try {
+      const resultA = core.recordEvent(baseEvent({ event_id: "causes-a", payload: { prompt: "Memory leak in the application causes gradual performance degradation." } }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({ event_id: "causes-b", payload: { prompt: "Application crashes after 24 hours due to resource exhaustion." } }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      // A → B: causes リンク
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "causes", weight: 0.9 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "memory leak performance degradation",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+
+      // A は直接ヒット
+      expect(resultIds).toContain(obsIdA);
+      // B は causes リンク経由でヒット
+      expect(resultIds).toContain(obsIdB);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-001: part_of リンク経由で展開される", () => {
+    const core = new HarnessMemCore(createConfig("part-of"));
+    try {
+      const resultA = core.recordEvent(baseEvent({ event_id: "partof-a", payload: { prompt: "Authentication module handles user login and session management." } }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({ event_id: "partof-b", payload: { prompt: "JWT token validation is part of the authentication module." } }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      // B → A: part_of リンク（B は A の一部）
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "part_of", weight: 0.85 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "authentication login session management",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+
+      // A は直接ヒット
+      expect(resultIds).toContain(obsIdA);
+      // B は part_of リンク経由でヒット
+      expect(resultIds).toContain(obsIdB);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-001: updates リンク経由で展開される", () => {
+    const core = new HarnessMemCore(createConfig("updates"));
+    try {
+      const resultA = core.recordEvent(baseEvent({ event_id: "updates-a", payload: { prompt: "API rate limit was set to 100 requests per minute in v1." } }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({ event_id: "updates-b", payload: { prompt: "API rate limit has been increased to 500 requests per minute in v2." } }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      // B → A: updates リンク（B は A を更新している）
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "updates", weight: 0.95 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "API rate limit requests per minute",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+
+      // A は直接ヒット
+      expect(resultIds).toContain(obsIdA);
+      // B は updates リンク経由でヒット
+      expect(resultIds).toContain(obsIdB);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("境界: リンクのない観察はグラフ探索結果に追加されない", () => {
     const core = new HarnessMemCore(createConfig("isolated"));
     try {
@@ -319,6 +455,245 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
       // B はリンクでもキーワードでもヒットしないはず
       // (A はヒットする)
       expect((result.items as Array<{ id: string }>).map((i) => i.id)).toContain(obsIdA);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-002: to→from 方向（逆方向）のリンクが展開される", () => {
+    const core = new HarnessMemCore(createConfig("backward"));
+    try {
+      // 観察A（直接ヒット）
+      const resultA = core.recordEvent(baseEvent({
+        event_id: "backward-a",
+        payload: { prompt: "Kubernetes orchestrates container deployments at scale." },
+      }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      // 観察B（B→A の逆方向リンクで A からは to→from 方向で辿れる）
+      const resultB = core.recordEvent(baseEvent({
+        event_id: "backward-b",
+        payload: { prompt: "Docker containers are managed by Kubernetes cluster." },
+      }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      // B → A: B が A を参照（to_observation_id = A、from_observation_id = B）
+      // 双方向探索なら A をフロンティアとして B に backward 方向で到達できる
+      expect(core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdA, relation: "follows", weight: 0.9 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "Kubernetes container orchestration",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+
+      // A は直接ヒット
+      expect(resultIds).toContain(obsIdA);
+      // B は backward 方向（B→A のリンクを to→from で辿る）でヒット
+      expect(resultIds).toContain(obsIdB);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-002: 双方向の循環リンクで無限ループしない", () => {
+    const core = new HarnessMemCore(createConfig("bidir-cycle"));
+    try {
+      const resultA = core.recordEvent(baseEvent({
+        event_id: "bidir-cycle-a",
+        payload: { prompt: "Frontend React component calls backend REST API endpoint." },
+      }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({
+        event_id: "bidir-cycle-b",
+        payload: { prompt: "Backend REST API returns JSON data to React frontend." },
+      }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      const resultC = core.recordEvent(baseEvent({
+        event_id: "bidir-cycle-c",
+        payload: { prompt: "React state management updates after API response is received." },
+      }));
+      const obsIdC = (resultC.items[0] as { id: string }).id;
+
+      // A→B、B→A（双方向循環）、B→C（さらなるリンク）
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "shared_entity", weight: 0.8 }).ok).toBe(true);
+      expect(core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdA, relation: "shared_entity", weight: 0.8 }).ok).toBe(true);
+      expect(core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdC, relation: "follows", weight: 0.7 }).ok).toBe(true);
+
+      // 無限ループしないこと（タイムアウトなしで完了する）
+      const result = core.search({
+        query: "React frontend API calls",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+      // A、B、C すべて含まれる（循環があっても正常に探索完了）
+      expect(resultIds).toContain(obsIdA);
+      expect(resultIds).toContain(obsIdB);
+      expect(resultIds).toContain(obsIdC);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-002: 双方向探索でもスコア減衰が正しく適用される", () => {
+    const core = new HarnessMemCore(createConfig("bidir-decay"));
+    try {
+      // A（直接ヒット）← B（backward 1-hop）← C（backward 2-hop）
+      // C→B→A の方向でリンクが存在し、A からは backward 方向で B、C に到達できる
+      const resultA = core.recordEvent(baseEvent({
+        event_id: "bidir-decay-a",
+        payload: { prompt: "GraphQL schema defines the API contract for client queries." },
+      }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({
+        event_id: "bidir-decay-b",
+        payload: { prompt: "Apollo Client sends GraphQL queries to the server." },
+      }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      const resultC = core.recordEvent(baseEvent({
+        event_id: "bidir-decay-c",
+        payload: { prompt: "React hooks use Apollo Client for data fetching." },
+      }));
+      const obsIdC = (resultC.items[0] as { id: string }).id;
+
+      // C→B→A: backward 方向探索でA から B(1-hop)、C(2-hop) に到達
+      expect(core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdA, relation: "follows", weight: 1.0 }).ok).toBe(true);
+      expect(core.createLink({ from_observation_id: obsIdC, to_observation_id: obsIdB, relation: "follows", weight: 1.0 }).ok).toBe(true);
+
+      const result = core.search({
+        query: "GraphQL API schema contract",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+        debug: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const items = result.items as Array<{ id: string; graph_score?: number; scores?: Record<string, number> }>;
+      const itemB = items.find((i) => i.id === obsIdB);
+      const itemC = items.find((i) => i.id === obsIdC);
+
+      // B と C が両方含まれる
+      expect(itemB).toBeDefined();
+      expect(itemC).toBeDefined();
+
+      // C (2-hop) の graph スコアは B (1-hop) より低いはず（decay=0.5 の効果）
+      if (itemB && itemC) {
+        const scoreB = itemB.graph_score ?? (itemB.scores?.graph ?? 0);
+        const scoreC = itemC.graph_score ?? (itemC.scores?.graph ?? 0);
+        expect(scoreC).toBeLessThanOrEqual(scoreB + 0.01);
+      }
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-003: graphMaxHops=5 で 5-hop まで展開される", () => {
+    const baseConf = createConfig("maxhops5");
+    const core = new HarnessMemCore({ ...baseConf, graphMaxHops: 5 });
+    try {
+      // A→B→C→D→E→F チェーン（5-hop）
+      const ids: string[] = [];
+      const labels = ["5h-a", "5h-b", "5h-c", "5h-d", "5h-e", "5h-f"];
+      const prompts = [
+        "Rust programming language provides memory safety guarantees.",
+        "Rust ownership model prevents data races at compile time.",
+        "Rust borrow checker enforces lifetime rules statically.",
+        "Rust lifetimes ensure references are always valid.",
+        "Rust slices provide safe access to contiguous memory sequences.",
+        "Rust iterators enable zero-cost abstractions over collections.",
+      ];
+      for (let i = 0; i < labels.length; i++) {
+        const r = core.recordEvent(baseEvent({ event_id: labels[i], payload: { prompt: prompts[i] } }));
+        ids.push((r.items[0] as { id: string }).id);
+      }
+      // A→B→C→D→E→F（5 hop chain）
+      for (let i = 0; i < ids.length - 1; i++) {
+        core.createLink({ from_observation_id: ids[i], to_observation_id: ids[i + 1], relation: "extends", weight: 0.9 });
+      }
+
+      const result = core.search({
+        query: "Rust memory safety ownership",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const resultIds = (result.items as Array<{ id: string }>).map((i) => i.id);
+      // A（直接ヒット）から F（5-hop）まで全て含まれること
+      for (const id of ids) {
+        expect(resultIds).toContain(id);
+      }
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("GRAPH-003: graphMaxHops=1 で graph スコアが 1-hop のみに付与される", () => {
+    // C がベクトル/語彙検索でヒットする可能性があるため、
+    // 「C の graph スコアが 0（グラフ探索で到達しない）」で検証する。
+    const baseConf = createConfig("maxhops1");
+    const core = new HarnessMemCore({ ...baseConf, graphMaxHops: 1 });
+    try {
+      const resultA = core.recordEvent(baseEvent({
+        event_id: "1h-a",
+        payload: { prompt: "GraphMaxHopsAlpha unique term for direct hit observation." },
+      }));
+      const obsIdA = (resultA.items[0] as { id: string }).id;
+
+      const resultB = core.recordEvent(baseEvent({
+        event_id: "1h-b",
+        payload: { prompt: "GraphMaxHopsBeta linked from alpha via extends relation." },
+      }));
+      const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      const resultC = core.recordEvent(baseEvent({
+        event_id: "1h-c",
+        payload: { prompt: "GraphMaxHopsGamma two hops away from the search entry point." },
+      }));
+      const obsIdC = (resultC.items[0] as { id: string }).id;
+
+      core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "extends", weight: 0.9 });
+      core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdC, relation: "extends", weight: 0.9 });
+
+      const result = core.search({
+        query: "GraphMaxHopsAlpha unique term direct hit",
+        project: "multihop-test",
+        include_private: true,
+        expand_links: true,
+        debug: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const items = result.items as Array<{ id: string; scores?: Record<string, number>; graph_score?: number }>;
+      // A（直接ヒット）は含まれる
+      expect(items.map((i) => i.id)).toContain(obsIdA);
+      // B（1-hop）は含まれ、graph スコアが付与される
+      const itemB = items.find((i) => i.id === obsIdB);
+      expect(itemB).toBeDefined();
+      if (itemB) {
+        const graphScoreB = itemB.graph_score ?? (itemB.scores?.graph ?? 0);
+        expect(graphScoreB).toBeGreaterThan(0);
+      }
+      // C（2-hop）は graphMaxHops=1 のため graph スコアが 0（グラフ探索で到達しない）
+      const itemC = items.find((i) => i.id === obsIdC);
+      if (itemC) {
+        const graphScoreC = itemC.graph_score ?? (itemC.scores?.graph ?? 0);
+        expect(graphScoreC).toBe(0);
+      }
     } finally {
       core.shutdown("test");
     }

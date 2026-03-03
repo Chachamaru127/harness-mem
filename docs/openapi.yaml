@@ -1326,6 +1326,14 @@ paths:
           in: query
           schema:
             $ref: "#/components/schemas/RelationType"
+        - name: depth
+          in: query
+          description: BFS traversal depth (1-5, default 1)
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
+            default: 1
       responses:
         "200":
           description: Neighbor links

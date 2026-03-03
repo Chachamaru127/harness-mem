@@ -498,7 +498,8 @@ export class ObservationStore {
   ): Map<string, number> {
     if (topIds.length === 0) return new Map<string, number>();
 
-    const MAX_DEPTH = 3;
+    const rawHops = this.deps.config?.graphMaxHops ?? 3;
+    const MAX_DEPTH = Math.min(Math.max(rawHops, 1), 5);
     const DECAY = 0.5;
 
     const graphScores = new Map<string, number>();
@@ -513,22 +514,54 @@ export class ObservationStore {
       const placeholders = frontierIds.map(() => "?").join(", ");
       const params: unknown[] = [...frontierIds];
 
-      let sql = `
+      // contradicts は意味的に逆の関係なので、スコアを 50% 減衰させる
+      const CONTRADICTS_PENALTY = 0.5;
+
+      // GRAPH-002: 双方向探索
+      // forward: from_observation_id がフロンティア → to 方向へ辿る
+      // backward: to_observation_id がフロンティア → from 方向へ辿る
+      // applyCommonFilters は SQL 末尾に AND 句を追記するため、
+      // 各 SELECT ブランチに個別適用してから UNION ALL で結合する
+      const RELATIONS = "'shared_entity', 'follows', 'extends', 'derives', 'contradicts', 'causes', 'part_of', 'updates'";
+
+      const forwardParams: unknown[] = [...params];
+      let forwardSql = `
         SELECT
           o.id AS id,
           MAX(l.weight) AS link_weight,
-          l.from_observation_id AS from_id
+          l.from_observation_id AS from_id,
+          l.to_observation_id AS to_id,
+          l.relation AS relation,
+          'forward' AS direction
         FROM mem_links l
         JOIN mem_observations o ON o.id = l.to_observation_id
         WHERE l.from_observation_id IN (${placeholders})
-          AND l.relation IN ('shared_entity', 'follows', 'extends', 'derives')
+          AND l.relation IN (${RELATIONS})
       `;
-      sql = this.applyCommonFilters(sql, params, "o", request);
-      sql += " GROUP BY o.id, l.from_observation_id ORDER BY link_weight DESC LIMIT 200";
+      forwardSql = this.applyCommonFilters(forwardSql, forwardParams, "o", request);
 
-      let rows: Array<{ id: string; link_weight: number; from_id: string }>;
+      const backwardParams: unknown[] = [...params];
+      let backwardSql = `
+        SELECT
+          o.id AS id,
+          MAX(l.weight) AS link_weight,
+          l.from_observation_id AS from_id,
+          l.to_observation_id AS to_id,
+          l.relation AS relation,
+          'backward' AS direction
+        FROM mem_links l
+        JOIN mem_observations o ON o.id = l.from_observation_id
+        WHERE l.to_observation_id IN (${placeholders})
+          AND l.relation IN (${RELATIONS})
+      `;
+      backwardSql = this.applyCommonFilters(backwardSql, backwardParams, "o", request);
+
+      const combinedSql = `${forwardSql} UNION ALL ${backwardSql} ORDER BY link_weight DESC LIMIT 400`;
+      const combinedParams: unknown[] = [...forwardParams, ...backwardParams];
+
+      let rows: Array<{ id: string; link_weight: number; from_id: string; to_id: string; relation: string; direction: string }>;
       try {
-        rows = this.deps.db.query(sql).all(...(params as any[])) as typeof rows;
+        rows = this.deps.db.query(combinedSql).all(...(combinedParams as any[])) as typeof rows;
       } catch {
         break;
       }
@@ -537,11 +570,18 @@ export class ObservationStore {
       for (const row of rows) {
         const id = typeof row.id === "string" ? row.id : "";
         const fromId = typeof row.from_id === "string" ? row.from_id : "";
+        const toId = typeof row.to_id === "string" ? row.to_id : "";
         const linkWeight = Number(row.link_weight ?? 0);
-        if (!id || !fromId || id === fromId || Number.isNaN(linkWeight)) continue;
+        // id は探索で発見した隣接ノード（forward では to_id、backward では from_id と一致）
+        // fromId === toId のみ排除（自己ループリンク）
+        if (!id || !fromId || !toId || fromId === toId || Number.isNaN(linkWeight)) continue;
 
-        const parentScore = frontier.get(fromId) ?? 1.0;
-        const hopScore = parentScore * linkWeight * (DECAY ** (depth - 1));
+        const relationPenalty = row.relation === "contradicts" ? CONTRADICTS_PENALTY : 1.0;
+        // forward: from_id がフロンティア上のノード
+        // backward: to_id がフロンティア上のノード
+        const parentId = row.direction === "forward" ? fromId : toId;
+        const parentScore = frontier.get(parentId) ?? 1.0;
+        const hopScore = parentScore * linkWeight * (DECAY ** (depth - 1)) * relationPenalty;
 
         // graph スコアを記録（from と to が異なるノード間のリンクのみ対象）
         const existingGraph = graphScores.get(id) ?? 0;

@@ -1010,7 +1010,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("observation_id is required");
         }
         const relation = url.searchParams.get("relation") || undefined;
-        return jsonResponse(core.getLinks({ observation_id: observationId, relation }));
+        const depthRaw = url.searchParams.get("depth");
+        const depth = depthRaw ? Math.min(Math.max(parseInt(depthRaw, 10) || 1, 1), 5) : 1;
+        return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth }));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/document") {

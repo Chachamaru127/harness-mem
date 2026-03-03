@@ -647,12 +647,13 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_graph",
-    description: "Explore graph neighbors of an observation (linked observations by relation).",
+    description: "Explore graph neighbors of an observation (linked observations by relation). Supports BFS traversal up to depth 5.",
     inputSchema: {
       type: "object",
       properties: {
         observation_id: { type: "string", description: "Source observation ID to explore neighbors from" },
-        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Filter by relation type" },
+        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of"], description: "Filter by relation type" },
+        depth: { type: "integer", minimum: 1, maximum: 5, default: 1, description: "BFS traversal depth (1-5, default 1)" },
       },
       required: ["observation_id"],
     },
@@ -1007,6 +1008,8 @@ export async function handleMemoryTool(
         query.set("observation_id", observationId);
         const relation = toStringOrUndefined(input.relation);
         if (relation) query.set("relation", relation);
+        const depth = toNumberOrUndefined(input.depth);
+        if (depth !== undefined) query.set("depth", String(Math.min(Math.max(depth, 1), 5)));
         const response = await callMemoryApi(`/v1/graph/neighbors?${query.toString()}`, null, "GET");
         return successResult(response);
       }
