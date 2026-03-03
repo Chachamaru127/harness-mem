@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-03（§29 Phase 1 完了、Phase 2 着手）
+最終更新: 2026-03-03（§29 全10タスク完了 — 119→128/140）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
@@ -56,31 +56,27 @@
 
 ### Phase 2: 優位性の固定化（P1, +2pt → 126, 3並列可）
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-005**: Cloud Sync コネクタ — GitHub/Notion/GDrive
-  - **9→10 (+1pt)**. SyncStore DB永続化 + 3コネクタ
-  - DoD: 3コネクタ + DB永続化 + テスト 8件
+- [x] `cc:完了` **V5-005**: Cloud Sync コネクタ — GitHub/Notion/GDrive
+  - 3コネクタ + ConnectorRegistry + DB永続化 + 5エンドポイント + テスト 24件 ✅
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-006**: UI Analytics ダッシュボード
-  - **8→9 (+1pt)**. 使用量グラフ + エンティティヒートマップ + タイムライン
-  - DoD: 4ビュー + テスト 6件
+- [x] `cc:完了` **V5-006**: UI Analytics ダッシュボード
+  - AnalyticsService + 4 API エンドポイント + テスト 17件 ✅
 
-- [ ] `cc:TODO [P]` **V5-007**: ベンチマーク公開 + CI 自動実行
-  - LoCoMo/LongMemEval 公式スコア計測 + CI 週次 + Recall@10 回帰ゲート
-  - DoD: CI自動実行 + 結果公開 + テスト 5件
+- [x] `cc:完了` **V5-007**: ベンチマーク公開 + CI 自動実行
+  - BenchmarkRunner + regression-gate + CI weekly + テスト 22件 ✅
 
 ---
 
 ### Phase 3: 圧倒的差別化（P2, +2pt → 128）
 
-- [ ] `cc:TODO [feature:tdd]` **V5-008**: 音声トランスクリプション（Whisper.cpp）
-  - **Multi-modal 8→9 (+1pt)**. DoD: 音声取り込み + 検索 + テスト 6件
+- [x] `cc:完了` **V5-008**: 音声トランスクリプション（Whisper.cpp）
+  - AudioIngester (whisper-local + openai-whisper) + POST /v1/ingest/audio + テスト 22件 ✅
 
-- [ ] `cc:TODO [feature:security]` **V5-009**: Ollama ファーストクラス対応
-  - **Privacy 9→10 (+1pt)**. DoD: API キーなしで全LLM機能動作 + テスト 6件
+- [x] `cc:完了` **V5-009**: Ollama ファーストクラス対応
+  - LLMProvider + OllamaProvider + OpenAIProvider + Registry (自動検出) + テスト 16件 ✅
 
-- [ ] `cc:TODO` **V5-010**: Rate Limiting + バリデーション強化
-  - Security 堅守. Token Bucket + 文字長上限 + tableAlias ホワイトリスト
-  - DoD: Rate Limiter + バリデーション + テスト 8件
+- [x] `cc:完了` **V5-010**: Rate Limiting + バリデーション強化
+  - Token Bucket + RequestValidator + tableAlias ホワイトリスト + テスト 25件 ✅
 
 ---
 

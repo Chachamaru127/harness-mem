@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
+import { createRateLimiterFromEnv, type TokenBucketRateLimiter } from "./middleware/rate-limiter";
+import { createDefaultValidator, type RequestValidator } from "./middleware/validator";
 import { createSyncStore, handleSyncPush, handleSyncPull, type SyncStore } from "./sync/sync-store";
 import type { Changeset, ConflictPolicy } from "./sync/engine";
 import { ConnectorRegistry } from "./sync/connector-registry";
@@ -109,6 +111,7 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/links/create",
     "/v1/observations/bulk-delete",
     "/v1/ingest/document",
+    "/v1/ingest/audio",
   ].includes(pathname);
 }
 
@@ -297,6 +300,24 @@ export function checkRemoteBindSafety(host: string): string | null {
   return null;
 }
 
+function tooManyRequests(resetAt: number): Response {
+  const response: ApiResponse = {
+    ok: false,
+    source: "core",
+    items: [],
+    meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "hybrid_v3" },
+    error: "Too Many Requests",
+  };
+  return new Response(JSON.stringify(response), {
+    status: 429,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": String(Math.max(1, Math.ceil((resetAt - Date.now()) / 1000))),
+    },
+  });
+}
+
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // HARDEN-003: Sync エンドポイント用インメモリストア（サーバー起動時に初期化）
   const syncStore: SyncStore = createSyncStore();
@@ -304,12 +325,25 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // V5-005: Cloud Sync コネクタレジストリ
   const connectorRegistry = new ConnectorRegistry();
 
+  // V5-010: Rate Limiter + Validator（環境変数 HARNESS_MEM_RATE_LIMIT=0 で無効化）
+  const rateLimiter: TokenBucketRateLimiter | null = createRateLimiterFromEnv();
+  const validator: RequestValidator = createDefaultValidator();
+
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
     fetch: async (request: Request, server): Promise<Response> => {
       const url = new URL(request.url);
       const remoteAddress = server?.requestIP(request)?.address ?? null;
+
+      // V5-010: Rate Limiting（全エンドポイントに適用）
+      if (rateLimiter) {
+        const rateLimitKey = remoteAddress ?? "unknown";
+        const consume = rateLimiter.tryConsume(rateLimitKey);
+        if (!consume.allowed) {
+          return tooManyRequests(consume.resetAt);
+        }
+      }
 
       if (requiresAdminToken(request.method, url.pathname) && !hasValidAdminToken(request, remoteAddress)) {
         return unauthorized("missing or invalid admin token");
@@ -413,6 +447,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "POST" && url.pathname === "/v1/events/record") {
         const body = await parseRequestJson(request);
+        // V5-010: 入力バリデーション
+        const evtValidation = validator.validateRecordEvent(body);
+        if (!evtValidation.valid) {
+          return badRequest(evtValidation.errors.join("; "));
+        }
         const event = toRecord(body.event) as unknown as EventEnvelope;
         const result = await core.recordEventQueued(event);
         if (result === "queue_full") {
@@ -432,6 +471,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "POST" && url.pathname === "/v1/search") {
         const body = await parseRequestJson(request);
+        // V5-010: 入力バリデーション
+        const searchValidation = validator.validateSearch(body);
+        if (!searchValidation.valid) {
+          return badRequest(searchValidation.errors.join("; "));
+        }
         const query = typeof body.query === "string" ? body.query : "";
         if (!query) {
           return badRequest("query is required");
@@ -547,6 +591,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "POST" && url.pathname === "/v1/checkpoints/record") {
         const body = await parseRequestJson(request);
+        // V5-010: 入力バリデーション
+        const cpValidation = validator.validateCheckpoint(body);
+        if (!cpValidation.valid) {
+          return badRequest(cpValidation.errors.join("; "));
+        }
         const sessionId = typeof body.session_id === "string" ? body.session_id : "";
         const title = typeof body.title === "string" ? body.title : "";
         const content = typeof body.content === "string" ? body.content : "";
@@ -977,6 +1026,72 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
           })
         );
+      }
+
+      // V5-008: POST /v1/ingest/audio — 音声ファイルをトランスクリプションして観察として記録
+      if (request.method === "POST" && url.pathname === "/v1/ingest/audio") {
+        let formData: FormData;
+        try {
+          formData = await request.formData();
+        } catch {
+          return badRequest("multipart/form-data parsing failed");
+        }
+
+        const fileEntry = formData.get("file");
+        if (!fileEntry || !(fileEntry instanceof File)) {
+          return badRequest("file field is required (multipart/form-data)");
+        }
+
+        const filename = fileEntry.name || "audio.wav";
+        const audioBuffer = Buffer.from(await fileEntry.arrayBuffer());
+
+        if (audioBuffer.length === 0) {
+          return badRequest("audio file is empty");
+        }
+
+        const project = typeof formData.get("project") === "string"
+          ? (formData.get("project") as string)
+          : undefined;
+        const sessionId = typeof formData.get("session_id") === "string"
+          ? (formData.get("session_id") as string)
+          : undefined;
+        const language = typeof formData.get("language") === "string"
+          ? (formData.get("language") as string) || undefined
+          : undefined;
+        const rawTags = formData.get("tags");
+        const tags: string[] = typeof rawTags === "string" && rawTags
+          ? rawTags.split(",").map((t) => t.trim()).filter(Boolean)
+          : [];
+
+        const result = await core.ingestAudio({
+          audioBuffer,
+          filename,
+          project,
+          session_id: sessionId,
+          tags,
+          language,
+        });
+
+        if (!result.ok) {
+          return jsonResponse({
+            ok: false,
+            source: "audio_ingest",
+            items: [],
+            meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "audio_v1" },
+            error: result.error,
+          }, 400);
+        }
+
+        return jsonResponse({
+          ok: true,
+          source: "audio_ingest",
+          items: [{
+            observation_id: result.observation_id,
+            transcript: result.transcript,
+            duration_seconds: result.duration_seconds,
+          }],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "audio_v1" },
+        });
       }
 
       // HARDEN-003: POST /v1/sync/push — リモート changeset を受信してマージ

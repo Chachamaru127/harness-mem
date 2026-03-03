@@ -1585,6 +1585,34 @@ export class HarnessMemCore {
     return this.ingestCoord.ingestKnowledgeFile(request);
   }
 
+  async ingestAudio(request: {
+    audioBuffer: Buffer;
+    filename: string;
+    project?: string;
+    session_id?: string;
+    tags?: string[];
+    language?: string;
+    provider?: "whisper-local" | "openai-whisper";
+    whisperEndpoint?: string;
+    openaiApiKey?: string;
+  }): Promise<{ ok: boolean; observation_id?: string; transcript?: string; duration_seconds?: number; error?: string }> {
+    const { ingestAudio } = await import("../ingest/audio-ingester.js");
+    return ingestAudio({
+      core: this,
+      audioBuffer: request.audioBuffer,
+      filename: request.filename,
+      project: request.project,
+      session_id: request.session_id,
+      tags: request.tags,
+      language: request.language,
+      ingesterConfig: {
+        provider: request.provider,
+        whisperEndpoint: request.whisperEndpoint,
+        openaiApiKey: request.openaiApiKey,
+      },
+    });
+  }
+
   shutdown(signal: string): void {
     if (this.shuttingDown) {
       return;
