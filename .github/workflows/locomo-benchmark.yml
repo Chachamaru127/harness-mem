@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: "0 4 * * 1"
 
+env:
+  # F1 回帰ゲートの閾値（Runbook と CI が同じ値を参照する一元管理）
+  # locomo-gate-check.ts の LOCOMO_F1_THRESHOLD 環境変数として渡される
+  LOCOMO_F1_THRESHOLD: "0.05"
+
 jobs:
   locomo-benchmark:
     runs-on: ubuntu-latest
@@ -37,16 +42,18 @@ jobs:
             --output artifacts/locomo-harness-mem.json \
             | tee artifacts/locomo-harness-mem.log
 
-      - name: Run F1 regression gate (LOCO-002)
+      - name: Run F1 regression gate (LOCO-002/003)
         shell: bash
+        env:
+          LOCOMO_F1_THRESHOLD: ${{ env.LOCOMO_F1_THRESHOLD }}
         run: |
           set -euo pipefail
           BASELINE=memory-server/src/benchmark/results/locomo-baseline.json
           CURRENT=artifacts/locomo-harness-mem.json
+          # 閾値は LOCOMO_F1_THRESHOLD 環境変数から読み込む（Runbook と同期）
           bun run memory-server/src/benchmark/locomo-gate-check.ts \
             --current "${CURRENT}" \
-            --baseline "${BASELINE}" \
-            --threshold 0.05
+            --baseline "${BASELINE}"
 
       - name: Upload LOCOMO artifacts
         if: always()

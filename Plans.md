@@ -73,7 +73,7 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
   - `locomo-gate-check.ts` 作成。F1 前回比 -5% 超で exit 1（LLM Judge 不要）
   - DoD: F1 回帰で CI fail。テスト2件追加
 
-- [ ] `cc:TODO` **LOCO-003**: Runbook 閾値と CI 設定の同期（LOCO-002 完了後）
+- [x] `cc:完了` **LOCO-003**: Runbook 閾値と CI 設定の同期（LOCO-002 完了後）
   - `LOCOMO_F1_THRESHOLD` 環境変数でカスタマイズ可能に
   - DoD: Runbook と CI が同じ閾値を参照
 
@@ -85,11 +85,12 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
 §30 で Repository IF(async-first) + SQLite 実装完成済み。AsyncStorageAdapter の PG メソッド6つ動作済み。
 **注意**: ObservationStore が `this.deps.db.query(sql).all()` を同期呼び出ししている箇所あり → PG-000 で解消。
 
-- [ ] `cc:TODO` **PG-000**: sync/async 境界の設計調査と移行パス策定
+- [x] `cc:完了` **PG-000**: sync/async 境界の設計調査と移行パス策定
   - ObservationStore 内の `db.query().all()` 同期呼び出し箇所を洗い出し
   - Repository 経由に移行済みの箇所と未移行の箇所を分類
   - PG 動作に必要な最小限の async 化範囲を特定
   - DoD: 移行対象の SQL 一覧 + 対応 Repository メソッドのマッピング表
+  - 成果物: `docs/pg-migration-map.md` に全 sync 呼び出しマッピング表を作成
 
 - [ ] `cc:TODO` **PG-001**: POSTGRES_INIT_SQL に後付けカラム追加
   - `ObservationRow` 全フィールドと `POSTGRES_INIT_SQL` の `mem_observations` を比較

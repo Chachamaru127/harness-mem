@@ -53,6 +53,24 @@ function loadJson(filePath: string): BenchmarkMetrics {
   return JSON.parse(raw) as BenchmarkMetrics;
 }
 
+/**
+ * 閾値の解決優先順位:
+ *   1. --threshold CLI 引数
+ *   2. LOCOMO_F1_THRESHOLD 環境変数
+ *   3. デフォルト値 0.05 (5%)
+ */
+export const DEFAULT_F1_THRESHOLD = 0.05;
+
+export function resolveThreshold(cliValue?: number): number {
+  if (cliValue !== undefined) return cliValue;
+  const env = process.env["LOCOMO_F1_THRESHOLD"];
+  if (env !== undefined && env !== "") {
+    const parsed = parseFloat(env);
+    if (!isNaN(parsed)) return parsed;
+  }
+  return DEFAULT_F1_THRESHOLD;
+}
+
 function parseArgs(argv: string[]): {
   current: string;
   baseline: string;
@@ -60,7 +78,7 @@ function parseArgs(argv: string[]): {
 } {
   let current = "";
   let baseline = "";
-  let threshold = 0.05;
+  let cliThreshold: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--current" && argv[i + 1]) {
@@ -68,16 +86,17 @@ function parseArgs(argv: string[]): {
     } else if (argv[i] === "--baseline" && argv[i + 1]) {
       baseline = argv[++i];
     } else if (argv[i] === "--threshold" && argv[i + 1]) {
-      threshold = parseFloat(argv[++i]);
+      cliThreshold = parseFloat(argv[++i]);
     }
   }
 
   if (!current || !baseline) {
     console.error("Usage: locomo-gate-check.ts --current <file> --baseline <file> [--threshold 0.05]");
+    console.error("  Threshold can also be set via LOCOMO_F1_THRESHOLD environment variable.");
     process.exit(2);
   }
 
-  return { current, baseline, threshold };
+  return { current, baseline, threshold: resolveThreshold(cliThreshold) };
 }
 
 export interface GateCheckResult {

@@ -8,6 +8,23 @@
    - `cat1-5 EM = 0.856%`
 2. この固定値を更新する場合は、同一 dataset / 同一 judge 設定 / 同一カテゴリ集計で3-run再計測し、結果JSONと再現レポートを同時更新する。
 
+## CI 閾値の一元管理（LOCO-003）
+
+F1 回帰ゲートの閾値は以下の1箇所で定義し、CI と Runbook が同じ値を参照する。
+
+| 項目 | 値 | 管理場所 |
+|---|---|---|
+| F1 regression threshold | `0.05`（5%） | `.github/workflows/locomo-benchmark.yml` の `env.LOCOMO_F1_THRESHOLD` |
+
+閾値を変更する場合は `.github/workflows/locomo-benchmark.yml` の `LOCOMO_F1_THRESHOLD` を更新するだけでよい。
+ローカル実行時は環境変数でオーバーライド可能:
+
+```bash
+LOCOMO_F1_THRESHOLD=0.03 bun run memory-server/src/benchmark/locomo-gate-check.ts \
+  --current artifacts/locomo-harness-mem.json \
+  --baseline memory-server/src/benchmark/results/locomo-baseline.json
+```
+
 ## Gate Definition（固定）
 
 1. Gate A（回答器完成）
