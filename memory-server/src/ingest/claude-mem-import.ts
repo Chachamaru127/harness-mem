@@ -1,6 +1,7 @@
 import { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { basename, resolve } from "node:path";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 type JsonObject = Record<string, unknown>;
 
@@ -399,5 +400,26 @@ export function buildClaudeMemImportPlan(params: {
     } catch {
       // no-op
     }
+  }
+}
+
+export class ClaudeMemImportIngester implements PlatformIngester {
+  readonly name = "claude-mem-import";
+  readonly description = "claude-mem の SQLite DB からイベントを一括インポートする";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
   }
 }

@@ -21,6 +21,7 @@ import { compileAnswer } from "../answer/compiler";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import type { VectorEngine } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
+import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
 import type {
   ApiResponse,
   Config,
@@ -60,6 +61,8 @@ import {
 
 export interface ObservationStoreDeps {
   db: Database;
+  /** 観察 CRUD のための Repository（基本操作を DB 直接アクセスから分離） */
+  repo: IObservationRepository;
   config: Config;
   ftsEnabled: boolean;
   /** normalizeProjectInput のバインド済みバージョン */
@@ -1390,21 +1393,14 @@ export class ObservationStore {
   // timeline
   // ---------------------------------------------------------------------------
 
-  timeline(request: TimelineRequest): ApiResponse {
+  async timeline(request: TimelineRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
 
     const before = clampLimit(request.before, 5, 0, 50);
     const after = clampLimit(request.after, 5, 0, 50);
 
-    const center = this.deps.db
-      .query(
-        `
-          SELECT id, project, session_id, created_at, title, content_redacted, tags_json, privacy_tags_json
-          FROM mem_observations
-          WHERE id = ?
-        `
-      )
-      .get(request.id) as unknown as Record<string, unknown> | null;
+    const centerRow = await this.deps.repo.findById(request.id);
+    const center: Record<string, unknown> | null = centerRow as unknown as Record<string, unknown> | null;
 
     if (!center) {
       return makeErrorResponse(startedAt, `observation not found: ${request.id}`, {

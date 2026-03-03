@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import type { HarnessMemCore } from "../core/harness-mem-core";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface DocumentChunk {
   title: string;
@@ -542,5 +543,26 @@ export async function ingestImageFile(options: IngestImageOptions): Promise<Inge
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { ok: false, observations_created: 0, error: message };
+  }
+}
+
+export class DocumentParserIngester implements PlatformIngester {
+  readonly name = "document-parser";
+  readonly description = "Markdown / HTML / テキスト / PDF / 画像ドキュメントを取り込む";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
   }
 }

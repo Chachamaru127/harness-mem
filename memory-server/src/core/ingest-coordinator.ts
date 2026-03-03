@@ -48,6 +48,7 @@ import {
   visibilityFilterSql,
 } from "./core-utils.js";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
+import type { PlatformIngester } from "../ingest/types.js";
 import { parseCodexHistoryChunk } from "../ingest/codex-history";
 import { parseCodexSessionsChunk, type CodexSessionsContext } from "../ingest/codex-sessions";
 import { parseCursorHooksChunk } from "../ingest/cursor-hooks";
@@ -429,6 +430,10 @@ export class IngestCoordinator {
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
 
+  // PlatformIngester 登録管理（ARC-019: 宣言的ポーリング管理）
+  private readonly registeredIngesters: PlatformIngester[] = [];
+  private readonly ingesterTimers = new Map<string, ReturnType<typeof setInterval>>();
+
   constructor(private readonly deps: IngestCoordinatorDeps) {}
 
   // ---------------------------------------------------------------------------
@@ -515,6 +520,53 @@ export class IngestCoordinator {
     if (this.consolidationTimer) { clearInterval(this.consolidationTimer); this.consolidationTimer = null; }
     if (this.retryTimer) { clearInterval(this.retryTimer); this.retryTimer = null; }
     if (this.checkpointTimer) { clearInterval(this.checkpointTimer); this.checkpointTimer = null; }
+  }
+
+  // ---------------------------------------------------------------------------
+  // PlatformIngester 宣言的ポーリング管理 (ARC-019)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * PlatformIngester を登録する。
+   * startAll() を呼ぶ前に登録しておくと、pollIntervalMs に基づいて
+   * タイマーが自動設定される。
+   * 同名の ingester が既に登録されている場合は上書きしない。
+   */
+  registerIngester(ingester: PlatformIngester): void {
+    const alreadyRegistered = this.registeredIngesters.some((i) => i.name === ingester.name);
+    if (!alreadyRegistered) {
+      this.registeredIngesters.push(ingester);
+    }
+  }
+
+  /**
+   * 登録された全 ingester のポーリングタイマーを一括起動する。
+   * pollIntervalMs が 0 の ingester はスキップする。
+   * 既に起動済みの ingester はスキップする（冪等）。
+   */
+  startAll(): void {
+    const isShuttingDown = this.deps.isShuttingDown?.bind(this.deps);
+    for (const ingester of this.registeredIngesters) {
+      if (ingester.pollIntervalMs <= 0) continue;
+      if (this.ingesterTimers.has(ingester.name)) continue;
+
+      const timer = setInterval(() => {
+        if (isShuttingDown?.()) return;
+        ingester.poll().catch(() => { /* ignore post-shutdown errors */ });
+      }, ingester.pollIntervalMs);
+
+      this.ingesterTimers.set(ingester.name, timer);
+    }
+  }
+
+  /**
+   * startAll() で起動した全 ingester のタイマーを一括停止する。
+   */
+  stopAll(): void {
+    for (const [name, timer] of this.ingesterTimers) {
+      clearInterval(timer);
+      this.ingesterTimers.delete(name);
+    }
   }
 
   private writeHeartbeat(): void {

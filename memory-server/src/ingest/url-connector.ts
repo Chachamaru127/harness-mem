@@ -7,6 +7,7 @@
 
 import { parseHtmlText, ingestDocument, type IngestDocumentResult } from "./document-parser";
 import type { HarnessMemCore } from "../core/harness-mem-core";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface UrlValidationResult {
   ok: boolean;
@@ -242,5 +243,26 @@ export async function fetchAndIngestUrl(options: FetchUrlOptions): Promise<Fetch
       observations_created: 0,
       error: `Fetch error: ${errorMsg}`,
     };
+  }
+}
+
+export class UrlConnectorIngester implements PlatformIngester {
+  readonly name = "url-connector";
+  readonly description = "公開URLからHTMLコンテンツを取得して観察として取り込む";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
   }
 }

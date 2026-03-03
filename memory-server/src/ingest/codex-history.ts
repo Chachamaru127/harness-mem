@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface CodexHistoryEvent {
   lineIndex: number;
@@ -70,4 +71,25 @@ export function parseCodexHistoryChunk(params: {
     events,
     consumedLength,
   };
+}
+
+export class CodexHistoryIngester implements PlatformIngester {
+  readonly name = "codex-history";
+  readonly description = "Codex の会話履歴 JSONL を取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

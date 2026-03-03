@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface GeminiEventEntry {
   lineOffset: number;
@@ -192,4 +193,25 @@ function normalizeString(value: unknown): string {
     return "";
   }
   return value.trim();
+}
+
+export class GeminiEventsIngester implements PlatformIngester {
+  readonly name = "gemini";
+  readonly description = "Gemini イベントスプールファイルから JSONL イベントを取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

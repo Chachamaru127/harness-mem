@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename } from "node:path";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface CursorHookIngestEvent {
   lineOffset: number;
@@ -410,4 +411,25 @@ function toNumber(value: unknown): number | null {
     return null;
   }
   return value;
+}
+
+export class CursorHooksIngester implements PlatformIngester {
+  readonly name = "cursor";
+  readonly description = "Cursor フックイベント（プロンプト・ツール・ファイル編集・セッション終了）を取り込む";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

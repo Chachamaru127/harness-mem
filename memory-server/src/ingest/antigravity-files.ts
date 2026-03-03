@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { basename, extname } from "node:path";
 // basename is still used for file stem extraction, not for project identification
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export type AntigravityFileKind = "checkpoint" | "codex_response";
 
@@ -144,4 +145,25 @@ function toIsoFromUnixMs(value: unknown): string {
 
 function normalizePath(value: string): string {
   return value.replace(/\\/g, "/");
+}
+
+export class AntigravityFilesIngester implements PlatformIngester {
+  readonly name = "antigravity-files";
+  readonly description = "Antigravity チェックポイントと Codex レスポンスファイルを取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

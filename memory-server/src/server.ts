@@ -576,7 +576,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           after: typeof body.after === "number" ? body.after : undefined,
           include_private: parseBooleanLike(body.include_private, false),
         };
-        return jsonResponse(core.timeline(req));
+        return jsonResponse(await core.timeline(req));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/observations/get") {

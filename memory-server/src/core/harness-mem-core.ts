@@ -39,6 +39,7 @@ import { TtlCache } from "../system-environment/cache";
 import { SessionManager } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
+import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
 import { AnalyticsService } from "./analytics";
@@ -426,6 +427,7 @@ export class HarnessMemCore {
 
     this.obsStore = new ObservationStore({
       db: this.db,
+      repo: new SqliteObservationRepository(this.db),
       config: this.config,
       ftsEnabled: this.ftsEnabled,
       normalizeProject: (p) => this.normalizeProjectInput(p),
@@ -954,7 +956,7 @@ export class HarnessMemCore {
     return this.obsStore.searchFacets(request);
   }
 
-  timeline(request: TimelineRequest): ApiResponse {
+  async timeline(request: TimelineRequest): Promise<ApiResponse> {
     return this.obsStore.timeline(request);
   }
 

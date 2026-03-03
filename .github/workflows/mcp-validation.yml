@@ -1,0 +1,48 @@
+name: MCP Validation
+
+on:
+  pull_request:
+    paths:
+      - "mcp-server/**"
+      - "docs/openapi.yaml"
+      - ".github/workflows/mcp-validation.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "mcp-server/**"
+      - "docs/openapi.yaml"
+      - ".github/workflows/mcp-validation.yml"
+
+jobs:
+  mcp-openapi-consistency:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install mcp-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server
+          bun install --frozen-lockfile
+
+      - name: Run MCP-OpenAPI consistency tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server
+          bun test tests/unit/mcp-openapi-consistency.test.ts
+
+      - name: Run all mcp-server unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server
+          bun test tests/unit/

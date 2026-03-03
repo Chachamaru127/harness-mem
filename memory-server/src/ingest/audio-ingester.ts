@@ -8,6 +8,7 @@
 import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import type { HarnessMemCore } from "../core/harness-mem-core";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface AudioTranscriptionResult {
   text: string;
@@ -32,8 +33,27 @@ function getExtension(filename: string): string {
   return parts.length > 1 ? parts[parts.length - 1].toLowerCase() : "";
 }
 
-export class AudioIngester {
+export class AudioIngester implements PlatformIngester {
+  readonly name = "audio";
+  readonly description = "音声ファイルをWhisperでトランスクリプションして取り込む";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
   constructor(private config: AudioIngesterConfig) {}
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 
   async transcribe(audioBuffer: Buffer, filename: string): Promise<AudioTranscriptionResult> {
     if (!audioBuffer || audioBuffer.length === 0) {

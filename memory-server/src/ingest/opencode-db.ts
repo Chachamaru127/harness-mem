@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 interface OpencodeDbMessageData {
   role: string;
@@ -126,4 +127,25 @@ function fromUnixMs(value: unknown): string {
     return "";
   }
   return new Date(value).toISOString();
+}
+
+export class OpencodeDbIngester implements PlatformIngester {
+  readonly name = "opencode-db";
+  readonly description = "opencode の SQLite DB からメッセージを取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

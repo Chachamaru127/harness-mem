@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface OpencodeStorageEvent {
   lineOffset: number;
@@ -133,4 +134,25 @@ function fromUnixMs(value: unknown): string {
     return "";
   }
   return new Date(value).toISOString();
+}
+
+export class OpencodeStorageIngester implements PlatformIngester {
+  readonly name = "opencode-storage";
+  readonly description = "opencode のストレージ JSONL メッセージを取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }

@@ -8,6 +8,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { ObservationStore, type ObservationStoreDeps } from "../../src/core/observation-store";
+import { SqliteObservationRepository } from "../../src/db/repositories/SqliteObservationRepository";
 import type { Config } from "../../src/core/types";
 import {
   createTestDb,
@@ -30,6 +31,7 @@ function platformVisibilityFilterSql(_alias: string): string {
 function createDeps(db: Database, config: Config): ObservationStoreDeps {
   return {
     db,
+    repo: new SqliteObservationRepository(db),
     config,
     ftsEnabled: false,
     normalizeProject,
@@ -281,13 +283,13 @@ describe("observation-store: searchFacets", () => {
 // ---------------------------------------------------------------------------
 
 describe("observation-store: timeline", () => {
-  test("存在しない観察 ID では ok=false を返す", () => {
+  test("存在しない観察 ID では ok=false を返す", async () => {
     const { store } = makeStore();
-    const res = store.timeline({ id: "nonexistent-obs-id" });
+    const res = await store.timeline({ id: "nonexistent-obs-id" });
     expect(res.ok).toBe(false);
   });
 
-  test("有効な観察 ID でタイムラインが返る", () => {
+  test("有効な観察 ID でタイムラインが返る", async () => {
     const { store, db } = makeStore();
     const id = insertTestObservation(db, {
       project: "proj-obs",
@@ -296,7 +298,7 @@ describe("observation-store: timeline", () => {
       content: "timeline test event",
       created_at: "2026-02-20T00:00:00.000Z",
     });
-    const res = store.timeline({ id });
+    const res = await store.timeline({ id });
     expect(res.ok).toBe(true);
     expect(res.items.length).toBeGreaterThan(0);
     const center = (res.items as Array<Record<string, unknown>>).find((i) => i.position === "center");

@@ -1,0 +1,2508 @@
+openapi: "3.1.0"
+
+info:
+  title: harness-mem API
+  version: "1.0.0"
+  description: >
+    harness-mem memory server API. Provides event recording, semantic search,
+    session management, analytics, sync, and admin operations.
+
+servers:
+  - url: http://localhost:3000
+    description: Local development server
+
+security:
+  - bearerAuth: []
+  - harnessMemToken: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+    harnessMemToken:
+      type: apiKey
+      in: header
+      name: x-harness-mem-token
+
+  schemas:
+    Platform:
+      type: string
+      enum: [claude, codex, opencode, cursor, antigravity, gemini]
+
+    EventType:
+      type: string
+      enum: [session_start, user_prompt, tool_use, checkpoint, session_end]
+
+    MemoryType:
+      type: string
+      enum: [episodic, semantic, procedural]
+
+    QuestionKind:
+      type: string
+      enum: [profile, timeline, graph, vector, hybrid]
+
+    Sector:
+      type: string
+      enum: [work, people, health, hobby, meta]
+
+    RelationType:
+      type: string
+      enum: [follows, extends, updates, shared_entity, derives, contradicts, causes, part_of]
+
+    ConflictPolicy:
+      type: string
+      enum: [last-write-wins, local-wins, remote-wins]
+
+    ConnectorType:
+      type: string
+      enum: [github, notion, gdrive]
+
+    EventEnvelope:
+      type: object
+      required: [platform, project, session_id, event_type]
+      properties:
+        event_id:
+          type: string
+        platform:
+          oneOf:
+            - $ref: "#/components/schemas/Platform"
+            - type: string
+        project:
+          type: string
+        session_id:
+          type: string
+        event_type:
+          oneOf:
+            - $ref: "#/components/schemas/EventType"
+            - type: string
+        ts:
+          type: string
+          format: date-time
+        payload:
+          type: object
+          additionalProperties: true
+        tags:
+          type: array
+          items:
+            type: string
+        privacy_tags:
+          type: array
+          items:
+            type: string
+        dedupe_hash:
+          type: string
+        correlation_id:
+          type: string
+        user_id:
+          type: string
+        team_id:
+          type: string
+
+    Observation:
+      type: object
+      properties:
+        id:
+          type: string
+        platform:
+          type: string
+        project:
+          type: string
+        session_id:
+          type: string
+        event_type:
+          type: string
+        content:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+        privacy_tags:
+          type: array
+          items:
+            type: string
+        memory_type:
+          $ref: "#/components/schemas/MemoryType"
+        importance:
+          type: number
+          format: float
+        user_id:
+          type: string
+        team_id:
+          type: string
+        correlation_id:
+          type: string
+
+    Session:
+      type: object
+      properties:
+        session_id:
+          type: string
+        project:
+          type: string
+        platform:
+          type: string
+        started_at:
+          type: string
+          format: date-time
+        ended_at:
+          type: string
+          format: date-time
+        event_count:
+          type: integer
+        summary:
+          type: string
+
+    SearchResult:
+      type: object
+      properties:
+        id:
+          type: string
+        score:
+          type: number
+          format: float
+        content:
+          type: string
+        platform:
+          type: string
+        project:
+          type: string
+        session_id:
+          type: string
+        event_type:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+        debug:
+          type: object
+          additionalProperties: true
+
+    FacetResult:
+      type: object
+      properties:
+        types:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              count:
+                type: integer
+        projects:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              count:
+                type: integer
+        tags:
+          type: array
+          items:
+            type: object
+            properties:
+              value:
+                type: string
+              count:
+                type: integer
+
+    FeedItem:
+      type: object
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        platform:
+          type: string
+        project:
+          type: string
+        session_id:
+          type: string
+        event_type:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        tags:
+          type: array
+          items:
+            type: string
+
+    TimelineItem:
+      type: object
+      properties:
+        id:
+          type: string
+        ts:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        content:
+          type: string
+        platform:
+          type: string
+        session_id:
+          type: string
+
+    CheckpointResult:
+      type: object
+      properties:
+        observation_id:
+          type: string
+        session_id:
+          type: string
+        title:
+          type: string
+
+    ResumePack:
+      type: object
+      properties:
+        project:
+          type: string
+        session_id:
+          type: string
+        context:
+          type: string
+        checkpoints:
+          type: array
+          items:
+            $ref: "#/components/schemas/Observation"
+        token_estimate:
+          type: integer
+
+    GraphNode:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        entity_type:
+          type: string
+        observation_count:
+          type: integer
+
+    GraphEdge:
+      type: object
+      properties:
+        from:
+          type: string
+        to:
+          type: string
+        relation:
+          $ref: "#/components/schemas/RelationType"
+        weight:
+          type: number
+          format: float
+
+    GraphResult:
+      type: object
+      properties:
+        nodes:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphNode"
+        edges:
+          type: array
+          items:
+            $ref: "#/components/schemas/GraphEdge"
+
+    Link:
+      type: object
+      properties:
+        id:
+          type: string
+        from_observation_id:
+          type: string
+        to_observation_id:
+          type: string
+        relation:
+          $ref: "#/components/schemas/RelationType"
+        weight:
+          type: number
+          format: float
+        created_at:
+          type: string
+          format: date-time
+
+    ProjectStats:
+      type: object
+      properties:
+        project:
+          type: string
+        observation_count:
+          type: integer
+        session_count:
+          type: integer
+        last_active:
+          type: string
+          format: date-time
+
+    HealthItem:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [ok, degraded, error]
+        vector_engine:
+          type: string
+        fts_enabled:
+          type: boolean
+        counts:
+          type: object
+          properties:
+            observations:
+              type: integer
+            sessions:
+              type: integer
+
+    MetricsResult:
+      type: object
+      additionalProperties: true
+
+    AuditLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        action:
+          type: string
+        target_type:
+          type: string
+        target_id:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        ts:
+          type: string
+          format: date-time
+
+    ImportJob:
+      type: object
+      properties:
+        job_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, completed, failed]
+        imported_count:
+          type: integer
+        error:
+          type: string
+
+    BackupResult:
+      type: object
+      properties:
+        path:
+          type: string
+        size_bytes:
+          type: integer
+
+    UsageStats:
+      type: object
+      properties:
+        period:
+          type: string
+        rows:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              count:
+                type: integer
+
+    EntityDistribution:
+      type: object
+      properties:
+        entity:
+          type: string
+        entity_type:
+          type: string
+        count:
+          type: integer
+
+    TimelineStats:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        buckets:
+          type: array
+          items:
+            type: object
+            properties:
+              date:
+                type: string
+              count:
+                type: integer
+
+    OverviewStats:
+      type: object
+      properties:
+        total_observations:
+          type: integer
+        total_sessions:
+          type: integer
+        total_projects:
+          type: integer
+        recent_activity:
+          type: array
+          items:
+            type: object
+            additionalProperties: true
+
+    SyncRecord:
+      type: object
+      required: [id, content, updated_at, device_id]
+      properties:
+        id:
+          type: string
+        content:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
+        device_id:
+          type: string
+
+    Changeset:
+      type: object
+      properties:
+        device_id:
+          type: string
+        since:
+          type: string
+          format: date-time
+        records:
+          type: array
+          items:
+            $ref: "#/components/schemas/SyncRecord"
+
+    ConnectorInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        type:
+          $ref: "#/components/schemas/ConnectorType"
+
+    ApiMeta:
+      type: object
+      required: [count, latency_ms, sla_latency_ms, filters, ranking]
+      properties:
+        count:
+          type: integer
+        latency_ms:
+          type: number
+          format: float
+        sla_latency_ms:
+          type: number
+          format: float
+        filters:
+          type: object
+          additionalProperties: true
+        ranking:
+          type: string
+
+    ApiResponse:
+      type: object
+      required: [ok, source, items, meta]
+      properties:
+        ok:
+          type: boolean
+        source:
+          type: string
+          enum: [core, merged, sync]
+        items:
+          type: array
+          items: {}
+        meta:
+          $ref: "#/components/schemas/ApiMeta"
+        error:
+          type: string
+
+    ErrorResponse:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: false
+        error:
+          type: string
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Returns server health status.
+      operationId: getHealth
+      security: []
+      tags: [System]
+      responses:
+        "200":
+          description: Server health information
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/HealthItem"
+
+  /v1/events/record:
+    post:
+      summary: Record an event
+      description: Records an event envelope into the memory store.
+      operationId: recordEvent
+      tags: [Events]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event]
+              properties:
+                event:
+                  $ref: "#/components/schemas/EventEnvelope"
+      responses:
+        "200":
+          description: Event recorded successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Write queue full
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/search:
+    post:
+      summary: Search observations
+      description: Hybrid search combining lexical, vector, graph, recency, tag and importance signals.
+      operationId: search
+      tags: [Search]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: string
+                project:
+                  type: string
+                session_id:
+                  type: string
+                since:
+                  type: string
+                  format: date-time
+                until:
+                  type: string
+                  format: date-time
+                as_of:
+                  type: string
+                  format: date-time
+                limit:
+                  type: integer
+                  default: 20
+                include_private:
+                  type: boolean
+                  default: false
+                expand_links:
+                  type: boolean
+                  default: true
+                strict_project:
+                  type: boolean
+                  default: true
+                debug:
+                  type: boolean
+                  default: false
+                question_kind:
+                  $ref: "#/components/schemas/QuestionKind"
+                sector:
+                  $ref: "#/components/schemas/Sector"
+                memory_type:
+                  oneOf:
+                    - $ref: "#/components/schemas/MemoryType"
+                    - type: array
+                      items:
+                        $ref: "#/components/schemas/MemoryType"
+      responses:
+        "200":
+          description: Search results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/SearchResult"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/search/facets:
+    get:
+      summary: Search facets
+      description: Returns aggregated facets (types, projects, tags) for filtering.
+      operationId: searchFacets
+      tags: [Search]
+      parameters:
+        - name: query
+          in: query
+          schema:
+            type: string
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Facet results
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FacetResult"
+
+  /v1/feed:
+    get:
+      summary: Get feed
+      description: Returns a paginated feed of recent observations.
+      operationId: getFeed
+      tags: [Feed]
+      parameters:
+        - name: cursor
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 40
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: user_id
+          in: query
+          description: Only available when authentication is configured.
+          schema:
+            type: string
+        - name: team_id
+          in: query
+          description: Only available when authentication is configured.
+          schema:
+            type: string
+        - name: memory_type
+          in: query
+          schema:
+            $ref: "#/components/schemas/MemoryType"
+      responses:
+        "200":
+          description: Feed items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/FeedItem"
+
+  /v1/timeline:
+    post:
+      summary: Get timeline
+      description: Returns temporal timeline for a specific observation or entity.
+      operationId: getTimeline
+      tags: [Observations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                before:
+                  type: number
+                after:
+                  type: number
+                include_private:
+                  type: boolean
+                  default: false
+      responses:
+        "200":
+          description: Timeline items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimelineItem"
+        "400":
+          description: id is required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/observations/get:
+    post:
+      summary: Get observations by IDs
+      description: Returns full observation objects for the given IDs.
+      operationId: getObservations
+      tags: [Observations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                include_private:
+                  type: boolean
+                  default: false
+                compact:
+                  type: boolean
+                  default: true
+      responses:
+        "200":
+          description: Observation objects
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Observation"
+
+  /v1/observations/bulk-delete:
+    post:
+      summary: Bulk delete observations
+      description: Deletes multiple observations by ID.
+      operationId: bulkDeleteObservations
+      tags: [Observations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids:
+                  type: array
+                  items:
+                    type: string
+                  minItems: 1
+      responses:
+        "200":
+          description: Deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: ids required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sessions/finalize:
+    post:
+      summary: Finalize session
+      description: Finalizes a session and generates a summary.
+      operationId: finalizeSession
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id]
+              properties:
+                session_id:
+                  type: string
+                platform:
+                  oneOf:
+                    - $ref: "#/components/schemas/Platform"
+                    - type: string
+                project:
+                  type: string
+                summary_mode:
+                  type: string
+                  enum: [standard, short, detailed]
+      responses:
+        "200":
+          description: Session finalized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: session_id required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sessions/list:
+    get:
+      summary: List sessions
+      description: Returns a list of sessions optionally filtered by project.
+      operationId: sessionsList
+      tags: [Sessions]
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Session list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Session"
+
+  /v1/sessions/thread:
+    get:
+      summary: Get session thread
+      description: Returns all observations belonging to a session.
+      operationId: sessionThread
+      tags: [Sessions]
+      parameters:
+        - name: session_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 200
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Session thread
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Observation"
+        "400":
+          description: session_id required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sessions/chain:
+    get:
+      summary: Resolve session chain
+      description: Returns session chain by correlation ID.
+      operationId: resolveSessionChain
+      tags: [Sessions]
+      parameters:
+        - name: correlation_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: project
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Session chain
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "400":
+          description: correlation_id and project are required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/checkpoints/record:
+    post:
+      summary: Record checkpoint
+      description: Records a checkpoint observation for a session.
+      operationId: recordCheckpoint
+      tags: [Checkpoints]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_id, title, content]
+              properties:
+                session_id:
+                  type: string
+                title:
+                  type: string
+                content:
+                  type: string
+                platform:
+                  oneOf:
+                    - $ref: "#/components/schemas/Platform"
+                    - type: string
+                project:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                privacy_tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        "200":
+          description: Checkpoint recorded
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/CheckpointResult"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/resume-pack:
+    post:
+      summary: Get resume pack
+      description: Returns a condensed context pack for resuming a project session.
+      operationId: resumePack
+      tags: [Sessions]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project]
+              properties:
+                project:
+                  type: string
+                session_id:
+                  type: string
+                correlation_id:
+                  type: string
+                limit:
+                  type: integer
+                include_private:
+                  type: boolean
+                  default: false
+                resume_pack_max_tokens:
+                  type: integer
+      responses:
+        "200":
+          description: Resume pack
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ResumePack"
+        "400":
+          description: project required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/projects/stats:
+    get:
+      summary: Project statistics
+      description: Returns per-project observation and session counts.
+      operationId: projectsStats
+      tags: [Projects]
+      parameters:
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Project stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ProjectStats"
+
+  /v1/stream:
+    get:
+      summary: SSE event stream
+      description: Server-Sent Events stream for real-time observation updates.
+      operationId: getStream
+      tags: [Events]
+      parameters:
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: since
+          in: query
+          schema:
+            type: string
+        - name: last-event-id
+          in: header
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE stream
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: "text/event-stream; charset=utf-8"
+          content:
+            text/event-stream:
+              schema:
+                type: string
+
+  /v1/links/create:
+    post:
+      summary: Create observation link
+      description: Creates a typed link between two observations.
+      operationId: createLink
+      tags: [Graph]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [from_observation_id, to_observation_id, relation]
+              properties:
+                from_observation_id:
+                  type: string
+                to_observation_id:
+                  type: string
+                relation:
+                  $ref: "#/components/schemas/RelationType"
+                weight:
+                  type: number
+                  format: float
+                  default: 1.0
+      responses:
+        "200":
+          description: Link created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Link"
+        "400":
+          description: Required fields missing
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/graph:
+    get:
+      summary: Get entity subgraph
+      description: Returns graph nodes and edges centered on an entity.
+      operationId: getSubgraph
+      tags: [Graph]
+      parameters:
+        - name: entity
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: depth
+          in: query
+          schema:
+            type: integer
+            default: 2
+            minimum: 1
+            maximum: 5
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 100
+        - name: project
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Graph subgraph
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      ok:
+                        type: boolean
+                  - $ref: "#/components/schemas/GraphResult"
+        "400":
+          description: entity required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/graph/neighbors:
+    get:
+      summary: Get observation neighbors
+      description: Returns linked observations for a given observation ID.
+      operationId: getNeighbors
+      tags: [Graph]
+      parameters:
+        - name: observation_id
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: relation
+          in: query
+          schema:
+            $ref: "#/components/schemas/RelationType"
+      responses:
+        "200":
+          description: Neighbor links
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Link"
+        "400":
+          description: observation_id required
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/export:
+    get:
+      summary: Export observations
+      description: Exports observations as a JSON array.
+      operationId: exportObservations
+      tags: [Observations]
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 1000
+        - name: include_private
+          in: query
+          schema:
+            type: boolean
+            default: false
+      responses:
+        "200":
+          description: Exported observations
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Observation"
+
+  /v1/analytics/usage:
+    get:
+      summary: Usage statistics
+      description: Returns usage statistics grouped by period.
+      operationId: analyticsUsage
+      tags: [Analytics]
+      parameters:
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [day, week, month]
+            default: day
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: project
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Usage stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/UsageStats"
+
+  /v1/analytics/entities:
+    get:
+      summary: Entity distribution
+      description: Returns top entities by observation count.
+      operationId: analyticsEntities
+      tags: [Analytics]
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            maximum: 500
+        - name: project
+          in: query
+          schema:
+            type: string
+        - name: entity_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Entity distribution
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/EntityDistribution"
+
+  /v1/analytics/timeline-stats:
+    get:
+      summary: Timeline statistics
+      description: Returns observation counts bucketed by time.
+      operationId: analyticsTimelineStats
+      tags: [Analytics]
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: project
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Timeline stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/TimelineStats"
+
+  /v1/analytics/overview:
+    get:
+      summary: Overview statistics
+      description: Returns a high-level summary of memory store contents.
+      operationId: analyticsOverview
+      tags: [Analytics]
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Overview stats
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/OverviewStats"
+
+  /v1/ingest/codex-history:
+    post:
+      summary: Ingest Codex history
+      description: Ingests Codex session history files.
+      operationId: ingestCodexHistory
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/codex-sessions:
+    post:
+      summary: Ingest Codex sessions (alias)
+      description: Alias for /v1/ingest/codex-history.
+      operationId: ingestCodexSessions
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/opencode-history:
+    post:
+      summary: Ingest OpenCode history
+      description: Ingests OpenCode session history files.
+      operationId: ingestOpencodeHistory
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/opencode-sessions:
+    post:
+      summary: Ingest OpenCode sessions (alias)
+      description: Alias for /v1/ingest/opencode-history.
+      operationId: ingestOpencodeSessions
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/cursor-history:
+    post:
+      summary: Ingest Cursor history
+      description: Ingests Cursor editor session history.
+      operationId: ingestCursorHistory
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/cursor-events:
+    post:
+      summary: Ingest Cursor events (alias)
+      description: Alias for /v1/ingest/cursor-history.
+      operationId: ingestCursorEvents
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/antigravity-history:
+    post:
+      summary: Ingest Antigravity history
+      description: Ingests Antigravity workspace history.
+      operationId: ingestAntigravityHistory
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/antigravity-files:
+    post:
+      summary: Ingest Antigravity files (alias)
+      description: Alias for /v1/ingest/antigravity-history.
+      operationId: ingestAntigravityFiles
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/gemini-history:
+    post:
+      summary: Ingest Gemini history
+      description: Ingests Gemini session history.
+      operationId: ingestGeminiHistory
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/gemini-events:
+    post:
+      summary: Ingest Gemini events (alias)
+      description: Alias for /v1/ingest/gemini-history.
+      operationId: ingestGeminiEvents
+      tags: [Ingest]
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/github-issues:
+    post:
+      summary: Ingest GitHub issues
+      description: Ingests GitHub issues as observations.
+      operationId: ingestGitHubIssues
+      tags: [Ingest]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [repo, json]
+              properties:
+                repo:
+                  type: string
+                  description: GitHub repository in "owner/repo" format
+                json:
+                  type: string
+                  description: JSON string of GitHub issues data
+                project:
+                  type: string
+                platform:
+                  type: string
+                session_id:
+                  type: string
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/knowledge-file:
+    post:
+      summary: Ingest knowledge file
+      description: Ingests a knowledge file (e.g. decisions.md, ADR) as observations.
+      operationId: ingestKnowledgeFile
+      tags: [Ingest]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_path, content]
+              properties:
+                file_path:
+                  type: string
+                content:
+                  type: string
+                kind:
+                  type: string
+                  enum: [decisions_md, adr]
+                project:
+                  type: string
+                platform:
+                  type: string
+                session_id:
+                  type: string
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/document:
+    post:
+      summary: Ingest document
+      description: Alias for /v1/ingest/knowledge-file.
+      operationId: ingestDocument
+      tags: [Ingest]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [file_path, content]
+              properties:
+                file_path:
+                  type: string
+                content:
+                  type: string
+                kind:
+                  type: string
+                  enum: [decisions_md, adr]
+                project:
+                  type: string
+                platform:
+                  type: string
+                session_id:
+                  type: string
+      responses:
+        "200":
+          description: Ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
+  /v1/ingest/audio:
+    post:
+      summary: Ingest audio file
+      description: >
+        Transcribes an audio file and records the transcript as an observation.
+        Accepts multipart/form-data.
+      operationId: ingestAudio
+      tags: [Ingest]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: Audio file (wav, mp3, etc.)
+                project:
+                  type: string
+                session_id:
+                  type: string
+                language:
+                  type: string
+                  description: BCP-47 language code (e.g. "en", "ja")
+                tags:
+                  type: string
+                  description: Comma-separated list of tags
+      responses:
+        "200":
+          description: Audio ingested
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            observation_id:
+                              type: string
+                            transcript:
+                              type: string
+                            duration_seconds:
+                              type: number
+                              format: float
+        "400":
+          description: Invalid input or transcription error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/push:
+    post:
+      summary: Sync push
+      description: Receives a changeset from a remote device and merges it. Requires admin token.
+      operationId: syncPush
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [device_id]
+              properties:
+                device_id:
+                  type: string
+                since:
+                  type: string
+                  format: date-time
+                records:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/SyncRecord"
+                  maxItems: 10000
+                conflict_policy:
+                  $ref: "#/components/schemas/ConflictPolicy"
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            merged:
+                              type: array
+                              items:
+                                type: string
+                            conflicts:
+                              type: array
+                              items:
+                                type: string
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/pull:
+    get:
+      summary: Sync pull
+      description: Returns changeset of records since a given timestamp. Requires admin token.
+      operationId: syncPull
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: since
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: device_id
+          in: query
+          schema:
+            type: string
+            default: server
+      responses:
+        "200":
+          description: Changeset
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/Changeset"
+        "400":
+          description: Invalid since parameter
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/connectors:
+    get:
+      summary: List connectors
+      description: Returns registered sync connectors. Requires admin token.
+      operationId: listConnectors
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      responses:
+        "200":
+          description: Connector list
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ConnectorInfo"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+    post:
+      summary: Register connector
+      description: Registers a new sync connector. Requires admin token.
+      operationId: registerConnector
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              properties:
+                name:
+                  type: string
+                type:
+                  $ref: "#/components/schemas/ConnectorType"
+                credentials:
+                  type: object
+                  additionalProperties:
+                    type: string
+                settings:
+                  type: object
+                  additionalProperties: true
+      responses:
+        "200":
+          description: Connector registered
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ConnectorInfo"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/connectors/{name}:
+    delete:
+      summary: Remove connector
+      description: Removes a registered sync connector. Requires admin token.
+      operationId: removeConnector
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Connector removed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/connectors/{name}/test:
+    post:
+      summary: Test connector connection
+      description: Tests connectivity for a registered connector. Requires admin token.
+      operationId: testConnector
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Connection test result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Connector not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/sync/connectors/{name}/sync:
+    post:
+      summary: Run connector sync
+      description: Runs a sync operation for a registered connector. Requires admin token.
+      operationId: runConnectorSync
+      tags: [Sync]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                changes:
+                  type: array
+                  items: {}
+      responses:
+        "200":
+          description: Sync result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/metrics:
+    get:
+      summary: Server metrics
+      description: Returns runtime metrics. Requires admin token.
+      operationId: adminMetrics
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      responses:
+        "200":
+          description: Metrics
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/MetricsResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/environment:
+    get:
+      summary: Server environment
+      description: Returns environment configuration. Requires admin token.
+      operationId: adminEnvironment
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      responses:
+        "200":
+          description: Environment info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/shadow-metrics:
+    get:
+      summary: Shadow read metrics
+      description: Returns managed backend shadow read metrics. Requires admin token.
+      operationId: adminShadowMetrics
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      responses:
+        "200":
+          description: Shadow metrics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/consolidation/run:
+    post:
+      summary: Run consolidation
+      description: Triggers memory consolidation. Requires admin token.
+      operationId: consolidationRun
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                project:
+                  type: string
+                session_id:
+                  type: string
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Consolidation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/consolidation/status:
+    get:
+      summary: Consolidation status
+      description: Returns current consolidation status. Requires admin token.
+      operationId: consolidationStatus
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      responses:
+        "200":
+          description: Consolidation status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/audit-log:
+    get:
+      summary: Audit log
+      description: Returns audit log entries. Requires admin token.
+      operationId: getAuditLog
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: target_type
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/AuditLogEntry"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/imports/claude-mem:
+    post:
+      summary: Import claude-mem database
+      description: Starts an import job from a claude-mem SQLite database. Requires admin token.
+      operationId: importClaudeMem
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_db_path]
+              properties:
+                source_db_path:
+                  type: string
+                  description: Absolute path to the source .db/.sqlite/.sqlite3 file
+      responses:
+        "200":
+          description: Import job started
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ImportJob"
+        "400":
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/imports/{job_id}:
+    get:
+      summary: Get import job status
+      description: Returns status of an import job. Requires admin token.
+      operationId: importJobStatus
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Import job status
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/ImportJob"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/imports/{job_id}/verify:
+    post:
+      summary: Verify import
+      description: Verifies the result of a completed import job. Requires admin token.
+      operationId: verifyImport
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Verification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/backup:
+    post:
+      summary: Create backup
+      description: Creates a backup of the database. Requires admin token.
+      operationId: adminBackup
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                dest_dir:
+                  type: string
+                  description: Destination directory path (optional)
+      responses:
+        "200":
+          description: Backup created
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiResponse"
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items:
+                          $ref: "#/components/schemas/BackupResult"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/reindex-vectors:
+    post:
+      summary: Reindex vectors
+      description: Reindexes vector embeddings for all observations. Requires admin token.
+      operationId: reindexVectors
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                limit:
+                  type: integer
+                  description: Maximum number of observations to reindex
+      responses:
+        "200":
+          description: Reindex result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+tags:
+  - name: System
+    description: Health and status endpoints
+  - name: Events
+    description: Event recording and streaming
+  - name: Search
+    description: Semantic and hybrid search
+  - name: Feed
+    description: Paginated observation feed
+  - name: Observations
+    description: Observation retrieval and management
+  - name: Sessions
+    description: Session lifecycle management
+  - name: Checkpoints
+    description: Session checkpointing
+  - name: Projects
+    description: Project-level statistics
+  - name: Graph
+    description: Knowledge graph operations
+  - name: Analytics
+    description: Usage and entity analytics
+  - name: Ingest
+    description: Bulk data ingestion from external sources
+  - name: Sync
+    description: Device synchronization and connector management
+  - name: Admin
+    description: Administrative operations (require admin token)

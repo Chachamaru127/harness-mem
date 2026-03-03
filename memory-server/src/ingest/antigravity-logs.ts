@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 export interface AntigravityLogIngestEvent {
   lineOffset: number;
@@ -83,6 +84,27 @@ export function parseAntigravityLogChunk(params: {
     events,
     consumedBytes: cursor,
   };
+}
+
+export class AntigravityLogsIngester implements PlatformIngester {
+  readonly name = "antigravity-logs";
+  readonly description = "Antigravity ログファイルからプランナー活動を取り込む";
+  readonly pollIntervalMs = 30_000;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }
 
 function normalizeTimestamp(value: string, fallbackNowIso: () => string): string {

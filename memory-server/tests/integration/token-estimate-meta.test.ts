@@ -25,7 +25,7 @@ function makeConfig(dir: string): Config {
 }
 
 describe("token estimate metadata", () => {
-  test("search/timeline/get_observations include token_estimate metadata", () => {
+  test("search/timeline/get_observations include token_estimate metadata", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-token-meta-"));
     const core = new HarnessMemCore(makeConfig(dir));
     try {
@@ -51,7 +51,7 @@ describe("token estimate metadata", () => {
       expect((search.meta as Record<string, unknown>).token_estimate).toBeDefined();
 
       const firstId = String((search.items[0] as Record<string, unknown>).id || "");
-      const timeline = core.timeline({ id: firstId, before: 2, after: 2, include_private: true });
+      const timeline = await core.timeline({ id: firstId, before: 2, after: 2, include_private: true });
       expect((timeline.meta as Record<string, unknown>).token_estimate).toBeDefined();
 
       const ids = (search.items as Array<Record<string, unknown>>).map((item) => String(item.id));

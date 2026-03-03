@@ -11,6 +11,7 @@
 
 import { createHash } from "node:crypto";
 import type { EventEnvelope } from "../core/harness-mem-core";
+import type { PlatformIngester, IngesterDeps } from "./types";
 
 // ─────────────────────────────────────────────────────────
 // Notion
@@ -104,4 +105,25 @@ export function googleDriveFileToEvent(
     privacy_tags: [],
     dedupe_hash: dedupeHash,
   };
+}
+
+export class NotionGdriveIngester implements PlatformIngester {
+  readonly name = "notion-gdrive";
+  readonly description = "Notion ページと Google Drive ドキュメントを取り込む";
+  readonly pollIntervalMs = 0;
+
+  private deps?: IngesterDeps;
+
+  async initialize(deps: IngesterDeps): Promise<boolean> {
+    this.deps = deps;
+    return true;
+  }
+
+  async poll(): Promise<number> {
+    return 0;
+  }
+
+  async shutdown(): Promise<void> {
+    // no-op
+  }
 }
