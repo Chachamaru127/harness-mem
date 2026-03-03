@@ -8,7 +8,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { ObservationStore, type ObservationStoreDeps } from "../../src/core/observation-store";
-import type { Config } from "../../src/core/harness-mem-core";
+import type { Config } from "../../src/core/types";
 import {
   createTestDb,
   createTestConfig,

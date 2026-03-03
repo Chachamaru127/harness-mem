@@ -13,12 +13,14 @@ from .types import (
     AuditLogResponse,
     ConsolidationStatusResponse,
     EventEnvelope,
+    FeedResponse,
     FinalizeSessionResponse,
     GetObservationsResponse,
     HealthResponse,
     JsonDict,
     OptionalJsonDict,
     ResumePackResponse,
+    SearchFacetsResponse,
     SearchResponse,
     TimelineResponse,
     WriteResponse,
@@ -263,5 +265,51 @@ class HarnessMemClient:
             "GET",
             "/v1/admin/audit-log",
             query={"limit": limit, "action": action, "target_type": target_type},
+            ),
+        )
+
+    def search_facets(
+        self,
+        *,
+        query: Optional[str] = None,
+        project: Optional[str] = None,
+        include_private: bool = False,
+    ) -> SearchFacetsResponse:
+        return cast(
+            SearchFacetsResponse,
+            self._request(
+            "GET",
+            "/v1/search/facets",
+            query={"query": query, "project": project, "include_private": include_private or None},
+            ),
+        )
+
+    def feed(
+        self,
+        *,
+        cursor: Optional[str] = None,
+        limit: Optional[int] = None,
+        project: Optional[str] = None,
+        type: Optional[str] = None,
+        include_private: bool = False,
+        user_id: Optional[str] = None,
+        team_id: Optional[str] = None,
+        memory_type: Optional[str] = None,
+    ) -> FeedResponse:
+        return cast(
+            FeedResponse,
+            self._request(
+            "GET",
+            "/v1/feed",
+            query={
+                "cursor": cursor,
+                "limit": limit,
+                "project": project,
+                "type": type,
+                "include_private": include_private or None,
+                "user_id": user_id,
+                "team_id": team_id,
+                "memory_type": memory_type,
+            },
             ),
         )

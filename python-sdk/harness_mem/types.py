@@ -98,6 +98,14 @@ class AuditLogResponse(ApiResponse, total=False):
     items: List[AuditLogItem]
 
 
+class SearchFacetsResponse(ApiResponse, total=False):
+    items: List[Dict[str, Any]]
+
+
+class FeedResponse(ApiResponse, total=False):
+    items: List[ObservationItem]
+
+
 class EventEnvelope(TypedDict, total=False):
     event_id: str
     platform: str

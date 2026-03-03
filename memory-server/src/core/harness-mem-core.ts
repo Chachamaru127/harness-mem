@@ -59,12 +59,15 @@ import {
   DEFAULT_OPENCODE_DB_PATH,
   DEFAULT_OPENCODE_INGEST_INTERVAL_MS,
   DEFAULT_OPENCODE_STORAGE_ROOT,
+  DEFAULT_SEARCH_RANKING,
   ensureDir,
   ensureSession,
+  envFlag,
   fileUriToPath,
   makeErrorResponse,
   makeResponse,
   nowIso,
+  parseBackendMode,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
   resolveWorkspaceRootFromWorkspaceJson,
@@ -123,28 +126,12 @@ export type {
 } from "./types.js";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 
-const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
-const DEFAULT_BIND_HOST = "127.0.0.1";
-const DEFAULT_BIND_PORT = 37888;
-const DEFAULT_VECTOR_DIM = 256;
-const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
-const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
-const DEFAULT_CODEX_BACKFILL_HOURS = 24;
-const DEFAULT_SEARCH_RANKING = "hybrid_v3";
-const DEFAULT_SEARCH_EXPAND_LINKS = true;
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 
-function envFlag(name: string, defaultValue: boolean): boolean {
-  const raw = process.env[name];
-  if (raw === undefined) {
-    return defaultValue;
-  }
-  const normalized = raw.trim().toLowerCase();
-  return !(normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
-}
-
+// getConfig は core-utils.ts から re-export
+export { getConfig } from "./core-utils.js";
 
 interface ProjectNormalizationOptions {
   preferredRoots?: string[];
@@ -355,15 +342,6 @@ export class HarnessMemCore {
   private rerankerEnabled = false;
   private managedBackend: ManagedBackend | null = null;
   private readonly heartbeatPath: string;
-  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-  private ingestTimer: ReturnType<typeof setInterval> | null = null;
-  private opencodeIngestTimer: ReturnType<typeof setInterval> | null = null;
-  private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
-  private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
-  private geminiIngestTimer: ReturnType<typeof setInterval> | null = null;
-  private consolidationTimer: ReturnType<typeof setInterval> | null = null;
-  private retryTimer: ReturnType<typeof setInterval> | null = null;
-  private checkpointTimer: ReturnType<typeof setInterval> | null = null;
   private shuttingDown = false;
   private readonly projectNormalizationRoots: string[];
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
@@ -407,12 +385,12 @@ export class HarnessMemCore {
     this.initEmbeddingProvider();
     this.initReranker();
 
+    this.initManagedBackend();
+    this.initModules();
     const shouldStartWorkers = this.config.backgroundWorkersEnabled ?? (process.env.NODE_ENV !== "test");
     if (shouldStartWorkers) {
       this.startBackgroundWorkers();
     }
-    this.initManagedBackend();
-    this.initModules();
   }
 
   /** モジュールインスタンスを初期化する (コンストラクタ末尾で呼ぶ) */
@@ -479,6 +457,11 @@ export class HarnessMemCore {
       recordEvent: (event, options) => this.recordEvent(event, options),
       upsertSessionSummary: (sessionId, platform, project, summary, endedAt, summaryMode) =>
         this.upsertSessionSummary(sessionId, platform, project, summary, endedAt, summaryMode),
+      heartbeatPath: this.heartbeatPath,
+      isShuttingDown: () => this.shuttingDown,
+      processRetryQueue: (force) => this.processRetryQueue(force),
+      runConsolidation: ({ reason, limit }) =>
+        this.runConsolidation({ reason, limit }).then(() => undefined),
     });
 
     this.cfgMgr = new ConfigManager({
@@ -862,77 +845,7 @@ export class HarnessMemCore {
   }
 
   private startBackgroundWorkers(): void {
-    this.heartbeatTimer = setInterval(() => {
-      if (this.shuttingDown) return;
-      this.writeHeartbeat();
-    }, 5000);
-
-    if (this.config.codexHistoryEnabled) {
-      this.ingestTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        try { this.ingestCodexHistory(); } catch { /* ignore post-shutdown DB errors */ }
-      }, this.config.codexIngestIntervalMs);
-    }
-
-    if (this.config.opencodeIngestEnabled !== false) {
-      this.opencodeIngestTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        try { this.ingestOpencodeHistory(); } catch { /* ignore post-shutdown DB errors */ }
-      }, clampLimit(Number(this.config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
-    }
-
-    if (this.config.cursorIngestEnabled !== false) {
-      this.cursorIngestTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        try { this.ingestCursorHistory(); } catch { /* ignore post-shutdown DB errors */ }
-      }, clampLimit(Number(this.config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
-    }
-
-    if (this.config.antigravityIngestEnabled !== false) {
-      this.antigravityIngestTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        try { this.ingestAntigravityHistory(); } catch { /* ignore post-shutdown DB errors */ }
-      }, clampLimit(Number(this.config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
-    }
-
-    if (this.config.geminiIngestEnabled !== false) {
-      this.geminiIngestTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        try { this.ingestGeminiHistory(); } catch { /* ignore post-shutdown DB errors */ }
-      }, clampLimit(Number(this.config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
-    }
-
-    if (this.config.consolidationEnabled !== false) {
-      let consolidationRunning = false;
-      this.consolidationTimer = setInterval(() => {
-        if (this.shuttingDown) return;
-        if (consolidationRunning) return;
-        consolidationRunning = true;
-        void this.runConsolidation({ reason: "scheduler", limit: 10 }).finally(() => {
-          consolidationRunning = false;
-        });
-      }, clampLimit(Number(this.config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
-    }
-
-    this.retryTimer = setInterval(() => {
-      if (this.shuttingDown) return;
-      try { this.processRetryQueue(); } catch { /* ignore post-shutdown DB errors */ }
-    }, 15000);
-
-    this.checkpointTimer = setInterval(() => {
-      if (this.shuttingDown) return;
-      try { this.db.exec("PRAGMA wal_checkpoint(PASSIVE);"); } catch { /* ignore post-shutdown DB errors */ }
-    }, 60000);
-
-    this.writeHeartbeat();
-  }
-
-  private writeHeartbeat(): void {
-    try {
-      writeFileSync(this.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso() }));
-    } catch {
-      // best effort
-    }
+    this.ingestCoord.startTimers();
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
@@ -1619,42 +1532,7 @@ export class HarnessMemCore {
     }
     this.shuttingDown = true;
 
-    if (this.heartbeatTimer) {
-      clearInterval(this.heartbeatTimer);
-      this.heartbeatTimer = null;
-    }
-    if (this.ingestTimer) {
-      clearInterval(this.ingestTimer);
-      this.ingestTimer = null;
-    }
-    if (this.opencodeIngestTimer) {
-      clearInterval(this.opencodeIngestTimer);
-      this.opencodeIngestTimer = null;
-    }
-    if (this.cursorIngestTimer) {
-      clearInterval(this.cursorIngestTimer);
-      this.cursorIngestTimer = null;
-    }
-    if (this.antigravityIngestTimer) {
-      clearInterval(this.antigravityIngestTimer);
-      this.antigravityIngestTimer = null;
-    }
-    if (this.geminiIngestTimer) {
-      clearInterval(this.geminiIngestTimer);
-      this.geminiIngestTimer = null;
-    }
-    if (this.consolidationTimer) {
-      clearInterval(this.consolidationTimer);
-      this.consolidationTimer = null;
-    }
-    if (this.retryTimer) {
-      clearInterval(this.retryTimer);
-      this.retryTimer = null;
-    }
-    if (this.checkpointTimer) {
-      clearInterval(this.checkpointTimer);
-      this.checkpointTimer = null;
-    }
+    this.ingestCoord.stopTimers();
 
     this.processRetryQueue(true);
 
@@ -1899,145 +1777,3 @@ export class HarnessMemCore {
   }
 }
 
-export function getConfig(): Config {
-  const dbPath = process.env.HARNESS_MEM_DB_PATH || DEFAULT_DB_PATH;
-  const rawBindHost = (process.env.HARNESS_MEM_HOST || DEFAULT_BIND_HOST).trim();
-  // リモートバインドを許可する（起動時の安全チェックは index.ts / startHarnessMemServer 側で実施）
-  const bindHost = rawBindHost || DEFAULT_BIND_HOST;
-  const bindPortRaw = process.env.HARNESS_MEM_PORT;
-  const bindPort = bindPortRaw ? Number(bindPortRaw) : DEFAULT_BIND_PORT;
-  const codexIngestIntervalRaw = Number(process.env.HARNESS_MEM_CODEX_INGEST_INTERVAL_MS || DEFAULT_CODEX_INGEST_INTERVAL_MS);
-  const codexBackfillRaw = Number(process.env.HARNESS_MEM_CODEX_BACKFILL_HOURS || DEFAULT_CODEX_BACKFILL_HOURS);
-  const opencodeIngestIntervalRaw = Number(
-    process.env.HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS || DEFAULT_OPENCODE_INGEST_INTERVAL_MS
-  );
-  const opencodeBackfillRaw = Number(
-    process.env.HARNESS_MEM_OPENCODE_BACKFILL_HOURS || DEFAULT_OPENCODE_BACKFILL_HOURS
-  );
-  const cursorIngestIntervalRaw = Number(
-    process.env.HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS || DEFAULT_CURSOR_INGEST_INTERVAL_MS
-  );
-  const cursorBackfillRaw = Number(
-    process.env.HARNESS_MEM_CURSOR_BACKFILL_HOURS || DEFAULT_CURSOR_BACKFILL_HOURS
-  );
-  const antigravityIngestIntervalRaw = Number(
-    process.env.HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS
-  );
-  const antigravityBackfillRaw = Number(
-    process.env.HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS || DEFAULT_ANTIGRAVITY_BACKFILL_HOURS
-  );
-  const antigravityRootsRaw = process.env.HARNESS_MEM_ANTIGRAVITY_ROOTS || "";
-  const antigravityWorkspaceRoots = antigravityRootsRaw
-    .split(/[,\n]/)
-    .map((root) => root.trim())
-    .filter((root) => root.length > 0)
-    .map((root) => resolveHomePath(root));
-  const antigravityLogsRoot = resolveHomePath(
-    process.env.HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT || DEFAULT_ANTIGRAVITY_LOGS_ROOT
-  );
-  const antigravityWorkspaceStorageRoot = resolveHomePath(
-    process.env.HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
-  );
-  const geminiIngestIntervalRaw = Number(
-    process.env.HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS || DEFAULT_GEMINI_INGEST_INTERVAL_MS
-  );
-  const geminiBackfillRaw = Number(
-    process.env.HARNESS_MEM_GEMINI_BACKFILL_HOURS || DEFAULT_GEMINI_BACKFILL_HOURS
-  );
-  const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
-  const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
-  const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
-  const embeddingProvider = embeddingProviderRaw || "fallback";
-  const openaiApiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
-  const openaiEmbedModel = (process.env.HARNESS_MEM_OPENAI_EMBED_MODEL || "text-embedding-3-small").trim();
-  const ollamaBaseUrl = (process.env.HARNESS_MEM_OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim();
-  const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
-  const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
-
-  return {
-    dbPath,
-    bindHost,
-    bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,
-    vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 4096),
-    embeddingProvider,
-    openaiApiKey,
-    openaiEmbedModel,
-    ollamaBaseUrl,
-    ollamaEmbedModel,
-    captureEnabled: envFlag("HARNESS_MEM_ENABLE_CAPTURE", true),
-    retrievalEnabled: envFlag("HARNESS_MEM_ENABLE_RETRIEVAL", true),
-    injectionEnabled: envFlag("HARNESS_MEM_ENABLE_INJECTION", true),
-    codexHistoryEnabled: envFlag("HARNESS_MEM_ENABLE_CODEX_INGEST", true),
-    codexProjectRoot: resolve(process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || process.cwd()),
-    codexSessionsRoot: resolveHomePath(process.env.HARNESS_MEM_CODEX_SESSIONS_ROOT || DEFAULT_CODEX_SESSIONS_ROOT),
-    codexIngestIntervalMs: clampLimit(codexIngestIntervalRaw, DEFAULT_CODEX_INGEST_INTERVAL_MS, 1000, 300000),
-    codexBackfillHours: clampLimit(codexBackfillRaw, DEFAULT_CODEX_BACKFILL_HOURS, 1, 24 * 365),
-    opencodeIngestEnabled: envFlag("HARNESS_MEM_ENABLE_OPENCODE_INGEST", true),
-    opencodeDbPath: resolveHomePath(process.env.HARNESS_MEM_OPENCODE_DB_PATH || DEFAULT_OPENCODE_DB_PATH),
-    opencodeStorageRoot: resolveHomePath(
-      process.env.HARNESS_MEM_OPENCODE_STORAGE_ROOT || DEFAULT_OPENCODE_STORAGE_ROOT
-    ),
-    opencodeIngestIntervalMs: clampLimit(
-      opencodeIngestIntervalRaw,
-      DEFAULT_OPENCODE_INGEST_INTERVAL_MS,
-      1000,
-      300000
-    ),
-    opencodeBackfillHours: clampLimit(opencodeBackfillRaw, DEFAULT_OPENCODE_BACKFILL_HOURS, 1, 24 * 365),
-    cursorIngestEnabled: envFlag("HARNESS_MEM_ENABLE_CURSOR_INGEST", true),
-    cursorEventsPath: resolveHomePath(process.env.HARNESS_MEM_CURSOR_EVENTS_PATH || DEFAULT_CURSOR_EVENTS_PATH),
-    cursorIngestIntervalMs: clampLimit(
-      cursorIngestIntervalRaw,
-      DEFAULT_CURSOR_INGEST_INTERVAL_MS,
-      1000,
-      300000
-    ),
-    cursorBackfillHours: clampLimit(cursorBackfillRaw, DEFAULT_CURSOR_BACKFILL_HOURS, 1, 24 * 365),
-    antigravityIngestEnabled: envFlag("HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST", false),
-    antigravityWorkspaceRoots,
-    antigravityLogsRoot,
-    antigravityWorkspaceStorageRoot,
-    antigravityIngestIntervalMs: clampLimit(
-      antigravityIngestIntervalRaw,
-      DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS,
-      1000,
-      300000
-    ),
-    antigravityBackfillHours: clampLimit(
-      antigravityBackfillRaw,
-      DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
-      1,
-      24 * 365
-    ),
-    geminiIngestEnabled: envFlag("HARNESS_MEM_ENABLE_GEMINI_INGEST", true),
-    geminiEventsPath: resolveHomePath(process.env.HARNESS_MEM_GEMINI_EVENTS_PATH || DEFAULT_GEMINI_EVENTS_PATH),
-    geminiIngestIntervalMs: clampLimit(
-      geminiIngestIntervalRaw,
-      DEFAULT_GEMINI_INGEST_INTERVAL_MS,
-      1000,
-      300000
-    ),
-    geminiBackfillHours: clampLimit(geminiBackfillRaw, DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
-    searchRanking,
-    searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
-    rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),
-    consolidationEnabled: envFlag("HARNESS_MEM_CONSOLIDATION_ENABLED", true),
-    consolidationIntervalMs: clampLimit(consolidationIntervalRaw, 60000, 5000, 600000),
-    backendMode: parseBackendMode(process.env.HARNESS_MEM_BACKEND_MODE),
-    managedEndpoint: (process.env.HARNESS_MEM_MANAGED_ENDPOINT || "").trim() || undefined,
-    managedApiKey: (process.env.HARNESS_MEM_MANAGED_API_KEY || "").trim() || undefined,
-    resumePackMaxTokens: (() => {
-      const raw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
-      return Number.isFinite(raw) && raw > 0 ? raw : undefined;
-    })(),
-    // TEAM-003: ユーザー・チーム識別
-    userId: (process.env.HARNESS_MEM_USER_ID || "").trim() || undefined,
-    teamId: (process.env.HARNESS_MEM_TEAM_ID || "").trim() || undefined,
-  };
-}
-
-function parseBackendMode(value: string | undefined): "local" | "managed" | "hybrid" {
-  const normalized = (value || "").trim().toLowerCase();
-  if (normalized === "managed" || normalized === "hybrid") return normalized;
-  return "local";
-}

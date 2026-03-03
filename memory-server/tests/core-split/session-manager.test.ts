@@ -7,7 +7,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { SessionManager, type SessionManagerDeps } from "../../src/core/session-manager";
-import type { ApiResponse, Config, EventEnvelope, StreamEvent } from "../../src/core/harness-mem-core";
+import type { ApiResponse, Config, EventEnvelope, StreamEvent } from "../../src/core/types";
 import { createTestDb, createTestConfig, insertTestObservation } from "./test-helpers";
 import type { Database } from "bun:sqlite";
 

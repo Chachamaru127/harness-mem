@@ -24,14 +24,13 @@
  */
 
 export { HarnessMemClient } from "./client.js";
+// LangChain 統合: langchain-memory.ts が唯一の正本
 export { HarnessMemLangChainMemory } from "./langchain-memory.js";
-// NEXT-009: フレームワーク統合（integrations.ts）
-export {
-  HarnessMemLangChainMemory as LangChainMemory,
-  HarnessMemLlamaIndexMemory,
-} from "./integrations.js";
+// LangChainMemory は後方互換エイリアス
+export { HarnessMemLangChainMemory as LangChainMemory } from "./langchain-memory.js";
+// LlamaIndex 統合
+export { HarnessMemLlamaIndexMemory } from "./integrations.js";
 export type {
-  LangChainMemoryOptions,
   LlamaIndexMemoryOptions,
   ChatMessage,
 } from "./integrations.js";

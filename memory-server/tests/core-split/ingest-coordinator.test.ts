@@ -15,7 +15,7 @@ import {
   IngestCoordinator,
   type IngestCoordinatorDeps,
 } from "../../src/core/ingest-coordinator";
-import type { ApiResponse } from "../../src/core/harness-mem-core";
+import type { ApiResponse } from "../../src/core/types";
 import { createTestDb, createTestConfig } from "./test-helpers";
 
 // ---------------------------------------------------------------------------

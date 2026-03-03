@@ -1,6 +1,7 @@
 from .client import HarnessMemClient
 from .crewai_memory import HarnessMemCrewAIMemory
 from .errors import HarnessMemAPIError, HarnessMemError, HarnessMemTransportError
+from .langchain_memory import HarnessMemLangChainMemory
 from .types import (
     AuditLogResponse,
     ConsolidationStatusResponse,
@@ -16,6 +17,7 @@ from .types import (
 __all__ = [
     "HarnessMemClient",
     "HarnessMemCrewAIMemory",
+    "HarnessMemLangChainMemory",
     "HarnessMemError",
     "HarnessMemTransportError",
     "HarnessMemAPIError",

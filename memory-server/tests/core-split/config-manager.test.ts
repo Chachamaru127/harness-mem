@@ -12,7 +12,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { ConfigManager, type ConfigManagerDeps } from "../../src/core/config-manager";
-import { getConfig, type Config, type ApiResponse } from "../../src/core/harness-mem-core";
+import { getConfig, type Config, type ApiResponse } from "../../src/core/config-manager";
 import {
   createTestDb,
   createTestConfig,

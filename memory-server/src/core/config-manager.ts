@@ -29,6 +29,8 @@ import type {
   ConsolidationRunRequest,
   ProjectsStatsRequest,
 } from "./types.js";
+export type { Config, ApiResponse } from "./types.js";
+export { getConfig } from "./core-utils.js";
 import {
   clampLimit,
   ensureDir,

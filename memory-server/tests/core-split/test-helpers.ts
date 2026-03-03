@@ -7,7 +7,7 @@
 
 import { Database } from "bun:sqlite";
 import { configureDatabase, initSchema, migrateSchema, initFtsIndex } from "../../src/db/schema";
-import type { Config, ApiResponse, EventEnvelope, StreamEvent } from "../../src/core/harness-mem-core";
+import type { Config, ApiResponse, EventEnvelope, StreamEvent } from "../../src/core/types";
 
 /**
  * テスト用のインメモリ SQLite DB を作成し、スキーマを初期化する。

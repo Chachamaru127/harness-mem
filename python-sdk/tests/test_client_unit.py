@@ -69,6 +69,45 @@ class HarnessMemClientUnitTest(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 400)
         self.assertEqual(ctx.exception.message, "bad request payload")
 
+    def test_search_facets_sends_query_params(self) -> None:
+        client = HarnessMemClient(base_url="http://example.local")
+        with patch("harness_mem.client.urlopen", return_value=_FakeResponse({"ok": True, "items": []})) as mocked:
+            client.search_facets(query="python", project="my-project")
+
+        request = mocked.call_args.args[0]
+        self.assertIn("/v1/search/facets", request.full_url)
+        self.assertIn("query=python", request.full_url)
+        self.assertIn("project=my-project", request.full_url)
+
+    def test_search_facets_no_include_private_when_false(self) -> None:
+        client = HarnessMemClient(base_url="http://example.local")
+        with patch("harness_mem.client.urlopen", return_value=_FakeResponse({"ok": True, "items": []})) as mocked:
+            client.search_facets()
+
+        request = mocked.call_args.args[0]
+        self.assertIn("/v1/search/facets", request.full_url)
+        self.assertNotIn("include_private", request.full_url)
+
+    def test_feed_sends_query_params(self) -> None:
+        client = HarnessMemClient(base_url="http://example.local")
+        with patch("harness_mem.client.urlopen", return_value=_FakeResponse({"ok": True, "items": []})) as mocked:
+            client.feed(project="proj-1", limit=20, memory_type="episodic")
+
+        request = mocked.call_args.args[0]
+        self.assertIn("/v1/feed", request.full_url)
+        self.assertIn("project=proj-1", request.full_url)
+        self.assertIn("limit=20", request.full_url)
+        self.assertIn("memory_type=episodic", request.full_url)
+
+    def test_feed_with_cursor(self) -> None:
+        client = HarnessMemClient(base_url="http://example.local")
+        with patch("harness_mem.client.urlopen", return_value=_FakeResponse({"ok": True, "items": []})) as mocked:
+            client.feed(cursor="abc123")
+
+        request = mocked.call_args.args[0]
+        self.assertIn("/v1/feed", request.full_url)
+        self.assertIn("cursor=abc123", request.full_url)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -16,7 +16,7 @@
  */
 
 import { Database } from "bun:sqlite";
-import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readdirSync, readSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import type { ApiResponse, Config, EventEnvelope } from "./types.js";
 import {
@@ -402,6 +402,11 @@ export interface IngestCoordinatorDeps {
     endedAt: string,
     summaryMode: string
   ) => void;
+  // タイマー管理に必要な追加依存
+  heartbeatPath: string;
+  isShuttingDown: () => boolean;
+  processRetryQueue: (force?: boolean) => void;
+  runConsolidation: (opts: { reason: string; limit: number }) => Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -413,7 +418,112 @@ const SQLITE_HEADER = "SQLite format 3\u0000";
 export class IngestCoordinator {
   private readonly codexRolloutContextCache = new Map<string, CodexSessionsContext>();
 
+  // タイマーハンドル（startTimers / stopTimers で管理）
+  private heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+  private ingestTimer: ReturnType<typeof setInterval> | null = null;
+  private opencodeIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private geminiIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private consolidationTimer: ReturnType<typeof setInterval> | null = null;
+  private retryTimer: ReturnType<typeof setInterval> | null = null;
+  private checkpointTimer: ReturnType<typeof setInterval> | null = null;
+
   constructor(private readonly deps: IngestCoordinatorDeps) {}
+
+  // ---------------------------------------------------------------------------
+  // タイマー管理
+  // ---------------------------------------------------------------------------
+
+  /** heartbeat + ingest ポーリングタイマーを開始する */
+  startTimers(): void {
+    const { config } = this.deps;
+
+    this.heartbeatTimer = setInterval(() => {
+      if (this.deps.isShuttingDown()) return;
+      this.writeHeartbeat();
+    }, 5000);
+
+    if (config.codexHistoryEnabled) {
+      this.ingestTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestCodexHistory(); } catch { /* ignore post-shutdown DB errors */ }
+      }, config.codexIngestIntervalMs);
+    }
+
+    if (config.opencodeIngestEnabled !== false) {
+      this.opencodeIngestTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestOpencodeHistory(); } catch { /* ignore post-shutdown DB errors */ }
+      }, clampLimit(Number(config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
+    }
+
+    if (config.cursorIngestEnabled !== false) {
+      this.cursorIngestTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestCursorHistory(); } catch { /* ignore post-shutdown DB errors */ }
+      }, clampLimit(Number(config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
+    }
+
+    if (config.antigravityIngestEnabled !== false) {
+      this.antigravityIngestTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestAntigravityHistory(); } catch { /* ignore post-shutdown DB errors */ }
+      }, clampLimit(Number(config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
+    }
+
+    if (config.geminiIngestEnabled !== false) {
+      this.geminiIngestTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestGeminiHistory(); } catch { /* ignore post-shutdown DB errors */ }
+      }, clampLimit(Number(config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
+    }
+
+    if (config.consolidationEnabled !== false) {
+      let consolidationRunning = false;
+      this.consolidationTimer = setInterval(() => {
+        if (this.deps.isShuttingDown()) return;
+        if (consolidationRunning) return;
+        consolidationRunning = true;
+        void this.deps.runConsolidation({ reason: "scheduler", limit: 10 }).finally(() => {
+          consolidationRunning = false;
+        });
+      }, clampLimit(Number(config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
+    }
+
+    this.retryTimer = setInterval(() => {
+      if (this.deps.isShuttingDown()) return;
+      try { this.deps.processRetryQueue(); } catch { /* ignore post-shutdown DB errors */ }
+    }, 15000);
+
+    this.checkpointTimer = setInterval(() => {
+      if (this.deps.isShuttingDown()) return;
+      try { this.deps.db.exec("PRAGMA wal_checkpoint(PASSIVE);"); } catch { /* ignore post-shutdown DB errors */ }
+    }, 60000);
+
+    this.writeHeartbeat();
+  }
+
+  /** 全タイマーを停止する (shutdown 時に呼ぶ) */
+  stopTimers(): void {
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+    if (this.ingestTimer) { clearInterval(this.ingestTimer); this.ingestTimer = null; }
+    if (this.opencodeIngestTimer) { clearInterval(this.opencodeIngestTimer); this.opencodeIngestTimer = null; }
+    if (this.cursorIngestTimer) { clearInterval(this.cursorIngestTimer); this.cursorIngestTimer = null; }
+    if (this.antigravityIngestTimer) { clearInterval(this.antigravityIngestTimer); this.antigravityIngestTimer = null; }
+    if (this.geminiIngestTimer) { clearInterval(this.geminiIngestTimer); this.geminiIngestTimer = null; }
+    if (this.consolidationTimer) { clearInterval(this.consolidationTimer); this.consolidationTimer = null; }
+    if (this.retryTimer) { clearInterval(this.retryTimer); this.retryTimer = null; }
+    if (this.checkpointTimer) { clearInterval(this.checkpointTimer); this.checkpointTimer = null; }
+  }
+
+  private writeHeartbeat(): void {
+    try {
+      writeFileSync(this.deps.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso() }));
+    } catch {
+      // best effort
+    }
+  }
 
   // ---------------------------------------------------------------------------
   // オフセット管理

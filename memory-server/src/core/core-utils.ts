@@ -9,7 +9,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Database } from "bun:sqlite";
-import type { ApiResponse } from "./types.js";
+import type { ApiResponse, Config } from "./types.js";
 
 // ---------------------------------------------------------------------------
 // 時刻・基本ユーティリティ
@@ -571,4 +571,171 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
     }
   }
   return mapped;
+}
+
+// ---------------------------------------------------------------------------
+// getConfig — 環境変数から Config を構築するファクトリ
+// (harness-mem-core.ts から分離してテスト依存を解消)
+// ---------------------------------------------------------------------------
+
+export const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
+export const DEFAULT_BIND_HOST = "127.0.0.1";
+export const DEFAULT_BIND_PORT = 37888;
+export const DEFAULT_VECTOR_DIM = 256;
+export const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
+export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_CODEX_BACKFILL_HOURS = 24;
+export const DEFAULT_SEARCH_RANKING = "hybrid_v3";
+export const DEFAULT_SEARCH_EXPAND_LINKS = true;
+
+export function envFlag(name: string, defaultValue: boolean): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return defaultValue;
+  }
+  const normalized = raw.trim().toLowerCase();
+  return !(normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
+}
+
+export function parseBackendMode(value: string | undefined): "local" | "managed" | "hybrid" {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "managed" || normalized === "hybrid") return normalized;
+  return "local";
+}
+
+export function getConfig(): Config {
+  const dbPath = process.env.HARNESS_MEM_DB_PATH || DEFAULT_DB_PATH;
+  const rawBindHost = (process.env.HARNESS_MEM_HOST || DEFAULT_BIND_HOST).trim();
+  // リモートバインドを許可する（起動時の安全チェックは index.ts / startHarnessMemServer 側で実施）
+  const bindHost = rawBindHost || DEFAULT_BIND_HOST;
+  const bindPortRaw = process.env.HARNESS_MEM_PORT;
+  const bindPort = bindPortRaw ? Number(bindPortRaw) : DEFAULT_BIND_PORT;
+  const codexIngestIntervalRaw = Number(process.env.HARNESS_MEM_CODEX_INGEST_INTERVAL_MS || DEFAULT_CODEX_INGEST_INTERVAL_MS);
+  const codexBackfillRaw = Number(process.env.HARNESS_MEM_CODEX_BACKFILL_HOURS || DEFAULT_CODEX_BACKFILL_HOURS);
+  const opencodeIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS || DEFAULT_OPENCODE_INGEST_INTERVAL_MS
+  );
+  const opencodeBackfillRaw = Number(
+    process.env.HARNESS_MEM_OPENCODE_BACKFILL_HOURS || DEFAULT_OPENCODE_BACKFILL_HOURS
+  );
+  const cursorIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS || DEFAULT_CURSOR_INGEST_INTERVAL_MS
+  );
+  const cursorBackfillRaw = Number(
+    process.env.HARNESS_MEM_CURSOR_BACKFILL_HOURS || DEFAULT_CURSOR_BACKFILL_HOURS
+  );
+  const antigravityIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS
+  );
+  const antigravityBackfillRaw = Number(
+    process.env.HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS || DEFAULT_ANTIGRAVITY_BACKFILL_HOURS
+  );
+  const antigravityRootsRaw = process.env.HARNESS_MEM_ANTIGRAVITY_ROOTS || "";
+  const antigravityWorkspaceRoots = antigravityRootsRaw
+    .split(/[,\n]/)
+    .map((root) => root.trim())
+    .filter((root) => root.length > 0)
+    .map((root) => resolveHomePath(root));
+  const antigravityLogsRoot = resolveHomePath(
+    process.env.HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT || DEFAULT_ANTIGRAVITY_LOGS_ROOT
+  );
+  const antigravityWorkspaceStorageRoot = resolveHomePath(
+    process.env.HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT || DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT
+  );
+  const geminiIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS || DEFAULT_GEMINI_INGEST_INTERVAL_MS
+  );
+  const geminiBackfillRaw = Number(
+    process.env.HARNESS_MEM_GEMINI_BACKFILL_HOURS || DEFAULT_GEMINI_BACKFILL_HOURS
+  );
+  const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
+  const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
+  const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
+  const embeddingProvider = embeddingProviderRaw || "fallback";
+  const openaiApiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
+  const openaiEmbedModel = (process.env.HARNESS_MEM_OPENAI_EMBED_MODEL || "text-embedding-3-small").trim();
+  const ollamaBaseUrl = (process.env.HARNESS_MEM_OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim();
+  const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
+  const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
+
+  return {
+    dbPath,
+    bindHost,
+    bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,
+    vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 4096),
+    embeddingProvider,
+    openaiApiKey,
+    openaiEmbedModel,
+    ollamaBaseUrl,
+    ollamaEmbedModel,
+    captureEnabled: envFlag("HARNESS_MEM_ENABLE_CAPTURE", true),
+    retrievalEnabled: envFlag("HARNESS_MEM_ENABLE_RETRIEVAL", true),
+    injectionEnabled: envFlag("HARNESS_MEM_ENABLE_INJECTION", true),
+    codexHistoryEnabled: envFlag("HARNESS_MEM_ENABLE_CODEX_INGEST", true),
+    codexProjectRoot: resolve(process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || process.cwd()),
+    codexSessionsRoot: resolveHomePath(process.env.HARNESS_MEM_CODEX_SESSIONS_ROOT || DEFAULT_CODEX_SESSIONS_ROOT),
+    codexIngestIntervalMs: clampLimit(codexIngestIntervalRaw, DEFAULT_CODEX_INGEST_INTERVAL_MS, 1000, 300000),
+    codexBackfillHours: clampLimit(codexBackfillRaw, DEFAULT_CODEX_BACKFILL_HOURS, 1, 24 * 365),
+    opencodeIngestEnabled: envFlag("HARNESS_MEM_ENABLE_OPENCODE_INGEST", true),
+    opencodeDbPath: resolveHomePath(process.env.HARNESS_MEM_OPENCODE_DB_PATH || DEFAULT_OPENCODE_DB_PATH),
+    opencodeStorageRoot: resolveHomePath(
+      process.env.HARNESS_MEM_OPENCODE_STORAGE_ROOT || DEFAULT_OPENCODE_STORAGE_ROOT
+    ),
+    opencodeIngestIntervalMs: clampLimit(
+      opencodeIngestIntervalRaw,
+      DEFAULT_OPENCODE_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    opencodeBackfillHours: clampLimit(opencodeBackfillRaw, DEFAULT_OPENCODE_BACKFILL_HOURS, 1, 24 * 365),
+    cursorIngestEnabled: envFlag("HARNESS_MEM_ENABLE_CURSOR_INGEST", true),
+    cursorEventsPath: resolveHomePath(process.env.HARNESS_MEM_CURSOR_EVENTS_PATH || DEFAULT_CURSOR_EVENTS_PATH),
+    cursorIngestIntervalMs: clampLimit(
+      cursorIngestIntervalRaw,
+      DEFAULT_CURSOR_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    cursorBackfillHours: clampLimit(cursorBackfillRaw, DEFAULT_CURSOR_BACKFILL_HOURS, 1, 24 * 365),
+    antigravityIngestEnabled: envFlag("HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST", false),
+    antigravityWorkspaceRoots,
+    antigravityLogsRoot,
+    antigravityWorkspaceStorageRoot,
+    antigravityIngestIntervalMs: clampLimit(
+      antigravityIngestIntervalRaw,
+      DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    antigravityBackfillHours: clampLimit(
+      antigravityBackfillRaw,
+      DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
+      1,
+      24 * 365
+    ),
+    geminiIngestEnabled: envFlag("HARNESS_MEM_ENABLE_GEMINI_INGEST", true),
+    geminiEventsPath: resolveHomePath(process.env.HARNESS_MEM_GEMINI_EVENTS_PATH || DEFAULT_GEMINI_EVENTS_PATH),
+    geminiIngestIntervalMs: clampLimit(
+      geminiIngestIntervalRaw,
+      DEFAULT_GEMINI_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    geminiBackfillHours: clampLimit(geminiBackfillRaw, DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
+    searchRanking,
+    searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
+    rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),
+    consolidationEnabled: envFlag("HARNESS_MEM_CONSOLIDATION_ENABLED", true),
+    consolidationIntervalMs: clampLimit(consolidationIntervalRaw, 60000, 5000, 600000),
+    backendMode: parseBackendMode(process.env.HARNESS_MEM_BACKEND_MODE),
+    managedEndpoint: (process.env.HARNESS_MEM_MANAGED_ENDPOINT || "").trim() || undefined,
+    managedApiKey: (process.env.HARNESS_MEM_MANAGED_API_KEY || "").trim() || undefined,
+    resumePackMaxTokens: (() => {
+      const raw = Number(process.env.HARNESS_MEM_RESUME_PACK_MAX_TOKENS);
+      return Number.isFinite(raw) && raw > 0 ? raw : undefined;
+    })(),
+    // TEAM-003: ユーザー・チーム識別
+    userId: (process.env.HARNESS_MEM_USER_ID || "").trim() || undefined,
+    teamId: (process.env.HARNESS_MEM_TEAM_ID || "").trim() || undefined,
+  };
 }
