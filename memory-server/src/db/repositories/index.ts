@@ -12,6 +12,7 @@ export type {
   IObservationRepository,
 } from "./IObservationRepository.js";
 export { SqliteObservationRepository } from "./SqliteObservationRepository.js";
+export { PgObservationRepository } from "./PgObservationRepository.js";
 
 export type {
   SessionRow,
@@ -21,6 +22,7 @@ export type {
   ISessionRepository,
 } from "./ISessionRepository.js";
 export { SqliteSessionRepository } from "./sqlite-session-repository.js";
+export { PgSessionRepository } from "./PgSessionRepository.js";
 
 export type {
   VectorRow,
@@ -29,3 +31,4 @@ export type {
   IVectorRepository,
 } from "./IVectorRepository.js";
 export { SqliteVectorRepository } from "./sqlite-vector-repository.js";
+export { PgVectorRepository } from "./PgVectorRepository.js";

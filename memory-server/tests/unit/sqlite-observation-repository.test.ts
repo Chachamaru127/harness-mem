@@ -267,3 +267,51 @@ describe("SqliteObservationRepository: count", () => {
     expect(count).toBe(2);
   });
 });
+
+// ---------------------------------------------------------------------------
+// PG-001: 後付けカラムのデフォルト値検証
+// ---------------------------------------------------------------------------
+
+describe("SqliteObservationRepository: PG-001 後付けカラム", () => {
+  test("findById が access_count / last_accessed_at / cognitive_sector / workspace_uid を返す", async () => {
+    const db = createDb();
+    openDbs.push(db);
+    ensureSession(db, "session-001");
+    const repo = new SqliteObservationRepository(db);
+    const input = makeInput({ id: "obs_pg001_a" });
+    await repo.insert(input);
+    const row = await repo.findById("obs_pg001_a");
+    expect(row).not.toBeNull();
+    // access_count はデフォルト 0
+    expect(row?.access_count).toBe(0);
+    // last_accessed_at はデフォルト null
+    expect(row?.last_accessed_at).toBeNull();
+    // cognitive_sector はデフォルト 'meta'
+    expect(row?.cognitive_sector).toBe("meta");
+    // workspace_uid はデフォルト ''（COALESCE で空文字列に正規化）
+    expect(row?.workspace_uid).toBe("");
+    // signal_score はデフォルト 0
+    expect(row?.signal_score).toBe(0);
+  });
+
+  test("findByIds が複数行で後付けカラムを正しく返す", async () => {
+    const db = createDb();
+    openDbs.push(db);
+    ensureSession(db, "session-001");
+    const repo = new SqliteObservationRepository(db);
+    await repo.insert(makeInput({ id: "obs_pg001_b1" }));
+    await repo.insert(makeInput({ id: "obs_pg001_b2", signal_score: 0.8 }));
+    const rows = await repo.findByIds(["obs_pg001_b1", "obs_pg001_b2"]);
+    expect(rows.length).toBe(2);
+    const b1 = rows.find((r) => r.id === "obs_pg001_b1");
+    const b2 = rows.find((r) => r.id === "obs_pg001_b2");
+    expect(b1?.signal_score).toBe(0);
+    expect(b2?.signal_score).toBeCloseTo(0.8, 5);
+    // 全行で workspace_uid が文字列として返る
+    for (const row of rows) {
+      expect(typeof row.workspace_uid).toBe("string");
+      expect(typeof row.cognitive_sector).toBe("string");
+      expect(typeof row.access_count).toBe("number");
+    }
+  });
+});

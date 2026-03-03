@@ -53,10 +53,14 @@ export class SqliteObservationRepository implements IObservationRepository {
     const row = this.db
       .query<ObservationRow, [string]>(`
         SELECT
-          id, event_id, platform, project, session_id,
+          id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
-          signal_score, user_id, team_id,
+          COALESCE(signal_score, 0) AS signal_score,
+          COALESCE(access_count, 0) AS access_count,
+          last_accessed_at,
+          COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+          COALESCE(user_id, 'default') AS user_id, team_id,
           created_at, updated_at
         FROM mem_observations
         WHERE id = ?
@@ -77,10 +81,14 @@ export class SqliteObservationRepository implements IObservationRepository {
       const rows = this.db
         .query<ObservationRow, string[]>(`
           SELECT
-            id, event_id, platform, project, session_id,
+            id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
             title, content, content_redacted, observation_type, memory_type,
             tags_json, privacy_tags_json,
-            signal_score, user_id, team_id,
+            COALESCE(signal_score, 0) AS signal_score,
+            COALESCE(access_count, 0) AS access_count,
+            last_accessed_at,
+            COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+            COALESCE(user_id, 'default') AS user_id, team_id,
             created_at, updated_at
           FROM mem_observations
           WHERE id IN (${placeholders})
@@ -96,10 +104,14 @@ export class SqliteObservationRepository implements IObservationRepository {
     const params: unknown[] = [];
     let sql = `
       SELECT
-        id, event_id, platform, project, session_id,
+        id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
         title, content, content_redacted, observation_type, memory_type,
         tags_json, privacy_tags_json,
-        signal_score, user_id, team_id,
+        COALESCE(signal_score, 0) AS signal_score,
+        COALESCE(access_count, 0) AS access_count,
+        last_accessed_at,
+        COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+        COALESCE(user_id, 'default') AS user_id, team_id,
         created_at, updated_at
       FROM mem_observations
       WHERE 1 = 1

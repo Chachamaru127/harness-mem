@@ -14,6 +14,7 @@ export interface ObservationRow {
   event_id: string | null;
   platform: string;
   project: string;
+  workspace_uid: string;
   session_id: string;
   title: string | null;
   content: string;
@@ -22,7 +23,10 @@ export interface ObservationRow {
   memory_type: string;
   tags_json: string;
   privacy_tags_json: string;
-  signal_score?: number;
+  signal_score: number;
+  access_count: number;
+  last_accessed_at: string | null;
+  cognitive_sector: string;
   user_id: string;
   team_id: string | null;
   created_at: string;

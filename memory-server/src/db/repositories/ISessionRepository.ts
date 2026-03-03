@@ -12,6 +12,7 @@ export interface SessionRow {
   session_id: string;
   platform: string;
   project: string;
+  workspace_uid: string;
   started_at: string;
   ended_at: string | null;
   summary: string | null;

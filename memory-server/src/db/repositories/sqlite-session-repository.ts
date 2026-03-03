@@ -45,9 +45,10 @@ export class SqliteSessionRepository implements ISessionRepository {
       .query<SessionRow, [string]>(
         `
         SELECT
-          session_id, platform, project, started_at, ended_at,
+          session_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid,
+          started_at, ended_at,
           summary, summary_mode, correlation_id,
-          user_id, team_id, created_at, updated_at
+          COALESCE(user_id, 'default') AS user_id, team_id, created_at, updated_at
         FROM mem_sessions
         WHERE session_id = ?
       `
@@ -60,9 +61,10 @@ export class SqliteSessionRepository implements ISessionRepository {
     const params: unknown[] = [];
     let sql = `
       SELECT
-        session_id, platform, project, started_at, ended_at,
+        session_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid,
+        started_at, ended_at,
         summary, summary_mode, correlation_id,
-        user_id, team_id, created_at, updated_at
+        COALESCE(user_id, 'default') AS user_id, team_id, created_at, updated_at
       FROM mem_sessions
       WHERE 1 = 1
     `;
@@ -111,9 +113,10 @@ export class SqliteSessionRepository implements ISessionRepository {
     return this.db
       .query<SessionRow, [string, string]>(
         `
-        SELECT session_id, platform, project, started_at, ended_at,
+        SELECT session_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid,
+               started_at, ended_at,
                summary, summary_mode, correlation_id,
-               user_id, team_id, created_at, updated_at
+               COALESCE(user_id, 'default') AS user_id, team_id, created_at, updated_at
         FROM mem_sessions
         WHERE correlation_id = ? AND project = ?
         ORDER BY started_at ASC
