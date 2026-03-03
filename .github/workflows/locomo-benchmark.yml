@@ -37,6 +37,17 @@ jobs:
             --output artifacts/locomo-harness-mem.json \
             | tee artifacts/locomo-harness-mem.log
 
+      - name: Run F1 regression gate (LOCO-002)
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASELINE=memory-server/src/benchmark/results/locomo-baseline.json
+          CURRENT=artifacts/locomo-harness-mem.json
+          bun run memory-server/src/benchmark/locomo-gate-check.ts \
+            --current "${CURRENT}" \
+            --baseline "${BASELINE}" \
+            --threshold 0.05
+
       - name: Upload LOCOMO artifacts
         if: always()
         uses: actions/upload-artifact@v4

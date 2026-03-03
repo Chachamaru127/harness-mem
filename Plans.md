@@ -42,7 +42,7 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
 目的: expandByLinks の制約解消（4種→8種 relation、双方向、depth 設定可能）。
 前提: なし（即着手可）。getSubgraph の BFS 5ホップは実装済み。
 
-- [ ] `cc:TODO [P]` **GRAPH-001**: expandByLinks の relation フィルタを全8種に拡張
+- [x] `cc:完了 [P]` **GRAPH-001**: expandByLinks の relation フィルタを全8種に拡張
   - `observation-store.ts` L524 の IN 句に `contradicts/causes/part_of/updates` 追加
   - DoD: 8種全 relation が検索展開対象。テスト4件追加
 
@@ -69,7 +69,7 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
   - `locomo-baseline.json` + `longmemeval-baseline.json` を `results/` にコミット
   - DoD: `regression-gate.ts` がベースラインと比較可能
 
-- [ ] `cc:TODO [P]` **LOCO-002**: locomo-benchmark.yml に fail 条件追加
+- [x] `cc:完了` **LOCO-002**: locomo-benchmark.yml に fail 条件追加
   - `locomo-gate-check.ts` 作成。F1 前回比 -5% 超で exit 1（LLM Judge 不要）
   - DoD: F1 回帰で CI fail。テスト2件追加
 
