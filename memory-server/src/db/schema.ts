@@ -59,6 +59,7 @@ export function initSchema(db: Database): void {
       content TEXT NOT NULL,
       content_redacted TEXT NOT NULL,
       observation_type TEXT NOT NULL DEFAULT 'context',
+      memory_type TEXT NOT NULL DEFAULT 'semantic',
       tags_json TEXT NOT NULL,
       privacy_tags_json TEXT NOT NULL,
       user_id TEXT NOT NULL DEFAULT 'default',
@@ -433,6 +434,19 @@ export function migrateSchema(db: Database): void {
   // PERF-001: search() 内 audit_log フルスキャン対策 - action/target_type/target_id の複合インデックス
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_audit_log_action_target ON mem_audit_log(action, target_type, target_id)`);
+  } catch {
+    // already exists
+  }
+
+  // V5-004: Memory Model — episodic/semantic/procedural 自動分類
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN memory_type TEXT NOT NULL DEFAULT 'semantic'`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_memory_type ON mem_observations(memory_type)`);
   } catch {
     // already exists
   }

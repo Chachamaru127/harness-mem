@@ -164,6 +164,7 @@ export class ObservationStore {
       as_of?: string;
       include_private?: boolean;
       strict_project?: boolean;
+      memory_type?: import("./types.js").MemoryType | import("./types.js").MemoryType[];
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
@@ -194,6 +195,19 @@ export class ObservationStore {
     if (filters.as_of) {
       nextSql += ` AND ${alias}.created_at <= ?`;
       params.push(filters.as_of);
+    }
+
+    // V5-004: memory_type フィルタ
+    if (filters.memory_type !== undefined) {
+      const types = Array.isArray(filters.memory_type) ? filters.memory_type : [filters.memory_type];
+      if (types.length === 1) {
+        nextSql += ` AND ${alias}.memory_type = ?`;
+        params.push(types[0]);
+      } else if (types.length > 1) {
+        const placeholders = types.map(() => "?").join(", ");
+        nextSql += ` AND ${alias}.memory_type IN (${placeholders})`;
+        params.push(...types);
+      }
     }
 
     nextSql += this.deps.platformVisibilityFilterSql(alias);
@@ -869,6 +883,7 @@ export class ObservationStore {
             ? observation.content_redacted.slice(0, 2000)
             : "",
         observation_type: observation.observation_type || "context",
+        memory_type: observation.memory_type || "semantic",
         created_at: observation.created_at,
         tags,
         privacy_tags: privacyTags,
@@ -1114,6 +1129,7 @@ export class ObservationStore {
         o.privacy_tags_json,
         o.user_id,
         o.team_id,
+        o.memory_type,
         o.created_at,
         e.event_type AS event_type
       FROM mem_observations o
@@ -1151,6 +1167,19 @@ export class ObservationStore {
       params.push(teamIdFilter);
     }
 
+    // V5-004: memory_type フィルター
+    if (request.memory_type !== undefined) {
+      const types = Array.isArray(request.memory_type) ? request.memory_type : [request.memory_type];
+      if (types.length === 1) {
+        sql += " AND o.memory_type = ?";
+        params.push(types[0]);
+      } else if (types.length > 1) {
+        const placeholders = types.map(() => "?").join(", ");
+        sql += ` AND o.memory_type IN (${placeholders})`;
+        params.push(...types);
+      }
+    }
+
     if (cursor) {
       sql += " AND (o.created_at < ? OR (o.created_at = ? AND o.id < ?))";
       params.push(cursor.created_at, cursor.created_at, cursor.id);
@@ -1182,6 +1211,7 @@ export class ObservationStore {
         card_type: cardType,
         title: row.title || eventType,
         content: content.slice(0, 1200),
+        memory_type: row.memory_type || "semantic",
         created_at: row.created_at,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: privacyTags,
@@ -1856,4 +1886,145 @@ export class ObservationStore {
       ...(dynamic_section !== undefined ? { dynamic_section } : {}),
     });
   }
+
+  /**
+   * V5-001: サブグラフ取得。
+   * 指定エンティティを含む観察を起点に BFS で depth ホップ先まで探索し、
+   * nodes (観察) + edges (mem_links) を返す。
+   */
+  getSubgraph(
+    entity: string,
+    depth: number,
+    options?: { project?: string; limit?: number }
+  ): SubgraphResult {
+    const maxDepth = Math.min(depth, 5);
+    const nodeLimit = Math.min(options?.limit ?? 100, 100);
+    const project = options?.project;
+
+    // エンティティ名で観察を検索（起点ノード）
+    let seedSql = `
+      SELECT DISTINCT o.id
+      FROM mem_observations o
+      JOIN mem_observation_entities oe ON oe.observation_id = o.id
+      JOIN mem_entities e ON e.id = oe.entity_id
+      WHERE e.name = ?
+    `;
+    const seedParams: unknown[] = [entity];
+    if (project) {
+      seedSql += " AND o.project = ?";
+      seedParams.push(project);
+    }
+    seedSql += " LIMIT 50";
+
+    const seedRows = this.deps.db.query(seedSql).all(...(seedParams as any[])) as Array<{ id: string }>;
+    const seedIds = seedRows.map((r) => r.id);
+
+    if (seedIds.length === 0) {
+      return { nodes: [], edges: [], center_entity: entity, depth: maxDepth };
+    }
+
+    // BFS でノード収集
+    const visitedIds = new Set<string>(seedIds);
+    let frontier = [...seedIds];
+    const edgeSet = new Map<string, { source: string; target: string; relation: string; weight: number }>();
+
+    for (let d = 1; d <= maxDepth && frontier.length > 0 && visitedIds.size < nodeLimit; d++) {
+      const placeholders = frontier.map(() => "?").join(", ");
+      const linkRows = this.deps.db
+        .query(`
+          SELECT from_observation_id AS src, to_observation_id AS tgt, relation, weight
+          FROM mem_links
+          WHERE from_observation_id IN (${placeholders})
+             OR to_observation_id IN (${placeholders})
+        `)
+        .all(...frontier, ...frontier) as Array<{ src: string; tgt: string; relation: string; weight: number }>;
+
+      const nextFrontier: string[] = [];
+      for (const row of linkRows) {
+        // エッジ記録
+        const edgeKey = `${row.src}:${row.tgt}`;
+        if (!edgeSet.has(edgeKey)) {
+          edgeSet.set(edgeKey, { source: row.src, target: row.tgt, relation: row.relation, weight: row.weight ?? 1.0 });
+        }
+        // 未訪問ノードを次フロンティアへ
+        for (const nodeId of [row.src, row.tgt]) {
+          if (!visitedIds.has(nodeId) && visitedIds.size < nodeLimit) {
+            visitedIds.add(nodeId);
+            nextFrontier.push(nodeId);
+          }
+        }
+      }
+      frontier = nextFrontier;
+    }
+
+    // ノード詳細を取得
+    const allIds = [...visitedIds];
+    if (allIds.length === 0) {
+      return { nodes: [], edges: [], center_entity: entity, depth: maxDepth };
+    }
+    const placeholders = allIds.map(() => "?").join(", ");
+    const nodeRows = this.deps.db
+      .query(`
+        SELECT id, title, observation_type, created_at
+        FROM mem_observations
+        WHERE id IN (${placeholders})
+      `)
+      .all(...allIds) as Array<{ id: string; title: string | null; observation_type: string; created_at: string }>;
+
+    // エンティティ情報を一括取得
+    const entityRows = this.deps.db
+      .query(`
+        SELECT oe.observation_id, e.name
+        FROM mem_observation_entities oe
+        JOIN mem_entities e ON e.id = oe.entity_id
+        WHERE oe.observation_id IN (${placeholders})
+      `)
+      .all(...allIds) as Array<{ observation_id: string; name: string }>;
+
+    const entityMap = new Map<string, string[]>();
+    for (const er of entityRows) {
+      const arr = entityMap.get(er.observation_id) ?? [];
+      arr.push(er.name);
+      entityMap.set(er.observation_id, arr);
+    }
+
+    const nodes: SubgraphResult["nodes"] = nodeRows.map((row) => ({
+      id: row.id,
+      title: row.title ?? "",
+      observation_type: row.observation_type,
+      created_at: row.created_at,
+      entities: entityMap.get(row.id) ?? [],
+    }));
+
+    const edges: SubgraphResult["edges"] = [...edgeSet.values()].map((e) => ({
+      source: e.source,
+      target: e.target,
+      relation: e.relation,
+      weight: e.weight,
+    }));
+
+    return { nodes, edges, center_entity: entity, depth: maxDepth };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// SubgraphResult: サブグラフ取得結果
+// ---------------------------------------------------------------------------
+
+export interface SubgraphResult {
+  nodes: Array<{
+    id: string;
+    title: string;
+    observation_type: string;
+    created_at: string;
+    entities: string[];
+  }>;
+  edges: Array<{
+    source: string;
+    target: string;
+    relation: string;
+    weight: number;
+  }>;
+  center_entity: string;
+  depth: number;
 }

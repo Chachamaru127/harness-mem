@@ -107,6 +107,7 @@ export type {
   GetLinksRequest,
   GetObservationsRequest,
   ImportJobStatusRequest,
+  MemoryType,
   ProjectsStatsRequest,
   RecordCheckpointRequest,
   ResumePackRequest,
@@ -1440,7 +1441,7 @@ export class HarnessMemCore {
       });
     }
 
-    const validRelations = ["updates", "extends", "derives", "follows", "shared_entity"];
+    const validRelations: string[] = ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of"];
     if (!validRelations.includes(relation)) {
       return makeErrorResponse(startedAt, `invalid relation type: ${relation}. Must be one of: ${validRelations.join(", ")}`, request as unknown as Record<string, unknown>);
     }
@@ -1501,6 +1502,10 @@ export class HarnessMemCore {
     }
   }
 
+
+  getSubgraph(entity: string, depth: number, options?: { project?: string; limit?: number }) {
+    return this.obsStore.getSubgraph(entity, depth, options);
+  }
 
   ingestCodexHistory(): ApiResponse {
     return this.ingestCoord.ingestCodexHistory();

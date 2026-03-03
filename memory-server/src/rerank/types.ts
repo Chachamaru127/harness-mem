@@ -26,3 +26,33 @@ export interface RerankerRegistryResult {
   reranker: Reranker | null;
   warnings: string[];
 }
+
+// --- 非同期 IReranker インターフェース（外部プロバイダー用） ---
+
+export interface RerankerInput {
+  id: number;
+  title: string;
+  content: string;
+  score: number;
+}
+
+export interface RerankerResult {
+  id: number;
+  score: number;
+  rerank_score: number;
+}
+
+export interface IReranker {
+  name: string;
+  rerank(query: string, items: RerankerInput[], options?: { topK?: number }): Promise<RerankerResult[]>;
+}
+
+export type RerankerProvider = 'simple' | 'cohere' | 'huggingface' | 'sentence-transformers';
+
+export interface RerankerConfig {
+  provider: RerankerProvider;
+  model?: string;
+  apiKey?: string;
+  endpoint?: string;
+  topK?: number;
+}

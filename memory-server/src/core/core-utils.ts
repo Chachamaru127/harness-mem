@@ -547,6 +547,7 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
             o.title,
             o.content_redacted,
             o.observation_type,
+            o.memory_type,
             o.tags_json,
             o.privacy_tags_json,
             o.signal_score,

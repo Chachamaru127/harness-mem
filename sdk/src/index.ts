@@ -54,3 +54,7 @@ export type {
   SearchFacetsInput,
 } from "./types.js";
 export type { HarnessMemLangChainMemoryOptions } from "./langchain-memory.js";
+export { HarnessMemVercelProvider } from "./vercel-ai.js";
+export type { VercelAIMessage, VercelProviderOptions } from "./vercel-ai.js";
+export { setupClient } from "./setup.js";
+export type { SupportedClient, SetupResult } from "./setup.js";

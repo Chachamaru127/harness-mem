@@ -17,7 +17,7 @@
 
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
-import type { ApiResponse, Config, EventEnvelope, StreamEvent } from "./types.js";
+import type { ApiResponse, Config, EventEnvelope, MemoryType, StreamEvent } from "./types.js";
 import {
   clampLimit,
   ensureSession,
@@ -335,6 +335,33 @@ export class EventRecorder {
     return "context";
   }
 
+  /**
+   * V5-004: 記憶の種類を自動分類する。
+   *
+   * - episodic: 特定の出来事・エピソード・体験の記憶
+   * - procedural: 手順・方法・ノウハウの記憶
+   * - semantic: 事実・知識・概念の記憶（デフォルト）
+   */
+  private classifyMemoryType(eventType: string, title: string, content: string): MemoryType {
+    const text = `${title} ${content}`.toLowerCase();
+
+    // Episodic: 特定の出来事や体験
+    if (eventType === "session_start" || eventType === "session_end") return "episodic";
+    if (/\b(happened|occurred|experienced|encountered|ran into|found that)\b/.test(text)) return "episodic";
+    if (/\b(today|yesterday|last time|this morning|earlier)\b/.test(text)) return "episodic";
+    if (/(実行した|発生した|やった|起きた|遭遇した|出会った|経験した)/.test(text)) return "episodic";
+
+    // Procedural: 手順・方法・ノウハウ
+    if (eventType === "tool_use") return "procedural";
+    if (/\b(how to|step[s]?\b|procedure|instructions?|tutorial|guide)\b/.test(text)) return "procedural";
+    if (/\b(run|execute|install|configure|setup|deploy|build|compile)\b/.test(text)) return "procedural";
+    if (/(方法|手順|やり方|コマンド|設定方法|インストール|実行する)/.test(text)) return "procedural";
+    if (/```[\s\S]*```/.test(content)) return "procedural";
+
+    // Semantic: 事実・知識（デフォルト）
+    return "semantic";
+  }
+
   // ensureSession は core-utils.ts の共有関数を使用
 
   private upsertVector(observationId: string, content: string, createdAt: string): void {
@@ -426,18 +453,34 @@ export class EventRecorder {
           .get(observationId) as { title: string | null; content_redacted: string } | null;
 
         let relation = "follows";
-        if (current && previous.title && current.title) {
-          const prevTitle = previous.title.toLowerCase();
-          const currTitle = current.title.toLowerCase();
-          const prevWords = new Set(prevTitle.split(/\s+/).filter((w) => w.length > 2));
-          const currWords = currTitle.split(/\s+/).filter((w) => w.length > 2);
-          if (prevWords.size > 0 && currWords.length > 0) {
-            const overlap = currWords.filter((w) => prevWords.has(w)).length;
-            const similarity = overlap / Math.max(prevWords.size, currWords.length);
-            if (similarity >= 0.6) {
-              relation = "updates";
-            } else if (similarity >= 0.3) {
-              relation = "extends";
+        if (current) {
+          const content = (current.content_redacted ?? "").toLowerCase();
+          // 矛盾キーワード検出: contradicts
+          const contradictsKeywords = ["however", "but", "instead", "contrary", "矛盾", "しかし"];
+          // 因果キーワード検出: causes
+          const causesKeywords = ["because", "therefore", "caused by", "results in", "なぜなら", "その結果"];
+          // 部分関係キーワード検出: part_of
+          const partOfKeywords = ["part of", "belongs to", "component of", "の一部", "に含まれる"];
+
+          if (contradictsKeywords.some((kw) => content.includes(kw))) {
+            relation = "contradicts";
+          } else if (causesKeywords.some((kw) => content.includes(kw))) {
+            relation = "causes";
+          } else if (partOfKeywords.some((kw) => content.includes(kw))) {
+            relation = "part_of";
+          } else if (current.title && previous.title) {
+            const prevTitle = previous.title.toLowerCase();
+            const currTitle = current.title.toLowerCase();
+            const prevWords = new Set(prevTitle.split(/\s+/).filter((w) => w.length > 2));
+            const currWords = currTitle.split(/\s+/).filter((w) => w.length > 2);
+            if (prevWords.size > 0 && currWords.length > 0) {
+              const overlap = currWords.filter((w) => prevWords.has(w)).length;
+              const similarity = overlap / Math.max(prevWords.size, currWords.length);
+              if (similarity >= 0.6) {
+                relation = "updates";
+              } else if (similarity >= 0.3) {
+                relation = "extends";
+              }
             }
           }
         }
@@ -456,21 +499,29 @@ export class EventRecorder {
     try {
       const sharedRows = this.deps.db
         .query(`
-          SELECT DISTINCT oe2.observation_id AS id
+          SELECT DISTINCT oe2.observation_id AS id, e.entity_type
           FROM mem_observation_entities oe1
           JOIN mem_observation_entities oe2 ON oe1.entity_id = oe2.entity_id
+          JOIN mem_entities e ON e.id = oe1.entity_id
           WHERE oe1.observation_id = ? AND oe2.observation_id <> ?
           ORDER BY oe2.observation_id ASC
           LIMIT 20
         `)
-        .all(observationId, observationId) as Array<{ id: string }>;
+        .all(observationId, observationId) as Array<{ id: string; entity_type: string | null }>;
 
       if (sharedRows.length > 0) {
-        // バッチ INSERT で N+1 ループを解消
-        const placeholders = sharedRows.map(() => "(?, ?, 'shared_entity', 0.7, ?)").join(", ");
+        // entity_type ごとに weight を差別化
+        const entityTypeWeights: Record<string, number> = {
+          file: 0.8,
+          package: 0.9,
+          symbol: 0.7,
+          url: 0.6,
+        };
+        const placeholders = sharedRows.map(() => "(?, ?, 'shared_entity', ?, ?)").join(", ");
         const params: (string | number)[] = [];
         for (const row of sharedRows) {
-          params.push(observationId, row.id, createdAt);
+          const weight = entityTypeWeights[row.entity_type ?? ""] ?? 0.7;
+          params.push(observationId, row.id, weight, createdAt);
         }
         this.deps.db
           .query(`
@@ -554,6 +605,7 @@ export class EventRecorder {
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     const redactedContent = redactContent(observationBase.content, privacyTags);
     const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
+    const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
@@ -607,16 +659,17 @@ export class EventRecorder {
           .query(`
             INSERT INTO mem_observations(
               id, event_id, platform, project, session_id,
-              title, content, content_redacted, observation_type,
+              title, content, content_redacted, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
               observation_type = excluded.observation_type,
+              memory_type = excluded.memory_type,
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
@@ -632,6 +685,7 @@ export class EventRecorder {
             observationBase.content,
             redactedContent,
             observationType,
+            memoryType,
             JSON.stringify(tags),
             JSON.stringify(privacyTags),
             signalScore,
@@ -696,6 +750,8 @@ export class EventRecorder {
         created_at: timestamp,
         title: observationBase.title,
         content: redactedContent.slice(0, 1200),
+        observation_type: observationType,
+        memory_type: memoryType,
         tags,
         privacy_tags: privacyTags,
       };

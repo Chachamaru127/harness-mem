@@ -7,6 +7,9 @@
 export type Platform = "claude" | "codex" | "opencode" | "cursor" | "antigravity" | "gemini";
 export type EventType = "session_start" | "user_prompt" | "tool_use" | "checkpoint" | "session_end";
 
+/** V5-004: 心理学的記憶モデルの種類 */
+export type MemoryType = "episodic" | "semantic" | "procedural";
+
 export interface EventEnvelope {
   event_id?: string;
   platform: Platform | string;
@@ -44,6 +47,8 @@ export interface SearchRequest {
   as_of?: string;
   /** NEXT-001: Cognitive セクターでフィルタリング: work|people|health|hobby|meta */
   sector?: "work" | "people" | "health" | "hobby" | "meta";
+  /** V5-004: 記憶モデルタイプでフィルタリング: episodic|semantic|procedural */
+  memory_type?: MemoryType | MemoryType[];
 }
 
 export interface FeedRequest {
@@ -56,6 +61,8 @@ export interface FeedRequest {
   user_id?: string;
   /** TEAM-009: チームフィルター */
   team_id?: string;
+  /** V5-004: 記憶モデルタイプでフィルタリング */
+  memory_type?: MemoryType | MemoryType[];
 }
 
 export interface ProjectsStatsRequest {
@@ -135,12 +142,23 @@ export interface GetObservationsRequest {
   compact?: boolean;
 }
 
+/** IMP-002: メモリリンクの関係性タイプ（8種）*/
+export type RelationType =
+  | "follows"
+  | "extends"
+  | "updates"
+  | "shared_entity"
+  | "derives"
+  | "contradicts"
+  | "causes"
+  | "part_of";
+
 /** IMP-002: メモリリンク作成リクエスト */
 export interface CreateLinkRequest {
   from_observation_id: string;
   to_observation_id: string;
-  /** 関係性タイプ: updates(上書き) / extends(補足) / derives(推論) / follows / shared_entity */
-  relation: "updates" | "extends" | "derives" | "follows" | "shared_entity";
+  /** 関係性タイプ: updates(上書き) / extends(補足) / derives(推論) / follows / shared_entity / contradicts / causes / part_of */
+  relation: RelationType;
   weight?: number;
 }
 

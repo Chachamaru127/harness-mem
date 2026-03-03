@@ -1,0 +1,12 @@
+{
+  "name": "harness-mem",
+  "version": "0.2.1",
+  "description": "Long-term memory for AI coding agents — local-first, multi-platform, privacy-respecting",
+  "tools": 19,
+  "transport": "stdio",
+  "repository": "https://github.com/harness-mem/harness-mem",
+  "tags": ["memory", "ai-agents", "coding", "local-first"],
+  "install": {
+    "command": "npx harness-mem setup --client mcp"
+  }
+}

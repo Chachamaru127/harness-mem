@@ -15,6 +15,7 @@ import type {
   FinalizeSessionRequest,
   GetObservationsRequest,
   AuditLogRequest,
+  MemoryType,
   RecordCheckpointRequest,
   ResumePackRequest,
   SearchFacetsRequest,
@@ -430,6 +431,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
         const validKinds = ["profile", "timeline", "graph", "vector", "hybrid"];
+        const validMemoryTypes: MemoryType[] = ["episodic", "semantic", "procedural"];
+        const rawMemoryType = body.memory_type;
+        const parsedMemoryType = Array.isArray(rawMemoryType)
+          ? (rawMemoryType.filter((t): t is MemoryType => typeof t === "string" && validMemoryTypes.includes(t as MemoryType)) as MemoryType[])
+          : (typeof rawMemoryType === "string" && validMemoryTypes.includes(rawMemoryType as MemoryType) ? rawMemoryType as MemoryType : undefined);
         const req: SearchRequest = {
           query,
           project: typeof body.project === "string" ? body.project : undefined,
@@ -446,6 +452,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             ? questionKind as SearchRequest["question_kind"]
             : undefined,
           sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
+          memory_type: parsedMemoryType || undefined,
         };
         return jsonResponse(core.search(req));
       }
@@ -455,6 +462,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         // 匿名モード（AuthConfig なし）では任意の user_id を渡すと他ユーザーのデータを参照できるため、
         // クエリパラメータの user_id / team_id を無視する。
         const feedAuthConfig = getAuthConfig();
+        const validMemoryTypesFeed: MemoryType[] = ["episodic", "semantic", "procedural"];
+        const rawMemoryTypeFeed = url.searchParams.get("memory_type") || undefined;
+        const parsedMemoryTypeFeed = rawMemoryTypeFeed && validMemoryTypesFeed.includes(rawMemoryTypeFeed as MemoryType)
+          ? rawMemoryTypeFeed as MemoryType
+          : undefined;
         const req: FeedRequest = {
           cursor: url.searchParams.get("cursor") || undefined,
           limit: parseInteger(url.searchParams.get("limit"), 40),
@@ -463,6 +475,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
           user_id: feedAuthConfig ? (url.searchParams.get("user_id") || undefined) : undefined,
           team_id: feedAuthConfig ? (url.searchParams.get("team_id") || undefined) : undefined,
+          memory_type: parsedMemoryTypeFeed,
         };
         return jsonResponse(core.feed(req));
       }
@@ -858,6 +871,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const limit = parseInteger(url.searchParams.get("limit"), 1000);
         const includePrivate = parseBoolean(url.searchParams.get("include_private"), false);
         return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
+      }
+
+      // V5-001: サブグラフ取得 API（一般ユーザー用、認証不要）
+      if (request.method === "GET" && url.pathname === "/v1/graph") {
+        const entity = url.searchParams.get("entity") || "";
+        if (!entity) {
+          return badRequest("entity is required");
+        }
+        const depthParam = parseInteger(url.searchParams.get("depth"), 2);
+        const depth = Math.min(Math.max(depthParam, 1), 5);
+        const limitParam = parseInteger(url.searchParams.get("limit"), 100);
+        const limit = Math.min(limitParam, 100);
+        const project = url.searchParams.get("project") || undefined;
+        const result = core.getSubgraph(entity, depth, { project, limit });
+        return jsonResponse({ ok: true, ...result });
       }
 
       if (request.method === "GET" && url.pathname === "/v1/graph/neighbors") {
