@@ -32,3 +32,12 @@ export type {
 } from "./IVectorRepository.js";
 export { SqliteVectorRepository } from "./sqlite-vector-repository.js";
 export { PgVectorRepository } from "./PgVectorRepository.js";
+
+export type {
+  TeamRow,
+  TeamMemberRow,
+  CreateTeamInput,
+  UpdateTeamInput,
+  ITeamRepository,
+} from "./ITeamRepository.js";
+export { SqliteTeamRepository } from "./SqliteTeamRepository.js";
