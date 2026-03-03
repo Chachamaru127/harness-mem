@@ -90,6 +90,8 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/knowledge-file",
     "/v1/ingest/gemini-history",
     "/v1/ingest/gemini-events",
+    "/v1/ingest/claude-code-history",
+    "/v1/ingest/claude-code-projects",
   ].includes(pathname);
 }
 
@@ -687,6 +689,43 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
       ) {
         return jsonResponse(core.ingestGeminiHistory());
+      }
+
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/ingest/claude-code-history" || url.pathname === "/v1/ingest/claude-code-projects")
+      ) {
+        return jsonResponse(core.ingestClaudeCodeHistory());
+      }
+
+      // Stats API: token usage & cost aggregation
+      if (request.method === "GET" && url.pathname === "/v1/stats/tokens") {
+        return jsonResponse(
+          core.getTokenUsageStats({
+            since: url.searchParams.get("since") || undefined,
+            until: url.searchParams.get("until") || undefined,
+            project: url.searchParams.get("project") || undefined,
+            group_by: (url.searchParams.get("group_by") as "model" | "day" | "project") || undefined,
+          })
+        );
+      }
+
+      // Session replay API
+      if (request.method === "GET" && url.pathname === "/v1/sessions/replay") {
+        const sessionId = url.searchParams.get("session_id");
+        if (!sessionId) {
+          return jsonResponse(
+            {
+              ok: false,
+              error: "missing required parameter: session_id",
+              source: "core",
+              items: [],
+              meta: {},
+            },
+            400
+          );
+        }
+        return jsonResponse(core.getSessionReplay({ session_id: sessionId }));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/github-issues") {

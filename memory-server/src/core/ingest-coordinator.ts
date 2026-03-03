@@ -10,6 +10,7 @@
  *   - ingestCursorHistory (委譲)
  *   - ingestAntigravityHistory (委譲)
  *   - ingestGeminiHistory (委譲)
+ *   - ingestClaudeCodeHistory (委譲)
  *   - startClaudeMemImport (委譲)
  *   - getImportJobStatus (委譲)
  *   - verifyClaudeMemImport (委譲)
@@ -33,6 +34,8 @@ export interface IngestCoordinatorDeps {
   doIngestAntigravityHistory: () => ApiResponse;
   /** ingestGeminiHistory() の実装委譲 */
   doIngestGeminiHistory: () => ApiResponse;
+  /** ingestClaudeCodeHistory() の実装委譲 */
+  doIngestClaudeCodeHistory: () => ApiResponse;
   /** startClaudeMemImport() の実装委譲 */
   doStartClaudeMemImport: (request: ClaudeMemImportRequest) => ApiResponse;
   /** getImportJobStatus() の実装委譲 */
@@ -66,6 +69,10 @@ export class IngestCoordinator {
 
   ingestGeminiHistory(): ApiResponse {
     return this.deps.doIngestGeminiHistory();
+  }
+
+  ingestClaudeCodeHistory(): ApiResponse {
+    return this.deps.doIngestClaudeCodeHistory();
   }
 
   startClaudeMemImport(request: ClaudeMemImportRequest): ApiResponse {

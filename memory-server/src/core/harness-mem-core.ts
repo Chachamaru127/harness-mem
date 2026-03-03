@@ -20,6 +20,8 @@ import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
 import { parseAntigravityFile } from "../ingest/antigravity-files";
 import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
 import { parseGeminiEventsChunk } from "../ingest/gemini-events";
+import { parseClaudeCodeProjectsChunk, type ClaudeCodeUsage } from "../ingest/claude-code-projects";
+import { calculateCost } from "../utils/claude-model-pricing";
 import { parseGitHubIssues, type GitHubIssueObservation } from "../connectors/github-issues";
 import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
 import {
@@ -80,6 +82,11 @@ const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
 const DEFAULT_GEMINI_EVENTS_PATH = "~/.harness-mem/adapters/gemini/events.jsonl";
 const DEFAULT_GEMINI_INGEST_INTERVAL_MS = 5000;
 const DEFAULT_GEMINI_BACKFILL_HOURS = 24;
+
+// CLAUDE CODE PROJECTS
+const DEFAULT_CLAUDE_CODE_PROJECTS_ROOT = "~/.claude/projects";
+const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 5000;
+const DEFAULT_CLAUDE_CODE_BACKFILL_HOURS = 24;
 const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 const DEFAULT_SEARCH_EXPAND_LINKS = true;
 const VECTOR_MODEL_VERSION = "local-hash-v3";
@@ -305,6 +312,10 @@ export interface Config {
   geminiEventsPath?: string;
   geminiIngestIntervalMs?: number;
   geminiBackfillHours?: number;
+  claudeCodeIngestEnabled?: boolean;
+  claudeCodeProjectsRoot?: string;
+  claudeCodeIngestIntervalMs?: number;
+  claudeCodeBackfillHours?: number;
   searchRanking?: string;
   searchExpandLinks?: boolean;
   rerankerEnabled?: boolean;
@@ -1125,6 +1136,22 @@ function emptyGeminiIngestSummary(): GeminiIngestSummary {
   };
 }
 
+interface ClaudeCodeIngestSummary {
+  eventsImported: number;
+  filesScanned: number;
+  filesSkippedBackfill: number;
+  tokensRecorded: number;
+}
+
+function emptyClaudeCodeIngestSummary(): ClaudeCodeIngestSummary {
+  return {
+    eventsImported: 0,
+    filesScanned: 0,
+    filesSkippedBackfill: 0,
+    tokensRecorded: 0,
+  };
+}
+
 function listOpencodeMessageFiles(rootDir: string): string[] {
   const files: string[] = [];
   const stack: string[] = [rootDir];
@@ -1397,6 +1424,7 @@ export class HarnessMemCore {
   private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
   private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
   private geminiIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private claudeCodeIngestTimer: ReturnType<typeof setInterval> | null = null;
   private consolidationTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
@@ -1495,6 +1523,7 @@ export class HarnessMemCore {
       doIngestCursorHistory: () => this.ingestCursorHistory(),
       doIngestAntigravityHistory: () => this.ingestAntigravityHistory(),
       doIngestGeminiHistory: () => this.ingestGeminiHistory(),
+      doIngestClaudeCodeHistory: () => this.ingestClaudeCodeHistory(),
       doStartClaudeMemImport: (req) => this.startClaudeMemImport(req),
       doGetImportJobStatus: (req) => this.getImportJobStatus(req),
       doVerifyClaudeMemImport: (req) => this.verifyClaudeMemImport(req),
@@ -2098,6 +2127,33 @@ export class HarnessMemCore {
     );
   }
 
+  // CLAUDE CODE PROJECT JSONL ingest helpers
+  private isClaudeCodeIngestEnabled(): boolean {
+    return this.config.claudeCodeIngestEnabled !== false;
+  }
+
+  private getClaudeCodeProjectsRoot(): string {
+    return resolveHomePath(this.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT);
+  }
+
+  private getClaudeCodeIngestIntervalMs(): number {
+    return clampLimit(
+      Number(this.config.claudeCodeIngestIntervalMs || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS),
+      DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    );
+  }
+
+  private getClaudeCodeBackfillHours(): number {
+    return clampLimit(
+      Number(this.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS),
+      DEFAULT_CLAUDE_CODE_BACKFILL_HOURS,
+      1,
+      24 * 365
+    );
+  }
+
   private isConsolidationEnabled(): boolean {
     return this.config.consolidationEnabled !== false;
   }
@@ -2139,6 +2195,12 @@ export class HarnessMemCore {
       this.geminiIngestTimer = setInterval(() => {
         this.ingestGeminiHistory();
       }, this.getGeminiIngestIntervalMs());
+    }
+
+    if (this.isClaudeCodeIngestEnabled()) {
+      this.claudeCodeIngestTimer = setInterval(() => {
+        this.ingestClaudeCodeHistory();
+      }, this.getClaudeCodeIngestIntervalMs());
     }
 
     if (this.isConsolidationEnabled()) {
@@ -4826,6 +4888,10 @@ export class HarnessMemCore {
             gemini_events_path: this.getGeminiEventsPath(),
             gemini_ingest_interval_ms: this.getGeminiIngestIntervalMs(),
             gemini_backfill_hours: this.getGeminiBackfillHours(),
+            claude_code_history_ingest: this.isClaudeCodeIngestEnabled(),
+            claude_code_projects_root: this.getClaudeCodeProjectsRoot(),
+            claude_code_ingest_interval_ms: this.getClaudeCodeIngestIntervalMs(),
+            claude_code_backfill_hours: this.getClaudeCodeBackfillHours(),
             search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
             search_expand_links: this.config.searchExpandLinks !== false,
           },
@@ -6795,6 +6861,379 @@ export class HarnessMemCore {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Claude Code Project JSONL Ingest
+  // ---------------------------------------------------------------------------
+
+  /**
+   * List .jsonl files under ~/.claude/projects/ recursively.
+   * Directory structure: ~/.claude/projects/<project-key>/<session-id>.jsonl
+   */
+  private listClaudeCodeProjectFiles(rootDir: string): string[] {
+    const files: string[] = [];
+    const stack: string[] = [rootDir];
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) continue;
+
+      let entries: Array<{ name: string; isDirectory: () => boolean; isFile: () => boolean }>;
+      try {
+        entries = readdirSync(current, { withFileTypes: true, encoding: "utf8" }) as Array<{
+          name: string;
+          isDirectory: () => boolean;
+          isFile: () => boolean;
+        }>;
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        const fullPath = join(current, entry.name);
+        if (entry.isDirectory()) {
+          stack.push(fullPath);
+          continue;
+        }
+        if (!entry.isFile()) continue;
+        if (!entry.name.endsWith(".jsonl")) continue;
+        files.push(resolve(fullPath));
+      }
+    }
+
+    files.sort((lhs, rhs) => lhs.localeCompare(rhs));
+    return files;
+  }
+
+  /**
+   * Infer session ID and project from file path.
+   * Path: ~/.claude/projects/<project-key>/<session-id>.jsonl
+   */
+  private parseClaudeCodeFilePath(filePath: string): { sessionId: string; project: string } {
+    const fileName = basename(filePath, ".jsonl");
+    const parentDir = basename(dirname(filePath));
+
+    // Project key is the parent directory name (e.g. "-home-user-myproject")
+    // Convert back to path-like: replace leading "-" and internal "-" with "/"
+    let project = parentDir;
+    if (project.startsWith("-")) {
+      project = project.replace(/^-/, "/").replace(/-/g, "/");
+      // Collapse repeated slashes
+      project = project.replace(/\/\/+/g, "/");
+    }
+
+    return {
+      sessionId: fileName || "claude-code:unknown",
+      project: project || "unknown",
+    };
+  }
+
+  private ingestClaudeCodeProjectFiles(): ClaudeCodeIngestSummary {
+    const summary = emptyClaudeCodeIngestSummary();
+    const projectsRoot = this.getClaudeCodeProjectsRoot();
+    if (!existsSync(projectsRoot)) {
+      return summary;
+    }
+
+    const files = this.listClaudeCodeProjectFiles(projectsRoot);
+    const cutoffMs = Date.now() - Math.max(0, this.getClaudeCodeBackfillHours()) * 60 * 60 * 1000;
+
+    for (const filePath of files) {
+      summary.filesScanned += 1;
+      const sourceKey = `claude_code_project:${resolve(filePath)}`;
+
+      let fileSize = 0;
+      let mtimeMs = Date.now();
+      try {
+        const stats = statSync(filePath);
+        fileSize = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch {
+        continue;
+      }
+
+      const offsetRow = this.db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(sourceKey) as { offset: number } | null;
+
+      const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+      let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+      if (!hasOffset && mtimeMs < cutoffMs) {
+        this.updateIngestOffset(sourceKey, fileSize);
+        summary.filesSkippedBackfill += 1;
+        continue;
+      }
+
+      if (offset > fileSize) {
+        offset = 0;
+      }
+      if (offset === fileSize) {
+        continue;
+      }
+
+      let chunk = "";
+      try {
+        const bytesToRead = fileSize - offset;
+        const buf = Buffer.alloc(bytesToRead);
+        const fd = openSync(filePath, "r");
+        try {
+          readSync(fd, buf, 0, bytesToRead, offset);
+        } finally {
+          closeSync(fd);
+        }
+        chunk = buf.toString("utf8");
+      } catch {
+        continue;
+      }
+
+      const { sessionId, project } = this.parseClaudeCodeFilePath(filePath);
+      const parsedChunk = parseClaudeCodeProjectsChunk({
+        sourceKey,
+        baseOffset: offset,
+        chunk,
+        fallbackNowIso: nowIso,
+        sessionId,
+        project,
+      });
+
+      let imported = 0;
+      for (const entry of parsedChunk.events) {
+        // Build payload with cost data if available
+        const payload: Record<string, unknown> = { ...entry.payload };
+        if (entry.model && entry.usage) {
+          const costBreakdown = calculateCost({
+            model: entry.model,
+            input_tokens: entry.usage.input_tokens,
+            output_tokens: entry.usage.output_tokens,
+            cache_creation_input_tokens: entry.usage.cache_creation_input_tokens,
+            cache_read_input_tokens: entry.usage.cache_read_input_tokens,
+          });
+          payload.cost = costBreakdown;
+          payload.usage = entry.usage;
+          summary.tokensRecorded += entry.usage.input_tokens + entry.usage.output_tokens;
+        }
+
+        const result = this.recordEvent(
+          {
+            platform: "claude",
+            project: entry.project,
+            session_id: entry.sessionId,
+            event_type: entry.eventType,
+            ts: entry.timestamp,
+            payload,
+            tags: ["claude_code_ingest"],
+            privacy_tags: [],
+            dedupe_hash: entry.dedupeHash,
+          },
+          { allowQueue: false }
+        );
+        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+        if (result.ok && !deduped) {
+          imported += 1;
+        }
+      }
+
+      summary.eventsImported += imported;
+
+      if (parsedChunk.consumedBytes > 0) {
+        this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
+      }
+    }
+
+    return summary;
+  }
+
+  ingestClaudeCodeHistory(): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.isClaudeCodeIngestEnabled()) {
+      return makeResponse(
+        startedAt,
+        [
+          {
+            events_imported: 0,
+            files_scanned: 0,
+            files_skipped_backfill: 0,
+            tokens_recorded: 0,
+          },
+        ],
+        {},
+        { ingest_mode: "disabled" }
+      );
+    }
+
+    const summary = this.ingestClaudeCodeProjectFiles();
+    return makeResponse(
+      startedAt,
+      [
+        {
+          events_imported: summary.eventsImported,
+          files_scanned: summary.filesScanned,
+          files_skipped_backfill: summary.filesSkippedBackfill,
+          tokens_recorded: summary.tokensRecorded,
+        },
+      ],
+      {},
+      { ingest_mode: "claude_code_projects_v1" }
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Stats: Token Usage & Cost Aggregation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Aggregate token usage and cost from stored claude_code_ingest events.
+   * Returns breakdown by model, day, and project.
+   */
+  getTokenUsageStats(params: {
+    since?: string;
+    until?: string;
+    project?: string;
+    group_by?: "model" | "day" | "project";
+  }): ApiResponse {
+    const startedAt = performance.now();
+
+    let whereClause = `WHERE e.tags_json LIKE '%claude_code_ingest%'`;
+    const bindings: unknown[] = [];
+
+    if (params.since) {
+      whereClause += ` AND e.ts >= ?`;
+      bindings.push(params.since);
+    }
+    if (params.until) {
+      whereClause += ` AND e.ts <= ?`;
+      bindings.push(params.until);
+    }
+    if (params.project) {
+      whereClause += ` AND e.project = ?`;
+      bindings.push(params.project);
+    }
+
+    const groupBy = params.group_by || "model";
+
+    let groupExpr: string;
+    let labelExpr: string;
+    if (groupBy === "day") {
+      groupExpr = `substr(e.ts, 1, 10)`;
+      labelExpr = `substr(e.ts, 1, 10) AS label`;
+    } else if (groupBy === "project") {
+      groupExpr = `e.project`;
+      labelExpr = `e.project AS label`;
+    } else {
+      groupExpr = `json_extract(e.payload_json, '$.model')`;
+      labelExpr = `json_extract(e.payload_json, '$.model') AS label`;
+    }
+
+    const sql = `
+      SELECT
+        ${labelExpr},
+        SUM(COALESCE(json_extract(e.payload_json, '$.usage.input_tokens'), 0)) AS total_input_tokens,
+        SUM(COALESCE(json_extract(e.payload_json, '$.usage.output_tokens'), 0)) AS total_output_tokens,
+        SUM(COALESCE(json_extract(e.payload_json, '$.usage.cache_creation_input_tokens'), 0)) AS total_cache_write_tokens,
+        SUM(COALESCE(json_extract(e.payload_json, '$.usage.cache_read_input_tokens'), 0)) AS total_cache_read_tokens,
+        SUM(COALESCE(json_extract(e.payload_json, '$.cost.total_cost'), 0)) AS total_cost,
+        SUM(COALESCE(json_extract(e.payload_json, '$.cost.input_cost'), 0)) AS total_input_cost,
+        SUM(COALESCE(json_extract(e.payload_json, '$.cost.output_cost'), 0)) AS total_output_cost,
+        SUM(COALESCE(json_extract(e.payload_json, '$.cost.cache_write_cost'), 0)) AS total_cache_write_cost,
+        SUM(COALESCE(json_extract(e.payload_json, '$.cost.cache_read_cost'), 0)) AS total_cache_read_cost,
+        COUNT(*) AS message_count
+      FROM mem_events e
+      ${whereClause}
+        AND json_extract(e.payload_json, '$.usage') IS NOT NULL
+      GROUP BY ${groupExpr}
+      ORDER BY total_cost DESC
+    `;
+
+    try {
+      const rows = this.db.query(sql).all(...bindings) as Record<string, unknown>[];
+
+      // Also compute grand totals
+      const totalSql = `
+        SELECT
+          SUM(COALESCE(json_extract(e.payload_json, '$.usage.input_tokens'), 0)) AS total_input_tokens,
+          SUM(COALESCE(json_extract(e.payload_json, '$.usage.output_tokens'), 0)) AS total_output_tokens,
+          SUM(COALESCE(json_extract(e.payload_json, '$.usage.cache_creation_input_tokens'), 0)) AS total_cache_write_tokens,
+          SUM(COALESCE(json_extract(e.payload_json, '$.usage.cache_read_input_tokens'), 0)) AS total_cache_read_tokens,
+          SUM(COALESCE(json_extract(e.payload_json, '$.cost.total_cost'), 0)) AS total_cost,
+          COUNT(*) AS message_count
+        FROM mem_events e
+        ${whereClause}
+          AND json_extract(e.payload_json, '$.usage') IS NOT NULL
+      `;
+      const totals = this.db.query(totalSql).get(...bindings) as Record<string, unknown> | null;
+
+      return makeResponse(startedAt, rows, {}, {
+        group_by: groupBy,
+        currency: "USD",
+        totals: totals || {},
+      });
+    } catch (err) {
+      return makeResponse(startedAt, [], {}, {
+        error: `stats query failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
+  /**
+   * Get session timeline for replay: ordered events with tool calls, prompts, etc.
+   */
+  getSessionReplay(params: { session_id: string }): ApiResponse {
+    const startedAt = performance.now();
+
+    const sql = `
+      SELECT
+        e.event_id,
+        e.event_type,
+        e.ts,
+        e.payload_json,
+        e.platform,
+        e.project,
+        e.session_id
+      FROM mem_events e
+      WHERE e.session_id = ?
+      ORDER BY e.ts ASC, e.rowid ASC
+    `;
+
+    try {
+      const rows = this.db.query(sql).all(params.session_id) as Array<{
+        event_id: string;
+        event_type: string;
+        ts: string;
+        payload_json: string;
+        platform: string;
+        project: string;
+        session_id: string;
+      }>;
+
+      const events = rows.map((row) => {
+        let payload: Record<string, unknown> = {};
+        try {
+          payload = JSON.parse(row.payload_json) as Record<string, unknown>;
+        } catch {
+          // skip
+        }
+        return {
+          event_id: row.event_id,
+          event_type: row.event_type,
+          ts: row.ts,
+          platform: row.platform,
+          project: row.project,
+          session_id: row.session_id,
+          payload,
+        };
+      });
+
+      return makeResponse(startedAt, events, {}, {
+        session_id: params.session_id,
+        event_count: events.length,
+      });
+    } catch (err) {
+      return makeResponse(startedAt, [], {}, {
+        error: `session replay failed: ${err instanceof Error ? err.message : String(err)}`,
+      });
+    }
+  }
+
   /**
    * IMP-010: GitHub Issues を harness-mem に取り込む。
    *
@@ -6979,6 +7418,10 @@ export class HarnessMemCore {
       clearInterval(this.geminiIngestTimer);
       this.geminiIngestTimer = null;
     }
+    if (this.claudeCodeIngestTimer) {
+      clearInterval(this.claudeCodeIngestTimer);
+      this.claudeCodeIngestTimer = null;
+    }
     if (this.consolidationTimer) {
       clearInterval(this.consolidationTimer);
       this.consolidationTimer = null;
@@ -7066,6 +7509,12 @@ export function getConfig(): Config {
   const geminiBackfillRaw = Number(
     process.env.HARNESS_MEM_GEMINI_BACKFILL_HOURS || DEFAULT_GEMINI_BACKFILL_HOURS
   );
+  const claudeCodeIngestIntervalRaw = Number(
+    process.env.HARNESS_MEM_CLAUDE_CODE_INGEST_INTERVAL_MS || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS
+  );
+  const claudeCodeBackfillRaw = Number(
+    process.env.HARNESS_MEM_CLAUDE_CODE_BACKFILL_HOURS || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS
+  );
   const searchRankingRaw = (process.env.HARNESS_MEM_SEARCH_RANKING || DEFAULT_SEARCH_RANKING).trim();
   const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
   const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
@@ -7140,6 +7589,17 @@ export function getConfig(): Config {
       300000
     ),
     geminiBackfillHours: clampLimit(geminiBackfillRaw, DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
+    claudeCodeIngestEnabled: envFlag("HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST", true),
+    claudeCodeProjectsRoot: resolveHomePath(
+      process.env.HARNESS_MEM_CLAUDE_CODE_PROJECTS_ROOT || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
+    ),
+    claudeCodeIngestIntervalMs: clampLimit(
+      claudeCodeIngestIntervalRaw,
+      DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    claudeCodeBackfillHours: clampLimit(claudeCodeBackfillRaw, DEFAULT_CLAUDE_CODE_BACKFILL_HOURS, 1, 24 * 365),
     searchRanking,
     searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
     rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),
