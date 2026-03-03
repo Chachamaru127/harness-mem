@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-03（§30 アーキテクチャ改善 全19タスク完了）
+最終更新: 2026-03-03（§31 競合ベンチマーク首位奪還プラン策定）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
@@ -9,6 +9,7 @@
 > §27 → [`docs/archive/Plans-s27-2026-03-02.md`](docs/archive/Plans-s27-2026-03-02.md)
 > §28P1 CQRS + ReviewR1 + FIX-001 + §27.1 → [`docs/archive/Plans-s28-review-2026-03-03.md`](docs/archive/Plans-s28-review-2026-03-03.md)
 > §29 競合ベンチマーク改善 (10/10完了, 119→128/140) → [`docs/archive/Plans-s29-2026-03-03.md`](docs/archive/Plans-s29-2026-03-03.md)
+> §30 アーキテクチャ改善 (19/19完了, 908テスト) → [`docs/archive/Plans-s30-2026-03-03.md`](docs/archive/Plans-s30-2026-03-03.md)
 > **テストケース設計**: [`docs/test-designs-s22.md`](docs/test-designs-s22.md) / [`docs/test-designs-s27.1.md`](docs/test-designs-s27.1.md)
 
 ---
@@ -19,97 +20,177 @@
 
 ---
 
-## §30. アーキテクチャ改善 — 保守性と拡張性の基盤構築
+## §31. 競合ベンチマーク首位奪還 — 4領域改善（115→120+/140）
 
-**背景**: §29 で機能面は 128/140（単独トップ）を達成。しかし構造的負債が残存:
-- core.ts 2,043行（目標2,000行以下を43行超過）
-- 生 SQL が6ファイルに約190箇所散在（Repository パターンなし）
-- LangChain 実装が3箇所に重複
-- MCP SDK 0.5.x（1.x 利用可能）
-- CLI 3,721行 Bash（テスト不能）
-- Ingester に共通インターフェースなし
+**背景**: v6 ベンチマーク（コード実査ベース）で harness-mem は 115/140（3位）に後退。
+supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
 
-**方針**: 機能は増やさず、同じ機能をより保守しやすい構造に入れ直す。
-**テスト**: 788テスト全通過を維持すること。→ **結果: 908 pass / 0 fail（120テスト増）**
+**対象4領域**:
+| 領域 | 現在 | 目標 | Delta | 根拠 |
+|------|:----:|:----:|:-----:|------|
+| Graph / Relations | 7 | 9 | +2 | expandByLinks を全 relation + 双方向 + 設定可能 depth に拡張 |
+| Storage Flexibility | 8 | 9 | +1 | Pg*Repository 3クラス実装で PG async 本稼働 |
+| Multi-user / Team | 7 | 8 | +1 | Team CRUD + メンバー管理 API + member ロール適用 |
+| Benchmark / Eval | 8 | 9 | +1 | LoCoMo ベースライン生成 + CI ゲート fail 条件追加 |
 
----
-
-### Phase 0: クイックウィン（P0, 5タスク, 4並列可）
-
-目的: §27.2 の残タスク完了 + CQRS Phase 1 の仕上げ。全て小規模で即効性が高い。
-
-- [x] `cc:完了` **ARC-001**: SDK health() パスバグ修正（既に正しい状態を確認）
-- [x] `cc:完了` **ARC-002**: Python SDK エンドポイントパリティ（searchFacets/feed +4テスト）
-- [x] `cc:完了` **ARC-003**: core-split テストの core 依存除去（91テスト pass）
-- [x] `cc:完了` **ARC-004**: core.ts setInterval→IngestCoordinator（core.ts 1,779行）
-- [x] `cc:完了` **ARC-005**: LangChain 3重→1箇所統合（TS+Python 各1箇所）
+**テスト**: 908テスト全通過を維持 + 新規テスト追加
 
 ---
 
-### Phase 1: Repository パターン導入（P1, 6タスク, 3並列可）
+### Phase 0: Graph 連鎖推論の強化（4タスク, 3並列可）
 
-目的: 生 SQL を Repository に閉じ込め、PostgreSQL async 対応の基盤を作る。
-前提: Phase 0 完了
+目的: expandByLinks の制約解消（4種→8種 relation、双方向、depth 設定可能）。
+前提: なし（即着手可）。getSubgraph の BFS 5ホップは実装済み。
 
-- [x] `cc:完了` **ARC-006**: Repository インターフェース定義（3インターフェース async-first）
-- [x] `cc:完了` **ARC-007**: SQLite ObservationRepository（14テスト）
-- [x] `cc:完了` **ARC-008**: SQLite SessionRepository（15テスト）
-- [x] `cc:完了` **ARC-009**: VectorRepository + JS fallback（11テスト）
-- [x] `cc:完了` **ARC-010**: ObservationStore timeline を Repository 経由に移行
-- [x] `cc:完了` **ARC-011**: パフォーマンス回帰テスト（4ベンチマーク全て +10%以内）
+- [ ] `cc:TODO [P]` **GRAPH-001**: expandByLinks の relation フィルタを全8種に拡張
+  - `observation-store.ts` L524 の IN 句に `contradicts/causes/part_of/updates` 追加
+  - DoD: 8種全 relation が検索展開対象。テスト4件追加
 
----
+- [ ] `cc:TODO [P]` **GRAPH-002**: expandByLinks を双方向探索に拡張
+  - `to_observation_id IN (frontierIds)` も探索対象に追加（L494-568）
+  - DoD: 双方向リンクが検索展開で辿られる。テスト3件追加
 
-### Phase 2: MCP + SDK 統合（P2, 4タスク, 2並列可）
+- [ ] `cc:TODO [P]` **GRAPH-003**: expandByLinks の MAX_DEPTH を設定可能化
+  - `config.graphMaxHops` で上書き可能に（デフォルト3、上限5）
+  - DoD: `HARNESS_MEM_GRAPH_MAX_HOPS=5` で5ホップ探索動作。テスト2件追加
 
-目的: MCP SDK 1.x アップグレード + OpenAPI 仕様作成。
-前提: Phase 0 完了（Phase 1 と並列実行可）
-
-- [x] `cc:完了` **ARC-012**: MCP SDK 0.5.x → 1.27.1（コード変更ゼロ、20テスト pass）
-- [x] `cc:完了` **ARC-013**: OpenAPI 3.1 スキーマ（56エンドポイント、26スキーマ）
-- [x] `cc:完了` **ARC-014**: MCP-OpenAPI 整合性 CI（13テスト + ワークフロー）
-- [x] `cc:完了` **ARC-015**: 環境変数リファレンス（86変数文書化）
+- [ ] `cc:TODO` **GRAPH-004**: 既存 getLinks に depth パラメータ追加 + OpenAPI/MCP 更新
+  - `server.ts` L1007 の既存エンドポイント修正。`depth`(1-5, default 1) → BFS 探索
+  - DoD: depth=3 動作 + `openapi.yaml` + `mcp-openapi-consistency.test.ts` 更新。テスト3件追加
 
 ---
 
-### Phase 3: Ingester プラグイン化（P2, 4タスク, 2並列可）
+### Phase 1: LoCoMo CI ゲート統合（3タスク, 2並列可）
 
-目的: 14 ingester に共通インターフェースを与え、拡張性を確保。
-前提: Phase 0 完了
+目的: LoCoMo CI 回帰検知の有効化。前提: なし（Phase 0 と並列可）。
+現状: regression-gate.ts 実装済みだがベースライン未生成。locomo-benchmark.yml に fail 条件なし。
 
-- [x] `cc:完了` **ARC-016**: PlatformIngester インターフェース定義
-- [x] `cc:完了` **ARC-017**: 13 ingester が implements PlatformIngester
-- [x] `cc:完了` **ARC-018**: IngesterRegistry + createDefaultRegistry()
-- [x] `cc:完了` **ARC-019**: IngestCoordinator polling 統合（registerIngester/startAll/stopAll）
+- [x] `cc:完了` **LOCO-001**: LoCoMo ベースラインファイル生成・コミット
+  - `locomo-baseline.json` + `longmemeval-baseline.json` を `results/` にコミット
+  - DoD: `regression-gate.ts` がベースラインと比較可能
+
+- [ ] `cc:TODO [P]` **LOCO-002**: locomo-benchmark.yml に fail 条件追加
+  - `locomo-gate-check.ts` 作成。F1 前回比 -5% 超で exit 1（LLM Judge 不要）
+  - DoD: F1 回帰で CI fail。テスト2件追加
+
+- [ ] `cc:TODO` **LOCO-003**: Runbook 閾値と CI 設定の同期（LOCO-002 完了後）
+  - `LOCOMO_F1_THRESHOLD` 環境変数でカスタマイズ可能に
+  - DoD: Runbook と CI が同じ閾値を参照
 
 ---
 
-### §30 完了判定
+### Phase 2: PostgreSQL async 本稼働（7タスク, 3並列可）
 
-| Phase | タスク数 | 並列度 | 主な成果物 |
-|-------|:-------:|:------:|-----------|
-| Phase 0 | 5 | 4 | CQRS完結 + SDK統合 |
-| Phase 1 | 6 | 3 | Repository パターン |
-| Phase 2 | 4 | 2 | MCP 1.x + OpenAPI |
-| Phase 3 | 4 | 2 | Ingester プラグイン |
-| **合計** | **19** | | |
+目的: Pg*Repository 実装で PG 本稼働。前提: なし（並列可）。
+§30 で Repository IF(async-first) + SQLite 実装完成済み。AsyncStorageAdapter の PG メソッド6つ動作済み。
+**注意**: ObservationStore が `this.deps.db.query(sql).all()` を同期呼び出ししている箇所あり → PG-000 で解消。
+
+- [ ] `cc:TODO` **PG-000**: sync/async 境界の設計調査と移行パス策定
+  - ObservationStore 内の `db.query().all()` 同期呼び出し箇所を洗い出し
+  - Repository 経由に移行済みの箇所と未移行の箇所を分類
+  - PG 動作に必要な最小限の async 化範囲を特定
+  - DoD: 移行対象の SQL 一覧 + 対応 Repository メソッドのマッピング表
+
+- [ ] `cc:TODO` **PG-001**: POSTGRES_INIT_SQL に後付けカラム追加
+  - `ObservationRow` 全フィールドと `POSTGRES_INIT_SQL` の `mem_observations` を比較
+  - 不足: user_id, team_id, signal_score, access_count, last_accessed_at, cognitive_sector, memory_type
+  - `mem_sessions`/`mem_events` の user_id, team_id も追加
+  - ObservationRow に不足フィールド(access_count/last_accessed_at/cognitive_sector/workspace_uid)も追記
+  - DoD: ObservationRow/SessionRow 型定義と PG スキーマが1:1対応。テスト2件追加
+
+- [ ] `cc:TODO [P]` **PG-002**: PgObservationRepository 実装
+  - IObservationRepository を implements。`adapter.runAsync()`/`queryAllAsync()` 経由
+  - `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`、LIKE → PG 互換に変換
+  - DoD: 全メソッド実装。テスト10件以上
+
+- [ ] `cc:TODO [P]` **PG-003**: PgSessionRepository 実装
+  - `db/repositories/PgSessionRepository.ts` を新規作成
+  - ISessionRepository を implements
+  - DoD: 全メソッド実装。テスト8件以上
+
+- [ ] `cc:TODO [P]` **PG-004**: PgVectorRepository 実装
+  - `db/repositories/PgVectorRepository.ts` を新規作成
+  - IVectorRepository を implements
+  - `vector_json TEXT` → `embedding vector` 型のマッピング
+  - `pgvectorSearchAsync()` の統合
+  - DoD: 全メソッド実装。テスト8件以上
+
+- [ ] `cc:TODO` **PG-005**: adapter-factory の PG ファクトリー対応
+  - `managed` モードで PostgresStorageAdapter + Pg*Repository を生成
+  - 環境変数 `HARNESS_MEM_PG_URL` で PG 接続を自動検出
+  - Repository を DI で ObservationStore / SessionManager に注入
+  - DoD: `HARNESS_MEM_PG_URL=postgres://...` 指定時に PG で動作。テスト3件追加
+
+- [ ] `cc:TODO` **PG-006**: PG 統合テスト（pgvector Docker CI 連携）
+  - `pgvector-integration.yml` を更新して Pg*Repository のテストを追加
+  - Docker Compose で PostgreSQL + pgvector を起動
+  - E2E: 記録→検索→セッション→チェックポイントの往復テスト
+  - DoD: CI で PG 統合テスト全 pass。テスト5件追加
+
+---
+
+### Phase 3: Team Management API（6タスク, 2並列可）
+
+目的: チーム CRUD + メンバー管理 + 権限制御。前提: TEAM-001 の postgres-schema.ts 変更は PG-001 完了後。
+DB カラム(user_id/team_id)・AuthConfig・アクセスフィルタは実装済み。チーム実体テーブル+管理 API が未実装。
+
+- [ ] `cc:TODO` **TEAM-001**: チーム関連 DB テーブルの追加
+  - `mem_teams` (team_id, name, description, created_at, updated_at)
+  - `mem_team_members` (team_id, user_id, role, joined_at)
+  - `mem_team_invitations` (id, team_id, invitee_identifier, role, token, expires_at, status)
+  - `schema.ts` の `initSchema` と `migrateSchema` に追加
+  - `postgres-schema.ts` の `POSTGRES_INIT_SQL` にも追加
+  - DoD: テーブル作成 + マイグレーション動作。テスト3件追加
+
+- [ ] `cc:TODO` **TEAM-002**: TeamRepository インターフェース + SQLite 実装
+  - `ITeamRepository` (create/findById/findAll/update/delete/addMember/removeMember/getMembers)
+  - `SqliteTeamRepository` 実装
+  - DoD: 全メソッド実装。テスト10件以上
+
+- [ ] `cc:TODO [P]` **TEAM-003**: Team CRUD エンドポイント（5本: POST/GET/GET:id/PUT/DELETE `/v1/admin/teams`）
+  - 全て admin 認証必須。DoD: 5エンドポイント動作。テスト5件追加
+
+- [ ] `cc:TODO [P]` **TEAM-004**: メンバー管理エンドポイント（4本: POST/DELETE/PATCH/GET `/v1/admin/teams/:id/members`）
+  - DoD: 4エンドポイント動作。テスト4件追加
+
+- [ ] `cc:TODO` **TEAM-005**: server.ts の member ロール適用
+  - `resolveRequestIdentity()` の結果を全エンドポイントに伝播
+  - member ロールの ResolvedIdentity → buildAccessFilter() → SQL フィルタ
+  - `/v1/search`, `/v1/feed`, `/v1/sessions/*` で member スコープが機能
+  - DoD: member トークンでアクセス時に自分のデータのみ返る。テスト5件追加
+
+- [ ] `cc:TODO` **TEAM-006**: SDK に Team API を追加
+  - TS SDK: `client.teams.create()`, `client.teams.list()`, `client.teams.addMember()` 等
+  - Python SDK: 同等のメソッド追加
+  - OpenAPI スキーマに Team エンドポイントを追加
+  - DoD: TS/Python SDK から Team 管理が可能。テスト4件追加
+
+---
+
+### §31 完了判定
+
+| Phase | タスク数 | 並列度 | 主な成果物 | ベンチマーク影響 |
+|-------|:-------:|:------:|-----------|:---------------:|
+| Phase 0 | 4 | 3 | Graph 全 relation 双方向 multi-hop | +2pt (7→9) |
+| Phase 1 | 3 | 1 | LoCoMo CI ゲート | +1pt (8→9) |
+| Phase 2 | 7 | 3 | PG async 本稼働 | +1pt (8→9) |
+| Phase 3 | 6 | 2 | Team Management API | +1pt (7→8) |
+| **合計** | **20** | | | **+5pt (115→120)** |
 
 ```
-Phase 0 (4並列):
-  ARC-001〜004 ──┬→ Phase 1 (3並列):        Phase 2 (2並列):
-  ARC-005 ───────┤   ARC-006→007〜009→010   ARC-012→014
-                 │   ARC-011                 ARC-013 [P]
-                 │                           ARC-015 [P]
-                 └→ Phase 3 (2並列):
-                     ARC-016→017→018
-                     ARC-019 [P]
+Phase 0 (3並列):              Phase 1 (順次):
+  GRAPH-001〜003 [P]            LOCO-001→002→003
+  GRAPH-004
+Phase 2:                      Phase 3 (PG-001完了後):
+  PG-000→001→002〜004 [P]      TEAM-001→002→003〜004 [P]
+  └→PG-005→PG-006              TEAM-005→006
 ```
 
-**§30 DoD（全体完了条件）**:
-1. core.ts が **2,000行以下**のファサード
-2. LangChain 実装が **TS 1箇所 + Python 1箇所**
-3. 生 SQL が **Repository 経由のみ**（observation-store.ts 範囲）
-4. MCP SDK **1.x** + 全19ツール動作
-5. `docs/openapi.yaml` が全エンドポイントをカバー
-6. 14 ingester が **PlatformIngester** インターフェース実装
-7. テスト **788件以上** 全 pass
+**§31 DoD（全体完了条件）**:
+1. expandByLinks が **8種 relation** を **双方向** で探索し depth が **設定可能**
+2. LoCoMo CI が **F1 回帰 -5% で fail**（ベースラインファイル存在）
+3. `HARNESS_MEM_PG_URL` 指定で **PostgreSQL 本稼働**（全 Repository 動作）
+4. Team CRUD + メンバー管理 **9エンドポイント** が動作
+5. member ロールで **自分のデータのみアクセス可能**
+6. テスト **908件以上** 全 pass（新規テスト追加分含む）
+7. v7 ベンチマーク再評価で **120/140 以上**

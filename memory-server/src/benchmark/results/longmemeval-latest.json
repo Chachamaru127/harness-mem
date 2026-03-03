@@ -1,0 +1,12 @@
+{
+  "dataset": "longmemeval",
+  "timestamp": "2026-03-03T17:34:28.531Z",
+  "metrics": {
+    "recall@10": 0,
+    "precision@10": 0,
+    "mrr": 0,
+    "ndcg": 0
+  },
+  "samples": 10,
+  "duration_ms": 10
+}
