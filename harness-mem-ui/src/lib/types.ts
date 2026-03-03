@@ -1,6 +1,6 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
-export type UiTab = "feed" | "environment" | "search" | "observation" | "session";
+export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "graph";
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "gemini";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 
@@ -101,6 +101,29 @@ export interface ApiResponse<T> {
     [key: string]: unknown;
   };
   error?: string;
+}
+
+// V5-001: ナレッジグラフ サブグラフ取得結果
+export interface SubgraphNode {
+  id: string;
+  title: string;
+  observation_type: string;
+  created_at: string;
+  entities: string[];
+}
+
+export interface SubgraphEdge {
+  source: string;
+  target: string;
+  relation: string;
+  weight: number;
+}
+
+export interface SubgraphResult {
+  nodes: SubgraphNode[];
+  edges: SubgraphEdge[];
+  center_entity: string;
+  depth: number;
 }
 
 export interface SseUiEvent<T = Record<string, unknown>> {

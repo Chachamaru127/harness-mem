@@ -3,6 +3,7 @@ import type {
   EnvironmentSnapshot,
   FeedItem,
   ProjectsStatsItem,
+  SubgraphResult,
   UiContext,
 } from "./types";
 
@@ -131,4 +132,19 @@ export async function fetchSearchFacets(params: {
   if (params.project) query.set("project", params.project);
   if (typeof params.includePrivate === "boolean") query.set("include_private", params.includePrivate ? "true" : "false");
   return request<ApiResponse<Record<string, unknown>>>(`/api/search/facets?${query.toString()}`);
+}
+
+// V5-001: ナレッジグラフ サブグラフ取得
+export async function fetchSubgraph(params: {
+  entity: string;
+  depth?: number;
+  project?: string;
+  limit?: number;
+}): Promise<SubgraphResult & { ok: boolean }> {
+  const query = new URLSearchParams();
+  query.set("entity", params.entity);
+  if (typeof params.depth === "number") query.set("depth", String(params.depth));
+  if (params.project) query.set("project", params.project);
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  return request<SubgraphResult & { ok: boolean }>(`/api/graph?${query.toString()}`);
 }

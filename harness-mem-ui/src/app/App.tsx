@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { EnvironmentPanel } from "../components/EnvironmentPanel";
 import { FeedPanel } from "../components/FeedPanel";
+import { HarnessMemGraph } from "../components/HarnessMemGraph";
 import { HeaderBar } from "../components/HeaderBar";
 import { ProjectSidebar } from "../components/ProjectSidebar";
 import { SettingsModal } from "../components/SettingsModal";
@@ -280,6 +281,17 @@ export default function App() {
             >
               {copy.environmentTab}
             </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-graph"
+              className={`tab ${settings.activeTab === "graph" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "graph"}
+              aria-controls="panel-graph"
+              onClick={() => updateSetting("activeTab", "graph")}
+            >
+              Graph
+            </button>
           </div>
 
           {settings.activeTab === "environment" ? (
@@ -292,6 +304,13 @@ export default function App() {
                 onRefresh={() => {
                   void loadEnvironment();
                 }}
+              />
+            </div>
+          ) : settings.activeTab === "graph" ? (
+            <div role="tabpanel" id="panel-graph" aria-labelledby="tab-graph" style={{ padding: "16px 0" }}>
+              <HarnessMemGraph
+                project={selectedProject !== "__all__" ? selectedProject : undefined}
+                depth={2}
               />
             </div>
           ) : (

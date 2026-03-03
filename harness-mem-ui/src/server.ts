@@ -237,6 +237,10 @@ Bun.serve({
     if (url.pathname === "/api/resume" && request.method === "POST") {
       return proxyJson("/v1/resume-pack", "POST", await parseBody(request));
     }
+    // V5-001: サブグラフ取得（認証不要）
+    if (url.pathname === "/api/graph" && request.method === "GET") {
+      return proxyJson(`/v1/graph${url.search || ""}`, "GET");
+    }
 
     const safePath = safePathname(url.pathname);
     if (!safePath) {

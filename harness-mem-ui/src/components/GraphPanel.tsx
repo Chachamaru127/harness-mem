@@ -102,6 +102,10 @@ const RELATION_COLORS: Record<string, string> = {
   derives: "#8b5cf6",
   follows: "#10b981",
   shared_entity: "#f59e0b",
+  // V5-001: 新3種
+  contradicts: "#dc2626",
+  causes: "#ea580c",
+  part_of: "#0891b2",
 };
 
 export function GraphPanel({ nodes, edges, width = 600, height = 400 }: GraphPanelProps) {
