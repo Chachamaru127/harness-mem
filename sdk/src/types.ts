@@ -169,3 +169,47 @@ export interface SearchFacetsInput {
   project?: string;
   include_private?: boolean;
 }
+
+// ────────────────────────────────────────
+// Team API types
+// ────────────────────────────────────────
+
+/** Team object */
+export interface TeamItem {
+  team_id: string;
+  name: string;
+  description?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Team member object */
+export interface TeamMemberItem {
+  team_id: string;
+  user_id: string;
+  role: string;
+  joined_at?: string;
+}
+
+/** Create team request */
+export interface CreateTeamInput {
+  name: string;
+  description?: string;
+}
+
+/** Update team request */
+export interface UpdateTeamInput {
+  name?: string;
+  description?: string;
+}
+
+/** Add team member request */
+export interface AddTeamMemberInput {
+  user_id: string;
+  role: string;
+}
+
+/** Update team member role request */
+export interface UpdateTeamMemberRoleInput {
+  role: string;
+}

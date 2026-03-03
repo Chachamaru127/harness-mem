@@ -118,5 +118,28 @@ class EventEnvelope(TypedDict, total=False):
     ts: str
 
 
+class TeamItem(TypedDict, total=False):
+    team_id: str
+    name: str
+    description: str
+    created_at: str
+    updated_at: str
+
+
+class TeamMemberItem(TypedDict, total=False):
+    team_id: str
+    user_id: str
+    role: str
+    joined_at: str
+
+
+class TeamResponse(ApiResponse, total=False):
+    items: List[TeamItem]
+
+
+class TeamMemberResponse(ApiResponse, total=False):
+    items: List[TeamMemberItem]
+
+
 JsonDict = Dict[str, Any]
 OptionalJsonDict = Optional[JsonDict]

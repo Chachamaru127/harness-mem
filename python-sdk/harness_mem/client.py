@@ -22,6 +22,8 @@ from .types import (
     ResumePackResponse,
     SearchFacetsResponse,
     SearchResponse,
+    TeamMemberResponse,
+    TeamResponse,
     TimelineResponse,
     WriteResponse,
 )
@@ -313,3 +315,64 @@ class HarnessMemClient:
             },
             ),
         )
+
+    # ────────────────────────────────────────
+    # Team management API
+    # All endpoints require admin authentication.
+    # ────────────────────────────────────────
+
+    def teams_create(self, *, name: str, description: Optional[str] = None) -> TeamResponse:
+        """Create a new team. Maps to POST /v1/admin/teams."""
+        return cast(
+            TeamResponse,
+            self._request("POST", "/v1/admin/teams", {"name": name, "description": description}),
+        )
+
+    def teams_list(self) -> TeamResponse:
+        """List all teams. Maps to GET /v1/admin/teams."""
+        return cast(TeamResponse, self._request("GET", "/v1/admin/teams"))
+
+    def teams_get(self, team_id: str) -> TeamResponse:
+        """Get a team by ID. Maps to GET /v1/admin/teams/:id."""
+        return cast(TeamResponse, self._request("GET", f"/v1/admin/teams/{team_id}"))
+
+    def teams_update(
+        self,
+        team_id: str,
+        *,
+        name: Optional[str] = None,
+        description: Optional[str] = None,
+    ) -> TeamResponse:
+        """Update a team. Maps to PUT /v1/admin/teams/:id."""
+        payload: JsonDict = {}
+        if name is not None:
+            payload["name"] = name
+        if description is not None:
+            payload["description"] = description
+        return cast(TeamResponse, self._request("PUT", f"/v1/admin/teams/{team_id}", payload))
+
+    def teams_delete(self, team_id: str) -> ApiResponse:
+        """Delete a team. Maps to DELETE /v1/admin/teams/:id."""
+        return self._request("DELETE", f"/v1/admin/teams/{team_id}")
+
+    def teams_add_member(self, team_id: str, *, user_id: str, role: str) -> TeamMemberResponse:
+        """Add a member to a team. Maps to POST /v1/admin/teams/:id/members."""
+        return cast(
+            TeamMemberResponse,
+            self._request("POST", f"/v1/admin/teams/{team_id}/members", {"user_id": user_id, "role": role}),
+        )
+
+    def teams_get_members(self, team_id: str) -> TeamMemberResponse:
+        """Get team members. Maps to GET /v1/admin/teams/:id/members."""
+        return cast(TeamMemberResponse, self._request("GET", f"/v1/admin/teams/{team_id}/members"))
+
+    def teams_update_member_role(self, team_id: str, user_id: str, *, role: str) -> TeamMemberResponse:
+        """Update a team member's role. Maps to PATCH /v1/admin/teams/:id/members/:userId."""
+        return cast(
+            TeamMemberResponse,
+            self._request("PATCH", f"/v1/admin/teams/{team_id}/members/{user_id}", {"role": role}),
+        )
+
+    def teams_remove_member(self, team_id: str, user_id: str) -> ApiResponse:
+        """Remove a member from a team. Maps to DELETE /v1/admin/teams/:id/members/:userId."""
+        return self._request("DELETE", f"/v1/admin/teams/{team_id}/members/{user_id}")

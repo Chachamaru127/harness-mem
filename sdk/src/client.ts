@@ -21,6 +21,12 @@ import type {
   AuditLogInput,
   AuditLogItem,
   SearchFacetsInput,
+  TeamItem,
+  TeamMemberItem,
+  CreateTeamInput,
+  UpdateTeamInput,
+  AddTeamMemberInput,
+  UpdateTeamMemberRoleInput,
 } from "./types.js";
 
 export class HarnessMemClient {
@@ -33,7 +39,7 @@ export class HarnessMemClient {
   }
 
   private async request<T>(
-    method: "GET" | "POST",
+    method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE",
     path: string,
     body?: unknown
   ): Promise<ApiResponse<T>> {
@@ -178,4 +184,73 @@ export class HarnessMemClient {
   async health(): Promise<ApiResponse<Record<string, unknown>>> {
     return this.request<Record<string, unknown>>("GET", "/health");
   }
+
+  /**
+   * Team management API namespace.
+   * All endpoints require admin authentication.
+   */
+  readonly teams = {
+    /**
+     * Create a new team.
+     * Maps to POST /v1/admin/teams
+     */
+    create: (input: CreateTeamInput): Promise<ApiResponse<TeamItem>> =>
+      this.request<TeamItem>("POST", "/v1/admin/teams", input),
+
+    /**
+     * List all teams.
+     * Maps to GET /v1/admin/teams
+     */
+    list: (): Promise<ApiResponse<TeamItem>> =>
+      this.request<TeamItem>("GET", "/v1/admin/teams"),
+
+    /**
+     * Get a team by ID.
+     * Maps to GET /v1/admin/teams/:id
+     */
+    get: (teamId: string): Promise<ApiResponse<TeamItem>> =>
+      this.request<TeamItem>("GET", `/v1/admin/teams/${encodeURIComponent(teamId)}`),
+
+    /**
+     * Update a team.
+     * Maps to PUT /v1/admin/teams/:id
+     */
+    update: (teamId: string, input: UpdateTeamInput): Promise<ApiResponse<TeamItem>> =>
+      this.request<TeamItem>("PUT", `/v1/admin/teams/${encodeURIComponent(teamId)}`, input),
+
+    /**
+     * Delete a team.
+     * Maps to DELETE /v1/admin/teams/:id
+     */
+    delete: (teamId: string): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request<Record<string, unknown>>("DELETE", `/v1/admin/teams/${encodeURIComponent(teamId)}`),
+
+    /**
+     * Add a member to a team.
+     * Maps to POST /v1/admin/teams/:id/members
+     */
+    addMember: (teamId: string, input: AddTeamMemberInput): Promise<ApiResponse<TeamMemberItem>> =>
+      this.request<TeamMemberItem>("POST", `/v1/admin/teams/${encodeURIComponent(teamId)}/members`, input),
+
+    /**
+     * Get team members.
+     * Maps to GET /v1/admin/teams/:id/members
+     */
+    getMembers: (teamId: string): Promise<ApiResponse<TeamMemberItem>> =>
+      this.request<TeamMemberItem>("GET", `/v1/admin/teams/${encodeURIComponent(teamId)}/members`),
+
+    /**
+     * Update a team member's role.
+     * Maps to PATCH /v1/admin/teams/:id/members/:userId
+     */
+    updateMemberRole: (teamId: string, userId: string, input: UpdateTeamMemberRoleInput): Promise<ApiResponse<TeamMemberItem>> =>
+      this.request<TeamMemberItem>("PATCH", `/v1/admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, input),
+
+    /**
+     * Remove a member from a team.
+     * Maps to DELETE /v1/admin/teams/:id/members/:userId
+     */
+    removeMember: (teamId: string, userId: string): Promise<ApiResponse<Record<string, unknown>>> =>
+      this.request<Record<string, unknown>>("DELETE", `/v1/admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`),
+  };
 }
