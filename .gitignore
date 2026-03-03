@@ -39,3 +39,9 @@ tests/benchmarks/output/
 # Python cache artifacts
 **/__pycache__/
 **/*.pyc
+
+# Binary data
+*.traineddata
+
+# Test artifacts
+test-ruri-v3/
