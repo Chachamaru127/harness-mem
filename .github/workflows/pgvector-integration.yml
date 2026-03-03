@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "memory-server/src/db/**"
+      - "memory-server/src/db/repositories/Pg*.ts"
+      - "memory-server/tests/integration/pg-e2e.test.ts"
       - "tests/unit/pgvector-search.test.ts"
       - ".github/workflows/pgvector-integration.yml"
       - "docker-compose.test.yml"
@@ -12,6 +14,8 @@ on:
       - main
     paths:
       - "memory-server/src/db/**"
+      - "memory-server/src/db/repositories/Pg*.ts"
+      - "memory-server/tests/integration/pg-e2e.test.ts"
       - "tests/unit/pgvector-search.test.ts"
       - ".github/workflows/pgvector-integration.yml"
       - "docker-compose.test.yml"
@@ -58,8 +62,15 @@ jobs:
           cd memory-server
           bun install --frozen-lockfile
 
-      - name: Run pgvector integration tests
+      - name: Run pgvector unit tests
         shell: bash
         run: |
           set -euo pipefail
           bun test tests/unit/pgvector-search.test.ts
+
+      - name: Run Pg*Repository E2E integration tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun test tests/integration/pg-e2e.test.ts
