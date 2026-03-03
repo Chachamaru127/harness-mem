@@ -61,7 +61,7 @@
 | **検索** | 10 | 1 | harness-mem は 6 シグナルハイブリッド検索 + クエリルーティング。Readout は基本的な UI フィルタのみ |
 | **セッション管理** | 8 | 8 | 両者強い。harness-mem はライフサイクル管理 + Resume Pack。Readout はセッションリプレイが独自の強み |
 | **環境可視化** | 7 | 9 | Readout の核心機能。repos, costs, deps, config を一画面で。harness-mem も Environment タブがあるが副次機能 |
-| **コスト追跡** | 2 | 8 | Readout はコストダッシュボードが主要機能。harness-mem にはコスト追跡がほぼない |
+| **コスト追跡** | 2→**7** | 8 | Readout はコストダッシュボードが主要機能。harness-mem は未実装だが、Claude Code JSONL にトークン・モデルデータが存在し実装可能（後述「コストデータ調査結果」参照） |
 | **拡張性（SDK/API/統合）** | 10 | 1 | harness-mem は TS SDK, Python SDK, LangChain, MCP, VS Code ext。Readout はスタンドアロンアプリ |
 | **プライバシー制御** | 9 | 7 | 両者ローカルファースト。harness-mem は block/private/redact タグ + 監査ログで粒度が細かい |
 | **プラットフォーム** | 9 | 4 | harness-mem はクロスプラットフォーム（Bun/Node）。Readout は macOS 限定 |
@@ -138,6 +138,56 @@
 2. **検索品質** — LoCoMo ベンチマークでの品質証明を推進。Readout には検索がない。
 3. **SDK / API** — 開発者が harness-mem のエコシステムに依存する構造を作る。
 4. **MCP 標準** — MCP サーバーとしての存在感を固める。
+
+---
+
+## コストデータ調査結果（2026-03-03 追記）
+
+### 結論: コスト追跡は実装可能
+
+当初「パクれない」と評価したコスト系 3 機能（コストカード、Budget バー、Cost by Model）は、**ローカルデータにトークン・モデル情報が存在**しており実装可能であることが判明した。
+
+### Claude Code のセッション JSONL に含まれるフィールド
+
+```
+場所: ~/.claude/projects/<project>/<session-id>.jsonl
+```
+
+| フィールド | 値の例 | 説明 |
+|---|---|---|
+| `message.model` | `claude-opus-4-6`, `claude-sonnet-4-6` | 使用モデル |
+| `message.usage.input_tokens` | `3` | 入力トークン |
+| `message.usage.output_tokens` | `10` | 出力トークン |
+| `message.usage.cache_creation_input_tokens` | `18088` | キャッシュ作成トークン |
+| `message.usage.cache_read_input_tokens` | `0` | キャッシュ読取トークン |
+| `message.usage.service_tier` | `standard` | 課金ティア |
+| `message.usage.cache_creation.ephemeral_1h_input_tokens` | `18088` | 1h キャッシュ |
+| `message.usage.cache_creation.ephemeral_5m_input_tokens` | `0` | 5m キャッシュ |
+
+### 現在のギャップ
+
+| パイプライン段階 | Claude Code が保持 | harness-mem hooks が渡す | harness-mem DB に保存 |
+|---|---|---|---|
+| モデル名 | ✅ | ❌ | ❌ |
+| input_tokens | ✅ | ❌ | ❌ |
+| output_tokens | ✅ | ❌ | ❌ |
+| cache tokens | ✅ | ❌ | ❌ |
+| service_tier | ✅ | ❌ | ❌ |
+
+**原因:** harness-mem の hooks は `tool_name`, `tool_input` 等のコンテンツ情報のみを送信しており、`usage` / `model` フィールドを無視している。また、Claude Code のセッション JSONL を直接読み取るイングストモジュール（`claude-code-projects.ts` 相当）が存在しない。
+
+### 実装アプローチ
+
+1. **JSONL 直接読取**（推奨）: `~/.claude/projects/` を Codex と同様にポーリングで読み取り、`model` + `usage` を抽出。offset tracking で重複防止
+2. **コスト計算**: モデル名 × トークン数 × 公開価格表（ハードコードまたは設定ファイル）で推定コスト算出
+3. **集計 API**: `/v1/stats/costs` エンドポイントで日別・モデル別・プロジェクト別の集計を返す
+4. **UI**: KPI カード + Cost by Model チャート + Budget プログレスバー
+
+### 修正後の採点
+
+| 評価軸 | 旧スコア | 新スコア | 備考 |
+|---|---|---|---|
+| コスト追跡 | 2 | 7（実装後） | データは存在。実装すれば Readout と同等以上（マルチツール対応で上回る可能性） |
 
 ---
 
