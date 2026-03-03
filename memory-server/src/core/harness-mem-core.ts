@@ -1799,5 +1799,13 @@ export class HarnessMemCore {
       { ranking: "knowledge_stats_v1" }
     );
   }
+
+  /**
+   * 生の SQLite Database インスタンスを返す。
+   * Team API など server.ts から直接 DB にアクセスする必要がある用途のみ使用する。
+   */
+  getRawDb(): Database {
+    return this.db;
+  }
 }
 

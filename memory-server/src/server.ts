@@ -11,6 +11,8 @@ import { NotionConnector } from "./sync/notion-connector";
 import { GoogleDriveConnector } from "./sync/gdrive-connector";
 import type { ConnectorConfig } from "./sync/types";
 import { HarnessMemCore } from "./core/harness-mem-core";
+import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
+import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import type {
   FeedRequest,
   ImportJobStatusRequest,
@@ -328,6 +330,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // V5-010: Rate Limiter + Validator（環境変数 HARNESS_MEM_RATE_LIMIT=0 で無効化）
   const rateLimiter: TokenBucketRateLimiter | null = createRateLimiterFromEnv();
   const validator: RequestValidator = createDefaultValidator();
+
+  // TEAM-003: Team CRUD リポジトリ
+  const teamRepo: ITeamRepository = new SqliteTeamRepository(core.getRawDb());
 
   return Bun.serve({
     hostname: config.bindHost,
@@ -900,6 +905,185 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
         const body = await parseRequestJson(request);
         return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
+      }
+
+      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
+      if (request.method === "POST" && url.pathname === "/v1/admin/teams") {
+        if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
+        const body = await parseRequestJson(request);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        if (!name) return badRequest("name is required");
+        const description = typeof body.description === "string" ? body.description : null;
+        const now = new Date().toISOString();
+        const teamId = typeof body.team_id === "string" && body.team_id.trim()
+          ? body.team_id.trim()
+          : `team_${Math.random().toString(36).slice(2, 10)}`;
+        const team = await teamRepo.create({ team_id: teamId, name, description, created_at: now, updated_at: now });
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: [team],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+        }, 201);
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/admin/teams") {
+        if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
+        const teams = await teamRepo.findAll();
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: teams,
+          meta: { count: teams.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+        });
+      }
+
+      // TEAM-003: GET/PUT/DELETE /v1/admin/teams/:id（動的パス）
+      const teamByIdMatch = url.pathname.match(/^\/v1\/admin\/teams\/([^/]+)$/);
+      if (teamByIdMatch) {
+        if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
+        const teamId = decodeURIComponent(teamByIdMatch[1] || "");
+        if (!teamId) return badRequest("team_id is required");
+
+        if (request.method === "GET") {
+          const team = await teamRepo.findById(teamId);
+          if (!team) {
+            return jsonResponse({
+              ok: false,
+              source: "core",
+              items: [],
+              meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+              error: `Team '${teamId}' not found`,
+            }, 404);
+          }
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [team],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
+
+        if (request.method === "PUT") {
+          const body = await parseRequestJson(request);
+          const now = new Date().toISOString();
+          const updateInput: { name?: string; description?: string | null; updated_at: string } = { updated_at: now };
+          if (typeof body.name === "string") updateInput.name = body.name.trim();
+          if ("description" in body) updateInput.description = typeof body.description === "string" ? body.description : null;
+          const updated = await teamRepo.update(teamId, updateInput);
+          if (!updated) {
+            return jsonResponse({
+              ok: false,
+              source: "core",
+              items: [],
+              meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+              error: `Team '${teamId}' not found`,
+            }, 404);
+          }
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [updated],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
+
+        if (request.method === "DELETE") {
+          const deleted = await teamRepo.delete(teamId);
+          if (!deleted) {
+            return jsonResponse({
+              ok: false,
+              source: "core",
+              items: [],
+              meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+              error: `Team '${teamId}' not found`,
+            }, 404);
+          }
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [{ team_id: teamId, deleted: true }],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
+      }
+
+      // TEAM-004: メンバー管理エンドポイント（POST/GET /v1/admin/teams/:id/members および PATCH/DELETE /v1/admin/teams/:id/members/:userId）
+      const memberMatch = url.pathname.match(/^\/v1\/admin\/teams\/([^/]+)\/members(?:\/([^/]+))?$/);
+      if (memberMatch) {
+        if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
+        const teamId = decodeURIComponent(memberMatch[1] || "");
+        const userId = memberMatch[2] ? decodeURIComponent(memberMatch[2]) : null;
+        if (!teamId) return badRequest("team_id is required");
+
+        // POST /v1/admin/teams/:id/members — メンバー追加
+        if (request.method === "POST" && !userId) {
+          const body = await parseRequestJson(request);
+          const memberId = typeof body.user_id === "string" ? body.user_id.trim() : "";
+          const role = typeof body.role === "string" ? body.role.trim() : "member";
+          if (!memberId) return badRequest("user_id is required");
+          await teamRepo.addMember(teamId, memberId, role);
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [{ team_id: teamId, user_id: memberId, role }],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          }, 201);
+        }
+
+        // GET /v1/admin/teams/:id/members — メンバー一覧取得
+        if (request.method === "GET" && !userId) {
+          const members = await teamRepo.getMembers(teamId);
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: members,
+            meta: { count: members.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
+
+        // PATCH /v1/admin/teams/:id/members/:userId — メンバーロール更新
+        if (request.method === "PATCH" && userId) {
+          const body = await parseRequestJson(request);
+          const role = typeof body.role === "string" ? body.role.trim() : "";
+          if (!role) return badRequest("role is required");
+          const updated = await teamRepo.updateMemberRole(teamId, userId, role);
+          if (!updated) {
+            return jsonResponse({
+              ok: false,
+              source: "core",
+              items: [],
+              meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+              error: `Member '${userId}' not found in team '${teamId}'`,
+            }, 404);
+          }
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [{ team_id: teamId, user_id: userId, role }],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
+
+        // DELETE /v1/admin/teams/:id/members/:userId — メンバー削除
+        if (request.method === "DELETE" && userId) {
+          const removed = await teamRepo.removeMember(teamId, userId);
+          if (!removed) {
+            return jsonResponse({
+              ok: false,
+              source: "core",
+              items: [],
+              meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+              error: `Member '${userId}' not found in team '${teamId}'`,
+            }, 404);
+          }
+          return jsonResponse({
+            ok: true,
+            source: "core",
+            items: [{ team_id: teamId, user_id: userId, removed: true }],
+            meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "team_v1" },
+          });
+        }
       }
 
       if (request.method === "POST" && url.pathname === "/v1/links/create") {
