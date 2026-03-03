@@ -168,6 +168,10 @@ export class ObservationStore {
       include_private?: boolean;
       strict_project?: boolean;
       memory_type?: import("./types.js").MemoryType | import("./types.js").MemoryType[];
+      /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+      user_id?: string;
+      /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+      team_id?: string;
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
@@ -210,6 +214,18 @@ export class ObservationStore {
         const placeholders = types.map(() => "?").join(", ");
         nextSql += ` AND ${alias}.memory_type IN (${placeholders})`;
         params.push(...types);
+      }
+    }
+
+    // TEAM-005: member ロール — user_id / team_id によるアクセス制御
+    // user_id が指定されている場合、自分 OR 同チームのデータのみに絞る
+    if (filters.user_id) {
+      if (filters.team_id) {
+        nextSql += ` AND (${alias}.user_id = ? OR ${alias}.team_id = ?)`;
+        params.push(filters.user_id, filters.team_id);
+      } else {
+        nextSql += ` AND ${alias}.user_id = ?`;
+        params.push(filters.user_id);
       }
     }
 
@@ -1198,16 +1214,27 @@ export class ObservationStore {
       params.push(...this.deps.accessFilter.params);
     }
 
-    // TEAM-009: user_id / team_id フィルター
+    // TEAM-005/TEAM-009: user_id / team_id フィルター
+    // _member_scope=true の場合は OR 条件（自分 OR 同チーム）、それ以外は AND 条件（TEAM-009 互換）
     const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
     const teamIdFilter = typeof request.team_id === "string" && request.team_id.trim() ? request.team_id.trim() : undefined;
-    if (userIdFilter) {
+    if (request._member_scope && userIdFilter && teamIdFilter) {
+      // member ロール: 自分 OR 同チームの OR 条件
+      sql += " AND (o.user_id = ? OR o.team_id = ?)";
+      params.push(userIdFilter, teamIdFilter);
+    } else if (request._member_scope && userIdFilter) {
       sql += " AND o.user_id = ?";
       params.push(userIdFilter);
-    }
-    if (teamIdFilter) {
-      sql += " AND o.team_id = ?";
-      params.push(teamIdFilter);
+    } else {
+      // TEAM-009 互換: AND 結合（クエリパラメータによる個別フィルタ）
+      if (userIdFilter) {
+        sql += " AND o.user_id = ?";
+        params.push(userIdFilter);
+      }
+      if (teamIdFilter) {
+        sql += " AND o.team_id = ?";
+        params.push(teamIdFilter);
+      }
     }
 
     // V5-004: memory_type フィルター

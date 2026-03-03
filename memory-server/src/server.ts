@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { resolve } from "node:path";
 import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
+import { buildAccessFilter } from "./auth/access-control";
 import { createRateLimiterFromEnv, type TokenBucketRateLimiter } from "./middleware/rate-limiter";
 import { createDefaultValidator, type RequestValidator } from "./middleware/validator";
 import { createSyncStore, handleSyncPush, handleSyncPull, type SyncStore } from "./sync/sync-store";
@@ -493,6 +494,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const parsedMemoryType = Array.isArray(rawMemoryType)
           ? (rawMemoryType.filter((t): t is MemoryType => typeof t === "string" && validMemoryTypes.includes(t as MemoryType)) as MemoryType[])
           : (typeof rawMemoryType === "string" && validMemoryTypes.includes(rawMemoryType as MemoryType) ? rawMemoryType as MemoryType : undefined);
+
+        // TEAM-005: member ロール適用 — identity を解決してアクセス制御フィルタを生成
+        const searchIdentity = resolveRequestIdentity(request);
+        const searchAccessFilter = searchIdentity
+          ? buildAccessFilter("o", searchIdentity)
+          : null;
+
         const req: SearchRequest = {
           query,
           project: typeof body.project === "string" ? body.project : undefined,
@@ -510,38 +518,64 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             : undefined,
           sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
           memory_type: parsedMemoryType || undefined,
+          // TEAM-005: member スコープ（admin は user_id/team_id なし → フィルタなし）
+          user_id: searchAccessFilter?.user_id ?? undefined,
+          team_id: searchAccessFilter?.team_id ?? undefined,
         };
         return jsonResponse(core.search(req));
       }
 
       if (request.method === "GET" && url.pathname === "/v1/feed") {
+        // TEAM-005: member ロール適用 — identity を解決してアクセス制御フィルタを生成
         // TEAM-009 + S-2: user_id / team_id フィルターは認証設定がある場合（AuthConfig）のみ受け付ける。
         // 匿名モード（AuthConfig なし）では任意の user_id を渡すと他ユーザーのデータを参照できるため、
         // クエリパラメータの user_id / team_id を無視する。
+        const feedIdentity = resolveRequestIdentity(request);
+        const feedAccessFilter = feedIdentity
+          ? buildAccessFilter("o", feedIdentity)
+          : null;
         const feedAuthConfig = getAuthConfig();
         const validMemoryTypesFeed: MemoryType[] = ["episodic", "semantic", "procedural"];
         const rawMemoryTypeFeed = url.searchParams.get("memory_type") || undefined;
         const parsedMemoryTypeFeed = rawMemoryTypeFeed && validMemoryTypesFeed.includes(rawMemoryTypeFeed as MemoryType)
           ? rawMemoryTypeFeed as MemoryType
           : undefined;
+
+        // member ロールの場合は identity から user_id/team_id を強制適用（クエリパラメータより優先）
+        // admin ロールまたは匿名の場合はクエリパラメータを使用
+        // isMemberScope=true の場合は OR 条件（自分 OR 同チーム）で結合する
+        const isMemberScope = feedIdentity !== null && feedIdentity.role === "member";
+        const feedUserId = feedAccessFilter?.user_id
+          ?? (feedAuthConfig ? (url.searchParams.get("user_id") || undefined) : undefined);
+        const feedTeamId = feedAccessFilter?.team_id
+          ?? (feedAuthConfig ? (url.searchParams.get("team_id") || undefined) : undefined);
+
         const req: FeedRequest = {
           cursor: url.searchParams.get("cursor") || undefined,
           limit: parseInteger(url.searchParams.get("limit"), 40),
           project: url.searchParams.get("project") || undefined,
           type: url.searchParams.get("type") || undefined,
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
-          user_id: feedAuthConfig ? (url.searchParams.get("user_id") || undefined) : undefined,
-          team_id: feedAuthConfig ? (url.searchParams.get("team_id") || undefined) : undefined,
+          user_id: feedUserId,
+          team_id: feedTeamId ?? undefined,
+          _member_scope: isMemberScope,
           memory_type: parsedMemoryTypeFeed,
         };
         return jsonResponse(core.feed(req));
       }
 
       if (request.method === "GET" && url.pathname === "/v1/sessions/list") {
+        // TEAM-005: member ロール適用
+        const sessListIdentity = resolveRequestIdentity(request);
+        const sessListFilter = sessListIdentity
+          ? buildAccessFilter("s", sessListIdentity)
+          : null;
         const req: SessionsListRequest = {
           project: url.searchParams.get("project") || undefined,
           limit: parseInteger(url.searchParams.get("limit"), 50),
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          user_id: sessListFilter?.user_id ?? undefined,
+          team_id: sessListFilter?.team_id ?? undefined,
         };
         return jsonResponse(core.sessionsList(req));
       }
@@ -551,11 +585,18 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!sessionId) {
           return badRequest("session_id is required");
         }
+        // TEAM-005: member ロール適用
+        const sessThreadIdentity = resolveRequestIdentity(request);
+        const sessThreadFilter = sessThreadIdentity
+          ? buildAccessFilter("o", sessThreadIdentity)
+          : null;
         const req: SessionThreadRequest = {
           session_id: sessionId,
           project: url.searchParams.get("project") || undefined,
           limit: parseInteger(url.searchParams.get("limit"), 200),
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          user_id: sessThreadFilter?.user_id ?? undefined,
+          team_id: sessThreadFilter?.team_id ?? undefined,
         };
         return jsonResponse(core.sessionThread(req));
       }

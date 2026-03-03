@@ -32,6 +32,7 @@ import {
   parseArrayJson,
   visibilityFilterSql,
 } from "./core-utils.js";
+import type { AccessFilter } from "../auth/access-control.js";
 
 // ---------------------------------------------------------------------------
 // CoreDependencies: HarnessMemCore から渡される内部依存
@@ -67,6 +68,10 @@ export class SessionManager {
       ? this.deps.normalizeProject(request.project)
       : undefined;
 
+    // TEAM-005: member ロール適用
+    const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
+    const teamIdFilter = typeof request.team_id === "string" && request.team_id.trim() ? request.team_id.trim() : undefined;
+
     const params: unknown[] = [];
     let sql = `
       SELECT
@@ -97,6 +102,17 @@ export class SessionManager {
       params.push(normalizedProject);
     }
     sql += this.deps.platformVisibilityFilterSql("s");
+
+    // TEAM-005: member ロール — sessions テーブルの user_id / team_id で絞る
+    if (userIdFilter) {
+      if (teamIdFilter) {
+        sql += " AND (s.user_id = ? OR s.team_id = ?)";
+        params.push(userIdFilter, teamIdFilter);
+      } else {
+        sql += " AND s.user_id = ?";
+        params.push(userIdFilter);
+      }
+    }
 
     sql += `
       GROUP BY
@@ -143,6 +159,11 @@ export class SessionManager {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : undefined;
+
+    // TEAM-005: member ロール適用
+    const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
+    const teamIdFilter = typeof request.team_id === "string" && request.team_id.trim() ? request.team_id.trim() : undefined;
+
     const params: unknown[] = [request.session_id];
     let sql = `
       SELECT
@@ -169,6 +190,18 @@ export class SessionManager {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
+
+    // TEAM-005: member ロール — observations の user_id / team_id で絞る
+    if (userIdFilter) {
+      if (teamIdFilter) {
+        sql += " AND (o.user_id = ? OR o.team_id = ?)";
+        params.push(userIdFilter, teamIdFilter);
+      } else {
+        sql += " AND o.user_id = ?";
+        params.push(userIdFilter);
+      }
+    }
+
     sql += " ORDER BY o.created_at ASC, o.id ASC LIMIT ?";
     params.push(limit);
 

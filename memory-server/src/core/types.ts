@@ -49,6 +49,10 @@ export interface SearchRequest {
   sector?: "work" | "people" | "health" | "hobby" | "meta";
   /** V5-004: 記憶モデルタイプでフィルタリング: episodic|semantic|procedural */
   memory_type?: MemoryType | MemoryType[];
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface FeedRequest {
@@ -61,6 +65,12 @@ export interface FeedRequest {
   user_id?: string;
   /** TEAM-009: チームフィルター */
   team_id?: string;
+  /**
+   * TEAM-005: member ロール適用フラグ。
+   * true の場合、user_id + team_id フィルターを OR 条件（自分 OR 同チーム）で結合する。
+   * false/未設定の場合は従来の AND 結合（TEAM-009 互換）。
+   */
+  _member_scope?: boolean;
   /** V5-004: 記憶モデルタイプでフィルタリング */
   memory_type?: MemoryType | MemoryType[];
 }
@@ -73,6 +83,10 @@ export interface SessionsListRequest {
   project?: string;
   limit?: number;
   include_private?: boolean;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface SessionThreadRequest {
@@ -80,6 +94,10 @@ export interface SessionThreadRequest {
   project?: string;
   limit?: number;
   include_private?: boolean;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface SearchFacetsRequest {
