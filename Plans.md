@@ -46,15 +46,15 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
   - `observation-store.ts` L524 の IN 句に `contradicts/causes/part_of/updates` 追加
   - DoD: 8種全 relation が検索展開対象。テスト4件追加
 
-- [ ] `cc:TODO [P]` **GRAPH-002**: expandByLinks を双方向探索に拡張
+- [x] `cc:完了 [P]` **GRAPH-002**: expandByLinks を双方向探索に拡張
   - `to_observation_id IN (frontierIds)` も探索対象に追加（L494-568）
   - DoD: 双方向リンクが検索展開で辿られる。テスト3件追加
 
-- [ ] `cc:TODO [P]` **GRAPH-003**: expandByLinks の MAX_DEPTH を設定可能化
+- [x] `cc:完了 [P]` **GRAPH-003**: expandByLinks の MAX_DEPTH を設定可能化
   - `config.graphMaxHops` で上書き可能に（デフォルト3、上限5）
   - DoD: `HARNESS_MEM_GRAPH_MAX_HOPS=5` で5ホップ探索動作。テスト2件追加
 
-- [ ] `cc:TODO` **GRAPH-004**: 既存 getLinks に depth パラメータ追加 + OpenAPI/MCP 更新
+- [x] `cc:完了` **GRAPH-004**: 既存 getLinks に depth パラメータ追加 + OpenAPI/MCP 更新
   - `server.ts` L1007 の既存エンドポイント修正。`depth`(1-5, default 1) → BFS 探索
   - DoD: depth=3 動作 + `openapi.yaml` + `mcp-openapi-consistency.test.ts` 更新。テスト3件追加
 
@@ -92,12 +92,13 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
   - DoD: 移行対象の SQL 一覧 + 対応 Repository メソッドのマッピング表
   - 成果物: `docs/pg-migration-map.md` に全 sync 呼び出しマッピング表を作成
 
-- [ ] `cc:TODO` **PG-001**: POSTGRES_INIT_SQL に後付けカラム追加
+- [x] `cc:完了` **PG-001**: POSTGRES_INIT_SQL に後付けカラム追加
   - `ObservationRow` 全フィールドと `POSTGRES_INIT_SQL` の `mem_observations` を比較
   - 不足: user_id, team_id, signal_score, access_count, last_accessed_at, cognitive_sector, memory_type
   - `mem_sessions`/`mem_events` の user_id, team_id も追加
   - ObservationRow に不足フィールド(access_count/last_accessed_at/cognitive_sector/workspace_uid)も追記
   - DoD: ObservationRow/SessionRow 型定義と PG スキーマが1:1対応。テスト2件追加
+  - SQLite migrateSchema に workspace_uid 追加。全ユニットテスト 429件パス
 
 - [ ] `cc:TODO [P]` **PG-002**: PgObservationRepository 実装
   - IObservationRepository を implements。`adapter.runAsync()`/`queryAllAsync()` 経由
@@ -135,7 +136,7 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
 目的: チーム CRUD + メンバー管理 + 権限制御。前提: TEAM-001 の postgres-schema.ts 変更は PG-001 完了後。
 DB カラム(user_id/team_id)・AuthConfig・アクセスフィルタは実装済み。チーム実体テーブル+管理 API が未実装。
 
-- [ ] `cc:TODO` **TEAM-001**: チーム関連 DB テーブルの追加
+- [x] `cc:完了` **TEAM-001**: チーム関連 DB テーブルの追加
   - `mem_teams` (team_id, name, description, created_at, updated_at)
   - `mem_team_members` (team_id, user_id, role, joined_at)
   - `mem_team_invitations` (id, team_id, invitee_identifier, role, token, expires_at, status)

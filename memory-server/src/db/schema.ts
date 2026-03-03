@@ -244,6 +244,47 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_vec_map_observation
       ON mem_vectors_vec_map(observation_id);
+
+    CREATE TABLE IF NOT EXISTS mem_teams (
+      team_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_teams_name
+      ON mem_teams(name);
+
+    CREATE TABLE IF NOT EXISTS mem_team_members (
+      team_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      joined_at TEXT NOT NULL,
+      PRIMARY KEY(team_id, user_id),
+      FOREIGN KEY(team_id) REFERENCES mem_teams(team_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_team_members_user
+      ON mem_team_members(user_id);
+
+    CREATE TABLE IF NOT EXISTS mem_team_invitations (
+      id TEXT PRIMARY KEY,
+      team_id TEXT NOT NULL,
+      invitee_identifier TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(team_id) REFERENCES mem_teams(team_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_token
+      ON mem_team_invitations(token);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_team_status
+      ON mem_team_invitations(team_id, status);
   `);
 }
 
@@ -470,6 +511,97 @@ export function migrateSchema(db: Database): void {
 
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_sync_connections_type ON mem_sync_connections(type, status)`);
+  } catch {
+    // already exists
+  }
+
+  // PG-001: workspace_uid カラムを追加（PG スキーマとの整合）
+  try {
+    db.exec(`ALTER TABLE mem_sessions ADD COLUMN workspace_uid TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_events ADD COLUMN workspace_uid TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN workspace_uid TEXT NOT NULL DEFAULT ''`);
+  } catch {
+    // already exists
+  }
+
+  // TEAM-001: チーム管理テーブル追加（既存DBへの後付け）
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_teams (
+        team_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_teams_name ON mem_teams(name)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_team_members (
+        team_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        joined_at TEXT NOT NULL,
+        PRIMARY KEY(team_id, user_id),
+        FOREIGN KEY(team_id) REFERENCES mem_teams(team_id) ON DELETE CASCADE
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_team_members_user ON mem_team_members(user_id)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_team_invitations (
+        id TEXT PRIMARY KEY,
+        team_id TEXT NOT NULL,
+        invitee_identifier TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'member',
+        token TEXT NOT NULL UNIQUE,
+        expires_at TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(team_id) REFERENCES mem_teams(team_id) ON DELETE CASCADE
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_token ON mem_team_invitations(token)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_team_status ON mem_team_invitations(team_id, status)`);
   } catch {
     // already exists
   }

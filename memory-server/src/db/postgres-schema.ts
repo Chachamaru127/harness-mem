@@ -26,6 +26,8 @@ export const POSTGRES_INIT_SQL = `
     summary TEXT,
     summary_mode TEXT,
     correlation_id TEXT,
+    user_id TEXT NOT NULL DEFAULT 'default',
+    team_id TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
@@ -51,6 +53,8 @@ export const POSTGRES_INIT_SQL = `
     dedupe_hash TEXT NOT NULL UNIQUE,
     observation_id TEXT,
     correlation_id TEXT,
+    user_id TEXT NOT NULL DEFAULT 'default',
+    team_id TEXT DEFAULT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -72,8 +76,15 @@ export const POSTGRES_INIT_SQL = `
     content TEXT NOT NULL,
     content_redacted TEXT NOT NULL,
     observation_type TEXT NOT NULL DEFAULT 'context',
+    memory_type TEXT NOT NULL DEFAULT 'semantic',
     tags_json JSONB NOT NULL DEFAULT '[]',
     privacy_tags_json JSONB NOT NULL DEFAULT '[]',
+    signal_score DOUBLE PRECISION NOT NULL DEFAULT 0,
+    access_count INTEGER NOT NULL DEFAULT 0,
+    last_accessed_at TIMESTAMPTZ,
+    cognitive_sector TEXT NOT NULL DEFAULT 'meta',
+    user_id TEXT NOT NULL DEFAULT 'default',
+    team_id TEXT DEFAULT NULL,
     search_vector tsvector GENERATED ALWAYS AS (
       setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
       setweight(to_tsvector('simple', content_redacted), 'B')
@@ -244,6 +255,45 @@ export const POSTGRES_INIT_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_import_jobs_status_requested
     ON mem_import_jobs(status, requested_at DESC);
+
+  CREATE TABLE IF NOT EXISTS mem_teams (
+    team_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_teams_name
+    ON mem_teams(name);
+
+  CREATE TABLE IF NOT EXISTS mem_team_members (
+    team_id TEXT NOT NULL REFERENCES mem_teams(team_id) ON DELETE CASCADE,
+    user_id TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(team_id, user_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_team_members_user
+    ON mem_team_members(user_id);
+
+  CREATE TABLE IF NOT EXISTS mem_team_invitations (
+    id TEXT PRIMARY KEY,
+    team_id TEXT NOT NULL REFERENCES mem_teams(team_id) ON DELETE CASCADE,
+    invitee_identifier TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member',
+    token TEXT NOT NULL UNIQUE,
+    expires_at TIMESTAMPTZ NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_team_invitations_token
+    ON mem_team_invitations(token);
+
+  CREATE INDEX IF NOT EXISTS idx_pg_team_invitations_team_status
+    ON mem_team_invitations(team_id, status);
 `;
 
 /**
