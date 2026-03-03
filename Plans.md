@@ -100,22 +100,23 @@ supermemory/mem0 が 119/140 で同率首位。+5pt 以上で首位奪還。
   - DoD: ObservationRow/SessionRow 型定義と PG スキーマが1:1対応。テスト2件追加
   - SQLite migrateSchema に workspace_uid 追加。全ユニットテスト 429件パス
 
-- [ ] `cc:TODO [P]` **PG-002**: PgObservationRepository 実装
+- [x] `cc:完了 [P]` **PG-002**: PgObservationRepository 実装
   - IObservationRepository を implements。`adapter.runAsync()`/`queryAllAsync()` 経由
   - `INSERT OR IGNORE` → `ON CONFLICT DO NOTHING`、LIKE → PG 互換に変換
   - DoD: 全メソッド実装。テスト10件以上
+  - 成果物: `src/db/repositories/PgObservationRepository.ts`、テスト17件パス（全466件パス）
 
-- [ ] `cc:TODO [P]` **PG-003**: PgSessionRepository 実装
+- [x] `cc:完了 [P]` **PG-003**: PgSessionRepository 実装
   - `db/repositories/PgSessionRepository.ts` を新規作成
   - ISessionRepository を implements
-  - DoD: 全メソッド実装。テスト8件以上
+  - DoD: 全メソッド実装。テスト8件以上（16件実装、885 pass 0 fail）
 
-- [ ] `cc:TODO [P]` **PG-004**: PgVectorRepository 実装
+- [x] `cc:完了 [P]` **PG-004**: PgVectorRepository 実装
   - `db/repositories/PgVectorRepository.ts` を新規作成
   - IVectorRepository を implements
   - `vector_json TEXT` → `embedding vector` 型のマッピング
   - `pgvectorSearchAsync()` の統合
-  - DoD: 全メソッド実装。テスト8件以上
+  - DoD: 全メソッド実装。テスト17件（902 pass 0 fail）
 
 - [ ] `cc:TODO` **PG-005**: adapter-factory の PG ファクトリー対応
   - `managed` モードで PostgresStorageAdapter + Pg*Repository を生成
