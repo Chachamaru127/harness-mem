@@ -102,8 +102,9 @@ export class BenchmarkRunner {
         limit: 10,
       });
 
-      const retrievedIds = result.items.map((item) => `obs_${item.id ?? ""}`);
-      // relevant_ids も obs_ prefix を付けて比較
+      // item.id は DB 上で既に "obs_" プレフィックス付き（event-recorder.ts L609）
+      const retrievedIds = result.items.map((item) => String(item.id ?? ""));
+      // relevant_ids にも同じ "obs_" プレフィックスを付けて形式を合わせる
       const relevantIds = s.relevant_ids.map((rid) => `obs_${rid}`);
 
       if (config.metrics.includes("recall@10")) {
