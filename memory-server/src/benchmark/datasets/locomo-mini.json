@@ -1,0 +1,67 @@
+{
+  "name": "locomo-mini",
+  "description": "LoCoMo 風 CI 用最小サブセット（10サンプル）",
+  "version": "1.0.0",
+  "samples": [
+    {
+      "id": "locomo-001",
+      "content": "プロジェクトのデータベースはPostgreSQLバージョン16を採用している",
+      "query": "PostgreSQL データベース バージョン",
+      "relevant_ids": ["locomo-001"]
+    },
+    {
+      "id": "locomo-002",
+      "content": "バックエンドはTypeScriptとNode.jsで実装されている",
+      "query": "TypeScript Node.js バックエンド 実装",
+      "relevant_ids": ["locomo-002"]
+    },
+    {
+      "id": "locomo-003",
+      "content": "CIパイプラインはGitHub Actionsで自動テストとデプロイを実行する",
+      "query": "GitHub Actions CI 自動テスト",
+      "relevant_ids": ["locomo-003"]
+    },
+    {
+      "id": "locomo-004",
+      "content": "認証システムにはJWTトークンを使用し、有効期限は1時間に設定されている",
+      "query": "JWT トークン 認証 有効期限",
+      "relevant_ids": ["locomo-004"]
+    },
+    {
+      "id": "locomo-005",
+      "content": "デプロイはDockerコンテナを使いKubernetesクラスター上で運用する",
+      "query": "Docker Kubernetes デプロイ コンテナ",
+      "relevant_ids": ["locomo-005"]
+    },
+    {
+      "id": "locomo-006",
+      "content": "フロントエンドはReactとNext.jsで構築されている",
+      "query": "React Next.js フロントエンド 構築",
+      "relevant_ids": ["locomo-006"]
+    },
+    {
+      "id": "locomo-007",
+      "content": "APIはRESTful設計でv1プレフィックスを使用し、OpenAPI仕様でドキュメント化されている",
+      "query": "REST API v1 OpenAPI ドキュメント",
+      "relevant_ids": ["locomo-007"]
+    },
+    {
+      "id": "locomo-008",
+      "content": "ベクトル検索はpgvector拡張を使ってコサイン類似度で実装している",
+      "query": "pgvector ベクトル検索 コサイン類似度",
+      "relevant_ids": ["locomo-008"]
+    },
+    {
+      "id": "locomo-009",
+      "content": "ログ管理にはOpenTelemetryを採用し、分散トレーシングを実現している",
+      "query": "OpenTelemetry ログ 分散トレーシング",
+      "relevant_ids": ["locomo-009"]
+    },
+    {
+      "id": "locomo-010",
+      "content": "セキュリティスキャンはSemgrepとTrivyで週次に実行している",
+      "query": "Semgrep Trivy セキュリティスキャン 週次",
+      "relevant_ids": ["locomo-010"]
+    }
+  ]
+}

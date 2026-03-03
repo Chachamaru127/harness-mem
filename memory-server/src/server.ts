@@ -3,6 +3,11 @@ import { resolve } from "node:path";
 import { resolveTokenIdentity, loadAuthConfig, extractBearerToken, type AuthConfig, type ResolvedIdentity } from "./auth/token-resolver";
 import { createSyncStore, handleSyncPush, handleSyncPull, type SyncStore } from "./sync/sync-store";
 import type { Changeset, ConflictPolicy } from "./sync/engine";
+import { ConnectorRegistry } from "./sync/connector-registry";
+import { GitHubConnector } from "./sync/github-connector";
+import { NotionConnector } from "./sync/notion-connector";
+import { GoogleDriveConnector } from "./sync/gdrive-connector";
+import type { ConnectorConfig } from "./sync/types";
 import { HarnessMemCore } from "./core/harness-mem-core";
 import type {
   FeedRequest,
@@ -295,6 +300,9 @@ export function checkRemoteBindSafety(host: string): string | null {
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // HARDEN-003: Sync エンドポイント用インメモリストア（サーバー起動時に初期化）
   const syncStore: SyncStore = createSyncStore();
+
+  // V5-005: Cloud Sync コネクタレジストリ
+  const connectorRegistry = new ConnectorRegistry();
 
   return Bun.serve({
     hostname: config.bindHost,
@@ -873,6 +881,65 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
       }
 
+      // V5-006: Analytics API
+      if (request.method === "GET" && url.pathname === "/v1/analytics/usage") {
+        const period = url.searchParams.get("period") || "day";
+        const validPeriods = ["day", "week", "month"];
+        const stats = await core.usageStats({
+          period: validPeriods.includes(period) ? (period as "day" | "week" | "month") : "day",
+          from: url.searchParams.get("from") || undefined,
+          to: url.searchParams.get("to") || undefined,
+          project: url.searchParams.get("project") || undefined,
+        });
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: [stats],
+          meta: { count: stats.rows.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "analytics_v1" },
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/analytics/entities") {
+        const limit = parseInteger(url.searchParams.get("limit"), 50);
+        const stats = await core.entityDistribution({
+          limit: Math.min(limit, 500),
+          project: url.searchParams.get("project") || undefined,
+          entity_type: url.searchParams.get("entity_type") || undefined,
+        });
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: stats,
+          meta: { count: stats.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "analytics_v1" },
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/analytics/timeline-stats") {
+        const stats = await core.timelineStats({
+          from: url.searchParams.get("from") || undefined,
+          to: url.searchParams.get("to") || undefined,
+          project: url.searchParams.get("project") || undefined,
+        });
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: [stats],
+          meta: { count: stats.buckets.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "analytics_v1" },
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/analytics/overview") {
+        const stats = await core.overviewStats({
+          project: url.searchParams.get("project") || undefined,
+        });
+        return jsonResponse({
+          ok: true,
+          source: "core",
+          items: [stats],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "analytics_v1" },
+        });
+      }
+
       // V5-001: サブグラフ取得 API（一般ユーザー用、認証不要）
       if (request.method === "GET" && url.pathname === "/v1/graph") {
         const entity = url.searchParams.get("entity") || "";
@@ -983,6 +1050,121 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             filters: {},
             ranking: "sync_v1",
           },
+        });
+      }
+
+      // V5-005: GET /v1/sync/connectors — コネクタ一覧
+      if (request.method === "GET" && url.pathname === "/v1/sync/connectors") {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const connectors = connectorRegistry.list().map((c) => ({
+          name: c.name,
+          type: c.type,
+        }));
+        return jsonResponse({
+          ok: true,
+          source: "sync",
+          items: connectors,
+          meta: { count: connectors.length, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        });
+      }
+
+      // V5-005: POST /v1/sync/connectors — コネクタ登録
+      if (request.method === "POST" && url.pathname === "/v1/sync/connectors") {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const body = await parseRequestJson(request);
+        const name = typeof body.name === "string" ? body.name.trim() : "";
+        const type = body.type as string;
+
+        if (!name) {
+          return badRequest("name is required");
+        }
+        if (!["github", "notion", "gdrive"].includes(type)) {
+          return badRequest("type must be one of: github, notion, gdrive");
+        }
+
+        const connectorConfig: ConnectorConfig = {
+          type: type as "github" | "notion" | "gdrive",
+          credentials: toRecord(body.credentials) as Record<string, string>,
+          settings: toRecord(body.settings),
+        };
+
+        let connector;
+        if (type === "github") {
+          connector = new GitHubConnector(name);
+        } else if (type === "notion") {
+          connector = new NotionConnector(name);
+        } else {
+          connector = new GoogleDriveConnector(name);
+        }
+
+        await connector.initialize(connectorConfig);
+        connectorRegistry.register(connector);
+
+        return jsonResponse({
+          ok: true,
+          source: "sync",
+          items: [{ name, type }],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        });
+      }
+
+      // V5-005: DELETE /v1/sync/connectors/:name — コネクタ削除
+      if (request.method === "DELETE" && url.pathname.startsWith("/v1/sync/connectors/")) {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const namePart = url.pathname.slice("/v1/sync/connectors/".length);
+        if (!namePart || namePart.includes("/")) {
+          return badRequest("invalid connector name");
+        }
+        const removed = connectorRegistry.unregister(namePart);
+        return jsonResponse({
+          ok: removed,
+          source: "sync",
+          items: [{ name: namePart, removed }],
+          meta: { count: removed ? 1 : 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        }, removed ? 200 : 404);
+      }
+
+      // V5-005: POST /v1/sync/connectors/:name/test — 接続テスト
+      if (request.method === "POST" && /^\/v1\/sync\/connectors\/[^/]+\/test$/.test(url.pathname)) {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const parts = url.pathname.split("/");
+        const connName = parts[parts.length - 2];
+        const connector = connectorRegistry.get(connName);
+        if (!connector) {
+          return jsonResponse({ ok: false, source: "sync", items: [], meta: { count: 0, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" }, error: `Connector '${connName}' not found` }, 404);
+        }
+        const testResult = await connector.testConnection();
+        return jsonResponse({
+          ok: testResult.ok,
+          source: "sync",
+          items: [testResult],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        });
+      }
+
+      // V5-005: POST /v1/sync/connectors/:name/sync — 個別同期実行
+      if (request.method === "POST" && /^\/v1\/sync\/connectors\/[^/]+\/sync$/.test(url.pathname)) {
+        if (!hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
+        const parts = url.pathname.split("/");
+        const connName = parts[parts.length - 2];
+        const body = await parseRequestJson(request);
+        const changes = Array.isArray(body.changes) ? body.changes : [];
+        const syncResult = await connectorRegistry.syncConnector(connName, changes);
+        return jsonResponse({
+          ok: syncResult.errors.length === 0,
+          source: "sync",
+          items: [syncResult],
+          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
         });
       }
 

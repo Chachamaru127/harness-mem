@@ -1,0 +1,67 @@
+{
+  "name": "longmemeval-mini",
+  "description": "LongMemEval 風 CI 用最小サブセット（10サンプル）",
+  "version": "1.0.0",
+  "samples": [
+    {
+      "id": "lme-001",
+      "content": "ユーザーはPythonが得意なエンジニアで機械学習プロジェクトを主に担当している",
+      "query": "Python エンジニア 機械学習",
+      "relevant_ids": ["lme-001"]
+    },
+    {
+      "id": "lme-002",
+      "content": "チームの週次ミーティングは毎週月曜10時に開催されている",
+      "query": "週次ミーティング 月曜 時間",
+      "relevant_ids": ["lme-002"]
+    },
+    {
+      "id": "lme-003",
+      "content": "プロジェクトのコードレビューはGitHub Pull Requestで実施し、最低2名のApprovalが必要",
+      "query": "コードレビュー GitHub Pull Request 承認",
+      "relevant_ids": ["lme-003"]
+    },
+    {
+      "id": "lme-004",
+      "content": "リリースサイクルは2週間スプリントでスプリント末にステージング環境へデプロイする",
+      "query": "リリース スプリント ステージング デプロイ",
+      "relevant_ids": ["lme-004"]
+    },
+    {
+      "id": "lme-005",
+      "content": "本番データベースのバックアップは毎日深夜2時に自動実行され7日間保持される",
+      "query": "データベース バックアップ 毎日 保持期間",
+      "relevant_ids": ["lme-005"]
+    },
+    {
+      "id": "lme-006",
+      "content": "インフラコストの月次レポートはAWS Cost Explorerで作成し財務チームへ共有する",
+      "query": "AWS コスト レポート 月次",
+      "relevant_ids": ["lme-006"]
+    },
+    {
+      "id": "lme-007",
+      "content": "サポートチケットはJiraで管理され重要度P1は24時間以内に対応する",
+      "query": "Jira サポート チケット 優先度 対応時間",
+      "relevant_ids": ["lme-007"]
+    },
+    {
+      "id": "lme-008",
+      "content": "モデルのトレーニングはGPUクラスターでA100を8枚使いバッチサイズ256で実行する",
+      "query": "GPU A100 トレーニング バッチサイズ",
+      "relevant_ids": ["lme-008"]
+    },
+    {
+      "id": "lme-009",
+      "content": "社内ドキュメントはConfluenceで管理し全社員が閲覧できるようになっている",
+      "query": "Confluence ドキュメント 社内 管理",
+      "relevant_ids": ["lme-009"]
+    },
+    {
+      "id": "lme-010",
+      "content": "コードのフォーマットはPrettierとESLintで自動チェックしpre-commitフックで強制する",
+      "query": "Prettier ESLint フォーマット pre-commit",
+      "relevant_ids": ["lme-010"]
+    }
+  ]
+}

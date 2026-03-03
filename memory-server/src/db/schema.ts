@@ -451,6 +451,29 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // V5-005: Cloud Sync コネクタ接続情報テーブル
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_sync_connections (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        type TEXT NOT NULL,
+        config TEXT NOT NULL,
+        last_synced_at TEXT,
+        status TEXT DEFAULT 'active',
+        created_at TEXT DEFAULT (datetime('now'))
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_sync_connections_type ON mem_sync_connections(type, status)`);
+  } catch {
+    // already exists
+  }
+
   // プロジェクト名空文字のレコードがあれば警告ログ
   const emptyProjects = db.query(`SELECT COUNT(*) as cnt FROM mem_events WHERE trim(project) = ''`).get() as {cnt: number};
   if (emptyProjects.cnt > 0) {

@@ -12,6 +12,8 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "event_id": "string",
         "event_type": "string",
         "id": "string",
+        "memory_type": "string",
+        "observation_type": "string",
         "platform": "string",
         "privacy_tags": [
           "empty",
@@ -205,6 +207,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "decay_tier": "string",
         "event_id": "string",
         "id": "string",
+        "memory_type": "string",
         "observation_type": "string",
         "platform": "string",
         "privacy_tags": [

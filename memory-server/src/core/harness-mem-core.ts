@@ -41,6 +41,8 @@ import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
+import { AnalyticsService } from "./analytics";
+import type { UsageParams, UsageStats, EntityParams, EntityStats, TimelineParams, TimelineStats, OverviewParams, OverviewStats } from "./analytics";
 import {
   clampLimit,
   DEFAULT_ANTIGRAVITY_BACKFILL_HOURS,
@@ -375,6 +377,7 @@ export class HarnessMemCore {
   private obsStore!: ObservationStore;
   private ingestCoord!: IngestCoordinator;
   private cfgMgr!: ConfigManager;
+  private analyticsSvc!: AnalyticsService;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -497,6 +500,14 @@ export class HarnessMemCore {
       reindexObservationVector: (id, content, createdAt) =>
         this.eventRec.reindexObservationVector(id, content, createdAt),
       isAntigravityIngestEnabled: () => this.config.antigravityIngestEnabled !== false,
+    });
+
+    this.analyticsSvc = new AnalyticsService({
+      db: {
+        query: (sql: string, params?: unknown[]) => ({
+          all: () => this.db.query(sql).all(...(params ?? [])),
+        }),
+      },
     });
   }
 
@@ -1505,6 +1516,26 @@ export class HarnessMemCore {
 
   getSubgraph(entity: string, depth: number, options?: { project?: string; limit?: number }) {
     return this.obsStore.getSubgraph(entity, depth, options);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Analytics API (V5-006)
+  // ---------------------------------------------------------------------------
+
+  async usageStats(params: UsageParams): Promise<UsageStats> {
+    return this.analyticsSvc.getUsageStats(params);
+  }
+
+  async entityDistribution(params: EntityParams): Promise<EntityStats[]> {
+    return this.analyticsSvc.getEntityDistribution(params);
+  }
+
+  async timelineStats(params: TimelineParams): Promise<TimelineStats> {
+    return this.analyticsSvc.getTimelineStats(params);
+  }
+
+  async overviewStats(params: OverviewParams): Promise<OverviewStats> {
+    return this.analyticsSvc.getOverview(params);
   }
 
   ingestCodexHistory(): ApiResponse {

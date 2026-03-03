@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-03（v5ベンチマーク + §29改善プラン策定）
+最終更新: 2026-03-03（§29 Phase 1 完了、Phase 2 着手）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-21 → [`docs/archive/Plans-2026-02-26.md`](docs/archive/Plans-2026-02-26.md)
@@ -40,33 +40,17 @@
 
 ### Phase 1: 即効性の高い差別化（P0, +5pt → 124, 4並列可）
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-001**: Graph 強化 — ナレッジグラフ API + Embeddable コンポーネント
-  - **8→10 (+2pt, CRITICAL)**
-  - (a) サブグラフ取得 API: `GET /v1/graph?entity=X&depth=3`
-  - (b) `shared_entity` リンク自動検出
-  - (c) relation types: 既存5種 + `contradicts`/`causes`/`part_of`（計8種）
-  - (d) `<HarnessMemGraph />` React コンポーネント (D3.js force-directed)
-  - DoD: サブグラフAPI + 自動リンク + 8 relations + React可視化 + テスト 10件
+- [x] `cc:完了` **V5-001**: Graph 強化 — ナレッジグラフ API + 8 relation types
+  - サブグラフ API + autoLink拡張 + 8 relations + テスト 24件 ✅
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-002**: Cross-Encoder Reranker 統合
-  - **9→10 (+1pt, HIGH)**
-  - (a) `IReranker` プロバイダーインターフェース
-  - (b) Cohere rerank-v3.5 / HF cross-encoder / ローカル sentence-transformers
-  - (c) 既存 simple-reranker をフォールバック維持
-  - DoD: 3プロバイダー + フォールバック + テスト 8件
+- [x] `cc:完了` **V5-002**: Cross-Encoder Reranker 統合
+  - IReranker + Cohere/HF/ST 3プロバイダー + simple-v1 フォールバック + テスト 24件 ✅
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-003**: Platform SDK — Vercel AI + CrewAI + MCP Registry
-  - **9→10 (+1pt, HIGH)**
-  - (a) Vercel AI SDK MemoryProvider + CrewAI Memory ラッパー
-  - (b) MCP Registry（smithery.ai）公式登録
-  - (c) `npx harness-mem setup --client [claude|cursor|windsurf|cline]`
-  - DoD: 2 SDK + Registry + セットアップ + テスト 8件
+- [x] `cc:完了` **V5-003**: Platform SDK — Vercel AI + CrewAI + MCP Registry
+  - Vercel AI Provider + CrewAI Memory + smithery.json + setup CLI + テスト 43+22件 ✅
 
-- [ ] `cc:TODO [feature:tdd] [P]` **V5-004**: Memory Model — episodic/semantic/procedural 自動分類
-  - **8→9 (+1pt, HIGH)**
-  - (a) `observation_type` 拡張 + `classifyMemoryType()`
-  - (b) 検索時の `memory_type` フィルタ
-  - DoD: 3記憶型の自動分類 + フィルタ + テスト 8件
+- [x] `cc:完了` **V5-004**: Memory Model — episodic/semantic/procedural 自動分類
+  - classifyMemoryType + search/feed フィルタ + テスト 14件 ✅
 
 ---
 
