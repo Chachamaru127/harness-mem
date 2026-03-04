@@ -209,6 +209,84 @@ export class BenchmarkRunner {
   }
 
   /**
+   * §34 FD-004: Weighted Kendall tau
+   *
+   * 最新情報の順序誤りに大きなペナルティを与えるWeighted Kendall tau。
+   * - w_i = exp(-λ * rank_i), λ=0.1 (高ランクほど重み大)
+   * - concordant/discordant pairs を重み付きで計算
+   * - retrieved: 検索結果の ID 配列（上位から順）
+   * - expectedOrder: 期待される時系列順序の ID 配列
+   * - k: 評価対象の上位 K 件
+   * - 戻り値: [0, 1] に正規化した Weighted Kendall tau
+   */
+  calculateWeightedKendallTau(retrieved: string[], expectedOrder: string[], k: number): number {
+    const LAMBDA = 0.1;
+    const topK = retrieved.slice(0, k);
+    const filteredRetrieved = topK.filter((id) => expectedOrder.includes(id));
+    if (filteredRetrieved.length < 2) return 0.5;
+
+    const ranks = filteredRetrieved.map((id) => expectedOrder.indexOf(id));
+
+    let weightedConcordant = 0;
+    let weightedDiscordant = 0;
+    let totalWeight = 0;
+
+    for (let i = 0; i < ranks.length; i++) {
+      for (let j = i + 1; j < ranks.length; j++) {
+        // 検索結果での順位ベースの重み（上位ほど重み大）
+        const w = Math.exp(-LAMBDA * i) + Math.exp(-LAMBDA * j);
+        totalWeight += w;
+        if (ranks[i] < ranks[j]) {
+          weightedConcordant += w;
+        } else if (ranks[i] > ranks[j]) {
+          weightedDiscordant += w;
+        }
+      }
+    }
+
+    if (totalWeight === 0) return 0.5;
+    const tau = (weightedConcordant - weightedDiscordant) / totalWeight;
+    // [-1, 1] → [0, 1] に正規化
+    return (tau + 1) / 2;
+  }
+
+  /**
+   * §34 FD-004: nDCG@5（Temporal Gain）
+   *
+   * 時系列距離ベースのゲインを使った nDCG@5。
+   * - gain(i) = 1 / (1 + |retrieved_rank - expected_rank|)
+   * - 期待順序から近いほど高いゲイン
+   * - retrieved: 検索結果の ID 配列（上位から順）
+   * - expectedOrder: 期待される時系列順序の ID 配列
+   * - k: 評価対象の上位 K 件（通常5）
+   * - 戻り値: [0, 1] のnDCG@k スコア
+   */
+  calculateNDCGAtK(retrieved: string[], expectedOrder: string[], k: number): number {
+    const topK = retrieved.slice(0, k);
+
+    // DCG 計算
+    let dcg = 0;
+    for (let i = 0; i < topK.length; i++) {
+      const id = topK[i];
+      const expectedIdx = expectedOrder.indexOf(id);
+      if (expectedIdx === -1) continue;
+      // temporal gain: 期待順位との距離が小さいほど高ゲイン
+      const gain = 1 / (1 + Math.abs(i - expectedIdx));
+      dcg += gain / Math.log2(i + 2);
+    }
+
+    // IDCG: 理想的な順序（expected order の上位 k 件が完全一致）
+    let idcg = 0;
+    const idealCount = Math.min(k, expectedOrder.length);
+    for (let i = 0; i < idealCount; i++) {
+      // 理想ゲイン = 1 (distance = 0)
+      idcg += 1 / Math.log2(i + 2);
+    }
+
+    return idcg === 0 ? 0 : dcg / idcg;
+  }
+
+  /**
    * Temporal Order Score: 時系列順序の正しさを Kendall tau 相関係数で測定する。
    *
    * - retrieved: 検索結果の ID 配列（上位から順）
@@ -245,5 +323,120 @@ export class BenchmarkRunner {
     const tau = (concordant - discordant) / totalPairs;
     // [-1, 1] → [0, 1] に正規化
     return (tau + 1) / 2;
+  }
+
+  /**
+   * §34 FD-011: Bootstrap CI（信頼区間推定）
+   *
+   * 観測スコアのリサンプリングにより 95% Bootstrap 信頼区間を推定する。
+   * recall=1.0 のような上限張り付きケースは Wilson CI にフォールバック。
+   *
+   * - scores: 各サンプルのスコア配列 [0, 1]
+   * - numSamples: ブートストラップ反復数（デフォルト 10000）
+   * - confidence: 信頼水準（デフォルト 0.95）
+   * - 戻り値: { lower, upper, mean, se, method }
+   */
+  bootstrapCI(
+    scores: number[],
+    numSamples = 10000,
+    confidence = 0.95
+  ): { lower: number; upper: number; mean: number; se: number; method: string } {
+    if (scores.length === 0) {
+      return { lower: 0, upper: 0, mean: 0, se: 0, method: "empty" };
+    }
+
+    const n = scores.length;
+    const mean = scores.reduce((a, b) => a + b, 0) / n;
+
+    // recall=1.0 / recall=0.0 など上限・下限張り付きは Wilson CI にフォールバック
+    const allSame = scores.every((s) => s === scores[0]);
+    if (allSame && (mean >= 1.0 || mean <= 0.0)) {
+      return this._wilsonCI(mean, n, confidence);
+    }
+
+    // Bootstrap リサンプリング
+    const bootstrapMeans: number[] = new Array(numSamples);
+    for (let b = 0; b < numSamples; b++) {
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        sum += scores[Math.floor(Math.random() * n)];
+      }
+      bootstrapMeans[b] = sum / n;
+    }
+    bootstrapMeans.sort((a, b) => a - b);
+
+    const alpha = 1 - confidence;
+    const lowerIdx = Math.floor((alpha / 2) * numSamples);
+    const upperIdx = Math.floor((1 - alpha / 2) * numSamples) - 1;
+
+    const se = Math.sqrt(
+      bootstrapMeans.reduce((acc, m) => acc + (m - mean) ** 2, 0) / (numSamples - 1)
+    );
+
+    return {
+      lower: Number(bootstrapMeans[lowerIdx].toFixed(4)),
+      upper: Number(bootstrapMeans[Math.min(upperIdx, numSamples - 1)].toFixed(4)),
+      mean: Number(mean.toFixed(4)),
+      se: Number(se.toFixed(4)),
+      method: "bootstrap",
+    };
+  }
+
+  /**
+   * Wilson スコア信頼区間（比率データの上限張り付き時フォールバック）
+   */
+  private _wilsonCI(
+    p: number,
+    n: number,
+    confidence: number
+  ): { lower: number; upper: number; mean: number; se: number; method: string } {
+    // z 値: 95% → 1.96, 99% → 2.576
+    const zMap: Record<number, number> = { 0.90: 1.645, 0.95: 1.96, 0.99: 2.576 };
+    const z = zMap[confidence] ?? 1.96;
+    const z2 = z * z;
+    const denom = 1 + z2 / n;
+    const center = (p + z2 / (2 * n)) / denom;
+    const spread = (z / denom) * Math.sqrt((p * (1 - p)) / n + z2 / (4 * n * n));
+    const se = Math.sqrt((p * (1 - p)) / Math.max(n, 1));
+    return {
+      lower: Number(Math.max(0, center - spread).toFixed(4)),
+      upper: Number(Math.min(1, center + spread).toFixed(4)),
+      mean: Number(p.toFixed(4)),
+      se: Number(se.toFixed(4)),
+      method: "wilson",
+    };
+  }
+
+  /**
+   * §34 FD-011: Holm-Bonferroni 多重比較補正
+   *
+   * 複数の仮説検定の p 値に Holm-Bonferroni 法を適用し、各仮説の棄却判定を返す。
+   * FWER（族全体の第1種誤り率）を alpha 以下に制御する。
+   *
+   * - pValues: 各仮説の p 値配列
+   * - alpha: 有意水準（デフォルト 0.05）
+   * - 戻り値: 各仮説を棄却するかどうかの boolean 配列（元の順序を保持）
+   */
+  holmBonferroni(pValues: number[], alpha = 0.05): boolean[] {
+    if (pValues.length === 0) return [];
+
+    const m = pValues.length;
+    // インデックス付きでソート（p 値昇順）
+    const indexed = pValues.map((p, i) => ({ p, i })).sort((a, b) => a.p - b.p);
+
+    const rejected = new Array<boolean>(m).fill(false);
+
+    for (let k = 0; k < m; k++) {
+      // Holm-Bonferroni 補正閾値: alpha / (m - k)
+      const threshold = alpha / (m - k);
+      if (indexed[k].p <= threshold) {
+        rejected[indexed[k].i] = true;
+      } else {
+        // 棄却できなければ以降は全て棄却しない（単調性）
+        break;
+      }
+    }
+
+    return rejected;
   }
 }

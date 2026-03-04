@@ -22,6 +22,26 @@ export type QuestionKind = "profile" | "timeline" | "freshness" | "graph" | "vec
 /** Cognitive sector for classifying observations by life domain. */
 export type CognitiveSector = "work" | "people" | "health" | "hobby" | "meta";
 
+/**
+ * FD-005: TemporalAnchor — タイムライン検索における時間的な基準点。
+ *
+ * - "before" : 基準点より前のエントリを検索 (direction: "desc")
+ * - "after"  : 基準点より後のエントリを検索 (direction: "asc")
+ * - "between": 2点間のエントリを検索 (direction: "around")
+ * - "sequence": 順序付きシーケンス (direction: "asc")
+ * - "at"     : 特定時点のエントリ (direction: "around")
+ */
+export type TemporalAnchorType = "before" | "after" | "between" | "sequence" | "at";
+
+export interface TemporalAnchor {
+  /** アンカーの種別 */
+  type: TemporalAnchorType;
+  /** クエリから抽出した参照テキスト (例: "the migration", "last week", "リリース") */
+  referenceText: string;
+  /** 検索方向: asc=新しい順, desc=古い順, around=前後 */
+  direction: "asc" | "desc" | "around";
+}
+
 export interface RouteDecision {
   /** Primary retrieval strategy to use. */
   kind: QuestionKind;
@@ -33,6 +53,8 @@ export interface RouteDecision {
   weights: SearchWeights;
   /** Optional sector filter applied to this query. */
   sector?: CognitiveSector;
+  /** FD-005: Temporal anchors extracted from the query (timeline/freshness queries only). */
+  temporalAnchors?: TemporalAnchor[];
 }
 
 export interface SearchWeights {
@@ -151,6 +173,125 @@ const GRAPH_PATTERNS = [
   /\b(chain|path|trace|flow)\b/i,
 ];
 
+// ---- TemporalAnchor extraction patterns ----
+
+// "after X" / "X の後" → {type:"after", direction:"asc"}
+const AFTER_PATTERNS: RegExp[] = [
+  /\bafter\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /\bfollowing\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /\bsince\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /(.+?)の後(?:に|で|から)?/,
+  /(.+?)以降/,
+  /(.+?)より後/,
+];
+
+// "before X" / "X の前" → {type:"before", direction:"desc"}
+const BEFORE_PATTERNS: RegExp[] = [
+  /\bbefore\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /\bprior\s+to\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /\buntil\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /(.+?)の前(?:に|で)?/,
+  /(.+?)以前/,
+  /(.+?)より前/,
+];
+
+// "between X and Y" → {type:"between", direction:"around"}
+const BETWEEN_PATTERNS: RegExp[] = [
+  /\bbetween\s+(.+?)\s+and\s+(.+?)(?:\?|$|,)/i,
+  /(.+?)から(.+?)の間/,
+  /(.+?)と(.+?)の間/,
+];
+
+// sequence words → {type:"sequence", direction:"asc"}
+const SEQUENCE_EN_PATTERNS: RegExp[] = [
+  /\b(first|initially|to start|to begin)\b/i,
+  /\b(then|next|subsequently|after that)\b/i,
+  /\b(finally|lastly|in the end)\b/i,
+];
+const SEQUENCE_JA_PATTERNS: RegExp[] = [
+  /(最初|はじめ|まず)/,
+  /(次に|それから|その後)/,
+  /(最後|最終|ついに)/,
+];
+
+/**
+ * FD-005: クエリからTemporalAnchorのリストを抽出する。
+ *
+ * TIMELINE/FRESHNESS クエリで時間的な基準点を特定し、
+ * 検索方向（昇順/降順/前後）を付与する。
+ * 日英両対応。
+ */
+export function extractTemporalAnchors(query: string): TemporalAnchor[] {
+  const anchors: TemporalAnchor[] = [];
+  const q = query.trim();
+  if (!q) return anchors;
+
+  // between (2点間) — 最初にチェック
+  for (const pattern of BETWEEN_PATTERNS) {
+    const m = q.match(pattern);
+    if (m) {
+      const ref1 = (m[1] ?? "").trim();
+      const ref2 = (m[2] ?? "").trim();
+      if (ref1 && ref2) {
+        anchors.push({ type: "between", referenceText: `${ref1} and ${ref2}`, direction: "around" });
+      } else if (ref1) {
+        anchors.push({ type: "between", referenceText: ref1, direction: "around" });
+      }
+    }
+  }
+
+  // after
+  for (const pattern of AFTER_PATTERNS) {
+    const m = q.match(pattern);
+    if (m) {
+      const ref = (m[1] ?? "").trim();
+      if (ref && ref.length > 0) {
+        anchors.push({ type: "after", referenceText: ref, direction: "asc" });
+      }
+    }
+  }
+
+  // before
+  for (const pattern of BEFORE_PATTERNS) {
+    const m = q.match(pattern);
+    if (m) {
+      const ref = (m[1] ?? "").trim();
+      if (ref && ref.length > 0) {
+        anchors.push({ type: "before", referenceText: ref, direction: "desc" });
+      }
+    }
+  }
+
+  // sequence (英語)
+  let hasSequence = false;
+  for (const pattern of SEQUENCE_EN_PATTERNS) {
+    if (pattern.test(q)) {
+      hasSequence = true;
+      break;
+    }
+  }
+  if (!hasSequence) {
+    for (const pattern of SEQUENCE_JA_PATTERNS) {
+      if (pattern.test(q)) {
+        hasSequence = true;
+        break;
+      }
+    }
+  }
+  if (hasSequence) {
+    anchors.push({ type: "sequence", referenceText: q, direction: "asc" });
+  }
+
+  // 重複除去: 同一 type+direction の組み合わせを dedupe
+  const seen = new Set<string>();
+  return anchors.filter((a) => {
+    const key = `${a.type}:${a.direction}:${a.referenceText.slice(0, 40)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 /**
  * Classify a query into a question kind using pattern matching.
  *
@@ -227,17 +368,68 @@ export function classifyQuestion(query: string): RouteDecision {
  * Get search weights for a given question kind.
  * If kind is provided explicitly (e.g., from API), use it directly.
  * Otherwise, classify from the query text.
+ *
+ * FD-005: TIMELINE/FRESHNESS クエリの場合、temporalAnchors も抽出して返す。
  */
+/** §34 FD-014: クエリログエントリ（プライバシー配慮: クエリ全文は記録しない） */
+interface QueryLogEntry {
+  ts: string;
+  kind: QuestionKind;
+  confidence: number;
+  query_len: number;
+  has_temporal_anchors: boolean;
+}
+
+/** §34 FD-014: HARNESS_MEM_QUERY_LOG に指定されたパスへ JSONL 形式でログ書き込み */
+function appendQueryLog(entry: QueryLogEntry): void {
+  const logPath = process.env.HARNESS_MEM_QUERY_LOG;
+  if (!logPath) return;
+  try {
+    const { appendFileSync } = require("node:fs") as typeof import("node:fs");
+    appendFileSync(logPath, JSON.stringify(entry) + "\n", "utf-8");
+  } catch {
+    // ログ書き込みエラーは無視（検索の妨げにならないこと優先）
+  }
+}
+
 export function routeQuery(query: string, explicitKind?: QuestionKind): RouteDecision {
   if (explicitKind && WEIGHT_MAP[explicitKind]) {
-    return {
+    const decision: RouteDecision = {
       kind: explicitKind,
       confidence: 1.0,
       reason: "explicit kind provided",
       weights: WEIGHT_MAP[explicitKind],
     };
+    if (explicitKind === "timeline" || explicitKind === "freshness") {
+      const anchors = extractTemporalAnchors(query);
+      if (anchors.length > 0) {
+        decision.temporalAnchors = anchors;
+      }
+    }
+    appendQueryLog({
+      ts: new Date().toISOString(),
+      kind: decision.kind,
+      confidence: decision.confidence,
+      query_len: query.length,
+      has_temporal_anchors: (decision.temporalAnchors?.length ?? 0) > 0,
+    });
+    return decision;
   }
-  return classifyQuestion(query);
+  const decision = classifyQuestion(query);
+  if (decision.kind === "timeline" || decision.kind === "freshness") {
+    const anchors = extractTemporalAnchors(query);
+    if (anchors.length > 0) {
+      decision.temporalAnchors = anchors;
+    }
+  }
+  appendQueryLog({
+    ts: new Date().toISOString(),
+    kind: decision.kind,
+    confidence: decision.confidence,
+    query_len: query.length,
+    has_temporal_anchors: (decision.temporalAnchors?.length ?? 0) > 0,
+  });
+  return decision;
 }
 
 export { WEIGHT_MAP, HYBRID_WEIGHTS };
@@ -370,6 +562,7 @@ export function getSectorWeights(sector: CognitiveSector): SearchWeights | undef
 /**
  * Route a query with an optional sector filter.
  * When a sector is provided, blends sector-specific weights into the route decision.
+ * FD-005: temporalAnchors は routeQuery から引き継がれる。
  */
 export function routeQueryWithSector(query: string, sector?: CognitiveSector, explicitKind?: QuestionKind): RouteDecision {
   const base = routeQuery(query, explicitKind);

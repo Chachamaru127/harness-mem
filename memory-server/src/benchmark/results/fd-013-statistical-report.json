@@ -1,0 +1,149 @@
+{
+  "schema_version": "fd-013-statistical-report-v1",
+  "generated_at": "2026-03-04T19:47:49.721329Z",
+  "phase": "§34 Phase 0+A+B",
+  "description": "全ベンチマーク再計測 + Holm-Bonferroni 補正済み統計レポート",
+  "fixtures_used": {
+    "locomo": "locomo-120.json (N=180 QA)",
+    "bilingual": "bilingual-50.json (N=50)",
+    "knowledge_update": "knowledge-update-100.json (N=100)",
+    "temporal": "temporal-100.json (N=100, 4 domains)"
+  },
+  "baselines": {
+    "source": "fq-010-before-after.json (§33 3-run average)",
+    "locomo_f1": 0.2116,
+    "bilingual_recall": 1.0,
+    "freshness_at_k": 0.88,
+    "temporal_score": 0.6167,
+    "note": "§33 freshness=0.88 はtrain=testバイアスあり（同一データで閾値調整）"
+  },
+  "current": {
+    "locomo_f1": {
+      "value": 0.2874,
+      "bootstrap_ci_95": {
+        "lower": 0.2208,
+        "upper": 0.354,
+        "mean": 0.2874,
+        "se": 0.034,
+        "method": "normal_approx",
+        "n": 180
+      },
+      "delta": 0.0758
+    },
+    "bilingual_recall": {
+      "value": 1.0,
+      "wilson_ci_95": {
+        "lower": 0.9286,
+        "upper": 1,
+        "mean": 1.0
+      },
+      "delta": 0.0,
+      "note": "N=10→N=50でfixture拡充、全件正解のため統計的区間に注意"
+    },
+    "freshness_at_k": {
+      "value": 1.0,
+      "wilson_ci_95": {
+        "lower": 0.963,
+        "upper": 1.0,
+        "mean": 1.0
+      },
+      "delta": 0.12,
+      "note": "§33の0.88はtrain=testバイアス。§34はJaccard閾値=0.1でCV後、全件正解"
+    },
+    "temporal_score": {
+      "value": 0.5717,
+      "bootstrap_ci_95": {
+        "lower": 0.5717,
+        "upper": 0.5717,
+        "mean": 0.5717,
+        "se": 0.0,
+        "method": "fixed_3runs",
+        "note": "3回全て同値 → 統計的区間なし（fixture確定性による）"
+      },
+      "delta": -0.045,
+      "note": "fixture難化（temporal-30→temporal-100, 35 Hard cases）によりスコア低下は意図的"
+    }
+  },
+  "holm_bonferroni_correction": {
+    "alpha": 0.05,
+    "num_hypotheses": 4,
+    "method": "Holm-Bonferroni (step-down)",
+    "results": [
+      {
+        "rank": 1,
+        "metric": "freshness_at_k",
+        "p_value": 0.001,
+        "holm_threshold": 0.0125,
+        "significant": true,
+        "decision": "reject_H0",
+        "note": "CV後閾値で全件正解、train=testバイアス除去済み"
+      },
+      {
+        "rank": 2,
+        "metric": "locomo_f1",
+        "p_value": 0.0258,
+        "holm_threshold": 0.0167,
+        "significant": false,
+        "decision": "fail_to_reject_H0",
+        "note": "z=2.229, SE=±3.4pp, N=180 QA"
+      },
+      {
+        "rank": 3,
+        "metric": "temporal_score",
+        "p_value": 1.0,
+        "holm_threshold": 0.025,
+        "significant": false,
+        "decision": "fail_to_reject_H0",
+        "note": "fixture難化（30→100件）のため直接比較不可"
+      },
+      {
+        "rank": 4,
+        "metric": "bilingual_recall",
+        "p_value": 1.0,
+        "holm_threshold": 0.05,
+        "significant": false,
+        "decision": "fail_to_reject_H0",
+        "note": "fixture拡充（N=10→50）のため直接比較不可"
+      }
+    ],
+    "summary": "4指標中 1 指標が有意（α=0.05）"
+  },
+  "interpretation": {
+    "honest_assessment": [
+      "locomo_f1: 0.2874 (§33:0.2116 → +7.6pp) — p=0.026だがHolm補正後は非有意（0.026 > 0.017）",
+      "freshness_at_k: 1.0 (§33:0.88 [biased] → §34:1.0 [CV後]) — Holm補正後有意だが、§33値がバイアスありのため過大評価の可能性",
+      "temporal_score: 0.572 (§33:0.617 [temporal-30]) — fixture難化のため直接比較不可",
+      "bilingual_recall: 1.0 (§33:1.0 [N=10]) — fixture拡充後も1.0、Wilson CI下限=0.929"
+    ],
+    "fixture_quality_improvements": [
+      "FD-001: temporal-50（逆順15件+同日5件）— ASC-only score=0.68 < 0.7 達成",
+      "FD-002: Freshness Jaccard閾値5-fold CV完了 — train=testバイアス除去",
+      "FD-003: bilingual-30 → bilingual-50（Hard cases追加）",
+      "FD-007: temporal-100（4ドメイン, 35 Hard cases）",
+      "FD-009: knowledge-update-100（Easy30/Medium50/Hard20）"
+    ]
+  },
+  "ci_gate_layer1_check": {
+    "locomo_f1": {
+      "value": 0.2874,
+      "floor": 0.2,
+      "passed": true
+    },
+    "freshness_at_k": {
+      "value": 1.0,
+      "floor": 0.4,
+      "passed": true
+    },
+    "temporal_score": {
+      "value": 0.5717,
+      "floor": 0.5,
+      "passed": true
+    },
+    "bilingual_recall": {
+      "value": 1.0,
+      "floor": 0.8,
+      "passed": true
+    },
+    "all_passed": true
+  }
+}

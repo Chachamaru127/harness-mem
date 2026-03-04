@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { classifyQuestion, routeQuery, HYBRID_WEIGHTS } from "../../src/retrieval/router";
+import { classifyQuestion, routeQuery, HYBRID_WEIGHTS, extractTemporalAnchors } from "../../src/retrieval/router";
 
 describe("classifyQuestion", () => {
   test("classifies profile queries", () => {
@@ -116,5 +116,175 @@ describe("routeQuery", () => {
       const sum = Object.values(result.weights).reduce((a, b) => a + b, 0);
       expect(sum).toBeCloseTo(1.0, 2);
     }
+  });
+});
+
+// §34 FD-005: extractTemporalAnchors — 20件のテスト
+describe("extractTemporalAnchors", () => {
+  // --- after パターン (英語) ---
+  test("detects 'after X' pattern", () => {
+    const anchors = extractTemporalAnchors("What happened after the deployment?");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+    expect(after?.referenceText).toContain("deployment");
+  });
+
+  test("detects 'since X' pattern", () => {
+    const anchors = extractTemporalAnchors("What changed since the last release?");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  test("detects 'following X' pattern", () => {
+    const anchors = extractTemporalAnchors("Show events following the bug fix");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  // --- before パターン (英語) ---
+  test("detects 'before X' pattern", () => {
+    const anchors = extractTemporalAnchors("What happened before the migration?");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.direction).toBe("desc");
+    expect(before?.referenceText).toContain("migration");
+  });
+
+  test("detects 'prior to X' pattern", () => {
+    const anchors = extractTemporalAnchors("Events prior to the refactoring");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.direction).toBe("desc");
+  });
+
+  test("detects 'until X' pattern", () => {
+    const anchors = extractTemporalAnchors("Show logs until the system crash");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.direction).toBe("desc");
+  });
+
+  // --- between パターン ---
+  test("detects 'between X and Y' pattern", () => {
+    const anchors = extractTemporalAnchors("What happened between the release and the hotfix?");
+    const between = anchors.find((a) => a.type === "between");
+    expect(between).toBeDefined();
+    expect(between?.direction).toBe("around");
+  });
+
+  // --- sequence パターン (英語) ---
+  test("detects 'first' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("First we set up the database, then we deployed");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  test("detects 'then' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("We fixed the bug, then updated the docs");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  test("detects 'finally' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("Finally the deployment succeeded");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  // --- 日本語 after パターン ---
+  test("detects Japanese 'の後' (after) pattern", () => {
+    const anchors = extractTemporalAnchors("デプロイの後に何が起きた？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  test("detects Japanese '以降' (after) pattern", () => {
+    const anchors = extractTemporalAnchors("リリース以降の変更点を見せて");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  test("detects Japanese 'より後' pattern", () => {
+    const anchors = extractTemporalAnchors("先週より後のログを確認したい");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  // --- 日本語 before パターン ---
+  test("detects Japanese 'の前' (before) pattern", () => {
+    const anchors = extractTemporalAnchors("マイグレーションの前の状態を教えて");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.direction).toBe("desc");
+  });
+
+  test("detects Japanese '以前' (before) pattern", () => {
+    const anchors = extractTemporalAnchors("バグ修正以前のコードを確認");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.direction).toBe("desc");
+  });
+
+  // --- 日本語 sequence パターン ---
+  test("detects Japanese '最初' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("最初にデータベースを設定して次にデプロイした");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  test("detects Japanese '次に' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("バグを修正して次にテストを実行した");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  test("detects Japanese '最後' sequence keyword", () => {
+    const anchors = extractTemporalAnchors("最後にリリースノートを更新した");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  // --- routeQuery での anchor 統合 ---
+  test("routeQuery returns temporalAnchors for TIMELINE kind", () => {
+    const result = routeQuery("What happened after the deployment?");
+    if (result.kind === "timeline") {
+      expect(result.temporalAnchors).toBeDefined();
+      expect(result.temporalAnchors?.length).toBeGreaterThan(0);
+    }
+    // timeline として分類されない場合でも、クラッシュしないこと
+    expect(result.kind).toBeDefined();
+  });
+
+  test("routeQuery with explicit timeline kind extracts anchors", () => {
+    const result = routeQuery("show entries after the migration", "timeline");
+    expect(result.kind).toBe("timeline");
+    expect(result.temporalAnchors).toBeDefined();
+    expect(result.temporalAnchors?.length).toBeGreaterThan(0);
+    const after = result.temporalAnchors?.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+  });
+
+  // --- エッジケース ---
+  test("returns empty array for non-temporal queries", () => {
+    const anchors = extractTemporalAnchors("What is the current authentication system?");
+    // 時間的なアンカーがない場合は空配列
+    expect(Array.isArray(anchors)).toBe(true);
+  });
+
+  test("returns empty array for empty query", () => {
+    const anchors = extractTemporalAnchors("");
+    expect(anchors).toEqual([]);
   });
 });

@@ -16,7 +16,7 @@ import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
-import { routeQuery, type RouteDecision } from "../retrieval/router";
+import { routeQuery, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import type { VectorEngine } from "../vector/providers";
@@ -715,6 +715,147 @@ export class ObservationStore {
   }
 
   // ---------------------------------------------------------------------------
+  // §34 FD-006: temporalAnchorSearch — Anchor-Pivoted 時系列検索
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Anchor-Pivoted Search:
+   * 1. anchor.referenceText でベクトル検索 → anchorEntry を特定
+   * 2. anchorEntry.created_at を基点に SQL で created_at フィルタ
+   *    - "asc"  → created_at > anchor_ts ORDER BY created_at ASC
+   *    - "desc" → created_at < anchor_ts ORDER BY created_at DESC
+   *    - "around" → anchor_ts の前後を取得
+   *
+   * relevance score ではなく時間軸でソートする。
+   */
+  private temporalAnchorSearch(
+    request: SearchRequest,
+    anchor: TemporalAnchor,
+    limit: number
+  ): Array<Record<string, unknown>> | null {
+    try {
+      const project = request.project
+        ? this.deps.normalizeProject(request.project)
+        : undefined;
+      const includePrivate = Boolean(request.include_private);
+
+      // Phase 1: anchor.referenceText でベクトル検索してアンカーエントリを特定
+      const anchorRequest: SearchRequest = {
+        ...request,
+        query: anchor.referenceText,
+        limit: 1,
+      };
+      const anchorVec = this.vectorSearch(anchorRequest, 5);
+      const anchorLex = this.lexicalSearch(anchorRequest, 5);
+
+      // スコアの高いIDを選択（vector優先、なければlexical）
+      let anchorId: string | null = null;
+      let bestScore = -1;
+      for (const [id, score] of anchorVec.scores.entries()) {
+        if (score > bestScore) {
+          bestScore = score;
+          anchorId = id;
+        }
+      }
+      if (!anchorId) {
+        for (const [id, score] of anchorLex.entries()) {
+          if (score > bestScore) {
+            bestScore = score;
+            anchorId = id;
+          }
+        }
+      }
+      if (!anchorId) return null;
+
+      // アンカーエントリの created_at を取得
+      const anchorObs = this.deps.db
+        .query("SELECT created_at FROM mem_observations WHERE id = ?")
+        .get(anchorId) as { created_at: string } | null;
+      if (!anchorObs) return null;
+      const anchorTs = anchorObs.created_at;
+
+      // Phase 2: anchorTs を基点に時間フィルタ SQL で検索
+      const params: unknown[] = [];
+      let sql = `
+        SELECT
+          o.id, o.event_id, o.platform, o.project, o.session_id,
+          o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
+          o.memory_type, o.created_at, o.access_count,
+          e.event_type AS event_type
+        FROM mem_observations o
+        LEFT JOIN mem_events e ON e.event_id = o.event_id
+        WHERE o.id <> ?
+      `;
+      params.push(anchorId);
+
+      if (project) {
+        sql += " AND o.project = ?";
+        params.push(project);
+      }
+      if (!includePrivate) {
+        sql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
+      }
+
+      if (anchor.direction === "asc") {
+        sql += " AND o.created_at > ?";
+        params.push(anchorTs);
+        sql += " ORDER BY o.created_at ASC";
+      } else if (anchor.direction === "desc") {
+        sql += " AND o.created_at < ?";
+        params.push(anchorTs);
+        sql += " ORDER BY o.created_at DESC";
+      } else {
+        // around: 前後を取得
+        sql += " AND ABS(julianday(o.created_at) - julianday(?)) <= 7";
+        params.push(anchorTs);
+        sql += " ORDER BY ABS(julianday(o.created_at) - julianday(?)) ASC";
+        params.push(anchorTs);
+      }
+
+      sql += " LIMIT ?";
+      params.push(limit);
+
+      const rows = this.deps.db.query(sql).all(...params) as Array<Record<string, unknown>>;
+
+      return rows.map((row) => {
+        const tags = parseArrayJson(row.tags_json);
+        const privacyTags = parseArrayJson(row.privacy_tags_json);
+        return {
+          id: row.id,
+          event_id: row.event_id,
+          platform: row.platform,
+          project: row.project,
+          session_id: row.session_id,
+          title: row.title,
+          content: typeof row.content_redacted === "string"
+            ? row.content_redacted.slice(0, 2000)
+            : "",
+          observation_type: "context",
+          memory_type: row.memory_type || "semantic",
+          created_at: row.created_at,
+          tags,
+          privacy_tags: privacyTags,
+          access_count: Number(row.access_count ?? 0),
+          anchor_strategy: `temporal_anchor:${anchor.type}:${anchor.direction}`,
+          scores: {
+            lexical: 0,
+            vector: 0,
+            recency: 0,
+            tag_boost: 0,
+            importance: 0,
+            graph: 0,
+            final: 0,
+            rerank: 0,
+          },
+        };
+      });
+    } catch {
+      // フォールバック: anchor search に失敗した場合は null を返して通常検索に切り替え
+      return null;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // search: ハイブリッド検索（lexical + vector + graph + recency + tag + importance）
   // ---------------------------------------------------------------------------
 
@@ -896,6 +1037,44 @@ export class ObservationStore {
     // Blend router weights with existing weights: router takes precedence
     // when a specific question kind is detected (confidence > 0.5)
     const weights = routeDecision.confidence > 0.5 ? routeDecision.weights : baseWeights;
+
+    // §34 FD-006: TIMELINE かつ temporalAnchors が存在する場合は Anchor-Pivoted Search を優先
+    if (
+      routeDecision.kind === "timeline" &&
+      routeDecision.temporalAnchors &&
+      routeDecision.temporalAnchors.length > 0
+    ) {
+      const primaryAnchor = routeDecision.temporalAnchors[0];
+      const anchorItems = this.temporalAnchorSearch(normalizedRequest, primaryAnchor, limit);
+      if (anchorItems && anchorItems.length > 0) {
+        const anchorMeta: Record<string, unknown> = {
+          ranking: this.deps.searchRanking,
+          question_kind: routeDecision.kind,
+          question_kind_confidence: Number(routeDecision.confidence.toFixed(3)),
+          vector_engine: this.deps.getVectorEngine(),
+          vector_model: this.deps.getVectorModelVersion(),
+          fts_enabled: this.deps.ftsEnabled,
+          embedding_provider: this.deps.getEmbeddingProviderName(),
+          embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
+          anchor_strategy: `temporal_anchor:${primaryAnchor.type}:${primaryAnchor.direction}`,
+          anchor_reference: primaryAnchor.referenceText,
+          lexical_candidates: lexical.size,
+          vector_candidates: vector.size,
+          graph_candidates: 0,
+          candidate_counts: {
+            lexical: lexical.size,
+            vector: vector.size,
+            graph: 0,
+            final: anchorItems.length,
+          },
+          latency_ms: performance.now() - startedAt,
+          sla_latency_ms: 500,
+          filters: {},
+          ranking: routeDecision.kind,
+        };
+        return makeResponse(startedAt, anchorItems, request as unknown as Record<string, unknown>, anchorMeta);
+      }
+    }
 
     const nowMs = Date.now();
     for (const item of ranked) {

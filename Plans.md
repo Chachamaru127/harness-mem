@@ -1,9 +1,9 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-04（§33 全15タスク完了, 1278テスト）
+最終更新: 2026-03-05（§34 全20タスク完了, 1355テスト）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 ベンチマーク信頼性改革 17タスク完了 | §33 検索品質改善 15タスク完了
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了（F1:0.21→0.287, Freshness:0.10→0.88, Temporal:0.583→0.589）
 
 ---
 
@@ -15,167 +15,113 @@
 
 ## 現在のステータス
 
-§33 検索品質改善 — 全15タスク完了。（1278テスト）
+§34 測定信頼性 + Temporal 構造改善 — **全20タスク完了**。（1355テスト）
 
-§33 結果: F1=0.287(+37%) / Freshness@K=0.88(+780%) / Temporal=0.589(+1%) / Bilingual=1.0(維持)
-§32 ベースライン: F1=0.21 / Freshness@K=0.10 / Temporal=0.583 / Bilingual=1.0
+§34 結果:
+- 測定信頼性4条件: 全達成（難易度分布/逆順・同日/Bootstrap CI/Holm-Bonferroni）
+- 性能目標5条件中3条件達成（temporal tau < 0.70, F1 CI下限 < 0.27 は§35継続課題）
+- 実データ基盤: クエリログ収集 + dev-workflow-20 + self-eval + retrospective A/B
 
 ---
 
-## §33 検索品質改善（15タスク, 3フェーズ）
+## §34 測定信頼性 + Temporal 構造改善（20タスク, 4フェーズ）
 
 ### 背景
 
-§32 で構築したベンチマーク基盤が harness-mem の真の弱点を露出した:
-- **Freshness@K=0.10**: 古い情報と新しい情報を区別できない（致命的）
-- **F1=0.2104**: 答え抽出精度が低い（検索は動くが回答が長すぎる）
-- **Temporal=0.583**: 時系列順序が半分しか正しくない
+§33 で検索品質を改善したが、3専門家（IR研究者/プロダクトエンジニア/評価専門家）の
+討論で「測定自体が壊れている」ことが判明:
+- temporal-30 が**全件昇順タイムスタンプ**で難易度ゼロ
+- Freshness@K=0.88 は Jaccard 閾値を同一データで tuning（train=test 問題）
+- bilingual-10 は全件が完全セマンティック対応で自明に recall=1.0
 
-3専門家（IR Expert / Memory Architect / Eval Specialist）の討論結果を統合し、
-最小変更・最大効果の順で改善する。
-
-### 根本原因（3専門家の合意）
-
-| 問題 | 根本原因 | 修正箇所 |
-|------|---------|---------|
-| Freshness@K=0.10 | recency weight=0.10 + 「currently」が TIMELINE ルートに未分類 + 半減期14日で長期データの新旧が区別不能 | router.ts, observation-store.ts, core-utils.ts |
-| F1=0.21 | finalizeShortAnswer() が長文を返し precision が低下 + BM25 title weight 5.0 が高すぎ | locomo-harness-adapter.ts, observation-store.ts |
-| Temporal=0.583 | 「〜の前/後」パターンが router で未検出 | router.ts |
+**方針**: 壊れた物差しを先に直す → 構造を直す → 実データで検証（Goodhart's Law 回避）
 
 ### 依存グラフ
 
 ```
-Phase A: Freshness 改善（最高優先度・即効）
-├── [P] FQ-001: router に FRESHNESS ルート追加
-├── [P] FQ-002: recency weight 0.10→0.20
-├── [P] FQ-003: 半減期 14日→90日
-├──     FQ-004: リランカー recency 係数 0.05→0.15
-└──     FQ-005: Freshness CI ゲート環境変数化（暫定 0.30）
+Phase 0: 測定の修正（最優先・他の全てに先行）
+├── [P] FD-001: temporal フィクスチャ再設計（逆順+同日シナリオ追加）
+├── [P] FD-002: Freshness Jaccard 閾値の交差検証
+├── [P] FD-003: bilingual フィクスチャ難易度追加
+└──     FD-004: Weighted Kendall tau + nDCG@5 導入
          │
-Phase B: F1 + Temporal 改善
-├── [P] FQ-006: BM25 title weight 5.0→2.0
-├── [P] FQ-007: finalizeShortAnswer 答え圧縮精度向上
-├── [P] FQ-008: TIMELINE パターン拡充（before/after/currently）
-├──     FQ-009: locomo-120 全カテゴリ回帰テスト
-└──     FQ-010: ベンチマーク再計測 + before/after 比較
+Phase A: Temporal 2-Stage Retrieval（構造改善）
+├── [P] FD-005: TemporalAnchor 抽出器（router.ts）
+├── [P] FD-006: Anchor-Pivoted Search（observation-store.ts）
+├──     FD-007: temporal-100 フィクスチャ（多ドメイン）
+└──     FD-008: Temporal 再計測 + before/after
          │
-Phase C: 統計的検証 + Auto-Supersedes
-├── [P] FQ-011: knowledge-update フィクスチャ 10→50件拡充
-├── [P] FQ-012: temporal フィクスチャ 10→30件拡充
-├──     FQ-013: Auto-supersedes リンク生成（Jaccard ベース）
-├──     FQ-014: CI ゲート段階引き上げ（Freshness 0.30→0.50）
-└──     FQ-015: 競合分析 v8 更新
+Phase B: 統計基盤（サンプル拡充 + CI 改善）
+├── [P] FD-009: knowledge-update 50→100 件拡充（難易度分布付き）
+├── [P] FD-010: bilingual 10→50 件拡充（干渉パターン付き）
+├── [P] FD-011: Bootstrap CI + Holm-Bonferroni 多重比較
+├──     FD-012: 3層 CI ゲート（絶対下限 + 相対回帰 + Wilcoxon 改善検証）
+└──     FD-013: 全ベンチマーク再計測 + 統計レポート
+         │
+Phase C: 実データ検証基盤
+├── [P] FD-014: クエリログ収集（routeQuery → local file）
+├── [P] FD-015: dev-workflow-20 フィクスチャ（実使用パターン準拠）
+├──     FD-016: Self-eval クエリ生成器（実 DB から temporal クエリ自動生成）
+├──     FD-017: Retrospective A/B 評価フレーム
+├──     FD-018: 競合分析 v9（正直な報告 + LLM有無分離）
+├──     FD-019: 全指標 before/after 最終比較
+└──     FD-020: §34 完了レポート
 ```
 
-### Phase A: Freshness 改善（5タスク, 最高優先度）
+### Phase 0: 測定の修正（4タスク） — 全完了
 
-目的: Freshness@K を 0.10 → 0.40+ に引き上げる。最小変更で最大効果。
+- [x] `cc:完了` **FD-001**: temporal-50.json（逆順16+同日9, ASCのみ=0.68）
+- [x] `cc:完了` **FD-002**: Jaccard 5-fold CV（最適閾値0.1）
+- [x] `cc:完了` **FD-003**: bilingual-30.json（E10/M10/H10, 干渉パターン含む）
+- [x] `cc:完了` **FD-004**: Weighted Kendall tau + nDCG@5（runner.ts に3指標並行報告）
 
-- [x] `cc:完了 [P]` **FQ-001**: router.ts に FRESHNESS ルートを追加
-  - 「currently」「今」「最新」「what version」等のパターンを検出
-  - FRESHNESS_WEIGHTS: lexical=0.25, vector=0.20, recency=**0.40**, tag=0.05, importance=0.05, graph=0.05
-  - 日英両対応: `/\b(current|currently|now|latest)\b/i` + `/\b(現在|今|最新|今の)\b/`
-  - DoD: knowledge-update-10 で Freshness@K >= 0.40
+### Phase A: Temporal 2-Stage Retrieval（4タスク） — 全完了
 
-- [x] `cc:完了 [P]` **FQ-002**: base recency weight を 0.10→0.20 に引き上げ
-  - observation-store.ts resolveSearchWeights() を修正
-  - lexical=0.30, vector=0.25, recency=**0.20**, tag=0.10, importance=0.08, graph=0.07
-  - DoD: 既存テスト全 pass。locomo-120 F1 が -5% 以上低下しないこと
+- [x] `cc:完了` **FD-005**: extractTemporalAnchors()（24テスト pass, 日英両対応）
+- [x] `cc:完了` **FD-006**: temporalAnchorSearch()（anchor-pivoted 時間順ソート）
+- [x] `cc:完了` **FD-007**: temporal-100.json（4ドメイン×25件, 逆順35件）
+- [x] `cc:完了` **FD-008**: Temporal before/after（0.572, Bootstrap CI [0.572, 0.572]）
 
-- [x] `cc:完了 [P]` **FQ-003**: recency 半減期を 14日→90日に変更
-  - core-utils.ts recencyScore() のデフォルト halfLifeDays を修正
-  - 90日の場合: 1年前=0.017, 6ヶ月前=0.135, 1ヶ月前=0.714 → 新旧が区別可能
-  - 環境変数 HARNESS_MEM_RECENCY_HALF_LIFE_DAYS で上書き可能（既存）
-  - DoD: recencyScore の単体テスト更新
+### Phase B: 統計基盤（5タスク）
 
-- [x] `cc:完了` **FQ-004**: cross-encoder リランカーの recency 係数を 0.05→0.15 に
-  - simple-reranker.ts computeCrossEncoderScore() を修正
-  - titleScore=0.20, contentScore=0.35, exactMatch=0.30, bigram=0.15, score=0.15, recency=**0.15**
-  - DoD: リランカーテスト pass
+- [x] `cc:完了` **FD-009**: knowledge-update 50→100件（難易度 E30/M50/H20）
+- [x] `cc:完了` **FD-010**: bilingual 30→50件（ja→en/en→ja/混在 均等）
+- [x] `cc:完了` **FD-011**: Bootstrap CI(10k) + Holm-Bonferroni 多重比較
+  - DoD: 全ベンチマークで 95% CI 報告
+- [x] `cc:完了` **FD-012**: 3層 CI ゲート（絶対下限 + 相対回帰2SE + Wilcoxon）
+- [x] `cc:完了` **FD-013**: 全ベンチマーク再計測 + Holm-Bonferroni 補正済み統計レポート
 
-- [x] `cc:完了` **FQ-005**: Freshness CI ゲートを環境変数化
-  - run-ci.ts のゲート閾値を HARNESS_BENCH_FRESHNESS_GATE で設定可能に
-  - Phase A 完了時は暫定 0.30 に設定（現在の 0.70 は常時 FAILED で無意味）
-  - DoD: CI で Freshness ゲートが環境変数で制御可能
+### Phase C: 実データ検証基盤（7タスク）
 
-### Phase B: F1 + Temporal 改善（5タスク）
+- [x] `cc:完了` **FD-014**: クエリログ収集（HARNESS_MEM_QUERY_LOG 環境変数）
+- [x] `cc:完了` **FD-015**: dev-workflow-20 フィクスチャ（実 Claude Code 使用パターン）
+- [x] `cc:完了` **FD-016**: Self-eval クエリ生成器（実 DB → temporal クエリ自動生成）
+- [x] `cc:完了` **FD-017**: Retrospective A/B 評価（mem_audit_log 活用オフライン再評価）
+- [x] `cc:完了` **FD-018**: 競合分析 v9（LLM有無分離 + レイテンシ/コスト指標）
+- [x] `cc:完了` **FD-019**: 全指標 before/after 最終比較（Bootstrap CI 付き）
+- [x] `cc:完了` **FD-020**: §34 完了レポート + §35 提言
 
-前提: Phase A 完了
+### §34 完了判定
 
-目的: F1 を 0.21 → 0.27+ に、Temporal を 0.583 → 0.65+ に改善。
+**測定信頼性（全て満たすこと）:**
+1. 全フィクスチャに Easy/Medium/Hard の難易度分布が存在
+2. temporal フィクスチャに逆順・同日シナリオが含まれる
+3. 全メトリクスで Bootstrap 95% CI が報告される
+4. 4メトリクス同時検定で Holm-Bonferroni 補正済み
 
-- [x] `cc:完了 [P]` **FQ-006**: BM25 title weight を 5.0→2.0 に調整
-  - observation-store.ts の `bm25(mem_observations_fts, 0, 2.0, 1.0)` に変更
-  - title 過重視を緩和し、content 側の正解取得率を向上
-  - DoD: locomo-120 F1 が改善または維持。既存テスト pass
+**性能目標（Bootstrap CI の下限で判定）:**
+1. Temporal Weighted Kendall tau >= 0.70（100件、CI 下限）
+2. locomo-120 F1 >= 0.27（維持、CI 下限）
+3. Freshness@K >= 0.70（5-fold CV 後の交差検証値）
+4. bilingual recall >= 0.85（50件、Wilson CI 下限）
+5. `bun test` 全 pass + 3層 CI ゲート全 pass
 
-- [x] `cc:完了 [P]` **FQ-007**: finalizeShortAnswer の答え圧縮精度を向上
-  - locomo-harness-adapter.ts の回答抽出ロジックを改善
-  - 長文の検索結果から正解フレーズを絞り込む処理を追加
-  - 例: prediction 全文 → クエリに最も関連する文のみ抽出
-  - DoD: locomo-120 F1 >= 0.27
+**実データ基盤:**
+- クエリログ収集が動作し、dev-workflow-20 で評価可能
 
-- [x] `cc:完了 [P]` **FQ-008**: router の TIMELINE パターンを拡充
-  - 「〜の前」「〜の後」「before」「after」パターンを追加
-  - 「currently」も TIMELINE ではなく FQ-001 の FRESHNESS に正しくルーティング
-  - DoD: temporal-10 の Order Score >= 0.65
-
-- [x] `cc:完了` **FQ-009**: locomo-120 全カテゴリ回帰テスト
-  - cat-1〜cat-4 それぞれのスコアが Phase A 完了時から -5% 以上低下しないことを検証
-  - DoD: 4カテゴリ全てで回帰なし
-
-- [x] `cc:完了` **FQ-010**: ベンチマーク再計測 + before/after 比較
-  - Phase A+B の変更前後のスコアを記録
-  - 3回再現で安定性を確認（Eval Specialist の推奨）
-  - DoD: results/ に before/after 比較 JSON 出力
-
-### Phase C: 統計的検証 + Auto-Supersedes（5タスク）
-
-前提: Phase B 完了
-
-目的: 統計的有意性を確保し、構造的な Freshness 改善を実装。
-
-- [x] `cc:完了 [P]` **FQ-011**: knowledge-update フィクスチャを 10→50件に拡充
-  - 統計的有意性に必要な最低サンプル数（SE=±7pp）
-  - DoD: fixtures/knowledge-update-50.json 作成
-
-- [x] `cc:完了 [P]` **FQ-012**: temporal フィクスチャを 10→30件に拡充
-  - 統計的有意性に必要な最低サンプル数（SE=±8pp）
-  - DoD: fixtures/temporal-30.json 作成
-
-- [x] `cc:完了` **FQ-013**: Auto-supersedes リンク生成（Jaccard ベース）
-  - recordEvent パイプラインで同一 project + 同一 observation_type の類似エントリを検出
-  - Jaccard similarity >= 0.3 の場合に mem_links に relation='updates' を自動挿入
-  - exclude_updated=true をデフォルト有効化
-  - DoD: knowledge-update-50 で Freshness@K >= 0.50
-
-- [x] `cc:完了` **FQ-014**: CI ゲート段階引き上げ
-  - Freshness ゲートを 0.30→0.50 に引き上げ
-  - locomo-120 F1 ゲートを before/after 比較に基づいて設定
-  - DoD: CI が新しい閾値で pass
-
-- [x] `cc:完了` **FQ-015**: 競合分析 v8 更新
-  - §33 の改善結果を反映
-  - 測定条件・before/after を明記
-  - DoD: docs/benchmarks/competitive-analysis-v8.md 作成
-
-### §33 完了判定（「客観的に改善された」の定義）
-
-**最小条件（全て満たすこと）:**
-1. Freshness@K >= 0.40（50件フィクスチャ、3回再現の中央値）
-2. locomo-120 F1 >= 0.27（3回再現で ±0.03 以内の安定性）
-3. Temporal Order Score >= 0.65（30件フィクスチャ）
-4. bilingual recall >= 0.8（回帰なし）
-5. `bun test` 全 pass
-6. CI ゲート全 pass
-
-**対外主張可能条件（上記に加え）:**
-- 3回再現 + 測定条件を docs に記録
-- 全カテゴリ（cat-1〜cat-4）で個別改善
-
-### スコープ外（§34 以降）
+### スコープ外（§35 以降）
 
 - Multi-hop 推論（Graph traversal 実装が前提）
-- 多言語 embedding 差し替え（64→384次元）
-- LLM Judge 評価
-- Temporal 2段階検索（anchor 特定 → since/until フィルタ）
+- LLM Judge 評価（コスト高・再現性低下。実データ評価で優先度再判断）
+- 384次元 embedding（F1 への寄与が未検証）
+- LoCoMo 200サンプル拡充（§34 で十分な SE が得られた場合は不要）

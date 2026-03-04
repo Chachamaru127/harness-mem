@@ -1,0 +1,419 @@
+{
+  "name": "bilingual-50",
+  "description": "日英混在テストデータ（FD-010拡充）。bilingual-30 の30件 + 新規20件。ja→en / en→ja / 混在の3パターン均等。",
+  "version": "3.0.0",
+  "samples": [
+    {
+      "id": "bi-001",
+      "difficulty": "easy",
+      "pattern": "ja-content_en-query",
+      "content": "デプロイ 設定 を 更新 して 本番 環境 に 反映 した",
+      "query": "deploy config production",
+      "relevant_ids": ["bi-001"]
+    },
+    {
+      "id": "bi-002",
+      "difficulty": "easy",
+      "pattern": "ja-content_en-query",
+      "content": "認証 バグ が ログイン フロー で 発生 した ため 修正 を 適用 した",
+      "query": "authentication bug fix login",
+      "relevant_ids": ["bi-002"]
+    },
+    {
+      "id": "bi-003",
+      "difficulty": "easy",
+      "pattern": "ja-content_en-query",
+      "content": "データベース の 接続 エラー が 頻発 して いる ため 調査 が 必要 だ",
+      "query": "database connection error investigation",
+      "relevant_ids": ["bi-003"]
+    },
+    {
+      "id": "bi-004",
+      "difficulty": "easy",
+      "pattern": "ja-content_en-query",
+      "content": "パフォーマンス 改善 の ため キャッシュ レイヤー を 追加 した",
+      "query": "performance cache layer improvement",
+      "relevant_ids": ["bi-004"]
+    },
+    {
+      "id": "bi-005",
+      "difficulty": "easy",
+      "pattern": "en-content_ja-query",
+      "content": "Fixed authentication bug in login flow by updating JWT token validation",
+      "query": "認証 バグ ログイン JWT",
+      "relevant_ids": ["bi-005"]
+    },
+    {
+      "id": "bi-006",
+      "difficulty": "easy",
+      "pattern": "en-content_ja-query",
+      "content": "Deployed new version to production using Docker container on Kubernetes cluster",
+      "query": "デプロイ コンテナ 本番環境",
+      "relevant_ids": ["bi-006"]
+    },
+    {
+      "id": "bi-007",
+      "difficulty": "easy",
+      "pattern": "en-content_ja-query",
+      "content": "Database migration completed successfully, added index for performance improvement",
+      "query": "データベース マイグレーション 完了",
+      "relevant_ids": ["bi-007"]
+    },
+    {
+      "id": "bi-008",
+      "difficulty": "easy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "AWS Tokyo リージョン に deploy した 際 に エラー が 発生 した",
+      "query": "AWS デプロイ エラー Tokyo",
+      "relevant_ids": ["bi-008"]
+    },
+    {
+      "id": "bi-009",
+      "difficulty": "easy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "TypeScript で 実装 した API が authentication エラー を 返している",
+      "query": "TypeScript 認証 API エラー",
+      "relevant_ids": ["bi-009"]
+    },
+    {
+      "id": "bi-010",
+      "difficulty": "easy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "GitHub Actions の CI で database migration が 失敗 して いる",
+      "query": "CI データベース マイグレーション 失敗",
+      "relevant_ids": ["bi-010"]
+    },
+    {
+      "id": "bi-011",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "コスト 削減 の ため に サーバー インスタンス を スケール ダウン した。月額 費用 が 30% 削減 できた",
+      "query": "server cost reduction scale down",
+      "relevant_ids": ["bi-011"]
+    },
+    {
+      "id": "bi-012",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "ユーザー インターフェース の リファクタリング で コンポーネント を 再利用 可能 に した",
+      "query": "UI refactoring reusable component",
+      "relevant_ids": ["bi-012"]
+    },
+    {
+      "id": "bi-013",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Implemented rate limiting middleware to prevent API abuse and reduce server load",
+      "query": "レート制限 API 負荷軽減",
+      "relevant_ids": ["bi-013"]
+    },
+    {
+      "id": "bi-014",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Configured auto-scaling group to handle traffic spikes during peak hours",
+      "query": "オートスケール トラフィック ピーク時間",
+      "relevant_ids": ["bi-014"]
+    },
+    {
+      "id": "bi-015",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "Redis cache の TTL を 3600秒 に 設定 し、cache miss rate が 減少 した",
+      "query": "Redis TTL キャッシュ miss rate",
+      "relevant_ids": ["bi-015"]
+    },
+    {
+      "id": "bi-016",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "GraphQL schema の 設計 を 見直し、N+1 problem を resolver で 解決 した",
+      "query": "GraphQL N+1 resolver 設計",
+      "relevant_ids": ["bi-016"]
+    },
+    {
+      "id": "bi-017",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "セキュリティ 監査 で SQL インジェクション の 脆弱性 が 発見 された ため 修正 した",
+      "query": "security audit SQL injection vulnerability fix",
+      "relevant_ids": ["bi-017"]
+    },
+    {
+      "id": "bi-018",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Migrated monolithic application to microservices architecture using event-driven design",
+      "query": "マイクロサービス イベント駆動 移行",
+      "relevant_ids": ["bi-018"]
+    },
+    {
+      "id": "bi-019",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "Slack の webhook で 障害 alert を 通知 する 仕組み を 構築 した",
+      "query": "Slack webhook アラート 障害通知",
+      "relevant_ids": ["bi-019"]
+    },
+    {
+      "id": "bi-020",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "staging 環境 で load testing を 実行 し、bottleneck を 特定 した",
+      "query": "load test staging ボトルネック 特定",
+      "relevant_ids": ["bi-020"]
+    },
+    {
+      "id": "bi-021",
+      "difficulty": "hard",
+      "pattern": "cross-domain-interference",
+      "content": "デプロイ 設定 ファイル を 更新 して 本番 環境 に 反映 した。Kubernetes の manifest も 合わせ て 変更 した",
+      "query": "deploy 設定",
+      "relevant_ids": ["bi-021", "bi-022"],
+      "note": "クロスドメイン干渉: bi-022 の「デプロイ費用」も干渉する可能性あり"
+    },
+    {
+      "id": "bi-022",
+      "difficulty": "hard",
+      "pattern": "cross-domain-interference",
+      "content": "クラウド デプロイ 費用 が 先月 比 で 40% 増加 した ため コスト 最適化 を 検討 する",
+      "query": "deploy 設定",
+      "relevant_ids": ["bi-021", "bi-022"],
+      "note": "クロスドメイン干渉: bi-021 の「デプロイ設定」も干渉する可能性あり"
+    },
+    {
+      "id": "bi-023",
+      "difficulty": "hard",
+      "pattern": "homonym-interference",
+      "content": "コンパイラ の バグ で 型 チェック が 正常 に 動作 しない 問題 が あった",
+      "query": "bug type check",
+      "relevant_ids": ["bi-023"],
+      "note": "同音異義語干渉: 「type」はバグの種類とTypeScriptの型の両方を意味しうる"
+    },
+    {
+      "id": "bi-024",
+      "difficulty": "hard",
+      "pattern": "homonym-interference",
+      "content": "The bug report categorized by type: network errors, auth failures, and timeout issues",
+      "query": "バグ 種類",
+      "relevant_ids": ["bi-024"],
+      "note": "同音異義語干渉: 「種類」は「type」にも「category」にも対応しうる"
+    },
+    {
+      "id": "bi-025",
+      "difficulty": "hard",
+      "pattern": "partial-match-interference",
+      "content": "ユーザー 認証 システム に OAuth 2.0 を 導入 して セキュリティ を 向上 させた",
+      "query": "authentication security OAuth",
+      "relevant_ids": ["bi-025"],
+      "note": "部分一致干渉: bi-002 の「認証バグ修正」との混同リスク"
+    },
+    {
+      "id": "bi-026",
+      "difficulty": "hard",
+      "pattern": "context-dependent-translation",
+      "content": "プロジェクト の スコープ を 見直し、リリース 計画 を 再策定 した",
+      "query": "project scope release plan revision",
+      "relevant_ids": ["bi-026"],
+      "note": "コンテキスト依存翻訳: 「見直し」は review/revision/reconsider に対応しうる"
+    },
+    {
+      "id": "bi-027",
+      "difficulty": "hard",
+      "pattern": "context-dependent-translation",
+      "content": "Reviewed and revised the project scope to align with new business requirements",
+      "query": "プロジェクト スコープ 見直し",
+      "relevant_ids": ["bi-027"],
+      "note": "コンテキスト依存翻訳: 「reviewed」は「レビュー」と「見直し」の両方に対応しうる"
+    },
+    {
+      "id": "bi-028",
+      "difficulty": "hard",
+      "pattern": "cross-domain-interference",
+      "content": "本番 環境 の データベース パフォーマンス が 低下 した。slow query log で 原因 を 特定 した",
+      "query": "performance database",
+      "relevant_ids": ["bi-028"],
+      "note": "クロスドメイン干渉: bi-004 の「キャッシュパフォーマンス」との混同リスク"
+    },
+    {
+      "id": "bi-029",
+      "difficulty": "hard",
+      "pattern": "partial-match-interference",
+      "content": "CI/CD pipeline で test failure が 続い て いる。flaky test を 除外 する 方針 に した",
+      "query": "CI テスト 失敗",
+      "relevant_ids": ["bi-029"],
+      "note": "部分一致干渉: bi-010 の「CIデータベースマイグレーション失敗」との混同リスク"
+    },
+    {
+      "id": "bi-030",
+      "difficulty": "hard",
+      "pattern": "homonym-interference",
+      "content": "インフラ の コスト 削減 の ため サーバー を consolidate して リソース を 最適化 した",
+      "query": "cost reduction server consolidation",
+      "relevant_ids": ["bi-030"],
+      "note": "同音異義語干渉: 「consolidate」は「統合/集約」の両方の意味を持ち、bi-011 との混同リスク"
+    },
+    {
+      "id": "bi-031",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "ログ 集約 基盤 を Elasticsearch に 移行 した。検索 速度 が 5倍 向上 した",
+      "query": "log aggregation Elasticsearch migration",
+      "relevant_ids": ["bi-031"]
+    },
+    {
+      "id": "bi-032",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "テスト カバレッジ を 60% から 85% に 引き上げた。統合 テスト を 中心 に 拡充",
+      "query": "test coverage integration test improvement",
+      "relevant_ids": ["bi-032"]
+    },
+    {
+      "id": "bi-033",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "依存 ライブラリ の 脆弱性 スキャン を CI に 組み込んだ。Snyk を 使用",
+      "query": "dependency vulnerability scan CI Snyk",
+      "relevant_ids": ["bi-033"]
+    },
+    {
+      "id": "bi-034",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "API の レート 制限 を 1分 あたり 100 リクエスト に 設定 した",
+      "query": "API rate limit requests per minute",
+      "relevant_ids": ["bi-034"]
+    },
+    {
+      "id": "bi-035",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "フロント エンド の バンドル サイズ を tree shaking で 40% 削減 した",
+      "query": "frontend bundle size tree shaking reduction",
+      "relevant_ids": ["bi-035"]
+    },
+    {
+      "id": "bi-036",
+      "difficulty": "medium",
+      "pattern": "ja-content_en-query",
+      "content": "データ パイプライン を Apache Kafka で 非同期 化 した。スループット が 3倍 向上",
+      "query": "data pipeline Kafka async throughput",
+      "relevant_ids": ["bi-036"]
+    },
+    {
+      "id": "bi-037",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Enabled multi-factor authentication for all admin accounts. TOTP tokens required for login.",
+      "query": "多要素認証 管理者 ログイン",
+      "relevant_ids": ["bi-037"]
+    },
+    {
+      "id": "bi-038",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Upgraded Node.js from version 16 to 20 LTS. Updated all deprecated API calls.",
+      "query": "Node.js アップグレード バージョン",
+      "relevant_ids": ["bi-038"]
+    },
+    {
+      "id": "bi-039",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Set up end-to-end encryption for all inter-service communications using mTLS.",
+      "query": "サービス間通信 暗号化 mTLS",
+      "relevant_ids": ["bi-039"]
+    },
+    {
+      "id": "bi-040",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Implemented blue-green deployment strategy to achieve zero-downtime releases.",
+      "query": "ブルーグリーン デプロイ ゼロダウンタイム",
+      "relevant_ids": ["bi-040"]
+    },
+    {
+      "id": "bi-041",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Added distributed tracing with OpenTelemetry. Traces visible in Jaeger dashboard.",
+      "query": "分散トレーシング OpenTelemetry Jaeger",
+      "relevant_ids": ["bi-041"]
+    },
+    {
+      "id": "bi-042",
+      "difficulty": "medium",
+      "pattern": "en-content_ja-query",
+      "content": "Configured Terraform to manage all cloud infrastructure as code. State stored in S3.",
+      "query": "Terraform インフラ コード管理",
+      "relevant_ids": ["bi-042"]
+    },
+    {
+      "id": "bi-043",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "WebSocket を 使った real-time 通知 機能 を 実装 した。接続 数 が 1万 以上 を 維持",
+      "query": "WebSocket real-time 通知 スケール",
+      "relevant_ids": ["bi-043"]
+    },
+    {
+      "id": "bi-044",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "PostgreSQL の vacuum と analyze を 定期 実行 して クエリ 性能 を 最適化 した",
+      "query": "PostgreSQL vacuum analyze クエリ 最適化",
+      "relevant_ids": ["bi-044"]
+    },
+    {
+      "id": "bi-045",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "Sentry を 導入 して error tracking を 自動 化。MTTR が 50% 短縮 された",
+      "query": "Sentry エラートラッキング MTTR 改善",
+      "relevant_ids": ["bi-045"]
+    },
+    {
+      "id": "bi-046",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "feature branch を main に merge する 前 に code review と CI が 必須 になった",
+      "query": "コードレビュー CI マージ 必須",
+      "relevant_ids": ["bi-046"]
+    },
+    {
+      "id": "bi-047",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "CDN に CloudFront を 採用。画像 配信 の latency が 70% 削減 された",
+      "query": "CloudFront CDN latency 画像配信",
+      "relevant_ids": ["bi-047"]
+    },
+    {
+      "id": "bi-048",
+      "difficulty": "medium",
+      "pattern": "mixed-content_mixed-query",
+      "content": "OpenAPI specification を 整備 して Swagger UI で API documentation を 自動 生成 した",
+      "query": "OpenAPI Swagger ドキュメント 自動生成",
+      "relevant_ids": ["bi-048"]
+    },
+    {
+      "id": "bi-049",
+      "difficulty": "hard",
+      "pattern": "context-dependent-translation",
+      "content": "サービス の 可用性 を 高める ため ヘルス チェック と 自動 フェイル オーバー を 設定 した",
+      "query": "service availability health check failover",
+      "relevant_ids": ["bi-049"],
+      "note": "コンテキスト依存翻訳: 「可用性」はavailability/reliabilityに対応、「フェイルオーバー」はfailover"
+    },
+    {
+      "id": "bi-050",
+      "difficulty": "hard",
+      "pattern": "partial-match-interference",
+      "content": "The service availability dropped to 98.5% during last month due to cascading failures.",
+      "query": "サービス 可用性 障害",
+      "relevant_ids": ["bi-050"],
+      "note": "部分一致干渉: bi-049 の「可用性向上設定」との混同リスク。障害発生か設定かの文脈識別が必要"
+    }
+  ]
+}

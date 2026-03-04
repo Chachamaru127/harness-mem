@@ -1,0 +1,68 @@
+{
+  "schema_version": "fd-008-temporal-before-after-v1",
+  "generated_at": "2026-03-04T19:30:17.991Z",
+  "fixture": "temporal-100.json",
+  "fixture_size": 100,
+  "phase_before": "§33 完了時 (temporal-30, 30件)",
+  "phase_after": "§34 FD-001/007 完了時 (temporal-100, 100件, 4ドメイン)",
+  "changes_applied": [
+    "FD-001: temporal-50.json 再設計（逆順15件追加、同日シナリオ）",
+    "FD-007: temporal-100.json 拡充（4ドメイン: dev-workflow/project-mgmt/personal/bilingual）"
+  ],
+  "reproducibility": {
+    "runs": 3,
+    "run_1": {
+      "temporal_score": 0.5716666666666665,
+      "by_domain": {
+        "dev-workflow": 0.6018518518518519,
+        "project-mgmt": 0.5701754385964911,
+        "personal": 0.6212121212121211,
+        "bilingual": 0.4782608695652174
+      }
+    },
+    "run_2": {
+      "temporal_score": 0.5716666666666665,
+      "by_domain": {
+        "dev-workflow": 0.6018518518518519,
+        "project-mgmt": 0.5701754385964911,
+        "personal": 0.6212121212121211,
+        "bilingual": 0.4782608695652174
+      }
+    },
+    "run_3": {
+      "temporal_score": 0.5716666666666665,
+      "by_domain": {
+        "dev-workflow": 0.6018518518518519,
+        "project-mgmt": 0.5701754385964911,
+        "personal": 0.6212121212121211,
+        "bilingual": 0.4782608695652174
+      }
+    },
+    "stable": true,
+    "max_variance": 0
+  },
+  "comparison": {
+    "before": {
+      "fixture": "temporal-30.json",
+      "temporal_score": 0.6167
+    },
+    "after": {
+      "fixture": "temporal-100.json",
+      "temporal_score": 0.5716666666666665,
+      "bootstrap_ci_95": {
+        "lower": 0.5716666666666665,
+        "upper": 0.5716666666666665,
+        "mean": 0.571666666666691
+      },
+      "by_domain": {
+        "dev-workflow": 0.6018518518518519,
+        "project-mgmt": 0.5701754385964911,
+        "personal": 0.6212121212121211,
+        "bilingual": 0.47826086956521746
+      }
+    },
+    "delta": {
+      "temporal_score": "-0.0450"
+    }
+  }
+}

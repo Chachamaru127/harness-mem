@@ -1,0 +1,472 @@
+[
+  {
+    "id": "dw-001",
+    "description": "先週の変更ファイル問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-001-e1",
+        "content": "Refactored authentication middleware in auth/middleware.ts. Replaced JWT validation with session-based check. Added rate limiting per user.",
+        "timestamp": "2026-02-16T10:00:00.000Z"
+      },
+      {
+        "id": "dw-001-e2",
+        "content": "Updated database schema: added users.last_login column and session_tokens table. Ran migration successfully.",
+        "timestamp": "2026-02-17T14:30:00.000Z"
+      },
+      {
+        "id": "dw-001-e3",
+        "content": "Fixed bug in payment processing where duplicate charges occurred on retry. Added idempotency key to Stripe API calls.",
+        "timestamp": "2026-02-18T09:15:00.000Z"
+      }
+    ],
+    "query": "What files did I change last week?",
+    "expected_answer": "auth/middleware.ts",
+    "relevant_ids": ["dw-001-e1", "dw-001-e2", "dw-001-e3"]
+  },
+  {
+    "id": "dw-002",
+    "description": "バグ修正時期の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-002-e1",
+        "content": "Investigated memory leak in observation-store.ts. SQLite WAL mode causing unbounded growth on high write load.",
+        "timestamp": "2026-02-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-002-e2",
+        "content": "Fixed memory leak: added checkpoint interval every 1000 writes. WAL file now stays under 50MB. Deployed to staging.",
+        "timestamp": "2026-02-11T16:45:00.000Z"
+      },
+      {
+        "id": "dw-002-e3",
+        "content": "Memory leak fix deployed to production. Monitoring shows WAL size stable at 30-40MB under normal load.",
+        "timestamp": "2026-02-12T10:00:00.000Z"
+      }
+    ],
+    "query": "When was the memory leak bug fixed?",
+    "expected_answer": "February 11",
+    "relevant_ids": ["dw-002-e2", "dw-002-e3"]
+  },
+  {
+    "id": "dw-003",
+    "description": "CI失敗原因の問い合わせ",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-003-e1",
+        "content": "CI pipeline passing on main branch. All 1278 tests green. Build time: 2m 34s.",
+        "timestamp": "2026-02-20T09:00:00.000Z"
+      },
+      {
+        "id": "dw-003-e2",
+        "content": "CI failed on PR #142. Error: Cannot find module 'bun:sqlite' in test environment. Node.js runner used instead of Bun.",
+        "timestamp": "2026-02-21T14:20:00.000Z"
+      },
+      {
+        "id": "dw-003-e3",
+        "content": "Fixed CI: switched test runner back to Bun in .github/workflows/test.yml. PR #142 now passing.",
+        "timestamp": "2026-02-21T16:00:00.000Z"
+      }
+    ],
+    "query": "Why did CI fail recently?",
+    "expected_answer": "Cannot find module bun:sqlite",
+    "relevant_ids": ["dw-003-e2", "dw-003-e3"]
+  },
+  {
+    "id": "dw-004",
+    "description": "設計判断の問い合わせ",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-004-e1",
+        "content": "Considered using PostgreSQL for better full-text search. Decided against it: SQLite sufficient for single-user local deployment. Avoid operational complexity.",
+        "timestamp": "2026-01-15T10:00:00.000Z"
+      },
+      {
+        "id": "dw-004-e2",
+        "content": "Implemented vector embeddings using 64-dimensional space instead of 384-dim. Trade-off: lower quality vs 6x faster indexing. Acceptable for MVP.",
+        "timestamp": "2026-01-20T14:00:00.000Z"
+      },
+      {
+        "id": "dw-004-e3",
+        "content": "Architecture decision: keep all storage in SQLite with FTS5 + vector extension. No external dependencies for core functionality.",
+        "timestamp": "2026-01-25T11:00:00.000Z"
+      }
+    ],
+    "query": "Why did we choose SQLite over PostgreSQL?",
+    "expected_answer": "single-user local deployment",
+    "relevant_ids": ["dw-004-e1", "dw-004-e3"]
+  },
+  {
+    "id": "dw-005",
+    "description": "最新設定値の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-005-e1",
+        "content": "Default embedding dimension set to 128. Performance tests show 128-dim gives good recall@10 for typical query lengths.",
+        "timestamp": "2026-01-10T09:00:00.000Z"
+      },
+      {
+        "id": "dw-005-e2",
+        "content": "Reduced embedding dimension to 64 after benchmarks. 64-dim achieves 94% of 128-dim recall at 40% lower latency. Updated config default.",
+        "timestamp": "2026-01-18T15:00:00.000Z"
+      }
+    ],
+    "query": "What is the current embedding dimension?",
+    "expected_answer": "64",
+    "relevant_ids": ["dw-005-e2"]
+  },
+  {
+    "id": "dw-006",
+    "description": "パフォーマンス問題の調査",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-006-e1",
+        "content": "Profiled search latency. p50=45ms, p95=320ms, p99=890ms. High variance on queries with many results.",
+        "timestamp": "2026-02-05T10:00:00.000Z"
+      },
+      {
+        "id": "dw-006-e2",
+        "content": "Root cause: reranker BM25 calculation running O(n^2) for large result sets. Implemented batch scoring to reduce to O(n log n).",
+        "timestamp": "2026-02-06T14:00:00.000Z"
+      },
+      {
+        "id": "dw-006-e3",
+        "content": "After optimization: p50=22ms, p95=85ms, p99=210ms. 4x improvement at p95. Deployed to production.",
+        "timestamp": "2026-02-07T11:00:00.000Z"
+      }
+    ],
+    "query": "What was causing the high search latency?",
+    "expected_answer": "BM25",
+    "relevant_ids": ["dw-006-e2"]
+  },
+  {
+    "id": "dw-007",
+    "description": "依存関係バージョンの問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-007-e1",
+        "content": "Using Bun 1.2.0 as runtime. Upgraded from 1.1.38. New features: improved SQLite performance, better TypeScript support.",
+        "timestamp": "2026-02-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-007-e2",
+        "content": "Upgraded Bun to 1.3.6 to fix crash in test runner on macOS Silicon. No breaking changes in our usage.",
+        "timestamp": "2026-02-19T14:00:00.000Z"
+      }
+    ],
+    "query": "What version of Bun are we using?",
+    "expected_answer": "1.3.6",
+    "relevant_ids": ["dw-007-e2"]
+  },
+  {
+    "id": "dw-008",
+    "description": "未解決のTODO追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-008-e1",
+        "content": "TODO: implement query result caching to reduce repeated embedding computations. Estimated 30% latency improvement.",
+        "timestamp": "2026-01-28T10:00:00.000Z"
+      },
+      {
+        "id": "dw-008-e2",
+        "content": "TODO: add streaming response support for MCP server. Currently buffers all results before sending.",
+        "timestamp": "2026-02-03T15:00:00.000Z"
+      },
+      {
+        "id": "dw-008-e3",
+        "content": "TODO caching: deprioritized. Cache invalidation complexity too high given frequent writes. Will revisit in §35.",
+        "timestamp": "2026-02-10T11:00:00.000Z"
+      }
+    ],
+    "query": "What TODOs are still open?",
+    "expected_answer": "streaming",
+    "relevant_ids": ["dw-008-e2"]
+  },
+  {
+    "id": "dw-009",
+    "description": "デプロイ時刻の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-009-e1",
+        "content": "Released v0.2.0. Changes: bilingual search, freshness routing, 50-case knowledge-update benchmark.",
+        "timestamp": "2026-01-20T12:00:00.000Z"
+      },
+      {
+        "id": "dw-009-e2",
+        "content": "Released v0.3.0. Major changes: §32 benchmark CI, temporal ordering, Bootstrap CI implementation.",
+        "timestamp": "2026-02-15T10:00:00.000Z"
+      }
+    ],
+    "query": "When was v0.3.0 released?",
+    "expected_answer": "February 15",
+    "relevant_ids": ["dw-009-e2"]
+  },
+  {
+    "id": "dw-010",
+    "description": "テスト失敗の原因追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-010-e1",
+        "content": "Test suite: reranker quality gate failing. Expected recall >= 0.85, actual 0.72. Regression from PR #138.",
+        "timestamp": "2026-02-22T09:00:00.000Z"
+      },
+      {
+        "id": "dw-010-e2",
+        "content": "Root cause of recall regression: PR #138 changed BM25 title weight from 5.0 to 2.0 without updating test baseline. Baseline updated.",
+        "timestamp": "2026-02-22T11:30:00.000Z"
+      },
+      {
+        "id": "dw-010-e3",
+        "content": "Reranker quality gate passing after baseline update. recall=0.91, mrr=0.88. PR #138 approved.",
+        "timestamp": "2026-02-22T14:00:00.000Z"
+      }
+    ],
+    "query": "Why was the reranker quality gate failing?",
+    "expected_answer": "BM25 title weight",
+    "relevant_ids": ["dw-010-e2"]
+  },
+  {
+    "id": "dw-011",
+    "description": "担当者の変更",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-011-e1",
+        "content": "Search module owned by Alice. She implemented the original vector retrieval pipeline in §28.",
+        "timestamp": "2026-01-05T10:00:00.000Z"
+      },
+      {
+        "id": "dw-011-e2",
+        "content": "Alice on leave. Bob taking over search module ownership. Onboarding session completed.",
+        "timestamp": "2026-02-10T09:00:00.000Z"
+      }
+    ],
+    "query": "Who owns the search module now?",
+    "expected_answer": "Bob",
+    "relevant_ids": ["dw-011-e2"]
+  },
+  {
+    "id": "dw-012",
+    "description": "APIエンドポイントの仕様変更",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-012-e1",
+        "content": "Search API: POST /search accepts {query, limit, project}. Returns up to 10 results by default.",
+        "timestamp": "2026-01-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-012-e2",
+        "content": "Updated search API: added include_private and sector parameters. Default limit increased to 20. Breaking change: old clients may receive more results.",
+        "timestamp": "2026-02-08T14:00:00.000Z"
+      }
+    ],
+    "query": "What parameters does the search API accept?",
+    "expected_answer": "include_private",
+    "relevant_ids": ["dw-012-e2"]
+  },
+  {
+    "id": "dw-013",
+    "description": "直近のスプリント目標",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-013-e1",
+        "content": "Sprint §33 goal: improve search quality. F1 target: 0.27. Freshness target: 0.80.",
+        "timestamp": "2026-02-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-013-e2",
+        "content": "Sprint §33 completed. F1=0.287 (target met). Freshness=0.88 (target met, but train=test bias suspected).",
+        "timestamp": "2026-02-20T17:00:00.000Z"
+      },
+      {
+        "id": "dw-013-e3",
+        "content": "Sprint §34 goal: fix measurement reliability. Fix temporal fixture (ASC-only score < 0.7). Fix freshness CV bias.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      }
+    ],
+    "query": "What is the current sprint goal?",
+    "expected_answer": "measurement reliability",
+    "relevant_ids": ["dw-013-e3"]
+  },
+  {
+    "id": "dw-014",
+    "description": "コードレビューコメントの追跡",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-014-e1",
+        "content": "PR #145 review: suggestion to add error handling in appendQueryLog. Currently silently ignores write errors.",
+        "timestamp": "2026-02-23T10:00:00.000Z"
+      },
+      {
+        "id": "dw-014-e2",
+        "content": "PR #145 review: alternative suggestion - use structured logging instead of raw JSONL. Easier to query.",
+        "timestamp": "2026-02-23T10:30:00.000Z"
+      },
+      {
+        "id": "dw-014-e3",
+        "content": "PR #145 merged. Kept JSONL format (simpler, no deps). Error handling: catch and ignore (log failures must not impact search).",
+        "timestamp": "2026-02-23T16:00:00.000Z"
+      }
+    ],
+    "query": "What was decided about error handling in the query log?",
+    "expected_answer": "catch and ignore",
+    "relevant_ids": ["dw-014-e3"]
+  },
+  {
+    "id": "dw-015",
+    "description": "環境変数の仕様問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-015-e1",
+        "content": "Environment variables: HARNESS_MEM_DECAY_DISABLED=1 disables time-based score decay. HARNESS_MEM_RERANKER_ENABLED=1 enables BM25 reranking.",
+        "timestamp": "2026-01-20T09:00:00.000Z"
+      },
+      {
+        "id": "dw-015-e2",
+        "content": "Added new env vars: HARNESS_BENCH_FRESHNESS_GATE (default 0.30), HARNESS_BENCH_TEMPORAL_GATE (default 0.50). Override CI thresholds.",
+        "timestamp": "2026-02-14T14:00:00.000Z"
+      },
+      {
+        "id": "dw-015-e3",
+        "content": "Added HARNESS_MEM_QUERY_LOG env var. Set to file path to enable JSONL query logging. Privacy: only category/length recorded, not full query text.",
+        "timestamp": "2026-02-28T10:00:00.000Z"
+      }
+    ],
+    "query": "How do I enable query logging?",
+    "expected_answer": "HARNESS_MEM_QUERY_LOG",
+    "relevant_ids": ["dw-015-e3"]
+  },
+  {
+    "id": "dw-016",
+    "description": "実装方針の変更追跡",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-016-e1",
+        "content": "Initial plan: implement Graph traversal for multi-hop reasoning. Estimated 2 sprint effort.",
+        "timestamp": "2026-01-15T10:00:00.000Z"
+      },
+      {
+        "id": "dw-016-e2",
+        "content": "Graph traversal de-prioritized. F1 improvement from vector search alone sufficient for §33 goals. Revisit in §35.",
+        "timestamp": "2026-02-01T11:00:00.000Z"
+      },
+      {
+        "id": "dw-016-e3",
+        "content": "§34 scope confirmed: no graph traversal. Focus on measurement reliability only. Graph traversal remains §35+ scope.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      }
+    ],
+    "query": "Why was Graph traversal de-prioritized?",
+    "expected_answer": "vector search alone sufficient",
+    "relevant_ids": ["dw-016-e2"]
+  },
+  {
+    "id": "dw-017",
+    "description": "スコア改善の定量追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-017-e1",
+        "content": "§31 F1 score: 0.179. Baseline established with locomo-120 dataset.",
+        "timestamp": "2026-01-10T10:00:00.000Z"
+      },
+      {
+        "id": "dw-017-e2",
+        "content": "§32 F1 score: 0.212. Improvement: +0.033 from BM25 reranking and freshness routing.",
+        "timestamp": "2026-02-01T10:00:00.000Z"
+      },
+      {
+        "id": "dw-017-e3",
+        "content": "§33 F1 score: 0.287. Improvement: +0.075 from temporal ordering and improved answer normalization.",
+        "timestamp": "2026-02-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the latest F1 score?",
+    "expected_answer": "0.287",
+    "relevant_ids": ["dw-017-e3"]
+  },
+  {
+    "id": "dw-018",
+    "description": "ミーティング決定事項の追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-018-e1",
+        "content": "Team meeting 2026-02-20: discussed LLM judge evaluation. Cost: ~$50/run. Reproducibility concerns due to model updates.",
+        "timestamp": "2026-02-20T15:00:00.000Z"
+      },
+      {
+        "id": "dw-018-e2",
+        "content": "Decision from meeting: skip LLM judge for now. Use automated metrics (F1, Recall, Temporal Order Score) only. Revisit if automated metrics plateau.",
+        "timestamp": "2026-02-20T16:00:00.000Z"
+      }
+    ],
+    "query": "Why did we decide not to use LLM judge evaluation?",
+    "expected_answer": "reproducibility",
+    "relevant_ids": ["dw-018-e2"]
+  },
+  {
+    "id": "dw-019",
+    "description": "テストカバレッジ変化の追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-019-e1",
+        "content": "Test count: 956 tests across 142 files after §32. Coverage added for temporal ordering and Bootstrap CI.",
+        "timestamp": "2026-02-10T10:00:00.000Z"
+      },
+      {
+        "id": "dw-019-e2",
+        "content": "Test count: 1278 tests across 167 files after §33. New tests: bilingual recall, freshness CV, Holm-Bonferroni correction.",
+        "timestamp": "2026-02-20T10:00:00.000Z"
+      },
+      {
+        "id": "dw-019-e3",
+        "content": "Test count: 1343 tests across 172 files after §34 Phase A-B. New tests: temporal-100, knowledge-update-100, 3-layer CI gate.",
+        "timestamp": "2026-03-05T10:00:00.000Z"
+      }
+    ],
+    "query": "How many tests are there currently?",
+    "expected_answer": "1343",
+    "relevant_ids": ["dw-019-e3"]
+  },
+  {
+    "id": "dw-020",
+    "description": "次のマイルストーンの確認",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-020-e1",
+        "content": "§34 milestone: fix measurement reliability. 4 metrics must have Bootstrap CI. Temporal fixture must have reverse-order cases.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      },
+      {
+        "id": "dw-020-e2",
+        "content": "§34 completion criteria: Temporal Weighted Kendall tau >= 0.70 (CI lower bound). Freshness@K >= 0.70 (post-CV). bilingual recall >= 0.85 (N=50).",
+        "timestamp": "2026-02-25T10:00:00.000Z"
+      },
+      {
+        "id": "dw-020-e3",
+        "content": "§35 scope preview: multi-hop reasoning (Graph traversal), 384-dim embeddings, LoCoMo 200-sample expansion. Start after §34 completion.",
+        "timestamp": "2026-02-25T11:00:00.000Z"
+      }
+    ],
+    "query": "What comes after §34 is complete?",
+    "expected_answer": "multi-hop reasoning",
+    "relevant_ids": ["dw-020-e3"]
+  }
+]

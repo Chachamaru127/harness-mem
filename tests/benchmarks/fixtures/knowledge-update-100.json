@@ -1,0 +1,2102 @@
+[
+  {
+    "id": "ku-001",
+    "description": "React 16 から React 18 への移行",
+    "old_entries": [
+      {
+        "id": "ku-001-old-1",
+        "content": "Project uses React 16.14 for the frontend. We rely on class components and lifecycle methods like componentDidMount.",
+        "timestamp": "2023-01-15T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-001-new-1",
+        "content": "Migrated frontend to React 18.2. Now using functional components with hooks. Concurrent rendering enabled. StrictMode updated for React 18 compatibility.",
+        "timestamp": "2024-02-10T10:00:00.000Z"
+      }
+    ],
+    "query": "What version of React is the project currently using?",
+    "expected_latest_id": "ku-001-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-002",
+    "description": "REST から GraphQL への変更",
+    "old_entries": [
+      {
+        "id": "ku-002-old-1",
+        "content": "The API uses REST endpoints. GET /users, POST /users, PUT /users/:id, DELETE /users/:id are the main routes.",
+        "timestamp": "2023-03-01T08:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-002-new-1",
+        "content": "Switched API to GraphQL using Apollo Server. REST endpoints deprecated. Single /graphql endpoint for all queries and mutations.",
+        "timestamp": "2024-01-20T14:00:00.000Z"
+      }
+    ],
+    "query": "What API style does the project use?",
+    "expected_latest_id": "ku-002-new-1",
+    "difficulty": "hard"
+  },
+  {
+    "id": "ku-003",
+    "description": "JWT から セッションベース認証への変更",
+    "old_entries": [
+      {
+        "id": "ku-003-old-1",
+        "content": "Authentication uses JWT tokens. Tokens expire after 1 hour. Refresh tokens stored in localStorage.",
+        "timestamp": "2023-02-10T11:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-003-new-1",
+        "content": "Replaced JWT with session-based authentication. Sessions stored server-side with Redis. Cookie-based session management. 24-hour session expiry.",
+        "timestamp": "2024-03-05T09:30:00.000Z"
+      }
+    ],
+    "query": "How does the current authentication system work?",
+    "expected_latest_id": "ku-003-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-004",
+    "description": "MySQL から PostgreSQL へのデータベース移行",
+    "old_entries": [
+      {
+        "id": "ku-004-old-1",
+        "content": "Database is MySQL 8.0 running on RDS. Using InnoDB engine. Database host: mysql-prod.internal:3306.",
+        "timestamp": "2022-06-01T08:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-004-new-1",
+        "content": "Migrated from MySQL to PostgreSQL 15 on RDS. Using pgvector extension for vector search. Database host: postgres-prod.internal:5432.",
+        "timestamp": "2023-11-15T16:00:00.000Z"
+      }
+    ],
+    "query": "What database does the project currently use?",
+    "expected_latest_id": "ku-004-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-005",
+    "description": "AWS から GCP へのクラウド移行",
+    "old_entries": [
+      {
+        "id": "ku-005-old-1",
+        "content": "Infrastructure hosted on AWS. Using EC2 for compute, S3 for storage, CloudFront for CDN. Region: us-east-1.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-005-new-1",
+        "content": "Migrated cloud infrastructure to Google Cloud Platform. Using GKE for Kubernetes, Cloud Storage for object storage, Cloud CDN. Region: us-central1.",
+        "timestamp": "2024-04-01T00:00:00.000Z"
+      }
+    ],
+    "query": "Which cloud provider does the project currently use?",
+    "expected_latest_id": "ku-005-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-006",
+    "description": "npm から pnpm へのパッケージマネージャ変更",
+    "old_entries": [
+      {
+        "id": "ku-006-old-1",
+        "content": "Project uses npm for package management. package-lock.json is tracked in version control. Node version: 16.",
+        "timestamp": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-006-new-1",
+        "content": "Switched package manager from npm to pnpm for faster installs and disk space efficiency. pnpm-lock.yaml replaces package-lock.json. Node version: 20.",
+        "timestamp": "2024-02-28T12:00:00.000Z"
+      }
+    ],
+    "query": "What package manager does the project use?",
+    "expected_latest_id": "ku-006-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-007",
+    "description": "Jest から Vitest へのテストフレームワーク変更",
+    "old_entries": [
+      {
+        "id": "ku-007-old-1",
+        "content": "Testing framework is Jest 29 with ts-jest for TypeScript support. Test files use .test.ts extension. Coverage via jest --coverage.",
+        "timestamp": "2022-09-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-007-new-1",
+        "content": "Migrated test suite from Jest to Vitest for native ESM support and faster execution. Configuration in vitest.config.ts. Coverage via vitest --coverage.",
+        "timestamp": "2024-01-10T00:00:00.000Z"
+      }
+    ],
+    "query": "What testing framework does the project use?",
+    "expected_latest_id": "ku-007-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-008",
+    "description": "Express から Fastify へのサーバー変更",
+    "old_entries": [
+      {
+        "id": "ku-008-old-1",
+        "content": "Backend server uses Express 4.18 with body-parser and cors middleware. Port 3000 in development.",
+        "timestamp": "2021-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-008-new-1",
+        "content": "Replaced Express with Fastify 4 for better performance and TypeScript support. Schema validation with Zod. Port 3000 in development.",
+        "timestamp": "2024-03-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What web framework does the backend use?",
+    "expected_latest_id": "ku-008-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-009",
+    "description": "モノリポから分離リポジトリへの構成変更",
+    "old_entries": [
+      {
+        "id": "ku-009-old-1",
+        "content": "Project is structured as a monorepo with frontend, backend, and shared packages in a single repository managed by Turborepo.",
+        "timestamp": "2022-03-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-009-new-1",
+        "content": "Separated monorepo into three independent repositories: api-server, web-client, and shared-lib. Each has its own CI/CD pipeline.",
+        "timestamp": "2023-10-01T00:00:00.000Z"
+      }
+    ],
+    "query": "How is the project repository currently structured?",
+    "expected_latest_id": "ku-009-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-010",
+    "description": "docker-compose から Kubernetes へのデプロイ変更",
+    "old_entries": [
+      {
+        "id": "ku-010-old-1",
+        "content": "Production deployment uses docker-compose with 3 services: api, db, and redis. Deploy with docker-compose up -d.",
+        "timestamp": "2021-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-010-new-1",
+        "content": "Migrated production deployment from docker-compose to Kubernetes. Helm charts in ./charts directory. Deploy with helm upgrade --install.",
+        "timestamp": "2023-07-15T00:00:00.000Z"
+      }
+    ],
+    "query": "How is the production environment deployed?",
+    "expected_latest_id": "ku-010-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-011",
+    "description": "CTO 交代",
+    "old_entries": [
+      {
+        "id": "ku-011-old-1",
+        "content": "The CTO is John Smith, who joined the company in 2019. John oversees all technical decisions and reports to the CEO.",
+        "timestamp": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-011-new-1",
+        "content": "Sarah Chen has been appointed as the new CTO, effective March 2024. John Smith moved to an advisory role. Sarah brings 15 years of distributed systems experience.",
+        "timestamp": "2024-03-01T00:00:00.000Z"
+      }
+    ],
+    "query": "Who is the current CTO?",
+    "expected_latest_id": "ku-011-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-012",
+    "description": "オフィス移転",
+    "old_entries": [
+      {
+        "id": "ku-012-old-1",
+        "content": "The main office is located at 100 Market Street, San Francisco, CA 94105. Office hours are 9am-6pm PST.",
+        "timestamp": "2022-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-012-new-1",
+        "content": "Relocated main office to 500 Howard Street, San Francisco, CA 94105 in January 2024. The new office has 30% more floor space and standing desks.",
+        "timestamp": "2024-01-15T00:00:00.000Z"
+      }
+    ],
+    "query": "Where is the company's main office located?",
+    "expected_latest_id": "ku-012-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-013",
+    "description": "リモートワークポリシー変更",
+    "old_entries": [
+      {
+        "id": "ku-013-old-1",
+        "content": "Company policy requires all employees to be in the office 5 days a week. No remote work is permitted except for medical reasons.",
+        "timestamp": "2020-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-013-new-1",
+        "content": "Adopted hybrid work policy: employees are required to be in office on Tuesdays and Thursdays. Full remote work is allowed for the remaining days.",
+        "timestamp": "2023-09-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What is the current remote work policy?",
+    "expected_latest_id": "ku-013-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-014",
+    "description": "Slack から Teams への移行",
+    "old_entries": [
+      {
+        "id": "ku-014-old-1",
+        "content": "Team communication is done via Slack. Main channels are #general, #engineering, #product, and #random.",
+        "timestamp": "2021-03-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-014-new-1",
+        "content": "Company migrated from Slack to Microsoft Teams in February 2024. All channels have been recreated. Slack workspace will be archived by end of March 2024.",
+        "timestamp": "2024-02-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What communication tool does the team currently use?",
+    "expected_latest_id": "ku-014-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-015",
+    "description": "Python 2 から Python 3 への移行",
+    "old_entries": [
+      {
+        "id": "ku-015-old-1",
+        "content": "Data pipeline scripts are written in Python 2.7. Using legacy libraries including print statements and urllib2.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-015-new-1",
+        "content": "Fully migrated data pipeline to Python 3.11. Using type hints, f-strings, and asyncio. All Python 2 code has been removed.",
+        "timestamp": "2023-06-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What Python version are the data pipeline scripts using?",
+    "expected_latest_id": "ku-015-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-016",
+    "description": "開発リードの交代",
+    "old_entries": [
+      {
+        "id": "ku-016-old-1",
+        "content": "Alex Johnson leads the backend engineering team. Alex joined in 2020 and has been key to the microservices migration.",
+        "timestamp": "2022-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-016-new-1",
+        "content": "Maria Garcia took over as backend engineering lead in Q1 2024 after Alex Johnson left to join a startup. Maria previously led the platform team.",
+        "timestamp": "2024-01-08T00:00:00.000Z"
+      }
+    ],
+    "query": "Who leads the backend engineering team?",
+    "expected_latest_id": "ku-016-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-017",
+    "description": "CI/CD ツール変更（Jenkins → GitHub Actions）",
+    "old_entries": [
+      {
+        "id": "ku-017-old-1",
+        "content": "CI/CD pipeline runs on Jenkins 2.387. Jenkins server hosted at jenkins.internal:8080. Pipelines defined in Jenkinsfile.",
+        "timestamp": "2021-09-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-017-new-1",
+        "content": "Migrated CI/CD from Jenkins to GitHub Actions. Workflows defined in .github/workflows/. Jenkins server decommissioned in December 2023.",
+        "timestamp": "2023-12-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What CI/CD system does the project use?",
+    "expected_latest_id": "ku-017-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-018",
+    "description": "Jira から Linear への移行",
+    "old_entries": [
+      {
+        "id": "ku-018-old-1",
+        "content": "Project management and issue tracking is handled via Jira. Board URL: company.atlassian.net. Sprint length is 2 weeks.",
+        "timestamp": "2020-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-018-new-1",
+        "content": "Switched issue tracking from Jira to Linear in October 2023 for better developer experience. All historical issues migrated. Sprint length remains 2 weeks.",
+        "timestamp": "2023-10-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What tool is used for project management and issue tracking?",
+    "expected_latest_id": "ku-018-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-019",
+    "description": "Node.js バージョンアップ（14 → 20）",
+    "old_entries": [
+      {
+        "id": "ku-019-old-1",
+        "content": "The project runs on Node.js 14 LTS. .nvmrc file pins to node 14.21.3.",
+        "timestamp": "2022-12-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-019-new-1",
+        "content": "Upgraded Node.js from 14 to 20 LTS. .nvmrc updated to 20.11.0. Node 14 reached end-of-life so the upgrade was required.",
+        "timestamp": "2024-02-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What Node.js version does the project use?",
+    "expected_latest_id": "ku-019-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-020",
+    "description": "TypeScript バージョンアップ（4 → 5）",
+    "old_entries": [
+      {
+        "id": "ku-020-old-1",
+        "content": "Project uses TypeScript 4.9 with strict mode enabled. tsconfig.json targets ES2020.",
+        "timestamp": "2023-03-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-020-new-1",
+        "content": "Upgraded to TypeScript 5.3. Now using const type parameters and decorators stable feature. tsconfig targets ES2022.",
+        "timestamp": "2024-01-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What TypeScript version is the project using?",
+    "expected_latest_id": "ku-020-new-1",
+    "difficulty": "hard"
+  },
+  {
+    "id": "ku-021",
+    "description": "給与支払いサイクルの変更",
+    "old_entries": [
+      {
+        "id": "ku-021-old-1",
+        "content": "Employees are paid on the last business day of each month. Payroll is processed by the HR team using ADP.",
+        "timestamp": "2020-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-021-new-1",
+        "content": "Payroll changed to bi-weekly schedule starting January 2024. Pay dates are every other Friday. Switched payroll provider from ADP to Gusto.",
+        "timestamp": "2024-01-05T00:00:00.000Z"
+      }
+    ],
+    "query": "What is the current payroll schedule?",
+    "expected_latest_id": "ku-021-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-022",
+    "description": "健康保険プロバイダーの変更",
+    "old_entries": [
+      {
+        "id": "ku-022-old-1",
+        "content": "Company health insurance is provided through Aetna. Employees can choose from HMO or PPO plans. Open enrollment in October.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-022-new-1",
+        "content": "Health insurance provider changed from Aetna to Blue Shield of California effective January 2024. New plans include HMO, PPO, and HDHP options.",
+        "timestamp": "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    "query": "Who is the current health insurance provider?",
+    "expected_latest_id": "ku-022-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-023",
+    "description": "Kubernetes バージョンアップ",
+    "old_entries": [
+      {
+        "id": "ku-023-old-1",
+        "content": "Production Kubernetes cluster runs version 1.25. Managed via GKE. Cluster nodes use n2-standard-4 machine type.",
+        "timestamp": "2023-02-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-023-new-1",
+        "content": "Kubernetes cluster upgraded to version 1.29. GKE autopilot mode enabled for cost optimization. Nodes upgraded to n2-standard-8.",
+        "timestamp": "2024-02-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What Kubernetes version is the production cluster running?",
+    "expected_latest_id": "ku-023-new-1",
+    "difficulty": "hard"
+  },
+  {
+    "id": "ku-024",
+    "description": "モニタリングツール変更（Datadog → Grafana Cloud）",
+    "old_entries": [
+      {
+        "id": "ku-024-old-1",
+        "content": "Application monitoring uses Datadog APM. Dashboards at app.datadoghq.com. Alerts configured for p99 latency and error rate.",
+        "timestamp": "2021-07-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-024-new-1",
+        "content": "Replaced Datadog with Grafana Cloud for cost savings. Metrics via Prometheus, logs via Loki, traces via Tempo. Dashboards migrated to Grafana.",
+        "timestamp": "2024-03-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What monitoring solution does the team currently use?",
+    "expected_latest_id": "ku-024-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-025",
+    "description": "設計ツール変更（Sketch → Figma）",
+    "old_entries": [
+      {
+        "id": "ku-025-old-1",
+        "content": "UI design work is done in Sketch. Design files stored in Abstract for version control. Mac only workflow.",
+        "timestamp": "2021-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-025-new-1",
+        "content": "Design team migrated from Sketch to Figma in Q3 2023. All design assets now in Figma with real-time collaboration. Abstract subscription cancelled.",
+        "timestamp": "2023-09-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What design tool does the team use?",
+    "expected_latest_id": "ku-025-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-026",
+    "description": "プロダクトマネージャーの交代",
+    "old_entries": [
+      {
+        "id": "ku-026-old-1",
+        "content": "David Kim is the product manager for the core platform. He has been with the company since 2021 and owns the product roadmap.",
+        "timestamp": "2022-03-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-026-new-1",
+        "content": "Emily Rodriguez joined as product manager for core platform in February 2024. David Kim was promoted to VP of Product. Emily comes from Stripe.",
+        "timestamp": "2024-02-12T00:00:00.000Z"
+      }
+    ],
+    "query": "Who is the product manager for the core platform?",
+    "expected_latest_id": "ku-026-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-027",
+    "description": "Stripe から Braintree への決済処理変更",
+    "old_entries": [
+      {
+        "id": "ku-027-old-1",
+        "content": "Payment processing is handled by Stripe. Using Stripe Checkout for the payment flow. Supports credit cards and Apple Pay.",
+        "timestamp": "2020-08-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-027-new-1",
+        "content": "Migrated payment processing from Stripe to Braintree in January 2024 due to better international rates. Supports credit cards, PayPal, Apple Pay, and Google Pay.",
+        "timestamp": "2024-01-10T00:00:00.000Z"
+      }
+    ],
+    "query": "What payment processor does the platform use?",
+    "expected_latest_id": "ku-027-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-028",
+    "description": "Go バージョンアップ（1.19 → 1.22）",
+    "old_entries": [
+      {
+        "id": "ku-028-old-1",
+        "content": "The microservices are written in Go 1.19. go.mod specifies go 1.19 as the minimum version.",
+        "timestamp": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-028-new-1",
+        "content": "Upgraded Go runtime to 1.22. All go.mod files updated. Using new range-over-integer and improved for-range semantics.",
+        "timestamp": "2024-03-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What Go version are the microservices using?",
+    "expected_latest_id": "ku-028-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-029",
+    "description": "CDN プロバイダー変更（CloudFront → Cloudflare）",
+    "old_entries": [
+      {
+        "id": "ku-029-old-1",
+        "content": "Static assets served via AWS CloudFront. Distribution ID: E1234ABCDEF. Cache TTL is 86400 seconds for static assets.",
+        "timestamp": "2021-11-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-029-new-1",
+        "content": "CDN switched from CloudFront to Cloudflare in Q4 2023. Cloudflare Workers used for edge logic. Cache rules defined in _headers file.",
+        "timestamp": "2023-11-01T00:00:00.000Z"
+      }
+    ],
+    "query": "Which CDN provider is currently being used?",
+    "expected_latest_id": "ku-029-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-030",
+    "description": "ログ管理ツール変更（ELK → Grafana Loki）",
+    "old_entries": [
+      {
+        "id": "ku-030-old-1",
+        "content": "Log aggregation uses ELK stack (Elasticsearch, Logstash, Kibana). Kibana dashboards available at kibana.internal:5601.",
+        "timestamp": "2021-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-030-new-1",
+        "content": "Migrated log management from ELK stack to Grafana Loki. Promtail used for log shipping. ELK stack decommissioned in February 2024.",
+        "timestamp": "2024-02-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What log management system is in use?",
+    "expected_latest_id": "ku-030-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-031",
+    "description": "Terraform バージョンアップ",
+    "old_entries": [
+      {
+        "id": "ku-031-old-1",
+        "content": "Infrastructure as code uses Terraform 1.3. State stored in S3 with DynamoDB locking. Provider registry at registry.terraform.io.",
+        "timestamp": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-031-new-1",
+        "content": "Upgraded Terraform to 1.7. Migrated to OpenTofu for open-source compliance. State now stored in GCS with Firestore locking after cloud migration.",
+        "timestamp": "2024-02-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What IaC tool and version is the team using?",
+    "expected_latest_id": "ku-031-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-032",
+    "description": "エンジニアリングVP就任",
+    "old_entries": [
+      {
+        "id": "ku-032-old-1",
+        "content": "Robert Taylor serves as VP of Engineering. He joined the company in 2018 and has scaled the team from 5 to 40 engineers.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-032-new-1",
+        "content": "Robert Taylor departed in December 2023 to pursue other opportunities. Lisa Wang was promoted from Director to VP of Engineering effective January 2024.",
+        "timestamp": "2024-01-02T00:00:00.000Z"
+      }
+    ],
+    "query": "Who is the current VP of Engineering?",
+    "expected_latest_id": "ku-032-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-033",
+    "description": "OKR から SPACE メトリクスへのパフォーマンス評価変更",
+    "old_entries": [
+      {
+        "id": "ku-033-old-1",
+        "content": "Engineering performance is measured using OKRs. Quarterly OKR reviews are conducted. Individual OKRs aligned to company objectives.",
+        "timestamp": "2021-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-033-new-1",
+        "content": "Shifted to SPACE metrics framework for engineering performance in 2024. Measuring Satisfaction, Performance, Activity, Communication, and Efficiency. OKRs retained at company level only.",
+        "timestamp": "2024-01-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What framework is used to measure engineering performance?",
+    "expected_latest_id": "ku-033-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-034",
+    "description": "Confluence から Notion へのドキュメント管理変更",
+    "old_entries": [
+      {
+        "id": "ku-034-old-1",
+        "content": "Team documentation is maintained in Confluence. Space URL: company.atlassian.net/wiki. Architecture Decision Records stored in Engineering space.",
+        "timestamp": "2020-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-034-new-1",
+        "content": "Documentation migrated from Confluence to Notion in September 2023. All engineering docs, ADRs, and runbooks moved to Notion workspace.",
+        "timestamp": "2023-09-15T00:00:00.000Z"
+      }
+    ],
+    "query": "Where is the team documentation stored?",
+    "expected_latest_id": "ku-034-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-035",
+    "description": "Redis から Valkey への移行",
+    "old_entries": [
+      {
+        "id": "ku-035-old-1",
+        "content": "Caching layer uses Redis 7.0 on ElastiCache. Session storage and rate limiting implemented with Redis. Connected via redis.internal:6379.",
+        "timestamp": "2023-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-035-new-1",
+        "content": "Migrated from Redis to Valkey 7.2, the open-source Redis fork, following license changes. API-compatible so no code changes needed. Running on Memorystore.",
+        "timestamp": "2024-03-10T00:00:00.000Z"
+      }
+    ],
+    "query": "What caching system is the application using?",
+    "expected_latest_id": "ku-035-new-1",
+    "difficulty": "hard"
+  },
+  {
+    "id": "ku-036",
+    "description": "セキュリティポリシー変更（MFA 必須化）",
+    "old_entries": [
+      {
+        "id": "ku-036-old-1",
+        "content": "Multi-factor authentication is optional for all employee accounts. Employees are encouraged but not required to enable MFA.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-036-new-1",
+        "content": "MFA is now mandatory for all employee accounts effective January 15, 2024. Accounts without MFA will be locked. TOTP or hardware keys accepted.",
+        "timestamp": "2024-01-15T00:00:00.000Z"
+      }
+    ],
+    "query": "Is MFA required for employee accounts?",
+    "expected_latest_id": "ku-036-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-037",
+    "description": "採用プラットフォーム変更（Greenhouse → Ashby）",
+    "old_entries": [
+      {
+        "id": "ku-037-old-1",
+        "content": "Recruiting and hiring managed through Greenhouse ATS. Candidates apply at company.greenhouse.io. Recruiters use Greenhouse for scheduling.",
+        "timestamp": "2021-04-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-037-new-1",
+        "content": "Switched ATS from Greenhouse to Ashby in Q1 2024. Better analytics and scheduling automation. Job postings now at jobs.ashbyhq.com/company.",
+        "timestamp": "2024-01-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What applicant tracking system does HR use?",
+    "expected_latest_id": "ku-037-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-038",
+    "description": "メッセージキュー変更（RabbitMQ → Pub/Sub）",
+    "old_entries": [
+      {
+        "id": "ku-038-old-1",
+        "content": "Async messaging uses RabbitMQ 3.11. Queues defined in rabbitmq.config. Consumer services use AMQP protocol on port 5672.",
+        "timestamp": "2022-08-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-038-new-1",
+        "content": "Replaced RabbitMQ with Google Cloud Pub/Sub following the GCP migration. Topics and subscriptions managed via Terraform. Dead letter topics configured for failed messages.",
+        "timestamp": "2024-04-10T00:00:00.000Z"
+      }
+    ],
+    "query": "What message queue system is the platform using?",
+    "expected_latest_id": "ku-038-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-039",
+    "description": "CEO 交代",
+    "old_entries": [
+      {
+        "id": "ku-039-old-1",
+        "content": "Michael Brown is the CEO and co-founder. He has led the company since founding in 2015 and oversees overall strategy.",
+        "timestamp": "2020-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-039-new-1",
+        "content": "Jennifer Liu was appointed as CEO in February 2024. Michael Brown transitioned to Executive Chairman. Jennifer previously served as COO and has been with the company since 2017.",
+        "timestamp": "2024-02-05T00:00:00.000Z"
+      }
+    ],
+    "query": "Who is the current CEO of the company?",
+    "expected_latest_id": "ku-039-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-040",
+    "description": "本番環境リージョン変更",
+    "old_entries": [
+      {
+        "id": "ku-040-old-1",
+        "content": "Production services run in AWS us-east-1 (N. Virginia). Failover region is us-west-2 (Oregon). RTO is 4 hours.",
+        "timestamp": "2021-09-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-040-new-1",
+        "content": "Production moved to GCP us-central1 (Iowa) after cloud migration. Secondary region is us-east1 (South Carolina). RTO improved to 1 hour with active-passive setup.",
+        "timestamp": "2024-04-05T00:00:00.000Z"
+      }
+    ],
+    "query": "Which region does production currently run in?",
+    "expected_latest_id": "ku-040-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-041",
+    "description": "Vue から React への UI フレームワーク変更",
+    "old_entries": [
+      {
+        "id": "ku-041-old-1",
+        "content": "Admin dashboard is built with Vue 2 and Vuex for state management. Components use Options API.",
+        "timestamp": "2022-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-041-new-1",
+        "content": "Admin dashboard rewritten in React 18 with Zustand for state management. Vue 2 reached end-of-life, driving the migration. Completed in March 2024.",
+        "timestamp": "2024-03-25T00:00:00.000Z"
+      }
+    ],
+    "query": "What UI framework is the admin dashboard built with?",
+    "expected_latest_id": "ku-041-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-042",
+    "description": "SLA 変更（99.9% → 99.95%）",
+    "old_entries": [
+      {
+        "id": "ku-042-old-1",
+        "content": "Platform SLA guarantees 99.9% uptime per month, allowing up to 43.8 minutes of downtime. SLA credits issued for violations.",
+        "timestamp": "2021-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-042-new-1",
+        "content": "Upgraded SLA from 99.9% to 99.95% starting January 2024. Maximum allowed downtime reduced to 21.9 minutes per month. Enhanced monitoring enables faster incident response.",
+        "timestamp": "2024-01-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What is the current platform SLA?",
+    "expected_latest_id": "ku-042-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-043",
+    "description": "Webpack から Vite へのビルドツール変更",
+    "old_entries": [
+      {
+        "id": "ku-043-old-1",
+        "content": "Frontend build toolchain uses Webpack 5. Build configuration in webpack.config.js. Hot module replacement enabled for development.",
+        "timestamp": "2022-11-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-043-new-1",
+        "content": "Replaced Webpack with Vite 5 for significantly faster dev server startup and build times. Configuration in vite.config.ts. HMR improved dramatically.",
+        "timestamp": "2024-02-08T00:00:00.000Z"
+      }
+    ],
+    "query": "What build tool does the frontend use?",
+    "expected_latest_id": "ku-043-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-044",
+    "description": "リモートデスクトップツール変更（TeamViewer → Tailscale）",
+    "old_entries": [
+      {
+        "id": "ku-044-old-1",
+        "content": "Remote access to company resources uses TeamViewer. TeamViewer IDs shared via IT helpdesk for support sessions.",
+        "timestamp": "2021-02-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-044-new-1",
+        "content": "Switched from TeamViewer to Tailscale for secure remote access in November 2023. Zero-trust networking with WireGuard encryption. All developers use Tailscale to access internal tools.",
+        "timestamp": "2023-11-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What tool is used for remote access to company resources?",
+    "expected_latest_id": "ku-044-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-045",
+    "description": "Elasticsearch バージョンアップ",
+    "old_entries": [
+      {
+        "id": "ku-045-old-1",
+        "content": "Full-text search powered by Elasticsearch 7.17. Cluster has 3 nodes on EC2. Index aliases used for zero-downtime reindexing.",
+        "timestamp": "2022-04-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-045-new-1",
+        "content": "Upgraded Elasticsearch from 7.17 to OpenSearch 2.12 following licensing changes. Migrated to managed OpenSearch Service on AWS. All indices migrated successfully.",
+        "timestamp": "2024-01-25T00:00:00.000Z"
+      }
+    ],
+    "query": "What search engine does the platform use?",
+    "expected_latest_id": "ku-045-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-046",
+    "description": "フロントエンドリード交代",
+    "old_entries": [
+      {
+        "id": "ku-046-old-1",
+        "content": "Tom Harris leads the frontend engineering team. Tom built the current React architecture and has been with the company since 2020.",
+        "timestamp": "2022-07-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-046-new-1",
+        "content": "Priya Patel joined as frontend engineering lead in March 2024. Tom Harris moved to a principal engineer role focusing on performance. Priya previously worked at Airbnb.",
+        "timestamp": "2024-03-04T00:00:00.000Z"
+      }
+    ],
+    "query": "Who leads the frontend engineering team?",
+    "expected_latest_id": "ku-046-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-047",
+    "description": "データウェアハウス変更（Redshift → BigQuery）",
+    "old_entries": [
+      {
+        "id": "ku-047-old-1",
+        "content": "Analytics data warehouse is Amazon Redshift. Data loaded via AWS Glue ETL jobs. BI tool is Tableau connected to Redshift.",
+        "timestamp": "2021-08-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-047-new-1",
+        "content": "Data warehouse migrated from Redshift to BigQuery following GCP migration. ETL jobs rewritten using Dataflow. Tableau replaced with Looker for BI.",
+        "timestamp": "2024-04-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What data warehouse does the analytics team use?",
+    "expected_latest_id": "ku-047-new-1",
+    "difficulty": "easy"
+  },
+  {
+    "id": "ku-048",
+    "description": "Java バージョンアップ（11 → 21）",
+    "old_entries": [
+      {
+        "id": "ku-048-old-1",
+        "content": "Legacy services run on Java 11 LTS with Spring Boot 2.7. JVM flags configured for G1GC garbage collector.",
+        "timestamp": "2022-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-048-new-1",
+        "content": "Upgraded Java from 11 to 21 LTS across all services. Spring Boot updated to 3.2. Using ZGC garbage collector for lower latency. Virtual threads enabled.",
+        "timestamp": "2024-02-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What Java version are the legacy services using?",
+    "expected_latest_id": "ku-048-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-049",
+    "description": "Stripe ポリシー変更（手数料体系）",
+    "old_entries": [
+      {
+        "id": "ku-049-old-1",
+        "content": "Subscription pricing model: Basic plan $9/month, Pro plan $29/month, Enterprise custom pricing. Annual billing offers 2 months free.",
+        "timestamp": "2022-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-049-new-1",
+        "content": "Updated pricing: Starter plan $12/month, Growth plan $39/month, Scale plan $99/month, Enterprise custom. Annual billing now offers 20% discount. Effective March 2024.",
+        "timestamp": "2024-03-01T00:00:00.000Z"
+      }
+    ],
+    "query": "What are the current subscription pricing tiers?",
+    "expected_latest_id": "ku-049-new-1",
+    "difficulty": "medium"
+  },
+  {
+    "id": "ku-050",
+    "description": "Python パッケージマネージャ変更（pip → uv）",
+    "old_entries": [
+      {
+        "id": "ku-050-old-1",
+        "content": "Python dependencies managed with pip and requirements.txt. Virtual environments created with venv. Dependency pinning done manually.",
+        "timestamp": "2023-06-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-050-new-1",
+        "content": "Switched Python package management from pip to uv for 10x faster installs. pyproject.toml replaces requirements.txt. uv.lock for reproducible builds.",
+        "timestamp": "2024-03-15T00:00:00.000Z"
+      }
+    ],
+    "query": "What tool manages Python dependencies currently?",
+    "expected_latest_id": "ku-050-new-1",
+    "difficulty": "hard"
+  },
+  {
+    "id": "ku-051",
+    "description": "Python 2 から Python 3 への完全移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-051-old-1",
+        "content": "Backend services written in Python 2.7. Using print statements, urllib2, and unicode strings prefixed with u''.",
+        "timestamp": "2022-01-10T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-051-new-1",
+        "content": "All backend services migrated to Python 3.11. Using f-strings, pathlib, and type hints. Python 2.7 support dropped.",
+        "timestamp": "2024-03-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What Python version are the backend services using?",
+    "expected_latest_id": "ku-051-new-1"
+  },
+  {
+    "id": "ku-052",
+    "description": "MySQL から PostgreSQL への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-052-old-1",
+        "content": "Primary database is MySQL 5.7. Using MyISAM engine for some tables. InnoDB for transactional data.",
+        "timestamp": "2022-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-052-new-1",
+        "content": "Migrated to PostgreSQL 15. All tables using native PG features: JSONB, full-text search, and window functions. MySQL fully decommissioned.",
+        "timestamp": "2024-01-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What database system is the project currently using?",
+    "expected_latest_id": "ku-052-new-1"
+  },
+  {
+    "id": "ku-053",
+    "description": "Jenkins から GitHub Actions への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-053-old-1",
+        "content": "CI/CD runs on Jenkins. Self-hosted on EC2 instance. Jenkinsfile defines pipeline stages. Average build time: 18 minutes.",
+        "timestamp": "2022-09-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-053-new-1",
+        "content": "Migrated CI/CD to GitHub Actions. Workflows defined in .github/workflows/. Average build time reduced to 7 minutes with caching. Jenkins decommissioned.",
+        "timestamp": "2024-02-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What CI/CD system is currently in use?",
+    "expected_latest_id": "ku-053-new-1"
+  },
+  {
+    "id": "ku-054",
+    "description": "REST から GraphQL への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-054-old-1",
+        "content": "External API is RESTful. 42 endpoints documented in Swagger. Versioning via URL prefix /api/v1/.",
+        "timestamp": "2022-03-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-054-new-1",
+        "content": "Migrated public API to GraphQL. Single endpoint /graphql. Schema-first development. REST endpoints kept for legacy client compatibility until Q4.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What API style does the public API currently use?",
+    "expected_latest_id": "ku-054-new-1"
+  },
+  {
+    "id": "ku-055",
+    "description": "Redux から Zustand への状態管理移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-055-old-1",
+        "content": "Frontend state management uses Redux with redux-thunk for async actions. 25 reducers, 180 actions defined.",
+        "timestamp": "2022-07-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-055-new-1",
+        "content": "Replaced Redux with Zustand for state management. Reduced boilerplate by 70%. Bundle size decreased 45KB. All 25 stores rewritten.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What state management library is the frontend currently using?",
+    "expected_latest_id": "ku-055-new-1"
+  },
+  {
+    "id": "ku-056",
+    "description": "Heroku から AWS への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-056-old-1",
+        "content": "Application deployed on Heroku. Using dynos (2x standard) for web and worker processes. Heroku Postgres as database.",
+        "timestamp": "2022-11-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-056-new-1",
+        "content": "Migrated from Heroku to AWS. Using ECS Fargate for containers, RDS Aurora for database, and CloudFront for CDN. Cost reduced 40%.",
+        "timestamp": "2024-02-01T10:00:00.000Z"
+      }
+    ],
+    "query": "Where is the application currently deployed?",
+    "expected_latest_id": "ku-056-new-1"
+  },
+  {
+    "id": "ku-057",
+    "description": "Webpack から Vite への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-057-old-1",
+        "content": "Frontend build tool is Webpack 4. Cold start: 45 seconds. HMR takes 3-8 seconds. Complex configuration in webpack.config.js.",
+        "timestamp": "2023-01-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-057-new-1",
+        "content": "Migrated frontend build to Vite 5. Cold start: 800ms. HMR: instant. Configuration simplified to vite.config.ts. No breaking changes in output.",
+        "timestamp": "2024-01-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current frontend build tool?",
+    "expected_latest_id": "ku-057-new-1"
+  },
+  {
+    "id": "ku-058",
+    "description": "Slack から Teams への社内通信ツール移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-058-old-1",
+        "content": "Team communication via Slack. 45 active channels. Using integrations with GitHub, JIRA, and PagerDuty.",
+        "timestamp": "2023-03-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-058-new-1",
+        "content": "Company-wide migration to Microsoft Teams completed. All Slack integrations recreated in Teams. Slack access revoked on June 30.",
+        "timestamp": "2024-06-30T10:00:00.000Z"
+      }
+    ],
+    "query": "What communication platform does the team currently use?",
+    "expected_latest_id": "ku-058-new-1"
+  },
+  {
+    "id": "ku-059",
+    "description": "Jest から Vitest への移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-059-old-1",
+        "content": "Frontend testing with Jest and React Testing Library. Test run time: 3.5 minutes for 450 tests. CommonJS module resolution.",
+        "timestamp": "2023-02-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-059-new-1",
+        "content": "Migrated frontend tests from Jest to Vitest. Test run time: 28 seconds for same 450 tests. Native ESM support. Config in vitest.config.ts.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What testing framework is used for frontend tests?",
+    "expected_latest_id": "ku-059-new-1"
+  },
+  {
+    "id": "ku-060",
+    "description": "nginx から Caddy へのリバースプロキシ移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-060-old-1",
+        "content": "Reverse proxy using nginx 1.18. Manual TLS certificate management with Let's Encrypt. Config in /etc/nginx/nginx.conf.",
+        "timestamp": "2022-08-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-060-new-1",
+        "content": "Replaced nginx with Caddy 2. Automatic TLS via ACME. Simpler Caddyfile configuration. Zero-downtime config reloads. Nginx fully removed.",
+        "timestamp": "2024-03-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What reverse proxy is currently being used?",
+    "expected_latest_id": "ku-060-new-1"
+  },
+  {
+    "id": "ku-061",
+    "description": "ElasticSearch バージョンアップ",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-061-old-1",
+        "content": "Search powered by Elasticsearch 6.8. Using basic full-text search with BM25. 3-node cluster.",
+        "timestamp": "2022-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-061-new-1",
+        "content": "Upgraded to Elasticsearch 8.12. Enabled vector search with HNSW. Added KNN-based semantic search capability. Cluster expanded to 5 nodes.",
+        "timestamp": "2024-02-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What version of Elasticsearch is running and what search capabilities are enabled?",
+    "expected_latest_id": "ku-061-new-1"
+  },
+  {
+    "id": "ku-062",
+    "description": "PHP から Node.js へのバックエンド移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-062-old-1",
+        "content": "Backend API built with PHP 7.4 and Laravel 8. Deployed on Apache with mod_php.",
+        "timestamp": "2021-01-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-062-new-1",
+        "content": "Backend rewritten in Node.js 20 with Fastify. 3x throughput improvement. Deployed on ECS. PHP/Laravel fully retired.",
+        "timestamp": "2024-05-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What language and framework powers the backend API?",
+    "expected_latest_id": "ku-062-new-1"
+  },
+  {
+    "id": "ku-063",
+    "description": "Confluence から Notion へのドキュメント移行",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-063-old-1",
+        "content": "Team documentation on Confluence. 340 pages. Slow search. Complex space structure. Paid license: $12/user/month.",
+        "timestamp": "2023-04-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-063-new-1",
+        "content": "Migrated all documentation to Notion. 340 pages migrated. Faster search. Better organization with databases. Cost: $8/user/month. Confluence cancelled.",
+        "timestamp": "2024-01-31T10:00:00.000Z"
+      }
+    ],
+    "query": "What documentation tool does the team currently use?",
+    "expected_latest_id": "ku-063-new-1"
+  },
+  {
+    "id": "ku-064",
+    "description": "Kubernetes バージョンアップ",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-064-old-1",
+        "content": "Running Kubernetes 1.24 on EKS. Using Helm 3 for deployments. No service mesh.",
+        "timestamp": "2023-01-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-064-new-1",
+        "content": "Upgraded to Kubernetes 1.29 on EKS. Added Istio service mesh for mTLS and traffic management. Helm charts updated for new API versions.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What Kubernetes version is running and what new capabilities were added?",
+    "expected_latest_id": "ku-064-new-1"
+  },
+  {
+    "id": "ku-065",
+    "description": "Stripe API バージョンアップ",
+    "difficulty": "easy",
+    "old_entries": [
+      {
+        "id": "ku-065-old-1",
+        "content": "Using Stripe API version 2020-08-27. Payment Intents API for card processing. Webhooks handled with stripe-node v8.",
+        "timestamp": "2022-10-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-065-new-1",
+        "content": "Upgraded to Stripe API 2024-04-10. Using stripe-node v15. Added support for Link (one-click checkout) and Stripe Climate. Webhook signatures updated.",
+        "timestamp": "2024-05-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What Stripe API version is currently in use and what new features were added?",
+    "expected_latest_id": "ku-065-new-1"
+  },
+  {
+    "id": "ku-066",
+    "description": "TypeScript バージョンアップ（部分的に内容変化）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-066-old-1",
+        "content": "Project uses TypeScript 4.5. Strict mode enabled. Using const enums for type-safe enumerations.",
+        "timestamp": "2023-03-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-066-new-1",
+        "content": "Upgraded to TypeScript 5.3. Strict mode maintained. Replaced const enums with satisfies operator pattern. Using new verbatimModuleSyntax flag.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What TypeScript version is the project using and what configuration changes were made?",
+    "expected_latest_id": "ku-066-new-1"
+  },
+  {
+    "id": "ku-067",
+    "description": "Docker イメージの更新（類似コンテンツ）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-067-old-1",
+        "content": "Base Docker image: node:18-alpine. Multi-stage build. Image size: 145MB. Using npm for package installation.",
+        "timestamp": "2023-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-067-new-1",
+        "content": "Updated base Docker image to node:20-alpine. Multi-stage build retained. Image size reduced to 98MB using pnpm. Added security scanning in CI.",
+        "timestamp": "2024-01-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What base Docker image and package manager are currently being used?",
+    "expected_latest_id": "ku-067-new-1"
+  },
+  {
+    "id": "ku-068",
+    "description": "OpenAI モデルの更新",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-068-old-1",
+        "content": "AI features powered by GPT-3.5-turbo. Context window: 4096 tokens. Used for chat completion and text summarization.",
+        "timestamp": "2023-07-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-068-new-1",
+        "content": "Upgraded to GPT-4o for all AI features. Context window: 128k tokens. Added vision capabilities for image analysis. Costs managed with prompt caching.",
+        "timestamp": "2024-05-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What AI model is powering the application's AI features?",
+    "expected_latest_id": "ku-068-new-1"
+  },
+  {
+    "id": "ku-069",
+    "description": "TailwindCSS バージョンアップ",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-069-old-1",
+        "content": "Styling with TailwindCSS v2. PurgeCSS configured manually. JIT mode enabled via experimental flag. postcss.config.js required.",
+        "timestamp": "2022-11-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-069-new-1",
+        "content": "Upgraded to TailwindCSS v3. JIT mode default. Arbitrary values support. postcss config simplified. Added @layer utilities for custom components.",
+        "timestamp": "2024-02-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What version of TailwindCSS is in use and what changed?",
+    "expected_latest_id": "ku-069-new-1"
+  },
+  {
+    "id": "ku-070",
+    "description": "Redis のバージョンと設定変更",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-070-old-1",
+        "content": "Redis 6.2 for caching. Single instance. TTL: 3600 seconds for all keys. No persistence enabled.",
+        "timestamp": "2023-01-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-070-new-1",
+        "content": "Upgraded to Redis 7.2. Cluster mode with 3 shards. TTL varies by data type: session 86400s, cache 3600s, rate-limit 60s. RDB persistence enabled.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What Redis version and configuration is currently deployed?",
+    "expected_latest_id": "ku-070-new-1"
+  },
+  {
+    "id": "ku-071",
+    "description": "認証ライブラリの更新（NextAuth → Auth.js）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-071-old-1",
+        "content": "Authentication handled by NextAuth.js v3. Supports Google and GitHub OAuth providers. Sessions stored in JWT.",
+        "timestamp": "2023-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-071-new-1",
+        "content": "Migrated to Auth.js v5 (formerly NextAuth). Added email/password with Argon2 hashing. Sessions in database for revocation support. Google and GitHub OAuth retained.",
+        "timestamp": "2024-04-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What authentication library and session storage are currently in use?",
+    "expected_latest_id": "ku-071-new-1"
+  },
+  {
+    "id": "ku-072",
+    "description": "ORM の変更（Sequelize → Drizzle）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-072-old-1",
+        "content": "Database access via Sequelize v6. Model-based ORM with associations and migrations.",
+        "timestamp": "2023-02-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-072-new-1",
+        "content": "Replaced Sequelize with Drizzle ORM. Type-safe SQL queries. Schema-as-code in TypeScript. 60% faster query execution. Drizzle Kit for migrations.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What ORM is currently used for database access?",
+    "expected_latest_id": "ku-072-new-1"
+  },
+  {
+    "id": "ku-073",
+    "description": "ロギングの変更（Winston → Pino）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-073-old-1",
+        "content": "Application logging with Winston. Custom format with timestamps. Log levels: error, warn, info, debug. Output to console and files.",
+        "timestamp": "2023-04-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-073-new-1",
+        "content": "Replaced Winston with Pino for logging. 5x faster throughput. Structured JSON output. pino-pretty for development. Same log levels retained. File transport removed.",
+        "timestamp": "2024-02-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What logging library is the application using?",
+    "expected_latest_id": "ku-073-new-1"
+  },
+  {
+    "id": "ku-074",
+    "description": "メール送信サービスの変更",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-074-old-1",
+        "content": "Transactional emails sent via SendGrid. Using v3 API. Templates managed in SendGrid dashboard. 10,000 emails/month.",
+        "timestamp": "2023-03-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-074-new-1",
+        "content": "Migrated from SendGrid to Resend for transactional emails. React Email for template development. Better developer experience. Cost savings of 30%. Same sending volume.",
+        "timestamp": "2024-05-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What email service is being used for transactional emails?",
+    "expected_latest_id": "ku-074-new-1"
+  },
+  {
+    "id": "ku-075",
+    "description": "監視ツールの変更（Datadog → Grafana Cloud）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-075-old-1",
+        "content": "Infrastructure and application monitoring via Datadog. APM traces, logs, and metrics. Cost: $3,200/month.",
+        "timestamp": "2023-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-075-new-1",
+        "content": "Migrated from Datadog to Grafana Cloud OSS stack: Prometheus, Loki, Tempo, Grafana. Same coverage. Cost: $800/month (75% reduction). 2-week migration.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What monitoring stack is currently in use and what is the cost?",
+    "expected_latest_id": "ku-075-new-1"
+  },
+  {
+    "id": "ku-076",
+    "description": "テーマカラーの変更（類似コンテンツ）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-076-old-1",
+        "content": "Brand primary color: #2563EB (blue). Secondary: #7C3AED (purple). Accent: #10B981 (green). Dark mode: #1F2937.",
+        "timestamp": "2023-08-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-076-new-1",
+        "content": "Updated brand colors after rebrand: primary #1D4ED8 (deeper blue). Secondary: #6D28D9 (richer purple). Accent: #059669. Dark mode: #111827. All components updated.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What are the current brand primary colors?",
+    "expected_latest_id": "ku-076-new-1"
+  },
+  {
+    "id": "ku-077",
+    "description": "SLO の変更（類似コンテンツ）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-077-old-1",
+        "content": "SLO targets: API availability 99.9%, p95 latency < 500ms, error rate < 0.5%. Error budget: 43.8 minutes/month.",
+        "timestamp": "2023-07-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-077-new-1",
+        "content": "Updated SLOs after infrastructure improvements: API availability 99.95%, p95 latency < 200ms, error rate < 0.1%. Error budget: 21.9 minutes/month.",
+        "timestamp": "2024-05-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What are the current SLO targets for the API?",
+    "expected_latest_id": "ku-077-new-1"
+  },
+  {
+    "id": "ku-078",
+    "description": "開発環境の変更（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-078-old-1",
+        "content": "Local development using Docker Compose. Services: web (Node.js), db (Postgres), redis, mailhog. Setup time: 15 minutes for new devs.",
+        "timestamp": "2023-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-078-new-1",
+        "content": "Migrated local dev to Nix flakes. Services: web (Node.js), db (Postgres), redis, mailhog. Setup time: 3 minutes. Reproducible across macOS and Linux. Docker Compose removed.",
+        "timestamp": "2024-04-15T10:00:00.000Z"
+      }
+    ],
+    "query": "How is the local development environment configured?",
+    "expected_latest_id": "ku-078-new-1"
+  },
+  {
+    "id": "ku-079",
+    "description": "Prisma バージョンアップ（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-079-old-1",
+        "content": "Database ORM: Prisma 4.14. Schema in schema.prisma. Migrations via prisma migrate. Connection pooling via PgBouncer.",
+        "timestamp": "2023-09-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-079-new-1",
+        "content": "Upgraded to Prisma 5.10. Schema in schema.prisma (unchanged). Prisma Accelerate for edge-ready connection pooling. PgBouncer replaced. 40% query speed improvement.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What Prisma version and connection pooling solution are currently in use?",
+    "expected_latest_id": "ku-079-new-1"
+  },
+  {
+    "id": "ku-080",
+    "description": "CI ゲート閾値の更新（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-080-old-1",
+        "content": "CI quality gates: test coverage >= 70%, no new ESLint errors, bundle size < 500KB. Fails build if not met.",
+        "timestamp": "2023-10-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-080-new-1",
+        "content": "Updated CI quality gates: test coverage >= 80%, no new ESLint errors, bundle size < 450KB, Lighthouse score >= 90. Stricter thresholds after performance initiative.",
+        "timestamp": "2024-04-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What are the current CI quality gate thresholds?",
+    "expected_latest_id": "ku-080-new-1"
+  },
+  {
+    "id": "ku-081",
+    "description": "認証トークン有効期限の変更（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-081-old-1",
+        "content": "JWT access tokens expire in 1 hour. Refresh tokens: 30 days. Single refresh token per user session. No rotation.",
+        "timestamp": "2023-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-081-new-1",
+        "content": "Updated token policy: access tokens expire in 15 minutes. Refresh tokens: 7 days with rotation. Max 5 concurrent sessions. Old refresh tokens invalidated on rotation.",
+        "timestamp": "2024-03-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What are the current JWT token expiration settings?",
+    "expected_latest_id": "ku-081-new-1"
+  },
+  {
+    "id": "ku-082",
+    "description": "Terraform バージョンアップ（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-082-old-1",
+        "content": "Infrastructure as code with Terraform 1.3. State in S3 with DynamoDB locking. Modules: vpc, eks, rds, cloudfront.",
+        "timestamp": "2023-07-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-082-new-1",
+        "content": "Upgraded Terraform to 1.7. Same modules with updated provider versions. Added Terraform test framework for module validation. State backend unchanged.",
+        "timestamp": "2024-05-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What Terraform version is in use and what was added?",
+    "expected_latest_id": "ku-082-new-1"
+  },
+  {
+    "id": "ku-083",
+    "description": "スプリント期間の変更（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-083-old-1",
+        "content": "Engineering team runs 2-week sprints. Sprint planning Monday, retrospective Friday of week 2. 8 engineers across 2 squads.",
+        "timestamp": "2023-08-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-083-new-1",
+        "content": "Switched from 2-week to 1-week sprints for faster feedback. Sprint planning every Monday, retrospective every Friday. 8 engineers across 2 squads (unchanged).",
+        "timestamp": "2024-02-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current sprint cadence for the engineering team?",
+    "expected_latest_id": "ku-083-new-1"
+  },
+  {
+    "id": "ku-084",
+    "description": "Node.js バージョンアップ（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-084-old-1",
+        "content": "Runtime: Node.js 18.12 LTS. Using npm 9 for package management. .nvmrc file specifies 18.12.0.",
+        "timestamp": "2023-11-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-084-new-1",
+        "content": "Upgraded runtime to Node.js 22 LTS. Using Corepack + pnpm 9 for package management. .nvmrc updated to 22.0.0. Native fetch enabled.",
+        "timestamp": "2024-06-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What Node.js version and package manager are currently in use?",
+    "expected_latest_id": "ku-084-new-1"
+  },
+  {
+    "id": "ku-085",
+    "description": "バックアップ間隔の変更（類似内容）",
+    "difficulty": "medium",
+    "old_entries": [
+      {
+        "id": "ku-085-old-1",
+        "content": "Database backups: daily full backup at 02:00 UTC. Retained for 30 days. Backup stored in S3 us-east-1.",
+        "timestamp": "2023-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-085-new-1",
+        "content": "Updated backup policy: hourly incremental backups, daily full backup at 02:00 UTC. Retained 90 days. Cross-region replication to us-west-2. Point-in-time recovery enabled.",
+        "timestamp": "2024-03-01T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current database backup schedule and retention policy?",
+    "expected_latest_id": "ku-085-new-1"
+  },
+  {
+    "id": "ku-086",
+    "description": "APIレート制限の変更（高類似ディストラクター、Hard）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-086-old-1",
+        "content": "API rate limit: 100 requests per minute per API key. Exceeding limit returns 429. Limit applies to all endpoints equally.",
+        "timestamp": "2024-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-086-new-1",
+        "content": "API rate limit updated: 120 requests per minute per API key. Exceeding limit returns 429. Limit applies to all endpoints equally. Burst allowance: 150 req for 10 seconds.",
+        "timestamp": "2024-05-06T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current API rate limit per minute?",
+    "expected_latest_id": "ku-086-new-1"
+  },
+  {
+    "id": "ku-087",
+    "description": "データベース接続プールサイズの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-087-old-1",
+        "content": "Database connection pool: min=5, max=20. Connection timeout: 30000ms. Idle timeout: 10000ms. Using pg-pool v3.",
+        "timestamp": "2024-04-15T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-087-new-1",
+        "content": "Database connection pool updated: min=5, max=25. Connection timeout: 30000ms. Idle timeout: 10000ms. Using pg-pool v3. Max adjusted after load testing showed exhaustion at peak.",
+        "timestamp": "2024-04-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current maximum database connection pool size?",
+    "expected_latest_id": "ku-087-new-1"
+  },
+  {
+    "id": "ku-088",
+    "description": "ログレベルのデフォルト変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-088-old-1",
+        "content": "Default log level: info. Debug logs disabled in production. Sensitive fields redacted: password, token, secret. Log format: JSON.",
+        "timestamp": "2024-03-10T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-088-new-1",
+        "content": "Default log level changed to warn in production (info in staging). Debug logs disabled in production. Sensitive fields redacted: password, token, secret, api_key. Log format: JSON.",
+        "timestamp": "2024-03-14T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current default log level in production?",
+    "expected_latest_id": "ku-088-new-1"
+  },
+  {
+    "id": "ku-089",
+    "description": "セッションタイムアウトの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-089-old-1",
+        "content": "User session timeout: 24 hours of inactivity. Absolute session limit: 7 days. Remember-me option extends to 30 days.",
+        "timestamp": "2024-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-089-new-1",
+        "content": "Updated session policy: timeout 8 hours of inactivity (reduced for security). Absolute session limit: 7 days. Remember-me option: 30 days. Change applies to new sessions only.",
+        "timestamp": "2024-06-04T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current session inactivity timeout?",
+    "expected_latest_id": "ku-089-new-1"
+  },
+  {
+    "id": "ku-090",
+    "description": "最大アップロードサイズの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-090-old-1",
+        "content": "File upload limit: 10MB per file, maximum 5 files per request. Accepted types: jpg, png, gif, pdf. Stored in S3 with CloudFront CDN.",
+        "timestamp": "2024-04-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-090-new-1",
+        "content": "File upload limit updated: 25MB per file, maximum 10 files per request. Accepted types: jpg, png, gif, pdf, webp, mp4. Stored in S3 with CloudFront CDN. Limit increased per enterprise customer request.",
+        "timestamp": "2024-04-05T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current maximum file upload size and how many files can be uploaded per request?",
+    "expected_latest_id": "ku-090-new-1"
+  },
+  {
+    "id": "ku-091",
+    "description": "パスワード最小長の変更（高類似、1週間以内）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-091-old-1",
+        "content": "Password policy: minimum 10 characters, at least 1 uppercase, 1 lowercase, 1 number. Special characters optional. Bcrypt rounds: 12.",
+        "timestamp": "2024-05-15T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-091-new-1",
+        "content": "Password policy updated: minimum 12 characters, at least 1 uppercase, 1 lowercase, 1 number, 1 special character. Bcrypt rounds: 12. Changed per security audit recommendation.",
+        "timestamp": "2024-05-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current minimum password length requirement?",
+    "expected_latest_id": "ku-091-new-1"
+  },
+  {
+    "id": "ku-092",
+    "description": "キャッシュTTLの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-092-old-1",
+        "content": "Cache TTL settings: user profiles 3600s, product listings 1800s, search results 300s, user sessions 86400s.",
+        "timestamp": "2024-03-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-092-new-1",
+        "content": "Cache TTL settings updated: user profiles 7200s, product listings 1800s, search results 600s, user sessions 86400s. Profile and search TTLs increased to reduce DB load.",
+        "timestamp": "2024-03-05T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current cache TTL for user profiles and search results?",
+    "expected_latest_id": "ku-092-new-1"
+  },
+  {
+    "id": "ku-093",
+    "description": "ヘルスチェックエンドポイントの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-093-old-1",
+        "content": "Health check endpoint: GET /health. Returns {status: 'ok'} with 200. Checks: server running only. Used by load balancer every 30s.",
+        "timestamp": "2024-02-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-093-new-1",
+        "content": "Health check endpoint updated: GET /health. Returns {status: 'ok', db: 'connected', redis: 'connected', version: 'v3.5.1'} with 200. Checks: server, DB connectivity, Redis. Load balancer interval unchanged at 30s.",
+        "timestamp": "2024-02-07T10:00:00.000Z"
+      }
+    ],
+    "query": "What does the health check endpoint currently return?",
+    "expected_latest_id": "ku-093-new-1"
+  },
+  {
+    "id": "ku-094",
+    "description": "ページサイズのデフォルト変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-094-old-1",
+        "content": "API pagination: default page size 20, maximum 100. Cursor-based pagination for most endpoints. Offset pagination for reports.",
+        "timestamp": "2024-01-10T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-094-new-1",
+        "content": "API pagination updated: default page size 50, maximum 200. Cursor-based pagination for most endpoints. Offset pagination for reports. Increased defaults based on client feedback.",
+        "timestamp": "2024-01-15T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current default and maximum page size for API pagination?",
+    "expected_latest_id": "ku-094-new-1"
+  },
+  {
+    "id": "ku-095",
+    "description": "モデル推論タイムアウトの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-095-old-1",
+        "content": "AI inference timeout: 30 seconds per request. Retry: 2 attempts with exponential backoff. Fallback: return cached result if available.",
+        "timestamp": "2024-04-20T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-095-new-1",
+        "content": "AI inference timeout updated: 45 seconds per request (increased for complex queries). Retry: 2 attempts with exponential backoff. Fallback: return cached result if available. Timeout adjusted after p99 latency analysis.",
+        "timestamp": "2024-04-25T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current AI inference timeout setting?",
+    "expected_latest_id": "ku-095-new-1"
+  },
+  {
+    "id": "ku-096",
+    "description": "Webhook 署名アルゴリズムの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-096-old-1",
+        "content": "Webhook signatures use HMAC-SHA256. Signature in X-Webhook-Signature header. Timestamp in X-Webhook-Timestamp. Replay attack window: 5 minutes.",
+        "timestamp": "2024-03-15T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-096-new-1",
+        "content": "Webhook signatures unchanged: HMAC-SHA256. Signature in X-Webhook-Signature header. Timestamp in X-Webhook-Timestamp. Replay attack window reduced to 3 minutes for better security.",
+        "timestamp": "2024-03-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current webhook replay attack prevention window?",
+    "expected_latest_id": "ku-096-new-1"
+  },
+  {
+    "id": "ku-097",
+    "description": "最大同時接続数の変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-097-old-1",
+        "content": "WebSocket max concurrent connections per server: 5,000. Nginx upstream keepalive: 32. Total capacity: 15,000 (3 servers).",
+        "timestamp": "2024-06-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-097-new-1",
+        "content": "WebSocket max concurrent connections per server increased: 8,000. Nginx upstream keepalive: 64. Total capacity: 24,000 (3 servers). Increased after connection limit hit in stress test.",
+        "timestamp": "2024-06-05T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current maximum WebSocket connections per server?",
+    "expected_latest_id": "ku-097-new-1"
+  },
+  {
+    "id": "ku-098",
+    "description": "ビルドキャッシュの設定変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-098-old-1",
+        "content": "CI cache: npm install cached by package-lock.json hash. Docker layer cache via actions/cache. Cache retention: 7 days.",
+        "timestamp": "2024-02-10T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-098-new-1",
+        "content": "CI cache updated: pnpm store cached by pnpm-lock.yaml hash. Docker layer cache via actions/cache. Cache retention: 14 days. npm → pnpm change required cache key update.",
+        "timestamp": "2024-02-14T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current CI cache configuration and retention period?",
+    "expected_latest_id": "ku-098-new-1"
+  },
+  {
+    "id": "ku-099",
+    "description": "Datadog トレースサンプリングレートの変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-099-old-1",
+        "content": "Datadog APM trace sampling: 100% for error traces, 10% for successful traces. Head-based sampling. Monthly trace volume: ~50M.",
+        "timestamp": "2024-05-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-099-new-1",
+        "content": "Datadog APM trace sampling updated: 100% for error traces, 5% for successful traces. Head-based sampling unchanged. Monthly trace volume: ~28M. Cost reduced 30%.",
+        "timestamp": "2024-05-06T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the current trace sampling rate for successful requests?",
+    "expected_latest_id": "ku-099-new-1"
+  },
+  {
+    "id": "ku-100",
+    "description": "アラート閾値の変更（高類似）",
+    "difficulty": "hard",
+    "old_entries": [
+      {
+        "id": "ku-100-old-1",
+        "content": "Alert thresholds: error rate > 1% for 5 minutes triggers P1. CPU > 80% for 10 minutes triggers warning. Memory > 90% triggers critical.",
+        "timestamp": "2024-04-01T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-100-new-1",
+        "content": "Alert thresholds updated: error rate > 0.5% for 5 minutes triggers P1 (tightened). CPU > 80% for 10 minutes triggers warning. Memory > 85% triggers critical (tightened). Changes applied after incident review.",
+        "timestamp": "2024-04-05T10:00:00.000Z"
+      }
+    ],
+    "query": "What error rate threshold currently triggers a P1 alert?",
+    "expected_latest_id": "ku-100-new-1"
+  }
+]

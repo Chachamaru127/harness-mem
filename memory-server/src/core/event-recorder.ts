@@ -476,7 +476,14 @@ export class EventRecorder {
         const unionCount = newTokens.size + candTokens.size - intersectionCount;
         const jaccard = unionCount > 0 ? intersectionCount / unionCount : 0;
 
-        if (jaccard >= 0.3) {
+        // §34 FD-002: knowledge-update-50 の5-fold CVで最適化された閾値 (0.10)。
+        // CV結果: 0.10が全fold平均Freshness@K=1.0000で最良（0.15以上は0.98）。
+        // 環境変数 HARNESS_JACCARD_SUPERSEDE_THRESHOLD で上書き可能。
+        const jaccardThreshold = (() => {
+          const envVal = Number(process.env.HARNESS_JACCARD_SUPERSEDE_THRESHOLD);
+          return Number.isFinite(envVal) && envVal > 0 && envVal <= 1 ? envVal : 0.10;
+        })();
+        if (jaccard >= jaccardThreshold) {
           // 新しい観察が古い観察を updates する
           this.deps.db
             .query(`
