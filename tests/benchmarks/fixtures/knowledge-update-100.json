@@ -22,22 +22,22 @@
   },
   {
     "id": "ku-002",
-    "description": "REST から GraphQL への変更",
+    "description": "API バージョン番号の更新（v2.0.0 → v2.1.0）",
     "old_entries": [
       {
         "id": "ku-002-old-1",
-        "content": "The API uses REST endpoints. GET /users, POST /users, PUT /users/:id, DELETE /users/:id are the main routes.",
-        "timestamp": "2023-03-01T08:00:00.000Z"
+        "content": "The REST API is versioned at v2.0.0. All endpoints use /api/v2/ prefix. GET /api/v2/users, POST /api/v2/users, PUT /api/v2/users/:id are the main routes. Breaking changes from v1 are documented.",
+        "timestamp": "2024-01-15T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-002-new-1",
-        "content": "Switched API to GraphQL using Apollo Server. REST endpoints deprecated. Single /graphql endpoint for all queries and mutations.",
+        "content": "The REST API is versioned at v2.1.0. All endpoints use /api/v2/ prefix. GET /api/v2/users, POST /api/v2/users, PUT /api/v2/users/:id are the main routes. Patch release adds rate limit headers.",
         "timestamp": "2024-01-20T14:00:00.000Z"
       }
     ],
-    "query": "What API style does the project use?",
+    "query": "What is the current API version?",
     "expected_latest_id": "ku-002-new-1",
     "difficulty": "hard"
   },
@@ -400,22 +400,22 @@
   },
   {
     "id": "ku-020",
-    "description": "TypeScript バージョンアップ（4 → 5）",
+    "description": "TypeScript strict設定の微修正（strictNullChecks を true に）",
     "old_entries": [
       {
         "id": "ku-020-old-1",
-        "content": "Project uses TypeScript 4.9 with strict mode enabled. tsconfig.json targets ES2020.",
-        "timestamp": "2023-03-01T00:00:00.000Z"
+        "content": "TypeScript configuration in tsconfig.json: strict mode enabled, target ES2022, module CommonJS, strictNullChecks false. The project uses TypeScript 5.3 for type safety.",
+        "timestamp": "2024-02-01T08:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-020-new-1",
-        "content": "Upgraded to TypeScript 5.3. Now using const type parameters and decorators stable feature. tsconfig targets ES2022.",
-        "timestamp": "2024-01-20T00:00:00.000Z"
+        "content": "TypeScript configuration in tsconfig.json: strict mode enabled, target ES2022, module CommonJS, strictNullChecks true. The project uses TypeScript 5.3 for type safety.",
+        "timestamp": "2024-02-05T10:00:00.000Z"
       }
     ],
-    "query": "What TypeScript version is the project using?",
+    "query": "What are the current TypeScript strictNullChecks settings?",
     "expected_latest_id": "ku-020-new-1",
     "difficulty": "hard"
   },
@@ -463,22 +463,22 @@
   },
   {
     "id": "ku-023",
-    "description": "Kubernetes バージョンアップ",
+    "description": "Kubernetes レプリカ数の変更（2 → 3）",
     "old_entries": [
       {
         "id": "ku-023-old-1",
-        "content": "Production Kubernetes cluster runs version 1.25. Managed via GKE. Cluster nodes use n2-standard-4 machine type.",
-        "timestamp": "2023-02-01T00:00:00.000Z"
+        "content": "Kubernetes deployment for the api-server runs with 2 replicas. Resource requests: cpu=250m, memory=512Mi. Resource limits: cpu=1000m, memory=1Gi. HPA min=2, max=10.",
+        "timestamp": "2024-03-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-023-new-1",
-        "content": "Kubernetes cluster upgraded to version 1.29. GKE autopilot mode enabled for cost optimization. Nodes upgraded to n2-standard-8.",
-        "timestamp": "2024-02-15T00:00:00.000Z"
+        "content": "Kubernetes deployment for the api-server runs with 3 replicas. Resource requests: cpu=250m, memory=512Mi. Resource limits: cpu=1000m, memory=1Gi. HPA min=3, max=10.",
+        "timestamp": "2024-03-05T11:00:00.000Z"
       }
     ],
-    "query": "What Kubernetes version is the production cluster running?",
+    "query": "How many replicas does the api-server Kubernetes deployment run?",
     "expected_latest_id": "ku-023-new-1",
     "difficulty": "hard"
   },
@@ -715,22 +715,22 @@
   },
   {
     "id": "ku-035",
-    "description": "Redis から Valkey への移行",
+    "description": "Redis 接続先ホストの変更（redis-primary → redis-cluster）",
     "old_entries": [
       {
         "id": "ku-035-old-1",
-        "content": "Caching layer uses Redis 7.0 on ElastiCache. Session storage and rate limiting implemented with Redis. Connected via redis.internal:6379.",
-        "timestamp": "2023-05-01T00:00:00.000Z"
+        "content": "Redis cache is hosted at redis-primary.internal:6379. We use Redis 7.2 for session storage and job queues. Connection pool size is 10. Max memory policy: allkeys-lru.",
+        "timestamp": "2024-01-10T08:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-035-new-1",
-        "content": "Migrated from Redis to Valkey 7.2, the open-source Redis fork, following license changes. API-compatible so no code changes needed. Running on Memorystore.",
-        "timestamp": "2024-03-10T00:00:00.000Z"
+        "content": "Redis cache is hosted at redis-cluster.internal:6379. We use Redis 7.2 for session storage and job queues. Connection pool size is 10. Max memory policy: allkeys-lru.",
+        "timestamp": "2024-01-15T10:00:00.000Z"
       }
     ],
-    "query": "What caching system is the application using?",
+    "query": "What is the Redis connection host for the cache?",
     "expected_latest_id": "ku-035-new-1",
     "difficulty": "hard"
   },
@@ -1030,22 +1030,22 @@
   },
   {
     "id": "ku-050",
-    "description": "Python パッケージマネージャ変更（pip → uv）",
+    "description": "Python バージョンの変更（3.11 → 3.12）",
     "old_entries": [
       {
         "id": "ku-050-old-1",
-        "content": "Python dependencies managed with pip and requirements.txt. Virtual environments created with venv. Dependency pinning done manually.",
-        "timestamp": "2023-06-01T00:00:00.000Z"
+        "content": "The ML pipeline uses Python 3.11. Dependencies managed with pip and requirements.txt. Virtual environment created with python3.11 -m venv .venv. Package versions pinned in requirements.lock.",
+        "timestamp": "2024-02-10T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-050-new-1",
-        "content": "Switched Python package management from pip to uv for 10x faster installs. pyproject.toml replaces requirements.txt. uv.lock for reproducible builds.",
-        "timestamp": "2024-03-15T00:00:00.000Z"
+        "content": "The ML pipeline uses Python 3.12. Dependencies managed with pip and requirements.txt. Virtual environment created with python3.12 -m venv .venv. Package versions pinned in requirements.lock.",
+        "timestamp": "2024-02-15T11:00:00.000Z"
       }
     ],
-    "query": "What tool manages Python dependencies currently?",
+    "query": "What Python version does the ML pipeline use?",
     "expected_latest_id": "ku-050-new-1",
     "difficulty": "hard"
   },
@@ -1812,14 +1812,14 @@
     "old_entries": [
       {
         "id": "ku-087-old-1",
-        "content": "Database connection pool: min=5, max=20. Connection timeout: 30000ms. Idle timeout: 10000ms. Using pg-pool v3.",
+        "content": "Database connection pool configuration: min=5, max=20, acquireTimeoutMillis=30000, idleTimeoutMillis=10000, reapIntervalMillis=1000. Using pg-pool v3. Pool created at startup.",
         "timestamp": "2024-04-15T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-087-new-1",
-        "content": "Database connection pool updated: min=5, max=25. Connection timeout: 30000ms. Idle timeout: 10000ms. Using pg-pool v3. Max adjusted after load testing showed exhaustion at peak.",
+        "content": "Database connection pool configuration: min=5, max=25, acquireTimeoutMillis=30000, idleTimeoutMillis=10000, reapIntervalMillis=1000. Using pg-pool v3. Pool created at startup. Max increased after load test.",
         "timestamp": "2024-04-20T10:00:00.000Z"
       }
     ],
@@ -1854,14 +1854,14 @@
     "old_entries": [
       {
         "id": "ku-089-old-1",
-        "content": "User session timeout: 24 hours of inactivity. Absolute session limit: 7 days. Remember-me option extends to 30 days.",
+        "content": "User session configuration: inactivity timeout 24 hours, absolute session limit 7 days, remember-me extends to 30 days, secure cookie enabled, httpOnly flag set.",
         "timestamp": "2024-06-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-089-new-1",
-        "content": "Updated session policy: timeout 8 hours of inactivity (reduced for security). Absolute session limit: 7 days. Remember-me option: 30 days. Change applies to new sessions only.",
+        "content": "User session configuration: inactivity timeout 8 hours (security update), absolute session limit 7 days, remember-me extends to 30 days, secure cookie enabled, httpOnly flag set.",
         "timestamp": "2024-06-04T10:00:00.000Z"
       }
     ],
@@ -1896,14 +1896,14 @@
     "old_entries": [
       {
         "id": "ku-091-old-1",
-        "content": "Password policy: minimum 10 characters, at least 1 uppercase, 1 lowercase, 1 number. Special characters optional. Bcrypt rounds: 12.",
+        "content": "Password policy: minimum 10 characters required, at least 1 uppercase letter, 1 lowercase letter, 1 digit. Special characters optional. Bcrypt hash rounds: 12. Policy enforced on signup and password change.",
         "timestamp": "2024-05-15T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-091-new-1",
-        "content": "Password policy updated: minimum 12 characters, at least 1 uppercase, 1 lowercase, 1 number, 1 special character. Bcrypt rounds: 12. Changed per security audit recommendation.",
+        "content": "Password policy: minimum 12 characters required, at least 1 uppercase letter, 1 lowercase letter, 1 digit, 1 special character. Bcrypt hash rounds: 12. Policy enforced on signup and password change. Updated per security audit.",
         "timestamp": "2024-05-20T10:00:00.000Z"
       }
     ],
@@ -1917,14 +1917,14 @@
     "old_entries": [
       {
         "id": "ku-092-old-1",
-        "content": "Cache TTL settings: user profiles 3600s, product listings 1800s, search results 300s, user sessions 86400s.",
+        "content": "Cache TTL configuration in config/cache.ts: user_profile_ttl=3600s, product_listing_ttl=1800s, search_result_ttl=300s, user_session_ttl=86400s. Applied globally via CacheService. Reviewed quarterly.",
         "timestamp": "2024-03-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-092-new-1",
-        "content": "Cache TTL settings updated: user profiles 7200s, product listings 1800s, search results 600s, user sessions 86400s. Profile and search TTLs increased to reduce DB load.",
+        "content": "Cache TTL configuration in config/cache.ts: user_profile_ttl=7200s, product_listing_ttl=1800s, search_result_ttl=600s, user_session_ttl=86400s. Applied globally via CacheService. Reviewed quarterly. TTLs increased to reduce DB load.",
         "timestamp": "2024-03-05T10:00:00.000Z"
       }
     ],
@@ -1938,14 +1938,14 @@
     "old_entries": [
       {
         "id": "ku-093-old-1",
-        "content": "Health check endpoint: GET /health. Returns {status: 'ok'} with 200. Checks: server running only. Used by load balancer every 30s.",
+        "content": "Health check: GET /health returns {status: 'ok'} HTTP 200. Checks: server process only. Load balancer polls every 30 seconds. Response time target under 100ms. Configured in server/routes/health.ts.",
         "timestamp": "2024-02-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-093-new-1",
-        "content": "Health check endpoint updated: GET /health. Returns {status: 'ok', db: 'connected', redis: 'connected', version: 'v3.5.1'} with 200. Checks: server, DB connectivity, Redis. Load balancer interval unchanged at 30s.",
+        "content": "Health check: GET /health returns {status: 'ok', db: 'connected', redis: 'connected'} HTTP 200. Checks: server process, database, Redis. Load balancer polls every 30 seconds. Response time target under 100ms. Configured in server/routes/health.ts.",
         "timestamp": "2024-02-07T10:00:00.000Z"
       }
     ],
@@ -2001,14 +2001,14 @@
     "old_entries": [
       {
         "id": "ku-096-old-1",
-        "content": "Webhook signatures use HMAC-SHA256. Signature in X-Webhook-Signature header. Timestamp in X-Webhook-Timestamp. Replay attack window: 5 minutes.",
+        "content": "Webhook security: signature algorithm HMAC-SHA256, secret stored in WEBHOOK_SECRET env var, signature sent in X-Signature-256 header, replay window 5 minutes, verified on all incoming webhooks.",
         "timestamp": "2024-03-15T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-096-new-1",
-        "content": "Webhook signatures unchanged: HMAC-SHA256. Signature in X-Webhook-Signature header. Timestamp in X-Webhook-Timestamp. Replay attack window reduced to 3 minutes for better security.",
+        "content": "Webhook security: signature algorithm HMAC-SHA512, secret stored in WEBHOOK_SECRET env var, signature sent in X-Signature-512 header, replay window 5 minutes, verified on all incoming webhooks. Algorithm upgraded for stronger security.",
         "timestamp": "2024-03-20T10:00:00.000Z"
       }
     ],
@@ -2022,14 +2022,14 @@
     "old_entries": [
       {
         "id": "ku-097-old-1",
-        "content": "WebSocket max concurrent connections per server: 5,000. Nginx upstream keepalive: 32. Total capacity: 15,000 (3 servers).",
+        "content": "WebSocket server limits: maxConnections=500, maxConnectionsPerIP=10, pingInterval=30000, pingTimeout=5000, messageMaxSize=65536. Configured in websocket/config.ts.",
         "timestamp": "2024-06-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-097-new-1",
-        "content": "WebSocket max concurrent connections per server increased: 8,000. Nginx upstream keepalive: 64. Total capacity: 24,000 (3 servers). Increased after connection limit hit in stress test.",
+        "content": "WebSocket server limits: maxConnections=1000, maxConnectionsPerIP=10, pingInterval=30000, pingTimeout=5000, messageMaxSize=65536. Configured in websocket/config.ts. Connection limit doubled after infrastructure upgrade.",
         "timestamp": "2024-06-05T10:00:00.000Z"
       }
     ],
@@ -2043,14 +2043,14 @@
     "old_entries": [
       {
         "id": "ku-098-old-1",
-        "content": "CI cache: npm install cached by package-lock.json hash. Docker layer cache via actions/cache. Cache retention: 7 days.",
+        "content": "CI build cache: GitHub Actions cache key based on package-lock.json hash, cache paths node_modules and .next/cache, max cache size 1GB, cache TTL 7 days. Configured in .github/workflows/ci.yml.",
         "timestamp": "2024-02-10T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-098-new-1",
-        "content": "CI cache updated: pnpm store cached by pnpm-lock.yaml hash. Docker layer cache via actions/cache. Cache retention: 14 days. npm → pnpm change required cache key update.",
+        "content": "CI build cache: GitHub Actions cache key based on package-lock.json hash, cache paths node_modules and .next/cache and .turbo, max cache size 2GB, cache TTL 7 days. Configured in .github/workflows/ci.yml. Turbo cache path added.",
         "timestamp": "2024-02-14T10:00:00.000Z"
       }
     ],
@@ -2085,14 +2085,14 @@
     "old_entries": [
       {
         "id": "ku-100-old-1",
-        "content": "Alert thresholds: error rate > 1% for 5 minutes triggers P1. CPU > 80% for 10 minutes triggers warning. Memory > 90% triggers critical.",
+        "content": "Datadog alert thresholds: API p99 latency > 500ms, error rate > 1%, CPU usage > 80%, memory > 85%, disk > 90%. All alerts notify #oncall Slack channel. Evaluation window: 5 minutes.",
         "timestamp": "2024-04-01T09:00:00.000Z"
       }
     ],
     "new_entries": [
       {
         "id": "ku-100-new-1",
-        "content": "Alert thresholds updated: error rate > 0.5% for 5 minutes triggers P1 (tightened). CPU > 80% for 10 minutes triggers warning. Memory > 85% triggers critical (tightened). Changes applied after incident review.",
+        "content": "Datadog alert thresholds updated: API p99 latency > 300ms, error rate > 1%, CPU usage > 80%, memory > 85%, disk > 90%. All alerts notify #oncall Slack channel. Evaluation window: 5 minutes. Latency threshold tightened per SLA.",
         "timestamp": "2024-04-05T10:00:00.000Z"
       }
     ],
