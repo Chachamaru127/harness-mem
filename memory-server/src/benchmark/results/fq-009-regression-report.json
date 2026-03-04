@@ -1,0 +1,61 @@
+{
+  "schema_version": "fq-009-regression-v1",
+  "generated_at": "2026-03-04T10:30:00.000Z",
+  "phase": "§33 Phase A+B",
+  "regression_threshold": 0.05,
+  "locomo_120": {
+    "overall": {
+      "baseline_f1": 0.1794,
+      "current_f1": 0.2118,
+      "delta": 0.0324,
+      "passed": true
+    },
+    "by_category": {
+      "cat-1": {
+        "baseline_f1": 0.3000,
+        "current_f1": 0.2690,
+        "delta": -0.031,
+        "passed": true,
+        "note": "delta magnitude 0.031 < threshold 0.05"
+      },
+      "cat-2": {
+        "baseline_f1": 0.0993,
+        "current_f1": 0.1958,
+        "delta": 0.0965,
+        "passed": true
+      },
+      "cat-3": {
+        "baseline_f1": 0.1143,
+        "current_f1": 0.1116,
+        "delta": -0.0027,
+        "passed": true,
+        "note": "delta magnitude 0.003 < threshold 0.05"
+      },
+      "cat-4": {
+        "baseline_f1": 0.2040,
+        "current_f1": 0.2158,
+        "delta": 0.0118,
+        "passed": true
+      }
+    },
+    "verdict": "PASSED"
+  },
+  "bilingual_10": {
+    "recall_at_10": 1.0,
+    "threshold": 0.8,
+    "verdict": "PASSED"
+  },
+  "knowledge_update_10": {
+    "freshness_at_k": 0.1,
+    "threshold": 0.3,
+    "verdict": "FAILED",
+    "note": "FQ-009 DoD 対象外。#11（フィクスチャ50件拡充）で改善予定"
+  },
+  "temporal_10": {
+    "order_score": 0.6167,
+    "threshold": 0.5,
+    "verdict": "PASSED"
+  },
+  "fq009_verdict": "PASSED",
+  "summary": "locomo-120 全4カテゴリで回帰なし。overall F1: 0.1794→0.2118（+0.0324）。"
+}

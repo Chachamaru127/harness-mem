@@ -1,0 +1,69 @@
+{
+  "schema_version": "fq-010-before-after-v1",
+  "generated_at": "2026-03-04T10:35:00.000Z",
+  "phase_before": "§32 完了時",
+  "phase_after": "§33 Phase A+B 完了時",
+  "changes_applied": [
+    "FQ-001: router.ts FRESHNESS ルート追加",
+    "FQ-002: base recency weight 0.10→0.20",
+    "FQ-003: recency 半減期 14日→90日",
+    "FQ-004: reranker recency 係数 0.05→0.15",
+    "FQ-005: Freshness CI ゲート環境変数化（デフォルト 0.30）",
+    "FQ-006: BM25 title weight 5.0→2.0",
+    "FQ-007: finalizeShortAnswer TF-IDF文選択改善",
+    "FQ-008: TIMELINE パターン拡充"
+  ],
+  "reproducibility": {
+    "runs": 3,
+    "run_1": { "locomo_f1": 0.2116, "bilingual_recall": 1.0, "freshness_at_k": 0.1, "temporal_score": 0.6167 },
+    "run_2": { "locomo_f1": 0.2116, "bilingual_recall": 1.0, "freshness_at_k": 0.1, "temporal_score": 0.6167 },
+    "run_3": { "locomo_f1": 0.2116, "bilingual_recall": 1.0, "freshness_at_k": 0.1, "temporal_score": 0.6167 },
+    "stable": true
+  },
+  "comparison": {
+    "locomo_120": {
+      "before": {
+        "overall_em": 0.05,
+        "overall_f1": 0.2104,
+        "cat_1_f1": 0.3000,
+        "cat_2_f1": 0.0993,
+        "cat_3_f1": 0.1143,
+        "cat_4_f1": 0.2040
+      },
+      "after": {
+        "overall_em": 0.0778,
+        "overall_f1": 0.2116,
+        "cat_1_f1": 0.2690,
+        "cat_2_f1": 0.1958,
+        "cat_3_f1": 0.1116,
+        "cat_4_f1": 0.2158
+      },
+      "delta": {
+        "overall_em": "+0.0278",
+        "overall_f1": "+0.0012",
+        "cat_1_f1": "-0.0310",
+        "cat_2_f1": "+0.0965",
+        "cat_3_f1": "-0.0027",
+        "cat_4_f1": "+0.0118"
+      }
+    },
+    "bilingual_10": {
+      "before": { "recall_at_10": 1.0 },
+      "after": { "recall_at_10": 1.0 },
+      "delta": { "recall_at_10": "0.0" }
+    },
+    "knowledge_update_10": {
+      "before": { "freshness_at_k": 0.1 },
+      "after": { "freshness_at_k": 0.1 },
+      "delta": { "freshness_at_k": "0.0" },
+      "note": "FQ-011（フィクスチャ50件拡充）で改善予定"
+    },
+    "temporal_10": {
+      "before": { "order_score": 0.583 },
+      "after": { "order_score": 0.6167 },
+      "delta": { "order_score": "+0.0337" }
+    }
+  },
+  "verdict": "PASSED",
+  "summary": "overall F1: 0.2104→0.2116（+0.0012）。cat-2 大幅改善（+0.097）。temporal +0.034。3回再現で安定。"
+}

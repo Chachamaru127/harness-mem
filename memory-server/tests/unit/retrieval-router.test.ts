@@ -34,6 +34,26 @@ describe("classifyQuestion", () => {
     expect(result.kind).toBe("timeline");
   });
 
+  test("classifies 'prior to' queries as timeline", () => {
+    const result = classifyQuestion("What happened prior to the migration?");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies 'following' queries as timeline", () => {
+    const result = classifyQuestion("What changed following the release?");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies Japanese temporal queries as timeline (の前)", () => {
+    const result = classifyQuestion("リリースの前に何が起きましたか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies Japanese temporal queries as timeline (以降)", () => {
+    const result = classifyQuestion("移行以降の変更を教えてください");
+    expect(result.kind).toBe("timeline");
+  });
+
   test("classifies graph queries", () => {
     const result = classifyQuestion("How does auth relate to the user module?");
     expect(result.kind).toBe("graph");

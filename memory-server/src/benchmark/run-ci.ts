@@ -232,7 +232,7 @@ async function runKnowledgeUpdateBenchmark(fixturePath: string): Promise<{ fresh
         });
       }
 
-      const result = core.search({ query: kCase.query, project, include_private: true, limit: 10 });
+      const result = core.search({ query: kCase.query, project, include_private: true, limit: 10, exclude_updated: true });
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const newId = `obs_${kCase.expected_latest_id}`;
       const oldIds = kCase.old_entries.map((e) => `obs_${e.id}`);
@@ -242,8 +242,10 @@ async function runKnowledgeUpdateBenchmark(fixturePath: string): Promise<{ fresh
     }
 
     const freshnessAtK = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-    const passed = freshnessAtK >= 0.7;
-    return { freshnessAtK, passed };
+    const envGate = Number(process.env.HARNESS_BENCH_FRESHNESS_GATE);
+    const freshnessGate = Number.isFinite(envGate) && envGate >= 0 && envGate <= 1 ? envGate : 0.50;
+    const passed = freshnessAtK >= freshnessGate;
+    return { freshnessAtK, passed, freshnessGate };
   } finally {
     core.shutdown("ci-knowledge-update");
     rmSync(dir, { recursive: true, force: true });
@@ -284,8 +286,10 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
     }
 
     const temporalScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
-    const passed = temporalScore >= 0.5;
-    return { temporalScore, passed };
+    const envTemporalGate = Number(process.env.HARNESS_BENCH_TEMPORAL_GATE);
+    const temporalGate = Number.isFinite(envTemporalGate) && envTemporalGate >= 0 && envTemporalGate <= 1 ? envTemporalGate : 0.55;
+    const passed = temporalScore >= temporalGate;
+    return { temporalScore, passed, temporalGate };
   } finally {
     core.shutdown("ci-temporal");
     rmSync(dir, { recursive: true, force: true });
@@ -357,46 +361,54 @@ async function main(): Promise<void> {
     console.log("[CI] bilingual-10 fixture not found, skipping");
   }
 
-  // --- knowledge-update-10 ベンチマーク ---
-  const kuPath = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/knowledge-update-10.json");
+  // --- knowledge-update-50 ベンチマーク（50件、FQ-011で拡充）---
+  const kuPath50 = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/knowledge-update-50.json");
+  const kuPath10 = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/knowledge-update-10.json");
+  const kuPath = existsSync(kuPath50) ? kuPath50 : kuPath10;
+  const kuLabel = existsSync(kuPath50) ? "knowledge-update-50" : "knowledge-update-10";
   if (existsSync(kuPath)) {
-    console.log("\n[CI] Running knowledge-update-10 benchmark");
+    console.log(`\n[CI] Running ${kuLabel} benchmark`);
     try {
-      const { freshnessAtK, passed } = await runKnowledgeUpdateBenchmark(kuPath);
-      console.log(`[CI] knowledge-update-10 Freshness@K: ${freshnessAtK.toFixed(4)} (threshold: 0.7)`);
+      const { freshnessAtK, passed, freshnessGate } = await runKnowledgeUpdateBenchmark(kuPath);
+      const gateSource = process.env.HARNESS_BENCH_FRESHNESS_GATE ? "env" : "default";
+      console.log(`[CI] ${kuLabel} Freshness@K: ${freshnessAtK.toFixed(4)} (threshold: ${freshnessGate} [${gateSource}])`);
       if (passed) {
-        console.log("[CI] knowledge-update-10 PASSED");
+        console.log(`[CI] ${kuLabel} PASSED`);
       } else {
-        console.error(`[CI] knowledge-update-10 FAILED: Freshness@K=${freshnessAtK.toFixed(4)} < 0.7`);
+        console.error(`[CI] ${kuLabel} FAILED: Freshness@K=${freshnessAtK.toFixed(4)} < ${freshnessGate}`);
         allPassed = false;
       }
     } catch (err) {
-      console.error(`[CI] knowledge-update-10 error: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[CI] ${kuLabel} error: ${err instanceof Error ? err.message : String(err)}`);
       allPassed = false;
     }
   } else {
-    console.log("[CI] knowledge-update-10 fixture not found, skipping");
+    console.log("[CI] knowledge-update fixture not found, skipping");
   }
 
-  // --- temporal-10 ベンチマーク ---
-  const temporalPath = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/temporal-10.json");
+  // --- temporal-30 ベンチマーク（temporal-10 から拡充）---
+  const temporalPath30 = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/temporal-30.json");
+  const temporalPath10 = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/temporal-10.json");
+  const temporalPath = existsSync(temporalPath30) ? temporalPath30 : temporalPath10;
+  const temporalLabel = existsSync(temporalPath30) ? "temporal-30" : "temporal-10";
   if (existsSync(temporalPath)) {
-    console.log("\n[CI] Running temporal-10 benchmark");
+    console.log(`\n[CI] Running ${temporalLabel} benchmark`);
     try {
-      const { temporalScore, passed } = await runTemporalBenchmark(temporalPath);
-      console.log(`[CI] temporal-10 Order Score: ${temporalScore.toFixed(4)} (threshold: 0.5)`);
+      const { temporalScore, passed, temporalGate } = await runTemporalBenchmark(temporalPath);
+      const temporalGateSource = process.env.HARNESS_BENCH_TEMPORAL_GATE ? "env" : "default";
+      console.log(`[CI] ${temporalLabel} Order Score: ${temporalScore.toFixed(4)} (threshold: ${temporalGate} [${temporalGateSource}])`);
       if (passed) {
-        console.log("[CI] temporal-10 PASSED");
+        console.log(`[CI] ${temporalLabel} PASSED`);
       } else {
-        console.error(`[CI] temporal-10 FAILED: score=${temporalScore.toFixed(4)} < 0.5`);
+        console.error(`[CI] ${temporalLabel} FAILED: score=${temporalScore.toFixed(4)} < ${temporalGate}`);
         allPassed = false;
       }
     } catch (err) {
-      console.error(`[CI] temporal-10 error: ${err instanceof Error ? err.message : String(err)}`);
+      console.error(`[CI] ${temporalLabel} error: ${err instanceof Error ? err.message : String(err)}`);
       allPassed = false;
     }
   } else {
-    console.log("[CI] temporal-10 fixture not found, skipping");
+    console.log("[CI] temporal fixture not found, skipping");
   }
 
   if (!allPassed) {

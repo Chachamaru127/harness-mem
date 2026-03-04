@@ -28,6 +28,7 @@ import {
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
+  tokenize,
 } from "./core-utils.js";
 import {
   upsertSqliteVecRow,
@@ -435,6 +436,61 @@ export class EventRecorder {
     }
   }
 
+  /**
+   * FQ-013: Auto-supersedes リンク生成（Jaccard ベース）
+   *
+   * 同一 project + 同一 observation_type の既存エントリに対して Jaccard similarity を計算し、
+   * >= 0.3 の場合に mem_links に relation='updates' を自動挿入する。
+   */
+  private autoSupersedes(
+    observationId: string,
+    project: string,
+    observationType: string,
+    content: string,
+    createdAt: string
+  ): void {
+    try {
+      const newTokens = new Set(tokenize(content));
+      if (newTokens.size === 0) return;
+
+      // 同一 project + 同一 observation_type の最近 50件を取得（自分自身を除く）
+      const candidates = this.deps.db
+        .query(`
+          SELECT id, content_redacted
+          FROM mem_observations
+          WHERE project = ? AND observation_type = ? AND id <> ?
+          ORDER BY created_at DESC
+          LIMIT 50
+        `)
+        .all(project, observationType, observationId) as Array<{ id: string; content_redacted: string }>;
+
+      for (const candidate of candidates) {
+        const candTokens = new Set(tokenize(candidate.content_redacted ?? ""));
+        if (candTokens.size === 0) continue;
+
+        // Jaccard: |intersection| / |union|
+        let intersectionCount = 0;
+        for (const token of newTokens) {
+          if (candTokens.has(token)) intersectionCount++;
+        }
+        const unionCount = newTokens.size + candTokens.size - intersectionCount;
+        const jaccard = unionCount > 0 ? intersectionCount / unionCount : 0;
+
+        if (jaccard >= 0.3) {
+          // 新しい観察が古い観察を updates する
+          this.deps.db
+            .query(`
+              INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+              VALUES (?, ?, 'updates', ?, ?)
+            `)
+            .run(observationId, candidate.id, jaccard, createdAt);
+        }
+      }
+    } catch {
+      // best effort: supersedes リンク生成に失敗しても記録は継続
+    }
+  }
+
   private autoLinkObservation(observationId: string, sessionId: string, createdAt: string): void {
     try {
       const previous = this.deps.db
@@ -716,6 +772,7 @@ export class EventRecorder {
         this.upsertVector(observationId, redactedContent, timestamp);
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
+        this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
 
         if (isPrivateTag(privacyTags)) {
           this.deps.db.query(`

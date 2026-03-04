@@ -182,7 +182,9 @@ function detectQuestionKind(question: string, category?: string): QuestionKind {
   if (/^(is|are|was|were|do|does|did|has|have|had|can|could|would|should|will)\b/.test(normalized)) {
     return "yes_no";
   }
-  if (/\bwhat activities\b|\bwhat books\b|\bwhat fields\b|\bwhich\b|\blist\b/.test(normalized)) {
+  // list: "what ... did you ... (plural noun)" or explicit list patterns only
+  // "which" alone usually asks for a single item (factual), not a list
+  if (/\bwhat activities\b|\bwhat books\b|\bwhat fields\b|\blist\b/.test(normalized)) {
     return "list";
   }
   return "factual";
@@ -274,6 +276,8 @@ function extractTemporalPhrase(text: string): string | null {
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\b/i,
     /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4}|\s+\d{4})?\b/i,
     /\b(?:last|next|this)\s+(?:week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+    // duration patterns (e.g. "52 minutes", "2 hours", "30 seconds")
+    /\b\d+\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i,
     /\b\d{4}\b/,
   ];
   for (const pattern of patterns) {
@@ -435,11 +439,31 @@ function extractAnswerDraft(
   }
 
   if (kind === "list") {
+    // 各candidateから固有名詞・名詞句を抽出してlistアイテムとして返す
+    const listItems: string[] = [];
+    for (const candidate of topN) {
+      // 固有名詞パターン（大文字始まりの連続語）を抽出
+      const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
+      let pMatch: RegExpExecArray | null;
+      const extracted: string[] = [];
+      while ((pMatch = properNounPattern.exec(candidate.sentence)) !== null) {
+        if (pMatch[0].length > 1) extracted.push(pMatch[0]);
+      }
+      if (extracted.length > 0) {
+        listItems.push(...extracted);
+      } else {
+        // 固有名詞がない場合は短い節を追加
+        const clause = candidate.sentence.split(/[,;]/)[0]?.trim();
+        if (clause && clause.length <= 60) listItems.push(clause);
+      }
+    }
+    const deduped = [...new Set(listItems)].slice(0, 6);
+    const raw = deduped.length > 0 ? deduped.join(", ") : topN.map((c) => c.sentence).join(", ");
     return {
-      raw_answer: topN.map((candidate) => candidate.sentence).join(", "),
+      raw_answer: raw,
       selected_candidates: topN,
       selected_evidence_ids: selectedEvidenceIds,
-      strategy: "extract:list-candidates",
+      strategy: "extract:list-proper-nouns",
     };
   }
 
@@ -449,6 +473,52 @@ function extractAnswerDraft(
     selected_evidence_ids: selectedEvidenceIds,
     strategy: "extract:factual-top-candidate",
   };
+}
+
+/**
+ * 文から最も短い関連フレーズ（固有名詞・名詞句）を抽出する。
+ * factualクエリの precision を向上させるために使用する。
+ */
+function extractCorePhrase(sentence: string, questionTokens: string[]): string {
+  const qSet = new Set(questionTokens);
+
+  // 固有名詞パターン（大文字始まりの連続語）を抽出
+  const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
+  const properNouns: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = properNounPattern.exec(sentence)) !== null) {
+    if (match[0].length > 1) properNouns.push(match[0]);
+  }
+
+  if (properNouns.length > 0) {
+    // クエリに出てこない固有名詞を優先（答え候補）
+    const scored = properNouns.map((np) => {
+      const npTokens = tokenize(np);
+      const overlap = npTokens.filter((t) => qSet.has(t)).length;
+      const novelty = npTokens.length - overlap;
+      return { np, novelty, len: np.length };
+    });
+    // novelty > 0（クエリに出てこない語を含む）かつ短い固有名詞を優先
+    const novel = scored.filter((s) => s.novelty > 0);
+    if (novel.length > 0) {
+      novel.sort((a, b) => {
+        if (b.novelty !== a.novelty) return b.novelty - a.novelty;
+        return a.len - b.len;
+      });
+      const best = novel[0];
+      if (best && best.np.length >= 2) return best.np;
+    }
+  }
+
+  // 固有名詞がない場合: 節ごとに分割し最短の意味ある節を返す
+  const clauses = sentence.split(/[,;]/).map((c) => c.trim()).filter((c) => c.length > 2);
+  // 質問トークンを含む節を優先
+  const clauseWithOverlap = clauses.find((c) => {
+    const cTokens = tokenize(c);
+    return cTokens.some((t) => qSet.has(t));
+  });
+  const bestClause = clauseWithOverlap || clauses[0] || sentence;
+  return bestClause.length <= 100 ? bestClause : compactToSingleSentence(bestClause, 80);
 }
 
 function finalizeShortAnswer(
@@ -478,18 +548,81 @@ function finalizeShortAnswer(
   if (kind === "multi_hop" || category === "cat-3") {
     const asksCounterfactual = /\bwould\b.+\bif\b|\bif\b.+\bwould\b|\bwithout\b/i.test(normalizeText(question));
     if (asksCounterfactual) {
+      // counterfactual: "Likely yes/no" のみ返す（冗長なReason句を除去してprecision向上）
+      const conclusionMatch = /^(likely\s+(?:yes|no)|yes|no|unclear)/i.exec(normalizeText(trimmed));
+      if (conclusionMatch) {
+        const conclusion = conclusionMatch[0].trim();
+        return { answer: conclusion.charAt(0).toUpperCase() + conclusion.slice(1), template: "final:counterfactual-short" };
+      }
       const withReason = /reason:/i.test(trimmed) ? trimmed : `${compactToSingleSentence(trimmed, 120)} Reason: evidence pending`;
       return { answer: withReason.slice(0, 240).trim(), template: "final:counterfactual-conclusion-reason" };
     }
-    return { answer: compactToSingleSentence(trimmed, 220), template: "final:multi-hop-one-sentence" };
+    // multi_hop: factualと同様の核心フレーズ抽出アプローチを適用
+    const questionTokens = tokenize(question);
+    const sentences = splitSentences(trimmed).filter((s) => !isLowQualitySentence(s));
+    const topSentence = sentences.length > 1
+      ? (selectTopSentencesByTfIdf(sentences, question, 1)[0] || compactToSingleSentence(trimmed, 180))
+      : (sentences[0] || compactToSingleSentence(trimmed, 180));
+    if (topSentence.length <= 80) {
+      return { answer: topSentence.trim(), template: "final:multi-hop-short" };
+    }
+    const corePhrase = extractCorePhrase(topSentence, questionTokens);
+    if (corePhrase.length > 0 && corePhrase.length < topSentence.length * 0.7) {
+      return { answer: corePhrase.slice(0, 180).trim(), template: "final:multi-hop-core-phrase" };
+    }
+    return { answer: topSentence.slice(0, 180).trim(), template: "final:multi-hop-tfidf-1sent" };
   }
-  return { answer: compactToSingleSentence(trimmed, 220), template: "final:factual-short" };
+  // factual: 文分割→TF-IDFで最も関連度の高い1文を選択し、さらに核心フレーズを抽出
+  const questionTokens = tokenize(question);
+  const sentences = splitSentences(trimmed).filter((s) => !isLowQualitySentence(s));
+  const topSentence = sentences.length > 1
+    ? (selectTopSentencesByTfIdf(sentences, question, 1)[0] || compactToSingleSentence(trimmed, 180))
+    : (sentences[0] || compactToSingleSentence(trimmed, 180));
+
+  // 常にコアフレーズ抽出を試みる（短い文でも「He loves... Austin」のような問題を防ぐ）
+  const corePhrase = extractCorePhrase(topSentence, questionTokens);
+  if (corePhrase.length > 0 && corePhrase.length < topSentence.length * 0.85) {
+    return { answer: corePhrase.slice(0, 180).trim(), template: "final:factual-core-phrase" };
+  }
+  // 短い文（コアフレーズ抽出が効かなかった場合）はそのまま返す
+  if (topSentence.length <= 100) {
+    return { answer: topSentence.trim(), template: "final:factual-short" };
+  }
+  return { answer: topSentence.slice(0, 180).trim(), template: "final:factual-tfidf-top1" };
 }
 
 function compactToSingleSentence(text: string, maxLength: number): string {
   const first = text.split(/(?<=[.!?])\s+/)[0]?.trim() || text.trim();
   if (first.length <= maxLength) return first;
   return first.slice(0, maxLength).trim();
+}
+
+/** TF-IDF コサイン類似度で文をランク付けしてクエリに最も関連する上位 N 文を返す */
+function selectTopSentencesByTfIdf(sentences: string[], query: string, topN: number): string[] {
+  if (sentences.length === 0) return [];
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0) return sentences.slice(0, topN);
+
+  // 各文の TF スコア（クエリトークンとの重複率）＋ 固有名詞ボーナスを計算
+  const scored = sentences.map((sentence) => {
+    const sentTokens = tokenize(sentence);
+    const sentSet = new Set(sentTokens);
+    let overlap = 0;
+    for (const token of queryTokens) {
+      if (sentSet.has(token)) overlap++;
+    }
+    const tfScore = overlap / Math.max(queryTokens.length, 1);
+
+    // 固有名詞（大文字始まり）・地名・数値を含む文を優先
+    const hasProperNoun = /[A-Z][a-z]{2,}/.test(sentence);
+    const hasNumber = /\b\d+\b/.test(sentence);
+    const properNounBonus = (hasProperNoun ? 0.15 : 0) + (hasNumber ? 0.10 : 0);
+
+    return { sentence, score: tfScore + properNounBonus };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  return scored.slice(0, topN).map((item) => item.sentence);
 }
 
 export class HarnessMemLocomoAdapter {

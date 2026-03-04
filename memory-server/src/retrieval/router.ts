@@ -17,7 +17,7 @@
  * - "meta"   : Meta / other / uncategorized
  */
 
-export type QuestionKind = "profile" | "timeline" | "graph" | "vector" | "hybrid";
+export type QuestionKind = "profile" | "timeline" | "freshness" | "graph" | "vector" | "hybrid";
 
 /** Cognitive sector for classifying observations by life domain. */
 export type CognitiveSector = "work" | "people" | "health" | "hobby" | "meta";
@@ -79,6 +79,17 @@ const TIMELINE_WEIGHTS: SearchWeights = {
   sector_boost: 0,
 };
 
+/** Freshness-focused weights: heavily boost recency for "what is current" queries. */
+const FRESHNESS_WEIGHTS: SearchWeights = {
+  lexical: 0.25,
+  vector: 0.20,
+  recency: 0.40,
+  tag_boost: 0.05,
+  importance: 0.05,
+  graph: 0.05,
+  sector_boost: 0,
+};
+
 /** Graph-focused weights: boost graph traversal score. */
 const GRAPH_WEIGHTS: SearchWeights = {
   lexical: 0.15,
@@ -104,6 +115,7 @@ const VECTOR_WEIGHTS: SearchWeights = {
 const WEIGHT_MAP: Record<QuestionKind, SearchWeights> = {
   profile: PROFILE_WEIGHTS,
   timeline: TIMELINE_WEIGHTS,
+  freshness: FRESHNESS_WEIGHTS,
   graph: GRAPH_WEIGHTS,
   vector: VECTOR_WEIGHTS,
   hybrid: HYBRID_WEIGHTS,
@@ -118,11 +130,18 @@ const PROFILE_PATTERNS = [
   /\b(profile|identity|background)\b/i,
 ];
 
+const FRESHNESS_PATTERNS = [
+  /\b(current|currently|now|latest version|what version)\b/i,
+  /(現在|今|最新|今の)/,
+];
+
 const TIMELINE_PATTERNS = [
   /^(when|what time|how long)\b/i,
   /\b(before|after|during|since|until|recently|yesterday|today|last week)\b/i,
+  /\b(prior to|following)\b/i,
   /\b(sequence|chronolog|history|timeline|progress|evolve)\b/i,
   /\b(latest|newest|oldest|first|last)\b/i,
+  /(の前|の後|以前|以降|より前|より後)/,
 ];
 
 const GRAPH_PATTERNS = [
@@ -145,6 +164,15 @@ export function classifyQuestion(query: string): RouteDecision {
   }
 
   const scores: { kind: QuestionKind; score: number; reason: string }[] = [];
+
+  // Freshness detection (evaluated before timeline to avoid misrouting "currently")
+  let freshnessScore = 0;
+  for (const pattern of FRESHNESS_PATTERNS) {
+    if (pattern.test(q)) freshnessScore += 0.4;
+  }
+  if (freshnessScore > 0) {
+    scores.push({ kind: "freshness", score: Math.min(1, freshnessScore), reason: "freshness/current-state query pattern" });
+  }
 
   // Profile detection
   let profileScore = 0;

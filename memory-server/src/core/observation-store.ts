@@ -282,7 +282,7 @@ export class ObservationStore {
     let sql = `
       SELECT
         o.id AS id,
-        bm25(mem_observations_fts, 0, 5.0, 1.0) AS bm25
+        bm25(mem_observations_fts, 0, 2.0, 1.0) AS bm25
       FROM mem_observations_fts
       JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
       WHERE mem_observations_fts MATCH ?
@@ -625,12 +625,12 @@ export class ObservationStore {
 
   private resolveSearchWeights(vectorCoverage: number): RankingWeights {
     const base: RankingWeights = {
-      lexical: 0.32,
-      vector: 0.28,
-      recency: 0.10,
-      tag_boost: 0.12,
+      lexical: 0.30,
+      vector: 0.25,
+      recency: 0.20,
+      tag_boost: 0.10,
       importance: 0.08,
-      graph: 0.10,
+      graph: 0.07,
     };
     if (vectorCoverage < 0.2) {
       return normalizeWeights({ ...base, vector: 0 });
@@ -744,12 +744,15 @@ export class ObservationStore {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : request.project;
+    // IMP-002 / FQ-013: exclude_updated が明示的に指定された場合のみ有効化
+    const excludeUpdated = Boolean(request.exclude_updated);
     const normalizedRequest: SearchRequest = {
       ...request,
       project: normalizedProject,
       include_private: includePrivate,
       strict_project: strictProject,
       expand_links: expandLinks,
+      exclude_updated: excludeUpdated,
     };
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
@@ -778,7 +781,7 @@ export class ObservationStore {
 
     // IMP-002: exclude_updated=true の場合、updatesリンクで上書きされた旧観察を除外
     const updatedObsIds = new Set<string>();
-    if (request.exclude_updated && candidateIds.size > 0) {
+    if (excludeUpdated && candidateIds.size > 0) {
       try {
         const MAX_BATCH = 500;
         const allCandidates = [...candidateIds];
@@ -811,8 +814,8 @@ export class ObservationStore {
       const observation = observations.get(id);
       if (!observation) continue;
 
-      // IMP-002: updatesリンクで上書きされた旧観察を除外
-      if (request.exclude_updated && updatedObsIds.has(id)) continue;
+      // IMP-002: updatesリンクで上書きされた旧観察を除外（FQ-013: デフォルト有効）
+      if (excludeUpdated && updatedObsIds.has(id)) continue;
 
       const observationProject =
         typeof observation.project === "string" ? observation.project : "";

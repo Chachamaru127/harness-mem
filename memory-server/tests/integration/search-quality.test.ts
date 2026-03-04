@@ -87,7 +87,8 @@ describe("search quality integration", () => {
         const importance = Number(scores.importance ?? 0);
         const graph = Number(scores.graph ?? 0);
         const final = Number(scores.final ?? 0);
-        const rawScore = 0.32 * lexical + 0.28 * vector + 0.10 * recency + 0.12 * tagBoost + 0.08 * importance + 0.10 * graph;
+        // FQ-002: 更新後ウェイト lexical=0.30, vector=0.25, recency=0.20, tag_boost=0.10, importance=0.08, graph=0.07
+        const rawScore = 0.30 * lexical + 0.25 * vector + 0.20 * recency + 0.10 * tagBoost + 0.08 * importance + 0.07 * graph;
         // COMP-002: decay 乗数（hot=1.0, warm=0.7, cold=0.4）を考慮して再計算
         const decayTier = (item as Record<string, unknown>).decay_tier as string | undefined;
         const decayMult = decayTier === "hot" ? 1.0 : decayTier === "warm" ? 0.7 : 0.4;

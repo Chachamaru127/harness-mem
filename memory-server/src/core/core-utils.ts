@@ -417,7 +417,7 @@ export function recencyScore(createdAt: string): number {
   const ageMs = Math.max(0, Date.now() - created);
   const ageHours = ageMs / (1000 * 60 * 60);
   const envDays = Number(process.env.HARNESS_MEM_RECENCY_HALF_LIFE_DAYS);
-  const halfLifeDays = Number.isFinite(envDays) && envDays > 0 ? envDays : 14;
+  const halfLifeDays = Number.isFinite(envDays) && envDays > 0 ? envDays : 90;
   const halfLifeHours = 24 * halfLifeDays;
   return Math.exp(-ageHours / halfLifeHours);
 }

@@ -138,16 +138,16 @@ function computeCrossEncoderScore(query: string, item: RerankOutputItem): number
   // 3. Bigram overlap (semantic proximity)
   const bigramScore = computeBigramOverlap(q, combined);
 
-  // 4. Recency boost (small weight)
-  const recency = recencyBoost(item.created_at) * 0.05;
+  // 4. Recency boost (increased weight for freshness)
+  const recency = recencyBoost(item.created_at) * 0.15;
 
-  // 重み付き合算: コンテンツマッチ重視、初期スコア依存を低減
+  // 重み付き合算: recency を強化、bigram を縮小
   const rawScore =
-    titleScore * 0.25 +
+    titleScore * 0.20 +
     contentScore * 0.35 +
     exactMatch +
-    bigramScore * 0.25 +
-    item.score * 0.10 +
+    bigramScore * 0.15 +
+    item.score * 0.15 +
     recency;
 
   return Number(Math.min(1.0, rawScore).toFixed(6));
