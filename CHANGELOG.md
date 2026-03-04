@@ -7,37 +7,42 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### What changed for users
+## [0.3.0] - 2026-03-04
 
-- None.
+### 🎯 What's Changed for You
+
+**Team management, PostgreSQL backend, CQRS architecture, Graph reasoning, and standalone plugin registration. Benchmark scores improved across all 4 competitive dimensions.**
+
+| Before | After |
+|--------|-------|
+| SQLite-only storage | PostgreSQL backend with repository pattern (SQLite still default) |
+| No team/workspace support | Full Team CRUD + member management with role-based access control |
+| Monolithic core (harness-mem-core.ts) | CQRS decomposition into event-recorder, observation-store, session-manager |
+| Linear retrieval only | Multi-hop graph reasoning with chain inference |
+| No benchmark regression gates | LoCoMo F1 regression gate + CI integration |
+| Memory hooks bundled in claude-code-harness | Standalone plugin registration via `.claude-plugin/` |
 
 ### Added
 
-- None.
-
-### Changed
-
-- None.
+- **Team Management** (team-001~006): Team CRUD endpoints, member management with role-based access, SDK support (TS/Python 9 methods), OpenAPI schema
+- **PostgreSQL Backend** (pg-002~006): Repository interfaces + PG implementations for observations, sessions, vectors; adapter factory; integration tests + CI workflow
+- **Graph Chain Reasoning** (s31-graph): Multi-hop graph traversal for inference across related observations
+- **LoCoMo Benchmark Gate** (loco-001~003): Baseline generation, F1 regression gate, CI threshold sync
+- **CQRS Decomposition** (s28-p1): Core split into event-recorder, observation-store, session-manager with backward-compatible API
+- **Competitive Improvements** (s29-p1~p3, s30-p0~p3): 19+10 architecture tasks improving retrieval quality, reranking, and adaptive decay
+- **Standalone Plugin** (.claude-plugin/): harness-mem registers directly as a Claude Code plugin with memory hooks
+- **UI Graph Panel**: HarnessMemGraph component with temporal graph visualization
+- **SDK Extensions**: LangChain memory, Vercel AI, CrewAI integrations; team API methods
+- **Quality Hardening** (s27.1): 6 HARDEN tasks including rate limiter, validator middleware, PII filter
 
 ### Fixed
 
-- None.
-
-### Removed
-
-- None.
-
-### Security
-
-- None.
-
-### Migration Notes
-
-- None.
-
-### Verification
-
-- None.
+- **Benchmark runner**: ID double `obs_` prefix bug
+- **CQRS forward-port**: user_id/team_id propagation to event-recorder
+- **Integration tests**: 30 test failures after CQRS decomposition
+- **SQLite disk I/O**: Flaky errors in parallel test execution
+- **Security review**: 5 High findings from security/performance review
+- **Timer callbacks**: Defense-in-depth try-catch for timer callbacks
 
 ## [0.2.1] - 2026-03-01
 

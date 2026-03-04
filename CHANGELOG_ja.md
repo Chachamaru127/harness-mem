@@ -5,6 +5,24 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.3.0] - 2026-03-04
+
+### ユーザー向け要約
+
+- チーム管理（Team CRUD + メンバー管理 + ロールベースアクセス制御）、PostgreSQL バックエンド（リポジトリパターン）、CQRS 分解、グラフチェーン推論、LoCoMo ベンチマークゲートを追加。
+- harness-mem を `.claude-plugin/` 経由でスタンドアロン Claude Code プラグインとして登録可能に。メモリフックが claude-code-harness に依存せず独立動作。
+
+### 補足
+
+- チーム管理: Team CRUD 5エンドポイント + メンバー管理 4エンドポイント、TS/Python SDK 各9メソッド、OpenAPI スキーマ対応。
+- PostgreSQL: observations / sessions / vectors のリポジトリ IF + PG 実装、adapter-factory、統合テスト + CI ワークフロー。
+- CQRS 分解: モノリシックな harness-mem-core.ts を event-recorder / observation-store / session-manager に分割（後方互換 API 維持）。
+- グラフチェーン推論: 関連 observation 間のマルチホップグラフ走査による推論。
+- LoCoMo ベンチマーク: ベースライン生成、F1 回帰ゲート、CI 閾値同期。
+- 品質強化: rate limiter、validator middleware、PII filter 等 6 HARDEN タスク。
+- バグ修正: ベンチマークランナーの ID 二重プレフィックス、CQRS フォワードポートの user_id/team_id 伝播、統合テスト30件修正、SQLite ディスク I/O フレーク対策。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.2.1] - 2026-03-01
 
 ### ユーザー向け要約

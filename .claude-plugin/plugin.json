@@ -1,6 +1,6 @@
 {
   "name": "harness-mem",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "Harness Memory - Persistent memory system for Claude Code sessions",
   "author": {
     "name": "Chachamaru",
