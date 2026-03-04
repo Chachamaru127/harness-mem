@@ -167,15 +167,72 @@ const SYNONYM_MAP: Record<string, string[]> = {
   refactor: ["restructure", "reorganize"],
   migrate: ["migration"],
   migration: ["migrate"],
+  // 日英バイリンガルエントリ（BM-008）
+  // 英語 → 日本語同義語（スペース区切りクエリ時に機能）
+  デプロイ: ["deploy", "deployment", "release"],
+  エラー: ["error", "bug", "exception"],
+  バグ: ["bug", "error", "issue"],
+  データベース: ["database", "db", "sqlite"],
+  認証: ["auth", "authentication", "login"],
+  設定: ["config", "configuration", "settings"],
+  テスト: ["test", "spec", "jest"],
+  リファクタ: ["refactor", "restructure"],
+  マイグレーション: ["migrate", "migration"],
+  依存: ["dependency", "dep", "deps"],
+  環境: ["env", "environment"],
+  修正: ["fix", "patch", "resolve"],
+  実装: ["implement", "implementation"],
+  ビルド: ["build", "compile"],
+  キャッシュ: ["cache", "caching"],
+  ログ: ["log", "logging"],
+  パフォーマンス: ["performance", "perf", "speed"],
+  セキュリティ: ["security", "auth", "authentication"],
+  クラウド: ["cloud", "aws", "gcp"],
+  コンテナ: ["container", "docker", "kubernetes"],
+  // 英語 → 日本語逆引き（英語クエリで日本語コンテンツにヒット）
+  implement: ["implementation", "実装"],
+  build: ["compile", "ビルド"],
+  cache: ["caching", "キャッシュ"],
+  log: ["logging", "ログ"],
+  performance: ["perf", "speed", "パフォーマンス"],
+  security: ["auth", "authentication", "セキュリティ"],
+  cloud: ["aws", "gcp", "クラウド"],
+  container: ["docker", "kubernetes", "コンテナ"],
+  search: ["retrieval", "query", "検索"],
+  検索: ["search", "retrieval", "query"],
 };
 
+/**
+ * CJK文字シーケンスからバイグラムトークンを生成する。
+ * unicode61 tokenizer がスペース区切りのみに依存するため、
+ * クエリ側でバイグラム展開することで部分一致を可能にする。
+ * 6文字以内の短いCJKトークンのみ展開し、長い文全体は展開しない。
+ */
+const CJK_ONLY_PATTERN = /^[\u3040-\u30ff\u3400-\u9fff]+$/;
+const CJK_BIGRAM_MAX_CHARS = 6;
+
+function expandCjkBigrams(tokens: string[]): string[] {
+  const result: string[] = [];
+  for (const token of tokens) {
+    result.push(token);
+    // 短いCJKトークン（3〜6文字）のみバイグラム展開
+    if (CJK_ONLY_PATTERN.test(token) && token.length >= 3 && token.length <= CJK_BIGRAM_MAX_CHARS) {
+      const chars = [...token];
+      for (let i = 0; i < chars.length - 1; i += 1) {
+        result.push(chars[i] + chars[i + 1]);
+      }
+    }
+  }
+  return result;
+}
+
 export function tokenize(text: string): string[] {
-  return text
+  const base = text
     .toLowerCase()
     .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\s]/g, " ")
     .split(/\s+/)
-    .filter((token) => token.length > 1)
-    .slice(0, 4096);
+    .filter((token) => token.length > 1);
+  return expandCjkBigrams(base).slice(0, 4096);
 }
 
 export function buildFtsQuery(query: string): string {

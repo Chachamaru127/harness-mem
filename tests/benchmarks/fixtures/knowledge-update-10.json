@@ -1,0 +1,202 @@
+[
+  {
+    "id": "ku-001",
+    "description": "React 16 から React 18 への移行",
+    "old_entries": [
+      {
+        "id": "ku-001-old-1",
+        "content": "Project uses React 16.14 for the frontend. We rely on class components and lifecycle methods like componentDidMount.",
+        "timestamp": "2023-01-15T09:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-001-new-1",
+        "content": "Migrated frontend to React 18.2. Now using functional components with hooks. Concurrent rendering enabled. StrictMode updated for React 18 compatibility.",
+        "timestamp": "2024-02-10T10:00:00.000Z"
+      }
+    ],
+    "query": "What version of React is the project currently using?",
+    "expected_latest_id": "ku-001-new-1"
+  },
+  {
+    "id": "ku-002",
+    "description": "REST から GraphQL への変更",
+    "old_entries": [
+      {
+        "id": "ku-002-old-1",
+        "content": "The API uses REST endpoints. GET /users, POST /users, PUT /users/:id, DELETE /users/:id are the main routes.",
+        "timestamp": "2023-03-01T08:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-002-new-1",
+        "content": "Switched API to GraphQL using Apollo Server. REST endpoints deprecated. Single /graphql endpoint for all queries and mutations.",
+        "timestamp": "2024-01-20T14:00:00.000Z"
+      }
+    ],
+    "query": "What API style does the project use?",
+    "expected_latest_id": "ku-002-new-1"
+  },
+  {
+    "id": "ku-003",
+    "description": "JWT から セッションベース認証への変更",
+    "old_entries": [
+      {
+        "id": "ku-003-old-1",
+        "content": "Authentication uses JWT tokens. Tokens expire after 1 hour. Refresh tokens stored in localStorage.",
+        "timestamp": "2023-02-10T11:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-003-new-1",
+        "content": "Replaced JWT with session-based authentication. Sessions stored server-side with Redis. Cookie-based session management. 24-hour session expiry.",
+        "timestamp": "2024-03-05T09:30:00.000Z"
+      }
+    ],
+    "query": "How does the current authentication system work?",
+    "expected_latest_id": "ku-003-new-1"
+  },
+  {
+    "id": "ku-004",
+    "description": "MySQL から PostgreSQL へのデータベース移行",
+    "old_entries": [
+      {
+        "id": "ku-004-old-1",
+        "content": "Database is MySQL 8.0 running on RDS. Using InnoDB engine. Database host: mysql-prod.internal:3306.",
+        "timestamp": "2022-06-01T08:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-004-new-1",
+        "content": "Migrated from MySQL to PostgreSQL 15 on RDS. Using pgvector extension for vector search. Database host: postgres-prod.internal:5432.",
+        "timestamp": "2023-11-15T16:00:00.000Z"
+      }
+    ],
+    "query": "What database does the project currently use?",
+    "expected_latest_id": "ku-004-new-1"
+  },
+  {
+    "id": "ku-005",
+    "description": "AWS から GCP へのクラウド移行",
+    "old_entries": [
+      {
+        "id": "ku-005-old-1",
+        "content": "Infrastructure hosted on AWS. Using EC2 for compute, S3 for storage, CloudFront for CDN. Region: us-east-1.",
+        "timestamp": "2022-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-005-new-1",
+        "content": "Migrated cloud infrastructure to Google Cloud Platform. Using GKE for Kubernetes, Cloud Storage for object storage, Cloud CDN. Region: us-central1.",
+        "timestamp": "2024-04-01T00:00:00.000Z"
+      }
+    ],
+    "query": "Which cloud provider does the project currently use?",
+    "expected_latest_id": "ku-005-new-1"
+  },
+  {
+    "id": "ku-006",
+    "description": "npm から pnpm へのパッケージマネージャ変更",
+    "old_entries": [
+      {
+        "id": "ku-006-old-1",
+        "content": "Project uses npm for package management. package-lock.json is tracked in version control. Node version: 16.",
+        "timestamp": "2023-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-006-new-1",
+        "content": "Switched package manager from npm to pnpm for faster installs and disk space efficiency. pnpm-lock.yaml replaces package-lock.json. Node version: 20.",
+        "timestamp": "2024-02-28T12:00:00.000Z"
+      }
+    ],
+    "query": "What package manager does the project use?",
+    "expected_latest_id": "ku-006-new-1"
+  },
+  {
+    "id": "ku-007",
+    "description": "Jest から Vitest へのテストフレームワーク変更",
+    "old_entries": [
+      {
+        "id": "ku-007-old-1",
+        "content": "Testing framework is Jest 29 with ts-jest for TypeScript support. Test files use .test.ts extension. Coverage via jest --coverage.",
+        "timestamp": "2022-09-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-007-new-1",
+        "content": "Migrated test suite from Jest to Vitest for native ESM support and faster execution. Configuration in vitest.config.ts. Coverage via vitest --coverage.",
+        "timestamp": "2024-01-10T00:00:00.000Z"
+      }
+    ],
+    "query": "What testing framework does the project use?",
+    "expected_latest_id": "ku-007-new-1"
+  },
+  {
+    "id": "ku-008",
+    "description": "Express から Fastify へのサーバー変更",
+    "old_entries": [
+      {
+        "id": "ku-008-old-1",
+        "content": "Backend server uses Express 4.18 with body-parser and cors middleware. Port 3000 in development.",
+        "timestamp": "2021-05-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-008-new-1",
+        "content": "Replaced Express with Fastify 4 for better performance and TypeScript support. Schema validation with Zod. Port 3000 in development.",
+        "timestamp": "2024-03-20T00:00:00.000Z"
+      }
+    ],
+    "query": "What web framework does the backend use?",
+    "expected_latest_id": "ku-008-new-1"
+  },
+  {
+    "id": "ku-009",
+    "description": "モノリポから分離リポジトリへの構成変更",
+    "old_entries": [
+      {
+        "id": "ku-009-old-1",
+        "content": "Project is structured as a monorepo with frontend, backend, and shared packages in a single repository managed by Turborepo.",
+        "timestamp": "2022-03-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-009-new-1",
+        "content": "Separated monorepo into three independent repositories: api-server, web-client, and shared-lib. Each has its own CI/CD pipeline.",
+        "timestamp": "2023-10-01T00:00:00.000Z"
+      }
+    ],
+    "query": "How is the project repository currently structured?",
+    "expected_latest_id": "ku-009-new-1"
+  },
+  {
+    "id": "ku-010",
+    "description": "docker-compose から Kubernetes へのデプロイ変更",
+    "old_entries": [
+      {
+        "id": "ku-010-old-1",
+        "content": "Production deployment uses docker-compose with 3 services: api, db, and redis. Deploy with docker-compose up -d.",
+        "timestamp": "2021-01-01T00:00:00.000Z"
+      }
+    ],
+    "new_entries": [
+      {
+        "id": "ku-010-new-1",
+        "content": "Migrated production deployment from docker-compose to Kubernetes. Helm charts in ./charts directory. Deploy with helm upgrade --install.",
+        "timestamp": "2023-07-15T00:00:00.000Z"
+      }
+    ],
+    "query": "How is the production environment deployed?",
+    "expected_latest_id": "ku-010-new-1"
+  }
+]

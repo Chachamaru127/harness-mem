@@ -1,0 +1,262 @@
+[
+  {
+    "id": "temp-001",
+    "description": "デプロイ前の確認手順（テスト→ステージング→本番の順序）",
+    "entries": [
+      {
+        "id": "temp-001-e1",
+        "content": "Ran unit tests and all 342 tests passed. Ready for staging deployment.",
+        "timestamp": "2024-03-01T09:00:00.000Z"
+      },
+      {
+        "id": "temp-001-e2",
+        "content": "Deployed to staging environment. Smoke tests passed. Load test shows p95 latency 120ms.",
+        "timestamp": "2024-03-01T11:00:00.000Z"
+      },
+      {
+        "id": "temp-001-e3",
+        "content": "Deployed to production. Monitoring shows no errors. Deployment complete.",
+        "timestamp": "2024-03-01T14:00:00.000Z"
+      }
+    ],
+    "query": "What was the first step before deploying to production?",
+    "expected_order": ["temp-001-e1", "temp-001-e2", "temp-001-e3"]
+  },
+  {
+    "id": "temp-002",
+    "description": "マイグレーション後の検証手順",
+    "entries": [
+      {
+        "id": "temp-002-e1",
+        "content": "Started database migration from MySQL to PostgreSQL. Backed up all data before migration.",
+        "timestamp": "2024-01-15T08:00:00.000Z"
+      },
+      {
+        "id": "temp-002-e2",
+        "content": "Migration completed. Running data integrity checks. Row counts match between MySQL and PostgreSQL.",
+        "timestamp": "2024-01-15T12:00:00.000Z"
+      },
+      {
+        "id": "temp-002-e3",
+        "content": "Integration tests passed on PostgreSQL. Switched application connection string. Old MySQL instance kept for 30 days as fallback.",
+        "timestamp": "2024-01-15T16:00:00.000Z"
+      }
+    ],
+    "query": "What happened right after the migration completed?",
+    "expected_order": ["temp-002-e1", "temp-002-e2", "temp-002-e3"]
+  },
+  {
+    "id": "temp-003",
+    "description": "バグ発見→調査→修正→検証の時系列",
+    "entries": [
+      {
+        "id": "temp-003-e1",
+        "content": "User reported memory leak in the session manager. Sessions not being garbage collected after timeout.",
+        "timestamp": "2024-02-05T10:00:00.000Z"
+      },
+      {
+        "id": "temp-003-e2",
+        "content": "Investigated session manager. Found circular reference in event listeners preventing GC. Root cause identified.",
+        "timestamp": "2024-02-05T14:00:00.000Z"
+      },
+      {
+        "id": "temp-003-e3",
+        "content": "Fixed circular reference by using WeakRef for event listener callbacks. Memory usage stabilized.",
+        "timestamp": "2024-02-06T09:00:00.000Z"
+      },
+      {
+        "id": "temp-003-e4",
+        "content": "Verified fix in staging for 24 hours. Memory usage steady at baseline. Fix confirmed and deployed to production.",
+        "timestamp": "2024-02-07T10:00:00.000Z"
+      }
+    ],
+    "query": "What was the root cause of the memory leak and when was it identified?",
+    "expected_order": ["temp-003-e1", "temp-003-e2", "temp-003-e3", "temp-003-e4"]
+  },
+  {
+    "id": "temp-004",
+    "description": "スプリント内のタスク進行順序",
+    "entries": [
+      {
+        "id": "temp-004-e1",
+        "content": "Sprint 12 kickoff. Team committed to 3 features: user dashboard, export to CSV, and email notifications.",
+        "timestamp": "2024-02-12T09:00:00.000Z"
+      },
+      {
+        "id": "temp-004-e2",
+        "content": "User dashboard completed and merged. Started work on CSV export feature.",
+        "timestamp": "2024-02-14T17:00:00.000Z"
+      },
+      {
+        "id": "temp-004-e3",
+        "content": "CSV export done. Email notification feature deprioritized, moved to next sprint due to third-party API issues.",
+        "timestamp": "2024-02-19T16:00:00.000Z"
+      },
+      {
+        "id": "temp-004-e4",
+        "content": "Sprint 12 retrospective. 2 of 3 features shipped. Email notifications deferred to Sprint 13.",
+        "timestamp": "2024-02-23T15:00:00.000Z"
+      }
+    ],
+    "query": "Which feature was completed first in Sprint 12?",
+    "expected_order": ["temp-004-e1", "temp-004-e2", "temp-004-e3", "temp-004-e4"]
+  },
+  {
+    "id": "temp-005",
+    "description": "リリースサイクル（計画→開発→テスト→リリース）",
+    "entries": [
+      {
+        "id": "temp-005-e1",
+        "content": "v2.0 release planning meeting. Scope: new search API, bulk import, and performance improvements. Target: end of Q1.",
+        "timestamp": "2024-01-08T10:00:00.000Z"
+      },
+      {
+        "id": "temp-005-e2",
+        "content": "Development phase complete. All v2.0 features implemented. Entering QA phase.",
+        "timestamp": "2024-02-28T17:00:00.000Z"
+      },
+      {
+        "id": "temp-005-e3",
+        "content": "QA completed. 12 bugs fixed. Performance benchmarks show 40% improvement. Ready for release.",
+        "timestamp": "2024-03-15T14:00:00.000Z"
+      },
+      {
+        "id": "temp-005-e4",
+        "content": "v2.0 released to production. Release notes published. All systems green.",
+        "timestamp": "2024-03-20T10:00:00.000Z"
+      }
+    ],
+    "query": "When was v2.0 released and what happened just before the release?",
+    "expected_order": ["temp-005-e1", "temp-005-e2", "temp-005-e3", "temp-005-e4"]
+  },
+  {
+    "id": "temp-006",
+    "description": "インシデント対応の時系列（検知→一次対応→根本対応）",
+    "entries": [
+      {
+        "id": "temp-006-e1",
+        "content": "Alert fired: API response time p99 > 5 seconds. Error rate increased to 8%. Incident declared at 02:14 UTC.",
+        "timestamp": "2024-03-10T02:14:00.000Z"
+      },
+      {
+        "id": "temp-006-e2",
+        "content": "Immediate mitigation: rolled back last deployment. Error rate back to normal. Incident downgraded.",
+        "timestamp": "2024-03-10T02:45:00.000Z"
+      },
+      {
+        "id": "temp-006-e3",
+        "content": "Root cause analysis: N+1 query introduced in last deployment caused DB overload. Fixed with eager loading.",
+        "timestamp": "2024-03-10T10:00:00.000Z"
+      },
+      {
+        "id": "temp-006-e4",
+        "content": "Fixed version deployed to production. DB query count reduced by 90%. Postmortem published.",
+        "timestamp": "2024-03-11T14:00:00.000Z"
+      }
+    ],
+    "query": "What was the first action taken when the incident was detected?",
+    "expected_order": ["temp-006-e1", "temp-006-e2", "temp-006-e3", "temp-006-e4"]
+  },
+  {
+    "id": "temp-007",
+    "description": "設計レビュー→実装→コードレビューの順序",
+    "entries": [
+      {
+        "id": "temp-007-e1",
+        "content": "Design review for new caching layer approved. Decision: use Redis with 15-minute TTL for user session data.",
+        "timestamp": "2024-02-01T14:00:00.000Z"
+      },
+      {
+        "id": "temp-007-e2",
+        "content": "Implementation complete. Redis caching layer integrated. Unit tests written for cache hit/miss scenarios.",
+        "timestamp": "2024-02-08T17:00:00.000Z"
+      },
+      {
+        "id": "temp-007-e3",
+        "content": "Code review completed. 3 minor changes requested: error handling, logging, and cache invalidation logic.",
+        "timestamp": "2024-02-09T11:00:00.000Z"
+      },
+      {
+        "id": "temp-007-e4",
+        "content": "Changes addressed and PR approved. Merged to main. Cache hit rate in staging: 78%.",
+        "timestamp": "2024-02-09T16:00:00.000Z"
+      }
+    ],
+    "query": "What decision was made in the design review and when did implementation start?",
+    "expected_order": ["temp-007-e1", "temp-007-e2", "temp-007-e3", "temp-007-e4"]
+  },
+  {
+    "id": "temp-008",
+    "description": "環境構築の手順（DB→API→フロント）",
+    "entries": [
+      {
+        "id": "temp-008-e1",
+        "content": "Set up PostgreSQL database on new server. Created schema, ran migrations, seeded test data.",
+        "timestamp": "2024-01-20T09:00:00.000Z"
+      },
+      {
+        "id": "temp-008-e2",
+        "content": "Configured API server. Connected to database. Health check endpoint responding. API running on port 4000.",
+        "timestamp": "2024-01-20T13:00:00.000Z"
+      },
+      {
+        "id": "temp-008-e3",
+        "content": "Frontend deployed. Connected to API. End-to-end smoke test passed. Environment ready for QA.",
+        "timestamp": "2024-01-20T17:00:00.000Z"
+      }
+    ],
+    "query": "What was set up first when building the environment?",
+    "expected_order": ["temp-008-e1", "temp-008-e2", "temp-008-e3"]
+  },
+  {
+    "id": "temp-009",
+    "description": "認証フロー変更の前後関係",
+    "entries": [
+      {
+        "id": "temp-009-e1",
+        "content": "Decision to replace OAuth 2.0 with SAML for enterprise SSO support. Affects login flow and token handling.",
+        "timestamp": "2023-11-01T10:00:00.000Z"
+      },
+      {
+        "id": "temp-009-e2",
+        "content": "SAML integration with Okta completed. Legacy OAuth flow still running in parallel for migration period.",
+        "timestamp": "2023-12-15T15:00:00.000Z"
+      },
+      {
+        "id": "temp-009-e3",
+        "content": "All enterprise customers migrated to SAML. OAuth flow disabled. Login exclusively through SAML SSO.",
+        "timestamp": "2024-02-01T00:00:00.000Z"
+      }
+    ],
+    "query": "When was OAuth completely disabled and replaced by SAML?",
+    "expected_order": ["temp-009-e1", "temp-009-e2", "temp-009-e3"]
+  },
+  {
+    "id": "temp-010",
+    "description": "パフォーマンス改善の段階的実施",
+    "entries": [
+      {
+        "id": "temp-010-e1",
+        "content": "Performance profiling completed. Identified 3 bottlenecks: slow DB queries, missing indexes, and unoptimized image serving.",
+        "timestamp": "2024-01-05T14:00:00.000Z"
+      },
+      {
+        "id": "temp-010-e2",
+        "content": "Added database indexes on user_id and created_at columns. Query time for dashboard reduced from 800ms to 120ms.",
+        "timestamp": "2024-01-10T16:00:00.000Z"
+      },
+      {
+        "id": "temp-010-e3",
+        "content": "Implemented CDN for image serving. Image load time reduced by 65%. Overall page load improved.",
+        "timestamp": "2024-01-17T11:00:00.000Z"
+      },
+      {
+        "id": "temp-010-e4",
+        "content": "Optimized N+1 queries with eager loading. API response time p95 improved from 2.1s to 340ms. All 3 bottlenecks resolved.",
+        "timestamp": "2024-01-25T15:00:00.000Z"
+      }
+    ],
+    "query": "What was the first performance improvement implemented after profiling?",
+    "expected_order": ["temp-010-e1", "temp-010-e2", "temp-010-e3", "temp-010-e4"]
+  }
+]

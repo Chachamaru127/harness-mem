@@ -1,0 +1,77 @@
+{
+  "name": "bilingual-10",
+  "description": "日英混在テストデータ（BM-009）。3パターン: 日本語コンテンツ+英語クエリ / 英語コンテンツ+日本語クエリ / 混在コンテンツ+混在クエリ",
+  "version": "1.0.0",
+  "samples": [
+    {
+      "id": "bi-001",
+      "pattern": "ja-content_en-query",
+      "content": "デプロイ 設定 を 更新 して 本番 環境 に 反映 した",
+      "query": "deploy config",
+      "relevant_ids": ["bi-001"]
+    },
+    {
+      "id": "bi-002",
+      "pattern": "ja-content_en-query",
+      "content": "認証 バグ が ログイン フロー で 発生 した ため 修正 を 適用 した",
+      "query": "authentication bug fix",
+      "relevant_ids": ["bi-002"]
+    },
+    {
+      "id": "bi-003",
+      "pattern": "ja-content_en-query",
+      "content": "データベース の 接続 エラー が 頻発 して いる ため 調査 が 必要 だ",
+      "query": "database connection error",
+      "relevant_ids": ["bi-003"]
+    },
+    {
+      "id": "bi-004",
+      "pattern": "ja-content_en-query",
+      "content": "パフォーマンス 改善 の ため キャッシュ レイヤー を 追加 した",
+      "query": "performance cache improvement",
+      "relevant_ids": ["bi-004"]
+    },
+    {
+      "id": "bi-005",
+      "pattern": "en-content_ja-query",
+      "content": "Fixed authentication bug in login flow by updating JWT token validation",
+      "query": "認証 バグ",
+      "relevant_ids": ["bi-005"]
+    },
+    {
+      "id": "bi-006",
+      "pattern": "en-content_ja-query",
+      "content": "Deployed new version to production using Docker container on Kubernetes cluster",
+      "query": "デプロイ コンテナ",
+      "relevant_ids": ["bi-006"]
+    },
+    {
+      "id": "bi-007",
+      "pattern": "en-content_ja-query",
+      "content": "Database migration completed successfully, added index for performance improvement",
+      "query": "データベース マイグレーション",
+      "relevant_ids": ["bi-007"]
+    },
+    {
+      "id": "bi-008",
+      "pattern": "mixed-content_mixed-query",
+      "content": "AWS Tokyo リージョン に deploy した 際 に エラー が 発生 した",
+      "query": "AWS デプロイ エラー",
+      "relevant_ids": ["bi-008"]
+    },
+    {
+      "id": "bi-009",
+      "pattern": "mixed-content_mixed-query",
+      "content": "TypeScript で 実装 した API が authentication エラー を 返している",
+      "query": "TypeScript 認証 API",
+      "relevant_ids": ["bi-009"]
+    },
+    {
+      "id": "bi-010",
+      "pattern": "mixed-content_mixed-query",
+      "content": "GitHub Actions の CI で database migration が 失敗 して いる",
+      "query": "CI データベース マイグレーション 失敗",
+      "relevant_ids": ["bi-010"]
+    }
+  ]
+}

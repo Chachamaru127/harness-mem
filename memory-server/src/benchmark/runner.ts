@@ -183,4 +183,67 @@ export class BenchmarkRunner {
 
     return idcg === 0 ? 0 : dcg / idcg;
   }
+
+  /**
+   * Freshness@K: 最新の記録が古い記録より上位に来るかを測定する。
+   *
+   * - retrieved: 検索結果の ID 配列（上位から順）
+   * - newId: 新しい記録の ID（上位に来るべき）
+   * - oldIds: 古い記録の ID 配列（newId より下位にあるべき）
+   * - k: 評価対象の上位 K 件
+   * - 戻り値: 1.0（newId が全 oldId より上位）、0.5（部分的に上位）、0.0（newId が見つからない or 全 oldId より下位）
+   */
+  calculateFreshnessAtK(retrieved: string[], newId: string, oldIds: string[], k: number): number {
+    const topK = retrieved.slice(0, k);
+    const newRank = topK.indexOf(newId);
+    if (newRank === -1) return 0;
+
+    const oldRanksInTopK = oldIds
+      .map((id) => topK.indexOf(id))
+      .filter((rank) => rank !== -1);
+
+    if (oldRanksInTopK.length === 0) return 1;
+
+    const fresherCount = oldRanksInTopK.filter((oldRank) => newRank < oldRank).length;
+    return fresherCount / oldRanksInTopK.length;
+  }
+
+  /**
+   * Temporal Order Score: 時系列順序の正しさを Kendall tau 相関係数で測定する。
+   *
+   * - retrieved: 検索結果の ID 配列（上位から順）
+   * - expectedOrder: 期待される時系列順序の ID 配列
+   * - k: 評価対象の上位 K 件
+   * - 戻り値: [-1, 1] の Kendall tau 係数（1.0 = 完全一致、-1.0 = 逆順）
+   *   UI 向けに [0, 1] に正規化して返す: (tau + 1) / 2
+   */
+  calculateTemporalOrderScore(retrieved: string[], expectedOrder: string[], k: number): number {
+    const topK = retrieved.slice(0, k);
+    // expectedOrder に含まれる ID のみを対象とし、取得順序を記録
+    const filteredRetrieved = topK.filter((id) => expectedOrder.includes(id));
+    if (filteredRetrieved.length < 2) return 0.5; // 判定不能は中立値
+
+    // 取得順での位置インデックス（expectedOrder 基準）
+    const ranks = filteredRetrieved.map((id) => expectedOrder.indexOf(id));
+
+    // Kendall tau: コンコーダントペア数 - ディスコーダントペア数
+    let concordant = 0;
+    let discordant = 0;
+    for (let i = 0; i < ranks.length; i++) {
+      for (let j = i + 1; j < ranks.length; j++) {
+        if (ranks[i] < ranks[j]) {
+          concordant++;
+        } else if (ranks[i] > ranks[j]) {
+          discordant++;
+        }
+      }
+    }
+
+    const totalPairs = (ranks.length * (ranks.length - 1)) / 2;
+    if (totalPairs === 0) return 0.5;
+
+    const tau = (concordant - discordant) / totalPairs;
+    // [-1, 1] → [0, 1] に正規化
+    return (tau + 1) / 2;
+  }
 }
