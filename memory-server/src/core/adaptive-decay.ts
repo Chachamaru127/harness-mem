@@ -29,6 +29,10 @@ const DECAY_MULTIPLIERS: Record<DecayTier, number> = {
  * @param nowMs - 現在時刻（ミリ秒）。省略時は Date.now()
  */
 export function getDecayTier(lastAccessedAt: string | null, nowMs: number = Date.now()): DecayTier {
+  // ベンチマーク等で decay を無効化するフラグ
+  if (process.env.HARNESS_MEM_DECAY_DISABLED === "1") {
+    return "hot";
+  }
   if (!lastAccessedAt) {
     return "cold";
   }

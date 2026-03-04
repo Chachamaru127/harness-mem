@@ -190,20 +190,25 @@ export function buildFtsQuery(query: string): string {
     return '""';
   }
 
-  const expanded = new Set<string>(escaped);
+  // AND-first: 全トークン一致を最優先、個別トークン+同義語でフォールバック
+  const andClause = escaped.map((t) => `"${t}"`).join(" AND ");
+  const orTokens = escaped.map((t) => `"${t}"`);
+
+  // 同義語・バイグラムで候補拡張
   for (const token of escaped) {
     const synonyms = SYNONYM_MAP[token];
     if (synonyms) {
       for (const synonym of synonyms) {
-        expanded.add(synonym);
+        orTokens.push(`"${synonym}"`);
       }
     }
   }
   for (let i = 0; i < escaped.length - 1; i += 1) {
-    expanded.add(`${escaped[i]} ${escaped[i + 1]}`);
+    orTokens.push(`"${escaped[i]} ${escaped[i + 1]}"`);
   }
 
-  return [...expanded].map((token) => `"${token}"`).join(" OR ");
+  // AND一致 > 個別トークン一致（BM25が自動的にAND一致を高スコアにする）
+  return `(${andClause}) OR ${orTokens.join(" OR ")}`;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,12 +1,12 @@
 {
   "dataset": "locomo",
-  "timestamp": "2026-03-03T18:20:56.836Z",
+  "timestamp": "2026-03-03T18:38:47.041Z",
   "metrics": {
     "recall@10": 1,
     "precision@10": 0.09999999999999999,
-    "mrr": 0.25817460317460317,
-    "ndcg": 0.42544018905031633
+    "mrr": 1,
+    "ndcg": 1
   },
   "samples": 10,
-  "duration_ms": 14
+  "duration_ms": 17
 }

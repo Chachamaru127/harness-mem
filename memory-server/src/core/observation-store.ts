@@ -282,7 +282,7 @@ export class ObservationStore {
     let sql = `
       SELECT
         o.id AS id,
-        bm25(mem_observations_fts) AS bm25
+        bm25(mem_observations_fts, 0, 5.0, 1.0) AS bm25
       FROM mem_observations_fts
       JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
       WHERE mem_observations_fts MATCH ?

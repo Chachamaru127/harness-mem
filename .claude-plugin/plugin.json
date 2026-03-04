@@ -1,0 +1,19 @@
+{
+  "name": "harness-mem",
+  "version": "1.0.0",
+  "description": "Harness Memory - Persistent memory system for Claude Code sessions",
+  "author": {
+    "name": "Chachamaru",
+    "url": "https://github.com/Chachamaru127"
+  },
+  "homepage": "https://github.com/Chachamaru127/harness-mem",
+  "repository": "https://github.com/Chachamaru127/harness-mem",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "plugin",
+    "memory",
+    "session",
+    "harness-mem"
+  ]
+}

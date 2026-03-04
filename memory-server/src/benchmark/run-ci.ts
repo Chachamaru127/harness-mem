@@ -42,6 +42,10 @@ function createConfig(name: string): Config {
 async function main(): Promise<void> {
   console.log("[CI] V5-007 Benchmark CI Runner");
 
+  // ベンチマーク専用設定: decay 無効化 + reranker 有効化
+  process.env.HARNESS_MEM_DECAY_DISABLED = "1";
+  process.env.HARNESS_MEM_RERANKER_ENABLED = "1";
+
   mkdirSync(RESULTS_DIR, { recursive: true });
 
   const configs: BenchmarkConfig[] = [

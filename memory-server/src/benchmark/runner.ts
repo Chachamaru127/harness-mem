@@ -81,7 +81,7 @@ export class BenchmarkRunner {
         project,
         session_id: `bench-session-${config.dataset}`,
         event_type: "user_prompt",
-        ts: new Date(Date.UTC(2026, 0, i + 1, 10, 0, 0)).toISOString(),
+        ts: new Date(Date.now() - (samples.length - i) * 60_000).toISOString(),
         payload: { prompt: s.content },
         tags: [],
         privacy_tags: [],

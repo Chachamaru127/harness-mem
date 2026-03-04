@@ -1,4 +1,4 @@
-import { createSimpleReranker } from "./simple-reranker";
+import { createSimpleReranker, createCrossEncoderReranker } from "./simple-reranker";
 import { createCohereReranker } from "./cohere-reranker";
 import { createHfReranker } from "./hf-reranker";
 import { createStReranker } from "./st-reranker";
@@ -100,9 +100,10 @@ export function createRerankerRegistry(enabledInput: unknown): RerankerRegistryR
   const model = process.env.HARNESS_MEM_RERANKER_MODEL;
 
   if (provider === "simple") {
+    // cross-encoder-v1 をデフォルトに: N-gram overlap でコンテンツ類似度を捕捉
     return {
       enabled: true,
-      reranker: createSimpleReranker(),
+      reranker: createCrossEncoderReranker(),
       warnings: [],
     };
   }
