@@ -13,6 +13,8 @@ type CategoryKey =
 interface UiCopy {
   feedTab: string;
   environmentTab: string;
+  costsTab: string;
+  replayTab: string;
   tabsAria: string;
   appTitle: string;
   appSubtitle: string;
@@ -106,12 +108,51 @@ interface UiCopy {
     faqTitle: string;
     faq: Array<{ question: string; answer: string }>;
   };
+  costs: {
+    title: string;
+    subtitle: string;
+    refresh: string;
+    groupByModel: string;
+    groupByDay: string;
+    groupByProject: string;
+    model: string;
+    day: string;
+    project: string;
+    inputTokens: string;
+    outputTokens: string;
+    cacheWriteTokens: string;
+    cacheReadTokens: string;
+    totalCost: string;
+    messages: string;
+    noData: string;
+    totalLabel: string;
+    last7Days: string;
+    last30Days: string;
+    allTime: string;
+  };
+  replay: {
+    title: string;
+    subtitle: string;
+    selectSession: string;
+    noEvents: string;
+    eventCount: string;
+    prompt: string;
+    response: string;
+    toolUse: string;
+    elapsed: string;
+    tokens: string;
+    cost: string;
+    loadSession: string;
+    sessionIdPlaceholder: string;
+  };
 }
 
 const COPY: Record<UiLanguage, UiCopy> = {
   en: {
     feedTab: "Feed",
     environmentTab: "Environment",
+    costsTab: "Costs",
+    replayTab: "Replay",
     tabsAria: "Main tabs",
     appTitle: "Harness Memory Viewer",
     appSubtitle: "Project memory feed",
@@ -255,10 +296,49 @@ const COPY: Record<UiLanguage, UiCopy> = {
         },
       ],
     },
+    costs: {
+      title: "Cost Dashboard",
+      subtitle: "Token usage and cost tracking across all sessions.",
+      refresh: "Refresh",
+      groupByModel: "By Model",
+      groupByDay: "By Day",
+      groupByProject: "By Project",
+      model: "Model",
+      day: "Date",
+      project: "Project",
+      inputTokens: "Input",
+      outputTokens: "Output",
+      cacheWriteTokens: "Cache Write",
+      cacheReadTokens: "Cache Read",
+      totalCost: "Cost",
+      messages: "Messages",
+      noData: "No cost data yet. Start using Claude Code and data will appear here after ingestion.",
+      totalLabel: "Total",
+      last7Days: "Last 7 days",
+      last30Days: "Last 30 days",
+      allTime: "All time",
+    },
+    replay: {
+      title: "Session Replay",
+      subtitle: "Step through a session's events in chronological order.",
+      selectSession: "Select a session from the sidebar, or enter a session ID below.",
+      noEvents: "No events found for this session.",
+      eventCount: "events",
+      prompt: "Prompt",
+      response: "Response",
+      toolUse: "Tool",
+      elapsed: "elapsed",
+      tokens: "tokens",
+      cost: "cost",
+      loadSession: "Load",
+      sessionIdPlaceholder: "Enter session ID...",
+    },
   },
   ja: {
     feedTab: "フィード",
     environmentTab: "環境",
+    costsTab: "コスト",
+    replayTab: "リプレイ",
     tabsAria: "メインタブ",
     appTitle: "Harness メモリビューア",
     appSubtitle: "プロジェクト別メモリフィード",
@@ -401,6 +481,43 @@ const COPY: Record<UiLanguage, UiCopy> = {
           answer: "API key や token などの値は API 応答前にマスクしています。",
         },
       ],
+    },
+    costs: {
+      title: "コストダッシュボード",
+      subtitle: "全セッションのトークン使用量とコストを追跡します。",
+      refresh: "更新",
+      groupByModel: "モデル別",
+      groupByDay: "日別",
+      groupByProject: "プロジェクト別",
+      model: "モデル",
+      day: "日付",
+      project: "プロジェクト",
+      inputTokens: "入力",
+      outputTokens: "出力",
+      cacheWriteTokens: "キャッシュ書込",
+      cacheReadTokens: "キャッシュ読取",
+      totalCost: "コスト",
+      messages: "メッセージ数",
+      noData: "コストデータがまだありません。Claude Code を使い始めると、イングスト後にここに表示されます。",
+      totalLabel: "合計",
+      last7Days: "直近7日",
+      last30Days: "直近30日",
+      allTime: "全期間",
+    },
+    replay: {
+      title: "セッションリプレイ",
+      subtitle: "セッションのイベントを時系列順にステップ再生します。",
+      selectSession: "サイドバーからセッションを選択するか、下にセッションIDを入力してください。",
+      noEvents: "このセッションにイベントが見つかりません。",
+      eventCount: "件のイベント",
+      prompt: "プロンプト",
+      response: "レスポンス",
+      toolUse: "ツール",
+      elapsed: "経過",
+      tokens: "トークン",
+      cost: "コスト",
+      loadSession: "読み込む",
+      sessionIdPlaceholder: "セッションIDを入力...",
     },
   },
 };

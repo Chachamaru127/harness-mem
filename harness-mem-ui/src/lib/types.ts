@@ -1,6 +1,39 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
-export type UiTab = "feed" | "environment" | "search" | "observation" | "session";
+export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "costs" | "replay";
+
+export interface TokenStatsRow {
+  label: string;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_write_tokens: number;
+  total_cache_read_tokens: number;
+  total_cost: number;
+  total_input_cost: number;
+  total_output_cost: number;
+  total_cache_write_cost: number;
+  total_cache_read_cost: number;
+  message_count: number;
+}
+
+export interface TokenStatsTotals {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_write_tokens: number;
+  total_cache_read_tokens: number;
+  total_cost: number;
+  message_count: number;
+}
+
+export interface ReplayEvent {
+  event_id: string;
+  event_type: string;
+  ts: string;
+  platform: string;
+  project: string;
+  session_id: string;
+  payload: Record<string, unknown>;
+}
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "gemini";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 

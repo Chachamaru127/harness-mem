@@ -3,6 +3,8 @@ import type {
   EnvironmentSnapshot,
   FeedItem,
   ProjectsStatsItem,
+  ReplayEvent,
+  TokenStatsRow,
   UiContext,
 } from "./types";
 
@@ -131,4 +133,26 @@ export async function fetchSearchFacets(params: {
   if (params.project) query.set("project", params.project);
   if (typeof params.includePrivate === "boolean") query.set("include_private", params.includePrivate ? "true" : "false");
   return request<ApiResponse<Record<string, unknown>>>(`/api/search/facets?${query.toString()}`);
+}
+
+export async function fetchTokenStats(params: {
+  groupBy?: "model" | "day" | "project";
+  since?: string;
+  until?: string;
+  project?: string;
+}): Promise<ApiResponse<TokenStatsRow>> {
+  const query = new URLSearchParams();
+  if (params.groupBy) query.set("group_by", params.groupBy);
+  if (params.since) query.set("since", params.since);
+  if (params.until) query.set("until", params.until);
+  if (params.project) query.set("project", params.project);
+  return request<ApiResponse<TokenStatsRow>>(`/api/stats/tokens?${query.toString()}`);
+}
+
+export async function fetchSessionReplay(params: {
+  sessionId: string;
+}): Promise<ApiResponse<ReplayEvent>> {
+  const query = new URLSearchParams();
+  query.set("session_id", params.sessionId);
+  return request<ApiResponse<ReplayEvent>>(`/api/sessions/replay?${query.toString()}`);
 }

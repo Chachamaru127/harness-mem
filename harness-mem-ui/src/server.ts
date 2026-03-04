@@ -225,6 +225,12 @@ Bun.serve({
     if (url.pathname === "/api/search/facets") {
       return proxyJson(`/v1/search/facets${url.search || ""}`, "GET");
     }
+    if (url.pathname === "/api/stats/tokens") {
+      return proxyJson(`/v1/stats/tokens${url.search || ""}`, "GET");
+    }
+    if (url.pathname === "/api/sessions/replay") {
+      return proxyJson(`/v1/sessions/replay${url.search || ""}`, "GET");
+    }
     if (url.pathname === "/api/search" && request.method === "POST") {
       return proxyJson("/v1/search", "POST", await parseBody(request));
     }

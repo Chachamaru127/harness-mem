@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
+import { CostPanel } from "../components/CostPanel";
 import { EnvironmentPanel } from "../components/EnvironmentPanel";
 import { FeedPanel } from "../components/FeedPanel";
 import { HeaderBar } from "../components/HeaderBar";
 import { ProjectSidebar } from "../components/ProjectSidebar";
+import { SessionReplayPanel } from "../components/SessionReplayPanel";
 import { SettingsModal } from "../components/SettingsModal";
 import { useFeedPagination } from "../hooks/useFeedPagination";
 import { useSSE } from "../hooks/useSSE";
@@ -280,6 +282,28 @@ export default function App() {
             >
               {copy.environmentTab}
             </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-costs"
+              className={`tab ${settings.activeTab === "costs" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "costs"}
+              aria-controls="panel-costs"
+              onClick={() => updateSetting("activeTab", "costs")}
+            >
+              {copy.costsTab}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-replay"
+              className={`tab ${settings.activeTab === "replay" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "replay"}
+              aria-controls="panel-replay"
+              onClick={() => updateSetting("activeTab", "replay")}
+            >
+              {copy.replayTab}
+            </button>
           </div>
 
           {settings.activeTab === "environment" ? (
@@ -292,6 +316,21 @@ export default function App() {
                 onRefresh={() => {
                   void loadEnvironment();
                 }}
+              />
+            </div>
+          ) : settings.activeTab === "costs" ? (
+            <div role="tabpanel" id="panel-costs" aria-labelledby="tab-costs">
+              <CostPanel
+                language={settings.language}
+                project={selectedProject}
+              />
+            </div>
+          ) : settings.activeTab === "replay" ? (
+            <div role="tabpanel" id="panel-replay" aria-labelledby="tab-replay">
+              <SessionReplayPanel
+                language={settings.language}
+                project={selectedProject}
+                includePrivate={settings.includePrivate}
               />
             </div>
           ) : (
