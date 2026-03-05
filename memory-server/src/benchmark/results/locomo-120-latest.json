@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-benchmark-v2",
-  "generated_at": "2026-03-04T10:43:46.972Z",
+  "generated_at": "2026-03-05T09:48:52.792Z",
   "system": "harness-mem",
   "dataset": {
     "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/locomo-120.json",
@@ -10,37 +10,37 @@
   "metrics": {
     "overall": {
       "count": 180,
-      "em": 0.18888888888888888,
-      "f1": 0.2874289552437542
+      "em": 0.17777777777777778,
+      "f1": 0.25332975398192786
     },
     "by_category": {
       "cat-1": {
         "count": 69,
-        "em": 0.2753623188405797,
-        "f1": 0.3609009750314098
+        "em": 0.2898550724637681,
+        "f1": 0.36311514572384135
       },
       "cat-2": {
         "count": 42,
-        "em": 0.11904761904761904,
-        "f1": 0.24372827543455727
+        "em": 0.07142857142857142,
+        "f1": 0.1478078684600424
       },
       "cat-3": {
         "count": 34,
         "em": 0.058823529411764705,
-        "f1": 0.16230289318524616
+        "f1": 0.15695529960235846
       },
       "cat-4": {
         "count": 35,
-        "em": 0.22857142857142856,
-        "f1": 0.31657596371882085
+        "em": 0.2,
+        "f1": 0.2571428571428571
       }
     }
   },
   "comparison": {
     "cat_1_to_4": {
       "count": 180,
-      "em": 0.18888888888888888,
-      "f1": 0.2874289552437542
+      "em": 0.17777777777777778,
+      "f1": 0.25332975398192786
     },
     "cat_5": {
       "count": 0,
@@ -51,22 +51,22 @@
   "performance": {
     "search_latency_ms": {
       "count": 180,
-      "min": 1.19,
-      "max": 8.700000000000001,
-      "avg": 4.096111111111111,
-      "p50": 3.84,
-      "p95": 7.359999999999999
+      "min": 1.27,
+      "max": 9.613332999999962,
+      "avg": 4.560152533333335,
+      "p50": 4.391124999999993,
+      "p95": 7.970000000000001
     }
   },
   "cost": {
     "search_token_estimate": {
       "count": 180,
-      "input_total": 20446,
-      "output_total": 62800,
-      "total_total": 83246,
-      "input_avg": 113.58888888888889,
-      "output_avg": 348.8888888888889,
-      "total_avg": 462.47777777777776
+      "input_total": 18399,
+      "output_total": 56704,
+      "total_total": 75103,
+      "input_avg": 102.21666666666667,
+      "output_avg": 315.02222222222224,
+      "total_avg": 417.2388888888889
     }
   },
   "records": [
@@ -140,7 +140,7 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 5.08,
+      "search_latency_ms": 6.2700000000000005,
       "token_estimate_input_tokens": 135,
       "token_estimate_output_tokens": 324,
       "token_estimate_total_tokens": 459,
@@ -215,7 +215,7 @@
         },
         "final_short_answer": "I'm using it for my data science project at MIT."
       },
-      "search_latency_ms": 2.35,
+      "search_latency_ms": 2.5300000000000002,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 294,
@@ -291,7 +291,7 @@
         },
         "final_short_answer": "January"
       },
-      "search_latency_ms": 2.38,
+      "search_latency_ms": 2.28,
       "token_estimate_input_tokens": 98,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 368,
@@ -366,7 +366,7 @@
         },
         "final_short_answer": "Buddy"
       },
-      "search_latency_ms": 1.65,
+      "search_latency_ms": 1.97,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 295,
@@ -440,7 +440,7 @@
         },
         "final_short_answer": "Texas"
       },
-      "search_latency_ms": 1.29,
+      "search_latency_ms": 1.47,
       "token_estimate_input_tokens": 54,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 216,
@@ -516,7 +516,7 @@
         },
         "final_short_answer": "Austin"
       },
-      "search_latency_ms": 2.4399999999999995,
+      "search_latency_ms": 3.34,
       "token_estimate_input_tokens": 90,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 360,
@@ -590,7 +590,7 @@
         },
         "final_short_answer": "Neural"
       },
-      "search_latency_ms": 1.47,
+      "search_latency_ms": 1.68,
       "token_estimate_input_tokens": 56,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 218,
@@ -666,7 +666,7 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 2.6199999999999997,
+      "search_latency_ms": 3.24,
       "token_estimate_input_tokens": 103,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 373,
@@ -740,7 +740,7 @@
         },
         "final_short_answer": "Congratulations"
       },
-      "search_latency_ms": 1.19,
+      "search_latency_ms": 1.27,
       "token_estimate_input_tokens": 58,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 220,
@@ -821,7 +821,7 @@
         },
         "final_short_answer": "Dune"
       },
-      "search_latency_ms": 2.4000000000000004,
+      "search_latency_ms": 2.06,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 301,
@@ -834,7 +834,7 @@
       "category": "cat-1",
       "question": "What am I reading now?",
       "answer": "Foundation",
-      "prediction": "Isaac Asimov",
+      "prediction": "Foundation",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
@@ -900,14 +900,14 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "Isaac Asimov"
+        "final_short_answer": "Foundation"
       },
-      "search_latency_ms": 2.02,
+      "search_latency_ms": 2.6799999999999997,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 293,
-      "em": 0,
-      "f1": 0
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "full-004",
@@ -983,7 +983,7 @@
         },
         "final_short_answer": "Dune"
       },
-      "search_latency_ms": 1.7,
+      "search_latency_ms": 1.84,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 305,
@@ -1057,7 +1057,7 @@
         },
         "final_short_answer": "Emma"
       },
-      "search_latency_ms": 1.31,
+      "search_latency_ms": 1.3199999999999998,
       "token_estimate_input_tokens": 56,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 218,
@@ -1133,7 +1133,7 @@
         },
         "final_short_answer": "Kyoto"
       },
-      "search_latency_ms": 2.6,
+      "search_latency_ms": 4.460000000000001,
       "token_estimate_input_tokens": 106,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 376,
@@ -1209,7 +1209,7 @@
         },
         "final_short_answer": "Toronto"
       },
-      "search_latency_ms": 4.840000000000001,
+      "search_latency_ms": 6.74,
       "token_estimate_input_tokens": 109,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 379,
@@ -1283,7 +1283,7 @@
         },
         "final_short_answer": "June"
       },
-      "search_latency_ms": 1.4100000000000001,
+      "search_latency_ms": 1.67,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 225,
@@ -1301,9 +1301,10 @@
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-006-1",
+        "obs_locomo-full-001-2",
         "obs_locomo-full-006-3",
         "obs_locomo-full-006-2",
-        "obs_locomo-full-006-4"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -1330,6 +1331,12 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-full-006-3",
               "sentence": "My thesis was on natural language processing for low-resource languages.",
               "score": 0.458333,
@@ -1342,10 +1349,10 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-006-4",
-              "sentence": "That is a very impactful research area.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.358333,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -1359,10 +1366,10 @@
         },
         "final_short_answer": "2022"
       },
-      "search_latency_ms": 1.9500000000000002,
-      "token_estimate_input_tokens": 97,
-      "token_estimate_output_tokens": 270,
-      "token_estimate_total_tokens": 367,
+      "search_latency_ms": 2.1026250000000104,
+      "token_estimate_input_tokens": 76,
+      "token_estimate_output_tokens": 216,
+      "token_estimate_total_tokens": 292,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -1372,9 +1379,9 @@
       "category": "cat-1",
       "question": "What was my thesis topic?",
       "answer": "natural language processing for low-resource languages",
-      "prediction": "My thesis was on natural language processing for low-resource languages.",
+      "prediction": "My",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-006-3",
         "obs_locomo-full-006-4",
@@ -1431,14 +1438,14 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "My thesis was on natural language processing for low-resource languages."
+        "final_short_answer": "My"
       },
-      "search_latency_ms": 1.19,
+      "search_latency_ms": 1.7400000000000002,
       "token_estimate_input_tokens": 57,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 219,
       "em": 0,
-      "f1": 0.625
+      "f1": 0
     },
     {
       "sample_id": "full-007",
@@ -1507,7 +1514,7 @@
         },
         "final_short_answer": "Amsterdam"
       },
-      "search_latency_ms": 1.4100000000000001,
+      "search_latency_ms": 1.53,
       "token_estimate_input_tokens": 55,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 217,
@@ -1581,7 +1588,7 @@
         },
         "final_short_answer": "Flowpay"
       },
-      "search_latency_ms": 1.4100000000000001,
+      "search_latency_ms": 1.56,
       "token_estimate_input_tokens": 57,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 219,
@@ -1655,7 +1662,7 @@
         },
         "final_short_answer": "Amsterdam"
       },
-      "search_latency_ms": 1.6099999999999999,
+      "search_latency_ms": 2.2600000000000002,
       "token_estimate_input_tokens": 55,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 217,
@@ -1729,7 +1736,7 @@
         },
         "final_short_answer": "Leo"
       },
-      "search_latency_ms": 4.11,
+      "search_latency_ms": 4.66,
       "token_estimate_input_tokens": 57,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 219,
@@ -1803,7 +1810,7 @@
         },
         "final_short_answer": "Leo"
       },
-      "search_latency_ms": 1.47,
+      "search_latency_ms": 1.67,
       "token_estimate_input_tokens": 58,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 220,
@@ -1879,7 +1886,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 2.4299999999999997,
+      "search_latency_ms": 3.15,
       "token_estimate_input_tokens": 101,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 371,
@@ -1954,7 +1961,7 @@
         },
         "final_short_answer": "French"
       },
-      "search_latency_ms": 1.8699999999999999,
+      "search_latency_ms": 2.7,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 299,
@@ -2030,7 +2037,7 @@
         },
         "final_short_answer": "Montreal"
       },
-      "search_latency_ms": 2.9299999999999997,
+      "search_latency_ms": 3.8499999999999996,
       "token_estimate_input_tokens": 94,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 364,
@@ -2105,7 +2112,7 @@
         },
         "final_short_answer": "Montreal"
       },
-      "search_latency_ms": 2.63,
+      "search_latency_ms": 5.65,
       "token_estimate_input_tokens": 97,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 313,
@@ -2181,7 +2188,7 @@
         },
         "final_short_answer": "2021"
       },
-      "search_latency_ms": 2.23,
+      "search_latency_ms": 2.38,
       "token_estimate_input_tokens": 102,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 372,
@@ -2255,7 +2262,7 @@
         },
         "final_short_answer": "January"
       },
-      "search_latency_ms": 4.71,
+      "search_latency_ms": 5.8,
       "token_estimate_input_tokens": 56,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 218,
@@ -2330,7 +2337,7 @@
         },
         "final_short_answer": "Greger"
       },
-      "search_latency_ms": 2.58,
+      "search_latency_ms": 2.6499999999999995,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 301,
@@ -2343,14 +2350,14 @@
       "category": "cat-2",
       "question": "What vegetables am I growing on my balcony?",
       "answer": "tomatoes, basil, and peppers",
-      "prediction": "I started a vegetable garden on my balcony three months ago. What are you growing? That's a great hobby! Having the right containers makes a big difference. I bought special containers from the GreenThumb store downtown.",
+      "prediction": "I started a vegetable garden on my balcony three months ago. What are you growing? MIT has excellent data science programs. That's a great hobby! Having the right containers makes a big difference.",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-011-1",
         "obs_locomo-full-011-2",
-        "obs_locomo-full-011-6",
-        "obs_locomo-full-011-5"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-011-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2369,7 +2376,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I started a vegetable garden on my balcony three months ago. What are you growing? That's a great hobby! Having the right containers makes a big difference. I bought special containers from the GreenThumb store downtown.",
+          "raw_answer": "I started a vegetable garden on my balcony three months ago. What are you growing? MIT has excellent data science programs. That's a great hobby! Having the right containers makes a big difference.",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-011-1",
@@ -2384,6 +2391,12 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
               "id": "obs_locomo-full-011-2",
               "sentence": "That's a great hobby!",
               "score": 0.458333,
@@ -2394,27 +2407,21 @@
               "sentence": "Having the right containers makes a big difference.",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:05.000Z"
-            },
-            {
-              "id": "obs_locomo-full-011-5",
-              "sentence": "I bought special containers from the GreenThumb store downtown.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I started a vegetable garden on my balcony three months ago. What are you growing? That's a great hobby! Having the right containers makes a big difference. I bought special containers from the GreenThumb store downtown.",
-          "after": "I started a vegetable garden on my balcony three months ago. What are you growing? That's a great hobby! Having the right containers makes a big difference. I bought special containers from the GreenThumb store downtown.",
+          "before": "I started a vegetable garden on my balcony three months ago. What are you growing? MIT has excellent data science programs. That's a great hobby! Having the right containers makes a big difference.",
+          "after": "I started a vegetable garden on my balcony three months ago. What are you growing? MIT has excellent data science programs. That's a great hobby! Having the right containers makes a big difference.",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "I started a vegetable garden on my balcony three months ago. What are you growing? That's a great hobby! Having the right containers makes a big difference. I bought special containers from the GreenThumb store downtown."
+        "final_short_answer": "I started a vegetable garden on my balcony three months ago. What are you growing? MIT has excellent data science programs. That's a great hobby! Having the right containers makes a big difference."
       },
-      "search_latency_ms": 4.2,
-      "token_estimate_input_tokens": 145,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 625,
+      "search_latency_ms": 5.481207999999986,
+      "token_estimate_input_tokens": 119,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 519,
       "em": 0,
       "f1": 0
     },
@@ -2424,12 +2431,13 @@
       "category": "cat-2",
       "question": "Which vegetable is doing really well?",
       "answer": "tomatoes",
-      "prediction": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. That's a great hobby! What are you growing?",
+      "prediction": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. MIT has excellent data science programs. That's a great hobby!",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-011-3",
         "obs_locomo-full-011-1",
+        "obs_locomo-full-001-4",
         "obs_locomo-full-011-2"
       ],
       "answer_trace": {
@@ -2449,7 +2457,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. That's a great hobby! What are you growing?",
+          "raw_answer": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. MIT has excellent data science programs. That's a great hobby!",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-011-3",
@@ -2470,33 +2478,33 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-full-011-2",
-              "sentence": "That's a great hobby!",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-full-011-2",
-              "sentence": "What are you growing?",
+              "sentence": "That's a great hobby!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. That's a great hobby! What are you growing?",
-          "after": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. That's a great hobby! What are you growing?",
+          "before": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. MIT has excellent data science programs. That's a great hobby!",
+          "after": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. MIT has excellent data science programs. That's a great hobby!",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. That's a great hobby! What are you growing?"
+        "final_short_answer": "The tomatoes are doing really well. I started a vegetable garden on my balcony three months ago. Tomatoes, basil, and peppers mostly. MIT has excellent data science programs. That's a great hobby!"
       },
-      "search_latency_ms": 4.94,
-      "token_estimate_input_tokens": 143,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 623,
+      "search_latency_ms": 5.152416999999988,
+      "token_estimate_input_tokens": 117,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 517,
       "em": 0,
-      "f1": 0.06451612903225806
+      "f1": 0.06060606060606061
     },
     {
       "sample_id": "full-011",
@@ -2504,14 +2512,15 @@
       "category": "cat-2",
       "question": "Where did I buy the containers?",
       "answer": "GreenThumb store",
-      "prediction": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. Tomatoes, basil, and peppers mostly. The tomatoes are doing really well.",
+      "prediction": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. MIT has excellent data science programs. Austin has great parks for dogs.",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-011-5",
         "obs_locomo-full-011-6",
         "obs_locomo-full-011-4",
-        "obs_locomo-full-011-3"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-002-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2530,7 +2539,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. Tomatoes, basil, and peppers mostly. The tomatoes are doing really well.",
+          "raw_answer": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. MIT has excellent data science programs. Austin has great parks for dogs.",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-011-5",
@@ -2551,33 +2560,33 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-011-3",
-              "sentence": "Tomatoes, basil, and peppers mostly.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-011-3",
-              "sentence": "The tomatoes are doing really well.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-002-4",
+              "sentence": "Austin has great parks for dogs.",
+              "score": 0.358333,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. Tomatoes, basil, and peppers mostly. The tomatoes are doing really well.",
-          "after": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. Tomatoes, basil, and peppers mostly. The tomatoes are doing really well.",
+          "before": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. MIT has excellent data science programs. Austin has great parks for dogs.",
+          "after": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. MIT has excellent data science programs. Austin has great parks for dogs.",
           "notes": [],
           "reference_time": "2026-01-01T00:00:04.000Z"
         },
-        "final_short_answer": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. Tomatoes, basil, and peppers mostly. The tomatoes are doing really well."
+        "final_short_answer": "I bought special containers from the GreenThumb store downtown. Having the right containers makes a big difference. Tomatoes can thrive in containers with enough sunlight. MIT has excellent data science programs. Austin has great parks for dogs."
       },
-      "search_latency_ms": 4.28,
-      "token_estimate_input_tokens": 128,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 608,
+      "search_latency_ms": 4.41795900000002,
+      "token_estimate_input_tokens": 106,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 506,
       "em": 0,
-      "f1": 0.10526315789473684
+      "f1": 0.10256410256410257
     },
     {
       "sample_id": "full-012",
@@ -2592,7 +2601,7 @@
         "obs_locomo-full-012-1",
         "obs_locomo-full-012-3",
         "obs_locomo-full-012-4",
-        "obs_locomo-full-012-5"
+        "obs_locomo-full-011-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2628,20 +2637,20 @@
             {
               "id": "obs_locomo-full-012-3",
               "sentence": "I completed my first 10K race last April in 52 minutes.",
-              "score": 0.595,
+              "score": 0.725,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-full-012-4",
               "sentence": "52 minutes is a solid time for a first 10K!",
-              "score": 0.511667,
+              "score": 0.641667,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-012-5",
-              "sentence": "Now I'm training for a half marathon in November.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -2653,10 +2662,10 @@
         },
         "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 3.93,
-      "token_estimate_input_tokens": 142,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 622,
+      "search_latency_ms": 4.391124999999993,
+      "token_estimate_input_tokens": 116,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 516,
       "em": 0,
       "f1": 0
     },
@@ -2670,10 +2679,11 @@
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
-        "obs_locomo-full-012-3",
         "obs_locomo-full-012-4",
-        "obs_locomo-full-012-1",
-        "obs_locomo-full-012-2"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-002-4",
+        "obs_locomo-full-003-4",
+        "obs_locomo-full-004-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2695,34 +2705,34 @@
           "raw_answer": "52 minutes",
           "selected_candidates": [
             {
-              "id": "obs_locomo-full-012-3",
-              "sentence": "I completed my first 10K race last April in 52 minutes.",
-              "score": 1.445,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
               "id": "obs_locomo-full-012-4",
               "sentence": "52 minutes is a solid time for a first 10K!",
-              "score": 1.078333,
+              "score": 0.951923,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-012-1",
-              "sentence": "I started in October 2023.",
-              "score": 0.595,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-012-1",
-              "sentence": "I run every morning before work.",
+              "id": "obs_locomo-full-002-4",
+              "sentence": "Austin has great parks for dogs.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-003-4",
+              "sentence": "Distributed systems is fascinating.",
               "score": 0.375,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-012-2",
-              "sentence": "That's impressive consistency!",
+              "id": "obs_locomo-full-004-4",
+              "sentence": "Foundation is another great sci-fi series.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -2730,14 +2740,14 @@
           "before": "52 minutes",
           "after": "52 minutes",
           "notes": [],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:03.000Z"
         },
         "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 4,
-      "token_estimate_input_tokens": 137,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 617,
+      "search_latency_ms": 3.3319149999999524,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 1,
       "f1": 1
     },
@@ -2753,8 +2763,9 @@
       "selected_evidence_ids": [
         "obs_locomo-full-012-5",
         "obs_locomo-full-012-3",
+        "obs_locomo-full-012-4",
         "obs_locomo-full-012-1",
-        "obs_locomo-full-012-4"
+        "obs_locomo-full-011-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2784,8 +2795,14 @@
             {
               "id": "obs_locomo-full-012-3",
               "sentence": "I completed my first 10K race last April in 52 minutes.",
-              "score": 0.928333,
+              "score": 1.058333,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.675,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-full-012-1",
@@ -2794,16 +2811,10 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-full-012-4",
-              "sentence": "52 minutes is a solid time for a first 10K!",
-              "score": 0.545,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
-              "id": "obs_locomo-full-012-1",
-              "sentence": "I run every morning before work.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -2815,10 +2826,10 @@
         },
         "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 5.51,
-      "token_estimate_input_tokens": 132,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 612,
+      "search_latency_ms": 4.906333000000007,
+      "token_estimate_input_tokens": 108,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 508,
       "em": 0,
       "f1": 0
     },
@@ -2898,7 +2909,7 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 3.41,
+      "search_latency_ms": 7.92,
       "token_estimate_input_tokens": 114,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 594,
@@ -2981,7 +2992,7 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 8.47,
+      "search_latency_ms": 4.069999999999999,
       "token_estimate_input_tokens": 140,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 620,
@@ -3064,7 +3075,7 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 4.89,
+      "search_latency_ms": 8.46,
       "token_estimate_input_tokens": 135,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 615,
@@ -3145,7 +3156,7 @@
         },
         "final_short_answer": "I launched my online bakery called SweetByte last summer. We specialize in vegan pastries. Our best seller is the almond croissant. What a fun business idea! I bake from my home kitchen in Portland, Oregon and ship nationally."
       },
-      "search_latency_ms": 3.8,
+      "search_latency_ms": 4.66,
       "token_estimate_input_tokens": 132,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 612,
@@ -3226,7 +3237,7 @@
         },
         "final_short_answer": "Our best seller is the almond croissant. I launched my online bakery called SweetByte last summer. We specialize in vegan pastries. I bake from my home kitchen in Portland, Oregon and ship nationally. What a fun business idea!"
       },
-      "search_latency_ms": 4.37,
+      "search_latency_ms": 5.15,
       "token_estimate_input_tokens": 139,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 619,
@@ -3307,7 +3318,7 @@
         },
         "final_short_answer": "I launched my online bakery called SweetByte last summer. I bake from my home kitchen in Portland, Oregon and ship nationally. We specialize in vegan pastries. Our best seller is the almond croissant. What a fun business idea!"
       },
-      "search_latency_ms": 6.6499999999999995,
+      "search_latency_ms": 4.16,
       "token_estimate_input_tokens": 134,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 614,
@@ -3391,7 +3402,7 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 3.76,
+      "search_latency_ms": 5.389999999999999,
       "token_estimate_input_tokens": 125,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 605,
@@ -3475,7 +3486,7 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 4.49,
+      "search_latency_ms": 3.71,
       "token_estimate_input_tokens": 127,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 607,
@@ -3559,7 +3570,7 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 3.84,
+      "search_latency_ms": 4.48,
       "token_estimate_input_tokens": 135,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 615,
@@ -3640,7 +3651,7 @@
         },
         "final_short_answer": "last year"
       },
-      "search_latency_ms": 5.05,
+      "search_latency_ms": 4.34,
       "token_estimate_input_tokens": 126,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 606,
@@ -3720,7 +3731,7 @@
         },
         "final_short_answer": "last year"
       },
-      "search_latency_ms": 3.91,
+      "search_latency_ms": 7.11,
       "token_estimate_input_tokens": 122,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 602,
@@ -3802,7 +3813,7 @@
         },
         "final_short_answer": "last year"
       },
-      "search_latency_ms": 3.98,
+      "search_latency_ms": 4.81,
       "token_estimate_input_tokens": 132,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 612,
@@ -3821,9 +3832,9 @@
       "selected_evidence_ids": [
         "obs_locomo-full-017-1",
         "obs_locomo-full-017-2",
-        "obs_locomo-full-017-4",
-        "obs_locomo-full-017-5",
-        "obs_locomo-full-017-3"
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-005-2",
+        "obs_locomo-full-007-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3857,22 +3868,22 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-017-4",
-              "sentence": "Tango is iconic in Argentina.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-017-5",
-              "sentence": "I stayed with a host family in the Palermo neighborhood.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-005-2",
+              "sentence": "What a beautiful city for a wedding!",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-017-3",
-              "sentence": "I improved my Spanish significantly and learned tango dancing.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-007-2",
+              "sentence": "Amsterdam is a wonderful city!",
+              "score": 0.479167,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -3886,10 +3897,10 @@
         },
         "final_short_answer": "2022"
       },
-      "search_latency_ms": 4.1000000000000005,
-      "token_estimate_input_tokens": 130,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 610,
+      "search_latency_ms": 4.158707999999977,
+      "token_estimate_input_tokens": 107,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 507,
       "em": 0,
       "f1": 0
     },
@@ -3904,10 +3915,10 @@
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-017-1",
+        "obs_locomo-full-001-2",
         "obs_locomo-full-017-3",
         "obs_locomo-full-017-6",
-        "obs_locomo-full-017-5",
-        "obs_locomo-full-017-2"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3935,6 +3946,12 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-full-017-3",
               "sentence": "I improved my Spanish significantly and learned tango dancing.",
               "score": 0.458333,
@@ -3947,15 +3964,9 @@
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-017-5",
-              "sentence": "I stayed with a host family in the Palermo neighborhood.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
-              "id": "obs_locomo-full-017-2",
-              "sentence": "Buenos Aires is a vibrant city!",
-              "score": 0.291667,
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.354167,
               "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
@@ -3970,10 +3981,10 @@
         },
         "final_short_answer": "2022"
       },
-      "search_latency_ms": 7,
-      "token_estimate_input_tokens": 149,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 629,
+      "search_latency_ms": 4.971958000000018,
+      "token_estimate_input_tokens": 122,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 522,
       "em": 0,
       "f1": 0
     },
@@ -3990,8 +4001,8 @@
         "obs_locomo-full-017-1",
         "obs_locomo-full-017-2",
         "obs_locomo-full-017-5",
-        "obs_locomo-full-017-4",
-        "obs_locomo-full-017-3"
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4031,16 +4042,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-full-017-4",
-              "sentence": "Tango is iconic in Argentina.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-017-3",
-              "sentence": "I improved my Spanish significantly and learned tango dancing.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.354167,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -4054,10 +4065,10 @@
         },
         "final_short_answer": "2022"
       },
-      "search_latency_ms": 4.2,
-      "token_estimate_input_tokens": 148,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 628,
+      "search_latency_ms": 6.874917000000034,
+      "token_estimate_input_tokens": 122,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 522,
       "em": 0,
       "f1": 0
     },
@@ -4067,14 +4078,14 @@
       "category": "cat-2",
       "question": "What switches did I use for my keyboard?",
       "answer": "Gateron Blue",
-      "prediction": "8 hours",
+      "prediction": "about 8 hours",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-018-3",
         "obs_locomo-full-018-1",
-        "obs_locomo-full-018-5",
-        "obs_locomo-full-018-6"
+        "obs_locomo-full-011-6",
+        "obs_locomo-full-018-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4093,18 +4104,18 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "8 hours",
+          "raw_answer": "about 8 hours",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-018-3",
-              "sentence": "I used Gateron Blue switches and a 65% layout.",
-              "score": 0.958333,
+              "sentence": "It took about 8 hours to assemble.",
+              "score": 0.975,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-full-018-3",
-              "sentence": "It took about 8 hours to assemble.",
-              "score": 0.845,
+              "sentence": "I used Gateron Blue switches and a 65% layout.",
+              "score": 0.958333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -4114,31 +4125,31 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
               "id": "obs_locomo-full-018-5",
               "sentence": "The total cost was around $180 for all the parts.",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
-              "id": "obs_locomo-full-018-6",
-              "sentence": "That is a reasonable budget for a custom build.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "8 hours",
-          "after": "8 hours",
+          "before": "about 8 hours",
+          "after": "about 8 hours",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "8 hours"
+        "final_short_answer": "about 8 hours"
       },
-      "search_latency_ms": 4.18,
-      "token_estimate_input_tokens": 136,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 616,
+      "search_latency_ms": 4.8023750000000085,
+      "token_estimate_input_tokens": 112,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 512,
       "em": 0,
       "f1": 0
     },
@@ -4148,14 +4159,14 @@
       "category": "cat-2",
       "question": "How long did it take to assemble the keyboard?",
       "answer": "8 hours",
-      "prediction": "8 hours",
+      "prediction": "about 8 hours",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-018-3",
         "obs_locomo-full-018-1",
-        "obs_locomo-full-018-2",
-        "obs_locomo-full-018-5"
+        "obs_locomo-full-011-6",
+        "obs_locomo-full-018-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4174,12 +4185,12 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "8 hours",
+          "raw_answer": "about 8 hours",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-018-3",
               "sentence": "It took about 8 hours to assemble.",
-              "score": 1.095,
+              "score": 1.225,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -4195,33 +4206,33 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
               "id": "obs_locomo-full-018-2",
               "sentence": "Custom keyboards are a fun hobby!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-full-018-5",
-              "sentence": "The total cost was around $180 for all the parts.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "8 hours",
-          "after": "8 hours",
+          "before": "about 8 hours",
+          "after": "about 8 hours",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "8 hours"
+        "final_short_answer": "about 8 hours"
       },
-      "search_latency_ms": 4.44,
-      "token_estimate_input_tokens": 144,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 624,
-      "em": 1,
-      "f1": 1
+      "search_latency_ms": 5.530208999999986,
+      "token_estimate_input_tokens": 118,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 518,
+      "em": 0,
+      "f1": 0.8
     },
     {
       "sample_id": "full-018",
@@ -4229,15 +4240,15 @@
       "category": "cat-2",
       "question": "How much did the custom keyboard cost?",
       "answer": "$180",
-      "prediction": "8 hours",
+      "prediction": "about 8 hours",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-018-1",
         "obs_locomo-full-018-5",
+        "obs_locomo-full-018-3",
         "obs_locomo-full-018-2",
-        "obs_locomo-full-018-6",
-        "obs_locomo-full-018-3"
+        "obs_locomo-full-018-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4256,7 +4267,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "8 hours",
+          "raw_answer": "about 8 hours",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-018-1",
@@ -4271,6 +4282,12 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
+              "id": "obs_locomo-full-018-3",
+              "sentence": "It took about 8 hours to assemble.",
+              "score": 0.641667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-full-018-2",
               "sentence": "Custom keyboards are a fun hobby!",
               "score": 0.625,
@@ -4281,27 +4298,21 @@
               "sentence": "That is a reasonable budget for a custom build.",
               "score": 0.575,
               "created_at": "2026-01-01T00:00:05.000Z"
-            },
-            {
-              "id": "obs_locomo-full-018-3",
-              "sentence": "It took about 8 hours to assemble.",
-              "score": 0.511667,
-              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "8 hours",
-          "after": "8 hours",
+          "before": "about 8 hours",
+          "after": "about 8 hours",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "8 hours"
+        "final_short_answer": "about 8 hours"
       },
-      "search_latency_ms": 5.27,
-      "token_estimate_input_tokens": 140,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 620,
+      "search_latency_ms": 5.326040999999953,
+      "token_estimate_input_tokens": 115,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 515,
       "em": 0,
       "f1": 0
     },
@@ -4316,10 +4327,10 @@
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-019-1",
+        "obs_locomo-full-007-3",
         "obs_locomo-full-019-3",
-        "obs_locomo-full-019-2",
-        "obs_locomo-full-019-4",
-        "obs_locomo-full-019-5"
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-019-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4347,9 +4358,21 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-007-3",
+              "sentence": "I work at a fintech company called Flowpay as a senior data analyst.",
+              "score": 0.65,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-full-019-3",
               "sentence": "We released our first episode in July 2023 and now have over 40 episodes.",
               "score": 0.545,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.525,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -4357,18 +4380,6 @@
               "sentence": "Career transitions is a very relatable topic!",
               "score": 0.458333,
               "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-4",
-              "sentence": "40 episodes is great traction.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-5",
-              "sentence": "We interview professionals who switched industries, mostly into tech.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -4382,10 +4393,10 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 4.55,
-      "token_estimate_input_tokens": 127,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 607,
+      "search_latency_ms": 8.313125000000037,
+      "token_estimate_input_tokens": 105,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 505,
       "em": 0,
       "f1": 0
     },
@@ -4395,15 +4406,15 @@
       "category": "cat-2",
       "question": "When did we release the first episode?",
       "answer": "July 2023",
-      "prediction": "2023",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
-        "obs_locomo-full-019-3",
-        "obs_locomo-full-019-1",
-        "obs_locomo-full-019-5",
-        "obs_locomo-full-019-4",
-        "obs_locomo-full-019-2"
+        "obs_locomo-full-012-4",
+        "obs_locomo-full-012-3",
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-002-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4422,56 +4433,54 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "2023",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
-              "id": "obs_locomo-full-019-3",
-              "sentence": "We released our first episode in July 2023 and now have over 40 episodes.",
-              "score": 1.511667,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-1",
-              "sentence": "I started a podcast called Mind the Gap about career transitions.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-5",
-              "sentence": "We interview professionals who switched industries, mostly into tech.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-4",
-              "sentence": "40 episodes is great traction.",
-              "score": 0.325,
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.885256,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-019-2",
-              "sentence": "Career transitions is a very relatable topic!",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-012-3",
+              "sentence": "I completed my first 10K race last April in 52 minutes.",
+              "score": 0.78109,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-002-4",
+              "sentence": "Austin has great parks for dogs.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "2023",
-          "after": "2023",
-          "notes": [
-            "temporal:canonicalized_explicit"
-          ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "before": "52 minutes",
+          "after": "52 minutes",
+          "notes": [],
+          "reference_time": "2026-01-01T00:00:03.000Z"
         },
-        "final_short_answer": "2023"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 3.9699999999999993,
-      "token_estimate_input_tokens": 136,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 616,
+      "search_latency_ms": 5.14033500000005,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
-      "f1": 0.6666666666666666
+      "f1": 0
     },
     {
       "sample_id": "full-019",
@@ -4479,15 +4488,15 @@
       "category": "cat-2",
       "question": "What kind of professionals do we interview?",
       "answer": "professionals who switched industries",
-      "prediction": "2023",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-019-5",
         "obs_locomo-full-019-3",
-        "obs_locomo-full-019-1",
-        "obs_locomo-full-019-2",
-        "obs_locomo-full-019-4"
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-012-3",
+        "obs_locomo-full-019-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4506,7 +4515,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "2023",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-019-5",
@@ -4521,39 +4530,37 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-3",
+              "sentence": "I completed my first 10K race last April in 52 minutes.",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-full-019-1",
               "sentence": "I started a podcast called Mind the Gap about career transitions.",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-2",
-              "sentence": "Career transitions is a very relatable topic!",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-full-019-4",
-              "sentence": "40 episodes is great traction.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "2023",
-          "after": "2023",
-          "notes": [
-            "temporal:canonicalized_explicit"
-          ],
+          "before": "52 minutes",
+          "after": "52 minutes",
+          "notes": [],
           "reference_time": "2026-01-01T00:00:04.000Z"
         },
-        "final_short_answer": "2023"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 3.9700000000000006,
-      "token_estimate_input_tokens": 146,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 626,
+      "search_latency_ms": 6.198124999999997,
+      "token_estimate_input_tokens": 120,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 520,
       "em": 0,
       "f1": 0
     },
@@ -4563,14 +4570,15 @@
       "category": "cat-2",
       "question": "Where did I take the survival course?",
       "answer": "Montana",
-      "prediction": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-020-1",
         "obs_locomo-full-020-6",
         "obs_locomo-full-020-3",
-        "obs_locomo-full-020-5"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4589,7 +4597,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-020-1",
@@ -4610,33 +4618,33 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-full-020-5",
-              "sentence": "I learned fire-starting, navigation, and foraging.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-020-5",
-              "sentence": "It was run by an outfit called Wild Edge.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
-          "after": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+          "before": "52 minutes",
+          "after": "52 minutes",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge."
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 7.61,
-      "token_estimate_input_tokens": 135,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 615,
+      "search_latency_ms": 4.418541000000015,
+      "token_estimate_input_tokens": 111,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 511,
       "em": 0,
-      "f1": 0.04545454545454545
+      "f1": 0
     },
     {
       "sample_id": "full-020",
@@ -4644,14 +4652,15 @@
       "category": "cat-2",
       "question": "How long was the wilderness survival course?",
       "answer": "5 days",
-      "prediction": "I completed a wilderness survival course in Montana last August. It was a 5-day course with no electronics allowed. Wild Edge has a good reputation for survival training. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-020-1",
         "obs_locomo-full-020-3",
         "obs_locomo-full-020-6",
-        "obs_locomo-full-020-5"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4670,7 +4679,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I completed a wilderness survival course in Montana last August. It was a 5-day course with no electronics allowed. Wild Edge has a good reputation for survival training. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-020-1",
@@ -4691,31 +4700,31 @@
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-020-5",
-              "sentence": "I learned fire-starting, navigation, and foraging.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-020-5",
-              "sentence": "It was run by an outfit called Wild Edge.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I completed a wilderness survival course in Montana last August. It was a 5-day course with no electronics allowed. Wild Edge has a good reputation for survival training. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
-          "after": "I completed a wilderness survival course in Montana last August. It was a 5-day course with no electronics allowed. Wild Edge has a good reputation for survival training. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge.",
+          "before": "52 minutes",
+          "after": "52 minutes",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "I completed a wilderness survival course in Montana last August. It was a 5-day course with no electronics allowed. Wild Edge has a good reputation for survival training. I learned fire-starting, navigation, and foraging. It was run by an outfit called Wild Edge."
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 4.29,
-      "token_estimate_input_tokens": 148,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 628,
+      "search_latency_ms": 4.904084000000012,
+      "token_estimate_input_tokens": 121,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 521,
       "em": 0,
       "f1": 0
     },
@@ -4725,15 +4734,15 @@
       "category": "cat-2",
       "question": "What company ran the survival course?",
       "answer": "Wild Edge",
-      "prediction": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. That sounds like an intense experience! No electronics for five days is a real challenge.",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-020-1",
         "obs_locomo-full-020-6",
         "obs_locomo-full-020-3",
-        "obs_locomo-full-020-2",
-        "obs_locomo-full-020-4"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4752,7 +4761,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. That sounds like an intense experience! No electronics for five days is a real challenge.",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-020-1",
@@ -4773,33 +4782,33 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-full-020-2",
-              "sentence": "That sounds like an intense experience!",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-full-020-4",
-              "sentence": "No electronics for five days is a real challenge.",
-              "score": 0.291667,
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. That sounds like an intense experience! No electronics for five days is a real challenge.",
-          "after": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. That sounds like an intense experience! No electronics for five days is a real challenge.",
+          "before": "52 minutes",
+          "after": "52 minutes",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "I completed a wilderness survival course in Montana last August. Wild Edge has a good reputation for survival training. It was a 5-day course with no electronics allowed. That sounds like an intense experience! No electronics for five days is a real challenge."
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 5.13,
-      "token_estimate_input_tokens": 142,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 622,
+      "search_latency_ms": 4.278958999999972,
+      "token_estimate_input_tokens": 116,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 516,
       "em": 0,
-      "f1": 0.08888888888888888
+      "f1": 0
     },
     {
       "sample_id": "full-021",
@@ -4914,7 +4923,7 @@
         },
         "final_short_answer": "My team at work is called Project Phoenix."
       },
-      "search_latency_ms": 5.7700000000000005,
+      "search_latency_ms": 5.6899999999999995,
       "token_estimate_input_tokens": 161,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 721,
@@ -5034,7 +5043,7 @@
         },
         "final_short_answer": "My team at work is called Project Phoenix."
       },
-      "search_latency_ms": 7.87,
+      "search_latency_ms": 4.83,
       "token_estimate_input_tokens": 177,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 737,
@@ -5047,14 +5056,15 @@
       "category": "cat-3",
       "question": "When is the first production release planned?",
       "answer": "July 2024",
-      "prediction": "Our first production release is planned for July 2024.",
+      "prediction": "Having the right containers makes a big difference.",
       "question_kind": "multi_hop",
       "answer_strategy": "extract:multi-hop-facts-json -> normalize -> final:multi-hop-short",
       "selected_evidence_ids": [
-        "obs_locomo-full-021-5",
-        "obs_locomo-full-021-1",
-        "obs_locomo-full-021-4",
-        "obs_locomo-full-021-3"
+        "obs_locomo-full-011-6",
+        "obs_locomo-full-012-6",
+        "obs_locomo-full-013-6",
+        "obs_locomo-full-014-6",
+        "obs_locomo-full-015-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5074,93 +5084,93 @@
         },
         "extraction": {
           "strategy": "extract:multi-hop-facts-json",
-          "raw_answer": "Our first production release is planned for July 2024. My team at work is called Project Phoenix. We're building a logistics platform. Go is well-suited for infrastructure work. We use Go and Kubernetes.",
+          "raw_answer": "Having the right containers makes a big difference. That's a great next step. Professor Müller is well-known in the field. Portland is great for foodie entrepreneurs. Hanami in Ueno Park is truly special.",
           "selected_candidates": [
             {
-              "id": "obs_locomo-full-021-5",
-              "sentence": "Our first production release is planned for July 2024.",
-              "score": 1.625,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-021-1",
-              "sentence": "My team at work is called Project Phoenix.",
+              "id": "obs_locomo-full-012-6",
+              "sentence": "That's a great next step.",
               "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-021-1",
-              "sentence": "We're building a logistics platform.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-full-021-4",
-              "sentence": "Go is well-suited for infrastructure work.",
+              "id": "obs_locomo-full-013-6",
+              "sentence": "Professor Müller is well-known in the field.",
               "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-021-3",
-              "sentence": "We use Go and Kubernetes.",
+              "id": "obs_locomo-full-014-6",
+              "sentence": "Portland is great for foodie entrepreneurs.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-full-015-6",
+              "sentence": "Hanami in Ueno Park is truly special.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "Our first production release is planned for July 2024. My team at work is called Project Phoenix. We're building a logistics platform. Go is well-suited for infrastructure work. We use Go and Kubernetes.",
-          "after": "Our first production release is planned for July 2024. My team at work is called Project Phoenix.",
+          "before": "Having the right containers makes a big difference. That's a great next step. Professor Müller is well-known in the field. Portland is great for foodie entrepreneurs. Hanami in Ueno Park is truly special.",
+          "after": "Having the right containers makes a big difference. That's a great next step.",
           "notes": [
             "multi_hop:two_stage_fact_then_summary"
           ],
-          "reference_time": "2026-01-01T00:00:04.000Z",
+          "reference_time": "2026-01-01T00:00:05.000Z",
           "multi_hop_reasoning": {
             "facts": [
               {
-                "id": "obs_locomo-full-021-5",
-                "fact": "Our first production release is planned for July 2024.",
-                "relation": "state",
-                "confidence": 1
+                "id": "obs_locomo-full-011-6",
+                "fact": "Having the right containers makes a big difference.",
+                "relation": "other",
+                "confidence": 0.625
               },
               {
-                "id": "obs_locomo-full-021-1",
-                "fact": "My team at work is called Project Phoenix.",
-                "relation": "state",
-                "confidence": 0.4583
-              },
-              {
-                "id": "obs_locomo-full-021-1",
-                "fact": "We're building a logistics platform.",
+                "id": "obs_locomo-full-012-6",
+                "fact": "That's a great next step.",
                 "relation": "other",
                 "confidence": 0.4583
               },
               {
-                "id": "obs_locomo-full-021-4",
-                "fact": "Go is well-suited for infrastructure work.",
+                "id": "obs_locomo-full-013-6",
+                "fact": "Professor Müller is well-known in the field.",
                 "relation": "state",
                 "confidence": 0.375
               },
               {
-                "id": "obs_locomo-full-021-3",
-                "fact": "We use Go and Kubernetes.",
-                "relation": "other",
+                "id": "obs_locomo-full-014-6",
+                "fact": "Portland is great for foodie entrepreneurs.",
+                "relation": "state",
                 "confidence": 0.325
+              },
+              {
+                "id": "obs_locomo-full-015-6",
+                "fact": "Hanami in Ueno Park is truly special.",
+                "relation": "state",
+                "confidence": 0.2917
               }
             ],
-            "summary": "Our first production release is planned for July 2024. My team at work is called Project Phoenix.",
-            "conclusion": "Our first production release is planned for July 2024. My team at work is called Project Phoenix.",
+            "summary": "Having the right containers makes a big difference. That's a great next step.",
+            "conclusion": "Having the right containers makes a big difference. That's a great next step.",
             "format": "multi_hop"
           }
         },
-        "final_short_answer": "Our first production release is planned for July 2024."
+        "final_short_answer": "Having the right containers makes a big difference."
       },
-      "search_latency_ms": 5.8999999999999995,
-      "token_estimate_input_tokens": 182,
-      "token_estimate_output_tokens": 560,
-      "token_estimate_total_tokens": 742,
+      "search_latency_ms": 6.497623999999973,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
-      "f1": 0.1818181818181818
+      "f1": 0
     },
     {
       "sample_id": "full-022",
@@ -5277,7 +5287,7 @@
         },
         "final_short_answer": "Consistent daily practice is the key to language learning."
       },
-      "search_latency_ms": 4.81,
+      "search_latency_ms": 5.08,
       "token_estimate_input_tokens": 161,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 721,
@@ -5399,7 +5409,7 @@
         },
         "final_short_answer": "I practice 30 minutes every day using Duolingo alongside the course."
       },
-      "search_latency_ms": 5.3999999999999995,
+      "search_latency_ms": 8.54,
       "token_estimate_input_tokens": 166,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 726,
@@ -5521,7 +5531,7 @@
         },
         "final_short_answer": "My goal is to reach B2 level by December 2024."
       },
-      "search_latency_ms": 7.18,
+      "search_latency_ms": 8.88,
       "token_estimate_input_tokens": 165,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 725,
@@ -5643,7 +5653,7 @@
         },
         "final_short_answer": "React"
       },
-      "search_latency_ms": 5.26,
+      "search_latency_ms": 6.2700000000000005,
       "token_estimate_input_tokens": 168,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 728,
@@ -5764,7 +5774,7 @@
         },
         "final_short_answer": "React"
       },
-      "search_latency_ms": 4.05,
+      "search_latency_ms": 3.7499999999999996,
       "token_estimate_input_tokens": 130,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 610,
@@ -5886,7 +5896,7 @@
         },
         "final_short_answer": "Regular scheduled sessions are very effective."
       },
-      "search_latency_ms": 6.06,
+      "search_latency_ms": 9.45,
       "token_estimate_input_tokens": 167,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 727,
@@ -6008,7 +6018,7 @@
         },
         "final_short_answer": "I redesigned the checkout flow at my company and reduced cart abandonment by 18%."
       },
-      "search_latency_ms": 6.21,
+      "search_latency_ms": 5.279999999999999,
       "token_estimate_input_tokens": 174,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 734,
@@ -6130,7 +6140,7 @@
         },
         "final_short_answer": "The main change was simplifying the form from 12 fields to 5 fields."
       },
-      "search_latency_ms": 6.28,
+      "search_latency_ms": 7.409999999999999,
       "token_estimate_input_tokens": 176,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 736,
@@ -6176,13 +6186,13 @@
             {
               "id": "obs_locomo-full-024-5",
               "sentence": "We ran an A/B test for six weeks before rolling it out fully in March 2024.",
-              "score": 1.125,
+              "score": 0.958333,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-full-024-1",
               "sentence": "I redesigned the checkout flow at my company and reduced cart abandonment by 18%.",
-              "score": 0.458333,
+              "score": 0.625,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -6218,13 +6228,13 @@
                 "id": "obs_locomo-full-024-5",
                 "fact": "We ran an A/B test for six weeks before rolling it out fully in March 2024.",
                 "relation": "other",
-                "confidence": 1
+                "confidence": 0.9583
               },
               {
                 "id": "obs_locomo-full-024-1",
                 "fact": "I redesigned the checkout flow at my company and reduced cart abandonment by 18%.",
                 "relation": "other",
-                "confidence": 0.4583
+                "confidence": 0.625
               },
               {
                 "id": "obs_locomo-full-024-3",
@@ -6252,7 +6262,7 @@
         },
         "final_short_answer": "We ran an A/B test for six weeks before rolling it out fully in March 2024."
       },
-      "search_latency_ms": 6.37,
+      "search_latency_ms": 8.01,
       "token_estimate_input_tokens": 170,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 730,
@@ -6373,7 +6383,7 @@
         },
         "final_short_answer": "I am writing a novel set in 1920s Shanghai."
       },
-      "search_latency_ms": 7.289999999999999,
+      "search_latency_ms": 4.46,
       "token_estimate_input_tokens": 125,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 605,
@@ -6494,7 +6504,7 @@
         },
         "final_short_answer": "Mei"
       },
-      "search_latency_ms": 4.970000000000001,
+      "search_latency_ms": 3.9399999999999995,
       "token_estimate_input_tokens": 136,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 616,
@@ -6616,7 +6626,7 @@
         },
         "final_short_answer": "I am writing a novel set in 1920s Shanghai."
       },
-      "search_latency_ms": 5.34,
+      "search_latency_ms": 6.959999999999999,
       "token_estimate_input_tokens": 161,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 721,
@@ -6737,7 +6747,7 @@
         },
         "final_short_answer": "Green tea has many health benefits."
       },
-      "search_latency_ms": 7.99,
+      "search_latency_ms": 7.970000000000001,
       "token_estimate_input_tokens": 181,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 741,
@@ -6858,7 +6868,7 @@
         },
         "final_short_answer": "My favorite brand is Ippodo from Kyoto."
       },
-      "search_latency_ms": 8,
+      "search_latency_ms": 5.03,
       "token_estimate_input_tokens": 168,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 728,
@@ -6876,10 +6886,10 @@
       "answer_strategy": "extract:multi-hop-facts-json -> normalize -> final:multi-hop-short",
       "selected_evidence_ids": [
         "obs_locomo-full-026-2",
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-001-3",
         "obs_locomo-full-026-1",
-        "obs_locomo-full-026-4",
-        "obs_locomo-full-026-5",
-        "obs_locomo-full-026-3"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -6899,43 +6909,43 @@
         },
         "extraction": {
           "strategy": "extract:multi-hop-facts-json",
-          "raw_answer": "Green tea has many health benefits. I switched from coffee to green tea about eight months ago. Ippodo is a highly regarded tea brand. I noticed my sleep improved significantly within the first two weeks. I drink three cups per day.",
+          "raw_answer": "Green tea has many health benefits. Python is a versatile language. I'm using it for my data science project at MIT. I switched from coffee to green tea about eight months ago. Buddy sounds wonderful!",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-026-2",
               "sentence": "Green tea has many health benefits.",
-              "score": 1.053571,
+              "score": 0.970238,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.5625,
+              "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-full-026-1",
               "sentence": "I switched from coffee to green tea about eight months ago.",
-              "score": 0.744048,
+              "score": 0.527381,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-full-026-4",
-              "sentence": "Ippodo is a highly regarded tea brand.",
-              "score": 0.434524,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
-              "id": "obs_locomo-full-026-5",
-              "sentence": "I noticed my sleep improved significantly within the first two weeks.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
-              "id": "obs_locomo-full-026-3",
-              "sentence": "I drink three cups per day.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "Green tea has many health benefits. I switched from coffee to green tea about eight months ago. Ippodo is a highly regarded tea brand. I noticed my sleep improved significantly within the first two weeks. I drink three cups per day.",
-          "after": "Green tea has many health benefits. I switched from coffee to green tea about eight months ago.",
+          "before": "Green tea has many health benefits. Python is a versatile language. I'm using it for my data science project at MIT. I switched from coffee to green tea about eight months ago. Buddy sounds wonderful!",
+          "after": "Green tea has many health benefits. Python is a versatile language.",
           "notes": [
             "multi_hop:two_stage_fact_then_summary"
           ],
@@ -6946,44 +6956,44 @@
                 "id": "obs_locomo-full-026-2",
                 "fact": "Green tea has many health benefits.",
                 "relation": "other",
-                "confidence": 1
+                "confidence": 0.9702
+              },
+              {
+                "id": "obs_locomo-full-001-2",
+                "fact": "Python is a versatile language.",
+                "relation": "state",
+                "confidence": 0.625
+              },
+              {
+                "id": "obs_locomo-full-001-3",
+                "fact": "I'm using it for my data science project at MIT.",
+                "relation": "other",
+                "confidence": 0.5625
               },
               {
                 "id": "obs_locomo-full-026-1",
                 "fact": "I switched from coffee to green tea about eight months ago.",
                 "relation": "other",
-                "confidence": 0.744
+                "confidence": 0.5274
               },
               {
-                "id": "obs_locomo-full-026-4",
-                "fact": "Ippodo is a highly regarded tea brand.",
-                "relation": "state",
-                "confidence": 0.4345
-              },
-              {
-                "id": "obs_locomo-full-026-5",
-                "fact": "I noticed my sleep improved significantly within the first two weeks.",
+                "id": "obs_locomo-full-002-2",
+                "fact": "Buddy sounds wonderful!",
                 "relation": "other",
-                "confidence": 0.375
-              },
-              {
-                "id": "obs_locomo-full-026-3",
-                "fact": "I drink three cups per day.",
-                "relation": "other",
-                "confidence": 0.325
+                "confidence": 0.4583
               }
             ],
-            "summary": "Green tea has many health benefits. I switched from coffee to green tea about eight months ago.",
-            "conclusion": "Green tea has many health benefits. I switched from coffee to green tea about eight months ago.",
+            "summary": "Green tea has many health benefits. Python is a versatile language.",
+            "conclusion": "Green tea has many health benefits. Python is a versatile language.",
             "format": "multi_hop"
           }
         },
         "final_short_answer": "Green tea has many health benefits."
       },
-      "search_latency_ms": 7.76,
-      "token_estimate_input_tokens": 203,
-      "token_estimate_output_tokens": 560,
-      "token_estimate_total_tokens": 763,
+      "search_latency_ms": 6.006208000000056,
+      "token_estimate_input_tokens": 21,
+      "token_estimate_output_tokens": 80,
+      "token_estimate_total_tokens": 101,
       "em": 0,
       "f1": 0
     },
@@ -7102,7 +7112,7 @@
         },
         "final_short_answer": "I gave a talk at PyCon US 2024 in Pittsburgh on async Python patterns."
       },
-      "search_latency_ms": 5.65,
+      "search_latency_ms": 5.79,
       "token_estimate_input_tokens": 156,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 716,
@@ -7223,7 +7233,7 @@
         },
         "final_short_answer": "The talk was 30 minutes and attended by about 200 people."
       },
-      "search_latency_ms": 4.08,
+      "search_latency_ms": 7.08,
       "token_estimate_input_tokens": 125,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 605,
@@ -7345,7 +7355,7 @@
         },
         "final_short_answer": "The talk was 30 minutes and attended by about 200 people."
       },
-      "search_latency_ms": 7.640000000000001,
+      "search_latency_ms": 6.44,
       "token_estimate_input_tokens": 169,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 729,
@@ -7467,7 +7477,7 @@
         },
         "final_short_answer": "My apartment in Seoul is in the Mapo district near Hongdae."
       },
-      "search_latency_ms": 4.8,
+      "search_latency_ms": 5.840000000000001,
       "token_estimate_input_tokens": 162,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 722,
@@ -7588,7 +7598,7 @@
         },
         "final_short_answer": "My apartment in Seoul is in the Mapo district near Hongdae."
       },
-      "search_latency_ms": 3.7399999999999998,
+      "search_latency_ms": 4.07,
       "token_estimate_input_tokens": 133,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 613,
@@ -7601,15 +7611,15 @@
       "category": "cat-3",
       "question": "Where did I move from before Seoul?",
       "answer": "Busan",
-      "prediction": "My apartment in Seoul is in the Mapo district near Hongdae.",
+      "prediction": "I bought special containers from the GreenThumb store downtown.",
       "question_kind": "multi_hop",
       "answer_strategy": "extract:multi-hop-facts-json -> normalize -> final:multi-hop-short",
       "selected_evidence_ids": [
-        "obs_locomo-full-028-1",
-        "obs_locomo-full-028-5",
-        "obs_locomo-full-028-4",
-        "obs_locomo-full-028-6",
-        "obs_locomo-full-028-2"
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-011-5",
+        "obs_locomo-full-001-1",
+        "obs_locomo-full-002-3",
+        "obs_locomo-full-012-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -7629,91 +7639,91 @@
         },
         "extraction": {
           "strategy": "extract:multi-hop-facts-json",
-          "raw_answer": "My apartment in Seoul is in the Mapo district near Hongdae. I've been here for 18 months since I moved from Busan. That is a reasonable rate for central Seoul. Busan to Seoul is quite a change of pace. Hongdae is a lively area.",
+          "raw_answer": "I'm using it for my data science project at MIT. I bought special containers from the GreenThumb store downtown. I started learning Python in January 2024. He loves the park near my apartment in Austin, Texas. I run every morning before work.",
           "selected_candidates": [
             {
-              "id": "obs_locomo-full-028-1",
-              "sentence": "My apartment in Seoul is in the Mapo district near Hongdae.",
-              "score": 0.791667,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-full-028-5",
-              "sentence": "I've been here for 18 months since I moved from Busan.",
-              "score": 0.765,
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.53125,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-full-028-4",
-              "sentence": "That is a reasonable rate for central Seoul.",
-              "score": 0.708333,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-001-1",
+              "sentence": "I started learning Python in January 2024.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-full-028-6",
-              "sentence": "Busan to Seoul is quite a change of pace.",
-              "score": 0.658333,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "id": "obs_locomo-full-002-3",
+              "sentence": "He loves the park near my apartment in Austin, Texas.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-full-028-2",
-              "sentence": "Hongdae is a lively area.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-012-1",
+              "sentence": "I run every morning before work.",
+              "score": 0.435256,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "My apartment in Seoul is in the Mapo district near Hongdae. I've been here for 18 months since I moved from Busan. That is a reasonable rate for central Seoul. Busan to Seoul is quite a change of pace. Hongdae is a lively area.",
-          "after": "My apartment in Seoul is in the Mapo district near Hongdae. I've been here for 18 months since I moved from Busan.",
+          "before": "I'm using it for my data science project at MIT. I bought special containers from the GreenThumb store downtown. I started learning Python in January 2024. He loves the park near my apartment in Austin, Texas. I run every morning before work.",
+          "after": "I'm using it for my data science project at MIT. I bought special containers from the GreenThumb store downtown.",
           "notes": [
             "multi_hop:two_stage_fact_then_summary"
           ],
-          "reference_time": "2026-01-01T00:00:00.000Z",
+          "reference_time": "2026-01-01T00:00:02.000Z",
           "multi_hop_reasoning": {
             "facts": [
               {
-                "id": "obs_locomo-full-028-1",
-                "fact": "My apartment in Seoul is in the Mapo district near Hongdae.",
-                "relation": "state",
-                "confidence": 0.7917
+                "id": "obs_locomo-full-001-3",
+                "fact": "I'm using it for my data science project at MIT.",
+                "relation": "other",
+                "confidence": 0.625
               },
               {
-                "id": "obs_locomo-full-028-5",
-                "fact": "I've been here for 18 months since I moved from Busan.",
-                "relation": "cause",
-                "confidence": 0.765
+                "id": "obs_locomo-full-011-5",
+                "fact": "I bought special containers from the GreenThumb store downtown.",
+                "relation": "other",
+                "confidence": 0.5313
               },
               {
-                "id": "obs_locomo-full-028-4",
-                "fact": "That is a reasonable rate for central Seoul.",
-                "relation": "state",
-                "confidence": 0.7083
+                "id": "obs_locomo-full-001-1",
+                "fact": "I started learning Python in January 2024.",
+                "relation": "other",
+                "confidence": 0.525
               },
               {
-                "id": "obs_locomo-full-028-6",
-                "fact": "Busan to Seoul is quite a change of pace.",
-                "relation": "state",
-                "confidence": 0.6583
+                "id": "obs_locomo-full-002-3",
+                "fact": "He loves the park near my apartment in Austin, Texas.",
+                "relation": "other",
+                "confidence": 0.4583
               },
               {
-                "id": "obs_locomo-full-028-2",
-                "fact": "Hongdae is a lively area.",
-                "relation": "state",
-                "confidence": 0.2917
+                "id": "obs_locomo-full-012-1",
+                "fact": "I run every morning before work.",
+                "relation": "other",
+                "confidence": 0.4353
               }
             ],
-            "summary": "My apartment in Seoul is in the Mapo district near Hongdae. I've been here for 18 months since I moved from Busan.",
-            "conclusion": "My apartment in Seoul is in the Mapo district near Hongdae. I've been here for 18 months since I moved from Busan.",
+            "summary": "I'm using it for my data science project at MIT. I bought special containers from the GreenThumb store downtown.",
+            "conclusion": "I'm using it for my data science project at MIT. I bought special containers from the GreenThumb store downtown.",
             "format": "multi_hop"
           }
         },
-        "final_short_answer": "My apartment in Seoul is in the Mapo district near Hongdae."
+        "final_short_answer": "I bought special containers from the GreenThumb store downtown."
       },
-      "search_latency_ms": 4.75,
-      "token_estimate_input_tokens": 158,
-      "token_estimate_output_tokens": 560,
-      "token_estimate_total_tokens": 718,
+      "search_latency_ms": 4.65991600000001,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
       "f1": 0
     },
@@ -7832,7 +7842,7 @@
         },
         "final_short_answer": "I lead a team of eight engineers at CloudScale Inc."
       },
-      "search_latency_ms": 5.510000000000001,
+      "search_latency_ms": 6.109999999999999,
       "token_estimate_input_tokens": 161,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 721,
@@ -7953,7 +7963,7 @@
         },
         "final_short_answer": "We do weekly 1:1s every Monday and a team retrospective every two weeks."
       },
-      "search_latency_ms": 3.25,
+      "search_latency_ms": 4.0200000000000005,
       "token_estimate_input_tokens": 130,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 610,
@@ -8075,7 +8085,7 @@
         },
         "final_short_answer": "Our current sprint velocity is 42 story points and we target 40."
       },
-      "search_latency_ms": 6.45,
+      "search_latency_ms": 5.7299999999999995,
       "token_estimate_input_tokens": 167,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 727,
@@ -8197,7 +8207,7 @@
         },
         "final_short_answer": "I am restoring a 1972 Volkswagen Beetle as a weekend project."
       },
-      "search_latency_ms": 8.07,
+      "search_latency_ms": 9.6,
       "token_estimate_input_tokens": 186,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 746,
@@ -8318,7 +8328,7 @@
         },
         "final_short_answer": "I am restoring a 1972 Volkswagen Beetle as a weekend project."
       },
-      "search_latency_ms": 5.109999999999999,
+      "search_latency_ms": 5.9799999999999995,
       "token_estimate_input_tokens": 155,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 715,
@@ -8439,7 +8449,7 @@
         },
         "final_short_answer": "I plan to paint it racing green."
       },
-      "search_latency_ms": 5.5,
+      "search_latency_ms": 6.04,
       "token_estimate_input_tokens": 167,
       "token_estimate_output_tokens": 560,
       "token_estimate_total_tokens": 727,
@@ -8452,9 +8462,9 @@
       "category": "cat-4",
       "question": "What is the name of my band?",
       "answer": "The Amber Keys",
-      "prediction": "What kind of music does your band play?",
+      "prediction": "What",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-031-2",
         "obs_locomo-full-031-1",
@@ -8517,9 +8527,9 @@
           ],
           "reference_time": "2026-01-01T00:00:01.000Z"
         },
-        "final_short_answer": "What kind of music does your band play?"
+        "final_short_answer": "What"
       },
-      "search_latency_ms": 2.6,
+      "search_latency_ms": 2.5,
       "token_estimate_input_tokens": 56,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 296,
@@ -8532,9 +8542,9 @@
       "category": "cat-4",
       "question": "What genre of music does my band play?",
       "answer": "indie rock",
-      "prediction": "What kind of music does your band play?",
+      "prediction": "What",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-031-2",
         "obs_locomo-full-031-1",
@@ -8598,9 +8608,9 @@
           ],
           "reference_time": "2026-01-01T00:00:01.000Z"
         },
-        "final_short_answer": "What kind of music does your band play?"
+        "final_short_answer": "What"
       },
-      "search_latency_ms": 2.5300000000000002,
+      "search_latency_ms": 2.5599999999999996,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 405,
@@ -8682,7 +8692,7 @@
         },
         "final_short_answer": "Drift"
       },
-      "search_latency_ms": 6.67,
+      "search_latency_ms": 6.779999999999999,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 400,
@@ -8695,7 +8705,7 @@
       "category": "cat-4",
       "question": "What is the name of the food bank I volunteer at?",
       "answer": "Harvest Hope",
-      "prediction": "Harvest Hope",
+      "prediction": "Saturday",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
@@ -8762,14 +8772,14 @@
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "Harvest Hope"
+        "final_short_answer": "Saturday"
       },
-      "search_latency_ms": 2.96,
+      "search_latency_ms": 3.2399999999999998,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 409,
-      "em": 1,
-      "f1": 1
+      "em": 0,
+      "f1": 0
     },
     {
       "sample_id": "full-032",
@@ -8777,9 +8787,9 @@
       "category": "cat-4",
       "question": "How many families does the food bank serve per week?",
       "answer": "300 families",
-      "prediction": "It serves about 300 families per week.",
+      "prediction": "It",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-032-3",
         "obs_locomo-full-032-1",
@@ -8844,14 +8854,14 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "It serves about 300 families per week."
+        "final_short_answer": "It"
       },
-      "search_latency_ms": 3.38,
+      "search_latency_ms": 3.5900000000000003,
       "token_estimate_input_tokens": 97,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 417,
       "em": 0,
-      "f1": 0.4444444444444445
+      "f1": 0
     },
     {
       "sample_id": "full-032",
@@ -8928,7 +8938,7 @@
         },
         "final_short_answer": "Last"
       },
-      "search_latency_ms": 4.21,
+      "search_latency_ms": 3.3600000000000003,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 412,
@@ -9010,7 +9020,7 @@
         },
         "final_short_answer": "I built a home studio for recording music in my spare bedroom."
       },
-      "search_latency_ms": 4.6899999999999995,
+      "search_latency_ms": 6.42,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 412,
@@ -9023,7 +9033,7 @@
       "category": "cat-4",
       "question": "What monitors do I use?",
       "answer": "KRK Rokit 5",
-      "prediction": "Apollo Twin",
+      "prediction": "Rokit",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
@@ -9089,14 +9099,14 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "Apollo Twin"
+        "final_short_answer": "Rokit"
       },
-      "search_latency_ms": 2.54,
+      "search_latency_ms": 2.3400000000000003,
       "token_estimate_input_tokens": 56,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 296,
       "em": 0,
-      "f1": 0
+      "f1": 0.5
     },
     {
       "sample_id": "full-033",
@@ -9173,7 +9183,7 @@
         },
         "final_short_answer": "I built a home studio for recording music in my spare bedroom."
       },
-      "search_latency_ms": 3.26,
+      "search_latency_ms": 4.05,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 405,
@@ -9255,7 +9265,7 @@
         },
         "final_short_answer": "That"
       },
-      "search_latency_ms": 3.11,
+      "search_latency_ms": 3.3000000000000003,
       "token_estimate_input_tokens": 94,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 414,
@@ -9268,15 +9278,15 @@
       "category": "cat-4",
       "question": "How many weddings did I photograph in my first year?",
       "answer": "14 weddings",
-      "prediction": "In my first year I photographed 14 weddings and earned around $48,000.",
+      "prediction": "In",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-034-5",
         "obs_locomo-full-034-1",
         "obs_locomo-full-034-6",
-        "obs_locomo-full-034-2",
-        "obs_locomo-full-034-4"
+        "obs_locomo-full-011-6",
+        "obs_locomo-full-012-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -9298,32 +9308,32 @@
             {
               "id": "obs_locomo-full-034-5",
               "sentence": "In my first year I photographed 14 weddings and earned around $48,000.",
-              "score": 1.225,
+              "score": 0.975,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-full-034-1",
               "sentence": "I started a photography business last year shooting weddings and portraits.",
-              "score": 0.858333,
+              "score": 0.941667,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-full-034-6",
               "sentence": "That is a strong first year for a photography business.",
-              "score": 0.775,
+              "score": 0.691667,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-034-2",
-              "sentence": "Photography is a wonderful creative business.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-034-4",
-              "sentence": "The A7IV is excellent for low-light work.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-012-6",
+              "sentence": "That's a great next step.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -9335,14 +9345,14 @@
           ],
           "reference_time": "2026-01-01T00:00:04.000Z"
         },
-        "final_short_answer": "In my first year I photographed 14 weddings and earned around $48,000."
+        "final_short_answer": "In"
       },
-      "search_latency_ms": 3.5,
-      "token_estimate_input_tokens": 96,
-      "token_estimate_output_tokens": 320,
-      "token_estimate_total_tokens": 416,
+      "search_latency_ms": 4.1671240000000305,
+      "token_estimate_input_tokens": 22,
+      "token_estimate_output_tokens": 80,
+      "token_estimate_total_tokens": 102,
       "em": 0,
-      "f1": 0.2857142857142857
+      "f1": 0
     },
     {
       "sample_id": "full-034",
@@ -9350,15 +9360,15 @@
       "category": "cat-4",
       "question": "How much did I earn in my first year?",
       "answer": "$48,000",
-      "prediction": "In my first year I photographed 14 weddings and earned around $48,000.",
+      "prediction": "In",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-034-5",
         "obs_locomo-full-034-6",
+        "obs_locomo-full-011-6",
         "obs_locomo-full-034-1",
-        "obs_locomo-full-034-2",
-        "obs_locomo-full-034-4"
+        "obs_locomo-full-012-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -9380,32 +9390,32 @@
             {
               "id": "obs_locomo-full-034-5",
               "sentence": "In my first year I photographed 14 weddings and earned around $48,000.",
-              "score": 1.125,
+              "score": 1.0625,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-full-034-6",
               "sentence": "That is a strong first year for a photography business.",
-              "score": 0.958333,
+              "score": 0.895833,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-full-011-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.625,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
               "id": "obs_locomo-full-034-1",
               "sentence": "I started a photography business last year shooting weddings and portraits.",
-              "score": 0.625,
+              "score": 0.5625,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-full-034-2",
-              "sentence": "Photography is a wonderful creative business.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-full-034-4",
-              "sentence": "The A7IV is excellent for low-light work.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-012-6",
+              "sentence": "That's a great next step.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -9417,12 +9427,12 @@
           ],
           "reference_time": "2026-01-01T00:00:04.000Z"
         },
-        "final_short_answer": "In my first year I photographed 14 weddings and earned around $48,000."
+        "final_short_answer": "In"
       },
-      "search_latency_ms": 3.2899999999999996,
-      "token_estimate_input_tokens": 84,
-      "token_estimate_output_tokens": 320,
-      "token_estimate_total_tokens": 404,
+      "search_latency_ms": 4.879916000000017,
+      "token_estimate_input_tokens": 38,
+      "token_estimate_output_tokens": 160,
+      "token_estimate_total_tokens": 198,
       "em": 0,
       "f1": 0
     },
@@ -9501,7 +9511,7 @@
         },
         "final_short_answer": "I am training to become a certified yoga instructor."
       },
-      "search_latency_ms": 5.640000000000001,
+      "search_latency_ms": 6.59,
       "token_estimate_input_tokens": 103,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 423,
@@ -9583,7 +9593,7 @@
         },
         "final_short_answer": "I am training to become a certified yoga instructor."
       },
-      "search_latency_ms": 3.15,
+      "search_latency_ms": 3.55,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 406,
@@ -9665,7 +9675,7 @@
         },
         "final_short_answer": "Bali"
       },
-      "search_latency_ms": 3.7800000000000002,
+      "search_latency_ms": 4.2,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 411,
@@ -9747,7 +9757,7 @@
         },
         "final_short_answer": "Code"
       },
-      "search_latency_ms": 3.4600000000000004,
+      "search_latency_ms": 3.26,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 409,
@@ -9760,9 +9770,9 @@
       "category": "cat-4",
       "question": "How many students has CodeBridge taught?",
       "answer": "over 500",
-      "prediction": "We have taught over 500 students across three cities since founding in 2020.",
+      "prediction": "We",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-036-3",
         "obs_locomo-full-036-1",
@@ -9827,14 +9837,14 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "We have taught over 500 students across three cities since founding in 2020."
+        "final_short_answer": "We"
       },
-      "search_latency_ms": 3.3499999999999996,
+      "search_latency_ms": 2.72,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 411,
       "em": 0,
-      "f1": 0.2666666666666667
+      "f1": 0
     },
     {
       "sample_id": "full-036",
@@ -9912,7 +9922,7 @@
         },
         "final_short_answer": "2020"
       },
-      "search_latency_ms": 3.1,
+      "search_latency_ms": 3.6199999999999997,
       "token_estimate_input_tokens": 108,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 508,
@@ -9994,7 +10004,7 @@
         },
         "final_short_answer": "French"
       },
-      "search_latency_ms": 3.43,
+      "search_latency_ms": 3.04,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 403,
@@ -10015,7 +10025,7 @@
         "obs_locomo-full-037-3",
         "obs_locomo-full-037-5",
         "obs_locomo-full-037-6",
-        "obs_locomo-full-037-2"
+        "obs_locomo-full-001-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10051,20 +10061,20 @@
             {
               "id": "obs_locomo-full-037-5",
               "sentence": "It took me 33 days to complete and I walked alone the entire time.",
-              "score": 0.511667,
+              "score": 0.641667,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-full-037-6",
               "sentence": "33 days of solo walking is remarkable.",
-              "score": 0.487857,
+              "score": 0.617857,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-full-037-2",
-              "sentence": "The Camino is a life-changing experience for many.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -10076,10 +10086,10 @@
         },
         "final_short_answer": "33 days"
       },
-      "search_latency_ms": 5.09,
-      "token_estimate_input_tokens": 129,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 609,
+      "search_latency_ms": 5.174000000000073,
+      "token_estimate_input_tokens": 106,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 506,
       "em": 0,
       "f1": 0
     },
@@ -10089,9 +10099,9 @@
       "category": "cat-4",
       "question": "How many days did it take to complete the Camino?",
       "answer": "33 days",
-      "prediction": "It took me 33 days to complete and I walked alone the entire time.",
+      "prediction": "It",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-037-5",
         "obs_locomo-full-037-2",
@@ -10156,14 +10166,14 @@
           ],
           "reference_time": "2026-01-01T00:00:04.000Z"
         },
-        "final_short_answer": "It took me 33 days to complete and I walked alone the entire time."
+        "final_short_answer": "It"
       },
-      "search_latency_ms": 3.4,
+      "search_latency_ms": 3.6500000000000004,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 412,
       "em": 0,
-      "f1": 0.25
+      "f1": 0
     },
     {
       "sample_id": "full-038",
@@ -10242,7 +10252,7 @@
         },
         "final_short_answer": "Data"
       },
-      "search_latency_ms": 5.24,
+      "search_latency_ms": 5.8500000000000005,
       "token_estimate_input_tokens": 150,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 630,
@@ -10255,15 +10265,15 @@
       "category": "cat-4",
       "question": "How long did the ML certification take?",
       "answer": "four months",
-      "prediction": "I recently completed a machine learning certification from deeplearning.ai. Practical application is the best way to solidify learning. I now apply these skills at my job at DataVision Corp. The specialization took me four months and covered neural networks, CNNs, and NLP. deeplearning.ai offers excellent courses.",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-full-038-1",
+        "obs_locomo-full-001-3",
         "obs_locomo-full-038-6",
-        "obs_locomo-full-038-5",
-        "obs_locomo-full-038-3",
-        "obs_locomo-full-038-2"
+        "obs_locomo-full-012-3",
+        "obs_locomo-full-038-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10282,7 +10292,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "I recently completed a machine learning certification from deeplearning.ai. Practical application is the best way to solidify learning. I now apply these skills at my job at DataVision Corp. The specialization took me four months and covered neural networks, CNNs, and NLP. deeplearning.ai offers excellent courses.",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-full-038-1",
@@ -10291,45 +10301,45 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-full-038-6",
               "sentence": "Practical application is the best way to solidify learning.",
               "score": 0.458333,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
+              "id": "obs_locomo-full-012-3",
+              "sentence": "I completed my first 10K race last April in 52 minutes.",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-full-038-5",
               "sentence": "I now apply these skills at my job at DataVision Corp.",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
-              "id": "obs_locomo-full-038-3",
-              "sentence": "The specialization took me four months and covered neural networks, CNNs, and NLP.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-full-038-2",
-              "sentence": "deeplearning.ai offers excellent courses.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "I recently completed a machine learning certification from deeplearning.ai. Practical application is the best way to solidify learning. I now apply these skills at my job at DataVision Corp. The specialization took me four months and covered neural networks, CNNs, and NLP. deeplearning.ai offers excellent courses.",
-          "after": "I recently completed a machine learning certification from deeplearning.ai. Practical application is the best way to solidify learning. I now apply these skills at my job at DataVision Corp. The specialization took me four months and covered neural networks, CNNs, and NLP. deeplearning.ai offers excellent courses.",
+          "before": "52 minutes",
+          "after": "52 minutes",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "I recently completed a machine learning certification from deeplearning.ai. Practical application is the best way to solidify learning. I now apply these skills at my job at DataVision Corp. The specialization took me four months and covered neural networks, CNNs, and NLP. deeplearning.ai offers excellent courses."
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 8.700000000000001,
-      "token_estimate_input_tokens": 140,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 620,
+      "search_latency_ms": 7.745833999999909,
+      "token_estimate_input_tokens": 115,
+      "token_estimate_output_tokens": 400,
+      "token_estimate_total_tokens": 515,
       "em": 0,
-      "f1": 0.08333333333333333
+      "f1": 0
     },
     {
       "sample_id": "full-038",
@@ -10408,7 +10418,7 @@
         },
         "final_short_answer": "Data"
       },
-      "search_latency_ms": 5.2,
+      "search_latency_ms": 5.77,
       "token_estimate_input_tokens": 130,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 610,
@@ -10428,8 +10438,8 @@
         "obs_locomo-full-039-1",
         "obs_locomo-full-039-6",
         "obs_locomo-full-039-2",
-        "obs_locomo-full-039-4",
-        "obs_locomo-full-039-5"
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10453,32 +10463,32 @@
             {
               "id": "obs_locomo-full-039-1",
               "sentence": "I competed in my first triathlon last summer in Lake Tahoe.",
-              "score": 1.491667,
+              "score": 1.391667,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-full-039-6",
               "sentence": "Finishing in the top quarter is an excellent result for a first triathlon.",
-              "score": 1.125,
+              "score": 1.025,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
               "id": "obs_locomo-full-039-2",
               "sentence": "A triathlon in Lake Tahoe sounds stunning.",
-              "score": 0.908333,
+              "score": 0.808333,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-039-4",
-              "sentence": "Sprint triathlons are a great entry point.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-full-039-5",
-              "sentence": "I finished in 1 hour 24 minutes and placed 47th out of 200 participants.",
-              "score": 0.291667,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -10492,10 +10502,10 @@
         },
         "final_short_answer": "Lake Tahoe"
       },
-      "search_latency_ms": 6,
-      "token_estimate_input_tokens": 138,
-      "token_estimate_output_tokens": 480,
-      "token_estimate_total_tokens": 618,
+      "search_latency_ms": 9.613332999999962,
+      "token_estimate_input_tokens": 26,
+      "token_estimate_output_tokens": 80,
+      "token_estimate_total_tokens": 106,
       "em": 1,
       "f1": 1
     },
@@ -10505,9 +10515,9 @@
       "category": "cat-4",
       "question": "What was my finishing time in the triathlon?",
       "answer": "1 hour 24 minutes",
-      "prediction": "Finishing in the top quarter is an excellent result for a first triathlon.",
+      "prediction": "Finishing",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-full-039-6",
         "obs_locomo-full-039-1",
@@ -10572,9 +10582,9 @@
           ],
           "reference_time": "2026-01-01T00:00:05.000Z"
         },
-        "final_short_answer": "Finishing in the top quarter is an excellent result for a first triathlon."
+        "final_short_answer": "Finishing"
       },
-      "search_latency_ms": 3.41,
+      "search_latency_ms": 2.92,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 409,
@@ -10656,7 +10666,7 @@
         },
         "final_short_answer": "Finishing"
       },
-      "search_latency_ms": 2.87,
+      "search_latency_ms": 3.3699999999999997,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 411,
@@ -10737,7 +10747,7 @@
         },
         "final_short_answer": "I am learning to paint watercolors."
       },
-      "search_latency_ms": 3.78,
+      "search_latency_ms": 5.01,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 402,
@@ -10820,7 +10830,7 @@
         },
         "final_short_answer": "Riverside Art Center"
       },
-      "search_latency_ms": 5.11,
+      "search_latency_ms": 6.11,
       "token_estimate_input_tokens": 124,
       "token_estimate_output_tokens": 480,
       "token_estimate_total_tokens": 604,
@@ -10902,7 +10912,7 @@
         },
         "final_short_answer": "Diane Cho"
       },
-      "search_latency_ms": 2.9099999999999997,
+      "search_latency_ms": 3.71,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 400,
@@ -10922,7 +10932,8 @@
         "obs_locomo-dist-001-1",
         "obs_locomo-dist-001-3",
         "obs_locomo-dist-001-2",
-        "obs_locomo-dist-001-4"
+        "obs_locomo-dist-001-4",
+        "obs_locomo-full-011-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10966,6 +10977,12 @@
               "sentence": "Alex has a head start then.",
               "score": 0.658333,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -10979,10 +10996,10 @@
         },
         "final_short_answer": "2024"
       },
-      "search_latency_ms": 4.57,
-      "token_estimate_input_tokens": 135,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 459,
+      "search_latency_ms": 4.606833000000038,
+      "token_estimate_input_tokens": 111,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 381,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -10999,7 +11016,8 @@
         "obs_locomo-dist-001-3",
         "obs_locomo-dist-001-1",
         "obs_locomo-dist-001-4",
-        "obs_locomo-dist-001-2"
+        "obs_locomo-dist-001-2",
+        "obs_locomo-full-011-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11043,6 +11061,12 @@
               "sentence": "Python is a great choice!",
               "score": 0.575,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -11056,10 +11080,10 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 7.02,
-      "token_estimate_input_tokens": 139,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 463,
+      "search_latency_ms": 4.770666999999962,
+      "token_estimate_input_tokens": 114,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 384,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -11165,7 +11189,7 @@
         },
         "final_short_answer": "I started learning Python in January 2024."
       },
-      "search_latency_ms": 5.29,
+      "search_latency_ms": 8.68,
       "token_estimate_input_tokens": 164,
       "token_estimate_output_tokens": 378,
       "token_estimate_total_tokens": 542,
@@ -11241,7 +11265,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 3.3699999999999997,
+      "search_latency_ms": 3.5900000000000003,
       "token_estimate_input_tokens": 98,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 368,
@@ -11317,7 +11341,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 3.71,
+      "search_latency_ms": 3.7199999999999998,
       "token_estimate_input_tokens": 107,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 377,
@@ -11391,7 +11415,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 1.9300000000000002,
+      "search_latency_ms": 1.8599999999999999,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 223,
@@ -11465,7 +11489,7 @@
         },
         "final_short_answer": "Max"
       },
-      "search_latency_ms": 4.41,
+      "search_latency_ms": 1.53,
       "token_estimate_input_tokens": 54,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 216,
@@ -11540,7 +11564,7 @@
         },
         "final_short_answer": "Max"
       },
-      "search_latency_ms": 2.6,
+      "search_latency_ms": 5.34,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 298,
@@ -11553,14 +11577,15 @@
       "category": "cat-2",
       "question": "When was my dog adopted?",
       "answer": "last March",
-      "prediction": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. Buddy sounds adorable! Two golden retrievers nearby.",
+      "prediction": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. I adopted them from the Happy Paws shelter in Chicago. I bought special containers from the GreenThumb store downtown. Buddy sounds adorable!",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-003-3",
         "obs_locomo-dist-003-1",
-        "obs_locomo-dist-003-2",
-        "obs_locomo-dist-003-4"
+        "obs_locomo-full-016-5",
+        "obs_locomo-full-011-5",
+        "obs_locomo-dist-003-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11579,7 +11604,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. Buddy sounds adorable! Two golden retrievers nearby.",
+          "raw_answer": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. I adopted them from the Happy Paws shelter in Chicago. I bought special containers from the GreenThumb store downtown. Buddy sounds adorable!",
           "selected_candidates": [
             {
               "id": "obs_locomo-dist-003-3",
@@ -11594,33 +11619,39 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-016-5",
+              "sentence": "I adopted them from the Happy Paws shelter in Chicago.",
+              "score": 0.667857,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
               "id": "obs_locomo-dist-003-2",
               "sentence": "Buddy sounds adorable!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-dist-003-4",
-              "sentence": "Two golden retrievers nearby.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. Buddy sounds adorable! Two golden retrievers nearby.",
-          "after": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. Buddy sounds adorable! Two golden retrievers nearby.",
+          "before": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. I adopted them from the Happy Paws shelter in Chicago. I bought special containers from the GreenThumb store downtown. Buddy sounds adorable!",
+          "after": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. I adopted them from the Happy Paws shelter in Chicago. I bought special containers from the GreenThumb store downtown. Buddy sounds adorable!",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. Buddy sounds adorable! Two golden retrievers nearby."
+        "final_short_answer": "My neighbor has a golden retriever named Max who was adopted in January. I adopted a golden retriever named Buddy last March. I adopted them from the Happy Paws shelter in Chicago. I bought special containers from the GreenThumb store downtown. Buddy sounds adorable!"
       },
-      "search_latency_ms": 3.96,
-      "token_estimate_input_tokens": 123,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 447,
+      "search_latency_ms": 5.086541999999968,
+      "token_estimate_input_tokens": 101,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 371,
       "em": 0,
-      "f1": 0.06451612903225806
+      "f1": 0.04347826086956522
     },
     {
       "sample_id": "dist-004",
@@ -11690,7 +11721,7 @@
         },
         "final_short_answer": "Data"
       },
-      "search_latency_ms": 2.08,
+      "search_latency_ms": 2.2700000000000005,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 303,
@@ -11709,8 +11740,9 @@
       "selected_evidence_ids": [
         "obs_locomo-dist-004-3",
         "obs_locomo-dist-004-1",
+        "obs_locomo-full-001-2",
         "obs_locomo-dist-004-2",
-        "obs_locomo-dist-004-4"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11742,16 +11774,22 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.541667,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-dist-004-2",
               "sentence": "Exciting new role!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-004-4",
-              "sentence": "You've had a busy career.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -11765,10 +11803,10 @@
         },
         "final_short_answer": "Data"
       },
-      "search_latency_ms": 3.01,
-      "token_estimate_input_tokens": 93,
-      "token_estimate_output_tokens": 216,
-      "token_estimate_total_tokens": 309,
+      "search_latency_ms": 3.914957999999997,
+      "token_estimate_input_tokens": 72,
+      "token_estimate_output_tokens": 162,
+      "token_estimate_total_tokens": 234,
       "em": 0,
       "f1": 0
     },
@@ -11778,14 +11816,15 @@
       "category": "cat-2",
       "question": "When did I join DataCore?",
       "answer": "August 2022",
-      "prediction": "2022",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-004-3",
         "obs_locomo-dist-004-1",
-        "obs_locomo-dist-004-2",
-        "obs_locomo-dist-004-4"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4",
+        "obs_locomo-dist-004-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11804,7 +11843,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "2022",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-dist-004-3",
@@ -11819,35 +11858,39 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.451923,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
               "id": "obs_locomo-dist-004-2",
               "sentence": "Exciting new role!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-dist-004-4",
-              "sentence": "You've had a busy career.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "2022",
-          "after": "2022",
-          "notes": [
-            "temporal:canonicalized_explicit"
-          ],
+          "before": "52 minutes",
+          "after": "52 minutes",
+          "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "2022"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 3.73,
-      "token_estimate_input_tokens": 127,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 451,
+      "search_latency_ms": 3.9889580000000295,
+      "token_estimate_input_tokens": 105,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 375,
       "em": 0,
-      "f1": 0.6666666666666666
+      "f1": 0
     },
     {
       "sample_id": "dist-005",
@@ -11924,7 +11967,7 @@
         },
         "final_short_answer": "Austin"
       },
-      "search_latency_ms": 3.04,
+      "search_latency_ms": 5.42,
       "token_estimate_input_tokens": 90,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 360,
@@ -12006,7 +12049,7 @@
         },
         "final_short_answer": "Portland"
       },
-      "search_latency_ms": 3.52,
+      "search_latency_ms": 3.54,
       "token_estimate_input_tokens": 100,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 370,
@@ -12025,8 +12068,8 @@
       "selected_evidence_ids": [
         "obs_locomo-dist-005-3",
         "obs_locomo-dist-005-4",
-        "obs_locomo-dist-005-2",
-        "obs_locomo-dist-005-1"
+        "obs_locomo-full-014-5",
+        "obs_locomo-full-011-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12066,16 +12109,16 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-dist-005-2",
-              "sentence": "Austin is a great city!",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-014-5",
+              "sentence": "I bake from my home kitchen in Portland, Oregon and ship nationally.",
+              "score": 0.554167,
+              "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-dist-005-1",
-              "sentence": "I live in Austin, Texas.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -12089,10 +12132,10 @@
         },
         "final_short_answer": "2021"
       },
-      "search_latency_ms": 3.96,
-      "token_estimate_input_tokens": 134,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 458,
+      "search_latency_ms": 4.338416000000061,
+      "token_estimate_input_tokens": 110,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 380,
       "em": 1,
       "f1": 1
     },
@@ -12164,7 +12207,7 @@
         },
         "final_short_answer": "Postgre"
       },
-      "search_latency_ms": 3.7600000000000002,
+      "search_latency_ms": 3.7300000000000004,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 307,
@@ -12273,7 +12316,7 @@
         },
         "final_short_answer": "I set up PostgreSQL for Project Alpha at work."
       },
-      "search_latency_ms": 7.3100000000000005,
+      "search_latency_ms": 6.4799999999999995,
       "token_estimate_input_tokens": 199,
       "token_estimate_output_tokens": 378,
       "token_estimate_total_tokens": 577,
@@ -12286,7 +12329,7 @@
       "category": "cat-1",
       "question": "How many projects use PostgreSQL?",
       "answer": "two",
-      "prediction": "Project Beta",
+      "prediction": "Postgre",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
@@ -12346,9 +12389,9 @@
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "Project Beta"
+        "final_short_answer": "Postgre"
       },
-      "search_latency_ms": 3.2699999999999996,
+      "search_latency_ms": 2.53,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 303,
@@ -12423,7 +12466,7 @@
         },
         "final_short_answer": "Docker"
       },
-      "search_latency_ms": 3.79,
+      "search_latency_ms": 4.359999999999999,
       "token_estimate_input_tokens": 93,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 309,
@@ -12498,7 +12541,7 @@
         },
         "final_short_answer": "Docker"
       },
-      "search_latency_ms": 2.65,
+      "search_latency_ms": 3.24,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 301,
@@ -12511,14 +12554,15 @@
       "category": "cat-2",
       "question": "When did the frontend team switch to Kubernetes?",
       "answer": "last month",
-      "prediction": "last month",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-007-3",
         "obs_locomo-dist-007-1",
         "obs_locomo-dist-007-4",
-        "obs_locomo-dist-007-2"
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-012-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12537,7 +12581,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "last month",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-dist-007-3",
@@ -12558,27 +12602,33 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-dist-007-2",
-              "sentence": "Docker simplifies deployment.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-3",
+              "sentence": "I completed my first 10K race last April in 52 minutes.",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "last month",
-          "after": "last month",
+          "before": "52 minutes",
+          "after": "52 minutes",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "last month"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 4.79,
-      "token_estimate_input_tokens": 148,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 472,
-      "em": 1,
-      "f1": 1
+      "search_latency_ms": 4.776125000000052,
+      "token_estimate_input_tokens": 121,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 391,
+      "em": 0,
+      "f1": 0
     },
     {
       "sample_id": "dist-008",
@@ -12648,7 +12698,7 @@
         },
         "final_short_answer": "Type"
       },
-      "search_latency_ms": 5.42,
+      "search_latency_ms": 4.470000000000001,
       "token_estimate_input_tokens": 101,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 317,
@@ -12723,7 +12773,7 @@
         },
         "final_short_answer": "Sarah"
       },
-      "search_latency_ms": 2.75,
+      "search_latency_ms": 3.54,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 303,
@@ -12798,7 +12848,7 @@
         },
         "final_short_answer": "Sarah"
       },
-      "search_latency_ms": 7.359999999999999,
+      "search_latency_ms": 6.9399999999999995,
       "token_estimate_input_tokens": 97,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 313,
@@ -12817,8 +12867,9 @@
       "selected_evidence_ids": [
         "obs_locomo-dist-009-1",
         "obs_locomo-dist-009-3",
+        "obs_locomo-full-001-2",
         "obs_locomo-dist-009-2",
-        "obs_locomo-dist-009-4"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12852,16 +12903,22 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-dist-009-2",
               "sentence": "A milestone deployment!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-009-4",
-              "sentence": "Steady progress over time.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.354167,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -12875,10 +12932,10 @@
         },
         "final_short_answer": "January 10, 2024"
       },
-      "search_latency_ms": 5.16,
-      "token_estimate_input_tokens": 160,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 484,
+      "search_latency_ms": 6.463083000000079,
+      "token_estimate_input_tokens": 131,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 401,
       "em": 0,
       "f1": 0
     },
@@ -12894,8 +12951,9 @@
       "selected_evidence_ids": [
         "obs_locomo-dist-009-3",
         "obs_locomo-dist-009-1",
+        "obs_locomo-full-001-2",
         "obs_locomo-dist-009-2",
-        "obs_locomo-dist-009-4"
+        "obs_locomo-full-002-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12929,16 +12987,22 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-dist-009-2",
               "sentence": "A milestone deployment!",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-009-4",
-              "sentence": "Steady progress over time.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-002-2",
+              "sentence": "Buddy sounds wonderful!",
+              "score": 0.354167,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -12952,10 +13016,10 @@
         },
         "final_short_answer": "January 10, 2024"
       },
-      "search_latency_ms": 5.890000000000001,
-      "token_estimate_input_tokens": 135,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 459,
+      "search_latency_ms": 6.438249999999925,
+      "token_estimate_input_tokens": 111,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 381,
       "em": 0,
       "f1": 0
     },
@@ -13061,7 +13125,7 @@
         },
         "final_short_answer": "We deployed v1.5 of the same API server back in September 2023."
       },
-      "search_latency_ms": 6.46,
+      "search_latency_ms": 7.43,
       "token_estimate_input_tokens": 175,
       "token_estimate_output_tokens": 378,
       "token_estimate_total_tokens": 553,
@@ -13136,7 +13200,7 @@
         },
         "final_short_answer": "Lambda"
       },
-      "search_latency_ms": 3.6000000000000005,
+      "search_latency_ms": 6.720000000000001,
       "token_estimate_input_tokens": 102,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 318,
@@ -13211,7 +13275,7 @@
         },
         "final_short_answer": "Google Cloud Functions"
       },
-      "search_latency_ms": 3.5100000000000002,
+      "search_latency_ms": 3.7,
       "token_estimate_input_tokens": 94,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 310,
@@ -13320,7 +13384,7 @@
         },
         "final_short_answer": "Both are serverless options."
       },
-      "search_latency_ms": 4.7,
+      "search_latency_ms": 6.82,
       "token_estimate_input_tokens": 165,
       "token_estimate_output_tokens": 378,
       "token_estimate_total_tokens": 543,
@@ -13396,7 +13460,7 @@
         },
         "final_short_answer": "San Francisco"
       },
-      "search_latency_ms": 3.5999999999999996,
+      "search_latency_ms": 3.24,
       "token_estimate_input_tokens": 103,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 373,
@@ -13409,14 +13473,15 @@
       "category": "cat-1",
       "question": "Where did I used to live before San Francisco?",
       "answer": "New York City",
-      "prediction": "San Francisco",
+      "prediction": "Austin",
       "question_kind": "location",
       "answer_strategy": "extract:location-candidates -> normalize -> final:location-short",
       "selected_evidence_ids": [
-        "obs_locomo-dist-011-3",
-        "obs_locomo-dist-011-1",
-        "obs_locomo-dist-011-4",
-        "obs_locomo-dist-011-2"
+        "obs_locomo-full-002-3",
+        "obs_locomo-full-001-3",
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-005-3",
+        "obs_locomo-full-009-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -13434,48 +13499,54 @@
         },
         "extraction": {
           "strategy": "extract:location-candidates",
-          "raw_answer": "San Francisco",
+          "raw_answer": "Austin",
           "selected_candidates": [
             {
-              "id": "obs_locomo-dist-011-3",
-              "sentence": "Now I live in San Francisco since March 2022.",
-              "score": 1.258333,
+              "id": "obs_locomo-full-002-3",
+              "sentence": "He loves the park near my apartment in Austin, Texas.",
+              "score": 0.658333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-dist-011-1",
-              "sentence": "I used to live in New York City until 2022.",
-              "score": 1.225,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "id": "obs_locomo-full-001-3",
+              "sentence": "I'm using it for my data science project at MIT.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-dist-011-4",
-              "sentence": "San Francisco has a great tech scene.",
-              "score": 0.775,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
-              "id": "obs_locomo-dist-011-2",
-              "sentence": "NYC is an amazing city.",
-              "score": 0.325,
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.541667,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-full-005-3",
+              "sentence": "Yes, we all flew from Toronto to attend the ceremony.",
+              "score": 0.491667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-009-3",
+              "sentence": "I grew up in Montreal, which helped me become bilingual early.",
+              "score": 0.425,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "San Francisco",
-          "after": "San Francisco",
+          "before": "Austin",
+          "after": "Austin",
           "notes": [
             "location:entity_extract"
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "San Francisco"
+        "final_short_answer": "Austin"
       },
-      "search_latency_ms": 3.9800000000000004,
-      "token_estimate_input_tokens": 118,
-      "token_estimate_output_tokens": 270,
-      "token_estimate_total_tokens": 388,
+      "search_latency_ms": 5.488708999999972,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
       "f1": 0
     },
@@ -13485,14 +13556,15 @@
       "category": "cat-2",
       "question": "When did I move to San Francisco?",
       "answer": "March 2022",
-      "prediction": "2022",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-011-3",
         "obs_locomo-dist-011-4",
         "obs_locomo-dist-011-1",
-        "obs_locomo-dist-011-2"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -13511,7 +13583,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "2022",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-dist-011-3",
@@ -13532,29 +13604,33 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-dist-011-2",
-              "sentence": "NYC is an amazing city.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "2022",
-          "after": "2022",
-          "notes": [
-            "temporal:canonicalized_explicit"
-          ],
+          "before": "52 minutes",
+          "after": "52 minutes",
+          "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "2022"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 6.440000000000001,
-      "token_estimate_input_tokens": 131,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 455,
+      "search_latency_ms": 5.073041999999927,
+      "token_estimate_input_tokens": 108,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 378,
       "em": 0,
-      "f1": 0.6666666666666666
+      "f1": 0
     },
     {
       "sample_id": "dist-012",
@@ -13624,7 +13700,7 @@
         },
         "final_short_answer": "Neural"
       },
-      "search_latency_ms": 2.62,
+      "search_latency_ms": 3.24,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 297,
@@ -13699,7 +13775,7 @@
         },
         "final_short_answer": "June"
       },
-      "search_latency_ms": 2.18,
+      "search_latency_ms": 2.3800000000000003,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 298,
@@ -13717,9 +13793,10 @@
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-012-3",
+        "obs_locomo-full-011-5",
         "obs_locomo-dist-012-1",
         "obs_locomo-dist-012-2",
-        "obs_locomo-dist-012-4"
+        "obs_locomo-full-012-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -13747,6 +13824,12 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
+              "id": "obs_locomo-full-011-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
               "id": "obs_locomo-dist-012-1",
               "sentence": "I used to work as a data analyst before becoming a backend engineer.",
               "score": 0.458333,
@@ -13759,10 +13842,10 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-012-4",
-              "sentence": "NeuralBridge is a great place to grow.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-full-012-5",
+              "sentence": "Now I'm training for a half marathon in November.",
+              "score": 0.358333,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -13776,10 +13859,10 @@
         },
         "final_short_answer": "2023"
       },
-      "search_latency_ms": 3.7399999999999998,
-      "token_estimate_input_tokens": 127,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 451,
+      "search_latency_ms": 4.0629580000000445,
+      "token_estimate_input_tokens": 105,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 375,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -13789,7 +13872,7 @@
       "category": "cat-4",
       "question": "What genre do I currently prefer?",
       "answer": "science fiction",
-      "prediction": "but now I prefer science fiction.",
+      "prediction": "I used to read mostly thrillers",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
@@ -13849,14 +13932,14 @@
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "but now I prefer science fiction."
+        "final_short_answer": "I used to read mostly thrillers"
       },
-      "search_latency_ms": 2.1900000000000004,
+      "search_latency_ms": 2.9899999999999998,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 302,
       "em": 0,
-      "f1": 0.25
+      "f1": 0
     },
     {
       "sample_id": "dist-013",
@@ -13926,7 +14009,7 @@
         },
         "final_short_answer": "I used to read mostly thrillers"
       },
-      "search_latency_ms": 5.15,
+      "search_latency_ms": 3.09,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 295,
@@ -14001,7 +14084,7 @@
         },
         "final_short_answer": "Dune"
       },
-      "search_latency_ms": 2.91,
+      "search_latency_ms": 3.81,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 303,
@@ -14075,7 +14158,7 @@
         },
         "final_short_answer": "Rocky"
       },
-      "search_latency_ms": 1.69,
+      "search_latency_ms": 4.3,
       "token_estimate_input_tokens": 59,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 221,
@@ -14150,7 +14233,7 @@
         },
         "final_short_answer": "Rocky"
       },
-      "search_latency_ms": 2.16,
+      "search_latency_ms": 2.2600000000000002,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 297,
@@ -14225,7 +14308,7 @@
         },
         "final_short_answer": "Rocky"
       },
-      "search_latency_ms": 3.1900000000000004,
+      "search_latency_ms": 2.3699999999999997,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 296,
@@ -14299,7 +14382,7 @@
         },
         "final_short_answer": "Remote"
       },
-      "search_latency_ms": 1.7,
+      "search_latency_ms": 1.9000000000000001,
       "token_estimate_input_tokens": 57,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 219,
@@ -14374,7 +14457,7 @@
         },
         "final_short_answer": "I used to commute by car to the office every day."
       },
-      "search_latency_ms": 2.31,
+      "search_latency_ms": 3.27,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 298,
@@ -14387,14 +14470,15 @@
       "category": "cat-2",
       "question": "When did I start working remotely?",
       "answer": "September 2023",
-      "prediction": "2023",
+      "prediction": "52 minutes",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-dist-015-3",
+        "obs_locomo-full-001-4",
         "obs_locomo-dist-015-1",
-        "obs_locomo-dist-015-2",
-        "obs_locomo-dist-015-4"
+        "obs_locomo-full-012-4",
+        "obs_locomo-dist-015-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -14413,7 +14497,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "2023",
+          "raw_answer": "52 minutes",
           "selected_candidates": [
             {
               "id": "obs_locomo-dist-015-3",
@@ -14422,41 +14506,45 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
               "id": "obs_locomo-dist-015-1",
               "sentence": "I used to commute by car to the office every day.",
               "score": 0.458333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
               "id": "obs_locomo-dist-015-2",
               "sentence": "That sounds exhausting.",
               "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-dist-015-4",
-              "sentence": "Remote work offers great flexibility.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "2023",
-          "after": "2023",
-          "notes": [
-            "temporal:canonicalized_explicit"
-          ],
+          "before": "52 minutes",
+          "after": "52 minutes",
+          "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "2023"
+        "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 6.42,
-      "token_estimate_input_tokens": 136,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 460,
+      "search_latency_ms": 5.6198329999999945,
+      "token_estimate_input_tokens": 112,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 382,
       "em": 0,
-      "f1": 0.6666666666666666
+      "f1": 0
     },
     {
       "sample_id": "dist-016",
@@ -14525,7 +14613,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 1.75,
+      "search_latency_ms": 4.79,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 223,
@@ -14599,7 +14687,7 @@
         },
         "final_short_answer": "Greece"
       },
-      "search_latency_ms": 1.69,
+      "search_latency_ms": 2.04,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 162,
       "token_estimate_total_tokens": 223,
@@ -14675,7 +14763,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 3.4000000000000004,
+      "search_latency_ms": 4.11,
       "token_estimate_input_tokens": 101,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 371,
@@ -14750,7 +14838,7 @@
         },
         "final_short_answer": "Harvard"
       },
-      "search_latency_ms": 2.7199999999999998,
+      "search_latency_ms": 3.3,
       "token_estimate_input_tokens": 88,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 304,
@@ -14826,7 +14914,7 @@
         },
         "final_short_answer": "Harvard"
       },
-      "search_latency_ms": 5.949999999999999,
+      "search_latency_ms": 4.73,
       "token_estimate_input_tokens": 114,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 384,
@@ -14901,7 +14989,7 @@
         },
         "final_short_answer": "Yale"
       },
-      "search_latency_ms": 2.9699999999999998,
+      "search_latency_ms": 4.279999999999999,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 300,
@@ -14914,9 +15002,9 @@
       "category": "cat-1",
       "question": "What team does my manager Sarah lead?",
       "answer": "backend team",
-      "prediction": "My manager Sarah leads the backend team and has been at the company for 5 years.",
+      "prediction": "My",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-dist-018-1",
         "obs_locomo-dist-018-3",
@@ -14974,14 +15062,14 @@
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "My manager Sarah leads the backend team and has been at the company for 5 years."
+        "final_short_answer": "My"
       },
-      "search_latency_ms": 2.8699999999999997,
+      "search_latency_ms": 3.4400000000000004,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 302,
       "em": 0,
-      "f1": 0.2222222222222222
+      "f1": 0
     },
     {
       "sample_id": "dist-018",
@@ -14996,7 +15084,8 @@
         "obs_locomo-dist-018-1",
         "obs_locomo-dist-018-2",
         "obs_locomo-dist-018-4",
-        "obs_locomo-dist-018-3"
+        "obs_locomo-dist-018-3",
+        "obs_locomo-full-001-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -15020,7 +15109,7 @@
             {
               "id": "obs_locomo-dist-018-1",
               "sentence": "My manager Sarah leads the backend team and has been at the company for 5 years.",
-              "score": 1.595,
+              "score": 1.725,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -15040,6 +15129,12 @@
               "sentence": "There's also a Sarah in the design team who joined just last quarter.",
               "score": 0.575,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -15051,10 +15146,10 @@
         },
         "final_short_answer": "5 years"
       },
-      "search_latency_ms": 4.3,
-      "token_estimate_input_tokens": 143,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 467,
+      "search_latency_ms": 6.024084000000012,
+      "token_estimate_input_tokens": 118,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 388,
       "em": 1,
       "f1": 1
     },
@@ -15071,7 +15166,8 @@
         "obs_locomo-dist-018-3",
         "obs_locomo-dist-018-1",
         "obs_locomo-dist-018-2",
-        "obs_locomo-dist-018-4"
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -15101,7 +15197,7 @@
             {
               "id": "obs_locomo-dist-018-1",
               "sentence": "My manager Sarah leads the backend team and has been at the company for 5 years.",
-              "score": 1.178333,
+              "score": 1.308333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -15111,9 +15207,15 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-018-4",
-              "sentence": "Two Sarahs in the same company.",
-              "score": 0.375,
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.520833,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.447756,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -15126,10 +15228,10 @@
         },
         "final_short_answer": "5 years"
       },
-      "search_latency_ms": 5.18,
-      "token_estimate_input_tokens": 134,
-      "token_estimate_output_tokens": 324,
-      "token_estimate_total_tokens": 458,
+      "search_latency_ms": 6.615917000000032,
+      "token_estimate_input_tokens": 110,
+      "token_estimate_output_tokens": 270,
+      "token_estimate_total_tokens": 380,
       "em": 0,
       "f1": 0
     },
@@ -15139,14 +15241,15 @@
       "category": "cat-1",
       "question": "What language does my first colleague James speak?",
       "answer": "Japanese",
-      "prediction": "Beijing",
+      "prediction": "Python",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
-        "obs_locomo-dist-019-3",
-        "obs_locomo-dist-019-1",
-        "obs_locomo-dist-019-4",
-        "obs_locomo-dist-019-2"
+        "obs_locomo-full-001-2",
+        "obs_locomo-full-001-4",
+        "obs_locomo-full-002-4",
+        "obs_locomo-full-012-4",
+        "obs_locomo-full-003-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -15163,48 +15266,54 @@
         },
         "extraction": {
           "strategy": "extract:factual-top-candidate",
-          "raw_answer": "My other colleague James speaks Mandarin and has lived in Beijing for three years.",
+          "raw_answer": "Python is a versatile language.",
           "selected_candidates": [
             {
-              "id": "obs_locomo-dist-019-3",
-              "sentence": "My other colleague James speaks Mandarin and has lived in Beijing for three years.",
-              "score": 1.025,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-full-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.741667,
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-dist-019-1",
-              "sentence": "I have a colleague named James who speaks Japanese fluently.",
-              "score": 0.858333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-dist-019-4",
-              "sentence": "Different languages, both valuable skills.",
-              "score": 0.375,
+              "id": "obs_locomo-full-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.625,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-dist-019-2",
-              "sentence": "Japanese fluency is impressive.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "id": "obs_locomo-full-002-4",
+              "sentence": "Austin has great parks for dogs.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-012-4",
+              "sentence": "52 minutes is a solid time for a first 10K!",
+              "score": 0.401923,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-full-003-4",
+              "sentence": "Distributed systems is fascinating.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "My other colleague James speaks Mandarin and has lived in Beijing for three years.",
-          "after": "My other colleague James speaks Mandarin and has lived in Beijing for three years.",
+          "before": "Python is a versatile language.",
+          "after": "Python is a versatile language.",
           "notes": [
             "factual:single_sentence_trim"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:01.000Z"
         },
-        "final_short_answer": "Beijing"
+        "final_short_answer": "Python"
       },
-      "search_latency_ms": 5.55,
-      "token_estimate_input_tokens": 97,
-      "token_estimate_output_tokens": 216,
-      "token_estimate_total_tokens": 313,
+      "search_latency_ms": 4.654166999999916,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
       "f1": 0
     },
@@ -15276,7 +15385,7 @@
         },
         "final_short_answer": "Beijing"
       },
-      "search_latency_ms": 3.15,
+      "search_latency_ms": 3.62,
       "token_estimate_input_tokens": 98,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 314,
@@ -15352,7 +15461,7 @@
         },
         "final_short_answer": "Beijing"
       },
-      "search_latency_ms": 3.7,
+      "search_latency_ms": 5.45,
       "token_estimate_input_tokens": 119,
       "token_estimate_output_tokens": 270,
       "token_estimate_total_tokens": 389,
@@ -15427,7 +15536,7 @@
         },
         "final_short_answer": "Princeton"
       },
-      "search_latency_ms": 2.7,
+      "search_latency_ms": 5.840000000000001,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 301,
@@ -15502,7 +15611,7 @@
         },
         "final_short_answer": "Princeton"
       },
-      "search_latency_ms": 3.1399999999999997,
+      "search_latency_ms": 3.41,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 305,
@@ -15577,7 +15686,7 @@
         },
         "final_short_answer": "Tom"
       },
-      "search_latency_ms": 2.44,
+      "search_latency_ms": 3.25,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 216,
       "token_estimate_total_tokens": 299,

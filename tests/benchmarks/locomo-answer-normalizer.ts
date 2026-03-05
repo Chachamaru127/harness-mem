@@ -223,7 +223,11 @@ function normalizeTemporalAnswer(text: string, referenceIso: string): { value: s
 
 function normalizeYesNo(text: string): string {
   const source = normalizeLower(text);
-  if (/\b(no|not|never|none|cannot|can't|won't|didn't|doesn't|isn't|wasn't)\b/.test(source)) return "No";
+  // Strip emphatic constructions that are NOT true negation before testing for negation.
+  // "not only", "not just", "not merely", "not simply", "not purely" are additive/emphatic,
+  // e.g. "I was not only happy but thrilled" → still affirmative.
+  const withoutEmphaticNot = source.replace(/\bnot\s+(?:only|just|merely|simply|purely)\b/g, "");
+  if (/\b(no|not|never|none|cannot|can't|won't|didn't|doesn't|isn't|wasn't)\b/.test(withoutEmphaticNot)) return "No";
   return "Yes";
 }
 

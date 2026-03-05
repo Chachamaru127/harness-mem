@@ -282,7 +282,7 @@ export class ObservationStore {
     let sql = `
       SELECT
         o.id AS id,
-        bm25(mem_observations_fts, 0, 2.0, 1.0) AS bm25
+        bm25(mem_observations_fts, 0, 3.0, 1.0) AS bm25
       FROM mem_observations_fts
       JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
       WHERE mem_observations_fts MATCH ?
@@ -748,24 +748,93 @@ export class ObservationStore {
       const anchorVec = this.vectorSearch(anchorRequest, 5);
       const anchorLex = this.lexicalSearch(anchorRequest, 5);
 
-      // スコアの高いIDを選択（vector優先、なければlexical）
+      // §35 SD-004: hybrid anchor 特定 — vector 60% + lexical 40% の合算スコアで選択
+      const hybridScores = new Map<string, number>();
+      const allIds = new Set<string>([
+        ...anchorVec.scores.keys(),
+        ...anchorLex.keys(),
+      ]);
+      for (const id of allIds) {
+        const vScore = anchorVec.scores.get(id) ?? 0;
+        const lScore = anchorLex.get(id) ?? 0;
+        hybridScores.set(id, 0.6 * vScore + 0.4 * lScore);
+      }
+
       let anchorId: string | null = null;
       let bestScore = -1;
-      for (const [id, score] of anchorVec.scores.entries()) {
+      for (const [id, score] of hybridScores.entries()) {
         if (score > bestScore) {
           bestScore = score;
           anchorId = id;
         }
       }
+
+      // §35 SD-005: anchor 未検出時フォールバック — direction ベースの時間軸ソートで結果を返す
       if (!anchorId) {
-        for (const [id, score] of anchorLex.entries()) {
-          if (score > bestScore) {
-            bestScore = score;
-            anchorId = id;
-          }
+        const fallbackParams: unknown[] = [];
+        let fallbackSql = `
+          SELECT
+            o.id, o.event_id, o.platform, o.project, o.session_id,
+            o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
+            o.memory_type, o.created_at, o.access_count,
+            e.event_type AS event_type
+          FROM mem_observations o
+          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE 1 = 1
+        `;
+        if (project) {
+          fallbackSql += " AND o.project = ?";
+          fallbackParams.push(project);
         }
+        if (!includePrivate) {
+          fallbackSql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
+        }
+        if (anchor.direction === "desc") {
+          fallbackSql += " ORDER BY o.created_at DESC";
+        } else {
+          // "asc", "around" — デフォルトは ASC
+          fallbackSql += " ORDER BY o.created_at ASC";
+        }
+        fallbackSql += " LIMIT ?";
+        fallbackParams.push(limit);
+
+        const fallbackRows = this.deps.db
+          .query(fallbackSql)
+          .all(...(fallbackParams as any[])) as Array<Record<string, unknown>>;
+
+        return fallbackRows.map((row) => {
+          const tags = parseArrayJson(row.tags_json);
+          const privacyTags = parseArrayJson(row.privacy_tags_json);
+          return {
+            id: row.id,
+            event_id: row.event_id,
+            platform: row.platform,
+            project: row.project,
+            session_id: row.session_id,
+            title: row.title,
+            content: typeof row.content_redacted === "string"
+              ? row.content_redacted.slice(0, 2000)
+              : "",
+            observation_type: "context",
+            memory_type: row.memory_type || "semantic",
+            created_at: row.created_at,
+            tags,
+            privacy_tags: privacyTags,
+            access_count: Number(row.access_count ?? 0),
+            anchor_strategy: `temporal_anchor_fallback:${anchor.type}:${anchor.direction}`,
+            scores: {
+              lexical: 0,
+              vector: 0,
+              recency: 0,
+              tag_boost: 0,
+              importance: 0,
+              graph: 0,
+              final: 0,
+              rerank: 0,
+            },
+          };
+        });
       }
-      if (!anchorId) return null;
 
       // アンカーエントリの created_at を取得
       const anchorObs = this.deps.db
@@ -1039,12 +1108,14 @@ export class ObservationStore {
     const weights = routeDecision.confidence > 0.5 ? routeDecision.weights : baseWeights;
 
     // §34 FD-006: TIMELINE かつ temporalAnchors が存在する場合は Anchor-Pivoted Search を優先
+    // §35 SD-003: freshness クエリも temporal anchor 検索を使用する
+    // router.ts L419 は既に freshness に temporalAnchors を付与済み
     if (
-      routeDecision.kind === "timeline" &&
+      (routeDecision.kind === "timeline" || routeDecision.kind === "freshness") &&
       routeDecision.temporalAnchors &&
       routeDecision.temporalAnchors.length > 0
     ) {
-      const primaryAnchor = routeDecision.temporalAnchors[0];
+      const primaryAnchor = routeDecision.temporalAnchors![0];
       const anchorItems = this.temporalAnchorSearch(normalizedRequest, primaryAnchor, limit);
       if (anchorItems && anchorItems.length > 0) {
         const anchorMeta: Record<string, unknown> = {

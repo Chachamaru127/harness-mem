@@ -126,7 +126,10 @@ describe("LOCOMO harness adapter", () => {
         { category: "cat-3" }
       );
       expect(multiHop.prediction.toLowerCase()).toContain("likely");
-      expect(multiHop.prediction).toContain("Reason:");
+      // finalizeShortAnswer uses "counterfactual-short" template which returns only the
+      // conclusion ("Likely no" / "Likely yes") without the verbose "Reason:" suffix
+      // to improve F1 precision. Verify the conclusion is present.
+      expect(/^likely\s+(yes|no)/i.test(multiHop.prediction)).toBe(true);
       expect(multiHop.answer_strategy).toContain("counterfactual");
       expect(multiHop.search_hit_count).toBeGreaterThanOrEqual(2);
       expect(multiHop.selected_evidence_ids.length).toBeGreaterThan(0);
@@ -165,6 +168,66 @@ describe("LOCOMO harness adapter", () => {
       expect(replay.answer_trace.extraction.selected_candidates.length).toBeGreaterThanOrEqual(3);
       expect(replay.selected_evidence_ids.length).toBeGreaterThanOrEqual(3);
       expect(replay.prediction.length).toBeGreaterThan(0);
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // SD-010: duration patterns should be preferred for temporal QA
+  test("SD-010: extracts duration answers ('52 minutes', 'about 2 hours') for temporal questions", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-duration-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-duration",
+        conversation: [
+          { speaker: "user", text: "The meeting lasted about 52 minutes." },
+          { speaker: "assistant", text: "Yes, it was roughly 52 minutes long." },
+          { speaker: "user", text: "The project took 3 weeks to complete." },
+          { speaker: "assistant", text: "That's about 3 weeks of work." },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-duration" });
+      adapter.ingestSample(sample);
+
+      const replay = adapter.answerQuestion("How long did the meeting last?", { category: "cat-2" });
+      expect(replay.question_kind).toBe("temporal");
+      // Duration pattern should be extracted: "52 minutes" or "about 52 minutes"
+      expect(replay.prediction).toMatch(/\d+\s+minutes?/i);
+      expect(replay.answer_strategy).toContain("temporal");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // SD-011: extractCorePhrase should prefer shorter proper nouns not in query
+  test("SD-011: factual answer prefers short proper noun not mentioned in query", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-corephr-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-corephr",
+        conversation: [
+          // Use a university with mixed-case name to match properNoun patterns
+          { speaker: "user", text: "I am studying for my data science project at Stanford University." },
+          { speaker: "assistant", text: "Stanford University is a top school for data science." },
+          { speaker: "user", text: "I attend Stanford University for my degree program." },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-corephr" });
+      adapter.ingestSample(sample);
+
+      const replay = adapter.answerQuestion("What school am I attending?");
+      // Should extract "Stanford University" not the full sentence
+      expect(replay.prediction.toLowerCase()).toContain("stanford");
+      // The answer should be short — preferring the core entity, not a long sentence
+      expect(replay.prediction.length).toBeLessThan(60);
     } finally {
       core.shutdown("test");
       rmSync(tmp, { recursive: true, force: true });

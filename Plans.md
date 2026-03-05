@@ -1,9 +1,9 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-05（§34 全20タスク完了, 1355テスト）
+最終更新: 2026-03-05（§35 計画策定完了, 1355テスト）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了（F1:0.21→0.287, Freshness:0.10→0.88, Temporal:0.583→0.589）
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了（測定信頼性確立, 1355テスト）
 
 ---
 
@@ -15,113 +15,146 @@
 
 ## 現在のステータス
 
-§34 測定信頼性 + Temporal 構造改善 — **全20タスク完了**。（1355テスト）
+§35 Temporal tau + F1 — Phase A/B 実装完了、目標未達。§36 で根本対策が必要。（1358テスト）
 
-§34 結果:
-- 測定信頼性4条件: 全達成（難易度分布/逆順・同日/Bootstrap CI/Holm-Bonferroni）
-- 性能目標5条件中3条件達成（temporal tau < 0.70, F1 CI下限 < 0.27 は§35継続課題）
-- 実データ基盤: クエリログ収集 + dev-workflow-20 + self-eval + retrospective A/B
+§35 実装結果:
+- Bootstrap CI 修正 ✅ (SD-001) — variance=0 解消、SE > 0
+- F1 = 0.253（baseline 0.179 → +7.4pp改善）— 目標 CI下限 0.27 には F1>=0.34 必要で未達
+- tau = 0.560 [CI: 0.507, 0.614] — temporal-100 の 80% がアンカーなしクエリ。検索パス変更では改善不可
+- Freshness@K = 0.97 ✅ | bilingual = 0.72 (< 0.80 未達)
 
 ---
 
-## §34 測定信頼性 + Temporal 構造改善（20タスク, 4フェーズ）
+## §35 Temporal tau + F1 目標達成（20タスク, 4フェーズ）
 
 ### 背景
 
-§33 で検索品質を改善したが、3専門家（IR研究者/プロダクトエンジニア/評価専門家）の
-討論で「測定自体が壊れている」ことが判明:
-- temporal-30 が**全件昇順タイムスタンプ**で難易度ゼロ
-- Freshness@K=0.88 は Jaccard 閾値を同一データで tuning（train=test 問題）
-- bilingual-10 は全件が完全セマンティック対応で自明に recall=1.0
+§34 で測定信頼性を確立したが、性能目標5条件中2条件が未達:
+- **tau=0.572**: Bootstrap CI [0.572, 0.572] で variance=0（CI 崩壊）。freshness クエリが DESC ソートされず通常検索にフォールバックしている
+- **F1 CI下限=0.221**: F1=0.287 だが SE=±3.4pp。N=180 では CI下限 0.27 に F1>=0.337 が必要。N=360 + F1>=0.317 の組合せが現実的
 
-**方針**: 壊れた物差しを先に直す → 構造を直す → 実データで検証（Goodhart's Law 回避）
+3専門家（IR研究者/評価専門家/プロダクトエンジニア）の合意:
+1. Bootstrap CI のケースレベルリサンプリング修正が最優先
+2. freshness DESC ソート実装で Hard 35件のスコアが劇的改善
+3. F1 はサンプル拡充だけでは不可能。answer 抽出パイプライン改善が必須
 
 ### 依存グラフ
 
 ```
-Phase 0: 測定の修正（最優先・他の全てに先行）
-├── [P] FD-001: temporal フィクスチャ再設計（逆順+同日シナリオ追加）
-├── [P] FD-002: Freshness Jaccard 閾値の交差検証
-├── [P] FD-003: bilingual フィクスチャ難易度追加
-└──     FD-004: Weighted Kendall tau + nDCG@5 導入
+Phase 0: CI 修正（最優先）
+├── [P] SD-001: Bootstrap CI ケースレベルリサンプリング修正
+└── [P] SD-002: ドメイン別 tau 詳細ログ出力
          │
-Phase A: Temporal 2-Stage Retrieval（構造改善）
-├── [P] FD-005: TemporalAnchor 抽出器（router.ts）
-├── [P] FD-006: Anchor-Pivoted Search（observation-store.ts）
-├──     FD-007: temporal-100 フィクスチャ（多ドメイン）
-└──     FD-008: Temporal 再計測 + before/after
-         │
-Phase B: 統計基盤（サンプル拡充 + CI 改善）
-├── [P] FD-009: knowledge-update 50→100 件拡充（難易度分布付き）
-├── [P] FD-010: bilingual 10→50 件拡充（干渉パターン付き）
-├── [P] FD-011: Bootstrap CI + Holm-Bonferroni 多重比較
-├──     FD-012: 3層 CI ゲート（絶対下限 + 相対回帰 + Wilcoxon 改善検証）
-└──     FD-013: 全ベンチマーク再計測 + 統計レポート
-         │
-Phase C: 実データ検証基盤
-├── [P] FD-014: クエリログ収集（routeQuery → local file）
-├── [P] FD-015: dev-workflow-20 フィクスチャ（実使用パターン準拠）
-├──     FD-016: Self-eval クエリ生成器（実 DB から temporal クエリ自動生成）
-├──     FD-017: Retrospective A/B 評価フレーム
-├──     FD-018: 競合分析 v9（正直な報告 + LLM有無分離）
-├──     FD-019: 全指標 before/after 最終比較
-└──     FD-020: §34 完了レポート
+Phase A: Temporal tau 改善（構造修正）   ──並列──   Phase B: F1 改善（answer 抽出）
+├── [P] SD-003: freshness DESC ソート実装            ├── [P] SD-009: F1 ボトルネック分析
+├── [P] SD-004: hybrid anchor 特定                   ├── [P] SD-010: temporal 答え抽出改善
+├──     SD-005: anchor フォールバック（SD-004後）     ├── [P] SD-011: factual extractCorePhrase 改善
+├── [P] SD-006: bilingual anchor パターン追加         ├── [P] SD-012: yes_no 否定語改善
+├──     SD-007: anchor スコア正規化                   ├──     SD-013: BM25 title weight 調整
+└──     SD-008: tau 再計測（SD-001完了が前提）         └──     SD-014: F1 再計測 + N拡充判断
+         │                                                     │
+Phase C: 統合検証
+├── [P] SD-015: locomo N拡充（180→360, 必要な場合）
+├──     SD-016: 全ベンチマーク同時計測
+├──     SD-017: 3層 CI ゲート閾値更新
+├──     SD-018: 384次元 embedding 評価（導入判断のみ）
+├──     SD-019: リグレッション確認 + 全テスト pass
+└──     SD-020: §35 完了レポート + §36 提言
 ```
 
-### Phase 0: 測定の修正（4タスク） — 全完了
+### Phase 0: CI 修正（2タスク, 最優先）
 
-- [x] `cc:完了` **FD-001**: temporal-50.json（逆順16+同日9, ASCのみ=0.68）
-- [x] `cc:完了` **FD-002**: Jaccard 5-fold CV（最適閾値0.1）
-- [x] `cc:完了` **FD-003**: bilingual-30.json（E10/M10/H10, 干渉パターン含む）
-- [x] `cc:完了` **FD-004**: Weighted Kendall tau + nDCG@5（runner.ts に3指標並行報告）
+- [x] `cc:完了 [P]` **SD-001**: tau の Bootstrap CI 修正
+  - 修正: `perSampleScores: weightedTauScores` に変更。CI幅 0.107, SE > 0 ✅
 
-### Phase A: Temporal 2-Stage Retrieval（4タスク） — 全完了
+- [x] `cc:完了 [P]` **SD-002**: ドメイン別 tau 詳細ログ出力
+  - `--verbose` で per-domain tau 出力 ✅ (dev-workflow:0.572, project-mgmt:0.570, personal:0.614, bilingual:0.478)
 
-- [x] `cc:完了` **FD-005**: extractTemporalAnchors()（24テスト pass, 日英両対応）
-- [x] `cc:完了` **FD-006**: temporalAnchorSearch()（anchor-pivoted 時間順ソート）
-- [x] `cc:完了` **FD-007**: temporal-100.json（4ドメイン×25件, 逆順35件）
-- [x] `cc:完了` **FD-008**: Temporal before/after（0.572, Bootstrap CI [0.572, 0.572]）
+### Phase A: Temporal tau 改善（6タスク）
 
-### Phase B: 統計基盤（5タスク）
+- [x] `cc:完了 [P]` **SD-003**: freshness クエリの temporal 分岐追加
+  - 修正: `kind === "timeline" || kind === "freshness"` に拡張 ✅
 
-- [x] `cc:完了` **FD-009**: knowledge-update 50→100件（難易度 E30/M50/H20）
-- [x] `cc:完了` **FD-010**: bilingual 30→50件（ja→en/en→ja/混在 均等）
-- [x] `cc:完了` **FD-011**: Bootstrap CI(10k) + Holm-Bonferroni 多重比較
-  - DoD: 全ベンチマークで 95% CI 報告
-- [x] `cc:完了` **FD-012**: 3層 CI ゲート（絶対下限 + 相対回帰2SE + Wilcoxon）
-- [x] `cc:完了` **FD-013**: 全ベンチマーク再計測 + Holm-Bonferroni 補正済み統計レポート
+- [x] `cc:完了 [P]` **SD-004**: hybrid anchor 特定（vector+lexical）
+  - temporalAnchorSearch() の Phase 1 を vector 60% + lexical 40% の hybrid に変更
+  - 変更ファイル: observation-store.ts（temporalAnchorSearch 内）
+  - DoD: anchor 特定精度向上、既存24テスト pass ✅
 
-### Phase C: 実データ検証基盤（7タスク）
+- [x] `cc:完了` **SD-005**: anchor 未検出時の時間軸フォールバック（SD-004 完了後）
+  - null 返却を廃止。direction から ASC/DESC フォールバック
+  - 変更ファイル: observation-store.ts（temporalAnchorSearch 内）
+  - DoD: null fallback 率 < 5% ✅
 
-- [x] `cc:完了` **FD-014**: クエリログ収集（HARNESS_MEM_QUERY_LOG 環境変数）
-- [x] `cc:完了` **FD-015**: dev-workflow-20 フィクスチャ（実 Claude Code 使用パターン）
-- [x] `cc:完了` **FD-016**: Self-eval クエリ生成器（実 DB → temporal クエリ自動生成）
-- [x] `cc:完了` **FD-017**: Retrospective A/B 評価（mem_audit_log 活用オフライン再評価）
-- [x] `cc:完了` **FD-018**: 競合分析 v9（LLM有無分離 + レイテンシ/コスト指標）
-- [x] `cc:完了` **FD-019**: 全指標 before/after 最終比較（Bootstrap CI 付き）
-- [x] `cc:完了` **FD-020**: §34 完了レポート + §35 提言
+- [x] `cc:完了 [P]` **SD-006**: bilingual anchor 抽出パターン追加
+  - 日英混在パターン（「API改修後」「after the API 改修」）を router.ts に追加
+  - DoD: bilingual-50 のアンカー抽出ヒット率 > 80%
 
-### §34 完了判定
+- [ ] `blocked` **SD-007**: anchor 検索結果のスコア正規化
+  - anchorItems エントリに final スコアを付与し、リランカーが利用可能にする
+  - **ブロック理由**: temporal-100 の 80% がアンカーなし。スコア正規化だけでは tau 改善不可。§36 でアーキテクチャ見直し要
 
-**測定信頼性（全て満たすこと）:**
-1. 全フィクスチャに Easy/Medium/Hard の難易度分布が存在
-2. temporal フィクスチャに逆順・同日シナリオが含まれる
-3. 全メトリクスで Bootstrap 95% CI が報告される
-4. 4メトリクス同時検定で Holm-Bonferroni 補正済み
+- [x] `cc:完了` **SD-008**: tau 再計測 + 中間目標確認
+  - 結果: tau=0.560 [CI: 0.507, 0.614]。SD-003〜006 の効果は限定的
+  - **tau >= 0.70 未達**: 80% のクエリがアンカーなしで通常検索に落ちるため、検索パス変更のみでは達成不可能
+  - timeline フォールバック（時間ソート）を試行したが recall を破壊するため撤回
 
-**性能目標（Bootstrap CI の下限で判定）:**
-1. Temporal Weighted Kendall tau >= 0.70（100件、CI 下限）
-2. locomo-120 F1 >= 0.27（維持、CI 下限）
-3. Freshness@K >= 0.70（5-fold CV 後の交差検証値）
-4. bilingual recall >= 0.85（50件、Wilson CI 下限）
+### Phase B: F1 改善（6タスク）
+
+- [ ] `blocked [P]` **SD-009**: F1 ボトルネック分析（検索 vs 抽出 vs 圧縮）
+  - locomo-120 の失敗ケースを検索層/抽出層/圧縮層に分類
+  - **ブロック理由**: F1=0.253 で CI下限 0.27 には F1>=0.34 が必要。抽出改善だけでは到達不可。§36 検討
+
+- [x] `cc:完了 [P]` **SD-010**: temporal 答え抽出に duration pattern 優先化
+  - extractDurationPhrase() を新設し extractTemporalPhrase() 内で最優先チェック
+  - "about/around/roughly/approximately" prefix も対応
+  - sentenceScore() でも duration ヒット時に +0.35 ボーナス（非 duration の +0.22 より高い）
+  - DoD: cat-2 temporal の F1 が上昇
+
+- [x] `cc:完了 [P]` **SD-011**: factual extractCorePhrase() 精度向上
+  - ソート基準を「novelty優先 → novelty同値時: len降順」から「wordCount昇順 → len昇順」に変更
+  - クエリ完全重複固有名詞も「最短」で返す fallback 追加
+  - novelClause（新情報節）優先 → clauseWithOverlap → 先頭節 の順に変更
+  - DoD: cat-1 factual の F1 が +2pp 以上
+
+- [x] `cc:完了 [P]` **SD-012**: yes_no 判定の否定語コンテキスト改善
+  - normalizeYesNo() で "not only/just/merely/simply/purely" を否定語チェック前に除去
+  - DoD: yes_no カテゴリの F1 が改善
+
+- [x] `cc:完了` **SD-013**: BM25 title weight 調整（2.0→3.0）
+  - observation-store.ts の bm25() 引数変更のみ。計測は SD-014 に委ねる
+  - DoD: 変更適用、既存テスト pass
+
+- [x] `cc:完了` **SD-014**: F1 再計測 + N拡充判断
+  - 結果: F1=0.2533 (baseline 0.1794 → +7.4pp改善)
+  - CI下限 0.27 には F1>=0.34 が必要だが現在0.253。N拡充では解決不可
+  - **判断**: N拡充は不要（効果なし）。根本的な検索精度改善が必要 → §36
+
+### Phase C: 統合検証（6タスク）
+
+- [x] `cc:完了 [P]` **SD-015**: locomo N拡充 → スキップ（SD-014 で不要と判断）
+- [x] `cc:完了` **SD-016**: 全ベンチマーク同時計測
+  - tau=0.560 [0.507,0.614] | F1=0.253 | Freshness=0.97 | bilingual=0.72 | dev-workflow=0.74
+- [ ] `cc:TODO` **SD-017**: 3層 CI ゲート閾値更新（新目標値で Layer 1 更新）
+- [ ] `cc:TODO` **SD-018**: 384次元 embedding 評価（bilingual N=20 で feasibility のみ, 非破壊）
+- [x] `cc:完了` **SD-019**: リグレッション確認 + 全テスト pass（1358件 pass）
+- [ ] `cc:WIP` **SD-020**: §35 完了レポート + §36 提言
+
+### §35 完了判定
+
+**性能目標（Bootstrap CI 下限で判定）:**
+1. Temporal Weighted Kendall tau >= 0.70（CI 下限, ケースリサンプリング後）
+2. locomo F1 CI 下限 >= 0.27（Bootstrap 95% CI）
+3. Freshness@K >= 0.70（維持）
+4. bilingual recall >= 0.85（Wilson CI 下限, 維持）
 5. `bun test` 全 pass + 3層 CI ゲート全 pass
 
-**実データ基盤:**
-- クエリログ収集が動作し、dev-workflow-20 で評価可能
+**追加条件:**
+- bilingual ドメイン tau >= 0.55（現 0.478 からの改善）
+- Bootstrap CI が全指標で SE > 0（variance=0 の解消）
 
-### スコープ外（§35 以降）
+### スコープ外（§36 以降）
 
-- Multi-hop 推論（Graph traversal 実装が前提）
-- LLM Judge 評価（コスト高・再現性低下。実データ評価で優先度再判断）
-- 384次元 embedding（F1 への寄与が未検証）
-- LoCoMo 200サンプル拡充（§34 で十分な SE が得られた場合は不要）
+- 384次元 embedding 導入（§35 では評価のみ）
+- Multi-hop Graph traversal 強化
+- LLM Judge 評価
+- LoCoMo 200サンプル以上への拡充

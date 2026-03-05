@@ -270,14 +270,27 @@ function conversationFillerTrim(sentence: string): string {
     .trim();
 }
 
+function extractDurationPhrase(text: string): string | null {
+  // Matches duration expressions including optional "about/around/roughly/approximately" prefix.
+  // Examples: "52 minutes", "about 2 hours", "around 3 weeks", "roughly 30 seconds"
+  const durationPattern =
+    /\b(?:about|around|roughly|approximately|nearly|almost|over|just\s+under\s+)?\s*\d+(?:\.\d+)?\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i;
+  const match = durationPattern.exec(text);
+  if (match && match[0]) return match[0].trim();
+  return null;
+}
+
 function extractTemporalPhrase(text: string): string | null {
+  // Duration patterns are checked first — they are very specific and high precision for
+  // temporal questions like "How long did it take?" or "How long ago?"
+  const duration = extractDurationPhrase(text);
+  if (duration) return duration;
+
   const patterns = [
     /\b(?:the\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:before|after)\s+[^.,;!?]+/i,
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\b/i,
     /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4}|\s+\d{4})?\b/i,
     /\b(?:last|next|this)\s+(?:week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
-    // duration patterns (e.g. "52 minutes", "2 hours", "30 seconds")
-    /\b\d+\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i,
     /\b\d{4}\b/,
   ];
   for (const pattern of patterns) {
@@ -329,7 +342,10 @@ function sentenceScore(
   let score = overlap / Math.max(questionTokens.length, 1);
   score += 1 / (rank + 2);
   score += 1 / ((queryOrder + 1) * 8);
-  if (kind === "temporal" && extractTemporalPhrase(sentence)) score += 0.22;
+  if (kind === "temporal") {
+    if (extractDurationPhrase(sentence)) score += 0.35; // duration gets higher bonus
+    else if (extractTemporalPhrase(sentence)) score += 0.22;
+  }
   if (kind === "location" && extractLocationPhrase(sentence)) score += 0.2;
   if (kind === "yes_no" && /\bno\b|\bnot\b|\bnever\b|\byes\b/i.test(sentence)) score += 0.12;
   if (kind === "multi_hop" && /\bbecause\b|\bsince\b|\bsupport\b|\bmotivat/i.test(sentence)) score += 0.14;
@@ -478,6 +494,10 @@ function extractAnswerDraft(
 /**
  * 文から最も短い関連フレーズ（固有名詞・名詞句）を抽出する。
  * factualクエリの precision を向上させるために使用する。
+ *
+ * 優先順位:
+ *   1. クエリに出てこない固有名詞で最も短いもの（答え候補の可能性が高い）
+ *   2. 固有名詞がない場合はクエリと重複しない短い節
  */
 function extractCorePhrase(sentence: string, questionTokens: string[]): string {
   const qSet = new Set(questionTokens);
@@ -495,29 +515,44 @@ function extractCorePhrase(sentence: string, questionTokens: string[]): string {
     const scored = properNouns.map((np) => {
       const npTokens = tokenize(np);
       const overlap = npTokens.filter((t) => qSet.has(t)).length;
-      const novelty = npTokens.length - overlap;
-      return { np, novelty, len: np.length };
+      const novelty = npTokens.length - overlap; // クエリ未登場語の数
+      const wordCount = np.split(/\s+/).length;
+      return { np, novelty, len: np.length, wordCount };
     });
-    // novelty > 0（クエリに出てこない語を含む）かつ短い固有名詞を優先
+
+    // novelty > 0（クエリに出てこない語を含む）かつ短い固有名詞を最優先
     const novel = scored.filter((s) => s.novelty > 0);
     if (novel.length > 0) {
+      // ソート: 短い語数優先 → 同語数なら文字数優先 → novelty は同値扱い（全て>0）
       novel.sort((a, b) => {
-        if (b.novelty !== a.novelty) return b.novelty - a.novelty;
+        if (a.wordCount !== b.wordCount) return a.wordCount - b.wordCount;
         return a.len - b.len;
       });
       const best = novel[0];
       if (best && best.np.length >= 2) return best.np;
     }
+
+    // クエリと完全重複する固有名詞しかなければ最短を返す
+    const anyNouns = scored.slice().sort((a, b) => a.len - b.len);
+    const shortest = anyNouns[0];
+    if (shortest && shortest.np.length >= 2 && shortest.len < sentence.length * 0.6) {
+      return shortest.np;
+    }
   }
 
   // 固有名詞がない場合: 節ごとに分割し最短の意味ある節を返す
   const clauses = sentence.split(/[,;]/).map((c) => c.trim()).filter((c) => c.length > 2);
-  // 質問トークンを含む節を優先
+  // 質問トークンを含まない節（新情報）を優先
+  const novelClause = clauses.find((c) => {
+    const cTokens = tokenize(c);
+    return cTokens.length > 0 && !cTokens.every((t) => qSet.has(t));
+  });
+  // 質問トークンを含む節をフォールバックとして使用
   const clauseWithOverlap = clauses.find((c) => {
     const cTokens = tokenize(c);
     return cTokens.some((t) => qSet.has(t));
   });
-  const bestClause = clauseWithOverlap || clauses[0] || sentence;
+  const bestClause = novelClause || clauseWithOverlap || clauses[0] || sentence;
   return bestClause.length <= 100 ? bestClause : compactToSingleSentence(bestClause, 80);
 }
 

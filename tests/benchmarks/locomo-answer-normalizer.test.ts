@@ -55,5 +55,41 @@ describe("LOCOMO answer normalizer", () => {
     expect(normalized.multi_hop_reasoning?.format).toBe("counterfactual");
     expect((normalized.multi_hop_reasoning?.facts || []).length).toBeGreaterThan(0);
   });
+
+  // SD-012: yes_no — emphatic "not only/just/merely" should NOT trigger false negatives
+  test("SD-012: emphatic 'not only' constructions return Yes, not No", () => {
+    const notOnly = normalizeLocomoAnswer({
+      question: "Did she enjoy it?",
+      kind: "yes_no",
+      rawAnswer: "She was not only happy but absolutely thrilled.",
+      evidence: [],
+    });
+    expect(notOnly.normalized).toBe("Yes");
+
+    const notJust = normalizeLocomoAnswer({
+      question: "Did he finish?",
+      kind: "yes_no",
+      rawAnswer: "He not just finished it but exceeded all expectations.",
+      evidence: [],
+    });
+    expect(notJust.normalized).toBe("Yes");
+
+    const notMerely = normalizeLocomoAnswer({
+      question: "Was it enough?",
+      kind: "yes_no",
+      rawAnswer: "It was not merely sufficient but outstanding.",
+      evidence: [],
+    });
+    expect(notMerely.normalized).toBe("Yes");
+
+    // True negation should still return No
+    const trueNegation = normalizeLocomoAnswer({
+      question: "Did she pass?",
+      kind: "yes_no",
+      rawAnswer: "She did not pass the exam.",
+      evidence: [],
+    });
+    expect(trueNegation.normalized).toBe("No");
+  });
 });
 

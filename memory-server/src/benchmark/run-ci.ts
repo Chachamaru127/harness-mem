@@ -323,6 +323,7 @@ interface TemporalCase {
   entries: TemporalEntry[];
   query: string;
   expected_order: string[];
+  domain?: string;
 }
 
 function createTempCore(): { core: HarnessMemCore; dir: string } {
@@ -451,7 +452,7 @@ async function runKnowledgeUpdateBenchmark(fixturePath: string): Promise<{ fresh
   }
 }
 
-async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScore: number; weightedTau: number; ndcgAt5: number; passed: boolean; temporalGate: number; perSampleScores: number[] }> {
+async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScore: number; weightedTau: number; ndcgAt5: number; passed: boolean; temporalGate: number; perSampleScores: number[]; domainBreakdown: Record<string, { tau: number; n: number }> }> {
   const { core, dir } = createTempCore();
   try {
     const raw = readFileSync(fixturePath, "utf-8");
@@ -462,6 +463,7 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
     const scores: number[] = [];
     const weightedTauScores: number[] = [];
     const ndcgScores: number[] = [];
+    const domainTauScores: Record<string, number[]> = {};
 
     for (const tCase of cases) {
       for (const entry of tCase.entries) {
@@ -490,6 +492,14 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
       scores.push(score);
       weightedTauScores.push(weightedTau);
       ndcgScores.push(ndcg);
+
+      // ドメイン別 tau スコアを蓄積
+      if (tCase.domain) {
+        if (!domainTauScores[tCase.domain]) {
+          domainTauScores[tCase.domain] = [];
+        }
+        domainTauScores[tCase.domain].push(weightedTau);
+      }
     }
 
     const temporalScore = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
@@ -498,7 +508,23 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
     const envTemporalGate = Number(process.env.HARNESS_BENCH_TEMPORAL_GATE);
     const temporalGate = Number.isFinite(envTemporalGate) && envTemporalGate >= 0 && envTemporalGate <= 1 ? envTemporalGate : 0.55;
     const passed = temporalScore >= temporalGate;
-    return { temporalScore, weightedTau, ndcgAt5, passed, temporalGate, perSampleScores: scores };
+
+    // ドメイン別の平均 tau をまとめる
+    const domainBreakdown: Record<string, { tau: number; n: number }> = {};
+    for (const [domain, tauList] of Object.entries(domainTauScores)) {
+      const avg = tauList.reduce((a, b) => a + b, 0) / tauList.length;
+      domainBreakdown[domain] = { tau: avg, n: tauList.length };
+    }
+
+    // --verbose 時にドメイン別 tau を出力
+    if (process.argv.includes("--verbose") && Object.keys(domainBreakdown).length > 0) {
+      console.log("[CI] temporal-100 by-domain:");
+      for (const [domain, { tau, n }] of Object.entries(domainBreakdown)) {
+        console.log(`  ${domain}: tau=${tau.toFixed(3)} (n=${n})`);
+      }
+    }
+
+    return { temporalScore, weightedTau, ndcgAt5, passed, temporalGate, perSampleScores: weightedTauScores, domainBreakdown };
   } finally {
     core.shutdown("ci-temporal");
     rmSync(dir, { recursive: true, force: true });

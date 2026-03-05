@@ -163,7 +163,17 @@ const TIMELINE_PATTERNS = [
   /\b(prior to|following)\b/i,
   /\b(sequence|chronolog|history|timeline|progress|evolve)\b/i,
   /\b(latest|newest|oldest|first|last)\b/i,
+  // §35 SD-007: 文中の "when" も検出（"... and when was it ..." パターン）
+  /\bwhen\s+(was|did|were|is|has|had)\b/i,
+  // §35 SD-007: ordinal temporal — "completed first", "identified earliest" など
+  /\b(completed|happened|started|finished|identified|implemented|set up|taken)\s+(first|last|earliest|latest)\b/i,
+  /\b(first|last|earliest|latest)\s+(step|action|thing|task|item|change|improvement|feature)\b/i,
   /(の前|の後|以前|以降|より前|より後)/,
+  // SD-006: bilingual — CJK/Katakana term directly suffixed with 後/前 (no の)
+  // e.g. "デプロイ後", "API改修後", "リリース前", "migration完了後"
+  /\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*[後前]/,
+  // §35 SD-007: 日本語 ordinal temporal — "最初に", "最後に"
+  /(最初|最後|直近|最近)/,
 ];
 
 const GRAPH_PATTERNS = [
@@ -183,6 +193,11 @@ const AFTER_PATTERNS: RegExp[] = [
   /(.+?)の後(?:に|で|から)?/,
   /(.+?)以降/,
   /(.+?)より後/,
+  // SD-006: bilingual — Japanese/Katakana/mixed term directly suffixed with 後 (no の)
+  // Matches: "API改修後", "デプロイ後", "マージ後", "migration完了後", "コードレビュー後", "テスト完了後"
+  // Requires at least one CJK/Katakana char in the reference to avoid false-positives.
+  // Uses non-greedy match up to 後, then allows optional particles (に/で/から).
+  /(\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*)後(?:に|で|から)?/,
 ];
 
 // "before X" / "X の前" → {type:"before", direction:"desc"}
@@ -193,6 +208,10 @@ const BEFORE_PATTERNS: RegExp[] = [
   /(.+?)の前(?:に|で)?/,
   /(.+?)以前/,
   /(.+?)より前/,
+  // SD-006: bilingual — Japanese/Katakana/mixed term directly suffixed with 前 (no の)
+  // Matches: "migration完了前", "リリース前", "デプロイ前"
+  // Requires at least one CJK/Katakana char in the reference to avoid false-positives.
+  /(\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*)前(?:に|で)?/,
 ];
 
 // "between X and Y" → {type:"between", direction:"around"}
