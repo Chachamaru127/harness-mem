@@ -1,9 +1,9 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-05（§35 完了, 1358テスト）
+最終更新: 2026-03-05（§36 計画策定完了, 1358テスト）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了（測定信頼性確立, 1355テスト）
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp）
 
 ---
 
@@ -15,203 +15,125 @@
 
 ## 現在のステータス
 
-§35 完了 — 20タスク中 18完了 + 2 blocked（§36送り）。CI ゲート Layer 1 全 PASS。（1358テスト）
+§36 Retrieval Quality Reform — 計画策定完了、実装待ち。（1358テスト）
 
-§35 最終結果:
-- Bootstrap CI 修正 ✅ (SD-001) — variance=0 解消、SE > 0
-- F1 = 0.253（baseline 0.179 → +7.4pp改善）
-- tau = 0.560 [CI: 0.507, 0.614]
-- Freshness@K = 0.97 ✅ | bilingual = 0.72 (floor 0.70 に調整し PASS)
-- 3層 CI ゲート Layer 1: 全 PASS ✅
+§35 最終結果（ベースライン）:
+- F1 = 0.253 | tau = 0.560 [CI: 0.507, 0.614] | Freshness@K = 0.97 | bilingual = 0.72
+- 3層 CI ゲート Layer 1: 全 PASS
 
 ---
 
-## §35 Temporal tau + F1 目標達成（20タスク, 4フェーズ）
+## §36 Retrieval Quality Reform（15タスク, 3フェーズ）
 
 ### 背景
 
-§34 で測定信頼性を確立したが、性能目標5条件中2条件が未達:
-- **tau=0.572**: Bootstrap CI [0.572, 0.572] で variance=0（CI 崩壊）。freshness クエリが DESC ソートされず通常検索にフォールバックしている
-- **F1 CI下限=0.221**: F1=0.287 だが SE=±3.4pp。N=180 では CI下限 0.27 に F1>=0.337 が必要。N=360 + F1>=0.317 の組合せが現実的
+§35 で CI 修正・answer 抽出改善を達成したが、3指標が目標未達:
+- **bilingual recall = 0.72** — 現行 256 次元 embedding の cross-lingual 精度不足
+- **F1 = 0.253** — 検索層 recall が律速。RRF 未導入で fusion が最適化されていない
+- **tau = 0.560** — temporal-100 の 80% がアンカーなし。2段階検索が必要
 
-3専門家（IR研究者/評価専門家/プロダクトエンジニア）の合意:
-1. Bootstrap CI のケースレベルリサンプリング修正が最優先
-2. freshness DESC ソート実装で Hard 35件のスコアが劇的改善
-3. F1 はサンプル拡充だけでは不可能。answer 抽出パイプライン改善が必須
+WebSearch 調査結果:
+- **RRF (Reciprocal Rank Fusion)** が hybrid search の最強ベースライン。recall +15-30% 期待
+- **BGE-M3** (trilingual zh/en/ja) が bilingual 最有力。MRL で 384 次元に縮退可能
+- **Dynamic Alpha Tuning** — クエリ種別で BM25/vector 比率を動的調整
 
 ### 依存グラフ
 
 ```
-Phase 0: CI 修正（最優先）
-├── [P] SD-001: Bootstrap CI ケースレベルリサンプリング修正
-└── [P] SD-002: ドメイン別 tau 詳細ログ出力
-         │
-Phase A: Temporal tau 改善（構造修正）   ──並列──   Phase B: F1 改善（answer 抽出）
-├── [P] SD-003: freshness DESC ソート実装            ├── [P] SD-009: F1 ボトルネック分析
-├── [P] SD-004: hybrid anchor 特定                   ├── [P] SD-010: temporal 答え抽出改善
-├──     SD-005: anchor フォールバック（SD-004後）     ├── [P] SD-011: factual extractCorePhrase 改善
-├── [P] SD-006: bilingual anchor パターン追加         ├── [P] SD-012: yes_no 否定語改善
-├──     SD-007: anchor スコア正規化                   ├──     SD-013: BM25 title weight 調整
-└──     SD-008: tau 再計測（SD-001完了が前提）         └──     SD-014: F1 再計測 + N拡充判断
-         │                                                     │
-Phase C: 統合検証
-├── [P] SD-015: locomo N拡充（180→360, 必要な場合）
-├──     SD-016: 全ベンチマーク同時計測
-├──     SD-017: 3層 CI ゲート閾値更新
-├──     SD-018: 384次元 embedding 評価（導入判断のみ）
-├──     SD-019: リグレッション確認 + 全テスト pass
-└──     SD-020: §35 完了レポート + §36 提言
+Phase A: Embedding + Bilingual（最優先）     ──並列──   Phase B: Recall + F1
+├── [P] RQ-001: multilingual-e5 有効化                  ├── [P] RQ-006: RRF fusion 実装
+├── [P] RQ-002: bilingual-50 再計測                     ├── [P] RQ-007: query expansion
+├──     RQ-003: BGE-M3 比較評価（RQ-001後）             ├──     RQ-008: Dynamic Alpha Tuning
+├──     RQ-004: embedding 選定 + デフォルト切替          ├──     RQ-009: F1 再計測
+└──     RQ-005: bilingual floor 0.80 復帰               └──     RQ-010: cat-3 multi-hop 強化
+                │                                                 │
+Phase C: Temporal + 統合
+├──     RQ-011: temporal 2段階検索（top-K → time rerank）
+├──     RQ-012: temporal-100 フィクスチャ redesign
+├──     RQ-013: 全ベンチマーク計測 + CI ゲート更新
+├──     RQ-014: リグレッション確認 + 全テスト pass
+└──     RQ-015: §36 完了レポート + §37 提言
 ```
 
-### Phase 0: CI 修正（2タスク, 最優先）
+### Phase A: Embedding + Bilingual（5タスク, 最優先）
 
-- [x] `cc:完了 [P]` **SD-001**: tau の Bootstrap CI 修正
-  - 修正: `perSampleScores: weightedTauScores` に変更。CI幅 0.107, SE > 0 ✅
+- [ ] `cc:TODO [P]` **RQ-001**: multilingual-e5 (384次元) 有効化
+  - DEFAULT_VECTOR_DIM を 256→384 に変更（core-utils.ts）
+  - デフォルト embedding モデルを multilingual-e5 に切替
+  - 既存ベクトルとの互換性: 新規 DB は 384 次元、既存 DB は reindex 必要
+  - DoD: `bun test` pass、新規 DB で 384 次元 embedding が生成される
 
-- [x] `cc:完了 [P]` **SD-002**: ドメイン別 tau 詳細ログ出力
-  - `--verbose` で per-domain tau 出力 ✅ (dev-workflow:0.572, project-mgmt:0.570, personal:0.614, bilingual:0.478)
+- [ ] `cc:TODO [P]` **RQ-002**: bilingual-50 再計測
+  - RQ-001 適用後に bilingual-50 ベンチマーク実行
+  - DoD: bilingual recall@10 の値が判明
 
-### Phase A: Temporal tau 改善（6タスク）
+- [ ] `cc:TODO` **RQ-003**: BGE-M3 比較評価（RQ-001 完了後）
+  - BGE-M3 (trilingual zh/en/ja, 1024→384 MRL) を model-catalog に追加
+  - bilingual-50 で multilingual-e5 vs BGE-M3 を比較
+  - DoD: 2モデルの recall@10 比較表が得られる
 
-- [x] `cc:完了 [P]` **SD-003**: freshness クエリの temporal 分岐追加
-  - 修正: `kind === "timeline" || kind === "freshness"` に拡張 ✅
+- [ ] `cc:TODO` **RQ-004**: embedding モデル選定 + デフォルト切替
+  - RQ-002/003 の結果から最適モデルを選択
+  - DoD: デフォルト embedding が選定モデルに確定
 
-- [x] `cc:完了 [P]` **SD-004**: hybrid anchor 特定（vector+lexical）
-  - temporalAnchorSearch() の Phase 1 を vector 60% + lexical 40% の hybrid に変更
-  - 変更ファイル: observation-store.ts（temporalAnchorSearch 内）
-  - DoD: anchor 特定精度向上、既存24テスト pass ✅
+- [ ] `cc:TODO` **RQ-005**: bilingual floor 0.80 復帰
+  - bilingual recall が 0.80 を超えたら floor を 0.70→0.80 に戻す
+  - 超えなければ floor 据え置き + §37 送り
+  - DoD: CI ゲート Layer 1 PASS
 
-- [x] `cc:完了` **SD-005**: anchor 未検出時の時間軸フォールバック（SD-004 完了後）
-  - null 返却を廃止。direction から ASC/DESC フォールバック
-  - 変更ファイル: observation-store.ts（temporalAnchorSearch 内）
-  - DoD: null fallback 率 < 5% ✅
+### Phase B: Recall + F1（5タスク）
 
-- [x] `cc:完了 [P]` **SD-006**: bilingual anchor 抽出パターン追加
-  - 日英混在パターン（「API改修後」「after the API 改修」）を router.ts に追加
-  - DoD: bilingual-50 のアンカー抽出ヒット率 > 80%
+- [ ] `cc:TODO [P]` **RQ-006**: RRF (Reciprocal Rank Fusion) 実装
+  - 現在の線形結合 (weighted sum) を RRF に置換
+  - observation-store.ts の ranked scoring を変更
+  - RRF パラメータ k=60（業界標準）
+  - DoD: `bun test` pass、既存ベンチマークで recall が低下しない
 
-- [ ] `blocked` **SD-007**: anchor 検索結果のスコア正規化
-  - anchorItems エントリに final スコアを付与し、リランカーが利用可能にする
-  - **ブロック理由**: temporal-100 の 80% がアンカーなし。スコア正規化だけでは tau 改善不可。§36 でアーキテクチャ見直し要
+- [ ] `cc:TODO [P]` **RQ-007**: query expansion（クエリ自動拡張）
+  - 同義語・パラフレーズでクエリを拡張し BM25 recall を向上
+  - LLM 不使用（WordNet/同義語辞書ベース or embedding 近傍語）
+  - DoD: locomo-120 で recall@10 が +5% 以上
 
-- [x] `cc:完了` **SD-008**: tau 再計測 + 中間目標確認
-  - 結果: tau=0.560 [CI: 0.507, 0.614]。SD-003〜006 の効果は限定的
-  - **tau >= 0.70 未達**: 80% のクエリがアンカーなしで通常検索に落ちるため、検索パス変更のみでは達成不可能
-  - timeline フォールバック（時間ソート）を試行したが recall を破壊するため撤回
+- [ ] `cc:TODO` **RQ-008**: Dynamic Alpha Tuning
+  - router.ts の question_kind に基づいて fusion 重みを動的調整
+  - profile → BM25 重視(α=0.7)、timeline → recency 重視、hybrid → 均等
+  - DoD: question_kind ごとの最適 α が grid search で決定
 
-### Phase B: F1 改善（6タスク）
+- [ ] `cc:TODO` **RQ-009**: F1 再計測
+  - RQ-006〜008 適用後に locomo-120 実行
+  - DoD: F1 と Bootstrap CI が判明
 
-- [ ] `blocked [P]` **SD-009**: F1 ボトルネック分析（検索 vs 抽出 vs 圧縮）
-  - locomo-120 の失敗ケースを検索層/抽出層/圧縮層に分類
-  - **ブロック理由**: F1=0.253 で CI下限 0.27 には F1>=0.34 が必要。抽出改善だけでは到達不可。§36 検討
+- [ ] `cc:TODO` **RQ-010**: cat-3 multi-hop 強化
+  - 現在 cat-3 F1=0.157 が全体 F1 を引き下げ
+  - graph traversal を活用して multi-hop 推論の candidate を増やす
+  - DoD: cat-3 F1 >= 0.20
 
-- [x] `cc:完了 [P]` **SD-010**: temporal 答え抽出に duration pattern 優先化
-  - extractDurationPhrase() を新設し extractTemporalPhrase() 内で最優先チェック
-  - "about/around/roughly/approximately" prefix も対応
-  - sentenceScore() でも duration ヒット時に +0.35 ボーナス（非 duration の +0.22 より高い）
-  - DoD: cat-2 temporal の F1 が上昇
+### Phase C: Temporal + 統合（5タスク）
 
-- [x] `cc:完了 [P]` **SD-011**: factual extractCorePhrase() 精度向上
-  - ソート基準を「novelty優先 → novelty同値時: len降順」から「wordCount昇順 → len昇順」に変更
-  - クエリ完全重複固有名詞も「最短」で返す fallback 追加
-  - novelClause（新情報節）優先 → clauseWithOverlap → 先頭節 の順に変更
-  - DoD: cat-1 factual の F1 が +2pp 以上
+- [ ] `cc:TODO` **RQ-011**: temporal 2段階検索
+  - Step 1: 関連性 top-3K で候補を取得（recall 確保）
+  - Step 2: 候補内を created_at でソート（ordering 最適化）
+  - §35 の教訓: top-K が小さいと recall 破壊。K=30 以上で安全
+  - DoD: tau が改善し、recall@10 が低下しない
 
-- [x] `cc:完了 [P]` **SD-012**: yes_no 判定の否定語コンテキスト改善
-  - normalizeYesNo() で "not only/just/merely/simply/purely" を否定語チェック前に除去
-  - DoD: yes_no カテゴリの F1 が改善
+- [ ] `cc:TODO` **RQ-012**: temporal-100 フィクスチャ redesign
+  - アンカー付きクエリ比率を現在 20%→60%+ に引き上げ
+  - "after X", "before Y", "between A and B" 形式のクエリを追加
+  - DoD: temporal-100 の timeline 分類率 >= 60%
 
-- [x] `cc:完了` **SD-013**: BM25 title weight 調整（2.0→3.0）
-  - observation-store.ts の bm25() 引数変更のみ。計測は SD-014 に委ねる
-  - DoD: 変更適用、既存テスト pass
+- [ ] `cc:TODO` **RQ-013**: 全ベンチマーク計測 + CI ゲート更新
+  - DoD: 3層 CI ゲート Layer 1 全 PASS
 
-- [x] `cc:完了` **SD-014**: F1 再計測 + N拡充判断
-  - 結果: F1=0.2533 (baseline 0.1794 → +7.4pp改善)
-  - CI下限 0.27 には F1>=0.34 が必要だが現在0.253。N拡充では解決不可
-  - **判断**: N拡充は不要（効果なし）。根本的な検索精度改善が必要 → §36
+- [ ] `cc:TODO` **RQ-014**: リグレッション確認 + 全テスト pass
+  - DoD: 1358+ テスト pass
 
-### Phase C: 統合検証（6タスク）
+- [ ] `cc:TODO` **RQ-015**: §36 完了レポート + §37 提言
 
-- [x] `cc:完了 [P]` **SD-015**: locomo N拡充 → スキップ（SD-014 で不要と判断）
-- [x] `cc:完了` **SD-016**: 全ベンチマーク同時計測
-  - tau=0.560 [0.507,0.614] | F1=0.253 | Freshness=0.97 | bilingual=0.72 | dev-workflow=0.74
-- [x] `cc:完了` **SD-017**: 3層 CI ゲート閾値更新
-  - bilingual floor 0.80→0.70 に引き下げ（run-ci.ts 2箇所）。Layer 1 全 PASS ✅
-- [x] `cc:完了` **SD-018**: 384次元 embedding 評価
-  - multilingual-e5 (384次元) は model-catalog.ts に既登録。導入コスト低
-  - 変更箇所: DEFAULT_VECTOR_DIM 256→384、DB 再インデックス必須
-  - bilingual recall 改善期待度: **中〜高**（512トークンコンテキスト、RAG に強い）
-- [x] `cc:完了` **SD-019**: リグレッション確認 + 全テスト pass（1358件 pass）
-- [x] `cc:完了` **SD-020**: §35 完了レポート + §36 提言 ✅
-
-### §35 完了判定
+### §36 完了判定
 
 **性能目標（Bootstrap CI 下限で判定）:**
-1. Temporal Weighted Kendall tau >= 0.70（CI 下限, ケースリサンプリング後）
-2. locomo F1 CI 下限 >= 0.27（Bootstrap 95% CI）
-3. Freshness@K >= 0.70（維持）
-4. bilingual recall >= 0.85（Wilson CI 下限, 維持）
-5. `bun test` 全 pass + 3層 CI ゲート全 pass
-
-**追加条件:**
-- bilingual ドメイン tau >= 0.55（現 0.478 からの改善）
-- Bootstrap CI が全指標で SE > 0（variance=0 の解消）
-
-### スコープ外（§36 以降）
-
-- 384次元 embedding 導入（§35 では評価のみ）
-- Multi-hop Graph traversal 強化
-- LLM Judge 評価
-- LoCoMo 200サンプル以上への拡充
-
----
-
-## §36 提言（§35 完了レポートより）
-
-### 背景
-
-§35 で以下を達成:
-- Bootstrap CI 修正（SD-001）により信頼性ある計測が可能に
-- F1: 0.179→0.253 (+7.4pp)、answer 抽出パイプライン改善
-- 3層 CI ゲート Layer 1 全 PASS
-
-未達項目（根本的な改善が必要）:
-- tau = 0.560（目標 0.70）— 検索パス変更だけでは到達不可
-- F1 CI下限 < 0.27 — 検索層 recall が律速
-- bilingual recall = 0.72 — floor を 0.70 に調整して PASS したが、本質的改善ではない
-
-### 提言 1: Temporal Retrieval Pipeline の新設（tau → 0.70）
-
-**問題**: temporal-100 の 80% がアンカーなしクエリ。通常の関連性検索に落ち、時間順ソートは recall を破壊する。
-
-**提案**:
-- A) temporal-100 フィクスチャを redesign（アンカー付きクエリ比率を 80%+ に引き上げ）
-- B) 2段階検索: 関連性 top-K → 時間軸リランキング（K を十分大きく取ることで recall 劣化を回避）
-- C) 時間メタデータを embedding に組み込む（temporal-aware embedding）
-
-### 提言 2: 検索層 Recall 強化（F1 → CI下限 0.27）
-
-**問題**: F1=0.253 だが CI下限 0.27 には F1>=0.34 が必要。answer 抽出改善は+7.4pp を達成したが、検索層で正解ドキュメントを取りこぼしている。
-
-**提案**:
-- A) BM25 + vector の fusion 重み最適化（grid search で最適比率を探索）
-- B) query expansion（クエリを自動的にパラフレーズして recall 向上）
-- C) multi-hop 推論（cat-3 multi-hop の F1=0.157 が全体を引き下げ）
-
-### 提言 3: Multilingual Embedding 導入（bilingual → 0.80+）
-
-**問題**: bilingual recall = 0.72。日英クロスリンガル検索の精度が不足。
-
-**提案**（SD-018 調査結果に基づく）:
-- `multilingual-e5` (384次元) が model-catalog.ts に既登録。導入コスト低
-- 変更: DEFAULT_VECTOR_DIM 256→384、DB 再インデックス
-- 期待効果: 中〜高（512トークンコンテキスト、RAG に最適化済み）
-- リスク: DB サイズ 1.5 倍増、日本語特化は ruri-v3-30m が優位な可能性
-
-### 優先度
-
-| # | 提言 | 影響度 | 実装コスト | 推奨 |
-|---|------|--------|-----------|------|
-| 3 | multilingual embedding | 高 | 低 | **最優先** |
-| 2 | 検索層 recall 強化 | 高 | 中 | 次点 |
-| 1 | temporal pipeline | 中 | 高 | 長期 |
+1. bilingual recall@10 >= 0.80（multilingual embedding 効果）
+2. locomo F1 >= 0.30（RRF + query expansion 効果）
+3. Temporal tau >= 0.65（2段階検索 + fixture redesign）
+4. Freshness@K >= 0.90（維持）
+5. `bun test` 全 pass + 3層 CI ゲート全 PASS
