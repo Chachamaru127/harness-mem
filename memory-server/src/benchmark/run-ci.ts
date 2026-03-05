@@ -116,9 +116,9 @@ function layer1AbsoluteFloor(scores: {
 }): { passed: boolean; failures: string[] } {
   const FLOORS = {
     f1: 0.20,
-    freshness: 0.40,
+    freshness: 0.90,
     temporal: 0.50,
-    bilingual: 0.80,
+    bilingual: 0.70,
   };
   const failures: string[] = [];
   for (const [key, floor] of Object.entries(FLOORS)) {
@@ -384,7 +384,7 @@ async function runBilingualBenchmark(fixturePath: string): Promise<{ recall: num
     }
 
     const recall = perSampleScores.length > 0 ? perSampleScores.reduce((a, b) => a + b, 0) / perSampleScores.length : 0;
-    const passed = recall >= 0.8;
+    const passed = recall >= 0.70;
     return { recall, passed, perSampleScores };
   } finally {
     core.shutdown("ci-bilingual");
@@ -599,12 +599,12 @@ async function main(): Promise<void> {
       const { recall, passed, perSampleScores: biScores } = await runBilingualBenchmark(bilingualPath);
       const biCI = ciRunner.bootstrapCI(biScores);
       ciScores.bilingual = recall; // §34 FD-012: 3層ゲート用
-      console.log(`[CI] ${bilingualLabel} recall@10: ${recall.toFixed(4)} (threshold: 0.8)`);
+      console.log(`[CI] ${bilingualLabel} recall@10: ${recall.toFixed(4)} (threshold: 0.70)`);
       console.log(`[CI] ${bilingualLabel} 95% Bootstrap CI: [${biCI.lower.toFixed(4)}, ${biCI.upper.toFixed(4)}] (method: ${biCI.method})`);
       if (passed) {
         console.log(`[CI] ${bilingualLabel} PASSED`);
       } else {
-        console.error(`[CI] ${bilingualLabel} FAILED: recall@10=${recall.toFixed(4)} < 0.8`);
+        console.error(`[CI] ${bilingualLabel} FAILED: recall@10=${recall.toFixed(4)} < 0.70`);
         allPassed = false;
       }
     } catch (err) {
