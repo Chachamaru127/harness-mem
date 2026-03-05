@@ -142,6 +142,14 @@ function decodeFeedCursor(input: string | undefined): FeedCursor | null {
   return null;
 }
 
+// S38-007: temporal 2段階検索を誤爆させないための意図判定（防御的）
+const TEMPORAL_INTENT_PATTERN =
+  /\b(when|before|after|since|until|during|between|timeline|history|chronolog|first|last|earliest|latest|how long|what year|what month|what date)\b|(の前|の後|以前|以降|最初|最後|直近|最近)/i;
+
+function hasTemporalIntent(query: string): boolean {
+  return TEMPORAL_INTENT_PATTERN.test(query);
+}
+
 // ---------------------------------------------------------------------------
 // ObservationStore クラス
 // ---------------------------------------------------------------------------
@@ -715,6 +723,19 @@ export class ObservationStore {
     return { ranked, pre, post };
   }
 
+  /**
+   * S38-007: temporal 2段階検索の適用条件を厳格化。
+   * - 明示 timeline 指定は許可
+   * - 暗黙分類は confidence と query 文面の temporal intent を両方満たす場合のみ許可
+   */
+  private shouldApplyTemporalTwoStageRerank(request: SearchRequest, routeDecision: RouteDecision): boolean {
+    if (routeDecision.kind !== "timeline") return false;
+    if (routeDecision.temporalAnchors && routeDecision.temporalAnchors.length > 0) return false;
+    if (request.question_kind === "timeline") return true;
+    if (routeDecision.confidence < 0.6) return false;
+    return hasTemporalIntent(request.query);
+  }
+
   // ---------------------------------------------------------------------------
   // §34 FD-006: temporalAnchorSearch — Anchor-Pivoted 時系列検索
   // ---------------------------------------------------------------------------
@@ -1215,10 +1236,7 @@ export class ObservationStore {
     // RQ-011: temporal 2段階検索 — timeline クエリかつ anchor なし
     // Phase 1: RRF で上位候補確保（recall 保護: top-30 以上）
     // Phase 2: 候補内を created_at 降順でソート（ordering 最適化）
-    if (
-      routeDecision.kind === "timeline" &&
-      (!routeDecision.temporalAnchors || routeDecision.temporalAnchors.length === 0)
-    ) {
+    if (this.shouldApplyTemporalTwoStageRerank(request, routeDecision)) {
       const TEMPORAL_CANDIDATE_K = Math.max(30, limit * 3);
       const temporalCandidates = ranked.slice(0, TEMPORAL_CANDIDATE_K);
       temporalCandidates.sort((lhs, rhs) => {

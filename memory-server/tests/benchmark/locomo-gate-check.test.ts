@@ -1,5 +1,11 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { checkF1Gate, resolveThreshold, DEFAULT_F1_THRESHOLD } from "../../src/benchmark/locomo-gate-check";
+import {
+  checkCategoryFloor,
+  checkF1Gate,
+  DEFAULT_F1_THRESHOLD,
+  extractCategoryF1,
+  resolveThreshold,
+} from "../../src/benchmark/locomo-gate-check";
 
 describe("locomo-gate-check: checkF1Gate", () => {
   test("F1 が閾値未満の低下ならば PASSED", () => {
@@ -52,5 +58,31 @@ describe("locomo-gate-check: resolveThreshold (LOCO-003)", () => {
     process.env["LOCOMO_F1_THRESHOLD"] = "0.03";
     const threshold = resolveThreshold(0.10);
     expect(threshold).toBeCloseTo(0.10, 5);
+  });
+});
+
+describe("locomo-gate-check: category gates", () => {
+  test("extractCategoryF1 は metrics.by_category から値を取得できる", () => {
+    const sample = {
+      metrics: {
+        by_category: {
+          "cat-2": { f1: 0.21 },
+          "cat-3": { f1: 0.27 },
+        },
+      },
+    };
+    expect(extractCategoryF1(sample, "cat-2")).toBeCloseTo(0.21, 5);
+    expect(extractCategoryF1(sample, "cat-3")).toBeCloseTo(0.27, 5);
+    expect(extractCategoryF1(sample, "cat-4")).toBeNull();
+  });
+
+  test("checkCategoryFloor は floor を下回ると FAILED", () => {
+    const fail = checkCategoryFloor("cat-2", 0.19, 0.20);
+    expect(fail.passed).toBe(false);
+    expect(fail.message).toContain("FAILED");
+
+    const pass = checkCategoryFloor("cat-3", 0.25, 0.24);
+    expect(pass.passed).toBe(true);
+    expect(pass.message).toContain("PASSED");
   });
 });

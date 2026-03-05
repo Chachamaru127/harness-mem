@@ -374,7 +374,7 @@ export function normalizeLocomoAnswer(options: NormalizeLocomoAnswerOptions): No
     };
   }
 
-  if (options.kind === "multi_hop" || options.category === "cat-3") {
+  if (options.kind === "multi_hop") {
     const multiHop = normalizeMultiHop(options);
     return {
       normalized: multiHop.value,
@@ -390,4 +390,3 @@ export function normalizeLocomoAnswer(options: NormalizeLocomoAnswerOptions): No
     reference_time: referenceIso,
   };
 }
-

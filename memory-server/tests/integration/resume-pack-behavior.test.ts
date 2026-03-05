@@ -122,10 +122,15 @@ describe("resume-pack integration behavior", () => {
       expect(payload.ok).toBe(true);
       const observations = pickObservationItems(payload.items);
       const ids = observations.map((item) => String(item.id));
+      const leakCount = observations.filter((item) => {
+        const tags = ((item.privacy_tags || []) as string[]).map((tag) => tag.toLowerCase());
+        return tags.includes("private") || tags.includes("sensitive");
+      }).length;
 
       expect(ids).toContain("obs_resume-public");
       expect(ids).not.toContain("obs_resume-private");
       expect(ids).not.toContain("obs_resume-sensitive");
+      expect(leakCount).toBe(0);
 
       for (const item of observations) {
         const tags = ((item.privacy_tags || []) as string[]).map((tag) => tag.toLowerCase());
@@ -165,8 +170,12 @@ describe("resume-pack integration behavior", () => {
       expect(payload.ok).toBe(true);
 
       const observations = pickObservationItems(payload.items);
+      const leakCount = observations.filter(
+        (item) => String(item.project) !== "resume-pack-project-a"
+      ).length;
       expect(observations.length).toBeGreaterThan(0);
       expect(observations.some((item) => item.id === "obs_project-b-1")).toBe(false);
+      expect(leakCount).toBe(0);
 
       for (const item of observations) {
         expect(item.project).toBe("resume-pack-project-a");

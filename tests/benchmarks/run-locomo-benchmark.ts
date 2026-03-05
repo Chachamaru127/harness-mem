@@ -226,6 +226,14 @@ function normalizeEmbeddingMode(input: string | undefined): BenchmarkEmbeddingMo
   return "fallback";
 }
 
+function assertOnnxOnlyMode(mode: BenchmarkEmbeddingMode): void {
+  if (mode !== "onnx") {
+    throw new Error(
+      `[locomo-benchmark] strict ONNX-only mode violated: HARNESS_BENCH_EMBEDDING_MODE=${mode}`
+    );
+  }
+}
+
 function normalizeVectorDimension(raw: unknown, fallback: number): number {
   const num = typeof raw === "number" ? raw : Number(raw);
   if (!Number.isFinite(num)) return fallback;
@@ -236,21 +244,20 @@ function normalizeVectorDimension(raw: unknown, fallback: number): number {
 
 function resolveEmbeddingProfile(options: RunLocomoBenchmarkOptions): EmbeddingProfile {
   const mode = normalizeEmbeddingMode(
-    options.embeddingMode || process.env.HARNESS_BENCH_EMBEDDING_MODE || "fallback"
+    options.embeddingMode || process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx"
   );
-  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
+  assertOnnxOnlyMode(mode);
+  const provider: "local" | "fallback" = "local";
   const model =
-    mode === "onnx"
-      ? (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
-        "multilingual-e5"
-      : "fallback";
-  const defaultVectorDimension = mode === "onnx" ? 384 : 64;
+    (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
+    "multilingual-e5";
+  const defaultVectorDimension = 384;
   const vectorDimension = normalizeVectorDimension(
     options.vectorDimension ?? process.env.HARNESS_BENCH_VECTOR_DIM,
     defaultVectorDimension
   );
   const gateEnabled =
-    options.onnxGate ?? parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx");
+    options.onnxGate ?? parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, true);
   const primeEnabled =
     options.primeEmbedding ?? parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true);
   return {

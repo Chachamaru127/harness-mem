@@ -13,6 +13,58 @@
       "freshness": 0.96,
       "temporal": 0.5666666666666667,
       "bilingual": 0.7
+    },
+    {
+      "timestamp": "2026-03-05T18:24:57.283Z",
+      "f1": 0.3147251821865921,
+      "freshness": 0.96,
+      "temporal": 0.5666666666666667,
+      "bilingual": 0.9,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-05T18:26:33.862Z",
+      "f1": 0.3147251821865921,
+      "freshness": 0.96,
+      "temporal": 0.5666666666666667,
+      "bilingual": 0.9,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-05T18:26:51.749Z",
+      "f1": 0.3147251821865921,
+      "freshness": 0.96,
+      "temporal": 0.5666666666666667,
+      "bilingual": 0.9,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-05T18:27:10.557Z",
+      "f1": 0.3147251821865921,
+      "freshness": 0.96,
+      "temporal": 0.5666666666666667,
+      "bilingual": 0.9,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
     }
   ]
 }

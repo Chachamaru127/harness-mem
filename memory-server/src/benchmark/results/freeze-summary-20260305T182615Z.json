@@ -1,0 +1,15 @@
+{
+  "generated_at": "20260305T182615Z",
+  "runs_tsv": "freeze-run-20260305T182615Z.tsv",
+  "metrics": {
+    "locomo_f1": { "mean": 0.3147, "min": 0.3147, "max": 0.3147, "span": 0.0000 },
+    "cat2_f1_mean": 0.2859,
+    "cat3_f1_mean": 0.3189,
+    "bilingual_mean": 0.9000,
+    "freshness_mean": 0.9600,
+    "temporal_mean": 0.5667
+  },
+  "checks": {
+    "panic_or_fallback_detected": false
+  }
+}

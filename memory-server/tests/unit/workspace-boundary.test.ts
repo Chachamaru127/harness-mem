@@ -67,6 +67,12 @@ describe("workspace boundary", () => {
 
       const searchAlpha = core.search({ query: "unique content", project: "project-alpha", strict_project: true, include_private: true });
       const searchBeta = core.search({ query: "unique content", project: "project-beta", strict_project: true, include_private: true });
+      const alphaLeakCount = (searchAlpha.items as Array<{ project: string }>).filter(
+        (item) => item.project !== "project-alpha"
+      ).length;
+      const betaLeakCount = (searchBeta.items as Array<{ project: string }>).filter(
+        (item) => item.project !== "project-beta"
+      ).length;
 
       // project-alpha の結果に project-beta のデータが混入しないこと
       for (const item of searchAlpha.items as Array<{ project: string }>) {
@@ -81,6 +87,8 @@ describe("workspace boundary", () => {
       // 各プロジェクトの結果が0件でないこと（データが正しく記録されていること）
       expect(searchAlpha.ok).toBe(true);
       expect(searchBeta.ok).toBe(true);
+      expect(alphaLeakCount).toBe(0);
+      expect(betaLeakCount).toBe(0);
     } finally {
       core.shutdown("test");
     }

@@ -119,6 +119,12 @@ describe("proof-pack summary JSON contract", () => {
     expect(script).toContain('"leak_count"');
   });
 
+  test("privacy-boundary pass is derived from leak_count == 0", () => {
+    const script = readFileSync(PROOF_PACK_SCRIPT, "utf-8");
+    expect(script).toContain('[ "${PRIVATE_LEAK_COUNT}" -eq 0 ]');
+    expect(script).toContain('[ "${BOUNDARY_LEAK_COUNT}" -eq 0 ]');
+  });
+
   test("no /v1/observations endpoint is referenced in scripts", () => {
     const script = readFileSync(PROOF_PACK_SCRIPT, "utf-8");
     // P0-2: 存在しない API エンドポイントを使っていないこと

@@ -233,4 +233,82 @@ describe("LOCOMO harness adapter", () => {
       rmSync(tmp, { recursive: true, force: true });
     }
   });
+
+  test("S38-004: cat-2 label does not force temporal routing for non-temporal question", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-cat2-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-cat2-non-temporal",
+        conversation: [
+          { speaker: "user", text: "I started attending Stanford University this year." },
+          { speaker: "assistant", text: "You are currently attending Stanford University." },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-cat2" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("What school am I attending?", { category: "cat-2" });
+
+      expect(replay.question_kind).toBe("factual");
+      expect(replay.prediction.toLowerCase()).toContain("stanford");
+      expect(replay.answer_strategy).not.toContain("temporal");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S38-004: cat-3 label does not force multi-hop routing for factual language query", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-cat3-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-cat3-factual",
+        conversation: [
+          { speaker: "user", text: "At home, I usually speak Spanish with my family." },
+          { speaker: "assistant", text: "You primarily speak Spanish at home." },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-cat3" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("What language do I speak at home?", { category: "cat-3" });
+
+      expect(replay.question_kind).toBe("factual");
+      expect(replay.prediction.toLowerCase()).toContain("spanish");
+      expect(replay.answer_strategy).not.toContain("counterfactual");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S38-005: slot-first extraction prefers numeric answer for rate questions", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-slot-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-slot-numeric",
+        conversation: [
+          { speaker: "user", text: "Our signup conversion rate was 18% last quarter." },
+          { speaker: "assistant", text: "The conversion stayed around 18%." },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-slot" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("What was the conversion rate?");
+
+      expect(replay.question_kind).toBe("factual");
+      expect(replay.prediction).toMatch(/18\s?%/);
+      expect(replay.answer_strategy).toContain("numeric-slot");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
 });

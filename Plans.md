@@ -1,9 +1,9 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-06（§37 完了 — ONNX同等化/キャッシュ/bilingual復帰, run-ci PASS）
+最終更新: 2026-03-06（§38 完了 — /breezing all, 3-run freeze PASS, locomo F1=0.3147）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp） | §36 15タスク完了（CI PASS, F1+1.43pp, cat-3+9.5pp） | §37 10タスク完了（run-ci PASS, bilingual=0.90）
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp） | §36 15タスク完了（CI PASS, F1+1.43pp, cat-3+9.5pp） | §37 10タスク完了（run-ci PASS, bilingual=0.90） | §38 12タスク完了（3-run freeze PASS, F1=0.3147）
 
 ---
 
@@ -15,21 +15,24 @@
 
 ## 現在のステータス
 
-**§37 ONNX本番同等化 + cache + bilingual復帰 — 完了**（2026-03-06, run-ci PASS, 1035テスト pass）
+**§38 Retrieval Quality Reform（Trust Lock + Cat2/3改善）— 完了**（2026-03-06, `/breezing all`, 3-run freeze PASS）
 
-| 指標 | §36 | §37 | 変化 |
+| 指標 | §37 | §38 | 変化 |
 |------|-----|-----|------|
-| locomo F1 (overall) | 0.268 | 0.2651 | -0.29pp |
-| bilingual recall@10 | 0.70 | 0.90 | +20pp ✅ |
+| locomo F1 (overall) | 0.2651 | 0.3147 | +4.96pp ✅ |
+| cat-2 F1 | - | 0.2859 | （§38で新規ゲート化） |
+| cat-3 F1 | - | 0.3189 | （§38で新規ゲート化） |
+| bilingual recall@10 | 0.90 | 0.90 | ±0 |
 | Freshness@K | 0.96 | 0.96 | ±0 |
-| temporal score | 0.567 | 0.5667 | ±0 |
-| CI Layer 1 | PASS | PASS | ✅ |
-| CI Layer 2 | FAIL (旧profile比較) | PASS (同一profile比較) | ✅ |
+| temporal score | 0.5667 | 0.5667 | ±0 |
+| 3-run span (overall F1 max-min) | - | 0.0000 | ✅ |
+| panic/fallback | - | 0件 | ✅ |
 
 成果物:
-- `docs/benchmarks/s37-onnx-equivalence-report-2026-03-06.md`（S37-001 差分表 + 実測結果）
-- `memory-server/src/benchmark/run-ci.ts`（ONNX gate / cacheStats / profile-aware Layer2）
-- `memory-server/src/core/core-utils.ts`（bilingual失敗語彙を反映した SYNONYM_MAP 拡張）
+- `docs/benchmarks/s38-retrieval-quality-freeze-report-2026-03-06.md`（統合報告）
+- `scripts/bench-freeze-locomo.sh`（3-run freeze + panic/fallback検知 + summary生成）
+- `memory-server/src/benchmark/run-ci.ts`（strict ONNX, manifest履歴, fail-fast厳格化）
+- `tests/benchmarks/locomo-harness-adapter.ts`（category強制撤廃 + slot-first抽出）
 
 ---
 
@@ -126,3 +129,147 @@ Phase C: Bilingual復帰（Phase A+B 後）
 
 - [x] `cc:完了` **S37-010**: §37 統合レポート + CI gate 更新
   - DoD: ONNX同等性 / cache効果 / bilingual 0.80 の3条件を CI Layer 1 で検証
+
+---
+
+## §38 実行計画（最強改善プラン: Multi-Agent Critic 統合版）
+
+進行状態: `cc:完了`（3-run freeze PASS, run-ci PASS）
+
+### Plan Critic 統合判断（Dirac / Peirce / Anscombe）
+
+| 論点 | 判断 | 採用理由 |
+|------|------|----------|
+| `overall F1` 目標 | **0.30 固定** | 0.285 は中間ゲート。最終Goは 3-run mean 0.30 以上のみ。 |
+| 計測基盤固定（panic/fallback/manifest） | **必須先行** | 比較条件が揺れると改善判定が無効化されるため。 |
+| `cat-2` / `cat-3` の category 強制ルール撤廃 | **必須** | 現失点に直結する高ROI施策。 |
+| slot-first 抽出 | **段階導入** | 高利得だが副作用管理が必要。Shadow評価→本線化で導入。 |
+| temporal 改善 | **限定適用** | 全体悪化を防ぐため question-aware 条件でのみ適用。 |
+
+### Feature Priority Matrix
+
+| 区分 | 項目 | 完了条件（DoD） |
+|------|------|-----------------|
+| Required | 計測信頼性ロック（panic/fallback/manifest） | ベンチ判定が比較可能で、偽陽性CIを防止できる |
+| Required | `cat-2`/`cat-3` 誤ルーティング修正 | category 依存の強制分岐を撤廃し回帰テスト通過 |
+| Required | 回答抽出（slot-first）改善 | 主要失敗ケースで短答精度を改善し、cat別スコアを押し上げる |
+| Required | 最終品質ゲート（3-run freeze） | `overall F1 >= 0.30` を再現可能に満たす |
+| Recommended | question-aware rerank 微調整 | cat-2/cat-3 を補強しつつ cat-1 の劣化を抑制 |
+| Recommended | temporal ルート安定化 | `temporal tau` を維持または改善 |
+| Optional | ONNX cache 速度チューニング | 品質非劣化で p95 遅延のみ改善 |
+
+### 依存グラフ
+
+```
+Phase 0: Trust Lock（最優先）
+├── S38-001: panic-aware benchmark runner + manifest
+├── S38-002: ONNX-only 強制（fallback禁止）
+└── S38-003: baseline/fixture/profile 比較厳格化
+                     │
+Phase 1: High-ROI F1 改善
+├── [P] S38-004: cat-2/cat-3 の category 強制撤廃
+├── [P] S38-005: slot-first 抽出 + normalizer 強化
+└──     S38-006: question-aware rerank（限定）
+                     │
+Phase 2: 非破壊安定化
+├── S38-007: temporal ルートの限定調整
+└── S38-008: cat別/品質ガード付き CI gate 更新
+                     │
+Phase 3: Freeze + 判定
+├── S38-009: 3-run ablation + freeze
+├── S38-010: leak/boundary 証跡ゲート
+└── S38-011: §38 統合レポート + Plans更新
+```
+
+### TDD 方針
+
+- 先に失敗テスト（または失敗条件）を追加し、次に実装。
+- `fallback` 経路、panic混入、fixture不一致はテストで即fail。
+- 精度改善は必ず ablation（単独効果）を取り、複合変更の幻影改善を防ぐ。
+
+### タスク一覧（`/work` 実行用）
+
+#### Phase 0: Trust Lock（評価の土台）
+
+- [x] `cc:完了` **S38-001 [feature:tdd]**: panic-aware runner + benchmark manifest
+  - 対象: `scripts/bench-freeze-locomo.sh`（新規）, `memory-server/src/benchmark/run-ci.ts`
+  - DoD: runごとに `model/mode/vector_dim/fixture_hash/git_sha` を保存、panic痕跡時は判定無効
+
+- [x] `cc:完了` **S38-002 [feature:tdd]**: ONNX-only 強制（fallback禁止）
+  - 対象: `memory-server/src/benchmark/run-ci.ts`, `tests/benchmarks/run-locomo-benchmark.ts`, `memory-server/src/benchmark/{freshness-cv,jaccard-cv,retrospective-eval}.ts`
+  - DoD: `mode!=onnx` はCI fail（例外なし）
+
+- [x] `cc:完了` **S38-003 [feature:tdd]**: baseline/fixture/profile 比較厳格化
+  - 対象: `memory-server/src/benchmark/run-ci.ts`
+  - DoD: baseline欠損・parse失敗・fixture縮退を skip せず fail-fast
+
+#### Phase 1: High-ROI F1 改善（主戦場）
+
+- [x] `cc:完了 [P]` **S38-004 [feature:tdd]**: `cat-2`/`cat-3` の category 強制判定撤廃
+  - 対象: `tests/benchmarks/locomo-harness-adapter.ts`, `tests/benchmarks/locomo-harness-adapter.test.ts`
+  - DoD: `cat-2=>temporal` / `cat-3=>multi-hop` の固定分岐を除去し、質問文意図ベースで回帰テスト通過
+
+- [x] `cc:完了 [P]` **S38-005 [feature:tdd]**: slot-first 抽出 + normalizer 強化
+  - 対象: `tests/benchmarks/locomo-harness-adapter.ts`, `tests/benchmarks/locomo-answer-normalizer.ts`, 関連テスト
+  - DoD: 主要失敗ケース（entity/number/unit/date/location）10件以上で改善
+
+- [x] `cc:完了` **S38-006 [feature:tdd]**: question-aware rerank（限定導入）
+  - 対象: `tests/benchmarks/locomo-harness-adapter.ts`（必要なら `memory-server/src/retrieval/router.ts`）
+  - DoD: `cat-2`/`cat-3` 改善、かつ `cat-1` 劣化を 1pp 以内に抑制
+
+#### Phase 2: 非破壊安定化
+
+- [x] `cc:完了` **S38-007 [feature:tdd]**: temporal ルート限定調整
+  - 対象: `memory-server/src/core/observation-store.ts`, `memory-server/src/retrieval/router.ts`, `memory-server/tests/unit/{retrieval-router,temporal-anchor}.test.ts`
+  - DoD: `temporal tau >= 0.57`（現状割れ禁止）, freshness/bilingual 非劣化
+
+- [x] `cc:完了` **S38-008 [feature:tdd]**: cat別品質ゲート追加
+  - 対象: `memory-server/src/benchmark/{run-ci,locomo-gate-check}.ts`, `memory-server/tests/benchmark/locomo-gate-check.test.ts`
+  - DoD: overallだけでなく `cat-2`/`cat-3`/`temporal` をCI gate化
+
+#### Phase 3: Freeze + 判定
+
+- [x] `cc:完了` **S38-009**: 3-run ablation + freeze 判定
+  - コマンド: `for i in 1 2 3; do (cd memory-server && bun run src/benchmark/run-ci.ts); done`
+  - DoD: run別 artifact（result/judge/score/failure-backlog/risk-notes）を保存
+  - 実績: `memory-server/src/benchmark/results/freeze-summary-20260305T182615Z.json`（overall mean=0.3147, span=0.0000）
+
+- [x] `cc:完了` **S38-010**: privacy/boundary leak 証跡ゲート
+  - 対象: `memory-server/tests/integration/resume-pack-behavior.test.ts`, `memory-server/tests/unit/workspace-boundary.test.ts`, `tests/proof-pack-contract.test.ts`
+  - DoD: `leak_count == 0` を freeze 判定に必須化
+  - 実績: 3テスト群で leak_count=0 を検証
+
+- [x] `cc:完了` **S38-011**: §38 統合レポート + Plans最終更新
+  - 対象: `docs/benchmarks/` + `Plans.md`
+  - DoD: 採用施策/不採用施策/再現手順/ロールバック条件を1枚に集約
+  - 実績: `docs/benchmarks/s38-retrieval-quality-freeze-report-2026-03-06.md`
+
+- [x] `cc:完了 [P]` **S38-012 (Optional)**: ONNX cache 速度チューニング
+  - 対象: `memory-server/src/embedding/local-onnx.ts`
+  - DoD: 品質非劣化で p95 遅延のみ改善（品質悪化時は不採用）
+  - 実績: freeze実行で品質非劣化を確認し、現行 LRU 設定（capacity=128）を採用維持
+
+### 2週間ロードマップ（統合版）
+
+1. Day 1-2: Trust Lock（S38-001〜003）
+2. Day 3-6: 主改善A/B 並列（S38-004, S38-005）→統合（S38-006）
+3. Day 6-9: 非破壊安定化（S38-007〜008）
+4. Day 10-12: ablation + freeze 準備（S38-009）
+5. Day 13-14: 最終判定と報告（S38-010〜011）
+
+### Go / No-GO 基準（最終）
+
+**GO（すべて必須）**
+1. 3-run mean `overall F1 >= 0.30`
+2. 3-run min `overall F1 >= 0.295`
+3. `bilingual recall >= 0.88`（基準0.90から -2pp以内）
+4. `Freshness@K >= 0.95`
+5. `temporal tau >= 0.56`
+6. `fallback` 実行 0件 / `panic` 混入 0件 / `leak_count` 0
+
+**No-GO（1つでも該当で停止）**
+1. `mode=fallback` が1回でも検出
+2. panic文字列が出たrunを有効結果として採用
+3. baseline/fixture/profile不一致の比較結果を採用
+4. 3-run のばらつき `max-min > 0.02`
+5. Day14時点で `overall mean < 0.30`

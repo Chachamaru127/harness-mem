@@ -21,7 +21,7 @@ import { existsSync, readFileSync } from "node:fs";
 
 interface BenchmarkMetrics {
   // BenchmarkResult 形式: { metrics: { "f1": 0.65, ... } }
-  metrics?: Record<string, number> | { overall?: { f1?: number } };
+  metrics?: Record<string, unknown> | { overall?: { f1?: number }; by_category?: Record<string, { f1?: number }> };
   // LocomoMetricSnapshot 形式: { overall: { f1: 0.65, ... } }
   overall?: { f1: number; em: number; count: number };
 }
@@ -45,6 +45,17 @@ function extractF1(data: BenchmarkMetrics): number | null {
   return null;
 }
 
+export function extractCategoryF1(data: BenchmarkMetrics, category: string): number | null {
+  if (!data.metrics || typeof data.metrics !== "object") return null;
+  const metrics = data.metrics as Record<string, unknown>;
+  const byCategory = metrics["by_category"];
+  if (!byCategory || typeof byCategory !== "object") return null;
+  const categoryRow = (byCategory as Record<string, unknown>)[category];
+  if (!categoryRow || typeof categoryRow !== "object") return null;
+  const f1 = (categoryRow as Record<string, unknown>)["f1"];
+  return typeof f1 === "number" ? f1 : null;
+}
+
 function loadJson(filePath: string): BenchmarkMetrics {
   if (!existsSync(filePath)) {
     throw new Error(`File not found: ${filePath}`);
@@ -60,6 +71,8 @@ function loadJson(filePath: string): BenchmarkMetrics {
  *   3. デフォルト値 0.05 (5%)
  */
 export const DEFAULT_F1_THRESHOLD = 0.05;
+export const DEFAULT_CAT2_F1_FLOOR = 0.20;
+export const DEFAULT_CAT3_F1_FLOOR = 0.24;
 
 export function resolveThreshold(cliValue?: number): number {
   if (cliValue !== undefined) return cliValue;
@@ -71,14 +84,32 @@ export function resolveThreshold(cliValue?: number): number {
   return DEFAULT_F1_THRESHOLD;
 }
 
+function resolveFloor(
+  cliValue: number | undefined,
+  envName: string,
+  fallback: number
+): number {
+  if (cliValue !== undefined) return cliValue;
+  const env = process.env[envName];
+  if (env !== undefined && env !== "") {
+    const parsed = parseFloat(env);
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+  return fallback;
+}
+
 function parseArgs(argv: string[]): {
   current: string;
   baseline: string;
   threshold: number;
+  cat2Floor: number;
+  cat3Floor: number;
 } {
   let current = "";
   let baseline = "";
   let cliThreshold: number | undefined;
+  let cliCat2Floor: number | undefined;
+  let cliCat3Floor: number | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === "--current" && argv[i + 1]) {
@@ -87,6 +118,10 @@ function parseArgs(argv: string[]): {
       baseline = argv[++i];
     } else if (argv[i] === "--threshold" && argv[i + 1]) {
       cliThreshold = parseFloat(argv[++i]);
+    } else if (argv[i] === "--cat2-floor" && argv[i + 1]) {
+      cliCat2Floor = parseFloat(argv[++i]);
+    } else if (argv[i] === "--cat3-floor" && argv[i + 1]) {
+      cliCat3Floor = parseFloat(argv[++i]);
     }
   }
 
@@ -96,7 +131,13 @@ function parseArgs(argv: string[]): {
     process.exit(2);
   }
 
-  return { current, baseline, threshold: resolveThreshold(cliThreshold) };
+  return {
+    current,
+    baseline,
+    threshold: resolveThreshold(cliThreshold),
+    cat2Floor: resolveFloor(cliCat2Floor, "LOCOMO_CAT2_F1_FLOOR", DEFAULT_CAT2_F1_FLOOR),
+    cat3Floor: resolveFloor(cliCat3Floor, "LOCOMO_CAT3_F1_FLOOR", DEFAULT_CAT3_F1_FLOOR),
+  };
 }
 
 export interface GateCheckResult {
@@ -131,6 +172,22 @@ export function checkF1Gate(
     relativeDrop,
     threshold,
     message,
+  };
+}
+
+export function checkCategoryFloor(category: string, value: number, floor: number): GateCheckResult {
+  const passed = value >= floor;
+  const delta = value - floor;
+  return {
+    passed,
+    baselineF1: floor,
+    currentF1: value,
+    delta,
+    relativeDrop: floor === 0 ? 0 : -delta / floor,
+    threshold: floor,
+    message: passed
+      ? `${category} floor PASSED: ${value.toFixed(4)} >= ${floor.toFixed(4)}`
+      : `${category} floor FAILED: ${value.toFixed(4)} < ${floor.toFixed(4)}`,
   };
 }
 
@@ -171,7 +228,18 @@ if (import.meta.main) {
 
   console.log(`[gate] ${result.message}`);
 
-  if (!result.passed) {
+  const cat2F1 = extractCategoryF1(currentData, "cat-2");
+  const cat3F1 = extractCategoryF1(currentData, "cat-3");
+  if (cat2F1 === null || cat3F1 === null) {
+    console.error("[gate] Could not extract cat-2/cat-3 f1 from current file (metrics.by_category)");
+    process.exit(2);
+  }
+  const cat2Gate = checkCategoryFloor("cat-2", cat2F1, args.cat2Floor);
+  const cat3Gate = checkCategoryFloor("cat-3", cat3F1, args.cat3Floor);
+  console.log(`[gate] ${cat2Gate.message}`);
+  console.log(`[gate] ${cat3Gate.message}`);
+
+  if (!result.passed || !cat2Gate.passed || !cat3Gate.passed) {
     process.exit(1);
   }
 }

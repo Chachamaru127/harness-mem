@@ -64,6 +64,12 @@ function normalizeMode(value: string | undefined): BenchEmbeddingMode {
   return "fallback";
 }
 
+function assertOnnxOnlyMode(mode: BenchEmbeddingMode): void {
+  if (mode !== "onnx") {
+    throw new Error(`[freshness-cv] strict ONNX-only mode violated: HARNESS_BENCH_EMBEDDING_MODE=${mode}`);
+  }
+}
+
 function normalizeVectorDimension(value: unknown, fallback: number): number {
   const num = typeof value === "number" ? value : Number(value);
   if (!Number.isFinite(num)) return fallback;
@@ -74,18 +80,16 @@ function normalizeVectorDimension(value: unknown, fallback: number): number {
 
 function resolveBenchEmbeddingProfile(): BenchEmbeddingProfile {
   const mode = normalizeMode(process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
-  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
-  const model =
-    mode === "onnx"
-      ? (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5"
-      : "fallback";
-  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, mode === "onnx" ? 384 : 64);
+  assertOnnxOnlyMode(mode);
+  const provider: "local" | "fallback" = "local";
+  const model = (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5";
+  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, 384);
   return {
     mode,
     provider,
     model,
     vectorDimension,
-    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx"),
+    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, true),
     primeEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true),
   };
 }

@@ -160,7 +160,7 @@ function tokenize(value: string): string[] {
     .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
 }
 
-function detectQuestionKind(question: string, category?: string): QuestionKind {
+function detectQuestionKind(question: string, _category?: string): QuestionKind {
   const normalized = normalizeText(question);
   // RQ-010: cat-3 は会話コンテキストから事実を引き出すfact retrievalのため、
   // multi_hop ではなく factual として扱う（counterfactual バリアントを避けるため）
@@ -168,7 +168,6 @@ function detectQuestionKind(question: string, category?: string): QuestionKind {
     return "multi_hop";
   }
   if (
-    category === "cat-2" ||
     /\bwhen\b/.test(normalized) ||
     /\bhow long\b/.test(normalized) ||
     /\bhow often\b/.test(normalized) ||
@@ -193,11 +192,11 @@ function detectQuestionKind(question: string, category?: string): QuestionKind {
 }
 
 function resolveSearchPolicy(kind: QuestionKind, category?: string): SearchPolicy {
-  if (category === "cat-3" || kind === "multi_hop") {
+  if (kind === "multi_hop") {
     // RQ-010: cat-3 multi-hop — より多くの候補を取得し、quality_floor を下げて recall 向上
     return { limit: 20, variant_cap: 7, candidate_limit: 7, quality_floor: 0.15 };
   }
-  if (category === "cat-2" || kind === "temporal") {
+  if (kind === "temporal") {
     return { limit: 16, variant_cap: 6, candidate_limit: 5, quality_floor: 0.2 };
   }
   if (category === "cat-4") {
@@ -241,17 +240,6 @@ function buildQueryVariants(question: string, kind: QuestionKind, policy: Search
   if (kind === "multi_hop") {
     variants.add(`${keyPhrase} reason because causal dependency`.trim());
     variants.add(`${keyPhrase} supporting evidence chain`.trim());
-  }
-
-  if (category === "cat-2") {
-    variants.add(`${keyPhrase} temporal context anchor`.trim());
-  }
-  if (category === "cat-3") {
-    // RQ-010: cat-3 は会話から複数ステップで情報を引き出すfact retrieval
-    // counterfactual バリアントは不適切なため、事実情報に特化したバリアントに置換
-    variants.add(`${keyPhrase} project team goal plan`.trim());
-    variants.add(`${keyPhrase} name title detail fact`.trim());
-    variants.add(`${keyPhrase} learning working practicing`.trim());
   }
 
   return [...variants]
@@ -324,6 +312,47 @@ function extractLocationPhrase(text: string): string | null {
   return null;
 }
 
+function extractNumericSlot(text: string): string | null {
+  const patterns = [
+    /\b\d+(?:\.\d+)?\s?%/,
+    /\$\s?\d+(?:,\d{3})*(?:\.\d+)?/,
+    /\b\d+(?:\.\d+)?\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i,
+    /\b\d+(?:\.\d+)?\b/,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match?.[0]) return match[0].trim();
+  }
+  return null;
+}
+
+function extractEntitySlot(text: string, questionTokens: string[]): string | null {
+  const qSet = new Set(questionTokens);
+  const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
+  let match: RegExpExecArray | null;
+  const entities: string[] = [];
+  while ((match = properNounPattern.exec(text)) !== null) {
+    if (match[0].length > 1) entities.push(match[0]);
+  }
+  const novel = entities.find((entity) => tokenize(entity).some((token) => !qSet.has(token)));
+  return novel || entities[0] || null;
+}
+
+interface QuestionHints {
+  wantsNumeric: boolean;
+  wantsEntity: boolean;
+  wantsLanguage: boolean;
+}
+
+function buildQuestionHints(question: string): QuestionHints {
+  const normalized = normalizeText(question);
+  return {
+    wantsNumeric: /\b(how many|how much|percent|percentage|ratio|rate|cost|price|amount)\b/.test(normalized),
+    wantsEntity: /\b(who|which person|name|what school|what company|what team)\b/.test(normalized),
+    wantsLanguage: /\b(language|speak|spoken)\b/.test(normalized),
+  };
+}
+
 function isLowQualitySentence(sentence: string): boolean {
   const source = normalizeText(sentence);
   if (!source || source.length < 8 || source.length > 260) return true;
@@ -336,6 +365,7 @@ function sentenceScore(
   sentence: string,
   questionTokens: string[],
   kind: QuestionKind,
+  hints: QuestionHints,
   rank: number,
   queryOrder: number
 ): number {
@@ -356,11 +386,21 @@ function sentenceScore(
   if (kind === "location" && extractLocationPhrase(sentence)) score += 0.2;
   if (kind === "yes_no" && /\bno\b|\bnot\b|\bnever\b|\byes\b/i.test(sentence)) score += 0.12;
   if (kind === "multi_hop" && /\bbecause\b|\bsince\b|\bsupport\b|\bmotivat/i.test(sentence)) score += 0.14;
+  // Question-aware rerank: boost compact slot-like candidates for intent-bearing questions.
+  if (hints.wantsNumeric && extractNumericSlot(sentence)) score += 0.2;
+  if (hints.wantsEntity && extractEntitySlot(sentence, questionTokens)) score += 0.14;
+  if (
+    hints.wantsLanguage &&
+    /\b(english|spanish|japanese|french|german|korean|chinese|portuguese|italian|hindi|arabic)\b/i.test(sentence)
+  ) {
+    score += 0.18;
+  }
   return score;
 }
 
 function buildCandidates(items: SearchItem[], question: string, kind: QuestionKind): CandidateSnippet[] {
   const questionTokens = tokenize(question);
+  const hints = buildQuestionHints(question);
   const candidates: CandidateSnippet[] = [];
   for (const item of items) {
     const sentences = splitSentences(item.text);
@@ -370,7 +410,7 @@ function buildCandidates(items: SearchItem[], question: string, kind: QuestionKi
       candidates.push({
         id: item.id,
         sentence: cleaned,
-        score: sentenceScore(cleaned, questionTokens, kind, item.rank, item.query_order),
+        score: sentenceScore(cleaned, questionTokens, kind, hints, item.rank, item.query_order),
         rank: item.rank,
         query_order: item.query_order,
         created_at: item.created_at,
@@ -402,10 +442,11 @@ function applyCandidateQualityFilter(candidates: CandidateSnippet[], floor: numb
 }
 
 function extractAnswerDraft(
+  question: string,
   kind: QuestionKind,
   candidates: CandidateSnippet[],
   policy: SearchPolicy,
-  category?: string
+  _category?: string
 ): ExtractedAnswerDraft {
   if (candidates.length === 0) {
     return {
@@ -452,7 +493,7 @@ function extractAnswerDraft(
     };
   }
 
-  if (kind === "multi_hop" || category === "cat-3") {
+  if (kind === "multi_hop") {
     return {
       raw_answer: mergedTop,
       selected_candidates: topN,
@@ -488,6 +529,44 @@ function extractAnswerDraft(
       selected_evidence_ids: selectedEvidenceIds,
       strategy: "extract:list-proper-nouns",
     };
+  }
+
+  const normalizedQuestion = normalizeText(question);
+  const questionTokens = tokenize(question);
+  if (/\b(how many|how much|percent|percentage|ratio|rate|cost|price|amount)\b/.test(normalizedQuestion)) {
+    const numeric = extractNumericSlot(mergedTop) || extractNumericSlot(topN[0]?.sentence || "");
+    if (numeric) {
+      return {
+        raw_answer: numeric,
+        selected_candidates: topN,
+        selected_evidence_ids: selectedEvidenceIds,
+        strategy: "extract:factual-numeric-slot",
+      };
+    }
+  }
+  if (/\b(who|name|what school|what company|what team)\b/.test(normalizedQuestion)) {
+    const entity = extractEntitySlot(mergedTop, questionTokens) || extractEntitySlot(topN[0]?.sentence || "", questionTokens);
+    if (entity) {
+      return {
+        raw_answer: entity,
+        selected_candidates: topN,
+        selected_evidence_ids: selectedEvidenceIds,
+        strategy: "extract:factual-entity-slot",
+      };
+    }
+  }
+  if (/\blanguage\b|\bspeak\b/.test(normalizedQuestion)) {
+    const language = /\b(english|spanish|japanese|french|german|korean|chinese|portuguese|italian|hindi|arabic)\b/i.exec(
+      mergedTop
+    );
+    if (language?.[0]) {
+      return {
+        raw_answer: language[0],
+        selected_candidates: topN,
+        selected_evidence_ids: selectedEvidenceIds,
+        strategy: "extract:factual-language-slot",
+      };
+    }
   }
 
   return {
@@ -567,7 +646,7 @@ function finalizeShortAnswer(
   kind: QuestionKind,
   normalized: string,
   question: string,
-  category?: string
+  _category?: string
 ): FinalAnswerDraft {
   const trimmed = normalized.trim();
   if (!trimmed) {
@@ -587,7 +666,7 @@ function finalizeShortAnswer(
     const compact = trimmed.replace(/\s+/g, " ").replace(/;+/g, ",");
     return { answer: compact.slice(0, 220), template: "final:list-compact" };
   }
-  if (kind === "multi_hop" || category === "cat-3") {
+  if (kind === "multi_hop") {
     const asksCounterfactual = /\bwould\b.+\bif\b|\bif\b.+\bwould\b|\bwithout\b/i.test(normalizeText(question));
     if (asksCounterfactual) {
       // counterfactual: "Likely yes/no" のみ返す（冗長なReason句を除去してprecision向上）
@@ -831,7 +910,7 @@ export class HarnessMemLocomoAdapter {
     });
 
     const candidates = buildCandidates(mergedItems, question, kind);
-    const extracted = extractAnswerDraft(kind, candidates, policy, options.category);
+    const extracted = extractAnswerDraft(question, kind, candidates, policy, options.category);
     const normalization = normalizeLocomoAnswer({
       question,
       kind,
