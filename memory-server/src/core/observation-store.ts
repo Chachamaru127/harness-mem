@@ -514,7 +514,8 @@ export class ObservationStore {
   ): Map<string, number> {
     if (topIds.length === 0) return new Map<string, number>();
 
-    const rawHops = this.deps.config?.graphMaxHops ?? 3;
+    // RQ-010: cat-3 multi-hop 強化 — デフォルトホップ数を 3 → 4 に増加
+    const rawHops = this.deps.config?.graphMaxHops ?? 4;
     const MAX_DEPTH = Math.min(Math.max(rawHops, 1), 5);
     const DECAY = 0.5;
 
@@ -1148,14 +1149,53 @@ export class ObservationStore {
     }
 
     const nowMs = Date.now();
+
+    // RQ-006: RRF (Reciprocal Rank Fusion) — lexical / vector / graph の 3 リストを融合
+    // k=60 はランク上位でのスコア差を緩和する標準パラメータ
+    const RRF_K = 60;
+    // スコア > 0 のアイテムのみランクリストに含める（0スコア = そのリストに存在しない）
+    const lexicalRanked = [...ranked].filter((item) => item.lexical > 0).sort((a, b) => b.lexical - a.lexical);
+    const lexicalRankMap = new Map<string, number>();
+    lexicalRanked.forEach((item, idx) => lexicalRankMap.set(item.id, idx));
+    const vectorRanked = [...ranked].filter((item) => item.vector > 0).sort((a, b) => b.vector - a.vector);
+    const vectorRankMap = new Map<string, number>();
+    vectorRanked.forEach((item, idx) => vectorRankMap.set(item.id, idx));
+    // RQ-010: cat-3 multi-hop 強化 — graph スコアを第3 RRF リストとして追加
+    const graphRanked = [...ranked].filter((item) => item.graph > 0).sort((a, b) => b.graph - a.graph);
+    const graphRankMap = new Map<string, number>();
+    graphRanked.forEach((item, idx) => graphRankMap.set(item.id, idx));
+
     for (const item of ranked) {
-      const rawScore =
-        weights.lexical * item.lexical +
-        weights.vector * item.vector +
+      // RRF スコア: lexical / vector / graph それぞれのリストに存在する場合のみ加算
+      // スコア=0 のアイテムはそのリストに「ヒットしていない」ため寄与しない
+      let rrfScore = 0;
+      const rankLex = lexicalRankMap.get(item.id);
+      if (rankLex !== undefined) {
+        rrfScore += 1 / (RRF_K + rankLex);
+      }
+      const rankVec = vectorRankMap.get(item.id);
+      if (rankVec !== undefined) {
+        rrfScore += 1 / (RRF_K + rankVec);
+      }
+      // graph リストへの参加は weights.graph で重み付け（全クエリへの影響を抑制）
+      const rankGraph = graphRankMap.get(item.id);
+      if (rankGraph !== undefined) {
+        rrfScore += weights.graph * (1 / (RRF_K + rankGraph));
+      }
+      // フォールバック: 全リストに存在しない場合は重み付きスコアで退避
+      // （ランクを持たないがgraph等で候補入りしたアイテムを保護）
+      if (rankLex === undefined && rankVec === undefined && rankGraph === undefined) {
+        rrfScore =
+          weights.lexical * item.lexical +
+          weights.vector * item.vector;
+      }
+      // ポスト調整: recency / tag_boost / importance の 3 次元を加算
+      // graph は RRF の第3リストに組み込み済みのためポスト調整からは除外
+      const postAdjustment =
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
-        weights.importance * item.importance +
-        weights.graph * item.graph;
+        weights.importance * item.importance;
+      const rawScore = rrfScore + postAdjustment;
       // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
       const obs = observations.get(item.id);
       const lastAccessedAt = (obs?.last_accessed_at as string | null | undefined) ?? null;
@@ -1171,6 +1211,24 @@ export class ObservationStore {
       }
       return lhs.id.localeCompare(rhs.id);
     });
+
+    // RQ-011: temporal 2段階検索 — timeline クエリかつ anchor なし
+    // Phase 1: RRF で上位候補確保（recall 保護: top-30 以上）
+    // Phase 2: 候補内を created_at 降順でソート（ordering 最適化）
+    if (
+      routeDecision.kind === "timeline" &&
+      (!routeDecision.temporalAnchors || routeDecision.temporalAnchors.length === 0)
+    ) {
+      const TEMPORAL_CANDIDATE_K = Math.max(30, limit * 3);
+      const temporalCandidates = ranked.slice(0, TEMPORAL_CANDIDATE_K);
+      temporalCandidates.sort((lhs, rhs) => {
+        return String(rhs.created_at).localeCompare(String(lhs.created_at));
+      });
+      // 残りはそのまま追加（recall 保護）
+      const remaining = ranked.slice(TEMPORAL_CANDIDATE_K);
+      ranked.length = 0;
+      ranked.push(...temporalCandidates, ...remaining);
+    }
 
     const rerankResult = this.applyRerank(request.query, ranked, observations);
     const rankedAfterRerank = rerankResult.ranked;

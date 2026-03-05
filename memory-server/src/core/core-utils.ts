@@ -200,6 +200,63 @@ const SYNONYM_MAP: Record<string, string[]> = {
   container: ["docker", "kubernetes", "コンテナ"],
   search: ["retrieval", "query", "検索"],
   検索: ["search", "retrieval", "query"],
+  // RQ-007: query expansion — 動詞変化形・派生語ステミング
+  work: ["working", "worked", "works", "worker", "job", "occupation"],
+  working: ["work", "worked", "works", "worker"],
+  worked: ["work", "working"],
+  learn: ["learning", "learned", "learns", "study", "studying"],
+  learning: ["learn", "learned", "study", "studying", "education"],
+  study: ["studying", "studied", "learn", "learning"],
+  studying: ["study", "studied", "learn", "learning"],
+  live: ["living", "lived", "reside", "residing", "stay"],
+  living: ["live", "lived", "reside", "residing", "stay"],
+  join: ["joined", "joins", "joining", "enter", "member"],
+  joined: ["join", "joining", "entered", "member"],
+  move: ["moving", "moved", "moves", "relocate", "relocation"],
+  moving: ["move", "moved", "relocate"],
+  start: ["starting", "started", "starts", "begin", "began", "beginning"],
+  started: ["start", "starting", "begin", "began"],
+  read: ["reading", "reads", "book"],
+  reading: ["read", "book", "literature"],
+  train: ["training", "trained", "practice", "practicing"],
+  training: ["train", "trained", "practice", "coach", "coaching"],
+  speak: ["speaking", "spoke", "spoken", "language", "fluent"],
+  speaking: ["speak", "spoke", "language"],
+  graduate: ["graduated", "graduation", "university", "college", "degree"],
+  graduated: ["graduate", "graduation", "degree", "alumnus"],
+  // 一般名詞の同義語拡張
+  company: ["employer", "workplace", "organization", "firm", "corporation"],
+  employer: ["company", "firm", "workplace"],
+  job: ["work", "occupation", "position", "role", "career"],
+  occupation: ["job", "work", "profession", "career", "role"],
+  city: ["town", "location", "place", "area", "region"],
+  town: ["city", "village", "location"],
+  university: ["college", "school", "institution", "campus"],
+  college: ["university", "school", "institution"],
+  course: ["class", "lesson", "program", "curriculum"],
+  book: ["novel", "literature", "publication", "reading", "title"],
+  novel: ["book", "fiction", "literature"],
+  team: ["group", "squad", "crew", "department"],
+  project: ["task", "assignment", "initiative", "program"],
+  certification: ["certificate", "credential", "qualification", "license"],
+  certificate: ["certification", "credential", "qualification"],
+  language: ["tongue", "linguistic", "speak", "fluent"],
+  skill: ["ability", "capability", "expertise", "proficiency"],
+  // 日本語拡張 (RQ-007)
+  仕事: ["work", "job", "occupation", "company", "employer"],
+  学習: ["learn", "learning", "study", "studying", "education"],
+  勉強: ["study", "studying", "learn", "learning"],
+  居住: ["live", "living", "reside", "residing"],
+  参加: ["join", "joined", "enter", "member"],
+  読書: ["read", "reading", "book", "literature"],
+  訓練: ["train", "training", "practice"],
+  言語: ["language", "speak", "speaking"],
+  会社: ["company", "employer", "workplace", "organization"],
+  大学: ["university", "college", "school"],
+  資格: ["certification", "certificate", "credential", "qualification"],
+  スキル: ["skill", "ability", "expertise"],
+  チーム: ["team", "group", "squad"],
+  プロジェクト: ["project", "task", "initiative"],
 };
 
 /**
@@ -643,7 +700,7 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
 export const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
 export const DEFAULT_BIND_HOST = "127.0.0.1";
 export const DEFAULT_BIND_PORT = 37888;
-export const DEFAULT_VECTOR_DIM = 256;
+export const DEFAULT_VECTOR_DIM = 384;
 export const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
 export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
 export const DEFAULT_CODEX_BACKFILL_HOURS = 24;

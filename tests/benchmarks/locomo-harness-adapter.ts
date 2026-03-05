@@ -162,7 +162,9 @@ function tokenize(value: string): string[] {
 
 function detectQuestionKind(question: string, category?: string): QuestionKind {
   const normalized = normalizeText(question);
-  if (category === "cat-3" || /\bwould\b.+\bif\b/.test(normalized) || /\blikely\b/.test(normalized)) {
+  // RQ-010: cat-3 は会話コンテキストから事実を引き出すfact retrievalのため、
+  // multi_hop ではなく factual として扱う（counterfactual バリアントを避けるため）
+  if (/\bwould\b.+\bif\b/.test(normalized) || /\blikely\b/.test(normalized)) {
     return "multi_hop";
   }
   if (
@@ -192,7 +194,8 @@ function detectQuestionKind(question: string, category?: string): QuestionKind {
 
 function resolveSearchPolicy(kind: QuestionKind, category?: string): SearchPolicy {
   if (category === "cat-3" || kind === "multi_hop") {
-    return { limit: 18, variant_cap: 7, candidate_limit: 5, quality_floor: 0.2 };
+    // RQ-010: cat-3 multi-hop — より多くの候補を取得し、quality_floor を下げて recall 向上
+    return { limit: 20, variant_cap: 7, candidate_limit: 7, quality_floor: 0.15 };
   }
   if (category === "cat-2" || kind === "temporal") {
     return { limit: 16, variant_cap: 6, candidate_limit: 5, quality_floor: 0.2 };
@@ -244,7 +247,11 @@ function buildQueryVariants(question: string, kind: QuestionKind, policy: Search
     variants.add(`${keyPhrase} temporal context anchor`.trim());
   }
   if (category === "cat-3") {
-    variants.add(`${keyPhrase} counterfactual if without support`.trim());
+    // RQ-010: cat-3 は会話から複数ステップで情報を引き出すfact retrieval
+    // counterfactual バリアントは不適切なため、事実情報に特化したバリアントに置換
+    variants.add(`${keyPhrase} project team goal plan`.trim());
+    variants.add(`${keyPhrase} name title detail fact`.trim());
+    variants.add(`${keyPhrase} learning working practicing`.trim());
   }
 
   return [...variants]
