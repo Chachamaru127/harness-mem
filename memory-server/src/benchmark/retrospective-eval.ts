@@ -145,7 +145,7 @@ export async function evaluateAlgo(
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 0,
-    vectorDimension: 64,
+    vectorDimension: 384,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,

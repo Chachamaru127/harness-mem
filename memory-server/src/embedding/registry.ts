@@ -102,7 +102,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
     });
   } else if (providerName === "local") {
     // IMP-008: "auto" の場合は言語自動選択（デフォルト言語モデルを使用）
-    const rawModelId = (options.localModelId || process.env.HARNESS_MEM_EMBEDDING_MODEL || "ruri-v3-30m").trim();
+    const rawModelId = (options.localModelId || process.env.HARNESS_MEM_EMBEDDING_MODEL || "multilingual-e5").trim();
     const modelId = rawModelId === "auto"
       ? selectModelByLanguage(options.defaultLanguage ?? "ja")
       : rawModelId;

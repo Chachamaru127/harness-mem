@@ -174,6 +174,10 @@ const TIMELINE_PATTERNS = [
   /\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*[後前]/,
   // §35 SD-007: 日本語 ordinal temporal — "最初に", "最後に"
   /(最初|最後|直近|最近)/,
+  // RQ-012: "between X and Y" は時系列範囲クエリ
+  /\bbetween\s+\S+.*\s+and\s+/i,
+  // RQ-012: "originally ... but later" / "at first ... then" 等の経時変化
+  /\b(originally|initially|at first)\b.{0,50}\b(later|then|eventually|subsequently)\b/i,
 ];
 
 const GRAPH_PATTERNS = [
