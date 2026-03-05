@@ -2,11 +2,42 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { HarnessMemCore, type Config } from "../../memory-server/src/core/harness-mem-core";
+import { findModelById } from "../../memory-server/src/embedding/model-catalog";
 import { evaluateLocomoQa, type LocomoMetricSummary } from "./locomo-evaluator";
 import { HarnessMemLocomoAdapter, type HarnessLocomoAnswerTrace } from "./locomo-harness-adapter";
 import { loadLocomoDataset } from "./locomo-loader";
 
 export type BenchmarkSystem = "harness-mem" | "mem0" | "claude-mem";
+export type BenchmarkEmbeddingMode = "onnx" | "fallback";
+
+interface EmbeddingProfile {
+  mode: BenchmarkEmbeddingMode;
+  provider: "local" | "fallback";
+  model: string;
+  vectorDimension: number;
+  gateEnabled: boolean;
+  primeEnabled: boolean;
+}
+
+interface EmbeddingRuntime {
+  provider: string;
+  model: string;
+  healthStatus: string;
+  healthDetails: string;
+}
+
+interface EmbeddingGateSummary {
+  enabled: boolean;
+  passed: boolean;
+  failures: string[];
+}
+
+export interface CacheStatsSummary {
+  available: boolean;
+  before: Record<string, number>;
+  after: Record<string, number>;
+  delta: Record<string, number>;
+}
 
 export interface LocomoBenchmarkRecord {
   sample_id: string;
@@ -50,6 +81,20 @@ export interface LocomoBenchmarkResult {
   schema_version: "locomo-benchmark-v2";
   generated_at: string;
   system: BenchmarkSystem;
+  pipeline: {
+    embedding: {
+      mode: BenchmarkEmbeddingMode;
+      provider: string;
+      model: string;
+      vector_dimension: number;
+      runtime_provider: string;
+      runtime_model: string;
+      runtime_health_status: string;
+      runtime_health_details: string;
+      gate: EmbeddingGateSummary;
+    };
+    prime_embedding_enabled: boolean;
+  };
   dataset: {
     path: string;
     sample_count: number;
@@ -62,6 +107,7 @@ export interface LocomoBenchmarkResult {
   };
   performance: {
     search_latency_ms: NumericStatSummary;
+    cache_stats: CacheStatsSummary;
   };
   cost: {
     search_token_estimate: TokenEstimateSummary;
@@ -74,6 +120,11 @@ export interface RunLocomoBenchmarkOptions {
   datasetPath: string;
   outputPath?: string;
   project?: string;
+  embeddingMode?: BenchmarkEmbeddingMode;
+  embeddingModel?: string;
+  vectorDimension?: number;
+  onnxGate?: boolean;
+  primeEmbedding?: boolean;
   /** 評価する最大サンプル数（省略時は全件） */
   maxSamples?: number;
 }
@@ -161,12 +212,164 @@ function summarizeCategories(records: LocomoBenchmarkRecord[], categories: Set<s
   ).overall;
 }
 
-function createCore(tempDir: string): HarnessMemCore {
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeEmbeddingMode(input: string | undefined): BenchmarkEmbeddingMode {
+  const normalized = (input || "").trim().toLowerCase();
+  if (normalized === "onnx") return "onnx";
+  return "fallback";
+}
+
+function normalizeVectorDimension(raw: unknown, fallback: number): number {
+  const num = typeof raw === "number" ? raw : Number(raw);
+  if (!Number.isFinite(num)) return fallback;
+  const rounded = Math.trunc(num);
+  if (rounded < 32 || rounded > 4096) return fallback;
+  return rounded;
+}
+
+function resolveEmbeddingProfile(options: RunLocomoBenchmarkOptions): EmbeddingProfile {
+  const mode = normalizeEmbeddingMode(
+    options.embeddingMode || process.env.HARNESS_BENCH_EMBEDDING_MODE || "fallback"
+  );
+  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
+  const model =
+    mode === "onnx"
+      ? (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
+        "multilingual-e5"
+      : "fallback";
+  const defaultVectorDimension = mode === "onnx" ? 384 : 64;
+  const vectorDimension = normalizeVectorDimension(
+    options.vectorDimension ?? process.env.HARNESS_BENCH_VECTOR_DIM,
+    defaultVectorDimension
+  );
+  const gateEnabled =
+    options.onnxGate ?? parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx");
+  const primeEnabled =
+    options.primeEmbedding ?? parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true);
+  return {
+    mode,
+    provider,
+    model,
+    vectorDimension,
+    gateEnabled,
+    primeEnabled,
+  };
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function readEmbeddingRuntime(core: HarnessMemCore): EmbeddingRuntime {
+  const health = core.health();
+  const item = toRecord(health.items[0]);
+  const features = toRecord(item.features);
+  const provider = String(features.embedding_provider || item.embedding_provider || "");
+  const model = String(features.embedding_model || "");
+  const healthStatus = String(item.embedding_provider_status || "");
+  const healthDetails = String(item.embedding_provider_details || "");
+  return { provider, model, healthStatus, healthDetails };
+}
+
+function evaluateEmbeddingGate(profile: EmbeddingProfile, runtime: EmbeddingRuntime): EmbeddingGateSummary {
+  if (!profile.gateEnabled) {
+    return { enabled: false, passed: true, failures: [] };
+  }
+  const failures: string[] = [];
+  if (profile.mode === "onnx") {
+    if (runtime.provider !== profile.provider) {
+      failures.push(`provider mismatch: expected=${profile.provider}, actual=${runtime.provider || "unknown"}`);
+    }
+    if (runtime.model !== profile.model) {
+      failures.push(`model mismatch: expected=${profile.model}, actual=${runtime.model || "unknown"}`);
+    }
+    const catalog = findModelById(profile.model);
+    if (!catalog) {
+      failures.push(`unknown model for gate: ${profile.model}`);
+    } else if (profile.vectorDimension !== catalog.dimension) {
+      failures.push(
+        `vector dimension mismatch: expected=${catalog.dimension} for model=${profile.model}, configured=${profile.vectorDimension}`
+      );
+    }
+  }
+  return {
+    enabled: true,
+    passed: failures.length === 0,
+    failures,
+  };
+}
+
+async function readCoreCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
+  const target = core as unknown as {
+    getEmbeddingRuntimeInfo?: () => unknown;
+  };
+  if (typeof target.getEmbeddingRuntimeInfo !== "function") return null;
+  try {
+    const runtime = toRecord(target.getEmbeddingRuntimeInfo.call(core));
+    const stats = toRecord(runtime.cacheStats);
+    return Object.keys(stats).length > 0 ? stats : null;
+  } catch {
+    return null;
+  }
+}
+
+function flattenNumericStats(input: Record<string, unknown>, prefix = ""): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const qualified = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[qualified] = value;
+      continue;
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      Object.assign(out, flattenNumericStats(value as Record<string, unknown>, qualified));
+    }
+  }
+  return out;
+}
+
+function diffNumericStats(before: Record<string, number>, after: Record<string, number>): Record<string, number> {
+  const delta: Record<string, number> = {};
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  for (const key of keys) {
+    const beforeValue = before[key] ?? 0;
+    const afterValue = after[key] ?? 0;
+    delta[key] = afterValue - beforeValue;
+  }
+  return delta;
+}
+
+function summarizeCacheStats(
+  beforeRaw: Record<string, unknown> | null,
+  afterRaw: Record<string, unknown> | null
+): CacheStatsSummary {
+  const before = beforeRaw ? flattenNumericStats(beforeRaw) : {};
+  const after = afterRaw ? flattenNumericStats(afterRaw) : {};
+  return {
+    available: beforeRaw !== null || afterRaw !== null,
+    before,
+    after,
+    delta: diffNumericStats(before, after),
+  };
+}
+
+function createCore(tempDir: string, profile: EmbeddingProfile): HarnessMemCore {
   const config: Config = {
     dbPath: join(tempDir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 37888,
-    vectorDimension: 64,
+    vectorDimension: profile.vectorDimension,
+    embeddingProvider: profile.provider,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -186,6 +389,7 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   const datasetPath = resolve(options.datasetPath);
   const allSamples = loadLocomoDataset(datasetPath);
   const samples = options.maxSamples != null ? allSamples.slice(0, options.maxSamples) : allSamples;
+  const embeddingProfile = resolveEmbeddingProfile(options);
   const missingAnswers = samples.flatMap((sample) =>
     sample.qa.filter((qa) => !qa.answer.trim()).map((qa) => `${sample.sample_id}:${qa.question_id}`)
   );
@@ -197,17 +401,34 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   }
   const project = options.project || "locomo-benchmark";
   const tempDir = mkdtempSync(join(tmpdir(), "locomo-harness-"));
-  const core = createCore(tempDir);
+  const previousModelEnv = process.env.HARNESS_MEM_EMBEDDING_MODEL;
+  if (embeddingProfile.mode === "onnx") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = embeddingProfile.model;
+  }
+  const core = createCore(tempDir, embeddingProfile);
+  const runtime = readEmbeddingRuntime(core);
+  const embeddingGate = evaluateEmbeddingGate(embeddingProfile, runtime);
   const records: LocomoBenchmarkRecord[] = [];
 
   try {
+    if (embeddingGate.enabled && !embeddingGate.passed) {
+      const reason = embeddingGate.failures.join("; ");
+      throw new Error(`[locomo-benchmark] ONNX gate failed: ${reason}`);
+    }
+    const cacheBefore = await readCoreCacheStats(core);
     for (const sample of samples) {
       const adapter = new HarnessMemLocomoAdapter(core, {
         project,
         session_id: `locomo-benchmark-${sample.sample_id}`,
       });
+      if (embeddingProfile.primeEnabled) {
+        await adapter.primeBeforeIngest(sample);
+      }
       adapter.ingestSample(sample);
       for (const qa of sample.qa) {
+        if (embeddingProfile.primeEnabled) {
+          await adapter.primeBeforeSearch(qa.question, { category: qa.category });
+        }
         const replay = adapter.answerQuestion(qa.question, { category: qa.category });
         const baseRecord = {
           sample_id: sample.sample_id,
@@ -242,6 +463,7 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
     };
     const performance = {
       search_latency_ms: summarizeNumbers(records.map((record) => record.search_latency_ms)),
+      cache_stats: summarizeCacheStats(cacheBefore, await readCoreCacheStats(core)),
     };
     const cost = {
       search_token_estimate: summarizeTokenEstimate(records),
@@ -251,6 +473,20 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
       schema_version: "locomo-benchmark-v2",
       generated_at: new Date().toISOString(),
       system: "harness-mem",
+      pipeline: {
+        embedding: {
+          mode: embeddingProfile.mode,
+          provider: embeddingProfile.provider,
+          model: embeddingProfile.model,
+          vector_dimension: embeddingProfile.vectorDimension,
+          runtime_provider: runtime.provider,
+          runtime_model: runtime.model,
+          runtime_health_status: runtime.healthStatus,
+          runtime_health_details: runtime.healthDetails,
+          gate: embeddingGate,
+        },
+        prime_embedding_enabled: embeddingProfile.primeEnabled,
+      },
       dataset: {
         path: datasetPath,
         sample_count: samples.length,
@@ -266,6 +502,11 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   } finally {
     core.shutdown("benchmark");
     rmSync(tempDir, { recursive: true, force: true });
+    if (previousModelEnv == null) {
+      delete process.env.HARNESS_MEM_EMBEDDING_MODEL;
+    } else {
+      process.env.HARNESS_MEM_EMBEDDING_MODEL = previousModelEnv;
+    }
   }
 }
 
@@ -304,6 +545,31 @@ function parseArgs(argv: string[]): RunLocomoBenchmarkOptions {
     }
     if (token === "--project" && i + 1 < argv.length) {
       parsed.project = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === "--embedding-mode" && i + 1 < argv.length) {
+      parsed.embeddingMode = normalizeEmbeddingMode(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token === "--embedding-model" && i + 1 < argv.length) {
+      parsed.embeddingModel = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === "--vector-dim" && i + 1 < argv.length) {
+      parsed.vectorDimension = normalizeVectorDimension(argv[i + 1], 64);
+      i += 1;
+      continue;
+    }
+    if (token === "--onnx-gate" && i + 1 < argv.length) {
+      parsed.onnxGate = parseBooleanFlag(argv[i + 1], true);
+      i += 1;
+      continue;
+    }
+    if (token === "--prime-embedding" && i + 1 < argv.length) {
+      parsed.primeEmbedding = parseBooleanFlag(argv[i + 1], true);
       i += 1;
     }
   }

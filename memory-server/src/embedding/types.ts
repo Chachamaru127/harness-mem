@@ -5,11 +5,25 @@ export interface EmbeddingHealth {
   details: string;
 }
 
+export interface EmbeddingCacheStats {
+  entries: number;
+  capacity: number;
+  hits: number;
+  misses: number;
+  evictions: number;
+  inflight: number;
+}
+
 export interface EmbeddingProvider {
   name: EmbeddingProviderName;
   model: string;
   dimension: number;
   embed(text: string): number[];
+  embedQuery?(text: string): number[];
+  prime?(text: string): Promise<number[]>;
+  primeQuery?(text: string): Promise<number[]>;
+  cacheStats?(): EmbeddingCacheStats;
+  ready?: Promise<void>;
   health(): EmbeddingHealth;
 }
 

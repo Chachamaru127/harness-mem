@@ -15,8 +15,8 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
 import { runLocomoBenchmark } from "../../../tests/benchmarks/run-locomo-benchmark";
-import { checkRegression } from "./regression-gate";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
+import { findModelById } from "../embedding/model-catalog";
 import { BenchmarkRunner } from "./runner";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
@@ -101,6 +101,12 @@ interface CIScoreEntry {
   freshness: number;
   temporal: number;
   bilingual: number;
+  embedding?: {
+    mode: BenchEmbeddingMode;
+    provider: "local" | "fallback";
+    model: string;
+    vectorDimension: number;
+  };
 }
 
 interface CIScoreHistory {
@@ -118,7 +124,7 @@ function layer1AbsoluteFloor(scores: {
     f1: 0.20,
     freshness: 0.90,
     temporal: 0.50,
-    bilingual: 0.70,
+    bilingual: 0.80,
   };
   const failures: string[] = [];
   for (const [key, floor] of Object.entries(FLOORS)) {
@@ -133,9 +139,10 @@ function layer1AbsoluteFloor(scores: {
 /** Layer 2: 相対回帰チェック（直近3回平均から 2SE 低下で fail） */
 function layer2RelativeRegression(
   current: { f1: number; freshness: number; temporal: number; bilingual: number },
-  history: CIScoreHistory
+  history: CIScoreHistory,
+  profile: BenchEmbeddingProfile
 ): { passed: boolean; failures: string[] } {
-  const recent = history.entries.slice(-3);
+  const recent = selectComparableHistoryEntries(history.entries, profile).slice(-3);
   if (recent.length < 2) {
     return { passed: true, failures: [] }; // 履歴不足は skip
   }
@@ -153,6 +160,37 @@ function layer2RelativeRegression(
     }
   }
   return { passed: failures.length === 0, failures };
+}
+
+function isSameEmbeddingProfile(
+  entryProfile: CIScoreEntry["embedding"] | undefined,
+  currentProfile: BenchEmbeddingProfile
+): boolean {
+  if (!entryProfile) return false;
+  return (
+    entryProfile.mode === currentProfile.mode &&
+    entryProfile.provider === currentProfile.provider &&
+    entryProfile.model === currentProfile.model &&
+    entryProfile.vectorDimension === currentProfile.vectorDimension
+  );
+}
+
+function selectComparableHistoryEntries(entries: CIScoreEntry[], profile: BenchEmbeddingProfile): CIScoreEntry[] {
+  if (entries.length === 0) return [];
+  const withProfile = entries.filter((entry) => entry.embedding);
+
+  // Legacy history has no embedding metadata; avoid comparing fallback-era records to ONNX runs.
+  if (withProfile.length === 0) {
+    return profile.mode === "fallback" ? entries : [];
+  }
+
+  const exactMatches = entries.filter((entry) => isSameEmbeddingProfile(entry.embedding, profile));
+  if (exactMatches.length > 0) {
+    return exactMatches;
+  }
+
+  // If no exact profile matches exist yet, do not force regression checks across heterogeneous setups.
+  return [];
 }
 
 /** Wilcoxon signed-rank test (two-sided, p < alpha で有意) */
@@ -228,13 +266,27 @@ interface DevWorkflowCase {
 }
 
 /** §34 FD-015: dev-workflow-20 ベンチマーク（実使用パターン recall@10） */
-async function runDevWorkflowBenchmark(fixturePath: string): Promise<{ recall: number; perSampleScores: number[] }> {
+async function runDevWorkflowBenchmark(
+  fixturePath: string
+): Promise<{ recall: number; perSampleScores: number[]; cacheStats: CacheStatsSummary }> {
   const { core, dir } = createTempCore();
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as DevWorkflowCase[];
     const project = "ci-dev-workflow";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const cacheBefore = await readCacheStats(core);
+
+    await maybePrimeEmbedding(
+      core,
+      cases.flatMap((dwCase) => dwCase.entries.map((entry) => entry.content)),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      cases.map((dwCase) => dwCase.query),
+      "query"
+    );
 
     for (const dwCase of cases) {
       for (const entry of dwCase.entries) {
@@ -262,7 +314,8 @@ async function runDevWorkflowBenchmark(fixturePath: string): Promise<{ recall: n
     }
 
     const recall = perSampleScores.length > 0 ? perSampleScores.reduce((a, b) => a + b, 0) / perSampleScores.length : 0;
-    return { recall, perSampleScores };
+    const cacheAfter = await readCacheStats(core);
+    return { recall, perSampleScores, cacheStats: summarizeCacheStats(cacheBefore, cacheAfter) };
   } finally {
     core.shutdown("ci-dev-workflow");
     rmSync(dir, { recursive: true, force: true });
@@ -282,10 +335,206 @@ function loadScoreHistory(): CIScoreHistory {
 /** スコア履歴に追記する */
 function appendScoreHistory(scores: { f1: number; freshness: number; temporal: number; bilingual: number }): void {
   const history = loadScoreHistory();
-  history.entries.push({ timestamp: new Date().toISOString(), ...scores });
+  history.entries.push({
+    timestamp: new Date().toISOString(),
+    ...scores,
+    embedding: {
+      mode: BENCH_EMBEDDING.mode,
+      provider: BENCH_EMBEDDING.provider,
+      model: BENCH_EMBEDDING.model,
+      vectorDimension: BENCH_EMBEDDING.vectorDimension,
+    },
+  });
   // 最大30件まで保持
   if (history.entries.length > 30) history.entries = history.entries.slice(-30);
   writeFileSync(CI_SCORE_HISTORY_PATH, JSON.stringify(history, null, 2));
+}
+
+type BenchEmbeddingMode = "onnx" | "fallback";
+
+interface BenchEmbeddingProfile {
+  mode: BenchEmbeddingMode;
+  provider: "local" | "fallback";
+  model: string;
+  vectorDimension: number;
+  gateEnabled: boolean;
+  primeEnabled: boolean;
+}
+
+interface EmbeddingRuntime {
+  provider: string;
+  model: string;
+  healthStatus: string;
+  healthDetails: string;
+}
+
+interface CacheStatsSummary {
+  available: boolean;
+  before: Record<string, number>;
+  after: Record<string, number>;
+  delta: Record<string, number>;
+}
+
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeMode(value: string | undefined): BenchEmbeddingMode {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "onnx") return "onnx";
+  return "fallback";
+}
+
+function normalizeVectorDimension(value: unknown, fallback: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  const rounded = Math.trunc(num);
+  if (rounded < 32 || rounded > 4096) return fallback;
+  return rounded;
+}
+
+function resolveBenchEmbeddingProfile(): BenchEmbeddingProfile {
+  const mode = normalizeMode(process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
+  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
+  const model =
+    mode === "onnx"
+      ? (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5"
+      : "fallback";
+  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, mode === "onnx" ? 384 : 64);
+  return {
+    mode,
+    provider,
+    model,
+    vectorDimension,
+    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx"),
+    primeEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true),
+  };
+}
+
+const BENCH_EMBEDDING = resolveBenchEmbeddingProfile();
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+function readEmbeddingRuntime(core: HarnessMemCore): EmbeddingRuntime {
+  const health = core.health();
+  const item = toRecord(health.items[0]);
+  const features = toRecord(item.features);
+  return {
+    provider: String(features.embedding_provider || item.embedding_provider || ""),
+    model: String(features.embedding_model || ""),
+    healthStatus: String(item.embedding_provider_status || ""),
+    healthDetails: String(item.embedding_provider_details || ""),
+  };
+}
+
+function verifyEmbeddingGate(core: HarnessMemCore, label: string): void {
+  if (!BENCH_EMBEDDING.gateEnabled || BENCH_EMBEDDING.mode !== "onnx") {
+    return;
+  }
+  const runtime = readEmbeddingRuntime(core);
+  const failures: string[] = [];
+  if (runtime.provider !== BENCH_EMBEDDING.provider) {
+    failures.push(`provider=${runtime.provider || "unknown"} (expected ${BENCH_EMBEDDING.provider})`);
+  }
+  if (runtime.model !== BENCH_EMBEDDING.model) {
+    failures.push(`model=${runtime.model || "unknown"} (expected ${BENCH_EMBEDDING.model})`);
+  }
+  const catalog = findModelById(BENCH_EMBEDDING.model);
+  if (!catalog) {
+    failures.push(`unknown model "${BENCH_EMBEDDING.model}"`);
+  } else if (BENCH_EMBEDDING.vectorDimension !== catalog.dimension) {
+    failures.push(
+      `vector_dim=${BENCH_EMBEDDING.vectorDimension} (expected ${catalog.dimension} for ${BENCH_EMBEDDING.model})`
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(`[${label}] ONNX gate failed: ${failures.join(", ")}`);
+  }
+}
+
+async function maybePrimeEmbedding(
+  core: HarnessMemCore,
+  texts: string[],
+  mode: "passage" | "query" = "passage"
+): Promise<void> {
+  if (!BENCH_EMBEDDING.primeEnabled) return;
+  const normalized = [...new Set(texts.map((text) => text.trim()).filter((text) => text.length > 0))];
+  if (normalized.length === 0) return;
+  const target = core as unknown as {
+    primeEmbedding?: (text: string, mode?: "passage" | "query") => unknown;
+  };
+  if (typeof target.primeEmbedding !== "function") return;
+
+  for (const text of normalized) {
+    try {
+      const result = target.primeEmbedding.call(core, text, mode);
+      if (isPromiseLike(result)) {
+        await result;
+      }
+    } catch {
+      // best effort
+    }
+  }
+}
+
+async function readCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
+  const target = core as unknown as {
+    getEmbeddingRuntimeInfo?: () => unknown;
+  };
+  if (typeof target.getEmbeddingRuntimeInfo !== "function") return null;
+  try {
+    const runtime = toRecord(target.getEmbeddingRuntimeInfo.call(core));
+    const record = toRecord(runtime.cacheStats);
+    return Object.keys(record).length > 0 ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+function flattenNumericStats(input: Record<string, unknown>, prefix = ""): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const qualified = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[qualified] = value;
+      continue;
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      Object.assign(out, flattenNumericStats(value as Record<string, unknown>, qualified));
+    }
+  }
+  return out;
+}
+
+function summarizeCacheStats(
+  beforeRaw: Record<string, unknown> | null,
+  afterRaw: Record<string, unknown> | null
+): CacheStatsSummary {
+  const before = beforeRaw ? flattenNumericStats(beforeRaw) : {};
+  const after = afterRaw ? flattenNumericStats(afterRaw) : {};
+  const delta: Record<string, number> = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    delta[key] = (after[key] ?? 0) - (before[key] ?? 0);
+  }
+  return {
+    available: beforeRaw !== null || afterRaw !== null,
+    before,
+    after,
+    delta,
+  };
 }
 
 interface BilingualSample {
@@ -294,6 +543,14 @@ interface BilingualSample {
   content: string;
   query: string;
   relevant_ids: string[];
+}
+
+interface BilingualFailureCase {
+  id: string;
+  query: string;
+  recall: number;
+  expected: string[];
+  top10: string[];
 }
 
 interface KnowledgeUpdateEntry {
@@ -332,7 +589,8 @@ function createTempCore(): { core: HarnessMemCore; dir: string } {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 0,
-    vectorDimension: 384,
+    vectorDimension: BENCH_EMBEDDING.vectorDimension,
+    embeddingProvider: BENCH_EMBEDDING.provider,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -345,10 +603,21 @@ function createTempCore(): { core: HarnessMemCore; dir: string } {
     cursorIngestEnabled: false,
     antigravityIngestEnabled: false,
   };
-  return { core: new HarnessMemCore(config), dir };
+  const core = new HarnessMemCore(config);
+  verifyEmbeddingGate(core, "run-ci");
+  return { core, dir };
 }
 
-async function runBilingualBenchmark(fixturePath: string): Promise<{ recall: number; passed: boolean; perSampleScores: number[] }> {
+async function runBilingualBenchmark(
+  fixturePath: string
+): Promise<{
+  recall: number;
+  passed: boolean;
+  gate: number;
+  perSampleScores: number[];
+  cacheStats: CacheStatsSummary;
+  failures: BilingualFailureCase[];
+}> {
   const { core, dir } = createTempCore();
   try {
     const raw = readFileSync(fixturePath, "utf-8");
@@ -356,6 +625,18 @@ async function runBilingualBenchmark(fixturePath: string): Promise<{ recall: num
     const samples = fixture.samples;
     const project = "ci-bilingual";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const cacheBefore = await readCacheStats(core);
+
+    await maybePrimeEmbedding(
+      core,
+      samples.map((sample) => sample.content),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      samples.map((sample) => sample.query),
+      "query"
+    );
 
     // コンテンツを投入
     for (let i = 0; i < samples.length; i++) {
@@ -375,30 +656,73 @@ async function runBilingualBenchmark(fixturePath: string): Promise<{ recall: num
 
     // recall@10 を計測（§34 FD-011: per-sample スコアも収集）
     const perSampleScores: number[] = [];
+    const failures: BilingualFailureCase[] = [];
     for (const s of samples) {
       const result = core.search({ query: s.query, project, include_private: true, limit: 10 });
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const relevantIds = s.relevant_ids.map((rid) => `obs_${rid}`);
       const recall = runner.calculateRecallAtK(retrievedIds, relevantIds, 10);
       perSampleScores.push(recall);
+      if (recall < 1) {
+        failures.push({
+          id: s.id,
+          query: s.query,
+          recall,
+          expected: relevantIds,
+          top10: retrievedIds.slice(0, 10),
+        });
+      }
     }
 
     const recall = perSampleScores.length > 0 ? perSampleScores.reduce((a, b) => a + b, 0) / perSampleScores.length : 0;
-    const passed = recall >= 0.70;
-    return { recall, passed, perSampleScores };
+    const envGate = Number(process.env.HARNESS_BENCH_BILINGUAL_GATE);
+    const gate = Number.isFinite(envGate) && envGate >= 0 && envGate <= 1 ? envGate : 0.80;
+    const passed = recall >= gate;
+    const cacheAfter = await readCacheStats(core);
+    return {
+      recall,
+      passed,
+      gate,
+      perSampleScores,
+      cacheStats: summarizeCacheStats(cacheBefore, cacheAfter),
+      failures,
+    };
   } finally {
     core.shutdown("ci-bilingual");
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-async function runKnowledgeUpdateBenchmark(fixturePath: string): Promise<{ freshnessAtK: number; passed: boolean; freshnessGate: number; perSampleScores: number[] }> {
+async function runKnowledgeUpdateBenchmark(
+  fixturePath: string
+): Promise<{
+  freshnessAtK: number;
+  passed: boolean;
+  freshnessGate: number;
+  perSampleScores: number[];
+  cacheStats: CacheStatsSummary;
+}> {
   const { core, dir } = createTempCore();
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as KnowledgeUpdateCase[];
     const project = "ci-knowledge-update";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const cacheBefore = await readCacheStats(core);
+
+    await maybePrimeEmbedding(
+      core,
+      cases.flatMap((kCase) => [
+        ...kCase.old_entries.map((entry) => entry.content),
+        ...kCase.new_entries.map((entry) => entry.content),
+      ]),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      cases.map((kCase) => kCase.query),
+      "query"
+    );
 
     const scores: number[] = [];
 
@@ -445,20 +769,48 @@ async function runKnowledgeUpdateBenchmark(fixturePath: string): Promise<{ fresh
     const envGate = Number(process.env.HARNESS_BENCH_FRESHNESS_GATE);
     const freshnessGate = Number.isFinite(envGate) && envGate >= 0 && envGate <= 1 ? envGate : 0.50;
     const passed = freshnessAtK >= freshnessGate;
-    return { freshnessAtK, passed, freshnessGate, perSampleScores: scores };
+    const cacheAfter = await readCacheStats(core);
+    return {
+      freshnessAtK,
+      passed,
+      freshnessGate,
+      perSampleScores: scores,
+      cacheStats: summarizeCacheStats(cacheBefore, cacheAfter),
+    };
   } finally {
     core.shutdown("ci-knowledge-update");
     rmSync(dir, { recursive: true, force: true });
   }
 }
 
-async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScore: number; weightedTau: number; ndcgAt5: number; passed: boolean; temporalGate: number; perSampleScores: number[]; domainBreakdown: Record<string, { tau: number; n: number }> }> {
+async function runTemporalBenchmark(fixturePath: string): Promise<{
+  temporalScore: number;
+  weightedTau: number;
+  ndcgAt5: number;
+  passed: boolean;
+  temporalGate: number;
+  perSampleScores: number[];
+  domainBreakdown: Record<string, { tau: number; n: number }>;
+  cacheStats: CacheStatsSummary;
+}> {
   const { core, dir } = createTempCore();
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as TemporalCase[];
     const project = "ci-temporal";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const cacheBefore = await readCacheStats(core);
+
+    await maybePrimeEmbedding(
+      core,
+      cases.flatMap((tCase) => tCase.entries.map((entry) => entry.content)),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      cases.map((tCase) => tCase.query),
+      "query"
+    );
 
     const scores: number[] = [];
     const weightedTauScores: number[] = [];
@@ -524,7 +876,17 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
       }
     }
 
-    return { temporalScore, weightedTau, ndcgAt5, passed, temporalGate, perSampleScores: weightedTauScores, domainBreakdown };
+    const cacheAfter = await readCacheStats(core);
+    return {
+      temporalScore,
+      weightedTau,
+      ndcgAt5,
+      passed,
+      temporalGate,
+      perSampleScores: weightedTauScores,
+      domainBreakdown,
+      cacheStats: summarizeCacheStats(cacheBefore, cacheAfter),
+    };
   } finally {
     core.shutdown("ci-temporal");
     rmSync(dir, { recursive: true, force: true });
@@ -533,10 +895,18 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{ temporalScor
 
 async function main(): Promise<void> {
   console.log("[CI] §34 Benchmark CI Runner (locomo-120 + bilingual-30 + knowledge-update + temporal)");
+  console.log(
+    `[CI] embedding profile: mode=${BENCH_EMBEDDING.mode}, provider=${BENCH_EMBEDDING.provider}, ` +
+      `model=${BENCH_EMBEDDING.model}, vector_dim=${BENCH_EMBEDDING.vectorDimension}, ` +
+      `onnx_gate=${BENCH_EMBEDDING.gateEnabled}, prime=${BENCH_EMBEDDING.primeEnabled}`
+  );
 
   // ベンチマーク専用設定
   process.env.HARNESS_MEM_DECAY_DISABLED = "1";
   process.env.HARNESS_MEM_RERANKER_ENABLED = "1";
+  if (BENCH_EMBEDDING.mode === "onnx") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = BENCH_EMBEDDING.model;
+  }
 
   mkdirSync(RESULTS_DIR, { recursive: true });
 
@@ -559,6 +929,11 @@ async function main(): Promise<void> {
       system: "harness-mem",
       datasetPath: LOCOMO_120_PATH,
       outputPath: LOCOMO_120_LATEST,
+      embeddingMode: BENCH_EMBEDDING.mode,
+      embeddingModel: BENCH_EMBEDDING.model,
+      vectorDimension: BENCH_EMBEDDING.vectorDimension,
+      onnxGate: BENCH_EMBEDDING.gateEnabled,
+      primeEmbedding: BENCH_EMBEDDING.primeEnabled,
     });
 
     const overallF1 = result.metrics.overall.f1;
@@ -572,6 +947,14 @@ async function main(): Promise<void> {
       console.log(`  ${cat}: EM=${scores.em.toFixed(4)}, F1=${scores.f1.toFixed(4)} (n=${scores.count})`);
     }
     console.log(`[CI] Saved to ${LOCOMO_120_LATEST}`);
+    console.log(
+      `[CI] locomo-120 cacheStats: available=${result.performance.cache_stats.available} ` +
+        `delta=${JSON.stringify(result.performance.cache_stats.delta)}`
+    );
+
+    if (result.pipeline.embedding.gate.enabled && !result.pipeline.embedding.gate.passed) {
+      throw new Error(`[CI] locomo-120 ONNX gate failed: ${result.pipeline.embedding.gate.failures.join(", ")}`);
+    }
 
     ciScores.f1 = overallF1; // §34 FD-012: 3層ゲート用
 
@@ -596,15 +979,28 @@ async function main(): Promise<void> {
   if (existsSync(bilingualPath)) {
     console.log(`\n[CI] Running ${bilingualLabel} benchmark`);
     try {
-      const { recall, passed, perSampleScores: biScores } = await runBilingualBenchmark(bilingualPath);
+      const { recall, passed, gate, perSampleScores: biScores, cacheStats, failures } = await runBilingualBenchmark(
+        bilingualPath
+      );
       const biCI = ciRunner.bootstrapCI(biScores);
       ciScores.bilingual = recall; // §34 FD-012: 3層ゲート用
-      console.log(`[CI] ${bilingualLabel} recall@10: ${recall.toFixed(4)} (threshold: 0.70)`);
+      console.log(`[CI] ${bilingualLabel} recall@10: ${recall.toFixed(4)} (threshold: ${gate})`);
       console.log(`[CI] ${bilingualLabel} 95% Bootstrap CI: [${biCI.lower.toFixed(4)}, ${biCI.upper.toFixed(4)}] (method: ${biCI.method})`);
+      console.log(`[CI] ${bilingualLabel} cacheStats delta: ${JSON.stringify(cacheStats.delta)}`);
       if (passed) {
         console.log(`[CI] ${bilingualLabel} PASSED`);
       } else {
-        console.error(`[CI] ${bilingualLabel} FAILED: recall@10=${recall.toFixed(4)} < 0.70`);
+        console.error(`[CI] ${bilingualLabel} FAILED: recall@10=${recall.toFixed(4)} < ${gate}`);
+        if (failures.length > 0) {
+          const preview = failures.slice(0, 10).map((failure) => ({
+            id: failure.id,
+            recall: Number(failure.recall.toFixed(3)),
+            query: failure.query,
+            expected: failure.expected,
+            top10: failure.top10.slice(0, 5),
+          }));
+          console.error(`[CI] ${bilingualLabel} top failures (first 10): ${JSON.stringify(preview)}`);
+        }
         allPassed = false;
       }
     } catch (err) {
@@ -624,12 +1020,13 @@ async function main(): Promise<void> {
   if (existsSync(kuPath)) {
     console.log(`\n[CI] Running ${kuLabel} benchmark`);
     try {
-      const { freshnessAtK, passed, freshnessGate, perSampleScores: kuScores } = await runKnowledgeUpdateBenchmark(kuPath);
+      const { freshnessAtK, passed, freshnessGate, perSampleScores: kuScores, cacheStats } = await runKnowledgeUpdateBenchmark(kuPath);
       const kuCI = ciRunner.bootstrapCI(kuScores);
       ciScores.freshness = freshnessAtK; // §34 FD-012: 3層ゲート用
       const gateSource = process.env.HARNESS_BENCH_FRESHNESS_GATE ? "env" : "default";
       console.log(`[CI] ${kuLabel} Freshness@K: ${freshnessAtK.toFixed(4)} (threshold: ${freshnessGate} [${gateSource}])`);
       console.log(`[CI] ${kuLabel} 95% Bootstrap CI: [${kuCI.lower.toFixed(4)}, ${kuCI.upper.toFixed(4)}] (method: ${kuCI.method})`);
+      console.log(`[CI] ${kuLabel} cacheStats delta: ${JSON.stringify(cacheStats.delta)}`);
       if (passed) {
         console.log(`[CI] ${kuLabel} PASSED`);
       } else {
@@ -654,7 +1051,7 @@ async function main(): Promise<void> {
   if (existsSync(temporalPath)) {
     console.log(`\n[CI] Running ${temporalLabel} benchmark`);
     try {
-      const { temporalScore, weightedTau, ndcgAt5, passed, temporalGate, perSampleScores: tScores } = await runTemporalBenchmark(temporalPath);
+      const { temporalScore, weightedTau, ndcgAt5, passed, temporalGate, perSampleScores: tScores, cacheStats } = await runTemporalBenchmark(temporalPath);
       const tCI = ciRunner.bootstrapCI(tScores);
       ciScores.temporal = temporalScore; // §34 FD-012: 3層ゲート用
       const temporalGateSource = process.env.HARNESS_BENCH_TEMPORAL_GATE ? "env" : "default";
@@ -663,6 +1060,7 @@ async function main(): Promise<void> {
       console.log(`[CI] ${temporalLabel} 95% Bootstrap CI: [${tCI.lower.toFixed(4)}, ${tCI.upper.toFixed(4)}] (method: ${tCI.method})`);
       console.log(`[CI] ${temporalLabel} Weighted Kendall tau: ${weightedTau.toFixed(4)}`);
       console.log(`[CI] ${temporalLabel} nDCG@5: ${ndcgAt5.toFixed(4)}`);
+      console.log(`[CI] ${temporalLabel} cacheStats delta: ${JSON.stringify(cacheStats.delta)}`);
       if (passed) {
         console.log(`[CI] ${temporalLabel} PASSED`);
       } else {
@@ -682,10 +1080,11 @@ async function main(): Promise<void> {
   if (existsSync(dwPath)) {
     console.log(`\n[CI] Running dev-workflow-20 benchmark`);
     try {
-      const { recall, perSampleScores: dwScores } = await runDevWorkflowBenchmark(dwPath);
+      const { recall, perSampleScores: dwScores, cacheStats } = await runDevWorkflowBenchmark(dwPath);
       const dwCI = ciRunner.bootstrapCI(dwScores);
       console.log(`[CI] dev-workflow-20 recall@10: ${recall.toFixed(4)}`);
       console.log(`[CI] dev-workflow-20 95% Bootstrap CI: [${dwCI.lower.toFixed(4)}, ${dwCI.upper.toFixed(4)}] (method: ${dwCI.method})`);
+      console.log(`[CI] dev-workflow-20 cacheStats delta: ${JSON.stringify(cacheStats.delta)}`);
       if (recall >= 0.5) {
         console.log(`[CI] dev-workflow-20 OK`);
       } else {
@@ -713,7 +1112,7 @@ async function main(): Promise<void> {
   }
 
   // Layer 2: 相対回帰（直近3回平均から2SE低下で fail）
-  const l2 = layer2RelativeRegression(ciScores, history);
+  const l2 = layer2RelativeRegression(ciScores, history, BENCH_EMBEDDING);
   if (l2.passed) {
     console.log(`[CI] Layer 2 (Relative Regression): PASSED (history=${history.entries.length} entries)`);
   } else {

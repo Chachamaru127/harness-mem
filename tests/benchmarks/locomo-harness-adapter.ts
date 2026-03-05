@@ -667,6 +667,17 @@ function selectTopSentencesByTfIdf(sentences: string[], query: string, topN: num
   return scored.slice(0, topN).map((item) => item.sentence);
 }
 
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
 export class HarnessMemLocomoAdapter {
   private readonly sessionId: string;
 
@@ -677,7 +688,75 @@ export class HarnessMemLocomoAdapter {
     this.sessionId = options.session_id || "locomo-session";
   }
 
+  private getPrimeEmbeddingInvoker():
+    | ((text: string, mode?: "passage" | "query") => unknown)
+    | null {
+    const maybeCore = this.core as unknown as {
+      primeEmbedding?: (text: string, mode?: "passage" | "query") => unknown;
+    };
+    if (typeof maybeCore.primeEmbedding !== "function") {
+      return null;
+    }
+    return maybeCore.primeEmbedding.bind(this.core);
+  }
+
+  private async primeEmbeddingTexts(
+    texts: string[],
+    mode: "passage" | "query" = "passage"
+  ): Promise<boolean> {
+    const invoker = this.getPrimeEmbeddingInvoker();
+    if (!invoker) {
+      return false;
+    }
+
+    const normalized = [...new Set(texts.map((text) => text.trim()).filter((text) => text.length > 0))];
+    if (normalized.length === 0) {
+      return false;
+    }
+
+    try {
+      for (const text of normalized) {
+        const result = invoker(text, mode);
+        if (isPromiseLike(result)) {
+          await result;
+        }
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async primeBeforeIngest(sample: LocomoSample): Promise<boolean> {
+    const texts = sample.conversation.map((turn) => turn.text);
+    return this.primeEmbeddingTexts(texts, "passage");
+  }
+
+  async primeBeforeSearch(question: string, options: AnswerQuestionOptions = {}): Promise<boolean> {
+    const kind = detectQuestionKind(question, options.category);
+    const policy = resolveSearchPolicy(kind, options.category);
+    const queries = buildQueryVariants(question, kind, policy, options.category);
+    return this.primeEmbeddingTexts(queries, "query");
+  }
+
+  async readCacheStats(): Promise<Record<string, unknown> | null> {
+    const maybeCore = this.core as unknown as {
+      getEmbeddingRuntimeInfo?: () => unknown;
+    };
+    if (typeof maybeCore.getEmbeddingRuntimeInfo !== "function") {
+      return null;
+    }
+    try {
+      const runtime = toRecord(maybeCore.getEmbeddingRuntimeInfo.call(this.core));
+      const cacheStats = toRecord(runtime.cacheStats);
+      return Object.keys(cacheStats).length > 0 ? cacheStats : null;
+    } catch {
+      return null;
+    }
+  }
+
   ingestSample(sample: LocomoSample): void {
+    void this.primeBeforeIngest(sample);
     const baseTs = Date.parse("2026-01-01T00:00:00.000Z");
     sample.conversation.forEach((turn, index) => {
       this.core.recordEvent({
@@ -702,6 +781,7 @@ export class HarnessMemLocomoAdapter {
     const kind = detectQuestionKind(question, options.category);
     const policy = resolveSearchPolicy(kind, options.category);
     const queries = buildQueryVariants(question, kind, policy, options.category);
+    void this.primeEmbeddingTexts(queries, "query");
 
     const merged = new Map<string, SearchItem>();
     let latencyTotal = 0;

@@ -3464,11 +3464,46 @@ update_impl() {
 # ---------------------------------------------------------------------------
 # model subcommand: list / pull / use / status
 # ---------------------------------------------------------------------------
-MODEL_CATALOG_IDS=("ruri-v3-30m")
-MODEL_CATALOG_DISPLAY_NAMES=("Ruri V3 30M (Japanese)")
-MODEL_CATALOG_SIZES=("~153MB")
-MODEL_CATALOG_LANGS=("ja")
-MODEL_CATALOG_DIMS=("256")
+MODEL_CATALOG_IDS=(
+  "ruri-v3-30m"
+  "gte-small"
+  "e5-small-v2"
+  "bge-small"
+  "multilingual-e5"
+  "nomic-embed"
+)
+MODEL_CATALOG_DISPLAY_NAMES=(
+  "Ruri V3 30M (Japanese)"
+  "GTE Small (English)"
+  "E5 Small v2 (English)"
+  "BGE Small v1.5 (English/Chinese)"
+  "Multilingual E5 Small (100+ languages)"
+  "Nomic Embed Text v1 (English)"
+)
+MODEL_CATALOG_SIZES=(
+  "~153MB"
+  "~67MB"
+  "~67MB"
+  "~67MB"
+  "~117MB"
+  "~274MB"
+)
+MODEL_CATALOG_LANGS=(
+  "ja"
+  "en"
+  "en"
+  "en"
+  "multilingual"
+  "en"
+)
+MODEL_CATALOG_DIMS=(
+  "256"
+  "384"
+  "384"
+  "384"
+  "384"
+  "768"
+)
 
 model_dir_for_id() {
   local model_id="$1"

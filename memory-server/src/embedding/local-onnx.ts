@@ -1,4 +1,4 @@
-import type { EmbeddingProvider, EmbeddingHealth } from "./types";
+import type { EmbeddingProvider, EmbeddingHealth, EmbeddingCacheStats } from "./types";
 
 // Lazy import to avoid loading Transformers.js at startup when not needed
 type TransformersModule = typeof import("@huggingface/transformers");
@@ -12,7 +12,10 @@ export interface LocalOnnxOptions {
   queryPrefix?: string;
   passagePrefix?: string;
   fallback?: EmbeddingProvider;
+  cacheSize?: number;
 }
+
+const DEFAULT_LOCAL_ONNX_CACHE_SIZE = 128;
 
 function meanPooling(embeddings: number[][], attentionMask: number[]): number[] {
   const dim = embeddings[0].length;
@@ -78,15 +81,64 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
   const { modelId, modelPath, dimension } = options;
   const queryPrefix = options.queryPrefix ?? "";
   const passagePrefix = options.passagePrefix ?? "";
+  const configuredCacheSize = Number.isFinite(options.cacheSize)
+    ? Number(options.cacheSize)
+    : DEFAULT_LOCAL_ONNX_CACHE_SIZE;
+  const cacheCapacity = Math.max(1, Math.floor(configuredCacheSize));
 
   let tokenizer: AutoTokenizerInstance | null = null;
   let model: AutoModelInstance | null = null;
   let initError: string | null = null;
   let warnedOnce = false;
+  let cacheHits = 0;
+  let cacheMisses = 0;
+  let cacheEvictions = 0;
+  const embeddingCache = new Map<string, number[]>();
+  const inflightComputations = new Map<string, Promise<number[]>>();
   let lastHealth: EmbeddingHealth = {
     status: "degraded",
     details: `local model ${modelId}: initializing...`,
   };
+
+  function zeroVector(): number[] {
+    return new Array<number>(dimension).fill(0);
+  }
+
+  function fallbackVector(text: string): number[] {
+    if (options.fallback) {
+      return options.fallback.embed(text);
+    }
+    return zeroVector();
+  }
+
+  function getCachedEmbedding(cacheKey: string): number[] | null {
+    const cached = embeddingCache.get(cacheKey);
+    if (!cached) {
+      cacheMisses += 1;
+      return null;
+    }
+    cacheHits += 1;
+    // Reinsert to refresh recency (LRU)
+    embeddingCache.delete(cacheKey);
+    embeddingCache.set(cacheKey, cached);
+    return cached;
+  }
+
+  function setCachedEmbedding(cacheKey: string, embedding: number[]): void {
+    if (embeddingCache.has(cacheKey)) {
+      embeddingCache.delete(cacheKey);
+    }
+    embeddingCache.set(cacheKey, embedding);
+
+    while (embeddingCache.size > cacheCapacity) {
+      const oldest = embeddingCache.keys().next().value;
+      if (typeof oldest !== "string") {
+        break;
+      }
+      embeddingCache.delete(oldest);
+      cacheEvictions += 1;
+    }
+  }
 
   // Start async initialization immediately
   const initPromise: Promise<void> = (async () => {
@@ -118,49 +170,30 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     }
   })();
 
-  // KNOWN LIMITATION: Transformers.js model inference (model.__call__) is async
-  // (returns a Promise). The sync embed() interface cannot await it directly.
-  // We cache the last inference result from the async path (embedAsync).
-  // If cachedResult is available and matches this text, use it; otherwise fall back.
-  // This means the FIRST call for any new text always returns fallback/zeros;
-  // subsequent calls for the same text will return the real ONNX embedding.
-  // The single-entry cache is intentional to keep memory bounded, but it means
-  // alternating query/passage texts will always miss. A future improvement would
-  // be to expose an async embedQueryAsync() on the EmbeddingProvider interface.
   function embedSync(text: string, prefix: string): number[] {
+    const normalizedText = text || "";
     if (initError !== null || tokenizer === null || model === null) {
-      // Fallback: if a fallback provider is given use it, otherwise return zeros
-      if (options.fallback) {
-        return options.fallback.embed(text);
-      }
-      return new Array<number>(dimension).fill(0);
+      return fallbackVector(normalizedText);
     }
 
-    // KNOWN LIMITATION: Transformers.js model inference (model.__call__) is async
-    // (returns a Promise). The sync embed() interface cannot await it directly.
-    // We cache the last inference result from the async path (embedAsync).
-    // If cachedResult is available and matches this text, use it; otherwise fall back.
-    if (cachedEmbedding && cachedEmbeddingKey === prefix + (text || "")) {
-      return cachedEmbedding;
+    const cacheKey = `${prefix}${normalizedText}`;
+    const cached = getCachedEmbedding(cacheKey);
+    if (cached) {
+      return cached;
     }
 
-    // Trigger async inference for next call (fire-and-forget)
-    void embedAsync(text, prefix);
+    // Trigger async inference for next call (fire-and-forget).
+    void primeInternal(normalizedText, prefix, {
+      cacheKey,
+      skipCacheLookup: true,
+    });
 
-    // Fall back for this call
-    if (options.fallback) {
-      return options.fallback.embed(text);
-    }
-    return new Array<number>(dimension).fill(0);
+    return fallbackVector(normalizedText);
   }
 
-  // Async inference path: computes embedding and caches the result
-  let cachedEmbeddingKey: string | null = null;
-  let cachedEmbedding: number[] | null = null;
-
-  async function embedAsync(text: string, prefix: string): Promise<number[]> {
+  async function computeEmbedding(text: string, prefix: string): Promise<number[]> {
     if (initError !== null || tokenizer === null || model === null) {
-      return new Array<number>(dimension).fill(0);
+      return fallbackVector(text);
     }
 
     const prefixedText = prefix + (text || "");
@@ -184,10 +217,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
 
     const hiddenStates = extractHiddenStates(output.last_hidden_state);
     if (!hiddenStates) {
-      if (options.fallback) {
-        return options.fallback.embed(text);
-      }
-      return new Array<number>(dimension).fill(0);
+      return fallbackVector(text);
     }
 
     const pooled = meanPooling(hiddenStates, attentionMask);
@@ -201,11 +231,45 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     } else {
       result = [...normalized, ...new Array<number>(dimension - normalized.length).fill(0)];
     }
-
-    // Cache for sync access on next embed() call
-    cachedEmbeddingKey = prefixedText;
-    cachedEmbedding = result;
     return result;
+  }
+
+  async function primeInternal(
+    text: string,
+    prefix: string,
+    optionsForPrime: { cacheKey?: string; skipCacheLookup?: boolean } = {}
+  ): Promise<number[]> {
+    const normalizedText = text || "";
+    const cacheKey = optionsForPrime.cacheKey ?? `${prefix}${normalizedText}`;
+
+    if (!optionsForPrime.skipCacheLookup) {
+      const cached = getCachedEmbedding(cacheKey);
+      if (cached) {
+        return cached;
+      }
+    }
+
+    const inflight = inflightComputations.get(cacheKey);
+    if (inflight) {
+      return inflight;
+    }
+
+    const running = (async () => {
+      await initPromise;
+      if (initError !== null || tokenizer === null || model === null) {
+        return fallbackVector(normalizedText);
+      }
+      const computed = await computeEmbedding(normalizedText, prefix);
+      setCachedEmbedding(cacheKey, computed);
+      return computed;
+    })();
+
+    inflightComputations.set(cacheKey, running);
+    try {
+      return await running;
+    } finally {
+      inflightComputations.delete(cacheKey);
+    }
   }
 
   return {
@@ -230,7 +294,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
         if (options.fallback) {
           return options.fallback.embed(text);
         }
-        return new Array<number>(dimension).fill(0);
+        return zeroVector();
       }
       return embedSync(text, passagePrefix);
     },
@@ -240,9 +304,28 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
         if (options.fallback) {
           return options.fallback.embed(text);
         }
-        return new Array<number>(dimension).fill(0);
+        return zeroVector();
       }
       return embedSync(text, queryPrefix);
+    },
+
+    async prime(text: string): Promise<number[]> {
+      return primeInternal(text, passagePrefix);
+    },
+
+    async primeQuery(text: string): Promise<number[]> {
+      return primeInternal(text, queryPrefix);
+    },
+
+    cacheStats(): EmbeddingCacheStats {
+      return {
+        entries: embeddingCache.size,
+        capacity: cacheCapacity,
+        hits: cacheHits,
+        misses: cacheMisses,
+        evictions: cacheEvictions,
+        inflight: inflightComputations.size,
+      };
     },
 
     health(): EmbeddingHealth {
@@ -253,5 +336,5 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     get ready(): Promise<void> {
       return initPromise;
     },
-  } as EmbeddingProvider & { embedQuery(text: string): number[]; ready: Promise<void> };
+  };
 }

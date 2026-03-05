@@ -20,6 +20,7 @@ import { Database } from "bun:sqlite";
 import { writeFileSync, existsSync } from "node:fs";
 import { resolve, join } from "node:path";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
+import { findModelById } from "../embedding/model-catalog";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 
@@ -47,6 +48,14 @@ export interface RetroReport {
   schema_version: "fd-017-retrospective-v1";
   generated_at: string;
   db_path: string;
+  embedding_profile: {
+    mode: "onnx" | "fallback";
+    provider: "local" | "fallback";
+    model: string;
+    vector_dimension: number;
+    onnx_gate: boolean;
+    prime_enabled: boolean;
+  };
   algo_v33: {
     recall_at_5: number;
     recall_at_10: number;
@@ -68,6 +77,180 @@ export interface RetroReport {
     v33_recall10: number;
     v34_recall10: number;
   }>;
+}
+
+interface BenchEmbeddingProfile {
+  mode: "onnx" | "fallback";
+  provider: "local" | "fallback";
+  model: string;
+  vectorDimension: number;
+  gateEnabled: boolean;
+  primeEnabled: boolean;
+}
+
+interface CacheStatsSummary {
+  available: boolean;
+  before: Record<string, number>;
+  after: Record<string, number>;
+  delta: Record<string, number>;
+}
+
+interface AlgoEvalResult {
+  results: RetroResult[];
+  cacheStats: CacheStatsSummary;
+}
+
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeMode(value: string | undefined): "onnx" | "fallback" {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "onnx") return "onnx";
+  return "fallback";
+}
+
+function normalizeVectorDimension(value: unknown, fallback: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  const rounded = Math.trunc(num);
+  if (rounded < 32 || rounded > 4096) return fallback;
+  return rounded;
+}
+
+function resolveBenchEmbeddingProfile(): BenchEmbeddingProfile {
+  const mode = normalizeMode(process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
+  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
+  const model =
+    mode === "onnx"
+      ? (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5"
+      : "fallback";
+  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, mode === "onnx" ? 384 : 64);
+  return {
+    mode,
+    provider,
+    model,
+    vectorDimension,
+    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx"),
+    primeEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true),
+  };
+}
+
+const BENCH_EMBEDDING = resolveBenchEmbeddingProfile();
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+function flattenNumericStats(input: Record<string, unknown>, prefix = ""): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const qualified = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[qualified] = value;
+      continue;
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      Object.assign(out, flattenNumericStats(value as Record<string, unknown>, qualified));
+    }
+  }
+  return out;
+}
+
+function summarizeCacheStats(
+  beforeRaw: Record<string, unknown> | null,
+  afterRaw: Record<string, unknown> | null
+): CacheStatsSummary {
+  const before = beforeRaw ? flattenNumericStats(beforeRaw) : {};
+  const after = afterRaw ? flattenNumericStats(afterRaw) : {};
+  const delta: Record<string, number> = {};
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    delta[key] = (after[key] ?? 0) - (before[key] ?? 0);
+  }
+  return {
+    available: beforeRaw !== null || afterRaw !== null,
+    before,
+    after,
+    delta,
+  };
+}
+
+function verifyEmbeddingGate(core: HarnessMemCore, label: string): void {
+  if (!BENCH_EMBEDDING.gateEnabled || BENCH_EMBEDDING.mode !== "onnx") return;
+  const health = core.health();
+  const item = toRecord(health.items[0]);
+  const features = toRecord(item.features);
+  const provider = String(features.embedding_provider || item.embedding_provider || "");
+  const model = String(features.embedding_model || "");
+  const failures: string[] = [];
+  if (provider !== BENCH_EMBEDDING.provider) {
+    failures.push(`provider=${provider || "unknown"} (expected ${BENCH_EMBEDDING.provider})`);
+  }
+  if (model !== BENCH_EMBEDDING.model) {
+    failures.push(`model=${model || "unknown"} (expected ${BENCH_EMBEDDING.model})`);
+  }
+  const catalog = findModelById(BENCH_EMBEDDING.model);
+  if (!catalog) {
+    failures.push(`unknown model "${BENCH_EMBEDDING.model}"`);
+  } else if (BENCH_EMBEDDING.vectorDimension !== catalog.dimension) {
+    failures.push(
+      `vector_dim=${BENCH_EMBEDDING.vectorDimension} (expected ${catalog.dimension} for ${BENCH_EMBEDDING.model})`
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(`[${label}] ONNX gate failed: ${failures.join(", ")}`);
+  }
+}
+
+async function maybePrimeEmbedding(
+  core: HarnessMemCore,
+  texts: string[],
+  mode: "passage" | "query" = "passage"
+): Promise<void> {
+  if (!BENCH_EMBEDDING.primeEnabled) return;
+  const normalized = [...new Set(texts.map((text) => text.trim()).filter((text) => text.length > 0))];
+  if (normalized.length === 0) return;
+
+  const target = core as unknown as {
+    primeEmbedding?: (text: string, mode?: "passage" | "query") => unknown;
+  };
+  if (typeof target.primeEmbedding !== "function") return;
+
+  for (const text of normalized) {
+    try {
+      const single = target.primeEmbedding.call(core, text, mode);
+      if (isPromiseLike(single)) {
+        await single;
+      }
+    } catch {
+      // best effort
+    }
+  }
+}
+
+async function readCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
+  const target = core as unknown as {
+    getEmbeddingRuntimeInfo?: () => unknown;
+  };
+  if (typeof target.getEmbeddingRuntimeInfo !== "function") return null;
+  try {
+    const runtime = toRecord(target.getEmbeddingRuntimeInfo.call(core));
+    const record = toRecord(runtime.cacheStats);
+    return Object.keys(record).length > 0 ? record : null;
+  } catch {
+    return null;
+  }
 }
 
 /** mem_audit_log から search_hit クエリをサンプリングする */
@@ -132,7 +315,7 @@ export async function evaluateAlgo(
   queries: RetroQuery[],
   algo: AlgoVersion,
   sourceDbPath: string
-): Promise<RetroResult[]> {
+): Promise<AlgoEvalResult> {
   // アルゴリズムバージョン設定を環境変数に反映
   const envOverride = algoVersionEnv(algo);
   for (const [k, v] of Object.entries(envOverride)) {
@@ -145,7 +328,8 @@ export async function evaluateAlgo(
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 0,
-    vectorDimension: 384,
+    vectorDimension: BENCH_EMBEDDING.vectorDimension,
+    embeddingProvider: BENCH_EMBEDDING.provider,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -159,8 +343,10 @@ export async function evaluateAlgo(
     antigravityIngestEnabled: false,
   };
   const core = new HarnessMemCore(config);
+  verifyEmbeddingGate(core, `retro-${algo}`);
 
   try {
+    const cacheBefore = await readCacheStats(core);
     // ソース DB のエントリを再投入
     const sourceDb = new Database(sourceDbPath, { readonly: true });
     type ObsRow = { id: string; platform: string; project: string; session_id: string; event_type: string; content: string; created_at: string };
@@ -174,6 +360,17 @@ export async function evaluateAlgo(
       `)
       .all();
     sourceDb.close();
+
+    await maybePrimeEmbedding(
+      core,
+      obs.map((row) => row.content),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      queries.map((query) => query.query),
+      "query"
+    );
 
     for (const o of obs) {
       core.recordEvent({
@@ -213,7 +410,11 @@ export async function evaluateAlgo(
       });
     }
 
-    return results;
+    const cacheAfter = await readCacheStats(core);
+    return {
+      results,
+      cacheStats: summarizeCacheStats(cacheBefore, cacheAfter),
+    };
   } finally {
     core.shutdown(`retro-${algo}`);
     rmSync(dir, { recursive: true, force: true });
@@ -227,6 +428,14 @@ export async function runRetrospectiveEval(
   outputPath?: string
 ): Promise<RetroReport> {
   const resolvedDb = resolve(dbPath);
+  if (BENCH_EMBEDDING.mode === "onnx") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = BENCH_EMBEDDING.model;
+  }
+  console.log(
+    `[retro-eval] embedding profile: mode=${BENCH_EMBEDDING.mode}, provider=${BENCH_EMBEDDING.provider}, ` +
+      `model=${BENCH_EMBEDDING.model}, vector_dim=${BENCH_EMBEDDING.vectorDimension}, ` +
+      `onnx_gate=${BENCH_EMBEDDING.gateEnabled}, prime=${BENCH_EMBEDDING.primeEnabled}`
+  );
   const db = new Database(resolvedDb, { readonly: true });
   const queries = sampleSearchHits(db, maxQueries);
   db.close();
@@ -237,6 +446,14 @@ export async function runRetrospectiveEval(
       schema_version: "fd-017-retrospective-v1",
       generated_at: new Date().toISOString(),
       db_path: resolvedDb,
+      embedding_profile: {
+        mode: BENCH_EMBEDDING.mode,
+        provider: BENCH_EMBEDDING.provider,
+        model: BENCH_EMBEDDING.model,
+        vector_dimension: BENCH_EMBEDDING.vectorDimension,
+        onnx_gate: BENCH_EMBEDDING.gateEnabled,
+        prime_enabled: BENCH_EMBEDDING.primeEnabled,
+      },
       algo_v33: { recall_at_5: 0, recall_at_10: 0, n_queries: 0 },
       algo_v34: { recall_at_5: 0, recall_at_10: 0, n_queries: 0 },
       delta: { recall_at_5: 0, recall_at_10: 0 },
@@ -249,10 +466,12 @@ export async function runRetrospectiveEval(
 
   console.log(`[retro-eval] Sampled ${queries.length} queries from audit log`);
 
-  const [v33Results, v34Results] = await Promise.all([
+  const [v33Eval, v34Eval] = await Promise.all([
     evaluateAlgo(queries, "v33", resolvedDb),
     evaluateAlgo(queries, "v34", resolvedDb),
   ]);
+  const v33Results = v33Eval.results;
+  const v34Results = v34Eval.results;
 
   const avg = (arr: number[]) =>
     arr.length > 0 ? arr.reduce((a, b) => a + b, 0) / arr.length : 0;
@@ -273,6 +492,14 @@ export async function runRetrospectiveEval(
     schema_version: "fd-017-retrospective-v1",
     generated_at: new Date().toISOString(),
     db_path: resolvedDb,
+    embedding_profile: {
+      mode: BENCH_EMBEDDING.mode,
+      provider: BENCH_EMBEDDING.provider,
+      model: BENCH_EMBEDDING.model,
+      vector_dimension: BENCH_EMBEDDING.vectorDimension,
+      onnx_gate: BENCH_EMBEDDING.gateEnabled,
+      prime_enabled: BENCH_EMBEDDING.primeEnabled,
+    },
     algo_v33: { recall_at_5: v33R5, recall_at_10: v33R10, n_queries: v33Results.length },
     algo_v34: { recall_at_5: v34R5, recall_at_10: v34R10, n_queries: v34Results.length },
     delta: {
@@ -284,6 +511,8 @@ export async function runRetrospectiveEval(
   };
 
   console.log(`[retro-eval] v33 recall@10=${v33R10.toFixed(4)}, v34 recall@10=${v34R10.toFixed(4)}, delta=${(v34R10 - v33R10).toFixed(4)}`);
+  console.log(`[retro-eval] v33 cacheStats delta=${JSON.stringify(v33Eval.cacheStats.delta)}`);
+  console.log(`[retro-eval] v34 cacheStats delta=${JSON.stringify(v34Eval.cacheStats.delta)}`);
 
   if (outputPath) {
     writeFileSync(outputPath, JSON.stringify(report, null, 2));

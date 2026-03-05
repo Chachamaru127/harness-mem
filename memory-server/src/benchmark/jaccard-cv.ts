@@ -12,6 +12,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
+import { findModelById } from "../embedding/model-catalog";
 import { BenchmarkRunner } from "./runner";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
@@ -35,13 +36,160 @@ interface KnowledgeUpdateCase {
   expected_latest_id: string;
 }
 
+type BenchEmbeddingMode = "onnx" | "fallback";
+
+interface BenchEmbeddingProfile {
+  mode: BenchEmbeddingMode;
+  provider: "local" | "fallback";
+  model: string;
+  vectorDimension: number;
+  gateEnabled: boolean;
+  primeEnabled: boolean;
+}
+
+function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean {
+  if (value == null) return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "on", "enabled"].includes(normalized)) return true;
+  if (["0", "false", "no", "off", "disabled"].includes(normalized)) return false;
+  return fallback;
+}
+
+function normalizeMode(value: string | undefined): BenchEmbeddingMode {
+  const normalized = (value || "").trim().toLowerCase();
+  if (normalized === "onnx") return "onnx";
+  return "fallback";
+}
+
+function normalizeVectorDimension(value: unknown, fallback: number): number {
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  const rounded = Math.trunc(num);
+  if (rounded < 32 || rounded > 4096) return fallback;
+  return rounded;
+}
+
+function resolveBenchEmbeddingProfile(): BenchEmbeddingProfile {
+  const mode = normalizeMode(process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
+  const provider: "local" | "fallback" = mode === "onnx" ? "local" : "fallback";
+  const model =
+    mode === "onnx"
+      ? (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5"
+      : "fallback";
+  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, mode === "onnx" ? 384 : 64);
+  return {
+    mode,
+    provider,
+    model,
+    vectorDimension,
+    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, mode === "onnx"),
+    primeEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true),
+  };
+}
+
+const BENCH_EMBEDDING = resolveBenchEmbeddingProfile();
+
+function toRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as Record<string, unknown>;
+  }
+  return {};
+}
+
+function isPromiseLike(value: unknown): value is Promise<unknown> {
+  return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
+}
+
+function verifyEmbeddingGate(core: HarnessMemCore, label: string): void {
+  if (!BENCH_EMBEDDING.gateEnabled || BENCH_EMBEDDING.mode !== "onnx") return;
+  const health = core.health();
+  const item = toRecord(health.items[0]);
+  const features = toRecord(item.features);
+  const provider = String(features.embedding_provider || item.embedding_provider || "");
+  const model = String(features.embedding_model || "");
+  const failures: string[] = [];
+  if (provider !== BENCH_EMBEDDING.provider) {
+    failures.push(`provider=${provider || "unknown"} (expected ${BENCH_EMBEDDING.provider})`);
+  }
+  if (model !== BENCH_EMBEDDING.model) {
+    failures.push(`model=${model || "unknown"} (expected ${BENCH_EMBEDDING.model})`);
+  }
+  const catalog = findModelById(BENCH_EMBEDDING.model);
+  if (!catalog) {
+    failures.push(`unknown model "${BENCH_EMBEDDING.model}"`);
+  } else if (BENCH_EMBEDDING.vectorDimension !== catalog.dimension) {
+    failures.push(
+      `vector_dim=${BENCH_EMBEDDING.vectorDimension} (expected ${catalog.dimension} for ${BENCH_EMBEDDING.model})`
+    );
+  }
+  if (failures.length > 0) {
+    throw new Error(`[${label}] ONNX gate failed: ${failures.join(", ")}`);
+  }
+}
+
+async function maybePrimeEmbedding(
+  core: HarnessMemCore,
+  texts: string[],
+  mode: "passage" | "query" = "passage"
+): Promise<void> {
+  if (!BENCH_EMBEDDING.primeEnabled) return;
+  const normalized = [...new Set(texts.map((text) => text.trim()).filter((text) => text.length > 0))];
+  if (normalized.length === 0) return;
+
+  const target = core as unknown as {
+    primeEmbedding?: (text: string, mode?: "passage" | "query") => unknown;
+  };
+  if (typeof target.primeEmbedding !== "function") return;
+
+  for (const text of normalized) {
+    try {
+      const single = target.primeEmbedding.call(core, text, mode);
+      if (isPromiseLike(single)) {
+        await single;
+      }
+    } catch {
+      // best effort
+    }
+  }
+}
+
+async function readCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
+  const target = core as unknown as {
+    getEmbeddingRuntimeInfo?: () => unknown;
+  };
+  if (typeof target.getEmbeddingRuntimeInfo !== "function") return null;
+  try {
+    const runtime = toRecord(target.getEmbeddingRuntimeInfo.call(core));
+    const record = toRecord(runtime.cacheStats);
+    return Object.keys(record).length > 0 ? record : null;
+  } catch {
+    return null;
+  }
+}
+
+function flattenNumericStats(input: Record<string, unknown>, prefix = ""): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(input)) {
+    const qualified = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === "number" && Number.isFinite(value)) {
+      out[qualified] = value;
+      continue;
+    }
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      Object.assign(out, flattenNumericStats(value as Record<string, unknown>, qualified));
+    }
+  }
+  return out;
+}
+
 function createTempCore(): { core: HarnessMemCore; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-jaccard-cv-"));
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 0,
-    vectorDimension: 384,
+    vectorDimension: BENCH_EMBEDDING.vectorDimension,
+    embeddingProvider: BENCH_EMBEDDING.provider,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -54,7 +202,9 @@ function createTempCore(): { core: HarnessMemCore; dir: string } {
     cursorIngestEnabled: false,
     antigravityIngestEnabled: false,
   };
-  return { core: new HarnessMemCore(config), dir };
+  const core = new HarnessMemCore(config);
+  verifyEmbeddingGate(core, "jaccard-cv");
+  return { core, dir };
 }
 
 async function evaluateFold(
@@ -70,6 +220,21 @@ async function evaluateFold(
 
   try {
     const scores: number[] = [];
+    const cacheBefore = await readCacheStats(core);
+
+    await maybePrimeEmbedding(
+      core,
+      foldCases.flatMap((kCase) => [
+        ...kCase.old_entries.map((entry) => entry.content),
+        ...kCase.new_entries.map((entry) => entry.content),
+      ]),
+      "passage"
+    );
+    await maybePrimeEmbedding(
+      core,
+      foldCases.map((kCase) => kCase.query),
+      "query"
+    );
 
     for (const kCase of foldCases) {
       // 古い記録を投入
@@ -118,7 +283,21 @@ async function evaluateFold(
       scores.push(score);
     }
 
-    return scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+    const freshness = scores.length > 0 ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
+    const cacheAfter = await readCacheStats(core);
+    if (cacheBefore || cacheAfter) {
+      const before = cacheBefore ? flattenNumericStats(cacheBefore) : {};
+      const after = cacheAfter ? flattenNumericStats(cacheAfter) : {};
+      const delta: Record<string, number> = {};
+      for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+        delta[key] = (after[key] ?? 0) - (before[key] ?? 0);
+      }
+      console.log(
+        `[CV] cacheStats(threshold=${jaccardThreshold.toFixed(2)}): ` +
+          `before=${JSON.stringify(before)} after=${JSON.stringify(after)} delta=${JSON.stringify(delta)}`
+      );
+    }
+    return freshness;
   } finally {
     core.shutdown(`cv-${jaccardThreshold.toFixed(2)}`);
     rmSync(dir, { recursive: true, force: true });
@@ -127,9 +306,17 @@ async function evaluateFold(
 
 async function main(): Promise<void> {
   console.log("[CV] §34 FD-002: Jaccard 閾値 5-fold 交差検証");
+  console.log(
+    `[CV] embedding profile: mode=${BENCH_EMBEDDING.mode}, provider=${BENCH_EMBEDDING.provider}, ` +
+      `model=${BENCH_EMBEDDING.model}, vector_dim=${BENCH_EMBEDDING.vectorDimension}, ` +
+      `onnx_gate=${BENCH_EMBEDDING.gateEnabled}, prime=${BENCH_EMBEDDING.primeEnabled}`
+  );
 
   process.env.HARNESS_MEM_DECAY_DISABLED = "1";
   process.env.HARNESS_MEM_RERANKER_ENABLED = "1";
+  if (BENCH_EMBEDDING.mode === "onnx") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = BENCH_EMBEDDING.model;
+  }
 
   mkdirSync(RESULTS_DIR, { recursive: true });
 
@@ -214,6 +401,14 @@ async function main(): Promise<void> {
   const report = {
     timestamp: new Date().toISOString(),
     fixture: "knowledge-update-50",
+    embedding_profile: {
+      mode: BENCH_EMBEDDING.mode,
+      provider: BENCH_EMBEDDING.provider,
+      model: BENCH_EMBEDDING.model,
+      vector_dimension: BENCH_EMBEDDING.vectorDimension,
+      onnx_gate: BENCH_EMBEDDING.gateEnabled,
+      prime_enabled: BENCH_EMBEDDING.primeEnabled,
+    },
     k_folds: K_FOLDS,
     threshold_candidates: THRESHOLD_CANDIDATES,
     fold_results: foldResults,

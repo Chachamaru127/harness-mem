@@ -21,6 +21,7 @@ import {
 } from "../embedding/registry";
 import {
   type EmbeddingProvider,
+  type EmbeddingCacheStats,
   type EmbeddingHealth,
 } from "../embedding/types";
 import { createRerankerRegistry } from "../rerank/registry";
@@ -130,6 +131,7 @@ import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
+type EmbeddingPrimeMode = "passage" | "query";
 
 // getConfig は core-utils.ts から re-export
 export { getConfig } from "./core-utils.js";
@@ -844,6 +846,61 @@ export class HarnessMemCore {
   /** Get managed backend status (null if not in managed/hybrid mode). */
   getManagedStatus(): ManagedBackendStatus | null {
     return this.managedBackend?.getStatus() ?? null;
+  }
+
+  async primeEmbedding(text: string, mode: EmbeddingPrimeMode = "passage"): Promise<number[]> {
+    const normalized = text || "";
+    if (mode === "query") {
+      if (typeof this.embeddingProvider.primeQuery === "function") {
+        return this.embeddingProvider.primeQuery(normalized);
+      }
+      if (typeof this.embeddingProvider.embedQuery === "function") {
+        return Promise.resolve(this.embeddingProvider.embedQuery(normalized));
+      }
+    }
+
+    if (typeof this.embeddingProvider.prime === "function") {
+      return this.embeddingProvider.prime(normalized);
+    }
+
+    return Promise.resolve(this.embeddingProvider.embed(normalized));
+  }
+
+  getEmbeddingRuntimeInfo(): {
+    provider: { name: string; model: string; dimension: number };
+    vectorModelVersion: string;
+    health: EmbeddingHealth;
+    supports: {
+      embedQuery: boolean;
+      prime: boolean;
+      primeQuery: boolean;
+      cacheStats: boolean;
+      ready: boolean;
+    };
+    cacheStats: EmbeddingCacheStats | null;
+  } {
+    this.refreshEmbeddingHealth();
+
+    return {
+      provider: {
+        name: this.embeddingProvider.name,
+        model: this.embeddingProvider.model,
+        dimension: this.embeddingProvider.dimension,
+      },
+      vectorModelVersion: this.vectorModelVersion,
+      health: { ...this.embeddingHealth },
+      supports: {
+        embedQuery: typeof this.embeddingProvider.embedQuery === "function",
+        prime: typeof this.embeddingProvider.prime === "function",
+        primeQuery: typeof this.embeddingProvider.primeQuery === "function",
+        cacheStats: typeof this.embeddingProvider.cacheStats === "function",
+        ready: !!this.embeddingProvider.ready,
+      },
+      cacheStats:
+        typeof this.embeddingProvider.cacheStats === "function"
+          ? this.embeddingProvider.cacheStats()
+          : null,
+    };
   }
 
   private startBackgroundWorkers(): void {
@@ -1808,4 +1865,3 @@ export class HarnessMemCore {
     return this.db;
   }
 }
-
