@@ -313,7 +313,7 @@ function extractQueryKeywords(question: string): string[] {
 function detectQuestionKind(question: string, _category?: string): QuestionKind {
   const normalized = normalizeText(question);
   const looksLikeJapaneseYesNo =
-    /(?:ですか|ますか|ましたか|でしょうか|ありますか|いますか|使っていますか|使ってますか|残っていますか|対応していますか|だけですか)[？?]?$/.test(question) &&
+    /(?:ですか|でしたか|ますか|ましたか|でしょうか|ありますか|いますか|使っていますか|使ってますか|残っていますか|対応していますか|だけですか|かけていますか)[？?]?$/.test(question) &&
     !/(何|どこ|いつ|なぜ|理由|誰|どれ|どの|いくつ|何時|何年|何月|何日|どちら|いくら|どれくらい|何個|何人|何回|何時間|何分|何語|何社)/.test(question);
   if (looksLikeJapaneseYesNo) {
     return "yes_no";
@@ -852,6 +852,11 @@ function extractJapanesePreviousValueSlot(text: string): string | null {
     /元は\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
     /([^。!?]+?)では\s*([^。!?]+?)\s*を使っていました/u,
     /を\s*([^。!?]+?)\s*にしていました/u,
+    // S43-FIX: 「の頃は」「当時は」パターン追加
+    /(?:の頃|当時|当初)(?:は|の)?\s*[^。!?]*?\s*([A-Za-z][A-Za-z0-9 _-]+(?:\s+[A-Za-z][A-Za-z0-9 _-]*)*)\s*(?:方式|形式|構成|スタイル|パターン)/u,
+    /(?:の頃|当時|当初)(?:は|の)?\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました|を置)/u,
+    // S43-FIX: 「だけで送っていました」パターン（prev-014: "email だけで送っていました"）
+    /([^。!?]+?)\s*だけで[^。!?]*?(?:いました|ました)/u,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(normalizeSpaces(text));
@@ -1377,7 +1382,14 @@ function finalizeShortAnswer(
   }
   if (kind === "yes_no") {
     const lower = normalizeText(trimmed);
-    return { answer: lower.startsWith("no") ? "No" : "Yes", template: "final:yes-no-binary" };
+    // S43-FIX: 日本語否定表現も検出して正しく No を返す
+    const jaNoPattern = /(ありません|ないです|ません[。.]?$|違います|やめました|ではなく|ではない|じゃない|していない|しなかった|なくなりました|廃止|中止|変更しました|変えました|移行しました|切り替えました)/u;
+    const enNoPattern = /^no\b|(\bnot\b|\bnever\b|\bno longer\b|\bstopped\b|\bchanged\b|\bswitched\b|\bmoved\b|\breplaced\b)/i;
+    // Question が「今も〜ですか」「まだ〜ですか」パターンで、evidence に変更・移行が含まれる → No
+    const asksContinuity = /(今も|まだ|引き続き|依然|still|anymore)/u.test(question);
+    const evidenceShowsChange = jaNoPattern.test(trimmed) || (asksContinuity && /(変更|移行|切り替え|changed|switched|moved|replaced|upgraded)/ui.test(trimmed));
+    const isNo = enNoPattern.test(lower) || jaNoPattern.test(trimmed) || evidenceShowsChange;
+    return { answer: isNo ? "No" : "Yes", template: "final:yes-no-binary" };
   }
   if (kind === "list") {
     const compact = trimmed.replace(/\s+/g, " ").replace(/;+/g, ",");
@@ -1434,6 +1446,21 @@ function finalizeShortAnswer(
   if (corePhrase.length > 0 && corePhrase.length < topSentence.length * 0.85) {
     return { answer: corePhrase.slice(0, 180).trim(), template: "final:factual-core-phrase" };
   }
+
+  // S43-FIX: overlong answer 圧縮 — 日本語の文構造から核心値を抽出
+  if (topSentence.length > 40) {
+    // 「は X です」パターンから X を抽出
+    const jaValueMatch = topSentence.match(/(?:は|が)\s*([^。!?、]{2,30}?)(?:\s*(?:です|でした|になりました|に変更|に移行|を使用))/u);
+    if (jaValueMatch?.[1]) {
+      return { answer: jaValueMatch[1].trim(), template: "final:factual-ja-value-extract" };
+    }
+    // 最初の句読点までの部分から question tokens を除いた核心を取る
+    const firstClause = topSentence.split(/[。.!?]/)[0]?.trim() || topSentence;
+    if (firstClause.length <= 40) {
+      return { answer: firstClause, template: "final:factual-first-clause" };
+    }
+  }
+
   // 短い文（コアフレーズ抽出が効かなかった場合）はそのまま返す
   if (topSentence.length <= 100) {
     return { answer: topSentence.trim(), template: "final:factual-short" };

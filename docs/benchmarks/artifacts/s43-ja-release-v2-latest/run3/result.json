@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-benchmark-v2",
-  "generated_at": "2026-03-07T09:44:26.516Z",
+  "generated_at": "2026-03-08T06:40:56.093Z",
   "system": "harness-mem",
   "pipeline": {
     "embedding": {
@@ -28,14 +28,14 @@
   "metrics": {
     "overall": {
       "count": 96,
-      "em": 0.46875,
-      "f1": 0.6379491818343032
+      "em": 0.5,
+      "f1": 0.6490602929454142
     },
     "by_category": {
       "cat-1": {
         "count": 52,
         "em": 0.5576923076923077,
-        "f1": 0.7159941962260967
+        "f1": 0.7095839398158403
       },
       "cat-3": {
         "count": 7,
@@ -44,8 +44,8 @@
       },
       "cat-2": {
         "count": 32,
-        "em": 0.34375,
-        "f1": 0.4448846915676287
+        "em": 0.4375,
+        "f1": 0.48863469156762873
       },
       "cat-4": {
         "count": 5,
@@ -57,8 +57,8 @@
   "comparison": {
     "cat_1_to_4": {
       "count": 96,
-      "em": 0.46875,
-      "f1": 0.6379491818343032
+      "em": 0.5,
+      "f1": 0.6490602929454142
     },
     "cat_5": {
       "count": 0,
@@ -69,11 +69,11 @@
   "performance": {
     "search_latency_ms": {
       "count": 96,
-      "min": 1.9059579999998277,
-      "max": 29.03,
-      "avg": 4.124294677083329,
-      "p50": 3.15,
-      "p95": 9.23
+      "min": 1.68,
+      "max": 12.265207999999976,
+      "avg": 3.9011666666666684,
+      "p50": 3.18,
+      "p95": 7.840000000000001
     },
     "cache_stats": {
       "available": true,
@@ -88,17 +88,17 @@
       "after": {
         "entries": 128,
         "capacity": 128,
-        "hits": 836,
-        "misses": 424,
-        "evictions": 275,
+        "hits": 831,
+        "misses": 432,
+        "evictions": 279,
         "inflight": 0
       },
       "delta": {
         "entries": 126,
         "capacity": 0,
-        "hits": 836,
-        "misses": 422,
-        "evictions": 275,
+        "hits": 831,
+        "misses": 430,
+        "evictions": 279,
         "inflight": 0
       }
     }
@@ -106,12 +106,12 @@
   "cost": {
     "search_token_estimate": {
       "count": 96,
-      "input_total": 6637,
-      "output_total": 24371,
-      "total_total": 31008,
-      "input_avg": 69.13541666666667,
-      "output_avg": 253.86458333333334,
-      "total_avg": 323
+      "input_total": 6750,
+      "output_total": 24914,
+      "total_total": 31664,
+      "input_avg": 70.3125,
+      "output_avg": 259.5208333333333,
+      "total_avg": 329.8333333333333
     }
   },
   "records": [
@@ -168,7 +168,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 13.160000000000002,
+      "search_latency_ms": 8.209999999999999,
       "token_estimate_input_tokens": 62,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 314,
@@ -228,7 +228,7 @@
         },
         "final_short_answer": "CircleCI の parallel build costs が上がり続けたから"
       },
-      "search_latency_ms": 3.46,
+      "search_latency_ms": 3.2600000000000002,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -288,7 +288,7 @@
         },
         "final_short_answer": "CircleCI"
       },
-      "search_latency_ms": 8.01,
+      "search_latency_ms": 5.699999999999999,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -348,7 +348,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 3.18,
+      "search_latency_ms": 2.85,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 313,
@@ -408,7 +408,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 2.64,
+      "search_latency_ms": 2.87,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -468,7 +468,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 29.03,
+      "search_latency_ms": 2.36,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 321,
@@ -528,7 +528,7 @@
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 9.28,
+      "search_latency_ms": 2.36,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -588,7 +588,7 @@
         },
         "final_short_answer": "ticket heatmap"
       },
-      "search_latency_ms": 9.23,
+      "search_latency_ms": 2.74,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -648,7 +648,7 @@
         },
         "final_short_answer": "24 時間体制"
       },
-      "search_latency_ms": 15.27,
+      "search_latency_ms": 5.66,
       "token_estimate_input_tokens": 62,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 314,
@@ -708,7 +708,7 @@
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 3.27,
+      "search_latency_ms": 2.62,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -768,7 +768,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.29,
+      "search_latency_ms": 2.8200000000000003,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -828,7 +828,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 4.2308750000001325,
+      "search_latency_ms": 3.915666999999994,
       "token_estimate_input_tokens": 26,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 110,
@@ -888,7 +888,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 2.88,
+      "search_latency_ms": 2.25,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -948,7 +948,7 @@
         },
         "final_short_answer": "audit logs"
       },
-      "search_latency_ms": 2.02,
+      "search_latency_ms": 1.68,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -1008,7 +1008,7 @@
         },
         "final_short_answer": "29 dollars a month"
       },
-      "search_latency_ms": 3.13,
+      "search_latency_ms": 2.83,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 320,
@@ -1068,7 +1068,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 2.6399999999999997,
+      "search_latency_ms": 2.45,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -1128,7 +1128,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.42,
+      "search_latency_ms": 3.18,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 329,
@@ -1188,7 +1188,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 2.48,
+      "search_latency_ms": 3.79,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 330,
@@ -1262,7 +1262,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 6.4399999999999995,
+      "search_latency_ms": 5.5,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 449,
@@ -1336,7 +1336,7 @@
         },
         "final_short_answer": "quarterly audit exports の要望"
       },
-      "search_latency_ms": 3.6,
+      "search_latency_ms": 3.17,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 446,
@@ -1410,7 +1410,7 @@
         },
         "final_short_answer": "30 days"
       },
-      "search_latency_ms": 2.91,
+      "search_latency_ms": 2.8,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 445,
@@ -1484,7 +1484,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 3.38,
+      "search_latency_ms": 6.4,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 447,
@@ -1497,9 +1497,9 @@
       "category": "cat-2",
       "question": "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
       "answer": "Yes",
-      "prediction": "quarterly audit exports の要望",
-      "question_kind": "factual",
-      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
+      "prediction": "Yes",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
@@ -1519,8 +1519,8 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-object-slot",
-          "raw_answer": "quarterly audit exports の要望",
+          "strategy": "extract:yes-no-candidates",
+          "raw_answer": "今の Enterprise retention は 90 days です。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
@@ -1549,21 +1549,21 @@
           ]
         },
         "normalization": {
-          "before": "quarterly audit exports の要望",
-          "after": "quarterly audit exports の要望",
+          "before": "今の Enterprise retention は 90 days です。",
+          "after": "Yes",
           "notes": [
-            "factual:evidence_bounded_span"
+            "yes_no:binary_decision"
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "quarterly audit exports の要望"
+        "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.06,
+      "search_latency_ms": 3.1900000000000004,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 467,
-      "em": 0,
-      "f1": 0
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-004",
@@ -1632,7 +1632,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 3.17,
+      "search_latency_ms": 3.1999999999999997,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 466,
@@ -1645,7 +1645,7 @@
       "category": "cat-2",
       "question": "SSO と team workspaces では、どちらが先に出ましたか？",
       "answer": "team workspaces",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1690,14 +1690,14 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 4.45,
+      "search_latency_ms": 5.3,
       "token_estimate_input_tokens": 136,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 556,
-      "em": 0,
-      "f1": 0.8
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-005",
@@ -1752,7 +1752,7 @@
         },
         "final_short_answer": "SSO の SCIM provider contract がまだ交渉中だったから"
       },
-      "search_latency_ms": 2.63,
+      "search_latency_ms": 2.51,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -1812,7 +1812,7 @@
         },
         "final_short_answer": "SSO と team workspaces を同じ四半期に出す予定でした。"
       },
-      "search_latency_ms": 2.33,
+      "search_latency_ms": 2.65,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -1825,7 +1825,7 @@
       "category": "cat-2",
       "question": "どっちが先に出たの？",
       "answer": "team workspaces",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1870,14 +1870,14 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 4.359999999999999,
+      "search_latency_ms": 5.3999999999999995,
       "token_estimate_input_tokens": 109,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 529,
-      "em": 0,
-      "f1": 0.8
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-005",
@@ -1932,7 +1932,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 5.680000000000001,
+      "search_latency_ms": 7.07,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -1945,7 +1945,7 @@
       "category": "cat-2",
       "question": "先に出たあと、遅れたのはどれですか？",
       "answer": "SSO",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1990,9 +1990,9 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 4.82,
+      "search_latency_ms": 4.09,
       "token_estimate_input_tokens": 120,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 540,
@@ -2066,7 +2066,7 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 2.74,
+      "search_latency_ms": 2.44,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 448,
@@ -2147,7 +2147,7 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。 その後は import window も安定しました。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 ingestion と reporting の両方に影響しましたね。 月曜の import window で database connections が飽和しました。"
       },
-      "search_latency_ms": 8.095374999999986,
+      "search_latency_ms": 8.982832999999909,
       "token_estimate_input_tokens": 94,
       "token_estimate_output_tokens": 500,
       "token_estimate_total_tokens": 594,
@@ -2221,7 +2221,7 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 2.69,
+      "search_latency_ms": 3.05,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 448,
@@ -2295,7 +2295,7 @@
         },
         "final_short_answer": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 4.044500999999627,
+      "search_latency_ms": 4.230999999999767,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -2369,7 +2369,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.25,
+      "search_latency_ms": 3.1,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 460,
@@ -2388,7 +2388,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
-        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6"
+        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2409,7 +2410,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
               "sentence": "alert の直後に read traffic を新しい replica に逃がしました。",
-              "score": 1.218333,
+              "score": 1.051667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2419,10 +2420,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
-              "sentence": "その後は import window も安定しました。",
+              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+              "sentence": "ingestion と reporting の両方に影響しましたね。",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+              "sentence": "月曜の import window で database connections が飽和しました。",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -2436,10 +2443,10 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 2.87891599999989,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 7.840000000000001,
+      "token_estimate_input_tokens": 77,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 452,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -2496,7 +2503,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 5.02,
+      "search_latency_ms": 4.4799999999999995,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 329,
@@ -2556,7 +2563,7 @@
         },
         "final_short_answer": "recency"
       },
-      "search_latency_ms": 3.96,
+      "search_latency_ms": 3.47,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 320,
@@ -2569,9 +2576,9 @@
       "category": "cat-1",
       "question": "RRF に変える前はどんな混ぜ方でしたか？",
       "answer": "weighted sum",
-      "prediction": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-      "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "prediction": "Yes",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
         "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3"
@@ -2589,8 +2596,8 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-top-candidate",
-          "raw_answer": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
+          "strategy": "extract:yes-no-candidates",
+          "raw_answer": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
@@ -2607,21 +2614,21 @@
           ]
         },
         "normalization": {
-          "before": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-          "after": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
+          "before": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
+          "after": "Yes",
           "notes": [
-            "factual:single_sentence_trim"
+            "yes_no:binary_decision"
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。"
+        "final_short_answer": "Yes"
       },
-      "search_latency_ms": 2.68,
+      "search_latency_ms": 2.8600000000000003,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
       "em": 0,
-      "f1": 0.33333333333333337
+      "f1": 0
     },
     {
       "sample_id": "ja-rel-007",
@@ -2676,7 +2683,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 2.88,
+      "search_latency_ms": 2.84,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -2736,7 +2743,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 2.79,
+      "search_latency_ms": 2.7199999999999998,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -2796,7 +2803,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 3.39,
+      "search_latency_ms": 3,
       "token_estimate_input_tokens": 94,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 346,
@@ -2863,7 +2870,7 @@
         },
         "final_short_answer": "Japanese"
       },
-      "search_latency_ms": 3.17,
+      "search_latency_ms": 2.6500000000000004,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 320,
@@ -2876,13 +2883,13 @@
       "category": "cat-2",
       "question": "launch playbook の次に localize したものは何ですか？",
       "answer": "invoice emails",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2900,7 +2907,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
@@ -2909,28 +2916,28 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-              "sentence": "docs は以前 English only でした。",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.375,
+              "score": 0.458333,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+              "sentence": "docs は以前 English only でした。",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
-          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
+          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。"
       },
-      "search_latency_ms": 4.53,
+      "search_latency_ms": 4.2700000000000005,
       "token_estimate_input_tokens": 151,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 571,
@@ -2997,7 +3004,7 @@
         },
         "final_short_answer": "English only"
       },
-      "search_latency_ms": 2.79,
+      "search_latency_ms": 3.16,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3038,7 +3045,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 0.791667,
+              "score": 0.958333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -3057,7 +3064,7 @@
         },
         "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。"
       },
-      "search_latency_ms": 5.119207999999844,
+      "search_latency_ms": 3.989165999999841,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -3124,7 +3131,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 3.02,
+      "search_latency_ms": 3.3000000000000003,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -3137,13 +3144,13 @@
       "category": "cat-2",
       "question": "launch playbook の次に何を localize した？",
       "answer": "invoice emails",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3161,40 +3168,40 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 1.025,
+              "score": 0.9625,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-              "sentence": "docs は以前 English only でした。",
-              "score": 0.658333,
-              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.575,
+              "score": 0.825,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+              "sentence": "docs は以前 English only でした。",
+              "score": 0.595833,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
-          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
+          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。"
       },
-      "search_latency_ms": 4.446125000000011,
-      "token_estimate_input_tokens": 112,
-      "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 448,
+      "search_latency_ms": 12.265207999999976,
+      "token_estimate_input_tokens": 87,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 339,
       "em": 0,
       "f1": 0.21052631578947367
     },
@@ -3209,8 +3216,8 @@
       "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4"
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3235,16 +3242,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
               "sentence": "security review もその変更を評価しました。",
               "score": 0.325,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
+              "score": 0.278333,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -3258,7 +3265,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.61,
+      "search_latency_ms": 2.7600000000000002,
       "token_estimate_input_tokens": 58,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 310,
@@ -3325,7 +3332,7 @@
         },
         "final_short_answer": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
       },
-      "search_latency_ms": 2.1500000000000004,
+      "search_latency_ms": 2.41,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -3371,7 +3378,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
+              "score": 0.778333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3392,7 +3399,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.6300000000000003,
+      "search_latency_ms": 2.69,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -3410,8 +3417,8 @@
       "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4"
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3436,16 +3443,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
               "sentence": "security review もその変更を評価しました。",
               "score": 0.325,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
+              "score": 0.278333,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -3459,7 +3466,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.64,
+      "search_latency_ms": 2.16,
       "token_estimate_input_tokens": 58,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 310,
@@ -3505,7 +3512,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.791667,
+              "score": 0.611667,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3526,7 +3533,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 3.1899999999999995,
+      "search_latency_ms": 6.5600000000000005,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 334,
@@ -3572,7 +3579,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.625,
+              "score": 0.445,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3593,7 +3600,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 4.1,
+      "search_latency_ms": 3.2399999999999998,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 334,
@@ -3653,7 +3660,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 3.01,
+      "search_latency_ms": 2.13,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -3713,7 +3720,7 @@
         },
         "final_short_answer": "Singapore"
       },
-      "search_latency_ms": 3.15,
+      "search_latency_ms": 3.27,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 334,
@@ -3773,7 +3780,7 @@
         },
         "final_short_answer": "headquarters は San Francisco"
       },
-      "search_latency_ms": 4.43,
+      "search_latency_ms": 6.72,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -3833,7 +3840,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 6.029999999999999,
+      "search_latency_ms": 3.8699999999999997,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3893,7 +3900,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.794917000000096,
+      "search_latency_ms": 4.223166000000202,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 228,
@@ -3953,7 +3960,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 3.04,
+      "search_latency_ms": 2.53,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 329,
@@ -4020,7 +4027,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 2.86,
+      "search_latency_ms": 2.56,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 335,
@@ -4087,7 +4094,7 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 2.63,
+      "search_latency_ms": 3.12,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 326,
@@ -4154,7 +4161,7 @@
         },
         "final_short_answer": "nightly refresh"
       },
-      "search_latency_ms": 3.43,
+      "search_latency_ms": 4.42,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 335,
@@ -4221,7 +4228,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 3.0500000000000003,
+      "search_latency_ms": 2.9699999999999998,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 324,
@@ -4288,7 +4295,7 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 2.09,
+      "search_latency_ms": 2.87,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 335,
@@ -4355,7 +4362,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 2.93,
+      "search_latency_ms": 3.12,
       "token_estimate_input_tokens": 101,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 353,
@@ -4423,7 +4430,7 @@
         },
         "final_short_answer": "export to CSV, audit logs, SAML, CSV"
       },
-      "search_latency_ms": 7.66,
+      "search_latency_ms": 10.639999999999999,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4490,7 +4497,7 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 5.342790999999971,
+      "search_latency_ms": 4.910832999999893,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 420,
@@ -4550,7 +4557,7 @@
         },
         "final_short_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。"
       },
-      "search_latency_ms": 3.4287080000001424,
+      "search_latency_ms": 3.987999999999829,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -4617,7 +4624,7 @@
         },
         "final_short_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 Q2 には export to CSV, audit logs, SAML for admins を出しました。 enterprise prospect も SAML を気にしていました。"
       },
-      "search_latency_ms": 4.416542000000026,
+      "search_latency_ms": 5.031709000000064,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4684,7 +4691,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 7.3,
+      "search_latency_ms": 5.4399999999999995,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -4751,7 +4758,7 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 6.25,
+      "search_latency_ms": 6.15,
       "token_estimate_input_tokens": 141,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 561,
@@ -4811,7 +4818,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 2.8899999999999997,
+      "search_latency_ms": 2.69,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -4828,7 +4835,8 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4849,8 +4857,14 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
               "sentence": "最初は deployment の既定リージョンを us-west-2 にしていました。",
-              "score": 0.945,
+              "score": 0.778333,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+              "sentence": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
+              "score": 0.195,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -4864,10 +4878,10 @@
         },
         "final_short_answer": "us-west-2"
       },
-      "search_latency_ms": 1.9099159999998392,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 2.44,
+      "token_estimate_input_tokens": 61,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 313,
       "em": 1,
       "f1": 1
     },
@@ -4924,7 +4938,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 2.4160420000001253,
+      "search_latency_ms": 3.008249999999917,
       "token_estimate_input_tokens": 49,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 217,
@@ -4984,7 +4998,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 2.61,
+      "search_latency_ms": 2.5999999999999996,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -5044,7 +5058,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 2.84,
+      "search_latency_ms": 6.7,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5088,7 +5102,7 @@
         },
         "final_short_answer": "東京リージョンを既定にしてから初期表示も安定しました。"
       },
-      "search_latency_ms": 5.6909999999998035,
+      "search_latency_ms": 4.05408400000033,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -5148,7 +5162,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 3.0300000000000002,
+      "search_latency_ms": 3.08,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 333,
@@ -5208,7 +5222,7 @@
         },
         "final_short_answer": "ack が早く、mobile notification も確実だったから"
       },
-      "search_latency_ms": 2.39,
+      "search_latency_ms": 3.29,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -5253,7 +5267,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
               "sentence": "障害通知は以前 email だけで送っていました。",
-              "score": 0.485,
+              "score": 0.725,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5268,7 +5282,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 2.29,
+      "search_latency_ms": 3.5100000000000002,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 331,
@@ -5328,7 +5342,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 2.5300000000000002,
+      "search_latency_ms": 2.5999999999999996,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5388,7 +5402,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 3.14,
+      "search_latency_ms": 3.38,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 330,
@@ -5448,7 +5462,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 2.0900000000000003,
+      "search_latency_ms": 1.9899999999999998,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -5509,7 +5523,7 @@
         },
         "final_short_answer": "codex, cursor, claude"
       },
-      "search_latency_ms": 3.56,
+      "search_latency_ms": 3.8899999999999997,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 427,
@@ -5562,7 +5576,7 @@
         },
         "final_short_answer": "codex, cursor, claude"
       },
-      "search_latency_ms": 2.55279100000007,
+      "search_latency_ms": 4.434374999999818,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -5575,12 +5589,12 @@
       "category": "cat-1",
       "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
       "answer": "codex",
-      "prediction": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+      "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。 最初の setup コマンドは codex だけを対象にしていました。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
-        "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3"
+        "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+        "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5598,31 +5612,31 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+          "raw_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。 最初の setup コマンドは codex だけを対象にしていました。",
           "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+              "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
               "score": 1.0625,
               "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
-              "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 0.958333,
-              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-          "after": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+          "before": "今の推奨 setup は codex, cursor, claude をまとめて指定します。 最初の setup コマンドは codex だけを対象にしていました。",
+          "after": "今の推奨 setup は codex, cursor, claude をまとめて指定します。 最初の setup コマンドは codex だけを対象にしていました。",
           "notes": [],
-          "reference_time": "2026-01-01T00:00:00.000Z"
+          "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。"
+        "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。 最初の setup コマンドは codex だけを対象にしていました。"
       },
-      "search_latency_ms": 4.456874999999963,
+      "search_latency_ms": 4.648457999999973,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5683,7 +5697,7 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 3.3499999999999996,
+      "search_latency_ms": 6.63,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 425,
@@ -5743,7 +5757,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 4.53,
+      "search_latency_ms": 3.71,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 321,
@@ -5804,7 +5818,7 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 4.12,
+      "search_latency_ms": 4.4799999999999995,
       "token_estimate_input_tokens": 112,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 448,
@@ -5864,7 +5878,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 2.06,
+      "search_latency_ms": 2.18,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -5917,7 +5931,7 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 1.9517490000002908,
+      "search_latency_ms": 2.76050000000032,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -5970,7 +5984,7 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 1.9059579999998277,
+      "search_latency_ms": 2.0687510000002476,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -6030,7 +6044,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 1.9200000000000002,
+      "search_latency_ms": 2.13,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 313,
@@ -6090,7 +6104,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 2.38,
+      "search_latency_ms": 6.069999999999999,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -6150,7 +6164,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 2.21,
+      "search_latency_ms": 2.9099999999999997,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 334,

@@ -1513,9 +1513,12 @@ export class ObservationStore {
       const withRelevance = scored.filter((s) => s.relevanceScore > 0);
       const withoutRelevance = scored.filter((s) => s.relevanceScore === 0);
       const directionMultiplier = anchor.direction === "desc" ? -1 : 1;
+      // S43-FIX: temporal ordering では created_at を主キーにし、
+      // relevanceScore は tie-breaking に留める（時系列順序を保護）
       withRelevance.sort((a, b) => {
-        if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore;
-        return directionMultiplier * a.created_at.localeCompare(b.created_at);
+        const timeCmp = directionMultiplier * a.created_at.localeCompare(b.created_at);
+        if (timeCmp !== 0) return timeCmp;
+        return b.relevanceScore - a.relevanceScore;
       });
       withoutRelevance.sort(
         (a, b) => directionMultiplier * a.created_at.localeCompare(b.created_at)

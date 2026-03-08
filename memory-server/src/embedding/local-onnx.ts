@@ -75,17 +75,35 @@ function l2Normalize(vector: number[]): number[] {
   return vector.map((v) => v / norm);
 }
 
-// Extract a 2D number[][] from Transformers.js tensor output (last_hidden_state)
+// Extract a 2D number[][] from Transformers.js tensor output.
+// Supports both 3D [batch, seqLen, hiddenSize] (e.g. multilingual-e5)
+// and 2D [seqLen, hiddenSize] (e.g. Ruri V3 30M) tensor shapes.
 function extractHiddenStates(output: unknown): number[][] | null {
   // Transformers.js Tensor has .data (Float32Array) and .dims
   const tensor = output as { data?: Float32Array | number[]; dims?: number[] } | null;
   if (!tensor || !tensor.data || !tensor.dims) {
     return null;
   }
-  const [, seqLen, hiddenSize] = tensor.dims;
+
+  let seqLen: number;
+  let hiddenSize: number;
+
+  if (tensor.dims.length === 3) {
+    // 3D: [batch, seqLen, hiddenSize] — standard transformer output
+    seqLen = tensor.dims[1];
+    hiddenSize = tensor.dims[2];
+  } else if (tensor.dims.length === 2) {
+    // 2D: [seqLen, hiddenSize] — some models omit batch dimension
+    seqLen = tensor.dims[0];
+    hiddenSize = tensor.dims[1];
+  } else {
+    return null;
+  }
+
   if (!seqLen || !hiddenSize) {
     return null;
   }
+
   const data = tensor.data;
   const rows: number[][] = [];
   for (let i = 0; i < seqLen; i++) {
@@ -269,12 +287,16 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
       (v) => Number(v)
     );
 
-    const hiddenStates = extractHiddenStates(output.last_hidden_state);
+    // Models may use different output keys: last_hidden_state (e5, gte),
+    // output (Ruri), or token_embeddings. Try each in priority order.
+    const outputObj = output as Record<string, unknown>;
+    const hiddenStateTensor = outputObj.last_hidden_state ?? outputObj.output ?? outputObj.token_embeddings;
+    const hiddenStates = extractHiddenStates(hiddenStateTensor);
     if (!hiddenStates) {
       throw createLocalOnnxError(
         modelId,
         "inference_failed",
-        `local ONNX model ${modelId} returned invalid hidden states`,
+        `local ONNX model ${modelId} returned invalid hidden states (keys: ${Object.keys(outputObj).join(", ")})`,
         false
       );
     }

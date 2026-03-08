@@ -1558,7 +1558,7 @@ async function main(): Promise<void> {
   // 最新の ja-release-v2 companion gate artifact を確認して release blocker として評価する
   const JA_COMPANION_ARTIFACT = resolve(
     import.meta.dir,
-    "../../../../docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json"
+    "../../../docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json"
   );
   console.log("\n[CI] === Japanese Companion Gate ===");
   const jaGate = checkJapaneseCompanionGate(JA_COMPANION_ARTIFACT);

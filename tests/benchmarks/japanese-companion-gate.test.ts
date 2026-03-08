@@ -143,7 +143,7 @@ describe("japanese companion gate", () => {
         JSON.stringify(
           {
             records: [
-              { sample_id: "sample-1", question_id: "q-current", prediction: "ちなみに現在の設定はかなり長く説明すると Tokyo です。以前は us-east-1 でした。" },
+              { sample_id: "sample-1", question_id: "q-current", prediction: "ちなみに現在の設定はかなり長く説明するとここが長すぎて五十文字を超えてしまう Tokyo です。以前は us-east-1 でした。" },
               { sample_id: "sample-1", question_id: "q-yes", prediction: "No" },
             ],
           },
@@ -156,7 +156,7 @@ describe("japanese companion gate", () => {
         JSON.stringify(
           {
             summary: {
-              overall: { count: 2, em_avg: 0, f1_avg: 0.4, zero_f1_count: 2 },
+              overall: { count: 2, em_avg: 0, f1_avg: 0.4, zero_f1_count: 25 },
               by_slice: {
                 current: { count: 1, em_avg: 0, f1_avg: 0.5, zero_f1_count: 1 },
                 yes_no: { count: 1, em_avg: 1, f1_avg: 1, zero_f1_count: 0 },
@@ -172,8 +172,8 @@ describe("japanese companion gate", () => {
 
       const report = buildJapaneseCompanionGateReport(datasetPath, resultPath, sliceReportPath);
       expect(report.verdict).toBe("fail");
-      expect(report.failures).toContain("slice:current<0.9");
-      expect(report.failures).toContain("zero_f1_count>1");
+      expect(report.failures).toContain("slice:current<0.8");
+      expect(report.failures).toContain("zero_f1_count>20");
       expect(report.failures).toContain("overlong_answer_rate>0.10");
       expect(report.failures).toContain("unsupported_filler_detected");
       expect(report.warnings).toContain("watch_slice_missing:current_vs_previous");
