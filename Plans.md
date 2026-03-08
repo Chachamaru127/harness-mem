@@ -985,7 +985,7 @@ Phase D: Market Proof
 
 ## §45 実行計画（Japanese Phase 2: 形態素解析 + Phase 2 閾値達成）
 
-進行状態: `cc:TODO`
+進行状態: `cc:完了`（No-Go 判定: Phase 2 閾値未達 → Phase 1 で確定。形態素解析 + Ruri は成果として維持）
 
 ### 背景と目標
 
@@ -1057,35 +1057,39 @@ Phase B: 品質検証 + 閾値引き上げ
 
 #### Phase B: 品質検証 + 閾値引き上げ
 
-- [ ] `cc:TODO [feature:tdd]` **S45-004**: Ruri + 形態素解析ベンチマーク
-  - 形態素解析 + Ruri の組み合わせで CI ベンチマーク実行
-  - multilingual-e5 baseline との差分レポート作成
-  - DoD: F1, temporal, bilingual の全指標で改善を定量確認
+- [x] `cc:完了` **S45-004**: Ruri + 形態素解析ベンチマーク
+  - CI ベンチマーク 5 回実行（Ruri 3 回 + e5 2 回、FTS 形態素解析適用済み）
+  - **Ruri vs e5 差分**: F1 +1.48pp (0.5333→0.5481), cat-1 +1.45pp
+  - temporal -0.83pp (0.6458→0.6375), bilingual -2.00pp (0.90→0.88)
+  - DoD 部分達成: F1/cat-1 は改善、temporal/bilingual はわずかに回帰
 
-- [ ] `cc:TODO [feature:tdd]` **S45-005**: Phase 2 閾値更新 + companion gate 引き上げ
-  - Japanese Companion Gate を Phase 2 閾値に更新:
-    - current: 0.80 → 0.90, exact: 0.55 → 0.85, why: 0.85 → 0.92
-    - list: 0.70 → 0.90, temporal: 0.50 → 0.75
-    - zero_f1 ceiling: 20 → 5
-  - DoD: Phase 2 閾値で companion gate PASS
+- [x] `cc:完了 [No-Go]` **S45-005**: Phase 2 閾値更新 — **No-Go 判定**
+  - Phase 2 目標との乖離が大きく、閾値引き上げは見送り:
+    - exact: 0.59 vs 0.85 (ギャップ -0.26)
+    - temporal: 0.55 vs 0.75 (ギャップ -0.20)
+    - zero_f1: 18 vs 5 (ギャップ -13)
+  - Phase 1 閾値を維持し「日本語対応、ベンチマーク検証済み」で訴求
 
-- [ ] `cc:TODO [feature:tdd]` **S45-006**: 3-run freeze + Go/No-Go 判定
-  - Ruri + 形態素解析の状態で 3-run freeze
-  - 4成果物: score report / repro report / failure backlog / risk notes
-  - DoD: Phase 2 Go 基準を全項目クリア
+- [x] `cc:完了 [No-Go]` **S45-006**: Go/No-Go 判定 — **No-Go（Phase 1 で確定）**
+  - Go 基準 6 項目中 4 項目が未達:
+    - ✓ primary gate 維持、✓ freshness 1.0
+    - ✗ companion gate Phase 2、✗ temporal<0.75、✗ bilingual<0.90、✗ zero-F1>5
+  - **No-Go 条項 #3 に該当**: Phase B 完了後も Phase 2 閾値に到達しない
+  - **結論**: Phase 1 閾値で freeze。Ruri + Intl.Segmenter FTS の成果は維持
 
-### Go / No-Go 基準
+### Go / No-Go 結果
 
-**GO（すべて必須）**
-1. `run-ci` primary gate を維持
-2. companion gate が Phase 2 閾値で PASS
-3. temporal >= 0.75
-4. bilingual >= 0.90
-5. zero-F1 <= 5/120
-6. 3-run span <= 0.02
+**判定: No-Go（Phase 2 → Phase 1 で確定）**
 
-**No-GO → Stop**
-1. 形態素解析の導入コストが品質改善に見合わない
-2. FTS5 カスタムトークナイザーが SQLite の制約で実装不可
-3. Phase B 完了後も Phase 2 閾値に到達しない
-   → Phase 1 で止め、「日本語対応、ベンチマーク検証済み」の訴求に限定
+| Go 基準 | 要件 | 実績 | 判定 |
+|---------|------|------|------|
+| primary gate | Layer 1 PASS | PASS | ✓ |
+| companion gate Phase 2 | exact≥0.85 | exact=0.59 | ✗ |
+| temporal | ≥ 0.75 | 0.6375 | ✗ |
+| bilingual | ≥ 0.90 | 0.88 | ✗ |
+| zero-F1 | ≤ 5/120 | 18 | ✗ |
+
+**Phase 1 成果（維持）:**
+- Intl.Segmenter による日本語 FTS5 形態素解析（ゼロ依存）
+- Ruri V3 30M: F1=0.5481, cat-1=0.5946
+- Phase 1 companion gate: PASS（全 critical slice クリア）
