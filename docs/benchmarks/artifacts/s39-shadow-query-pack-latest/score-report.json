@@ -1,0 +1,75 @@
+{
+  "schema_version": "locomo-score-report-v1",
+  "generated_at": "2026-03-06T03:27:33.078Z",
+  "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s39-shadow-query-pack-latest/result.json",
+  "dataset": {
+    "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/shadow-query-pack-24.json",
+    "sample_count": 12,
+    "qa_count": 24
+  },
+  "strict": {
+    "all_categories": {
+      "count": 24,
+      "em": 0.16666666666666666,
+      "f1": 0.24074074074074073
+    },
+    "cat_1_to_4": {
+      "count": 24,
+      "em": 0.16666666666666666,
+      "f1": 0.24074074074074073
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 24,
+      "min": 2.43,
+      "max": 15.65,
+      "avg": 3.816604208333333,
+      "p50": 3.0700000000000003,
+      "p95": 5.91
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 128,
+        "capacity": 128,
+        "hits": 256,
+        "misses": 145,
+        "evictions": 15,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 126,
+        "capacity": 0,
+        "hits": 256,
+        "misses": 143,
+        "evictions": 15,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 24,
+      "input_total": 1569,
+      "output_total": 6786,
+      "total_total": 8355,
+      "input_avg": 65.375,
+      "output_avg": 282.75,
+      "total_avg": 348.125
+    }
+  }
+}

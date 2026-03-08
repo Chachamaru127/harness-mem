@@ -49,6 +49,34 @@ UI_ENTRY="${REPO_ROOT}/harness-mem-ui/src/server.ts"
 PROJECT_ROOT="${HARNESS_MEM_CODEX_PROJECT_ROOT:-$PWD}"
 CONFIG_PATH="${STATE_DIR}/config.json"
 
+ensure_config() {
+  mkdir -p "$STATE_DIR"
+  if [ ! -f "$CONFIG_PATH" ]; then
+    cat > "$CONFIG_PATH" <<'CONF'
+{
+  "backend_mode": "local",
+  "embedding_provider": "auto",
+  "embedding_model": "multilingual-e5",
+  "managed": {
+    "endpoint": "",
+    "api_key": ""
+  }
+}
+CONF
+  else
+    local tmp="${CONFIG_PATH}.tmp.$$"
+    jq '
+      .backend_mode = (.backend_mode // "local")
+      | .embedding_provider = (.embedding_provider // "auto")
+      | .embedding_model = (.embedding_model // "multilingual-e5")
+      | .managed = ((.managed // {}) + {
+          endpoint: (.managed.endpoint // ""),
+          api_key: (.managed.api_key // "")
+        })
+    ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+  fi
+}
+
 to_lower() {
   printf '%s' "$1" | tr '[:upper:]' '[:lower:]'
 }
@@ -69,6 +97,7 @@ is_ui_enabled() {
 }
 
 read_backend_mode() {
+  ensure_config
   if [ -f "$CONFIG_PATH" ]; then
     local mode
     mode="$(jq -r '.backend_mode // "local"' "$CONFIG_PATH" 2>/dev/null || echo "local")"
@@ -78,6 +107,35 @@ read_backend_mode() {
     esac
   else
     echo "local"
+  fi
+}
+
+read_embedding_provider() {
+  ensure_config
+  if [ -f "$CONFIG_PATH" ]; then
+    local provider
+    provider="$(jq -r '.embedding_provider // "auto"' "$CONFIG_PATH" 2>/dev/null || echo "auto")"
+    case "$provider" in
+      auto|fallback|openai|ollama|local) echo "$provider" ;;
+      *) echo "auto" ;;
+    esac
+  else
+    echo "auto"
+  fi
+}
+
+read_embedding_model() {
+  ensure_config
+  if [ -f "$CONFIG_PATH" ]; then
+    local model
+    model="$(jq -r '.embedding_model // "multilingual-e5"' "$CONFIG_PATH" 2>/dev/null || echo "multilingual-e5")"
+    if [ -n "$model" ] && [ "$model" != "null" ]; then
+      echo "$model"
+    else
+      echo "multilingual-e5"
+    fi
+  else
+    echo "multilingual-e5"
   fi
 }
 
@@ -144,6 +202,20 @@ rotate_log_file_if_needed() {
 apply_log_rotation() {
   rotate_log_file_if_needed "$LOG_FILE" "daemon"
   rotate_log_file_if_needed "$UI_LOG_FILE" "ui"
+}
+
+spawn_detached_command() {
+  local pid_file="$1"
+  local log_file="$2"
+  shift 2
+
+  if command -v setsid >/dev/null 2>&1; then
+    setsid "$@" >> "$log_file" 2>&1 < /dev/null &
+  else
+    nohup "$@" >> "$log_file" 2>&1 < /dev/null &
+  fi
+
+  echo $! > "$pid_file"
 }
 
 is_pid_running() {
@@ -491,12 +563,11 @@ start_ui() {
   log "Starting harness-mem-ui... (port=${UI_PORT})"
   (
     cd "$REPO_ROOT"
-    nohup env \
+    spawn_detached_command "$UI_PID_FILE" "$UI_LOG_FILE" env \
       HARNESS_MEM_HOST="$HOST" \
       HARNESS_MEM_PORT="$PORT" \
       HARNESS_MEM_UI_PORT="$UI_PORT" \
-      bun run "$UI_ENTRY" >> "$UI_LOG_FILE" 2>&1 &
-    echo $! > "$UI_PID_FILE"
+      bun run "$UI_ENTRY"
   )
 
   local new_ui_pid
@@ -642,17 +713,19 @@ start_daemon() {
     return 1
   fi
 
-  local backend_mode managed_endpoint managed_api_key
+  local backend_mode managed_endpoint managed_api_key embedding_provider embedding_model
   backend_mode="$(read_backend_mode)"
   managed_endpoint="$(jq -r '.managed.endpoint // ""' "$CONFIG_PATH" 2>/dev/null || echo "")"
   managed_api_key="$(jq -r '.managed.api_key // ""' "$CONFIG_PATH" 2>/dev/null || echo "")"
-  log "Starting harness-memd... (backend: ${backend_mode})"
+  embedding_provider="${HARNESS_MEM_EMBEDDING_PROVIDER:-$(read_embedding_provider)}"
+  embedding_model="${HARNESS_MEM_EMBEDDING_MODEL:-$(read_embedding_model)}"
+  log "Starting harness-memd... (backend: ${backend_mode}, embedding: ${embedding_provider}:${embedding_model})"
   if [ "$backend_mode" != "local" ] && [ -n "$managed_endpoint" ]; then
     log "  managed endpoint: ${managed_endpoint}"
   fi
   (
     cd "$REPO_ROOT"
-    nohup env \
+    spawn_detached_command "$PID_FILE" "$LOG_FILE" env \
       HARNESS_MEM_DB_PATH="$DB_PATH" \
       HARNESS_MEM_HOST="$HOST" \
       HARNESS_MEM_PORT="$PORT" \
@@ -660,8 +733,9 @@ start_daemon() {
       HARNESS_MEM_BACKEND_MODE="$backend_mode" \
       HARNESS_MEM_MANAGED_ENDPOINT="$managed_endpoint" \
       HARNESS_MEM_MANAGED_API_KEY="$managed_api_key" \
-      bun run "$DAEMON_ENTRY" >> "$LOG_FILE" 2>&1 &
-    echo $! > "$PID_FILE"
+      HARNESS_MEM_EMBEDDING_PROVIDER="$embedding_provider" \
+      HARNESS_MEM_EMBEDDING_MODEL="$embedding_model" \
+      bun run "$DAEMON_ENTRY"
   )
 
   local new_pid

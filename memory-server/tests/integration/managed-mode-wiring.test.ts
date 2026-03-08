@@ -466,6 +466,18 @@ describe("daemon config script", () => {
     expect(script).toContain("managed.api_key");
   });
 
+  test("harness-memd script reads embedding config from config", () => {
+    const fs = require("node:fs");
+    const script = fs.readFileSync(
+      join(REPO_ROOT, "scripts/harness-memd"),
+      "utf8"
+    );
+    expect(script).toContain("HARNESS_MEM_EMBEDDING_PROVIDER");
+    expect(script).toContain("HARNESS_MEM_EMBEDDING_MODEL");
+    expect(script).toContain("embedding_provider");
+    expect(script).toContain("embedding_model");
+  });
+
   test("promote script has shadow metrics gate", () => {
     const fs = require("node:fs");
     const script = fs.readFileSync(

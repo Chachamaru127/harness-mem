@@ -1,0 +1,59 @@
+{
+  "schema_version": "japanese-release-report-v1",
+  "generated_at": "2026-03-06T05:09:50.325Z",
+  "dataset_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-32.json",
+  "result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run2/result.json",
+  "summary": {
+    "overall": {
+      "count": 32,
+      "em_avg": 0.5625,
+      "f1_avg": 0.7645176256921613,
+      "zero_f1_count": 2
+    },
+    "by_slice": {
+      "current": {
+        "count": 12,
+        "em_avg": 0.6666666666666666,
+        "f1_avg": 0.8170634920634922,
+        "zero_f1_count": 0
+      },
+      "exact": {
+        "count": 3,
+        "em_avg": 0.6666666666666666,
+        "f1_avg": 0.787878787878788,
+        "zero_f1_count": 0
+      },
+      "list": {
+        "count": 2,
+        "em_avg": 0.5,
+        "f1_avg": 0.8846153846153846,
+        "zero_f1_count": 0
+      },
+      "temporal": {
+        "count": 8,
+        "em_avg": 0.375,
+        "f1_avg": 0.5276315789473685,
+        "zero_f1_count": 2
+      },
+      "why": {
+        "count": 7,
+        "em_avg": 0.5714285714285714,
+        "f1_avg": 0.9008403361344538,
+        "zero_f1_count": 0
+      }
+    },
+    "cross_lingual": {
+      "count": 26,
+      "em_avg": 0.5384615384615384,
+      "f1_avg": 0.7563293854672752,
+      "zero_f1_count": 1
+    },
+    "non_cross_lingual": {
+      "count": 6,
+      "em_avg": 0.6666666666666666,
+      "f1_avg": 0.7999999999999999,
+      "zero_f1_count": 1
+    },
+    "missing_metadata": []
+  }
+}

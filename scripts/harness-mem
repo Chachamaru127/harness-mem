@@ -93,7 +93,7 @@ Commands:
   rollback                   Rollback backend mode to local.
   model list                 List available models in the catalog.
   model pull <id>            Download a model (~size confirmation required).
-  model use <id>             Set active local embedding model (writes env hint).
+  model use <id>             Set active local embedding model in config.
   model status [<id>]        Show install status of a model (or all installed).
 
 Common options:
@@ -160,6 +160,8 @@ ensure_config() {
     cat > "$CONFIG_PATH" <<'CONF'
 {
   "backend_mode": "local",
+  "embedding_provider": "auto",
+  "embedding_model": "multilingual-e5",
   "managed": {
     "endpoint": "",
     "api_key": ""
@@ -171,6 +173,22 @@ ensure_config() {
   }
 }
 CONF
+  else
+    local tmp="${CONFIG_PATH}.tmp.$$"
+    jq '
+      .backend_mode = (.backend_mode // "local")
+      | .embedding_provider = (.embedding_provider // "auto")
+      | .embedding_model = (.embedding_model // "multilingual-e5")
+      | .managed = ((.managed // {}) + {
+          endpoint: (.managed.endpoint // ""),
+          api_key: (.managed.api_key // "")
+        })
+      | .auto_update = ((.auto_update // {}) + {
+          enabled: (.auto_update.enabled // false),
+          package_name: (.auto_update.package_name // "@chachamaru127/harness-mem"),
+          channel: (.auto_update.channel // "latest")
+        })
+    ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
   fi
 }
 
@@ -189,6 +207,41 @@ write_backend_mode() {
   ensure_config
   local tmp="${CONFIG_PATH}.tmp.$$"
   jq --arg m "$new_mode" '.backend_mode = $m' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+}
+
+read_embedding_provider() {
+  ensure_config
+  local provider
+  provider="$(jq -r '.embedding_provider // "auto"' "$CONFIG_PATH" 2>/dev/null || echo "auto")"
+  case "$provider" in
+    auto|fallback|openai|ollama|local) echo "$provider" ;;
+    *) echo "auto" ;;
+  esac
+}
+
+write_embedding_provider() {
+  local new_provider="$1"
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq --arg p "$new_provider" '.embedding_provider = $p' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+}
+
+read_embedding_model() {
+  ensure_config
+  local model
+  model="$(jq -r '.embedding_model // "multilingual-e5"' "$CONFIG_PATH" 2>/dev/null || echo "multilingual-e5")"
+  if [ -n "$model" ] && [ "$model" != "null" ]; then
+    echo "$model"
+  else
+    echo "multilingual-e5"
+  fi
+}
+
+write_embedding_model() {
+  local new_model="$1"
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq --arg m "$new_model" '.embedding_model = $m' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
 }
 
 read_managed_endpoint() {
@@ -3606,15 +3659,14 @@ model_impl() {
         return 1
       fi
 
-      # Write active model to config
-      ensure_config
-      local tmp="${CONFIG_PATH}.tmp.$$"
-      jq --arg m "$model_id" '.embedding_model = $m' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
-      log "Active local embedding model set to: ${model_id}"
+      write_embedding_provider "local"
+      write_embedding_model "$model_id"
+      log "Active embedding config set to local:${model_id}"
       echo ""
-      echo "  Set HARNESS_MEM_EMBEDDING_PROVIDER=local"
-      echo "  Set HARNESS_MEM_EMBEDDING_MODEL=${model_id}"
-      echo "  in your environment or .env to activate local inference."
+      echo "  Config updated: ${CONFIG_PATH}"
+      echo "  embedding_provider=local"
+      echo "  embedding_model=${model_id}"
+      echo "  Restart daemon to apply: scripts/harness-memd restart"
       ;;
 
     status)

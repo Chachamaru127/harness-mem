@@ -1,0 +1,178 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:23:39.736Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": true
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-dbJdh2/quick-006-q3.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 0,
+      "f1": 0.3636363636363636
+    },
+    "by_category": {
+      "cat-2": {
+        "count": 1,
+        "em": 0,
+        "f1": 0.3636363636363636
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 0,
+      "f1": 0.3636363636363636
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 5.24,
+      "max": 5.24,
+      "avg": 5.24,
+      "p50": 5.24,
+      "p95": 5.24
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 11,
+        "capacity": 128,
+        "hits": 16,
+        "misses": 11,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 9,
+        "capacity": 0,
+        "hits": 16,
+        "misses": 9,
+        "evictions": 0,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 63,
+      "output_total": 366,
+      "total_total": 429,
+      "input_avg": 63,
+      "output_avg": 366,
+      "total_avg": 429
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-006",
+      "question_id": "q3",
+      "category": "cat-2",
+      "question": "Where did I buy the containers for my garden?",
+      "answer": "GreenThumb store",
+      "prediction": "I bought special containers from the GreenThumb store downtown",
+      "question_kind": "location",
+      "answer_strategy": "extract:location-candidates -> normalize -> final:location-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-5",
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-4",
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-1",
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-6"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "where did i buy the containers for my garden?",
+          "buy containers garden",
+          "buy containers garden key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:location-candidates",
+          "raw_answer": "I bought special containers from the GreenThumb store downtown.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-5",
+              "sentence": "I bought special containers from the GreenThumb store downtown.",
+              "score": 0.958333,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-4",
+              "sentence": "Tomatoes can thrive in containers with enough sunlight.",
+              "score": 0.791667,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-1",
+              "sentence": "I started a vegetable garden on my balcony three months ago.",
+              "score": 0.708333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-6",
+              "sentence": "Having the right containers makes a big difference.",
+              "score": 0.658333,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "I bought special containers from the GreenThumb store downtown.",
+          "after": "I bought special containers from the GreenThumb store downtown",
+          "notes": [
+            "location:entity_extract"
+          ],
+          "reference_time": "2026-01-01T00:00:04.000Z"
+        },
+        "final_short_answer": "I bought special containers from the GreenThumb store downtown"
+      },
+      "search_latency_ms": 5.24,
+      "token_estimate_input_tokens": 63,
+      "token_estimate_output_tokens": 366,
+      "token_estimate_total_tokens": 429,
+      "em": 0,
+      "f1": 0.3636363636363636
+    }
+  ]
+}

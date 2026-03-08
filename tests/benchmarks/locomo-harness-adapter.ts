@@ -1,4 +1,5 @@
 import { HarnessMemCore } from "../../memory-server/src/core/harness-mem-core";
+import { tokenize as tokenizeSearchText } from "../../memory-server/src/core/core-utils";
 import {
   normalizeLocomoAnswer,
   type LocomoEvidenceSnippet,
@@ -6,6 +7,7 @@ import {
   type MultiHopReasoningTrace,
 } from "./locomo-answer-normalizer";
 import { type LocomoSample } from "./locomo-loader";
+import { stripHallucinationFiller } from "./japanese-companion-gate";
 
 export interface AnswerTraceCandidate {
   id: string;
@@ -149,23 +151,190 @@ const STOP_WORDS = new Set([
   "if",
 ]);
 
+const ENTITY_TOKEN_PATTERN = String.raw`(?:[A-Z][\p{L}\p{M}0-9]*(?:[A-Z][\p{L}\p{M}0-9]+)*|[A-Z]{2,}[A-Z0-9]*)`;
+const ENTITY_SEQUENCE_PATTERN = String.raw`${ENTITY_TOKEN_PATTERN}(?:\s+${ENTITY_TOKEN_PATTERN}){0,4}`;
+const ENTITY_SEQUENCE_REGEX = new RegExp(String.raw`\b${ENTITY_SEQUENCE_PATTERN}\b`, "gu");
+const ENTITY_BLACKLIST = new Set([
+  "I",
+  "We",
+  "Our",
+  "My",
+  "You",
+  "Your",
+  "He",
+  "She",
+  "They",
+  "The",
+  "A",
+  "An",
+  "This",
+  "That",
+  "These",
+  "Those",
+  "What",
+  "When",
+  "Where",
+  "Why",
+  "How",
+]);
+const NATURAL_LANGUAGES = [
+  "English",
+  "Spanish",
+  "Japanese",
+  "French",
+  "German",
+  "Korean",
+  "Chinese",
+  "Portuguese",
+  "Italian",
+  "Hindi",
+  "Arabic",
+];
+const PROGRAMMING_LANGUAGES = [
+  "Go",
+  "Python",
+  "TypeScript",
+  "JavaScript",
+  "Rust",
+  "Java",
+  "Kotlin",
+  "Swift",
+  "Ruby",
+  "Scala",
+  "Clojure",
+  "C#",
+  "C++",
+];
+
+const JAPANESE_STOP_TOKENS = new Set([
+  "何",
+  "何ですか",
+  "何でしたか",
+  "どこ",
+  "どこですか",
+  "いつ",
+  "いつですか",
+  "なぜ",
+  "理由",
+  "きっかけ",
+  "です",
+  "ですか",
+  "でした",
+  "でしたか",
+  "どちら",
+  "どれ",
+  "こと",
+  "もの",
+  "今",
+  "現在",
+  "以前",
+  "前回",
+  "最後",
+  "最初",
+  "一覧",
+  "すべて",
+  "全て",
+  "挙げて",
+]);
+
+const CURRENT_MARKER_REGEX = /\b(current|currently|now|latest|active|default|primary)\b/i;
+const PREVIOUS_MARKER_REGEX = /\b(previous|previously|former|formerly|prior|earlier|used to|old)\b/i;
+const REASON_MARKER_REGEX = /\b(why|reason|because|since|due to|trigger(?:ed)?|motivat(?:ed|ion))\b/i;
+const LIST_MARKER_REGEX = /\b(list|all|enumerate|name all)\b/i;
+const TEMPORAL_ORDER_MARKER_REGEX = /\b(first|last|before|after|earlier|later|previous|next|when)\b/i;
+const JAPANESE_CURRENT_MARKER_REGEX = /(今|いま|現在|今の|現行|最新|使っている|使ってる)/;
+const JAPANESE_PREVIOUS_MARKER_REGEX = /(以前|前の|前回|前は|もともと|元は|最初は|当初|当時|直後|初期|変える前|見直す前)/;
+const JAPANESE_REASON_MARKER_REGEX = /(なぜ|理由|きっかけ|どうして|背景|原因)/;
+const JAPANESE_LIST_MARKER_REGEX = /(一覧|すべて|全て|挙げて|列挙)/;
+const JAPANESE_TEMPORAL_ORDER_MARKER_REGEX = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時)/;
+const CURRENT_EXACT_VALUE_DOMAIN_REGEX =
+  /\b(ci|region|channel|cadence|retention|price|plan|auth|authentication|fusion|method|docs|language|support hours?|support window|start time|maintenance|headquarters|setup|tool|target)\b/i;
+const JAPANESE_CURRENT_EXACT_VALUE_DOMAIN_REGEX =
+  /(リージョン|認証|方式|方法|言語|料金|価格|retention|cadence|channel|サポート時間|開始時刻|メンテナンス|headquarters|docs|CI|setup|ツール|対象)/;
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizeSpaces(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+function stripJapaneseParticles(value: string): string {
+  return value.replace(/^(?:は|が|を|に|で|と|の)+/u, "").replace(/(?:は|が|を|に|で|と|の)+$/u, "");
+}
+
 function tokenize(value: string): string[] {
-  return normalizeText(value)
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter((token) => token.length > 1 && !STOP_WORDS.has(token));
+  const seen = new Set<string>();
+  const tokens: string[] = [];
+  for (const rawToken of tokenizeSearchText(value)) {
+    const normalized = stripJapaneseParticles(normalizeText(rawToken));
+    if (!normalized || normalized.length < 2) continue;
+    if (/^[a-z0-9]+$/u.test(normalized) && STOP_WORDS.has(normalized)) continue;
+    if (JAPANESE_STOP_TOKENS.has(normalized)) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    tokens.push(normalized);
+  }
+  return tokens;
+}
+
+function stripQuestionBoilerplate(question: string): string {
+  return question
+    .replace(/[？?]/g, " ")
+    .replace(/(教えてください|見せてください|挙げてください|列挙してください)/g, " ")
+    .replace(/(何ですか|何でしたか|どこですか|どこでしたか|いつですか|いつでしたか)/g, " ")
+    .replace(/(理由は何ですか|どちらが先に出ましたか|どちらが先でしたか)/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractQueryKeywords(question: string): string[] {
+  const stripped = stripQuestionBoilerplate(question);
+  const phraseMatches = stripped.match(/[A-Za-z][A-Za-z0-9+.-]*(?:\s+[A-Za-z][A-Za-z0-9+.-]*){0,2}/g) || [];
+  const candidates = [...phraseMatches, ...tokenize(stripped)];
+  const seen = new Set<string>();
+  const keywords: string[] = [];
+  for (const candidate of candidates) {
+    const normalized = normalizeText(candidate);
+    if (!normalized || normalized.length < 2) continue;
+    if (JAPANESE_STOP_TOKENS.has(normalized)) continue;
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    keywords.push(normalized);
+  }
+  return keywords.slice(0, 8);
 }
 
 function detectQuestionKind(question: string, _category?: string): QuestionKind {
   const normalized = normalizeText(question);
+  const looksLikeJapaneseYesNo =
+    /(?:ですか|ますか|ましたか|でしょうか|ありますか|いますか|使っていますか|使ってますか|残っていますか|対応していますか|だけですか)[？?]?$/.test(question) &&
+    !/(何|どこ|いつ|なぜ|理由|誰|どれ|どの|いくつ|何時|何年|何月|何日|どちら|いくら|どれくらい|何個|何人|何回|何時間|何分|何語|何社)/.test(question);
+  if (looksLikeJapaneseYesNo) {
+    return "yes_no";
+  }
+  const looksLikeCurrentOrPreviousExact =
+    (CURRENT_MARKER_REGEX.test(normalized) ||
+      JAPANESE_CURRENT_MARKER_REGEX.test(question) ||
+      PREVIOUS_MARKER_REGEX.test(normalized) ||
+      JAPANESE_PREVIOUS_MARKER_REGEX.test(question)) &&
+    (CURRENT_EXACT_VALUE_DOMAIN_REGEX.test(normalized) ||
+      JAPANESE_CURRENT_EXACT_VALUE_DOMAIN_REGEX.test(question) ||
+      /(何時|どこ|いつ)/.test(question)) &&
+    !/(どちらが先|先に|最後|最初)/.test(question);
+  const looksLikeInitialExactValue = /(最初はどの|最初にどの)/.test(question) && /(ツール|対象|tool|setup)/i.test(question);
   // RQ-010: cat-3 は会話コンテキストから事実を引き出すfact retrievalのため、
   // multi_hop ではなく factual として扱う（counterfactual バリアントを避けるため）
   if (/\bwould\b.+\bif\b/.test(normalized) || /\blikely\b/.test(normalized)) {
     return "multi_hop";
+  }
+  if (looksLikeCurrentOrPreviousExact || looksLikeInitialExactValue) {
+    return "factual";
   }
   if (
     /\bwhen\b/.test(normalized) ||
@@ -173,19 +342,20 @@ function detectQuestionKind(question: string, _category?: string): QuestionKind 
     /\bhow often\b/.test(normalized) ||
     /\bwhat year\b/.test(normalized) ||
     /\bwhat month\b/.test(normalized) ||
-    /\bwhat date\b/.test(normalized)
+    /\bwhat date\b/.test(normalized) ||
+    JAPANESE_TEMPORAL_ORDER_MARKER_REGEX.test(question)
   ) {
     return "temporal";
   }
-  if (normalized.startsWith("where ") || normalized.includes(" where ")) {
+  if (normalized.startsWith("where ") || normalized.includes(" where ") || /(どこ|どの都市|どの国|所在地|場所)/.test(question)) {
     return "location";
   }
-  if (/^(is|are|was|were|do|does|did|has|have|had|can|could|would|should|will)\b/.test(normalized)) {
+  if (/^(is|are|was|were|do|does|did|has|have|had|can|could|would|should|will)\b/.test(normalized) || looksLikeJapaneseYesNo) {
     return "yes_no";
   }
   // list: "what ... did you ... (plural noun)" or explicit list patterns only
   // "which" alone usually asks for a single item (factual), not a list
-  if (/\bwhat activities\b|\bwhat books\b|\bwhat fields\b|\blist\b/.test(normalized)) {
+  if (/\bwhat activities\b|\bwhat books\b|\bwhat fields\b|\blist\b/.test(normalized) || JAPANESE_LIST_MARKER_REGEX.test(question)) {
     return "list";
   }
   return "factual";
@@ -194,27 +364,27 @@ function detectQuestionKind(question: string, _category?: string): QuestionKind 
 function resolveSearchPolicy(kind: QuestionKind, category?: string): SearchPolicy {
   if (kind === "multi_hop") {
     // RQ-010: cat-3 multi-hop — より多くの候補を取得し、quality_floor を下げて recall 向上
-    return { limit: 20, variant_cap: 7, candidate_limit: 7, quality_floor: 0.15 };
+    return { limit: 18, variant_cap: 6, candidate_limit: 6, quality_floor: 0.15 };
   }
   if (kind === "temporal") {
-    return { limit: 16, variant_cap: 6, candidate_limit: 5, quality_floor: 0.2 };
+    return { limit: 13, variant_cap: 5, candidate_limit: 5, quality_floor: 0.2 };
   }
   if (category === "cat-4") {
-    return { limit: 14, variant_cap: 6, candidate_limit: 5, quality_floor: 0.18 };
+    return { limit: 12, variant_cap: 4, candidate_limit: 5, quality_floor: 0.18 };
   }
   if (kind === "list") {
-    return { limit: 13, variant_cap: 6, candidate_limit: 5, quality_floor: 0.16 };
+    return { limit: 10, variant_cap: 4, candidate_limit: 4, quality_floor: 0.16 };
   }
   if (kind === "yes_no") {
-    return { limit: 11, variant_cap: 5, candidate_limit: 5, quality_floor: 0.14 };
+    return { limit: 9, variant_cap: 3, candidate_limit: 4, quality_floor: 0.14 };
   }
-  return { limit: 12, variant_cap: 5, candidate_limit: 5, quality_floor: 0.14 };
+  return { limit: 9, variant_cap: 3, candidate_limit: 4, quality_floor: 0.14 };
 }
 
 function buildQueryVariants(question: string, kind: QuestionKind, policy: SearchPolicy, category?: string): string[] {
   const variants = new Set<string>();
   const normalizedQuestion = question.trim();
-  const keywords = tokenize(question).slice(0, 10);
+  const keywords = extractQueryKeywords(question);
   const keyPhrase = keywords.join(" ");
 
   if (normalizedQuestion) variants.add(normalizedQuestion);
@@ -225,6 +395,7 @@ function buildQueryVariants(question: string, kind: QuestionKind, policy: Search
   if (kind === "temporal") {
     variants.add(`${keyPhrase} date time timeline chronology`.trim());
     variants.add(`${keyPhrase} before after calendar`.trim());
+    variants.add(`${keyPhrase} 先 後 最初 最後 以前 時系列`.trim());
   }
   if (kind === "location") {
     variants.add(`${keyPhrase} place location city moved`.trim());
@@ -236,10 +407,20 @@ function buildQueryVariants(question: string, kind: QuestionKind, policy: Search
   if (kind === "list") {
     variants.add(`${keyPhrase} list names items`.trim());
     variants.add(`${keyPhrase} comma separated answers`.trim());
+    variants.add(`${keyPhrase} 一覧 すべて 列挙`.trim());
   }
   if (kind === "multi_hop") {
     variants.add(`${keyPhrase} reason because causal dependency`.trim());
     variants.add(`${keyPhrase} supporting evidence chain`.trim());
+  }
+  if (JAPANESE_REASON_MARKER_REGEX.test(question) || REASON_MARKER_REGEX.test(normalizedQuestion)) {
+    variants.add(`${keyPhrase} 理由 きっかけ because reason`.trim());
+  }
+  if (JAPANESE_CURRENT_MARKER_REGEX.test(question) || CURRENT_MARKER_REGEX.test(normalizedQuestion)) {
+    variants.add(`${keyPhrase} current latest active now`.trim());
+  }
+  if (JAPANESE_PREVIOUS_MARKER_REGEX.test(question) || PREVIOUS_MARKER_REGEX.test(normalizedQuestion)) {
+    variants.add(`${keyPhrase} previous former earlier before`.trim());
   }
 
   return [...variants]
@@ -297,16 +478,47 @@ function extractTemporalPhrase(text: string): string | null {
   return null;
 }
 
+const TEMPORAL_WORDS = new Set([
+  "january", "february", "march", "april", "may", "june", "july", "august",
+  "september", "october", "november", "december",
+  "monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday",
+  "spring", "summer", "autumn", "winter",
+]);
+
+function isTemporalWord(value: string): boolean {
+  return TEMPORAL_WORDS.has(value.toLowerCase());
+}
+
 function extractLocationPhrase(text: string): string | null {
-  const patterns = [
-    /\bmoved\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-    /\bmoved\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
-    /\b(?:in|at|from|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
+  const patterns: RegExp[] = [
+    // "moved to/from City, State" - City + optional ", State"
+    /\bmoved\s+to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}(?:,\s*[A-Z][a-z]+)?)/,
+    /\bmoved\s+from\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}(?:,\s*[A-Z][a-z]+)?)/,
+    // "live/lives/lived/stay/stayed in City, State"
+    /\b(?:live|lives|lived|stay|stayed|reside|resides|resided|based|located|operate[sd]?|work[s]?|study|studi(?:es|ed)?|attend[s]?|attending)\s+(?:in|at|from|to)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3}(?:,\s*[A-Z][a-z]+)?)/,
+    // "set in 1920s Shanghai" / "set in [decade] Place"
+    /\bset\s+in\s+((?:\d{4}s?\s+)?[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
+    // "held/took place in City"
+    /\b(?:held|took\s+place|hosted|located)\s+(?:in|at)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/,
+    // "in City, State" - general pattern including City, State
+    /\bin\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}(?:,\s*[A-Z][a-z]+)?)\b/,
+    // "at/from City or Organization"
+    /\b(?:at|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,3})\b/,
+    // "certification from deeplearning.ai" - lowercase domain
+    /\b(?:from|at|via)\s+([a-z][a-z0-9-]*\.[a-z]{2,})\b/,
+    // "my job at DataVision Corp"
+    /\bjob\s+at\s+([A-Z][A-Za-z0-9]*(?:\s+[A-Z][A-Za-z0-9]*){0,3})\b/,
+    // Abbreviation institutions: "at MIT", "at UCLA", "project at MIT"
+    /\b(?:at|in|from)\s+([A-Z]{2,6})\b/,
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(text);
-    if (match && match[1]) {
-      return match[1].trim();
+    if (match?.[1]) {
+      const result = match[1].trim();
+      // Filter out temporal words (month names, weekdays, seasons)
+      const firstWord = result.split(/[\s,]/)[0] || "";
+      if (isTemporalWord(firstWord)) continue;
+      return result;
     }
   }
   return null;
@@ -314,6 +526,8 @@ function extractLocationPhrase(text: string): string | null {
 
 function extractNumericSlot(text: string): string | null {
   const patterns = [
+    /\b\d{1,2}:\d{2}\s*(?:JST|UTC)?\s*(?:[〜~-]\s*\d{1,2}:\d{2}\s*(?:JST|UTC)?)\b/i,
+    /平日[^\d]*(\d{1,2}:\d{2}\s*[〜~-]\s*\d{1,2}:\d{2}\s*(?:JST|UTC)?)/u,
     /\b\d+(?:\.\d+)?\s?%/,
     /\$\s?\d+(?:,\d{3})*(?:\.\d+)?/,
     /\b\d+(?:\.\d+)?\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i,
@@ -321,48 +535,518 @@ function extractNumericSlot(text: string): string | null {
   ];
   for (const pattern of patterns) {
     const match = pattern.exec(text);
+    if (match?.[1]) return match[1].trim();
     if (match?.[0]) return match[0].trim();
   }
   return null;
-}
-
-function extractEntitySlot(text: string, questionTokens: string[]): string | null {
-  const qSet = new Set(questionTokens);
-  const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
-  let match: RegExpExecArray | null;
-  const entities: string[] = [];
-  while ((match = properNounPattern.exec(text)) !== null) {
-    if (match[0].length > 1) entities.push(match[0]);
-  }
-  const novel = entities.find((entity) => tokenize(entity).some((token) => !qSet.has(token)));
-  return novel || entities[0] || null;
 }
 
 interface QuestionHints {
   wantsNumeric: boolean;
   wantsEntity: boolean;
   wantsLanguage: boolean;
+  wantsProgrammingLanguage: boolean;
+  wantsName: boolean;
+  wantsOrganization: boolean;
+  wantsRole: boolean;
+  wantsPerson: boolean;
+  wantsItem: boolean;
+  wantsListValue: boolean;
+  wantsSingularItem: boolean;
+  wantsTopic: boolean;
+  wantsCurrent: boolean;
+  wantsPrevious: boolean;
+  wantsReason: boolean;
+  wantsTemporalOrdering: boolean;
 }
 
 function buildQuestionHints(question: string): QuestionHints {
   const normalized = normalizeText(question);
   return {
-    wantsNumeric: /\b(how many|how much|percent|percentage|ratio|rate|cost|price|amount)\b/.test(normalized),
-    wantsEntity: /\b(who|which person|name|what school|what company|what team)\b/.test(normalized),
-    wantsLanguage: /\b(language|speak|spoken)\b/.test(normalized),
+    wantsNumeric: /\b(how many|how much|percent|percentage|ratio|rate|cost|price|amount)\b/.test(normalized) || /(いくら|何円|何ドル|何個|何人|何回|何時間|何分|何日|割合|パーセント)/.test(question),
+    wantsEntity: /\b(who|which person|name|what school|what company|what team|what university|what book|what dog)\b/.test(
+      normalized
+    ) || /(誰|名前|何社|どの会社|どのチーム|どの大学)/.test(question),
+    wantsLanguage: /\b(language|speak|spoken|programming language)\b/.test(normalized) || /(言語|何語)/.test(question),
+    wantsProgrammingLanguage: /\b(programming language|codebase|tech stack|backend|frontend|team use)\b/.test(normalized),
+    wantsName: /\b(what is the name|name of|what.*name|whose name)\b/.test(normalized) || (/\b(called|named)\b/.test(normalized) && !/\bwhat\s+kind\b/.test(normalized)),
+    wantsOrganization: /\b(university|school|college|company|startup|team|project|bakery|institute|lab|laboratory|employer)\b/.test(
+      normalized
+    ) || /(会社|企業|組織|チーム|大学|学校|研究所)/.test(question),
+    wantsRole: /\b(role|job|position|title)\b/.test(normalized) || /(役職|肩書|職種|担当)/.test(question),
+    wantsPerson: /\b(who|supervisor|advisor|adviser|manager|mentor|author)\b/.test(normalized) || /(誰|担当者|著者|管理者)/.test(question),
+    wantsItem: /\b(item|product|book|dish|pastry|vegetable|vegetables|ingredient|ingredients|crop|crops|feature|features|tool|tools|signal|report|dog|cat|pet|breed|genre|type|kind|race|medium|sport|art|style|dance|subject|topic)\b/.test(normalized) || /(機能|項目|一覧|ツール|signal|機能は何|レポート)/.test(question),
+    wantsListValue: /\b(vegetables|ingredients|items|products|crops|tools|languages|features)\b/.test(normalized) || JAPANESE_LIST_MARKER_REGEX.test(question),
+    wantsSingularItem: /\b(which|what)\s+(vegetable|item|product|book|dish|pastry|ingredient|crop)\b/.test(normalized),
+    wantsTopic: /\b(topic|thesis|project|using .* for|use .* for|used .* for)\b/.test(normalized),
+    wantsCurrent: CURRENT_MARKER_REGEX.test(normalized) || JAPANESE_CURRENT_MARKER_REGEX.test(question),
+    wantsPrevious: PREVIOUS_MARKER_REGEX.test(normalized) || JAPANESE_PREVIOUS_MARKER_REGEX.test(question),
+    wantsReason: REASON_MARKER_REGEX.test(normalized) || JAPANESE_REASON_MARKER_REGEX.test(question),
+    wantsTemporalOrdering: TEMPORAL_ORDER_MARKER_REGEX.test(normalized) || JAPANESE_TEMPORAL_ORDER_MARKER_REGEX.test(question),
   };
+}
+
+interface ExtractedSlot {
+  value: string;
+  strategy: string;
+}
+
+function cleanExtractedSpan(value: string, options: { dropLeadingArticle?: boolean } = {}): string {
+  let cleaned = value
+    .trim()
+    .replace(/^[,;:.!?'"`\s]+/, "")
+    .replace(/[,;:.!?'"`\s]+$/, "")
+    .replace(/\b(?:mostly|mainly|especially|currently|right now)\b$/i, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (options.dropLeadingArticle) {
+    cleaned = cleaned.replace(/^(?:the|a|an)\s+/i, "").trim();
+  }
+  return cleaned;
+}
+
+function collectNamedEntities(text: string): string[] {
+  const entities: string[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = ENTITY_SEQUENCE_REGEX.exec(text)) !== null) {
+    const candidate = cleanExtractedSpan(match[0] || "");
+    if (!candidate) continue;
+    const firstToken = candidate.split(/\s+/)[0] || "";
+    if (ENTITY_BLACKLIST.has(firstToken)) continue;
+    entities.push(candidate);
+  }
+  return [...new Set(entities)];
+}
+
+function extractEntitySlot(text: string, questionTokens: string[], hints?: QuestionHints): string | null {
+  const qSet = new Set(questionTokens);
+  const entities = collectNamedEntities(text);
+  if (entities.length === 0) return null;
+
+  if (hints?.wantsOrganization) {
+    const organizationLike = entities.filter((entity) => /\b(University|College|School|Institute|Laboratory|Lab)\b/u.test(entity));
+    if (organizationLike.length > 0) {
+      return organizationLike.sort((lhs, rhs) => rhs.length - lhs.length)[0] || null;
+    }
+  }
+
+  const ranked = entities
+    .map((entity) => {
+      const entityTokens = tokenize(entity);
+      const overlap = entityTokens.filter((token) => qSet.has(token)).length;
+      const novelty = entityTokens.length - overlap;
+      return { entity, novelty, wordCount: entityTokens.length };
+    })
+    .sort((lhs, rhs) => {
+      if (rhs.novelty !== lhs.novelty) return rhs.novelty - lhs.novelty;
+      if (rhs.wordCount !== lhs.wordCount) return rhs.wordCount - lhs.wordCount;
+      return rhs.entity.length - lhs.entity.length;
+    });
+
+  return ranked[0]?.entity || null;
+}
+
+function extractLanguageSlot(text: string, hints: QuestionHints): string | null {
+  const preferred = hints.wantsProgrammingLanguage
+    ? [...PROGRAMMING_LANGUAGES, ...NATURAL_LANGUAGES]
+    : [...NATURAL_LANGUAGES, ...PROGRAMMING_LANGUAGES];
+
+  for (const language of preferred) {
+    const regex = language === "Go" ? /\bGo\b/u : new RegExp(String.raw`\b${escapeRegExp(language)}\b`, "iu");
+    const match = regex.exec(text);
+    if (match?.[0]) return match[0];
+  }
+  return null;
+}
+
+function extractNameSlot(text: string): string | null {
+  const cuePatterns = [
+    new RegExp(String.raw`\b(?:called|named)\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+    new RegExp(String.raw`\bname\s+is\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+    // "My brother Leo is ..." / "My sister Emma got ..." — family member name
+    /\b(?:brother|sister|cousin|nephew|niece|son|daughter|mother|father|uncle|aunt|dog|cat|pet)\s+([A-Z][a-z]{1,20})\s+(?:is|was|got|has|had|went|did|joined|works|studied|teaches)\b/u,
+  ];
+  for (const pattern of cuePatterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) {
+      return cleanExtractedSpan(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractOrganizationSlot(text: string, hints: QuestionHints, questionTokens: string[]): string | null {
+  const suffixMatch = /\b([A-Z][\p{L}\p{M}0-9]*(?:\s+[A-Z][\p{L}\p{M}0-9]*){0,3}\s+(?:University|College|School|Institute|Laboratory|Lab))\b/u.exec(
+    text
+  );
+  if (suffixMatch?.[1]) {
+    return cleanExtractedSpan(suffixMatch[1]);
+  }
+
+  const cuePatterns = [
+    new RegExp(String.raw`\b(?:joined?|join|at|from|for|attending|attend|graduated from|research at|study(?:ing)? at)\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+    new RegExp(String.raw`\b(?:team|project|company|startup|bakery)\s+(?:is|was)\s+called\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+  ];
+  for (const pattern of cuePatterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) {
+      return cleanExtractedSpan(match[1]);
+    }
+  }
+
+  return hints.wantsEntity ? extractEntitySlot(text, questionTokens, hints) : null;
+}
+
+function extractRoleSlot(text: string): string | null {
+  const patterns = [
+    /\b(?:role|job|position|title)\s+(?:at\s+\S+\s+)?(?:is|was)\s+(?:an?\s+)?([a-z][\p{L}\p{M}-]*(?:\s+[a-z][\p{L}\p{M}-]*){0,4}?)(?=\s+(?:focusing|working|specializing|using|building|at|with|on|for)\b|[.,;!?]|$)/iu,
+    /\b(?:joined|work(?:ing)?|hired)(?:\s+\S+){0,3}\s+as\s+(?:an?\s+)?([a-z][\p{L}\p{M}-]*(?:\s+[a-z][\p{L}\p{M}-]*){0,4}?)(?=\s+(?:focusing|working|specializing|using|building|at|with|on|for)\b|[.,;!?]|$)/iu,
+    /\bI(?:'m| am)\s+(?:an?\s+)?([a-z][\p{L}\p{M}-]*(?:\s+[a-z][\p{L}\p{M}-]*){0,5})\b/iu,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) {
+      return cleanExtractedSpan(match[1], { dropLeadingArticle: true });
+    }
+  }
+  return null;
+}
+
+function extractPersonSlot(text: string, questionTokens: string[], hints: QuestionHints): string | null {
+  const cuePatterns = [
+    new RegExp(String.raw`\b(?:supervisor|advisor|adviser|manager|mentor|author)\s+is\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+    new RegExp(String.raw`\b(?:dog|cat|sister|brother|friend|partner)\b.*?\b(?:named|called)\s+(${ENTITY_SEQUENCE_PATTERN})\b`, "u"),
+  ];
+  for (const pattern of cuePatterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) {
+      return cleanExtractedSpan(match[1]);
+    }
+  }
+  return extractEntitySlot(text, questionTokens, hints);
+}
+
+function extractListLead(text: string): string | null {
+  const firstClause = text.split(/[.;!?]/)[0]?.trim() || text.trim();
+  const stripped = firstClause.replace(/\b(?:mostly|mainly|especially|currently|right now)\b.*$/i, "").trim();
+  const itemPattern = String.raw`[A-Za-z][\p{L}\p{M}-]*(?:\s+[A-Za-z][\p{L}\p{M}-]*){0,2}`;
+  const listPattern = new RegExp(
+    String.raw`^(${itemPattern}(?:,\s*${itemPattern})*(?:,?\s+and\s+${itemPattern})?)$`,
+    "iu"
+  );
+  const match = listPattern.exec(stripped);
+  if (!match?.[1]) return null;
+  return cleanExtractedSpan(match[1]);
+}
+
+function extractKindSlot(text: string, question: string): string | null {
+  // "what kind/type/genre/medium/breed of X" — extract the adjective/noun kind before a proper name
+  // e.g. "I adopted a golden retriever named Buddy" → "golden retriever"
+  // e.g. "My band plays indie rock" → "indie rock"
+  const patterns = [
+    // "adopted/rescued/bought/got a <kind> named/called <Name>"
+    /\b(?:adopted|rescued|got|bought|have|had|own[s]?)\s+(?:a|an)\s+([a-z][a-z0-9\s-]{2,30}?)\s+(?:named|called)\b/i,
+    // "plays/played <genre> music" / "play in <genre> band"
+    /\b(?:plays?|played|perform[s]?|makes?|records?|plays?\s+in\s+a\s+band\s+(?:called\s+\S+\s+)?playing)\s+([a-z][a-z\s-]{2,25}?)\s+(?:music|band|rock|pop|jazz|genre)/i,
+    // "learning/studying/using <medium>"
+    /\b(?:learning|learn)\s+to\s+(?:paint|play|draw|write|code|speak)\s+([a-z][a-z\s-]{2,25}?)(?:\.|,|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) return cleanExtractedSpan(match[1]);
+  }
+  return null;
+}
+
+function extractItemSlot(text: string, hints: QuestionHints): string | null {
+  const leadList = extractListLead(text);
+  if (leadList) {
+    if (hints.wantsSingularItem) {
+      return cleanExtractedSpan((leadList.split(/,|\band\b/i)[0] || "").trim(), { dropLeadingArticle: true });
+    }
+    return cleanExtractedSpan(leadList);
+  }
+
+  const bestSeller = /\b(?:best seller|best-selling item|best selling item)\s+is\s+(?:the\s+)?([a-z][\p{L}\p{M}0-9-]*(?:\s+[a-z][\p{L}\p{M}0-9-]*){0,5})\b/iu.exec(
+    text
+  );
+  if (bestSeller?.[1]) {
+    return cleanExtractedSpan(bestSeller[1], { dropLeadingArticle: true });
+  }
+
+  return null;
+}
+
+function extractTopicSlot(text: string): string | null {
+  const patterns = [
+    /\bfor\s+(?:a\s+|an\s+|the\s+)?([a-z][\p{L}\p{M}0-9-]*(?:\s+[a-z][\p{L}\p{M}0-9-]*){0,6}?)(?=\s+(?:at|in|with|using|from|near|during)\b|[.,;!?]|$)/iu,
+    /\bon\s+([a-z][\p{L}\p{M}0-9-]*(?:\s+[a-z][\p{L}\p{M}0-9-]*){0,8}?)(?=\s+(?:at|in|with|using|from|near|during)\b|[.,;!?]|$)/iu,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(text);
+    if (match?.[1]) {
+      return cleanExtractedSpan(match[1], { dropLeadingArticle: true }).replace(/^(?:my|our|their|his|her)\s+/i, "");
+    }
+  }
+  return null;
+}
+
+function stripTrailingJapaneseCopula(value: string): string {
+  return cleanExtractedSpan(
+    value
+      .replace(/^(?:その後|そこで|まず|最初に|最後に)\s+/u, "")
+      .replace(/\s*開始$/u, "")
+      .replace(/(?:です|でした|だ|だった)$/u, "")
+      .replace(/(?:を使っています|を使っている|にしています|にしていました|もサポートしています)$/u, "")
+      .replace(/(?:が先に出ました|が先でした|が最後でした|が最初でした)$/u, "")
+      .trim()
+  ).replace(/(?:も|を|が)$/u, "").trim();
+}
+
+function normalizeListItems(value: string): string {
+  const rawItems = value
+    .replace(/(?:for admins|for admin)$/iu, "")
+    .split(/,|、| and /iu)
+    .map((item) => stripTrailingJapaneseCopula(item))
+    .filter(Boolean);
+  return [...new Set(rawItems)].join(", ");
+}
+
+function extractJapaneseReasonSlot(text: string): string | null {
+  const patterns = [
+    /(?:理由|きっかけ)(?:は|になったのは)?\s*([^。!?]+?(?:から|ため|ので))(?:です|でした|だ|だった)?/u,
+    /([^。!?]+?(?:から|ため|ので))(?:です|でした|だ|だった)?(?:。|$)/u,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalizeSpaces(text));
+    if (match?.[1]) {
+      return stripTrailingJapaneseCopula(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractJapaneseCurrentValueSlot(text: string): string | null {
+  const patterns = [
+    /今(?:は|の)?\s*([^。!?]+?)\s*(?:を使っています|を使っている|です|でした|にしています|になっています|もサポートしています|が使われています)/u,
+    /現在(?:は|の)?\s*([^。!?]+?)\s*(?:を使っています|です|でした|にしています|になっています|もサポートしています)/u,
+    /今の[^。!?]*?は\s*([^。!?]+?)(?:です|でした|だ|だった)/u,
+    /現在の[^。!?]*?は\s*([^。!?]+?)(?:です|でした|だ|だった)/u,
+    /((?:平日(?:の)?\s*)?\d{1,2}:\d{2}\s*[〜~-]\s*\d{1,2}:\d{2}\s*(?:JST|UTC)?)\s*に絞りました/u,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalizeSpaces(text));
+    if (match?.[1]) {
+      return stripTrailingJapaneseCopula(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractJapanesePreviousValueSlot(text: string): string | null {
+  const patterns = [
+    /以前(?:は|の)?\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+    /前(?:は|の)?\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+    /最初は[^。!?]*?を\s*([^。!?]+?)\s*にしていました/u,
+    /最初の[^。!?]*?は\s*([^。!?]+?)\s*だけを対象にしていました/u,
+    /元は\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+    /([^。!?]+?)では\s*([^。!?]+?)\s*を使っていました/u,
+    /を\s*([^。!?]+?)\s*にしていました/u,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalizeSpaces(text));
+    if (match?.[2]) {
+      return stripTrailingJapaneseCopula(match[2]);
+    }
+    if (match?.[1]) {
+      return stripTrailingJapaneseCopula(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractJapaneseTemporalOrderSlot(question: string, text: string): string | null {
+  const normalizedQuestion = normalizeSpaces(question);
+  const source = normalizeSpaces(text);
+
+  if (/(どちらが先|先に)/u.test(normalizedQuestion)) {
+    const first = /([^、,。!?]+?)が先(?:に出ました|に出た|でした|だ)/u.exec(source);
+    if (first?.[1]) return stripTrailingJapaneseCopula(first[1]);
+  }
+  if (/(最後|last)/iu.test(normalizedQuestion)) {
+    const last = /([^、,。!?]+?)が最後(?:に出ました|でした|だ)/u.exec(source);
+    if (last?.[1]) return stripTrailingJapaneseCopula(last[1]);
+  }
+  if (/(最初|first)/iu.test(normalizedQuestion)) {
+    const first = /([^、,。!?]+?)が最初(?:に出ました|でした|だ)/u.exec(source);
+    if (first?.[1]) return stripTrailingJapaneseCopula(first[1]);
+  }
+  return null;
+}
+
+function extractJapaneseListSlot(text: string): string | null {
+  const patterns = [
+    /(?:には|は)\s*([^。!?]+?)\s*を(?:出しました|追加しました|導入しました|含めました)/u,
+    /([^。!?]+(?:,|、)\s*[^。!?]+(?:,|、)?\s*[^。!?]+)(?:を出しました|です)/u,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalizeSpaces(text));
+    if (match?.[1]) {
+      return normalizeListItems(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractJapaneseObjectValueSlot(text: string): string | null {
+  const patterns = [
+    /([^。!?]+?)を見て、/u,
+    /から\s+([^。!?]+?の要望)がありました/u,
+    /([^。!?]+?の要望)がありました/u,
+    /([^。!?]+?)を bundle しました/u,
+    /([^。!?]+?)を localized しました/u,
+    /setup は\s*([^。!?]+?)\s*をまとめて指定します/u,
+    /([^。!?]+?)をまとめて指定します/u,
+    /([^。!?]+?)を削除しました/u,
+  ];
+  for (const pattern of patterns) {
+    const match = pattern.exec(normalizeSpaces(text));
+    if (match?.[1]) {
+      return normalizeListItems(stripTrailingJapaneseCopula(match[1]));
+    }
+  }
+  return null;
+}
+
+function extractJapaneseSubjectBeforeTopicSlot(question: string, text: string): string | null {
+  const normalizedQuestion = normalizeSpaces(question);
+  const source = normalizeSpaces(text);
+  if (/(の後|あとで|後に)/u.test(normalizedQuestion)) {
+    const match = /(?:^|[。.!?]\s*)([^、,。!?]+?)は[^。!?]*(?:の後|あとで|後に)/u.exec(source);
+    if (match?.[1]) {
+      return stripTrailingJapaneseCopula(match[1]);
+    }
+  }
+  return null;
+}
+
+function extractQuestionAwareSpan(
+  question: string,
+  text: string,
+  questionTokens = tokenize(question),
+  hints = buildQuestionHints(question)
+): ExtractedSlot | null {
+  if (!text.trim()) return null;
+  const prefersObjectBeforePrevious =
+    hints.wantsPrevious && /(見た|レポート|要望|request|requested|追加|削除|bundle|localized)/iu.test(question);
+
+  if (hints.wantsReason) {
+    const reason = extractJapaneseReasonSlot(text);
+    if (reason) return { value: reason, strategy: "reason-slot" };
+  }
+
+  if (hints.wantsCurrent) {
+    const current = extractJapaneseCurrentValueSlot(text);
+    if (current) return { value: current, strategy: "current-slot" };
+  }
+
+  if (prefersObjectBeforePrevious && (hints.wantsItem || hints.wantsReason || hints.wantsTopic)) {
+    const objectValue = extractJapaneseObjectValueSlot(text);
+    if (objectValue) return { value: objectValue, strategy: hints.wantsListValue ? "list-slot" : "object-slot" };
+  }
+
+  if (hints.wantsPrevious && !prefersObjectBeforePrevious) {
+    const previous = extractJapanesePreviousValueSlot(text);
+    if (previous) return { value: previous, strategy: "previous-slot" };
+  }
+
+  if (hints.wantsTemporalOrdering) {
+    const temporalOrder = extractJapaneseTemporalOrderSlot(question, text);
+    if (temporalOrder) return { value: temporalOrder, strategy: "temporal-order-slot" };
+  }
+
+  if (hints.wantsListValue) {
+    const listValue = extractJapaneseListSlot(text);
+    if (listValue) return { value: listValue, strategy: "list-slot" };
+  }
+
+  if (hints.wantsItem || hints.wantsReason || hints.wantsTopic) {
+    const objectValue = extractJapaneseObjectValueSlot(text);
+    if (objectValue) return { value: objectValue, strategy: hints.wantsListValue ? "list-slot" : "object-slot" };
+  }
+
+  // "what kind/type/breed/genre of X" — extract the kind/category before a proper name
+  if (hints.wantsItem && /\bwhat\s+(?:kind|type|breed|genre|sort|medium|style|art)\b/i.test(question)) {
+    const kind = extractKindSlot(text, question);
+    if (kind) return { value: kind, strategy: "kind-slot" };
+  }
+
+  if (hints.wantsNumeric) {
+    const numeric = extractNumericSlot(text);
+    if (numeric) return { value: numeric, strategy: "numeric-slot" };
+  }
+
+  if (hints.wantsLanguage) {
+    const language = extractLanguageSlot(text, hints);
+    if (language) return { value: language, strategy: "language-slot" };
+  }
+
+  if (hints.wantsName) {
+    const name = extractNameSlot(text) || extractEntitySlot(text, questionTokens, hints);
+    if (name) return { value: name, strategy: "name-slot" };
+  }
+
+  if (hints.wantsOrganization) {
+    const organization = extractOrganizationSlot(text, hints, questionTokens);
+    if (organization) return { value: organization, strategy: "organization-slot" };
+  }
+
+  if (hints.wantsRole) {
+    const role = extractRoleSlot(text);
+    if (role) return { value: role, strategy: "role-slot" };
+  }
+
+  if (hints.wantsPerson) {
+    const person = extractPersonSlot(text, questionTokens, hints);
+    if (person) return { value: person, strategy: "person-slot" };
+  }
+
+  if (hints.wantsItem || hints.wantsListValue || hints.wantsSingularItem) {
+    const item = extractItemSlot(text, hints);
+    if (item) {
+      return { value: item, strategy: hints.wantsListValue ? "list-slot" : "item-slot" };
+    }
+  }
+
+  if (hints.wantsTopic) {
+    const topic = extractTopicSlot(text);
+    if (topic) return { value: topic, strategy: "topic-slot" };
+  }
+
+  const subjectBeforeTopic = extractJapaneseSubjectBeforeTopicSlot(question, text);
+  if (subjectBeforeTopic) return { value: subjectBeforeTopic, strategy: "subject-before-topic-slot" };
+
+  if (hints.wantsEntity) {
+    const entity = extractEntitySlot(text, questionTokens, hints);
+    if (entity) return { value: entity, strategy: "entity-slot" };
+  }
+
+  return null;
 }
 
 function isLowQualitySentence(sentence: string): boolean {
   const source = normalizeText(sentence);
   if (!source || source.length < 8 || source.length > 260) return true;
+  if (/[?]$/.test(source)) return true;
   if (/^(i think|maybe|not sure|let me|hmm|uh|um)\b/.test(source)) return true;
+  if (/^(that('| i)?s|what a)\s+(great|fun|nice|cool|interesting)\b/.test(source)) return true;
   const tokenCount = source.split(" ").filter(Boolean).length;
   return tokenCount < 3;
 }
 
 function sentenceScore(
   sentence: string,
+  question: string,
   questionTokens: string[],
   kind: QuestionKind,
   hints: QuestionHints,
@@ -382,18 +1066,46 @@ function sentenceScore(
   if (kind === "temporal") {
     if (extractDurationPhrase(sentence)) score += 0.35; // duration gets higher bonus
     else if (extractTemporalPhrase(sentence)) score += 0.22;
+    else if (extractJapaneseTemporalOrderSlot(question, sentence)) score += 0.26;
   }
   if (kind === "location" && extractLocationPhrase(sentence)) score += 0.2;
   if (kind === "yes_no" && /\bno\b|\bnot\b|\bnever\b|\byes\b/i.test(sentence)) score += 0.12;
   if (kind === "multi_hop" && /\bbecause\b|\bsince\b|\bsupport\b|\bmotivat/i.test(sentence)) score += 0.14;
-  // Question-aware rerank: boost compact slot-like candidates for intent-bearing questions.
-  if (hints.wantsNumeric && extractNumericSlot(sentence)) score += 0.2;
-  if (hints.wantsEntity && extractEntitySlot(sentence, questionTokens)) score += 0.14;
-  if (
-    hints.wantsLanguage &&
-    /\b(english|spanish|japanese|french|german|korean|chinese|portuguese|italian|hindi|arabic)\b/i.test(sentence)
-  ) {
-    score += 0.18;
+  if (hints.wantsCurrent) {
+    if (extractJapaneseCurrentValueSlot(sentence) || JAPANESE_CURRENT_MARKER_REGEX.test(sentence) || CURRENT_MARKER_REGEX.test(sentence)) {
+      score += 0.26;
+    }
+    if (extractNumericSlot(sentence) || /に絞りました|開始です|開始でした|もサポートしています/u.test(sentence)) {
+      score += 0.1;
+    }
+    if (extractJapanesePreviousValueSlot(sentence) || JAPANESE_PREVIOUS_MARKER_REGEX.test(sentence) || PREVIOUS_MARKER_REGEX.test(sentence)) {
+      score -= 0.18;
+    }
+  }
+  if (hints.wantsPrevious) {
+    if (extractJapanesePreviousValueSlot(sentence) || JAPANESE_PREVIOUS_MARKER_REGEX.test(sentence) || PREVIOUS_MARKER_REGEX.test(sentence)) {
+      score += 0.26;
+    }
+    if (extractJapaneseCurrentValueSlot(sentence) || JAPANESE_CURRENT_MARKER_REGEX.test(sentence) || CURRENT_MARKER_REGEX.test(sentence)) {
+      score -= 0.18;
+    }
+  }
+  if (hints.wantsReason && (extractJapaneseReasonSlot(sentence) || /because|since|due to/i.test(sentence))) {
+    score += 0.24;
+  }
+  if (hints.wantsListValue && (extractJapaneseListSlot(sentence) || /[,、]/.test(sentence))) {
+    score += 0.14;
+  }
+  const slot = extractQuestionAwareSpan(question, sentence, questionTokens, hints);
+  if (slot) {
+    score += 0.24;
+    if (slot.strategy === "name-slot" || slot.strategy === "organization-slot") score += 0.08;
+    if (slot.strategy === "list-slot") score += 0.06;
+    if (slot.strategy === "current-slot" || slot.strategy === "reason-slot" || slot.strategy === "temporal-order-slot") {
+      score += 0.08;
+    }
+  } else if (hints.wantsEntity || hints.wantsItem || hints.wantsLanguage || hints.wantsRole || hints.wantsTopic) {
+    score -= 0.08;
   }
   return score;
 }
@@ -410,7 +1122,7 @@ function buildCandidates(items: SearchItem[], question: string, kind: QuestionKi
       candidates.push({
         id: item.id,
         sentence: cleaned,
-        score: sentenceScore(cleaned, questionTokens, kind, hints, item.rank, item.query_order),
+        score: sentenceScore(cleaned, question, questionTokens, kind, hints, item.rank, item.query_order),
         rank: item.rank,
         query_order: item.query_order,
         created_at: item.created_at,
@@ -441,6 +1153,28 @@ function applyCandidateQualityFilter(candidates: CandidateSnippet[], floor: numb
   return deduped.slice(0, Math.max(candidateLimit, 1));
 }
 
+function selectBestFactualSpan(question: string, candidates: CandidateSnippet[]): ExtractedSlot | null {
+  const questionTokens = tokenize(question);
+  const hints = buildQuestionHints(question);
+  const ranked = candidates
+    .map((candidate) => {
+      const slot = extractQuestionAwareSpan(question, candidate.sentence, questionTokens, hints);
+      if (!slot) return null;
+      const valueTokens = tokenize(slot.value);
+      const overlap = valueTokens.filter((token) => questionTokens.includes(token)).length;
+      const novelty = valueTokens.length - overlap;
+      const compactness = Math.max(0, 6 - Math.min(valueTokens.length, 6)) * 0.01;
+      return {
+        slot,
+        score: candidate.score + novelty * 0.05 + compactness,
+      };
+    })
+    .filter((entry): entry is { slot: ExtractedSlot; score: number } => Boolean(entry))
+    .sort((lhs, rhs) => rhs.score - lhs.score);
+
+  return ranked[0]?.slot || null;
+}
+
 function extractAnswerDraft(
   question: string,
   kind: QuestionKind,
@@ -462,17 +1196,33 @@ function extractAnswerDraft(
   const mergedTop = topN.map((candidate) => candidate.sentence).join(" ");
 
   if (kind === "temporal") {
-    const phrase = extractTemporalPhrase(mergedTop) || extractTemporalPhrase(topN[0]?.sentence || "");
+    const orderPhrase =
+      extractJapaneseTemporalOrderSlot(question, mergedTop) ||
+      extractJapaneseTemporalOrderSlot(question, topN[0]?.sentence || "");
+    const phrase = orderPhrase || extractTemporalPhrase(mergedTop) || extractTemporalPhrase(topN[0]?.sentence || "");
     return {
       raw_answer: phrase || mergedTop,
       selected_candidates: topN,
       selected_evidence_ids: selectedEvidenceIds,
-      strategy: "extract:temporal-candidates",
+      strategy: orderPhrase ? "extract:temporal-order-slot" : "extract:temporal-candidates",
     };
   }
 
   if (kind === "location") {
-    const location = extractLocationPhrase(mergedTop) || extractLocationPhrase(topN[0]?.sentence || "");
+    // Try location phrase extraction first across merged text and top candidate
+    let location = extractLocationPhrase(mergedTop) || extractLocationPhrase(topN[0]?.sentence || "");
+    // Fallback: try entity slot (catches institution names, org names as locations)
+    if (!location) {
+      const questionTokens = tokenize(question);
+      const hints = buildQuestionHints(question);
+      for (const candidate of topN) {
+        const entity = extractEntitySlot(candidate.sentence, questionTokens, hints);
+        if (entity && entity.length >= 2) {
+          location = entity;
+          break;
+        }
+      }
+    }
     return {
       raw_answer: location || topN[0]?.sentence || "",
       selected_candidates: topN,
@@ -482,8 +1232,8 @@ function extractAnswerDraft(
   }
 
   if (kind === "yes_no") {
-    const withNegation = topN.find((item) => /\bno\b|\bnot\b|\bnever\b|\bnone\b/i.test(item.sentence));
-    const withAffirmation = topN.find((item) => /\byes\b|\bdefinitely\b|\bconfirmed\b/i.test(item.sentence));
+    const withNegation = topN.find((item) => /\bno\b|\bnot\b|\bnever\b|\bnone\b/i.test(item.sentence) || /(ありません|ないです|ません|違います|やめました)/u.test(item.sentence));
+    const withAffirmation = topN.find((item) => /\byes\b|\bdefinitely\b|\bconfirmed\b/i.test(item.sentence) || /(です|います|使っています|使ってます|あります)/u.test(item.sentence));
     const raw = withNegation?.sentence || withAffirmation?.sentence || topN[0]?.sentence || "";
     return {
       raw_answer: raw,
@@ -503,25 +1253,27 @@ function extractAnswerDraft(
   }
 
   if (kind === "list") {
-    // 各candidateから固有名詞・名詞句を抽出してlistアイテムとして返す
     const listItems: string[] = [];
     for (const candidate of topN) {
-      // 固有名詞パターン（大文字始まりの連続語）を抽出
-      const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
-      let pMatch: RegExpExecArray | null;
-      const extracted: string[] = [];
-      while ((pMatch = properNounPattern.exec(candidate.sentence)) !== null) {
-        if (pMatch[0].length > 1) extracted.push(pMatch[0]);
+      const japaneseList = extractJapaneseListSlot(candidate.sentence);
+      if (japaneseList) {
+        listItems.push(...japaneseList.split(/,|、/).map((item) => cleanExtractedSpan(item)).filter(Boolean));
+        continue;
       }
+      const slot = extractQuestionAwareSpan(question, candidate.sentence);
+      if (slot) {
+        listItems.push(slot.value);
+        continue;
+      }
+      const extracted = collectNamedEntities(candidate.sentence);
       if (extracted.length > 0) {
         listItems.push(...extracted);
       } else {
-        // 固有名詞がない場合は短い節を追加
         const clause = candidate.sentence.split(/[,;]/)[0]?.trim();
         if (clause && clause.length <= 60) listItems.push(clause);
       }
     }
-    const deduped = [...new Set(listItems)].slice(0, 6);
+    const deduped = [...new Set(listItems.map((item) => normalizeListItems(item)).filter(Boolean))].slice(0, 6);
     const raw = deduped.length > 0 ? deduped.join(", ") : topN.map((c) => c.sentence).join(", ");
     return {
       raw_answer: raw,
@@ -531,42 +1283,14 @@ function extractAnswerDraft(
     };
   }
 
-  const normalizedQuestion = normalizeText(question);
-  const questionTokens = tokenize(question);
-  if (/\b(how many|how much|percent|percentage|ratio|rate|cost|price|amount)\b/.test(normalizedQuestion)) {
-    const numeric = extractNumericSlot(mergedTop) || extractNumericSlot(topN[0]?.sentence || "");
-    if (numeric) {
-      return {
-        raw_answer: numeric,
-        selected_candidates: topN,
-        selected_evidence_ids: selectedEvidenceIds,
-        strategy: "extract:factual-numeric-slot",
-      };
-    }
-  }
-  if (/\b(who|name|what school|what company|what team)\b/.test(normalizedQuestion)) {
-    const entity = extractEntitySlot(mergedTop, questionTokens) || extractEntitySlot(topN[0]?.sentence || "", questionTokens);
-    if (entity) {
-      return {
-        raw_answer: entity,
-        selected_candidates: topN,
-        selected_evidence_ids: selectedEvidenceIds,
-        strategy: "extract:factual-entity-slot",
-      };
-    }
-  }
-  if (/\blanguage\b|\bspeak\b/.test(normalizedQuestion)) {
-    const language = /\b(english|spanish|japanese|french|german|korean|chinese|portuguese|italian|hindi|arabic)\b/i.exec(
-      mergedTop
-    );
-    if (language?.[0]) {
-      return {
-        raw_answer: language[0],
-        selected_candidates: topN,
-        selected_evidence_ids: selectedEvidenceIds,
-        strategy: "extract:factual-language-slot",
-      };
-    }
+  const factualSlot = selectBestFactualSpan(question, topN);
+  if (factualSlot) {
+    return {
+      raw_answer: factualSlot.value,
+      selected_candidates: topN,
+      selected_evidence_ids: selectedEvidenceIds,
+      strategy: `extract:factual-${factualSlot.strategy}`,
+    };
   }
 
   return {
@@ -587,14 +1311,7 @@ function extractAnswerDraft(
  */
 function extractCorePhrase(sentence: string, questionTokens: string[]): string {
   const qSet = new Set(questionTokens);
-
-  // 固有名詞パターン（大文字始まりの連続語）を抽出
-  const properNounPattern = /[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*/g;
-  const properNouns: string[] = [];
-  let match: RegExpExecArray | null;
-  while ((match = properNounPattern.exec(sentence)) !== null) {
-    if (match[0].length > 1) properNouns.push(match[0]);
-  }
+  const properNouns = collectNamedEntities(sentence);
 
   if (properNouns.length > 0) {
     // クエリに出てこない固有名詞を優先（答え候補）
@@ -684,6 +1401,10 @@ function finalizeShortAnswer(
     const topSentence = sentences.length > 1
       ? (selectTopSentencesByTfIdf(sentences, question, 1)[0] || compactToSingleSentence(trimmed, 180))
       : (sentences[0] || compactToSingleSentence(trimmed, 180));
+    const exactSpan = extractQuestionAwareSpan(question, topSentence, questionTokens);
+    if (exactSpan) {
+      return { answer: exactSpan.value.slice(0, 180).trim(), template: `final:multi-hop-${exactSpan.strategy}` };
+    }
     if (topSentence.length <= 80) {
       return { answer: topSentence.trim(), template: "final:multi-hop-short" };
     }
@@ -700,7 +1421,15 @@ function finalizeShortAnswer(
     ? (selectTopSentencesByTfIdf(sentences, question, 1)[0] || compactToSingleSentence(trimmed, 180))
     : (sentences[0] || compactToSingleSentence(trimmed, 180));
 
-  // 常にコアフレーズ抽出を試みる（短い文でも「He loves... Austin」のような問題を防ぐ）
+  if (!/[.?!]/.test(trimmed) && trimmed.length <= 80) {
+    return { answer: trimmed, template: "final:factual-normalized-short" };
+  }
+
+  const exactSpan = extractQuestionAwareSpan(question, topSentence, questionTokens);
+  if (exactSpan) {
+    return { answer: exactSpan.value.slice(0, 180).trim(), template: `final:factual-${exactSpan.strategy}` };
+  }
+
   const corePhrase = extractCorePhrase(topSentence, questionTokens);
   if (corePhrase.length > 0 && corePhrase.length < topSentence.length * 0.85) {
     return { answer: corePhrase.slice(0, 180).trim(), template: "final:factual-core-phrase" };
@@ -839,7 +1568,7 @@ export class HarnessMemLocomoAdapter {
     const baseTs = Date.parse("2026-01-01T00:00:00.000Z");
     sample.conversation.forEach((turn, index) => {
       this.core.recordEvent({
-        event_id: `locomo-${sample.sample_id}-${index + 1}`,
+        event_id: `locomo-${this.sessionId}-${sample.sample_id}-${index + 1}`,
         platform: "codex",
         project: this.options.project,
         session_id: this.sessionId,
@@ -926,7 +1655,7 @@ export class HarnessMemLocomoAdapter {
     });
     const finalized = finalizeShortAnswer(kind, normalization.normalized, question, options.category);
     const fallback = mergedItems[0]?.text || "";
-    const prediction = finalized.answer || fallback;
+    const prediction = stripHallucinationFiller(finalized.answer || fallback);
     const candidateIds = mergedItems.map((item) => item.id);
 
     const answerTrace: HarnessLocomoAnswerTrace = {

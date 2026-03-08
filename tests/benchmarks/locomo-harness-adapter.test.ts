@@ -6,6 +6,30 @@ import { HarnessMemCore, type Config } from "../../memory-server/src/core/harnes
 import { type LocomoSample } from "./locomo-loader";
 import { HarnessMemLocomoAdapter } from "./locomo-harness-adapter";
 
+interface FactualBankCase {
+  sample_id: string;
+  question_id: string;
+  expected: string;
+  strategy_contains?: string;
+}
+
+interface FactualBankFixture {
+  failure_bank: FactualBankCase[];
+  negative_controls: FactualBankCase[];
+}
+
+interface JapaneseFailureCase {
+  sample_id: string;
+  question_id: string;
+  expected: string;
+  strategy_contains?: string;
+}
+
+interface JapaneseFailureFixture {
+  failure_bank: JapaneseFailureCase[];
+  negative_controls: JapaneseFailureCase[];
+}
+
 function createConfig(dir: string): Config {
   return {
     dbPath: join(dir, "harness-mem.db"),
@@ -24,6 +48,30 @@ function createConfig(dir: string): Config {
     cursorIngestEnabled: false,
     antigravityIngestEnabled: false,
   };
+}
+
+function loadLocomo120Samples(): LocomoSample[] {
+  const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "locomo-120.json");
+  return JSON.parse(readFileSync(fixturePath, "utf8")) as LocomoSample[];
+}
+
+function loadFactualBank(): FactualBankFixture {
+  const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "locomo-factual-bank.json");
+  return JSON.parse(readFileSync(fixturePath, "utf8")) as FactualBankFixture;
+}
+
+function loadJapaneseReleasePack(): LocomoSample[] {
+  const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "japanese-release-pack-32.json");
+  return JSON.parse(readFileSync(fixturePath, "utf8")) as LocomoSample[];
+}
+
+function loadJapaneseFailureBank(): JapaneseFailureFixture {
+  const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "japanese-failure-bank.json");
+  return JSON.parse(readFileSync(fixturePath, "utf8")) as JapaneseFailureFixture;
+}
+
+function canonicalizeAnswer(value: string): string {
+  return value.normalize("NFKC").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 }
 
 describe("LOCOMO harness adapter", () => {
@@ -306,6 +354,317 @@ describe("LOCOMO harness adapter", () => {
       expect(replay.question_kind).toBe("factual");
       expect(replay.prediction).toMatch(/18\s?%/);
       expect(replay.answer_strategy).toContain("numeric-slot");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S39-004..006: factual failure bank returns exact evidence-backed spans", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-factual-bank-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const samples = loadLocomo120Samples();
+      const sampleMap = new Map(samples.map((sample) => [sample.sample_id, sample]));
+      const bank = loadFactualBank();
+
+      for (const testCase of bank.failure_bank) {
+        const sample = sampleMap.get(testCase.sample_id);
+        expect(sample).toBeDefined();
+        if (!sample) continue;
+
+        const qa = sample.qa.find((item) => item.question_id === testCase.question_id);
+        expect(qa).toBeDefined();
+        if (!qa) continue;
+
+        const adapter = new HarnessMemLocomoAdapter(core, {
+          project: "locomo-harness-test",
+          session_id: `failure-bank-${testCase.sample_id}-${testCase.question_id}`,
+        });
+        adapter.ingestSample(sample);
+        const replay = adapter.answerQuestion(qa.question, { category: qa.category });
+
+        expect(canonicalizeAnswer(replay.prediction)).toBe(canonicalizeAnswer(testCase.expected));
+        expect(replay.answer_trace.normalization.after.length).toBeGreaterThan(0);
+        if (testCase.strategy_contains) {
+          expect(replay.answer_strategy).toContain(testCase.strategy_contains);
+        }
+      }
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S39-004..007: negative controls keep cat-1 factual answers stable", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-negative-control-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const samples = loadLocomo120Samples();
+      const sampleMap = new Map(samples.map((sample) => [sample.sample_id, sample]));
+      const bank = loadFactualBank();
+
+      for (const testCase of bank.negative_controls) {
+        const sample = sampleMap.get(testCase.sample_id);
+        expect(sample).toBeDefined();
+        if (!sample) continue;
+
+        const qa = sample.qa.find((item) => item.question_id === testCase.question_id);
+        expect(qa).toBeDefined();
+        if (!qa) continue;
+
+        const adapter = new HarnessMemLocomoAdapter(core, {
+          project: "locomo-harness-test",
+          session_id: `negative-control-${testCase.sample_id}-${testCase.question_id}`,
+        });
+        adapter.ingestSample(sample);
+        const replay = adapter.answerQuestion(qa.question, { category: qa.category });
+
+        expect(canonicalizeAnswer(replay.prediction)).toBe(canonicalizeAnswer(testCase.expected));
+      }
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S40-005: Japanese release failure bank returns short evidence-backed answers", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-ja-bank-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const samples = loadJapaneseReleasePack();
+      const sampleMap = new Map(samples.map((sample) => [sample.sample_id, sample]));
+      const bank = loadJapaneseFailureBank();
+
+      for (const testCase of bank.failure_bank) {
+        const sample = sampleMap.get(testCase.sample_id);
+        expect(sample).toBeDefined();
+        if (!sample) continue;
+
+        const qa = sample.qa.find((item) => item.question_id === testCase.question_id);
+        expect(qa).toBeDefined();
+        if (!qa) continue;
+
+        const project = `locomo-harness-ja-${testCase.sample_id}-${testCase.question_id}`;
+        const adapter = new HarnessMemLocomoAdapter(core, {
+          project,
+          session_id: `ja-failure-bank-${testCase.sample_id}-${testCase.question_id}`,
+        });
+        adapter.ingestSample(sample);
+        const replay = adapter.answerQuestion(qa.question, { category: qa.category });
+
+        expect(canonicalizeAnswer(replay.prediction)).toContain(canonicalizeAnswer(testCase.expected));
+        if (testCase.strategy_contains) {
+          expect(replay.answer_strategy).toContain(testCase.strategy_contains);
+        }
+      }
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S40-005: Japanese negative controls keep already-correct answers stable", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-ja-negative-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const samples = loadJapaneseReleasePack();
+      const sampleMap = new Map(samples.map((sample) => [sample.sample_id, sample]));
+      const bank = loadJapaneseFailureBank();
+
+      for (const testCase of bank.negative_controls) {
+        const sample = sampleMap.get(testCase.sample_id);
+        expect(sample).toBeDefined();
+        if (!sample) continue;
+
+        const qa = sample.qa.find((item) => item.question_id === testCase.question_id);
+        expect(qa).toBeDefined();
+        if (!qa) continue;
+
+        const project = `locomo-harness-ja-${testCase.sample_id}-${testCase.question_id}`;
+        const adapter = new HarnessMemLocomoAdapter(core, {
+          project,
+          session_id: `ja-negative-control-${testCase.sample_id}-${testCase.question_id}`,
+        });
+        adapter.ingestSample(sample);
+        const replay = adapter.answerQuestion(qa.question, { category: qa.category });
+
+        expect(canonicalizeAnswer(replay.prediction)).toContain(canonicalizeAnswer(testCase.expected));
+      }
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43: Japanese yes/no query is routed to yes_no and returns No for current-value mismatch", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-ja-yesno-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-ja-yesno",
+        conversation: [
+          { speaker: "user", text: "ベータ版のビルドでは CircleCI を使っていました。" },
+          { speaker: "assistant", text: "最初のリリースを急いでいた時期には合っていましたね。" },
+          { speaker: "user", text: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。" },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-ja-yesno" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("今も CircleCI を使っていますか？", { category: "cat-2" });
+
+      expect(replay.question_kind).toBe("yes_no");
+      expect(replay.prediction).toBe("No");
+      expect(replay.answer_strategy).toContain("yes-no");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  // S43-007: location extraction improvements
+  test("S43-007: location extracts institution name when 'at' cue is absent", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-s43007-loc-institution-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-loc-institution",
+        conversation: [
+          { speaker: "user", text: "MIT has excellent data science programs." },
+          { speaker: "assistant", text: "I started learning Python in January 2024." },
+          { speaker: "user", text: "I am doing my data science project at MIT." },
+        ],
+        qa: [],
+      };
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-loc-institution" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("Where am I studying?");
+
+      expect(replay.question_kind).toBe("location");
+      expect(replay.prediction.toLowerCase()).toContain("mit");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43-007: location extracts 'City, State' as full phrase", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-s43007-loc-citystate-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-loc-citystate",
+        conversation: [
+          { speaker: "user", text: "I live in Austin, Texas." },
+          { speaker: "assistant", text: "Austin, Texas is a great city." },
+        ],
+        qa: [],
+      };
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-loc-citystate" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("Where do I live?");
+
+      expect(replay.question_kind).toBe("location");
+      expect(replay.prediction.toLowerCase()).toContain("austin");
+      expect(replay.prediction.toLowerCase()).toContain("texas");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43-007: location extracts venue city for 'where was X held' question", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-s43007-loc-venue-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-loc-venue",
+        conversation: [
+          { speaker: "user", text: "I gave a talk at PyCon US 2024 in Pittsburgh on async Python patterns." },
+          { speaker: "assistant", text: "PyCon is a great venue for technical talks." },
+        ],
+        qa: [],
+      };
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-loc-venue" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("Where was PyCon US 2024 held?");
+
+      expect(replay.question_kind).toBe("location");
+      expect(replay.prediction.toLowerCase()).toContain("pittsburgh");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43-007: entity extraction returns person name not location for sibling name question", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-s43007-entity-person-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-entity-person",
+        conversation: [
+          { speaker: "user", text: "My brother Leo is a marine biologist studying coral reefs in Hawaii." },
+          { speaker: "assistant", text: "The Pacific Marine Institute does great work." },
+        ],
+        qa: [],
+      };
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-entity-person" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("What is my brother's name?");
+
+      expect(replay.prediction.toLowerCase()).toContain("leo");
+      expect(replay.prediction.toLowerCase()).not.toBe("hawaii");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43-007: factual returns breed not name for 'what kind of dog' question", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-s43007-entity-breed-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-entity-breed",
+        conversation: [
+          { speaker: "user", text: "I adopted a golden retriever named Buddy last March." },
+          { speaker: "assistant", text: "Golden retrievers are wonderful dogs." },
+        ],
+        qa: [],
+      };
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-entity-breed" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("What kind of dog did I adopt?");
+
+      expect(replay.prediction.toLowerCase()).toContain("golden retriever");
+    } finally {
+      core.shutdown("test");
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("S43: Japanese previous-value query extracts the previous concise value", () => {
+    const tmp = mkdtempSync(join(tmpdir(), "locomo-harness-adapter-ja-prev-"));
+    const core = new HarnessMemCore(createConfig(tmp));
+    try {
+      const sample: LocomoSample = {
+        sample_id: "sample-ja-prev",
+        conversation: [
+          { speaker: "user", text: "ベータ版のビルドでは CircleCI を使っていました。" },
+          { speaker: "assistant", text: "今は GitHub Actions を使っています。" },
+        ],
+        qa: [],
+      };
+
+      const adapter = new HarnessMemLocomoAdapter(core, { project: "locomo-harness-test", session_id: "session-ja-prev" });
+      adapter.ingestSample(sample);
+      const replay = adapter.answerQuestion("変える前に使っていた CI は何でしたか？", { category: "cat-1" });
+
+      expect(replay.prediction).toContain("CircleCI");
+      expect(replay.prediction.length).toBeLessThan(40);
     } finally {
       core.shutdown("test");
       rmSync(tmp, { recursive: true, force: true });

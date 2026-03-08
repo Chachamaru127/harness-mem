@@ -4,6 +4,8 @@ import type { PlatformIngester, IngesterDeps } from "./types";
 export interface CodexSessionsContext {
   sessionId?: string;
   project?: string;
+  lastUserPrompt?: string;
+  lastAssistantContent?: string;
 }
 
 export interface CodexSessionsEvent {
@@ -34,6 +36,8 @@ export function parseCodexSessionsChunk(params: {
   const context: CodexSessionsContext = {
     sessionId: normalizeString(params.context?.sessionId),
     project: normalizeString(params.context?.project),
+    lastUserPrompt: normalizeString(params.context?.lastUserPrompt),
+    lastAssistantContent: normalizeString(params.context?.lastAssistantContent),
   };
 
   const events: CodexSessionsEvent[] = [];
@@ -94,6 +98,17 @@ export function parseCodexSessionsChunk(params: {
       continue;
     }
 
+    const normalizedPrompt = normalizeString(normalized.payload.prompt) || normalizeString(normalized.payload.content);
+    if (normalized.eventType === "user_prompt" && normalizedPrompt) {
+      context.lastUserPrompt = normalizedPrompt;
+    }
+    if (normalized.eventType === "checkpoint") {
+      const assistantContent = normalizeString(normalized.payload.content);
+      if (assistantContent) {
+        context.lastAssistantContent = assistantContent;
+      }
+    }
+
     const dedupeHash = createHash("sha256")
       .update(`${params.sourceKey}:${lineOffset}:${rawLine}`)
       .digest("hex");
@@ -137,37 +152,68 @@ function normalizeEvent(params: {
   if (type === "response_item") {
     const payloadType = normalizeString(params.payload.type);
     const role = normalizeString(params.payload.role);
-    if (payloadType !== "message" || role !== "user") {
+    if (payloadType !== "message") {
       return null;
     }
 
-    const prompt = extractInputText(params.payload.content);
-    if (!prompt) {
+    if (role === "user") {
+      const prompt = extractMessageText(params.payload.content, ["input_text", "text"]);
+      if (!prompt) {
+        return null;
+      }
+
+      return {
+        eventType: "user_prompt",
+        sessionId: resolveSessionId(params),
+        project: resolveProject(params),
+        timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+        payload: {
+          source_type: "response_item",
+          role: "user",
+          prompt,
+          content: prompt,
+        },
+      };
+    }
+
+    if (role !== "assistant") {
       return null;
     }
 
-    return {
-      eventType: "user_prompt",
-      sessionId: resolveSessionId(params),
-      project: resolveProject(params),
-      timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
-      payload: {
-        source_type: "response_item",
-        role: "user",
-        prompt,
-        content: prompt,
-      },
-    };
+    const assistantContent = extractMessageText(params.payload.content, ["output_text", "text", "input_text"]);
+    if (!assistantContent || assistantContent === normalizeString(params.context.lastAssistantContent)) {
+      return null;
+    }
+
+    return createAssistantCheckpoint(params, {
+      sourceType: "response_item",
+      assistantContent,
+      title: "assistant_response",
+    });
   }
 
   if (type === "event_msg") {
     const payloadType = normalizeString(params.payload.type);
+    if (payloadType === "agent_message") {
+      const assistantContent = normalizeString(params.payload.message) || normalizeString(params.payload.text);
+      if (!assistantContent || assistantContent === normalizeString(params.context.lastAssistantContent)) {
+        return null;
+      }
+
+      return createAssistantCheckpoint(params, {
+        sourceType: "event_msg",
+        assistantContent,
+        title: "assistant_response",
+        eventSubtype: "agent_message",
+      });
+    }
+
     if (payloadType !== "task_complete") {
       return null;
     }
 
     const lastAgentMessage = normalizeString(params.payload.last_agent_message);
-    if (!lastAgentMessage) {
+    if (!lastAgentMessage || lastAgentMessage === normalizeString(params.context.lastAssistantContent)) {
       return null;
     }
 
@@ -178,10 +224,12 @@ function normalizeEvent(params: {
       timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
       payload: {
         source_type: "event_msg",
+        role: "assistant",
         type: "task_complete",
         title: "task_complete",
         content: lastAgentMessage,
         last_agent_message: lastAgentMessage,
+        prompt: normalizeString(params.context.lastUserPrompt),
         turn_id: normalizeString(params.payload.turn_id),
       },
     };
@@ -228,7 +276,47 @@ function resolveTimestamp(parsed: Record<string, unknown>, fallbackNowIso: () =>
   return normalizeString(parsed.timestamp) || normalizeString(parsed.ts) || fallbackNowIso();
 }
 
-function extractInputText(content: unknown): string {
+function createAssistantCheckpoint(
+  params: {
+    parsed: Record<string, unknown>;
+    payload: Record<string, unknown>;
+    context: CodexSessionsContext;
+    fallbackNowIso: () => string;
+    defaultSessionId?: string;
+    defaultProject?: string;
+  },
+  options: {
+    sourceType: "event_msg" | "response_item";
+    assistantContent: string;
+    title: string;
+    eventSubtype?: string;
+  }
+): {
+  eventType: "checkpoint";
+  sessionId: string;
+  project: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+} {
+  return {
+    eventType: "checkpoint",
+    sessionId: resolveSessionId(params),
+    project: resolveProject(params),
+    timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+    payload: {
+      source_type: options.sourceType,
+      role: "assistant",
+      type: options.eventSubtype || "assistant_message",
+      title: options.title,
+      content: options.assistantContent,
+      last_agent_message: options.assistantContent,
+      prompt: normalizeString(params.context.lastUserPrompt),
+      turn_id: normalizeString(params.payload.turn_id),
+    },
+  };
+}
+
+function extractMessageText(content: unknown, allowedTypes: string[]): string {
   if (typeof content === "string") {
     return content.trim();
   }
@@ -243,7 +331,7 @@ function extractInputText(content: unknown): string {
     }
     const entry = item as Record<string, unknown>;
     const itemType = normalizeString(entry.type);
-    if (itemType !== "input_text" && itemType !== "text") {
+    if (!allowedTypes.includes(itemType)) {
       continue;
     }
     const text = normalizeString(entry.text);

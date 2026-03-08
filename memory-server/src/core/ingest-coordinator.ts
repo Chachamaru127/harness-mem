@@ -618,6 +618,9 @@ export class IngestCoordinator {
     const context: CodexSessionsContext = {
       sessionId: typeof parsed.session_id === "string" ? parsed.session_id.trim() : undefined,
       project: typeof parsed.project === "string" ? parsed.project.trim() : undefined,
+      lastUserPrompt: typeof parsed.last_user_prompt === "string" ? parsed.last_user_prompt.trim() : undefined,
+      lastAssistantContent:
+        typeof parsed.last_assistant_content === "string" ? parsed.last_assistant_content.trim() : undefined,
     };
     this.codexRolloutContextCache.set(sourceKey, context);
     return { ...context };
@@ -626,13 +629,19 @@ export class IngestCoordinator {
   private storeCodexRolloutContext(sourceKey: string, context: CodexSessionsContext): void {
     const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
     const project = typeof context.project === "string" ? context.project.trim() : "";
-    if (!sessionId && !project) {
+    const lastUserPrompt =
+      typeof context.lastUserPrompt === "string" ? context.lastUserPrompt.trim().slice(0, 4000) : "";
+    const lastAssistantContent =
+      typeof context.lastAssistantContent === "string" ? context.lastAssistantContent.trim().slice(0, 4000) : "";
+    if (!sessionId && !project && !lastUserPrompt && !lastAssistantContent) {
       return;
     }
 
     const normalized: CodexSessionsContext = {
       sessionId: sessionId || undefined,
       project: project || undefined,
+      lastUserPrompt: lastUserPrompt || undefined,
+      lastAssistantContent: lastAssistantContent || undefined,
     };
 
     const metaKey = `codex_rollout_context:${sourceKey}`;
@@ -651,6 +660,8 @@ export class IngestCoordinator {
         JSON.stringify({
           session_id: normalized.sessionId || "",
           project: normalized.project || "",
+          last_user_prompt: normalized.lastUserPrompt || "",
+          last_assistant_content: normalized.lastAssistantContent || "",
         }),
         nowIso()
       );
@@ -1081,6 +1092,8 @@ export class IngestCoordinator {
       this.storeCodexRolloutContext(sourceKey, {
         sessionId: parsedChunk.context.sessionId || fallbackSessionId,
         project: parsedChunk.context.project || defaultProject,
+        lastUserPrompt: parsedChunk.context.lastUserPrompt,
+        lastAssistantContent: parsedChunk.context.lastAssistantContent,
       });
 
       const nextOffset = offset + parsedChunk.consumedBytes;

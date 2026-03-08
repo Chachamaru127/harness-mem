@@ -1,0 +1,164 @@
+[
+  {
+    "sample_id": "shadow-001",
+    "conversation": [
+      { "speaker": "user", "text": "I used CircleCI for our beta builds." },
+      { "speaker": "assistant", "text": "That got the first release out quickly." },
+      { "speaker": "user", "text": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing." },
+      { "speaker": "assistant", "text": "That also simplified repository permissions." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What CI system do I use now?", "answer": "GitHub Actions", "category": "cat-1" },
+      { "question_id": "q2", "question": "What made me switch away from CircleCI?", "answer": "parallel build costs kept climbing", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "shadow-002",
+    "conversation": [
+      { "speaker": "user", "text": "I staffed support 24/7 at launch." },
+      { "speaker": "assistant", "text": "That was sensible while onboarding was rough." },
+      { "speaker": "user", "text": "After I reviewed the ticket heatmap, I narrowed support to 9:00 to 18:00 JST on weekdays." },
+      { "speaker": "assistant", "text": "The smaller schedule has been easier to sustain." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What support window do I use now?", "answer": "9:00 to 18:00 JST on weekdays", "category": "cat-1" },
+      { "question_id": "q2", "question": "Which report did I review before narrowing support hours?", "answer": "the ticket heatmap", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "shadow-003",
+    "conversation": [
+      { "speaker": "user", "text": "Starter used to cost 29 dollars a month." },
+      { "speaker": "assistant", "text": "That price made the first self-serve plan easy to explain." },
+      { "speaker": "user", "text": "Starter now costs 39 dollars a month because I bundled audit logs." },
+      { "speaker": "assistant", "text": "Customers said the extra visibility justified the increase." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What does Starter cost now?", "answer": "39 dollars a month", "category": "cat-1" },
+      { "question_id": "q2", "question": "Which feature was added to Starter with the price change?", "answer": "audit logs", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "shadow-004",
+    "conversation": [
+      { "speaker": "user", "text": "Free workspaces keep activity history for 30 days." },
+      { "speaker": "assistant", "text": "That cap keeps storage predictable." },
+      { "speaker": "user", "text": "An enterprise prospect asked me for quarterly audit exports." },
+      { "speaker": "assistant", "text": "That request changed the retention discussion." },
+      { "speaker": "user", "text": "Enterprise retention is now 90 days." },
+      { "speaker": "assistant", "text": "Sales can position that clearly in larger deals." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "How long is enterprise retention now?", "answer": "90 days", "category": "cat-1" },
+      { "question_id": "q2", "question": "What request triggered the enterprise retention change?", "answer": "an enterprise prospect asked for quarterly audit exports", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "shadow-005",
+    "conversation": [
+      { "speaker": "user", "text": "I planned to ship SSO and team workspaces in the same quarter." },
+      { "speaker": "assistant", "text": "Both were high on the roadmap." },
+      { "speaker": "user", "text": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated." },
+      { "speaker": "assistant", "text": "That dependency blocked the security rollout." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Which shipped before the other, SSO or team workspaces?", "answer": "team workspaces", "category": "cat-2" },
+      { "question_id": "q2", "question": "Why was SSO delayed?", "answer": "the SCIM provider contract was still being negotiated", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "shadow-006",
+    "conversation": [
+      { "speaker": "user", "text": "Database connections saturated during the Monday import window." },
+      { "speaker": "assistant", "text": "That incident hit both ingestion and reporting." },
+      { "speaker": "user", "text": "Right after the alert, I shifted read traffic to a new replica." },
+      { "speaker": "assistant", "text": "That bought me time to investigate." },
+      { "speaker": "user", "text": "A composite index on workspace_id and created_at permanently reduced write latency." },
+      { "speaker": "assistant", "text": "Since then the import window has stayed quiet." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What permanently reduced write latency?", "answer": "a composite index on workspace_id and created_at", "category": "cat-3" },
+      { "question_id": "q2", "question": "What was my first response after the alert fired?", "answer": "I shifted read traffic to a new replica", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "shadow-007",
+    "conversation": [
+      { "speaker": "user", "text": "I used a weighted sum for lexical and vector scores in the first retrieval version." },
+      { "speaker": "assistant", "text": "That setup was simple but brittle." },
+      { "speaker": "user", "text": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion." },
+      { "speaker": "assistant", "text": "That made the ranking much more stable." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What retrieval fusion method do I use now?", "answer": "Reciprocal Rank Fusion", "category": "cat-1" },
+      { "question_id": "q2", "question": "What signal do I apply after fusion?", "answer": "recency", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "shadow-008",
+    "conversation": [
+      { "speaker": "user", "text": "The docs used to be only in English." },
+      { "speaker": "assistant", "text": "That was acceptable while sales stayed in North America." },
+      { "speaker": "user", "text": "Japanese is the additional documentation language I support now." },
+      { "speaker": "assistant", "text": "The launch playbook was the first document I translated." },
+      { "speaker": "user", "text": "After the launch playbook, I localized the invoice emails." },
+      { "speaker": "assistant", "text": "Support appreciated that follow-up." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Which language besides English do I support in the docs?", "answer": "Japanese", "category": "cat-1" },
+      { "question_id": "q2", "question": "What did I localize after the launch playbook?", "answer": "the invoice emails", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "shadow-009",
+    "conversation": [
+      { "speaker": "user", "text": "I used JWTs with refresh tokens in localStorage during the prototype." },
+      { "speaker": "assistant", "text": "That was quick to wire up but not ideal for the long term." },
+      { "speaker": "user", "text": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage." },
+      { "speaker": "assistant", "text": "Security review was happier after that switch." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What authentication flow do I use now?", "answer": "session cookies backed by Redis", "category": "cat-1" },
+      { "question_id": "q2", "question": "What did I remove during the auth migration?", "answer": "refresh tokens from localStorage", "category": "cat-1" }
+    ]
+  },
+  {
+    "sample_id": "shadow-010",
+    "conversation": [
+      { "speaker": "user", "text": "San Francisco used to be our headquarters." },
+      { "speaker": "assistant", "text": "That was before the team spread across Asia." },
+      { "speaker": "user", "text": "Singapore is our headquarters now, and engineering stayed remote-first." },
+      { "speaker": "assistant", "text": "That kept hiring flexible across time zones." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Where is the headquarters now?", "answer": "Singapore", "category": "cat-1" },
+      { "question_id": "q2", "question": "Which team stayed remote-first after the headquarters move?", "answer": "engineering", "category": "cat-2" }
+    ]
+  },
+  {
+    "sample_id": "shadow-011",
+    "conversation": [
+      { "speaker": "user", "text": "The analytics dashboard used to refresh nightly." },
+      { "speaker": "assistant", "text": "That worked when the team only checked weekly reports." },
+      { "speaker": "user", "text": "Every five minutes is the refresh cadence I use now because customers were missing same-day funnel drops." },
+      { "speaker": "assistant", "text": "The growth team checks it several times a day now." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "What is the current dashboard refresh cadence?", "answer": "every five minutes", "category": "cat-1" },
+      { "question_id": "q2", "question": "What problem made me replace the nightly refresh?", "answer": "customers were missing same-day funnel drops", "category": "cat-3" }
+    ]
+  },
+  {
+    "sample_id": "shadow-012",
+    "conversation": [
+      { "speaker": "user", "text": "In Q2 I shipped export to CSV, audit logs, and SAML for admins." },
+      { "speaker": "assistant", "text": "That quarter focused on operational controls." },
+      { "speaker": "user", "text": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last." },
+      { "speaker": "assistant", "text": "Enterprise prospects kept asking about the final SAML milestone." }
+    ],
+    "qa": [
+      { "question_id": "q1", "question": "Which admin features shipped in Q2?", "answer": "export to CSV, audit logs, and SAML", "category": "cat-4" },
+      { "question_id": "q2", "question": "Which feature shipped last?", "answer": "SAML", "category": "cat-2" }
+    ]
+  }
+]

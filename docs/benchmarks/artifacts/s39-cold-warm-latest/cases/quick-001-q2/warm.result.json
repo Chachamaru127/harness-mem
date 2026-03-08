@@ -1,0 +1,178 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:22:27.102Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": true
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-VNDtve/quick-001-q2.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 1,
+      "f1": 1
+    },
+    "by_category": {
+      "cat-1": {
+        "count": 1,
+        "em": 1,
+        "f1": 1
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 1,
+      "f1": 1
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 4.3100000000000005,
+      "max": 4.3100000000000005,
+      "avg": 4.3100000000000005,
+      "p50": 4.3100000000000005,
+      "p95": 4.3100000000000005
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 9,
+        "capacity": 128,
+        "hits": 12,
+        "misses": 9,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 7,
+        "capacity": 0,
+        "hits": 12,
+        "misses": 7,
+        "evictions": 0,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 57,
+      "output_total": 246,
+      "total_total": 303,
+      "input_avg": 57,
+      "output_avg": 246,
+      "total_avg": 303
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-001",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question": "What am I using Python for?",
+      "answer": "data science project",
+      "prediction": "data science project",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-topic-slot -> normalize -> final:factual-normalized-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-3",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-1",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-2",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what am i using python for?",
+          "am using python",
+          "am using python key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-topic-slot",
+          "raw_answer": "data science project",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-3",
+              "sentence": "Yes, I'm using it for my data science project at MIT.",
+              "score": 1.031667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-1",
+              "sentence": "I started learning Python in January 2024.",
+              "score": 0.878333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.628333,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.245,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "data science project",
+          "after": "data science project",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "data science project"
+      },
+      "search_latency_ms": 4.3100000000000005,
+      "token_estimate_input_tokens": 57,
+      "token_estimate_output_tokens": 246,
+      "token_estimate_total_tokens": 303,
+      "em": 1,
+      "f1": 1
+    }
+  ]
+}

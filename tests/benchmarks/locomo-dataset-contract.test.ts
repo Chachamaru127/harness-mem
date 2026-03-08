@@ -12,6 +12,14 @@ describe("LOCOMO dataset contract", () => {
     expect(result.errors.length).toBe(0);
   });
 
+  test("accepts japanese release pack fixture with required fields", () => {
+    const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "japanese-release-pack-32.json");
+    const raw = JSON.parse(readFileSync(fixturePath, "utf8")) as unknown;
+    const result = validateLocomoDataset(raw);
+    expect(result.ok).toBe(true);
+    expect(result.errors.length).toBe(0);
+  });
+
   test("rejects broken sample without required sample_id/conversation/qa/category", () => {
     const broken = [
       {

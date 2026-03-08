@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createEmbeddingProviderRegistry, detectLanguage, selectModelByLanguage } from "../../src/embedding/registry";
 import { createFallbackEmbeddingProvider } from "../../src/embedding/fallback";
 import { MODEL_CATALOG } from "../../src/embedding/model-catalog";
@@ -133,6 +136,45 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
       }
     } finally {
       // env cleanup not needed (no env changes)
+    }
+  });
+
+  test("registry: provider=auto はインストール済み local model を優先する", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-auto-provider-"));
+    const modelDir = join(modelsDir, "multilingual-e5");
+    mkdirSync(join(modelDir, "onnx"), { recursive: true });
+    writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+    writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "auto",
+        dimension: 64,
+        localModelId: "multilingual-e5",
+        localModelsDir: modelsDir,
+      });
+      expect(registry.provider.name).toBe("local");
+      expect(registry.provider.model).toBe("multilingual-e5");
+      expect(registry.warnings).toEqual([]);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: provider=auto は model 未インストール時に静かに fallback する", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-auto-fallback-"));
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "auto",
+        dimension: 64,
+        localModelId: "multilingual-e5",
+        localModelsDir: modelsDir,
+      });
+      expect(registry.provider.name).toBe("fallback");
+      expect(registry.warnings).toEqual([]);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
     }
   });
 });

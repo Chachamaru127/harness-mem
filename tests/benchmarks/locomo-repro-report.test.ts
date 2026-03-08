@@ -73,4 +73,33 @@ describe("LOCOMO repro report", () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  test("treats all-runs-without-judge as comparable instead of mismatch", () => {
+    const dir = mkdtempSync(join(tmpdir(), "locomo-repro-no-judge-"));
+    try {
+      const reportA = join(dir, "a.json");
+      const reportB = join(dir, "b.json");
+      const basePayload = {
+        dataset: { path: ".tmp/ja/japanese-release-pack-32.json" },
+        strict: {
+          all_categories: { em: 0, f1: 0.2 },
+          cat_1_to_4: { em: 0, f1: 0.2 },
+          cat_5: { em: 0, f1: 0 },
+        },
+        performance: { search_latency_ms: { p95: 5 } },
+        cost: { search_token_estimate: { total_avg: 250 } },
+      };
+      writeFileSync(reportA, JSON.stringify(basePayload));
+      writeFileSync(reportB, JSON.stringify(basePayload));
+
+      const aggregated = buildLocomoReproReportFromPaths([reportA, reportB]);
+      expect(aggregated.comparison_lock.same_dataset).toBe(true);
+      expect(aggregated.comparison_lock.same_judge).toBe(true);
+      expect(aggregated.comparison_lock.same_category_scope).toBe(true);
+      expect(aggregated.rejection_flags).not.toContain("comparison_lock.judge_mismatch");
+      expect(aggregated.rejection_flags).not.toContain("comparison_lock.category_scope_mismatch");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });

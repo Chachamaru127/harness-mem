@@ -1,0 +1,56 @@
+{
+  "failure_bank": [
+    {
+      "sample_id": "full-011",
+      "question_id": "q1",
+      "expected": "tomatoes, basil, and peppers",
+      "strategy_contains": "list-slot"
+    },
+    {
+      "sample_id": "full-013",
+      "question_id": "q2",
+      "expected": "Humboldt University",
+      "strategy_contains": "organization-slot"
+    },
+    {
+      "sample_id": "full-014",
+      "question_id": "q1",
+      "expected": "SweetByte",
+      "strategy_contains": "name-slot"
+    },
+    {
+      "sample_id": "full-014",
+      "question_id": "q2",
+      "expected": "almond croissant",
+      "strategy_contains": "item-slot"
+    },
+    {
+      "sample_id": "full-021",
+      "question_id": "q2",
+      "expected": "Go",
+      "strategy_contains": "language-slot"
+    }
+  ],
+  "negative_controls": [
+    {
+      "sample_id": "full-001",
+      "question_id": "q2",
+      "expected": "data science project"
+    },
+    {
+      "sample_id": "full-002",
+      "question_id": "q2",
+      "expected": "Buddy"
+    },
+    {
+      "sample_id": "full-003",
+      "question_id": "q3",
+      "expected": "backend engineer"
+    },
+    {
+      "sample_id": "full-006",
+      "question_id": "q1",
+      "expected": "Stanford University"
+    }
+  ]
+}

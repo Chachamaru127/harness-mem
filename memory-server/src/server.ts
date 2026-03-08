@@ -11,7 +11,7 @@ import { GitHubConnector } from "./sync/github-connector";
 import { NotionConnector } from "./sync/notion-connector";
 import { GoogleDriveConnector } from "./sync/gdrive-connector";
 import type { ConnectorConfig } from "./sync/types";
-import { HarnessMemCore } from "./core/harness-mem-core";
+import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import type {
@@ -79,6 +79,31 @@ function unauthorized(message: string): Response {
     error: message,
   };
   return jsonResponse(response, 401);
+}
+
+function serviceUnavailable(message: string, extra: Record<string, unknown> = {}): Response {
+  const response: ApiResponse = {
+    ok: false,
+    source: "core",
+    items: [],
+    meta: {
+      count: 0,
+      latency_ms: 0,
+      sla_latency_ms: 200,
+      filters: {},
+      ranking: "embedding_readiness_v1",
+      ...extra,
+    },
+    error: message,
+  };
+  return new Response(JSON.stringify(response), {
+    status: 503,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+      "retry-after": "1",
+    },
+  });
 }
 
 function requiresAdminToken(method: string, pathname: string): boolean {
@@ -339,191 +364,202 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
     hostname: config.bindHost,
     port: config.bindPort,
     fetch: async (request: Request, server): Promise<Response> => {
-      const url = new URL(request.url);
-      const remoteAddress = server?.requestIP(request)?.address ?? null;
+      try {
+        const url = new URL(request.url);
+        const remoteAddress = server?.requestIP(request)?.address ?? null;
 
-      // V5-010: Rate Limiting（全エンドポイントに適用）
-      if (rateLimiter) {
-        const rateLimitKey = remoteAddress ?? "unknown";
-        const consume = rateLimiter.tryConsume(rateLimitKey);
-        if (!consume.allowed) {
-          return tooManyRequests(consume.resetAt);
+        // V5-010: Rate Limiting（全エンドポイントに適用）
+        if (rateLimiter) {
+          const rateLimitKey = remoteAddress ?? "unknown";
+          const consume = rateLimiter.tryConsume(rateLimitKey);
+          if (!consume.allowed) {
+            return tooManyRequests(consume.resetAt);
+          }
         }
-      }
 
-      if (requiresAdminToken(request.method, url.pathname) && !hasValidAdminToken(request, remoteAddress)) {
-        return unauthorized("missing or invalid admin token");
-      }
+        if (requiresAdminToken(request.method, url.pathname) && !hasValidAdminToken(request, remoteAddress)) {
+          return unauthorized("missing or invalid admin token");
+        }
 
-      if (request.method === "GET" && url.pathname === "/health") {
-        return jsonResponse(core.health());
-      }
+        if (request.method === "GET" && url.pathname === "/health") {
+          return jsonResponse(core.health());
+        }
 
-      if (request.method === "GET" && url.pathname === "/v1/admin/metrics") {
-        return jsonResponse(core.metrics());
-      }
+        if (request.method === "GET" && url.pathname === "/health/ready") {
+          const readiness = core.readiness();
+          const readinessItem = readiness.items[0] as Record<string, unknown> | undefined;
+          return jsonResponse(readiness, readinessItem?.ready === true ? 200 : 503);
+        }
 
-      if (request.method === "GET" && url.pathname === "/v1/admin/environment") {
-        return jsonResponse(core.environmentSnapshot());
-      }
+        if (request.method === "GET" && url.pathname === "/v1/admin/metrics") {
+          return jsonResponse(core.metrics());
+        }
 
-      if (request.method === "GET" && url.pathname === "/v1/admin/shadow-metrics") {
-        const status = core.getManagedStatus();
-        if (!status) {
+        if (request.method === "GET" && url.pathname === "/v1/admin/environment") {
+          return jsonResponse(core.environmentSnapshot());
+        }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/shadow-metrics") {
+          const status = core.getManagedStatus();
+          if (!status) {
+            return jsonResponse({
+              ok: true,
+              source: "core",
+              items: [{ backend_mode: "local", managed_backend: null }],
+              meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "shadow_v1" },
+            });
+          }
           return jsonResponse({
             ok: true,
             source: "core",
-            items: [{ backend_mode: "local", managed_backend: null }],
+            items: [status],
             meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "shadow_v1" },
           });
         }
-        return jsonResponse({
-          ok: true,
-          source: "core",
-          items: [status],
-          meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "shadow_v1" },
-        });
-      }
 
-      if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
-        const body = await parseRequestJson(request);
-        const req: ConsolidationRunRequest = {
-          reason: typeof body.reason === "string" ? body.reason : undefined,
-          project: typeof body.project === "string" ? body.project : undefined,
-          session_id: typeof body.session_id === "string" ? body.session_id : undefined,
-          limit: parseIntegerLike(body.limit),
-        };
-        return jsonResponse(await core.runConsolidation(req));
-      }
-
-      if (request.method === "GET" && url.pathname === "/v1/admin/consolidation/status") {
-        return jsonResponse(core.getConsolidationStatus());
-      }
-
-      if (request.method === "GET" && url.pathname === "/v1/admin/audit-log") {
-        const req: AuditLogRequest = {
-          limit: parseInteger(url.searchParams.get("limit"), 50),
-          action: url.searchParams.get("action") || undefined,
-          target_type: url.searchParams.get("target_type") || undefined,
-        };
-        return jsonResponse(core.getAuditLog(req));
-      }
-
-      if (request.method === "POST" && url.pathname === "/v1/admin/imports/claude-mem") {
-        const body = await parseRequestJson(request);
-        const sourceDbPath = typeof body.source_db_path === "string" ? body.source_db_path : "";
-        if (!sourceDbPath) {
-          return badRequest("source_db_path is required");
-        }
-        const resolvedPath = resolve(sourceDbPath);
-        if (resolvedPath.includes("\0")) {
-          return badRequest("source_db_path contains invalid characters");
-        }
-        if (!resolvedPath.endsWith(".db") && !resolvedPath.endsWith(".sqlite") && !resolvedPath.endsWith(".sqlite3")) {
-          return badRequest("source_db_path must point to a .db, .sqlite, or .sqlite3 file");
-        }
-        return jsonResponse(
-          core.startClaudeMemImport({
-            source_db_path: resolvedPath,
+        if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
+          const body = await parseRequestJson(request);
+          const req: ConsolidationRunRequest = {
+            reason: typeof body.reason === "string" ? body.reason : undefined,
             project: typeof body.project === "string" ? body.project : undefined,
-            dry_run: parseBooleanLike(body.dry_run, false),
-          })
-        );
-      }
-
-      const importStatusMatch = request.method === "GET"
-        ? url.pathname.match(/^\/v1\/admin\/imports\/([^/]+)$/)
-        : null;
-      if (importStatusMatch) {
-        const req: ImportJobStatusRequest = {
-          job_id: decodeURIComponent(importStatusMatch[1] || ""),
-        };
-        return jsonResponse(core.getImportJobStatus(req));
-      }
-
-      const importVerifyMatch = request.method === "POST"
-        ? url.pathname.match(/^\/v1\/admin\/imports\/([^/]+)\/verify$/)
-        : null;
-      if (importVerifyMatch) {
-        const req: VerifyImportRequest = {
-          job_id: decodeURIComponent(importVerifyMatch[1] || ""),
-        };
-        return jsonResponse(core.verifyClaudeMemImport(req));
-      }
-
-      if (request.method === "POST" && url.pathname === "/v1/events/record") {
-        const body = await parseRequestJson(request);
-        // V5-010: 入力バリデーション
-        const evtValidation = validator.validateRecordEvent(body);
-        if (!evtValidation.valid) {
-          return badRequest(evtValidation.errors.join("; "));
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+            limit: parseIntegerLike(body.limit),
+          };
+          return jsonResponse(await core.runConsolidation(req));
         }
-        const event = toRecord(body.event) as unknown as EventEnvelope;
-        const result = await core.recordEventQueued(event);
-        if (result === "queue_full") {
-          return new Response(
-            JSON.stringify({ ok: false, error: "write queue full, retry later" }),
-            {
-              status: 503,
-              headers: {
-                "content-type": "application/json; charset=utf-8",
-                "retry-after": "1",
-              },
-            }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/consolidation/status") {
+          return jsonResponse(core.getConsolidationStatus());
+        }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/audit-log") {
+          const req: AuditLogRequest = {
+            limit: parseInteger(url.searchParams.get("limit"), 50),
+            action: url.searchParams.get("action") || undefined,
+            target_type: url.searchParams.get("target_type") || undefined,
+          };
+          return jsonResponse(core.getAuditLog(req));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/imports/claude-mem") {
+          const body = await parseRequestJson(request);
+          const sourceDbPath = typeof body.source_db_path === "string" ? body.source_db_path : "";
+          if (!sourceDbPath) {
+            return badRequest("source_db_path is required");
+          }
+          const resolvedPath = resolve(sourceDbPath);
+          if (resolvedPath.includes("\0")) {
+            return badRequest("source_db_path contains invalid characters");
+          }
+          if (!resolvedPath.endsWith(".db") && !resolvedPath.endsWith(".sqlite") && !resolvedPath.endsWith(".sqlite3")) {
+            return badRequest("source_db_path must point to a .db, .sqlite, or .sqlite3 file");
+          }
+          return jsonResponse(
+            core.startClaudeMemImport({
+              source_db_path: resolvedPath,
+              project: typeof body.project === "string" ? body.project : undefined,
+              dry_run: parseBooleanLike(body.dry_run, false),
+            })
           );
         }
-        return jsonResponse(result);
-      }
 
-      if (request.method === "POST" && url.pathname === "/v1/search") {
-        const body = await parseRequestJson(request);
-        // V5-010: 入力バリデーション
-        const searchValidation = validator.validateSearch(body);
-        if (!searchValidation.valid) {
-          return badRequest(searchValidation.errors.join("; "));
-        }
-        const query = typeof body.query === "string" ? body.query : "";
-        if (!query) {
-          return badRequest("query is required");
-        }
-
-        const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
-        const validKinds = ["profile", "timeline", "graph", "vector", "hybrid"];
-        const validMemoryTypes: MemoryType[] = ["episodic", "semantic", "procedural"];
-        const rawMemoryType = body.memory_type;
-        const parsedMemoryType = Array.isArray(rawMemoryType)
-          ? (rawMemoryType.filter((t): t is MemoryType => typeof t === "string" && validMemoryTypes.includes(t as MemoryType)) as MemoryType[])
-          : (typeof rawMemoryType === "string" && validMemoryTypes.includes(rawMemoryType as MemoryType) ? rawMemoryType as MemoryType : undefined);
-
-        // TEAM-005: member ロール適用 — identity を解決してアクセス制御フィルタを生成
-        const searchIdentity = resolveRequestIdentity(request);
-        const searchAccessFilter = searchIdentity
-          ? buildAccessFilter("o", searchIdentity)
+        const importStatusMatch = request.method === "GET"
+          ? url.pathname.match(/^\/v1\/admin\/imports\/([^/]+)$/)
           : null;
+        if (importStatusMatch) {
+          const req: ImportJobStatusRequest = {
+            job_id: decodeURIComponent(importStatusMatch[1] || ""),
+          };
+          return jsonResponse(core.getImportJobStatus(req));
+        }
 
-        const req: SearchRequest = {
-          query,
-          project: typeof body.project === "string" ? body.project : undefined,
-          session_id: typeof body.session_id === "string" ? body.session_id : undefined,
-          since: typeof body.since === "string" ? body.since : undefined,
-          until: typeof body.until === "string" ? body.until : undefined,
-          as_of: typeof body.as_of === "string" ? body.as_of : undefined,
-          limit: parseIntegerLike(body.limit),
-          include_private: parseBooleanLike(body.include_private, false),
-          expand_links: parseBooleanLike(body.expand_links, true),
-          strict_project: parseBooleanLike(body.strict_project, true),
-          debug: parseBooleanLike(body.debug, false),
-          question_kind: questionKind && validKinds.includes(questionKind)
-            ? questionKind as SearchRequest["question_kind"]
-            : undefined,
-          sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
-          memory_type: parsedMemoryType || undefined,
-          // TEAM-005: member スコープ（admin は user_id/team_id なし → フィルタなし）
-          user_id: searchAccessFilter?.user_id ?? undefined,
-          team_id: searchAccessFilter?.team_id ?? undefined,
-        };
-        return jsonResponse(core.search(req));
-      }
+        const importVerifyMatch = request.method === "POST"
+          ? url.pathname.match(/^\/v1\/admin\/imports\/([^/]+)\/verify$/)
+          : null;
+        if (importVerifyMatch) {
+          const req: VerifyImportRequest = {
+            job_id: decodeURIComponent(importVerifyMatch[1] || ""),
+          };
+          return jsonResponse(core.verifyClaudeMemImport(req));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/events/record") {
+          const body = await parseRequestJson(request);
+          // V5-010: 入力バリデーション
+          const evtValidation = validator.validateRecordEvent(body);
+          if (!evtValidation.valid) {
+            return badRequest(evtValidation.errors.join("; "));
+          }
+          const event = toRecord(body.event) as unknown as EventEnvelope;
+          const result = await core.recordEventQueued(event);
+          if (result === "queue_full") {
+            return new Response(
+              JSON.stringify({ ok: false, error: "write queue full, retry later" }),
+              {
+                status: 503,
+                headers: {
+                  "content-type": "application/json; charset=utf-8",
+                  "retry-after": "1",
+                },
+              }
+            );
+          }
+          return jsonResponse(result);
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/search") {
+          const body = await parseRequestJson(request);
+          // V5-010: 入力バリデーション
+          const searchValidation = validator.validateSearch(body);
+          if (!searchValidation.valid) {
+            return badRequest(searchValidation.errors.join("; "));
+          }
+          const query = typeof body.query === "string" ? body.query : "";
+          if (!query) {
+            return badRequest("query is required");
+          }
+
+          const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
+          const validKinds = ["profile", "timeline", "graph", "vector", "hybrid"];
+          const validMemoryTypes: MemoryType[] = ["episodic", "semantic", "procedural"];
+          const rawMemoryType = body.memory_type;
+          const parsedMemoryType = Array.isArray(rawMemoryType)
+            ? (rawMemoryType.filter((t): t is MemoryType => typeof t === "string" && validMemoryTypes.includes(t as MemoryType)) as MemoryType[])
+            : (typeof rawMemoryType === "string" && validMemoryTypes.includes(rawMemoryType as MemoryType) ? rawMemoryType as MemoryType : undefined);
+
+          // TEAM-005: member ロール適用 — identity を解決してアクセス制御フィルタを生成
+          const searchIdentity = resolveRequestIdentity(request);
+          const searchAccessFilter = searchIdentity
+            ? buildAccessFilter("o", searchIdentity)
+            : null;
+
+          const req: SearchRequest = {
+            query,
+            project: typeof body.project === "string" ? body.project : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+            since: typeof body.since === "string" ? body.since : undefined,
+            until: typeof body.until === "string" ? body.until : undefined,
+            as_of: typeof body.as_of === "string" ? body.as_of : undefined,
+            limit: parseIntegerLike(body.limit),
+            include_private: parseBooleanLike(body.include_private, false),
+            expand_links: parseBooleanLike(body.expand_links, true),
+            strict_project: parseBooleanLike(body.strict_project, true),
+            debug: parseBooleanLike(body.debug, false),
+            question_kind: questionKind && validKinds.includes(questionKind)
+              ? questionKind as SearchRequest["question_kind"]
+              : undefined,
+            sector: typeof body.sector === "string" ? body.sector as SearchRequest["sector"] : undefined,
+            memory_type: parsedMemoryType || undefined,
+            // TEAM-005: member スコープ（admin は user_id/team_id なし → フィルタなし）
+            user_id: searchAccessFilter?.user_id ?? undefined,
+            team_id: searchAccessFilter?.team_id ?? undefined,
+            // S43-SEARCH: sort_by
+            sort_by: typeof body.sort_by === "string" && ["relevance", "date_desc", "date_asc"].includes(body.sort_by)
+              ? body.sort_by as SearchRequest["sort_by"]
+              : undefined,
+          };
+          return jsonResponse(await core.searchPrepared(req));
+        }
 
       if (request.method === "GET" && url.pathname === "/v1/feed") {
         // TEAM-005: member ロール適用 — identity を解決してアクセス制御フィルタを生成
@@ -1510,7 +1546,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         });
       }
 
-      return new Response("Not Found", { status: 404 });
+        return new Response("Not Found", { status: 404 });
+      } catch (error) {
+        if (error instanceof EmbeddingReadinessError) {
+          return serviceUnavailable(error.message, {
+            embedding_provider_status: error.readiness.providerStatus,
+            embedding_provider_details: error.readiness.details,
+            embedding_ready: error.readiness.ready,
+            embedding_readiness_required: error.readiness.required,
+            embedding_readiness_state: error.readiness.state,
+            embedding_readiness_retryable: error.readiness.retryable,
+            embedding_error_code: error.code,
+          });
+        }
+        throw error;
+      }
     },
   });
 }

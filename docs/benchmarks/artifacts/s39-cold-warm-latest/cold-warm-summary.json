@@ -1,0 +1,444 @@
+{
+  "generated_at": "2026-03-06T03:22:38.872Z",
+  "source_dataset": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/locomo-15x3.json",
+  "selected_case_count": 12,
+  "method": {
+    "isolation": "Each case runs in a fresh temp DB with exactly one QA, so first-query latency is measured without later-query cache dilution.",
+    "cold_ready": "Fresh core, readiness satisfied, prime_embedding_enabled=false. This captures first real query after startup readiness without question-specific priming.",
+    "warm_ready": "Fresh core, readiness satisfied, prime_embedding_enabled=true. This captures startup + question/corpus priming together on the same single-QA case.",
+    "selection": "Round-robin across categories from locomo-15x3.json with limit=12."
+  },
+  "aggregate": {
+    "cold": {
+      "mean_f1": 0,
+      "mean_latency_ms": 1.1342,
+      "p95_latency_ms": 1.34,
+      "mean_token_total": 0
+    },
+    "warm": {
+      "mean_f1": 0.6692,
+      "mean_latency_ms": 5.5885,
+      "p95_latency_ms": 7.43,
+      "mean_token_total": 394.3333
+    },
+    "delta": {
+      "mean_f1": 0.6692,
+      "mean_latency_ms": 4.4543,
+      "mean_token_total": 394.3333
+    },
+    "quality_regression_count": 0,
+    "latency_improved_count": 0,
+    "readiness_all_green": false,
+    "gate_all_passed": true
+  },
+  "cases": [
+    {
+      "sample_id": "quick-001",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "When did I start learning Python?",
+      "answer": "January 2024",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.09,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 0,
+        "f1": 0.6666666666666666,
+        "latency_ms": 5.470000000000001,
+        "token_total": 413,
+        "prediction": "2024",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 0.6667,
+        "latency_ms": 4.38,
+        "token_total": 413
+      }
+    },
+    {
+      "sample_id": "quick-006",
+      "question_id": "q1",
+      "category": "cat-2",
+      "question": "What vegetables am I growing on my balcony?",
+      "answer": "tomatoes, basil, and peppers",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 0.98,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 5.22,
+        "token_total": 431,
+        "prediction": "Tomatoes, basil, and peppers",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 4.24,
+        "token_total": 431
+      }
+    },
+    {
+      "sample_id": "quick-011",
+      "question_id": "q1",
+      "category": "cat-3",
+      "question": "What is my team's project called?",
+      "answer": "Project Phoenix",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.34,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 5.25,
+        "token_total": 426,
+        "prediction": "Project Phoenix",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 3.91,
+        "token_total": 426
+      }
+    },
+    {
+      "sample_id": "quick-014",
+      "question_id": "q1",
+      "category": "cat-4",
+      "question": "What is the name of my band?",
+      "answer": "The Amber Keys",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.2100000000000002,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 5.319999999999999,
+        "token_total": 422,
+        "prediction": "The Amber Keys",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 4.11,
+        "token_total": 422
+      }
+    },
+    {
+      "sample_id": "quick-001",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question": "What am I using Python for?",
+      "answer": "data science project",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.1500000000000001,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 4.3100000000000005,
+        "token_total": 303,
+        "prediction": "data science project",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 3.16,
+        "token_total": 303
+      }
+    },
+    {
+      "sample_id": "quick-006",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "Which vegetable is doing really well in my garden?",
+      "answer": "tomatoes",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 0.98,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 5.48,
+        "token_total": 435,
+        "prediction": "Tomatoes",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 4.5,
+        "token_total": 435
+      }
+    },
+    {
+      "sample_id": "quick-011",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question": "What programming language does my team use?",
+      "answer": "Go",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.07,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 6.01,
+        "token_total": 432,
+        "prediction": "Go",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 4.94,
+        "token_total": 432
+      }
+    },
+    {
+      "sample_id": "quick-014",
+      "question_id": "q2",
+      "category": "cat-4",
+      "question": "What genre of music does my band play?",
+      "answer": "indie rock",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.1900000000000002,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 5.95,
+        "token_total": 573,
+        "prediction": "I play guitar in a band called The Amber Keys.",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 0,
+        "latency_ms": 4.76,
+        "token_total": 573
+      }
+    },
+    {
+      "sample_id": "quick-001",
+      "question_id": "q3",
+      "category": "cat-1",
+      "question": "Where am I studying?",
+      "answer": "MIT",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.1600000000000001,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 4.529999999999999,
+        "token_total": 300,
+        "prediction": "January",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 0,
+        "latency_ms": 3.37,
+        "token_total": 300
+      }
+    },
+    {
+      "sample_id": "quick-006",
+      "question_id": "q3",
+      "category": "cat-2",
+      "question": "Where did I buy the containers for my garden?",
+      "answer": "GreenThumb store",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.04,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 0,
+        "f1": 0.3636363636363636,
+        "latency_ms": 5.449999999999999,
+        "token_total": 429,
+        "prediction": "I bought special containers from the GreenThumb store downtown",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 0.3636,
+        "latency_ms": 4.41,
+        "token_total": 429
+      }
+    },
+    {
+      "sample_id": "quick-011",
+      "question_id": "q3",
+      "category": "cat-3",
+      "question": "When is the first production release planned?",
+      "answer": "July 2024",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.09,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 6.641915999999924,
+        "token_total": 0,
+        "prediction": "That gives you a solid runway to build and test.",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 0,
+        "latency_ms": 5.5519,
+        "token_total": 0
+      }
+    },
+    {
+      "sample_id": "quick-014",
+      "question_id": "q3",
+      "category": "cat-4",
+      "question": "What is the title of our debut EP?",
+      "answer": "Drift",
+      "cold": {
+        "em": 0,
+        "f1": 0,
+        "latency_ms": 1.31,
+        "token_total": 0,
+        "prediction": "",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": false
+      },
+      "warm": {
+        "em": 1,
+        "f1": 1,
+        "latency_ms": 7.43,
+        "token_total": 568,
+        "prediction": "Drift",
+        "runtime_health_status": "degraded",
+        "runtime_health_details": "local model multilingual-e5: initializing...",
+        "gate_passed": true,
+        "prime_embedding_enabled": true
+      },
+      "delta": {
+        "f1": 1,
+        "latency_ms": 6.12,
+        "token_total": 568
+      }
+    }
+  ]
+}

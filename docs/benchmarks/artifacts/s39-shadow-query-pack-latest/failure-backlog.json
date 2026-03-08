@@ -1,0 +1,476 @@
+{
+  "schema_version": "locomo-failure-backlog-v1",
+  "generated_at": "2026-03-06T03:27:33.079Z",
+  "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s39-shadow-query-pack-latest/result.json",
+  "limit": 50,
+  "summary": {
+    "total_failures_considered": 20,
+    "selected_failures": 20,
+    "by_category": {
+      "cat-3": 5,
+      "cat-2": 6,
+      "cat-1": 8,
+      "cat-4": 1
+    },
+    "by_tag": {
+      "multi_hop_reasoning": 5,
+      "multi_hop_fact_extraction": 5,
+      "counterfactual_format": 5,
+      "retrieval_alignment": 17,
+      "temporal_normalization": 6,
+      "list_structuring": 1
+    }
+  },
+  "review_evidence_spec": {
+    "required_artifacts": [
+      "locomo10.runX.score-report.full.json",
+      "locomo10.repro-report.json",
+      "locomo10.failure-backlog.judged.json",
+      "locomo10.failure-backlog.judged.md",
+      "locomo10.runX.risk-notes.md"
+    ],
+    "rejection_conditions": [
+      "same dataset / judge / category constraints are not met",
+      "missing required artifacts",
+      "3-run stats (mean/stddev/min/max) are incomplete",
+      "gate thresholds (Judge mean/stddev/p95/token avg) are unmet"
+    ],
+    "comparison_requirements": [
+      "same dataset path",
+      "same judge model/temperature/prompt",
+      "same category scope (cat-1..cat-4 for Judge)"
+    ]
+  },
+  "actions": {
+    "temporal_normalization": "Normalize and canonicalize time expressions before final answer generation.",
+    "temporal_reference_anchor": "Resolve relative temporal words against conversation timestamp and persist the anchor.",
+    "multi_hop_reasoning": "Combine top evidence from multiple observations and output causal summary.",
+    "multi_hop_fact_extraction": "Stage multi-hop answers through fact JSON extraction before final one-sentence output.",
+    "counterfactual_format": "Force counterfactual output to 'Conclusion. Reason: ...' format.",
+    "yes_no_decision": "Add contradiction/negation detection for yes/no responses.",
+    "location_extraction": "Extract location entities from top evidence and prefer shortest answer phrase.",
+    "entity_extraction": "Add entity-focused extraction rule for identity/relationship questions.",
+    "list_structuring": "Return comma-separated compact lists instead of conversational prose.",
+    "retrieval_alignment": "Increase candidate depth and query variants for zero-overlap failures.",
+    "retrieval_depth": "Increase search depth and keep at least top-3 quality candidates for cat-2/cat-3.",
+    "evidence_coverage": "Expand evidence merge to include multiple observation IDs before synthesis.",
+    "response_compression": "Trim filler text and keep one concise evidence-backed sentence."
+  },
+  "improvement_tickets": [
+    {
+      "tag": "retrieval_alignment",
+      "owner": "owner:TBD",
+      "due": "2026-03-13",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "temporal_normalization",
+      "owner": "owner:TBD",
+      "due": "2026-03-16",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "multi_hop_reasoning",
+      "owner": "owner:TBD",
+      "due": "2026-03-19",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "multi_hop_fact_extraction",
+      "owner": "owner:TBD",
+      "due": "2026-03-22",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "counterfactual_format",
+      "owner": "owner:TBD",
+      "due": "2026-03-25",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    }
+  ],
+  "failures": [
+    {
+      "rank": 1,
+      "sample_id": "shadow-001",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_alignment"
+      ],
+      "question": "What made me switch away from CircleCI?",
+      "answer": "parallel build costs kept climbing",
+      "prediction": "CircleCI"
+    },
+    {
+      "rank": 2,
+      "sample_id": "shadow-004",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_alignment"
+      ],
+      "question": "What request triggered the enterprise retention change?",
+      "answer": "an enterprise prospect asked for quarterly audit exports",
+      "prediction": "That request changed the retention discussion."
+    },
+    {
+      "rank": 3,
+      "sample_id": "shadow-005",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_alignment"
+      ],
+      "question": "Why was SSO delayed?",
+      "answer": "the SCIM provider contract was still being negotiated",
+      "prediction": "Team"
+    },
+    {
+      "rank": 4,
+      "sample_id": "shadow-011",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_alignment"
+      ],
+      "question": "What problem made me replace the nightly refresh?",
+      "answer": "customers were missing same-day funnel drops",
+      "prediction": "The analytics dashboard used to refresh nightly."
+    },
+    {
+      "rank": 5,
+      "sample_id": "shadow-002",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "Which report did I review before narrowing support hours?",
+      "answer": "the ticket heatmap",
+      "prediction": "I staffed support 24/7 at launch."
+    },
+    {
+      "rank": 6,
+      "sample_id": "shadow-006",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "What was my first response after the alert fired?",
+      "answer": "I shifted read traffic to a new replica",
+      "prediction": "Right"
+    },
+    {
+      "rank": 7,
+      "sample_id": "shadow-008",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "What did I localize after the launch playbook?",
+      "answer": "the invoice emails",
+      "prediction": "After"
+    },
+    {
+      "rank": 8,
+      "sample_id": "shadow-010",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "Which team stayed remote-first after the headquarters move?",
+      "answer": "engineering",
+      "prediction": "Singapore"
+    },
+    {
+      "rank": 9,
+      "sample_id": "shadow-012",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "Which feature shipped last?",
+      "answer": "SAML",
+      "prediction": "CSV"
+    },
+    {
+      "rank": 10,
+      "sample_id": "shadow-001",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What CI system do I use now?",
+      "answer": "GitHub Actions",
+      "prediction": "CircleCI"
+    },
+    {
+      "rank": 11,
+      "sample_id": "shadow-002",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What support window do I use now?",
+      "answer": "9:00 to 18:00 JST on weekdays",
+      "prediction": "I staffed support 24/7 at launch."
+    },
+    {
+      "rank": 12,
+      "sample_id": "shadow-003",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-numeric-slot -> normalize -> final:factual-numeric-slot",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What does Starter cost now?",
+      "answer": "39 dollars a month",
+      "prediction": "29"
+    },
+    {
+      "rank": 13,
+      "sample_id": "shadow-011",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What is the current dashboard refresh cadence?",
+      "answer": "every five minutes",
+      "prediction": "The analytics dashboard used to refresh nightly."
+    },
+    {
+      "rank": 14,
+      "sample_id": "shadow-012",
+      "question_id": "q1",
+      "category": "cat-4",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "list_structuring",
+        "retrieval_alignment"
+      ],
+      "question": "Which admin features shipped in Q2?",
+      "answer": "export to CSV, audit logs, and SAML",
+      "prediction": "CSV"
+    },
+    {
+      "rank": 15,
+      "sample_id": "shadow-003",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-numeric-slot -> normalize -> final:factual-numeric-slot",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "Which feature was added to Starter with the price change?",
+      "answer": "audit logs",
+      "prediction": "29"
+    },
+    {
+      "rank": 16,
+      "sample_id": "shadow-007",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What signal do I apply after fusion?",
+      "answer": "recency",
+      "prediction": "Reciprocal Rank Fusion"
+    },
+    {
+      "rank": 17,
+      "sample_id": "shadow-009",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "What did I remove during the auth migration?",
+      "answer": "refresh tokens from localStorage",
+      "prediction": "JWTs"
+    },
+    {
+      "rank": 18,
+      "sample_id": "shadow-006",
+      "question_id": "q1",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "em": 0,
+      "f1": 0.7777777777777778,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format"
+      ],
+      "question": "What permanently reduced write latency?",
+      "answer": "a composite index on workspace_id and created_at",
+      "prediction": "A composite index on workspace_id and created_at permanently reduced write latency."
+    },
+    {
+      "rank": 19,
+      "sample_id": "shadow-005",
+      "question_id": "q1",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-organization-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6666666666666666,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "Which shipped before the other, SSO or team workspaces?",
+      "answer": "team workspaces",
+      "prediction": "Team"
+    },
+    {
+      "rank": 20,
+      "sample_id": "shadow-009",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "em": 0,
+      "f1": 0.33333333333333337,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "What authentication flow do I use now?",
+      "answer": "session cookies backed by Redis",
+      "prediction": "Redis"
+    }
+  ]
+}

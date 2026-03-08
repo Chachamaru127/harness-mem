@@ -132,6 +132,33 @@ const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 type EmbeddingPrimeMode = "passage" | "query";
+type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
+
+interface EmbeddingReadiness {
+  required: boolean;
+  ready: boolean;
+  state: EmbeddingReadinessState;
+  retryable: boolean;
+  providerStatus: EmbeddingHealth["status"];
+  details: string;
+}
+
+type EmbeddingProviderError = Error & {
+  code?: string;
+  retryable?: boolean;
+};
+
+export class EmbeddingReadinessError extends Error {
+  readonly readiness: EmbeddingReadiness;
+  readonly code: string;
+
+  constructor(message: string, readiness: EmbeddingReadiness, code = readiness.state) {
+    super(message);
+    this.name = "EmbeddingReadinessError";
+    this.readiness = readiness;
+    this.code = code;
+  }
+}
 
 // getConfig は core-utils.ts から re-export
 export { getConfig } from "./core-utils.js";
@@ -410,7 +437,7 @@ export class HarnessMemCore {
       getVectorEngine: () => this.vectorEngine,
       getVecTableReady: () => this.vecTableReady,
       setVecTableReady: (value) => { this.vecTableReady = value; },
-      embedContent: (content) => this.embeddingProvider.embed(content),
+      embedContent: (content) => this.embedContentSync(content, "passage"),
       getEmbeddingProviderName: () => this.embeddingProvider.name,
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       getVectorModelVersion: () => this.vectorModelVersion,
@@ -441,7 +468,7 @@ export class HarnessMemCore {
       vectorDimension: this.config.vectorDimension,
       getVecTableReady: () => this.vecTableReady,
       setVecTableReady: (value) => { this.vecTableReady = value; },
-      embedContent: (content) => this.embeddingProvider.embed(content),
+      embedContent: (content) => this.embedContentSync(content, "query"),
       refreshEmbeddingHealth: () => this.refreshEmbeddingHealth(),
       getEmbeddingProviderName: () => this.embeddingProvider.name,
       embeddingProviderModel: this.embeddingProvider.model,
@@ -773,6 +800,7 @@ export class HarnessMemCore {
   private initEmbeddingProvider(): void {
     const registry = createEmbeddingProviderRegistry({
       providerName: this.config.embeddingProvider,
+      localModelId: this.config.embeddingModel,
       dimension: this.config.vectorDimension,
       openaiApiKey: this.config.openaiApiKey,
       openaiEmbedModel: this.config.openaiEmbedModel,
@@ -794,6 +822,166 @@ export class HarnessMemCore {
         details: "embedding provider health call failed",
       };
     }
+  }
+
+  private getEmbeddingReadiness(): EmbeddingReadiness {
+    this.refreshEmbeddingHealth();
+
+    if (this.embeddingProvider.name !== "local") {
+      return {
+        required: false,
+        ready: true,
+        state: "not_required",
+        retryable: false,
+        providerStatus: this.embeddingHealth.status,
+        details: this.embeddingHealth.details,
+      };
+    }
+
+    if (this.embeddingHealth.status === "healthy") {
+      return {
+        required: true,
+        ready: true,
+        state: "ready",
+        retryable: false,
+        providerStatus: this.embeddingHealth.status,
+        details: this.embeddingHealth.details,
+      };
+    }
+
+    const details = this.embeddingHealth.details || "local embedding provider is not ready";
+    const lowered = details.toLowerCase();
+    const failed =
+      lowered.includes("failed to load") ||
+      lowered.includes("failed to initialize") ||
+      lowered.includes("inference failed");
+
+    return {
+      required: true,
+      ready: false,
+      state: failed ? "failed" : "warming",
+      retryable: !failed,
+      providerStatus: this.embeddingHealth.status,
+      details,
+    };
+  }
+
+  private createEmbeddingReadinessError(
+    context: string,
+    error: unknown,
+    override?: Partial<EmbeddingReadiness> & { code?: string }
+  ): EmbeddingReadinessError {
+    const providerError = (error instanceof Error ? error : new Error(String(error))) as EmbeddingProviderError;
+    const readinessBase = this.getEmbeddingReadiness();
+    const readiness: EmbeddingReadiness = {
+      ...readinessBase,
+      ...override,
+      required: override?.required ?? readinessBase.required,
+      ready: override?.ready ?? readinessBase.ready,
+      state: override?.state ?? readinessBase.state,
+      retryable: override?.retryable ?? providerError.retryable ?? readinessBase.retryable,
+      providerStatus: override?.providerStatus ?? readinessBase.providerStatus,
+      details: override?.details ?? providerError.message ?? readinessBase.details,
+    };
+    const code = override?.code ?? providerError.code ?? readiness.state;
+    return new EmbeddingReadinessError(`${context}: ${readiness.details}`, readiness, code);
+  }
+
+  private ensureEmbeddingReadyForSync(mode: EmbeddingPrimeMode): void {
+    const readiness = this.getEmbeddingReadiness();
+    if (!readiness.required || readiness.ready) {
+      return;
+    }
+
+    throw new EmbeddingReadinessError(
+      mode === "query"
+        ? "search embedding is not ready yet; retry after /health/ready reports ready"
+        : "write embedding is not ready yet; retry after /health/ready reports ready",
+      readiness
+    );
+  }
+
+  private embedContentSync(content: string, mode: EmbeddingPrimeMode): number[] {
+    try {
+      this.ensureEmbeddingReadyForSync(mode);
+      if (mode === "query" && typeof this.embeddingProvider.embedQuery === "function") {
+        return this.embeddingProvider.embedQuery(content || "");
+      }
+      return this.embeddingProvider.embed(content || "");
+    } catch (error) {
+      throw this.createEmbeddingReadinessError(
+        mode === "query" ? "search embedding is unavailable" : "write embedding is unavailable",
+        error,
+        {
+          ready: false,
+          retryable: true,
+        }
+      );
+    }
+  }
+
+  private async prepareEmbeddingForSync(text: string, mode: EmbeddingPrimeMode): Promise<void> {
+    if (this.embeddingProvider.name !== "local") {
+      return;
+    }
+
+    this.ensureEmbeddingReadyForSync(mode);
+    try {
+      const normalized = text || "";
+      if (mode === "query") {
+        if (typeof this.embeddingProvider.primeQuery === "function") {
+          await this.embeddingProvider.primeQuery(normalized);
+          return;
+        }
+        if (typeof this.embeddingProvider.prime === "function") {
+          await this.embeddingProvider.prime(normalized);
+          return;
+        }
+        if (typeof this.embeddingProvider.embedQuery === "function") {
+          this.embeddingProvider.embedQuery(normalized);
+          return;
+        }
+      }
+
+      if (typeof this.embeddingProvider.prime === "function") {
+        await this.embeddingProvider.prime(normalized);
+        return;
+      }
+
+      this.embeddingProvider.embed(normalized);
+    } catch (error) {
+      throw this.createEmbeddingReadinessError(
+        mode === "query" ? "search embedding preparation failed" : "write embedding preparation failed",
+        error
+      );
+    }
+  }
+
+  private extractEventEmbeddingSeed(event: EventEnvelope): string {
+    const payload =
+      typeof event.payload === "string"
+        ? (() => {
+            try {
+              const parsed = JSON.parse(event.payload);
+              return parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : { content: event.payload };
+            } catch {
+              return { content: event.payload };
+            }
+          })()
+        : event.payload && typeof event.payload === "object"
+          ? (event.payload as Record<string, unknown>)
+          : {};
+
+    const promptRaw = payload.prompt;
+    const contentRaw = payload.content;
+    const commandRaw = payload.command;
+
+    return (
+      (typeof contentRaw === "string" && contentRaw.trim()) ||
+      (typeof promptRaw === "string" && promptRaw.trim()) ||
+      (typeof commandRaw === "string" && commandRaw.trim()) ||
+      JSON.stringify(payload).slice(0, 4000)
+    );
   }
 
   private initReranker(): void {
@@ -848,6 +1036,14 @@ export class HarnessMemCore {
     return this.managedBackend?.getStatus() ?? null;
   }
 
+  async prepareRecordEventEmbedding(event: EventEnvelope): Promise<void> {
+    await this.prepareEmbeddingForSync(this.extractEventEmbeddingSeed(event), "passage");
+  }
+
+  async prepareSearchEmbedding(query: string): Promise<void> {
+    await this.prepareEmbeddingForSync(query, "query");
+  }
+
   async primeEmbedding(text: string, mode: EmbeddingPrimeMode = "passage"): Promise<number[]> {
     const normalized = text || "";
     if (mode === "query") {
@@ -870,6 +1066,7 @@ export class HarnessMemCore {
     provider: { name: string; model: string; dimension: number };
     vectorModelVersion: string;
     health: EmbeddingHealth;
+    readiness: EmbeddingReadiness;
     supports: {
       embedQuery: boolean;
       prime: boolean;
@@ -889,6 +1086,7 @@ export class HarnessMemCore {
       },
       vectorModelVersion: this.vectorModelVersion,
       health: { ...this.embeddingHealth },
+      readiness: this.getEmbeddingReadiness(),
       supports: {
         embedQuery: typeof this.embeddingProvider.embedQuery === "function",
         prime: typeof this.embeddingProvider.prime === "function",
@@ -991,6 +1189,7 @@ export class HarnessMemCore {
     event: EventEnvelope,
     options: { allowQueue: boolean } = { allowQueue: true }
   ): Promise<ApiResponse | "queue_full"> {
+    await this.prepareRecordEventEmbedding(event);
     return this.eventRec.recordEventQueued(event, options);
   }
 
@@ -1001,8 +1200,46 @@ export class HarnessMemCore {
     return "";
   }
 
+  private makeEmbeddingUnavailableResponse(
+    startedAt: number,
+    filters: Record<string, unknown>,
+    error: unknown,
+    context: string
+  ): ApiResponse {
+    const readinessError = error instanceof EmbeddingReadinessError
+      ? error
+      : this.createEmbeddingReadinessError(context, error);
+    const response = makeErrorResponse(startedAt, readinessError.message, filters);
+    Object.assign(response.meta, {
+      embedding_provider: this.embeddingProvider.name,
+      embedding_provider_status: readinessError.readiness.providerStatus,
+      embedding_provider_details: readinessError.readiness.details,
+      embedding_readiness_required: readinessError.readiness.required,
+      embedding_ready: readinessError.readiness.ready,
+      embedding_readiness_state: readinessError.readiness.state,
+      embedding_readiness_retryable: readinessError.readiness.retryable,
+      embedding_error_code: readinessError.code,
+    });
+    return response;
+  }
+
   search(request: SearchRequest): ApiResponse {
-    return this.obsStore.search(request);
+    const startedAt = performance.now();
+    try {
+      return this.obsStore.search(request);
+    } catch (error) {
+      return this.makeEmbeddingUnavailableResponse(
+        startedAt,
+        request as unknown as Record<string, unknown>,
+        error,
+        "search embedding is unavailable"
+      );
+    }
+  }
+
+  async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
+    await this.prepareSearchEmbedding(request.query || "");
+    return this.search(request);
   }
 
   feed(request: FeedRequest): ApiResponse {
@@ -1014,7 +1251,17 @@ export class HarnessMemCore {
   }
 
   async timeline(request: TimelineRequest): Promise<ApiResponse> {
-    return this.obsStore.timeline(request);
+    const startedAt = performance.now();
+    try {
+      return this.obsStore.timeline(request);
+    } catch (error) {
+      return this.makeEmbeddingUnavailableResponse(
+        startedAt,
+        request as unknown as Record<string, unknown>,
+        error,
+        "timeline embedding is unavailable"
+      );
+    }
   }
 
   getObservations(request: GetObservationsRequest): ApiResponse {
@@ -1119,6 +1366,7 @@ export class HarnessMemCore {
   health(): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
+    const embeddingReadiness = this.getEmbeddingReadiness();
 
     const sessions = this.db.query(`SELECT COUNT(*) AS count FROM mem_sessions`).get() as { count: number };
     const events = this.db.query(`SELECT COUNT(*) AS count FROM mem_events`).get() as { count: number };
@@ -1129,12 +1377,13 @@ export class HarnessMemCore {
     const dbSize = existsSync(dbPath) ? statSync(dbPath).size : 0;
 
     const managedDegraded = this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected());
+    const embeddingDegraded = embeddingReadiness.required && !embeddingReadiness.ready;
 
     return makeResponse(
       startedAt,
       [
         {
-          status: managedDegraded ? "degraded" : "ok",
+          status: managedDegraded || embeddingDegraded ? "degraded" : "ok",
           pid: process.pid,
           host: this.config.bindHost,
           port: this.config.bindPort,
@@ -1147,6 +1396,10 @@ export class HarnessMemCore {
           embedding_provider: this.embeddingProvider.name,
           embedding_provider_status: this.embeddingHealth.status,
           embedding_provider_details: this.embeddingHealth.details,
+          embedding_ready: embeddingReadiness.ready,
+          embedding_readiness_required: embeddingReadiness.required,
+          embedding_readiness_state: embeddingReadiness.state,
+          embedding_readiness_retryable: embeddingReadiness.retryable,
           features: {
             capture: this.config.captureEnabled,
             retrieval: this.config.retrievalEnabled,
@@ -1186,6 +1439,13 @@ export class HarnessMemCore {
           managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
           warnings: [
             ...this.embeddingWarnings,
+            ...(embeddingDegraded
+              ? [
+                  embeddingReadiness.state === "failed"
+                    ? `embedding provider blocked: ${embeddingReadiness.details}`
+                    : `embedding provider warming: ${embeddingReadiness.details}`,
+                ]
+              : []),
             ...(this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected())
               ? ["managed mode active but ManagedBackend not connected — writes are BLOCKED (fail-close)"]
               : []),
@@ -1203,9 +1463,39 @@ export class HarnessMemCore {
     );
   }
 
+  readiness(): ApiResponse {
+    const startedAt = performance.now();
+    const embeddingReadiness = this.getEmbeddingReadiness();
+    const managedReady = !this.managedRequired || !!this.managedBackend?.isConnected();
+    const ready = managedReady && (!embeddingReadiness.required || embeddingReadiness.ready);
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          status: ready ? "ready" : "not_ready",
+          ready,
+          backend_mode: this.config.backendMode || "local",
+          embedding_provider: this.embeddingProvider.name,
+          embedding_provider_status: embeddingReadiness.providerStatus,
+          embedding_provider_details: embeddingReadiness.details,
+          embedding_ready: embeddingReadiness.ready,
+          embedding_readiness_required: embeddingReadiness.required,
+          embedding_readiness_state: embeddingReadiness.state,
+          embedding_readiness_retryable: embeddingReadiness.retryable,
+          managed_ready: managedReady,
+          managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
+        },
+      ],
+      {},
+      { ranking: "ready_v1", ready }
+    );
+  }
+
   metrics(): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
+    const embeddingReadiness = this.getEmbeddingReadiness();
 
     const vectorCoverage = this.db
       .query(`
@@ -1259,6 +1549,10 @@ export class HarnessMemCore {
           embedding_provider: this.embeddingProvider.name,
           embedding_provider_status: this.embeddingHealth.status,
           embedding_provider_details: this.embeddingHealth.details,
+          embedding_ready: embeddingReadiness.ready,
+          embedding_readiness_required: embeddingReadiness.required,
+          embedding_readiness_state: embeddingReadiness.state,
+          embedding_readiness_retryable: embeddingReadiness.retryable,
           reranker_enabled: this.rerankerEnabled,
           reranker_name: this.reranker?.name || null,
           coverage: {

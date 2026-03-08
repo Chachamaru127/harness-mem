@@ -16,6 +16,27 @@ export interface LocalOnnxOptions {
 }
 
 const DEFAULT_LOCAL_ONNX_CACHE_SIZE = 128;
+type LocalOnnxErrorCode = "warming" | "init_failed" | "prime_required" | "inference_failed";
+
+type LocalOnnxError = Error & {
+  code: LocalOnnxErrorCode;
+  modelId: string;
+  retryable: boolean;
+};
+
+function createLocalOnnxError(
+  modelId: string,
+  code: LocalOnnxErrorCode,
+  details: string,
+  retryable: boolean
+): LocalOnnxError {
+  const error = new Error(details) as LocalOnnxError;
+  error.name = "LocalOnnxEmbeddingError";
+  error.code = code;
+  error.modelId = modelId;
+  error.retryable = retryable;
+  return error;
+}
 
 function meanPooling(embeddings: number[][], attentionMask: number[]): number[] {
   const dim = embeddings[0].length;
@@ -100,15 +121,31 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     details: `local model ${modelId}: initializing...`,
   };
 
-  function zeroVector(): number[] {
-    return new Array<number>(dimension).fill(0);
+  function failSyncEmbed(
+    text: string,
+    prefix: string,
+    code: LocalOnnxErrorCode,
+    details: string,
+    retryable: boolean
+  ): never {
+    const normalizedText = text || "";
+    if (retryable && code !== "init_failed") {
+      void primeInternal(normalizedText, prefix, {
+        cacheKey: `${prefix}${normalizedText}`,
+        skipCacheLookup: true,
+      }).catch(() => undefined);
+    }
+    throw createLocalOnnxError(modelId, code, details, retryable);
   }
 
-  function fallbackVector(text: string): number[] {
-    if (options.fallback) {
-      return options.fallback.embed(text);
+  function warnSyncUnavailable(error: unknown): void {
+    if (warnedOnce) {
+      return;
     }
-    return zeroVector();
+    warnedOnce = true;
+
+    const message = error instanceof Error ? error.message : String(error);
+    process.stderr.write(`[harness-mem][warn] local model ${modelId} unavailable for sync embed: ${message}\n`);
   }
 
   function getCachedEmbedding(cacheKey: string): number[] | null {
@@ -173,7 +210,11 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
   function embedSync(text: string, prefix: string): number[] {
     const normalizedText = text || "";
     if (initError !== null || tokenizer === null || model === null) {
-      return fallbackVector(normalizedText);
+      const details =
+        initError !== null
+          ? `local ONNX model ${modelId} failed to initialize: ${initError}`
+          : `local ONNX model ${modelId} is still warming up`;
+      failSyncEmbed(normalizedText, prefix, initError !== null ? "init_failed" : "warming", details, initError === null);
     }
 
     const cacheKey = `${prefix}${normalizedText}`;
@@ -188,12 +229,25 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
       skipCacheLookup: true,
     });
 
-    return fallbackVector(normalizedText);
+    failSyncEmbed(
+      normalizedText,
+      prefix,
+      "prime_required",
+      `local ONNX model ${modelId} requires async prime before sync embed (${cacheKey.slice(0, 64)})`,
+      true
+    );
   }
 
   async function computeEmbedding(text: string, prefix: string): Promise<number[]> {
     if (initError !== null || tokenizer === null || model === null) {
-      return fallbackVector(text);
+      throw createLocalOnnxError(
+        modelId,
+        initError !== null ? "init_failed" : "warming",
+        initError !== null
+          ? `local ONNX model ${modelId} failed to initialize: ${initError}`
+          : `local ONNX model ${modelId} is still warming up`,
+        initError === null
+      );
     }
 
     const prefixedText = prefix + (text || "");
@@ -217,7 +271,12 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
 
     const hiddenStates = extractHiddenStates(output.last_hidden_state);
     if (!hiddenStates) {
-      return fallbackVector(text);
+      throw createLocalOnnxError(
+        modelId,
+        "inference_failed",
+        `local ONNX model ${modelId} returned invalid hidden states`,
+        false
+      );
     }
 
     const pooled = meanPooling(hiddenStates, attentionMask);
@@ -257,11 +316,39 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     const running = (async () => {
       await initPromise;
       if (initError !== null || tokenizer === null || model === null) {
-        return fallbackVector(normalizedText);
+        throw createLocalOnnxError(
+          modelId,
+          initError !== null ? "init_failed" : "warming",
+          initError !== null
+            ? `local ONNX model ${modelId} failed to initialize: ${initError}`
+            : `local ONNX model ${modelId} is still warming up`,
+          initError === null
+        );
       }
-      const computed = await computeEmbedding(normalizedText, prefix);
-      setCachedEmbedding(cacheKey, computed);
-      return computed;
+      try {
+        const computed = await computeEmbedding(normalizedText, prefix);
+        lastHealth = {
+          status: "healthy",
+          details: `local ONNX: ${modelId} (dim=${dimension})`,
+        };
+        setCachedEmbedding(cacheKey, computed);
+        return computed;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        lastHealth = {
+          status: "degraded",
+          details: `local model ${modelId} inference failed: ${message}`,
+        };
+        if (error instanceof Error && error.name === "LocalOnnxEmbeddingError") {
+          throw error;
+        }
+        throw createLocalOnnxError(
+          modelId,
+          "inference_failed",
+          `local ONNX model ${modelId} inference failed: ${message}`,
+          false
+        );
+      }
     })();
 
     inflightComputations.set(cacheKey, running);
@@ -278,35 +365,21 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     dimension,
 
     embed(text: string): number[] {
-      if (tokenizer === null || model === null) {
-        if (!warnedOnce) {
-          warnedOnce = true;
-          if (!initError) {
-            process.stderr.write(
-              `[harness-mem][warn] local model ${modelId} not yet ready; using fallback\n`
-            );
-          } else {
-            process.stderr.write(
-              `[harness-mem][warn] local model ${modelId} failed: ${initError}; using fallback\n`
-            );
-          }
-        }
-        if (options.fallback) {
-          return options.fallback.embed(text);
-        }
-        return zeroVector();
+      try {
+        return embedSync(text, passagePrefix);
+      } catch (error) {
+        warnSyncUnavailable(error);
+        throw error;
       }
-      return embedSync(text, passagePrefix);
     },
 
     embedQuery(text: string): number[] {
-      if (tokenizer === null || model === null) {
-        if (options.fallback) {
-          return options.fallback.embed(text);
-        }
-        return zeroVector();
+      try {
+        return embedSync(text, queryPrefix);
+      } catch (error) {
+        warnSyncUnavailable(error);
+        throw error;
       }
-      return embedSync(text, queryPrefix);
     },
 
     async prime(text: string): Promise<number[]> {

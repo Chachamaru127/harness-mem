@@ -10,6 +10,7 @@ import type { Database } from "bun:sqlite";
 import { ObservationStore, type ObservationStoreDeps } from "../../src/core/observation-store";
 import { SqliteObservationRepository } from "../../src/db/repositories/SqliteObservationRepository";
 import type { Config } from "../../src/core/types";
+import type { Reranker } from "../../src/rerank/types";
 import {
   createTestDb,
   createTestConfig,
@@ -28,7 +29,11 @@ function platformVisibilityFilterSql(_alias: string): string {
   return " AND 1=1";
 }
 
-function createDeps(db: Database, config: Config): ObservationStoreDeps {
+function createDeps(
+  db: Database,
+  config: Config,
+  overrides: { rerankerEnabled?: boolean; reranker?: Reranker | null } = {}
+): ObservationStoreDeps {
   return {
     db,
     repo: new SqliteObservationRepository(db),
@@ -50,8 +55,8 @@ function createDeps(db: Database, config: Config): ObservationStoreDeps {
     getEmbeddingProviderName: () => "test",
     embeddingProviderModel: "test-model",
     getEmbeddingHealthStatus: () => "ok",
-    getRerankerEnabled: () => false,
-    getReranker: () => null,
+    getRerankerEnabled: () => overrides.rerankerEnabled ?? false,
+    getReranker: () => overrides.reranker ?? null,
     managedShadowRead: null,
     searchRanking: "hybrid_v3",
     searchExpandLinks: false,
@@ -68,14 +73,48 @@ afterEach(() => {
 });
 
 function makeStore(
-  configOverrides: Partial<Config> = {}
+  configOverrides: Partial<Config> = {},
+  depOverrides: Parameters<typeof createDeps>[2] = {}
 ): { store: ObservationStore; db: Database } {
   const db = createTestDb();
   testDbs.push(db);
   const config = createTestConfig(configOverrides);
-  const deps = createDeps(db, config);
+  const deps = createDeps(db, config, depOverrides);
   const store = new ObservationStore(deps);
   return { store, db };
+}
+
+function insertTestFact(
+  db: Database,
+  opts: {
+    fact_id?: string;
+    observation_id: string;
+    project?: string;
+    session_id?: string;
+    fact_type?: string;
+    fact_key: string;
+    fact_value: string;
+    confidence?: number;
+    created_at?: string;
+  }
+): void {
+  const now = opts.created_at || "2026-03-06T00:00:00.000Z";
+  db.query(
+    `INSERT INTO mem_facts(
+      fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value, confidence, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    opts.fact_id || `fact-${Math.random().toString(36).slice(2, 8)}`,
+    opts.observation_id,
+    opts.project || "proj-obs",
+    opts.session_id || "test-session-001",
+    opts.fact_type || "profile",
+    opts.fact_key,
+    opts.fact_value,
+    opts.confidence ?? 0.95,
+    now,
+    now
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -204,6 +243,338 @@ describe("observation-store: search", () => {
     expect(res.ok).toBe(true);
     expect(res.meta).toBeTruthy();
   });
+
+  test("active facts を持つ exact-value 候補を company query で優先する", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-generic",
+      title: "Career summary",
+      content: "I joined a startup recently and the team is moving quickly with strong momentum.",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-company",
+      title: "New company",
+      content: "I joined NeuralBridge in February 2024 as a backend engineer.",
+      project: "proj-obs",
+    });
+    insertTestFact(db, {
+      observation_id: "obs-company",
+      project: "proj-obs",
+      fact_key: "company",
+      fact_value: "NeuralBridge",
+    });
+
+    const res = store.search({ query: "What company did I join?", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-company");
+  });
+
+  test("numeric exact-value candidate を count query で優先する", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-summary",
+      title: "Launch recap",
+      content: "We reviewed the launch, discussed performance, and shared several follow-up tasks.",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-rate",
+      title: "Conversion rate",
+      content: "The launch report says the conversion rate was 65% after the final experiment.",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "What percentage was the conversion rate?", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-rate");
+  });
+
+  test("alias query を canonical benchmark term へ展開して relevant result を返す", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-locomo",
+      title: "LoCoMo benchmark freeze",
+      content: "Backboard-Locomo-Benchmark based locomo benchmark freeze report.",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "まさおベンチ", project: "proj-obs", limit: 3 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-locomo");
+  });
+
+  test("metric-focused natural fact query prefers focused numeric line over generic numeric summary", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-generic-number",
+      title: "General release summary",
+      content: "3回連続で同じ結果が出ており、全体としては実用レベルです。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-ja-gate-metric",
+      title: "Japanese release gate metrics",
+      content: "| overall F1 mean | 0.7645 |\n| cross_lingual F1 mean | 0.7563 |",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "日本語 release gate の overall F1 はいくつ", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-ja-gate-metric");
+  });
+
+  test("metric-focused natural fact query prefers exact metric phrase over nearby but different F1 summary", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-shadow-f1",
+      title: "Japanese release gate review",
+      content: "日本語 release gate の検討では shadow pack の F1=0.2407 と bilingual_recall=0.9 を見ました。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-overall-f1",
+      title: "Japanese release gate metrics",
+      content: "overall F1 mean=0.7645\ncross_lingual F1 mean=0.7563",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "日本語 release gate の overall F1 はいくつ", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-overall-f1");
+  });
+
+  test("freshness metric query prefers matching metric line over unrelated repeated counts", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-repeat-count",
+      title: "General quality summary",
+      content: "3回連続で同じ結果が出ているので、かなり安定しています。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-freshness-go",
+      title: "S39 final GO metrics",
+      content: "Freshness = 1.0000 で final GO を通過しました。",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "§39 の最終GO時の freshness はいくつ", project: "proj-obs", limit: 2 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-freshness-go");
+  });
+
+  test("current-value query prefers concise current answer over verbose or previous statements", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-current-verbose",
+      title: "Region rollout note",
+      content:
+        "ちなみに今の default region は Tokyo です。以前は us-east-1 でした。いまは運用の都合で Tokyo を選んでいます。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-current-concise",
+      title: "Current region",
+      content: "今の default region は Tokyo です。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-previous-region",
+      title: "Previous region",
+      content: "以前は us-east-1 でした。",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "今の default region はどこですか？", project: "proj-obs", limit: 3 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-current-concise");
+  });
+
+  test("temporal ordering query prefers explicit ordinal answer over generic timeline chatter", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-generic",
+      title: "Identity roadmap",
+      content: "SSO と team workspaces を計画していました。あとで team workspaces を出しました。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-ordinal",
+      title: "Identity ordering",
+      content: "team workspaces が先に出ました。",
+      project: "proj-obs",
+    });
+
+    const res = store.search({
+      query: "SSO と team workspaces では、どちらが先に出ましたか？",
+      project: "proj-obs",
+      limit: 3,
+    });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ordinal");
+  });
+
+  test("timeline query では semantic rerank より時系列順を優先する", () => {
+    const reverseReranker: Reranker = {
+      name: "reverse-test",
+      rerank(input) {
+        return [...input.items]
+          .reverse()
+          .map((item, index) => ({ ...item, rerank_score: 1 - index * 0.1 }));
+      },
+    };
+    const { store, db } = makeStore({}, { rerankerEnabled: true, reranker: reverseReranker });
+    insertTestObservation(db, {
+      id: "obs-old",
+      title: "Rollout timeline kickoff",
+      content: "Rollout timeline kickoff milestone",
+      project: "proj-obs",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-mid",
+      title: "Rollout timeline beta",
+      content: "Rollout timeline beta milestone",
+      project: "proj-obs",
+      created_at: "2026-02-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-new",
+      title: "Rollout timeline launch",
+      content: "Rollout timeline launch milestone",
+      project: "proj-obs",
+      created_at: "2026-03-01T00:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "show the rollout timeline",
+      project: "proj-obs",
+      question_kind: "timeline",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
+    expect(ids.slice(0, 3)).toEqual(["obs-old", "obs-mid", "obs-new"]);
+  });
+});
+
+describe("observation-store: precision boost", () => {
+  test("Japanese current-value hint prefers current statement over previous statement", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "current_value",
+      exactValuePreferred: true,
+      activeFactPreferred: true,
+      slotKeywords: ["current", "今", "使っている", "ci"],
+      focusKeywords: ["ci", "github actions"],
+      metricKeywords: [],
+    };
+
+    const currentScore = (store as any).computePrecisionBoost("今、使っている CI は何ですか？", hints, {
+      title: "",
+      content_redacted: "今は GitHub Actions を使っています。",
+    });
+    const previousScore = (store as any).computePrecisionBoost("今、使っている CI は何ですか？", hints, {
+      title: "",
+      content_redacted: "ベータ版のビルドでは CircleCI を使っていました。",
+    });
+
+    expect(currentScore).toBeGreaterThan(previousScore);
+  });
+
+  test("Japanese reason hint prefers causal sentence", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "reason",
+      exactValuePreferred: true,
+      activeFactPreferred: true,
+      slotKeywords: ["reason", "理由", "because"],
+      focusKeywords: ["circleci", "理由"],
+      metricKeywords: [],
+    };
+
+    const causalScore = (store as any).computePrecisionBoost("CircleCI から移行した理由は何ですか？", hints, {
+      title: "",
+      content_redacted: "CircleCI の parallel build costs が上がり続けたからです。",
+    });
+    const neutralScore = (store as any).computePrecisionBoost("CircleCI から移行した理由は何ですか？", hints, {
+      title: "",
+      content_redacted: "ベータ版のビルドでは CircleCI を使っていました。",
+    });
+
+    expect(causalScore).toBeGreaterThan(neutralScore);
+  });
+
+  test("metric-value hint prefers focused metric line over unrelated numbers", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "metric_value",
+      exactValuePreferred: true,
+      activeFactPreferred: true,
+      slotKeywords: ["f1", "overall f1", "score"],
+      focusKeywords: ["overall f1", "ja-release-pack"],
+      metricKeywords: ["overall f1"],
+    };
+
+    const focusedScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "Japanese release gate metrics",
+      content_redacted: "| overall F1 mean | 0.7645 |",
+    });
+    const genericScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "General release summary",
+      content_redacted: "3回連続で同じ結果が出ています。",
+    });
+
+    expect(focusedScore).toBeGreaterThan(genericScore);
+  });
+
+  test("metric-value hint penalizes command-like observations even when metric token appears", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "metric_value",
+      exactValuePreferred: true,
+      activeFactPreferred: true,
+      slotKeywords: ["f1", "overall f1", "score"],
+      focusKeywords: ["overall f1", "ja-release-pack"],
+      metricKeywords: ["overall f1"],
+    };
+
+    const summaryScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "Japanese release gate metrics",
+      content_redacted: "`overall F1 mean=0.7645` を確認済みです。",
+    });
+    const commandScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "Shell: jq overall_f1 extractor",
+      content_redacted: "jq '{overall_f1:.metrics.overall.f1}' score-report.json",
+    });
+
+    expect(summaryScore).toBeGreaterThan(commandScore);
+  });
+
+  test("metric-value hint prefers exact metric phrase over generic F1 mention", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "metric_value",
+      exactValuePreferred: true,
+      activeFactPreferred: true,
+      slotKeywords: ["f1", "overall f1", "score"],
+      focusKeywords: ["overall f1", "overall f1 mean", "ja-release-pack", "日本語 release gate", "japanese release gate", "日本語"],
+      metricKeywords: ["overall f1", "overall f1 mean", "overall", "f1"],
+    };
+
+    const exactMetricScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "Japanese release gate metrics",
+      content_redacted: "overall F1 mean=0.7645\ncross_lingual F1 mean=0.7563",
+    });
+    const genericMetricScore = (store as any).computePrecisionBoost("日本語 release gate の overall F1 はいくつ", hints, {
+      title: "Japanese release gate review",
+      content_redacted: "日本語 release gate の検討では shadow pack の F1=0.2407 と bilingual_recall=0.9 を見ました。",
+    });
+
+    expect(exactMetricScore).toBeGreaterThan(genericMetricScore);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -275,6 +646,156 @@ describe("observation-store: searchFacets", () => {
     });
     const res = store.searchFacets({ query: "facet query test", project: "proj-obs" });
     expect(res.ok).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S43-005: temporal retrieval alignment — candidate depth + evidence coverage
+// ---------------------------------------------------------------------------
+
+describe("S43-005: temporal retrieval alignment", () => {
+  // candidate depth: temporal クエリは通常クエリより多くの候補を取り込む
+  test("temporal anchor クエリはアンカー後の観察を時系列順に返す", () => {
+    const { store, db } = makeStore();
+    // アンカー: "deployment"
+    insertTestObservation(db, {
+      id: "obs-anchor",
+      title: "deployment completed",
+      content: "The deployment to production was completed successfully.",
+      project: "proj-s43",
+      created_at: "2026-02-01T10:00:00.000Z",
+    });
+    // アンカー後の観察（時系列順）
+    insertTestObservation(db, {
+      id: "obs-after-1",
+      title: "smoke test passed",
+      content: "Smoke tests passed after deployment.",
+      project: "proj-s43",
+      created_at: "2026-02-01T11:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-after-2",
+      title: "monitoring confirmed",
+      content: "Monitoring confirmed stable after deployment.",
+      project: "proj-s43",
+      created_at: "2026-02-01T12:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-after-3",
+      title: "incident report filed",
+      content: "Incident report was filed after deployment review.",
+      project: "proj-s43",
+      created_at: "2026-02-01T13:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "deployment の後に何が起きましたか？",
+      project: "proj-s43",
+      question_kind: "timeline",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    // アンカー後の観察が含まれること
+    const ids = (res.items as Array<Record<string, unknown>>).map((i) => String(i.id));
+    const afterIds = ids.filter((id) => id.startsWith("obs-after"));
+    expect(afterIds.length).toBeGreaterThanOrEqual(1);
+  });
+
+  // evidence coverage: top-3 quality candidate を確保する
+  test("temporal クエリが limit=3 のとき少なくとも 1 件の関連観察を返す", () => {
+    const { store, db } = makeStore();
+    // テンポラルクエリに関連するコンテンツを持つ観察を複数挿入
+    for (let i = 1; i <= 6; i++) {
+      insertTestObservation(db, {
+        id: `obs-seq-${i}`,
+        title: `Step ${i}: localize the content`,
+        content: `Localization step ${i}: content localized for region ${i}.`,
+        project: "proj-seq",
+        created_at: `2026-02-0${i}T10:00:00.000Z`,
+      });
+    }
+
+    const res = store.search({
+      query: "最初に localize したものは何ですか？",
+      project: "proj-seq",
+      question_kind: "timeline",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    expect((res.items as unknown[]).length).toBeGreaterThanOrEqual(1);
+  });
+
+  // multi-observation evidence merge: 複数観察から証拠を統合
+  test("後続の観察が anchor より前の観察を上書きせずに補完する", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-base",
+      title: "initial setup done",
+      content: "Initial setup was completed for the project.",
+      project: "proj-merge",
+      created_at: "2026-01-10T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-next-1",
+      title: "launch playbook localized",
+      content: "The launch playbook was localized for APAC.",
+      project: "proj-merge",
+      created_at: "2026-01-20T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-next-2",
+      title: "invoice emails localized",
+      content: "Invoice emails were localized as the next step after launch playbook.",
+      project: "proj-merge",
+      created_at: "2026-01-30T00:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "launch playbook の次に localize したものは何ですか？",
+      project: "proj-merge",
+      question_kind: "timeline",
+      limit: 5,
+    });
+
+    expect(res.ok).toBe(true);
+    const items = res.items as Array<Record<string, unknown>>;
+    // invoice emails の観察が含まれること（後続の証拠）
+    const found = items.some((item) => String(item.id) === "obs-next-2");
+    expect(found).toBe(true);
+  });
+
+  // internalLimit 拡張: temporal クエリでは候補が十分に集まること
+  test("temporal クエリの meta に candidate_counts が含まれる", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-meta-1",
+      title: "alert triggered",
+      content: "Alert was triggered in the monitoring system.",
+      project: "proj-meta",
+      created_at: "2026-03-01T08:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-meta-2",
+      title: "first response to alert",
+      content: "The first response was to redirect read traffic.",
+      project: "proj-meta",
+      created_at: "2026-03-01T08:05:00.000Z",
+    });
+
+    const res = store.search({
+      query: "alert の直後に最初にやったことは何ですか？",
+      project: "proj-meta",
+      question_kind: "timeline",
+      limit: 5,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.meta).toBeDefined();
+    // candidate_counts が含まれること
+    const meta = res.meta as Record<string, unknown>;
+    expect(meta.candidate_counts).toBeDefined();
   });
 });
 

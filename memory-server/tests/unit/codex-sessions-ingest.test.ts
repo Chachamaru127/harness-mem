@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { parseCodexSessionsChunk } from "../../src/ingest/codex-sessions";
 
 describe("codex sessions ingest parser", () => {
-  test("extracts japanese user prompt + task_complete checkpoint", () => {
+  test("extracts japanese user prompt + assistant final answer without duplicate checkpoints", () => {
     const chunk = [
       JSON.stringify({
         timestamp: "2026-02-15T10:00:00.000Z",
@@ -25,8 +25,25 @@ describe("codex sessions ingest parser", () => {
         timestamp: "2026-02-15T10:00:02.000Z",
         type: "event_msg",
         payload: {
+          type: "agent_message",
+          message: "回答本文をきちんと保存します",
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-02-15T10:00:02.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "assistant",
+          content: [{ type: "output_text", text: "回答本文をきちんと保存します" }],
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-02-15T10:00:03.000Z",
+        type: "event_msg",
+        payload: {
           type: "task_complete",
-          last_agent_message: "完了しました",
+          last_agent_message: "回答本文をきちんと保存します",
           turn_id: "turn-1",
         },
       }),
@@ -56,7 +73,66 @@ describe("codex sessions ingest parser", () => {
     expect(checkpoint.eventType).toBe("checkpoint");
     expect(checkpoint.sessionId).toBe("session-abc");
     expect(checkpoint.project).toBe("/Users/test/Desktop/Code/CC-harness/harness-mem");
-    expect(checkpoint.payload.last_agent_message).toBe("完了しました");
+    expect(checkpoint.payload.content).toBe("回答本文をきちんと保存します");
+    expect(checkpoint.payload.last_agent_message).toBe("回答本文をきちんと保存します");
+    expect(checkpoint.payload.prompt).toBe("今まさに日本語でテスト中です");
+    expect(checkpoint.payload.title).toBe("assistant_response");
+  });
+
+  test("carries last user prompt across incremental chunks", () => {
+    const firstChunk = [
+      JSON.stringify({
+        timestamp: "2026-02-15T10:00:00.000Z",
+        type: "session_meta",
+        payload: {
+          id: "session-xyz",
+          cwd: "/tmp/project-y",
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-02-15T10:00:01.000Z",
+        type: "response_item",
+        payload: {
+          type: "message",
+          role: "user",
+          content: [{ type: "input_text", text: "その時の回答を覚えておいて" }],
+        },
+      }),
+    ].join("\n") + "\n";
+
+    const firstParsed = parseCodexSessionsChunk({
+      sourceKey: "codex_rollout:/tmp/incremental.jsonl",
+      baseOffset: 0,
+      chunk: firstChunk,
+      fallbackNowIso: () => "2026-02-15T10:00:59.000Z",
+    });
+
+    expect(firstParsed.events.length).toBe(1);
+    expect(firstParsed.context.lastUserPrompt).toBe("その時の回答を覚えておいて");
+
+    const secondChunk = [
+      JSON.stringify({
+        timestamp: "2026-02-15T10:00:02.000Z",
+        type: "event_msg",
+        payload: {
+          type: "agent_message",
+          message: "はい、回答も紐づけて記録します。",
+        },
+      }),
+    ].join("\n") + "\n";
+
+    const secondParsed = parseCodexSessionsChunk({
+      sourceKey: "codex_rollout:/tmp/incremental.jsonl",
+      baseOffset: firstParsed.consumedBytes,
+      chunk: secondChunk,
+      fallbackNowIso: () => "2026-02-15T10:01:00.000Z",
+      context: firstParsed.context,
+    });
+
+    expect(secondParsed.events.length).toBe(1);
+    expect(secondParsed.events[0]?.eventType).toBe("checkpoint");
+    expect(secondParsed.events[0]?.payload.content).toBe("はい、回答も紐づけて記録します。");
+    expect(secondParsed.events[0]?.payload.prompt).toBe("その時の回答を覚えておいて");
   });
 
   test("ignores invalid json and incomplete last line safely", () => {

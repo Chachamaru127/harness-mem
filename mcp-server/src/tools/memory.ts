@@ -291,6 +291,7 @@ export const memoryTools: Tool[] = [
         until: { type: "string" },
         limit: { type: "number" },
         include_private: { type: "boolean" },
+        sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" },
       },
       required: ["query"],
     },
@@ -690,6 +691,8 @@ export async function handleMemoryTool(
           return errorResult("query is required");
         }
 
+        const sortBy = toStringOrUndefined(input.sort_by);
+        const validSortValues = ["relevance", "date_desc", "date_asc"];
         const response = await callMemoryApi("/v1/search", {
           query,
           project: toStringOrUndefined(input.project),
@@ -698,6 +701,7 @@ export async function handleMemoryTool(
           until: toStringOrUndefined(input.until),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
+          sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
         });
         return successResult(response);
       }

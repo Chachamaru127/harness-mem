@@ -1,0 +1,152 @@
+$ /Users/tachibanashuuta/.bun/bin/bun run tests/benchmarks/run-locomo-benchmark.ts --system harness-mem --dataset /var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-sIm1YX/quick-006-q3.dataset.json --output /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s39-cold-warm-latest-v2/cases/quick-006-q3/cold.result.json --prime-embedding false
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:23:38.906Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": false
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-sIm1YX/quick-006-q3.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "by_category": {
+      "cat-2": {
+        "count": 1,
+        "em": 0,
+        "f1": 0
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 1.1,
+      "max": 1.1,
+      "avg": 1.1,
+      "p50": 1.1,
+      "p95": 1.1
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 13,
+        "evictions": 0,
+        "inflight": 9
+      },
+      "delta": {
+        "entries": 0,
+        "capacity": 0,
+        "hits": 0,
+        "misses": 11,
+        "evictions": 0,
+        "inflight": 9
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 0,
+      "output_total": 0,
+      "total_total": 0,
+      "input_avg": 0,
+      "output_avg": 0,
+      "total_avg": 0
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-006",
+      "question_id": "q3",
+      "category": "cat-2",
+      "question": "Where did I buy the containers for my garden?",
+      "answer": "GreenThumb store",
+      "prediction": "",
+      "question_kind": "location",
+      "answer_strategy": "extract:no-candidate -> normalize -> final:empty",
+      "selected_evidence_ids": [],
+      "answer_trace": {
+        "query_variants": [
+          "where did i buy the containers for my garden?",
+          "buy containers garden",
+          "buy containers garden key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:no-candidate",
+          "raw_answer": "",
+          "selected_candidates": []
+        },
+        "normalization": {
+          "before": "",
+          "after": "",
+          "notes": [
+            "location:entity_extract"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": ""
+      },
+      "search_latency_ms": 1.1,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
+      "em": 0,
+      "f1": 0
+    }
+  ]
+}
+
+dtype not specified for "model". Using the default dtype (fp32) for this device (cpu).
+[harness-mem][warn] local model multilingual-e5 unavailable for sync embed: local ONNX model multilingual-e5 requires async prime before sync embed (passage: I started a vegetable garden on my balcony three months)

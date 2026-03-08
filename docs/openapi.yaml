@@ -693,6 +693,11 @@ paths:
                     - type: array
                       items:
                         $ref: "#/components/schemas/MemoryType"
+                sort_by:
+                  type: string
+                  enum: [relevance, date_desc, date_asc]
+                  default: relevance
+                  description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)"
       responses:
         "200":
           description: Search results

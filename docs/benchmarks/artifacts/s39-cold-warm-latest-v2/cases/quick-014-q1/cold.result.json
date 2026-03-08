@@ -1,0 +1,148 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:23:29.022Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": false
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-FI8MNf/quick-014-q1.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "by_category": {
+      "cat-4": {
+        "count": 1,
+        "em": 0,
+        "f1": 0
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 1.1600000000000001,
+      "max": 1.1600000000000001,
+      "avg": 1.1600000000000001,
+      "p50": 1.1600000000000001,
+      "p95": 1.1600000000000001
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 13,
+        "evictions": 0,
+        "inflight": 9
+      },
+      "delta": {
+        "entries": 0,
+        "capacity": 0,
+        "hits": 0,
+        "misses": 11,
+        "evictions": 0,
+        "inflight": 9
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 0,
+      "output_total": 0,
+      "total_total": 0,
+      "input_avg": 0,
+      "output_avg": 0,
+      "total_avg": 0
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-014",
+      "question_id": "q1",
+      "category": "cat-4",
+      "question": "What is the name of my band?",
+      "answer": "The Amber Keys",
+      "prediction": "",
+      "question_kind": "factual",
+      "answer_strategy": "extract:no-candidate -> normalize -> final:empty",
+      "selected_evidence_ids": [],
+      "answer_trace": {
+        "query_variants": [
+          "what is the name of my band?",
+          "name band",
+          "name band evidence summary"
+        ],
+        "search_policy": {
+          "limit": 12,
+          "variant_cap": 4,
+          "candidate_limit": 4,
+          "quality_floor": 0.18
+        },
+        "extraction": {
+          "strategy": "extract:no-candidate",
+          "raw_answer": "",
+          "selected_candidates": []
+        },
+        "normalization": {
+          "before": "",
+          "after": "",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": ""
+      },
+      "search_latency_ms": 1.1600000000000001,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
+      "em": 0,
+      "f1": 0
+    }
+  ]
+}

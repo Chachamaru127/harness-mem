@@ -316,6 +316,41 @@ function evaluateEmbeddingGate(profile: EmbeddingProfile, runtime: EmbeddingRunt
   };
 }
 
+async function ensureEmbeddingReady(core: HarnessMemCore, label: string): Promise<void> {
+  const deadline = Date.now() + 60_000;
+  let lastDetails = "embedding readiness timeout";
+
+  while (Date.now() < deadline) {
+    const readiness = core.readiness();
+    const item = toRecord(readiness.items[0]);
+    if (item.ready === true) {
+      return;
+    }
+
+    lastDetails = String(
+      item.embedding_provider_details ||
+      item.embedding_readiness_state ||
+      item.status ||
+      lastDetails
+    );
+
+    if (item.embedding_readiness_state === "failed") {
+      throw new Error(`[${label}] embedding readiness failed: ${lastDetails}`);
+    }
+
+    try {
+      await core.primeEmbedding("__locomo_bench_ready__", "passage");
+      await core.primeEmbedding("__locomo_bench_ready__", "query");
+    } catch {
+      // best effort; poll again until ready or timeout
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`[${label}] embedding readiness timeout: ${lastDetails}`);
+}
+
 async function readCoreCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
   const target = core as unknown as {
     getEmbeddingRuntimeInfo?: () => unknown;
@@ -422,10 +457,12 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
       const reason = embeddingGate.failures.join("; ");
       throw new Error(`[locomo-benchmark] ONNX gate failed: ${reason}`);
     }
+    await ensureEmbeddingReady(core, "locomo-benchmark");
     const cacheBefore = await readCoreCacheStats(core);
     for (const sample of samples) {
+      const sampleProject = `${project}-${sample.sample_id}`;
       const adapter = new HarnessMemLocomoAdapter(core, {
-        project,
+        project: sampleProject,
         session_id: `locomo-benchmark-${sample.sample_id}`,
       });
       if (embeddingProfile.primeEnabled) {

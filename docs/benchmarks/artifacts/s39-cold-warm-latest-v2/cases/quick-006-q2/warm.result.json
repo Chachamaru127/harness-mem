@@ -1,0 +1,177 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:23:33.156Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": true
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-Gwy1Ch/quick-006-q2.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 1,
+      "f1": 1
+    },
+    "by_category": {
+      "cat-2": {
+        "count": 1,
+        "em": 1,
+        "f1": 1
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 1,
+      "f1": 1
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 6.290000000000001,
+      "max": 6.290000000000001,
+      "avg": 6.290000000000001,
+      "p50": 6.290000000000001,
+      "p95": 6.290000000000001
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 11,
+        "capacity": 128,
+        "hits": 16,
+        "misses": 11,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 9,
+        "capacity": 0,
+        "hits": 16,
+        "misses": 9,
+        "evictions": 0,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 69,
+      "output_total": 366,
+      "total_total": 435,
+      "input_avg": 69,
+      "output_avg": 366,
+      "total_avg": 435
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-006",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "Which vegetable is doing really well in my garden?",
+      "answer": "tomatoes",
+      "prediction": "Tomatoes",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-item-slot -> normalize -> final:factual-item-slot",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-3",
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-1",
+        "obs_locomo-locomo-benchmark-quick-006-quick-006-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which vegetable is doing really well in my garden?",
+          "vegetable doing really well garden",
+          "vegetable doing really key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-item-slot",
+          "raw_answer": "Tomatoes",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-3",
+              "sentence": "The tomatoes are doing really well.",
+              "score": 0.978333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-1",
+              "sentence": "I started a vegetable garden on my balcony three months ago.",
+              "score": 0.945,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-3",
+              "sentence": "Tomatoes, basil, and peppers mostly.",
+              "score": 0.698333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-006-quick-006-2",
+              "sentence": "That's a great hobby!",
+              "score": 0.295,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Tomatoes",
+          "after": "Tomatoes",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Tomatoes"
+      },
+      "search_latency_ms": 6.290000000000001,
+      "token_estimate_input_tokens": 69,
+      "token_estimate_output_tokens": 366,
+      "token_estimate_total_tokens": 435,
+      "em": 1,
+      "f1": 1
+    }
+  ]
+}

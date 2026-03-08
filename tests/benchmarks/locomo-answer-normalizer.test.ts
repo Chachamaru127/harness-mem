@@ -56,6 +56,119 @@ describe("LOCOMO answer normalizer", () => {
     expect((normalized.multi_hop_reasoning?.facts || []).length).toBeGreaterThan(0);
   });
 
+  test("S39-007: factual normalization expands exact name from evidence without inventing new text", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "What is the name of my online bakery?",
+      kind: "factual",
+      rawAnswer: "Sweet",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "I launched my online bakery called SweetByte last summer.",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("SweetByte");
+    expect(normalized.notes).toContain("factual:evidence_bounded_span");
+  });
+
+  test("S39-007: factual normalization extracts exact item span instead of sentence lead", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "What is the best-selling item at my bakery?",
+      kind: "factual",
+      rawAnswer: "Our best seller is the almond croissant.",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "Our best seller is the almond croissant.",
+          score: 0.95,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("almond croissant");
+    expect(normalized.notes).toContain("factual:evidence_bounded_span");
+  });
+
+  test("S39-007: factual normalization does not hallucinate missing evidence", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "What is the name of my online bakery?",
+      kind: "factual",
+      rawAnswer: "Sweet",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "I launched my online bakery last summer.",
+          score: 0.8,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("Sweet");
+    expect(normalized.normalized).not.toBe("SweetByte");
+  });
+
+  test("S40-006: factual normalization extracts Japanese current value from evidence", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "今、使っている CI は何ですか？",
+      kind: "factual",
+      rawAnswer: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("GitHub Actions");
+    expect(normalized.notes).toContain("factual:evidence_bounded_span");
+  });
+
+  test("S40-006: factual normalization extracts Japanese reason clause without filler", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "CircleCI から移行した理由は何ですか？",
+      kind: "factual",
+      rawAnswer: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("CircleCI の parallel build costs が上がり続けたから");
+  });
+
+  test("S40-006: temporal normalization extracts ordinal item from Japanese sequence sentence", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "最後に出た機能は何ですか？",
+      kind: "temporal",
+      rawAnswer: "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
+          score: 0.95,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+
+    expect(normalized.normalized).toBe("SAML");
+    expect(normalized.notes).toContain("temporal:ordinal_item_extract");
+  });
+
   // SD-012: yes_no — emphatic "not only/just/merely" should NOT trigger false negatives
   test("SD-012: emphatic 'not only' constructions return Yes, not No", () => {
     const notOnly = normalizeLocomoAnswer({
@@ -91,5 +204,51 @@ describe("LOCOMO answer normalizer", () => {
     });
     expect(trueNegation.normalized).toBe("No");
   });
-});
 
+  test("S43: Japanese yes/no normalization returns No for current-value mismatch and exclusive list mismatch", () => {
+    const currentMismatch = normalizeLocomoAnswer({
+      question: "今も CircleCI を使っていますか？",
+      kind: "yes_no",
+      rawAnswer: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+      evidence: [
+        {
+          id: "obs-1",
+          sentence: "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(currentMismatch.normalized).toBe("No");
+
+    const exclusiveMismatch = normalizeLocomoAnswer({
+      question: "今の推奨 setup は codex だけですか？",
+      kind: "yes_no",
+      rawAnswer: "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+      evidence: [
+        {
+          id: "obs-2",
+          sentence: "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(exclusiveMismatch.normalized).toBe("No");
+
+    const timeMismatch = normalizeLocomoAnswer({
+      question: "定期メンテナンスは今も 01:00 JST 開始ですか？",
+      kind: "yes_no",
+      rawAnswer: "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
+      evidence: [
+        {
+          id: "obs-3",
+          sentence: "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
+          score: 0.9,
+          created_at: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+    });
+    expect(timeMismatch.normalized).toBe("No");
+  });
+});

@@ -300,6 +300,37 @@ const SYNONYM_MAP: Record<string, string[]> = {
   プロジェクト: ["project", "task", "initiative"],
 };
 
+const SEARCH_QUERY_ALIAS_RULES: Array<{ pattern: RegExp; expansions: string[] }> = [
+  {
+    pattern: /(まさおベンチ|masao\s*bench)/iu,
+    expansions: ["locomo benchmark", "Backboard-Locomo-Benchmark", "locomo"],
+  },
+  {
+    pattern: /(日本語\s*(?:release|claim)\s*gate|ja(?:panese)?\s*(?:release|claim)\s*gate)/iu,
+    expansions: ["ja-release-pack", "japanese release gate", "claim gate"],
+  },
+  {
+    pattern: /(最終\s*go(?:時)?|final\s*go|run-?ci\s*final\s*go)/iu,
+    expansions: ["run-ci final GO", "final GO"],
+  },
+  {
+    pattern: /\boverall\s*f1\b/i,
+    expansions: ["overall F1 mean"],
+  },
+  {
+    pattern: /\bfreshness(?:@k)?\b/i,
+    expansions: ["Freshness@K", "knowledge update freshness"],
+  },
+  {
+    pattern: /\btoken\s*avg\b/i,
+    expansions: ["average tokens", "avg tokens"],
+  },
+  {
+    pattern: /\bp95\b/i,
+    expansions: ["latency p95", "search p95"],
+  },
+];
+
 /**
  * CJK文字シーケンスからバイグラムトークンを生成する。
  * unicode61 tokenizer がスペース区切りのみに依存するため、
@@ -333,8 +364,38 @@ export function tokenize(text: string): string[] {
   return expandCjkBigrams(base).slice(0, 4096);
 }
 
+function dedupePreserveOrder(tokens: string[]): string[] {
+  const seen = new Set<string>();
+  const deduped: string[] = [];
+  for (const token of tokens) {
+    if (!seen.has(token)) {
+      seen.add(token);
+      deduped.push(token);
+    }
+  }
+  return deduped;
+}
+
+export function expandSearchQuery(query: string): string {
+  const trimmed = query.trim();
+  if (!trimmed) return trimmed;
+  const additions = new Set<string>();
+  for (const rule of SEARCH_QUERY_ALIAS_RULES) {
+    if (!rule.pattern.test(trimmed)) continue;
+    for (const expansion of rule.expansions) {
+      additions.add(expansion);
+    }
+  }
+  if (additions.size === 0) return trimmed;
+  return `${trimmed} ${[...additions].join(" ")}`.trim();
+}
+
+export function buildSearchTokens(query: string): string[] {
+  return dedupePreserveOrder(tokenize(expandSearchQuery(query)));
+}
+
 export function buildFtsQuery(query: string): string {
-  const tokens = tokenize(query);
+  const tokens = buildSearchTokens(query);
   if (tokens.length === 0) {
     return '""';
   }
@@ -496,6 +557,8 @@ export interface SearchCandidate {
   tag_boost: number;
   importance: number;
   graph: number;
+  fact_boost?: number;
+  precision_boost?: number;
   final: number;
   rerank: number;
   created_at: string;
@@ -812,6 +875,7 @@ export function getConfig(): Config {
   const searchRanking = searchRankingRaw ? searchRankingRaw : DEFAULT_SEARCH_RANKING;
   const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
   const embeddingProvider = embeddingProviderRaw || "fallback";
+  const embeddingModel = (process.env.HARNESS_MEM_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5";
   const openaiApiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
   const openaiEmbedModel = (process.env.HARNESS_MEM_OPENAI_EMBED_MODEL || "text-embedding-3-small").trim();
   const ollamaBaseUrl = (process.env.HARNESS_MEM_OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim();
@@ -824,6 +888,7 @@ export function getConfig(): Config {
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,
     vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 4096),
     embeddingProvider,
+    embeddingModel,
     openaiApiKey,
     openaiEmbedModel,
     ollamaBaseUrl,

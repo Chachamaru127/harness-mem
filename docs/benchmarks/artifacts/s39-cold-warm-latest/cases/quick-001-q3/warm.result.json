@@ -1,0 +1,178 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:22:34.117Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": true
+  },
+  "dataset": {
+    "path": "/var/folders/l2/frx6707x2v32_nfjz0n1nkmw0000gn/T/s39-cold-warm-SXkPXK/quick-001-q3.dataset.json",
+    "sample_count": 1,
+    "qa_count": 1
+  },
+  "metrics": {
+    "overall": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "by_category": {
+      "cat-1": {
+        "count": 1,
+        "em": 0,
+        "f1": 0
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 1,
+      "em": 0,
+      "f1": 0
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 1,
+      "min": 4.529999999999999,
+      "max": 4.529999999999999,
+      "avg": 4.529999999999999,
+      "p50": 4.529999999999999,
+      "p95": 4.529999999999999
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 9,
+        "capacity": 128,
+        "hits": 12,
+        "misses": 9,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 7,
+        "capacity": 0,
+        "hits": 12,
+        "misses": 7,
+        "evictions": 0,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 1,
+      "input_total": 54,
+      "output_total": 246,
+      "total_total": 300,
+      "input_avg": 54,
+      "output_avg": 246,
+      "total_avg": 300
+    }
+  },
+  "records": [
+    {
+      "sample_id": "quick-001",
+      "question_id": "q3",
+      "category": "cat-1",
+      "question": "Where am I studying?",
+      "answer": "MIT",
+      "prediction": "January",
+      "question_kind": "location",
+      "answer_strategy": "extract:location-candidates -> normalize -> final:location-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-2",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-1",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-3",
+        "obs_locomo-locomo-benchmark-quick-001-quick-001-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "where am i studying?",
+          "am studying",
+          "am studying evidence summary"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:location-candidates",
+          "raw_answer": "January",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-2",
+              "sentence": "Python is a versatile language.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-1",
+              "sentence": "I started learning Python in January 2024.",
+              "score": 0.575,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-3",
+              "sentence": "Yes, I'm using it for my data science project at MIT.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-quick-001-quick-001-4",
+              "sentence": "MIT has excellent data science programs.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "January",
+          "after": "January",
+          "notes": [
+            "location:entity_extract"
+          ],
+          "reference_time": "2026-01-01T00:00:01.000Z"
+        },
+        "final_short_answer": "January"
+      },
+      "search_latency_ms": 4.529999999999999,
+      "token_estimate_input_tokens": 54,
+      "token_estimate_output_tokens": 246,
+      "token_estimate_total_tokens": 300,
+      "em": 0,
+      "f1": 0
+    }
+  ]
+}

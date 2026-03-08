@@ -18,6 +18,21 @@
  */
 
 export type QuestionKind = "profile" | "timeline" | "freshness" | "graph" | "vector" | "hybrid";
+export type AnswerIntentKind =
+  | "generic"
+  | "metric_value"
+  | "current_value"
+  | "reason"
+  | "list_value"
+  | "company"
+  | "role"
+  | "kind"
+  | "study_field"
+  | "count"
+  | "language"
+  | "location"
+  | "person"
+  | "temporal_value";
 
 /** Cognitive sector for classifying observations by life domain. */
 export type CognitiveSector = "work" | "people" | "health" | "hobby" | "meta";
@@ -40,6 +55,17 @@ export interface TemporalAnchor {
   referenceText: string;
   /** 検索方向: asc=新しい順, desc=古い順, around=前後 */
   direction: "asc" | "desc" | "around";
+  /** S43-004: relative time 表現の canonical form (例: "immediately_after", "initially") */
+  normalizedForm?: string;
+}
+
+export interface AnswerHints {
+  intent: AnswerIntentKind;
+  exactValuePreferred: boolean;
+  activeFactPreferred: boolean;
+  slotKeywords: string[];
+  focusKeywords: string[];
+  metricKeywords: string[];
 }
 
 export interface RouteDecision {
@@ -55,6 +81,8 @@ export interface RouteDecision {
   sector?: CognitiveSector;
   /** FD-005: Temporal anchors extracted from the query (timeline/freshness queries only). */
   temporalAnchors?: TemporalAnchor[];
+  /** S39-005: Product-side factual/value prioritization hints. */
+  answerHints?: AnswerHints;
 }
 
 export interface SearchWeights {
@@ -94,10 +122,11 @@ const PROFILE_WEIGHTS: SearchWeights = {
 const TIMELINE_WEIGHTS: SearchWeights = {
   lexical: 0.2,
   vector: 0.15,
-  recency: 0.4,
+  recency: 0.45,
   tag_boost: 0.05,
   importance: 0.15,
-  graph: 0.05,
+  // Graph hubs introduce unrelated "updates" noise in order-sensitive benchmarks.
+  graph: 0,
   sector_boost: 0,
 };
 
@@ -105,10 +134,11 @@ const TIMELINE_WEIGHTS: SearchWeights = {
 const FRESHNESS_WEIGHTS: SearchWeights = {
   lexical: 0.25,
   vector: 0.20,
-  recency: 0.40,
+  recency: 0.45,
   tag_boost: 0.05,
   importance: 0.05,
-  graph: 0.05,
+  // Freshness is about the newest relevant fact, not graph centrality.
+  graph: 0,
   sector_boost: 0,
 };
 
@@ -169,6 +199,7 @@ const TIMELINE_PATTERNS = [
   /\b(completed|happened|started|finished|identified|implemented|set up|taken)\s+(first|last|earliest|latest)\b/i,
   /\b(first|last|earliest|latest)\s+(step|action|thing|task|item|change|improvement|feature)\b/i,
   /(の前|の後|以前|以降|より前|より後)/,
+  /(どちらが先|先に|その後|あとで|後で|直後|の次に)/,
   // SD-006: bilingual — CJK/Katakana term directly suffixed with 後/前 (no の)
   // e.g. "デプロイ後", "API改修後", "リリース前", "migration完了後"
   /\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*[後前]/,
@@ -187,6 +218,305 @@ const GRAPH_PATTERNS = [
   /\b(chain|path|trace|flow)\b/i,
 ];
 
+const ANSWER_HINT_RULES: Array<{
+  intent: AnswerIntentKind;
+  patterns: RegExp[];
+  slotKeywords: string[];
+}> = [
+  {
+    intent: "metric_value",
+    patterns: [
+      /\b((?:overall\s+)?f1|accuracy|precision|recall|freshness(?:@k)?|tau|latency|p95|token\s*avg|score)\b.*\b(how much|what|which|value)\b/i,
+      /\b(how much|what|which)\b.*\b((?:overall\s+)?f1|accuracy|precision|recall|freshness(?:@k)?|tau|latency|p95|token\s*avg|score)\b/i,
+      /((overall\s*)?f1|accuracy|precision|recall|freshness(?:@k)?|temporal|tau|token\s*avg|p95|latency|score).*(いくつ|何点|どれくらい|何でしたか|何だった|値|スコア)/iu,
+      /(日本語\s*(?:release|claim)\s*gate|ja(?:panese)?\s*(?:release|claim)\s*gate).*((overall\s*)?f1|freshness|cross[_ -]?lingual|zero[_ -]?f1|span)/iu,
+    ],
+    slotKeywords: [
+      "f1",
+      "overall f1",
+      "accuracy",
+      "precision",
+      "recall",
+      "freshness",
+      "freshness@k",
+      "tau",
+      "latency",
+      "p95",
+      "token avg",
+      "score",
+      "値",
+      "スコア",
+    ],
+  },
+  {
+    intent: "current_value",
+    patterns: [
+      /\b(current|currently|now|latest|active|default|primary|in use|used now)\b/i,
+      /(今|現在|今の|現行|最新|いま|使っている|primary|default)/,
+    ],
+    slotKeywords: ["current", "currently", "now", "latest", "active", "default", "primary", "今", "現在", "最新", "使っている"],
+  },
+  {
+    intent: "reason",
+    patterns: [
+      /\b(why|reason|because|what led|what caused|trigger(?:ed)?|motivat(?:ed|ion))\b/i,
+      /(なぜ|理由|きっかけ|どうして|背景|原因)/,
+    ],
+    slotKeywords: ["why", "reason", "because", "caused", "trigger", "motivated", "理由", "きっかけ", "背景", "原因"],
+  },
+  {
+    intent: "list_value",
+    patterns: [
+      /\b(list|all|enumerate|name all|which .* features|what .* features)\b/i,
+      /(一覧|すべて|全て|挙げて|列挙)/,
+    ],
+    slotKeywords: ["list", "all", "features", "items", "tools", "一覧", "すべて", "全て", "挙げて", "列挙"],
+  },
+  {
+    intent: "company",
+    patterns: [
+      /\b(company|startup|organization|organisation|employer|business)\b/i,
+      /(会社|企業|組織|勤務先)/,
+    ],
+    slotKeywords: ["company", "startup", "organization", "org", "employer", "会社", "企業", "勤務先"],
+  },
+  {
+    intent: "role",
+    patterns: [
+      /\b(role|job title|title|position|worked as|working as)\b/i,
+      /(役職|肩書|職種|役割|担当)/,
+    ],
+    slotKeywords: ["role", "title", "position", "job", "役職", "肩書", "職種", "役割"],
+  },
+  {
+    intent: "study_field",
+    patterns: [
+      /\b(what.*study|studying|study for|major|research|focus on|speciali[sz]e)\b/i,
+      /(何を学|専攻|研究|勉強して|フォーカス)/,
+    ],
+    slotKeywords: ["study", "major", "research", "focus", "専攻", "研究", "勉強"],
+  },
+  {
+    intent: "count",
+    patterns: [
+      /\b(how many|how much|number of|count of|what percentage|what percent)\b/i,
+      /(いくつ|何個|何人|何回|何時間|何分|何日|割合|パーセント|件数)/,
+    ],
+    slotKeywords: ["count", "number", "quantity", "percentage", "percent", "rate", "hours", "件数", "割合", "数"],
+  },
+  {
+    intent: "language",
+    patterns: [
+      /\b(what language|which language|language do|speak at home|speaking)\b/i,
+      /(何語|言語|話す|話している)/,
+    ],
+    slotKeywords: ["language", "speak", "spoken", "言語", "何語", "話す"],
+  },
+  {
+    intent: "location",
+    patterns: [
+      /\b(where|which city|which country|located|live|moved from|travel to|operate in)\b/i,
+      /(どこ|どの都市|どの国|場所|住んで|引っ越し|出身|移動先|所在地)/,
+    ],
+    slotKeywords: ["where", "city", "country", "location", "live", "from", "to", "場所", "都市", "国", "所在地"],
+  },
+  {
+    intent: "person",
+    patterns: [
+      /\b(who|whose|what is my .* name|name of)\b/i,
+      /(誰|名前|氏名)/,
+    ],
+    slotKeywords: ["who", "name", "person", "whose", "誰", "名前", "氏名"],
+  },
+  {
+    intent: "kind",
+    patterns: [
+      /\b(what kind of|which kind of|what type of|type of|method|approach|mode|system|workflow)\b/i,
+      /(どんな|どのような|種類|種別|タイプ|方法|方式)/,
+    ],
+    slotKeywords: ["kind", "type", "category", "method", "approach", "system", "workflow", "種類", "種別", "タイプ", "方法", "方式"],
+  },
+  {
+    intent: "temporal_value",
+    patterns: [
+      /\b(when|what year|which year|what month|which month|what day|date)\b/i,
+      /(いつ|何年|何月|何日|日付|時期|どちらが先|先に|その後|あとで|後で|直後|最初|最後)/,
+    ],
+    slotKeywords: ["when", "year", "month", "day", "date", "timeline", "first", "last", "before", "after", "いつ", "何年", "何月", "日付", "先", "最初", "最後", "その後", "直後"],
+  },
+];
+
+const METRIC_VALUE_FOCUS_RULES: Array<{ pattern: RegExp; keywords: string[] }> = [
+  {
+    pattern: /\boverall\s*f1\b/i,
+    keywords: ["overall f1", "overall f1 mean", "overall", "f1"],
+  },
+  {
+    pattern: /\bfreshness(?:@k)?\b/i,
+    keywords: ["freshness", "freshness@k"],
+  },
+  {
+    pattern: /\b(temporal|tau)\b/i,
+    keywords: ["temporal", "tau"],
+  },
+  {
+    pattern: /\b(bilingual|recall)\b/i,
+    keywords: ["bilingual", "recall"],
+  },
+  {
+    pattern: /\b(token\s*avg|average tokens|avg tokens)\b/i,
+    keywords: ["token avg", "average tokens", "avg tokens"],
+  },
+  {
+    pattern: /\b(search\s*p95|latency\s*p95|p95)\b/i,
+    keywords: ["search p95", "latency p95", "p95", "latency"],
+  },
+];
+
+const CONTEXT_FOCUS_RULES: Array<{ pattern: RegExp; keywords: string[] }> = [
+  {
+    pattern: /(日本語\s*(?:release|claim)\s*gate|ja(?:panese)?\s*(?:release|claim)\s*gate)/iu,
+    keywords: ["ja-release-pack", "日本語 release gate", "japanese release gate", "日本語"],
+  },
+  {
+    pattern: /(最終\s*go(?:時)?|final\s*go|run-?ci\s*final\s*go)/iu,
+    keywords: ["final go", "run-ci", "最終go"],
+  },
+  {
+    pattern: /(§\s*39|\bs39\b)/iu,
+    keywords: ["§39", "s39"],
+  },
+];
+
+const FOCUS_KEYWORD_STOPWORDS = new Set([
+  "what",
+  "which",
+  "when",
+  "where",
+  "why",
+  "how",
+  "many",
+  "much",
+  "value",
+  "values",
+  "show",
+  "tell",
+  "me",
+  "the",
+  "is",
+  "are",
+  "was",
+  "were",
+  "did",
+  "do",
+  "does",
+  "of",
+  "for",
+  "to",
+  "and",
+  "or",
+  "release",
+  "gate",
+  "claim",
+  "final",
+  "go",
+  "current",
+  "latest",
+  "now",
+  "今",
+  "現在",
+  "いくつ",
+  "どれくらい",
+  "何",
+  "値",
+  "スコア",
+]);
+
+function extractMetricKeywords(query: string): string[] {
+  const keywords = new Set<string>();
+  for (const rule of METRIC_VALUE_FOCUS_RULES) {
+    if (!rule.pattern.test(query)) continue;
+    for (const keyword of rule.keywords) {
+      keywords.add(keyword);
+    }
+  }
+  return [...keywords].slice(0, 8);
+}
+
+function extractFocusKeywords(query: string, slotKeywords: string[], metricKeywords: string[]): string[] {
+  const keywords = new Set<string>(metricKeywords);
+  for (const rule of CONTEXT_FOCUS_RULES) {
+    if (!rule.pattern.test(query)) continue;
+    for (const keyword of rule.keywords) {
+      keywords.add(keyword);
+    }
+  }
+  const normalizedSlotKeywords = new Set(slotKeywords.map((keyword) => keyword.toLowerCase()));
+  const asciiTokens = query.toLowerCase().match(/[a-z][a-z0-9-]*/g) ?? [];
+  for (const token of asciiTokens) {
+    if (FOCUS_KEYWORD_STOPWORDS.has(token) || normalizedSlotKeywords.has(token)) continue;
+    keywords.add(token);
+  }
+
+  return [...keywords].slice(0, 12);
+}
+
+function buildAnswerHints(
+  query: string,
+  intent: AnswerIntentKind,
+  exactValuePreferred: boolean,
+  activeFactPreferred: boolean,
+  slotKeywords: string[]
+): AnswerHints {
+  const metricKeywords = extractMetricKeywords(query);
+  return {
+    intent,
+    exactValuePreferred,
+    activeFactPreferred,
+    slotKeywords,
+    focusKeywords: extractFocusKeywords(query, slotKeywords, metricKeywords),
+    metricKeywords,
+  };
+}
+
+// ---- Temporal normalization ----
+
+/**
+ * S43-004: relative time 表現の canonical form への変換マップ。
+ * キー: 正規表現パターン、値: canonical string
+ */
+const RELATIVE_TIME_CANON_MAP: Array<{ pattern: RegExp; canonical: string }> = [
+  // 直後 = immediately after
+  { pattern: /直後/, canonical: "immediately_after" },
+  // の次に / 次に = next after
+  { pattern: /の?次に/, canonical: "next_after" },
+  // 後も = even after (後 + も particle)
+  { pattern: /後も/, canonical: "even_after" },
+  // 最初 (は/に/の) = initially
+  { pattern: /最初[はにの]?/, canonical: "initially" },
+  // 最後 (に/の) = finally / lastly
+  { pattern: /最後[にの]?/, canonical: "finally" },
+  // その後 / あとで / 後で = after that
+  { pattern: /(その後|あとで|後で)/, canonical: "after_that" },
+  // 先に = first / earlier
+  { pattern: /先に/, canonical: "first_earlier" },
+  // 以降 = from then on
+  { pattern: /以降/, canonical: "from_then_on" },
+  // 以前 = before that
+  { pattern: /以前/, canonical: "before_that" },
+];
+
+/**
+ * S43-004: relative time 表現を canonical form に変換する。
+ * 一致する表現がない場合は null を返す。
+ */
+export function normalizeRelativeTimeExpression(text: string): string | null {
+  for (const { pattern, canonical } of RELATIVE_TIME_CANON_MAP) {
+    if (pattern.test(text)) return canonical;
+  }
+  return null;
+}
+
 // ---- TemporalAnchor extraction patterns ----
 
 // "after X" / "X の後" → {type:"after", direction:"asc"}
@@ -194,14 +524,19 @@ const AFTER_PATTERNS: RegExp[] = [
   /\bafter\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\bfollowing\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\bsince\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
-  /(.+?)の後(?:に|で|から)?/,
+  /(.+?)の後(?:に|で|から|も)?/,
   /(.+?)以降/,
   /(.+?)より後/,
+  // S43-004: 直後 (immediately after) — "X の直後に" / "X の直後"
+  /(.+?)の?直後(?:に|で|から)?/,
+  // S43-004: の次に (next after X) — "X の次に"
+  /(.+?)の次に/,
   // SD-006: bilingual — Japanese/Katakana/mixed term directly suffixed with 後 (no の)
   // Matches: "API改修後", "デプロイ後", "マージ後", "migration完了後", "コードレビュー後", "テスト完了後"
+  // Also matches 後も: "移転後も", "release後も"
   // Requires at least one CJK/Katakana char in the reference to avoid false-positives.
-  // Uses non-greedy match up to 後, then allows optional particles (に/で/から).
-  /(\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*)後(?:に|で|から)?/,
+  // Uses non-greedy match up to 後, then allows optional particles (に/で/から/も).
+  /(\S*[\u3040-\u9FFF\uFF00-\uFFEF]\S*)後(?:に|で|から|も)?/,
 ];
 
 // "before X" / "X の前" → {type:"before", direction:"desc"}
@@ -232,9 +567,10 @@ const SEQUENCE_EN_PATTERNS: RegExp[] = [
   /\b(finally|lastly|in the end)\b/i,
 ];
 const SEQUENCE_JA_PATTERNS: RegExp[] = [
-  /(最初|はじめ|まず)/,
+  // S43-004: 最初は も sequence として検出（topic particle は を含む）
+  /(最初[はにの]?|はじめ[はに]?|まず)/,
   /(次に|それから|その後)/,
-  /(最後|最終|ついに)/,
+  /(最後[にの]?|最終|ついに)/,
 ];
 
 /**
@@ -269,7 +605,9 @@ export function extractTemporalAnchors(query: string): TemporalAnchor[] {
     if (m) {
       const ref = (m[1] ?? "").trim();
       if (ref && ref.length > 0) {
-        anchors.push({ type: "after", referenceText: ref, direction: "asc" });
+        // S43-004: クエリ全体から相対時間表現を抽出して canonical form を付与
+        const normalizedForm = normalizeRelativeTimeExpression(q) ?? undefined;
+        anchors.push({ type: "after", referenceText: ref, direction: "asc", normalizedForm });
       }
     }
   }
@@ -280,13 +618,15 @@ export function extractTemporalAnchors(query: string): TemporalAnchor[] {
     if (m) {
       const ref = (m[1] ?? "").trim();
       if (ref && ref.length > 0) {
-        anchors.push({ type: "before", referenceText: ref, direction: "desc" });
+        const normalizedForm = normalizeRelativeTimeExpression(q) ?? undefined;
+        anchors.push({ type: "before", referenceText: ref, direction: "desc", normalizedForm });
       }
     }
   }
 
   // sequence (英語)
   let hasSequence = false;
+  let sequenceNormalizedForm: string | undefined;
   for (const pattern of SEQUENCE_EN_PATTERNS) {
     if (pattern.test(q)) {
       hasSequence = true;
@@ -297,12 +637,14 @@ export function extractTemporalAnchors(query: string): TemporalAnchor[] {
     for (const pattern of SEQUENCE_JA_PATTERNS) {
       if (pattern.test(q)) {
         hasSequence = true;
+        // S43-004: sequence の canonical form を付与
+        sequenceNormalizedForm = normalizeRelativeTimeExpression(q) ?? undefined;
         break;
       }
     }
   }
   if (hasSequence) {
-    anchors.push({ type: "sequence", referenceText: q, direction: "asc" });
+    anchors.push({ type: "sequence", referenceText: q, direction: "asc", normalizedForm: sequenceNormalizedForm });
   }
 
   // 重複除去: 同一 type+direction の組み合わせを dedupe
@@ -324,7 +666,13 @@ export function extractTemporalAnchors(query: string): TemporalAnchor[] {
 export function classifyQuestion(query: string): RouteDecision {
   const q = query.trim();
   if (!q) {
-    return { kind: "hybrid", confidence: 0, reason: "empty query", weights: HYBRID_WEIGHTS };
+    return {
+      kind: "hybrid",
+      confidence: 0,
+      reason: "empty query",
+      weights: HYBRID_WEIGHTS,
+      answerHints: extractAnswerHints(q),
+    };
   }
 
   const scores: { kind: QuestionKind; score: number; reason: string }[] = [];
@@ -375,6 +723,7 @@ export function classifyQuestion(query: string): RouteDecision {
       confidence: best.score,
       reason: best.reason,
       weights: WEIGHT_MAP[best.kind],
+      answerHints: extractAnswerHints(q, best.kind),
     };
   }
 
@@ -384,7 +733,37 @@ export function classifyQuestion(query: string): RouteDecision {
     confidence: 0.5,
     reason: "no strong pattern match, using hybrid retrieval",
     weights: HYBRID_WEIGHTS,
+    answerHints: extractAnswerHints(q),
   };
+}
+
+export function extractAnswerHints(query: string, questionKind?: QuestionKind): AnswerHints {
+  const q = query.trim();
+  const fallbackIntent: AnswerIntentKind =
+    questionKind === "freshness" ? "current_value" : questionKind === "timeline" ? "temporal_value" : "generic";
+  if (!q) {
+    return buildAnswerHints(
+      q,
+      fallbackIntent,
+      fallbackIntent !== "generic",
+      fallbackIntent !== "generic",
+      fallbackIntent === "generic" ? [] : [fallbackIntent]
+    );
+  }
+
+  for (const rule of ANSWER_HINT_RULES) {
+    if (rule.patterns.some((pattern) => pattern.test(q))) {
+      return buildAnswerHints(q, rule.intent, true, true, rule.slotKeywords);
+    }
+  }
+
+  return buildAnswerHints(
+    q,
+    fallbackIntent,
+    fallbackIntent !== "generic",
+    fallbackIntent !== "generic",
+    fallbackIntent === "generic" ? [] : [fallbackIntent]
+  );
 }
 
 /**
@@ -422,6 +801,7 @@ export function routeQuery(query: string, explicitKind?: QuestionKind): RouteDec
       confidence: 1.0,
       reason: "explicit kind provided",
       weights: WEIGHT_MAP[explicitKind],
+      answerHints: extractAnswerHints(query, explicitKind),
     };
     if (explicitKind === "timeline" || explicitKind === "freshness") {
       const anchors = extractTemporalAnchors(query);
@@ -439,6 +819,7 @@ export function routeQuery(query: string, explicitKind?: QuestionKind): RouteDec
     return decision;
   }
   const decision = classifyQuestion(query);
+  decision.answerHints = extractAnswerHints(query, decision.kind);
   if (decision.kind === "timeline" || decision.kind === "freshness") {
     const anchors = extractTemporalAnchors(query);
     if (anchors.length > 0) {

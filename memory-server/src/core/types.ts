@@ -53,6 +53,8 @@ export interface SearchRequest {
   user_id?: string;
   /** TEAM-005: member ロール適用 — アクセス制御用チームID */
   team_id?: string;
+  /** S43-SEARCH: ソート順 — relevance(デフォルト) / date_desc / date_asc */
+  sort_by?: "relevance" | "date_desc" | "date_asc";
 }
 
 export interface FeedRequest {
@@ -228,6 +230,7 @@ export interface Config {
   bindPort: number;
   vectorDimension: number;
   embeddingProvider?: string;
+  embeddingModel?: string;
   openaiApiKey?: string;
   openaiEmbedModel?: string;
   ollamaBaseUrl?: string;

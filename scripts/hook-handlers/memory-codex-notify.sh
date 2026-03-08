@@ -56,6 +56,36 @@ extract_latest_codex_user_prompt() {
     | tail -n 1
 }
 
+extract_latest_codex_assistant_response() {
+  local thread_id="$1"
+  [ -n "$thread_id" ] || return 0
+
+  local rollout_file
+  rollout_file="$(lookup_codex_rollout_file "$thread_id")"
+  [ -n "$rollout_file" ] && [ -f "$rollout_file" ] || return 0
+
+  jq -r '
+    if .type == "event_msg" and ((.payload.type // "") == "agent_message") then
+      (.payload.message // .payload.text // "")
+    elif .type == "response_item"
+      and (.payload.type // "") == "message"
+      and (.payload.role // "") == "assistant" then
+      (.payload.content // [])
+      | map(
+          select(((.type // "") == "output_text") or ((.type // "") == "text"))
+          | (.text // "")
+        )
+      | join("\n")
+    elif .type == "event_msg" and ((.payload.type // "") == "task_complete") then
+      (.payload.last_agent_message // "")
+    else
+      empty
+    end
+  ' "$rollout_file" 2>/dev/null \
+    | awk 'NF' \
+    | tail -n 1
+}
+
 PROJECT_ROOT=""
 PROJECT_NAME=""
 if command -v resolve_project_context >/dev/null 2>&1; then
@@ -83,6 +113,10 @@ if [ -z "$USER_PROMPT" ]; then
   USER_PROMPT="$(extract_latest_codex_user_prompt "$SESSION_ID")"
 fi
 
+if [ -z "$LAST_ASSISTANT" ]; then
+  LAST_ASSISTANT="$(extract_latest_codex_assistant_response "$SESSION_ID")"
+fi
+
 if [ -n "$LAST_ASSISTANT" ]; then
   # Keep payload size bounded for fast, non-blocking hook execution.
   LAST_ASSISTANT="$(printf '%s' "$LAST_ASSISTANT" | tr '\n' ' ' | cut -c 1-4000)"
@@ -101,8 +135,11 @@ EVENT_PAYLOAD="$(jq -nc \
   --arg event_type "checkpoint" \
   --arg turn_id "$TURN_ID" \
   --arg notify_type "$NOTIFY_TYPE" \
+  --arg title "assistant_response" \
+  --arg content "$LAST_ASSISTANT" \
+  --arg prompt "$USER_PROMPT" \
   --arg last_assistant_message "$LAST_ASSISTANT" \
-  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{turn_id:$turn_id,notify_type:$notify_type,last_assistant_message:$last_assistant_message},tags:["codex_hook","after_agent","notify"],privacy_tags:[]}}' 2>/dev/null)"
+  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{turn_id:$turn_id,notify_type:$notify_type,title:$title,content:$content,last_assistant_message:$last_assistant_message,prompt:$prompt,role:"assistant",source:"codex_notify"},tags:["codex_hook","after_agent","notify"],privacy_tags:[]}}' 2>/dev/null)"
 
 if [ -n "$EVENT_PAYLOAD" ]; then
   printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true

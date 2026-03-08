@@ -1,0 +1,1116 @@
+[
+  {
+    "sample_id": "ja-rel-001",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "ベータ版のビルドでは CircleCI を使っていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "最初のリリースを急いでいた時期には合っていましたね。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "権限設計もその方がすっきりしました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-001",
+        "question": "今、使っている CI は何ですか？",
+        "answer": "GitHub Actions",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "why-001",
+        "question": "CircleCI から移行した理由は何ですか？",
+        "answer": "parallel build costs が上がり続けたから",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-001",
+        "question": "変える前に使っていた CI は何でしたか？",
+        "answer": "CircleCI",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-001",
+        "question": "いま使ってるCIなに？",
+        "answer": "GitHub Actions",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-001",
+        "question": "今も CircleCI を使っていますか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-001",
+        "question": "ベータ版の話はさておき、今の CI だけ短く答えると何ですか？",
+        "answer": "GitHub Actions",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-002",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "ローンチ直後はサポートを 24 時間体制にしていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "導入が荒れていた時期には必要でしたね。"
+      },
+      {
+        "speaker": "user",
+        "text": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "今はその時間帯で十分回せています。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-002",
+        "question": "今のサポート時間はいつですか？",
+        "answer": "平日の 9:00〜18:00 JST",
+        "category": "cat-1",
+        "slice": "current"
+      },
+      {
+        "question_id": "why-002",
+        "question": "サポート時間を見直す前に見たレポートは何ですか？",
+        "answer": "ticket heatmap",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-002",
+        "question": "見直す前のサポート体制は何でしたか？",
+        "answer": "24 時間体制",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-002",
+        "question": "今のサポート時間って？",
+        "answer": "平日の 9:00〜18:00 JST",
+        "category": "cat-1",
+        "slice": "noisy"
+      },
+      {
+        "question_id": "yesno-002",
+        "question": "今もサポートは 24 時間体制ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-002",
+        "question": "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
+        "answer": "平日の 9:00〜18:00 JST",
+        "category": "cat-2",
+        "slice": "long_turn"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-003",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "Starter プランは以前 29 dollars a month でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "最初のセルフサーブ価格としては説明しやすかったですね。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は 39 dollars a month です。audit logs を bundle しました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "価格改定の説明もしやすくなりました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-003",
+        "question": "Starter プランの今の料金はいくらですか？",
+        "answer": "39 dollars a month",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-003",
+        "question": "価格改定のときに追加した機能は何ですか？",
+        "answer": "audit logs",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-003",
+        "question": "値上げ前の Starter の料金はいくらでしたか？",
+        "answer": "29 dollars a month",
+        "category": "cat-1",
+        "slice": "current_vs_previous",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-003",
+        "question": "Starter の今の値段いくら？",
+        "answer": "39 dollars a month",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-003",
+        "question": "Starter は今も 29 dollars a month ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-003",
+        "question": "価格改定の説明はさておき、今の Starter 料金だけ答えるといくらですか？",
+        "answer": "39 dollars a month",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-004",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "Free ワークスペースの保存期間は 30 days です。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その上限ならストレージ予測がしやすいですね。"
+      },
+      {
+        "speaker": "user",
+        "text": "Enterprise prospect から quarterly audit exports の要望がありました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "そこで retention の議論が変わりました。"
+      },
+      {
+        "speaker": "user",
+        "text": "今の Enterprise retention は 90 days です。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "営業も説明しやすくなりました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-004",
+        "question": "Enterprise の今の retention はどれくらいですか？",
+        "answer": "90 days",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "why-004",
+        "question": "retention を見直すきっかけになった要望は何ですか？",
+        "answer": "quarterly audit exports の要望",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-004",
+        "question": "Free ワークスペースの保存期間は何日ですか？",
+        "answer": "30 days",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-004",
+        "question": "Enterprise の retention いま何日？",
+        "answer": "90 days",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-004",
+        "question": "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
+        "answer": "Yes",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-004",
+        "question": "Free の話はいったん置いて、Enterprise retention の今の値だけ短く答えると何日ですか？",
+        "answer": "90 days",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-005",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "SSO と team workspaces を同じ四半期に出す予定でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "どちらも優先度は高かったですね。"
+      },
+      {
+        "speaker": "user",
+        "text": "実際には team workspaces が先に出ました。SSO の SCIM provider contract がまだ交渉中だったからです。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その依存がセキュリティ側の進行を止めていました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "temporal-005",
+        "question": "SSO と team workspaces では、どちらが先に出ましたか？",
+        "answer": "team workspaces",
+        "category": "cat-2",
+        "slice": "temporal"
+      },
+      {
+        "question_id": "why-005",
+        "question": "SSO が遅れた理由は何ですか？",
+        "answer": "SCIM provider contract がまだ交渉中だったから",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "list-005b",
+        "question": "同じ四半期に出す予定だった 2 つは何でしたか？",
+        "answer": "SSO, team workspaces",
+        "category": "cat-4",
+        "slice": "list"
+      },
+      {
+        "question_id": "noisy-005",
+        "question": "どっちが先に出たの？",
+        "answer": "team workspaces",
+        "category": "cat-2",
+        "slice": "noisy"
+      },
+      {
+        "question_id": "yesno-005",
+        "question": "SSO のほうが先に出ましたか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "relative-005",
+        "question": "先に出たあと、遅れたのはどれですか？",
+        "answer": "SSO",
+        "category": "cat-2",
+        "slice": "relative_temporal"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-006",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "月曜の import window で database connections が飽和しました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "ingestion と reporting の両方に影響しましたね。"
+      },
+      {
+        "speaker": "user",
+        "text": "alert の直後に read traffic を新しい replica に逃がしました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その間に原因調査を進められました。"
+      },
+      {
+        "speaker": "user",
+        "text": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その後は import window も安定しました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "why-006",
+        "question": "write latency を恒久的に下げたものは何ですか？",
+        "answer": "workspace_id と created_at の composite index",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "temporal-006",
+        "question": "alert の直後に最初にやったことは何ですか？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "category": "cat-2",
+        "slice": "temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-006",
+        "question": "write latency を恒久的に下げたのは何ですか？",
+        "answer": "workspace_id と created_at の composite index",
+        "category": "cat-1",
+        "slice": "exact"
+      },
+      {
+        "question_id": "noisy-006",
+        "question": "アラートのあと最初にやったこと何？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "category": "cat-2",
+        "slice": "noisy"
+      },
+      {
+        "question_id": "yesno-006",
+        "question": "write latency を下げたのは composite index ですか？",
+        "answer": "Yes",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-006",
+        "question": "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "category": "cat-2",
+        "slice": "long_turn"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-007",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "単純ですが少し壊れやすかったですね。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その方がランキングが安定しました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-007",
+        "question": "今使っている retrieval fusion の方法は何ですか？",
+        "answer": "Reciprocal Rank Fusion",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-007",
+        "question": "fusion の後に適用している signal は何ですか？",
+        "answer": "recency",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-007",
+        "question": "RRF に変える前はどんな混ぜ方でしたか？",
+        "answer": "weighted sum",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-007",
+        "question": "今の fusion 方式って何？",
+        "answer": "Reciprocal Rank Fusion",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-007",
+        "question": "recency は fusion の前にかけていますか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-007",
+        "question": "weighted sum の話は置いて、今の retrieval fusion method だけ答えると何ですか？",
+        "answer": "Reciprocal Rank Fusion",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-008",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "docs は以前 English only でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "北米中心だった時期はそれでも回っていました。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "そのあと invoice emails も localized しました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-008",
+        "question": "英語以外で今サポートしている docs の言語は何ですか？",
+        "answer": "Japanese",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "temporal-008",
+        "question": "launch playbook の次に localize したものは何ですか？",
+        "answer": "invoice emails",
+        "category": "cat-2",
+        "slice": "temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-008",
+        "question": "以前の docs は何語だけでしたか？",
+        "answer": "English",
+        "category": "cat-1",
+        "slice": "current_vs_previous",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-008",
+        "question": "最初に翻訳した docs は何ですか？",
+        "answer": "launch playbook",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-008",
+        "question": "docs は今も English only ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-008",
+        "question": "launch playbook の次に何を localize した？",
+        "answer": "invoice emails",
+        "category": "cat-2",
+        "slice": "relative_temporal",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-009",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "早く組めましたが長期運用には向いていませんでした。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は Redis backed session cookies を使っています。refresh token は localStorage から削除しました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "security review もその変更を評価しました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-009",
+        "question": "今の認証方式は何ですか？",
+        "answer": "Redis backed session cookies",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-009",
+        "question": "認証方式の変更時に削除したものは何ですか？",
+        "answer": "refresh token",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-009",
+        "question": "今の方式に変える前の認証フローは何でしたか？",
+        "answer": "JWT 方式",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-009",
+        "question": "今の認証フローは？",
+        "answer": "Redis backed session cookies",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-009",
+        "question": "refresh token は今も localStorage にありますか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-009",
+        "question": "prototype の JWT 方式はいったん忘れて、今使っている auth flow だけ短く答えると何ですか？",
+        "answer": "Redis backed session cookies",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-010",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "以前の headquarters は San Francisco でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その頃はチームもまだ一箇所に寄っていました。"
+      },
+      {
+        "speaker": "user",
+        "text": "今の headquarters は Singapore です。engineering は remote-first のままです。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "採用の自由度は上がりました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-010",
+        "question": "今の headquarters はどこですか？",
+        "answer": "Singapore",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "temporal-010",
+        "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
+        "answer": "engineering",
+        "category": "cat-2",
+        "slice": "temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-010",
+        "question": "headquarters を移す前はどこでしたか？",
+        "answer": "San Francisco",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-010",
+        "question": "今の headquarters どこ？",
+        "answer": "Singapore",
+        "category": "cat-1",
+        "slice": "location"
+      },
+      {
+        "question_id": "yesno-010",
+        "question": "engineering も headquarters 移転後に remote-first をやめましたか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-010",
+        "question": "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
+        "answer": "Singapore",
+        "category": "cat-1",
+        "slice": "long_turn"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-011",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "analytics dashboard は以前 nightly refresh でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "週次レポートしか見ていなかった頃はそれで足りました。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は every five minutes です。customers が same-day funnel drops を見逃していたからです。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "growth team も今は日中に何度も見ています。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-011",
+        "question": "今の dashboard refresh cadence は何ですか？",
+        "answer": "every five minutes",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "why-011",
+        "question": "nightly refresh をやめた理由は何ですか？",
+        "answer": "customers が same-day funnel drops を見逃していたから",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-011",
+        "question": "変更前の dashboard refresh cadence は何でしたか？",
+        "answer": "nightly refresh",
+        "category": "cat-1",
+        "slice": "current_vs_previous",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-011",
+        "question": "いまの refresh cadence って？",
+        "answer": "every five minutes",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-011",
+        "question": "same-day funnel drops を見逃していたことが変更理由でしたか？",
+        "answer": "Yes",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-011",
+        "question": "nightly refresh の話はさておき、今の dashboard refresh cadence だけ答えると何ですか？",
+        "answer": "every five minutes",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-012",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "Q2 には export to CSV, audit logs, SAML for admins を出しました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その四半期は運用管理に寄せていましたね。"
+      },
+      {
+        "speaker": "user",
+        "text": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "enterprise prospect も SAML を気にしていました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "list-012",
+        "question": "Q2 に出した admin 向け機能をすべて挙げてください。",
+        "answer": "export to CSV, audit logs, SAML",
+        "category": "cat-4",
+        "slice": "list",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "temporal-012",
+        "question": "最後に出た機能は何ですか？",
+        "answer": "SAML",
+        "category": "cat-2",
+        "slice": "temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "exact-012",
+        "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
+        "answer": "export to CSV",
+        "category": "cat-1",
+        "slice": "exact",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "relative-012",
+        "question": "audit logs の次に出たものは何ですか？",
+        "answer": "SAML",
+        "category": "cat-2",
+        "slice": "relative_temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-012",
+        "question": "SAML が最初に出た機能ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-012",
+        "question": "最後に出た admin feature って何？",
+        "answer": "SAML",
+        "category": "cat-2",
+        "slice": "noisy",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-013",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "最初は deployment の既定リージョンを us-west-2 にしていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "最小構成ではその方が簡単でした。"
+      },
+      {
+        "speaker": "user",
+        "text": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "東京リージョンを既定にしてから初期表示も安定しました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-013",
+        "question": "今の default region はどこですか？",
+        "answer": "ap-northeast-1",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "temporal-013",
+        "question": "以前の既定リージョンはどこでしたか？",
+        "answer": "us-west-2",
+        "category": "cat-2",
+        "slice": "temporal",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-013",
+        "question": "以前の default region は何でしたか？",
+        "answer": "us-west-2",
+        "category": "cat-1",
+        "slice": "current_vs_previous",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "noisy-013",
+        "question": "いまの default region どこ？",
+        "answer": "ap-northeast-1",
+        "category": "cat-1",
+        "slice": "noisy",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "yesno-013",
+        "question": "default region は今も us-west-2 ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "long-013",
+        "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
+        "answer": "ap-northeast-1",
+        "category": "cat-1",
+        "slice": "long_turn",
+        "cross_lingual": true
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-014",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "障害通知は以前 email だけで送っていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "ただ、夜間は見落としがありました。"
+      },
+      {
+        "speaker": "user",
+        "text": "今の primary incident channel は Slack です。ack が早く、mobile notification も確実だったからです。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "email は今も補助通知として残しています。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-014",
+        "question": "今の primary incident channel は何ですか？",
+        "answer": "Slack",
+        "category": "cat-1",
+        "slice": "current",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "why-014",
+        "question": "email だけの運用をやめた理由は何ですか？",
+        "answer": "ack が早く、mobile notification も確実だったから",
+        "category": "cat-3",
+        "slice": "why",
+        "cross_lingual": true
+      },
+      {
+        "question_id": "prev-014",
+        "question": "primary channel を見直す前は何だけで送っていましたか？",
+        "answer": "email",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-014",
+        "question": "今の primary incident channel は？",
+        "answer": "Slack",
+        "category": "cat-1",
+        "slice": "entity"
+      },
+      {
+        "question_id": "yesno-014",
+        "question": "今も incident channel は email だけですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "exact-014",
+        "question": "今も補助通知として残しているものは何ですか？",
+        "answer": "email",
+        "category": "cat-1",
+        "slice": "exact"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-015",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "最初の setup コマンドは codex だけを対象にしていました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "最小検証にはそれで十分でした。"
+      },
+      {
+        "speaker": "user",
+        "text": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "最初の導入で困りにくい組み合わせです。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "exact-015",
+        "question": "今の推奨 setup で指定するツールは何ですか？",
+        "answer": "codex, cursor, claude",
+        "category": "cat-4",
+        "slice": "list"
+      },
+      {
+        "question_id": "temporal-015",
+        "question": "最初はどのツールだけを対象にしていましたか？",
+        "answer": "codex",
+        "category": "cat-2",
+        "slice": "temporal"
+      },
+      {
+        "question_id": "prev-015",
+        "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
+        "answer": "codex",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-015",
+        "question": "今の推奨 setup の組み合わせは？",
+        "answer": "codex, cursor, claude",
+        "category": "cat-4",
+        "slice": "noisy"
+      },
+      {
+        "question_id": "yesno-015",
+        "question": "今の推奨 setup は codex だけですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-015",
+        "question": "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
+        "answer": "codex, cursor, claude",
+        "category": "cat-4",
+        "slice": "long_turn"
+      }
+    ]
+  },
+  {
+    "sample_id": "ja-rel-016",
+    "conversation": [
+      {
+        "speaker": "user",
+        "text": "定期メンテナンスは以前 01:00 JST 開始でした。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "その時間だとサポート当番と重なっていましたね。"
+      },
+      {
+        "speaker": "user",
+        "text": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。"
+      },
+      {
+        "speaker": "assistant",
+        "text": "周辺オペレーションにも余裕ができました。"
+      }
+    ],
+    "qa": [
+      {
+        "question_id": "current-016",
+        "question": "今の定期メンテナンス開始時刻は何時ですか？",
+        "answer": "03:30 JST",
+        "category": "cat-1",
+        "slice": "current"
+      },
+      {
+        "question_id": "temporal-016",
+        "question": "以前の開始時刻は何時でしたか？",
+        "answer": "01:00 JST",
+        "category": "cat-2",
+        "slice": "temporal"
+      },
+      {
+        "question_id": "prev-016",
+        "question": "以前の定期メンテナンス開始時刻は何時でしたか？",
+        "answer": "01:00 JST",
+        "category": "cat-1",
+        "slice": "current_vs_previous"
+      },
+      {
+        "question_id": "noisy-016",
+        "question": "今のメンテ開始って何時？",
+        "answer": "03:30 JST",
+        "category": "cat-1",
+        "slice": "noisy"
+      },
+      {
+        "question_id": "yesno-016",
+        "question": "定期メンテナンスは今も 01:00 JST 開始ですか？",
+        "answer": "No",
+        "category": "cat-2",
+        "slice": "yes_no"
+      },
+      {
+        "question_id": "long-016",
+        "question": "昔の開始時刻の話はいったん置いて、今の定期メンテ開始時刻だけ短く答えると何時ですか？",
+        "answer": "03:30 JST",
+        "category": "cat-1",
+        "slice": "long_turn"
+      }
+    ]
+  }
+]

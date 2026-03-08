@@ -1,0 +1,1895 @@
+{
+  "schema_version": "locomo-benchmark-v2",
+  "generated_at": "2026-03-06T03:27:11.027Z",
+  "system": "harness-mem",
+  "pipeline": {
+    "embedding": {
+      "mode": "onnx",
+      "provider": "local",
+      "model": "multilingual-e5",
+      "vector_dimension": 384,
+      "runtime_provider": "local",
+      "runtime_model": "multilingual-e5",
+      "runtime_health_status": "degraded",
+      "runtime_health_details": "local model multilingual-e5: initializing...",
+      "gate": {
+        "enabled": true,
+        "passed": true,
+        "failures": []
+      }
+    },
+    "prime_embedding_enabled": true
+  },
+  "dataset": {
+    "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/shadow-query-pack-24.json",
+    "sample_count": 12,
+    "qa_count": 24
+  },
+  "metrics": {
+    "overall": {
+      "count": 24,
+      "em": 0.16666666666666666,
+      "f1": 0.24074074074074073
+    },
+    "by_category": {
+      "cat-1": {
+        "count": 12,
+        "em": 0.3333333333333333,
+        "f1": 0.36111111111111116
+      },
+      "cat-3": {
+        "count": 5,
+        "em": 0,
+        "f1": 0.15555555555555556
+      },
+      "cat-2": {
+        "count": 6,
+        "em": 0,
+        "f1": 0.1111111111111111
+      },
+      "cat-4": {
+        "count": 1,
+        "em": 0,
+        "f1": 0
+      }
+    }
+  },
+  "comparison": {
+    "cat_1_to_4": {
+      "count": 24,
+      "em": 0.16666666666666666,
+      "f1": 0.24074074074074073
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 24,
+      "min": 2.43,
+      "max": 15.65,
+      "avg": 3.816604208333333,
+      "p50": 3.0700000000000003,
+      "p95": 5.91
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 128,
+        "capacity": 128,
+        "hits": 256,
+        "misses": 145,
+        "evictions": 15,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 126,
+        "capacity": 0,
+        "hits": 256,
+        "misses": 143,
+        "evictions": 15,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 24,
+      "input_total": 1569,
+      "output_total": 6786,
+      "total_total": 8355,
+      "input_avg": 65.375,
+      "output_avg": 282.75,
+      "total_avg": 348.125
+    }
+  },
+  "records": [
+    {
+      "sample_id": "shadow-001",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What CI system do I use now?",
+      "answer": "GitHub Actions",
+      "prediction": "CircleCI",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-3",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-1",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what ci system do i use now?",
+          "ci system use now",
+          "ci system use key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-3",
+              "sentence": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing.",
+              "score": 1.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-1",
+              "sentence": "I used CircleCI for our beta builds.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+              "sentence": "That also simplified repository permissions.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-2",
+              "sentence": "That got the first release out quickly.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing.",
+          "after": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "CircleCI"
+      },
+      "search_latency_ms": 4.64,
+      "token_estimate_input_tokens": 56,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 308,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-001",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question": "What made me switch away from CircleCI?",
+      "answer": "parallel build costs kept climbing",
+      "prediction": "CircleCI",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-1",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-3",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what made me switch away from circleci?",
+          "made switch away circleci",
+          "made switch away key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "I used CircleCI for our beta builds.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-1",
+              "sentence": "I used CircleCI for our beta builds.",
+              "score": 0.875,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-3",
+              "sentence": "GitHub Actions is the CI system I use now because CircleCI parallel build costs kept climbing.",
+              "score": 0.708333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+              "sentence": "That also simplified repository permissions.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-2",
+              "sentence": "That got the first release out quickly.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "I used CircleCI for our beta builds.",
+          "after": "I used CircleCI for our beta builds.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "CircleCI"
+      },
+      "search_latency_ms": 2.9000000000000004,
+      "token_estimate_input_tokens": 62,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 314,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-002",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What support window do I use now?",
+      "answer": "9:00 to 18:00 JST on weekdays",
+      "prediction": "I staffed support 24/7 at launch.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-1",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-3",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-4",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what support window do i use now?",
+          "support window use now",
+          "support window use key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "I staffed support 24/7 at launch.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-1",
+              "sentence": "I staffed support 24/7 at launch.",
+              "score": 0.875,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-3",
+              "sentence": "After I reviewed the ticket heatmap, I narrowed support to 9:00 to 18:00 JST on weekdays.",
+              "score": 0.708333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-4",
+              "sentence": "The smaller schedule has been easier to sustain.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-2",
+              "sentence": "That was sensible while onboarding was rough.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "I staffed support 24/7 at launch.",
+          "after": "I staffed support 24/7 at launch.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "I staffed support 24/7 at launch."
+      },
+      "search_latency_ms": 3.02,
+      "token_estimate_input_tokens": 60,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 312,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-002",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "Which report did I review before narrowing support hours?",
+      "answer": "the ticket heatmap",
+      "prediction": "I staffed support 24/7 at launch.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-1",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-3",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-4",
+        "obs_locomo-locomo-benchmark-shadow-002-shadow-002-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which report did i review before narrowing support hours?",
+          "report review before narrowing support hours",
+          "report review before key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "I staffed support 24/7 at launch.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-1",
+              "sentence": "I staffed support 24/7 at launch.",
+              "score": 0.791667,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-3",
+              "sentence": "After I reviewed the ticket heatmap, I narrowed support to 9:00 to 18:00 JST on weekdays.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-4",
+              "sentence": "The smaller schedule has been easier to sustain.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-002-shadow-002-2",
+              "sentence": "That was sensible while onboarding was rough.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "I staffed support 24/7 at launch.",
+          "after": "I staffed support 24/7 at launch.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "I staffed support 24/7 at launch."
+      },
+      "search_latency_ms": 3.59,
+      "token_estimate_input_tokens": 72,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 324,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-003",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What does Starter cost now?",
+      "answer": "39 dollars a month",
+      "prediction": "29",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-numeric-slot -> normalize -> final:factual-numeric-slot",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-1",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-3",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-2",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what does starter cost now?",
+          "starter cost now",
+          "starter cost now key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-numeric-slot",
+          "raw_answer": "29",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-1",
+              "sentence": "Starter used to cost 29 dollars a month.",
+              "score": 1.531667,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-3",
+              "sentence": "Starter now costs 39 dollars a month because I bundled audit logs.",
+              "score": 1.281667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-2",
+              "sentence": "That price made the first self-serve plan easy to explain.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-4",
+              "sentence": "Customers said the extra visibility justified the increase.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "29",
+          "after": "29",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "29"
+      },
+      "search_latency_ms": 2.8,
+      "token_estimate_input_tokens": 57,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 309,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-003",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question": "Which feature was added to Starter with the price change?",
+      "answer": "audit logs",
+      "prediction": "29",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-numeric-slot -> normalize -> final:factual-numeric-slot",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-1",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-2",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-3",
+        "obs_locomo-locomo-benchmark-shadow-003-shadow-003-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which feature was added to starter with the price change?",
+          "feature added starter price change",
+          "feature added starter key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-numeric-slot",
+          "raw_answer": "29",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-1",
+              "sentence": "Starter used to cost 29 dollars a month.",
+              "score": 0.898333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-2",
+              "sentence": "That price made the first self-serve plan easy to explain.",
+              "score": 0.825,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-3",
+              "sentence": "Starter now costs 39 dollars a month because I bundled audit logs.",
+              "score": 0.815,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-003-shadow-003-4",
+              "sentence": "Customers said the extra visibility justified the increase.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "29",
+          "after": "29",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "29"
+      },
+      "search_latency_ms": 15.65,
+      "token_estimate_input_tokens": 70,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 322,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-004",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "How long is enterprise retention now?",
+      "answer": "90 days",
+      "prediction": "90 days",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-5",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-1",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-4",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-3"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "how long is enterprise retention now?",
+          "long enterprise retention now",
+          "long enterprise retention key detail",
+          "long enterprise retention now evidence summary"
+        ],
+        "search_policy": {
+          "limit": 13,
+          "variant_cap": 4,
+          "candidate_limit": 4,
+          "quality_floor": 0.2
+        },
+        "extraction": {
+          "strategy": "extract:temporal-candidates",
+          "raw_answer": "90 days",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-5",
+              "sentence": "Enterprise retention is now 90 days.",
+              "score": 1.725,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-1",
+              "sentence": "Free workspaces keep activity history for 30 days.",
+              "score": 0.725,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-4",
+              "sentence": "That request changed the retention discussion.",
+              "score": 0.708333,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-3",
+              "sentence": "An enterprise prospect asked me for quarterly audit exports.",
+              "score": 0.541667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "90 days",
+          "after": "90 days",
+          "notes": [],
+          "reference_time": "2026-01-01T00:00:04.000Z"
+        },
+        "final_short_answer": "90 days"
+      },
+      "search_latency_ms": 4.17,
+      "token_estimate_input_tokens": 91,
+      "token_estimate_output_tokens": 500,
+      "token_estimate_total_tokens": 591,
+      "em": 1,
+      "f1": 1
+    },
+    {
+      "sample_id": "shadow-004",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question": "What request triggered the enterprise retention change?",
+      "answer": "an enterprise prospect asked for quarterly audit exports",
+      "prediction": "That request changed the retention discussion.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-4",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-5",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-3",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-1"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what request triggered the enterprise retention change?",
+          "request triggered enterprise retention change",
+          "request triggered enterprise key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "That request changed the retention discussion.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-4",
+              "sentence": "That request changed the retention discussion.",
+              "score": 1.025,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-5",
+              "sentence": "Enterprise retention is now 90 days.",
+              "score": 0.858333,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-3",
+              "sentence": "An enterprise prospect asked me for quarterly audit exports.",
+              "score": 0.525,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-1",
+              "sentence": "Free workspaces keep activity history for 30 days.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "That request changed the retention discussion.",
+          "after": "That request changed the retention discussion.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:03.000Z"
+        },
+        "final_short_answer": "That request changed the retention discussion."
+      },
+      "search_latency_ms": 3.29,
+      "token_estimate_input_tokens": 74,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 449,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-005",
+      "question_id": "q1",
+      "category": "cat-2",
+      "question": "Which shipped before the other, SSO or team workspaces?",
+      "answer": "team workspaces",
+      "prediction": "Team",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-organization-slot -> normalize -> final:factual-normalized-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-3",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-1",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-2",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which shipped before the other, sso or team workspaces?",
+          "shipped before other sso team workspaces",
+          "shipped before other key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-organization-slot",
+          "raw_answer": "SSO",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-3",
+              "sentence": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated.",
+              "score": 1.445,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-1",
+              "sentence": "I planned to ship SSO and team workspaces in the same quarter.",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-2",
+              "sentence": "Both were high on the roadmap.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-4",
+              "sentence": "That dependency blocked the security rollout.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "SSO",
+          "after": "Team",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Team"
+      },
+      "search_latency_ms": 2.85,
+      "token_estimate_input_tokens": 71,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 323,
+      "em": 0,
+      "f1": 0.6666666666666666
+    },
+    {
+      "sample_id": "shadow-005",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question": "Why was SSO delayed?",
+      "answer": "the SCIM provider contract was still being negotiated",
+      "prediction": "Team",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-3",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-1",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-4",
+        "obs_locomo-locomo-benchmark-shadow-005-shadow-005-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "why was sso delayed?",
+          "sso delayed",
+          "sso delayed evidence summary"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-3",
+              "sentence": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated.",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-1",
+              "sentence": "I planned to ship SSO and team workspaces in the same quarter.",
+              "score": 0.958333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-4",
+              "sentence": "That dependency blocked the security rollout.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-005-shadow-005-2",
+              "sentence": "Both were high on the roadmap.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated.",
+          "after": "Team workspaces shipped first because the SCIM provider contract for SSO was still being negotiated.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Team"
+      },
+      "search_latency_ms": 2.53,
+      "token_estimate_input_tokens": 54,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 306,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-006",
+      "question_id": "q1",
+      "category": "cat-3",
+      "question": "What permanently reduced write latency?",
+      "answer": "a composite index on workspace_id and created_at",
+      "prediction": "A composite index on workspace_id and created_at permanently reduced write latency.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-5",
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-1",
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-2",
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-3"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what permanently reduced write latency?",
+          "permanently reduced write latency",
+          "permanently reduced write key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "A composite index on workspace_id and created_at permanently reduced write latency.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-5",
+              "sentence": "A composite index on workspace_id and created_at permanently reduced write latency.",
+              "score": 1.625,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-1",
+              "sentence": "Database connections saturated during the Monday import window.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-2",
+              "sentence": "That incident hit both ingestion and reporting.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-3",
+              "sentence": "Right after the alert, I shifted read traffic to a new replica.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "A composite index on workspace_id and created_at permanently reduced write latency.",
+          "after": "A composite index on workspace_id and created_at permanently reduced write latency.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:04.000Z"
+        },
+        "final_short_answer": "A composite index on workspace_id and created_at permanently reduced write latency."
+      },
+      "search_latency_ms": 4.75,
+      "token_estimate_input_tokens": 66,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 441,
+      "em": 0,
+      "f1": 0.7777777777777778
+    },
+    {
+      "sample_id": "shadow-006",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "What was my first response after the alert fired?",
+      "answer": "I shifted read traffic to a new replica",
+      "prediction": "Right",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-3",
+        "obs_locomo-locomo-benchmark-shadow-004-shadow-004-6",
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-1",
+        "obs_locomo-locomo-benchmark-shadow-006-shadow-006-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what was my first response after the alert fired?",
+          "first response after alert fired",
+          "first response after key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Right after the alert, I shifted read traffic to a new replica.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-3",
+              "sentence": "Right after the alert, I shifted read traffic to a new replica.",
+              "score": 1.025,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-004-shadow-004-6",
+              "sentence": "Sales can position that clearly in larger deals.",
+              "score": 0.541667,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-1",
+              "sentence": "Database connections saturated during the Monday import window.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-006-shadow-006-2",
+              "sentence": "That incident hit both ingestion and reporting.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Right after the alert, I shifted read traffic to a new replica.",
+          "after": "Right after the alert, I shifted read traffic to a new replica.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Right"
+      },
+      "search_latency_ms": 3.003334000000009,
+      "token_estimate_input_tokens": 46,
+      "token_estimate_output_tokens": 250,
+      "token_estimate_total_tokens": 296,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-007",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What retrieval fusion method do I use now?",
+      "answer": "Reciprocal Rank Fusion",
+      "prediction": "Reciprocal Rank Fusion",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-3",
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-1",
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-4",
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what retrieval fusion method do i use now?",
+          "retrieval fusion method use now",
+          "retrieval fusion method key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-3",
+              "sentence": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+              "score": 1.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-1",
+              "sentence": "I used a weighted sum for lexical and vector scores in the first retrieval version.",
+              "score": 0.658333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-4",
+              "sentence": "That made the ranking much more stable.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-2",
+              "sentence": "That setup was simple but brittle.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "after": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Reciprocal Rank Fusion"
+      },
+      "search_latency_ms": 2.44,
+      "token_estimate_input_tokens": 67,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 319,
+      "em": 1,
+      "f1": 1
+    },
+    {
+      "sample_id": "shadow-007",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question": "What signal do I apply after fusion?",
+      "answer": "recency",
+      "prediction": "Reciprocal Rank Fusion",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-3",
+        "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-1",
+        "obs_locomo-locomo-benchmark-shadow-007-shadow-007-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what signal do i apply after fusion?",
+          "signal apply after fusion",
+          "signal apply after key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-3",
+              "sentence": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+              "score": 1.375,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-001-shadow-001-4",
+              "sentence": "That also simplified repository permissions.",
+              "score": 0.541667,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-1",
+              "sentence": "I used a weighted sum for lexical and vector scores in the first retrieval version.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-007-shadow-007-4",
+              "sentence": "That made the ranking much more stable.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "after": "Reciprocal Rank Fusion is the retrieval fusion method I use now, and I apply recency after fusion.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Reciprocal Rank Fusion"
+      },
+      "search_latency_ms": 2.5051669999999833,
+      "token_estimate_input_tokens": 41,
+      "token_estimate_output_tokens": 168,
+      "token_estimate_total_tokens": 209,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-008",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "Which language besides English do I support in the docs?",
+      "answer": "Japanese",
+      "prediction": "Japanese",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-language-slot -> normalize -> final:factual-language-slot",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-3",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-1",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-6",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which language besides english do i support in the docs?",
+          "language besides english support docs",
+          "language besides english key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-language-slot",
+          "raw_answer": "Japanese",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-3",
+              "sentence": "Japanese is the additional documentation language I support now.",
+              "score": 1.265,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-1",
+              "sentence": "The docs used to be only in English.",
+              "score": 1.098333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-6",
+              "sentence": "Support appreciated that follow-up.",
+              "score": 0.495,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-2",
+              "sentence": "That was acceptable while sales stayed in North America.",
+              "score": 0.245,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Japanese",
+          "after": "Japanese",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Japanese"
+      },
+      "search_latency_ms": 3.13,
+      "token_estimate_input_tokens": 71,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 446,
+      "em": 1,
+      "f1": 1
+    },
+    {
+      "sample_id": "shadow-008",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "What did I localize after the launch playbook?",
+      "answer": "the invoice emails",
+      "prediction": "After",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-5",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-4",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-1",
+        "obs_locomo-locomo-benchmark-shadow-008-shadow-008-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what did i localize after the launch playbook?",
+          "localize after launch playbook",
+          "localize after launch key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "After the launch playbook, I localized the invoice emails.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-5",
+              "sentence": "After the launch playbook, I localized the invoice emails.",
+              "score": 1.375,
+              "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-4",
+              "sentence": "The launch playbook was the first document I translated.",
+              "score": 0.875,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-1",
+              "sentence": "The docs used to be only in English.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-008-shadow-008-2",
+              "sentence": "That was acceptable while sales stayed in North America.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "After the launch playbook, I localized the invoice emails.",
+          "after": "After the launch playbook, I localized the invoice emails.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:04.000Z"
+        },
+        "final_short_answer": "After"
+      },
+      "search_latency_ms": 3.0700000000000003,
+      "token_estimate_input_tokens": 67,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 442,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-009",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What authentication flow do I use now?",
+      "answer": "session cookies backed by Redis",
+      "prediction": "Redis",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-3",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-1",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-4",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what authentication flow do i use now?",
+          "authentication flow use now",
+          "authentication flow use key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-3",
+              "sentence": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage.",
+              "score": 1.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-1",
+              "sentence": "I used JWTs with refresh tokens in localStorage during the prototype.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-4",
+              "sentence": "Security review was happier after that switch.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-2",
+              "sentence": "That was quick to wire up but not ideal for the long term.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage.",
+          "after": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Redis"
+      },
+      "search_latency_ms": 3.3200000000000003,
+      "token_estimate_input_tokens": 65,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 317,
+      "em": 0,
+      "f1": 0.33333333333333337
+    },
+    {
+      "sample_id": "shadow-009",
+      "question_id": "q2",
+      "category": "cat-1",
+      "question": "What did I remove during the auth migration?",
+      "answer": "refresh tokens from localStorage",
+      "prediction": "JWTs",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-1",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-3",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-2",
+        "obs_locomo-locomo-benchmark-shadow-009-shadow-009-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what did i remove during the auth migration?",
+          "remove during auth migration",
+          "remove during auth key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "I used JWTs with refresh tokens in localStorage during the prototype.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-1",
+              "sentence": "I used JWTs with refresh tokens in localStorage during the prototype.",
+              "score": 0.875,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-3",
+              "sentence": "Session cookies backed by Redis are the authentication flow I use now, and I removed refresh tokens from localStorage.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-2",
+              "sentence": "That was quick to wire up but not ideal for the long term.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-009-shadow-009-4",
+              "sentence": "Security review was happier after that switch.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "I used JWTs with refresh tokens in localStorage during the prototype.",
+          "after": "I used JWTs with refresh tokens in localStorage during the prototype.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "JWTs"
+      },
+      "search_latency_ms": 3.89,
+      "token_estimate_input_tokens": 64,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 316,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-010",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "Where is the headquarters now?",
+      "answer": "Singapore",
+      "prediction": "Singapore",
+      "question_kind": "location",
+      "answer_strategy": "extract:location-candidates -> normalize -> final:location-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-3",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-1",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-2",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "where is the headquarters now?",
+          "headquarters now",
+          "headquarters now evidence summary"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:location-candidates",
+          "raw_answer": "Singapore is our headquarters now, and engineering stayed remote-first.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-3",
+              "sentence": "Singapore is our headquarters now, and engineering stayed remote-first.",
+              "score": 1.458333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-1",
+              "sentence": "San Francisco used to be our headquarters.",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-2",
+              "sentence": "That was before the team spread across Asia.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-4",
+              "sentence": "That kept hiring flexible across time zones.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Singapore is our headquarters now, and engineering stayed remote-first.",
+          "after": "Singapore",
+          "notes": [
+            "location:entity_extract"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Singapore"
+      },
+      "search_latency_ms": 2.47,
+      "token_estimate_input_tokens": 59,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 311,
+      "em": 1,
+      "f1": 1
+    },
+    {
+      "sample_id": "shadow-010",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "Which team stayed remote-first after the headquarters move?",
+      "answer": "engineering",
+      "prediction": "Singapore",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-3",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-1",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-2",
+        "obs_locomo-locomo-benchmark-shadow-010-shadow-010-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which team stayed remote-first after the headquarters move?",
+          "team stayed remote first after headquarters move",
+          "team stayed remote key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Singapore is our headquarters now, and engineering stayed remote-first.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-3",
+              "sentence": "Singapore is our headquarters now, and engineering stayed remote-first.",
+              "score": 1.196429,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-1",
+              "sentence": "San Francisco used to be our headquarters.",
+              "score": 0.60119,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-2",
+              "sentence": "That was before the team spread across Asia.",
+              "score": 0.517857,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-010-shadow-010-4",
+              "sentence": "That kept hiring flexible across time zones.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Singapore is our headquarters now, and engineering stayed remote-first.",
+          "after": "Singapore",
+          "notes": [
+            "factual:evidence_bounded_span"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "Singapore"
+      },
+      "search_latency_ms": 3.1000000000000005,
+      "token_estimate_input_tokens": 73,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 325,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-011",
+      "question_id": "q1",
+      "category": "cat-1",
+      "question": "What is the current dashboard refresh cadence?",
+      "answer": "every five minutes",
+      "prediction": "The analytics dashboard used to refresh nightly.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-1",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-3",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-2",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what is the current dashboard refresh cadence?",
+          "current dashboard refresh cadence",
+          "current dashboard refresh key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "The analytics dashboard used to refresh nightly.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-1",
+              "sentence": "The analytics dashboard used to refresh nightly.",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-3",
+              "sentence": "Every five minutes is the refresh cadence I use now because customers were missing same-day funnel drops.",
+              "score": 0.958333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-2",
+              "sentence": "That worked when the team only checked weekly reports.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-4",
+              "sentence": "The growth team checks it several times a day now.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "The analytics dashboard used to refresh nightly.",
+          "after": "The analytics dashboard used to refresh nightly.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "The analytics dashboard used to refresh nightly."
+      },
+      "search_latency_ms": 2.43,
+      "token_estimate_input_tokens": 68,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 320,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-011",
+      "question_id": "q2",
+      "category": "cat-3",
+      "question": "What problem made me replace the nightly refresh?",
+      "answer": "customers were missing same-day funnel drops",
+      "prediction": "The analytics dashboard used to refresh nightly.",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-1",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-3",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-2",
+        "obs_locomo-locomo-benchmark-shadow-011-shadow-011-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "what problem made me replace the nightly refresh?",
+          "problem made replace nightly refresh",
+          "problem made replace key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "The analytics dashboard used to refresh nightly.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-1",
+              "sentence": "The analytics dashboard used to refresh nightly.",
+              "score": 1.025,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-3",
+              "sentence": "Every five minutes is the refresh cadence I use now because customers were missing same-day funnel drops.",
+              "score": 0.575,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-2",
+              "sentence": "That worked when the team only checked weekly reports.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-011-shadow-011-4",
+              "sentence": "The growth team checks it several times a day now.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "The analytics dashboard used to refresh nightly.",
+          "after": "The analytics dashboard used to refresh nightly.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "The analytics dashboard used to refresh nightly."
+      },
+      "search_latency_ms": 2.5,
+      "token_estimate_input_tokens": 68,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 320,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-012",
+      "question_id": "q1",
+      "category": "cat-4",
+      "question": "Which admin features shipped in Q2?",
+      "answer": "export to CSV, audit logs, and SAML",
+      "prediction": "CSV",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-1",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-3",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-2",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-4"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which admin features shipped in q2?",
+          "admin features shipped q2",
+          "admin features shipped key detail",
+          "admin features shipped q2 evidence summary"
+        ],
+        "search_policy": {
+          "limit": 12,
+          "variant_cap": 4,
+          "candidate_limit": 4,
+          "quality_floor": 0.18
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "In Q2 I shipped export to CSV, audit logs, and SAML for admins.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-1",
+              "sentence": "In Q2 I shipped export to CSV, audit logs, and SAML for admins.",
+              "score": 1.125,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-3",
+              "sentence": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-2",
+              "sentence": "That quarter focused on operational controls.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-4",
+              "sentence": "Enterprise prospects kept asking about the final SAML milestone.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "In Q2 I shipped export to CSV, audit logs, and SAML for admins.",
+          "after": "In Q2 I shipped export to CSV, audit logs, and SAML for admins.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:00.000Z"
+        },
+        "final_short_answer": "CSV"
+      },
+      "search_latency_ms": 3.64,
+      "token_estimate_input_tokens": 88,
+      "token_estimate_output_tokens": 336,
+      "token_estimate_total_tokens": 424,
+      "em": 0,
+      "f1": 0
+    },
+    {
+      "sample_id": "shadow-012",
+      "question_id": "q2",
+      "category": "cat-2",
+      "question": "Which feature shipped last?",
+      "answer": "SAML",
+      "prediction": "CSV",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-3",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-1",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-4",
+        "obs_locomo-locomo-benchmark-shadow-012-shadow-012-2"
+      ],
+      "answer_trace": {
+        "query_variants": [
+          "which feature shipped last?",
+          "feature shipped last",
+          "feature shipped last key detail"
+        ],
+        "search_policy": {
+          "limit": 9,
+          "variant_cap": 3,
+          "candidate_limit": 4,
+          "quality_floor": 0.14
+        },
+        "extraction": {
+          "strategy": "extract:factual-top-candidate",
+          "raw_answer": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last.",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-3",
+              "sentence": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last.",
+              "score": 1.291667,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-1",
+              "sentence": "In Q2 I shipped export to CSV, audit logs, and SAML for admins.",
+              "score": 0.791667,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-4",
+              "sentence": "Enterprise prospects kept asking about the final SAML milestone.",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-shadow-012-shadow-012-2",
+              "sentence": "That quarter focused on operational controls.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            }
+          ]
+        },
+        "normalization": {
+          "before": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last.",
+          "after": "Export to CSV shipped first, audit logs shipped next, and SAML shipped last.",
+          "notes": [
+            "factual:single_sentence_trim"
+          ],
+          "reference_time": "2026-01-01T00:00:02.000Z"
+        },
+        "final_short_answer": "CSV"
+      },
+      "search_latency_ms": 5.91,
+      "token_estimate_input_tokens": 59,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 311,
+      "em": 0,
+      "f1": 0
+    }
+  ]
+}

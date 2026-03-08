@@ -177,9 +177,15 @@ export function buildLocomoReproReportFromPaths(paths: string[]): LocomoReproRep
     .map((report) => Object.keys(report.llm_judge?.by_category || {}).sort().join(","))
     .filter((value) => value.length > 0);
 
-  const sameDataset = datasetPaths.length > 0 && allEqual(datasetPaths);
-  const sameJudge = judgeSignatures.length > 0 && allEqual(judgeSignatures);
-  const sameCategoryScope = categorySets.length > 0 && allEqual(categorySets);
+  const sameDataset = datasetPaths.length === reports.length && allEqual(datasetPaths);
+  const sameJudge =
+    judgePaths.length === 0
+      ? true
+      : judgePaths.length === reports.length && allEqual(judgeSignatures);
+  const sameCategoryScope =
+    judgePaths.length === 0
+      ? true
+      : categorySets.length === reports.length && allEqual(categorySets);
 
   const rejectionFlags: string[] = [];
   if (!sameDataset) rejectionFlags.push("comparison_lock.dataset_mismatch");

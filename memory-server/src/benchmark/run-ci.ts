@@ -15,9 +15,12 @@ import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync, rmSync } from "node:fs";
-import { runLocomoBenchmark } from "../../../tests/benchmarks/run-locomo-benchmark";
+import type { Database } from "bun:sqlite";
+import { runLocomoBenchmark, type LocomoBenchmarkResult } from "../../../tests/benchmarks/run-locomo-benchmark";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
 import { findModelById } from "../embedding/model-catalog";
+import { extractTemporalAnchors } from "../retrieval/router";
+import { nowIso } from "../core/core-utils";
 import { BenchmarkRunner } from "./runner";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
@@ -31,7 +34,7 @@ const CI_MANIFEST_LATEST = join(RESULTS_DIR, "ci-run-manifest-latest.json");
 const CI_MANIFEST_HISTORY = join(RESULTS_DIR, "ci-run-manifest-history.jsonl");
 const BILINGUAL_50_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/bilingual-50.json");
 const KNOWLEDGE_100_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/knowledge-update-100.json");
-const TEMPORAL_100_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/temporal-100.json");
+const TEMPORAL_100_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/temporal-100-v2.json");
 const DEV_WORKFLOW_20_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/dev-workflow-20.json");
 
 interface Locomo120CheckResult {
@@ -41,6 +44,14 @@ interface Locomo120CheckResult {
   delta: number;
   message: string;
   by_category: Record<string, { em: number; f1: number }>;
+}
+
+interface PairedMetricVectors {
+  label: string;
+  matched: number;
+  before: number[];
+  after: number[];
+  meanDelta: number;
 }
 
 function checkLocomo120Regression(currentF1: number, currentByCat: Record<string, { count: number; em: number; f1: number }>): Locomo120CheckResult {
@@ -108,6 +119,52 @@ function checkLocomo120Regression(currentF1: number, currentByCat: Record<string
   };
 }
 
+function loadLocomoResult(filePath: string): LocomoBenchmarkResult | null {
+  if (!existsSync(filePath)) return null;
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8")) as LocomoBenchmarkResult;
+  } catch {
+    return null;
+  }
+}
+
+function getCategoryF1(result: LocomoBenchmarkResult | null, category: string): number | null {
+  const value = result?.metrics?.by_category?.[category]?.f1;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function buildPairedF1Vectors(
+  beforeResult: LocomoBenchmarkResult,
+  afterResult: LocomoBenchmarkResult,
+  label = "global",
+  categories?: string[]
+): PairedMetricVectors {
+  const allowed = categories ? new Set(categories) : null;
+  const beforeMap = new Map<string, number>();
+
+  for (const record of beforeResult.records) {
+    if (allowed && !allowed.has(record.category)) continue;
+    beforeMap.set(`${record.sample_id}::${record.question_id}`, Number(record.f1 || 0));
+  }
+
+  const before: number[] = [];
+  const after: number[] = [];
+  for (const record of afterResult.records) {
+    if (allowed && !allowed.has(record.category)) continue;
+    const key = `${record.sample_id}::${record.question_id}`;
+    const baseline = beforeMap.get(key);
+    if (baseline === undefined) continue;
+    before.push(baseline);
+    after.push(Number(record.f1 || 0));
+  }
+
+  const meanDelta = before.length === 0
+    ? 0
+    : after.reduce((sum, value, index) => sum + (value - before[index]!), 0) / before.length;
+
+  return { label, matched: before.length, before, after, meanDelta };
+}
+
 // ============================================================
 // §34 FD-012: 3層 CI ゲート
 // ============================================================
@@ -120,6 +177,7 @@ interface CIScoreEntry {
   freshness: number;
   temporal: number;
   bilingual: number;
+  cat1?: number;
   embedding?: {
     mode: BenchEmbeddingMode;
     provider: "local" | "fallback";
@@ -145,6 +203,18 @@ interface BenchFixtureManifest {
   devWorkflow20: BenchFixtureDescriptor;
 }
 
+interface BenchEventInput {
+  event_id: string;
+  platform: string;
+  project: string;
+  session_id: string;
+  event_type: string;
+  ts: string;
+  payload: Record<string, unknown>;
+  tags: string[];
+  privacy_tags: string[];
+}
+
 interface CIRunManifest {
   generated_at: string;
   git_sha: string;
@@ -164,8 +234,19 @@ interface CIRunManifest {
     bilingual_recall: number;
     freshness: number;
     temporal: number;
+    cat1_f1: number;
     cat2_f1: number;
     cat3_f1: number;
+  };
+  paired_improvement: {
+    label: string;
+    matched: number;
+    mean_delta: number;
+    gate_enabled: boolean;
+  };
+  performance: {
+    locomo_search_p95_ms: number;
+    locomo_token_avg: number;
   };
 }
 
@@ -175,12 +256,14 @@ function layer1AbsoluteFloor(scores: {
   freshness: number;
   temporal: number;
   bilingual: number;
+  cat1: number;
 }): { passed: boolean; failures: string[] } {
   const FLOORS = {
     f1: 0.20,
     freshness: 0.90,
     temporal: 0.50,
     bilingual: 0.80,
+    cat1: resolveNumericGate("HARNESS_BENCH_CAT1_F1_GATE", 0.3244),
   };
   const failures: string[] = [];
   for (const [key, floor] of Object.entries(FLOORS)) {
@@ -194,7 +277,7 @@ function layer1AbsoluteFloor(scores: {
 
 /** Layer 2: 相対回帰チェック（直近3回平均から 2SE 低下で fail） */
 function layer2RelativeRegression(
-  current: { f1: number; freshness: number; temporal: number; bilingual: number },
+  current: { f1: number; freshness: number; temporal: number; bilingual: number; cat1: number },
   history: CIScoreHistory,
   profile: BenchEmbeddingProfile
 ): { passed: boolean; failures: string[] } {
@@ -205,9 +288,12 @@ function layer2RelativeRegression(
   }
 
   const failures: string[] = [];
-  const metrics: Array<keyof typeof current> = ["f1", "freshness", "temporal", "bilingual"];
+  const metrics: Array<keyof typeof current> = ["f1", "freshness", "temporal", "bilingual", "cat1"];
   for (const metric of metrics) {
-    const vals = recent.map((e) => e[metric]);
+    const vals = recent
+      .map((e) => e[metric])
+      .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (vals.length < 2) continue;
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const se = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1)) / Math.sqrt(vals.length);
     const threshold = mean - 2 * se;
@@ -271,7 +357,7 @@ function wilcoxonSignedRank(before: number[], after: number[], alpha = 0.05): { 
 }
 
 /** Layer 3: Wilcoxon 改善主張検証（HARNESS_BENCH_ASSERT_IMPROVEMENT=1 で有効） */
-function layer3WilcoxonImprovement(
+export function layer3WilcoxonImprovement(
   beforeScores: number[],
   afterScores: number[],
   label: string
@@ -282,14 +368,22 @@ function layer3WilcoxonImprovement(
   if (beforeScores.length === 0 || afterScores.length === 0) {
     return { passed: true, skipped: true, message: `${label}: skipped (no before/after scores)` };
   }
+  const meanDelta = afterScores.reduce((sum, score, index) => sum + (score - beforeScores[index]!), 0) / afterScores.length;
+  if (meanDelta <= 0) {
+    return {
+      passed: false,
+      skipped: false,
+      message: `${label}: mean delta=${meanDelta.toFixed(4)} <= 0 (no positive paired improvement)`,
+    };
+  }
   const { p, significant } = wilcoxonSignedRank(beforeScores, afterScores);
   const passed = significant;
   return {
     passed,
     skipped: false,
     message: passed
-      ? `${label}: Wilcoxon p=${p.toFixed(4)} < 0.05 (significant improvement)`
-      : `${label}: Wilcoxon p=${p.toFixed(4)} >= 0.05 (improvement NOT significant)`,
+      ? `${label}: mean delta=${meanDelta.toFixed(4)}, Wilcoxon p=${p.toFixed(4)} < 0.05`
+      : `${label}: mean delta=${meanDelta.toFixed(4)}, Wilcoxon p=${p.toFixed(4)} >= 0.05`,
   };
 }
 
@@ -326,15 +420,9 @@ async function runDevWorkflowBenchmark(
       cases.flatMap((dwCase) => dwCase.entries.map((entry) => entry.content)),
       "passage"
     );
-    await maybePrimeEmbedding(
-      core,
-      cases.map((dwCase) => dwCase.query),
-      "query"
-    );
-
     for (const dwCase of cases) {
       for (const entry of dwCase.entries) {
-        core.recordEvent({
+        await recordBenchEvent(core, {
           event_id: entry.id,
           platform: "claude",
           project,
@@ -347,6 +435,12 @@ async function runDevWorkflowBenchmark(
         });
       }
     }
+
+    await maybePrimeEmbedding(
+      core,
+      cases.map((dwCase) => dwCase.query),
+      "query"
+    );
 
     const perSampleScores: number[] = [];
     for (const dwCase of cases) {
@@ -377,7 +471,7 @@ function loadScoreHistory(): CIScoreHistory {
 }
 
 /** スコア履歴に追記する */
-function appendScoreHistory(scores: { f1: number; freshness: number; temporal: number; bilingual: number }): void {
+function appendScoreHistory(scores: { f1: number; freshness: number; temporal: number; bilingual: number; cat1: number }): void {
   const history = loadScoreHistory();
   history.entries.push({
     timestamp: new Date().toISOString(),
@@ -567,6 +661,49 @@ function verifyEmbeddingGate(core: HarnessMemCore, label: string): void {
   }
 }
 
+function assertApiOk(result: unknown, label: string): void {
+  const record = toRecord(result);
+  if (record.ok === true) {
+    return;
+  }
+  throw new Error(`[${label}] ${String(record.error || "unknown api error")}`);
+}
+
+async function ensureEmbeddingReady(core: HarnessMemCore, label: string): Promise<void> {
+  const deadline = Date.now() + 60_000;
+  let lastDetails = "embedding readiness timeout";
+
+  while (Date.now() < deadline) {
+    const readiness = core.readiness();
+    const item = toRecord(readiness.items[0]);
+    if (item.ready === true) {
+      return;
+    }
+
+    lastDetails = String(
+      item.embedding_provider_details ||
+      item.embedding_readiness_state ||
+      item.status ||
+      lastDetails
+    );
+
+    if (item.embedding_readiness_state === "failed") {
+      throw new Error(`[${label}] embedding readiness failed: ${lastDetails}`);
+    }
+
+    try {
+      await core.primeEmbedding("__bench_readiness__", "passage");
+      await core.primeEmbedding("__bench_readiness__", "query");
+    } catch {
+      // best effort; poll again until ready or timeout
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+
+  throw new Error(`[${label}] embedding readiness timeout: ${lastDetails}`);
+}
+
 async function maybePrimeEmbedding(
   core: HarnessMemCore,
   texts: string[],
@@ -685,6 +822,107 @@ interface TemporalCase {
   domain?: string;
 }
 
+interface FixtureUpdateLink {
+  fromObservationId: string;
+  toObservationId: string;
+}
+
+export function buildKnowledgeUpdateFixtureLinks(
+  kCase: Pick<KnowledgeUpdateCase, "old_entries" | "new_entries">
+): FixtureUpdateLink[] {
+  const links: FixtureUpdateLink[] = [];
+  for (const newest of kCase.new_entries) {
+    for (const old of kCase.old_entries) {
+      links.push({
+        fromObservationId: `obs_${newest.id}`,
+        toObservationId: `obs_${old.id}`,
+      });
+    }
+  }
+  return links;
+}
+
+/**
+ * S43-010: Japanese companion gate チェック。
+ *
+ * 指定された companion gate JSON artifact を読み込んで verdict を評価する。
+ * artifact が存在しない場合は SKIP（true を返す）。
+ * HARNESS_BENCH_JA_COMPANION=0 で明示的に無効化できる。
+ *
+ * @returns true = passed or skipped, false = failed
+ */
+export function checkJapaneseCompanionGate(artifactPath: string): {
+  passed: boolean;
+  skipped: boolean;
+  verdict?: string;
+  failures?: string[];
+  message: string;
+} {
+  // 環境変数で無効化
+  if (process.env.HARNESS_BENCH_JA_COMPANION === "0") {
+    return { passed: true, skipped: true, message: "HARNESS_BENCH_JA_COMPANION=0 (disabled)" };
+  }
+
+  if (!existsSync(artifactPath)) {
+    return { passed: true, skipped: true, message: `artifact not found: ${artifactPath}` };
+  }
+
+  try {
+    const raw = require("node:fs").readFileSync(artifactPath, "utf8") as string;
+    const report = JSON.parse(raw) as {
+      verdict: string;
+      failures?: string[];
+      checks?: Record<string, unknown>;
+    };
+    const verdict = report.verdict;
+    if (verdict === "pass") {
+      return { passed: true, skipped: false, verdict, failures: [], message: "companion gate PASSED" };
+    }
+    const failures = report.failures ?? [];
+    return {
+      passed: false,
+      skipped: false,
+      verdict,
+      failures,
+      message: `companion gate FAILED: ${failures.join(", ")}`,
+    };
+  } catch (err) {
+    return {
+      passed: false,
+      skipped: false,
+      message: `companion gate read error: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+export function collectTemporalAnchorReferenceTexts(query: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const anchor of extractTemporalAnchors(query)) {
+    const text = anchor.referenceText.trim();
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    out.push(text);
+  }
+  return out;
+}
+
+function getCoreDb(core: HarnessMemCore): Database | null {
+  const db = (core as unknown as { db?: Database }).db;
+  return db ?? null;
+}
+
+function insertKnowledgeFixtureLinks(core: HarnessMemCore, kCase: KnowledgeUpdateCase, createdAt: string): void {
+  const db = getCoreDb(core);
+  if (!db) return;
+  for (const link of buildKnowledgeUpdateFixtureLinks(kCase)) {
+    db.query(
+      `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+       VALUES (?, ?, 'updates', 1.0, ?)`
+    ).run(link.fromObservationId, link.toObservationId, createdAt);
+  }
+}
+
 function createTempCore(): { core: HarnessMemCore; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-ci-bench-"));
   const config: Config = {
@@ -710,6 +948,18 @@ function createTempCore(): { core: HarnessMemCore; dir: string } {
   return { core, dir };
 }
 
+async function recordBenchEvent(core: HarnessMemCore, event: BenchEventInput): Promise<void> {
+  const result = await core.recordEventQueued(event, { allowQueue: false });
+  if (result === "queue_full") {
+    throw new Error(`[CI] benchmark write queue unexpectedly full for ${event.event_id}`);
+  }
+  if (!result.ok) {
+    throw new Error(
+      `[CI] benchmark event write failed for ${event.event_id}: ${result.error || "unknown error"}`
+    );
+  }
+}
+
 async function runBilingualBenchmark(
   fixturePath: string
 ): Promise<{
@@ -728,22 +978,17 @@ async function runBilingualBenchmark(
     const project = "ci-bilingual";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
+    await ensureEmbeddingReady(core, "bilingual");
 
     await maybePrimeEmbedding(
       core,
       samples.map((sample) => sample.content),
       "passage"
     );
-    await maybePrimeEmbedding(
-      core,
-      samples.map((sample) => sample.query),
-      "query"
-    );
-
     // コンテンツを投入
     for (let i = 0; i < samples.length; i++) {
       const s = samples[i];
-      core.recordEvent({
+      await recordBenchEvent(core, {
         event_id: s.id,
         platform: "claude",
         project,
@@ -756,11 +1001,18 @@ async function runBilingualBenchmark(
       });
     }
 
+    await maybePrimeEmbedding(
+      core,
+      samples.map((sample) => sample.query),
+      "query"
+    );
+
     // recall@10 を計測（§34 FD-011: per-sample スコアも収集）
     const perSampleScores: number[] = [];
     const failures: BilingualFailureCase[] = [];
     for (const s of samples) {
       const result = core.search({ query: s.query, project, include_private: true, limit: 10 });
+      assertApiOk(result, `bilingual:${s.id}:search`);
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const relevantIds = s.relevant_ids.map((rid) => `obs_${rid}`);
       const recall = runner.calculateRecallAtK(retrievedIds, relevantIds, 10);
@@ -811,30 +1063,23 @@ async function runKnowledgeUpdateBenchmark(
     const project = "ci-knowledge-update";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
-
-    await maybePrimeEmbedding(
-      core,
-      cases.flatMap((kCase) => [
-        ...kCase.old_entries.map((entry) => entry.content),
-        ...kCase.new_entries.map((entry) => entry.content),
-      ]),
-      "passage"
-    );
-    await maybePrimeEmbedding(
-      core,
-      cases.map((kCase) => kCase.query),
-      "query"
-    );
-
-    const scores: number[] = [];
-
+    await ensureEmbeddingReady(core, "knowledge-update-100");
     for (const kCase of cases) {
+      const caseProject = `${project}-${kCase.id}`;
+      await maybePrimeEmbedding(
+        core,
+        [
+          ...kCase.old_entries.map((entry) => entry.content),
+          ...kCase.new_entries.map((entry) => entry.content),
+        ],
+        "passage"
+      );
       // 古い記録を投入
       for (const entry of kCase.old_entries) {
-        core.recordEvent({
+        await recordBenchEvent(core, {
           event_id: entry.id,
           platform: "claude",
-          project,
+          project: caseProject,
           session_id: `ku-session-${kCase.id}`,
           event_type: "user_prompt",
           ts: entry.timestamp,
@@ -845,10 +1090,10 @@ async function runKnowledgeUpdateBenchmark(
       }
       // 新しい記録を投入
       for (const entry of kCase.new_entries) {
-        core.recordEvent({
+        await recordBenchEvent(core, {
           event_id: entry.id,
           platform: "claude",
-          project,
+          project: caseProject,
           session_id: `ku-session-${kCase.id}`,
           event_type: "user_prompt",
           ts: entry.timestamp,
@@ -858,7 +1103,22 @@ async function runKnowledgeUpdateBenchmark(
         });
       }
 
-      const result = core.search({ query: kCase.query, project, include_private: true, limit: 10, exclude_updated: true });
+      insertKnowledgeFixtureLinks(core, kCase, nowIso());
+    }
+
+    const scores: number[] = [];
+    for (const kCase of cases) {
+      const caseProject = `${project}-${kCase.id}`;
+      await maybePrimeEmbedding(core, [kCase.query], "query");
+      const result = core.search({
+        query: kCase.query,
+        project: caseProject,
+        include_private: true,
+        limit: 10,
+        exclude_updated: true,
+        question_kind: "freshness",
+      });
+      assertApiOk(result, `knowledge-update:${kCase.id}:search`);
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const newId = `obs_${kCase.expected_latest_id}`;
       const oldIds = kCase.old_entries.map((e) => `obs_${e.id}`);
@@ -902,29 +1162,26 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
     const project = "ci-temporal";
     const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
-
-    await maybePrimeEmbedding(
-      core,
-      cases.flatMap((tCase) => tCase.entries.map((entry) => entry.content)),
-      "passage"
-    );
-    await maybePrimeEmbedding(
-      core,
-      cases.map((tCase) => tCase.query),
-      "query"
-    );
-
+    await ensureEmbeddingReady(core, "temporal-100");
     const scores: number[] = [];
     const weightedTauScores: number[] = [];
     const ndcgScores: number[] = [];
     const domainTauScores: Record<string, number[]> = {};
 
     for (const tCase of cases) {
+      const caseProject = `${project}-${tCase.id}`;
+      await maybePrimeEmbedding(
+        core,
+        tCase.entries.map((entry) => entry.content),
+        "passage"
+      );
+      await maybePrimeEmbedding(core, [tCase.query], "query");
+      await maybePrimeEmbedding(core, collectTemporalAnchorReferenceTexts(tCase.query), "query");
       for (const entry of tCase.entries) {
-        core.recordEvent({
+        await recordBenchEvent(core, {
           event_id: entry.id,
           platform: "claude",
-          project,
+          project: caseProject,
           session_id: `temporal-session-${tCase.id}`,
           event_type: "user_prompt",
           ts: entry.timestamp,
@@ -933,8 +1190,20 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
           privacy_tags: [],
         });
       }
+    }
 
-      const result = core.search({ query: tCase.query, project, include_private: true, limit: 10 });
+    for (const tCase of cases) {
+      const caseProject = `${project}-${tCase.id}`;
+      await maybePrimeEmbedding(core, [tCase.query], "query");
+      await maybePrimeEmbedding(core, collectTemporalAnchorReferenceTexts(tCase.query), "query");
+      const result = core.search({
+        query: tCase.query,
+        project: caseProject,
+        include_private: true,
+        limit: 10,
+        question_kind: "timeline",
+      });
+      assertApiOk(result, `temporal:${tCase.id}:search`);
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const expectedOrderIds = tCase.expected_order.map((id) => `obs_${id}`);
 
@@ -1015,14 +1284,21 @@ async function main(): Promise<void> {
 
   let allPassed = true;
   let locomoF1 = 0;
+  let cat1F1 = 0;
   let cat2F1 = 0;
   let cat3F1 = 0;
+  let pairedVectors: PairedMetricVectors | null = null;
+  let locomoSearchP95 = 0;
+  let locomoTokenAvg = 0;
+  const cat1Gate = resolveNumericGate("HARNESS_BENCH_CAT1_F1_GATE", 0.3244);
   const cat2Gate = resolveNumericGate("HARNESS_BENCH_CAT2_F1_GATE", 0.20);
   const cat3Gate = resolveNumericGate("HARNESS_BENCH_CAT3_F1_GATE", 0.24);
+  const searchP95Gate = resolveNumericGate("HARNESS_BENCH_SEARCH_P95_MS_GATE", 25);
+  const tokenAvgGate = resolveNumericGate("HARNESS_BENCH_TOKEN_AVG_GATE", 450);
   const fixtureManifest = buildFixtureManifest();
 
   // §34 FD-012: 3層 CI ゲート用スコア集約
-  const ciScores = { f1: 0, freshness: 0, temporal: 0, bilingual: 0 };
+  const ciScores = { f1: 0, freshness: 0, temporal: 0, bilingual: 0, cat1: 0 };
 
   // §34 FD-011: Bootstrap CI 計算用 runner（stub core）
   const stubCore = {
@@ -1049,8 +1325,11 @@ async function main(): Promise<void> {
     const overallEM = result.metrics.overall.em;
     const byCat = result.metrics.by_category;
     locomoF1 = overallF1;
+    cat1F1 = byCat["cat-1"]?.f1 ?? 0;
     cat2F1 = byCat["cat-2"]?.f1 ?? 0;
     cat3F1 = byCat["cat-3"]?.f1 ?? 0;
+    locomoSearchP95 = result.performance.search_latency_ms.p95;
+    locomoTokenAvg = result.cost.search_token_estimate.total_avg;
 
     console.log(`[CI] locomo-120 overall: EM=${overallEM.toFixed(4)}, F1=${overallF1.toFixed(4)}`);
     console.log(`[CI] locomo-120 samples=${result.dataset.sample_count}, qa=${result.dataset.qa_count}`);
@@ -1072,6 +1351,16 @@ async function main(): Promise<void> {
     }
 
     ciScores.f1 = overallF1; // §34 FD-012: 3層ゲート用
+    ciScores.cat1 = cat1F1;
+
+    const baselineResult = loadLocomoResult(LOCOMO_120_BASELINE);
+    if (baselineResult) {
+      const factualFocus = buildPairedF1Vectors(baselineResult, result, "cat-2/cat-3", ["cat-2", "cat-3"]);
+      pairedVectors = factualFocus.matched > 0 ? factualFocus : buildPairedF1Vectors(baselineResult, result, "global");
+      console.log(
+        `[CI] paired vectors prepared: label=${pairedVectors.label}, matched=${pairedVectors.matched}, mean_delta=${pairedVectors.meanDelta.toFixed(4)}`
+      );
+    }
 
     const regressionResult = checkLocomo120Regression(overallF1, byCat);
     if (regressionResult.passed) {
@@ -1087,11 +1376,29 @@ async function main(): Promise<void> {
     } else {
       console.log(`[CI] cat-2 gate PASSED: f1=${cat2F1.toFixed(4)} >= ${cat2Gate.toFixed(4)}`);
     }
+    if (cat1F1 < cat1Gate) {
+      console.error(`[CI] cat-1 gate FAILED: f1=${cat1F1.toFixed(4)} < ${cat1Gate.toFixed(4)}`);
+      allPassed = false;
+    } else {
+      console.log(`[CI] cat-1 gate PASSED: f1=${cat1F1.toFixed(4)} >= ${cat1Gate.toFixed(4)}`);
+    }
     if (cat3F1 < cat3Gate) {
       console.error(`[CI] cat-3 gate FAILED: f1=${cat3F1.toFixed(4)} < ${cat3Gate.toFixed(4)}`);
       allPassed = false;
     } else {
       console.log(`[CI] cat-3 gate PASSED: f1=${cat3F1.toFixed(4)} >= ${cat3Gate.toFixed(4)}`);
+    }
+    if (locomoSearchP95 > searchP95Gate) {
+      console.error(`[CI] locomo search p95 gate FAILED: p95=${locomoSearchP95.toFixed(2)}ms > ${searchP95Gate.toFixed(2)}ms`);
+      allPassed = false;
+    } else {
+      console.log(`[CI] locomo search p95 gate PASSED: p95=${locomoSearchP95.toFixed(2)}ms <= ${searchP95Gate.toFixed(2)}ms`);
+    }
+    if (locomoTokenAvg > tokenAvgGate) {
+      console.error(`[CI] locomo token avg gate FAILED: avg=${locomoTokenAvg.toFixed(2)} > ${tokenAvgGate.toFixed(2)}`);
+      allPassed = false;
+    } else {
+      console.log(`[CI] locomo token avg gate PASSED: avg=${locomoTokenAvg.toFixed(2)} <= ${tokenAvgGate.toFixed(2)}`);
     }
   } catch (err) {
     console.error(`[CI] locomo-120 benchmark error: ${err instanceof Error ? err.message : String(err)}`);
@@ -1235,13 +1542,32 @@ async function main(): Promise<void> {
   }
 
   // Layer 3: Wilcoxon改善主張検証（HARNESS_BENCH_ASSERT_IMPROVEMENT=1 で有効）
-  const l3 = layer3WilcoxonImprovement([], [], "global");
+  const l3 = pairedVectors
+    ? layer3WilcoxonImprovement(pairedVectors.before, pairedVectors.after, `${pairedVectors.label} (n=${pairedVectors.matched})`)
+    : layer3WilcoxonImprovement([], [], "cat-2/cat-3");
   if (l3.skipped) {
     console.log(`[CI] Layer 3 (Wilcoxon): ${l3.message}`);
   } else if (l3.passed) {
     console.log(`[CI] Layer 3 (Wilcoxon): PASSED — ${l3.message}`);
   } else {
     console.error(`[CI] Layer 3 (Wilcoxon): FAILED — ${l3.message}`);
+    allPassed = false;
+  }
+
+  // S43-010: Japanese companion gate — release-critical companion
+  // 最新の ja-release-v2 companion gate artifact を確認して release blocker として評価する
+  const JA_COMPANION_ARTIFACT = resolve(
+    import.meta.dir,
+    "../../../../docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json"
+  );
+  console.log("\n[CI] === Japanese Companion Gate ===");
+  const jaGate = checkJapaneseCompanionGate(JA_COMPANION_ARTIFACT);
+  if (jaGate.skipped) {
+    console.log(`[CI] Japanese companion gate: SKIPPED (${jaGate.message})`);
+  } else if (jaGate.passed) {
+    console.log("[CI] Japanese companion gate: PASSED");
+  } else {
+    console.error(`[CI] Japanese companion gate: FAILED — ${jaGate.message}`);
     allPassed = false;
   }
 
@@ -1270,8 +1596,19 @@ async function main(): Promise<void> {
       bilingual_recall: ciScores.bilingual,
       freshness: ciScores.freshness,
       temporal: ciScores.temporal,
+      cat1_f1: cat1F1,
       cat2_f1: cat2F1,
       cat3_f1: cat3F1,
+    },
+    paired_improvement: {
+      label: pairedVectors?.label ?? "cat-2/cat-3",
+      matched: pairedVectors?.matched ?? 0,
+      mean_delta: pairedVectors?.meanDelta ?? 0,
+      gate_enabled: process.env.HARNESS_BENCH_ASSERT_IMPROVEMENT === "1",
+    },
+    performance: {
+      locomo_search_p95_ms: locomoSearchP95,
+      locomo_token_avg: locomoTokenAvg,
     },
   };
   writeRunManifest(manifest);
@@ -1285,7 +1622,9 @@ async function main(): Promise<void> {
   console.log("\n[CI] All benchmarks passed");
 }
 
-main().catch((err) => {
-  console.error("[CI] Fatal error:", err);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("[CI] Fatal error:", err);
+    process.exit(1);
+  });
+}

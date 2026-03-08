@@ -1,0 +1,1017 @@
+{
+  "schema_version": "locomo-failure-backlog-v1",
+  "generated_at": "2026-03-07T09:44:21.335Z",
+  "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run1/result.json",
+  "limit": 50,
+  "summary": {
+    "total_failures_considered": 51,
+    "selected_failures": 50,
+    "by_category": {
+      "cat-2": 21,
+      "cat-1": 23,
+      "cat-3": 3,
+      "cat-4": 3
+    },
+    "by_tag": {
+      "temporal_normalization": 25,
+      "yes_no_decision": 8,
+      "retrieval_alignment": 18,
+      "retrieval_depth": 14,
+      "evidence_coverage": 1,
+      "multi_hop_reasoning": 3,
+      "multi_hop_fact_extraction": 3,
+      "counterfactual_format": 3,
+      "response_compression": 2,
+      "list_structuring": 3
+    }
+  },
+  "review_evidence_spec": {
+    "required_artifacts": [
+      "locomo10.runX.score-report.full.json",
+      "locomo10.repro-report.json",
+      "locomo10.failure-backlog.judged.json",
+      "locomo10.failure-backlog.judged.md",
+      "locomo10.runX.risk-notes.md"
+    ],
+    "rejection_conditions": [
+      "same dataset / judge / category constraints are not met",
+      "missing required artifacts",
+      "3-run stats (mean/stddev/min/max) are incomplete",
+      "gate thresholds (Judge mean/stddev/p95/token avg) are unmet"
+    ],
+    "comparison_requirements": [
+      "same dataset path",
+      "same judge model/temperature/prompt",
+      "same category scope (cat-1..cat-4 for Judge)"
+    ]
+  },
+  "actions": {
+    "temporal_normalization": "Normalize and canonicalize time expressions before final answer generation.",
+    "temporal_reference_anchor": "Resolve relative temporal words against conversation timestamp and persist the anchor.",
+    "multi_hop_reasoning": "Combine top evidence from multiple observations and output causal summary.",
+    "multi_hop_fact_extraction": "Stage multi-hop answers through fact JSON extraction before final one-sentence output.",
+    "counterfactual_format": "Force counterfactual output to 'Conclusion. Reason: ...' format.",
+    "yes_no_decision": "Add contradiction/negation detection for yes/no responses.",
+    "location_extraction": "Extract location entities from top evidence and prefer shortest answer phrase.",
+    "entity_extraction": "Add entity-focused extraction rule for identity/relationship questions.",
+    "list_structuring": "Return comma-separated compact lists instead of conversational prose.",
+    "retrieval_alignment": "Increase candidate depth and query variants for zero-overlap failures.",
+    "retrieval_depth": "Increase search depth and keep at least top-3 quality candidates for cat-2/cat-3.",
+    "evidence_coverage": "Expand evidence merge to include multiple observation IDs before synthesis.",
+    "response_compression": "Trim filler text and keep one concise evidence-backed sentence."
+  },
+  "improvement_tickets": [
+    {
+      "tag": "temporal_normalization",
+      "owner": "owner:TBD",
+      "due": "2026-03-14",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "retrieval_alignment",
+      "owner": "owner:TBD",
+      "due": "2026-03-17",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "retrieval_depth",
+      "owner": "owner:TBD",
+      "due": "2026-03-20",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "yes_no_decision",
+      "owner": "owner:TBD",
+      "due": "2026-03-23",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    },
+    {
+      "tag": "multi_hop_reasoning",
+      "owner": "owner:TBD",
+      "due": "2026-03-26",
+      "status": "todo",
+      "re_evaluation_result": "pending"
+    }
+  ],
+  "failures": [
+    {
+      "rank": 1,
+      "sample_id": "ja-rel-002",
+      "question_id": "long-002",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
+      "answer": "平日の 9:00〜18:00 JST",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 2,
+      "sample_id": "ja-rel-005",
+      "question_id": "relative-005",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "先に出たあと、遅れたのはどれですか？",
+      "answer": "SSO",
+      "prediction": "実際には team workspaces"
+    },
+    {
+      "rank": 3,
+      "sample_id": "ja-rel-010",
+      "question_id": "temporal-010",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-organization-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
+      "answer": "engineering",
+      "prediction": "Singapore"
+    },
+    {
+      "rank": 4,
+      "sample_id": "ja-rel-015",
+      "question_id": "temporal-015",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment",
+        "retrieval_depth",
+        "evidence_coverage"
+      ],
+      "question": "最初はどのツールだけを対象にしていましたか？",
+      "answer": "codex",
+      "prediction": "codex, cursor, claude"
+    },
+    {
+      "rank": 5,
+      "sample_id": "ja-rel-002",
+      "question_id": "yesno-002",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "今もサポートは 24 時間体制ですか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 6,
+      "sample_id": "ja-rel-003",
+      "question_id": "yesno-003",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "Starter は今も 29 dollars a month ですか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 7,
+      "sample_id": "ja-rel-004",
+      "question_id": "yesno-004",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
+      "answer": "Yes",
+      "prediction": "quarterly audit exports の要望"
+    },
+    {
+      "rank": 8,
+      "sample_id": "ja-rel-005",
+      "question_id": "yesno-005",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "SSO のほうが先に出ましたか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 9,
+      "sample_id": "ja-rel-007",
+      "question_id": "yesno-007",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "recency は fusion の前にかけていますか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 10,
+      "sample_id": "ja-rel-010",
+      "question_id": "yesno-010",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "engineering も headquarters 移転後に remote-first をやめましたか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 11,
+      "sample_id": "ja-rel-011",
+      "question_id": "yesno-011",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-reason-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "same-day funnel drops を見逃していたことが変更理由でしたか？",
+      "answer": "Yes",
+      "prediction": "customers が same-day funnel drops を見逃していたから"
+    },
+    {
+      "rank": 12,
+      "sample_id": "ja-rel-012",
+      "question_id": "yesno-012",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment"
+      ],
+      "question": "SAML が最初に出た機能ですか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 13,
+      "sample_id": "ja-rel-013",
+      "question_id": "yesno-013",
+      "category": "cat-2",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 4,
+      "improvement_tags": [
+        "temporal_normalization",
+        "yes_no_decision",
+        "retrieval_alignment",
+        "retrieval_depth"
+      ],
+      "question": "default region は今も us-west-2 ですか？",
+      "answer": "No",
+      "prediction": "Yes"
+    },
+    {
+      "rank": 14,
+      "sample_id": "ja-rel-014",
+      "question_id": "exact-014",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "今も補助通知として残しているものは何ですか？",
+      "answer": "email",
+      "prediction": "primary incident channel は Slack"
+    },
+    {
+      "rank": 15,
+      "sample_id": "ja-rel-013",
+      "question_id": "long-013",
+      "category": "cat-1",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:no-candidate -> normalize -> final:empty",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_alignment"
+      ],
+      "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
+      "answer": "ap-northeast-1",
+      "prediction": "東京リージョンを既定にしてから初期表示も安定しました。"
+    },
+    {
+      "rank": 16,
+      "sample_id": "ja-rel-009",
+      "question_id": "prev-009",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "今の方式に変える前の認証フローは何でしたか？",
+      "answer": "JWT 方式",
+      "prediction": "Redis backed session cookies"
+    },
+    {
+      "rank": 17,
+      "sample_id": "ja-rel-013",
+      "question_id": "prev-013",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "以前の default region は何でしたか？",
+      "answer": "us-west-2",
+      "prediction": "default region は ap-northeast-1"
+    },
+    {
+      "rank": 18,
+      "sample_id": "ja-rel-014",
+      "question_id": "prev-014",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0,
+      "judge_label": "UNKNOWN",
+      "priority_score": 3,
+      "improvement_tags": [
+        "retrieval_alignment"
+      ],
+      "question": "primary channel を見直す前は何だけで送っていましたか？",
+      "answer": "email",
+      "prediction": "primary incident channel は Slack"
+    },
+    {
+      "rank": 19,
+      "sample_id": "ja-rel-006",
+      "question_id": "why-006",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.7058823529411764,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format"
+      ],
+      "question": "write latency を恒久的に下げたものは何ですか？",
+      "answer": "workspace_id と created_at の composite index",
+      "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
+    },
+    {
+      "rank": 20,
+      "sample_id": "ja-rel-001",
+      "question_id": "why-001",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-reason-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.8,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_depth"
+      ],
+      "question": "CircleCI から移行した理由は何ですか？",
+      "answer": "parallel build costs が上がり続けたから",
+      "prediction": "CircleCI の parallel build costs が上がり続けたから"
+    },
+    {
+      "rank": 21,
+      "sample_id": "ja-rel-005",
+      "question_id": "why-005",
+      "category": "cat-3",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-reason-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.8,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2.5,
+      "improvement_tags": [
+        "multi_hop_reasoning",
+        "multi_hop_fact_extraction",
+        "counterfactual_format",
+        "retrieval_depth"
+      ],
+      "question": "SSO が遅れた理由は何ですか？",
+      "answer": "SCIM provider contract がまだ交渉中だったから",
+      "prediction": "SSO の SCIM provider contract がまだ交渉中だったから"
+    },
+    {
+      "rank": 22,
+      "sample_id": "ja-rel-012",
+      "question_id": "relative-012",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.07999999999999999,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "audit logs の次に出たものは何ですか？",
+      "answer": "SAML",
+      "prediction": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 Q2 には export to CSV, audit logs, SAML for admins を出しました。 enterprise prospect も SAML を気にしていました。"
+    },
+    {
+      "rank": 23,
+      "sample_id": "ja-rel-008",
+      "question_id": "noisy-008",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.21052631578947367,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "launch playbook の次に何を localize した？",
+      "answer": "invoice emails",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+    },
+    {
+      "rank": 24,
+      "sample_id": "ja-rel-008",
+      "question_id": "temporal-008",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.21052631578947367,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "launch playbook の次に localize したものは何ですか？",
+      "answer": "invoice emails",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+    },
+    {
+      "rank": 25,
+      "sample_id": "ja-rel-006",
+      "question_id": "temporal-006",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.2105263157894737,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization",
+        "response_compression"
+      ],
+      "question": "alert の直後に最初にやったことは何ですか？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "prediction": "alert の直後に read traffic を新しい replica に逃がしました。 その後は import window も安定しました。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 ingestion と reporting の両方に影響しましたね。 月曜の import window で database connections が飽和しました。"
+    },
+    {
+      "rank": 26,
+      "sample_id": "ja-rel-006",
+      "question_id": "noisy-006",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.25806451612903225,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization",
+        "response_compression"
+      ],
+      "question": "アラートのあと最初にやったこと何？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "prediction": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。"
+    },
+    {
+      "rank": 27,
+      "sample_id": "ja-rel-006",
+      "question_id": "long-006",
+      "category": "cat-2",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6666666666666666,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "prediction": "alert の直後に read traffic を新しい replica に逃がしました。"
+    },
+    {
+      "rank": 28,
+      "sample_id": "ja-rel-005",
+      "question_id": "noisy-005",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.8,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_depth"
+      ],
+      "question": "どっちが先に出たの？",
+      "answer": "team workspaces",
+      "prediction": "実際には team workspaces"
+    },
+    {
+      "rank": 29,
+      "sample_id": "ja-rel-005",
+      "question_id": "temporal-005",
+      "category": "cat-2",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.8,
+      "judge_label": "UNKNOWN",
+      "priority_score": 2,
+      "improvement_tags": [
+        "temporal_normalization",
+        "retrieval_depth"
+      ],
+      "question": "SSO と team workspaces では、どちらが先に出ましたか？",
+      "answer": "team workspaces",
+      "prediction": "実際には team workspaces"
+    },
+    {
+      "rank": 30,
+      "sample_id": "ja-rel-015",
+      "question_id": "prev-015",
+      "category": "cat-1",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.15384615384615385,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
+      "answer": "codex",
+      "prediction": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。"
+    },
+    {
+      "rank": 31,
+      "sample_id": "ja-rel-008",
+      "question_id": "exact-008",
+      "category": "cat-1",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.2857142857142857,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "最初に翻訳した docs は何ですか？",
+      "answer": "launch playbook",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。"
+    },
+    {
+      "rank": 32,
+      "sample_id": "ja-rel-014",
+      "question_id": "current-014",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.33333333333333337,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "今の primary incident channel は何ですか？",
+      "answer": "Slack",
+      "prediction": "primary incident channel は Slack"
+    },
+    {
+      "rank": 33,
+      "sample_id": "ja-rel-014",
+      "question_id": "noisy-014",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.33333333333333337,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "今の primary incident channel は？",
+      "answer": "Slack",
+      "prediction": "primary incident channel は Slack"
+    },
+    {
+      "rank": 34,
+      "sample_id": "ja-rel-007",
+      "question_id": "prev-007",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.33333333333333337,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "RRF に変える前はどんな混ぜ方でしたか？",
+      "answer": "weighted sum",
+      "prediction": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。"
+    },
+    {
+      "rank": 35,
+      "sample_id": "ja-rel-009",
+      "question_id": "exact-009",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.3636363636363636,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "認証方式の変更時に削除したものは何ですか？",
+      "answer": "refresh token",
+      "prediction": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
+    },
+    {
+      "rank": 36,
+      "sample_id": "ja-rel-012",
+      "question_id": "exact-012",
+      "category": "cat-1",
+      "question_kind": "temporal",
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "em": 0,
+      "f1": 0.375,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "temporal_normalization"
+      ],
+      "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
+      "answer": "export to CSV",
+      "prediction": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。"
+    },
+    {
+      "rank": 37,
+      "sample_id": "ja-rel-013",
+      "question_id": "current-013",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.4,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "今の default region はどこですか？",
+      "answer": "ap-northeast-1",
+      "prediction": "default region は ap-northeast-1"
+    },
+    {
+      "rank": 38,
+      "sample_id": "ja-rel-013",
+      "question_id": "noisy-013",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.4,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "いまの default region どこ？",
+      "answer": "ap-northeast-1",
+      "prediction": "default region は ap-northeast-1"
+    },
+    {
+      "rank": 39,
+      "sample_id": "ja-rel-010",
+      "question_id": "current-010",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "今の headquarters はどこですか？",
+      "answer": "Singapore",
+      "prediction": "headquarters は Singapore"
+    },
+    {
+      "rank": 40,
+      "sample_id": "ja-rel-005",
+      "question_id": "list-005b",
+      "category": "cat-4",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "list_structuring"
+      ],
+      "question": "同じ四半期に出す予定だった 2 つは何でしたか？",
+      "answer": "SSO, team workspaces",
+      "prediction": "SSO と team workspaces を同じ四半期に出す予定でした。"
+    },
+    {
+      "rank": 41,
+      "sample_id": "ja-rel-010",
+      "question_id": "long-010",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
+      "answer": "Singapore",
+      "prediction": "headquarters は Singapore"
+    },
+    {
+      "rank": 42,
+      "sample_id": "ja-rel-010",
+      "question_id": "noisy-010",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "今の headquarters どこ？",
+      "answer": "Singapore",
+      "prediction": "headquarters は Singapore"
+    },
+    {
+      "rank": 43,
+      "sample_id": "ja-rel-004",
+      "question_id": "current-004",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5714285714285715,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "Enterprise の今の retention はどれくらいですか？",
+      "answer": "90 days",
+      "prediction": "Enterprise retention は 90 days"
+    },
+    {
+      "rank": 44,
+      "sample_id": "ja-rel-004",
+      "question_id": "long-004",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5714285714285715,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "Free の話はいったん置いて、Enterprise retention の今の値だけ短く答えると何日ですか？",
+      "answer": "90 days",
+      "prediction": "Enterprise retention は 90 days"
+    },
+    {
+      "rank": 45,
+      "sample_id": "ja-rel-004",
+      "question_id": "noisy-004",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.5714285714285715,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "Enterprise の retention いま何日？",
+      "answer": "90 days",
+      "prediction": "Enterprise retention は 90 days"
+    },
+    {
+      "rank": 46,
+      "sample_id": "ja-rel-015",
+      "question_id": "long-015",
+      "category": "cat-4",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "list_structuring"
+      ],
+      "question": "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
+      "answer": "codex, cursor, claude",
+      "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
+    },
+    {
+      "rank": 47,
+      "sample_id": "ja-rel-015",
+      "question_id": "noisy-015",
+      "category": "cat-4",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [
+        "list_structuring"
+      ],
+      "question": "今の推奨 setup の組み合わせは？",
+      "answer": "codex, cursor, claude",
+      "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
+    },
+    {
+      "rank": 48,
+      "sample_id": "ja-rel-008",
+      "question_id": "prev-008",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6666666666666666,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "以前の docs は何語だけでしたか？",
+      "answer": "English",
+      "prediction": "English only"
+    },
+    {
+      "rank": 49,
+      "sample_id": "ja-rel-010",
+      "question_id": "prev-010",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.6666666666666666,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "headquarters を移す前はどこでしたか？",
+      "answer": "San Francisco",
+      "prediction": "headquarters は San Francisco"
+    },
+    {
+      "rank": 50,
+      "sample_id": "ja-rel-006",
+      "question_id": "exact-006",
+      "category": "cat-1",
+      "question_kind": "factual",
+      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "em": 0,
+      "f1": 0.7058823529411764,
+      "judge_label": "UNKNOWN",
+      "priority_score": 1,
+      "improvement_tags": [],
+      "question": "write latency を恒久的に下げたのは何ですか？",
+      "answer": "workspace_id と created_at の composite index",
+      "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
+    }
+  ]
+}

@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { classifyQuestion, routeQuery, HYBRID_WEIGHTS, extractTemporalAnchors } from "../../src/retrieval/router";
+import {
+  classifyQuestion,
+  routeQuery,
+  HYBRID_WEIGHTS,
+  extractTemporalAnchors,
+  extractAnswerHints,
+  normalizeRelativeTimeExpression,
+} from "../../src/retrieval/router";
 
 describe("classifyQuestion", () => {
   test("classifies profile queries", () => {
@@ -116,6 +123,68 @@ describe("routeQuery", () => {
       const sum = Object.values(result.weights).reduce((a, b) => a + b, 0);
       expect(sum).toBeCloseTo(1.0, 2);
     }
+  });
+
+  test("adds answer hints for company queries", () => {
+    const result = routeQuery("What company did I join?");
+    expect(result.answerHints?.intent).toBe("company");
+    expect(result.answerHints?.exactValuePreferred).toBe(true);
+  });
+
+  test("adds answer hints for location queries", () => {
+    const result = routeQuery("Where do I live?");
+    expect(result.answerHints?.intent).toBe("location");
+    expect(result.answerHints?.activeFactPreferred).toBe(true);
+  });
+
+  test("timeline explicit kind carries temporal value answer hints", () => {
+    const result = routeQuery("When did the release happen?", "timeline");
+    expect(result.answerHints?.intent).toBe("temporal_value");
+  });
+});
+
+describe("extractAnswerHints", () => {
+  test("detects count-oriented questions", () => {
+    const hints = extractAnswerHints("How many hours did I train?");
+    expect(hints.intent).toBe("count");
+    expect(hints.slotKeywords).toContain("hours");
+  });
+
+  test("detects metric-oriented questions and keeps focus keywords", () => {
+    const hints = extractAnswerHints("日本語 release gate の overall F1 はいくつ");
+    expect(hints.intent).toBe("metric_value");
+    expect(hints.focusKeywords).toContain("ja-release-pack");
+    expect(hints.focusKeywords).toContain("overall f1");
+    expect(hints.metricKeywords).toContain("overall f1");
+  });
+
+  test("detects Japanese current-value questions", () => {
+    const hints = extractAnswerHints("今、使っている CI は何ですか？");
+    expect(hints.intent).toBe("current_value");
+    expect(hints.exactValuePreferred).toBe(true);
+  });
+
+  test("detects Japanese reason questions", () => {
+    const hints = extractAnswerHints("CircleCI から移行した理由は何ですか？");
+    expect(hints.intent).toBe("reason");
+    expect(hints.slotKeywords).toContain("理由");
+  });
+
+  test("detects Japanese list questions", () => {
+    const hints = extractAnswerHints("Q2 に出した admin 向け機能をすべて挙げてください。");
+    expect(hints.intent).toBe("list_value");
+  });
+
+  test("falls back to temporal value for timeline questions", () => {
+    const hints = extractAnswerHints("release happened", "timeline");
+    expect(hints.intent).toBe("temporal_value");
+    expect(hints.exactValuePreferred).toBe(true);
+  });
+
+  test("falls back to current value for freshness questions", () => {
+    const hints = extractAnswerHints("current deployment setup", "freshness");
+    expect(hints.intent).toBe("current_value");
+    expect(hints.activeFactPreferred).toBe(true);
   });
 });
 
@@ -286,5 +355,112 @@ describe("extractTemporalAnchors", () => {
   test("returns empty array for empty query", () => {
     const anchors = extractTemporalAnchors("");
     expect(anchors).toEqual([]);
+  });
+});
+
+// S43-004: Temporal normalization — relative time expressions
+// Targeted regression tests for temporal-010 / 015 / 008 / 006
+describe("S43-004 temporal normalization — targeted regression", () => {
+  // temporal-006: "alert の直後に最初にやったことは何ですか？"
+  // 直後 = immediately after → should extract "after" anchor with referenceText containing "alert"
+  test("[temporal-006] detects '直後' (immediately after) as after anchor", () => {
+    const anchors = extractTemporalAnchors("alert の直後に最初にやったことは何ですか？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+    expect(after?.referenceText.toLowerCase()).toContain("alert");
+  });
+
+  test("[temporal-006] classifies as timeline kind", () => {
+    const result = classifyQuestion("alert の直後に最初にやったことは何ですか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  // temporal-008: "launch playbook の次に localize したものは何ですか？"
+  // の次に = next after X → should extract "after" anchor with referenceText containing "launch playbook"
+  test("[temporal-008] detects 'の次に' (next after) as after anchor", () => {
+    const anchors = extractTemporalAnchors("launch playbook の次に localize したものは何ですか？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+    expect(after?.referenceText.toLowerCase()).toContain("launch playbook");
+  });
+
+  test("[temporal-008] classifies as timeline kind", () => {
+    const result = classifyQuestion("launch playbook の次に localize したものは何ですか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  // temporal-010: "headquarters を移した後も remote-first のままだったのはどのチームですか？"
+  // 移した後も = even after moving → should extract "after" anchor
+  test("[temporal-010] detects '後も' variant as after anchor", () => {
+    const anchors = extractTemporalAnchors("headquarters を移した後も remote-first のままだったのはどのチームですか？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after).toBeDefined();
+    expect(after?.direction).toBe("asc");
+  });
+
+  test("[temporal-010] classifies as timeline kind", () => {
+    const result = classifyQuestion("headquarters を移した後も remote-first のままだったのはどのチームですか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  // temporal-015: "最初はどのツールだけを対象にしていましたか？"
+  // 最初は = initially (with topic particle) → sequence anchor
+  test("[temporal-015] detects '最初は' as sequence anchor", () => {
+    const anchors = extractTemporalAnchors("最初はどのツールだけを対象にしていましたか？");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+  });
+
+  test("[temporal-015] classifies as timeline kind", () => {
+    const result = classifyQuestion("最初はどのツールだけを対象にしていましたか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  // normalizeRelativeTimeExpression: canonical form conversion
+  test("normalizeRelativeTimeExpression converts '直後' to 'immediately after'", () => {
+    const norm = normalizeRelativeTimeExpression("直後");
+    expect(norm).toBe("immediately_after");
+  });
+
+  test("normalizeRelativeTimeExpression converts '最初' to 'initially'", () => {
+    const norm = normalizeRelativeTimeExpression("最初");
+    expect(norm).toBe("initially");
+  });
+
+  test("normalizeRelativeTimeExpression converts 'の次に' to 'next_after'", () => {
+    const norm = normalizeRelativeTimeExpression("の次に");
+    expect(norm).toBe("next_after");
+  });
+
+  test("normalizeRelativeTimeExpression converts '後も' to 'even_after'", () => {
+    const norm = normalizeRelativeTimeExpression("後も");
+    expect(norm).toBe("even_after");
+  });
+
+  test("normalizeRelativeTimeExpression returns null for non-temporal text", () => {
+    const norm = normalizeRelativeTimeExpression("プロジェクト名");
+    expect(norm).toBeNull();
+  });
+
+  // TemporalAnchor canonical form: anchors should carry normalizedForm when available
+  test("[temporal-006] anchor carries normalizedForm for 直後", () => {
+    const anchors = extractTemporalAnchors("alert の直後に最初にやったことは何ですか？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after?.normalizedForm).toBe("immediately_after");
+  });
+
+  test("[temporal-008] anchor carries normalizedForm for の次に", () => {
+    const anchors = extractTemporalAnchors("launch playbook の次に localize したものは何ですか？");
+    const after = anchors.find((a) => a.type === "after");
+    expect(after?.normalizedForm).toBe("next_after");
+  });
+
+  test("[temporal-015] anchor carries normalizedForm for 最初", () => {
+    const anchors = extractTemporalAnchors("最初はどのツールだけを対象にしていましたか？");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq?.normalizedForm).toBe("initially");
   });
 });

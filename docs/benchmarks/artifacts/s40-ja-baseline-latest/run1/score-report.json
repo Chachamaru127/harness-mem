@@ -1,0 +1,75 @@
+{
+  "schema_version": "locomo-score-report-v1",
+  "generated_at": "2026-03-06T05:09:48.510Z",
+  "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run1/result.json",
+  "dataset": {
+    "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-32.json",
+    "sample_count": 16,
+    "qa_count": 32
+  },
+  "strict": {
+    "all_categories": {
+      "count": 32,
+      "em": 0.5625,
+      "f1": 0.7645176256921613
+    },
+    "cat_1_to_4": {
+      "count": 32,
+      "em": 0.5625,
+      "f1": 0.7645176256921613
+    },
+    "cat_5": {
+      "count": 0,
+      "em": 0,
+      "f1": 0
+    }
+  },
+  "performance": {
+    "search_latency_ms": {
+      "count": 32,
+      "min": 1.9392500000001291,
+      "max": 10.98,
+      "avg": 3.9455312187500056,
+      "p50": 3.12,
+      "p95": 9.3
+    },
+    "cache_stats": {
+      "available": true,
+      "before": {
+        "entries": 2,
+        "capacity": 128,
+        "hits": 0,
+        "misses": 2,
+        "evictions": 0,
+        "inflight": 0
+      },
+      "after": {
+        "entries": 128,
+        "capacity": 128,
+        "hits": 353,
+        "misses": 195,
+        "evictions": 57,
+        "inflight": 0
+      },
+      "delta": {
+        "entries": 126,
+        "capacity": 0,
+        "hits": 353,
+        "misses": 193,
+        "evictions": 57,
+        "inflight": 0
+      }
+    }
+  },
+  "cost": {
+    "search_token_estimate": {
+      "count": 32,
+      "input_total": 2329,
+      "output_total": 8890,
+      "total_total": 11219,
+      "input_avg": 72.78125,
+      "output_avg": 277.8125,
+      "total_avg": 350.59375
+    }
+  }
+}

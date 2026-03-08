@@ -16,8 +16,9 @@ import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
-import { routeQuery, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
+import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
+import { extractCurrentValueSpan } from "./current-value-compression";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import type { VectorEngine } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
@@ -33,6 +34,7 @@ import type {
   TimelineRequest,
 } from "./types.js";
 import {
+  buildSearchTokens,
   buildFtsQuery,
   clampLimit,
   cosineSimilarity,
@@ -48,7 +50,6 @@ import {
   nowIso,
   parseArrayJson,
   recencyScore,
-  tokenize,
   visibilityFilterSql,
   type RankingWeights,
   type SearchCandidate,
@@ -119,6 +120,14 @@ interface FeedCursor {
   id: string;
 }
 
+interface ActiveFactRow {
+  observation_id: string;
+  fact_type: string;
+  fact_key: string;
+  fact_value: string;
+  confidence: number;
+}
+
 function encodeFeedCursor(cursor: FeedCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
@@ -145,9 +154,35 @@ function decodeFeedCursor(input: string | undefined): FeedCursor | null {
 // S38-007: temporal 2段階検索を誤爆させないための意図判定（防御的）
 const TEMPORAL_INTENT_PATTERN =
   /\b(when|before|after|since|until|during|between|timeline|history|chronolog|first|last|earliest|latest|how long|what year|what month|what date)\b|(の前|の後|以前|以降|最初|最後|直近|最近)/i;
+const JAPANESE_CURRENT_PATTERN = /(今|現在|今の|現行|最新|使っている)/;
+const JAPANESE_PREVIOUS_PATTERN = /(以前|前の|前回|前は|もともと|元は|最初は|当初|当時|直後|初期)/;
+const JAPANESE_REASON_PATTERN = /(なぜ|理由|きっかけ|どうして|背景|原因)/;
+const JAPANESE_LIST_PATTERN = /(一覧|すべて|全て|挙げて|列挙)/;
+const JAPANESE_TEMPORAL_ORDER_PATTERN = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時)/;
+const CURRENT_CUE_PATTERN = /\b(current|currently|now|latest|active|default|primary)\b/i;
+const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
+const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
+const LIST_CUE_PATTERN = /\b(and|all|list|including)\b/i;
+const FILLER_CUE_PATTERN = /^(?:ちなみに|なお|ただ|実際には|現時点では|まず|最初に|最後に|That said|Actually|Currently|Right now|At the moment)\b/i;
 
 function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
+}
+
+function hasSpecificTemporalAnswerCue(query: string): boolean {
+  return /\b(first|last|before|after|since|until|when|what year|what month|what date|earliest|latest)\b/i.test(query) ||
+    /(どちらが先|先に|最後|最初|いつ|何時|その後|あとで|後で|直後|の前|の後|以前|以降)/.test(query);
+}
+
+function prefersDescendingTemporalOrder(query: string): boolean {
+  const normalized = query.toLowerCase();
+  if (/\b(first|earliest|before|prior to|until|initial|initially|start|starting|beginning)\b/.test(normalized)) {
+    return false;
+  }
+  if (/(最初|以前|の前|開始|初回)/.test(query)) {
+    return false;
+  }
+  return /\b(last|latest|newest|most recent|recent|current|currently)\b/.test(normalized) || /(最後|最新|直近|最近)/.test(query);
 }
 
 // ---------------------------------------------------------------------------
@@ -250,7 +285,7 @@ export class ObservationStore {
 
   private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
     if (!this.deps.ftsEnabled) {
-      const tokens = tokenize(request.query);
+      const tokens = buildSearchTokens(request.query);
       if (tokens.length === 0) return new Map<string, number>();
 
       const params: unknown[] = [];
@@ -647,6 +682,399 @@ export class ObservationStore {
     return normalizeWeights(base);
   }
 
+  private loadActiveFactsByObservation(
+    project: string | undefined,
+    observationIds: string[]
+  ): Map<string, ActiveFactRow[]> {
+    const factMap = new Map<string, ActiveFactRow[]>();
+    if (observationIds.length === 0) return factMap;
+
+    const placeholders = observationIds.map(() => "?").join(", ");
+    const projectClause = project ? "AND project = ?" : "";
+    const params = project ? [...observationIds, project] : observationIds;
+
+    try {
+      const rows = this.deps.db
+        .query(
+          `
+            SELECT observation_id, fact_type, fact_key, fact_value, confidence
+            FROM mem_facts
+            WHERE observation_id IN (${placeholders})
+              ${projectClause}
+              AND merged_into_fact_id IS NULL
+              AND superseded_by IS NULL
+              AND valid_to IS NULL
+          `
+        )
+        .all(...params) as ActiveFactRow[];
+      for (const row of rows) {
+        if (!row.observation_id) continue;
+        const existing = factMap.get(row.observation_id) ?? [];
+        existing.push(row);
+        factMap.set(row.observation_id, existing);
+      }
+    } catch {
+      return factMap;
+    }
+
+    return factMap;
+  }
+
+  private countKeywordHits(text: string, keywords: string[]): number {
+    if (!text || keywords.length === 0) return 0;
+    const lower = text.toLowerCase();
+    return keywords.reduce((count, keyword) => {
+      const normalized = keyword.trim().toLowerCase();
+      return normalized && lower.includes(normalized) ? count + 1 : count;
+    }, 0);
+  }
+
+  private hasNumericValue(text: string): boolean {
+    return /[-+]?\d+(?:\.\d+)?(?:%|pp|ms|s|x)?/i.test(text);
+  }
+
+  private normalizeCompactText(value: string): string {
+    return value.trim().replace(/\s+/g, " ");
+  }
+
+  private cleanExtractedSpan(value: string, options: { dropLeadingArticle?: boolean } = {}): string {
+    let cleaned = this.normalizeCompactText(value)
+      .replace(/^[,;:.!?'"`\s]+/, "")
+      .replace(/[,;:.!?'"`\s]+$/, "")
+      .replace(/\b(?:mostly|mainly|especially|currently|right now)\b$/i, "")
+      .trim();
+    if (options.dropLeadingArticle) {
+      cleaned = cleaned.replace(/^(?:the|a|an)\s+/i, "").trim();
+    }
+    return cleaned;
+  }
+
+  private stripTrailingJapaneseCopula(value: string): string {
+    return this.cleanExtractedSpan(
+      value
+        .replace(/^(?:その後|そこで|まず|最初に|最後に)\s+/u, "")
+        .replace(/\s*開始$/u, "")
+        .replace(/(?:です|でした|だ|だった)$/u, "")
+        .replace(/(?:を使っています|を使っている|にしています|にしていました|もサポートしています)$/u, "")
+        .replace(/(?:が先に出ました|が先でした|が最後でした|が最初でした)$/u, "")
+        .trim()
+    ).replace(/(?:も|を|が)$/u, "").trim();
+  }
+
+  private countAnswerSentences(text: string): number {
+    return text
+      .split(/\n+|(?<=[。.!?])\s+/)
+      .map((segment) => segment.trim())
+      .filter((segment) => segment.length > 0).length;
+  }
+
+  private extractJapaneseReasonSpan(text: string): string | null {
+    const source = this.normalizeCompactText(text);
+    const patterns = [
+      /(?:理由|きっかけ)(?:は|になったのは)?\s*([^。!?]+?(?:から|ため|ので))(?:です|でした|だ|だった)?/u,
+      /([^。!?]+?(?:から|ため|ので))(?:です|でした|だ|だった)?(?:。|$)/u,
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(source);
+      if (match?.[1]) return this.stripTrailingJapaneseCopula(match[1]);
+    }
+    return null;
+  }
+
+  private extractJapaneseCurrentValueSpan(text: string): string | null {
+    const source = this.normalizeCompactText(text);
+    const patterns = [
+      /今(?:は|の)?\s*([^。!?]+?)\s*(?:を使っています|を使っている|です|でした|にしています|になっています|もサポートしています|が使われています)/u,
+      /現在(?:は|の)?\s*([^。!?]+?)\s*(?:を使っています|です|でした|にしています|になっています|もサポートしています)/u,
+      /今の[^。!?]*?は\s*([^。!?]+?)(?:です|でした|だ|だった)/u,
+      /現在の[^。!?]*?は\s*([^。!?]+?)(?:です|でした|だ|だった)/u,
+      /((?:平日(?:の)?\s*)?\d{1,2}:\d{2}\s*[〜~-]\s*\d{1,2}:\d{2}\s*(?:JST|UTC)?)\s*に絞りました/u,
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(source);
+      if (match?.[1]) return this.stripTrailingJapaneseCopula(match[1]);
+    }
+    return null;
+  }
+
+  private extractJapanesePreviousValueSpan(text: string): string | null {
+    const source = this.normalizeCompactText(text);
+    const patterns = [
+      /以前(?:は|の)?\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+      /前(?:は|の)?\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+      /最初は[^。!?]*?を\s*([^。!?]+?)\s*にしていました/u,
+      /最初の[^。!?]*?は\s*([^。!?]+?)\s*だけを対象にしていました/u,
+      /元は\s*([^。!?]+?)\s*(?:でした|です|を使っていました|にしていました)/u,
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(source);
+      if (match?.[1]) return this.stripTrailingJapaneseCopula(match[1]);
+    }
+    return null;
+  }
+
+  private extractJapaneseTemporalOrderSpan(question: string, text: string): string | null {
+    const normalizedQuestion = this.normalizeCompactText(question);
+    const source = this.normalizeCompactText(text);
+    if (/(どちらが先|先に)/u.test(normalizedQuestion)) {
+      const first = /([^、,。!?]+?)が先(?:に出ました|に出た|でした|だ)/u.exec(source);
+      if (first?.[1]) return this.stripTrailingJapaneseCopula(first[1]);
+    }
+    if (/(最後|last)/iu.test(normalizedQuestion)) {
+      const last = /([^、,。!?]+?)が最後(?:に出ました|でした|だ)/u.exec(source);
+      if (last?.[1]) return this.stripTrailingJapaneseCopula(last[1]);
+    }
+    if (/(最初|first)/iu.test(normalizedQuestion)) {
+      const first = /([^、,。!?]+?)が最初(?:に出ました|でした|だ)/u.exec(source);
+      if (first?.[1]) return this.stripTrailingJapaneseCopula(first[1]);
+    }
+    return null;
+  }
+
+  private extractJapaneseListSpan(text: string): string | null {
+    const source = this.normalizeCompactText(text);
+    const patterns = [
+      /(?:には|は)\s*([^。!?]+?)\s*を(?:出しました|追加しました|導入しました|含めました)/u,
+      /([^。!?]+(?:,|、)\s*[^。!?]+(?:,|、)?\s*[^。!?]+)(?:を出しました|です)/u,
+    ];
+    for (const pattern of patterns) {
+      const match = pattern.exec(source);
+      if (match?.[1]) {
+        return [...new Set(match[1].split(/,|、| and /iu).map((item) => this.stripTrailingJapaneseCopula(item)).filter(Boolean))].join(", ");
+      }
+    }
+    return null;
+  }
+
+  private extractConciseAnswerSpan(query: string, answerHints: AnswerHints, text: string): string | null {
+    switch (answerHints.intent) {
+      case "current_value":
+        // S43-006: try bilingual span extraction (English + Japanese)
+        return extractCurrentValueSpan(text);
+      case "reason":
+        return this.extractJapaneseReasonSpan(text);
+      case "list_value":
+        return this.extractJapaneseListSpan(text);
+      case "temporal_value":
+        return (
+          this.extractJapaneseTemporalOrderSpan(query, text) ||
+          extractCurrentValueSpan(text) ||
+          this.extractJapanesePreviousValueSpan(text) ||
+          this.extractJapaneseListSpan(text)
+        );
+      case "location": {
+        const location =
+          /\b(?:in|at|from|to|near|based in|live in|located in)\s+([A-Z][\w.-]+(?:\s+[A-Z][\w.-]+){0,2})\b/u.exec(text) ||
+          /(東京|京都|大阪|名古屋|札幌|福岡|ニューヨーク|ロンドン|ベルリン|パリ)/u.exec(text);
+        return location?.[1] || location?.[0] || null;
+      }
+      default:
+        return null;
+    }
+  }
+
+  private hasFocusedNumericLine(text: string, focusKeywords: string[]): boolean {
+    if (focusKeywords.length === 0) return false;
+    const segments = text
+      .split(/\n+/)
+      .flatMap((line) => line.split(/[。.!?]/))
+      .map((line) => line.trim())
+      .filter((line) => line.length > 0)
+      .slice(0, 24);
+    return segments.some((line) => {
+      const lower = line.toLowerCase();
+      return this.countKeywordHits(lower, focusKeywords) > 0 && this.hasNumericValue(line);
+    });
+  }
+
+  private selectSpecificMetricKeywords(metricKeywords: string[]): string[] {
+    if (metricKeywords.length === 0) return metricKeywords;
+    const exactKeywords = metricKeywords.filter((keyword) => {
+      const normalized = keyword.trim().toLowerCase();
+      if (!normalized) return false;
+      if (normalized.includes(" ") || normalized.includes("@") || normalized.includes("_")) return true;
+      return ["freshness", "tau", "recall", "latency", "p95"].includes(normalized);
+    });
+    return exactKeywords.length > 0 ? exactKeywords : metricKeywords;
+  }
+
+  private isCommandLikeObservation(observation: Record<string, unknown>): boolean {
+    const title = typeof observation.title === "string" ? observation.title : "";
+    const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
+    return (
+      title.startsWith("Shell:") ||
+      /^\s*(?:jq|bun|curl|node|python|bash|ts=)/.test(content) ||
+      /^\s*[A-Z_][A-Z0-9_]*=/.test(content)
+    );
+  }
+
+  private computeActiveFactBoost(
+    query: string,
+    answerHints: AnswerHints | undefined,
+    facts: ActiveFactRow[]
+  ): number {
+    if (!answerHints?.activeFactPreferred || facts.length === 0) return 0;
+
+    const queryLower = query.toLowerCase();
+    const queryTokens = buildSearchTokens(queryLower);
+    let best = 0;
+    for (const fact of facts) {
+      const key = fact.fact_key.toLowerCase();
+      const value = fact.fact_value.toLowerCase();
+      const slotHits = this.countKeywordHits(`${key} ${value}`, answerHints.slotKeywords);
+      const focusHits = this.countKeywordHits(`${key} ${value}`, answerHints.focusKeywords);
+      const queryHits = this.countKeywordHits(`${key} ${value}`, queryTokens);
+      let score = Math.min(0.35, Math.max(0, fact.confidence) * 0.35);
+      if (slotHits > 0) score += Math.min(0.45, slotHits * 0.18);
+      if (focusHits > 0) score += Math.min(0.25, focusHits * 0.1);
+      else if (answerHints.focusKeywords.length > 0) score -= 0.08;
+      if (queryLower.includes(key) || key.includes(queryLower)) score += 0.2;
+      if (queryHits > 0) score += Math.min(0.15, queryHits * 0.05);
+      if (answerHints.exactValuePreferred && fact.fact_value.trim().length > 0 && fact.fact_value.trim().length <= 64) {
+        score += 0.1;
+      }
+      best = Math.max(best, Math.min(1, score));
+    }
+    return best;
+  }
+
+  private computePrecisionBoost(
+    query: string,
+    answerHints: AnswerHints | undefined,
+    observation: Record<string, unknown>
+  ): number {
+    if (!answerHints?.exactValuePreferred) return 0;
+
+    const title = typeof observation.title === "string" ? observation.title : "";
+    const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
+    const text = `${title} ${content}`.trim();
+    if (!text) return 0;
+
+    const queryLower = query.toLowerCase();
+    const lower = text.toLowerCase();
+    let score = 0;
+    const focusHits = this.countKeywordHits(lower, answerHints.focusKeywords);
+    const metricFocusKeywords =
+      answerHints.metricKeywords.length > 0 ? answerHints.metricKeywords : answerHints.focusKeywords;
+    const exactMetricKeywords = this.selectSpecificMetricKeywords(metricFocusKeywords);
+    const contextFocusKeywords = answerHints.focusKeywords.filter(
+      (keyword) => !answerHints.metricKeywords.includes(keyword)
+    );
+    const metricFocusHits = this.countKeywordHits(lower, metricFocusKeywords);
+    const exactMetricHits = this.countKeywordHits(lower, exactMetricKeywords);
+    const contextFocusHits = this.countKeywordHits(lower, contextFocusKeywords);
+    const hasFocusedNumericLine = this.hasFocusedNumericLine(text, metricFocusKeywords);
+    const hasExactMetricNumericLine = this.hasFocusedNumericLine(text, exactMetricKeywords);
+    const hasNumericValue = this.hasNumericValue(text);
+    const commandLike = this.isCommandLikeObservation(observation);
+    const hasCurrentCue = /\b(current|currently|now|latest|active|default|primary)\b/i.test(text) || /(今|現在|今の|現行|最新|primary|default)/.test(text);
+    const hasPreviousCue = /\b(previously|formerly|used to|prior|earlier|before)\b/i.test(text) || /(以前|前は|前の|もともと|元は|最初は)/.test(text);
+    const hasReasonCue = /\b(because|since|due to|reason|caused by|triggered by)\b/i.test(text) || /(から|ため|ので|理由|きっかけ|背景|原因)/.test(text);
+    const hasListCue = /[,、]/.test(text) || /\b(and|all|list|including)\b/i.test(text) || /(一覧|すべて|全て|挙げて|列挙)/.test(text);
+
+    if (this.countKeywordHits(lower, answerHints.slotKeywords) > 0) {
+      score += 0.15;
+    }
+    if (answerHints.intent === "metric_value") {
+      if (contextFocusHits > 0) {
+        score += Math.min(0.12, contextFocusHits * 0.04);
+      }
+    } else if (focusHits > 0) {
+      score += Math.min(0.32, focusHits * 0.08);
+    } else if (answerHints.focusKeywords.length > 0) {
+      score -= 0.14;
+    }
+    if (lower.includes(queryLower)) {
+      score += 0.05;
+    }
+
+    switch (answerHints.intent) {
+      case "metric_value":
+        if (hasExactMetricNumericLine && (contextFocusKeywords.length === 0 || contextFocusHits > 0)) {
+          score += 0.78;
+        } else if (hasExactMetricNumericLine) {
+          score += 0.34;
+        } else if (hasFocusedNumericLine && (contextFocusKeywords.length === 0 || contextFocusHits > 0)) {
+          score += 0.62;
+        } else if (hasFocusedNumericLine) {
+          score += 0.18;
+        } else if (hasNumericValue && exactMetricHits > 0 && (contextFocusKeywords.length === 0 || contextFocusHits > 0)) {
+          score += 0.24;
+        } else if (hasNumericValue && metricFocusHits > 0 && (contextFocusKeywords.length === 0 || contextFocusHits > 0)) {
+          score += 0.16;
+        }
+        else if (hasNumericValue) score -= 0.04;
+        else score -= 0.18;
+        if (exactMetricKeywords.length > 0 && exactMetricHits === 0) score -= 0.16;
+        if (contextFocusKeywords.length > 0 && contextFocusHits === 0) score -= 0.18;
+        if (commandLike) score -= 0.28;
+        break;
+      case "current_value":
+        if (hasCurrentCue) score += 0.38;
+        if (hasPreviousCue) score -= 0.2;
+        break;
+      case "reason":
+        if (hasReasonCue) score += 0.38;
+        break;
+      case "list_value":
+        if (hasListCue) score += 0.32;
+        break;
+      case "count":
+        if (hasFocusedNumericLine) score += 0.52;
+        else if (hasNumericValue && focusHits > 0) score += 0.35;
+        else if (hasNumericValue) score += 0.08;
+        else if (answerHints.focusKeywords.length > 0) score -= 0.08;
+        if (commandLike) score -= 0.18;
+        break;
+      case "language":
+        if (/\b(english|spanish|french|german|japanese|korean|chinese|mandarin|cantonese|portuguese|italian)\b/i.test(text)) {
+          score += 0.45;
+        }
+        break;
+      case "location":
+        if (/\b(in|at|from|to|near|based in|live in|located in)\s+[A-Z][\w.-]+(?:\s+[A-Z][\w.-]+){0,2}\b/.test(text) ||
+          /(東京|京都|大阪|名古屋|札幌|福岡|ニューヨーク|ロンドン|ベルリン|パリ)/.test(text)) {
+          score += 0.4;
+        }
+        break;
+      case "temporal_value":
+        if (/\b(january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|spring|summer|fall|autumn|winter|\d{4})\b/i.test(text)) {
+          score += 0.45;
+        }
+        break;
+      case "role":
+        if (/\b(engineer|developer|manager|designer|scientist|researcher|lead|director|analyst|architect|consultant|teacher|student)\b/i.test(text)) {
+          score += 0.4;
+        }
+        break;
+      case "company":
+        if (/\b(joined|company|startup|employer|business|works? at|operate)\b/i.test(text)) {
+          score += 0.35;
+        }
+        break;
+      case "person":
+        if (/\b(named|name is|called)\b/i.test(text)) {
+          score += 0.35;
+        }
+        break;
+      case "kind":
+      case "study_field":
+        if (/\b(is|was|study|major|focus|type|kind|using)\b/i.test(text)) {
+          score += 0.25;
+        }
+        break;
+      default:
+        break;
+    }
+
+    const firstSentence = text.split(/[.!?\n]/)[0]?.trim() || text.trim();
+    if (firstSentence.length > 0 && firstSentence.length <= 120) {
+      score += 0.08;
+    }
+
+    return Math.min(1, score);
+  }
+
   private buildRerankInput(
     ranked: SearchCandidate[],
     observations: Map<string, Record<string, unknown>>
@@ -668,7 +1096,8 @@ export class ObservationStore {
   private applyRerank(
     query: string,
     ranked: SearchCandidate[],
-    observations: Map<string, Record<string, unknown>>
+    observations: Map<string, Record<string, unknown>>,
+    options: { skipSemanticRerank?: boolean } = {}
   ): {
     ranked: SearchCandidate[];
     pre: Array<Record<string, unknown>>;
@@ -680,7 +1109,12 @@ export class ObservationStore {
       score: Number(item.final.toFixed(6)),
     }));
 
-    if (!this.deps.getRerankerEnabled() || !this.deps.getReranker() || ranked.length === 0) {
+    if (
+      options.skipSemanticRerank ||
+      !this.deps.getRerankerEnabled() ||
+      !this.deps.getReranker() ||
+      ranked.length === 0
+    ) {
       for (const item of ranked) {
         item.rerank = item.final;
       }
@@ -723,6 +1157,156 @@ export class ObservationStore {
     return { ranked, pre, post };
   }
 
+  private applyExactValuePriorityRerank(
+    ranked: SearchCandidate[],
+    routeDecision: RouteDecision,
+    observations: Map<string, Record<string, unknown>>
+  ): void {
+    if (routeDecision.answerHints?.intent !== "metric_value") return;
+    const answerHints = routeDecision.answerHints;
+    const metricFocusKeywords =
+      answerHints.metricKeywords.length > 0 ? answerHints.metricKeywords : answerHints.focusKeywords;
+    const exactMetricKeywords = this.selectSpecificMetricKeywords(metricFocusKeywords);
+    const contextFocusKeywords = answerHints.focusKeywords.filter(
+      (keyword) => !answerHints.metricKeywords.includes(keyword)
+    );
+
+    const metricPriority = (candidate: SearchCandidate) => {
+      const observation = observations.get(candidate.id) ?? {};
+      const title = typeof observation.title === "string" ? observation.title : "";
+      const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
+      const text = `${title} ${content}`.trim();
+      const lower = text.toLowerCase();
+      const contextHits = this.countKeywordHits(lower, contextFocusKeywords);
+      const contextSatisfied = contextFocusKeywords.length === 0 || contextHits > 0 ? 1 : 0;
+      const exactMetricHits = this.countKeywordHits(lower, exactMetricKeywords);
+      const metricHits = this.countKeywordHits(lower, metricFocusKeywords);
+      const exactMetricLine = this.hasFocusedNumericLine(text, exactMetricKeywords) ? 1 : 0;
+      const metricLine = this.hasFocusedNumericLine(text, metricFocusKeywords) ? 1 : 0;
+      const subagentEnvelope = title.startsWith("<subagent_notification>") ? 1 : 0;
+      const commandLike = this.isCommandLikeObservation(observation) ? 1 : 0;
+      return {
+        exactMetricLineWithContext: exactMetricLine * contextSatisfied,
+        exactMetricHitsWithContext: exactMetricHits * contextSatisfied,
+        metricLineWithContext: metricLine * contextSatisfied,
+        contextHits,
+        subagentEnvelope,
+        commandLike,
+        precisionBoost: candidate.precision_boost ?? 0,
+      };
+    };
+
+    ranked.sort((lhs, rhs) => {
+      const lhsPriority = metricPriority(lhs);
+      const rhsPriority = metricPriority(rhs);
+      if (rhsPriority.exactMetricLineWithContext !== lhsPriority.exactMetricLineWithContext) {
+        return rhsPriority.exactMetricLineWithContext - lhsPriority.exactMetricLineWithContext;
+      }
+      if (rhsPriority.exactMetricHitsWithContext !== lhsPriority.exactMetricHitsWithContext) {
+        return rhsPriority.exactMetricHitsWithContext - lhsPriority.exactMetricHitsWithContext;
+      }
+      if (rhsPriority.metricLineWithContext !== lhsPriority.metricLineWithContext) {
+        return rhsPriority.metricLineWithContext - lhsPriority.metricLineWithContext;
+      }
+      if (rhsPriority.contextHits !== lhsPriority.contextHits) {
+        return rhsPriority.contextHits - lhsPriority.contextHits;
+      }
+      if (lhsPriority.subagentEnvelope !== rhsPriority.subagentEnvelope) {
+        return lhsPriority.subagentEnvelope - rhsPriority.subagentEnvelope;
+      }
+      if (lhsPriority.commandLike !== rhsPriority.commandLike) {
+        return lhsPriority.commandLike - rhsPriority.commandLike;
+      }
+      const lhsPrecision = lhsPriority.precisionBoost;
+      const rhsPrecision = rhsPriority.precisionBoost;
+      const lhsFocused = lhsPrecision >= 0.35 ? 1 : 0;
+      const rhsFocused = rhsPrecision >= 0.35 ? 1 : 0;
+      if (rhsFocused !== lhsFocused) return rhsFocused - lhsFocused;
+      if (rhsPrecision !== lhsPrecision) return rhsPrecision - lhsPrecision;
+      if (rhs.final !== lhs.final) return rhs.final - lhs.final;
+      if (rhs.created_at !== lhs.created_at) {
+        return String(rhs.created_at).localeCompare(String(lhs.created_at));
+      }
+      return lhs.id.localeCompare(rhs.id);
+    });
+  }
+
+  private applyAnswerHintPriorityRerank(
+    query: string,
+    ranked: SearchCandidate[],
+    routeDecision: RouteDecision,
+    observations: Map<string, Record<string, unknown>>
+  ): void {
+    const answerHints = routeDecision.answerHints;
+    if (!answerHints || answerHints.intent === "metric_value" || answerHints.intent === "generic") return;
+    if (!["current_value", "reason", "list_value", "temporal_value", "location"].includes(answerHints.intent)) {
+      return;
+    }
+    if (answerHints.intent === "temporal_value" && !hasSpecificTemporalAnswerCue(query)) return;
+
+    const priorityFor = (candidate: SearchCandidate) => {
+      const observation = observations.get(candidate.id) ?? {};
+      const title = typeof observation.title === "string" ? observation.title : "";
+      const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
+      const text = `${title} ${content}`.trim();
+      const lower = text.toLowerCase();
+      const conciseSpan = this.extractConciseAnswerSpan(query, answerHints, text);
+      const sentenceCount = this.countAnswerSentences(text);
+      const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text);
+      const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
+      const hasReasonCue = REASON_CUE_PATTERN.test(text) || JAPANESE_REASON_PATTERN.test(text);
+      const hasListCue = LIST_CUE_PATTERN.test(text) || /[,、]/.test(text) || JAPANESE_LIST_PATTERN.test(text);
+      const hasTemporalCue =
+        hasTemporalIntent(query) &&
+        (TEMPORAL_INTENT_PATTERN.test(text) || JAPANESE_TEMPORAL_ORDER_PATTERN.test(text));
+      const focusHits = this.countKeywordHits(lower, answerHints.focusKeywords);
+      const fillerPenalty = FILLER_CUE_PATTERN.test(text) && sentenceCount > 1 ? 1 : 0;
+      const overlongPenalty = text.length > 220 || sentenceCount > 2 ? 1 : 0;
+      return {
+        hasConciseSpan: conciseSpan ? 1 : 0,
+        conciseLength: conciseSpan ? conciseSpan.length : 999,
+        focusHits,
+        hasCurrentCue: hasCurrentCue ? 1 : 0,
+        hasPreviousCue: hasPreviousCue ? 1 : 0,
+        hasReasonCue: hasReasonCue ? 1 : 0,
+        hasListCue: hasListCue ? 1 : 0,
+        hasTemporalCue: hasTemporalCue ? 1 : 0,
+        fillerPenalty,
+        overlongPenalty,
+        precisionBoost: candidate.precision_boost ?? 0,
+      };
+    };
+
+    ranked.sort((lhs, rhs) => {
+      const left = priorityFor(lhs);
+      const right = priorityFor(rhs);
+      if (right.hasConciseSpan !== left.hasConciseSpan) return right.hasConciseSpan - left.hasConciseSpan;
+      if (answerHints.intent === "current_value") {
+        if (right.hasCurrentCue !== left.hasCurrentCue) return right.hasCurrentCue - left.hasCurrentCue;
+        if (left.hasPreviousCue !== right.hasPreviousCue) return left.hasPreviousCue - right.hasPreviousCue;
+      }
+      if (answerHints.intent === "reason" && right.hasReasonCue !== left.hasReasonCue) {
+        return right.hasReasonCue - left.hasReasonCue;
+      }
+      if (answerHints.intent === "list_value" && right.hasListCue !== left.hasListCue) {
+        return right.hasListCue - left.hasListCue;
+      }
+      if (answerHints.intent === "temporal_value" && right.hasTemporalCue !== left.hasTemporalCue) {
+        return right.hasTemporalCue - left.hasTemporalCue;
+      }
+      if (right.focusHits !== left.focusHits) return right.focusHits - left.focusHits;
+      if (left.fillerPenalty !== right.fillerPenalty) return left.fillerPenalty - right.fillerPenalty;
+      if (left.overlongPenalty !== right.overlongPenalty) return left.overlongPenalty - right.overlongPenalty;
+      if (left.conciseLength !== right.conciseLength) return left.conciseLength - right.conciseLength;
+      if (right.precisionBoost !== left.precisionBoost) return right.precisionBoost - left.precisionBoost;
+      if (rhs.final !== lhs.final) return rhs.final - lhs.final;
+      if (rhs.created_at !== lhs.created_at) {
+        return String(rhs.created_at).localeCompare(String(lhs.created_at));
+      }
+      return lhs.id.localeCompare(rhs.id);
+    });
+  }
+
   /**
    * S38-007: temporal 2段階検索の適用条件を厳格化。
    * - 明示 timeline 指定は許可
@@ -762,13 +1346,15 @@ export class ObservationStore {
       const includePrivate = Boolean(request.include_private);
 
       // Phase 1: anchor.referenceText でベクトル検索してアンカーエントリを特定
+      // S43-005: anchor 特定の internalLimit を 5 → 20 に拡張して取りこぼしを防ぐ
       const anchorRequest: SearchRequest = {
         ...request,
         query: anchor.referenceText,
         limit: 1,
       };
-      const anchorVec = this.vectorSearch(anchorRequest, 5);
-      const anchorLex = this.lexicalSearch(anchorRequest, 5);
+      const ANCHOR_SEARCH_LIMIT = 20;
+      const anchorVec = this.vectorSearch(anchorRequest, ANCHOR_SEARCH_LIMIT);
+      const anchorLex = this.lexicalSearch(anchorRequest, ANCHOR_SEARCH_LIMIT);
 
       // §35 SD-004: hybrid anchor 特定 — vector 60% + lexical 40% の合算スコアで選択
       const hybridScores = new Map<string, number>();
@@ -903,12 +1489,40 @@ export class ObservationStore {
         params.push(anchorTs);
       }
 
+      // S43-005: Phase 2 候補を limit * 3 以上確保して evidence coverage を改善
+      const phase2Limit = Math.max(limit * 3, 30);
       sql += " LIMIT ?";
-      params.push(limit);
+      params.push(phase2Limit);
 
       const rows = this.deps.db.query(sql).all(...params) as Array<Record<string, unknown>>;
 
-      return rows.map((row) => {
+      // S43-005: query との lexical 関連性でスコアリングして top-3 quality candidate を保証する
+      const queryTokens = buildSearchTokens(request.query);
+      const scored = rows.map((row) => {
+        const titleText = typeof row.title === "string" ? row.title.toLowerCase() : "";
+        const contentText =
+          typeof row.content_redacted === "string" ? row.content_redacted.toLowerCase() : "";
+        const combined = `${titleText} ${contentText}`;
+        let relevanceScore = 0;
+        for (const token of queryTokens) {
+          if (combined.includes(token.toLowerCase())) relevanceScore += 1;
+        }
+        return { row, relevanceScore, created_at: String(row.created_at ?? "") };
+      });
+
+      const withRelevance = scored.filter((s) => s.relevanceScore > 0);
+      const withoutRelevance = scored.filter((s) => s.relevanceScore === 0);
+      const directionMultiplier = anchor.direction === "desc" ? -1 : 1;
+      withRelevance.sort((a, b) => {
+        if (b.relevanceScore !== a.relevanceScore) return b.relevanceScore - a.relevanceScore;
+        return directionMultiplier * a.created_at.localeCompare(b.created_at);
+      });
+      withoutRelevance.sort(
+        (a, b) => directionMultiplier * a.created_at.localeCompare(b.created_at)
+      );
+      const merged = [...withRelevance, ...withoutRelevance].slice(0, limit);
+
+      return merged.map(({ row, relevanceScore }) => {
         const tags = parseArrayJson(row.tags_json);
         const privacyTags = parseArrayJson(row.privacy_tags_json);
         return {
@@ -918,9 +1532,8 @@ export class ObservationStore {
           project: row.project,
           session_id: row.session_id,
           title: row.title,
-          content: typeof row.content_redacted === "string"
-            ? row.content_redacted.slice(0, 2000)
-            : "",
+          content:
+            typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 2000) : "",
           observation_type: "context",
           memory_type: row.memory_type || "semantic",
           created_at: row.created_at,
@@ -935,8 +1548,8 @@ export class ObservationStore {
             tag_boost: 0,
             importance: 0,
             graph: 0,
-            final: 0,
-            rerank: 0,
+            final: Number(relevanceScore.toFixed(6)),
+            rerank: Number(relevanceScore.toFixed(6)),
           },
         };
       });
@@ -968,7 +1581,11 @@ export class ObservationStore {
     }
 
     const limit = clampLimit(request.limit, 20, 1, 100);
-    const internalLimit = Math.min(500, limit * 5);
+    // S43-005: temporal クエリは candidate depth を拡張して取りこぼしを防ぐ
+    const isTemporalQuery = request.question_kind === "timeline" || request.question_kind === "freshness";
+    const internalLimit = isTemporalQuery
+      ? Math.min(500, Math.max(400, limit * 8))
+      : Math.min(500, limit * 5);
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks =
@@ -1036,7 +1653,9 @@ export class ObservationStore {
     }
 
     const observations = loadObservations(this.deps.db, [...candidateIds]);
-    const queryTokens = tokenize(request.query);
+    const queryTokens = buildSearchTokens(request.query);
+    const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
+    const activeFactsByObservation = this.loadActiveFactsByObservation(normalizedProject, [...candidateIds]);
 
     const ranked: SearchCandidate[] = [];
     let vectorCandidateCount = 0;
@@ -1077,6 +1696,12 @@ export class ObservationStore {
         typeof observation.signal_score === "number" ? observation.signal_score : 0;
       const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj));
       const graphScore = graph.get(id) ?? 0;
+      const factBoost = this.computeActiveFactBoost(
+        request.query,
+        routeDecision.answerHints,
+        activeFactsByObservation.get(id) ?? []
+      );
+      const precisionBoost = this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
 
       ranked.push({
         id,
@@ -1086,6 +1711,8 @@ export class ObservationStore {
         tag_boost: tagBoost,
         importance,
         graph: graphScore,
+        fact_boost: factBoost,
+        precision_boost: precisionBoost,
         final: 0,
         rerank: 0,
         created_at: createdAt,
@@ -1123,7 +1750,6 @@ export class ObservationStore {
     const vectorCoverage = ranked.length === 0 ? 0 : vectorCandidateCount / ranked.length;
 
     // Route query to determine retrieval strategy and weight overrides
-    const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
     const baseWeights = this.resolveSearchWeights(vectorCoverage);
     // Blend router weights with existing weights: router takes precedence
     // when a specific question kind is detected (confidence > 0.5)
@@ -1212,10 +1838,26 @@ export class ObservationStore {
       }
       // ポスト調整: recency / tag_boost / importance の 3 次元を加算
       // graph は RRF の第3リストに組み込み済みのためポスト調整からは除外
+      const factBoostWeight =
+        routeDecision.kind === "timeline"
+          ? 0.03
+          : routeDecision.answerHints?.intent === "metric_value"
+            ? 0.16
+            : 0.12;
+      const precisionBoostWeight =
+        routeDecision.kind === "timeline"
+          ? 0.02
+          : routeDecision.answerHints?.intent === "metric_value"
+            ? 0.24
+            : routeDecision.answerHints?.intent === "count"
+              ? 0.12
+              : 0.08;
       const postAdjustment =
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
-        weights.importance * item.importance;
+        weights.importance * item.importance +
+        factBoostWeight * (item.fact_boost ?? 0) +
+        precisionBoostWeight * (item.precision_boost ?? 0);
       const rawScore = rrfScore + postAdjustment;
       // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
       const obs = observations.get(item.id);
@@ -1235,12 +1877,16 @@ export class ObservationStore {
 
     // RQ-011: temporal 2段階検索 — timeline クエリかつ anchor なし
     // Phase 1: RRF で上位候補確保（recall 保護: top-30 以上）
-    // Phase 2: 候補内を created_at 降順でソート（ordering 最適化）
+    // Phase 2: 候補内を query の向きに合わせて時系列ソートする。
+    // デフォルトは古い順。latest/most recent 系のみ新しい順にする。
     if (this.shouldApplyTemporalTwoStageRerank(request, routeDecision)) {
-      const TEMPORAL_CANDIDATE_K = Math.max(30, limit * 3);
+      const TEMPORAL_CANDIDATE_K = Math.max(90, limit * 8);
       const temporalCandidates = ranked.slice(0, TEMPORAL_CANDIDATE_K);
+      const descending = prefersDescendingTemporalOrder(request.query);
       temporalCandidates.sort((lhs, rhs) => {
-        return String(rhs.created_at).localeCompare(String(lhs.created_at));
+        return descending
+          ? String(rhs.created_at).localeCompare(String(lhs.created_at))
+          : String(lhs.created_at).localeCompare(String(rhs.created_at));
       });
       // 残りはそのまま追加（recall 保護）
       const remaining = ranked.slice(TEMPORAL_CANDIDATE_K);
@@ -1248,8 +1894,24 @@ export class ObservationStore {
       ranked.push(...temporalCandidates, ...remaining);
     }
 
-    const rerankResult = this.applyRerank(request.query, ranked, observations);
+    const rerankResult = this.applyRerank(request.query, ranked, observations, {
+      // Timeline / freshness questions are order-sensitive, so preserve the
+      // chronology decided by temporal anchor search or two-stage time rerank.
+      skipSemanticRerank: routeDecision.kind === "timeline" || routeDecision.kind === "freshness",
+    });
     const rankedAfterRerank = rerankResult.ranked;
+    this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
+    this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
+
+    // S43-SEARCH: sort_by override — date_desc / date_asc は created_at でソート
+    if (request.sort_by === "date_desc" || request.sort_by === "date_asc") {
+      const ascending = request.sort_by === "date_asc";
+      rankedAfterRerank.sort((a, b) => {
+        const aTime = (observations.get(a.id)?.created_at as string) ?? "";
+        const bTime = (observations.get(b.id)?.created_at as string) ?? "";
+        return ascending ? aTime.localeCompare(bTime) : bTime.localeCompare(aTime);
+      });
+    }
 
     const items = rankedAfterRerank.slice(0, limit).map((entry) => {
       const observation = observations.get(entry.id) ?? {};

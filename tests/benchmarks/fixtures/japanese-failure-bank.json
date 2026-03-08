@@ -1,0 +1,169 @@
+{
+  "failure_bank": [
+    {
+      "sample_id": "ja-rel-001",
+      "question_id": "current-001",
+      "slice": "current",
+      "tag": "current_vs_previous",
+      "expected": "GitHub Actions",
+      "strategy_contains": "current-slot"
+    },
+    {
+      "sample_id": "ja-rel-001",
+      "question_id": "why-001",
+      "slice": "why",
+      "tag": "reason_clause",
+      "expected": "parallel build costs が上がり続けたから",
+      "strategy_contains": "reason-slot"
+    },
+    {
+      "sample_id": "ja-rel-002",
+      "question_id": "current-002",
+      "slice": "current",
+      "tag": "current_time_window",
+      "expected": "平日の 9:00〜18:00 JST",
+      "strategy_contains": "current-slot"
+    },
+    {
+      "sample_id": "ja-rel-002",
+      "question_id": "why-002",
+      "slice": "why",
+      "tag": "object_before_verb",
+      "expected": "ticket heatmap",
+      "strategy_contains": "object-slot"
+    },
+    {
+      "sample_id": "ja-rel-003",
+      "question_id": "exact-003",
+      "slice": "exact",
+      "tag": "object_before_verb",
+      "expected": "audit logs",
+      "strategy_contains": "object-slot"
+    },
+    {
+      "sample_id": "ja-rel-004",
+      "question_id": "why-004",
+      "slice": "why",
+      "tag": "request_phrase",
+      "expected": "quarterly audit exports の要望",
+      "strategy_contains": "object-slot"
+    },
+    {
+      "sample_id": "ja-rel-005",
+      "question_id": "temporal-005",
+      "slice": "temporal",
+      "tag": "ordinal_temporal",
+      "expected": "team workspaces",
+      "strategy_contains": "temporal-order-slot"
+    },
+    {
+      "sample_id": "ja-rel-007",
+      "question_id": "exact-007",
+      "slice": "exact",
+      "tag": "subject_before_topic",
+      "expected": "recency",
+      "strategy_contains": "subject-before-topic-slot"
+    },
+    {
+      "sample_id": "ja-rel-008",
+      "question_id": "current-008",
+      "slice": "current",
+      "tag": "cross_lingual_current",
+      "expected": "Japanese",
+      "strategy_contains": "current-slot"
+    },
+    {
+      "sample_id": "ja-rel-012",
+      "question_id": "list-012",
+      "slice": "list",
+      "tag": "compact_list",
+      "expected": "export to CSV, audit logs, SAML",
+      "strategy_contains": "list"
+    },
+    {
+      "sample_id": "ja-rel-012",
+      "question_id": "temporal-012",
+      "slice": "temporal",
+      "tag": "ordinal_last_item",
+      "expected": "SAML",
+      "strategy_contains": "temporal-order-slot"
+    },
+    {
+      "sample_id": "ja-rel-014",
+      "question_id": "why-014",
+      "slice": "why",
+      "tag": "reason_clause",
+      "expected": "ack が早く、mobile notification も確実だったから",
+      "strategy_contains": "reason-slot"
+    },
+    {
+      "sample_id": "ja-rel-015",
+      "question_id": "exact-015",
+      "slice": "exact",
+      "tag": "compact_object_list",
+      "expected": "codex, cursor, claude",
+      "strategy_contains": "object-slot"
+    },
+    {
+      "sample_id": "ja-rel-015",
+      "question_id": "temporal-015",
+      "slice": "temporal",
+      "tag": "initial_exact_value",
+      "expected": "codex",
+      "strategy_contains": "object-slot"
+    },
+    {
+      "sample_id": "ja-rel-016",
+      "question_id": "current-016",
+      "slice": "current",
+      "tag": "current_time_value",
+      "expected": "03:30 JST",
+      "strategy_contains": "current-slot"
+    },
+    {
+      "sample_id": "ja-rel-016",
+      "question_id": "temporal-016",
+      "slice": "temporal",
+      "tag": "previous_time_value",
+      "expected": "01:00 JST",
+      "strategy_contains": "previous-slot"
+    }
+  ],
+  "negative_controls": [
+    {
+      "sample_id": "ja-rel-003",
+      "question_id": "current-003",
+      "slice": "current",
+      "tag": "stable_numeric",
+      "expected": "39 dollars a month"
+    },
+    {
+      "sample_id": "ja-rel-004",
+      "question_id": "current-004",
+      "slice": "current",
+      "tag": "stable_numeric",
+      "expected": "90 days"
+    },
+    {
+      "sample_id": "ja-rel-006",
+      "question_id": "why-006",
+      "slice": "why",
+      "tag": "do_not_overcompress",
+      "expected": "workspace_id と created_at の composite index"
+    },
+    {
+      "sample_id": "ja-rel-013",
+      "question_id": "current-013",
+      "slice": "current",
+      "tag": "stable_region",
+      "expected": "ap-northeast-1"
+    },
+    {
+      "sample_id": "ja-rel-012",
+      "question_id": "temporal-012",
+      "slice": "temporal",
+      "tag": "stable_last_item",
+      "expected": "SAML"
+    }
+  ]
+}

@@ -23,7 +23,7 @@ Harness-mem keeps memory behavior consistent across coding tools without hand-ed
 
 Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration.
 
-**harness-mem takes a different approach**: one local daemon, one SQLite database, six platforms — no cloud, no Python, no API keys required.
+**harness-mem takes a different approach**: one local daemon, one SQLite database, five supported toolchains plus experimental Antigravity — no cloud, no Python, no API keys required.
 
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
@@ -38,9 +38,65 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 ### What this means in practice
 
-- **You use multiple AI tools** → harness-mem is the only option that shares memory across Claude, Codex, Cursor, OpenCode, and Gemini in a single project.
+- **You use multiple AI tools** → harness-mem is a local-first option for sharing memory across Claude, Codex, Cursor, OpenCode, and Gemini in a single project.
 - **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls by default. Optional LLM enhancement if you choose.
 - **You're on claude-mem today** → One-command migration with rollback. No data loss, no downtime.
+
+## Measured Proof
+
+Primary release gate and Japanese README claims use different evidence on purpose.
+
+### Primary release gate (`run-ci`)
+
+Source:
+- [`memory-server/src/benchmark/results/ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json)
+
+| Metric | Value |
+|---|---:|
+| LoCoMo F1 | 0.4723 |
+| Bilingual recall@10 | 0.9000 |
+| Freshness | 1.0000 |
+| Temporal | 0.6889 |
+| Search p95 | 10.29ms |
+| Token avg | 428.93 |
+
+Verdict: `PASS`
+
+### Japanese claim gate (`ja-release-pack`)
+
+Source:
+- [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
+- [`docs/benchmarks/artifacts/s40-ja-release-latest/summary.md`](docs/benchmarks/artifacts/s40-ja-release-latest/summary.md)
+- [`docs/benchmarks/artifacts/s40-ja-release-latest/repro-report.json`](docs/benchmarks/artifacts/s40-ja-release-latest/repro-report.json)
+
+| Metric | Value |
+|---|---:|
+| Overall F1 mean | 0.7645 |
+| Cross-lingual F1 mean | 0.7563 |
+| Zero-F1 mean | 2 / 32 |
+| 3-run span | 0.0000 |
+| Current slice F1 | 0.8171 |
+| Exact slice F1 | 0.7879 |
+| Why slice F1 | 0.9008 |
+| List slice F1 | 0.8846 |
+| Temporal slice F1 | 0.5276 |
+
+What this supports:
+- Cross-lingual EN<->JA retrieval is benchmarked.
+- Japanese short-answer quality is measured on a dedicated release pack.
+- `why`, `list`, `current`, and `exact` are currently the strongest Japanese slices.
+
+What this does **not** claim:
+- Native-level Japanese quality
+- Perfect Japanese temporal reasoning
+- A replacement for the main `run-ci` ship gate
+
+### Sample Japanese queries
+
+- `今、使っている CI は何ですか？`
+- `email だけの運用をやめた理由は何ですか？`
+- `Q2 に出した admin 向け機能をすべて挙げてください。`
+- `最後に出た機能は何ですか？`
 
 ## Quick Start
 

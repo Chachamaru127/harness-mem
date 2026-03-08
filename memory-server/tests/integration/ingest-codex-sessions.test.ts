@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { appendFileSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -195,6 +196,102 @@ describe("codex sessions ingest integration", () => {
       };
       expect(harnessFeedAfter.ok).toBe(true);
       expect(harnessFeedAfter.items.length).toBe(3);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("persists last user prompt across incremental rollout ingests", async () => {
+    const runtime = createRuntime("prompt-link");
+    const { baseUrl, sessionsRoot, dir } = runtime;
+
+    try {
+      const dayDir = join(sessionsRoot, "2026", "03", "07");
+      mkdirSync(dayDir, { recursive: true });
+
+      const rolloutPath = join(
+        dayDir,
+        "rollout-2026-03-07T12-00-00-33333333-3333-3333-3333-333333333333.jsonl"
+      );
+      writeFileSync(
+        rolloutPath,
+        [
+          JSON.stringify({
+            timestamp: "2026-03-07T12:00:00.000Z",
+            type: "session_meta",
+            payload: {
+              id: "33333333-3333-3333-3333-333333333333",
+              cwd: "/Users/example/Desktop/Code/CC-harness/harness-mem",
+            },
+          }),
+          JSON.stringify({
+            timestamp: "2026-03-07T12:00:01.000Z",
+            type: "response_item",
+            payload: {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "この回答を prompt と紐づけたい" }],
+            },
+          }),
+        ].join("\n") + "\n",
+        "utf8"
+      );
+
+      const firstIngestRes = await fetch(`${baseUrl}/v1/ingest/codex-sessions`, {
+        method: "POST",
+      });
+      expect(firstIngestRes.ok).toBe(true);
+      const firstIngest = (await firstIngestRes.json()) as {
+        ok: boolean;
+        items: Array<{ events_imported: number }>;
+      };
+      expect(firstIngest.ok).toBe(true);
+      expect(firstIngest.items[0]?.events_imported).toBe(1);
+
+      appendFileSync(
+        rolloutPath,
+        `${JSON.stringify({
+          timestamp: "2026-03-07T12:00:02.000Z",
+          type: "event_msg",
+          payload: {
+            type: "agent_message",
+            message: "はい、この回答を prompt と一緒に記録します。",
+          },
+        })}\n`,
+        "utf8"
+      );
+
+      const secondIngestRes = await fetch(`${baseUrl}/v1/ingest/codex-sessions`, {
+        method: "POST",
+      });
+      expect(secondIngestRes.ok).toBe(true);
+      const secondIngest = (await secondIngestRes.json()) as {
+        ok: boolean;
+        items: Array<{ events_imported: number }>;
+      };
+      expect(secondIngest.ok).toBe(true);
+      expect(secondIngest.items[0]?.events_imported).toBe(1);
+
+      const db = new Database(join(dir, "harness-mem.db"), { readonly: true });
+      try {
+        const row = db
+          .query(
+            `SELECT payload_json
+             FROM mem_events
+             WHERE session_id = '33333333-3333-3333-3333-333333333333'
+               AND event_type = 'checkpoint'
+             ORDER BY ts DESC
+             LIMIT 1`
+          )
+          .get() as { payload_json?: string } | null;
+
+        expect(row?.payload_json).toBeDefined();
+        const payload = JSON.parse(row?.payload_json || "{}") as Record<string, string>;
+        expect(payload.content).toBe("はい、この回答を prompt と一緒に記録します。");
+        expect(payload.prompt).toBe("この回答を prompt と紐づけたい");
+      } finally {
+        db.close(false);
+      }
     } finally {
       runtime.stop();
     }
