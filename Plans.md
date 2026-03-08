@@ -1093,3 +1093,31 @@ Phase B: 品質検証 + 閾値引き上げ
 - Intl.Segmenter による日本語 FTS5 形態素解析（ゼロ依存）
 - Ruri V3 30M: F1=0.5481, cat-1=0.5946
 - Phase 1 companion gate: PASS（全 critical slice クリア）
+
+---
+
+## §46 ライセンス変更 + README 日本語セクション更新
+
+進行状態: `cc:完了`
+
+### 背景
+
+- SaaS 化防止と企業フレンドリーの両立のため、MIT → BSL 1.1 に変更
+- 日本語セクションの数値が §40 時代で古いため §43/§45 の最新結果に更新
+
+### タスク一覧
+
+- [x] `cc:完了` **S46-001**: LICENSE を MIT → BSL 1.1 に変更
+  - Additional Use Grant: Memory Service としての商用提供のみ制限
+  - Change Date: 2029-03-08（3年後に Apache 2.0 に自動変換）
+  - package.json の license フィールドも BUSL-1.1 に更新
+
+- [x] `cc:完了` **S46-002**: README_ja.md 日本語セクションを §43/§45 最新値に更新
+  - 出荷判定ゲート: Ruri V3 30M で F1=0.5481, bilingual=0.88, temporal=0.6375
+  - Japanese Companion Gate: 5スライス全 PASS
+  - multilingual-e5 との比較表追加
+  - 技術基盤セクション追加（Ruri + Intl.Segmenter FTS）
+
+- [x] `cc:完了` **S46-003**: README.md / README_ja.md ライセンス表記更新
+  - 英語・日本語両方で BSL 1.1 の説明を記載
+  - 許可範囲（社内利用・個人利用・OSS）と制限（SaaS 再販）を明記

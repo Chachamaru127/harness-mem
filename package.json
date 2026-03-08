@@ -10,7 +10,7 @@
   "bugs": {
     "url": "https://github.com/Chachamaru127/harness-mem/issues"
   },
-  "license": "MIT",
+  "license": "BUSL-1.1",
   "type": "commonjs",
   "bin": {
     "harness-mem": "scripts/harness-mem",

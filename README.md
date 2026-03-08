@@ -234,4 +234,10 @@ Update the marker to `cc:完了` and note any unresolved issues.
 
 ## License
 
-MIT. See [`LICENSE`](LICENSE).
+Business Source License 1.1 (BSL). See [`LICENSE`](LICENSE).
+
+**Permitted**: internal use, personal use, development, testing, open-source projects, embedding as a component in your application.
+
+**Restricted**: offering harness-mem as a managed memory service to third parties.
+
+On **2029-03-08**, the license automatically converts to **Apache License 2.0**.
