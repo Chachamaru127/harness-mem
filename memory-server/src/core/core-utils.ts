@@ -331,6 +331,60 @@ const SEARCH_QUERY_ALIAS_RULES: Array<{ pattern: RegExp; expansions: string[] }>
   },
 ];
 
+// ---------------------------------------------------------------------------
+// §45: 日本語形態素解析 (Intl.Segmenter)
+// ---------------------------------------------------------------------------
+
+const jaSegmenter = typeof Intl !== "undefined" && Intl.Segmenter
+  ? new Intl.Segmenter("ja", { granularity: "word" })
+  : null;
+
+const KATAKANA_COMPOUND = /^[\u30A0-\u30FF]{4,}$/;
+const KANJI_KATAKANA_MIX = /[\u4E00-\u9FFF].*[\u30A0-\u30FF]|[\u30A0-\u30FF].*[\u4E00-\u9FFF]/;
+const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
+
+/**
+ * Intl.Segmenter で日本語テキストを単語分割し、FTS5 用のスペース区切り文字列を返す。
+ * カタカナ複合語（4文字以上）はサブワード（2-3gram）も追加して部分一致を可能にする。
+ * 漢字+カタカナ混在語は構成要素に分離する。
+ *
+ * Intl.Segmenter が利用不可の環境では元のテキストをそのまま返す。
+ */
+export function segmentJapaneseForFts(text: string): string {
+  if (!text || !jaSegmenter) return text;
+  // CJK 文字を含まないテキストはそのまま返す（英語のみの場合）
+  if (!HAS_CJK.test(text)) return text;
+
+  const words = [...jaSegmenter.segment(text)]
+    .filter((s) => s.isWordLike)
+    .map((s) => s.segment);
+
+  const expanded: string[] = [];
+  for (const w of words) {
+    expanded.push(w);
+    // カタカナ複合語（4文字以上）→ 2-3文字サブワード追加
+    if (KATAKANA_COMPOUND.test(w)) {
+      const chars = [...w];
+      for (let i = 0; i < chars.length - 1; i++) {
+        expanded.push(chars[i] + chars[i + 1]);
+      }
+      for (let i = 0; i < chars.length - 2; i++) {
+        expanded.push(chars[i] + chars[i + 1] + chars[i + 2]);
+      }
+    }
+    // 漢字+カタカナ混在語 → 構成要素に分離
+    if (KANJI_KATAKANA_MIX.test(w)) {
+      const parts = w.split(/([\u30A0-\u30FF]+|[\u4E00-\u9FFF]+)/g).filter(Boolean);
+      for (const p of parts) {
+        if (p.length >= 2) expanded.push(p);
+      }
+    }
+  }
+  return expanded.join(" ");
+}
+
+// ---------------------------------------------------------------------------
+
 /**
  * CJK文字シーケンスからバイグラムトークンを生成する。
  * unicode61 tokenizer がスペース区切りのみに依存するため、
@@ -356,12 +410,29 @@ function expandCjkBigrams(tokens: string[]): string[] {
 }
 
 export function tokenize(text: string): string[] {
-  const base = text
+  // §45: Intl.Segmenter で日本語部分を単語分割してからトークン化
+  // segmentJapaneseForFts はスペースで分割するので、元の英数字トークンも保持される
+  // ただし Segmenter が英数字を食う場合があるため、元テキストのスペース分割結果も合流させる
+  const rawTokens = text
     .toLowerCase()
     .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\s]/g, " ")
     .split(/\s+/)
     .filter((token) => token.length > 1);
-  return expandCjkBigrams(base).slice(0, 4096);
+
+  if (!jaSegmenter || !HAS_CJK.test(text)) {
+    return expandCjkBigrams(rawTokens).slice(0, 4096);
+  }
+
+  // CJK 部分だけ Segmenter で分割し、英数字トークンは元のまま保持
+  const segmentedTokens = segmentJapaneseForFts(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\u3040-\u30ff\u3400-\u9fff\s]/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 1);
+
+  // 両方を合流させて重複排除
+  const merged = new Set([...segmentedTokens, ...rawTokens]);
+  return expandCjkBigrams([...merged]).slice(0, 4096);
 }
 
 function dedupePreserveOrder(tokens: string[]): string[] {

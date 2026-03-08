@@ -179,6 +179,20 @@
         "model": "ruri-v3-30m",
         "vectorDimension": 256
       }
+    },
+    {
+      "timestamp": "2026-03-08T07:35:25.654Z",
+      "f1": 0.5480819339959125,
+      "freshness": 1,
+      "temporal": 0.6375,
+      "bilingual": 0.88,
+      "cat1": 0.5945904337208685,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "ruri-v3-30m",
+        "vectorDimension": 256
+      }
     }
   ]
 }

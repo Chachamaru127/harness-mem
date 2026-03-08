@@ -618,14 +618,32 @@ export function initFtsIndex(db: Database): boolean {
     db.exec(`
       CREATE VIRTUAL TABLE IF NOT EXISTS mem_observations_fts
         USING fts5(observation_id UNINDEXED, title, content, tokenize = 'unicode61');
+    `);
 
+    // §45: 日本語形態素解析済みテキスト用カラムを追加（マイグレーション）
+    // title_fts / content_fts が存在しない場合のみ追加する
+    try {
+      db.exec(`ALTER TABLE mem_observations ADD COLUMN title_fts TEXT`);
+    } catch {
+      // カラムが既に存在する場合は無視
+    }
+    try {
+      db.exec(`ALTER TABLE mem_observations ADD COLUMN content_fts TEXT`);
+    } catch {
+      // カラムが既に存在する場合は無視
+    }
+
+    // トリガー更新: title_fts / content_fts を優先し、未設定なら title / content_redacted にフォールバック
+    db.exec(`
       DROP TRIGGER IF EXISTS mem_observations_ai;
       DROP TRIGGER IF EXISTS mem_observations_ad;
       DROP TRIGGER IF EXISTS mem_observations_au;
 
       CREATE TRIGGER mem_observations_ai AFTER INSERT ON mem_observations BEGIN
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
-        VALUES (new.rowid, new.id, new.title, new.content_redacted);
+        VALUES (new.rowid, new.id,
+                COALESCE(new.title_fts, new.title),
+                COALESCE(new.content_fts, new.content_redacted));
       END;
 
       CREATE TRIGGER mem_observations_ad AFTER DELETE ON mem_observations BEGIN
@@ -635,7 +653,9 @@ export function initFtsIndex(db: Database): boolean {
       CREATE TRIGGER mem_observations_au AFTER UPDATE ON mem_observations BEGIN
         DELETE FROM mem_observations_fts WHERE rowid = old.rowid;
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
-        VALUES (new.rowid, new.id, new.title, new.content_redacted);
+        VALUES (new.rowid, new.id,
+                COALESCE(new.title_fts, new.title),
+                COALESCE(new.content_fts, new.content_redacted));
       END;
     `);
 
@@ -646,7 +666,9 @@ export function initFtsIndex(db: Database): boolean {
     if (currentCount === 0) {
       db.exec(`
         INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
-        SELECT rowid, id, title, content_redacted
+        SELECT rowid, id,
+               COALESCE(title_fts, title),
+               COALESCE(content_fts, content_redacted)
         FROM mem_observations;
       `);
     }
@@ -655,6 +677,46 @@ export function initFtsIndex(db: Database): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * §45: 既存データの FTS インデックスを日本語形態素解析済みテキストで再構築する。
+ * segmentFn は segmentJapaneseForFts を渡す（循環依存回避のため関数注入）。
+ */
+export function reindexFtsWithSegmentation(
+  db: Database,
+  segmentFn: (text: string) => string,
+): number {
+  // Step 1: mem_observations の title_fts / content_fts を更新
+  const rows = db
+    .query<{ rowid: number; id: string; title: string | null; content_redacted: string }, []>(
+      `SELECT rowid, id, title, content_redacted FROM mem_observations`
+    )
+    .all();
+
+  const updateStmt = db.query(
+    `UPDATE mem_observations SET title_fts = ?, content_fts = ? WHERE id = ?`
+  );
+
+  let updated = 0;
+  for (const row of rows) {
+    const titleFts = row.title ? segmentFn(row.title) : null;
+    const contentFts = segmentFn(row.content_redacted);
+    updateStmt.run(titleFts, contentFts, row.id);
+    updated++;
+  }
+
+  // Step 2: FTS テーブルを再構築
+  db.exec(`DELETE FROM mem_observations_fts`);
+  db.exec(`
+    INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
+    SELECT rowid, id,
+           COALESCE(title_fts, title),
+           COALESCE(content_fts, content_redacted)
+    FROM mem_observations;
+  `);
+
+  return updated;
 }
 
 export function initVecTable(db: Database, vectorDimension: number): boolean {

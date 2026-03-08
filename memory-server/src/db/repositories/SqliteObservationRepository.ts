@@ -12,11 +12,16 @@ import type {
   InsertObservationInput,
   FindObservationsFilter,
 } from "./IObservationRepository.js";
+import { segmentJapaneseForFts } from "../../core/core-utils.js";
 
 export class SqliteObservationRepository implements IObservationRepository {
   constructor(private readonly db: Database) {}
 
   async insert(input: InsertObservationInput): Promise<string> {
+    // §45: 日本語形態素解析済みテキストを FTS 用に事前計算
+    const titleFts = input.title ? segmentJapaneseForFts(input.title) : null;
+    const contentFts = segmentJapaneseForFts(input.content_redacted);
+
     this.db
       .query(`
         INSERT OR IGNORE INTO mem_observations(
@@ -24,8 +29,9 @@ export class SqliteObservationRepository implements IObservationRepository {
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
           signal_score, user_id, team_id,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at, updated_at,
+          title_fts, content_fts
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.id,
@@ -45,6 +51,8 @@ export class SqliteObservationRepository implements IObservationRepository {
         input.team_id ?? null,
         input.created_at,
         input.updated_at,
+        titleFts,
+        contentFts,
       );
     return input.id;
   }
