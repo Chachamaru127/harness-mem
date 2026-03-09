@@ -43,6 +43,8 @@ LOG_MAX_BYTES="${HARNESS_MEM_LOG_MAX_BYTES:-5242880}"
 LOG_ROTATE_KEEP="${HARNESS_MEM_LOG_ROTATE_KEEP:-5}"
 UI_ENABLED_RAW="${HARNESS_MEM_ENABLE_UI:-true}"
 QUIET="false"
+DAEMON_LAUNCHD_LABEL="${HARNESS_MEM_DAEMON_LAUNCHD_LABEL:-com.harness-mem.daemon}"
+UI_LAUNCHD_LABEL="${HARNESS_MEM_UI_LAUNCHD_LABEL:-com.harness-mem.ui}"
 
 DAEMON_ENTRY="${REPO_ROOT}/memory-server/src/index.ts"
 UI_ENTRY="${REPO_ROOT}/harness-mem-ui/src/server.ts"
@@ -137,6 +139,35 @@ read_embedding_model() {
   else
     echo "multilingual-e5"
   fi
+}
+
+has_launchctl() {
+  command -v launchctl >/dev/null 2>&1
+}
+
+launchctl_target() {
+  local label="${1:-}"
+  local uid
+  uid="$(id -u 2>/dev/null || true)"
+  if [ -z "$label" ] || [ -z "$uid" ]; then
+    return 1
+  fi
+  printf 'gui/%s/%s' "$uid" "$label"
+}
+
+is_launchctl_job_loaded() {
+  local target
+  if ! has_launchctl; then
+    return 1
+  fi
+  target="$(launchctl_target "${1:-}")" || return 1
+  launchctl print "$target" >/dev/null 2>&1
+}
+
+kickstart_launchctl_job() {
+  local target
+  target="$(launchctl_target "${1:-}")" || return 1
+  launchctl kickstart -k "$target" >/dev/null 2>&1
 }
 
 log() {
@@ -994,6 +1025,28 @@ main() {
     restart)
       acquire_lock || exit 1
       trap release_lock EXIT
+      if is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then
+        if ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
+          warn "launchctl kickstart failed for ${DAEMON_LAUNCHD_LABEL}"
+          exit 1
+        fi
+        if wait_for_health; then
+          local runtime_pid
+          runtime_pid="$(refresh_pid_file_from_runtime || true)"
+          if [ -n "$runtime_pid" ]; then
+            log "harness-memd restarted via launchctl (pid=${runtime_pid}, port=${PORT})"
+          else
+            log "harness-memd restarted via launchctl (port=${PORT})"
+          fi
+          if is_ui_enabled && is_launchctl_job_loaded "$UI_LAUNCHD_LABEL"; then
+            kickstart_launchctl_job "$UI_LAUNCHD_LABEL" || true
+            sync_ui_pid_file >/dev/null 2>&1 || true
+          fi
+          exit 0
+        fi
+        warn "launchctl restart did not restore health in time"
+        exit 1
+      fi
       stop_daemon || true
       start_daemon
       ;;

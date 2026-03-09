@@ -56,6 +56,16 @@ async function waitUntil(fn: () => Promise<boolean>, timeoutMs = 10_000, interva
 }
 
 describe("harness-memd guardrails", () => {
+  test("restart uses launchctl kickstart when daemon is LaunchAgent-managed", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+
+    expect(script).toContain('DAEMON_LAUNCHD_LABEL="${HARNESS_MEM_DAEMON_LAUNCHD_LABEL:-com.harness-mem.daemon}"');
+    expect(script).toContain('UI_LAUNCHD_LABEL="${HARNESS_MEM_UI_LAUNCHD_LABEL:-com.harness-mem.ui}"');
+    expect(script).toContain('if is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then');
+    expect(script).toContain('kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"');
+    expect(script).toContain('log "harness-memd restarted via launchctl');
+  });
+
   test("status does not treat non-JSON health endpoint as healthy", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-guard-status-"));
     const port = randomPort();
