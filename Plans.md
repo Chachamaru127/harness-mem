@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-07（§43 計画策定 — Japanese Max Confidence）
+最終更新: 2026-03-09（§47 memSearch 直近対話アンカー改善を追加）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp） | §36 15タスク完了（CI PASS, F1+1.43pp, cat-3+9.5pp） | §37 10タスク完了（run-ci PASS, bilingual=0.90） | §38 12タスク完了（3-run freeze PASS, F1=0.3147） | §39 11タスク完了（run-ci final GO, F1=0.4602） | §40 11タスク完了（ja-release-pack PASS, F1=0.7645） | §41 3タスク完了（daemon auto-embedding rollout） | §42 2タスク完了（live retrieval precision polish） | §43 計画策定
@@ -1121,3 +1121,44 @@ Phase B: 品質検証 + 閾値引き上げ
 - [x] `cc:完了` **S46-003**: README.md / README_ja.md ライセンス表記更新
   - 英語・日本語両方で BSL 1.1 の説明を記載
   - 許可範囲（社内利用・個人利用・OSS）と制限（SaaS 再販）を明記
+
+---
+
+## §47 memSearch 直近対話アンカー改善
+
+進行状態: `cc:完了`
+
+### 背景
+
+- `memSearch` で「直近を調べて」と言われた時、semantic search の結果だけを見ると、ユーザーが最後に見ている prompt / assistant 回答と話がずれる
+- HarnessMEM は Claude / Codex / OpenCode / Cursor など複数 CLI の履歴を束ねるため、まずは project 全体での「最後のやり取り」を掴んでから話を合わせる必要がある
+- 既存の `sessions/list` / `session/thread` では追えるが、`search` 自体はその文脈を返さないため UX の初動が弱い
+
+### タスク一覧
+
+- [x] `cc:完了` **S47-001 [feature:tdd]**: search に project-wide latest interaction context を追加
+  - project 単位で最新の `user_prompt` / `assistant_response` を抽出し、検索メタへ返す
+  - CLI 非依存で最後の prompt/answer を把握できる形にする
+
+- [x] `cc:完了` **S47-002 [feature:tdd]**: 「直近/最近/最後」系クエリで latest interaction を優先表示
+  - generic recent query のときは semantic relevance より「最後のやり取り」を先に見せる
+  - 既存の fact search / metric search の精度は壊さない
+
+- [x] `cc:完了` **S47-003 [feature:tdd]**: cross-CLI 回帰テスト追加
+  - Claude / Codex 等が混在する project でも、最新対話アンカーが正しく選ばれることを固定する
+
+- [x] `cc:完了` **S47-004 [feature:tdd]**: latest interaction をユーザー可視の完了済み会話へ補正
+  - `AGENTS.md` / environment envelope / `turn_aborted` のような実会話ではない prompt を除外する
+  - 未応答 prompt より、直近の完了済み prompt + assistant_response ペアを優先する
+
+- [x] `cc:完了` **S47-005 [ops:tdd]**: launchctl 常駐環境でも restart で新コードを確実反映
+  - `scripts/harness-memd restart` が LaunchAgent 管理時は `launchctl kickstart -k` を使う
+  - 修正後に PID 再生成と live search 応答で反映確認する
+
+- [x] `cc:完了` **S47-006 [feature:tdd]**: latest interaction から `<skill>` 展開 prompt を除外
+  - ユーザー可視の会話ではない skill 展開本文を wrapper prompt と同等に扱う
+  - recent query の `latest_interaction` と上位結果が実入力に寄ることを回帰テストで固定する
+
+- [x] `cc:完了` **S47-007 [ops:tdd]**: Claude Code ingest を recent-first にして起動直後も追従
+  - Claude JSONL は mtime 降順で優先処理し、`MAX_FILES_PER_POLL=5` でも最新セッションから拾う
+  - scheduler は 30 秒待たず next tick で初回 ingest を走らせ、その後 interval ポーリングへ移る
