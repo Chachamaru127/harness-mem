@@ -338,7 +338,7 @@ export class ObservationStore {
     }));
   }
 
-  private getLatestInteractionContext(request: SearchRequest, normalizedProject?: string): LatestInteractionContext | null {
+  private getLatestInteractionContext(request: SearchRequest, normalizedProject?: string, scanLimit?: number): LatestInteractionContext | null {
     if (!normalizedProject && !request.session_id) {
       return null;
     }
@@ -357,6 +357,7 @@ export class ObservationStore {
       include_private: includePrivate,
       user_id: userId,
       team_id: teamId,
+      limit: scanLimit,
     });
 
     if (candidates.length === 0) {
@@ -1898,8 +1899,12 @@ export class ObservationStore {
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
     };
-    const latestInteraction = this.getLatestInteractionContext(normalizedRequest, normalizedProject);
-    const prioritizeLatestInteraction = Boolean(latestInteraction) && isLatestInteractionIntent(request.query);
+    const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
+    const latestInteraction = this.getLatestInteractionContext(
+      normalizedRequest, normalizedProject,
+      hasLatestInteractionIntent ? 400 : 20,
+    );
+    const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
     const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);

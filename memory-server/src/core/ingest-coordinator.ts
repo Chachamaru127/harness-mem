@@ -2165,7 +2165,7 @@ export class IngestCoordinator {
     this.claudeCodeContextCache.set(sourceKey, normalized);
   }
 
-  private ingestClaudeCodeSessions(): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
+  private ingestClaudeCodeSessions(options?: { maxFiles?: number }): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
     const summary = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
     const projectsRoot = resolveHomePath(
       this.deps.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
@@ -2174,7 +2174,7 @@ export class IngestCoordinator {
 
     const files = this.listClaudeCodeJsonlFiles(projectsRoot);
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS) * 60 * 60 * 1000;
-    const MAX_FILES_PER_POLL = 5;
+    const MAX_FILES_PER_POLL = options?.maxFiles ?? 50;
     const MAX_BYTES_PER_FILE = 2 * 1024 * 1024; // 2MB per file per poll
     let filesProcessed = 0;
 
@@ -2288,7 +2288,7 @@ export class IngestCoordinator {
       );
     }
 
-    const summary = this.ingestClaudeCodeSessions();
+    const summary = this.ingestClaudeCodeSessions({ maxFiles: Infinity });
     return makeResponse(
       startedAt,
       [
