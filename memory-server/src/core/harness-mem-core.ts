@@ -54,6 +54,9 @@ import {
   DEFAULT_CURSOR_BACKFILL_HOURS,
   DEFAULT_CURSOR_EVENTS_PATH,
   DEFAULT_CURSOR_INGEST_INTERVAL_MS,
+  DEFAULT_CLAUDE_CODE_BACKFILL_HOURS,
+  DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS,
+  DEFAULT_CLAUDE_CODE_PROJECTS_ROOT,
   DEFAULT_GEMINI_BACKFILL_HOURS,
   DEFAULT_GEMINI_EVENTS_PATH,
   DEFAULT_GEMINI_INGEST_INTERVAL_MS,
@@ -1433,6 +1436,10 @@ export class HarnessMemCore {
             gemini_events_path: resolveHomePath(this.config.geminiEventsPath || DEFAULT_GEMINI_EVENTS_PATH),
             gemini_ingest_interval_ms: clampLimit(Number(this.config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000),
             gemini_backfill_hours: clampLimit(Number(this.config.geminiBackfillHours || DEFAULT_GEMINI_BACKFILL_HOURS), DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
+            claude_code_history_ingest: this.config.claudeCodeIngestEnabled !== false,
+            claude_code_projects_root: resolveHomePath(this.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT),
+            claude_code_ingest_interval_ms: clampLimit(Number(this.config.claudeCodeIngestIntervalMs || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS), DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS, 1000, 300000),
+            claude_code_backfill_hours: clampLimit(Number(this.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS), DEFAULT_CLAUDE_CODE_BACKFILL_HOURS, 1, 24 * 365),
             search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
             search_expand_links: this.config.searchExpandLinks !== false,
           },
@@ -1844,6 +1851,10 @@ export class HarnessMemCore {
 
   ingestGeminiHistory(): ApiResponse {
     return this.ingestCoord.ingestGeminiHistory();
+  }
+
+  ingestClaudeCodeHistory(): ApiResponse {
+    return this.ingestCoord.ingestClaudeCodeHistory();
   }
 
   /**

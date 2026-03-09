@@ -28,6 +28,9 @@ import {
   DEFAULT_CURSOR_BACKFILL_HOURS,
   DEFAULT_CURSOR_EVENTS_PATH,
   DEFAULT_CURSOR_INGEST_INTERVAL_MS,
+  DEFAULT_CLAUDE_CODE_BACKFILL_HOURS,
+  DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS,
+  DEFAULT_CLAUDE_CODE_PROJECTS_ROOT,
   DEFAULT_GEMINI_BACKFILL_HOURS,
   DEFAULT_GEMINI_EVENTS_PATH,
   DEFAULT_GEMINI_INGEST_INTERVAL_MS,
@@ -57,6 +60,7 @@ import { parseOpencodeMessageChunk } from "../ingest/opencode-storage";
 import { parseAntigravityFile } from "../ingest/antigravity-files";
 import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
 import { parseGeminiEventsChunk } from "../ingest/gemini-events";
+import { parseClaudeCodeChunk, decodeClaudeProjectDir, type ClaudeCodeContext } from "../ingest/claude-code-sessions";
 import { parseGitHubIssues } from "../connectors/github-issues";
 import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
 
@@ -426,6 +430,8 @@ export class IngestCoordinator {
   private cursorIngestTimer: ReturnType<typeof setInterval> | null = null;
   private antigravityIngestTimer: ReturnType<typeof setInterval> | null = null;
   private geminiIngestTimer: ReturnType<typeof setInterval> | null = null;
+  private claudeCodeIngestStartTimer: ReturnType<typeof setTimeout> | null = null;
+  private claudeCodeIngestTimer: ReturnType<typeof setInterval> | null = null;
   private consolidationTimer: ReturnType<typeof setInterval> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
   private checkpointTimer: ReturnType<typeof setInterval> | null = null;
@@ -484,6 +490,21 @@ export class IngestCoordinator {
       }, clampLimit(Number(config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
+    if (config.claudeCodeIngestEnabled !== false) {
+      const ccInterval = clampLimit(Number(config.claudeCodeIngestIntervalMs || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS), DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS, 1000, 300000);
+      const runClaudeCodeIngest = () => {
+        if (this.deps.isShuttingDown()) return;
+        try { this.ingestClaudeCodeSessions(); } catch { /* ignore post-shutdown DB errors */ }
+      };
+      // 起動完了直後の次ティックで一度取り込み、その後 interval に移る。
+      this.claudeCodeIngestStartTimer = setTimeout(() => {
+        this.claudeCodeIngestStartTimer = null;
+        if (this.deps.isShuttingDown()) return;
+        runClaudeCodeIngest();
+        this.claudeCodeIngestTimer = setInterval(runClaudeCodeIngest, ccInterval);
+      }, 0);
+    }
+
     if (config.consolidationEnabled !== false) {
       let consolidationRunning = false;
       this.consolidationTimer = setInterval(() => {
@@ -517,6 +538,8 @@ export class IngestCoordinator {
     if (this.cursorIngestTimer) { clearInterval(this.cursorIngestTimer); this.cursorIngestTimer = null; }
     if (this.antigravityIngestTimer) { clearInterval(this.antigravityIngestTimer); this.antigravityIngestTimer = null; }
     if (this.geminiIngestTimer) { clearInterval(this.geminiIngestTimer); this.geminiIngestTimer = null; }
+    if (this.claudeCodeIngestStartTimer) { clearTimeout(this.claudeCodeIngestStartTimer); this.claudeCodeIngestStartTimer = null; }
+    if (this.claudeCodeIngestTimer) { clearInterval(this.claudeCodeIngestTimer); this.claudeCodeIngestTimer = null; }
     if (this.consolidationTimer) { clearInterval(this.consolidationTimer); this.consolidationTimer = null; }
     if (this.retryTimer) { clearInterval(this.retryTimer); this.retryTimer = null; }
     if (this.checkpointTimer) { clearInterval(this.checkpointTimer); this.checkpointTimer = null; }
@@ -2015,6 +2038,268 @@ export class IngestCoordinator {
       ],
       {},
       { ingest_mode: "gemini_spool_v1" }
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Claude Code ingest メソッド
+  // ---------------------------------------------------------------------------
+
+  private readonly claudeCodeContextCache = new Map<string, ClaudeCodeContext>();
+
+  private listClaudeCodeJsonlFiles(projectsRoot: string): string[] {
+    const files: string[] = [];
+    let projectDirs: Array<{ name: string; isDirectory: () => boolean }>;
+    try {
+      projectDirs = readdirSync(projectsRoot, { withFileTypes: true }) as Array<{
+        name: string;
+        isDirectory: () => boolean;
+      }>;
+    } catch {
+      return files;
+    }
+
+    for (const dir of projectDirs) {
+      if (!dir.isDirectory()) continue;
+      const dirPath = join(projectsRoot, dir.name);
+      let entries: Array<{ name: string; isFile: () => boolean }>;
+      try {
+        entries = readdirSync(dirPath, { withFileTypes: true }) as Array<{
+          name: string;
+          isFile: () => boolean;
+        }>;
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        if (!entry.isFile()) continue;
+        if (!entry.name.endsWith(".jsonl")) continue;
+        // UUID.jsonl のみ対象
+        if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jsonl$/i.test(entry.name)) continue;
+        files.push(resolve(dirPath, entry.name));
+      }
+    }
+
+    // recent-first: poll budget が小さくても最新セッションから追従する。
+    files.sort((lhs, rhs) => {
+      let lhsMtime = 0;
+      let rhsMtime = 0;
+      try { lhsMtime = statSync(lhs).mtimeMs; } catch { /* ignore */ }
+      try { rhsMtime = statSync(rhs).mtimeMs; } catch { /* ignore */ }
+      if (lhsMtime !== rhsMtime) return rhsMtime - lhsMtime;
+      return rhs.localeCompare(lhs);
+    });
+    return files;
+  }
+
+  private inferClaudeCodeSessionId(filePath: string): string | null {
+    const fileName = basename(filePath);
+    const match = fileName.match(/^([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/i);
+    return match?.[1] || null;
+  }
+
+  private inferClaudeCodeProject(filePath: string): string {
+    const dirName = basename(dirname(filePath));
+    return decodeClaudeProjectDir(dirName);
+  }
+
+  private loadClaudeCodeContext(sourceKey: string): ClaudeCodeContext {
+    const cached = this.claudeCodeContextCache.get(sourceKey);
+    if (cached) return { ...cached };
+
+    const metaKey = `claude_code_context:${sourceKey}`;
+    const row = this.deps.db
+      .query(`SELECT value FROM mem_meta WHERE key = ?`)
+      .get(metaKey) as { value?: string } | null;
+
+    if (!row?.value) return {};
+
+    const parsed = parseJsonSafe(row.value);
+    const ctx: ClaudeCodeContext = {
+      sessionId: typeof parsed.sessionId === "string" ? parsed.sessionId.trim() : undefined,
+      project: typeof parsed.project === "string" ? parsed.project.trim() : undefined,
+      lastUserPrompt: typeof parsed.lastUserPrompt === "string" ? parsed.lastUserPrompt.trim() : undefined,
+      lastAssistantContent: typeof parsed.lastAssistantContent === "string" ? parsed.lastAssistantContent.trim() : undefined,
+    };
+    this.claudeCodeContextCache.set(sourceKey, ctx);
+    return { ...ctx };
+  }
+
+  private storeClaudeCodeContext(sourceKey: string, context: ClaudeCodeContext): void {
+    const sessionId = typeof context.sessionId === "string" ? context.sessionId.trim() : "";
+    const project = typeof context.project === "string" ? context.project.trim() : "";
+    const lastUserPrompt =
+      typeof context.lastUserPrompt === "string" ? context.lastUserPrompt.trim().slice(0, 4000) : "";
+    const lastAssistantContent =
+      typeof context.lastAssistantContent === "string" ? context.lastAssistantContent.trim().slice(0, 4000) : "";
+    if (!sessionId && !project && !lastUserPrompt && !lastAssistantContent) return;
+
+    const normalized: ClaudeCodeContext = {
+      sessionId: sessionId || undefined,
+      project: project || undefined,
+      lastUserPrompt: lastUserPrompt || undefined,
+      lastAssistantContent: lastAssistantContent || undefined,
+    };
+
+    const metaKey = `claude_code_context:${sourceKey}`;
+    this.deps.db
+      .query(
+        `
+          INSERT INTO mem_meta(key, value, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(key) DO UPDATE SET
+            value = excluded.value,
+            updated_at = excluded.updated_at
+        `
+      )
+      .run(
+        metaKey,
+        JSON.stringify({
+          sessionId: normalized.sessionId || "",
+          project: normalized.project || "",
+          lastUserPrompt: normalized.lastUserPrompt || "",
+          lastAssistantContent: normalized.lastAssistantContent || "",
+        }),
+        new Date().toISOString()
+      );
+    this.claudeCodeContextCache.set(sourceKey, normalized);
+  }
+
+  private ingestClaudeCodeSessions(): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
+    const summary = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
+    const projectsRoot = resolveHomePath(
+      this.deps.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
+    );
+    if (!existsSync(projectsRoot)) return summary;
+
+    const files = this.listClaudeCodeJsonlFiles(projectsRoot);
+    const cutoffMs = Date.now() - Math.max(0, this.deps.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS) * 60 * 60 * 1000;
+    const MAX_FILES_PER_POLL = 5;
+    const MAX_BYTES_PER_FILE = 2 * 1024 * 1024; // 2MB per file per poll
+    let filesProcessed = 0;
+
+    for (const filePath of files) {
+      summary.filesScanned += 1;
+      const sourceKey = `claude_code:${resolve(filePath)}`;
+
+      let fileSize = 0;
+      let mtimeMs = Date.now();
+      try {
+        const stats = statSync(filePath);
+        fileSize = stats.size;
+        mtimeMs = stats.mtimeMs;
+      } catch {
+        continue;
+      }
+
+      const offsetRow = this.deps.db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(sourceKey) as { offset: number } | null;
+
+      const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
+      let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
+
+      if (!hasOffset && mtimeMs < cutoffMs) {
+        this.updateIngestOffset(sourceKey, fileSize);
+        summary.filesSkippedBackfill += 1;
+        continue;
+      }
+
+      if (offset > fileSize) offset = 0;
+      if (offset === fileSize) continue;
+
+      // バッチ上限: 実際にファイルを読み込む回数を制限してイベントループをブロックしない
+      filesProcessed += 1;
+      if (filesProcessed > MAX_FILES_PER_POLL) break;
+
+      let chunk = "";
+      try {
+        const readSize = Math.min(fileSize - offset, MAX_BYTES_PER_FILE);
+        const fd = openSync(filePath, "r");
+        try {
+          const buffer = Buffer.alloc(readSize);
+          readSync(fd, buffer, 0, readSize, offset);
+          chunk = buffer.toString("utf8");
+        } finally {
+          closeSync(fd);
+        }
+      } catch {
+        continue;
+      }
+
+      const context = this.loadClaudeCodeContext(sourceKey);
+      const fallbackSessionId = this.inferClaudeCodeSessionId(filePath) || context.sessionId || undefined;
+      const fallbackProject = this.inferClaudeCodeProject(filePath);
+
+      const parsedChunk = parseClaudeCodeChunk({
+        sourceKey,
+        baseOffset: offset,
+        chunk,
+        fallbackNowIso: nowIso,
+        context,
+        defaultSessionId: fallbackSessionId,
+        defaultProject: fallbackProject,
+      });
+
+      let imported = 0;
+      for (const entry of parsedChunk.events) {
+        const result = this.deps.recordEvent(
+          {
+            platform: "claude",
+            project: entry.project,
+            session_id: entry.sessionId,
+            event_type: entry.eventType,
+            ts: entry.timestamp,
+            payload: entry.payload,
+            tags: ["claude_code_sessions_ingest"],
+            privacy_tags: [],
+            dedupe_hash: entry.dedupeHash,
+          },
+          { allowQueue: false }
+        );
+        const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
+        if (result.ok && !deduped) imported += 1;
+      }
+
+      summary.eventsImported += imported;
+
+      this.storeClaudeCodeContext(sourceKey, {
+        sessionId: parsedChunk.context.sessionId || fallbackSessionId,
+        project: parsedChunk.context.project || fallbackProject,
+        lastUserPrompt: parsedChunk.context.lastUserPrompt,
+        lastAssistantContent: parsedChunk.context.lastAssistantContent,
+      });
+
+      const nextOffset = offset + parsedChunk.consumedBytes;
+      this.updateIngestOffset(sourceKey, nextOffset);
+    }
+
+    return summary;
+  }
+
+  ingestClaudeCodeHistory(): ApiResponse {
+    const startedAt = performance.now();
+    if (this.deps.config.claudeCodeIngestEnabled === false) {
+      return makeResponse(
+        startedAt,
+        [{ events_imported: 0, files_scanned: 0, files_skipped_backfill: 0 }],
+        {},
+        { ingest_mode: "disabled" }
+      );
+    }
+
+    const summary = this.ingestClaudeCodeSessions();
+    return makeResponse(
+      startedAt,
+      [
+        {
+          events_imported: summary.eventsImported,
+          files_scanned: summary.filesScanned,
+          files_skipped_backfill: summary.filesSkippedBackfill,
+        },
+      ],
+      {},
+      { ingest_mode: "claude_code_v1" }
     );
   }
 

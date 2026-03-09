@@ -59,6 +59,9 @@ function makeDeps(overrides: Partial<IngestCoordinatorDeps> = {}): IngestCoordin
     visibilityFilterSql: mock(() => ""),
     upsertSessionSummary: mock(() => undefined),
     normalizeProject: mock((p: string) => p),
+    isShuttingDown: mock(() => false),
+    processRetryQueue: mock(() => undefined),
+    runConsolidation: mock(async () => undefined),
     ...overrides,
   };
 }
@@ -191,6 +194,53 @@ describe("ingest-coordinator: ingestGeminiHistory", () => {
     expect(res).toHaveProperty("ok");
     expect(res).toHaveProperty("items");
     expect(res).toHaveProperty("meta");
+  });
+});
+
+describe("ingest-coordinator: Claude Code timer startup", () => {
+  test("starts Claude Code ingest on the next tick instead of waiting 30 seconds", () => {
+    const originalSetTimeout = globalThis.setTimeout;
+    const originalClearTimeout = globalThis.clearTimeout;
+    const originalSetInterval = globalThis.setInterval;
+    const originalClearInterval = globalThis.clearInterval;
+    const timeoutDelays: number[] = [];
+    const intervalDelays: number[] = [];
+
+    try {
+      globalThis.setTimeout = (((fn: (...args: unknown[]) => void, delay?: number) => {
+        timeoutDelays.push(Number(delay ?? 0));
+        fn();
+        return 1 as unknown as ReturnType<typeof setTimeout>;
+      }) as typeof setTimeout);
+      globalThis.clearTimeout = ((() => undefined) as typeof clearTimeout);
+      globalThis.setInterval = (((_fn: (...args: unknown[]) => void, delay?: number) => {
+        intervalDelays.push(Number(delay ?? 0));
+        return 1 as unknown as ReturnType<typeof setInterval>;
+      }) as typeof setInterval);
+      globalThis.clearInterval = ((() => undefined) as typeof clearInterval);
+
+      const deps = makeDeps({
+        config: createTestConfig({
+          claudeCodeIngestEnabled: true,
+          claudeCodeIngestIntervalMs: 12345,
+        }),
+      });
+      const coordinator = new IngestCoordinator(deps);
+      const ingestSpy = mock(() => makeOkResponse());
+      (coordinator as unknown as { ingestClaudeCodeSessions: () => ApiResponse }).ingestClaudeCodeSessions = ingestSpy;
+
+      coordinator.startTimers();
+
+      expect(timeoutDelays).toContain(0);
+      expect(intervalDelays).toContain(12345);
+      expect(ingestSpy).toHaveBeenCalledTimes(1);
+      coordinator.stopTimers();
+    } finally {
+      globalThis.setTimeout = originalSetTimeout;
+      globalThis.clearTimeout = originalClearTimeout;
+      globalThis.setInterval = originalSetInterval;
+      globalThis.clearInterval = originalClearInterval;
+    }
   });
 });
 

@@ -879,6 +879,9 @@ export const DEFAULT_VECTOR_DIM = 384;
 export const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
 export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
 export const DEFAULT_CODEX_BACKFILL_HOURS = 24;
+export const DEFAULT_CLAUDE_CODE_PROJECTS_ROOT = "~/.claude/projects";
+export const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_CLAUDE_CODE_BACKFILL_HOURS = 24;
 export const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 export const DEFAULT_SEARCH_EXPAND_LINKS = true;
 
@@ -1018,6 +1021,22 @@ export function getConfig(): Config {
       300000
     ),
     geminiBackfillHours: clampLimit(geminiBackfillRaw, DEFAULT_GEMINI_BACKFILL_HOURS, 1, 24 * 365),
+    claudeCodeIngestEnabled: envFlag("HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST", true),
+    claudeCodeProjectsRoot: resolveHomePath(
+      process.env.HARNESS_MEM_CLAUDE_CODE_PROJECTS_ROOT || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
+    ),
+    claudeCodeIngestIntervalMs: clampLimit(
+      Number(process.env.HARNESS_MEM_CLAUDE_CODE_INGEST_INTERVAL_MS || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS),
+      DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS,
+      1000,
+      300000
+    ),
+    claudeCodeBackfillHours: clampLimit(
+      Number(process.env.HARNESS_MEM_CLAUDE_CODE_BACKFILL_HOURS || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS),
+      DEFAULT_CLAUDE_CODE_BACKFILL_HOURS,
+      1,
+      24 * 365
+    ),
     searchRanking,
     searchExpandLinks: envFlag("HARNESS_MEM_SEARCH_EXPAND_LINKS", DEFAULT_SEARCH_EXPAND_LINKS),
     rerankerEnabled: envFlag("HARNESS_MEM_RERANKER_ENABLED", false),

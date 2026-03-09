@@ -262,6 +262,10 @@ export interface Config {
   geminiEventsPath?: string;
   geminiIngestIntervalMs?: number;
   geminiBackfillHours?: number;
+  claudeCodeIngestEnabled?: boolean;
+  claudeCodeProjectsRoot?: string;
+  claudeCodeIngestIntervalMs?: number;
+  claudeCodeBackfillHours?: number;
   searchRanking?: string;
   searchExpandLinks?: boolean;
   rerankerEnabled?: boolean;

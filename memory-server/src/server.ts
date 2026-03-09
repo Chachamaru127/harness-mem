@@ -136,6 +136,8 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/knowledge-file",
     "/v1/ingest/gemini-history",
     "/v1/ingest/gemini-events",
+    "/v1/ingest/claude-code-history",
+    "/v1/ingest/claude-code-sessions",
     "/v1/links/create",
     "/v1/observations/bulk-delete",
     "/v1/ingest/document",
@@ -936,6 +938,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         (url.pathname === "/v1/ingest/gemini-history" || url.pathname === "/v1/ingest/gemini-events")
       ) {
         return jsonResponse(core.ingestGeminiHistory());
+      }
+
+      if (
+        request.method === "POST" &&
+        (url.pathname === "/v1/ingest/claude-code-history" || url.pathname === "/v1/ingest/claude-code-sessions")
+      ) {
+        return jsonResponse(core.ingestClaudeCodeHistory());
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/github-issues") {

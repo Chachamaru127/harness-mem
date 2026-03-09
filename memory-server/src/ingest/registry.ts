@@ -9,6 +9,7 @@ import type { PlatformIngester } from "./types.js";
 import { AntigravityFilesIngester } from "./antigravity-files.js";
 import { AntigravityLogsIngester } from "./antigravity-logs.js";
 import { AudioIngester, type AudioIngesterConfig } from "./audio-ingester.js";
+import { ClaudeCodeSessionsIngester } from "./claude-code-sessions.js";
 import { ClaudeMemImportIngester } from "./claude-mem-import.js";
 import { CodexHistoryIngester } from "./codex-history.js";
 import { CodexSessionsIngester } from "./codex-sessions.js";
@@ -51,6 +52,7 @@ export function createDefaultRegistry(): IngesterRegistry {
   registry.register(new AntigravityLogsIngester());
   const audioConfig: AudioIngesterConfig = { provider: "whisper-local" };
   registry.register(new AudioIngester(audioConfig));
+  registry.register(new ClaudeCodeSessionsIngester());
   registry.register(new ClaudeMemImportIngester());
   registry.register(new CodexHistoryIngester());
   registry.register(new CodexSessionsIngester());
