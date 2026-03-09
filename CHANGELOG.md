@@ -7,6 +7,81 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-03-10
+
+### テーマ: Claude Code セッション取り込み + 直近対話アンカー
+
+**「直近を調べて」と聞いた時、ユーザーが最後に見ていた会話をすぐに返せるようになりました。Claude Code のセッション履歴も自動取り込み対象に加わり、daemon 常駐環境での restart も安全になりました。**
+
+---
+
+#### 1. 直近対話アンカー（latest interaction context）
+
+**今まで**: 「直近を調べて」「最近の作業は？」と聞くと、semantic search の結果だけを返すため、ユーザーが最後に見ていた prompt / assistant 回答とズレることがあった。
+
+**今後**: search API が自動的にプロジェクト内で最後に成立した user-visible な会話（prompt + assistant_response ペア）を特定し、`meta.latest_interaction` として返す。
+
+```json
+{
+  "meta": {
+    "latest_interaction": {
+      "platform": "claude",
+      "prompt": { "content": "今やり取りした記録を確認して" },
+      "response": { "content": "確認します。" },
+      "incomplete": false
+    }
+  }
+}
+```
+
+- AGENTS.md / `<turn_aborted>` / context summary / `<skill>` 展開テキスト / `"No response requested."` は除外
+- Claude / Codex / Cursor 等を横断して最新ペアを選出
+- 「直近/最近/最後」系クエリではスコアブーストで上位表示
+
+#### 2. Claude Code セッション自動取り込み
+
+**今まで**: harness-mem は Codex / Cursor / OpenCode / Gemini CLI の履歴を取り込めたが、Claude Code（~/.claude/projects/ 以下の JSONL）は対象外だった。
+
+**今後**: `~/.claude/projects/<encoded-path>/<uuid>.jsonl` を自動パースし、user prompt / assistant response / session summary / PR link を harness-mem に取り込む。
+
+- thinking ブロック・tool_use / tool_result はスキップ（ノイズ除去）
+- mtime 降順でファイルをソートし、最近更新されたセッションを優先的に処理
+- 手動 API（`/v1/ingest/claude-code-history`）ではファイル数制限なしで全量処理
+
+#### 3. launchctl 常駐環境での安全な restart
+
+**今まで**: `harness-memd restart` は LaunchAgent 管理下でも stop → start を実行するため、launchd が意図しないタイミングでプロセスを再生成し、PID が二重化するリスクがあった。
+
+**今後**: LaunchAgent が管理するジョブを検出した場合は `launchctl kickstart -k` を使い、launchd にプロセス再生成を委ねる。PID ファイルも launchd 経由で整合を取る。
+
+```
+$ harness-memd restart
+harness-memd restarted via launchctl (pid=60463, port=37888)
+```
+
+#### 4. search パフォーマンス最適化
+
+**今まで**: `getLatestInteractionContext` が全 search リクエストで LIMIT 400 の SQL を実行していた。
+
+**今後**: 「直近を調べて」系のクエリでは LIMIT 400（深いクロスセッション走査）、それ以外は LIMIT 20（meta 用の軽量走査）に分岐。intent チェックを SQL 実行より先に行うことで不要な計算を回避。
+
+### Added
+
+- **Latest Interaction Context** (§47-001~004): search meta に project-wide latest interaction を追加。cross-CLI 対応、非 user-visible プロンプト除外フィルタ付き
+- **Claude Code Sessions Ingester** (§47): `claude-code-sessions.ts` パーサー + `ingest-coordinator.ts` への統合。user/assistant/summary/pr-link を取り込み
+- **Launchctl Restart** (§47-005): `harness-memd restart` が LaunchAgent 検出時に `kickstart -k` を使用
+
+### Changed
+
+- `MAX_FILES_PER_POLL` を 5 → 50 に引き上げ（自動タイマー）
+- 手動 API（`/v1/ingest/claude-code-history`）ではファイル数制限を撤廃
+- search の `getLatestInteractionContext` に `scanLimit` パラメータを追加し、intent に応じて走査量を制御
+
+### Fixed
+
+- daemon が LaunchAgent 管理下で restart 時に PID 二重化する問題
+- Claude Code セッションのうち mtime が古いファイルが自動 ingest で取りこぼされる問題
+
 ## [0.3.0] - 2026-03-04
 
 ### 🎯 What's Changed for You
