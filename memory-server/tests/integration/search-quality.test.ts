@@ -77,6 +77,7 @@ describe("search quality integration", () => {
       const items = asItems(result);
       expect(items.length).toBeGreaterThanOrEqual(2);
       expect(String(items[0].id)).toContain("sq-new");
+      expect((result.meta as Record<string, unknown>).latest_interaction).toBeDefined();
 
       // RQ-006: RRF 実装後は rank-based スコアのため、固定ウェイトによる再計算は不適切。
       // final スコアが正の値であることと decay_tier が設定されていることを確認する。
@@ -87,6 +88,163 @@ describe("search quality integration", () => {
         const decayTier = (item as Record<string, unknown>).decay_tier as string | undefined;
         expect(["hot", "warm", "cold"]).toContain(decayTier);
       }
+    } finally {
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("generic recent query prioritizes latest project interaction across CLIs", () => {
+    const { core, dir } = createCore("latest-interaction");
+    try {
+      core.recordEvent(
+        makeEvent({
+          event_id: "latest-codex-prompt",
+          platform: "codex",
+          session_id: "codex-session",
+          ts: "2026-02-14T00:00:00.000Z",
+          payload: { content: "older codex prompt" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "latest-codex-response",
+          platform: "codex",
+          session_id: "codex-session",
+          event_type: "checkpoint",
+          ts: "2026-02-14T00:01:00.000Z",
+          payload: { title: "assistant_response", content: "older codex answer" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "latest-claude-prompt",
+          platform: "claude",
+          session_id: "claude-session",
+          ts: "2026-02-14T00:02:00.000Z",
+          payload: { content: "latest claude prompt" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "latest-claude-response",
+          platform: "claude",
+          session_id: "claude-session",
+          event_type: "checkpoint",
+          ts: "2026-02-14T00:03:00.000Z",
+          payload: { title: "assistant_response", content: "latest claude answer" },
+        })
+      );
+
+      const result = core.search({
+        query: "直近を調べて",
+        project: "search-quality",
+        limit: 5,
+        include_private: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const meta = result.meta as Record<string, unknown>;
+      const latestInteraction = meta.latest_interaction as Record<string, unknown>;
+      expect(latestInteraction).toBeDefined();
+      expect(latestInteraction.platform).toBe("claude");
+      expect(latestInteraction.session_id).toBe("claude-session");
+      expect((latestInteraction.prompt as Record<string, unknown>).content).toBe("latest claude prompt");
+      expect((latestInteraction.response as Record<string, unknown>).content).toBe("latest claude answer");
+
+      const items = asItems(result);
+      expect(String(items[0]?.content || "")).toContain("latest claude answer");
+      expect(String(items[1]?.content || "")).toContain("latest claude prompt");
+    } finally {
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("latest interaction ignores wrapper prompts and prefers the latest completed user-visible exchange", () => {
+    const { core, dir } = createCore("latest-visible-exchange");
+    try {
+      core.recordEvent(
+        makeEvent({
+          event_id: "ignored-summary-prompt",
+          platform: "claude",
+          session_id: "claude-session",
+          ts: "2026-02-13T23:59:00.000Z",
+          payload: {
+            content:
+              "This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.",
+          },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "visible-claude-prompt",
+          platform: "claude",
+          session_id: "claude-session",
+          ts: "2026-02-14T00:00:00.000Z",
+          payload: { content: "shared last user prompt" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "visible-claude-response",
+          platform: "claude",
+          session_id: "claude-session",
+          event_type: "checkpoint",
+          ts: "2026-02-14T00:01:00.000Z",
+          payload: { title: "assistant_response", content: "shared last assistant answer" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "ignored-turn-aborted",
+          platform: "codex",
+          session_id: "codex-session",
+          ts: "2026-02-14T00:02:00.000Z",
+          payload: { content: "<turn_aborted>\nThe user interrupted the previous turn on purpose.\n</turn_aborted>" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "ignored-agents-wrapper",
+          platform: "codex",
+          session_id: "codex-session",
+          ts: "2026-02-14T00:03:00.000Z",
+          payload: { content: "# AGENTS.md instructions for /repo\n\n<INSTRUCTIONS>..." },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "ignored-skill-wrapper",
+          platform: "codex",
+          session_id: "codex-session",
+          ts: "2026-02-14T00:04:00.000Z",
+          payload: {
+            content:
+              "<skill>\n<name>harness-review</name>\n<path>/Users/example/.codex/skills/harness-review/SKILL.md</path>\n---",
+          },
+        })
+      );
+
+      const result = core.search({
+        query: "直近を調べて",
+        project: "search-quality",
+        limit: 5,
+        include_private: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const latestInteraction = (result.meta as Record<string, unknown>).latest_interaction as Record<string, unknown>;
+      expect(latestInteraction).toBeDefined();
+      expect(latestInteraction.platform).toBe("claude");
+      expect(latestInteraction.session_id).toBe("claude-session");
+      expect(latestInteraction.incomplete).toBe(false);
+      expect((latestInteraction.prompt as Record<string, unknown>).content).toBe("shared last user prompt");
+      expect((latestInteraction.response as Record<string, unknown>).content).toBe("shared last assistant answer");
+
+      const items = asItems(result);
+      expect(String(items[0]?.content || "")).toContain("shared last assistant answer");
+      expect(String(items[1]?.content || "")).toContain("shared last user prompt");
     } finally {
       core.shutdown("test");
       rmSync(dir, { recursive: true, force: true });

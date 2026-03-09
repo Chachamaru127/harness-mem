@@ -128,6 +128,36 @@ interface ActiveFactRow {
   confidence: number;
 }
 
+interface LatestInteractionObservation {
+  id: string;
+  event_id: string | null;
+  event_type: string;
+  platform: string;
+  project: string;
+  session_id: string;
+  title: string | null;
+  content: string;
+  created_at: string;
+  tags: string[];
+  privacy_tags: string[];
+}
+
+interface LatestInteractionContext {
+  scope: "project" | "session";
+  project: string;
+  session_id: string;
+  platform: string;
+  latest_turn_at: string;
+  incomplete: boolean;
+  prompt: LatestInteractionObservation | null;
+  response: LatestInteractionObservation | null;
+}
+
+interface LatestCompletedInteraction {
+  prompt: LatestInteractionObservation;
+  response: LatestInteractionObservation;
+}
+
 function encodeFeedCursor(cursor: FeedCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
@@ -164,6 +194,22 @@ const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|befor
 const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
 const LIST_CUE_PATTERN = /\b(and|all|list|including)\b/i;
 const FILLER_CUE_PATTERN = /^(?:ちなみに|なお|ただ|実際には|現時点では|まず|最初に|最後に|That said|Actually|Currently|Right now|At the moment)\b/i;
+const LATEST_INTERACTION_CUE_PATTERN =
+  /\b(prompt|response|reply|answer|conversation|thread|exchange|recent work|latest work|last work|what happened recently|what happened last)\b|(プロンプト|回答|返答|会話|やり取り|直近の作業|最近の作業|最後の作業)/i;
+const GENERIC_RECENT_QUERY_PATTERN =
+  /^(?:直近|最近|最後|latest|recent|last)(?:\s*(?:を|の|について|見て|調べて|教えて|show|check|tell me).*)?$/i;
+const LATEST_INTERACTION_IGNORED_PROMPT_PATTERNS = [
+  /^# AGENTS\.md instructions\b/i,
+  /^<skill>/i,
+  /^<turn_aborted>/i,
+  /^Base directory for this skill:/i,
+  /^<command-message>/i,
+  /^<command-name>/i,
+  /^This session is being continued from a previous conversation that ran out of context\./i,
+];
+const LATEST_INTERACTION_IGNORED_RESPONSE_PATTERNS = [
+  /^No response requested\.?$/i,
+];
 
 function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
@@ -185,6 +231,28 @@ function prefersDescendingTemporalOrder(query: string): boolean {
   return /\b(last|latest|newest|most recent|recent|current|currently)\b/.test(normalized) || /(最後|最新|直近|最近)/.test(query);
 }
 
+function compareCreatedAt(lhs: string | null | undefined, rhs: string | null | undefined): number {
+  return String(lhs || "").localeCompare(String(rhs || ""));
+}
+
+function isLatestInteractionIntent(query: string): boolean {
+  const normalized = query.trim();
+  if (!normalized) return false;
+  return GENERIC_RECENT_QUERY_PATTERN.test(normalized) || LATEST_INTERACTION_CUE_PATTERN.test(normalized);
+}
+
+function isIgnoredLatestInteractionPrompt(observation: LatestInteractionObservation): boolean {
+  const text = `${observation.title || ""}\n${observation.content}`.trim();
+  if (!text) return true;
+  return LATEST_INTERACTION_IGNORED_PROMPT_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+function isIgnoredLatestInteractionResponse(observation: LatestInteractionObservation): boolean {
+  const text = `${observation.title || ""}\n${observation.content}`.trim();
+  if (!text) return true;
+  return LATEST_INTERACTION_IGNORED_RESPONSE_PATTERNS.some((pattern) => pattern.test(observation.content.trim()));
+}
+
 // ---------------------------------------------------------------------------
 // ObservationStore クラス
 // ---------------------------------------------------------------------------
@@ -193,6 +261,230 @@ export class ObservationStore {
   private migrationComplete = false;
 
   constructor(private readonly deps: ObservationStoreDeps) {}
+
+  private queryLatestInteractionObservations(options: {
+    project?: string;
+    session_id?: string;
+    include_private: boolean;
+    user_id?: string;
+    team_id?: string;
+    limit?: number;
+  }): LatestInteractionObservation[] {
+    const params: unknown[] = [];
+    let sql = `
+      SELECT
+        o.id,
+        o.event_id,
+        o.platform,
+        o.project,
+        o.session_id,
+        o.title,
+        o.content_redacted,
+        o.tags_json,
+        o.privacy_tags_json,
+        o.created_at,
+        e.event_type
+      FROM mem_observations o
+      LEFT JOIN mem_events e ON e.event_id = o.event_id
+      WHERE 1 = 1
+    `;
+
+    if (options.project) {
+      sql += " AND o.project = ?";
+      params.push(options.project);
+    }
+    if (options.session_id) {
+      sql += " AND o.session_id = ?";
+      params.push(options.session_id);
+    }
+
+    sql += this.deps.platformVisibilityFilterSql("o");
+    sql += visibilityFilterSql("o", options.include_private);
+
+    if (options.user_id) {
+      if (options.team_id) {
+        sql += " AND (o.user_id = ? OR o.team_id = ?)";
+        params.push(options.user_id, options.team_id);
+      } else {
+        sql += " AND o.user_id = ?";
+        params.push(options.user_id);
+      }
+    }
+
+    sql += `
+      AND (
+        e.event_type = 'user_prompt'
+        OR (e.event_type = 'checkpoint' AND o.title = 'assistant_response')
+      )
+    `;
+
+    const limit = Math.max(20, Math.min(options.limit ?? 400, 1000));
+    sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<Record<string, unknown>>;
+    return rows.map((row) => ({
+      id: String(row.id || ""),
+      event_id: typeof row.event_id === "string" ? row.event_id : null,
+      event_type: typeof row.event_type === "string" ? row.event_type : "",
+      platform: typeof row.platform === "string" ? row.platform : "",
+      project: typeof row.project === "string" ? row.project : "",
+      session_id: typeof row.session_id === "string" ? row.session_id : "",
+      title: typeof row.title === "string" ? row.title : null,
+      content: typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 2000) : "",
+      created_at: typeof row.created_at === "string" ? row.created_at : nowIso(),
+      tags: parseArrayJson(row.tags_json),
+      privacy_tags: parseArrayJson(row.privacy_tags_json),
+    }));
+  }
+
+  private getLatestInteractionContext(request: SearchRequest, normalizedProject?: string): LatestInteractionContext | null {
+    if (!normalizedProject && !request.session_id) {
+      return null;
+    }
+
+    const includePrivate = Boolean(request.include_private);
+    const userId = typeof request.user_id === "string" && request.user_id.trim()
+      ? request.user_id.trim()
+      : undefined;
+    const teamId = typeof request.team_id === "string" && request.team_id.trim()
+      ? request.team_id.trim()
+      : undefined;
+    const scope: "project" | "session" = request.session_id ? "session" : "project";
+    const candidates = this.queryLatestInteractionObservations({
+      project: normalizedProject,
+      session_id: request.session_id,
+      include_private: includePrivate,
+      user_id: userId,
+      team_id: teamId,
+    });
+
+    if (candidates.length === 0) {
+      return null;
+    }
+
+    const bySession = new Map<string, LatestInteractionObservation[]>();
+    for (const candidate of candidates) {
+      const sessionRows = bySession.get(candidate.session_id) || [];
+      sessionRows.push(candidate);
+      bySession.set(candidate.session_id, sessionRows);
+    }
+
+    let latestCompleted: LatestCompletedInteraction | null = null;
+    let latestPendingPrompt: LatestInteractionObservation | null = null;
+
+    for (const sessionRows of bySession.values()) {
+      const chronological = [...sessionRows].sort((lhs, rhs) => {
+        const byTime = compareCreatedAt(lhs.created_at, rhs.created_at);
+        if (byTime !== 0) return byTime;
+        return lhs.id.localeCompare(rhs.id);
+      });
+
+      let currentPrompt: LatestInteractionObservation | null = null;
+      let sessionLatestCompleted: LatestCompletedInteraction | null = null;
+
+      for (const row of chronological) {
+        if (row.event_type === "user_prompt") {
+          if (isIgnoredLatestInteractionPrompt(row)) {
+            continue;
+          }
+          currentPrompt = row;
+          continue;
+        }
+
+        if (row.title !== "assistant_response" || isIgnoredLatestInteractionResponse(row)) {
+          continue;
+        }
+
+        if (!currentPrompt) {
+          continue;
+        }
+
+        if (compareCreatedAt(row.created_at, currentPrompt.created_at) < 0) {
+          continue;
+        }
+
+        sessionLatestCompleted = {
+          prompt: currentPrompt,
+          response: row,
+        };
+      }
+
+      if (sessionLatestCompleted) {
+        if (
+          !latestCompleted ||
+          compareCreatedAt(sessionLatestCompleted.response.created_at, latestCompleted.response.created_at) > 0
+        ) {
+          latestCompleted = sessionLatestCompleted;
+        }
+        continue;
+      }
+
+      if (
+        currentPrompt &&
+        (!latestPendingPrompt || compareCreatedAt(currentPrompt.created_at, latestPendingPrompt.created_at) > 0)
+      ) {
+        latestPendingPrompt = currentPrompt;
+      }
+    }
+
+    if (latestCompleted) {
+      return {
+        scope,
+        project: latestCompleted.response.project,
+        session_id: latestCompleted.response.session_id,
+        platform: latestCompleted.response.platform,
+        latest_turn_at: latestCompleted.response.created_at,
+        incomplete: false,
+        prompt: latestCompleted.prompt,
+        response: latestCompleted.response,
+      };
+    }
+
+    if (!latestPendingPrompt) {
+      return null;
+    }
+
+    return {
+      scope,
+      project: latestPendingPrompt.project,
+      session_id: latestPendingPrompt.session_id,
+      platform: latestPendingPrompt.platform,
+      latest_turn_at: latestPendingPrompt.created_at,
+      incomplete: true,
+      prompt: latestPendingPrompt,
+      response: null,
+    };
+  }
+
+  private buildLatestInteractionMeta(context: LatestInteractionContext | null): Record<string, unknown> | null {
+    if (!context) return null;
+
+    const serializeObservation = (observation: LatestInteractionObservation | null): Record<string, unknown> | null => {
+      if (!observation) return null;
+      return {
+        id: observation.id,
+        event_id: observation.event_id,
+        created_at: observation.created_at,
+        title: observation.title,
+        content: observation.content,
+        platform: observation.platform,
+        project: observation.project,
+        session_id: observation.session_id,
+      };
+    };
+
+    return {
+      scope: context.scope,
+      project: context.project,
+      session_id: context.session_id,
+      platform: context.platform,
+      latest_turn_at: context.latest_turn_at,
+      incomplete: context.incomplete,
+      prompt: serializeObservation(context.prompt),
+      response: serializeObservation(context.response),
+    };
+  }
 
   // ---------------------------------------------------------------------------
   // applyCommonFilters: SQL WHERE 句に共通フィルタを追加
@@ -1606,6 +1898,8 @@ export class ObservationStore {
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
     };
+    const latestInteraction = this.getLatestInteractionContext(normalizedRequest, normalizedProject);
+    const prioritizeLatestInteraction = Boolean(latestInteraction) && isLatestInteractionIntent(request.query);
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
     const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);
@@ -1613,6 +1907,10 @@ export class ObservationStore {
     const graph = new Map<string, number>();
 
     const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys()]);
+    if (prioritizeLatestInteraction) {
+      if (latestInteraction?.prompt?.id) candidateIds.add(latestInteraction.prompt.id);
+      if (latestInteraction?.response?.id) candidateIds.add(latestInteraction.response.id);
+    }
     if (expandLinks && candidateIds.size > 0) {
       const topIds = [...candidateIds]
         .sort((lhs, rhs) => {
@@ -1868,6 +2166,14 @@ export class ObservationStore {
       const decayTier = getDecayTier(lastAccessedAt, nowMs);
       const decayMult = getDecayMultiplier(decayTier);
       item.final = rawScore * decayMult;
+      if (prioritizeLatestInteraction) {
+        if (latestInteraction?.prompt?.id === item.id) {
+          item.final += 5;
+        }
+        if (latestInteraction?.response?.id === item.id) {
+          item.final += 5.1;
+        }
+      }
     }
 
     ranked.sort((lhs, rhs) => {
@@ -2009,6 +2315,10 @@ export class ObservationStore {
       })),
       strategy: "index",
     });
+    const latestInteractionMeta = this.buildLatestInteractionMeta(latestInteraction);
+    if (latestInteractionMeta) {
+      meta.latest_interaction = latestInteractionMeta;
+    }
     if (request.debug) {
       meta.debug = {
         strict_project: strictProject,
