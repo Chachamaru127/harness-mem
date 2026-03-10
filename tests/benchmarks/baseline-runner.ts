@@ -235,7 +235,7 @@ export async function createBaselineSnapshot(options: BenchmarkRunnerOptions = {
       const detailIds = itemIds.slice(0, 2);
       const fullIds = itemIds.slice(0, DEFAULT_SAMPLE_LIMIT);
       if (topHitId) {
-        const timelineResponse = core.timeline({
+        const timelineResponse = await core.timeline({
           id: topHitId,
           before: 2,
           after: 2,
