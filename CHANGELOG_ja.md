@@ -5,6 +5,35 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.4.1] - 2026-03-10
+
+### ユーザー向け要約
+
+- ターミナル強制終了時でもセッションサマリーが保存されるようになった。breezing/harness-work 全タスク完了時 + スキル完了時に `finalize-session` を自動呼び出し。
+- `as_of`（時点指定）検索で未来の observation が混入するバグを修正。
+- FTS カラムのスキーマ移行順序を修正し、新規 DB 作成時のエラーを解消。
+- CI 全4ワークフロー（pgvector, benchmark, MCP validation, Python SDK）の安定化。
+- UI テスト全40件通過（FeedPanel のクリック展開・重複テキスト問題を修正）。
+
+### 補足
+
+- 作業フェーズ完了時ファイナライズ: `task-completed.sh` に `all_tasks_completed` 検知時の HTTP API 呼び出し追加 + `memory-skill-finalize.sh` 新規作成（PostToolUse Skill フック）。
+- ポイントインタイム検索: `as_of` 指定時に `getLatestInteractionContext` をスキップして未来の observation 混入を防止。
+- SDK テスト: `HarnessMemLangChainMemory` のインポートパスと API 名（snake_case → camelCase）を実装に合わせて修正。
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
+## [0.4.0] - 2026-03-10
+
+### ユーザー向け要約
+
+- 直近対話アンカー（latest interaction context）: 「直近を調べて」と聞いた時、最後に見ていた会話を即座に返す。
+- Claude Code セッション自動取り込み: `~/.claude/projects/` 以下の JSONL を自動パースして harness-mem に取り込み。
+- launchctl 常駐環境での安全な restart: PID 二重化リスクを解消。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.3.0] - 2026-03-04
 
 ### ユーザー向け要約

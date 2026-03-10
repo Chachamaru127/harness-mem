@@ -548,10 +548,25 @@ export function FeedPanel(props: FeedPanelProps) {
             const expandRegionId = `feed-expand-${item.id}`;
             const isSystemEnvelope = isSystemEnvelopePrompt(item);
             const showContent = isExpanded || !isSystemEnvelope;
+            const handleToggle = () => setExpandedCardId((prev) => (prev === item.id ? null : item.id));
             return (
               <article
                 key={item.id}
                 className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}${isSystemEnvelope ? " system-envelope" : ""}`}
+                {...(isSystemEnvelope ? {
+                  role: "button",
+                  tabIndex: 0,
+                  "aria-expanded": isExpanded,
+                  onClick: handleToggle,
+                  onKeyDown: (e: React.KeyboardEvent) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      handleToggle();
+                    }
+                  },
+                } : {
+                  onClick: handleToggle,
+                })}
               >
                 <button
                   type="button"
@@ -559,7 +574,7 @@ export function FeedPanel(props: FeedPanelProps) {
                   aria-expanded={isExpanded}
                   aria-controls={expandRegionId}
                   aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
-                  onClick={() => setExpandedCardId((prev) => (prev === item.id ? null : item.id))}
+                  onClick={(e) => { e.stopPropagation(); handleToggle(); }}
                 >
                 <div className="card-top">
                   <div className="card-top-left">
@@ -576,9 +591,11 @@ export function FeedPanel(props: FeedPanelProps) {
                 </button>
                 <h3>{item.title || item.id}</h3>
                 {showContent && content ? <p>{content}</p> : null}
-                <pre id={expandRegionId} className="feed-inline-detail" hidden={!isExpanded}>
-                  {content || "-"}
-                </pre>
+                {isExpanded ? (
+                  <pre id={expandRegionId} className="feed-inline-detail">
+                    {content || "-"}
+                  </pre>
+                ) : null}
 
                 <div className="card-meta">
                   <span>{item.project || "-"}</span>

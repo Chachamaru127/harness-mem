@@ -7,6 +7,48 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-10
+
+### テーマ: 作業フェーズ完了時ファイナライズ + テスト安定化
+
+**ターミナルを閉じても記憶が失われなくなりました。全タスク完了時・スキル完了時に即座にセッションサマリーを保存するため、Stop フック未発火でもresume-pack に完全なコンテキストが残ります。加えて、CI の全ワークフローが安定して通過するよう修正しました。**
+
+---
+
+#### 1. 作業フェーズ完了時の自動ファイナライズ
+
+**今まで**: セッションサマリーの生成は `Stop` フック（`/exit` や Ctrl+C）に依存していた。ターミナルの × ボタンで閉じると `Stop` フックが発火せず、サマリーが保存されないため、次回セッションの resume-pack に前回の文脈が欠落していた。
+
+**今後**: 以下の2つのタイミングで `finalize-session` を自動呼び出しするようになった:
+
+- **breezing / harness-work 全タスク完了時** — `task-completed.sh` が `all_tasks_completed` を検知した瞬間に HTTP API で即座にサマリー保存
+- **スキル完了時** — `/harness-work`, `/harness-review`, `/harness-release` 等のスキル終了後に `memory-skill-finalize.sh` がサマリーを更新
+
+`finalize-session` は冪等（UPDATE 文）なので、その後 Stop フックが正常に発火してもサマリーが上書き更新されるだけで問題ない。
+
+#### 2. ポイントインタイム検索の正確性向上
+
+**今まで**: `as_of`（時点指定）パラメータで過去の状態を検索した場合でも、`getLatestInteractionContext` が指定時点より未来の observation を混入させていた。
+
+**今後**: `as_of` が指定されている場合は `getLatestInteractionContext` をスキップし、指定時点までの observation のみを返すようになった。
+
+#### 3. FTS カラムのスキーマ移行修正
+
+**今まで**: `title_fts` / `content_fts` カラムの追加が `initFtsIndex` に含まれており、INSERT 時に `migrateSchema` だけ実行された環境ではカラムが存在せずエラーになることがあった。
+
+**今後**: FTS カラムの追加を `migrateSchema` に移動し、テーブル作成直後に常にカラムが存在するようにした。
+
+#### 4. CI 安定化 (pgvector / benchmark / SDK テスト)
+
+- pgvector CI: `pg` パッケージの依存解決を修正 + ワークフロートリガーパスを拡張
+- ベンチマーク: `shapeOf()` のバリアント順序を決定的にソート + `core.timeline()` の `await` 漏れ修正
+- SDK テスト: `HarnessMemLangChainMemory` のインポートパスを `integrations.ts` から `langchain-memory.ts` に修正し、camelCase API に合わせてテストを更新
+- UI テスト: FeedPanel の `<pre hidden>` を条件付きレンダリングに変更 + `<article>` にクリックハンドラ追加
+
+#### 5. LOCOMO アダプター fixture 修正
+
+- `japanese-failure-bank.json` の temporal-015 の `strategy_contains` を `"object-slot"` → `"previous-slot"` に修正
+
 ## [0.4.0] - 2026-03-10
 
 ### テーマ: Claude Code セッション取り込み + 直近対話アンカー
