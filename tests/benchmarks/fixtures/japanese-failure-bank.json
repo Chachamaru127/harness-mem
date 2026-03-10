@@ -110,7 +110,7 @@
       "slice": "temporal",
       "tag": "initial_exact_value",
       "expected": "codex",
-      "strategy_contains": "object-slot"
+      "strategy_contains": "previous-slot"
     },
     {
       "sample_id": "ja-rel-016",

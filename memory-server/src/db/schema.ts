@@ -611,6 +611,18 @@ export function migrateSchema(db: Database): void {
   if (emptyProjects.cnt > 0) {
     console.warn(`[harness-mem] WARNING: ${emptyProjects.cnt} events with empty project name detected`);
   }
+
+  // §45: FTS 用日本語形態素解析テキストカラム（INSERT 時に常に参照されるため migrateSchema で追加）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN title_fts TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN content_fts TEXT`);
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {
@@ -620,18 +632,7 @@ export function initFtsIndex(db: Database): boolean {
         USING fts5(observation_id UNINDEXED, title, content, tokenize = 'unicode61');
     `);
 
-    // §45: 日本語形態素解析済みテキスト用カラムを追加（マイグレーション）
-    // title_fts / content_fts が存在しない場合のみ追加する
-    try {
-      db.exec(`ALTER TABLE mem_observations ADD COLUMN title_fts TEXT`);
-    } catch {
-      // カラムが既に存在する場合は無視
-    }
-    try {
-      db.exec(`ALTER TABLE mem_observations ADD COLUMN content_fts TEXT`);
-    } catch {
-      // カラムが既に存在する場合は無視
-    }
+    // §45: title_fts / content_fts カラムは migrateSchema で追加済み
 
     // トリガー更新: title_fts / content_fts を優先し、未設定なら title / content_redacted にフォールバック
     db.exec(`
