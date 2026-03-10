@@ -1900,10 +1900,13 @@ export class ObservationStore {
       exclude_updated: excludeUpdated,
     };
     const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
-    const latestInteraction = this.getLatestInteractionContext(
-      normalizedRequest, normalizedProject,
-      hasLatestInteractionIntent ? 400 : 20,
-    );
+    // COMP-003: as_of が指定されている場合、latest interaction は時点外の結果を混入させるためスキップ
+    const latestInteraction = request.as_of
+      ? null
+      : this.getLatestInteractionContext(
+          normalizedRequest, normalizedProject,
+          hasLatestInteractionIntent ? 400 : 20,
+        );
     const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);

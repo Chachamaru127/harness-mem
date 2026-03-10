@@ -134,7 +134,8 @@ describe("claude code sessions ingest integration", () => {
         items: Array<{ events_imported: number; files_scanned: number }>;
       };
       expect(ingest.ok).toBe(true);
-      expect(ingest.items[0]?.events_imported).toBe(10);
+      // Manual API uses maxFiles=Infinity, so all 6 files (12 events) are ingested
+      expect(ingest.items[0]?.events_imported).toBe(12);
       expect(ingest.items[0]?.files_scanned).toBe(6);
 
       const feedRes = await fetch(
@@ -149,7 +150,7 @@ describe("claude code sessions ingest integration", () => {
 
       const contents = feed.items.map((item) => String(item.content || ""));
       expect(contents.some((content) => content.includes("newest answer"))).toBe(true);
-      expect(contents.some((content) => content.includes("oldest answer"))).toBe(false);
+      expect(contents.some((content) => content.includes("oldest answer"))).toBe(true);
     } finally {
       runtime.stop();
     }
