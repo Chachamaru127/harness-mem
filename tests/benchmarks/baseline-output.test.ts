@@ -6,7 +6,7 @@ function shapeOf(value: unknown): unknown {
     if (value.length === 0) {
       return ["empty"];
     }
-    const variants = [...new Set(value.map((entry) => JSON.stringify(shapeOf(entry))))].map((entry) =>
+    const variants = [...new Set(value.map((entry) => JSON.stringify(shapeOf(entry))))].sort().map((entry) =>
       JSON.parse(entry)
     );
     return variants.length === 1 ? [variants[0]] : variants;
@@ -49,7 +49,7 @@ describe("world-1 baseline benchmark snapshot", () => {
         queries: [
           {
             expected_observation_id: "string",
-            hit_rank: "number",
+            hit_rank: "null",
             query: "string",
             recall_at_10: "number",
             reciprocal_rank: "number",
@@ -57,7 +57,7 @@ describe("world-1 baseline benchmark snapshot", () => {
           },
           {
             expected_observation_id: "string",
-            hit_rank: "null",
+            hit_rank: "number",
             query: "string",
             recall_at_10: "number",
             reciprocal_rank: "number",

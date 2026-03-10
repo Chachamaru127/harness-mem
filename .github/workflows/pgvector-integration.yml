@@ -7,6 +7,8 @@ on:
       - "memory-server/src/db/repositories/Pg*.ts"
       - "memory-server/tests/integration/pg-e2e.test.ts"
       - "tests/unit/pgvector-search.test.ts"
+      - "memory-server/package.json"
+      - "memory-server/bun.lock"
       - ".github/workflows/pgvector-integration.yml"
       - "docker-compose.test.yml"
   push:
@@ -17,6 +19,8 @@ on:
       - "memory-server/src/db/repositories/Pg*.ts"
       - "memory-server/tests/integration/pg-e2e.test.ts"
       - "tests/unit/pgvector-search.test.ts"
+      - "memory-server/package.json"
+      - "memory-server/bun.lock"
       - ".github/workflows/pgvector-integration.yml"
       - "docker-compose.test.yml"
 
