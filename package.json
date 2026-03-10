@@ -43,6 +43,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^0.5.0"
   },
+  "devDependencies": {
+    "pg": "^8.13.3"
+  },
   "scripts": {
     "test": "bun test memory-server/tests/ ./tests/ sdk/tests/ mcp-server/tests/",
     "test:ui": "cd harness-mem-ui && bunx vitest",

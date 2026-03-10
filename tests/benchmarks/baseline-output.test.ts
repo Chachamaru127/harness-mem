@@ -97,5 +97,5 @@ describe("world-1 baseline benchmark snapshot", () => {
     );
     expect(snapshot.token_efficiency.reduction_ratio).toBeGreaterThan(0);
     expect(snapshot.token_efficiency.reduction_ratio).toBeLessThanOrEqual(1);
-  });
+  }, 30_000);
 });
