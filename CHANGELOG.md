@@ -7,6 +7,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-11
+
+### テーマ: セットアップ体験の改善 + マーケットプレイス配布対応
+
+**セットアップのハードルを3方向から下げました。Bun の自動インストール、デーモンの自動復旧強化、そして Claude Code プラグインマーケットプレイスからのインストールに対応しました。**
+
+---
+
+#### 1. Bun 自動インストール (`ensure_bun`)
+
+**今まで**: `bun` が未インストールの場合、`setup` は即座にエラー終了していた。ユーザーは手動で `curl -fsSL https://bun.sh/install | bash` を実行する必要があった。
+
+**今後**: macOS で `bun` が見つからない場合、`ensure_ripgrep` と同じパターンで公式インストーラーを自動実行する。インストール後に `~/.bun/bin` を PATH に追加し、コマンド存在を再確認する。
+
+#### 2. デーモン自動再起動フォールバック (`memory-session-start.sh`)
+
+**今まで**: `memory-self-check.sh` にデーモン自動再起動があったが、300秒のクールダウンがあった。クールダウン中にデーモンが落ちた場合、`memory-session-start.sh` はエラーファイルを書くだけで resume-pack 取得に失敗していた。
+
+**今後**: `memory-session-start.sh` にも独自のフォールバック再起動ロジックを追加。resume-pack の前にヘルスチェックを行い、デーモン不在なら `cleanup-stale` + `start` を試みる。resume-pack 失敗時にも1回限りのリトライを実行する。`_DAEMON_RESTARTED` フラグで無限ループを防止。
+
+#### 3. Claude Code プラグインマーケットプレイス対応
+
+**今まで**: `npx` または `npm install -g` でのインストールのみ対応。Claude Code のプラグインマーケットプレイスUIからの発見・インストールはできなかった。
+
+**今後**: `.claude-plugin/marketplace.json` を追加し、以下のフローでインストール可能:
+
+```
+/plugin marketplace add Chachamaru127/harness-mem
+/plugin install harness-mem@chachamaru127
+```
+
+`plugin.json` も強化し、`mcpServers` に `${CLAUDE_PLUGIN_ROOT}` ベースのポータブルパスを設定。
+
+#### 4. テスト追加 (42 新規 expect)
+
+- `ensure-bun-auto-install.test.ts` — 9 テスト: 関数定義、依存統合、PATH フォールバック、即時 return、プラットフォーム分岐
+- `session-start-daemon-restart.test.ts` — 11 テスト: フォールバック関数、ヘルスチェック順序、リトライ制御、E2E (正常/異常)
+- `marketplace-schema.test.ts` — 22 テスト: スキーマ準拠、バージョン一貫性、予約名チェック、MCP パス検証
+
 ## [0.4.1] - 2026-03-10
 
 ### テーマ: 作業フェーズ完了時ファイナライズ + テスト安定化

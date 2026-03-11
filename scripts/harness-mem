@@ -813,6 +813,40 @@ check_cmd() {
   command -v "$name" >/dev/null 2>&1
 }
 
+ensure_bun() {
+  if check_cmd bun; then
+    return 0
+  fi
+
+  warn "bun is missing"
+  case "$(uname -s)" in
+    Darwin*)
+      log "Installing bun via official installer..."
+      if curl -fsSL https://bun.sh/install | bash; then
+        hash -r 2>/dev/null || true
+        if check_cmd bun; then
+          log "bun installed: $(command -v bun)"
+          return 0
+        fi
+        # PATH may not yet include ~/.bun/bin in this shell session
+        if [ -d "$HOME/.bun/bin" ]; then
+          export PATH="$HOME/.bun/bin:$PATH"
+          hash -r 2>/dev/null || true
+        fi
+        if check_cmd bun; then
+          log "bun installed: $(command -v bun)"
+          return 0
+        fi
+        fail "bun installation finished but bun command is still unavailable. Add \$HOME/.bun/bin to PATH and retry."
+      fi
+      fail "Failed to install bun automatically. Install it manually: curl -fsSL https://bun.sh/install | bash"
+      ;;
+    *)
+      fail "Required command not found: bun. Install it first (https://bun.sh/docs/installation)."
+      ;;
+  esac
+}
+
 ensure_ripgrep() {
   if check_cmd rg; then
     return 0
@@ -846,7 +880,7 @@ get_cursor_hooks_command() {
 }
 
 ensure_dependencies() {
-  require_cmd bun
+  ensure_bun
   require_cmd curl
   require_cmd jq
   require_cmd node

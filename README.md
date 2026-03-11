@@ -100,18 +100,31 @@ What this does **not** claim:
 
 ## Quick Start
 
-### Option A: Run with npx (no global install)
+### Option A: Claude Code Plugin Marketplace (recommended for Claude Code users)
+
+```
+/plugin marketplace add Chachamaru127/harness-mem
+/plugin install harness-mem@chachamaru127
+```
+
+Hooks and MCP wiring are configured automatically. The daemon auto-starts on next session via the self-check hook.
+
+### Option B: Run with npx (no global install)
 
 ```bash
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,cursor,claude
 ```
 
-### Option B: Global install
+> **Note**: npx downloads are temporary, but harness-mem automatically copies itself to `~/.harness-mem/runtime/` for persistence. The daemon and hooks keep working after the npx cache is cleaned.
+
+### Option C: Global install (full CLI access)
 
 ```bash
 npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,cursor,claude
 ```
+
+> **When to use global install**: Choose this if you want `harness-mem doctor`, `harness-memd restart`, and other CLI commands available in your terminal. Options A and B install the runtime but don't add CLI commands to your PATH.
 
 ### Update existing install
 
@@ -178,7 +191,7 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 
 ### `doctor` reports missing dependencies
 
-Install required tools (`bun`, `node`, `curl`, `jq`, `ripgrep`) and run:
+`bun` and `ripgrep` are auto-installed on macOS during setup. For other tools (`node`, `curl`, `jq`), install them manually and run:
 
 ```bash
 harness-mem doctor --fix
