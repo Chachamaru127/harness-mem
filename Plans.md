@@ -1162,3 +1162,25 @@ Phase B: 品質検証 + 閾値引き上げ
 - [x] `cc:完了` **S47-007 [ops:tdd]**: Claude Code ingest を recent-first にして起動直後も追従
   - Claude JSONL は mtime 降順で優先処理し、`MAX_FILES_PER_POLL=5` でも最新セッションから拾う
   - scheduler は 30 秒待たず next tick で初回 ingest を走らせ、その後 interval ポーリングへ移る
+
+- [x] `cc:完了` **S47-008 [feature:tdd]**: Claude Code wrapper 行を ingest 時に除外して session 可読性を維持
+  - `/plugin` などの `<command-name>` 系や `<local-command-*>` の envelope は user-visible prompt として保存しない
+  - 最新 Claude session thread が実会話中心になることを固定する
+
+- [x] `cc:完了` **S47-009 [ops:tdd]**: manual Claude ingest で offset 進行済みファイルも safe replay できるようにする
+  - `/v1/ingest/claude-code-history` は dedupe safe な full replay で過去の取りこぼしを回収する
+  - parser 改善後でも old offset に埋もれた prompt / assistant_response を backfill できることを固定する
+
+---
+
+## §48 repo bootstrap 整合化
+
+進行状態: `cc:完了`
+
+- [x] `cc:完了` **S48-001**: repo 直下の `AGENTS.md` を追加して `AGENTS.override.md` の参照先を成立させる
+  - local-only cross-repo governance は書かず、公開してよい repo 固有ルールだけを記載する
+  - `Plans.md` / `README.md` / `docs/TESTING.md` と矛盾しない開発フローに揃える
+
+- [x] `cc:完了` **S48-002**: 未コミットの S47 差分を検証して完了状態まで閉じる
+  - `S47-008/009` の実装・テスト・Plans の整合を確認したうえでコミットする
+  - wrapper prompt 除外と manual Claude ingest replay の回帰テストを残す

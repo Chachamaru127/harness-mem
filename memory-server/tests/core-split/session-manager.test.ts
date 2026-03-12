@@ -261,6 +261,29 @@ describe("session-manager: sessionThread", () => {
     expect(res.ok).toBe(true);
     expect(res.items.length).toBeLessThanOrEqual(2);
   });
+
+  test("Claude wrapper prompt はスレッド表示から除外される", () => {
+    const { sm, db } = createSessionManager("session-thread-wrapper-filter");
+    insertTestObservation(db, {
+      project: "proj-session",
+      session_id: "sess-001",
+      title: "<command-name>/plugin</command-name>",
+      content: "<command-name>/plugin</command-name>\n<command-message>plugin</command-message>\n<command-args></command-args>",
+      created_at: "2026-03-11T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      project: "proj-session",
+      session_id: "sess-001",
+      title: "visible prompt",
+      content: "visible prompt",
+      created_at: "2026-03-11T00:00:01.000Z",
+    });
+
+    const res = sm.sessionThread({ session_id: "sess-001", project: "proj-session" });
+    expect(res.ok).toBe(true);
+    expect(res.items).toHaveLength(1);
+    expect((res.items[0] as Record<string, unknown>).content).toBe("visible prompt");
+  });
 });
 
 // ---------------------------------------------------------------------------

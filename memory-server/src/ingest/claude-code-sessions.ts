@@ -15,6 +15,7 @@
 
 import { createHash } from "node:crypto";
 import type { PlatformIngester, IngesterDeps } from "./types";
+import { isIgnoredVisiblePromptText } from "../core/interaction-visibility";
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -119,6 +120,7 @@ export function parseClaudeCodeChunk(params: {
       // message.content は string | ContentBlock[] の両方がありうる
       const content = extractUserText(message.content);
       if (!content) continue;
+      if (isIgnoredVisiblePromptText(content)) continue;
 
       context.lastUserPrompt = content;
 

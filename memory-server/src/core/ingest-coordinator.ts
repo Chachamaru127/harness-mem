@@ -2165,7 +2165,11 @@ export class IngestCoordinator {
     this.claudeCodeContextCache.set(sourceKey, normalized);
   }
 
-  private ingestClaudeCodeSessions(options?: { maxFiles?: number }): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
+  private ingestClaudeCodeSessions(options?: {
+    maxFiles?: number;
+    maxBytesPerFile?: number;
+    replayFromStart?: boolean;
+  }): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
     const summary = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
     const projectsRoot = resolveHomePath(
       this.deps.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
@@ -2175,7 +2179,8 @@ export class IngestCoordinator {
     const files = this.listClaudeCodeJsonlFiles(projectsRoot);
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS) * 60 * 60 * 1000;
     const MAX_FILES_PER_POLL = options?.maxFiles ?? 50;
-    const MAX_BYTES_PER_FILE = 2 * 1024 * 1024; // 2MB per file per poll
+    const MAX_BYTES_PER_FILE = options?.maxBytesPerFile ?? (2 * 1024 * 1024); // 2MB per file per poll
+    const replayFromStart = options?.replayFromStart === true;
     let filesProcessed = 0;
 
     for (const filePath of files) {
@@ -2206,7 +2211,8 @@ export class IngestCoordinator {
       }
 
       if (offset > fileSize) offset = 0;
-      if (offset === fileSize) continue;
+      const readOffset = replayFromStart ? 0 : offset;
+      if (!replayFromStart && offset === fileSize) continue;
 
       // バッチ上限: 実際にファイルを読み込む回数を制限してイベントループをブロックしない
       filesProcessed += 1;
@@ -2214,11 +2220,15 @@ export class IngestCoordinator {
 
       let chunk = "";
       try {
-        const readSize = Math.min(fileSize - offset, MAX_BYTES_PER_FILE);
+        const remainingBytes = Math.max(0, fileSize - readOffset);
+        const readSize = Number.isFinite(MAX_BYTES_PER_FILE)
+          ? Math.min(remainingBytes, MAX_BYTES_PER_FILE)
+          : remainingBytes;
+        if (readSize <= 0) continue;
         const fd = openSync(filePath, "r");
         try {
           const buffer = Buffer.alloc(readSize);
-          readSync(fd, buffer, 0, readSize, offset);
+          readSync(fd, buffer, 0, readSize, readOffset);
           chunk = buffer.toString("utf8");
         } finally {
           closeSync(fd);
@@ -2227,13 +2237,15 @@ export class IngestCoordinator {
         continue;
       }
 
-      const context = this.loadClaudeCodeContext(sourceKey);
+      const context = replayFromStart
+        ? { sessionId: "", project: "", lastUserPrompt: "", lastAssistantContent: "" }
+        : this.loadClaudeCodeContext(sourceKey);
       const fallbackSessionId = this.inferClaudeCodeSessionId(filePath) || context.sessionId || undefined;
       const fallbackProject = this.inferClaudeCodeProject(filePath);
 
       const parsedChunk = parseClaudeCodeChunk({
         sourceKey,
-        baseOffset: offset,
+        baseOffset: readOffset,
         chunk,
         fallbackNowIso: nowIso,
         context,
@@ -2270,8 +2282,8 @@ export class IngestCoordinator {
         lastAssistantContent: parsedChunk.context.lastAssistantContent,
       });
 
-      const nextOffset = offset + parsedChunk.consumedBytes;
-      this.updateIngestOffset(sourceKey, nextOffset);
+      const nextOffset = readOffset + parsedChunk.consumedBytes;
+      this.updateIngestOffset(sourceKey, Math.max(offset, nextOffset));
     }
 
     return summary;
@@ -2288,7 +2300,11 @@ export class IngestCoordinator {
       );
     }
 
-    const summary = this.ingestClaudeCodeSessions({ maxFiles: Infinity });
+    const summary = this.ingestClaudeCodeSessions({
+      maxFiles: Infinity,
+      maxBytesPerFile: Infinity,
+      replayFromStart: true,
+    });
     return makeResponse(
       startedAt,
       [

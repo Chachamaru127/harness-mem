@@ -19,6 +19,11 @@ import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
+import {
+  buildVisibleInteractionText,
+  isIgnoredVisiblePromptText,
+  isIgnoredVisibleResponseText,
+} from "./interaction-visibility";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import type { VectorEngine } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
@@ -198,18 +203,6 @@ const LATEST_INTERACTION_CUE_PATTERN =
   /\b(prompt|response|reply|answer|conversation|thread|exchange|recent work|latest work|last work|what happened recently|what happened last)\b|(プロンプト|回答|返答|会話|やり取り|直近の作業|最近の作業|最後の作業)/i;
 const GENERIC_RECENT_QUERY_PATTERN =
   /^(?:直近|最近|最後|latest|recent|last)(?:\s*(?:を|の|について|見て|調べて|教えて|show|check|tell me).*)?$/i;
-const LATEST_INTERACTION_IGNORED_PROMPT_PATTERNS = [
-  /^# AGENTS\.md instructions\b/i,
-  /^<skill>/i,
-  /^<turn_aborted>/i,
-  /^Base directory for this skill:/i,
-  /^<command-message>/i,
-  /^<command-name>/i,
-  /^This session is being continued from a previous conversation that ran out of context\./i,
-];
-const LATEST_INTERACTION_IGNORED_RESPONSE_PATTERNS = [
-  /^No response requested\.?$/i,
-];
 
 function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
@@ -242,15 +235,11 @@ function isLatestInteractionIntent(query: string): boolean {
 }
 
 function isIgnoredLatestInteractionPrompt(observation: LatestInteractionObservation): boolean {
-  const text = `${observation.title || ""}\n${observation.content}`.trim();
-  if (!text) return true;
-  return LATEST_INTERACTION_IGNORED_PROMPT_PATTERNS.some((pattern) => pattern.test(text));
+  return isIgnoredVisiblePromptText(buildVisibleInteractionText(observation.title, observation.content));
 }
 
 function isIgnoredLatestInteractionResponse(observation: LatestInteractionObservation): boolean {
-  const text = `${observation.title || ""}\n${observation.content}`.trim();
-  if (!text) return true;
-  return LATEST_INTERACTION_IGNORED_RESPONSE_PATTERNS.some((pattern) => pattern.test(observation.content.trim()));
+  return isIgnoredVisibleResponseText(observation.content);
 }
 
 // ---------------------------------------------------------------------------

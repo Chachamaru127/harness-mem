@@ -32,6 +32,11 @@ import {
   parseArrayJson,
   visibilityFilterSql,
 } from "./core-utils.js";
+import {
+  buildVisibleInteractionText,
+  isIgnoredVisiblePromptText,
+  isIgnoredVisibleResponseText,
+} from "./interaction-visibility";
 import type { AccessFilter } from "../auth/access-control.js";
 
 // ---------------------------------------------------------------------------
@@ -206,7 +211,19 @@ export class SessionManager {
     params.push(limit);
 
     const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<Record<string, unknown>>;
-    const items = rows.map((row, index) => ({
+    const filteredRows = rows.filter((row) => {
+      const eventType = typeof row.event_type === "string" ? row.event_type : "";
+      const title = typeof row.title === "string" ? row.title : "";
+      const content = typeof row.content_redacted === "string" ? row.content_redacted : "";
+      if (eventType === "user_prompt" && isIgnoredVisiblePromptText(buildVisibleInteractionText(title, content))) {
+        return false;
+      }
+      if (title === "assistant_response" && isIgnoredVisibleResponseText(content)) {
+        return false;
+      }
+      return true;
+    });
+    const items = filteredRows.map((row, index) => ({
       step: index + 1,
       id: row.id,
       event_id: row.event_id,
