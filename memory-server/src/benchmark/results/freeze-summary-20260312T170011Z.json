@@ -1,0 +1,22 @@
+{
+  "generated_at": "20260312T170011Z",
+  "runs_tsv": "freeze-run-20260312T170011Z.tsv",
+  "manifests": [
+    "freeze-run-20260312T170011Z-1.manifest.json",
+    "freeze-run-20260312T170011Z-2.manifest.json",
+    "freeze-run-20260312T170011Z-3.manifest.json"
+  ],
+  "git_sha": "5c009a90effc5ea442bc325e59b6602a2d6787d4",
+  "embedding_model": "multilingual-e5",
+  "metrics": {
+    "locomo_f1": { "mean": 0.5333, "min": 0.5333, "max": 0.5333, "span": 0.0000 },
+    "cat2_f1_mean": 0.5198,
+    "cat3_f1_mean": 0.4679,
+    "bilingual_mean": 0.9000,
+    "freshness_mean": 1.0000,
+    "temporal_mean": 0.6403
+  },
+  "checks": {
+    "panic_or_fallback_detected": false
+  }
+}

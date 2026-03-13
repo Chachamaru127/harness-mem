@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-benchmark-v2",
-  "generated_at": "2026-03-07T09:44:21.167Z",
+  "generated_at": "2026-03-12T16:15:07.804Z",
   "system": "harness-mem",
   "pipeline": {
     "embedding": {
@@ -28,14 +28,14 @@
   "metrics": {
     "overall": {
       "count": 96,
-      "em": 0.46875,
-      "f1": 0.6379491818343032
+      "em": 0.5104166666666666,
+      "f1": 0.657996015708864
     },
     "by_category": {
       "cat-1": {
         "count": 52,
         "em": 0.5576923076923077,
-        "f1": 0.7159941962260967
+        "f1": 0.7077640856933545
       },
       "cat-3": {
         "count": 7,
@@ -44,8 +44,8 @@
       },
       "cat-2": {
         "count": 32,
-        "em": 0.34375,
-        "f1": 0.4448846915676287
+        "em": 0.46875,
+        "f1": 0.5183991228070175
       },
       "cat-4": {
         "count": 5,
@@ -57,8 +57,8 @@
   "comparison": {
     "cat_1_to_4": {
       "count": 96,
-      "em": 0.46875,
-      "f1": 0.6379491818343032
+      "em": 0.5104166666666666,
+      "f1": 0.657996015708864
     },
     "cat_5": {
       "count": 0,
@@ -69,11 +69,11 @@
   "performance": {
     "search_latency_ms": {
       "count": 96,
-      "min": 2.04,
-      "max": 11,
-      "avg": 4.058251739583335,
-      "p50": 3.43,
-      "p95": 8.62
+      "min": 2.48,
+      "max": 29.491874999999126,
+      "avg": 6.416170614583403,
+      "p50": 4.0600000000000005,
+      "p95": 17.07
     },
     "cache_stats": {
       "available": true,
@@ -88,17 +88,17 @@
       "after": {
         "entries": 128,
         "capacity": 128,
-        "hits": 836,
-        "misses": 424,
-        "evictions": 275,
+        "hits": 816,
+        "misses": 1099,
+        "evictions": 673,
         "inflight": 0
       },
       "delta": {
         "entries": 126,
         "capacity": 0,
-        "hits": 836,
-        "misses": 422,
-        "evictions": 275,
+        "hits": 816,
+        "misses": 1097,
+        "evictions": 673,
         "inflight": 0
       }
     }
@@ -106,12 +106,12 @@
   "cost": {
     "search_token_estimate": {
       "count": 96,
-      "input_total": 6637,
-      "output_total": 24371,
-      "total_total": 31008,
-      "input_avg": 69.13541666666667,
-      "output_avg": 253.86458333333334,
-      "total_avg": 323
+      "input_total": 7033,
+      "output_total": 26088,
+      "total_total": 33121,
+      "input_avg": 73.26041666666667,
+      "output_avg": 271.75,
+      "total_avg": 345.0104166666667
     }
   },
   "records": [
@@ -131,8 +131,8 @@
       "answer_trace": {
         "query_variants": [
           "今、使っている ci は何ですか？",
-          "ci 使っている 使っ って てい いる",
-          "ci 使っている 使っ key detail"
+          "ci って いる 使っている 使っ てい",
+          "ci って いる key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -147,13 +147,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
               "sentence": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
-              "score": 1.205,
+              "score": 1.347857,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.538333,
+              "score": 0.68119,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -168,7 +168,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 11,
+      "search_latency_ms": 10.71,
       "token_estimate_input_tokens": 62,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 314,
@@ -191,8 +191,8 @@
       "answer_trace": {
         "query_variants": [
           "circleci から移行した理由は何ですか？",
-          "circleci から移行した理由",
-          "circleci から移行した理由 evidence summary"
+          "circleci から 移行 した から移行した理由",
+          "circleci から 移行 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -207,13 +207,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
               "sentence": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
-              "score": 1.685,
+              "score": 1.585,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.958333,
+              "score": 0.858333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -228,7 +228,7 @@
         },
         "final_short_answer": "CircleCI の parallel build costs が上がり続けたから"
       },
-      "search_latency_ms": 4.22,
+      "search_latency_ms": 6.630000000000001,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -251,8 +251,8 @@
       "answer_trace": {
         "query_variants": [
           "変える前に使っていた ci は何でしたか？",
-          "ci 変える前に使っていた",
-          "ci 変える前に使っていた evidence summary"
+          "ci 変える 変え える って 変える前に使っていた",
+          "ci 変える 変え key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -267,13 +267,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.945,
+              "score": 1.195,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
               "sentence": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
-              "score": 0.278333,
+              "score": 0.403333,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -288,10 +288,10 @@
         },
         "final_short_answer": "CircleCI"
       },
-      "search_latency_ms": 7.18,
-      "token_estimate_input_tokens": 63,
+      "search_latency_ms": 12.309999999999999,
+      "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 315,
+      "token_estimate_total_tokens": 316,
       "em": 1,
       "f1": 1
     },
@@ -311,8 +311,8 @@
       "answer_trace": {
         "query_variants": [
           "いま使ってるciなに？",
-          "ci いま使ってるciな",
-          "ci いま使ってるciな evidence summary"
+          "ci いま って いま使ってるciな",
+          "ci いま って key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -327,13 +327,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
               "sentence": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
-              "score": 1.205,
+              "score": 1.455,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.538333,
+              "score": 1.038333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -348,10 +348,10 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 3.55,
-      "token_estimate_input_tokens": 61,
+      "search_latency_ms": 5.48,
+      "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 313,
+      "token_estimate_total_tokens": 312,
       "em": 1,
       "f1": 1
     },
@@ -371,8 +371,8 @@
       "answer_trace": {
         "query_variants": [
           "今も circleci を使っていますか？",
-          "circleci 今も 使っていますか",
-          "circleci 今も 使っていますか key detail"
+          "circleci って ます 今も 使っていますか",
+          "circleci って ます key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -387,13 +387,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
               "sentence": "今は GitHub Actions を使っています。CircleCI の parallel build costs が上がり続けたからです。",
-              "score": 1.538333,
+              "score": 1.805,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.871667,
+              "score": 0.938333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -408,7 +408,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 3.08,
+      "search_latency_ms": 4.33,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -431,8 +431,8 @@
       "answer_trace": {
         "query_variants": [
           "ベータ版の話はさておき、今の ci だけ短く答えると何ですか？",
-          "ci ベータ版の話はさておき だけ短く答える",
-          "ci ベータ版の話はさておき だけ短く答える key detail"
+          "ci ベータ ベー ータ さて おき だけ 答える",
+          "ci ベータ ベー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -453,7 +453,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1",
               "sentence": "ベータ版のビルドでは CircleCI を使っていました。",
-              "score": 0.538333,
+              "score": 0.788333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -468,10 +468,10 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 2.8,
-      "token_estimate_input_tokens": 69,
+      "search_latency_ms": 3.4000000000000004,
+      "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 321,
+      "token_estimate_total_tokens": 319,
       "em": 1,
       "f1": 1
     },
@@ -485,14 +485,14 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1"
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3"
       ],
       "answer_trace": {
         "query_variants": [
           "今のサポート時間はいつですか？",
-          "今のサポート時間",
-          "今のサポート時間 evidence summary"
+          "サポート サポ ポー ート サポー ポート 時間 今のサポート時間",
+          "サポート サポ ポー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -505,16 +505,16 @@
           "raw_answer": "平日の 9:00〜18:00 JST",
           "selected_candidates": [
             {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
+              "score": 1.38,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
               "sentence": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
               "score": 1.305,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
-              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.505,
-              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -524,14 +524,14 @@
           "notes": [
             "factual:evidence_bounded_span"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 4.51,
-      "token_estimate_input_tokens": 60,
+      "search_latency_ms": 25.29,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 312,
+      "token_estimate_total_tokens": 317,
       "em": 1,
       "f1": 1
     },
@@ -545,14 +545,14 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1"
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3"
       ],
       "answer_trace": {
         "query_variants": [
           "サポート時間を見直す前に見たレポートは何ですか？",
-          "サポート時間を見直す前に見たレポート",
-          "サポート時間を見直す前に見たレポート evidence summary"
+          "サポート サポ ポー ート サポー ポート 時間 見直す",
+          "サポート サポ ポー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -565,16 +565,16 @@
           "raw_answer": "ticket heatmap",
           "selected_candidates": [
             {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
+              "score": 0.825,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
               "sentence": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
               "score": 0.518333,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
-              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -584,14 +584,14 @@
           "notes": [
             "factual:evidence_bounded_span"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
         "final_short_answer": "ticket heatmap"
       },
-      "search_latency_ms": 2.46,
-      "token_estimate_input_tokens": 67,
+      "search_latency_ms": 17.07,
+      "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 319,
+      "token_estimate_total_tokens": 318,
       "em": 1,
       "f1": 1
     },
@@ -611,8 +611,8 @@
       "answer_trace": {
         "query_variants": [
           "見直す前のサポート体制は何でしたか？",
-          "見直す前のサポート体制",
-          "見直す前のサポート体制 evidence summary"
+          "見直す 見直 直す サポート サポ ポー ート サポー",
+          "見直す 見直 直す key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -627,13 +627,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
               "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.778333,
+              "score": 1.445,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
               "sentence": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
-              "score": 0.195,
+              "score": 0.278333,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -648,10 +648,10 @@
         },
         "final_short_answer": "24 時間体制"
       },
-      "search_latency_ms": 5.96,
-      "token_estimate_input_tokens": 62,
+      "search_latency_ms": 3.2800000000000002,
+      "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 314,
+      "token_estimate_total_tokens": 316,
       "em": 1,
       "f1": 1
     },
@@ -671,8 +671,8 @@
       "answer_trace": {
         "query_variants": [
           "今のサポート時間って？",
-          "今のサポート時間って",
-          "今のサポート時間って evidence summary"
+          "サポート サポ ポー ート サポー ポート 時間 って",
+          "サポート サポ ポー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -693,7 +693,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
               "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.505,
+              "score": 1.282778,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -708,10 +708,10 @@
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 2.9,
-      "token_estimate_input_tokens": 60,
+      "search_latency_ms": 4.0600000000000005,
+      "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 312,
+      "token_estimate_total_tokens": 315,
       "em": 1,
       "f1": 1
     },
@@ -725,14 +725,14 @@
       "question_kind": "yes_no",
       "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
-        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1"
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+        "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3"
       ],
       "answer_trace": {
         "query_variants": [
           "今もサポートは 24 時間体制ですか？",
-          "今もサポート 24 時間体制ですか",
-          "今もサポート 24 時間体制ですか key detail"
+          "サポート サポ ポー ート サポー ポート 時間 体制",
+          "サポート サポ ポー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -742,36 +742,36 @@
         },
         "extraction": {
           "strategy": "extract:yes-no-candidates",
-          "raw_answer": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
+          "raw_answer": "ローンチ直後はサポートを 24 時間体制にしていました。",
           "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
+              "score": 1.323182,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
               "sentence": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
               "score": 1.305,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
-              "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.838333,
-              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
+          "before": "ローンチ直後はサポートを 24 時間体制にしていました。",
           "after": "Yes",
           "notes": [
             "yes_no:binary_decision"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.6100000000000003,
-      "token_estimate_input_tokens": 64,
+      "search_latency_ms": 8.79,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 316,
+      "token_estimate_total_tokens": 317,
       "em": 0,
       "f1": 0
     },
@@ -791,7 +791,7 @@
       "answer_trace": {
         "query_variants": [
           "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
-          "ticket heatmap ticket heatmap 見たあ 見た たあ 最終的に今のサポート時間はどうなりましたか",
+          "ticket heatmap ticket heatmap 最終 サポート サポ ポー ート",
           "ticket heatmap ticket heatmap key detail"
         ],
         "search_policy": {
@@ -807,13 +807,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
               "sentence": "その後 ticket heatmap を見て、平日の 9:00〜18:00 JST に絞りました。",
-              "score": 1.555,
+              "score": 1.418971,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
               "sentence": "ローンチ直後はサポートを 24 時間体制にしていました。",
-              "score": 0.555,
+              "score": 1.046422,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -828,10 +828,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 4.105499000000009,
-      "token_estimate_input_tokens": 26,
-      "token_estimate_output_tokens": 84,
-      "token_estimate_total_tokens": 110,
+      "search_latency_ms": 5.772334000000028,
+      "token_estimate_input_tokens": 53,
+      "token_estimate_output_tokens": 168,
+      "token_estimate_total_tokens": 221,
       "em": 0,
       "f1": 0
     },
@@ -851,8 +851,8 @@
       "answer_trace": {
         "query_variants": [
           "starter プランの今の料金はいくらですか？",
-          "starter プランの今の料金はいくらですか",
-          "starter プランの今の料金はいくらですか evidence summary"
+          "starter プラン プラ ラン 料金 いくら いく くら",
+          "starter プラン プラ key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -873,7 +873,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1",
               "sentence": "Starter プランは以前 29 dollars a month でした。",
-              "score": 0.985,
+              "score": 0.929444,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -888,10 +888,10 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 2.41,
-      "token_estimate_input_tokens": 70,
+      "search_latency_ms": 2.9299999999999997,
+      "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 322,
+      "token_estimate_total_tokens": 319,
       "em": 1,
       "f1": 1
     },
@@ -911,8 +911,8 @@
       "answer_trace": {
         "query_variants": [
           "価格改定のときに追加した機能は何ですか？",
-          "価格改定のときに追加した機能",
-          "価格改定のときに追加した機能 evidence summary"
+          "価格 改定 追加 した 機能 価格改定のときに追加した機能",
+          "価格 改定 追加 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -927,13 +927,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-3",
               "sentence": "今は 39 dollars a month です。audit logs を bundle しました。",
-              "score": 0.615,
+              "score": 1.031667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1",
               "sentence": "Starter プランは以前 29 dollars a month でした。",
-              "score": 0.245,
+              "score": 0.411667,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -948,10 +948,10 @@
         },
         "final_short_answer": "audit logs"
       },
-      "search_latency_ms": 2.24,
-      "token_estimate_input_tokens": 64,
+      "search_latency_ms": 4.06,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 316,
+      "token_estimate_total_tokens": 317,
       "em": 1,
       "f1": 1
     },
@@ -971,8 +971,8 @@
       "answer_trace": {
         "query_variants": [
           "値上げ前の starter の料金はいくらでしたか？",
-          "starter 値上げ前 値上 上げ げ前 料金はいくらでしたか",
-          "starter 値上げ前 値上 key detail"
+          "starter 値上げ 値上 上げ 料金 いくら いく くら",
+          "starter 値上げ 値上 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -993,7 +993,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-3",
               "sentence": "今は 39 dollars a month です。audit logs を bundle しました。",
-              "score": 0.385,
+              "score": 0.468333,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -1008,10 +1008,10 @@
         },
         "final_short_answer": "29 dollars a month"
       },
-      "search_latency_ms": 3.03,
-      "token_estimate_input_tokens": 68,
+      "search_latency_ms": 9.13,
+      "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 320,
+      "token_estimate_total_tokens": 319,
       "em": 1,
       "f1": 1
     },
@@ -1031,8 +1031,8 @@
       "answer_trace": {
         "query_variants": [
           "starter の今の値段いくら？",
-          "starter 今の値段いくら",
-          "starter 今の値段いくら evidence summary"
+          "starter 値段 いくら いく くら 今の値段いくら",
+          "starter 値段 いくら key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1053,7 +1053,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1",
               "sentence": "Starter プランは以前 29 dollars a month でした。",
-              "score": 0.985,
+              "score": 0.651667,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -1068,10 +1068,10 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 5.99,
-      "token_estimate_input_tokens": 64,
+      "search_latency_ms": 4.24,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 316,
+      "token_estimate_total_tokens": 317,
       "em": 1,
       "f1": 1
     },
@@ -1091,8 +1091,8 @@
       "answer_trace": {
         "query_variants": [
           "starter は今も 29 dollars a month ですか？",
-          "starter dollars a month 今も 29 dollars month すか",
-          "starter dollars a month 今も key detail"
+          "starter dollars a month dollars month 今も 29 すか",
+          "starter dollars a month dollars key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1128,10 +1128,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.2800000000000002,
-      "token_estimate_input_tokens": 77,
+      "search_latency_ms": 3.87,
+      "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 329,
+      "token_estimate_total_tokens": 330,
       "em": 0,
       "f1": 0
     },
@@ -1151,8 +1151,8 @@
       "answer_trace": {
         "query_variants": [
           "価格改定の説明はさておき、今の starter 料金だけ答えるといくらですか？",
-          "starter 価格改定の説明はさておき 料金だけ答えるといくらですか",
-          "starter 価格改定の説明はさておき 料金だけ答えるといくらですか key detail"
+          "starter 価格 改定 説明 さて おき 料金 だけ",
+          "starter 価格 改定 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1173,7 +1173,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1",
               "sentence": "Starter プランは以前 29 dollars a month でした。",
-              "score": 0.818333,
+              "score": 0.5475,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -1188,10 +1188,10 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 2.19,
-      "token_estimate_input_tokens": 78,
+      "search_latency_ms": 8.44,
+      "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 330,
+      "token_estimate_total_tokens": 323,
       "em": 1,
       "f1": 1
     },
@@ -1213,8 +1213,8 @@
       "answer_trace": {
         "query_variants": [
           "enterprise の今の retention はどれくらいですか？",
-          "enterprise retention どれくらいですか",
-          "enterprise retention どれくらいですか key detail"
+          "enterprise retention くらい くら らい どれくらいですか",
+          "enterprise retention くらい key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1229,19 +1229,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
               "sentence": "今の Enterprise retention は 90 days です。",
-              "score": 1.971667,
+              "score": 1.638333,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
               "sentence": "そこで retention の議論が変わりました。",
-              "score": 0.791667,
+              "score": 0.625,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
               "sentence": "Enterprise prospect から quarterly audit exports の要望がありました。",
-              "score": 0.708333,
+              "score": 0.541667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -1262,10 +1262,10 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 5.51,
-      "token_estimate_input_tokens": 74,
+      "search_latency_ms": 3.64,
+      "token_estimate_input_tokens": 76,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 449,
+      "token_estimate_total_tokens": 451,
       "em": 0,
       "f1": 0.5714285714285715
     },
@@ -1279,16 +1279,16 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
+        "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1"
       ],
       "answer_trace": {
         "query_variants": [
           "retention を見直すきっかけになった要望は何ですか？",
-          "retention 見直すきっかけになった要望",
-          "retention 見直すきっかけになった要望 evidence summary"
+          "retention 見直す 見直 直す きっ っか かけ 要望",
+          "retention 見直す 見直 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1301,22 +1301,22 @@
           "raw_answer": "quarterly audit exports の要望",
           "selected_candidates": [
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
-              "sentence": "そこで retention の議論が変わりました。",
-              "score": 1.125,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
               "sentence": "今の Enterprise retention は 90 days です。",
-              "score": 0.958333,
+              "score": 0.736111,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
               "sentence": "Enterprise prospect から quarterly audit exports の要望がありました。",
-              "score": 0.615,
+              "score": 0.726111,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+              "sentence": "そこで retention の議論が変わりました。",
+              "score": 0.569444,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
@@ -1332,14 +1332,14 @@
           "notes": [
             "factual:evidence_bounded_span"
           ],
-          "reference_time": "2026-01-01T00:00:03.000Z"
+          "reference_time": "2026-01-01T00:00:04.000Z"
         },
         "final_short_answer": "quarterly audit exports の要望"
       },
-      "search_latency_ms": 3.3499999999999996,
-      "token_estimate_input_tokens": 71,
+      "search_latency_ms": 6.029999999999999,
+      "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 446,
+      "token_estimate_total_tokens": 445,
       "em": 1,
       "f1": 1
     },
@@ -1361,8 +1361,8 @@
       "answer_trace": {
         "query_variants": [
           "free ワークスペースの保存期間は何日ですか？",
-          "free ワークスペースの保存期間は何日ですか",
-          "free ワークスペースの保存期間は何日ですか evidence summary"
+          "free ワーク ワー ーク スペース スペ ペー ース",
+          "free ワーク ワー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1377,7 +1377,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
               "sentence": "Free ワークスペースの保存期間は 30 days です。",
-              "score": 1.365,
+              "score": 1.788077,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -1410,10 +1410,10 @@
         },
         "final_short_answer": "30 days"
       },
-      "search_latency_ms": 3.1799999999999997,
-      "token_estimate_input_tokens": 70,
+      "search_latency_ms": 3.67,
+      "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 445,
+      "token_estimate_total_tokens": 441,
       "em": 1,
       "f1": 1
     },
@@ -1435,8 +1435,8 @@
       "answer_trace": {
         "query_variants": [
           "enterprise の retention いま何日？",
-          "enterprise retention いま何日 いま ま何 何日",
-          "enterprise retention いま何日 key detail"
+          "enterprise retention いま いま何日 ま何 何日",
+          "enterprise retention いま key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1484,10 +1484,10 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 3.6300000000000003,
-      "token_estimate_input_tokens": 72,
+      "search_latency_ms": 10.04,
+      "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 447,
+      "token_estimate_total_tokens": 446,
       "em": 0,
       "f1": 0.5714285714285715
     },
@@ -1497,9 +1497,9 @@
       "category": "cat-2",
       "question": "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
       "answer": "Yes",
-      "prediction": "quarterly audit exports の要望",
-      "question_kind": "factual",
-      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
+      "prediction": "Yes",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
         "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
@@ -1509,7 +1509,7 @@
       "answer_trace": {
         "query_variants": [
           "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
-          "quarterly audit exports retention quarterly audit exports 要望 変更のきっかけでしたか",
+          "quarterly audit exports retention quarterly audit exports 要望 変更 きっ",
           "quarterly audit exports retention quarterly key detail"
         ],
         "search_policy": {
@@ -1519,25 +1519,25 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-object-slot",
-          "raw_answer": "quarterly audit exports の要望",
+          "strategy": "extract:yes-no-candidates",
+          "raw_answer": "今の Enterprise retention は 90 days です。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
               "sentence": "Enterprise prospect から quarterly audit exports の要望がありました。",
-              "score": 1.365,
+              "score": 1.319545,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
               "sentence": "そこで retention の議論が変わりました。",
-              "score": 0.625,
+              "score": 0.640152,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
               "sentence": "今の Enterprise retention は 90 days です。",
-              "score": 0.541667,
+              "score": 0.465909,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -1549,21 +1549,21 @@
           ]
         },
         "normalization": {
-          "before": "quarterly audit exports の要望",
-          "after": "quarterly audit exports の要望",
+          "before": "今の Enterprise retention は 90 days です。",
+          "after": "Yes",
           "notes": [
-            "factual:evidence_bounded_span"
+            "yes_no:binary_decision"
           ],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "quarterly audit exports の要望"
+        "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.43,
-      "token_estimate_input_tokens": 92,
+      "search_latency_ms": 4.34,
+      "token_estimate_input_tokens": 90,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 467,
-      "em": 0,
-      "f1": 0
+      "token_estimate_total_tokens": 465,
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-004",
@@ -1583,8 +1583,8 @@
       "answer_trace": {
         "query_variants": [
           "free の話はいったん置いて、enterprise retention の今の値だけ短く答えると何日ですか？",
-          "free enterprise retention 話はいったん置いて enterprise retention 今の値だけ短く答えると何日ですか",
-          "free enterprise retention 話はいったん置いて key detail"
+          "free enterprise retention いったん いっ った たん enterprise retention",
+          "free enterprise retention いったん key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1599,25 +1599,25 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
               "sentence": "今の Enterprise retention は 90 days です。",
-              "score": 1.705,
+              "score": 1.458846,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
               "sentence": "Free ワークスペースの保存期間は 30 days です。",
-              "score": 0.998333,
+              "score": 0.875256,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
               "sentence": "そこで retention の議論が変わりました。",
-              "score": 0.575,
+              "score": 0.451923,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
               "sentence": "Enterprise prospect から quarterly audit exports の要望がありました。",
-              "score": 0.525,
+              "score": 0.401923,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -1632,10 +1632,10 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 2.96,
-      "token_estimate_input_tokens": 91,
+      "search_latency_ms": 3.92,
+      "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 466,
+      "token_estimate_total_tokens": 462,
       "em": 0,
       "f1": 0.5714285714285715
     },
@@ -1645,7 +1645,7 @@
       "category": "cat-2",
       "question": "SSO と team workspaces では、どちらが先に出ましたか？",
       "answer": "team workspaces",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1673,13 +1673,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
               "sentence": "実際には team workspaces が先に出ました。SSO の SCIM provider contract がまだ交渉中だったからです。",
-              "score": 1.955,
+              "score": 1.776429,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1",
               "sentence": "SSO と team workspaces を同じ四半期に出す予定でした。",
-              "score": 1.208333,
+              "score": 1.029762,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -1690,14 +1690,14 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 9.43,
+      "search_latency_ms": 18.68,
       "token_estimate_input_tokens": 136,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 556,
-      "em": 0,
-      "f1": 0.8
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-005",
@@ -1715,8 +1715,8 @@
       "answer_trace": {
         "query_variants": [
           "sso が遅れた理由は何ですか？",
-          "sso 遅れた理由",
-          "sso 遅れた理由 evidence summary"
+          "sso 遅れ 遅れた理由",
+          "sso 遅れ 遅れた理由 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1731,13 +1731,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
               "sentence": "実際には team workspaces が先に出ました。SSO の SCIM provider contract がまだ交渉中だったからです。",
-              "score": 1.685,
+              "score": 1.518333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1",
               "sentence": "SSO と team workspaces を同じ四半期に出す予定でした。",
-              "score": 0.958333,
+              "score": 0.791667,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -1752,10 +1752,10 @@
         },
         "final_short_answer": "SSO の SCIM provider contract がまだ交渉中だったから"
       },
-      "search_latency_ms": 2.96,
-      "token_estimate_input_tokens": 60,
+      "search_latency_ms": 5.2700000000000005,
+      "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 312,
+      "token_estimate_total_tokens": 313,
       "em": 0,
       "f1": 0.8
     },
@@ -1775,8 +1775,9 @@
       "answer_trace": {
         "query_variants": [
           "同じ四半期に出す予定だった 2 つは何でしたか？",
-          "同じ四半期に出す予定だった",
-          "同じ四半期に出す予定だった evidence summary"
+          "同じ 四半期 四半 半期 出す 予定 同じ四半期に出す予定だった",
+          "同じ 四半期 四半 key detail",
+          "同じ 四半期 四半 半期 出す 予定 同じ四半期に出す予定だった evidence summary"
         ],
         "search_policy": {
           "limit": 12,
@@ -1791,13 +1792,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1",
               "sentence": "SSO と team workspaces を同じ四半期に出す予定でした。",
-              "score": 0.625,
+              "score": 1.402778,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
               "sentence": "実際には team workspaces が先に出ました。SSO の SCIM provider contract がまだ交渉中だったからです。",
-              "score": 0.375,
+              "score": 0.486111,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -1812,10 +1813,10 @@
         },
         "final_short_answer": "SSO と team workspaces を同じ四半期に出す予定でした。"
       },
-      "search_latency_ms": 2.3899999999999997,
-      "token_estimate_input_tokens": 65,
-      "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 317,
+      "search_latency_ms": 3.7799999999999994,
+      "token_estimate_input_tokens": 95,
+      "token_estimate_output_tokens": 336,
+      "token_estimate_total_tokens": 431,
       "em": 0,
       "f1": 0.5
     },
@@ -1825,7 +1826,7 @@
       "category": "cat-2",
       "question": "どっちが先に出たの？",
       "answer": "team workspaces",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1835,10 +1836,10 @@
       "answer_trace": {
         "query_variants": [
           "どっちが先に出たの？",
-          "どっちが先に出た",
-          "どっちが先に出た evidence summary",
-          "どっちが先に出た date time timeline chronology",
-          "どっちが先に出た before after calendar"
+          "どっち どっ っち どっちが先に出た",
+          "どっち どっ っち key detail",
+          "どっち どっ っち どっちが先に出た evidence summary",
+          "どっち どっ っち どっちが先に出た date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -1870,14 +1871,14 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 8.18,
-      "token_estimate_input_tokens": 109,
+      "search_latency_ms": 9.29,
+      "token_estimate_input_tokens": 114,
       "token_estimate_output_tokens": 420,
-      "token_estimate_total_tokens": 529,
-      "em": 0,
-      "f1": 0.8
+      "token_estimate_total_tokens": 534,
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-005",
@@ -1895,8 +1896,8 @@
       "answer_trace": {
         "query_variants": [
           "sso のほうが先に出ましたか？",
-          "sso ほうが先に出ましたか",
-          "sso ほうが先に出ましたか evidence summary"
+          "sso ほう した ほうが先に出ましたか",
+          "sso ほう した key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -1932,10 +1933,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 7.13,
-      "token_estimate_input_tokens": 63,
+      "search_latency_ms": 14.26,
+      "token_estimate_input_tokens": 62,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 315,
+      "token_estimate_total_tokens": 314,
       "em": 0,
       "f1": 0
     },
@@ -1945,7 +1946,7 @@
       "category": "cat-2",
       "question": "先に出たあと、遅れたのはどれですか？",
       "answer": "SSO",
-      "prediction": "実際には team workspaces",
+      "prediction": "team workspaces",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
@@ -1955,10 +1956,10 @@
       "answer_trace": {
         "query_variants": [
           "先に出たあと、遅れたのはどれですか？",
-          "先に出たあ 出た たあ 遅れたのはどれですか",
-          "先に出たあ 出た たあ key detail",
-          "先に出たあ 出た たあ 遅れたのはどれですか evidence summary",
-          "先に出たあ 出た たあ 遅れたのはどれですか date time timeline chronology"
+          "遅れ 先に出たあ 出た たあ 遅れたのはどれですか",
+          "遅れ 先に出たあ 出た key detail",
+          "遅れ 先に出たあ 出た たあ 遅れたのはどれですか evidence summary",
+          "遅れ 先に出たあ 出た たあ 遅れたのはどれですか date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -1990,12 +1991,12 @@
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "実際には team workspaces"
+        "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 4.51,
-      "token_estimate_input_tokens": 120,
+      "search_latency_ms": 18.229999999999997,
+      "token_estimate_input_tokens": 122,
       "token_estimate_output_tokens": 420,
-      "token_estimate_total_tokens": 540,
+      "token_estimate_total_tokens": 542,
       "em": 0,
       "f1": 0
     },
@@ -2017,7 +2018,7 @@
       "answer_trace": {
         "query_variants": [
           "write latency を恒久的に下げたものは何ですか？",
-          "write latency write latency 恒久的に下げたも",
+          "write latency write latency 恒久 下げ 恒久的に下げたも",
           "write latency write latency key detail"
         ],
         "search_policy": {
@@ -2033,7 +2034,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
               "sentence": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
-              "score": 1.291667,
+              "score": 1.425,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -2066,10 +2067,10 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 2.84,
-      "token_estimate_input_tokens": 73,
+      "search_latency_ms": 3.55,
+      "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 448,
+      "token_estimate_total_tokens": 449,
       "em": 0,
       "f1": 0.7058823529411764
     },
@@ -2092,10 +2093,10 @@
       "answer_trace": {
         "query_variants": [
           "alert の直後に最初にやったことは何ですか？",
-          "alert 直後に最初にやったこ",
-          "alert 直後に最初にやったこ evidence summary",
-          "alert 直後に最初にやったこ date time timeline chronology",
-          "alert 直後に最初にやったこ before after calendar"
+          "alert 直後 直後に最初にやったこ",
+          "alert 直後 直後に最初にやったこ key detail",
+          "alert 直後 直後に最初にやったこ evidence summary",
+          "alert 直後 直後に最初にやったこ date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -2110,7 +2111,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
               "sentence": "alert の直後に read traffic を新しい replica に逃がしました。",
-              "score": 1.218333,
+              "score": 1.385,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2147,10 +2148,10 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。 その後は import window も安定しました。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 ingestion と reporting の両方に影響しましたね。 月曜の import window で database connections が飽和しました。"
       },
-      "search_latency_ms": 9.055041999999858,
-      "token_estimate_input_tokens": 94,
-      "token_estimate_output_tokens": 500,
-      "token_estimate_total_tokens": 594,
+      "search_latency_ms": 9.790000000000001,
+      "token_estimate_input_tokens": 120,
+      "token_estimate_output_tokens": 625,
+      "token_estimate_total_tokens": 745,
       "em": 0,
       "f1": 0.2105263157894737
     },
@@ -2172,7 +2173,7 @@
       "answer_trace": {
         "query_variants": [
           "write latency を恒久的に下げたのは何ですか？",
-          "write latency write latency 恒久的に下げた",
+          "write latency write latency 恒久 下げ 恒久的に下げた",
           "write latency write latency key detail"
         ],
         "search_policy": {
@@ -2188,7 +2189,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
               "sentence": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
-              "score": 1.291667,
+              "score": 1.425,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -2221,10 +2222,10 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 5.040000000000001,
-      "token_estimate_input_tokens": 73,
+      "search_latency_ms": 10.42,
+      "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 375,
-      "token_estimate_total_tokens": 448,
+      "token_estimate_total_tokens": 449,
       "em": 0,
       "f1": 0.7058823529411764
     },
@@ -2234,22 +2235,23 @@
       "category": "cat-2",
       "question": "アラートのあと最初にやったこと何？",
       "answer": "read traffic を新しい replica に逃がした",
-      "prediction": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。",
+      "prediction": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。 alert の直後に read traffic を新しい replica に逃がしました。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
+        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3"
       ],
       "answer_trace": {
         "query_variants": [
           "アラートのあと最初にやったこと何？",
-          "アラートのあと最初にやったこと何",
-          "アラートのあと最初にやったこと何 evidence summary",
-          "アラートのあと最初にやったこと何 date time timeline chronology",
-          "アラートのあと最初にやったこと何 before after calendar"
+          "アラート アラ ラー ート アラー ラート アラートのあと最初にやったこと何",
+          "アラート アラ ラー key detail",
+          "アラート アラ ラー ート アラー ラート アラートのあと最初にやったこと何 evidence summary",
+          "アラート アラ ラー ート アラー ラート アラートのあと最初にやったこと何 date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -2259,12 +2261,12 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。",
+          "raw_answer": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。 alert の直後に read traffic を新しい replica に逃がしました。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
               "sentence": "ingestion と reporting の両方に影響しましたね。",
-              "score": 0.525,
+              "score": 0.541667,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
@@ -2280,27 +2282,33 @@
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+              "sentence": "月曜の import window で database connections が飽和しました。",
+              "score": 0.375,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
               "sentence": "alert の直後に read traffic を新しい replica に逃がしました。",
-              "score": 0.358333,
+              "score": 0.291667,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。",
-          "after": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。",
+          "before": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。 alert の直後に read traffic を新しい replica に逃がしました。",
+          "after": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。 alert の直後に read traffic を新しい replica に逃がしました。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:01.000Z"
         },
-        "final_short_answer": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 alert の直後に read traffic を新しい replica に逃がしました。"
+        "final_short_answer": "ingestion と reporting の両方に影響しましたね。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。 alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 4.282582000000048,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 7.8844590000007155,
+      "token_estimate_input_tokens": 21,
+      "token_estimate_output_tokens": 125,
+      "token_estimate_total_tokens": 146,
       "em": 0,
-      "f1": 0.25806451612903225
+      "f1": 0.2105263157894737
     },
     {
       "sample_id": "ja-rel-006",
@@ -2320,7 +2328,7 @@
       "answer_trace": {
         "query_variants": [
           "write latency を下げたのは composite index ですか？",
-          "write latency composite index write latency 下げた 下げ げた composite",
+          "write latency composite index write latency 下げ composite index 下げた",
           "write latency composite index write key detail"
         ],
         "search_policy": {
@@ -2336,7 +2344,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
               "sentence": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
-              "score": 1.125,
+              "score": 1.25,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -2369,7 +2377,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 3.15,
+      "search_latency_ms": 4.87,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 460,
@@ -2388,13 +2396,14 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
         "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
-        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6"
+        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+        "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
       ],
       "answer_trace": {
         "query_variants": [
           "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
-          "alert 原因調査を進める前 直後にまずやったことを一文で言う",
-          "alert 原因調査を進める前 直後にまずやったことを一文で言う key detail"
+          "alert 原因 調査 進める 進め める 直後 まず",
+          "alert 原因 調査 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2409,7 +2418,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
               "sentence": "alert の直後に read traffic を新しい replica に逃がしました。",
-              "score": 1.218333,
+              "score": 0.885,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2419,10 +2428,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
-              "sentence": "その後は import window も安定しました。",
+              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+              "sentence": "ingestion と reporting の両方に影響しましたね。",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+              "sentence": "月曜の import window で database connections が飽和しました。",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -2436,10 +2451,10 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 2.6589590000000953,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 5.949999999999999,
+      "token_estimate_input_tokens": 70,
+      "token_estimate_output_tokens": 375,
+      "token_estimate_total_tokens": 445,
       "em": 0,
       "f1": 0.6666666666666666
     },
@@ -2459,8 +2474,8 @@
       "answer_trace": {
         "query_variants": [
           "今使っている retrieval fusion の方法は何ですか？",
-          "retrieval fusion 今使っている 今使 使っ って てい いる retrieval",
-          "retrieval fusion 今使っている 今使 key detail"
+          "retrieval fusion って いる retrieval fusion 方法 今使っている 今使",
+          "retrieval fusion って いる key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2475,13 +2490,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
               "sentence": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
-              "score": 1.316111,
+              "score": 1.505,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
               "sentence": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-              "score": 0.829444,
+              "score": 0.918333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -2496,7 +2511,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 5.130000000000001,
+      "search_latency_ms": 7.369999999999999,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 329,
@@ -2519,8 +2534,8 @@
       "answer_trace": {
         "query_variants": [
           "fusion の後に適用している signal は何ですか？",
-          "fusion signal 後に適用している",
-          "fusion signal 後に適用している key detail"
+          "fusion signal 適用 いる 後に適用している",
+          "fusion signal 適用 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2535,7 +2550,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
               "sentence": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
-              "score": 1.115,
+              "score": 1.031667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2556,10 +2571,10 @@
         },
         "final_short_answer": "recency"
       },
-      "search_latency_ms": 3.87,
-      "token_estimate_input_tokens": 68,
+      "search_latency_ms": 3.6100000000000003,
+      "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 320,
+      "token_estimate_total_tokens": 321,
       "em": 1,
       "f1": 1
     },
@@ -2569,9 +2584,9 @@
       "category": "cat-1",
       "question": "RRF に変える前はどんな混ぜ方でしたか？",
       "answer": "weighted sum",
-      "prediction": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-      "question_kind": "factual",
-      "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-normalized-short",
+      "prediction": "Yes",
+      "question_kind": "yes_no",
+      "answer_strategy": "extract:yes-no-candidates -> normalize -> final:yes-no-binary",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
         "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3"
@@ -2579,8 +2594,8 @@
       "answer_trace": {
         "query_variants": [
           "rrf に変える前はどんな混ぜ方でしたか？",
-          "rrf 変える前はどんな混ぜ方でしたか",
-          "rrf 変える前はどんな混ぜ方でしたか evidence summary"
+          "rrf 変える 変え える どんな どん んな した",
+          "rrf 変える 変え key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2589,13 +2604,13 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-top-candidate",
-          "raw_answer": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
+          "strategy": "extract:yes-no-candidates",
+          "raw_answer": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
               "sentence": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-              "score": 0.445,
+              "score": 0.556111,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -2607,21 +2622,21 @@
           ]
         },
         "normalization": {
-          "before": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-          "after": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
+          "before": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
+          "after": "Yes",
           "notes": [
-            "factual:single_sentence_trim"
+            "yes_no:binary_decision"
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。"
+        "final_short_answer": "Yes"
       },
-      "search_latency_ms": 2.63,
-      "token_estimate_input_tokens": 67,
+      "search_latency_ms": 3.66,
+      "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 319,
+      "token_estimate_total_tokens": 316,
       "em": 0,
-      "f1": 0.33333333333333337
+      "f1": 0
     },
     {
       "sample_id": "ja-rel-007",
@@ -2639,8 +2654,8 @@
       "answer_trace": {
         "query_variants": [
           "今の fusion 方式って何？",
-          "fusion 方式って何 方式 式っ って て何",
-          "fusion 方式って何 方式 key detail"
+          "fusion 方式 って 方式って何 式っ て何",
+          "fusion 方式 って key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2655,7 +2670,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
               "sentence": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
-              "score": 1.371667,
+              "score": 1.538333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2676,7 +2691,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 2.77,
+      "search_latency_ms": 10.71,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -2699,8 +2714,8 @@
       "answer_trace": {
         "query_variants": [
           "recency は fusion の前にかけていますか？",
-          "recency fusion 前にかけていますか",
-          "recency fusion 前にかけていますか key detail"
+          "recency fusion かけて かけ けて ます 前にかけていますか",
+          "recency fusion かけて key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2715,7 +2730,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
               "sentence": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
-              "score": 1.871667,
+              "score": 1.776429,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -2736,10 +2751,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 2.45,
-      "token_estimate_input_tokens": 70,
+      "search_latency_ms": 3.5599999999999996,
+      "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 322,
+      "token_estimate_total_tokens": 323,
       "em": 0,
       "f1": 0
     },
@@ -2759,7 +2774,7 @@
       "answer_trace": {
         "query_variants": [
           "weighted sum の話は置いて、今の retrieval fusion method だけ答えると何ですか？",
-          "weighted sum retrieval fusion method weighted sum 話は置いて 置い いて retrieval",
+          "weighted sum retrieval fusion method weighted sum retrieval fusion method だけ",
           "weighted sum retrieval fusion method weighted key detail"
         ],
         "search_policy": {
@@ -2775,13 +2790,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
               "sentence": "今は Reciprocal Rank Fusion を使っています。recency は fusion の後でかけています。",
-              "score": 1.316111,
+              "score": 1.281923,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
               "sentence": "最初の retrieval では lexical と vector を weighted sum で混ぜていました。",
-              "score": 1.051667,
+              "score": 0.949103,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -2796,10 +2811,10 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 3.95,
-      "token_estimate_input_tokens": 94,
+      "search_latency_ms": 4.1899999999999995,
+      "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 346,
+      "token_estimate_total_tokens": 347,
       "em": 1,
       "f1": 1
     },
@@ -2820,8 +2835,8 @@
       "answer_trace": {
         "query_variants": [
           "英語以外で今サポートしている docs の言語は何ですか？",
-          "docs 英語以外で今サポートしている 言語",
-          "docs 英語以外で今サポートしている 言語 key detail"
+          "docs 英語 以外 サポート サポ ポー ート サポー",
+          "docs 英語 以外 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2836,13 +2851,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 1.305,
+              "score": 1.766538,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
               "sentence": "docs は以前 English only でした。",
-              "score": 0.718333,
+              "score": 0.461923,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -2863,10 +2878,10 @@
         },
         "final_short_answer": "Japanese"
       },
-      "search_latency_ms": 2.41,
-      "token_estimate_input_tokens": 68,
+      "search_latency_ms": 8.92,
+      "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 320,
+      "token_estimate_total_tokens": 319,
       "em": 1,
       "f1": 1
     },
@@ -2876,21 +2891,21 @@
       "category": "cat-2",
       "question": "launch playbook の次に localize したものは何ですか？",
       "answer": "invoice emails",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
       ],
       "answer_trace": {
         "query_variants": [
           "launch playbook の次に localize したものは何ですか？",
-          "launch playbook localize launch playbook したも した たも",
+          "launch playbook localize launch playbook した したも たも",
           "launch playbook localize launch key detail",
-          "launch playbook localize launch playbook したも した たも evidence summary",
-          "launch playbook localize launch playbook したも した たも date time timeline chronology"
+          "launch playbook localize launch playbook した したも たも evidence summary",
+          "launch playbook localize launch playbook した したも たも date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -2900,37 +2915,37 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 1.125,
+              "score": 1.225,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-              "sentence": "docs は以前 English only でした。",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.375,
+              "score": 0.658333,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+              "sentence": "docs は以前 English only でした。",
+              "score": 0.575,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
-          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
+          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。"
       },
-      "search_latency_ms": 4.7299999999999995,
+      "search_latency_ms": 14.260000000000002,
       "token_estimate_input_tokens": 151,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 571,
@@ -2954,8 +2969,8 @@
       "answer_trace": {
         "query_variants": [
           "以前の docs は何語だけでしたか？",
-          "docs 何語だけでしたか",
-          "docs 何語だけでしたか evidence summary"
+          "docs だけ した 何語だけでしたか",
+          "docs だけ した key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -2976,13 +2991,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 0.518333,
+              "score": 0.768333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.245,
+              "score": 0.495,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -2997,7 +3012,7 @@
         },
         "final_short_answer": "English only"
       },
-      "search_latency_ms": 3.06,
+      "search_latency_ms": 2.92,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3010,20 +3025,21 @@
       "category": "cat-1",
       "question": "最初に翻訳した docs は何ですか？",
       "answer": "launch playbook",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
       ],
       "answer_trace": {
         "query_variants": [
           "最初に翻訳した docs は何ですか？",
-          "docs 最初に翻訳した",
-          "docs 最初に翻訳した evidence summary",
-          "docs 最初に翻訳した date time timeline chronology",
-          "docs 最初に翻訳した before after calendar"
+          "docs 翻訳 した 最初に翻訳した",
+          "docs 翻訳 した key detail",
+          "docs 翻訳 した 最初に翻訳した evidence summary",
+          "docs 翻訳 した 最初に翻訳した date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -3033,36 +3049,42 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。",
+          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 0.791667,
+              "score": 1.058333,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+              "sentence": "docs は以前 English only でした。",
+              "score": 0.941667,
+              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.375,
+              "score": 0.575,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。",
-          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。",
+          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。"
+        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
       },
-      "search_latency_ms": 6.029335000000174,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 14.645001000000192,
+      "token_estimate_input_tokens": 21,
+      "token_estimate_output_tokens": 84,
+      "token_estimate_total_tokens": 105,
       "em": 0,
-      "f1": 0.2857142857142857
+      "f1": 0.21052631578947367
     },
     {
       "sample_id": "ja-rel-008",
@@ -3081,8 +3103,8 @@
       "answer_trace": {
         "query_variants": [
           "docs は今も english only ですか？",
-          "docs english only 今も english only すか",
-          "docs english only 今も key detail"
+          "docs english only english only 今も すか",
+          "docs english only english key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3124,10 +3146,10 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 2.96,
-      "token_estimate_input_tokens": 71,
+      "search_latency_ms": 3.58,
+      "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 323,
+      "token_estimate_total_tokens": 324,
       "em": 1,
       "f1": 1
     },
@@ -3137,21 +3159,21 @@
       "category": "cat-2",
       "question": "launch playbook の次に何を localize した？",
       "answer": "invoice emails",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+        "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
       ],
       "answer_trace": {
         "query_variants": [
           "launch playbook の次に何を localize した？",
-          "launch playbook localize launch playbook 次に何 した",
+          "launch playbook localize launch playbook した 次に何",
           "launch playbook localize launch key detail",
-          "launch playbook localize launch playbook 次に何 した evidence summary",
-          "launch playbook localize launch playbook 次に何 した date time timeline chronology"
+          "launch playbook localize launch playbook した 次に何 evidence summary",
+          "launch playbook localize launch playbook した 次に何 date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -3161,40 +3183,40 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "raw_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
               "sentence": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
-              "score": 1.025,
+              "score": 1.1625,
               "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
-              "sentence": "docs は以前 English only でした。",
-              "score": 0.658333,
-              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
               "sentence": "そのあと invoice emails も localized しました。",
-              "score": 0.575,
+              "score": 0.825,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+              "sentence": "docs は以前 English only でした。",
+              "score": 0.595833,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
-          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。",
+          "before": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
+          "after": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。",
           "notes": [],
           "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+        "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。"
       },
-      "search_latency_ms": 4.962249999999913,
-      "token_estimate_input_tokens": 112,
-      "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 448,
+      "search_latency_ms": 29.491874999999126,
+      "token_estimate_input_tokens": 87,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 339,
       "em": 0,
       "f1": 0.21052631578947367
     },
@@ -3215,8 +3237,8 @@
       "answer_trace": {
         "query_variants": [
           "今の認証方式は何ですか？",
-          "今の認証方式",
-          "今の認証方式 evidence summary"
+          "認証 方式 今の認証方式",
+          "認証 方式 今の認証方式 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3237,7 +3259,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
+              "score": 0.611667,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3258,10 +3280,10 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.5100000000000002,
-      "token_estimate_input_tokens": 58,
+      "search_latency_ms": 2.8600000000000003,
+      "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 310,
+      "token_estimate_total_tokens": 312,
       "em": 1,
       "f1": 1
     },
@@ -3282,8 +3304,8 @@
       "answer_trace": {
         "query_variants": [
           "認証方式の変更時に削除したものは何ですか？",
-          "認証方式の変更時に削除したも",
-          "認証方式の変更時に削除したも evidence summary"
+          "認証 方式 変更 削除 した 認証方式の変更時に削除したも",
+          "認証 方式 変更 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3298,19 +3320,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.625,
+              "score": 0.958333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
               "sentence": "今は Redis backed session cookies を使っています。refresh token は localStorage から削除しました。",
-              "score": 0.458333,
+              "score": 0.791667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
               "sentence": "security review もその変更を評価しました。",
-              "score": 0.375,
+              "score": 0.708333,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -3325,10 +3347,10 @@
         },
         "final_short_answer": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
       },
-      "search_latency_ms": 2.27,
-      "token_estimate_input_tokens": 64,
+      "search_latency_ms": 11.790000000000001,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 316,
+      "token_estimate_total_tokens": 317,
       "em": 0,
       "f1": 0.3636363636363636
     },
@@ -3349,8 +3371,8 @@
       "answer_trace": {
         "query_variants": [
           "今の方式に変える前の認証フローは何でしたか？",
-          "今の方式に変える前の認証フロー",
-          "今の方式に変える前の認証フロー evidence summary"
+          "方式 変える 変え える 認証 フロー フロ ロー",
+          "方式 変える 変え key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3365,19 +3387,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
               "sentence": "今は Redis backed session cookies を使っています。refresh token は localStorage から削除しました。",
-              "score": 1.025,
+              "score": 1.125,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
+              "score": 0.978333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
               "sentence": "security review もその変更を評価しました。",
-              "score": 0.325,
+              "score": 0.425,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -3392,10 +3414,10 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.4000000000000004,
-      "token_estimate_input_tokens": 65,
+      "search_latency_ms": 2.88,
+      "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 317,
+      "token_estimate_total_tokens": 316,
       "em": 0,
       "f1": 0
     },
@@ -3410,14 +3432,14 @@
       "answer_strategy": "extract:factual-current-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4"
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
+        "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1"
       ],
       "answer_trace": {
         "query_variants": [
           "今の認証フローは？",
-          "今の認証フロー",
-          "今の認証フロー evidence summary"
+          "認証 フロー フロ ロー 今の認証フロー",
+          "認証 フロー フロ key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3436,16 +3458,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
-              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
               "sentence": "security review もその変更を評価しました。",
               "score": 0.325,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+              "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
+              "score": 0.278333,
+              "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
         },
@@ -3459,10 +3481,10 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 2.2800000000000002,
-      "token_estimate_input_tokens": 58,
+      "search_latency_ms": 3,
+      "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 310,
+      "token_estimate_total_tokens": 312,
       "em": 1,
       "f1": 1
     },
@@ -3483,7 +3505,7 @@
       "answer_trace": {
         "query_variants": [
           "refresh token は今も localstorage にありますか？",
-          "refresh token localstorage refresh token 今も ありますか あり りま",
+          "refresh token localstorage refresh token ありま あり りま すか",
           "refresh token localstorage refresh key detail"
         ],
         "search_policy": {
@@ -3499,13 +3521,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
               "sentence": "今は Redis backed session cookies を使っています。refresh token は localStorage から削除しました。",
-              "score": 1.538333,
+              "score": 1.605,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.791667,
+              "score": 0.578333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3526,10 +3548,10 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 2.8200000000000003,
-      "token_estimate_input_tokens": 82,
+      "search_latency_ms": 4.1,
+      "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 334,
+      "token_estimate_total_tokens": 333,
       "em": 1,
       "f1": 1
     },
@@ -3550,7 +3572,7 @@
       "answer_trace": {
         "query_variants": [
           "prototype の jwt 方式はいったん忘れて、今使っている auth flow だけ短く答えると何ですか？",
-          "prototype jwt auth flow 方式はいったん忘れて 今使っている 今使 使っ って",
+          "prototype jwt auth flow 方式 いったん いっ った たん",
           "prototype jwt auth flow key detail"
         ],
         "search_policy": {
@@ -3566,13 +3588,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
               "sentence": "今は Redis backed session cookies を使っています。refresh token は localStorage から削除しました。",
-              "score": 1.205,
+              "score": 1.250455,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
               "sentence": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
-              "score": 0.625,
+              "score": 0.414697,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -3593,10 +3615,10 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 3.5200000000000005,
-      "token_estimate_input_tokens": 82,
+      "search_latency_ms": 10.01,
+      "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 334,
+      "token_estimate_total_tokens": 332,
       "em": 1,
       "f1": 1
     },
@@ -3653,7 +3675,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 2.55,
+      "search_latency_ms": 3.44,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -3666,18 +3688,15 @@
       "category": "cat-2",
       "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
       "answer": "engineering",
-      "prediction": "Singapore",
+      "prediction": "採用の自由度は上がりました。",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-organization-slot -> normalize -> final:factual-normalized-short",
-      "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
-        "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
-      ],
+      "answer_strategy": "extract:no-candidate -> normalize -> final:empty",
+      "selected_evidence_ids": [],
       "answer_trace": {
         "query_variants": [
           "headquarters を移した後も remote-first のままだったのはどのチームですか？",
-          "headquarters remote-first 移した後も 移し した た後 後も remote",
-          "headquarters remote-first 移した後も key detail"
+          "headquarters remote-first した remote first まだ チーム チー",
+          "headquarters remote-first した key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3686,37 +3705,24 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-organization-slot",
-          "raw_answer": "Singapore",
-          "selected_candidates": [
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
-              "sentence": "今の headquarters は Singapore です。engineering は remote-first のままです。",
-              "score": 1.278333,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1",
-              "sentence": "以前の headquarters は San Francisco でした。",
-              "score": 1.000556,
-              "created_at": "2026-01-01T00:00:00.000Z"
-            }
-          ]
+          "strategy": "extract:no-candidate",
+          "raw_answer": "",
+          "selected_candidates": []
         },
         "normalization": {
-          "before": "Singapore",
-          "after": "Singapore",
+          "before": "",
+          "after": "",
           "notes": [
-            "factual:evidence_bounded_span"
+            "factual:single_sentence_trim"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "Singapore"
+        "final_short_answer": "採用の自由度は上がりました。"
       },
-      "search_latency_ms": 2.9000000000000004,
-      "token_estimate_input_tokens": 82,
-      "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 334,
+      "search_latency_ms": 3.7831670000006854,
+      "token_estimate_input_tokens": 0,
+      "token_estimate_output_tokens": 0,
+      "token_estimate_total_tokens": 0,
       "em": 0,
       "f1": 0
     },
@@ -3736,8 +3742,8 @@
       "answer_trace": {
         "query_variants": [
           "headquarters を移す前はどこでしたか？",
-          "headquarters 移す前 移す す前",
-          "headquarters 移す前 移す key detail"
+          "headquarters 移す 移す前 す前",
+          "headquarters 移す 移す前 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3758,7 +3764,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
               "sentence": "今の headquarters は Singapore です。engineering は remote-first のままです。",
-              "score": 0.778333,
+              "score": 0.528333,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -3773,7 +3779,7 @@
         },
         "final_short_answer": "headquarters は San Francisco"
       },
-      "search_latency_ms": 2.49,
+      "search_latency_ms": 4.6000000000000005,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -3833,7 +3839,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 5.09,
+      "search_latency_ms": 3.21,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3856,7 +3862,7 @@
       "answer_trace": {
         "query_variants": [
           "engineering も headquarters 移転後に remote-first をやめましたか？",
-          "engineering headquarters remote-first 移転後 移転 転後 remote first",
+          "engineering headquarters remote-first 移転 remote first やめ した",
           "engineering headquarters remote-first key detail"
         ],
         "search_policy": {
@@ -3872,13 +3878,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
               "sentence": "今の headquarters は Singapore です。engineering は remote-first のままです。",
-              "score": 1.125,
+              "score": 1.025,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1",
               "sentence": "以前の headquarters は San Francisco でした。",
-              "score": 0.583333,
+              "score": 0.658333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -3893,10 +3899,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 4.146334000000042,
-      "token_estimate_input_tokens": 60,
-      "token_estimate_output_tokens": 168,
-      "token_estimate_total_tokens": 228,
+      "search_latency_ms": 3.9400420000024314,
+      "token_estimate_input_tokens": 29,
+      "token_estimate_output_tokens": 84,
+      "token_estimate_total_tokens": 113,
       "em": 0,
       "f1": 0
     },
@@ -3916,8 +3922,8 @@
       "answer_trace": {
         "query_variants": [
           "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
-          "headquarters 昔の所在地の話は置いて だけ短く答える",
-          "headquarters 昔の所在地の話は置いて だけ短く答える key detail"
+          "headquarters 所在地 所在 在地 だけ 答える 答え える",
+          "headquarters 所在地 所在 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -3932,13 +3938,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
               "sentence": "今の headquarters は Singapore です。engineering は remote-first のままです。",
-              "score": 1.538333,
+              "score": 1.305,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1",
               "sentence": "以前の headquarters は San Francisco でした。",
-              "score": 0.478333,
+              "score": 0.245,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -3953,10 +3959,10 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 2.8,
-      "token_estimate_input_tokens": 77,
+      "search_latency_ms": 12.01,
+      "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 329,
+      "token_estimate_total_tokens": 326,
       "em": 0,
       "f1": 0.5
     },
@@ -4020,7 +4026,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 2.81,
+      "search_latency_ms": 3.56,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 335,
@@ -4044,7 +4050,7 @@
       "answer_trace": {
         "query_variants": [
           "nightly refresh をやめた理由は何ですか？",
-          "nightly refresh nightly refresh やめた理由",
+          "nightly refresh nightly refresh やめ やめた理由",
           "nightly refresh nightly refresh key detail"
         ],
         "search_policy": {
@@ -4066,7 +4072,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-1",
               "sentence": "analytics dashboard は以前 nightly refresh でした。",
-              "score": 1.125,
+              "score": 0.958333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -4087,10 +4093,10 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 3.1700000000000004,
-      "token_estimate_input_tokens": 74,
+      "search_latency_ms": 3.56,
+      "token_estimate_input_tokens": 75,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 326,
+      "token_estimate_total_tokens": 327,
       "em": 1,
       "f1": 1
     },
@@ -4111,8 +4117,8 @@
       "answer_trace": {
         "query_variants": [
           "変更前の dashboard refresh cadence は何でしたか？",
-          "dashboard refresh cadence 変更前 変更 更前 dashboard refresh cadence",
-          "dashboard refresh cadence 変更前 変更 key detail"
+          "dashboard refresh cadence 変更 dashboard refresh cadence 変更前 更前",
+          "dashboard refresh cadence 変更 dashboard key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -4154,10 +4160,10 @@
         },
         "final_short_answer": "nightly refresh"
       },
-      "search_latency_ms": 4.39,
-      "token_estimate_input_tokens": 83,
+      "search_latency_ms": 3.5300000000000002,
+      "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 335,
+      "token_estimate_total_tokens": 336,
       "em": 1,
       "f1": 1
     },
@@ -4221,7 +4227,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 3.62,
+      "search_latency_ms": 3.3000000000000003,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 324,
@@ -4245,7 +4251,7 @@
       "answer_trace": {
         "query_variants": [
           "same-day funnel drops を見逃していたことが変更理由でしたか？",
-          "same-day funnel drops same day funnel drops 見逃していたことが変更理由でしたか",
+          "same-day funnel drops same day funnel drops 見逃し 見逃 逃し",
           "same-day funnel drops same day key detail"
         ],
         "search_policy": {
@@ -4261,19 +4267,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-3",
               "sentence": "今は every five minutes です。customers が same-day funnel drops を見逃していたからです。",
-              "score": 1.985,
+              "score": 1.912273,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-1",
               "sentence": "analytics dashboard は以前 nightly refresh でした。",
-              "score": 0.375,
+              "score": 0.465909,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-4",
               "sentence": "growth team も今は日中に何度も見ています。",
-              "score": 0.325,
+              "score": 0.415909,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -4288,10 +4294,10 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 3.96,
-      "token_estimate_input_tokens": 83,
+      "search_latency_ms": 3.12,
+      "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 335,
+      "token_estimate_total_tokens": 333,
       "em": 0,
       "f1": 0
     },
@@ -4312,7 +4318,7 @@
       "answer_trace": {
         "query_variants": [
           "nightly refresh の話はさておき、今の dashboard refresh cadence だけ答えると何ですか？",
-          "nightly refresh dashboard refresh cadence nightly refresh 話はさておき dashboard cadence だけ答える",
+          "nightly refresh dashboard refresh cadence nightly refresh さて おき dashboard cadence",
           "nightly refresh dashboard refresh cadence nightly key detail"
         ],
         "search_policy": {
@@ -4340,7 +4346,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-1",
               "sentence": "analytics dashboard は以前 nightly refresh でした。",
-              "score": 0.645,
+              "score": 0.395,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -4355,10 +4361,10 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 4.18,
-      "token_estimate_input_tokens": 101,
+      "search_latency_ms": 3.15,
+      "token_estimate_input_tokens": 99,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 353,
+      "token_estimate_total_tokens": 351,
       "em": 1,
       "f1": 1
     },
@@ -4379,9 +4385,9 @@
       "answer_trace": {
         "query_variants": [
           "q2 に出した admin 向け機能をすべて挙げてください。",
-          "q2 admin 出した 出し した 向け機能をすべて",
-          "q2 admin 出した key detail",
-          "q2 admin 出した 出し した 向け機能をすべて evidence summary"
+          "q2 admin した 向け 機能 すべ べて 出した",
+          "q2 admin した key detail",
+          "q2 admin した 向け 機能 すべ べて 出した evidence summary"
         ],
         "search_policy": {
           "limit": 12,
@@ -4396,19 +4402,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
               "sentence": "Q2 には export to CSV, audit logs, SAML for admins を出しました。",
-              "score": 1.565,
+              "score": 1.315,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
               "sentence": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
-              "score": 0.685,
+              "score": 0.601667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4",
               "sentence": "enterprise prospect も SAML を気にしていました。",
-              "score": 0.245,
+              "score": 0.328333,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -4423,7 +4429,7 @@
         },
         "final_short_answer": "export to CSV, audit logs, SAML, CSV"
       },
-      "search_latency_ms": 10.200000000000001,
+      "search_latency_ms": 8.66,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4447,10 +4453,10 @@
       "answer_trace": {
         "query_variants": [
           "最後に出た機能は何ですか？",
-          "最後に出た機能",
-          "最後に出た機能 evidence summary",
-          "最後に出た機能 date time timeline chronology",
-          "最後に出た機能 before after calendar"
+          "機能 最後に出た機能",
+          "機能 最後に出た機能 evidence summary",
+          "機能 最後に出た機能 date time timeline chronology",
+          "機能 最後に出た機能 before after calendar"
         ],
         "search_policy": {
           "limit": 13,
@@ -4490,10 +4496,10 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 3.980584000000053,
-      "token_estimate_input_tokens": 84,
-      "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 420,
+      "search_latency_ms": 7.19,
+      "token_estimate_input_tokens": 111,
+      "token_estimate_output_tokens": 420,
+      "token_estimate_total_tokens": 531,
       "em": 1,
       "f1": 1
     },
@@ -4503,20 +4509,21 @@
       "category": "cat-1",
       "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
       "answer": "export to CSV",
-      "prediction": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
+      "prediction": "Q2 には export to CSV, audit logs, SAML for admins を出しました。 順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
         "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
         "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
       ],
       "answer_trace": {
         "query_variants": [
           "q2 の admin 向け機能で最初に出たのは何ですか？",
-          "q2 admin 向け機能で最初に出た",
-          "q2 admin 向け機能で最初に出た key detail",
-          "q2 admin 向け機能で最初に出た evidence summary",
-          "q2 admin 向け機能で最初に出た date time timeline chronology"
+          "q2 admin 向け 機能 向け機能で最初に出た",
+          "q2 admin 向け key detail",
+          "q2 admin 向け 機能 向け機能で最初に出た evidence summary",
+          "q2 admin 向け 機能 向け機能で最初に出た date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -4526,12 +4533,18 @@
         },
         "extraction": {
           "strategy": "extract:temporal-candidates",
-          "raw_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
+          "raw_answer": "Q2 には export to CSV, audit logs, SAML for admins を出しました。 順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
           "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+              "sentence": "Q2 には export to CSV, audit logs, SAML for admins を出しました。",
+              "score": 0.661667,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
               "sentence": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
-              "score": 0.378333,
+              "score": 0.545,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -4543,19 +4556,19 @@
           ]
         },
         "normalization": {
-          "before": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
-          "after": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
+          "before": "Q2 には export to CSV, audit logs, SAML for admins を出しました。 順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
+          "after": "Q2 には export to CSV, audit logs, SAML for admins を出しました。 順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。",
           "notes": [],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。"
+        "final_short_answer": "Q2 には export to CSV, audit logs, SAML for admins を出しました。 順番は export to CSV が最初、audit logs が次、SAML が最後でした。 enterprise prospect も SAML を気にしていました。"
       },
-      "search_latency_ms": 4.4298320000002605,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 6.229625000003725,
+      "token_estimate_input_tokens": 22,
+      "token_estimate_output_tokens": 84,
+      "token_estimate_total_tokens": 106,
       "em": 0,
-      "f1": 0.375
+      "f1": 0.2222222222222222
     },
     {
       "sample_id": "ja-rel-012",
@@ -4617,7 +4630,7 @@
         },
         "final_short_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。 Q2 には export to CSV, audit logs, SAML for admins を出しました。 enterprise prospect も SAML を気にしていました。"
       },
-      "search_latency_ms": 4.975292000000136,
+      "search_latency_ms": 5.537334000001429,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4641,8 +4654,8 @@
       "answer_trace": {
         "query_variants": [
           "saml が最初に出た機能ですか？",
-          "saml 最初に出た機能ですか",
-          "saml 最初に出た機能ですか evidence summary"
+          "saml 機能 最初に出た機能ですか",
+          "saml 機能 最初に出た機能ですか key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -4657,19 +4670,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
               "sentence": "Q2 には export to CSV, audit logs, SAML for admins を出しました。",
-              "score": 1.045,
+              "score": 0.878333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
               "sentence": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
-              "score": 0.878333,
+              "score": 0.711667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4",
               "sentence": "enterprise prospect も SAML を気にしていました。",
-              "score": 0.795,
+              "score": 0.628333,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -4684,10 +4697,10 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 6.2299999999999995,
-      "token_estimate_input_tokens": 64,
+      "search_latency_ms": 7.280000000000001,
+      "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 316,
+      "token_estimate_total_tokens": 315,
       "em": 0,
       "f1": 0
     },
@@ -4708,10 +4721,10 @@
       "answer_trace": {
         "query_variants": [
           "最後に出た admin feature って何？",
-          "admin feature 最後に出た 出た admin feature って何 って て何",
-          "admin feature 最後に出た 出た key detail",
-          "admin feature 最後に出た 出た admin feature って何 って て何 evidence summary",
-          "admin feature 最後に出た 出た admin feature って何 って て何 date time timeline chronology"
+          "admin feature admin feature って 最後に出た 出た って何 て何",
+          "admin feature admin feature key detail",
+          "admin feature admin feature って 最後に出た 出た って何 て何 evidence summary",
+          "admin feature admin feature って 最後に出た 出た って何 て何 date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -4751,10 +4764,10 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 8.62,
-      "token_estimate_input_tokens": 141,
+      "search_latency_ms": 6.74,
+      "token_estimate_input_tokens": 143,
       "token_estimate_output_tokens": 420,
-      "token_estimate_total_tokens": 561,
+      "token_estimate_total_tokens": 563,
       "em": 1,
       "f1": 1
     },
@@ -4811,7 +4824,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 3.17,
+      "search_latency_ms": 2.89,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -4828,13 +4841,14 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3"
       ],
       "answer_trace": {
         "query_variants": [
           "以前の既定リージョンはどこでしたか？",
-          "以前の既定リージョン",
-          "以前の既定リージョン evidence summary"
+          "既定 リージョン リー ージ ジョ ョン リージ ージョ",
+          "既定 リージョン リー key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -4849,8 +4863,14 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
               "sentence": "最初は deployment の既定リージョンを us-west-2 にしていました。",
-              "score": 0.945,
+              "score": 1.687424,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+              "sentence": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
+              "score": 0.285909,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -4864,10 +4884,10 @@
         },
         "final_short_answer": "us-west-2"
       },
-      "search_latency_ms": 2.8677490000000034,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 3,
+      "token_estimate_input_tokens": 64,
+      "token_estimate_output_tokens": 252,
+      "token_estimate_total_tokens": 316,
       "em": 1,
       "f1": 1
     },
@@ -4903,13 +4923,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
               "sentence": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
-              "score": 1.5625,
+              "score": 1.8125,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
               "sentence": "最初は deployment の既定リージョンを us-west-2 にしていました。",
-              "score": 1.125,
+              "score": 1.375,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -4924,7 +4944,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 3.983624999999629,
+      "search_latency_ms": 3.1697499999990395,
       "token_estimate_input_tokens": 49,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 217,
@@ -4984,7 +5004,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 3.32,
+      "search_latency_ms": 3.52,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -5007,7 +5027,7 @@
       "answer_trace": {
         "query_variants": [
           "default region は今も us-west-2 ですか？",
-          "default region us-west-2 default region 今も us west すか",
+          "default region us-west-2 default region us west 今も すか",
           "default region us-west-2 default key detail"
         ],
         "search_policy": {
@@ -5044,7 +5064,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 5.12,
+      "search_latency_ms": 3.74,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5057,17 +5077,20 @@
       "category": "cat-1",
       "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
       "answer": "ap-northeast-1",
-      "prediction": "東京リージョンを既定にしてから初期表示も安定しました。",
+      "prediction": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。 最初は deployment の既定リージョンを us-west-2 にしていました。",
       "question_kind": "temporal",
-      "answer_strategy": "extract:no-candidate -> normalize -> final:empty",
-      "selected_evidence_ids": [],
+      "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
+      "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+        "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+      ],
       "answer_trace": {
         "query_variants": [
           "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
-          "default region 最初のリージョンの話は置いて default region だけ短く答える",
-          "default region 最初のリージョンの話は置いて default key detail",
-          "default region 最初のリージョンの話は置いて default region だけ短く答える evidence summary",
-          "default region 最初のリージョンの話は置いて default region だけ短く答える date time timeline chronology"
+          "default region リージョン リー ージ ジョ ョン リージ ージョ",
+          "default region リージョン リー key detail",
+          "default region リージョン リー ージ ジョ ョン リージ ージョ evidence summary",
+          "default region リージョン リー ージ ジョ ョン リージ ージョ date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -5076,24 +5099,37 @@
           "quality_floor": 0.2
         },
         "extraction": {
-          "strategy": "extract:no-candidate",
-          "raw_answer": "",
-          "selected_candidates": []
+          "strategy": "extract:temporal-candidates",
+          "raw_answer": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。 最初は deployment の既定リージョンを us-west-2 にしていました。",
+          "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+              "sentence": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
+              "score": 1.3675,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1",
+              "sentence": "最初は deployment の既定リージョンを us-west-2 にしていました。",
+              "score": 0.9425,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            }
+          ]
         },
         "normalization": {
-          "before": "",
-          "after": "",
+          "before": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。 最初は deployment の既定リージョンを us-west-2 にしていました。",
+          "after": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。 最初は deployment の既定リージョンを us-west-2 にしていました。",
           "notes": [],
-          "reference_time": "2026-01-01T00:00:00.000Z"
+          "reference_time": "2026-01-01T00:00:02.000Z"
         },
-        "final_short_answer": "東京リージョンを既定にしてから初期表示も安定しました。"
+        "final_short_answer": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。 最初は deployment の既定リージョンを us-west-2 にしていました。"
       },
-      "search_latency_ms": 8.015334000000166,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 11.15229099999837,
+      "token_estimate_input_tokens": 115,
+      "token_estimate_output_tokens": 336,
+      "token_estimate_total_tokens": 451,
       "em": 0,
-      "f1": 0
+      "f1": 0.13333333333333333
     },
     {
       "sample_id": "ja-rel-014",
@@ -5148,7 +5184,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 4.970000000000001,
+      "search_latency_ms": 3.2300000000000004,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 333,
@@ -5171,8 +5207,8 @@
       "answer_trace": {
         "query_variants": [
           "email だけの運用をやめた理由は何ですか？",
-          "email だけの運用をやめた理由",
-          "email だけの運用をやめた理由 evidence summary"
+          "email だけ 運用 やめ だけの運用をやめた理由",
+          "email だけ 運用 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5193,7 +5229,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
               "sentence": "障害通知は以前 email だけで送っていました。",
-              "score": 0.875,
+              "score": 0.858333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5208,10 +5244,10 @@
         },
         "final_short_answer": "ack が早く、mobile notification も確実だったから"
       },
-      "search_latency_ms": 2.89,
-      "token_estimate_input_tokens": 66,
+      "search_latency_ms": 2.6999999999999997,
+      "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 318,
+      "token_estimate_total_tokens": 317,
       "em": 1,
       "f1": 1
     },
@@ -5231,7 +5267,7 @@
       "answer_trace": {
         "query_variants": [
           "primary channel を見直す前は何だけで送っていましたか？",
-          "primary channel primary channel 見直す前は何だけで送っていましたか",
+          "primary channel primary channel 見直す 見直 直す だけ って",
           "primary channel primary channel key detail"
         ],
         "search_policy": {
@@ -5247,13 +5283,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
               "sentence": "今の primary incident channel は Slack です。ack が早く、mobile notification も確実だったからです。",
-              "score": 1.691667,
+              "score": 1.225,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
               "sentence": "障害通知は以前 email だけで送っていました。",
-              "score": 0.485,
+              "score": 1.125,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5268,7 +5304,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 6.21,
+      "search_latency_ms": 3.25,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 331,
@@ -5328,7 +5364,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 3.05,
+      "search_latency_ms": 3.3000000000000003,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5351,8 +5387,8 @@
       "answer_trace": {
         "query_variants": [
           "今も incident channel は email だけですか？",
-          "incident channel email 今も incident channel だけですか だけ すか",
-          "incident channel email 今も key detail"
+          "incident channel email incident channel だけ 今も だけですか すか",
+          "incident channel email incident key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5373,7 +5409,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
               "sentence": "障害通知は以前 email だけで送っていました。",
-              "score": 0.547857,
+              "score": 0.690714,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5388,10 +5424,10 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 3.3699999999999997,
-      "token_estimate_input_tokens": 78,
+      "search_latency_ms": 3.9699999999999998,
+      "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 330,
+      "token_estimate_total_tokens": 331,
       "em": 1,
       "f1": 1
     },
@@ -5411,8 +5447,8 @@
       "answer_trace": {
         "query_variants": [
           "今も補助通知として残しているものは何ですか？",
-          "今も補助通知として残しているも",
-          "今も補助通知として残しているも evidence summary"
+          "補助 通知 して いる 今も補助通知として残しているも",
+          "補助 通知 して key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5433,7 +5469,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
               "sentence": "障害通知は以前 email だけで送っていました。",
-              "score": 0.405,
+              "score": 0.605,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5448,7 +5484,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 2.5999999999999996,
+      "search_latency_ms": 3.02,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -5471,9 +5507,9 @@
       "answer_trace": {
         "query_variants": [
           "今の推奨 setup で指定するツールは何ですか？",
-          "setup 今の推奨 推奨 指定するツール",
-          "setup 今の推奨 推奨 key detail",
-          "setup 今の推奨 推奨 指定するツール evidence summary"
+          "setup 推奨 指定 する ツール ツー ール 今の推奨",
+          "setup 推奨 指定 key detail",
+          "setup 推奨 指定 する ツール ツー ール 今の推奨 evidence summary"
         ],
         "search_policy": {
           "limit": 12,
@@ -5488,13 +5524,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
               "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 1.875,
+              "score": 1.569444,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
-              "score": 0.708333,
+              "score": 0.569444,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5509,10 +5545,10 @@
         },
         "final_short_answer": "codex, cursor, claude"
       },
-      "search_latency_ms": 4.42,
-      "token_estimate_input_tokens": 91,
+      "search_latency_ms": 3.4099999999999997,
+      "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 427,
+      "token_estimate_total_tokens": 431,
       "em": 1,
       "f1": 1
     },
@@ -5522,17 +5558,18 @@
       "category": "cat-2",
       "question": "最初はどのツールだけを対象にしていましたか？",
       "answer": "codex",
-      "prediction": "codex, cursor, claude",
+      "prediction": "codex",
       "question_kind": "factual",
-      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
+      "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
+        "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
         "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3"
       ],
       "answer_trace": {
         "query_variants": [
           "最初はどのツールだけを対象にしていましたか？",
-          "最初はどのツールだけを対象にしていましたか",
-          "最初はどのツールだけを対象にしていましたか evidence summary"
+          "ツール ツー ール だけ 対象 てい した 最初はどのツールだけを対象にしていましたか",
+          "ツール ツー ール key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5541,33 +5578,39 @@
           "quality_floor": 0.14
         },
         "extraction": {
-          "strategy": "extract:factual-object-slot",
-          "raw_answer": "codex, cursor, claude",
+          "strategy": "extract:factual-previous-slot",
+          "raw_answer": "codex",
           "selected_candidates": [
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
+              "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
+              "score": 1.441667,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
               "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 0.778333,
+              "score": 0.695,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "codex, cursor, claude",
-          "after": "codex, cursor, claude",
+          "before": "codex",
+          "after": "codex",
           "notes": [
             "factual:evidence_bounded_span"
           ],
-          "reference_time": "2026-01-01T00:00:02.000Z"
+          "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "codex, cursor, claude"
+        "final_short_answer": "codex"
       },
-      "search_latency_ms": 5.3168329999998605,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
-      "em": 0,
-      "f1": 0
+      "search_latency_ms": 6.345083999999479,
+      "token_estimate_input_tokens": 21,
+      "token_estimate_output_tokens": 84,
+      "token_estimate_total_tokens": 105,
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "ja-rel-015",
@@ -5585,10 +5628,10 @@
       "answer_trace": {
         "query_variants": [
           "最初の setup コマンドが対象にしていたのは何だけでしたか？",
-          "setup コマンドが対象にしていたのは何だけでしたか",
-          "setup コマンドが対象にしていたのは何だけでしたか evidence summary",
-          "setup コマンドが対象にしていたのは何だけでしたか date time timeline chronology",
-          "setup コマンドが対象にしていたのは何だけでしたか before after calendar"
+          "setup コマンド コマ マン ンド コマン マンド 対象",
+          "setup コマンド コマ key detail",
+          "setup コマンド コマ マン ンド コマン マンド 対象 evidence summary",
+          "setup コマンド コマ マン ンド コマン マンド 対象 date time timeline chronology"
         ],
         "search_policy": {
           "limit": 13,
@@ -5603,13 +5646,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
-              "score": 1.0625,
+              "score": 1.479167,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
               "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 0.958333,
+              "score": 0.541667,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -5622,10 +5665,10 @@
         },
         "final_short_answer": "最初の setup コマンドは codex だけを対象にしていました。 今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 4.532749999999724,
-      "token_estimate_input_tokens": 80,
-      "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 332,
+      "search_latency_ms": 8.059875000002794,
+      "token_estimate_input_tokens": 105,
+      "token_estimate_output_tokens": 336,
+      "token_estimate_total_tokens": 441,
       "em": 0,
       "f1": 0.15384615384615385
     },
@@ -5645,9 +5688,9 @@
       "answer_trace": {
         "query_variants": [
           "今の推奨 setup の組み合わせは？",
-          "setup 今の推奨 推奨 組み合わせ",
-          "setup 今の推奨 推奨 key detail",
-          "setup 今の推奨 推奨 組み合わせ evidence summary"
+          "setup 推奨 組み合わせ 組み み合 合わ わせ 今の推奨",
+          "setup 推奨 組み合わせ key detail",
+          "setup 推奨 組み合わせ 組み み合 合わ わせ 今の推奨 evidence summary"
         ],
         "search_policy": {
           "limit": 12,
@@ -5662,13 +5705,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
               "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 1.635,
+              "score": 1.26,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
-              "score": 0.788333,
+              "score": 0.663333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5683,10 +5726,10 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 3.7899999999999996,
-      "token_estimate_input_tokens": 89,
+      "search_latency_ms": 5.4799999999999995,
+      "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 425,
+      "token_estimate_total_tokens": 431,
       "em": 0,
       "f1": 0.6
     },
@@ -5706,8 +5749,8 @@
       "answer_trace": {
         "query_variants": [
           "今の推奨 setup は codex だけですか？",
-          "setup codex 今の推奨 推奨 だけですか だけ すか",
-          "setup codex 今の推奨 key detail"
+          "setup codex 推奨 だけ 今の推奨 だけですか すか",
+          "setup codex 推奨 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5728,7 +5771,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
-              "score": 0.824048,
+              "score": 0.966905,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5743,10 +5786,10 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 5.29,
-      "token_estimate_input_tokens": 69,
+      "search_latency_ms": 3.53,
+      "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 321,
+      "token_estimate_total_tokens": 320,
       "em": 1,
       "f1": 1
     },
@@ -5766,9 +5809,9 @@
       "answer_trace": {
         "query_variants": [
           "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
-          "setup 最小検証の話は置いて 今まとめて指定する推奨 だけ答える だけ け答 答え える",
-          "setup 最小検証の話は置いて 今まとめて指定する推奨 key detail",
-          "setup 最小検証の話は置いて 今まとめて指定する推奨 だけ答える だけ け答 答え える evidence summary"
+          "setup 最小 検証 まとめ 指定 する 推奨 だけ",
+          "setup 最小 検証 key detail",
+          "setup 最小 検証 まとめ 指定 する 推奨 だけ evidence summary"
         ],
         "search_policy": {
           "limit": 12,
@@ -5783,13 +5826,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
               "sentence": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
-              "score": 1.135,
+              "score": 1.170714,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
               "sentence": "最初の setup コマンドは codex だけを対象にしていました。",
-              "score": 0.788333,
+              "score": 0.68119,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5804,10 +5847,10 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 3.66,
-      "token_estimate_input_tokens": 112,
+      "search_latency_ms": 3.7399999999999998,
+      "token_estimate_input_tokens": 98,
       "token_estimate_output_tokens": 336,
-      "token_estimate_total_tokens": 448,
+      "token_estimate_total_tokens": 434,
       "em": 0,
       "f1": 0.6
     },
@@ -5827,8 +5870,8 @@
       "answer_trace": {
         "query_variants": [
           "今の定期メンテナンス開始時刻は何時ですか？",
-          "今の定期メンテナンス開始時刻は何時ですか",
-          "今の定期メンテナンス開始時刻は何時ですか evidence summary"
+          "定期 メンテナンス メン ンテ テナ ナン ンス メンテ",
+          "定期 メンテナンス メン key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5843,13 +5886,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
               "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
-              "score": 1.305,
+              "score": 1.371667,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 0.245,
+              "score": 1.045,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -5864,10 +5907,10 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 2.05,
-      "token_estimate_input_tokens": 67,
+      "search_latency_ms": 3.4299999999999997,
+      "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 319,
+      "token_estimate_total_tokens": 318,
       "em": 1,
       "f1": 1
     },
@@ -5881,13 +5924,14 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1"
+        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
+        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3"
       ],
       "answer_trace": {
         "query_variants": [
           "以前の開始時刻は何時でしたか？",
-          "以前の開始時刻は何時でしたか",
-          "以前の開始時刻は何時でしたか evidence summary"
+          "開始 時刻 何時 した 以前の開始時刻は何時でしたか",
+          "開始 時刻 何時 key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5902,8 +5946,14 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 1.125,
+              "score": 1.525,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
+              "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
+              "score": 0.615833,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5917,10 +5967,10 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 2.322874000000411,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 2.880499999999447,
+      "token_estimate_input_tokens": 43,
+      "token_estimate_output_tokens": 168,
+      "token_estimate_total_tokens": 211,
       "em": 1,
       "f1": 1
     },
@@ -5934,13 +5984,14 @@
       "question_kind": "factual",
       "answer_strategy": "extract:factual-previous-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
-        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1"
+        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
+        "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3"
       ],
       "answer_trace": {
         "query_variants": [
           "以前の定期メンテナンス開始時刻は何時でしたか？",
-          "以前の定期メンテナンス開始時刻は何時でしたか",
-          "以前の定期メンテナンス開始時刻は何時でしたか evidence summary"
+          "定期 メンテナンス メン ンテ テナ ナン ンス メンテ",
+          "定期 メンテナンス メン key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -5955,8 +6006,14 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 1.125,
+              "score": 1.9375,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
+              "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
+              "score": 0.2075,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5970,10 +6027,10 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 2.107292999999572,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 2.4910419999992883,
+      "token_estimate_input_tokens": 45,
+      "token_estimate_output_tokens": 168,
+      "token_estimate_total_tokens": 213,
       "em": 1,
       "f1": 1
     },
@@ -5993,8 +6050,8 @@
       "answer_trace": {
         "query_variants": [
           "今のメンテ開始って何時？",
-          "今のメンテ開始って何時",
-          "今のメンテ開始って何時 evidence summary"
+          "メンテ メン ンテ 開始 って 何時 今のメンテ開始って何時",
+          "メンテ メン ンテ key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -6009,13 +6066,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
               "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
-              "score": 1.305,
+              "score": 1.447857,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 0.245,
+              "score": 0.816429,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -6030,10 +6087,10 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 2.1,
-      "token_estimate_input_tokens": 61,
+      "search_latency_ms": 2.48,
+      "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 313,
+      "token_estimate_total_tokens": 315,
       "em": 1,
       "f1": 1
     },
@@ -6053,8 +6110,8 @@
       "answer_trace": {
         "query_variants": [
           "定期メンテナンスは今も 01:00 jst 開始ですか？",
-          "jst 定期メンテナンスは今も 01 00 開始ですか 開始 すか",
-          "jst 定期メンテナンスは今も 01 key detail"
+          "jst 定期 メンテナンス メン ンテ テナ ナン ンス",
+          "jst 定期 メンテナンス key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -6069,13 +6126,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
               "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
-              "score": 1.590714,
+              "score": 1.416111,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 0.816429,
+              "score": 1.078333,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -6090,10 +6147,10 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 2.9,
-      "token_estimate_input_tokens": 70,
+      "search_latency_ms": 3.74,
+      "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 322,
+      "token_estimate_total_tokens": 320,
       "em": 1,
       "f1": 1
     },
@@ -6113,8 +6170,8 @@
       "answer_trace": {
         "query_variants": [
           "昔の開始時刻の話はいったん置いて、今の定期メンテ開始時刻だけ短く答えると何時ですか？",
-          "昔の開始時刻の話はいったん置いて 今の定期メンテ開始時刻だけ短く答えると何時ですか",
-          "昔の開始時刻の話はいったん置いて 今の定期メンテ開始時刻だけ短く答えると何時ですか evidence summary"
+          "開始 時刻 いったん いっ った たん 定期 メンテ",
+          "開始 時刻 いったん key detail"
         ],
         "search_policy": {
           "limit": 9,
@@ -6129,13 +6186,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-3",
               "sentence": "今は 03:30 JST 開始です。late-night tickets が減ったので遅らせました。",
-              "score": 1.305,
+              "score": 1.363824,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-ja-rel-016-ja-rel-016-1",
               "sentence": "定期メンテナンスは以前 01:00 JST 開始でした。",
-              "score": 0.245,
+              "score": 0.539118,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -6150,10 +6207,10 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 2.04,
-      "token_estimate_input_tokens": 82,
+      "search_latency_ms": 5.62,
+      "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
-      "token_estimate_total_tokens": 334,
+      "token_estimate_total_tokens": 321,
       "em": 1,
       "f1": 1
     }

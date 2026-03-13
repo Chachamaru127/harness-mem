@@ -75,14 +75,7 @@ export class PgVectorRepository implements IVectorRepository {
   // -------------------------------------------------------------------------
 
   async findByObservationId(observationId: string): Promise<VectorRow | null> {
-    const result = await this.client.query<{
-      observation_id: string;
-      model: string;
-      dimension: number;
-      embedding: string | null;
-      created_at: Date | string;
-      updated_at: Date | string;
-    }>(
+    const result = await this.client.query(
       `SELECT observation_id, model, dimension, embedding, created_at, updated_at
        FROM mem_vectors
        WHERE observation_id = $1`,

@@ -23,11 +23,11 @@
   },
   "review_evidence_spec": {
     "required_artifacts": [
-      "locomo10.runX.score-report.full.json",
-      "locomo10.repro-report.json",
-      "locomo10.failure-backlog.judged.json",
-      "locomo10.failure-backlog.judged.md",
-      "locomo10.runX.risk-notes.md"
+      "benchmark.runX.score-report.full.json",
+      "benchmark.repro-report.json",
+      "benchmark.failure-backlog.judged.json",
+      "benchmark.failure-backlog.judged.md",
+      "benchmark.runX.risk-notes.md"
     ],
     "rejection_conditions": [
       "same dataset / judge / category constraints are not met",

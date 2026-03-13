@@ -2204,7 +2204,7 @@ export class IngestCoordinator {
       const hasOffset = offsetRow !== null && Number.isFinite(offsetRow.offset);
       let offset = hasOffset ? Math.max(0, Math.floor(offsetRow?.offset ?? 0)) : 0;
 
-      if (!hasOffset && mtimeMs < cutoffMs) {
+      if (!hasOffset && !replayFromStart && mtimeMs < cutoffMs) {
         this.updateIngestOffset(sourceKey, fileSize);
         summary.filesSkippedBackfill += 1;
         continue;

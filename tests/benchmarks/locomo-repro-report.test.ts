@@ -67,7 +67,7 @@ describe("LOCOMO repro report", () => {
       expect(aggregated.comparison_lock.same_dataset).toBe(true);
       expect(aggregated.comparison_lock.same_judge).toBe(true);
       expect(aggregated.comparison_lock.same_category_scope).toBe(true);
-      expect(aggregated.review_evidence_spec.required_artifacts).toContain("locomo10.repro-report.json");
+      expect(aggregated.review_evidence_spec.required_artifacts).toContain("benchmark.repro-report.json");
       expect(aggregated.rejection_flags).toContain("repro.runs_below_3");
     } finally {
       rmSync(dir, { recursive: true, force: true });

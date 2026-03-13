@@ -1,11 +1,6 @@
-# Run 1 Risk Notes
+# Deprecated Artifact Alias
 
-- timestamp: 20260306T051754Z
-- overall_f1: 0.7645176256921613
-- cross_lingual_f1: 0.7563293854672752
-- zero_f1_count: 2
-- missing_metadata: 0
-- residual_risks:
-  - current vs previous の取り違え
-  - why/list の短答圧縮
-  - README claim ceiling を超える表現
+This deprecated alias is sealed. Do not use `docs/benchmarks/artifacts/s40-ja-release-latest/run1/risk-notes.md` as benchmark evidence.
+
+- Historical replacement: `docs/benchmarks/artifacts/s40-ja-baseline-latest/run1/risk-notes.md`
+- Current replacement: `docs/benchmarks/artifacts/s43-ja-release-v2-latest/run1/risk-notes.md`

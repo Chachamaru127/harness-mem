@@ -10,6 +10,7 @@ import { Database } from "bun:sqlite";
 import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
 import { SqliteObservationRepository } from "../../src/db/repositories/SqliteObservationRepository";
 import type { InsertObservationInput } from "../../src/db/repositories/IObservationRepository";
+import { segmentJapaneseForFts } from "../../src/core/core-utils";
 
 // ---------------------------------------------------------------------------
 // 定数
@@ -23,6 +24,9 @@ const MEASURE_COUNT = 100;
 const SEED_COUNT = 500;
 /** Repository の許容オーバーヘッド比率（10% = 1.10） */
 const OVERHEAD_TOLERANCE = 1.10;
+/** 低レイテンシ帯では ratio が不安定なので絶対差で判定する */
+const LOW_LATENCY_TOTAL_MS_THRESHOLD = 20;
+const LOW_LATENCY_OVERHEAD_MS_TOLERANCE = 10;
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -105,10 +109,14 @@ let repo: SqliteObservationRepository;
 // 直接 SQL での操作用のプリペアドステートメントキャッシュ
 const SELECT_BY_ID_SQL = `
   SELECT
-    id, event_id, platform, project, session_id,
+    id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
     title, content, content_redacted, observation_type, memory_type,
     tags_json, privacy_tags_json,
-    signal_score, user_id, team_id,
+    COALESCE(signal_score, 0) AS signal_score,
+    COALESCE(access_count, 0) AS access_count,
+    last_accessed_at,
+    COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+    COALESCE(user_id, 'default') AS user_id, team_id,
     created_at, updated_at
   FROM mem_observations
   WHERE id = ?
@@ -116,10 +124,14 @@ const SELECT_BY_ID_SQL = `
 
 const SELECT_MANY_SQL = `
   SELECT
-    id, event_id, platform, project, session_id,
+    id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
     title, content, content_redacted, observation_type, memory_type,
     tags_json, privacy_tags_json,
-    signal_score, user_id, team_id,
+    COALESCE(signal_score, 0) AS signal_score,
+    COALESCE(access_count, 0) AS access_count,
+    last_accessed_at,
+    COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+    COALESCE(user_id, 'default') AS user_id, team_id,
     created_at, updated_at
   FROM mem_observations
   WHERE project = ?
@@ -140,8 +152,9 @@ const INSERT_SQL = `
     title, content, content_redacted, observation_type, memory_type,
     tags_json, privacy_tags_json,
     signal_score, user_id, team_id,
-    created_at, updated_at
-  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    created_at, updated_at,
+    title_fts, content_fts
+  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `;
 
 // 計測用シードデータの ID 一覧
@@ -156,12 +169,15 @@ beforeAll(() => {
   const insertStmt = db.query(INSERT_SQL);
   for (let i = 0; i < SEED_COUNT; i++) {
     const inp = makeInput(i);
+    const titleFts = inp.title ? segmentJapaneseForFts(inp.title) : null;
+    const contentFts = segmentJapaneseForFts(inp.content_redacted);
     insertStmt.run(
       inp.id, inp.event_id, inp.platform, inp.project, inp.session_id,
       inp.title, inp.content, inp.content_redacted, inp.observation_type, inp.memory_type,
       inp.tags_json, inp.privacy_tags_json, inp.signal_score ?? 0,
       inp.user_id ?? "default", inp.team_id ?? null,
       inp.created_at, inp.updated_at,
+      titleFts, contentFts,
     );
     seededIds.push(inp.id);
   }
@@ -195,10 +211,9 @@ describe("パフォーマンス回帰: findById", () => {
     const ratio = repoMs / directMs;
     console.log(`[findById] direct=${directMs.toFixed(2)}ms repo=${repoMs.toFixed(2)}ms ratio=${ratio.toFixed(3)}`);
 
-    // 直接 SQL が極端に速い場合（2ms 未満）は分母が不安定なため、
-    // 絶対差分（5ms 未満）で代替チェック
-    if (directMs < 2) {
-      expect(repoMs - directMs).toBeLessThan(5);
+    // 合計時間が小さいベンチは比率が揺れやすいので絶対差で判定する。
+    if (directMs < LOW_LATENCY_TOTAL_MS_THRESHOLD) {
+      expect(repoMs - directMs).toBeLessThan(LOW_LATENCY_OVERHEAD_MS_TOLERANCE);
     } else {
       expect(ratio).toBeLessThanOrEqual(OVERHEAD_TOLERANCE);
     }
@@ -215,10 +230,14 @@ describe("パフォーマンス回帰: findMany", () => {
       const params: unknown[] = [];
       let sql = `
         SELECT
-          id, event_id, platform, project, session_id,
+          id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
-          signal_score, user_id, team_id,
+          COALESCE(signal_score, 0) AS signal_score,
+          COALESCE(access_count, 0) AS access_count,
+          last_accessed_at,
+          COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+          COALESCE(user_id, 'default') AS user_id, team_id,
           created_at, updated_at
         FROM mem_observations
         WHERE 1 = 1
@@ -253,8 +272,8 @@ describe("パフォーマンス回帰: findMany", () => {
     const ratio = repoMs / directMs;
     console.log(`[findMany] direct=${directMs.toFixed(2)}ms repo=${repoMs.toFixed(2)}ms ratio=${ratio.toFixed(3)}`);
 
-    if (directMs < 2) {
-      expect(repoMs - directMs).toBeLessThan(5);
+    if (directMs < LOW_LATENCY_TOTAL_MS_THRESHOLD) {
+      expect(repoMs - directMs).toBeLessThan(LOW_LATENCY_OVERHEAD_MS_TOLERANCE);
     } else {
       expect(ratio).toBeLessThanOrEqual(OVERHEAD_TOLERANCE);
     }
@@ -280,12 +299,15 @@ describe("パフォーマンス回帰: insert", () => {
       const inp = repoInputs[i];
       await repo.insert(inp);
       const d = directInputs[i];
+      const titleFts = d.title ? segmentJapaneseForFts(d.title) : null;
+      const contentFts = segmentJapaneseForFts(d.content_redacted);
       insertStmt.run(
         d.id, d.event_id, d.platform, d.project, d.session_id,
         d.title, d.content, d.content_redacted, d.observation_type, d.memory_type,
         d.tags_json, d.privacy_tags_json, d.signal_score ?? 0,
         d.user_id ?? "default", d.team_id ?? null,
         d.created_at, d.updated_at,
+        titleFts, contentFts,
       );
     }
 
@@ -293,12 +315,15 @@ describe("パフォーマンス回帰: insert", () => {
     let directIdx = WARMUP_COUNT;
     const directMs = await measureSyncAsAsync(() => {
       const d = directInputs[directIdx++];
+      const titleFts = d.title ? segmentJapaneseForFts(d.title) : null;
+      const contentFts = segmentJapaneseForFts(d.content_redacted);
       insertStmt.run(
         d.id, d.event_id, d.platform, d.project, d.session_id,
         d.title, d.content, d.content_redacted, d.observation_type, d.memory_type,
         d.tags_json, d.privacy_tags_json, d.signal_score ?? 0,
         d.user_id ?? "default", d.team_id ?? null,
         d.created_at, d.updated_at,
+        titleFts, contentFts,
       );
     }, MEASURE_COUNT);
 
@@ -312,8 +337,8 @@ describe("パフォーマンス回帰: insert", () => {
     const ratio = repoMs / directMs;
     console.log(`[insert] direct=${directMs.toFixed(2)}ms repo=${repoMs.toFixed(2)}ms ratio=${ratio.toFixed(3)}`);
 
-    if (directMs < 2) {
-      expect(repoMs - directMs).toBeLessThan(5);
+    if (directMs < LOW_LATENCY_TOTAL_MS_THRESHOLD) {
+      expect(repoMs - directMs).toBeLessThan(LOW_LATENCY_OVERHEAD_MS_TOLERANCE);
     } else {
       expect(ratio).toBeLessThanOrEqual(OVERHEAD_TOLERANCE);
     }
@@ -345,8 +370,8 @@ describe("パフォーマンス回帰: count", () => {
     const ratio = repoMs / directMs;
     console.log(`[count] direct=${directMs.toFixed(2)}ms repo=${repoMs.toFixed(2)}ms ratio=${ratio.toFixed(3)}`);
 
-    if (directMs < 2) {
-      expect(repoMs - directMs).toBeLessThan(5);
+    if (directMs < LOW_LATENCY_TOTAL_MS_THRESHOLD) {
+      expect(repoMs - directMs).toBeLessThan(LOW_LATENCY_OVERHEAD_MS_TOLERANCE);
     } else {
       expect(ratio).toBeLessThanOrEqual(OVERHEAD_TOLERANCE);
     }

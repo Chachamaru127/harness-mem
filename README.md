@@ -10,7 +10,7 @@
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/dm/@chachamaru127/harness-mem" alt="npm downloads" /></a>
   <a href="https://github.com/Chachamaru127/harness-mem/actions/workflows/release.yml"><img src="https://img.shields.io/github/actions/workflow/status/Chachamaru127/harness-mem/release.yml?label=release" alt="release workflow" /></a>
-  <a href="LICENSE"><img src="https://img.shields.io/github/license/Chachamaru127/harness-mem" alt="license" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BUSL--1.1-0f766e" alt="license BUSL-1.1" /></a>
 </p>
 
 <p align="center">
@@ -44,47 +44,78 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 ## Measured Proof
 
-Primary release gate and Japanese README claims use different evidence on purpose.
+Primary release gate, current Japanese companion, and historical baseline are intentionally separated.
 
-### Primary release gate (`run-ci`)
+### Primary release gate (`run-ci`, current latest)
 
 Source:
 - [`memory-server/src/benchmark/results/ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json)
+- [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
+
+Current latest run:
+- generated_at: `2026-03-12T17:02:35.532Z`
+- git_sha: `5c009a9`
+- embedding: `multilingual-e5`
 
 | Metric | Value |
 |---|---:|
-| LoCoMo F1 | 0.4723 |
+| LoCoMo F1 | 0.5333 |
 | Bilingual recall@10 | 0.9000 |
 | Freshness | 1.0000 |
-| Temporal | 0.6889 |
-| Search p95 | 10.29ms |
+| Temporal | 0.6403 |
+| Search p95 | 16.99ms |
 | Token avg | 428.93 |
 
-Verdict: `PASS`
+Verdict: `FAIL`
 
-### Japanese claim gate (`ja-release-pack`)
+Why this matters:
+- The latest current run is below the relative temporal regression guard.
+- Historical PASS runs are kept as history only and are no longer quoted as the current release verdict.
+
+### Japanese companion gate (`96 QA`, current claim source)
 
 Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
-- [`docs/benchmarks/artifacts/s40-ja-release-latest/summary.md`](docs/benchmarks/artifacts/s40-ja-release-latest/summary.md)
-- [`docs/benchmarks/artifacts/s40-ja-release-latest/repro-report.json`](docs/benchmarks/artifacts/s40-ja-release-latest/repro-report.json)
+- [`docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json`](docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json)
+- [`docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json`](docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json)
 
 | Metric | Value |
 |---|---:|
-| Overall F1 mean | 0.7645 |
-| Cross-lingual F1 mean | 0.7563 |
-| Zero-F1 mean | 2 / 32 |
+| Overall F1 mean | 0.6580 |
+| Cross-lingual F1 mean | 0.6850 |
+| Zero-F1 count | 16 / 96 |
 | 3-run span | 0.0000 |
 | Current slice F1 | 0.8171 |
-| Exact slice F1 | 0.7879 |
+| Exact slice F1 | 0.5628 |
 | Why slice F1 | 0.9008 |
-| List slice F1 | 0.8846 |
-| Temporal slice F1 | 0.5276 |
+| List slice F1 | 0.7564 |
+| Temporal slice F1 | 0.6776 |
+
+Verdict: `PASS as companion gate`
+
+Residual risks that stay visible:
+- `current_vs_previous`, `relative_temporal`, `yes_no`, `entity`, and `location` remain watch slices.
+- This companion gate supports README-safe Japanese claims, but it does not replace `run-ci`.
+
+### Historical baseline (`32 QA`, historical only)
+
+Source:
+- [`docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json`](docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json)
+- [`docs/benchmarks/artifacts/s40-ja-baseline-latest/repro-report.json`](docs/benchmarks/artifacts/s40-ja-baseline-latest/repro-report.json)
+
+| Metric | Value |
+|---|---:|
+| Overall F1 mean | 0.8020 |
+| Cross-lingual F1 mean | 0.7563 |
+| Zero-F1 count | 1 / 32 |
+| 3-run span | 0.0000 |
+
+This baseline shows where the earlier README proof bar landed, but it is **not** the current Japanese claim source.
 
 What this supports:
 - Cross-lingual EN<->JA retrieval is benchmarked.
-- Japanese short-answer quality is measured on a dedicated release pack.
-- `why`, `list`, `current`, and `exact` are currently the strongest Japanese slices.
+- Japanese short-answer quality is measured on dedicated release packs.
+- `why`, `current`, `list`, and `temporal` are all measured with artifact-backed slice reports.
 
 What this does **not** claim:
 - Native-level Japanese quality
@@ -247,10 +278,12 @@ Update the marker to `cc:完了` and note any unresolved issues.
 
 ## License
 
-Business Source License 1.1 (BSL). See [`LICENSE`](LICENSE).
+Business Source License 1.1 (SPDX: `BUSL-1.1`). See [`LICENSE`](LICENSE).
 
 **Permitted**: internal use, personal use, development, testing, open-source projects, embedding as a component in your application.
 
 **Restricted**: offering harness-mem as a managed memory service to third parties.
 
 On **2029-03-08**, the license automatically converts to **Apache License 2.0**.
+
+**Metadata note**: The repository root is BUSL-1.1. Some distributable subpackages keep their own package-level SPDX fields (for example MIT in `sdk/`, `mcp-server/`, and `vscode-extension/`). If a GitHub repo header or API shows `Other` / `NOASSERTION`, treat [`LICENSE`](LICENSE) and each package's `package.json` as the authoritative source.

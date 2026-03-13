@@ -1,9 +1,9 @@
 # Run 1 Risk Notes
 
-- timestamp: 20260307T094418Z
-- overall_f1: 0.6379491818343032
-- cross_lingual_f1: 0.6694022143651159
-- zero_f1_count: 18
+- timestamp: 20260312T161446Z
+- overall_f1: 0.657996015708864
+- cross_lingual_f1: 0.6850120003242666
+- zero_f1_count: 16
 - missing_metadata: 0
 - residual_risks:
   - current vs previous の取り違え

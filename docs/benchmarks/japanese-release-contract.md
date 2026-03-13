@@ -1,6 +1,6 @@
 # Japanese Release Contract v2
 
-Last updated: 2026-03-07
+Last updated: 2026-03-13
 
 ## 1. Goal
 
@@ -32,12 +32,17 @@ release 可否の正本は引き続き `run-ci` です。
 
 - dataset: `tests/benchmarks/fixtures/japanese-release-pack-96.json`
 - expected artifacts:
+  - `summary.json`
   - `score-report.json`
   - `repro-report.json`
   - `failure-backlog.json/.md`
   - `risk-notes.md`
 - output root:
   - `docs/benchmarks/artifacts/s43-ja-release-v2-latest/`
+- historical baseline root:
+  - `docs/benchmarks/artifacts/s40-ja-baseline-latest/`
+- deprecated alias:
+  - `docs/benchmarks/artifacts/s40-ja-release-latest/` (do not use)
 
 この gate は `run-ci` の置き換えではなく、`run-ci` を維持した上で release 判断に効かせる companion です。
 
@@ -57,7 +62,8 @@ release 可否の正本は引き続き `run-ci` です。
 
 - file: `tests/benchmarks/fixtures/japanese-release-pack-32.json`
 - size: 16 samples / 32 QA
-- role: README-safe proof の基礎
+- role: historical baseline
+- output root: `docs/benchmarks/artifacts/s40-ja-baseline-latest/`
 
 ### Release pack v2
 
@@ -84,12 +90,13 @@ release 可否の正本は引き続き `run-ci` です。
 - `Cross-lingual EN<->JA retrieval is benchmarked.`
 - `Japanese short-answer quality is evaluated on a dedicated release pack.`
 - `Primary release gate remains run-ci; Japanese proof is supplementary.`
+- `Japanese current / exact / why / list / temporal slices are tracked in the current companion gate.`
 
-### Tier 2: safe after v2 freeze passes
+### Tier 2: safe with artifact links
 
-- `Japanese current / exact / why / list / temporal / yes-no slices are tracked in a dedicated release companion gate.`
 - `Japanese noisy / long-turn / current-vs-previous regressions are covered by a larger v2 release pack.`
 - `README / LP / X copy is constrained by artifact-backed evidence tiers.`
+- `Historical 32-QA baseline and current 96-QA companion are kept separate.`
 
 ### Tier 3: blocked until separate proof
 
@@ -107,7 +114,7 @@ release 可否の正本は引き続き `run-ci` です。
 
 1. `japanese-release-pack-96.json` が存在し、96 QA を満たす
 2. `shadow-ja-pack-24.json` が存在する
-3. freeze script が dataset / artifact_dir を可変で受け取れる
+3. freeze script が dataset / artifact_dir / label を可変で受け取り、`summary.json` を出力できる
 4. proof bar / claim audit / copy tier が同じ ceiling を共有する
 5. `Temporal is still the weakest slice` のような residual risk が copy に残る
 

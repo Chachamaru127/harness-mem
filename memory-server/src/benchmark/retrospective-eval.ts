@@ -267,7 +267,7 @@ export function sampleSearchHits(
   // クエリ別に集計（同一クエリの複数 hit を束ねる）
   type HitRow = { query_prefix: string; project: string; hit_ids: string; hit_count: number; sampled_at: string };
   const rows = db
-    .query<HitRow, []>(`
+    .query<HitRow, [number]>(`
       SELECT
         json_extract(details_json, '$.query') AS query_prefix,
         json_extract(details_json, '$.project') AS project,

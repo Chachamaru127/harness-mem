@@ -15,12 +15,32 @@ echo "[freeze] start 3-run freeze (timestamp=${TIMESTAMP})"
 
 for i in 1 2 3; do
   LOG_PATH="$RESULTS_DIR/freeze-run-${TIMESTAMP}-${i}.log"
+  MANIFEST_PATH="$RESULTS_DIR/freeze-run-${TIMESTAMP}-${i}.manifest.json"
   echo "[freeze] run ${i}/3 -> $LOG_PATH"
 
+  set +e
   (
     cd "$ROOT_DIR/memory-server"
     bun run src/benchmark/run-ci.ts
   ) 2>&1 | tee "$LOG_PATH"
+  PIPE_EXIT_CODES=("${PIPESTATUS[@]}")
+  RUN_CI_STATUS=${PIPE_EXIT_CODES[0]:-1}
+  TEE_STATUS=${PIPE_EXIT_CODES[1]:-1}
+  set -e
+
+  if [ "${TEE_STATUS}" -ne 0 ]; then
+    echo "[freeze] tee failed while capturing $LOG_PATH"
+    exit "${TEE_STATUS}"
+  fi
+
+  if [ ! -f "$RESULTS_DIR/ci-run-manifest-latest.json" ]; then
+    echo "[freeze] run-ci did not produce ci-run-manifest-latest.json (exit=${RUN_CI_STATUS})"
+    exit "${RUN_CI_STATUS}"
+  fi
+
+  if [ "${RUN_CI_STATUS}" -ne 0 ]; then
+    echo "[freeze] run-ci exited ${RUN_CI_STATUS}; freezing current manifest as a failing run snapshot"
+  fi
 
   if rg -n --pcre2 "$PANIC_PATTERN" "$LOG_PATH" | rg -v "panic_markers=" >/dev/null; then
     echo "[freeze] panic marker detected in $LOG_PATH"
@@ -32,15 +52,17 @@ for i in 1 2 3; do
     exit 1
   fi
 
-  locomo_f1="$(rg -o "F1=[0-9.]+$" "$LOG_PATH" | head -n1 | sed 's/F1=//')"
-  cat2_f1="$(rg -o "cat-2 gate PASSED: f1=[0-9.]+" "$LOG_PATH" | head -n1 | sed 's/.*f1=//')"
-  cat3_f1="$(rg -o "cat-3 gate PASSED: f1=[0-9.]+" "$LOG_PATH" | head -n1 | sed 's/.*f1=//')"
-  bilingual="$(rg -o "bilingual-50 recall@10: [0-9.]+" "$LOG_PATH" | head -n1 | awk '{print $3}')"
-  freshness="$(rg -o "Freshness@K: [0-9.]+" "$LOG_PATH" | head -n1 | awk '{print $2}')"
-  temporal="$(rg -o "temporal-100 Order Score: [0-9.]+" "$LOG_PATH" | head -n1 | awk '{print $4}')"
+  cp "$RESULTS_DIR/ci-run-manifest-latest.json" "$MANIFEST_PATH"
+
+  locomo_f1="$(jq -r '.results.locomo_f1' "$MANIFEST_PATH")"
+  cat2_f1="$(jq -r '.results.cat2_f1' "$MANIFEST_PATH")"
+  cat3_f1="$(jq -r '.results.cat3_f1' "$MANIFEST_PATH")"
+  bilingual="$(jq -r '.results.bilingual_recall' "$MANIFEST_PATH")"
+  freshness="$(jq -r '.results.freshness' "$MANIFEST_PATH")"
+  temporal="$(jq -r '.results.temporal' "$MANIFEST_PATH")"
 
   if [ -z "${locomo_f1}" ] || [ -z "${cat2_f1}" ] || [ -z "${cat3_f1}" ] || [ -z "${bilingual}" ] || [ -z "${freshness}" ] || [ -z "${temporal}" ]; then
-    echo "[freeze] failed to parse metrics from $LOG_PATH"
+    echo "[freeze] failed to parse metrics from $MANIFEST_PATH"
     exit 1
   fi
   echo -e "${i}\t${locomo_f1}\t${cat2_f1}\t${cat3_f1}\t${bilingual}\t${freshness}\t${temporal}" >> "$RUNS_TSV"
@@ -61,6 +83,13 @@ cat > "$SUMMARY_JSON" <<EOF
 {
   "generated_at": "${TIMESTAMP}",
   "runs_tsv": "$(basename "$RUNS_TSV")",
+  "manifests": [
+    "freeze-run-${TIMESTAMP}-1.manifest.json",
+    "freeze-run-${TIMESTAMP}-2.manifest.json",
+    "freeze-run-${TIMESTAMP}-3.manifest.json"
+  ],
+  "git_sha": "$(jq -r '.git_sha' "$RESULTS_DIR/ci-run-manifest-latest.json")",
+  "embedding_model": "$(jq -r '.embedding.model' "$RESULTS_DIR/ci-run-manifest-latest.json")",
   "metrics": {
     "locomo_f1": { "mean": ${locomo_mean}, "min": ${locomo_min}, "max": ${locomo_max}, "span": ${locomo_span} },
     "cat2_f1_mean": ${cat2_mean},

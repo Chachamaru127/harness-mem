@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-score-report-v1",
-  "generated_at": "2026-03-06T05:09:50.309Z",
+  "generated_at": "2026-03-12T16:14:54.203Z",
   "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run2/result.json",
   "dataset": {
     "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-32.json",
@@ -10,13 +10,13 @@
   "strict": {
     "all_categories": {
       "count": 32,
-      "em": 0.5625,
-      "f1": 0.7645176256921613
+      "em": 0.625,
+      "f1": 0.8020176256921612
     },
     "cat_1_to_4": {
       "count": 32,
-      "em": 0.5625,
-      "f1": 0.7645176256921613
+      "em": 0.625,
+      "f1": 0.8020176256921612
     },
     "cat_5": {
       "count": 0,
@@ -27,11 +27,11 @@
   "performance": {
     "search_latency_ms": {
       "count": 32,
-      "min": 2.37,
-      "max": 11.259999999999998,
-      "avg": 4.652085906250001,
-      "p50": 3.9800000000000004,
-      "p95": 9.45
+      "min": 2.71,
+      "max": 19.81,
+      "avg": 6.522444000000005,
+      "p50": 4.5,
+      "p95": 17.52
     },
     "cache_stats": {
       "available": true,
@@ -46,30 +46,30 @@
       "after": {
         "entries": 128,
         "capacity": 128,
-        "hits": 353,
-        "misses": 195,
-        "evictions": 57,
-        "inflight": 0
+        "hits": 352,
+        "misses": 191,
+        "evictions": 55,
+        "inflight": 1
       },
       "delta": {
         "entries": 126,
         "capacity": 0,
-        "hits": 353,
-        "misses": 193,
-        "evictions": 57,
-        "inflight": 0
+        "hits": 352,
+        "misses": 189,
+        "evictions": 55,
+        "inflight": 1
       }
     }
   },
   "cost": {
     "search_token_estimate": {
       "count": 32,
-      "input_total": 2329,
-      "output_total": 8890,
-      "total_total": 11219,
-      "input_avg": 72.78125,
-      "output_avg": 277.8125,
-      "total_avg": 350.59375
+      "input_total": 2380,
+      "output_total": 9058,
+      "total_total": 11438,
+      "input_avg": 74.375,
+      "output_avg": 283.0625,
+      "total_avg": 357.4375
     }
   }
 }

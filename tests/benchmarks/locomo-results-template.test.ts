@@ -15,5 +15,13 @@ describe("LOCOMO results template", () => {
     expect(source).toContain("| System |");
     expect(source).toContain("EM");
     expect(source).toContain("F1");
+    expect(source).toContain("benchmark.run1.score-report.full.json");
+    expect(source).toContain("benchmark.repro-report.json");
+    expect(source).toContain("benchmark.failure-backlog.judged.json");
+    expect(source).toContain("benchmark.run1.risk-notes.md");
+    expect(source).not.toContain("locomo10.run1.score-report.full.json");
+    expect(source).not.toContain("locomo10.repro-report.json");
+    expect(source).not.toContain("locomo10.failure-backlog.judged.json");
+    expect(source).not.toContain("locomo10.run1.risk-notes.md");
   });
 });

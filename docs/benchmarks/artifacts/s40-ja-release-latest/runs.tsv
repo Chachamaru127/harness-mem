@@ -1,4 +1,2 @@
-run	overall_f1	cross_lingual_f1	zero_f1
-1	0.6379491818343032	0.6694022143651159	18
-2	0.6379491818343032	0.6694022143651159	18
-3	0.6379491818343032	0.6694022143651159	18
+deprecated_at	path	message	historical	current
+2026-03-13	docs/benchmarks/artifacts/s40-ja-release-latest/runs.tsv	This deprecated alias is sealed. Use s40-ja-baseline-latest for historical proof and s43-ja-release-v2-latest for current companion evidence.	docs/benchmarks/artifacts/s40-ja-baseline-latest/runs.tsv	docs/benchmarks/artifacts/s43-ja-release-v2-latest/runs.tsv

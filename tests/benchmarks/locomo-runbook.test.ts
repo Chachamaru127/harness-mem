@@ -13,5 +13,13 @@ describe("LOCOMO runbook", () => {
     expect(source).toContain("再現条件");
     expect(source).toContain("APIキー");
     expect(source).toContain("コスト");
+    expect(source).toContain("benchmark.runX.score-report.full.json");
+    expect(source).toContain("benchmark.repro-report.json");
+    expect(source).toContain("benchmark.failure-backlog.judged.json");
+    expect(source).toContain("benchmark.runX.risk-notes.md");
+    expect(source).not.toContain("locomo10.runX.score-report.full.json");
+    expect(source).not.toContain("locomo10.repro-report.json");
+    expect(source).not.toContain("locomo10.failure-backlog.judged.json");
+    expect(source).not.toContain("locomo10.runX.risk-notes.md");
   });
 });

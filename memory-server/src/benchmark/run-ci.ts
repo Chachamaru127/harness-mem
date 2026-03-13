@@ -412,7 +412,7 @@ async function runDevWorkflowBenchmark(
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as DevWorkflowCase[];
     const project = "ci-dev-workflow";
-    const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
 
     await maybePrimeEmbedding(
@@ -846,7 +846,7 @@ export function buildKnowledgeUpdateFixtureLinks(
  * S43-010: Japanese companion gate チェック。
  *
  * 指定された companion gate JSON artifact を読み込んで verdict を評価する。
- * artifact が存在しない場合は SKIP（true を返す）。
+ * artifact が存在しない場合は FAIL を返す。
  * HARNESS_BENCH_JA_COMPANION=0 で明示的に無効化できる。
  *
  * @returns true = passed or skipped, false = failed
@@ -864,7 +864,7 @@ export function checkJapaneseCompanionGate(artifactPath: string): {
   }
 
   if (!existsSync(artifactPath)) {
-    return { passed: true, skipped: true, message: `artifact not found: ${artifactPath}` };
+    return { passed: false, skipped: false, message: `artifact not found: ${artifactPath}` };
   }
 
   try {
@@ -976,7 +976,7 @@ async function runBilingualBenchmark(
     const fixture = JSON.parse(raw) as { samples: BilingualSample[] };
     const samples = fixture.samples;
     const project = "ci-bilingual";
-    const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
     await ensureEmbeddingReady(core, "bilingual");
 
@@ -1061,7 +1061,7 @@ async function runKnowledgeUpdateBenchmark(
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as KnowledgeUpdateCase[];
     const project = "ci-knowledge-update";
-    const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
     await ensureEmbeddingReady(core, "knowledge-update-100");
     for (const kCase of cases) {
@@ -1160,7 +1160,7 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as TemporalCase[];
     const project = "ci-temporal";
-    const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
     await ensureEmbeddingReady(core, "temporal-100");
     const scores: number[] = [];
@@ -1556,10 +1556,9 @@ async function main(): Promise<void> {
 
   // S43-010: Japanese companion gate — release-critical companion
   // 最新の ja-release-v2 companion gate artifact を確認して release blocker として評価する
-  const JA_COMPANION_ARTIFACT = resolve(
-    import.meta.dir,
-    "../../../docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json"
-  );
+  const JA_COMPANION_ARTIFACT = process.env.HARNESS_BENCH_JA_COMPANION_ARTIFACT
+    ? resolve(process.env.HARNESS_BENCH_JA_COMPANION_ARTIFACT)
+    : resolve(import.meta.dir, "../../../docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json");
   console.log("\n[CI] === Japanese Companion Gate ===");
   const jaGate = checkJapaneseCompanionGate(JA_COMPANION_ARTIFACT);
   if (jaGate.skipped) {

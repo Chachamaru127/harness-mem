@@ -5,7 +5,7 @@
  * bun:sqlite の Database を直接使用し、同期 API を Promise でラップする。
  */
 
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import type {
   ITeamRepository,
   TeamRow,
@@ -71,7 +71,7 @@ export class SqliteTeamRepository implements ITeamRepository {
     if (!existing) return null;
 
     const setClauses: string[] = ["updated_at = ?"];
-    const params: unknown[] = [input.updated_at];
+    const params: SQLQueryBindings[] = [input.updated_at];
 
     if (input.name !== undefined) {
       setClauses.push("name = ?");

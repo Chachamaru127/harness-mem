@@ -13,7 +13,7 @@
  */
 
 import { createHash } from "node:crypto";
-import type { Database } from "bun:sqlite";
+import type { Database, SQLQueryBindings } from "bun:sqlite";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
@@ -570,7 +570,7 @@ export class ObservationStore {
       const tokens = buildSearchTokens(request.query);
       if (tokens.length === 0) return new Map<string, number>();
 
-      const params: unknown[] = [];
+      const params: SQLQueryBindings[] = [];
       let sql = `
         SELECT
           o.id AS id,
@@ -1734,7 +1734,7 @@ export class ObservationStore {
       const anchorTs = anchorObs.created_at;
 
       // Phase 2: anchorTs を基点に時間フィルタ SQL で検索
-      const params: unknown[] = [];
+      const params: SQLQueryBindings[] = [];
       let sql = `
         SELECT
           o.id, o.event_id, o.platform, o.project, o.session_id,
@@ -2065,7 +2065,7 @@ export class ObservationStore {
       const anchorItems = this.temporalAnchorSearch(normalizedRequest, primaryAnchor, limit);
       if (anchorItems && anchorItems.length > 0) {
         const anchorMeta: Record<string, unknown> = {
-          ranking: this.deps.searchRanking,
+          ranking: routeDecision.kind,
           question_kind: routeDecision.kind,
           question_kind_confidence: Number(routeDecision.confidence.toFixed(3)),
           vector_engine: this.deps.getVectorEngine(),
@@ -2087,7 +2087,6 @@ export class ObservationStore {
           latency_ms: performance.now() - startedAt,
           sla_latency_ms: 500,
           filters: {},
-          ranking: routeDecision.kind,
         };
         return makeResponse(startedAt, anchorItems, request as unknown as Record<string, unknown>, anchorMeta);
       }
@@ -2386,7 +2385,7 @@ export class ObservationStore {
               .run(now, ...hitIds);
             // audit_log バッチ INSERT
             const auditValues = hitIds.map(() => "(?,?,?,?,?,?)").join(",");
-            const auditParams: unknown[] = [];
+            const auditParams: SQLQueryBindings[] = [];
             for (const id of hitIds) {
               auditParams.push(
                 "search_hit",

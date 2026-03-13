@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-repro-report-v1",
-  "generated_at": "2026-03-06T05:09:51.996Z",
+  "generated_at": "2026-03-12T16:14:56.657Z",
   "runs": 3,
   "sources": [
     "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run1/score-report.json",
@@ -10,31 +10,31 @@
   "strict": {
     "all_categories_f1": {
       "count": 3,
-      "mean": 0.7645176256921613,
-      "stddev": 0,
-      "min": 0.7645176256921613,
-      "max": 0.7645176256921613
+      "mean": 0.8020176256921611,
+      "stddev": 1.1102230246251565e-16,
+      "min": 0.8020176256921612,
+      "max": 0.8020176256921612
     },
     "all_categories_em": {
       "count": 3,
-      "mean": 0.5625,
+      "mean": 0.625,
       "stddev": 0,
-      "min": 0.5625,
-      "max": 0.5625
+      "min": 0.625,
+      "max": 0.625
     },
     "cat_1_to_4_f1": {
       "count": 3,
-      "mean": 0.7645176256921613,
-      "stddev": 0,
-      "min": 0.7645176256921613,
-      "max": 0.7645176256921613
+      "mean": 0.8020176256921611,
+      "stddev": 1.1102230246251565e-16,
+      "min": 0.8020176256921612,
+      "max": 0.8020176256921612
     },
     "cat_1_to_4_em": {
       "count": 3,
-      "mean": 0.5625,
+      "mean": 0.625,
       "stddev": 0,
-      "min": 0.5625,
-      "max": 0.5625
+      "min": 0.625,
+      "max": 0.625
     },
     "cat_5_f1": {
       "count": 3,
@@ -54,19 +54,19 @@
   "performance": {
     "search_latency_p95_ms": {
       "count": 3,
-      "mean": 8.617430666666618,
-      "stddev": 1.0731135026707896,
-      "min": 7.102291999999853,
-      "max": 9.45
+      "mean": 13.589999999999998,
+      "stddev": 3.06895204698064,
+      "min": 10.030000000000001,
+      "max": 17.52
     }
   },
   "cost": {
     "search_token_total_avg": {
       "count": 3,
-      "mean": 350.59375,
+      "mean": 357.4375,
       "stddev": 0,
-      "min": 350.59375,
-      "max": 350.59375
+      "min": 357.4375,
+      "max": 357.4375
     }
   },
   "comparison_lock": {
@@ -82,15 +82,15 @@
   },
   "review_evidence_spec": {
     "required_artifacts": [
-      "locomo10.run1.score-report.full.json",
-      "locomo10.run2.score-report.full.json",
-      "locomo10.run3.score-report.full.json",
-      "locomo10.repro-report.json",
-      "locomo10.failure-backlog.judged.json",
-      "locomo10.failure-backlog.judged.md",
-      "locomo10.run1.risk-notes.md",
-      "locomo10.run2.risk-notes.md",
-      "locomo10.run3.risk-notes.md"
+      "benchmark.run1.score-report.full.json",
+      "benchmark.run2.score-report.full.json",
+      "benchmark.run3.score-report.full.json",
+      "benchmark.repro-report.json",
+      "benchmark.failure-backlog.judged.json",
+      "benchmark.failure-backlog.judged.md",
+      "benchmark.run1.risk-notes.md",
+      "benchmark.run2.risk-notes.md",
+      "benchmark.run3.risk-notes.md"
     ],
     "rejection_conditions": [
       "comparison lock mismatch (dataset / judge / category scope)",

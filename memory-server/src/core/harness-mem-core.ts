@@ -1,4 +1,4 @@
-import { Database } from "bun:sqlite";
+import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import {
@@ -155,7 +155,7 @@ export class EmbeddingReadinessError extends Error {
   readonly readiness: EmbeddingReadiness;
   readonly code: string;
 
-  constructor(message: string, readiness: EmbeddingReadiness, code = readiness.state) {
+  constructor(message: string, readiness: EmbeddingReadiness, code: string = readiness.state) {
     super(message);
     this.name = "EmbeddingReadinessError";
     this.readiness = readiness;
@@ -522,7 +522,7 @@ export class HarnessMemCore {
     this.analyticsSvc = new AnalyticsService({
       db: {
         query: (sql: string, params?: unknown[]) => ({
-          all: () => this.db.query(sql).all(...(params ?? [])),
+          all: () => this.db.query(sql).all(...((params ?? []) as SQLQueryBindings[])),
         }),
       },
     });

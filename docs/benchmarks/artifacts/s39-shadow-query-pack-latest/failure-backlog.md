@@ -23,11 +23,11 @@
 ## Reviewer Evidence Spec
 
 - Required Artifacts:
-  - locomo10.runX.score-report.full.json
-  - locomo10.repro-report.json
-  - locomo10.failure-backlog.judged.json
-  - locomo10.failure-backlog.judged.md
-  - locomo10.runX.risk-notes.md
+  - benchmark.runX.score-report.full.json
+  - benchmark.repro-report.json
+  - benchmark.failure-backlog.judged.json
+  - benchmark.failure-backlog.judged.md
+  - benchmark.runX.risk-notes.md
 - Rejection Conditions:
   - same dataset / judge / category constraints are not met
   - missing required artifacts
@@ -72,4 +72,3 @@
 | 18 | cat-3 | q1 | 0.778 | UNKNOWN | extract:factual-top-candidate -> normalize -> final:factual-short | multi_hop_reasoning, multi_hop_fact_extraction, counterfactual_format | What permanently reduced write latency? |
 | 19 | cat-2 | q1 | 0.667 | UNKNOWN | extract:factual-organization-slot -> normalize -> final:factual-normalized-short | temporal_normalization | Which shipped before the other, SSO or team workspaces? |
 | 20 | cat-1 | q1 | 0.333 | UNKNOWN | extract:factual-top-candidate -> normalize -> final:factual-core-phrase |  | What authentication flow do I use now? |
-

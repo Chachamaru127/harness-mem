@@ -1,0 +1,55 @@
+{
+  "generated_at": "2026-03-12T17:01:40.410Z",
+  "git_sha": "5c009a90effc5ea442bc325e59b6602a2d6787d4",
+  "strict_mode": true,
+  "embedding": {
+    "mode": "onnx",
+    "provider": "local",
+    "model": "multilingual-e5",
+    "vector_dimension": 384,
+    "onnx_gate": true,
+    "prime_enabled": true
+  },
+  "fixtures": {
+    "locomo120": {
+      "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/locomo-120.json",
+      "sha256": "ec3f7430f0749af044d65a437858cd614f0ebb2abd8cc8256cfa258abb71871b"
+    },
+    "bilingual50": {
+      "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/bilingual-50.json",
+      "sha256": "71cc3d07cf328cf83ba204e3e3db7000007f3c5818651763e3b3d6d2bb3b7b40"
+    },
+    "knowledge100": {
+      "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/knowledge-update-100.json",
+      "sha256": "4b717b5716abc096031984f9c1fb11b2e2bf3b73aebcbaced986784e286d54e0"
+    },
+    "temporal100": {
+      "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/temporal-100-v2.json",
+      "sha256": "38c19bc05291b88d8ed028e48b5de400322cf65bb8b110214406e1029feea504"
+    },
+    "devWorkflow20": {
+      "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/dev-workflow-20.json",
+      "sha256": "e9f78b0df7fe8b30b856f156f03bd8e62c51e26de200fd45630ef4147db2f628"
+    }
+  },
+  "results": {
+    "all_passed": false,
+    "locomo_f1": 0.5332671191810978,
+    "bilingual_recall": 0.9,
+    "freshness": 1,
+    "temporal": 0.6402777777777778,
+    "cat1_f1": 0.5800976800976801,
+    "cat2_f1": 0.5197900665642603,
+    "cat3_f1": 0.46788048552754435
+  },
+  "paired_improvement": {
+    "label": "cat-2/cat-3",
+    "matched": 76,
+    "mean_delta": 0.34466721897149305,
+    "gate_enabled": false
+  },
+  "performance": {
+    "locomo_search_p95_ms": 15.45,
+    "locomo_token_avg": 428.93333333333334
+  }
+}

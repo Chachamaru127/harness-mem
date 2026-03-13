@@ -18,6 +18,7 @@ export interface EventEnvelope {
   event_type: EventType | string;
   ts?: string;
   payload?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
   tags?: string[];
   privacy_tags?: string[];
   dedupe_hash?: string;
@@ -39,8 +40,8 @@ export interface SearchRequest {
   expand_links?: boolean;
   strict_project?: boolean;
   debug?: boolean;
-  /** Explicit question kind for retrieval routing: profile|timeline|graph|vector|hybrid */
-  question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid";
+  /** Explicit question kind for retrieval routing: profile|timeline|graph|vector|hybrid|freshness */
+  question_kind?: "profile" | "timeline" | "graph" | "vector" | "hybrid" | "freshness";
   /** updatesリンクで上書きされた旧観察を検索結果から除外する (IMP-002) */
   exclude_updated?: boolean;
   /** COMP-003: 指定時点以前の観察のみを返す Point-in-time クエリ（ISO 8601） */
@@ -218,7 +219,7 @@ export interface ApiMeta {
 
 export interface ApiResponse {
   ok: boolean;
-  source: "core" | "merged" | "sync";
+  source: "core" | "merged" | "sync" | "audio_ingest";
   items: unknown[];
   meta: ApiMeta;
   error?: string;

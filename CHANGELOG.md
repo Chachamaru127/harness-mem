@@ -7,6 +7,38 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-13
+
+### Theme: Benchmark SSOT remediation + ingest visibility hardening
+
+**Release evidence is now anchored to machine-readable benchmark artifacts, deprecated Japanese aliases are sealed end-to-end, and Claude ingest backfills user-visible turns more reliably. This patch improves trustworthiness and resume quality rather than adding a new product surface.**
+
+---
+
+#### 1. Benchmark / claim SSOT remediation
+
+**Before**: `README.md`, `README_ja.md`, `Plans.md`, and the Japanese proof bar could drift away from the current benchmark manifest. Historical and current Japanese benchmark aliases were also mixed, making it too easy to quote stale evidence as if it were current.
+
+**After**: public claim surfaces are synchronized to machine-readable artifacts. Main gate, current Japanese companion, historical baseline, and deprecated aliases are explicitly separated. The deprecated `s40-ja-release-latest` alias is sealed at both root and deep artifact paths so it cannot be reused as live evidence.
+
+#### 2. Freeze scripts and drift guards
+
+**Before**: `bench-freeze-locomo.sh` could abort before freezing a failing run because `run-ci.ts` exits non-zero on FAIL. The LoCoMo runbook/template still instructed old `locomo10.*` bundle names, and contract tests did not cover all public metadata copies.
+
+**After**: the freeze script preserves FAIL snapshots when a manifest exists, writes correct manifest paths into the freeze summary, and the Japanese companion freeze stays canonicalized to `run1/run2/run3`. Contract tests now guard README/proof-bar/Plans metadata, deprecated alias sealing, and generic `benchmark.*` evidence bundle names.
+
+#### 3. Historical artifact naming cleanup
+
+**Before**: low-risk historical surfaces such as the shadow query pack and archived plan notes still referenced legacy `locomo10.*` artifact bundle names, leaving room for naming drift to reappear during manual benchmark work.
+
+**After**: historical shadow artifacts and archived notes now use generic `benchmark.*` review evidence names, aligned with the current runbook/template contract.
+
+#### 4. Claude ingest visibility backfill
+
+**Before**: Claude Code ingest could miss user-visible turns needed for “latest interaction” style recalls, and the repo root lacked a tracked `AGENTS.md`, leaving bootstrap guidance incomplete for local cross-repo startup.
+
+**After**: visible turns are backfilled during Claude ingest, latest-interaction quality is hardened by regression tests, and the repo root includes `AGENTS.md` so repo-local guidance is available without relying on local-only overrides.
+
 ## [0.4.2] - 2026-03-11
 
 ### テーマ: セットアップ体験の改善 + マーケットプレイス配布対応

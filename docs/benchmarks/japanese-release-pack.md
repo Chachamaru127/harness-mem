@@ -1,6 +1,6 @@
 # Japanese Release Pack v2
 
-Last updated: 2026-03-07
+Last updated: 2026-03-13
 
 ## 1. Purpose
 
@@ -16,8 +16,9 @@ Last updated: 2026-03-07
 
 ### v1 (`32 QA`)
 
-- README-safe proof bar の基礎
+- historical baseline
 - current / exact / why / list / temporal の基本性能を示す
+- artifact root: `docs/benchmarks/artifacts/s40-ja-baseline-latest`
 
 ### v2 (`96 QA`)
 
@@ -30,6 +31,7 @@ Last updated: 2026-03-07
   - `entity`
   - `location`
   を追加で監視する
+- artifact root: `docs/benchmarks/artifacts/s43-ja-release-v2-latest`
 
 ### shadow-ja (`24 QA`)
 
@@ -84,6 +86,15 @@ scripts/bench-freeze-ja-release.sh \
   --label s43-ja-release-v2
 ```
 
+### Historical baseline freeze
+
+```bash
+scripts/bench-freeze-ja-release.sh \
+  --dataset tests/benchmarks/fixtures/japanese-release-pack-32.json \
+  --artifact-dir docs/benchmarks/artifacts/s40-ja-baseline-latest \
+  --label s40-ja-baseline
+```
+
 ### Shadow JA run
 
 ```bash
@@ -93,14 +104,21 @@ bun run tests/benchmarks/run-locomo-benchmark.ts \
   --output .tmp/shadow-ja-pack.result.json
 ```
 
-## 5. 4成果物
+## 5. 4成果物 + summary.json
 
 Each freeze must produce:
 
-1. `score-report.json`
-2. `repro-report.json`
-3. `failure-backlog.json/.md`
-4. `risk-notes.md`
+1. `summary.json`
+2. `score-report.json`
+3. `repro-report.json`
+4. `failure-backlog.json/.md`
+5. `risk-notes.md`
+
+Canonical current / historical aliases:
+
+- current companion: `docs/benchmarks/artifacts/s43-ja-release-v2-latest/`
+- historical baseline: `docs/benchmarks/artifacts/s40-ja-baseline-latest/`
+- deprecated: `docs/benchmarks/artifacts/s40-ja-release-latest/`
 
 ## 6. Reading Rules
 

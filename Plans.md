@@ -1,9 +1,9 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-09（§47 memSearch 直近対話アンカー改善を追加）
+最終更新: 2026-03-13（§49 benchmark / claim SSOT remediation 完了）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp） | §36 15タスク完了（CI PASS, F1+1.43pp, cat-3+9.5pp） | §37 10タスク完了（run-ci PASS, bilingual=0.90） | §38 12タスク完了（3-run freeze PASS, F1=0.3147） | §39 11タスク完了（run-ci final GO, F1=0.4602） | §40 11タスク完了（ja-release-pack PASS, F1=0.7645） | §41 3タスク完了（daemon auto-embedding rollout） | §42 2タスク完了（live retrieval precision polish） | §43 計画策定
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32 17タスク完了 | §33 15タスク完了 | §34 20タスク完了 | §35 18完了+2blocked（CI PASS, F1+7.4pp） | §36 15タスク完了（CI PASS, F1+1.43pp, cat-3+9.5pp） | §37 10タスク完了（run-ci PASS, bilingual=0.90） | §38 12タスク完了（3-run freeze PASS, F1=0.3147） | §39 11タスク完了（run-ci final GO, F1=0.4602） | §40 11タスク完了（historical baseline refreshed, F1=0.8020） | §41 3タスク完了（daemon auto-embedding rollout） | §42 2タスク完了（live retrieval precision polish） | §43 計画策定 | §45 6タスク完了（Phase 2 No-Go / Phase 1 freeze） | §46 3タスク完了（BUSL-1.1 + README更新） | §47 9タスク完了（memSearch直近対話アンカー改善） | §48 2タスク完了（repo bootstrap 整合化）
 
 ---
 
@@ -15,24 +15,25 @@
 
 ## 現在のステータス
 
-**§39 Practical Finish — 完了 / §40 Japanese Release Readiness — 完了**（2026-03-06）
+**§47 memSearch 直近対話アンカー改善 — 完了 / §48 repo bootstrap 整合化 — 完了 / §49 benchmark claim SSOT remediation — 完了**（2026-03-13）
 
 | 項目 | 現在地 | 根拠 |
 |------|--------|------|
-| primary gate | GO 維持 | `run-ci` PASS、`locomo F1=0.4723`、`bilingual=0.9000`、`freshness=1.0000`、`temporal=0.6889` |
-| 日本語 README claim gate | GO 達成 | `ja-release-pack` 3-run PASS、`overall F1 mean=0.7645`、`cross_lingual=0.7563`、`zero-F1=2/32`、`span=0.0000` |
-| README で安全に訴求できる価値 | 日本語 short-answer + EN<->JA retrieval は実測済み | proof bar / claim audit / `README.md` / `README_ja.md` まで更新済み |
-| 残課題 | temporal は日本語 slice で最弱。過剰主張は禁止 | `temporal slice F1=0.5276`、failure backlog / risk notes で明示 |
-| 次フェーズの焦点 | §43 Japanese Max Confidence | temporal / current-value / zero-F1 / 長すぎる回答 / competitive audit を最大火力で詰める |
+| primary gate artifact | 再同期済み | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` は `generated_at=2026-03-12T17:02:35.532Z` / `git_sha=5c009a9` / `model=multilingual-e5` / `all_passed=false`。current truth は最新 rerun に揃った |
+| 日本語 companion artifact | 再同期済み | current=`docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json`（`96 QA`, `overall_f1_mean=0.6580`, verdict `pass`）、historical=`docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json`（`32 QA`, `overall_f1_mean=0.8020`）、deprecated=`s40-ja-release-latest` |
+| README / proof bar / Plans | 再同期済み | `README.md` / `README_ja.md` / `docs/benchmarks/japanese-release-proof-bar.md` / 本節を current main gate + current companion + historical baseline の3層に揃え、FAIL を PASS と書かない状態へ修正した |
+| drift guard | 追加済み | `tests/benchmark-claim-ssot.test.ts` で README / proof bar / Plans / license badge のズレを CI で検知する |
+| 維持できている価値 | 強い | local-first multi-tool runtime、hybrid retrieval、Japanese / EN<->JA benchmark investment、recent interaction UX 改善は有効 |
+| 次フェーズの焦点 | temporal regression recovery | current main gate の Layer 2 FAIL 是正、watch slice (`current_vs_previous`, `relative_temporal`, `yes_no`, `entity`, `location`) 改善、competitive snapshot 定期更新 |
 
-成果物:
-- `memory-server/src/benchmark/results/ci-run-manifest-latest.json`（§39 primary gate の正本）
-- `docs/benchmarks/artifacts/s39-final-go-2026-03-06/score-report.md`（§39 最終スコア）
-- `docs/benchmarks/japanese-release-proof-bar.md`（§40 README claim contract の正本）
-- `docs/benchmarks/japanese-claim-audit.md`（§40 claim audit）
-- `docs/benchmarks/artifacts/s40-ja-release-latest/summary.md`（§40 日本語 release pack の 3-run 要約）
-- `docs/benchmarks/artifacts/s39-shadow-query-pack-latest/score-report.json`（補助評価）
-- `tests/benchmarks/fixtures/bilingual-50.json`（現行 bilingual fixture）
+監査対象:
+- `memory-server/src/benchmark/results/ci-run-manifest-latest.json`（main benchmark artifact。current main gate の正本）
+- `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json`（current Japanese companion の正本）
+- `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json`（historical baseline の正本）
+- `docs/benchmarks/japanese-release-proof-bar.md`（public claim contract）
+- `README.md` / `README_ja.md`（公開 copy 面）
+- `package.json` / `LICENSE`（license / metadata 整合面）
+- `docs/benchmarks/benchmark-claim-ssot-matrix-2026-03-13.md`（§49 truth matrix）
 
 ---
 
@@ -642,7 +643,7 @@ Phase C: README Proof + Release Decision
     - `Measured / Supplementary / Not guaranteed` の3区分で README copy contract を見える化する
   - 成果物:
     - `docs/benchmarks/japanese-release-proof-bar.md`
-    - `docs/benchmarks/artifacts/s40-ja-release-latest/summary.md`
+    - `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.md`
 
 - [x] `cc:完了` **S40-009**: `README_ja.md` 改稿
   - 対象: `README_ja.md`
@@ -668,12 +669,12 @@ Phase C: README Proof + Release Decision
     - mini human eval はあれば添付するが、主ゲートの代替にはしない
     - 通らなければ、広い改善を続けず**訴求範囲を狭めて止める**
   - 最終実測:
-    - `run-ci`: `locomo F1=0.4723`, `bilingual=0.9000`, `freshness=1.0000`, `temporal=0.6889`, `search p95=10.29ms`, `token avg=428.93`
-    - `ja-release-pack`: `overall F1 mean=0.7645`, `cross_lingual F1 mean=0.7563`, `zero_F1 mean=2.00 / 32`, `3-run span=0.0000`
+    - `run-ci`: historical §40 reference. current truth is now managed under §49 and `ci-run-manifest-latest.json`
+    - `ja-release-pack baseline`: `overall F1 mean=0.8020`, `cross_lingual F1 mean=0.7563`, `zero_F1 mean=1.00 / 32`, `3-run span=0.0000`
   - 成果物:
-    - `docs/benchmarks/artifacts/s40-ja-release-latest/repro-report.json`
-    - `docs/benchmarks/artifacts/s40-ja-release-latest/run1/failure-backlog.md`
-    - `docs/benchmarks/artifacts/s40-ja-release-latest/run1/risk-notes.md`
+    - `docs/benchmarks/artifacts/s40-ja-baseline-latest/repro-report.json`
+    - `docs/benchmarks/artifacts/s40-ja-baseline-latest/run1/failure-backlog.md`
+    - `docs/benchmarks/artifacts/s40-ja-baseline-latest/run1/risk-notes.md`
     - `docs/benchmarks/japanese-claim-audit.md`
   - 判定:
     - `run-ci` 主ゲートは維持
@@ -1184,3 +1185,114 @@ Phase B: 品質検証 + 閾値引き上げ
 - [x] `cc:完了` **S48-002**: 未コミットの S47 差分を検証して完了状態まで閉じる
   - `S47-008/009` の実装・テスト・Plans の整合を確認したうえでコミットする
   - wrapper prompt 除外と manual Claude ingest replay の回帰テストを残す
+
+---
+
+## §49 Benchmark / Claim SSOT Remediation
+
+進行状態: `cc:完了`
+
+### 背景
+
+- 2026-03-12 の自己採点で、benchmark / claim / license の公開面に **SSOT drift** があることを確認した
+- `ci-run-manifest-latest.json` は現 HEAD より古い commit を指し、README / proof bar / Plans 先頭の説明と整合していない
+- `s40-ja-release-latest` と `s43-ja-release-v2-latest` の役割が混線し、historical snapshot と current claim artifact の境界が崩れている
+- product 自体の価値を落としているのは実装不足よりも「証拠の再現性・説明責任」のズレなので、まず公開 claim 面を再同期する
+
+### Feature Priority Matrix
+
+| 区分 | 項目 | 完了条件（DoD） |
+|------|------|-----------------|
+| Required | main benchmark の current truth 再凍結 | `generated_at` / `git_sha` が現 HEAD を指す manifest と score table が揃う |
+| Required | Japanese claim artifact の historical / current 分離 | `s40` は歴史、`latest` は current として summary / repro / run family が一貫する |
+| Required | README / proof bar / Plans の copy 再同期 | 数値 claim が machine-readable artifact に 1:1 対応し、FAIL を PASS と書かない |
+| Required | license / metadata 整合 | `LICENSE` / `package.json` / README / release 面で BUSL-1.1 の説明が矛盾しない |
+| Recommended | drift guard CI | README / proof bar / Plans 先頭の数値ズレを CI で検知できる |
+| Recommended | dated self-score / competitive audit 更新 | 古い楽観スコアを current evidence で上書きし、`best/unique` を再封印する |
+
+### 依存グラフ
+
+```
+Phase A: Truth Freeze（最優先）
+├── S49-001: drift inventory + truth matrix
+├── S49-002: main benchmark rerun + manifest freeze at HEAD
+└── S49-003: Japanese companion rerun + historical/current alias cleanup
+                     │
+Phase B: Public Surface Repair
+├── S49-004: proof bar / claim audit rewrite from artifacts
+├── S49-005: README.md / README_ja.md / Plans status sync
+└── S49-006: license / metadata / release surface reconciliation
+                     │
+Phase C: Recurrence Guard
+├── S49-007: doc drift guard (test or generation script)
+└── S49-008: dated self-score + competitive snapshot refresh
+```
+
+### TDD / 運用方針
+
+- benchmark 値は hand-edit しない。`machine-readable artifact -> derived markdown` の片方向に固定する
+- `latest` alias を historical snapshot の上に被せない。snapshot 名と current alias を分離する
+- FAIL を PASS に見せる表現は禁止し、`pending rerun` / `historical baseline` / `current no-go` を明示する
+- market comparison は stars だけでなく `repo existence / docs claim / license / update date` まで揃えてから書く
+
+### タスク一覧（`/work` 実行用）
+
+#### Phase A: Truth Freeze
+
+- [x] `cc:完了` **S49-001 [ops]**: drift inventory + truth matrix を固定
+  - 対象: `Plans.md`, `README.md`, `README_ja.md`, `docs/benchmarks/japanese-release-proof-bar.md`, `docs/benchmarks/artifacts/`, `package.json`, `LICENSE`
+  - DoD: 各ファイルを `current truth / historical snapshot / public copy / derived output` に分類した dated table がある
+
+- [x] `cc:完了` **S49-002 [ops:tdd]**: main benchmark を現 HEAD で再実行し manifest を再凍結
+  - 対象: `memory-server/src/benchmark/run-ci.ts`, `scripts/bench-freeze-locomo.sh`, `memory-server/src/benchmark/results/`
+  - DoD: `generated_at` / `git_sha` が現 HEAD と一致し、PASS/FAIL と score table が同一 run family を参照する
+
+- [x] `cc:完了` **S49-003 [ops:tdd]**: Japanese companion artifact を再凍結し historical/current alias を分離
+  - 対象: `scripts/bench-freeze-ja-release.sh`, `docs/benchmarks/artifacts/`, `tests/benchmarks/fixtures/japanese-release-pack-*.json`
+  - DoD: `summary.md` / `repro-report.json` / `run*/` が同じ dataset と同じ run family を指し、`s40` は歴史、`latest` は current で混線しない
+
+#### Phase B: Public Surface Repair
+
+- [x] `cc:完了` **S49-004 [docs]**: proof bar / claim audit を current artifact 基準に再作成
+  - 対象: `docs/benchmarks/japanese-release-proof-bar.md`, `docs/benchmarks/japanese-claim-audit.md`, 関連 benchmark docs
+  - DoD: `primary gate` / `companion gate` / `historical baseline` / `threshold regime` が分離され、過去値の混在がない
+
+- [x] `cc:完了` **S49-005 [docs]**: `README.md` / `README_ja.md` / Plans 先頭ステータスを artifact 同期
+  - 対象: `README.md`, `README_ja.md`, `Plans.md`
+  - DoD: 全数値 claim が machine-readable artifact に 1:1 対応し、gate が FAIL の場合は wording も FAIL / pending rerun に揃う
+
+- [x] `cc:完了` **S49-006 [ops]**: BUSL-1.1 の license / metadata / release surface を整合
+  - 対象: `LICENSE`, `package.json`, `README.md`, `README_ja.md`, release notes / badges
+  - DoD: 公開面の説明が矛盾せず、GitHub API が `NOASSERTION` のままでも利用者が混乱しない補足がある
+
+#### Phase C: Recurrence Guard
+
+- [x] `cc:完了` **S49-007 [ops:tdd]**: doc drift guard を追加
+  - 対象: tests or generation scripts
+  - DoD: README / proof bar / Plans 先頭の数値が source JSON とずれたら CI fail する、または自動生成で手編集を禁止できる
+
+- [x] `cc:完了` **S49-008 [docs]**: dated self-score + competitive snapshot を current evidence で更新
+  - 対象: `docs/benchmarks/competitive-analysis-*.md`, `docs/benchmarks/competitive-audit-*.md` or new dated snapshot
+  - DoD: 2026-03-13 時点の evidence に基づく自己採点が残り、古い楽観スコアを current score として引用しない
+
+- [x] `cc:完了` **S49-009 [docs:tdd]**: residual drift と historical legacy naming を全解消
+  - 対象: `README.md`, `README_ja.md`, `Plans.md`, `docs/benchmarks/japanese-release-proof-bar.md`, `docs/benchmarks/benchmark-claim-ssot-matrix-2026-03-13.md`, `docs/benchmarks/artifacts/s39-shadow-query-pack-latest/`, `docs/archive/Plans-2026-02-26.md`, `tests/benchmark-claim-ssot.test.ts`
+  - DoD: current main gate metadata / latency が manifest と一致し、historical shadow artifact と archive に `locomo10.*` bundle naming が残らず、契約テストで再発を検知できる
+
+## §50 Project Classification Normalization Investigation
+
+- 状態: 2026-03-13 調査完了（実装未着手）
+- 結論:
+  - UI 表示の repo 単位集約は可能
+  - ただし DB の `project` 正本を一律 repo 名へ置換すると `strict project` 境界と scope 分離を壊すため、そのまま一括置換は危険
+  - 既存 DB には absolute path / worktree path / short name / `repo::scope` が混在し、短名だけの legacy row は repo/root folder を後から一意復元できないものがある
+
+- [x] `cc:完了` **S50-001 [investigation]**: project 分類を repo 基準へ統一できるか現状調査
+  - 実測:
+    - `/v1/projects/stats` は absolute path と `kage-bunshin::line` のような scope key を別 project として返す
+    - `/api/context` は `harness-mem` のような basename を返し、UI 側の selectedProject 表現と不一致
+    - `kage-bunshin` 系は repo path 1件 + scope key 17件に分裂している
+    - `APCLO_DB` / `test-project` など一部 legacy row は payload に cwd が残っておらず、repo/root folder を後から確定できない
+  - 判断:
+    - 第一段は UI/API で `canonical_project` を導入し、raw project を members として束ねる方針が安全
+    - raw `project` は検索・resume・strict_project のため残し、選択時だけ grouped filter を raw members へ fan-out するのが本命

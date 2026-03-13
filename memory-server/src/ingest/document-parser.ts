@@ -426,6 +426,7 @@ export async function ingestDocument(options: IngestDocumentOptions): Promise<In
     const contentHash = createHash("sha256").update(chunk.content).digest("hex");
     try {
       await core.recordEvent({
+        platform: "document",
         event_type: "observation",
         project,
         session_id,
@@ -474,11 +475,12 @@ export async function extractTextFromImage(imagePath: string): Promise<OcrResult
     return { ok: false, text: "", error: "imagePath is required" };
   }
 
-  let worker: { recognize: (path: string) => Promise<{ data: { text: string } }>; terminate: () => Promise<void> } | null = null;
+  let worker: { recognize: (path: string) => Promise<{ data: { text: string } }>; terminate: () => Promise<unknown> } | null = null;
   try {
     const { createWorker } = await import("tesseract.js");
-    worker = await createWorker();
-    const { data } = await worker.recognize(imagePath);
+    const activeWorker = await createWorker();
+    worker = activeWorker;
+    const { data } = await activeWorker.recognize(imagePath);
     const text = (data.text || "").trim();
     return { ok: true, text };
   } catch (err) {
@@ -528,6 +530,7 @@ export async function ingestImageFile(options: IngestImageOptions): Promise<Inge
 
   try {
     await core.recordEvent({
+      platform: "document",
       event_type: "observation",
       project,
       session_id,

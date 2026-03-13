@@ -1,22 +1,21 @@
 {
   "schema_version": "locomo-failure-backlog-v1",
-  "generated_at": "2026-03-06T05:09:50.342Z",
+  "generated_at": "2026-03-12T16:14:54.238Z",
   "source_result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run2/result.json",
   "limit": 50,
   "summary": {
-    "total_failures_considered": 14,
-    "selected_failures": 14,
+    "total_failures_considered": 12,
+    "selected_failures": 12,
     "by_category": {
-      "cat-2": 5,
+      "cat-2": 3,
       "cat-3": 3,
       "cat-1": 5,
       "cat-4": 1
     },
     "by_tag": {
-      "temporal_normalization": 5,
-      "retrieval_alignment": 2,
-      "retrieval_depth": 5,
-      "evidence_coverage": 1,
+      "temporal_normalization": 3,
+      "retrieval_alignment": 1,
+      "retrieval_depth": 3,
       "multi_hop_reasoning": 3,
       "multi_hop_fact_extraction": 3,
       "counterfactual_format": 3,
@@ -26,11 +25,11 @@
   },
   "review_evidence_spec": {
     "required_artifacts": [
-      "locomo10.runX.score-report.full.json",
-      "locomo10.repro-report.json",
-      "locomo10.failure-backlog.judged.json",
-      "locomo10.failure-backlog.judged.md",
-      "locomo10.runX.risk-notes.md"
+      "benchmark.runX.score-report.full.json",
+      "benchmark.repro-report.json",
+      "benchmark.failure-backlog.judged.json",
+      "benchmark.failure-backlog.judged.md",
+      "benchmark.runX.risk-notes.md"
     ],
     "rejection_conditions": [
       "same dataset / judge / category constraints are not met",
@@ -63,35 +62,35 @@
     {
       "tag": "temporal_normalization",
       "owner": "owner:TBD",
-      "due": "2026-03-13",
+      "due": "2026-03-19",
       "status": "todo",
       "re_evaluation_result": "pending"
     },
     {
       "tag": "retrieval_depth",
       "owner": "owner:TBD",
-      "due": "2026-03-16",
+      "due": "2026-03-22",
       "status": "todo",
       "re_evaluation_result": "pending"
     },
     {
       "tag": "multi_hop_reasoning",
       "owner": "owner:TBD",
-      "due": "2026-03-19",
+      "due": "2026-03-25",
       "status": "todo",
       "re_evaluation_result": "pending"
     },
     {
       "tag": "multi_hop_fact_extraction",
       "owner": "owner:TBD",
-      "due": "2026-03-22",
+      "due": "2026-03-28",
       "status": "todo",
       "re_evaluation_result": "pending"
     },
     {
       "tag": "counterfactual_format",
       "owner": "owner:TBD",
-      "due": "2026-03-25",
+      "due": "2026-03-31",
       "status": "todo",
       "re_evaluation_result": "pending"
     }
@@ -119,27 +118,6 @@
     },
     {
       "rank": 2,
-      "sample_id": "ja-rel-015",
-      "question_id": "temporal-015",
-      "category": "cat-2",
-      "question_kind": "factual",
-      "answer_strategy": "extract:factual-object-slot -> normalize -> final:factual-normalized-short",
-      "em": 0,
-      "f1": 0,
-      "judge_label": "UNKNOWN",
-      "priority_score": 4,
-      "improvement_tags": [
-        "temporal_normalization",
-        "retrieval_alignment",
-        "retrieval_depth",
-        "evidence_coverage"
-      ],
-      "question": "最初はどのツールだけを対象にしていましたか？",
-      "answer": "codex",
-      "prediction": "codex, cursor, claude"
-    },
-    {
-      "rank": 3,
       "sample_id": "ja-rel-006",
       "question_id": "why-006",
       "category": "cat-3",
@@ -159,7 +137,7 @@
       "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
     },
     {
-      "rank": 4,
+      "rank": 3,
       "sample_id": "ja-rel-001",
       "question_id": "why-001",
       "category": "cat-3",
@@ -180,7 +158,7 @@
       "prediction": "CircleCI の parallel build costs が上がり続けたから"
     },
     {
-      "rank": 5,
+      "rank": 4,
       "sample_id": "ja-rel-005",
       "question_id": "why-005",
       "category": "cat-3",
@@ -201,7 +179,7 @@
       "prediction": "SSO の SCIM provider contract がまだ交渉中だったから"
     },
     {
-      "rank": 6,
+      "rank": 5,
       "sample_id": "ja-rel-008",
       "question_id": "temporal-008",
       "category": "cat-2",
@@ -216,10 +194,10 @@
       ],
       "question": "launch playbook の次に localize したものは何ですか？",
       "answer": "invoice emails",
-      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 docs は以前 English only でした。 そのあと invoice emails も localized しました。"
+      "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。 そのあと invoice emails も localized しました。 docs は以前 English only でした。"
     },
     {
-      "rank": 7,
+      "rank": 6,
       "sample_id": "ja-rel-006",
       "question_id": "temporal-006",
       "category": "cat-2",
@@ -235,29 +213,10 @@
       ],
       "question": "alert の直後に最初にやったことは何ですか？",
       "answer": "read traffic を新しい replica に逃がした",
-      "prediction": "alert の直後に read traffic を新しい replica に逃がしました。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 ingestion と reporting の両方に影響しましたね。 その後は import window も安定しました。 月曜の import window で database connections が飽和しました。"
+      "prediction": "alert の直後に read traffic を新しい replica に逃がしました。 その後は import window も安定しました。 最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。 ingestion と reporting の両方に影響しましたね。 月曜の import window で database connections が飽和しました。"
     },
     {
-      "rank": 8,
-      "sample_id": "ja-rel-005",
-      "question_id": "temporal-005",
-      "category": "cat-2",
-      "question_kind": "temporal",
-      "answer_strategy": "extract:temporal-order-slot -> normalize -> final:temporal-short",
-      "em": 0,
-      "f1": 0.8,
-      "judge_label": "UNKNOWN",
-      "priority_score": 2,
-      "improvement_tags": [
-        "temporal_normalization",
-        "retrieval_depth"
-      ],
-      "question": "SSO と team workspaces では、どちらが先に出ましたか？",
-      "answer": "team workspaces",
-      "prediction": "実際には team workspaces"
-    },
-    {
-      "rank": 9,
+      "rank": 7,
       "sample_id": "ja-rel-014",
       "question_id": "current-014",
       "category": "cat-1",
@@ -273,7 +232,7 @@
       "prediction": "primary incident channel は Slack"
     },
     {
-      "rank": 10,
+      "rank": 8,
       "sample_id": "ja-rel-009",
       "question_id": "exact-009",
       "category": "cat-1",
@@ -289,7 +248,7 @@
       "prediction": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
     },
     {
-      "rank": 11,
+      "rank": 9,
       "sample_id": "ja-rel-013",
       "question_id": "current-013",
       "category": "cat-1",
@@ -305,7 +264,7 @@
       "prediction": "default region は ap-northeast-1"
     },
     {
-      "rank": 12,
+      "rank": 10,
       "sample_id": "ja-rel-010",
       "question_id": "current-010",
       "category": "cat-1",
@@ -321,7 +280,7 @@
       "prediction": "headquarters は Singapore"
     },
     {
-      "rank": 13,
+      "rank": 11,
       "sample_id": "ja-rel-004",
       "question_id": "current-004",
       "category": "cat-1",
@@ -337,7 +296,7 @@
       "prediction": "Enterprise retention は 90 days"
     },
     {
-      "rank": 14,
+      "rank": 12,
       "sample_id": "ja-rel-012",
       "question_id": "list-012",
       "category": "cat-4",

@@ -5,7 +5,7 @@
  * bun:sqlite の Database を直接使用し、同期 API を Promise でラップする。
  */
 
-import type { Database } from "bun:sqlite";
+import type { Database, Statement } from "bun:sqlite";
 import type {
   IObservationRepository,
   ObservationRow,
@@ -14,7 +14,34 @@ import type {
 } from "./IObservationRepository.js";
 import { segmentJapaneseForFts } from "../../core/core-utils.js";
 
+const DEFAULT_FIND_MANY_SQL = `
+  SELECT
+    id, event_id, platform, project, COALESCE(workspace_uid, '') AS workspace_uid, session_id,
+    title, content, content_redacted, observation_type, memory_type,
+    tags_json, privacy_tags_json,
+    COALESCE(signal_score, 0) AS signal_score,
+    COALESCE(access_count, 0) AS access_count,
+    last_accessed_at,
+    COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
+    COALESCE(user_id, 'default') AS user_id, team_id,
+    created_at, updated_at
+  FROM mem_observations
+  WHERE project = ?
+    AND (privacy_tags_json IS NULL OR privacy_tags_json = '[]' OR privacy_tags_json NOT LIKE '%private%')
+  ORDER BY created_at DESC, id DESC
+  LIMIT ?
+`;
+
+const DEFAULT_COUNT_SQL = `
+  SELECT COUNT(*) AS cnt FROM mem_observations
+  WHERE project = ?
+    AND (privacy_tags_json IS NULL OR privacy_tags_json = '[]' OR privacy_tags_json NOT LIKE '%private%')
+`;
+
 export class SqliteObservationRepository implements IObservationRepository {
+  private defaultFindManyStmt: Statement<ObservationRow, [string, number]> | null = null;
+  private defaultCountStmt: Statement<{ cnt: number }, [string]> | null = null;
+
   constructor(private readonly db: Database) {}
 
   async insert(input: InsertObservationInput): Promise<string> {
@@ -109,6 +136,10 @@ export class SqliteObservationRepository implements IObservationRepository {
   }
 
   async findMany(filter: FindObservationsFilter): Promise<ObservationRow[]> {
+    if (this.isDefaultFindManyFilter(filter)) {
+      return this.getDefaultFindManyStmt().all(filter.project, filter.limit);
+    }
+
     const params: unknown[] = [];
     let sql = `
       SELECT
@@ -191,6 +222,11 @@ export class SqliteObservationRepository implements IObservationRepository {
   }
 
   async count(filter?: Pick<FindObservationsFilter, "project" | "include_private">): Promise<number> {
+    if (filter?.project && filter.include_private !== true) {
+      const row = this.getDefaultCountStmt().get(filter.project);
+      return Number(row?.cnt ?? 0);
+    }
+
     const params: unknown[] = [];
     let sql = "SELECT COUNT(*) AS cnt FROM mem_observations WHERE 1 = 1";
 
@@ -207,5 +243,33 @@ export class SqliteObservationRepository implements IObservationRepository {
       .query<{ cnt: number }, never[]>(sql)
       .get(...(params as never[]));
     return Number(row?.cnt ?? 0);
+  }
+
+  private isDefaultFindManyFilter(filter: FindObservationsFilter): filter is FindObservationsFilter & { project: string; limit: number } {
+    return (
+      typeof filter.project === "string" &&
+      typeof filter.limit === "number" &&
+      filter.limit > 0 &&
+      filter.include_private !== true &&
+      !filter.session_id &&
+      !filter.since &&
+      !filter.until &&
+      filter.memory_type === undefined &&
+      !filter.cursor
+    );
+  }
+
+  private getDefaultFindManyStmt(): Statement<ObservationRow, [string, number]> {
+    if (!this.defaultFindManyStmt) {
+      this.defaultFindManyStmt = this.db.query<ObservationRow, [string, number]>(DEFAULT_FIND_MANY_SQL);
+    }
+    return this.defaultFindManyStmt;
+  }
+
+  private getDefaultCountStmt(): Statement<{ cnt: number }, [string]> {
+    if (!this.defaultCountStmt) {
+      this.defaultCountStmt = this.db.query<{ cnt: number }, [string]>(DEFAULT_COUNT_SQL);
+    }
+    return this.defaultCountStmt;
   }
 }

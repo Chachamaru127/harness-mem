@@ -47,6 +47,16 @@ function jsonResponse(body: ApiResponse, status = 200): Response {
   });
 }
 
+function rawJsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
+}
+
 function badRequest(message: string): Response {
   const response: ApiResponse = {
     ok: false,
@@ -1271,7 +1281,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const limit = Math.min(limitParam, 100);
         const project = url.searchParams.get("project") || undefined;
         const result = core.getSubgraph(entity, depth, { project, limit });
-        return jsonResponse({ ok: true, ...result });
+        return rawJsonResponse({ ok: true, ...result });
       }
 
       if (request.method === "GET" && url.pathname === "/v1/graph/neighbors") {

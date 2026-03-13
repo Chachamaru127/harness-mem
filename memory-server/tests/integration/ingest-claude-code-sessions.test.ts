@@ -103,6 +103,10 @@ describe("claude code sessions ingest integration", () => {
     const { baseUrl, projectsRoot } = runtime;
 
     try {
+      // Startup ingest runs on the next tick. Let it finish against the empty fixture dir
+      // before creating test files so the manual replay path stays deterministic.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       const project = "/Users/example/Desktop/Code/CC-harness/harness-mem";
       const encodedProjectDir = join(projectsRoot, "-Users-example-Desktop-Code-CC-harness-harness-mem");
       mkdirSync(encodedProjectDir, { recursive: true });
@@ -165,6 +169,8 @@ describe("claude code sessions ingest integration", () => {
     const { baseUrl, projectsRoot, dbPath } = runtime;
 
     try {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
       const project = "/Users/example/Desktop/Code/CC-harness/harness-mem";
       const sessionId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
       const encodedProjectDir = join(projectsRoot, "-Users-example-Desktop-Code-CC-harness-harness-mem");

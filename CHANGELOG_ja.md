@@ -5,6 +5,19 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.4.3] - 2026-03-13
+
+### ユーザー向け要約
+
+- benchmark / claim の公開面を machine-readable artifact 基準へ再同期し、main gate / current companion / historical baseline / deprecated alias を明確に分離。
+- `bench-freeze-locomo.sh` が FAIL run でも manifest を凍結できるようになり、README / proof bar / Plans の数値 drift を契約テストで検知。
+- shadow pack と archive 側の `locomo10.*` 命名を `benchmark.*` へ統一し、手動運用での再ドリフトを防止。
+- Claude Code ingest が user-visible turn を backfill するようになり、直近対話の再開精度を改善。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.4.1] - 2026-03-10
 
 ### ユーザー向け要約

@@ -29,6 +29,8 @@ describe("japanese release pack docs", () => {
     expect(contract).toContain("Tier 3");
     expect(contract).toContain("japanese-release-pack-96.json");
     expect(contract).toContain("shadow-ja-pack-24.json");
+    expect(contract).toContain("s40-ja-baseline-latest");
+    expect(contract).toContain("s43-ja-release-v2-latest");
 
     expect(runbook).toContain("v2");
     expect(runbook).toContain("shadow-ja-pack-24.json");
@@ -36,6 +38,9 @@ describe("japanese release pack docs", () => {
     expect(runbook).toContain("実行方法");
     expect(runbook).toContain("4成果物");
     expect(runbook).toContain("Anti-Goals");
+    expect(runbook).toContain("summary.json");
+    expect(runbook).toContain("s40-ja-baseline-latest");
+    expect(runbook).toContain("s40-ja-release-latest");
 
     expect(copyTier).toContain("Tier 1");
     expect(copyTier).toContain("Tier 2");
@@ -43,6 +48,8 @@ describe("japanese release pack docs", () => {
 
     expect(companionGate).toContain("Companion checks");
     expect(companionGate).toContain("Rejection signals");
+    expect(companionGate).toContain("summary.json");
+    expect(companionGate).toContain("deprecated alias");
 
     expect(competitiveAudit).toContain("blocked");
     expect(competitiveAudit).toContain("only option");

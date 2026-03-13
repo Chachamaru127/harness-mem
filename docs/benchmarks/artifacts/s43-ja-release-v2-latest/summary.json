@@ -1,0 +1,105 @@
+{
+  "schema_version": "japanese-release-freeze-summary-v1",
+  "generated_at": "20260312T161446Z",
+  "label": "s43-ja-release-v2",
+  "dataset": {
+    "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json",
+    "name": "japanese-release-pack-96.json",
+    "qa_count": 96
+  },
+  "artifact_dir": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest",
+  "runs": 3,
+  "run_ids": [
+    "run1",
+    "run2",
+    "run3"
+  ],
+  "metrics": {
+    "overall_f1_mean": 0.6580,
+    "cross_lingual_f1_mean": 0.6850,
+    "zero_f1_mean": 16.00,
+    "overall_f1_span": 0
+  },
+  "performance": {
+    "search_latency_p95_ms_mean": 16.7821530000001,
+    "search_token_total_avg_mean": 345.7881944444444
+  },
+  "current_claim_run": {
+    "id": "run3",
+    "path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json",
+    "verdict": "pass",
+    "critical_thresholds": {
+      "current": 0.8,
+      "exact": 0.55,
+      "why": 0.85,
+      "list": 0.7,
+      "temporal": 0.5
+    },
+    "checks": {
+      "missing_metadata": 0,
+      "zero_f1_count": 16,
+      "overlong_answer_count": 9,
+      "overlong_answer_rate": 0.0938,
+      "filler_count": 0,
+      "per_record_filler_ids": []
+    },
+    "slices": {
+      "current": {
+        "count": 12,
+        "em_avg": 0.6666666666666666,
+        "f1_avg": 0.8170634920634922,
+        "zero_f1_count": 0
+      },
+      "exact": {
+        "count": 8,
+        "em_avg": 0.375,
+        "f1_avg": 0.5627834068236545,
+        "zero_f1_count": 1
+      },
+      "why": {
+        "count": 7,
+        "em_avg": 0.5714285714285714,
+        "f1_avg": 0.9008403361344538,
+        "zero_f1_count": 0
+      },
+      "list": {
+        "count": 3,
+        "em_avg": 0.3333333333333333,
+        "f1_avg": 0.7564102564102564,
+        "zero_f1_count": 0
+      },
+      "temporal": {
+        "count": 8,
+        "em_avg": 0.625,
+        "f1_avg": 0.6776315789473684,
+        "zero_f1_count": 1
+      }
+    },
+    "failures": [],
+    "warnings": [
+      "watch_slice_low:yes_no",
+      "watch_slice_low:current_vs_previous",
+      "watch_slice_low:relative_temporal",
+      "watch_slice_low:entity",
+      "watch_slice_low:location"
+    ]
+  },
+  "source_files": {
+    "repro_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/repro-report.json",
+    "run1": {
+      "score_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run1/score-report.json",
+      "slice_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run1/slice-report.json",
+      "companion_gate": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run1/companion-gate.json"
+    },
+    "run2": {
+      "score_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run2/score-report.json",
+      "slice_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run2/slice-report.json",
+      "companion_gate": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run2/companion-gate.json"
+    },
+    "run3": {
+      "score_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/score-report.json",
+      "slice_report": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/slice-report.json",
+      "companion_gate": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run3/companion-gate.json"
+    }
+  }
+}

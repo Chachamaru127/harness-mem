@@ -78,7 +78,7 @@ export class AudioIngester implements PlatformIngester {
     const endpoint = this.config.whisperEndpoint || "http://localhost:8080/inference";
 
     const formData = new FormData();
-    const blob = new Blob([audioBuffer], { type: "audio/wav" });
+    const blob = new Blob([Uint8Array.from(audioBuffer)], { type: "audio/wav" });
     formData.append("file", blob, filename);
     if (this.config.language) {
       formData.append("language", this.config.language);
@@ -124,7 +124,7 @@ export class AudioIngester implements PlatformIngester {
     }
 
     const formData = new FormData();
-    const blob = new Blob([audioBuffer], { type: "audio/wav" });
+    const blob = new Blob([Uint8Array.from(audioBuffer)], { type: "audio/wav" });
     formData.append("file", blob, filename);
     formData.append("model", this.config.model || "whisper-1");
     formData.append("response_format", "verbose_json");

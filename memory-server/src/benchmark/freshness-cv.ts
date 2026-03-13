@@ -224,7 +224,7 @@ async function evaluateFreshnessOnFold(
   const { core, dir } = createTempCore();
   try {
     const project = "cv-knowledge-update";
-    const runner = new BenchmarkRunner(core as Parameters<typeof BenchmarkRunner>[0]);
+    const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const scores: number[] = [];
     const cacheBefore = await readCacheStats(core);
 

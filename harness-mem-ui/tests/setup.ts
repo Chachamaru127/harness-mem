@@ -10,6 +10,8 @@
  * bun の os.cpus() が globalThis.navigator を参照して無限ループになるため。
  */
 
+export {};
+
 // DOM が既にある場合（ブラウザ環境等）はスキップ
 if (typeof globalThis.document !== "undefined") {
   // already initialized

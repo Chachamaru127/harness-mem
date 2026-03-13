@@ -49,10 +49,10 @@ LOCOMO_F1_THRESHOLD=0.03 bun run memory-server/src/benchmark/locomo-gate-check.t
 ## Reviewer Checklist（提出前チェック）
 
 1. 3-run の各 run に対して以下4成果物が存在すること。
-   - `locomo10.runX.score-report.full.json`
-   - `locomo10.runX.repro-report.json`（または3-run集約に含まれる根拠）
-   - `locomo10.runX.failure-backlog.judged.json/.md`
-   - `locomo10.runX.risk-notes.md`
+   - `benchmark.runX.score-report.full.json`
+   - `benchmark.repro-report.json`（または3-run集約に含まれる根拠）
+   - `benchmark.failure-backlog.judged.json/.md`
+   - `benchmark.runX.risk-notes.md`
 2. 比較表には必ず `Judge Accuracy（cat1-4）/ EM / F1 / search p95 / token avg` を同時掲載すること。
 3. 失敗タグ上位の改善チケット（担当・期限・再評価結果）を failure backlog に紐づけること。
 
@@ -67,19 +67,19 @@ LOCOMO_F1_THRESHOLD=0.03 bun run memory-server/src/benchmark/locomo-gate-check.t
 1. 契約/ローダーテスト:
    - `bun test tests/benchmarks/locomo-dataset-contract.test.ts tests/benchmarks/locomo-loader.test.ts`
 2. harness-mem 単独ベンチ:
-   - `bun run tests/benchmarks/run-locomo-benchmark.ts --system harness-mem --dataset .tmp/locomo/locomo10.json --output .tmp/locomo/locomo10.result.json`
+   - `bun run tests/benchmarks/run-locomo-benchmark.ts --system harness-mem --dataset .tmp/locomo/locomo10.json --output .tmp/locomo/benchmark.result.json`
 3. LLM Judge（cat1-4）:
-   - `bun --env-file=.env run tests/benchmarks/locomo-judge.ts --result .tmp/locomo/locomo10.result.json --categories cat-1,cat-2,cat-3,cat-4 --output .tmp/locomo/locomo10.judge.cat1-4.json`
+   - `bun --env-file=.env run tests/benchmarks/locomo-judge.ts --result .tmp/locomo/benchmark.result.json --categories cat-1,cat-2,cat-3,cat-4 --output .tmp/locomo/benchmark.judge.cat1-4.json`
 4. 統合スコアレポート:
-   - `bun run tests/benchmarks/locomo-score-report.ts --result .tmp/locomo/locomo10.result.json --judge-result .tmp/locomo/locomo10.judge.cat1-4.json --output .tmp/locomo/locomo10.score-report.full.json`
+   - `bun run tests/benchmarks/locomo-score-report.ts --result .tmp/locomo/benchmark.result.json --judge-result .tmp/locomo/benchmark.judge.cat1-4.json --output .tmp/locomo/benchmark.run1.score-report.full.json`
 5. 再現性集計（3-run平均 + 分散）:
-   - `bun run tests/benchmarks/locomo-repro-report.ts --reports run1.score-report.full.json,run2.score-report.full.json,run3.score-report.full.json --output .tmp/locomo/locomo10.repro-report.json`
+   - `bun run tests/benchmarks/locomo-repro-report.ts --reports benchmark.run1.score-report.full.json,benchmark.run2.score-report.full.json,benchmark.run3.score-report.full.json --output .tmp/locomo/benchmark.repro-report.json`
 6. 失点上位100問の抽出:
-   - `bun run tests/benchmarks/locomo-failure-backlog.ts --result .tmp/locomo/locomo10.result.json --judge-result .tmp/locomo/locomo10.judge.cat1-4.json --limit 100 --output .tmp/locomo/locomo10.failure-backlog.json --markdown-output .tmp/locomo/locomo10.failure-backlog.md`
+   - `bun run tests/benchmarks/locomo-failure-backlog.ts --result .tmp/locomo/benchmark.result.json --judge-result .tmp/locomo/benchmark.judge.cat1-4.json --limit 100 --output .tmp/locomo/benchmark.failure-backlog.judged.json --markdown-output .tmp/locomo/benchmark.failure-backlog.judged.md`
 7. 比較アダプタ検証:
    - `bun test tests/benchmarks/locomo-mem0-adapter.test.ts tests/benchmarks/locomo-claude-mem-adapter.test.ts`
 8. run別リスクノート（レビュー提出物）:
-   - `cat > .tmp/locomo/locomo10.runX.risk-notes.md <<'EOF'`
+   - `cat > .tmp/locomo/benchmark.runX.risk-notes.md <<'EOF'`
    - `# Run X Risk Notes`
    - `- gate_status: pass|fail`
    - `- residual_risks: ...`

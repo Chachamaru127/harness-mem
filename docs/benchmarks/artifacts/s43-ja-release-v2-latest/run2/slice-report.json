@@ -1,14 +1,14 @@
 {
   "schema_version": "japanese-release-report-v1",
-  "generated_at": "2026-03-07T09:44:24.113Z",
+  "generated_at": "2026-03-12T16:15:11.885Z",
   "dataset_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json",
   "result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s43-ja-release-v2-latest/run2/result.json",
   "summary": {
     "overall": {
       "count": 96,
-      "em_avg": 0.46875,
-      "f1_avg": 0.6379491818343032,
-      "zero_f1_count": 18
+      "em_avg": 0.5104166666666666,
+      "f1_avg": 0.657996015708864,
+      "zero_f1_count": 16
     },
     "by_slice": {
       "current": {
@@ -20,8 +20,8 @@
       "current_vs_previous": {
         "count": 12,
         "em_avg": 0.4166666666666667,
-        "f1_avg": 0.5683760683760685,
-        "zero_f1_count": 3
+        "f1_avg": 0.5405982905982906,
+        "zero_f1_count": 4
       },
       "entity": {
         "count": 1,
@@ -32,7 +32,7 @@
       "exact": {
         "count": 8,
         "em_avg": 0.375,
-        "f1_avg": 0.5912791252864782,
+        "f1_avg": 0.5627834068236545,
         "zero_f1_count": 1
       },
       "list": {
@@ -50,13 +50,13 @@
       "long_turn": {
         "count": 12,
         "em_avg": 0.5,
-        "f1_avg": 0.6948412698412699,
-        "zero_f1_count": 2
+        "f1_avg": 0.705952380952381,
+        "zero_f1_count": 1
       },
       "noisy": {
         "count": 13,
-        "em_avg": 0.6153846153846154,
-        "f1_avg": 0.817653314427508,
+        "em_avg": 0.6923076923076923,
+        "f1_avg": 0.8293811451706189,
         "zero_f1_count": 0
       },
       "relative_temporal": {
@@ -67,9 +67,9 @@
       },
       "temporal": {
         "count": 8,
-        "em_avg": 0.375,
-        "f1_avg": 0.5276315789473685,
-        "zero_f1_count": 2
+        "em_avg": 0.625,
+        "f1_avg": 0.6776315789473684,
+        "zero_f1_count": 1
       },
       "why": {
         "count": 7,
@@ -79,21 +79,21 @@
       },
       "yes_no": {
         "count": 16,
-        "em_avg": 0.4375,
-        "f1_avg": 0.4375,
-        "zero_f1_count": 9
+        "em_avg": 0.5,
+        "f1_avg": 0.5,
+        "zero_f1_count": 8
       }
     },
     "cross_lingual": {
       "count": 58,
-      "em_avg": 0.5172413793103449,
-      "f1_avg": 0.6694022143651159,
-      "zero_f1_count": 9
+      "em_avg": 0.5344827586206896,
+      "f1_avg": 0.6850120003242666,
+      "zero_f1_count": 7
     },
     "non_cross_lingual": {
       "count": 38,
-      "em_avg": 0.39473684210526316,
-      "f1_avg": 0.5899419216556938,
+      "em_avg": 0.47368421052631576,
+      "f1_avg": 0.6167610918221966,
       "zero_f1_count": 9
     },
     "missing_metadata": []

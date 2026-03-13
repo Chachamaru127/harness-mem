@@ -1,0 +1,74 @@
+{
+  "schema_version": "japanese-companion-gate-v1",
+  "generated_at": "2026-03-12T16:14:54.256Z",
+  "dataset_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-32.json",
+  "result_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run2/result.json",
+  "slice_report_path": "/Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s40-ja-baseline-latest/run2/slice-report.json",
+  "critical_thresholds": {
+    "current": 0.8,
+    "exact": 0.55,
+    "why": 0.85,
+    "list": 0.7,
+    "temporal": 0.5
+  },
+  "watch_slices": [
+    "yes_no",
+    "current_vs_previous",
+    "relative_temporal",
+    "noisy",
+    "long_turn",
+    "entity",
+    "location"
+  ],
+  "checks": {
+    "missing_metadata": 0,
+    "zero_f1_count": 1,
+    "overlong_answer_count": 2,
+    "overlong_answer_rate": 0.0625,
+    "filler_count": 0,
+    "per_record_filler_ids": []
+  },
+  "slices": {
+    "current": {
+      "count": 12,
+      "em_avg": 0.6666666666666666,
+      "f1_avg": 0.8170634920634922,
+      "zero_f1_count": 0
+    },
+    "exact": {
+      "count": 3,
+      "em_avg": 0.6666666666666666,
+      "f1_avg": 0.787878787878788,
+      "zero_f1_count": 0
+    },
+    "list": {
+      "count": 2,
+      "em_avg": 0.5,
+      "f1_avg": 0.8846153846153846,
+      "zero_f1_count": 0
+    },
+    "temporal": {
+      "count": 8,
+      "em_avg": 0.625,
+      "f1_avg": 0.6776315789473684,
+      "zero_f1_count": 1
+    },
+    "why": {
+      "count": 7,
+      "em_avg": 0.5714285714285714,
+      "f1_avg": 0.9008403361344538,
+      "zero_f1_count": 0
+    }
+  },
+  "verdict": "pass",
+  "failures": [],
+  "warnings": [
+    "watch_slice_missing:yes_no",
+    "watch_slice_missing:current_vs_previous",
+    "watch_slice_missing:relative_temporal",
+    "watch_slice_missing:noisy",
+    "watch_slice_missing:long_turn",
+    "watch_slice_missing:entity",
+    "watch_slice_missing:location"
+  ]
+}

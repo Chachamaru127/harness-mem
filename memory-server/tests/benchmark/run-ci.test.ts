@@ -164,10 +164,10 @@ describe("layer3WilcoxonImprovement", () => {
 
 // S43-010: checkJapaneseCompanionGate
 describe("S43-010: checkJapaneseCompanionGate", () => {
-  test("artifact が存在しない場合は skipped=true, passed=true を返す", () => {
+  test("artifact が存在しない場合は skipped=false, passed=false を返す", () => {
     const result = checkJapaneseCompanionGate("/nonexistent/path/companion-gate.json");
-    expect(result.skipped).toBe(true);
-    expect(result.passed).toBe(true);
+    expect(result.skipped).toBe(false);
+    expect(result.passed).toBe(false);
     expect(result.message).toContain("artifact not found");
   });
 

@@ -26,15 +26,15 @@
 
 ## Evidence Bundle Checklist（必須）
 
-- [ ] `locomo10.run1.score-report.full.json`
-- [ ] `locomo10.run2.score-report.full.json`
-- [ ] `locomo10.run3.score-report.full.json`
-- [ ] `locomo10.repro-report.json`
-- [ ] `locomo10.failure-backlog.judged.json`
-- [ ] `locomo10.failure-backlog.judged.md`
-- [ ] `locomo10.run1.risk-notes.md`
-- [ ] `locomo10.run2.risk-notes.md`
-- [ ] `locomo10.run3.risk-notes.md`
+- [ ] `benchmark.run1.score-report.full.json`
+- [ ] `benchmark.run2.score-report.full.json`
+- [ ] `benchmark.run3.score-report.full.json`
+- [ ] `benchmark.repro-report.json`
+- [ ] `benchmark.failure-backlog.judged.json`
+- [ ] `benchmark.failure-backlog.judged.md`
+- [ ] `benchmark.run1.risk-notes.md`
+- [ ] `benchmark.run2.risk-notes.md`
+- [ ] `benchmark.run3.risk-notes.md`
 
 ## Summary
 
