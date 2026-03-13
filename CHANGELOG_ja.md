@@ -5,6 +5,17 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.4.4] - 2026-03-13
+
+### ユーザー向け要約
+
+- `Release` workflow の Bun pin を `1.3.10` へ更新し、ローカル `1.3.6` クラッシュ経路に publish job が依存しないよう修正。
+- `memory-server/package.json` に `tesseract.js` を明示追加し、clean install 後の TypeScript 解決エラーを解消。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.4.3] - 2026-03-13
 
 ### ユーザー向け要約

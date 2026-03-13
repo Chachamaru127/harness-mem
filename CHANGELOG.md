@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-13
+
+### Theme: Release pipeline completion
+
+**This patch closes the last release blockers from v0.4.3 by making the OCR dependency explicit in `memory-server` and moving the release workflow off the local Bun 1.3.6 crash path.**
+
+---
+
+#### 1. Release workflow runtime
+
+**Before**: the `Release` GitHub Actions workflow was pinned to Bun `1.3.6`, which reproduced a local full-suite crash path during `memory-server` quality gates and left the publish path more brittle than the rest of the repo state.
+
+**After**: the release workflow now installs Bun `1.3.10`, the latest stable release verified from Bun's official GitHub releases, so the publish pipeline is no longer pinned to the crashing runtime.
+
+#### 2. OCR dependency declaration
+
+**Before**: `memory-server/src/ingest/document-parser.ts` dynamically imported `tesseract.js`, but `memory-server/package.json` did not declare it. Clean CI installs therefore failed TypeScript resolution even though local environments with leftover modules could pass.
+
+**After**: `tesseract.js` is declared in `memory-server/package.json` and captured in `memory-server/bun.lock`, so frozen installs and clean typechecks resolve the OCR module consistently.
+
 ## [0.4.3] - 2026-03-13
 
 ### Theme: Benchmark SSOT remediation + ingest visibility hardening

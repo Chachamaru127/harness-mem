@@ -1,6 +1,6 @@
 {
   "name": "harness-mem",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Persistent memory system for AI coding sessions — cross-tool memory sharing with 6-dimensional hybrid search",
   "author": {
     "name": "Chachamaru",
