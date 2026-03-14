@@ -182,6 +182,13 @@ const PROFILE_PATTERNS = [
   /\b(profile|identity|background)\b/i,
 ];
 
+const PREVIOUS_VALUE_PATTERNS = [
+  /\b(previous|previously|former|formerly|prior|earlier|used to|old)\b/i,
+  /(以前|前の|前回|前は|もともと|元は|当初|当時)/,
+  /\bbefore\s+(?:changing|switching|moving|reviewing|revising)\b/i,
+  /(?:変える|見直す|移す|切り替える|変更する)前/,
+];
+
 const FRESHNESS_PATTERNS = [
   /\b(current|currently|now|latest version|what version)\b/i,
   /(現在|今|最新|今の)/,
@@ -199,6 +206,7 @@ const TIMELINE_PATTERNS = [
   /\b(completed|happened|started|finished|identified|implemented|set up|taken)\s+(first|last|earliest|latest)\b/i,
   /\b(first|last|earliest|latest)\s+(step|action|thing|task|item|change|improvement|feature)\b/i,
   /(の前|の後|以前|以降|より前|より後)/,
+  /(前回|前は|もともと|元は|当初|当時|変える前|見直す前|移す前|切り替える前|変更前)/,
   /(どちらが先|先に|その後|あとで|後で|直後|の次に)/,
   // SD-006: bilingual — CJK/Katakana term directly suffixed with 後/前 (no の)
   // e.g. "デプロイ後", "API改修後", "リリース前", "migration完了後"
@@ -524,6 +532,7 @@ const AFTER_PATTERNS: RegExp[] = [
   /\bafter\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\bfollowing\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\bsince\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /^(.+?)後も/u,
   /(.+?)の後(?:に|で|から|も)?/,
   /(.+?)以降/,
   /(.+?)より後/,
@@ -544,6 +553,7 @@ const BEFORE_PATTERNS: RegExp[] = [
   /\bbefore\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\bprior\s+to\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
   /\buntil\s+(.+?)(?:\?|$|,|\band\b|\bor\b)/i,
+  /^以前(?:の|は)?\s*([^?。！？]+?)(?:\s+は|\s+を|\s+が|[?？]|$)/u,
   /(.+?)の前(?:に|で)?/,
   /(.+?)以前/,
   /(.+?)より前/,
@@ -562,16 +572,24 @@ const BETWEEN_PATTERNS: RegExp[] = [
 
 // sequence words → {type:"sequence", direction:"asc"}
 const SEQUENCE_EN_PATTERNS: RegExp[] = [
-  /\b(first|initially|to start|to begin)\b/i,
+  /(?:^|[\s(])(?:first|initially|to start|to begin)\b/i,
   /\b(then|next|subsequently|after that)\b/i,
   /\b(finally|lastly|in the end)\b/i,
 ];
 const SEQUENCE_JA_PATTERNS: RegExp[] = [
   // S43-004: 最初は も sequence として検出（topic particle は を含む）
   /(最初[はにの]?|はじめ[はに]?|まず)/,
-  /(次に|それから|その後)/,
+  /(次に|それから|その後|先に|あとで|後で)/,
   /(最後[にの]?|最終|ついに)/,
 ];
+
+function matchesAnyPattern(text: string, patterns: RegExp[]): boolean {
+  return patterns.some((pattern) => pattern.test(text));
+}
+
+function hasPreviousValueCue(query: string): boolean {
+  return matchesAnyPattern(query, PREVIOUS_VALUE_PATTERNS);
+}
 
 /**
  * FD-005: クエリからTemporalAnchorのリストを抽出する。
@@ -649,8 +667,17 @@ export function extractTemporalAnchors(query: string): TemporalAnchor[] {
 
   // 重複除去: 同一 type+direction の組み合わせを dedupe
   const seen = new Set<string>();
-  return anchors.filter((a) => {
-    const key = `${a.type}:${a.direction}:${a.referenceText.slice(0, 40)}`;
+  return anchors.filter((a, index) => {
+    const normalizedRef = a.referenceText.trim();
+    if (normalizedRef.length < 2) return false;
+    const shadowedByEarlier = anchors.slice(0, index).some((existing) => {
+      if (existing.type !== a.type || existing.direction !== a.direction) return false;
+      const existingRef = existing.referenceText.trim();
+      if (existingRef.length < normalizedRef.length) return false;
+      return existingRef === normalizedRef || existingRef.includes(normalizedRef);
+    });
+    if (shadowedByEarlier) return false;
+    const key = `${a.type}:${a.direction}:${normalizedRef.slice(0, 40)}`;
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -682,23 +709,33 @@ export function classifyQuestion(query: string): RouteDecision {
   for (const pattern of FRESHNESS_PATTERNS) {
     if (pattern.test(q)) freshnessScore += 0.4;
   }
-  if (freshnessScore > 0) {
-    scores.push({ kind: "freshness", score: Math.min(1, freshnessScore), reason: "freshness/current-state query pattern" });
-  }
 
   // Profile detection
   let profileScore = 0;
   for (const pattern of PROFILE_PATTERNS) {
     if (pattern.test(q)) profileScore += 0.3;
   }
-  if (profileScore > 0) {
-    scores.push({ kind: "profile", score: Math.min(1, profileScore), reason: "entity/profile query pattern" });
-  }
 
   // Timeline detection
   let timelineScore = 0;
   for (const pattern of TIMELINE_PATTERNS) {
     if (pattern.test(q)) timelineScore += 0.3;
+  }
+  const previousValueCue = hasPreviousValueCue(q);
+  if (previousValueCue) {
+    // previous/former/before-change questions should prefer timeline retrieval
+    // even when the surface form also looks like a profile query ("What was...").
+    timelineScore += 0.35;
+  }
+  if (freshnessScore > 0 && previousValueCue) {
+    // "今の方式に変える前" のような current+previous contrast は freshness ではなく timeline 扱い。
+    freshnessScore = Math.max(0, freshnessScore - 0.35);
+  }
+  if (freshnessScore > 0) {
+    scores.push({ kind: "freshness", score: Math.min(1, freshnessScore), reason: "freshness/current-state query pattern" });
+  }
+  if (profileScore > 0) {
+    scores.push({ kind: "profile", score: Math.min(1, profileScore), reason: "entity/profile query pattern" });
   }
   if (timelineScore > 0) {
     scores.push({ kind: "timeline", score: Math.min(1, timelineScore), reason: "temporal/sequence query pattern" });
@@ -749,6 +786,23 @@ export function extractAnswerHints(query: string, questionKind?: QuestionKind): 
       fallbackIntent !== "generic",
       fallbackIntent === "generic" ? [] : [fallbackIntent]
     );
+  }
+
+  if (hasPreviousValueCue(q)) {
+    return buildAnswerHints(q, "temporal_value", true, false, [
+      "previous",
+      "former",
+      "before",
+      "earlier",
+      "以前",
+      "前の",
+      "前は",
+      "当初",
+      "当時",
+      "変える前",
+      "見直す前",
+      "移す前",
+    ]);
   }
 
   for (const rule of ANSWER_HINT_RULES) {

@@ -373,11 +373,16 @@ describe("workspace boundary", () => {
     const migratedCore = new HarnessMemCore(config);
     try {
       const stats = migratedCore.projectsStats({ include_private: true });
-      const items = stats.items as Array<{ project: string; observations: number }>;
-      expect(items.some((item) => item.project === "harness-mem")).toBe(false);
-      const canonical = items.find((item) => item.project === canonicalRoot);
+      const items = stats.items as Array<{
+        project: string;
+        observations: number;
+        member_projects: string[];
+      }>;
+      const canonical = items.find((item) => item.project === "harness-mem");
       expect(canonical).toBeDefined();
       expect((canonical?.observations || 0) >= 1).toBe(true);
+      expect(canonical?.member_projects).toContain(canonicalRoot);
+      expect(canonical?.member_projects).not.toContain("harness-mem");
 
       const searchByBasename = migratedCore.search({
         query: "legacy project migration test",
@@ -487,11 +492,16 @@ describe("workspace boundary", () => {
     const migratedCore = new HarnessMemCore(config);
     try {
       const stats = migratedCore.projectsStats({ include_private: true });
-      const items = stats.items as Array<{ project: string; observations: number }>;
-      expect(items.some((item) => item.project === "claude-code-harness")).toBe(false);
-      const canonical = items.find((item) => item.project === canonicalRoot);
+      const items = stats.items as Array<{
+        project: string;
+        observations: number;
+        member_projects: string[];
+      }>;
+      const canonical = items.find((item) => item.project === "claude-code-harness");
       expect(canonical).toBeDefined();
       expect((canonical?.observations || 0) >= 2).toBe(true);
+      expect(canonical?.member_projects).toContain(canonicalRoot);
+      expect(canonical?.member_projects).not.toContain("claude-code-harness");
     } finally {
       migratedCore.shutdown("test");
     }

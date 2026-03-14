@@ -34,6 +34,7 @@ export async function fetchFeed(params: {
   limit?: number;
   includePrivate?: boolean;
   type?: string;
+  signal?: AbortSignal;
 }): Promise<ApiResponse<FeedItem>> {
   const query = new URLSearchParams();
   if (params.cursor) query.set("cursor", params.cursor);
@@ -41,7 +42,9 @@ export async function fetchFeed(params: {
   if (params.type) query.set("type", params.type);
   if (typeof params.limit === "number") query.set("limit", String(params.limit));
   if (typeof params.includePrivate === "boolean") query.set("include_private", params.includePrivate ? "true" : "false");
-  return request<ApiResponse<FeedItem>>(`/api/feed?${query.toString()}`);
+  return request<ApiResponse<FeedItem>>(`/api/feed?${query.toString()}`, {
+    signal: params.signal,
+  });
 }
 
 export async function fetchProjectsStats(includePrivate: boolean): Promise<ApiResponse<ProjectsStatsItem>> {

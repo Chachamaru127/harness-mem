@@ -48,6 +48,10 @@ export interface SessionManagerDeps {
   config: Config;
   /** normalizeProjectInput のバインド済みバージョン */
   normalizeProject: (project: string) => string;
+  /** raw project を UI 用 canonical 名へ変換 */
+  canonicalizeProject: (project: string) => string;
+  /** canonical project 選択を raw member projects へ展開 */
+  expandProjectSelection: (project: string, scope?: "observations" | "sessions") => string[];
   /** platformVisibilityFilterSql のバインド済みバージョン */
   platformVisibilityFilterSql: (alias: string) => string;
   /** recordEvent への参照（recordCheckpoint が内部で使用） */
@@ -65,13 +69,37 @@ export interface SessionManagerDeps {
 export class SessionManager {
   constructor(private readonly deps: SessionManagerDeps) {}
 
+  private resolveProjectMembers(project: string | undefined, scope: "observations" | "sessions"): string[] {
+    if (typeof project !== "string" || !project.trim()) {
+      return [];
+    }
+    const expanded = this.deps.expandProjectSelection(project, scope)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (expanded.length > 0) {
+      return [...new Set(expanded)];
+    }
+    return [this.deps.normalizeProject(project)];
+  }
+
+  private appendProjectFilter(sql: string, params: unknown[], alias: string, projects: string[]): string {
+    if (projects.length === 0) {
+      return sql;
+    }
+    if (projects.length === 1) {
+      params.push(projects[0]);
+      return `${sql} AND ${alias}.project = ?`;
+    }
+    const placeholders = projects.map(() => "?").join(", ");
+    params.push(...projects);
+    return `${sql} AND ${alias}.project IN (${placeholders})`;
+  }
+
   sessionsList(request: SessionsListRequest): ApiResponse {
     const startedAt = performance.now();
     const limit = clampLimit(request.limit, 50, 1, 200);
     const includePrivate = Boolean(request.include_private);
-    const normalizedProject = request.project
-      ? this.deps.normalizeProject(request.project)
-      : undefined;
+    const projectMembers = this.resolveProjectMembers(request.project, "sessions");
 
     // TEAM-005: member ロール適用
     const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
@@ -102,10 +130,7 @@ export class SessionManager {
       WHERE 1 = 1
     `;
 
-    if (normalizedProject) {
-      sql += " AND s.project = ?";
-      params.push(normalizedProject);
-    }
+    sql = this.appendProjectFilter(sql, params, "s", projectMembers);
     sql += this.deps.platformVisibilityFilterSql("s");
 
     // TEAM-005: member ロール — sessions テーブルの user_id / team_id で絞る
@@ -133,6 +158,7 @@ export class SessionManager {
       session_id: row.session_id,
       platform: row.platform,
       project: row.project,
+      canonical_project: this.deps.canonicalizeProject(String(row.project || "")),
       started_at: row.started_at,
       ended_at: row.ended_at,
       updated_at: row.updated_at,
@@ -161,9 +187,7 @@ export class SessionManager {
 
     const includePrivate = Boolean(request.include_private);
     const limit = clampLimit(request.limit, 200, 1, 1000);
-    const normalizedProject = request.project
-      ? this.deps.normalizeProject(request.project)
-      : undefined;
+    const projectMembers = this.resolveProjectMembers(request.project, "sessions");
 
     // TEAM-005: member ロール適用
     const userIdFilter = typeof request.user_id === "string" && request.user_id.trim() ? request.user_id.trim() : undefined;
@@ -188,10 +212,7 @@ export class SessionManager {
       WHERE o.session_id = ?
     `;
 
-    if (normalizedProject) {
-      sql += " AND o.project = ?";
-      params.push(normalizedProject);
-    }
+    sql = this.appendProjectFilter(sql, params, "o", projectMembers);
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
@@ -230,6 +251,7 @@ export class SessionManager {
       event_type: row.event_type || "unknown",
       platform: row.platform,
       project: row.project,
+      canonical_project: this.deps.canonicalizeProject(String(row.project || "")),
       session_id: row.session_id,
       title: row.title,
       content: typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 2000) : "",
@@ -243,7 +265,7 @@ export class SessionManager {
       items,
       {
         session_id: request.session_id,
-        project: normalizedProject,
+        project: request.project,
         include_private: includePrivate,
       },
       { ranking: "session_thread_v1" }

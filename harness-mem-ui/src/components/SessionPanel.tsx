@@ -172,7 +172,7 @@ export function SessionPanel(props: SessionPanelProps) {
             <h3>{session.session_id}</h3>
             <p>{session.summary ? String(session.summary).slice(0, 240) : "no summary"}</p>
             <div className="card-meta">
-              <span>{session.project}</span>
+              <span>{session.canonical_project || session.project}</span>
               <span>{session.platform}</span>
               <span>{session.last_event_at || session.updated_at || "-"}</span>
             </div>
@@ -209,7 +209,7 @@ export function SessionPanel(props: SessionPanelProps) {
             <h3>{String(item.title || item.session_id || "session item")}</h3>
             <p>{String(item.content || item.summary || "")}</p>
             <div className="card-meta">
-              <span>{String(item.project || "-")}</span>
+              <span>{String(item.canonical_project || item.project || "-")}</span>
               <span>{String(item.session_id || "-")}</span>
             </div>
           </article>

@@ -5,17 +5,21 @@ import type { UiLanguage } from "../lib/types";
 
 interface ProjectSidebarProps {
   projects: ProjectsStatsItem[];
+  loading: boolean;
   selectedProject: string;
   onSelectProject: (project: string) => void;
   language: UiLanguage;
 }
 
 export function ProjectSidebar(props: ProjectSidebarProps) {
-  const { projects, selectedProject, onSelectProject, language } = props;
+  const { projects, loading, selectedProject, onSelectProject, language } = props;
   const copy = getUiCopy(language);
   const totalObservations = projects.reduce((acc, item) => acc + item.observations, 0);
   const totalSessions = projects.reduce((acc, item) => acc + item.sessions, 0);
   const labelMap = buildProjectDisplayNameMap(projects.map((project) => project.project));
+  const totalsLabel = loading && projects.length === 0
+    ? copy.loading
+    : `${totalObservations} ${copy.observationsUnit} / ${totalSessions} ${copy.sessionsUnit}`;
 
   return (
     <aside className="project-sidebar">
@@ -26,12 +30,10 @@ export function ProjectSidebar(props: ProjectSidebarProps) {
         onClick={() => onSelectProject("__all__")}
       >
         <span>{copy.allProjects}</span>
-        <span className="stats">
-          {totalObservations} {copy.observationsUnit} / {totalSessions} {copy.sessionsUnit}
-        </span>
+        <span className="stats">{totalsLabel}</span>
       </button>
       <div className="project-list">
-        {projects.length === 0 ? <p className="muted">{copy.noProjects}</p> : null}
+        {projects.length === 0 ? <p className="muted">{loading ? copy.loading : copy.noProjects}</p> : null}
         {projects.map((project) => (
           <button
             type="button"

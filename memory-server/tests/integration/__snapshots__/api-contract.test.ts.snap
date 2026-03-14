@@ -144,6 +144,10 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
   "projects_stats": {
     "items": [
       {
+        "canonical_project": "string",
+        "member_projects": [
+          "string",
+        ],
         "observations": "number",
         "project": "string",
         "sessions": "number",
@@ -355,6 +359,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
   "sessions_list": {
     "items": [
       {
+        "canonical_project": "string",
         "counts": {
           "checkpoints": "number",
           "observations": "number",
@@ -390,6 +395,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
   "sessions_thread": {
     "items": [
       {
+        "canonical_project": "string",
         "content": "string",
         "created_at": "string",
         "event_id": "string",

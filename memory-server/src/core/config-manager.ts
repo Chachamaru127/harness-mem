@@ -49,6 +49,8 @@ import {
 export interface ConfigManagerDeps {
   db: Database;
   config: Config;
+  /** raw project を UI 用 canonical 名へ変換 */
+  canonicalizeProject: (project: string) => string;
   /** health() の実装委譲 */
   doHealth: () => ApiResponse;
   /** metrics() の実装委譲 */
@@ -384,6 +386,16 @@ export class ConfigManager {
     const platformVisibility = this.deps.isAntigravityIngestEnabled()
       ? ""
       : ` AND o.platform <> 'antigravity' `;
+    const canonicalByProject = new Map<string, string>();
+    const canonicalizeProjectCached = (project: string): string => {
+      const cached = canonicalByProject.get(project);
+      if (cached !== undefined) {
+        return cached;
+      }
+      const canonical = this.deps.canonicalizeProject(project);
+      canonicalByProject.set(project, canonical);
+      return canonical;
+    };
 
     const rows = this.deps.db
       .query(`
@@ -401,14 +413,80 @@ export class ConfigManager {
       `)
       .all() as Array<{ project: string; observations: number; sessions: number; updated_at: string | null }>;
 
-    const items = rows
-      .map((row) => ({
-        project: row.project,
-        observations: Number(row.observations || 0),
-        sessions: Number(row.sessions || 0),
-        updated_at: row.updated_at || null,
+    const sessionRows = this.deps.db
+      .query(`
+        SELECT DISTINCT
+          o.project AS project,
+          o.session_id AS session_id
+        FROM mem_observations o
+        WHERE 1 = 1
+        ${platformVisibility}
+        ${visibility}
+      `)
+      .all() as Array<{ project: string; session_id: string }>;
+
+    const grouped = new Map<string, {
+      project: string;
+      observations: number;
+      updated_at: string | null;
+      member_projects: Set<string>;
+      session_ids: Set<string>;
+    }>();
+
+    for (const row of rows) {
+      if (!shouldExposeProjectInStats(row.project)) {
+        continue;
+      }
+      const canonical = canonicalizeProjectCached(row.project);
+      if (!canonical) {
+        continue;
+      }
+      const entry = grouped.get(canonical) ?? {
+        project: canonical,
+        observations: 0,
+        updated_at: null,
+        member_projects: new Set<string>(),
+        session_ids: new Set<string>(),
+      };
+      entry.observations += Number(row.observations || 0);
+      entry.member_projects.add(row.project);
+      if (!entry.updated_at || (row.updated_at || "") > entry.updated_at) {
+        entry.updated_at = row.updated_at || entry.updated_at;
+      }
+      grouped.set(canonical, entry);
+    }
+
+    for (const row of sessionRows) {
+      if (!shouldExposeProjectInStats(row.project)) {
+        continue;
+      }
+      const canonical = canonicalizeProjectCached(row.project);
+      if (!canonical) {
+        continue;
+      }
+      const entry = grouped.get(canonical);
+      if (!entry) {
+        continue;
+      }
+      if (typeof row.session_id === "string" && row.session_id.trim()) {
+        entry.session_ids.add(row.session_id);
+      }
+    }
+
+    const items = [...grouped.values()]
+      .map((entry) => ({
+        project: entry.project,
+        canonical_project: entry.project,
+        observations: entry.observations,
+        sessions: entry.session_ids.size,
+        updated_at: entry.updated_at,
+        member_projects: [...entry.member_projects].sort((lhs, rhs) => lhs.localeCompare(rhs)),
       }))
-      .filter((row) => shouldExposeProjectInStats(row.project));
+      .sort((lhs, rhs) =>
+        (rhs.updated_at || "").localeCompare(lhs.updated_at || "") ||
+        rhs.observations - lhs.observations ||
+        lhs.project.localeCompare(rhs.project)
+      );
 
     return makeResponse(startedAt, items, { include_private: includePrivate }, { ranking: "projects_stats_v1" });
   }

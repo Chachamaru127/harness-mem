@@ -28,6 +28,8 @@ type FeedCategoryId =
 
 type PlatformBadgeId = "codex" | "claude" | "opencode" | "cursor" | "antigravity" | "gemini" | "other";
 
+type FeedViewMode = "conversation" | "events";
+
 const CATEGORY_ORDER: FeedCategoryId[] = ["prompt", "discovery", "change", "bugfix", "session_summary", "checkpoint", "tool_use", "other"];
 
 // W3-004: プラットフォームタブの定義
@@ -57,10 +59,11 @@ const SYSTEM_PROMPT_PREFIXES = [
   "<environment_context>",
   "<turn_aborted>",
   "<user_action>",
+  "<subagent_notification>",
+  "<skill>",
   "# context from my ide setup:",
   "## memory writing agent:",
   "<instructions>",
-  "<skill>",
 ];
 
 function formatTimestamp(value: string | undefined, language: UiLanguage): string {
@@ -132,6 +135,17 @@ function inferCategory(item: FeedItem): FeedCategoryId {
     return "checkpoint";
   }
   return "other";
+}
+
+function isAssistantResponse(item: FeedItem): boolean {
+  const eventType = normalizeText(item.event_type || item.card_type);
+  const title = normalizeText(item.title);
+  return title === "assistant_response" || eventType === "assistant_response";
+}
+
+function isVisibleUserPrompt(item: FeedItem): boolean {
+  const eventType = normalizeText(item.event_type || item.card_type);
+  return eventType.includes("user_prompt") && !isSystemEnvelopePrompt(item);
 }
 
 function toEpochMs(value: string | undefined): number {
@@ -215,6 +229,7 @@ function summarizeClaudeToolUseRun(items: FeedItem[], language: UiLanguage): Fee
     event_id: latest.event_id,
     platform: latest.platform || "claude",
     project: latest.project,
+    canonical_project: latest.canonical_project,
     session_id: latest.session_id,
     event_type: "tool_use",
     card_type: "tool_use",
@@ -246,7 +261,7 @@ function shouldCollapseConsecutiveItems(base: FeedItem, next: FeedItem): boolean
     baseType === nextType &&
     baseTitle === nextTitle &&
     normalizeText(base.platform) === normalizeText(next.platform) &&
-    normalizeText(base.project) === normalizeText(next.project) &&
+    normalizeText(base.canonical_project || base.project) === normalizeText(next.canonical_project || next.project) &&
     normalizeText(base.session_id) === normalizeText(next.session_id) &&
     gapMs <= CONSECUTIVE_SAME_CARD_COLLAPSE_GAP_MS
   );
@@ -272,6 +287,7 @@ function summarizeConsecutiveItems(items: FeedItem[], language: UiLanguage): Fee
     event_id: latest.event_id,
     platform: latest.platform,
     project: latest.project,
+    canonical_project: latest.canonical_project,
     session_id: latest.session_id,
     event_type: latest.event_type,
     card_type: latest.card_type,
@@ -308,7 +324,9 @@ function collapseClaudeToolUseItems(items: FeedItem[], language: UiLanguage): Fe
         break;
       }
 
-      const sameProject = (next.project || "") === (current.project || "");
+      const sameProject =
+        (next.canonical_project || next.project || "") ===
+        (current.canonical_project || current.project || "");
       const sameSession = (next.session_id || "") === (current.session_id || "");
       const prev = run[run.length - 1];
       const gapMs = Math.abs(toEpochMs(prev?.created_at) - toEpochMs(next.created_at));
@@ -370,6 +388,13 @@ interface SessionGroupEntry {
   items: Array<{ item: FeedItem; category: FeedCategoryId }>;
 }
 
+interface ConversationTurn {
+  id: string;
+  prompt: FeedItem;
+  responses: FeedItem[];
+  hiddenMetaCount: number;
+}
+
 function groupBySession(categorizedItems: Array<{ item: FeedItem; category: FeedCategoryId }>): SessionGroupEntry[] {
   const groups: SessionGroupEntry[] = [];
   const keyOf = (item: FeedItem): string => item.session_id || "__no_session__";
@@ -390,6 +415,38 @@ function groupBySession(categorizedItems: Array<{ item: FeedItem; category: Feed
   }
 
   return groups;
+}
+
+function buildConversationTurns(items: FeedItem[]): ConversationTurn[] {
+  const turns: ConversationTurn[] = [];
+  const pendingBySession = new Map<string, { responses: FeedItem[]; hiddenMetaCount: number }>();
+
+  for (const item of items) {
+    const sessionKey = item.session_id || "__no_session__";
+    const pending = pendingBySession.get(sessionKey) || { responses: [], hiddenMetaCount: 0 };
+    pendingBySession.set(sessionKey, pending);
+
+    if (isVisibleUserPrompt(item)) {
+      turns.push({
+        id: `turn-${item.id}`,
+        prompt: item,
+        responses: [...pending.responses].reverse(),
+        hiddenMetaCount: pending.hiddenMetaCount,
+      });
+      pending.responses = [];
+      pending.hiddenMetaCount = 0;
+      continue;
+    }
+
+    if (isAssistantResponse(item)) {
+      pending.responses.push(item);
+      continue;
+    }
+
+    pending.hiddenMetaCount += 1;
+  }
+
+  return turns;
 }
 
 function categoryLabel(category: FeedCategoryId, language: UiLanguage): string {
@@ -423,6 +480,32 @@ function normalizePlatformBadge(platform: string | undefined): { id: PlatformBad
   return { id: "other", label: "Unknown" };
 }
 
+function resolveConversationText(item: FeedItem | undefined): string {
+  if (!item) {
+    return "";
+  }
+  const content = (item.content || "").trim();
+  if (content.length > 0) {
+    return content;
+  }
+  return (item.title || "").trim();
+}
+
+function formatConversationNote(turn: ConversationTurn, language: UiLanguage): string {
+  const hiddenMeta = turn.hiddenMetaCount;
+  const parts: string[] = [];
+
+  if (hiddenMeta > 0) {
+    parts.push(
+      language === "ja"
+        ? `meta/event ${hiddenMeta} 件を省略`
+        : `${hiddenMeta} meta or event records hidden`
+    );
+  }
+
+  return parts.join(language === "ja" ? " / " : " / ");
+}
+
 function PlatformBadge({ platform }: { platform: ReturnType<typeof normalizePlatformBadge> }) {
   return (
     <span
@@ -440,6 +523,7 @@ export function FeedPanel(props: FeedPanelProps) {
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const copy = getUiCopy(language);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [showAllEvents, setShowAllEvents] = useState(false);
 
   useEffect(() => {
     const sentinel = sentinelRef.current;
@@ -467,6 +551,13 @@ export function FeedPanel(props: FeedPanelProps) {
   }, [displayItems]);
 
   const sessionGroups = useMemo(() => groupBySession(categorizedItems), [categorizedItems]);
+  const conversationTurns = useMemo(() => buildConversationTurns(items), [items]);
+  const hasConversationPairs = useMemo(
+    () => conversationTurns.some((turn) => turn.responses.length > 0),
+    [conversationTurns]
+  );
+  const activeViewMode: FeedViewMode = hasConversationPairs && !showAllEvents ? "conversation" : "events";
+  const summaryCount = activeViewMode === "conversation" ? conversationTurns.length : displayItems.length;
 
   useEffect(() => {
     if (!expandedCardId) {
@@ -477,60 +568,91 @@ export function FeedPanel(props: FeedPanelProps) {
     }
   }, [displayItems, expandedCardId]);
 
+  useEffect(() => {
+    if (!hasConversationPairs && showAllEvents) {
+      setShowAllEvents(false);
+    }
+  }, [hasConversationPairs, showAllEvents]);
+
   return (
     <section className="feed-panel">
       <div className="feed-summary">
         <strong>{copy.feed}</strong>
-        <span>{displayItems.length} {copy.itemsLoadedSuffix}</span>
+        <span>{summaryCount} {copy.itemsLoadedSuffix}</span>
       </div>
 
-      {onPlatformChange ? (
-        <div
-          className="platform-tabs"
-          role="tablist"
-          aria-label={language === "ja" ? "プラットフォーム絞り込み" : "Filter by platform"}
-          onKeyDown={(event) => {
-            const tabs = PLATFORM_TABS;
-            const currentIndex = tabs.findIndex((t) => t.id === platformFilter);
-            let nextIndex = -1;
-            if (event.key === "ArrowRight" || event.key === "ArrowDown") {
-              event.preventDefault();
-              nextIndex = (currentIndex + 1) % tabs.length;
-            } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
-              event.preventDefault();
-              nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
-            } else if (event.key === "Home") {
-              event.preventDefault();
-              nextIndex = 0;
-            } else if (event.key === "End") {
-              event.preventDefault();
-              nextIndex = tabs.length - 1;
-            }
-            if (nextIndex >= 0) {
-              onPlatformChange(tabs[nextIndex].id);
-              const target = (event.currentTarget as HTMLElement).querySelector(`[data-tab-id="${tabs[nextIndex].id}"]`) as HTMLElement | null;
-              target?.focus();
-            }
-          }}
-        >
-          {PLATFORM_TABS.map((tab) => (
+      <div className="feed-toolbar">
+        {onPlatformChange ? (
+          <div
+            className="platform-tabs"
+            role="tablist"
+            aria-label={language === "ja" ? "プラットフォーム絞り込み" : "Filter by platform"}
+            onKeyDown={(event) => {
+              const tabs = PLATFORM_TABS;
+              const currentIndex = tabs.findIndex((t) => t.id === platformFilter);
+              let nextIndex = -1;
+              if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+                event.preventDefault();
+                nextIndex = (currentIndex + 1) % tabs.length;
+              } else if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+                event.preventDefault();
+                nextIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+              } else if (event.key === "Home") {
+                event.preventDefault();
+                nextIndex = 0;
+              } else if (event.key === "End") {
+                event.preventDefault();
+                nextIndex = tabs.length - 1;
+              }
+              if (nextIndex >= 0) {
+                onPlatformChange(tabs[nextIndex].id);
+                const target = (event.currentTarget as HTMLElement).querySelector(`[data-tab-id="${tabs[nextIndex].id}"]`) as HTMLElement | null;
+                target?.focus();
+              }
+            }}
+          >
+            {PLATFORM_TABS.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                data-tab-id={tab.id}
+                aria-selected={platformFilter === tab.id}
+                tabIndex={platformFilter === tab.id ? 0 : -1}
+                className={`platform-tab${platformFilter === tab.id ? " active" : ""}`}
+                onClick={() => onPlatformChange(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        {hasConversationPairs ? (
+          <div className="feed-view-tabs" role="tablist" aria-label={language === "ja" ? "表示モード" : "Feed display mode"}>
             <button
-              key={tab.id}
               type="button"
               role="tab"
-              data-tab-id={tab.id}
-              aria-selected={platformFilter === tab.id}
-              tabIndex={platformFilter === tab.id ? 0 : -1}
-              className={`platform-tab${platformFilter === tab.id ? " active" : ""}`}
-              onClick={() => onPlatformChange(tab.id)}
+              aria-selected={activeViewMode === "conversation"}
+              className={`platform-tab${activeViewMode === "conversation" ? " active" : ""}`}
+              onClick={() => setShowAllEvents(false)}
             >
-              {tab.label}
+              {copy.feedViewConversation}
             </button>
-          ))}
-        </div>
-      ) : null}
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeViewMode === "events"}
+              className={`platform-tab${activeViewMode === "events" ? " active" : ""}`}
+              onClick={() => setShowAllEvents(true)}
+            >
+              {copy.feedViewEvents}
+            </button>
+          </div>
+        ) : null}
+      </div>
 
-      {displayItems.length === 0 && !loading ? (
+      {summaryCount === 0 && !loading ? (
         <div className="empty">
           {copy.noFeedItems} {copy.noFeedItemsHint}
         </div>
@@ -539,97 +661,150 @@ export function FeedPanel(props: FeedPanelProps) {
       {loading ? <div className="loading" aria-live="polite">{copy.loading}</div> : null}
 
       <div className="feed-list">
-        {sessionGroups.map((group) => {
-          const groupKey = group.sessionId ?? "__no_session__";
-          const cards = group.items.map(({ item, category }) => {
-            const content = resolveCardContent(item, category);
-            const platform = normalizePlatformBadge(item.platform);
-            const isExpanded = expandedCardId === item.id;
-            const expandRegionId = `feed-expand-${item.id}`;
-            const isSystemEnvelope = isSystemEnvelopePrompt(item);
-            const showContent = isExpanded || !isSystemEnvelope;
-            const handleToggle = () => setExpandedCardId((prev) => (prev === item.id ? null : item.id));
-            return (
-              <article
-                key={item.id}
-                className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}${isSystemEnvelope ? " system-envelope" : ""}`}
-                {...(isSystemEnvelope ? {
-                  role: "button",
-                  tabIndex: 0,
-                  "aria-expanded": isExpanded,
-                  onClick: handleToggle,
-                  onKeyDown: (e: React.KeyboardEvent) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      handleToggle();
-                    }
-                  },
-                } : {
-                  onClick: handleToggle,
-                })}
-              >
-                <button
-                  type="button"
-                  className="card-toggle"
-                  aria-expanded={isExpanded}
-                  aria-controls={expandRegionId}
-                  aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
-                  onClick={(e) => { e.stopPropagation(); handleToggle(); }}
+        {activeViewMode === "conversation"
+          ? conversationTurns.map((turn) => {
+              const lastResponse = turn.responses[turn.responses.length - 1];
+              const platform = normalizePlatformBadge(turn.prompt.platform || lastResponse?.platform);
+              const promptText = resolveConversationText(turn.prompt);
+              const note = formatConversationNote(turn, language);
+              return (
+                <article
+                  key={turn.id}
+                  className={`feed-card conversation-card platform-${platform.id}${compact ? " compact" : ""}`}
                 >
-                <div className="card-top">
-                  <div className="card-top-left">
-                    <PlatformBadge platform={platform} />
-                    <span className={`category-chip ${category}`}>{categoryLabel(category, language)}</span>
-                    {isSystemEnvelope && !isExpanded ? (
-                      <span className="system-envelope-hint" aria-hidden="true">
-                        {language === "ja" ? "▶ 展開" : "▶ expand"}
-                      </span>
-                    ) : null}
+                  <div className="card-top">
+                    <div className="card-top-left">
+                      <PlatformBadge platform={platform} />
+                      <span className="category-chip prompt">{copy.feedViewConversation}</span>
+                    </div>
+                    <span className="card-time">
+                      {formatTimestamp(lastResponse?.created_at || turn.prompt.created_at, language)}
+                    </span>
                   </div>
-                  <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
-                </div>
-                </button>
-                <h3>{item.title || item.id}</h3>
-                {showContent && content ? <p>{content}</p> : null}
-                {isExpanded ? (
-                  <pre id={expandRegionId} className="feed-inline-detail">
-                    {content || "-"}
-                  </pre>
-                ) : null}
 
-                <div className="card-meta">
-                  <span>{item.project || "-"}</span>
-                  <span>{item.session_id || "-"}</span>
-                </div>
+                  <div className="conversation-row prompt">
+                    <span className="conversation-label">{copy.promptLabel}</span>
+                    <div className="conversation-body">
+                      <p>{promptText || turn.prompt.title || turn.prompt.id}</p>
+                    </div>
+                  </div>
 
-                <div className="card-tags">
-                  {(item.tags || []).map((tag) => (
-                    <span key={`${item.id}-tag-${tag}`} className="pill">
-                      {tag}
-                    </span>
-                  ))}
-                  {(item.privacy_tags || []).map((tag) => (
-                    <span key={`${item.id}-privacy-${tag}`} className="pill privacy">
-                      {copy.privacyPrefix}:{tag}
-                    </span>
-                  ))}
-                </div>
-              </article>
-            );
-          });
+                  {turn.responses.length > 0
+                    ? turn.responses.map((response) => {
+                        const responseText = resolveConversationText(response);
+                        return (
+                          <div className="conversation-row response" key={response.id}>
+                            <span className="conversation-label">{copy.responseLabel}</span>
+                            <div className="conversation-body">
+                              <p>{responseText || (language === "ja" ? "まだ回答がありません。" : "No response yet.")}</p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    : (
+                      <div className="conversation-row response">
+                        <span className="conversation-label">{copy.responseLabel}</span>
+                        <div className="conversation-body">
+                          <p>{language === "ja" ? "まだ回答がありません。" : "No response yet."}</p>
+                        </div>
+                      </div>
+                    )}
 
-          return (
-            <SessionGroup
-              key={groupKey}
-              sessionId={group.sessionId}
-              platform={group.platform}
-              items={group.items.map(({ item }) => item)}
-              language={language}
-            >
-              {cards}
-            </SessionGroup>
-          );
-        })}
+                  {note ? <p className="conversation-note">{note}</p> : null}
+                </article>
+              );
+            })
+          : sessionGroups.map((group) => {
+              const groupKey = group.sessionId ?? "__no_session__";
+              const cards = group.items.map(({ item, category }) => {
+                const content = resolveCardContent(item, category);
+                const platform = normalizePlatformBadge(item.platform);
+                const isExpanded = expandedCardId === item.id;
+                const expandRegionId = `feed-expand-${item.id}`;
+                const isSystemEnvelope = isSystemEnvelopePrompt(item);
+                const showContent = isExpanded || !isSystemEnvelope;
+                const handleToggle = () => setExpandedCardId((prev) => (prev === item.id ? null : item.id));
+                return (
+                  <article
+                    key={item.id}
+                    className={`feed-card interactive feed-kind-${category} platform-${platform.id}${compact ? " compact" : ""}${isExpanded ? " expanded" : ""}${isSystemEnvelope ? " system-envelope" : ""}`}
+                    {...(isSystemEnvelope ? {
+                      role: "button",
+                      tabIndex: 0,
+                      "aria-expanded": isExpanded,
+                      onClick: handleToggle,
+                      onKeyDown: (e: React.KeyboardEvent) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          handleToggle();
+                        }
+                      },
+                    } : {
+                      onClick: handleToggle,
+                    })}
+                  >
+                    <button
+                      type="button"
+                      className="card-toggle"
+                      aria-expanded={isExpanded}
+                      aria-controls={expandRegionId}
+                      aria-label={`${item.title || item.id} - ${isExpanded ? copy.detailClose : copy.detailHint}`}
+                      onClick={(e) => { e.stopPropagation(); handleToggle(); }}
+                    >
+                    <div className="card-top">
+                      <div className="card-top-left">
+                        <PlatformBadge platform={platform} />
+                        <span className={`category-chip ${category}`}>{categoryLabel(category, language)}</span>
+                        {isSystemEnvelope && !isExpanded ? (
+                          <span className="system-envelope-hint" aria-hidden="true">
+                            {language === "ja" ? "▶ 展開" : "▶ expand"}
+                          </span>
+                        ) : null}
+                      </div>
+                      <span className="card-time">{formatTimestamp(item.created_at, language)}</span>
+                    </div>
+                    </button>
+                    <h3>{item.title || item.id}</h3>
+                    {showContent && content ? <p>{content}</p> : null}
+                    {isExpanded ? (
+                      <pre id={expandRegionId} className="feed-inline-detail">
+                        {content || "-"}
+                      </pre>
+                    ) : null}
+
+                    <div className="card-meta">
+                      <span>{item.canonical_project || item.project || "-"}</span>
+                      <span>{item.session_id || "-"}</span>
+                    </div>
+
+                    <div className="card-tags">
+                      {(item.tags || []).map((tag) => (
+                        <span key={`${item.id}-tag-${tag}`} className="pill">
+                          {tag}
+                        </span>
+                      ))}
+                      {(item.privacy_tags || []).map((tag) => (
+                        <span key={`${item.id}-privacy-${tag}`} className="pill privacy">
+                          {copy.privacyPrefix}:{tag}
+                        </span>
+                      ))}
+                    </div>
+                  </article>
+                );
+              });
+
+              return (
+                <SessionGroup
+                  key={groupKey}
+                  sessionId={group.sessionId}
+                  platform={group.platform}
+                  items={group.items.map(({ item }) => item)}
+                  language={language}
+                >
+                  {cards}
+                </SessionGroup>
+              );
+            })}
       </div>
 
       {hasMore ? (
@@ -637,7 +812,7 @@ export function FeedPanel(props: FeedPanelProps) {
           {copy.loadMore}
         </button>
       ) : null}
-      {!hasMore && displayItems.length > 0 ? <div className="done">{copy.noMoreItems}</div> : null}
+      {!hasMore && summaryCount > 0 ? <div className="done">{copy.noMoreItems}</div> : null}
       <div ref={sentinelRef} style={{ height: 1 }} aria-hidden="true" />
     </section>
   );

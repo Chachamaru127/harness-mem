@@ -1281,7 +1281,7 @@ Phase C: Recurrence Guard
 
 ## §50 Project Classification Normalization Investigation
 
-- 状態: 2026-03-13 調査完了（実装未着手）
+- 状態: 2026-03-13 調査・第一段実装完了
 - 結論:
   - UI 表示の repo 単位集約は可能
   - ただし DB の `project` 正本を一律 repo 名へ置換すると `strict project` 境界と scope 分離を壊すため、そのまま一括置換は危険
@@ -1296,3 +1296,238 @@ Phase C: Recurrence Guard
   - 判断:
     - 第一段は UI/API で `canonical_project` を導入し、raw project を members として束ねる方針が安全
     - raw `project` は検索・resume・strict_project のため残し、選択時だけ grouped filter を raw members へ fan-out するのが本命
+
+- [x] `cc:完了` **S50-002 [ui/api]**: repo 名 canonical grouping を projects/feed/stream/session/search に適用
+  - 対象:
+    - `memory-server/src/core/{harness-mem-core.ts,config-manager.ts,observation-store.ts,session-manager.ts}`
+    - `memory-server/src/server.ts`
+    - `harness-mem-ui/src/{app/App.tsx,components/FeedPanel.tsx,components/SessionPanel.tsx,hooks/useFeedPagination.ts,lib/types.ts,lib/merge.ts}`
+  - DoD:
+    - sidebar 一覧が repo 名 or 非 repo ルートフォルダ名で集約される
+    - canonical project 選択で feed / stream / graph / search / sessions が raw members を横断して返る
+    - UI 表示は raw path ではなく canonical 名を優先する
+  - 検証:
+    - `bun test memory-server/tests/unit/core.test.ts` 13 pass
+    - `cd memory-server && bun run typecheck`
+    - `cd harness-mem-ui && bun run typecheck && bun run build`
+    - one-off core 実測で `projectsStats/feed/sessionsList` が `repo path + repo::scope` を同一 canonical project に束ねることを確認
+    - live daemon 再起動後の `/v1/projects/stats` で `kage-bunshin` 集約を確認し、非 repo absolute path が祖先 `.git` に吸われないよう folder fallback を補正
+
+- [x] `cc:完了` **S50-003 [ui/perf]**: UI 初回接続で daemon を飽和させる stream replay と project stats 多重発火を修正
+  - 対象:
+    - `memory-server/src/core/{harness-mem-core.ts,event-recorder.ts}`
+    - `memory-server/src/server.ts`
+    - `memory-server/tests/{integration/feed-stream.test.ts,core-split/event-recorder.test.ts}`
+    - `harness-mem-ui/src/{app/App.tsx,hooks/useSSE.ts}`
+  - DoD:
+    - UI の SSE は初回ロード時に backlog replay を要求せず、feed 初期 fetch と live stream の責務を分離する
+    - `projects/stats` の再読込は burst ごとに coalesce され、`observation.created` 200 件で 200 回再発火しない
+    - daemon/UI 再起動後に `/health` `/api/health` `/api/projects/stats` がハングせず返り、UI の `Failed to fetch` が再現しない
+  - 2026-03-14 00:42 JST:
+    - live 調査で daemon PID `75874` が 97% CPU でハングし、`curl --max-time 3 http://127.0.0.1:37888/health` と `http://127.0.0.1:37901/api/health` が応答しないことを確認
+    - `sample 75874 1 1` は Bun main thread が `sqlite3_step` 内の `json_each/json_valid` 系で滞留していた
+    - 一方で `sqlite3 ~/.harness-mem/harness-mem.db` による `projects/stats` / `feed` 単発実測は 1 秒未満だったため、SSE 初回 replay の `observation.created/session.finalized` ごとに `loadProjects()` が多重発火して daemon を飽和させる線を第一原因として修正する
+  - 2026-03-14 00:36 JST:
+    - `projects/stats` 集約で raw project ごとの canonical 名を request 内キャッシュし、`sessionRows` 4155 件に対して `.git` / `realpath` 判定を繰り返さないよう補正
+    - `bun test memory-server/tests/{core-split/event-recorder.test.ts,integration/feed-stream.test.ts}` 16 pass、`cd memory-server && bun run typecheck` 成功
+    - `scripts/harness-memd stop && start` 後に `scripts/harness-memd doctor` が daemon/UI とも `[ok]`
+    - live 実測で `/health` と `/api/health` を 5 回連続で 5 秒以内に通過、`/api/projects/stats?include_private=false` は初回 `latency_ms≈1990`、以降 `≈145` で安定し `Failed to fetch` 再現が止まった
+
+- [x] `cc:完了` **S50-004 [ui/cache]**: project 切替時の feed をキャッシュ即表示 + 裏更新へ寄せ、無駄な loading を出さない
+  - 対象:
+    - `harness-mem-ui/src/hooks/useFeedPagination.ts`
+    - `harness-mem-ui/src/lib/api.ts`
+    - `harness-mem-ui/tests/ui/useFeedPagination.test.tsx`
+  - DoD:
+    - project 切替時に既知の feed snapshot があれば空表示へ落とさず即表示する
+    - 初回 `__all__` 取得済みなら project 切替時に seed cache を使い、裏で最新化する
+    - 古い fetch が新しい project 選択を上書きしない
+  - 2026-03-14 00:46 JST:
+    - 現状は `useFeedPagination` が project 変更ごとに `setItems([])` 後に `/api/feed` を再取得しており、`FeedPanel` が `loading` をそのまま表示するため切替たびに読み込み中が見える
+  - 2026-03-14 13:07 JST:
+    - `useFeedPagination` を raw feed snapshot ベースへ寄せ、`project + includePrivate + limit` 単位の in-memory cache と `__all__` 由来の seed cache を追加
+    - project 切替時に exact cache があれば即表示、無ければ `__all__` 初回取得の subset を seed 表示しつつ background refresh するよう補正
+    - `AbortController` を `fetchFeed` に通し、古い fetch が新しい project 選択を上書きしないようにした
+    - `cd harness-mem-ui && bun run test:ui tests/ui/useFeedPagination.test.tsx` 3 pass、`bun run typecheck` 成功、`bun run build` 成功、`scripts/harness-memd doctor` は daemon/UI とも `[ok]`
+
+- [x] `cc:完了` **S50-005 [ui/startup]**: 初回起動の heavy API を feed 完了後へ段階化し、sidebar の 0件誤表示を防ぐ
+  - 対象:
+    - `harness-mem-ui/src/app/App.tsx`
+    - `harness-mem-ui/src/hooks/useSSE.ts`
+    - `harness-mem-ui/src/hooks/useFeedPagination.ts`
+    - `harness-mem-ui/src/components/ProjectSidebar.tsx`
+    - `harness-mem-ui/tests/ui/useSSE.test.tsx`
+  - DoD:
+    - 初回 mount で `feed` を先行し、`projects/stats` / health poll / SSE は bootstrap 後に起動する
+    - project 一覧未取得中に sidebar が `0 件 / 0 セッション` を確定表示しない
+    - 既存の feed cache / seed cache と両立し、project 切替の UX を悪化させない
+  - 2026-03-14 18:19 JST:
+    - `useFeedPagination` / `useSSE` に `enabled` を追加し、`/api/context` 解決前は feed/SSE を起動しないよう補正
+    - `App` で `default_project` 判明後の effective project を使い、初回 `__all__` feed を避けて `context -> project feed -> projects/stats -> health -> stream` の順で起動するよう変更
+    - `ProjectSidebar` は project stats 未取得中に `Loading...` を表示し、`0 obs / 0 sessions` と `No projects yet.` の誤表示を出さないようにした
+    - `cd harness-mem-ui && bun run test:ui tests/ui/useFeedPagination.test.tsx tests/ui/useSSE.test.tsx` 6 pass、`bun run typecheck` 成功、`bun run build` 成功
+    - live headless 実測では 5 秒時点で `Feed 7 items loaded` / sidebar `Loading...`、10 秒時点で `64830 obs / 2518 sessions` と `stream connected` を確認
+
+- [x] `cc:完了` **S50-006 [ui/feed]**: 会話本体を主役にし、meta/event 全量表示はオプションへ退避
+  - 対象:
+    - `harness-mem-ui/src/components/FeedPanel.tsx`
+    - `harness-mem-ui/src/app/styles.css`
+    - `harness-mem-ui/src/lib/i18n.ts`
+    - `harness-mem-ui/tests/ui/feed-panel.test.tsx`
+  - DoD:
+    - prompt + assistant_response が取れる session では、デフォルトで「会話」表示を優先する
+    - `<environment_context>` / AGENTS / subagent notification などの meta は会話モードでは非表示にする
+    - 必要時は All events へ切り替えて従来イベント列を見られる
+  - 2026-03-14 18:37 JST:
+    - `FeedPanel` に conversation view を追加し、`user_prompt + assistant_response` を turn 化して `You / Assistant` の 2 段カードで表示するよう変更
+    - `<environment_context>` / `AGENTS.md instructions` / `<subagent_notification>` / `<skill>` 系は会話モードでは非表示にし、`All events` に切り替えた時だけ従来の session accordion 内で確認できるようにした
+    - `styles.css` に会話カード専用のラベル・本文・補足ノートのスタイルを追加し、mobile では 1 カラムへ落ちるよう調整
+    - `cd harness-mem-ui && bun run test:ui tests/ui/feed-panel.test.tsx tests/ui/useFeedPagination.test.tsx tests/ui/useSSE.test.tsx` 21 pass、`bun run typecheck` 成功、`bun run build` 成功
+    - live 実測では headless Playwright で初期表示 `Conversation` tab 1 件 / `.conversation-card` 1 件、`All events` 切替後は `.session-group-header` 1 件 / `.feed-card.system-envelope` 4 件を確認
+
+- [x] `cc:完了` **S50-007 [ingest/runtime]**: current Codex conversation が feed/UI に確実に出るよう Codex sessions ingest の取りこぼしを止める
+  - 対象:
+    - `memory-server/src/{core/ingest-coordinator.ts,ingest/codex-sessions.ts}`
+    - `memory-server/tests/{unit/codex-sessions-ingest.test.ts,integration/ingest-codex-sessions.test.ts,core-split/ingest-coordinator.test.ts}`
+  - DoD:
+    - `recordEvent` 失敗時に Codex rollout offset を成功位置より先へ進めず、次回 ingest で再試行できる
+    - compact/rollout 境界でも current user prompt / assistant response が feed に現れる
+    - live の `harness-mem` project で、今の会話ターンが `/api/feed` と UI `Conversation` view に見える
+  - 2026-03-14 18:41 JST:
+    - live 調査で current conversation は `~/.codex/sessions/2026/03/13/rollout-2026-03-13T11-50-11-019ce519-fe26-7880-a7ee-34ebdfb9c520.jsonl` に追記されている一方、`/api/feed?project=harness-mem` と `mem_events/mem_observations` には現れていないことを確認
+    - 同 rollout の `mem_ingest_offsets.offset` は実ファイルサイズ未満で止まっていたが、手動 ingest は `files_scanned=2282 / events_imported=0` となり、追記 chunk 自体は parser で読めるのに保存へ着地しない区間がある
+    - `type:\"compacted\"` の `replacement_history` に current user prompt が残っており、取りこぼし後に offset が先へ進むと UI から永久に見えなくなるため、offset 保護と compact 境界の recovery を併せて直す
+  - 2026-03-14 18:49 JST:
+    - `parseCodexSessionsChunk` に compacted tail recovery を追加し、`replacement_history` から未観測 suffix の `user_prompt / assistant_response` を再構成できるようにした
+    - `ingestCodexSessionsRollouts` は `recordEvent.ok=false` なら failed line offset で停止し、成功した位置までの context だけ保存して次回 ingest で再試行できるよう補正
+    - 回帰として `bun test tests/unit/codex-sessions-ingest.test.ts tests/integration/ingest-codex-sessions.test.ts tests/core-split/ingest-coordinator.test.ts` 28 pass、`cd memory-server && bun run typecheck` 成功
+    - live では daemon 再起動後に current rollout offset を user prompt 行 `7988785` へ巻き戻して `POST /v1/ingest/codex-sessions` を実行し、`events_imported=1` で `UI上にて、今まさにしているこのやり取りが確認できないのですが` が `mem_events` / `/api/feed` に復旧
+    - headless Playwright 実測で `http://127.0.0.1:37901` の `Conversation` view に current prompt と assistant reply が表示されることを確認
+
+- [x] `cc:完了` **S50-008 [ui/feed]**: Conversation view では会話ターンを省略せず、assistant reply を全表示する
+  - 対象:
+    - `harness-mem-ui/src/components/FeedPanel.tsx`
+    - `harness-mem-ui/tests/ui/feed-panel.test.tsx`
+  - DoD:
+    - Conversation view で同一 prompt に紐づく assistant reply が複数ある場合も全件表示される
+    - `途中の回答 N 件を省略 / N intermediate replies hidden` は出ない
+    - meta/event のみ従来どおり note で省略件数を出せる
+  - 2026-03-14 19:04 JST:
+    - `ConversationTurn` を単一 response ではなく `responses[]` 保持へ変更し、会話ビューで assistant reply を oldest -> newest の順に全件レンダリングするよう補正
+    - `formatConversationNote` から hidden assistant count を外し、note は meta/event の省略件数だけを出すよう整理
+    - `cd harness-mem-ui && bun run test:ui tests/ui/feed-panel.test.tsx` 16 pass、`bun run typecheck` 成功、`bun run build` 成功
+
+- [x] `cc:完了` **S50-009 [release]**: project/feed/ingest 一式を patch release として公開
+  - 対象:
+    - `VERSION`
+    - `package.json`
+    - `CHANGELOG.md`
+    - `CHANGELOG_ja.md`
+    - Git tag / GitHub Release / npm publish surface
+  - DoD:
+    - release 対象差分の要約が `CHANGELOG*.md` に反映される
+    - `VERSION` と `package.json` と tag が一致する
+    - release workflow 相当の local quality gate が通る
+    - `main` へ push 後に tag / GitHub Release / npm version が確認できる
+  - 実装:
+    - `0.4.5` へ version bump し、`.claude-plugin/*` と `CHANGELOG*.md` を同時更新
+    - project canonical grouping、feed conversation-first UI、Codex ingest tail recovery を patch release 要約として整理
+    - Bun 1.3.6 の `bun test` 終了時 crash を避けるため、memory-server test script と release workflow を chunked 実行へ更新
+  - 検証:
+    - `cd harness-mem-ui && bun run test:ui && bun run typecheck && bun run build`
+    - `cd memory-server && bun run test && bun run typecheck`
+    - `./scripts/harness-memd doctor`
+    - `npm pack --dry-run`
+
+## §51 Competitive Gap Closure Program
+
+- 状態: 2026-03-13 計画確定（実装未着手）
+- 目的:
+  - `harness-mem` を「強い local runtime」から「競合比較で負けにくい product」へ引き上げる
+  - main benchmark `FAIL`、watch slice 残、hosted/commercial の弱さ、license/adoption friction、distribution の弱さを同時に扱う
+- 前提:
+  - `100%完璧` は単一条件では定義しない
+  - 完了条件は `engineering-complete / proof-complete / packaging-complete / market-ready` の 4 gate に分離する
+  - traction / hosted / license の一部は repo 外依存なので、「repo 内で解けること」と「別 workstream が必要なこと」を分けて扱う
+
+### Success Gates
+
+| Gate | 意味 | 完了条件（DoD） |
+|------|------|-----------------|
+| Gate A | engineering-complete | `run-ci` が 3 連続 `PASS`、`relative_temporal` / `current_vs_previous` が release blocker から外れ、改善が benchmark 専用ハックではない |
+| Gate B | proof-complete | live replay / search sanity / resume parity で no-regression を確認し、artifact / README / proof bar / comparison page が同じ current truth を指す |
+| Gate C | packaging-complete | local-first の勝ち筋、commercial boundary、managed / hosted 方針、license FAQ、release surface が外部説明として一貫する |
+| Gate D | market-ready | stars ではなく `installs / quickstart completion / demo reproducibility / migration completions` のような leading indicators を測定し、dated competitive snapshot を更新できる |
+
+### Guardrails
+
+- benchmark 専用分岐や hardcode を入れない
+- Japanese companion `PASS` で main gate `FAIL` を相殺しない
+- hosted を full multi-tenant SaaS 前提で開始しない
+- `BUSL-1.1` の変更を engineering 判断だけで確定しない
+- `best / leader / unique / perfect` の claim は Gate A-D 完了前に解禁しない
+
+### Workstreams
+
+#### Phase A: Benchmark Winback
+
+- [ ] `cc:TODO` **S51-001 [ops:tdd]**: competitive closure の truth freeze と gate 定義を固定
+  - 対象: `Plans.md`, `README.md`, `docs/benchmarks/japanese-release-proof-bar.md`, `docs/benchmarks/competitive-analysis-*.md`
+  - DoD: Gate A-D と unlock 条件が dated artifact に基づいて固定される
+
+- [x] `cc:完了` **S51-002 [feature:tdd]**: router の relative temporal / current-vs-previous 判断を回復
+  - 対象: `memory-server/src/retrieval/router.ts`, `memory-server/tests/unit/retrieval-router.test.ts`, `memory-server/tests/unit/temporal-anchor.test.ts`
+  - DoD: relative anchor canonicalization、query classification、answer hints が watch slice failure に対して改善し、単体テストで question-id 付き回帰を固定する
+  - 2026-03-14 follow-up: 英語 `before switching` / `previous` 系の route classification を `timeline` 優先へ補正し、`What was the default region before switching to the new setup?` と `Who was the previous CEO?` の回帰テストを追加
+
+- [x] `cc:完了` **S51-003 [feature:tdd]**: observation-store の temporal / previous-value retrieval を回復
+  - 対象: `memory-server/src/core/observation-store.ts`, 関連 core tests
+  - DoD: candidate depth、temporal anchor search、current/previous cue 優先、short span extraction が `relative_temporal` / `current_vs_previous` に対して改善する
+
+- [ ] `cc:TODO` **S51-004 [feature:tdd]**: adapter / normalizer で `yes_no / entity / location` を硬化
+  - 対象: `tests/benchmarks/locomo-harness-adapter.ts`, `tests/benchmarks/locomo-answer-normalizer.ts`, 各 benchmark tests
+  - DoD: `yes_no`, `entity`, `location` が warning line を上回り、relative weekday / short exact span の正規化が再発しない
+
+- [ ] `cc:TODO` **S51-005 [ops:tdd]**: anti-benchmark-hack + live parity guard を追加
+  - 対象: live replay tests, search sanity tests, benchmark diff review scripts
+  - DoD: `3-run PASS` に加えて live replay no-regression を必須化し、「なぜ改善したか」を slice 別に説明できる
+
+- [ ] `cc:TODO` **S51-006 [ops]**: main gate / companion / failure backlog を再凍結
+  - 対象: `memory-server/src/benchmark/run-ci.ts`, benchmark artifacts, proof docs
+  - DoD: current main gate が `PASS`、watch slice 数値と failure taxonomy が dated artifact として再生成される
+
+#### Phase B: Proof and Packaging
+
+- [ ] `cc:TODO` **S51-007 [ops]**: live product parity を `resume / search / timeline / graph` で証明
+  - 対象: live API checks, smoke tests, parity docs
+  - DoD: benchmark 側の改善が live API でも再現し、「ベンチだけ強い」状態を排除できる
+
+- [ ] `cc:TODO` **S51-008 [docs:adr]**: commercial packaging decision を ADR 化
+  - 対象: hosted / managed / operator kit の 3 案比較
+  - DoD: `full hosted SaaS` ではなく、次に出す offering を 1 つに絞り、repo 内対応と repo 外依存を明文化する
+
+- [ ] `cc:TODO` **S51-009 [docs]**: license / commercial / support / release surface を完成させる
+  - 対象: `README.md`, `README_ja.md`, `LICENSE`, `package.json`, `CHANGELOG.md`, 新規 `docs/licensing.md`, `COMMERCIAL.md`, `SUPPORT.md`, `SECURITY.md`
+  - DoD: `BUSL-1.1` の許容/制限/Change Date/問い合わせ導線が 1 つの説明体系に統一される
+
+- [ ] `cc:TODO` **S51-010 [docs]**: README と distribution surface を buyer language に再編
+  - 対象: README 上部 positioning、badge、keywords、topics、release summary
+  - DoD: `local-first multi-tool coding memory runtime` の勝ち筋が 5 分で伝わり、workflow-failure badge が公開 trust を毀損しない
+
+#### Phase C: Competitive Readiness
+
+- [ ] `cc:TODO` **S51-011 [docs]**: dated competitive snapshot を current proof 基準で更新
+  - 対象: `docs/benchmarks/competitive-analysis-*.md`, `docs/benchmarks/competitive-audit-*.md`
+  - DoD: Mem0 / Supermemory / Graphiti / OpenMemory / claude-mem との比較が official-source + dated metrics で再生成され、unlock claim を再判定できる
+
+- [ ] `cc:TODO` **S51-012 [ops]**: traction proxy を計測可能にする
+  - 対象: install verification, quickstart completion, migration completions, demo reproducibility
+  - DoD: `stars` ではなく制御可能な leading indicators をダッシュボードまたは dated report で継続観測できる
+
+### 着手順
+
+1. `S51-002 -> S51-003` で `relative_temporal` / `current_vs_previous` を戻す
+2. `S51-004` で `yes_no / entity / location` を詰める
+3. `S51-005 -> S51-006 -> S51-007` で Gate A/B を閉じる
+4. `S51-008 -> S51-010` で packaging / license / distribution surface を揃える
+5. `S51-011 -> S51-012` で market-ready 判定と claim unlock を行う

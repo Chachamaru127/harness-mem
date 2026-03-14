@@ -261,6 +261,11 @@ export class EventRecorder {
       .map((event) => ({ ...event, data: { ...event.data } }));
   }
 
+  getLatestStreamEventId(): number {
+    const latest = this.streamEvents[this.streamEvents.length - 1];
+    return latest?.id ?? this.streamEventCounter;
+  }
+
   // ---------------------------------------------------------------------------
   // 書き込みキュー管理
   // ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   configureDatabase as configureDb,
   initFtsIndex as initFtsFromDb,
@@ -210,57 +210,60 @@ function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: str
   return null;
 }
 
-function resolveGitWorkspaceRoot(existingPath: string): string | null {
-  let cursor = normalizePathLike(existingPath);
+function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
+  const cursor = normalizePathLike(existingPath);
   if (!cursor.startsWith("/")) {
     return null;
   }
 
-  while (true) {
-    const gitMarker = join(cursor, ".git");
-    if (existsSync(gitMarker)) {
-      try {
-        const markerStat = statSync(gitMarker);
-        if (markerStat.isDirectory()) {
-          return realpathOrNormalized(cursor);
-        }
-        if (markerStat.isFile()) {
-          const markerBody = readFileSync(gitMarker, "utf8");
-          const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
-          if (!match) {
-            return realpathOrNormalized(cursor);
-          }
-          const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
-          const worktreeToken = "/.git/worktrees/";
-          const worktreeIndex = gitDirPath.indexOf(worktreeToken);
-          if (worktreeIndex > 0) {
-            return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
-          }
-          return realpathOrNormalized(cursor);
-        }
-      } catch {
+  const gitMarker = join(cursor, ".git");
+  if (!existsSync(gitMarker)) {
+    return null;
+  }
+
+  try {
+    const markerStat = statSync(gitMarker);
+    if (markerStat.isDirectory()) {
+      return realpathOrNormalized(cursor);
+    }
+    if (markerStat.isFile()) {
+      const markerBody = readFileSync(gitMarker, "utf8");
+      const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
+      if (!match) {
         return realpathOrNormalized(cursor);
+      }
+      const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
+      const worktreeToken = "/.git/worktrees/";
+      const worktreeIndex = gitDirPath.indexOf(worktreeToken);
+      if (worktreeIndex > 0) {
+        return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
       }
       return realpathOrNormalized(cursor);
     }
-
-    const parent = normalizePathLike(dirname(cursor));
-    if (!parent || parent === cursor) {
-      break;
-    }
-    cursor = parent;
+  } catch {
+    return realpathOrNormalized(cursor);
   }
-  return null;
+
+  return realpathOrNormalized(cursor);
+}
+
+function normalizeExplicitProjectPath(project: string): string {
+  const normalized = normalizePathLike(project.trim());
+  if (!normalized) {
+    return "";
+  }
+  const resolved = realpathOrNormalized(normalized);
+  return resolveDirectGitWorkspaceRoot(resolved) || resolved;
 }
 
 function resolveWorkspaceRoot(existingPath: string, options: ProjectNormalizationOptions = {}): string | null {
-  const gitRoot = resolveGitWorkspaceRoot(existingPath);
-  if (gitRoot) {
-    return normalizePathLike(gitRoot);
+  const directGitRoot = resolveDirectGitWorkspaceRoot(existingPath);
+  if (directGitRoot) {
+    return normalizePathLike(directGitRoot);
   }
   const preferredRoot = resolvePreferredWorkspaceRoot(existingPath, options.preferredRoots || []);
   if (preferredRoot) {
-    return normalizePathLike(preferredRoot);
+    return normalizePathLike(resolveDirectGitWorkspaceRoot(preferredRoot) || preferredRoot);
   }
   return null;
 }
@@ -451,6 +454,8 @@ export class HarnessMemCore {
       db: this.db,
       config: this.config,
       normalizeProject: (p) => this.normalizeProjectInput(p),
+      canonicalizeProject: (p) => this.getCanonicalProjectName(p),
+      expandProjectSelection: (project, scope) => this.expandProjectSelection(project, scope),
       platformVisibilityFilterSql: (alias) => this.platformVisibilityFilterSql(alias),
       recordEvent: (event) => this.recordEvent(event),
       appendStreamEvent: (type, data) => this.eventRec.appendStreamEvent(type, data),
@@ -463,6 +468,8 @@ export class HarnessMemCore {
       config: this.config,
       ftsEnabled: this.ftsEnabled,
       normalizeProject: (p) => this.normalizeProjectInput(p),
+      canonicalizeProject: (p) => this.getCanonicalProjectName(p),
+      expandProjectSelection: (project, scope) => this.expandProjectSelection(project, scope),
       platformVisibilityFilterSql: (alias) => this.platformVisibilityFilterSql(alias),
       writeAuditLog: (action, targetType, targetId, details) =>
         this.writeAuditLog(action, targetType, targetId, details),
@@ -501,6 +508,7 @@ export class HarnessMemCore {
     this.cfgMgr = new ConfigManager({
       db: this.db,
       config: this.config,
+      canonicalizeProject: (project) => this.getCanonicalProjectName(project),
       doHealth: () => this.health(),
       doMetrics: () => this.metrics(),
       doEnvironmentSnapshot: () => this.environmentSnapshot(),
@@ -540,7 +548,7 @@ export class HarnessMemCore {
   }
 
   private buildProjectNormalizationRoots(): string[] {
-    const candidates = [this.config.codexProjectRoot, process.cwd()];
+    const candidates = [this.config.codexProjectRoot, this.config.codexSessionsRoot, process.cwd()];
     const roots: string[] = [];
     for (const candidate of candidates) {
       if (typeof candidate !== "string" || !candidate.trim()) {
@@ -548,9 +556,15 @@ export class HarnessMemCore {
       }
       const resolved = resolveHomePath(candidate);
       try {
-        roots.push(normalizeProjectName(resolve(resolved)));
+        const absoluteRoot = normalizePathLike(realpathSync(resolve(resolved)));
+        roots.push(absoluteRoot);
+        roots.push(normalizeProjectName(absoluteRoot));
       } catch {
-        // ignore invalid candidate
+        try {
+          roots.push(normalizeProjectName(resolve(resolved)));
+        } catch {
+          // ignore invalid candidate
+        }
       }
     }
     return [...new Set(roots)];
@@ -572,7 +586,11 @@ export class HarnessMemCore {
       if (typeof candidate !== "string" || !candidate.trim()) {
         continue;
       }
-      let normalized = normalizePathLike(resolveHomePath(candidate.trim()));
+      const absoluteCandidate = normalizePathLike(resolveHomePath(candidate.trim()));
+      if (isAbsoluteProjectPath(absoluteCandidate)) {
+        merged.add(absoluteCandidate);
+      }
+      let normalized = absoluteCandidate;
       try {
         normalized = normalizeProjectName(normalized, {
           preferredRoots: [...merged],
@@ -590,6 +608,121 @@ export class HarnessMemCore {
       return;
     }
     this.projectNormalizationRoots.splice(0, this.projectNormalizationRoots.length, ...merged);
+  }
+
+  private canonicalizeProjectName(project: string): string {
+    const trimmed = project.trim();
+    if (!trimmed) {
+      return "";
+    }
+
+    const scopeIndex = trimmed.indexOf("::");
+    if (scopeIndex > 0) {
+      return this.canonicalizeProjectName(trimmed.slice(0, scopeIndex));
+    }
+
+    const normalized = normalizePathLike(trimmed);
+    if (normalized.includes("/") || /^[A-Za-z]:\//.test(normalized)) {
+      const resolved = realpathOrNormalized(normalized);
+      const directGitRoot = resolveDirectGitWorkspaceRoot(resolved);
+      if (directGitRoot) {
+        return basename(normalizePathLike(directGitRoot)) || directGitRoot;
+      }
+      return basename(resolved) || resolved;
+    }
+
+    return normalized;
+  }
+
+  private isExplicitRawProjectSelection(project: string): boolean {
+    const normalized = normalizePathLike(project.trim());
+    if (!normalized) {
+      return false;
+    }
+    return normalized.includes("/") || normalized.includes("::") || /^[A-Za-z]:\//.test(normalized);
+  }
+
+  private loadDistinctProjects(scope: "observations" | "sessions" = "observations"): string[] {
+    const rows = scope === "sessions"
+      ? this.db
+          .query(`
+            SELECT DISTINCT project
+            FROM (
+              SELECT project FROM mem_sessions
+              UNION
+              SELECT project FROM mem_observations
+            )
+            WHERE project IS NOT NULL AND TRIM(project) <> ''
+          `)
+          .all() as Array<{ project: string }>
+      : this.db
+          .query(`
+            SELECT DISTINCT project
+            FROM mem_observations
+            WHERE project IS NOT NULL AND TRIM(project) <> ''
+          `)
+          .all() as Array<{ project: string }>;
+
+    return rows
+      .map((row) => (typeof row.project === "string" ? row.project.trim() : ""))
+      .filter(Boolean);
+  }
+
+  public getCanonicalProjectName(project: string): string {
+    return this.canonicalizeProjectName(project);
+  }
+
+  public expandProjectSelection(
+    project: string,
+    scope: "observations" | "sessions" = "observations"
+  ): string[] {
+    const trimmed = project.trim();
+    if (!trimmed) {
+      return [];
+    }
+
+    if (this.isExplicitRawProjectSelection(trimmed)) {
+      if (trimmed.includes("::")) {
+        return [normalizePathLike(trimmed)];
+      }
+      try {
+        return [this.normalizeProjectInput(trimmed)];
+      } catch {
+        return [normalizeExplicitProjectPath(trimmed)];
+      }
+    }
+
+    const canonical = this.canonicalizeProjectName(trimmed);
+    const members = this.loadDistinctProjects(scope)
+      .filter((candidate) => this.canonicalizeProjectName(candidate) === canonical)
+      .sort((lhs, rhs) => lhs.localeCompare(rhs));
+
+    if (members.length > 0) {
+      return members;
+    }
+
+    try {
+      return [this.normalizeProjectInput(trimmed)];
+    } catch {
+      return [normalizePathLike(trimmed)];
+    }
+  }
+
+  public projectMatchesSelection(selection: string, project: string): boolean {
+    const selected = selection.trim();
+    const candidate = project.trim();
+    if (!selected || !candidate) {
+      return false;
+    }
+
+    if (this.isExplicitRawProjectSelection(selected)) {
+      if (selected.includes("::")) {
+        return normalizePathLike(selected) === normalizePathLike(candidate);
+      }
+      return normalizeExplicitProjectPath(selected) === normalizeExplicitProjectPath(candidate);
+    }
+
+    return this.canonicalizeProjectName(selected) === this.canonicalizeProjectName(candidate);
   }
 
   private migrateLegacyProjectAliases(): void {
@@ -1110,6 +1243,10 @@ export class HarnessMemCore {
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
     return this.eventRec.getStreamEventsSince(lastEventId, limitInput);
+  }
+
+  getLatestStreamEventId(): number {
+    return this.eventRec.getLatestStreamEventId();
   }
 
   private upsertSessionSummary(

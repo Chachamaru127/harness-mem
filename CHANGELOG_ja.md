@@ -5,6 +5,18 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.4.5] - 2026-03-15
+
+### ユーザー向け要約
+
+- project 一覧と project フィルタを canonical project 単位に統合し、repo があるものは repo 名、無いものはフォルダ名でまとまるよう改善。
+- UI 起動と project 切替の無駄な読み込みを減らし、Conversation view では assistant reply を途中省略せず全表示するよう修正。
+- Codex ingest の取りこぼしと temporal retrieval の `current / previous` 判定を補強し、今の会話や最近の状態変化が feed / 検索へ戻るよう改善。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.4.4] - 2026-03-13
 
 ### ユーザー向け要約

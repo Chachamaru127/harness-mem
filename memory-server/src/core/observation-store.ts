@@ -73,6 +73,10 @@ export interface ObservationStoreDeps {
   ftsEnabled: boolean;
   /** normalizeProjectInput のバインド済みバージョン */
   normalizeProject: (project: string) => string;
+  /** raw project を UI 用 canonical 名へ変換 */
+  canonicalizeProject: (project: string) => string;
+  /** canonical project 選択を raw member projects へ展開 */
+  expandProjectSelection: (project: string, scope?: "observations" | "sessions") => string[];
   /** platformVisibilityFilterSql のバインド済みバージョン */
   platformVisibilityFilterSql: (alias: string) => string;
   /** writeAuditLog のバインド済みバージョン */
@@ -190,10 +194,10 @@ function decodeFeedCursor(input: string | undefined): FeedCursor | null {
 const TEMPORAL_INTENT_PATTERN =
   /\b(when|before|after|since|until|during|between|timeline|history|chronolog|first|last|earliest|latest|how long|what year|what month|what date)\b|(の前|の後|以前|以降|最初|最後|直近|最近)/i;
 const JAPANESE_CURRENT_PATTERN = /(今|現在|今の|現行|最新|使っている)/;
-const JAPANESE_PREVIOUS_PATTERN = /(以前|前の|前回|前は|もともと|元は|最初は|当初|当時|直後|初期)/;
+const JAPANESE_PREVIOUS_PATTERN = /(以前|前の|前回|前は|もともと|元は|最初は|当初|当時|直後|初期|変える前|見直す前|移す前|切り替える前|変更前)/;
 const JAPANESE_REASON_PATTERN = /(なぜ|理由|きっかけ|どうして|背景|原因)/;
 const JAPANESE_LIST_PATTERN = /(一覧|すべて|全て|挙げて|列挙)/;
-const JAPANESE_TEMPORAL_ORDER_PATTERN = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時)/;
+const JAPANESE_TEMPORAL_ORDER_PATTERN = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時|変える前|見直す前|移す前|切り替える前|変更前)/;
 const CURRENT_CUE_PATTERN = /\b(current|currently|now|latest|active|default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
 const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
@@ -208,7 +212,14 @@ function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
 }
 
+function hasPreviousValueIntent(query: string): boolean {
+  return PREVIOUS_CUE_PATTERN.test(query) || JAPANESE_PREVIOUS_PATTERN.test(query);
+}
+
 function hasSpecificTemporalAnswerCue(query: string): boolean {
+  if (hasPreviousValueIntent(query)) {
+    return true;
+  }
   return /\b(first|last|before|after|since|until|when|what year|what month|what date|earliest|latest)\b/i.test(query) ||
     /(どちらが先|先に|最後|最初|いつ|何時|その後|あとで|後で|直後|の前|の後|以前|以降)/.test(query);
 }
@@ -251,8 +262,34 @@ export class ObservationStore {
 
   constructor(private readonly deps: ObservationStoreDeps) {}
 
+  private resolveProjectMembers(project: string | undefined, scope: "observations" | "sessions" = "observations"): string[] {
+    if (typeof project !== "string" || !project.trim()) {
+      return [];
+    }
+    const expanded = this.deps.expandProjectSelection(project, scope)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (expanded.length > 0) {
+      return [...new Set(expanded)];
+    }
+    return [this.deps.normalizeProject(project)];
+  }
+
+  private appendProjectFilter(sql: string, params: unknown[], alias: string, projects: string[]): string {
+    if (projects.length === 0) {
+      return sql;
+    }
+    if (projects.length === 1) {
+      params.push(projects[0]);
+      return `${sql} AND ${alias}.project = ?`;
+    }
+    const placeholders = projects.map(() => "?").join(", ");
+    params.push(...projects);
+    return `${sql} AND ${alias}.project IN (${placeholders})`;
+  }
+
   private queryLatestInteractionObservations(options: {
-    project?: string;
+    projects?: string[];
     session_id?: string;
     include_private: boolean;
     user_id?: string;
@@ -278,10 +315,7 @@ export class ObservationStore {
       WHERE 1 = 1
     `;
 
-    if (options.project) {
-      sql += " AND o.project = ?";
-      params.push(options.project);
-    }
+    sql = this.appendProjectFilter(sql, params, "o", options.projects || []);
     if (options.session_id) {
       sql += " AND o.session_id = ?";
       params.push(options.session_id);
@@ -327,8 +361,8 @@ export class ObservationStore {
     }));
   }
 
-  private getLatestInteractionContext(request: SearchRequest, normalizedProject?: string, scanLimit?: number): LatestInteractionContext | null {
-    if (!normalizedProject && !request.session_id) {
+  private getLatestInteractionContext(request: SearchRequest, projectMembers: string[] = [], scanLimit?: number): LatestInteractionContext | null {
+    if (projectMembers.length === 0 && !request.session_id) {
       return null;
     }
 
@@ -341,7 +375,7 @@ export class ObservationStore {
       : undefined;
     const scope: "project" | "session" = request.session_id ? "session" : "project";
     const candidates = this.queryLatestInteractionObservations({
-      project: normalizedProject,
+      projects: projectMembers,
       session_id: request.session_id,
       include_private: includePrivate,
       user_id: userId,
@@ -421,7 +455,7 @@ export class ObservationStore {
     if (latestCompleted) {
       return {
         scope,
-        project: latestCompleted.response.project,
+        project: this.deps.canonicalizeProject(latestCompleted.response.project),
         session_id: latestCompleted.response.session_id,
         platform: latestCompleted.response.platform,
         latest_turn_at: latestCompleted.response.created_at,
@@ -437,7 +471,7 @@ export class ObservationStore {
 
     return {
       scope,
-      project: latestPendingPrompt.project,
+      project: this.deps.canonicalizeProject(latestPendingPrompt.project),
       session_id: latestPendingPrompt.session_id,
       platform: latestPendingPrompt.platform,
       latest_turn_at: latestPendingPrompt.created_at,
@@ -486,6 +520,7 @@ export class ObservationStore {
     alias: string,
     filters: {
       project?: string;
+      project_members?: string[];
       session_id?: string;
       since?: string;
       until?: string;
@@ -504,8 +539,7 @@ export class ObservationStore {
     const strictProject = filters.strict_project !== false;
 
     if (filters.project && strictProject) {
-      nextSql += ` AND ${alias}.project = ?`;
-      params.push(filters.project);
+      nextSql = this.appendProjectFilter(nextSql, params, alias, filters.project_members || [filters.project]);
     }
 
     if (filters.session_id) {
@@ -965,15 +999,19 @@ export class ObservationStore {
   }
 
   private loadActiveFactsByObservation(
-    project: string | undefined,
+    projects: string[],
     observationIds: string[]
   ): Map<string, ActiveFactRow[]> {
     const factMap = new Map<string, ActiveFactRow[]>();
     if (observationIds.length === 0) return factMap;
 
     const placeholders = observationIds.map(() => "?").join(", ");
-    const projectClause = project ? "AND project = ?" : "";
-    const params = project ? [...observationIds, project] : observationIds;
+    const projectClause = projects.length === 0
+      ? ""
+      : projects.length === 1
+        ? "AND project = ?"
+        : `AND project IN (${projects.map(() => "?").join(", ")})`;
+    const params = projects.length === 0 ? observationIds : [...observationIds, ...projects];
 
     try {
       const rows = this.deps.db
@@ -1250,9 +1288,10 @@ export class ObservationStore {
     const hasNumericValue = this.hasNumericValue(text);
     const commandLike = this.isCommandLikeObservation(observation);
     const hasCurrentCue = /\b(current|currently|now|latest|active|default|primary)\b/i.test(text) || /(今|現在|今の|現行|最新|primary|default)/.test(text);
-    const hasPreviousCue = /\b(previously|formerly|used to|prior|earlier|before)\b/i.test(text) || /(以前|前は|前の|もともと|元は|最初は)/.test(text);
+    const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
     const hasReasonCue = /\b(because|since|due to|reason|caused by|triggered by)\b/i.test(text) || /(から|ため|ので|理由|きっかけ|背景|原因)/.test(text);
     const hasListCue = /[,、]/.test(text) || /\b(and|all|list|including)\b/i.test(text) || /(一覧|すべて|全て|挙げて|列挙)/.test(text);
+    const queryHasPreviousCue = hasPreviousValueIntent(query);
 
     if (this.countKeywordHits(lower, answerHints.slotKeywords) > 0) {
       score += 0.15;
@@ -1320,6 +1359,10 @@ export class ObservationStore {
         }
         break;
       case "temporal_value":
+        if (queryHasPreviousCue) {
+          if (hasPreviousCue) score += 0.38;
+          if (hasCurrentCue) score -= 0.16;
+        }
         if (/\b(january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday|spring|summer|fall|autumn|winter|\d{4})\b/i.test(text)) {
           score += 0.45;
         }
@@ -1525,6 +1568,7 @@ export class ObservationStore {
       return;
     }
     if (answerHints.intent === "temporal_value" && !hasSpecificTemporalAnswerCue(query)) return;
+    const queryHasPreviousCue = hasPreviousValueIntent(query);
 
     const priorityFor = (candidate: SearchCandidate) => {
       const observation = observations.get(candidate.id) ?? {};
@@ -1573,8 +1617,14 @@ export class ObservationStore {
       if (answerHints.intent === "list_value" && right.hasListCue !== left.hasListCue) {
         return right.hasListCue - left.hasListCue;
       }
-      if (answerHints.intent === "temporal_value" && right.hasTemporalCue !== left.hasTemporalCue) {
-        return right.hasTemporalCue - left.hasTemporalCue;
+      if (answerHints.intent === "temporal_value") {
+        if (queryHasPreviousCue) {
+          if (right.hasPreviousCue !== left.hasPreviousCue) return right.hasPreviousCue - left.hasPreviousCue;
+          if (left.hasCurrentCue !== right.hasCurrentCue) return left.hasCurrentCue - right.hasCurrentCue;
+        }
+        if (right.hasTemporalCue !== left.hasTemporalCue) {
+          return right.hasTemporalCue - left.hasTemporalCue;
+        }
       }
       if (right.focusHits !== left.focusHits) return right.focusHits - left.focusHits;
       if (left.fillerPenalty !== right.fillerPenalty) return left.fillerPenalty - right.fillerPenalty;
@@ -1622,9 +1672,7 @@ export class ObservationStore {
     limit: number
   ): Array<Record<string, unknown>> | null {
     try {
-      const project = request.project
-        ? this.deps.normalizeProject(request.project)
-        : undefined;
+      const projectMembers = request.project_members ?? this.resolveProjectMembers(request.project);
       const includePrivate = Boolean(request.include_private);
 
       // Phase 1: anchor.referenceText でベクトル検索してアンカーエントリを特定
@@ -1672,10 +1720,7 @@ export class ObservationStore {
           LEFT JOIN mem_events e ON e.event_id = o.event_id
           WHERE 1 = 1
         `;
-        if (project) {
-          fallbackSql += " AND o.project = ?";
-          fallbackParams.push(project);
-        }
+        fallbackSql = this.appendProjectFilter(fallbackSql, fallbackParams, "o", projectMembers);
         if (!includePrivate) {
           fallbackSql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
         }
@@ -1747,10 +1792,7 @@ export class ObservationStore {
       `;
       params.push(anchorId);
 
-      if (project) {
-        sql += " AND o.project = ?";
-        params.push(project);
-      }
+      sql = this.appendProjectFilter(sql, params, "o", projectMembers);
       if (!includePrivate) {
         sql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
       }
@@ -1878,11 +1920,16 @@ export class ObservationStore {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : request.project;
+    const projectMembers =
+      request.project && strictProject
+        ? this.resolveProjectMembers(request.project)
+        : undefined;
     // IMP-002 / FQ-013: exclude_updated が明示的に指定された場合のみ有効化
     const excludeUpdated = Boolean(request.exclude_updated);
     const normalizedRequest: SearchRequest = {
       ...request,
       project: normalizedProject,
+      project_members: projectMembers,
       include_private: includePrivate,
       strict_project: strictProject,
       expand_links: expandLinks,
@@ -1893,7 +1940,7 @@ export class ObservationStore {
     const latestInteraction = request.as_of
       ? null
       : this.getLatestInteractionContext(
-          normalizedRequest, normalizedProject,
+          normalizedRequest, projectMembers || [],
           hasLatestInteractionIntent ? 400 : 20,
         );
     const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
@@ -1953,7 +2000,7 @@ export class ObservationStore {
     const observations = loadObservations(this.deps.db, [...candidateIds]);
     const queryTokens = buildSearchTokens(request.query);
     const routeDecision: RouteDecision = routeQuery(request.query, request.question_kind);
-    const activeFactsByObservation = this.loadActiveFactsByObservation(normalizedProject, [...candidateIds]);
+    const activeFactsByObservation = this.loadActiveFactsByObservation(projectMembers || [], [...candidateIds]);
 
     const ranked: SearchCandidate[] = [];
     let vectorCandidateCount = 0;
@@ -2470,9 +2517,7 @@ export class ObservationStore {
       typeof request.type === "string" && request.type.trim()
         ? request.type.trim()
         : undefined;
-    const normalizedProject = request.project
-      ? this.deps.normalizeProject(request.project)
-      : undefined;
+    const projectMembers = request.project_members ?? this.resolveProjectMembers(request.project);
 
     const params: unknown[] = [];
     let sql = `
@@ -2496,10 +2541,7 @@ export class ObservationStore {
       WHERE 1 = 1
     `;
 
-    if (normalizedProject) {
-      sql += " AND o.project = ?";
-      params.push(normalizedProject);
-    }
+    sql = this.appendProjectFilter(sql, params, "o", projectMembers);
 
     if (typeFilter) {
       sql += " AND COALESCE(e.event_type, '') = ?";
@@ -2576,6 +2618,7 @@ export class ObservationStore {
         event_id: row.event_id,
         platform: row.platform,
         project: row.project,
+        canonical_project: this.deps.canonicalizeProject(String(row.project || "")),
         session_id: row.session_id,
         event_type: eventType,
         card_type: cardType,
@@ -2614,9 +2657,7 @@ export class ObservationStore {
   searchFacets(request: SearchFacetsRequest): ApiResponse {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
-    const normalizedProject = request.project
-      ? this.deps.normalizeProject(request.project)
-      : undefined;
+    const projectMembers = request.project_members ?? this.resolveProjectMembers(request.project);
     const query = (request.query || "").trim();
 
     // MAJOR-5: SQL GROUP BY で project・event_type・時間バケットを集計し、
@@ -2627,10 +2668,7 @@ export class ObservationStore {
     const buildBaseFilter = (): { whereClauses: string; baseParams: unknown[] } => {
       const baseParams: unknown[] = [];
       let whereClauses = " WHERE 1 = 1";
-      if (normalizedProject) {
-        whereClauses += " AND o.project = ?";
-        baseParams.push(normalizedProject);
-      }
+      whereClauses = this.appendProjectFilter(whereClauses, baseParams, "o", projectMembers);
       whereClauses += this.deps.platformVisibilityFilterSql("o");
       whereClauses += visibilityFilterSql("o", includePrivate);
       if (this.deps.accessFilter?.sql) {
@@ -2724,6 +2762,18 @@ export class ObservationStore {
     const toFacetArrayFromRows = (rows: Array<{ value: string; cnt: number }>) =>
       rows.map((r) => ({ value: r.value, count: Number(r.cnt) }));
 
+    const groupedProjectCounts = new Map<string, number>();
+    for (const row of projectRows) {
+      const canonical = this.deps.canonicalizeProject(String(row.value || ""));
+      if (!canonical) {
+        continue;
+      }
+      groupedProjectCounts.set(canonical, (groupedProjectCounts.get(canonical) || 0) + Number(row.cnt || 0));
+    }
+    const groupedProjects = [...groupedProjectCounts.entries()]
+      .map(([value, count]) => ({ value, count }))
+      .sort((lhs, rhs) => rhs.count - lhs.count || lhs.value.localeCompare(rhs.value));
+
     // 時間バケットは固定順で返す
     const bucketMap = new Map<string, number>(
       bucketRows.map((r) => [r.value, Number(r.cnt)])
@@ -2741,7 +2791,7 @@ export class ObservationStore {
         {
           query: query || null,
           total_candidates: totalCandidates,
-          projects: toFacetArrayFromRows(projectRows),
+          projects: groupedProjects,
           event_types: toFacetArrayFromRows(eventTypeRows),
           tags: toFacetArray(tagCounts).slice(0, 50),
           time_buckets: timeBuckets,
@@ -2977,6 +3027,7 @@ export class ObservationStore {
     }
 
     const normalizedProject = this.deps.normalizeProject(request.project);
+    const projectMembers = request.project_members ?? this.resolveProjectMembers(request.project, "sessions");
     const limit = clampLimit(request.limit, 5, 1, 20);
     const includePrivate = Boolean(request.include_private);
     const visibility = visibilityFilterSql("o", includePrivate);
@@ -3011,75 +3062,85 @@ export class ObservationStore {
     const useCorrelationId = Boolean(request.correlation_id);
     const correlationId = request.correlation_id ?? null;
 
+    const summaryParams: unknown[] = [];
+    let latestSummarySql = `
+      SELECT s.session_id, s.summary, s.ended_at
+      FROM mem_sessions s
+      WHERE 1 = 1
+    `;
+    latestSummarySql = this.appendProjectFilter(latestSummarySql, summaryParams, "s", projectMembers);
+    latestSummarySql += useCorrelationId ? " AND s.correlation_id = ?" : " AND s.summary IS NOT NULL";
+    if (useCorrelationId) {
+      summaryParams.push(correlationId as string);
+    }
+    latestSummarySql += " ORDER BY s.ended_at DESC LIMIT 1";
     const latestSummary = this.deps.db
-      .query(
-        `
-          SELECT s.session_id, s.summary, s.ended_at
-          FROM mem_sessions s
-          WHERE s.project = ?
-          ${useCorrelationId ? "AND s.correlation_id = ?" : "AND s.summary IS NOT NULL"}
-          ORDER BY s.ended_at DESC
-          LIMIT 1
-        `
-      )
-      .get(...(useCorrelationId ? [normalizedProject, correlationId as string] : [normalizedProject])) as { session_id: string; summary: string; ended_at: string } | null;
+      .query(latestSummarySql)
+      .get(...(summaryParams as any[])) as { session_id: string; summary: string; ended_at: string } | null;
 
     let rows: Array<Record<string, unknown>>;
 
     if (useCorrelationId) {
+      const rowParams: unknown[] = [];
+      let rowsSql = `
+        SELECT
+          o.id,
+          o.event_id,
+          o.platform,
+          o.project,
+          o.session_id,
+          o.title,
+          o.content_redacted,
+          o.tags_json,
+          o.privacy_tags_json,
+          o.created_at,
+          e.event_type
+        FROM mem_observations o
+        JOIN mem_sessions s ON o.session_id = s.session_id
+        LEFT JOIN mem_events e ON o.event_id = e.event_id
+        WHERE 1 = 1
+      `;
+      rowsSql = this.appendProjectFilter(rowsSql, rowParams, "o", projectMembers);
+      rowsSql += " AND s.correlation_id = ?";
+      rowParams.push(correlationId as string);
+      if (request.session_id) {
+        rowsSql += " AND o.session_id <> ?";
+        rowParams.push(request.session_id);
+      }
+      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowParams.push(limit);
       rows = this.deps.db
-        .query(
-          `
-            SELECT
-              o.id,
-              o.event_id,
-              o.platform,
-              o.project,
-              o.session_id,
-              o.title,
-              o.content_redacted,
-              o.tags_json,
-              o.privacy_tags_json,
-              o.created_at,
-              e.event_type
-            FROM mem_observations o
-            JOIN mem_sessions s ON o.session_id = s.session_id
-            LEFT JOIN mem_events e ON o.event_id = e.event_id
-            WHERE o.project = ?
-              AND s.correlation_id = ?
-              ${request.session_id ? "AND o.session_id <> ?" : ""}
-            ${visibility}
-            ORDER BY o.created_at DESC
-            LIMIT ?
-          `
-        )
-        .all(...(request.session_id ? [normalizedProject, correlationId as string, request.session_id, limit] : [normalizedProject, correlationId as string, limit])) as Array<Record<string, unknown>>;
+        .query(rowsSql)
+        .all(...(rowParams as any[])) as Array<Record<string, unknown>>;
     } else {
+      const rowParams: unknown[] = [];
+      let rowsSql = `
+        SELECT
+          o.id,
+          o.event_id,
+          o.platform,
+          o.project,
+          o.session_id,
+          o.title,
+          o.content_redacted,
+          o.tags_json,
+          o.privacy_tags_json,
+          o.created_at,
+          e.event_type
+        FROM mem_observations o
+        LEFT JOIN mem_events e ON o.event_id = e.event_id
+        WHERE 1 = 1
+      `;
+      rowsSql = this.appendProjectFilter(rowsSql, rowParams, "o", projectMembers);
+      if (request.session_id) {
+        rowsSql += " AND o.session_id <> ?";
+        rowParams.push(request.session_id);
+      }
+      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowParams.push(limit);
       rows = this.deps.db
-        .query(
-          `
-            SELECT
-              o.id,
-              o.event_id,
-              o.platform,
-              o.project,
-              o.session_id,
-              o.title,
-              o.content_redacted,
-              o.tags_json,
-              o.privacy_tags_json,
-              o.created_at,
-              e.event_type
-            FROM mem_observations o
-            LEFT JOIN mem_events e ON o.event_id = e.event_id
-            WHERE o.project = ?
-            ${request.session_id ? "AND o.session_id <> ?" : ""}
-            ${visibility}
-            ORDER BY o.created_at DESC
-            LIMIT ?
-          `
-        )
-        .all(...(request.session_id ? [normalizedProject, request.session_id, limit] : [normalizedProject, limit])) as Array<Record<string, unknown>>;
+        .query(rowsSql)
+        .all(...(rowParams as any[])) as Array<Record<string, unknown>>;
     }
 
     interface RankedRow {
@@ -3110,6 +3171,7 @@ export class ObservationStore {
         event_id: row.event_id,
         platform: row.platform,
         project: row.project,
+        canonical_project: this.deps.canonicalizeProject(String(row.project || "")),
         session_id: row.session_id,
         title: row.title,
         content,
@@ -3163,13 +3225,19 @@ export class ObservationStore {
         `
           SELECT fact_type, fact_key, fact_value, confidence
           FROM mem_facts
-          WHERE project = ?
+          WHERE ${
+            projectMembers.length === 0
+              ? "1 = 1"
+              : projectMembers.length === 1
+                ? "project = ?"
+                : `project IN (${projectMembers.map(() => "?").join(", ")})`
+          }
             AND merged_into_fact_id IS NULL
             AND superseded_by IS NULL
           ORDER BY fact_type ASC, fact_key ASC, created_at ASC
         `
       )
-      .all(normalizedProject) as Array<{
+      .all(...(projectMembers.length === 0 ? [] : projectMembers)) as Array<{
         fact_type: string;
         fact_key: string;
         fact_value: string;
@@ -3262,7 +3330,7 @@ export class ObservationStore {
   ): SubgraphResult {
     const maxDepth = Math.min(depth, 5);
     const nodeLimit = Math.min(options?.limit ?? 100, 100);
-    const project = options?.project;
+    const projectMembers = this.resolveProjectMembers(options?.project);
 
     // エンティティ名で観察を検索（起点ノード）
     let seedSql = `
@@ -3273,10 +3341,7 @@ export class ObservationStore {
       WHERE e.name = ?
     `;
     const seedParams: unknown[] = [entity];
-    if (project) {
-      seedSql += " AND o.project = ?";
-      seedParams.push(project);
-    }
+    seedSql = this.appendProjectFilter(seedSql, seedParams, "o", projectMembers);
     seedSql += " LIMIT 50";
 
     const seedRows = this.deps.db.query(seedSql).all(...(seedParams as any[])) as Array<{ id: string }>;

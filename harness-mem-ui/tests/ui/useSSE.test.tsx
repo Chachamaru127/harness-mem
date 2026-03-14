@@ -34,8 +34,9 @@ class MockEventSource {
   }
 }
 
-function Probe(props: { onEvent: (event: SseUiEvent) => void }) {
+function Probe(props: { enabled?: boolean; onEvent: (event: SseUiEvent) => void }) {
   const { connected, lastError } = useSSE({
+    enabled: props.enabled,
     includePrivate: false,
     project: "project-a",
     onEvent: props.onEvent,
@@ -61,6 +62,15 @@ afterEach(() => {
 });
 
 describe("useSSE", () => {
+  test("does not connect until enabled", () => {
+    const onEvent = vi.fn();
+    render(<Probe enabled={false} onEvent={onEvent} />);
+
+    expect(MockEventSource.instances.length).toBe(0);
+    expect(screen.getByTestId("connected").textContent).toBe("false");
+    expect(screen.getByTestId("error").textContent).toBe("");
+  });
+
   test("reconnects after stream error and keeps event delivery", async () => {
     const onEvent = vi.fn();
     render(<Probe onEvent={onEvent} />);

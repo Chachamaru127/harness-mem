@@ -61,6 +61,26 @@ describe("classifyQuestion", () => {
     expect(result.kind).toBe("timeline");
   });
 
+  test("classifies current-vs-previous contrast queries as timeline", () => {
+    const result = classifyQuestion("今の方式に変える前の認証フローは何でしたか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies before-change headquarters queries as timeline", () => {
+    const result = classifyQuestion("headquarters を移す前はどこでしたか？");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies English before-switching previous-value queries as timeline", () => {
+    const result = classifyQuestion("What was the default region before switching to the new setup?");
+    expect(result.kind).toBe("timeline");
+  });
+
+  test("classifies English previous-entity questions as timeline", () => {
+    const result = classifyQuestion("Who was the previous CEO?");
+    expect(result.kind).toBe("timeline");
+  });
+
   test("classifies graph queries", () => {
     const result = classifyQuestion("How does auth relate to the user module?");
     expect(result.kind).toBe("graph");
@@ -162,6 +182,20 @@ describe("extractAnswerHints", () => {
     const hints = extractAnswerHints("今、使っている CI は何ですか？");
     expect(hints.intent).toBe("current_value");
     expect(hints.exactValuePreferred).toBe(true);
+  });
+
+  test("routes previous-value contrast queries to temporal hints", () => {
+    const hints = extractAnswerHints("今の方式に変える前の認証フローは何でしたか？");
+    expect(hints.intent).toBe("temporal_value");
+    expect(hints.activeFactPreferred).toBe(false);
+    expect(hints.slotKeywords).toContain("変える前");
+  });
+
+  test("routes previous default-region queries away from current-value hints", () => {
+    const hints = extractAnswerHints("以前の default region は何でしたか？");
+    expect(hints.intent).toBe("temporal_value");
+    expect(hints.activeFactPreferred).toBe(false);
+    expect(hints.slotKeywords).toContain("以前");
   });
 
   test("detects Japanese reason questions", () => {
@@ -303,6 +337,13 @@ describe("extractTemporalAnchors", () => {
     expect(before?.direction).toBe("desc");
   });
 
+  test("captures domain text for bare '以前の' previous-value questions", () => {
+    const anchors = extractTemporalAnchors("以前の default region は何でしたか？");
+    const before = anchors.find((a) => a.type === "before");
+    expect(before).toBeDefined();
+    expect(before?.referenceText).toBe("default region");
+  });
+
   // --- 日本語 sequence パターン ---
   test("detects Japanese '最初' sequence keyword", () => {
     const anchors = extractTemporalAnchors("最初にデータベースを設定して次にデプロイした");
@@ -323,6 +364,14 @@ describe("extractTemporalAnchors", () => {
     const seq = anchors.find((a) => a.type === "sequence");
     expect(seq).toBeDefined();
     expect(seq?.direction).toBe("asc");
+  });
+
+  test("detects Japanese '先に' order wording as sequence anchor", () => {
+    const anchors = extractTemporalAnchors("先に出たあと、遅れたのはどれですか？");
+    const seq = anchors.find((a) => a.type === "sequence");
+    expect(seq).toBeDefined();
+    expect(seq?.direction).toBe("asc");
+    expect(seq?.normalizedForm).toBe("first_earlier");
   });
 
   // --- routeQuery での anchor 統合 ---
@@ -398,6 +447,13 @@ describe("S43-004 temporal normalization — targeted regression", () => {
     const after = anchors.find((a) => a.type === "after");
     expect(after).toBeDefined();
     expect(after?.direction).toBe("asc");
+    expect(after?.referenceText).toBe("headquarters を移した");
+  });
+
+  test("[temporal-010] does not create sequence anchor from remote-first", () => {
+    const anchors = extractTemporalAnchors("headquarters を移した後も remote-first のままだったのはどのチームですか？");
+    const sequence = anchors.find((a) => a.type === "sequence");
+    expect(sequence).toBeUndefined();
   });
 
   test("[temporal-010] classifies as timeline kind", () => {

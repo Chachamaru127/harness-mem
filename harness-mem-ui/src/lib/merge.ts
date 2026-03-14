@@ -33,6 +33,7 @@ function mergeFeedItem(primary: FeedItem, secondary: FeedItem): FeedItem {
     event_id: takeString(primary.event_id, secondary.event_id),
     platform: takeString(primary.platform, secondary.platform),
     project: takeString(primary.project, secondary.project),
+    canonical_project: takeString(primary.canonical_project, secondary.canonical_project),
     session_id: takeString(primary.session_id, secondary.session_id),
     event_type: takeString(primary.event_type, secondary.event_type),
     card_type: takeString(primary.card_type, secondary.card_type),

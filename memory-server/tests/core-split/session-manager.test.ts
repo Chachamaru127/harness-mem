@@ -122,6 +122,8 @@ function createDeps(db: Database, config: Config): SessionManagerDeps {
     db,
     config,
     normalizeProject: (project: string) => project,
+    canonicalizeProject: (project: string) => project,
+    expandProjectSelection: (project: string) => [project],
     visibilityFilterSql: (alias: string, includePrivate: boolean) => {
       if (includePrivate) return " AND 1=1";
       return ` AND ${alias}.privacy_tags_json = '[]'`;

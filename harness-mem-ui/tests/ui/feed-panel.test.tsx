@@ -551,6 +551,87 @@ describe("FeedPanel", () => {
     expect(card?.classList.contains("expanded")).toBe(false);
   });
 
+  test("defaults to conversation view and hides meta records until all events is selected", () => {
+    const items: FeedItem[] = [
+      {
+        id: "reply-1",
+        platform: "codex",
+        project: "harness-mem",
+        session_id: "conversation-session",
+        event_type: "checkpoint",
+        title: "assistant_response",
+        content: "こちらが返答です。",
+        created_at: "2026-02-16T05:12:00.000Z",
+        tags: [],
+        privacy_tags: [],
+      },
+      {
+        id: "tool-1",
+        platform: "codex",
+        project: "harness-mem",
+        session_id: "conversation-session",
+        event_type: "tool_use",
+        title: "Read file",
+        content: "read Plans.md",
+        created_at: "2026-02-16T05:11:30.000Z",
+        tags: [],
+        privacy_tags: [],
+      },
+      {
+        id: "env-1",
+        platform: "codex",
+        project: "harness-mem",
+        session_id: "conversation-session",
+        event_type: "user_prompt",
+        title: "<environment_context>",
+        content: "<environment_context>\n  <cwd>/tmp</cwd>\n</environment_context>",
+        created_at: "2026-02-16T05:11:00.000Z",
+        tags: [],
+        privacy_tags: [],
+      },
+      {
+        id: "prompt-1",
+        platform: "codex",
+        project: "harness-mem",
+        session_id: "conversation-session",
+        event_type: "user_prompt",
+        title: "User prompt",
+        content: "この変更の要点を教えて",
+        created_at: "2026-02-16T05:10:00.000Z",
+        tags: [],
+        privacy_tags: [],
+      },
+    ];
+
+    const { container } = render(
+      <FeedPanel
+        items={items}
+        compact={false}
+        language="en"
+        loading={false}
+        error=""
+        hasMore={false}
+        onLoadMore={() => undefined}
+      />
+    );
+
+    expect(screen.getByRole("tab", { name: "Conversation" }).getAttribute("aria-selected")).toBe("true");
+    expect(container.querySelectorAll(".conversation-card").length).toBe(1);
+    expect(screen.getByText("You")).toBeDefined();
+    expect(screen.getByText("Assistant")).toBeDefined();
+    expect(screen.getByText("この変更の要点を教えて")).toBeDefined();
+    expect(screen.getByText("こちらが返答です。")).toBeDefined();
+    expect(screen.queryByText("<environment_context>")).toBeNull();
+    expect(container.querySelectorAll(".session-group-header").length).toBe(0);
+
+    fireEvent.click(screen.getByRole("tab", { name: "All events" }));
+    const header = container.querySelector(".session-group-header");
+    expect(header).toBeTruthy();
+    fireEvent.click(header!);
+    expect(container.querySelectorAll(".conversation-card").length).toBe(0);
+    expect(container.querySelectorAll(".feed-card.system-envelope").length).toBe(1);
+  });
+
   test("classifies system envelope user_prompt cards as other", () => {
     const { container } = render(
       <FeedPanel
@@ -592,6 +673,62 @@ describe("FeedPanel", () => {
     expandAllGroups(container);
     expect(container.querySelectorAll(".feed-card.feed-kind-other").length).toBe(2);
     expect(container.querySelectorAll(".feed-card.feed-kind-prompt").length).toBe(0);
+  });
+
+  test("shows all assistant replies in conversation view without collapsing intermediate responses", () => {
+    render(
+      <FeedPanel
+        items={[
+          {
+            id: "assistant-2",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "conversation-session-2",
+            event_type: "checkpoint",
+            title: "assistant_response",
+            content: "最後の回答です。",
+            created_at: "2026-02-16T05:12:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+          {
+            id: "assistant-1",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "conversation-session-2",
+            event_type: "checkpoint",
+            title: "assistant_response",
+            content: "途中の回答です。",
+            created_at: "2026-02-16T05:11:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+          {
+            id: "prompt-2",
+            platform: "codex",
+            project: "harness-mem",
+            session_id: "conversation-session-2",
+            event_type: "user_prompt",
+            title: "User prompt",
+            content: "この会話は省略せずに見せてください",
+            created_at: "2026-02-16T05:10:00.000Z",
+            tags: [],
+            privacy_tags: [],
+          },
+        ]}
+        compact={false}
+        language="ja"
+        loading={false}
+        error=""
+        hasMore={false}
+        onLoadMore={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("この会話は省略せずに見せてください")).toBeDefined();
+    expect(screen.getByText("途中の回答です。")).toBeDefined();
+    expect(screen.getByText("最後の回答です。")).toBeDefined();
+    expect(screen.queryByText(/途中の回答 .* 件を省略/)).toBeNull();
   });
 
   test("W3-003: groups items by session_id under accordion headers", () => {

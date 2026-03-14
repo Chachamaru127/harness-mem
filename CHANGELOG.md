@@ -7,6 +7,32 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.5] - 2026-03-15
+
+### Theme: Project-aware feed + runtime visibility hardening
+
+**This patch makes the UI and API behave like a single project even when stored project keys drift, while also making current conversations and intermediate assistant replies reliably visible. It improves grouping, feed startup, conversation rendering, and temporal retrieval rather than changing installation or packaging.**
+
+---
+
+#### 1. Canonical project grouping and fan-out
+
+**Before**: absolute paths, `repo::scope` keys, and legacy short names could appear as separate projects in the sidebar and project filters even when they belonged to the same repository. Non-repo folders could also be absorbed into an ancestor Git repository name.
+
+**After**: project stats, feed, stream, sessions, and project-scoped queries now expose a canonical project name based on direct repo/worktree detection or folder basename fallback. The UI fans a canonical project selection back out to its raw member projects, so data is grouped correctly without rewriting stored project keys.
+
+#### 2. Feed startup, caching, and conversation-first UX
+
+**Before**: initial UI startup could overload the daemon with replay/stats work, project switching showed unnecessary loading states, and conversation view hid intermediate assistant replies behind a summary note.
+
+**After**: startup is staged as `context -> project feed -> projects/stats -> health -> stream`, project feed snapshots are cached for instant switching, and conversation view now shows the full user/assistant exchange while keeping meta/event records behind the optional `All events` mode.
+
+#### 3. Codex ingest recovery and temporal retrieval fixes
+
+**Before**: current Codex conversations could disappear when ingest advanced past failed records or compacted tails, and some `current vs previous` / `before switching` questions were misrouted or weakly retrieved.
+
+**After**: Codex ingest now stops on failed offsets, reconstructs compacted tails, restores current turns into the live feed, and strengthens temporal routing/retrieval with dedicated regression coverage.
+
 ## [0.4.4] - 2026-03-13
 
 ### Theme: Release pipeline completion

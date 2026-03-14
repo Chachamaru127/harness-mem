@@ -296,4 +296,87 @@ describe("codex sessions ingest integration", () => {
       runtime.stop();
     }
   });
+
+  test("recovers latest compacted conversation tail into feed", async () => {
+    const runtime = createRuntime("compacted-tail");
+    const { baseUrl, sessionsRoot } = runtime;
+
+    try {
+      const dayDir = join(sessionsRoot, "2026", "03", "14");
+      mkdirSync(dayDir, { recursive: true });
+
+      const rolloutPath = join(
+        dayDir,
+        "rollout-2026-03-14T18-00-00-44444444-4444-4444-4444-444444444444.jsonl"
+      );
+      writeFileSync(
+        rolloutPath,
+        [
+          JSON.stringify({
+            timestamp: "2026-03-14T18:00:00.000Z",
+            type: "session_meta",
+            payload: {
+              id: "44444444-4444-4444-4444-444444444444",
+              cwd: "/Users/example/Desktop/Code/CC-harness/harness-mem",
+            },
+          }),
+          JSON.stringify({
+            timestamp: "2026-03-14T18:00:10.000Z",
+            type: "compacted",
+            payload: {
+              replacement_history: [
+                {
+                  type: "message",
+                  role: "user",
+                  content: [{ type: "input_text", text: "前の依頼" }],
+                },
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "前の回答" }],
+                },
+                {
+                  type: "message",
+                  role: "user",
+                  content: [{ type: "input_text", text: "今の依頼" }],
+                },
+                {
+                  type: "message",
+                  role: "assistant",
+                  content: [{ type: "output_text", text: "今の回答" }],
+                },
+              ],
+            },
+          }),
+        ].join("\n") + "\n",
+        "utf8"
+      );
+
+      const ingestRes = await fetch(`${baseUrl}/v1/ingest/codex-sessions`, {
+        method: "POST",
+      });
+      expect(ingestRes.ok).toBe(true);
+      const ingest = (await ingestRes.json()) as {
+        ok: boolean;
+        items: Array<{ events_imported: number }>;
+      };
+      expect(ingest.ok).toBe(true);
+      expect(ingest.items[0]?.events_imported).toBe(4);
+
+      const project = "/Users/example/Desktop/Code/CC-harness/harness-mem";
+      const feedRes = await fetch(
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(project)}&limit=10&include_private=false`
+      );
+      expect(feedRes.ok).toBe(true);
+      const feed = (await feedRes.json()) as {
+        ok: boolean;
+        items: Array<{ event_type: string; title?: string; content?: string }>;
+      };
+      expect(feed.ok).toBe(true);
+      expect(feed.items.some((item) => item.event_type === "user_prompt" && item.content === "今の依頼")).toBe(true);
+      expect(feed.items.some((item) => item.event_type === "checkpoint" && item.content === "今の回答")).toBe(true);
+    } finally {
+      runtime.stop();
+    }
+  });
 });

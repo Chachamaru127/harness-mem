@@ -25,6 +25,14 @@ function normalizeProject(project: string): string {
   return project.toLowerCase();
 }
 
+function canonicalizeProject(project: string): string {
+  return normalizeProject(project);
+}
+
+function expandProjectSelection(project: string): string[] {
+  return [normalizeProject(project)];
+}
+
 function platformVisibilityFilterSql(_alias: string): string {
   return " AND 1=1";
 }
@@ -40,6 +48,8 @@ function createDeps(
     config,
     ftsEnabled: false,
     normalizeProject,
+    canonicalizeProject,
+    expandProjectSelection,
     platformVisibilityFilterSql,
     writeAuditLog: () => {},
     getVectorEngine: () => "disabled",
@@ -391,6 +401,32 @@ describe("observation-store: search", () => {
     expect((res.items[0] as Record<string, unknown>).id).toBe("obs-current-concise");
   });
 
+  test("previous-value query prefers concise previous answer over current statement", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-current-region",
+      title: "Current region",
+      content: "今の default region は Tokyo です。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-previous-region-concise",
+      title: "Previous region",
+      content: "以前は us-east-1 でした。",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-previous-region-verbose",
+      title: "Region migration note",
+      content: "今の default region は Tokyo です。以前は us-east-1 でした。",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "以前の default region は何でしたか？", project: "proj-obs", limit: 3 });
+    expect(res.ok).toBe(true);
+    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-previous-region-concise");
+  });
+
   test("temporal ordering query prefers explicit ordinal answer over generic timeline chatter", () => {
     const { store, db } = makeStore();
     insertTestObservation(db, {
@@ -482,6 +518,29 @@ describe("observation-store: precision boost", () => {
     });
 
     expect(currentScore).toBeGreaterThan(previousScore);
+  });
+
+  test("temporal previous-value hint prefers previous statement over current statement", () => {
+    const { store } = makeStore();
+    const hints = {
+      intent: "temporal_value",
+      exactValuePreferred: true,
+      activeFactPreferred: false,
+      slotKeywords: ["previous", "before", "以前", "前の", "変える前"],
+      focusKeywords: ["default", "region"],
+      metricKeywords: [],
+    };
+
+    const previousScore = (store as any).computePrecisionBoost("以前の default region は何でしたか？", hints, {
+      title: "",
+      content_redacted: "以前は us-east-1 でした。",
+    });
+    const currentScore = (store as any).computePrecisionBoost("以前の default region は何でしたか？", hints, {
+      title: "",
+      content_redacted: "今の default region は Tokyo です。",
+    });
+
+    expect(previousScore).toBeGreaterThan(currentScore);
   });
 
   test("Japanese reason hint prefers causal sentence", () => {

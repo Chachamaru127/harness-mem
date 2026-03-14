@@ -3,12 +3,13 @@ import type { SseUiEvent } from "../lib/types";
 
 interface UseSseOptions {
   includePrivate: boolean;
+  enabled?: boolean;
   project?: string;
   onEvent: (event: SseUiEvent) => void;
 }
 
 export function useSSE(options: UseSseOptions) {
-  const { includePrivate, project, onEvent } = options;
+  const { includePrivate, enabled = true, project, onEvent } = options;
   const [connected, setConnected] = useState(false);
   const [lastError, setLastError] = useState<string>("");
   const reconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -34,6 +35,7 @@ export function useSSE(options: UseSseOptions) {
       cleanupSource();
       const params = new URLSearchParams();
       params.set("include_private", includePrivate ? "true" : "false");
+      params.set("replay", "false");
       if (project && project !== "__all__") {
         params.set("project", project);
       }
@@ -75,6 +77,20 @@ export function useSSE(options: UseSseOptions) {
       };
     };
 
+    if (!enabled) {
+      cleanupSource();
+      retryRef.current = 0;
+      setConnected(false);
+      setLastError("");
+      return () => {
+        if (reconnectRef.current) {
+          clearTimeout(reconnectRef.current);
+          reconnectRef.current = null;
+        }
+        cleanupSource();
+      };
+    }
+
     connect();
 
     return () => {
@@ -86,7 +102,7 @@ export function useSSE(options: UseSseOptions) {
       cleanupSource();
       setConnected(false);
     };
-  }, [includePrivate, project]);
+  }, [enabled, includePrivate, project]);
 
   return { connected, lastError };
 }

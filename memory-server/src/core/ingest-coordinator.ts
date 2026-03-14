@@ -74,6 +74,10 @@ function normalizeProjectName(name: string): string {
   return trimmed;
 }
 
+function normalizeString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 // ---------------------------------------------------------------------------
 // ファイルリスト系ヘルパー（core から移動）
 // ---------------------------------------------------------------------------
@@ -1088,6 +1092,13 @@ export class IngestCoordinator {
       });
 
       let imported = 0;
+      const committedContext: CodexSessionsContext = {
+        sessionId: parsedChunk.context.sessionId || fallbackSessionId,
+        project: parsedChunk.context.project || defaultProject,
+        lastUserPrompt: context.lastUserPrompt,
+        lastAssistantContent: context.lastAssistantContent,
+      };
+      let nextOffset = offset + parsedChunk.consumedBytes;
       for (const entry of parsedChunk.events) {
         const result = this.deps.recordEvent(
           {
@@ -1103,23 +1114,34 @@ export class IngestCoordinator {
           },
           { allowQueue: false }
         );
+        if (!result.ok) {
+          nextOffset = Math.max(offset, entry.lineOffset);
+          break;
+        }
         const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
         if (result.ok && !deduped) {
           imported += 1;
+        }
+        committedContext.sessionId = entry.sessionId || committedContext.sessionId;
+        committedContext.project = entry.project || committedContext.project;
+        if (entry.eventType === "user_prompt") {
+          const prompt = normalizeString(entry.payload.prompt) || normalizeString(entry.payload.content);
+          if (prompt) {
+            committedContext.lastUserPrompt = prompt;
+          }
+        }
+        if (entry.eventType === "checkpoint") {
+          const assistantContent = normalizeString(entry.payload.content);
+          if (assistantContent) {
+            committedContext.lastAssistantContent = assistantContent;
+          }
         }
       }
 
       summary.eventsImported += imported;
       summary.sessionsEventsImported += imported;
 
-      this.storeCodexRolloutContext(sourceKey, {
-        sessionId: parsedChunk.context.sessionId || fallbackSessionId,
-        project: parsedChunk.context.project || defaultProject,
-        lastUserPrompt: parsedChunk.context.lastUserPrompt,
-        lastAssistantContent: parsedChunk.context.lastAssistantContent,
-      });
-
-      const nextOffset = offset + parsedChunk.consumedBytes;
+      this.storeCodexRolloutContext(sourceKey, committedContext);
       this.updateIngestOffset(sourceKey, nextOffset);
     }
 

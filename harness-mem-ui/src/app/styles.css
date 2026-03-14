@@ -666,6 +666,15 @@ select:focus-visible,
   margin-bottom: 4px;
 }
 
+.feed-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
 .feed-list {
   display: grid;
   gap: 12px;
@@ -676,7 +685,12 @@ select:focus-visible,
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
-  margin-bottom: 10px;
+}
+
+.feed-view-tabs {
+  display: inline-flex;
+  gap: 4px;
+  flex-wrap: wrap;
 }
 
 .platform-tab {
@@ -710,6 +724,75 @@ select:focus-visible,
 
 .load-more {
   justify-self: flex-start;
+}
+
+.conversation-card {
+  border-left-color: var(--accent);
+  padding: 16px;
+}
+
+.conversation-card .category-chip {
+  background: color-mix(in srgb, var(--accent-soft) 65%, var(--bg-panel));
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.conversation-row {
+  display: grid;
+  grid-template-columns: 82px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.conversation-row + .conversation-row {
+  margin-top: 10px;
+}
+
+.conversation-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-muted) 72%, var(--bg-panel));
+  color: var(--text-subtle);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.conversation-row.response .conversation-label {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 28%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 52%, var(--bg-panel));
+}
+
+.conversation-body {
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--bg-muted) 24%, var(--bg-panel));
+}
+
+.conversation-row.response .conversation-body {
+  background: color-mix(in srgb, var(--accent-soft) 24%, var(--bg-panel));
+}
+
+.conversation-body p {
+  margin: 0;
+  white-space: pre-wrap;
+  color: var(--text);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.conversation-note {
+  margin: 12px 0 0;
+  color: var(--text-subtle);
+  font-size: 0.78rem;
 }
 
 .feed-card {
@@ -1401,6 +1484,14 @@ select:focus-visible,
     flex-direction: column;
   }
 
+  .feed-toolbar {
+    align-items: stretch;
+  }
+
+  .feed-view-tabs {
+    width: 100%;
+  }
+
   .settings-modal-body {
     grid-template-columns: 1fr;
   }
@@ -1412,6 +1503,15 @@ select:focus-visible,
 
   .settings-modal-actions select {
     min-width: 160px;
+  }
+
+  .conversation-row {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .conversation-label {
+    justify-self: flex-start;
   }
 }
 

@@ -28,6 +28,7 @@ export interface FeedItem {
   event_id?: string;
   platform?: string;
   project?: string;
+  canonical_project?: string;
   session_id?: string;
   event_type?: string;
   card_type?: string;
@@ -41,15 +42,18 @@ export interface FeedItem {
 
 export interface ProjectsStatsItem {
   project: string;
+  canonical_project?: string;
   observations: number;
   sessions: number;
   updated_at: string | null;
+  member_projects?: string[];
 }
 
 export interface SessionListItem {
   session_id: string;
   platform: string;
   project: string;
+  canonical_project?: string;
   started_at?: string;
   ended_at?: string;
   updated_at?: string;
@@ -74,6 +78,7 @@ export interface SessionThreadItem {
   content?: string;
   created_at?: string;
   project?: string;
+  canonical_project?: string;
   session_id?: string;
   tags?: string[];
   privacy_tags?: string[];

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { EnvironmentPanel } from "../components/EnvironmentPanel";
 import { FeedPanel } from "../components/FeedPanel";
 import { HarnessMemGraph } from "../components/HarnessMemGraph";
@@ -18,6 +18,7 @@ function normalizeFeedItem(raw: Record<string, unknown>): FeedItem {
     event_id: typeof raw.event_id === "string" ? raw.event_id : undefined,
     platform: typeof raw.platform === "string" ? raw.platform : undefined,
     project: typeof raw.project === "string" ? raw.project : undefined,
+    canonical_project: typeof raw.canonical_project === "string" ? raw.canonical_project : undefined,
     session_id: typeof raw.session_id === "string" ? raw.session_id : undefined,
     event_type: typeof raw.event_type === "string" ? raw.event_type : undefined,
     card_type: typeof raw.card_type === "string" ? raw.card_type : undefined,
@@ -45,33 +46,47 @@ function healthLabelFromItem(item: Record<string, unknown>): { label: string; de
 export default function App() {
   const { settings, setSettings, updateSetting } = useSettings();
   const [projects, setProjects] = useState<ProjectsStatsItem[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(false);
   const [healthLabel, setHealthLabel] = useState("daemon checking...");
   const [healthDegraded, setHealthDegraded] = useState(false);
+  const [contextReady, setContextReady] = useState(false);
   const [defaultProject, setDefaultProject] = useState<string | null>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [environmentSnapshot, setEnvironmentSnapshot] = useState<EnvironmentSnapshot | null>(null);
   const [environmentLoading, setEnvironmentLoading] = useState(false);
   const [environmentError, setEnvironmentError] = useState("");
+  const [liveEnabled, setLiveEnabled] = useState(false);
+  const bootstrapStartedRef = useRef(false);
+  const projectsReloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectsReloadPendingRef = useRef(false);
+  const projectsReloadInFlightRef = useRef(false);
   const copy = getUiCopy(settings.language);
 
   const selectedProject = settings.selectedProject;
+  const effectiveSelectedProject =
+    contextReady && !settings.projectAutoPinned && defaultProject ? defaultProject : selectedProject;
 
   const {
     items: feedItems,
     hasMore,
     loading,
+    initialized: feedInitialized,
     error,
     loadMore,
     refresh,
     prependLiveItem,
   } = useFeedPagination({
-    project: selectedProject,
+    enabled: contextReady,
+    project: effectiveSelectedProject,
     platformFilter: settings.platformFilter,
     includePrivate: settings.includePrivate,
     limit: settings.pageSize,
   });
 
-  const loadProjects = useCallback(async () => {
+  const loadProjects = useCallback(async (background = false) => {
+    if (!background) {
+      setProjectsLoading(true);
+    }
     try {
       const response = await fetchProjectsStats(settings.includePrivate);
       if (response.ok) {
@@ -79,8 +94,45 @@ export default function App() {
       }
     } catch {
       // no-op
+    } finally {
+      if (!background) {
+        setProjectsLoading(false);
+      }
     }
   }, [settings.includePrivate]);
+
+  const runProjectsLoad = useCallback(async (background = false) => {
+    if (projectsReloadInFlightRef.current) {
+      projectsReloadPendingRef.current = true;
+      return;
+    }
+
+    projectsReloadInFlightRef.current = true;
+    try {
+      do {
+        projectsReloadPendingRef.current = false;
+        await loadProjects(background);
+        background = true;
+      } while (projectsReloadPendingRef.current);
+    } finally {
+      projectsReloadInFlightRef.current = false;
+    }
+  }, [loadProjects]);
+
+  const scheduleProjectsLoad = useCallback(
+    (delayMs = 250) => {
+      projectsReloadPendingRef.current = true;
+      if (projectsReloadTimerRef.current) {
+        return;
+      }
+
+      projectsReloadTimerRef.current = setTimeout(() => {
+        projectsReloadTimerRef.current = null;
+        void runProjectsLoad(true);
+      }, delayMs);
+    },
+    [runProjectsLoad]
+  );
 
   const refreshStatus = useCallback(async () => {
     try {
@@ -111,8 +163,38 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    void loadProjects();
-  }, [loadProjects]);
+    return () => {
+      if (projectsReloadTimerRef.current) {
+        clearTimeout(projectsReloadTimerRef.current);
+        projectsReloadTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!contextReady || !feedInitialized || bootstrapStartedRef.current) {
+      return;
+    }
+
+    bootstrapStartedRef.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      await runProjectsLoad(false);
+      if (cancelled) {
+        return;
+      }
+      await refreshStatus();
+      if (cancelled) {
+        return;
+      }
+      setLiveEnabled(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [contextReady, feedInitialized, refreshStatus, runProjectsLoad]);
 
   useEffect(() => {
     void (async () => {
@@ -123,6 +205,8 @@ export default function App() {
         }
       } catch {
         // no-op
+      } finally {
+        setContextReady(true);
       }
     })();
   }, []);
@@ -144,23 +228,26 @@ export default function App() {
     if (settings.projectAutoPinned) {
       return;
     }
-    if (projects.length === 0) {
+    if (!defaultProject) {
       return;
     }
 
-    if (defaultProject && projects.some((project) => project.project === defaultProject) && selectedProject !== defaultProject) {
+    if (selectedProject === "__all__") {
       updateSetting("selectedProject", defaultProject);
     }
     updateSetting("projectAutoPinned", true);
-  }, [defaultProject, projects, selectedProject, settings.projectAutoPinned, updateSetting]);
+  }, [defaultProject, selectedProject, settings.projectAutoPinned, updateSetting]);
 
   useEffect(() => {
-    void refreshStatus();
+    if (!liveEnabled) {
+      return;
+    }
+
     const timer = setInterval(() => {
       void refreshStatus();
     }, 5000);
     return () => clearInterval(timer);
-  }, [refreshStatus]);
+  }, [liveEnabled, refreshStatus]);
 
   useEffect(() => {
     let frame = 0;
@@ -205,12 +292,12 @@ export default function App() {
         if (incoming.id) {
           prependLiveItem(incoming);
         }
-        void loadProjects();
+        scheduleProjectsLoad();
         return;
       }
 
       if (event.event === "session.finalized") {
-        void loadProjects();
+        scheduleProjectsLoad();
         return;
       }
 
@@ -221,12 +308,13 @@ export default function App() {
         setHealthDegraded(degraded);
       }
     },
-    [loadProjects, prependLiveItem]
+    [prependLiveItem, scheduleProjectsLoad]
   );
 
   const { connected, lastError } = useSSE({
+    enabled: liveEnabled,
     includePrivate: settings.includePrivate,
-    project: selectedProject,
+    project: effectiveSelectedProject,
     onEvent: handleStreamEvent,
   });
 
@@ -240,7 +328,7 @@ export default function App() {
         language={settings.language}
         onRefresh={() => {
           refresh();
-          void loadProjects();
+          void runProjectsLoad();
           void refreshStatus();
           if (settings.activeTab === "environment") {
             void loadEnvironment();
@@ -252,7 +340,8 @@ export default function App() {
       <div className="main-layout">
         <ProjectSidebar
           projects={projects}
-          selectedProject={selectedProject}
+          loading={projectsLoading}
+          selectedProject={effectiveSelectedProject}
           language={settings.language}
           onSelectProject={(project) => updateSetting("selectedProject", project)}
         />
@@ -319,7 +408,7 @@ export default function App() {
                 items={feedItems}
                 compact={settings.compactFeed}
                 language={settings.language}
-                loading={loading}
+                loading={loading || (feedItems.length === 0 && !error && (!contextReady || !feedInitialized))}
                 error={error}
                 hasMore={hasMore}
                 onLoadMore={() => {
@@ -343,7 +432,7 @@ export default function App() {
           setSettings(next);
           setSettingsOpen(false);
           refresh();
-          void loadProjects();
+          void runProjectsLoad();
           if (next.activeTab === "environment") {
             void loadEnvironment();
           }

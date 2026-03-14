@@ -767,11 +767,18 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       if (request.method === "GET" && url.pathname === "/v1/stream") {
         const includePrivate = parseBoolean(url.searchParams.get("include_private"), false);
         const projectFilter = url.searchParams.get("project") || "";
+        const projectFilterMembers = projectFilter
+          ? new Set(core.expandProjectSelection(projectFilter, "observations"))
+          : null;
+        const replayHistory = parseBoolean(url.searchParams.get("replay"), true);
         const typeFilter = url.searchParams.get("type") || "";
         let lastEventId = parseInteger(
           url.searchParams.get("since") || request.headers.get("last-event-id"),
           0
         );
+        if (!replayHistory && lastEventId <= 0) {
+          lastEventId = core.getLatestStreamEventId();
+        }
 
         let streamClosed = false;
         let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -813,7 +820,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               if (!includePrivate && (privacyTags.includes("private") || privacyTags.includes("sensitive"))) {
                 return true;
               }
-              if (projectFilter && eventProject && projectFilter !== eventProject) {
+              if (projectFilterMembers && eventProject && !projectFilterMembers.has(eventProject)) {
                 return true;
               }
               if (typeFilter) {
@@ -862,7 +869,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                 if (shouldSkip(event)) {
                   continue;
                 }
-                controller.enqueue(toSseChunk(event.type, event.data, event.id));
+                const payload = { ...event.data } as Record<string, unknown>;
+                if (typeof payload.project === "string" && !("canonical_project" in payload)) {
+                  payload.canonical_project = core.getCanonicalProjectName(payload.project);
+                }
+                controller.enqueue(toSseChunk(event.type, payload, event.id));
               }
             };
 
@@ -872,6 +883,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                 include_private: includePrivate,
                 project: projectFilter || null,
                 type: typeFilter || null,
+                replay: replayHistory,
               })
             );
             emitHealthChange();

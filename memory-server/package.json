@@ -7,7 +7,7 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test tests/unit && bun test tests/integration",
+    "test": "bun test tests/*.test.ts && bun test tests/unit && bun test tests/core-split && bun test tests/integration && bun test tests/benchmark tests/performance",
     "test:unit": "bun test tests/unit",
     "test:integration": "bun test tests/integration",
     "test:benchmark": "bun test tests/benchmark"

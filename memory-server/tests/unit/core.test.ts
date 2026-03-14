@@ -50,6 +50,13 @@ function baseEvent(overrides: Partial<EventEnvelope> = {}): EventEnvelope {
   };
 }
 
+function createFakeRepo(name: string): string {
+  const root = mkdtempSync(join(tmpdir(), `${name}-repo-`));
+  cleanupPaths.push(root);
+  mkdirSync(join(root, ".git"), { recursive: true });
+  return root;
+}
+
 describe("HarnessMemCore unit", () => {
   test("vector provider falls back when sqlite-vec extension is unavailable", () => {
     const previous = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
@@ -260,6 +267,131 @@ describe("HarnessMemCore unit", () => {
       expect(projects).toContain("visible-project");
       expect(projects.some((project) => project.includes("shadow-"))).toBe(false);
       expect(projects).not.toContain(hiddenProject);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("project stats group repo path and scoped projects under canonical repo name", () => {
+    const core = new HarnessMemCore(createConfig("project-stats-canonical"));
+    const repoRoot = createFakeRepo("grouped-project");
+    const repoName = repoRoot.split("/").filter(Boolean).pop() || "grouped-project";
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "grouped-repo-path",
+          session_id: "grouped-session-path",
+          project: repoRoot,
+          payload: { content: "repo rooted event" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "grouped-repo-scope",
+          session_id: "grouped-session-scope",
+          project: `${repoName}::line`,
+          payload: { content: "repo scoped event" },
+        })
+      );
+
+      const stats = core.projectsStats({ include_private: true });
+      const grouped = (stats.items as Array<{
+        project: string;
+        observations: number;
+        sessions: number;
+        member_projects?: string[];
+      }>).find((item) => item.project === repoName);
+
+      expect(grouped).toBeDefined();
+      expect(grouped?.observations).toBe(2);
+      expect(grouped?.sessions).toBe(2);
+      expect((grouped?.member_projects || []).some((project) => project.endsWith(`/${repoName}`))).toBe(true);
+      expect(grouped?.member_projects).toContain(`${repoName}::line`);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("canonical project filter fans out to repo members in feed and search", () => {
+    const core = new HarnessMemCore(createConfig("project-filter-canonical"));
+    const repoRoot = createFakeRepo("filter-project");
+    const repoName = repoRoot.split("/").filter(Boolean).pop() || "filter-project";
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "filter-repo-path",
+          session_id: "filter-session-path",
+          project: repoRoot,
+          payload: { content: "shared alpha repo path" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "filter-repo-scope",
+          session_id: "filter-session-scope",
+          project: `${repoName}::line`,
+          payload: { content: "shared alpha repo scope" },
+        })
+      );
+
+      const feed = core.feed({ project: repoName, limit: 10, include_private: true });
+      expect(feed.ok).toBe(true);
+      expect(feed.items.length).toBe(2);
+      for (const item of feed.items as Array<{ canonical_project?: string }>) {
+        expect(item.canonical_project).toBe(repoName);
+      }
+
+      const search = core.search({ query: "shared alpha", project: repoName, strict_project: true, include_private: true });
+      expect(search.ok).toBe(true);
+      const candidateCounts = (search.meta as Record<string, unknown>).candidate_counts as Record<string, unknown>;
+      expect(Number(candidateCounts.lexical || 0)).toBe(2);
+      expect(Number(candidateCounts.vector || 0)).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("non-repo absolute paths stay grouped by folder name even when an ancestor has .git", () => {
+    const core = new HarnessMemCore(createConfig("non-repo-folder-fallback"));
+    const ancestorRoot = mkdtempSync(join(tmpdir(), "ancestor-git-root-"));
+    cleanupPaths.push(ancestorRoot);
+    mkdirSync(join(ancestorRoot, ".git"), { recursive: true });
+    const workspaceOne = join(ancestorRoot, "workspace-one");
+    const workspaceTwo = join(ancestorRoot, "workspace-two");
+    mkdirSync(workspaceOne, { recursive: true });
+    mkdirSync(workspaceTwo, { recursive: true });
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "folder-fallback-1",
+          project: workspaceOne,
+          session_id: "folder-session-1",
+          payload: { content: "workspace one note" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "folder-fallback-2",
+          project: workspaceTwo,
+          session_id: "folder-session-2",
+          payload: { content: "workspace two note" },
+        })
+      );
+
+      const stats = core.projectsStats({ include_private: true });
+      const items = stats.items as Array<{ project: string; member_projects?: string[] }>;
+      const workspaceOneStats = items.find((item) => item.project === "workspace-one");
+      const workspaceTwoStats = items.find((item) => item.project === "workspace-two");
+      const ancestorStats = items.find((item) => item.project === (ancestorRoot.split("/").pop() || ""));
+      const workspaceOneFeed = core.feed({ project: workspaceOne, limit: 10, include_private: true });
+
+      expect(workspaceOneStats?.member_projects).toHaveLength(1);
+      expect(workspaceTwoStats?.member_projects).toHaveLength(1);
+      expect((workspaceOneStats?.member_projects || [])[0]?.endsWith("/workspace-one")).toBe(true);
+      expect((workspaceTwoStats?.member_projects || [])[0]?.endsWith("/workspace-two")).toBe(true);
+      expect(ancestorStats).toBeUndefined();
+      expect(workspaceOneFeed.items).toHaveLength(1);
+      expect(((workspaceOneFeed.items[0] as { project: string }).project || "").endsWith("/workspace-one")).toBe(true);
     } finally {
       core.shutdown("test");
     }

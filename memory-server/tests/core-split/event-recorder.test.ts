@@ -190,6 +190,19 @@ describe("event-recorder: getStreamEventsSince", () => {
     const events = recorder.getStreamEventsSince(0, 2);
     expect(events.length).toBeLessThanOrEqual(2);
   });
+
+  test("getLatestStreamEventId() は直近イベント ID を返す", () => {
+    const recorder = makeRecorder();
+
+    expect(recorder.getLatestStreamEventId()).toBe(0);
+
+    recorder.appendStreamEvent("observation.created", { obs_id: "obs_1" });
+    recorder.appendStreamEvent("session.finalized", { session_id: "sess_1" });
+
+    const events = recorder.getStreamEventsSince(0);
+    const lastId = events[events.length - 1]?.id ?? 0;
+    expect(recorder.getLatestStreamEventId()).toBe(lastId);
+  });
 });
 
 // ---------------------------------------------------------------------------

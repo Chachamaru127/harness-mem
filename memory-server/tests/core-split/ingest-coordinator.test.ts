@@ -11,6 +11,9 @@
  */
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import {
   IngestCoordinator,
   type IngestCoordinatorDeps,
@@ -92,6 +95,86 @@ describe("ingest-coordinator: ingestCodexHistory", () => {
   test("レスポンスに meta が含まれる", () => {
     const res = coordinator.ingestCodexHistory();
     expect(res.meta).toBeTruthy();
+  });
+
+  test("does not advance Codex rollout offset past a failed event write", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-ingest-coordinator-"));
+    const sessionsRoot = join(dir, "codex-sessions");
+    const dayDir = join(sessionsRoot, "2026", "03", "14");
+    mkdirSync(dayDir, { recursive: true });
+
+    const rolloutPath = join(
+      dayDir,
+      "rollout-2026-03-14T18-00-00-55555555-5555-5555-5555-555555555555.jsonl"
+    );
+    writeFileSync(
+      rolloutPath,
+      [
+        JSON.stringify({
+          timestamp: "2026-03-14T18:00:00.000Z",
+          type: "session_meta",
+          payload: {
+            id: "55555555-5555-5555-5555-555555555555",
+            cwd: "/Users/example/Desktop/Code/CC-harness/harness-mem",
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-03-14T18:00:01.000Z",
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "保存に失敗したら再試行してほしい" }],
+          },
+        }),
+        JSON.stringify({
+          timestamp: "2026-03-14T18:00:02.000Z",
+          type: "event_msg",
+          payload: {
+            type: "agent_message",
+            message: "了解しました。次回 ingest で拾い直します。",
+          },
+        }),
+      ].join("\n") + "\n",
+      "utf8"
+    );
+
+    const db = createTestDb();
+    let callCount = 0;
+    const failingDeps = makeDeps({
+      db,
+      config: createTestConfig({
+        codexHistoryEnabled: true,
+        codexProjectRoot: dir,
+        codexSessionsRoot: sessionsRoot,
+      }),
+      recordEvent: mock(() => {
+        callCount += 1;
+        return callCount === 1 ? makeErrResponse("temporary write failure") : makeOkResponse();
+      }),
+    });
+    const failingCoordinator = new IngestCoordinator(failingDeps);
+
+    try {
+      const first = failingCoordinator.ingestCodexHistory();
+      expect(first.ok).toBe(true);
+      expect(first.items[0]?.events_imported).toBe(0);
+
+      const sourceKey = `codex_rollout:${rolloutPath}`;
+      const offsetAfterFailure = db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(sourceKey) as { offset: number } | null;
+      expect(offsetAfterFailure).not.toBeNull();
+      expect(offsetAfterFailure?.offset).toBeLessThan(statSync(rolloutPath).size);
+
+      failingDeps.recordEvent = mock(() => makeOkResponse());
+      const retryCoordinator = new IngestCoordinator(failingDeps);
+      const second = retryCoordinator.ingestCodexHistory();
+      expect(second.ok).toBe(true);
+      expect(second.items[0]?.events_imported).toBe(2);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

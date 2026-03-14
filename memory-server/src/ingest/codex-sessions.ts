@@ -10,6 +10,7 @@ export interface CodexSessionsContext {
 
 export interface CodexSessionsEvent {
   lineOffset: number;
+  nextOffset: number;
   line: string;
   parsed: Record<string, unknown>;
   eventType: "user_prompt" | "checkpoint";
@@ -18,6 +19,15 @@ export interface CodexSessionsEvent {
   timestamp: string;
   payload: Record<string, unknown>;
   dedupeHash: string;
+}
+
+interface NormalizedCodexEvent {
+  eventType: "user_prompt" | "checkpoint";
+  sessionId: string;
+  project: string;
+  timestamp: string;
+  payload: Record<string, unknown>;
+  dedupeSuffix?: string;
 }
 
 export function parseCodexSessionsChunk(params: {
@@ -85,7 +95,7 @@ export function parseCodexSessionsChunk(params: {
       continue;
     }
 
-    const normalized = normalizeEvent({
+    const normalizedEvents = normalizeEvents({
       parsed,
       payload,
       context,
@@ -94,36 +104,40 @@ export function parseCodexSessionsChunk(params: {
       defaultProject: normalizeString(params.defaultProject),
     });
 
-    if (!normalized) {
+    if (normalizedEvents.length === 0) {
       continue;
     }
 
-    const normalizedPrompt = normalizeString(normalized.payload.prompt) || normalizeString(normalized.payload.content);
-    if (normalized.eventType === "user_prompt" && normalizedPrompt) {
-      context.lastUserPrompt = normalizedPrompt;
-    }
-    if (normalized.eventType === "checkpoint") {
-      const assistantContent = normalizeString(normalized.payload.content);
-      if (assistantContent) {
-        context.lastAssistantContent = assistantContent;
+    for (const normalized of normalizedEvents) {
+      const normalizedPrompt = normalizeString(normalized.payload.prompt) || normalizeString(normalized.payload.content);
+      if (normalized.eventType === "user_prompt" && normalizedPrompt) {
+        context.lastUserPrompt = normalizedPrompt;
       }
+      if (normalized.eventType === "checkpoint") {
+        const assistantContent = normalizeString(normalized.payload.content);
+        if (assistantContent) {
+          context.lastAssistantContent = assistantContent;
+        }
+      }
+
+      const dedupeMaterial = normalized.dedupeSuffix
+        ? `${params.sourceKey}:${lineOffset}:${normalized.dedupeSuffix}:${rawLine}`
+        : `${params.sourceKey}:${lineOffset}:${rawLine}`;
+      const dedupeHash = createHash("sha256").update(dedupeMaterial).digest("hex");
+
+      events.push({
+        lineOffset,
+        nextOffset: params.baseOffset + cursor,
+        line: rawLine,
+        parsed,
+        eventType: normalized.eventType,
+        sessionId: normalized.sessionId,
+        project: normalized.project,
+        timestamp: normalized.timestamp,
+        payload: normalized.payload,
+        dedupeHash,
+      });
     }
-
-    const dedupeHash = createHash("sha256")
-      .update(`${params.sourceKey}:${lineOffset}:${rawLine}`)
-      .digest("hex");
-
-    events.push({
-      lineOffset,
-      line: rawLine,
-      parsed,
-      eventType: normalized.eventType,
-      sessionId: normalized.sessionId,
-      project: normalized.project,
-      timestamp: normalized.timestamp,
-      payload: normalized.payload,
-      dedupeHash,
-    });
   }
 
   return {
@@ -133,6 +147,23 @@ export function parseCodexSessionsChunk(params: {
   };
 }
 
+function normalizeEvents(params: {
+  parsed: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  context: CodexSessionsContext;
+  fallbackNowIso: () => string;
+  defaultSessionId?: string;
+  defaultProject?: string;
+}): NormalizedCodexEvent[] {
+  const type = normalizeString(params.parsed.type);
+  if (type === "compacted") {
+    return normalizeCompactedEvents(params);
+  }
+
+  const normalized = normalizeEvent(params);
+  return normalized ? [normalized] : [];
+}
+
 function normalizeEvent(params: {
   parsed: Record<string, unknown>;
   payload: Record<string, unknown>;
@@ -140,13 +171,7 @@ function normalizeEvent(params: {
   fallbackNowIso: () => string;
   defaultSessionId?: string;
   defaultProject?: string;
-}): {
-  eventType: "user_prompt" | "checkpoint";
-  sessionId: string;
-  project: string;
-  timestamp: string;
-  payload: Record<string, unknown>;
-} | null {
+}): NormalizedCodexEvent | null {
   const type = normalizeString(params.parsed.type);
 
   if (type === "response_item") {
@@ -236,6 +261,127 @@ function normalizeEvent(params: {
   }
 
   return null;
+}
+
+function normalizeCompactedEvents(params: {
+  parsed: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  context: CodexSessionsContext;
+  fallbackNowIso: () => string;
+  defaultSessionId?: string;
+  defaultProject?: string;
+}): NormalizedCodexEvent[] {
+  const replacementHistory = toArray(params.payload.replacement_history);
+  if (replacementHistory.length === 0) {
+    return [];
+  }
+
+  const recovered: NormalizedCodexEvent[] = [];
+  const localContext: CodexSessionsContext = {
+    sessionId: normalizeString(params.context.sessionId),
+    project: normalizeString(params.context.project),
+    lastUserPrompt: normalizeString(params.context.lastUserPrompt),
+    lastAssistantContent: normalizeString(params.context.lastAssistantContent),
+  };
+
+  for (let index = 0; index < replacementHistory.length; index += 1) {
+    const replacement = toRecord(replacementHistory[index]);
+    if (normalizeString(replacement.type) !== "message") {
+      continue;
+    }
+
+    const role = normalizeString(replacement.role);
+    if (role === "user") {
+      const prompt = extractMessageText(replacement.content, ["input_text", "text"]);
+      if (!prompt) {
+        continue;
+      }
+      recovered.push({
+        eventType: "user_prompt",
+        sessionId: resolveSessionId({
+          parsed: params.parsed,
+          payload: params.payload,
+          context: localContext,
+          defaultSessionId: params.defaultSessionId,
+        }),
+        project: resolveProject({
+          parsed: params.parsed,
+          payload: params.payload,
+          context: localContext,
+          defaultProject: params.defaultProject,
+        }),
+        timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+        payload: {
+          source_type: "compacted",
+          role: "user",
+          prompt,
+          content: prompt,
+        },
+        dedupeSuffix: `compacted-user-${index}`,
+      });
+      localContext.lastUserPrompt = prompt;
+      continue;
+    }
+
+    if (role !== "assistant") {
+      continue;
+    }
+
+    const assistantContent = extractMessageText(replacement.content, ["output_text", "text", "input_text"]);
+    if (!assistantContent) {
+      continue;
+    }
+    recovered.push({
+      eventType: "checkpoint",
+      sessionId: resolveSessionId({
+        parsed: params.parsed,
+        payload: params.payload,
+        context: localContext,
+        defaultSessionId: params.defaultSessionId,
+      }),
+      project: resolveProject({
+        parsed: params.parsed,
+        payload: params.payload,
+        context: localContext,
+        defaultProject: params.defaultProject,
+      }),
+      timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+      payload: {
+        source_type: "compacted",
+        role: "assistant",
+        type: "assistant_message",
+        title: "assistant_response",
+        content: assistantContent,
+        last_agent_message: assistantContent,
+        prompt: normalizeString(localContext.lastUserPrompt),
+        turn_id: "",
+      },
+      dedupeSuffix: `compacted-assistant-${index}`,
+    });
+    localContext.lastAssistantContent = assistantContent;
+  }
+
+  if (recovered.length === 0) {
+    return [];
+  }
+
+  const lastKnownUserPrompt = normalizeString(params.context.lastUserPrompt);
+  const lastKnownAssistantContent = normalizeString(params.context.lastAssistantContent);
+  let startIndex = 0;
+  for (let index = recovered.length - 1; index >= 0; index -= 1) {
+    const item = recovered[index];
+    const prompt = normalizeString(item.payload.prompt) || normalizeString(item.payload.content);
+    const content = normalizeString(item.payload.content);
+    if (item.eventType === "checkpoint" && lastKnownAssistantContent && content === lastKnownAssistantContent) {
+      startIndex = index + 1;
+      break;
+    }
+    if (item.eventType === "user_prompt" && lastKnownUserPrompt && prompt === lastKnownUserPrompt) {
+      startIndex = index + 1;
+      break;
+    }
+  }
+  return recovered.slice(startIndex);
 }
 
 function resolveSessionId(params: {
@@ -360,6 +506,10 @@ function toRecord(value: unknown): Record<string, unknown> {
     return value as Record<string, unknown>;
   }
   return {};
+}
+
+function toArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
 }
 
 export class CodexSessionsIngester implements PlatformIngester {

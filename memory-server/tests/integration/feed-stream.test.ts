@@ -249,4 +249,68 @@ describe("feed/stream integration", () => {
       runtime.stop();
     }
   });
+
+  test("stream with replay=false skips backlog and only emits new live events", async () => {
+    const runtime = createRuntime("live-only");
+    const { core, port } = runtime;
+    const base = `http://127.0.0.1:${port}`;
+
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "feed-project",
+        session_id: "session-live",
+        event_type: "user_prompt",
+        ts: "2026-02-14T01:00:01.000Z",
+        payload: { content: "historical content a" },
+        tags: ["feed"],
+        privacy_tags: [],
+      });
+
+      core.recordEvent({
+        platform: "claude",
+        project: "feed-project",
+        session_id: "session-live",
+        event_type: "tool_use",
+        ts: "2026-02-14T01:00:02.000Z",
+        payload: { content: "historical content b" },
+        tags: ["feed"],
+        privacy_tags: [],
+      });
+
+      const streamRes = await fetch(`${base}/v1/stream?project=feed-project&replay=false`);
+      expect(streamRes.ok).toBe(true);
+      expect(streamRes.body).not.toBeNull();
+      const reader = streamRes.body!.getReader();
+
+      const ready = await waitForSseEvent(
+        reader,
+        (event) => event.event === "ready" && event.data.replay === false
+      );
+      expect(ready.event).toBe("ready");
+
+      const newRecord = core.recordEvent({
+        platform: "claude",
+        project: "feed-project",
+        session_id: "session-live",
+        event_type: "user_prompt",
+        ts: "2026-02-14T01:00:03.000Z",
+        payload: { content: "live-only content c" },
+        tags: ["feed"],
+        privacy_tags: [],
+      });
+      expect(newRecord.ok).toBe(true);
+
+      const created = await waitForSseEvent(
+        reader,
+        (event) => event.event === "observation.created" && event.data.project === "feed-project"
+      );
+      expect(created.event).toBe("observation.created");
+      expect(created.data.content).toBe("live-only content c");
+
+      await reader.cancel();
+    } finally {
+      runtime.stop();
+    }
+  });
 });

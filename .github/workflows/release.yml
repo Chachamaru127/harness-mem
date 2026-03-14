@@ -107,7 +107,7 @@ jobs:
         run: |
           set -euo pipefail
           cd memory-server
-          bun test
+          bun run test
           bun run typecheck
 
       - name: Dry-run package check

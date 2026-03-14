@@ -46,6 +46,7 @@ function createDeps(db: Database, config: Config, overrides: Partial<ConfigManag
   return {
     db,
     config,
+    canonicalizeProject: (project: string) => project,
     doHealth: () => okResponse([{ status: "ok" }]),
     doMetrics: () => okResponse([{ total_events: 0 }]),
     doEnvironmentSnapshot: () => okResponse([{ version: "test" }]),

@@ -24,6 +24,8 @@ interface UiCopy {
   observationsUnit: string;
   sessionsUnit: string;
   feed: string;
+  feedViewConversation: string;
+  feedViewEvents: string;
   itemsLoadedSuffix: string;
   noFeedItems: string;
   noFeedItemsHint: string;
@@ -66,6 +68,8 @@ interface UiCopy {
   compactCardsHelp: string;
   autoScroll: string;
   autoScrollHelp: string;
+  promptLabel: string;
+  responseLabel: string;
   detailDialogTitle: string;
   detailClose: string;
   detailHint: string;
@@ -123,6 +127,8 @@ const COPY: Record<UiLanguage, UiCopy> = {
     observationsUnit: "obs",
     sessionsUnit: "sessions",
     feed: "Feed",
+    feedViewConversation: "Conversation",
+    feedViewEvents: "All events",
     itemsLoadedSuffix: "items loaded",
     noFeedItems: "No feed items yet.",
     noFeedItemsHint: "Start a new conversation and it will appear here.",
@@ -165,6 +171,8 @@ const COPY: Record<UiLanguage, UiCopy> = {
     compactCardsHelp: "Reduce card height and keep feed denser.",
     autoScroll: "Auto scroll",
     autoScrollHelp: "Automatically keep latest item in view.",
+    promptLabel: "You",
+    responseLabel: "Assistant",
     detailDialogTitle: "Full record",
     detailClose: "Close",
     detailHint: "Click to view full text",
@@ -270,6 +278,8 @@ const COPY: Record<UiLanguage, UiCopy> = {
     observationsUnit: "件",
     sessionsUnit: "セッション",
     feed: "フィード",
+    feedViewConversation: "会話",
+    feedViewEvents: "すべてのイベント",
     itemsLoadedSuffix: "件を表示",
     noFeedItems: "まだフィードがありません。",
     noFeedItemsHint: "新しい会話を開始すると、ここに表示されます。",
@@ -312,6 +322,8 @@ const COPY: Record<UiLanguage, UiCopy> = {
     compactCardsHelp: "カード高さを抑えて一覧性を上げます。",
     autoScroll: "自動スクロール",
     autoScrollHelp: "新着時に最新カードを追従表示します。",
+    promptLabel: "あなた",
+    responseLabel: "回答",
     detailDialogTitle: "全文表示",
     detailClose: "閉じる",
     detailHint: "クリックで全文を表示",

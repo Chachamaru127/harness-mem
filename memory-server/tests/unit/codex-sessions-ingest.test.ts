@@ -203,4 +203,59 @@ describe("codex sessions ingest parser", () => {
     expect(parsed.events[0]?.sessionId).toBe("session-from-path");
     expect(parsed.events[0]?.project).toBe("project-from-config");
   });
+
+  test("recovers unseen tail messages from compacted replacement history", () => {
+    const chunk = [
+      JSON.stringify({
+        timestamp: "2026-02-15T12:00:10.000Z",
+        type: "compacted",
+        payload: {
+          replacement_history: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "前の依頼" }],
+            },
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "前の回答" }],
+            },
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "今の依頼" }],
+            },
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "今の回答" }],
+            },
+          ],
+        },
+      }),
+    ].join("\n") + "\n";
+
+    const parsed = parseCodexSessionsChunk({
+      sourceKey: "codex_rollout:/tmp/compacted.jsonl",
+      baseOffset: 0,
+      chunk,
+      fallbackNowIso: () => "2026-02-15T12:00:59.000Z",
+      context: {
+        sessionId: "session-compact",
+        project: "/tmp/project-compact",
+        lastUserPrompt: "前の依頼",
+        lastAssistantContent: "前の回答",
+      },
+      defaultSessionId: "session-compact",
+      defaultProject: "/tmp/project-compact",
+    });
+
+    expect(parsed.events.length).toBe(2);
+    expect(parsed.events[0]?.eventType).toBe("user_prompt");
+    expect(parsed.events[0]?.payload.prompt).toBe("今の依頼");
+    expect(parsed.events[1]?.eventType).toBe("checkpoint");
+    expect(parsed.events[1]?.payload.content).toBe("今の回答");
+    expect(parsed.events[1]?.payload.prompt).toBe("今の依頼");
+  });
 });

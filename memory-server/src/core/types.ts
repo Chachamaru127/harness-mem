@@ -32,6 +32,7 @@ export interface EventEnvelope {
 export interface SearchRequest {
   query: string;
   project?: string;
+  project_members?: string[];
   session_id?: string;
   since?: string;
   until?: string;
@@ -62,6 +63,7 @@ export interface FeedRequest {
   cursor?: string;
   limit?: number;
   project?: string;
+  project_members?: string[];
   type?: string;
   include_private?: boolean;
   /** TEAM-009: ユーザーフィルター */
@@ -106,6 +108,7 @@ export interface SessionThreadRequest {
 export interface SearchFacetsRequest {
   query?: string;
   project?: string;
+  project_members?: string[];
   include_private?: boolean;
 }
 
@@ -150,6 +153,7 @@ export interface TimelineRequest {
 
 export interface ResumePackRequest {
   project: string;
+  project_members?: string[];
   session_id?: string;
   correlation_id?: string;
   limit?: number;
