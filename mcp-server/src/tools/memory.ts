@@ -534,7 +534,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
-    annotations: { readOnlyHint: false },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   },
   {
     name: "harness_mem_admin_consolidation_status",
@@ -772,6 +772,16 @@ export async function handleMemoryTool(
   return result;
 }
 
+async function runConsolidation(input: Record<string, unknown>): Promise<ToolResult> {
+  const response = await callMemoryApi("/v1/admin/consolidation/run", {
+    reason: toStringOrUndefined(input.reason),
+    project: toStringOrUndefined(input.project),
+    session_id: toStringOrUndefined(input.session_id),
+    limit: toNumberOrUndefined(input.limit),
+  });
+  return successResult(response);
+}
+
 async function handleMemoryToolInner(
   name: string,
   args: Record<string, unknown> | undefined
@@ -1001,13 +1011,7 @@ async function handleMemoryToolInner(
       }
 
       case "harness_mem_admin_consolidation_run": {
-        const response = await callMemoryApi("/v1/admin/consolidation/run", {
-          reason: toStringOrUndefined(input.reason),
-          project: toStringOrUndefined(input.project),
-          session_id: toStringOrUndefined(input.session_id),
-          limit: toNumberOrUndefined(input.limit),
-        });
-        return successResult(response);
+        return runConsolidation(input);
       }
 
       case "harness_mem_admin_consolidation_status": {
@@ -1081,13 +1085,7 @@ async function handleMemoryToolInner(
       }
 
       case "harness_mem_compress": {
-        const response = await callMemoryApi("/v1/admin/consolidation/run", {
-          reason: toStringOrUndefined(input.reason),
-          project: toStringOrUndefined(input.project),
-          session_id: toStringOrUndefined(input.session_id),
-          limit: toNumberOrUndefined(input.limit),
-        });
-        return successResult(response);
+        return runConsolidation(input);
       }
 
       case "harness_mem_stats": {

@@ -312,7 +312,7 @@ Phase C: MCP ツール重複解消（独立）
 
 ### Phase A: hook-common.sh 共通ライブラリ（段階的移行）
 
-- [ ] `cc:TODO` **S53-001 [refactor]**: `lib/hook-common.sh` を新規作成
+- [x] `cc:完了` **S53-001 [refactor]**: `lib/hook-common.sh` を新規作成
   - 対象: `scripts/hook-handlers/lib/hook-common.sh`（新規）
   - 内容: 4つの共通関数を実装
     - `hook_init_paths [has_daemon]` — SCRIPT_DIR/PARENT_DIR/CLIENT_SCRIPT/PROJECT_CONTEXT_LIB を解決
@@ -321,25 +321,25 @@ Phase C: MCP ツール重複解消（独立）
     - `hook_check_deps` — CLIENT_SCRIPT/jq の存在チェック
   - DoD: 新規ファイル作成のみ、既存スクリプトは変更しない（リスクゼロ）
 
-- [ ] `cc:TODO` **S53-002 [refactor]**: codex系2本を hook-common.sh に移行
+- [x] `cc:完了` **S53-002 [refactor]**: codex系2本を hook-common.sh に移行
   - 対象: `codex-session-start.sh`, `codex-session-stop.sh`
   - DoD: 初期化部分を共通関数呼び出しに置換（約22行→6行）、動作維持確認
 
-- [ ] `cc:TODO` **S53-003 [refactor]**: claude系シンプル4本を移行
+- [x] `cc:完了` **S53-003 [refactor]**: claude系シンプル4本を移行
   - 対象: `memory-stop.sh`, `memory-post-compact.sh`, `memory-elicitation.sh`, `memory-skill-finalize.sh`
   - DoD: 同上
 
-- [ ] `cc:TODO` **S53-004 [refactor]**: claude系複雑3本を移行
+- [x] `cc:完了` **S53-004 [refactor]**: claude系複雑3本を移行
   - 対象: `memory-post-tool-use.sh`, `memory-user-prompt.sh`, `memory-codex-notify.sh`
   - DoD: プライバシータグ処理など固有ロジックを保持しつつ初期化を共通化
 
-- [ ] `cc:TODO` **S53-005 [refactor]**: 最も複雑な2本を移行
+- [x] `cc:完了` **S53-005 [refactor]**: 最も複雑な2本を移行
   - 対象: `memory-session-start.sh`, `memory-self-check.sh`
   - DoD: attempt_daemon_restart 等の複雑なフォールバックを保持しつつ共通化
 
 ### Phase B: Gemini スクリプト統一
 
-- [ ] `cc:TODO` **S53-006 [refactor]**: memory-gemini-event.sh を統一パターンに書き換え
+- [x] `cc:完了` **S53-006 [refactor]**: memory-gemini-event.sh を統一パターンに書き換え
   - 対象: `scripts/hook-handlers/memory-gemini-event.sh`
   - 変更7点:
     1. `set -euo pipefail` → `set +e`（耐障害性向上）
@@ -354,7 +354,7 @@ Phase C: MCP ツール重複解消（独立）
 
 ### Phase C: MCP ツール重複解消
 
-- [ ] `cc:TODO` **S53-007 [refactor]**: compress / admin_consolidation_run の共通関数化
+- [x] `cc:完了` **S53-007 [refactor]**: compress / admin_consolidation_run の共通関数化
   - 対象: `mcp-server/src/tools/memory.ts`
   - 方法（案B採用）: `runConsolidation(input)` 共通関数を追加し、両 case から委譲
   - 追加: `admin_consolidation_run` の annotations を `compress` と統一（`destructiveHint: false, idempotentHint: false` を追加）
