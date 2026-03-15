@@ -5,6 +5,23 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.5.0] - 2026-03-15
+
+### ユーザー向け要約
+
+- 全28の MCP ツールに `readOnlyHint` / `destructiveHint` / `idempotentHint` アノテーションを追加。クライアント側で安全な確認 UI が利用可能に。
+- OpenCode の MCP ツール呼び出し時にフックが発火しない問題（#2319）を MCP サーバー側で自律補完。
+- Claude Code の新イベント `PostCompact`（コンパクション後チェックポイント）と `Elicitation`（MCP ユーザー入力要求）のハンドラーを追加。
+- Gemini CLI の `BeforeModel` / `BeforeToolSelection` イベント対応。全8イベントをサポート。
+- Codex CLI の実験的 hooks エンジン（v0.114.0）向けに `SessionStart` / `Stop` テンプレートを追加。
+- Cursor の `sandbox.json` テンプレートを追加（localhost:37888 通信許可）。
+- ルート package.json の不要な MCP SDK 0.5.0 依存を削除、semver 範囲内の依存を全面更新。
+- ADR-001: Claude Code Auto Memory (MEMORY.md) との共存方針を文書化。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.4.6] - 2026-03-15
 
 ### ユーザー向け要約

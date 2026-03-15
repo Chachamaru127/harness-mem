@@ -7,6 +7,59 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-03-15
+
+### Theme: Multi-tool integration hardening and dependency modernization
+
+**This minor release strengthens integration with all five supported coding tools (Claude Code, Codex CLI, Gemini CLI, OpenCode, Cursor), adds MCP Tool Annotations to all 28 memory tools, and modernizes the dependency surface. It also introduces an ADR for coexistence with Claude Code's Auto Memory (MEMORY.md).**
+
+---
+
+#### 1. MCP Tool Annotations for all 28 tools
+
+**Before**: MCP clients had no metadata about whether a tool was read-only, destructive, or idempotent, forcing users to guess before confirming tool calls.
+
+**After**: Every `harness_mem_*` tool now carries `readOnlyHint`, `destructiveHint`, and/or `idempotentHint` annotations per MCP SDK 1.11+. Clients can surface safer UX (e.g. skip confirmation for read-only tools, warn on destructive ones).
+
+#### 2. OpenCode MCP hook supplement (Issue #2319 workaround)
+
+**Before**: When OpenCode called MCP tools, `tool.execute.before/after` hooks did not fire, leaving a gap in tool-use tracking.
+
+**After**: The MCP server now self-tracks tool invocations when `HARNESS_MEM_MCP_PLATFORM` is set, recording `tool_use` events directly to the daemon. A `SELF_TRACK_SKIP` set prevents recursion on internal tools (health, record_event, etc.).
+
+#### 3. Claude Code new hook events: PostCompact and Elicitation
+
+**Before**: Only `PreCompact` was handled; post-compaction state and MCP elicitation requests were not recorded.
+
+**After**: `PostCompact` records a checkpoint after context compaction completes (paired with `PreCompact`). `Elicitation` captures MCP server user-input requests as events.
+
+#### 4. Gemini CLI: BeforeModel and BeforeToolSelection events
+
+**Before**: Six Gemini CLI hook events were mapped. The newly added `BeforeModel` and `BeforeToolSelection` events were not captured.
+
+**After**: `BeforeModel → model_request` and `BeforeToolSelection → tool_selection` are now mapped and recorded. `GEMINI.md` updated with the full 8-event table.
+
+#### 5. Codex CLI experimental hooks support
+
+**Before**: Codex integration relied solely on `harness.rules` (prefix rules) and MCP, with no lifecycle hooks.
+
+**After**: A `codex/.codex/hooks.json` template provides `SessionStart` and `Stop` handlers that record session events and run `finalize-session`, matching Codex v0.114.0's experimental hooks engine.
+
+#### 6. Cursor sandbox.json template
+
+**Before**: No guidance for Cursor's new sandbox security model.
+
+**After**: `.cursor/sandbox.json` pre-allows `localhost:37888` network access and `~/.harness-mem` filesystem access, ensuring harness-mem works within Cursor's sandboxed environment.
+
+#### 7. Dependency cleanup
+
+- Removed stale `@modelcontextprotocol/sdk ^0.5.0` from root `package.json` (mcp-server uses `^1.27.1` independently)
+- Updated all sub-packages within semver ranges (pg 8.20.0, typescript 5.9.3, react 19.2.4, @playwright/test 1.58.2)
+
+#### 8. ADR-001: Auto Memory coexistence
+
+Documented the architectural decision for coexisting with Claude Code's Auto Memory (`MEMORY.md`): harness-mem handles long-term cross-session memory with hybrid search, while Auto Memory handles short-term project-scoped notes. No changes needed to harness-mem's core; the two systems are complementary.
+
 ## [0.4.6] - 2026-03-15
 
 ### Theme: Release gate stabilization
