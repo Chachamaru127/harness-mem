@@ -411,8 +411,8 @@ describe("observation-store: search", () => {
     });
     insertTestObservation(db, {
       id: "obs-previous-region-concise",
-      title: "Previous region",
-      content: "以前は us-east-1 でした。",
+      title: "Previous default region",
+      content: "以前の default region は us-east-1 でした。",
       project: "proj-obs",
     });
     insertTestObservation(db, {

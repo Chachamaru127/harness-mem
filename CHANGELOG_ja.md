@@ -5,6 +5,17 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.4.6] - 2026-03-15
+
+### ユーザー向け要約
+
+- `0.4.5` の project/feed/ingest 改善内容はそのままに、Linux CI でだけ落ちていた previous-value 回帰テストを安定化。
+- `memory-server` の release gate を chunked `bun test` 実行へ切り替え、Bun 1.3.6 の終了時 crash で publish job が止まる経路を解消。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.4.5] - 2026-03-15
 
 ### ユーザー向け要約

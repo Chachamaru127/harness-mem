@@ -7,6 +7,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.4.6] - 2026-03-15
+
+### Theme: Release gate stabilization
+
+**This patch re-rolls the 0.4.5 feature set with a Linux-stable release gate. It does not change the user-facing project/feed/ingest scope; it only hardens the release pipeline after a CI-only ranking assertion and Bun test-runner crash path blocked the tag publish.**
+
+---
+
+#### 1. Stabilized previous-value regression coverage
+
+**Before**: a Linux CI run could rank the current-region observation ahead of the previous-region observation in one `observation-store` regression test because the concise previous answer did not fully mirror the queried `default region` phrasing.
+
+**After**: the previous-value fixture now explicitly uses `default region` wording, which keeps the regression aligned with the intended query semantics and removes the cross-platform tie fragility.
+
+#### 2. Bun release workflow crash avoidance
+
+**Before**: `memory-server` release quality gates still used a large `bun test` invocation that passed locally but could crash Bun 1.3.6 at process shutdown, failing the publish job after all assertions had already passed.
+
+**After**: the memory-server test entrypoint and release workflow run the same suite in smaller chunks, preserving coverage while avoiding the Bun shutdown crash path that blocked npm publish and GitHub Release creation.
+
 ## [0.4.5] - 2026-03-15
 
 ### Theme: Project-aware feed + runtime visibility hardening
