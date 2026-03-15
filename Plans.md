@@ -259,12 +259,12 @@ Phase E: 将来準備
 
 ### Phase D: Frontend 近代化
 
-- [ ] `cc:TODO` **S52-011 [deps/ui]**: Vitest 3→4 先行アップグレード
+- [x] `cc:完了` **S52-011 [deps/ui]**: Vitest 3→4 先行アップグレード
   - 対象: `harness-mem-ui/package.json`、テストファイル群
   - 背景: Vitest 4 は Vite 7 のままでも利用可能（peerDeps: `vite ^6|^7|^8`）
   - DoD: `vitest: ^4.1.0` に更新、全テストパス、breaking changes 対応
 
-- [ ] `cc:TODO` **S52-012 [deps/ui]**: Vite 7→8 + plugin-react 5→6 + jsdom 26→28 同時移行
+- [x] `cc:完了` **S52-012 [deps/ui]**: Vite 7→8 + plugin-react 5→6 + jsdom 26→28 同時移行
   - 対象: `harness-mem-ui/package.json`、`harness-mem-ui/vite.config.ts`
   - 背景: Vite 8 は Rollup→Rolldown 移行でビルド数倍高速化。plugin-react 6 は Vite 8 必須。jsdom 28 は Node.js 20.19+ 要件
   - リスク: Rolldown プラグイン互換性、Rollup 固有オプション使用箇所の確認が必要
