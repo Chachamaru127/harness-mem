@@ -40,7 +40,10 @@ interface QueryTemplate {
 /** セッション固有のスニペットを取得（クエリの一意性を確保） */
 function snippet(entries: SelfEvalEntry[], idx: number, len = 30): string {
   const e = entries[idx] ?? entries[0];
-  return e.content.slice(0, len).replace(/\s+/g, " ").trim();
+  const text = e.content.slice(0, len).replace(/\s+/g, " ").trim();
+  // セッションIDの末尾6文字をタグとして付与（同一内容でもセッション別に一意化）
+  const tag = e.session_id.slice(-6);
+  return `${text} [${tag}]`;
 }
 
 /** クエリテンプレート（日英両対応・全20種） */
@@ -369,7 +372,15 @@ export function generateSelfEvalCases(
       }
     }
 
-    return cases;
+    // 生成後に exact query duplicate を除去
+    const seen = new Set<string>();
+    const deduped = cases.filter((c) => {
+      const key = c.query.trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return deduped;
   } finally {
     db.close();
   }

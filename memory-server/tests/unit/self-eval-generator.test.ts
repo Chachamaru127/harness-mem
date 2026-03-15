@@ -154,6 +154,8 @@ describe("template functions", () => {
     const result = tmpl.template(dummyEntries);
     expect(result).toContain("first thing I worked on");
     expect(result).toContain("start project setup");
+    // セッションIDタグが付与されていること（一意化のため）
+    expect(result).toMatch(/\[.{1,6}\]/);
   });
 
   test("latest-task: セッション固有スニペットを含むクエリを返すこと", () => {

@@ -155,6 +155,26 @@ function toRecord(value: unknown): Record<string, unknown> {
   return {};
 }
 
+async function ensureEmbeddingReady(core: HarnessMemCore, label: string): Promise<void> {
+  const deadline = Date.now() + 60_000;
+  let lastDetails = "embedding readiness timeout";
+  while (Date.now() < deadline) {
+    const readiness = core.readiness();
+    const item = toRecord(readiness.items[0]);
+    if (item.ready === true) return;
+    lastDetails = String(item.embedding_provider_details || item.embedding_readiness_state || item.status || lastDetails);
+    if (item.embedding_readiness_state === "failed") {
+      throw new Error(`[${label}] embedding readiness failed: ${lastDetails}`);
+    }
+    try {
+      await core.primeEmbedding("__retro_eval_ready__", "passage");
+      await core.primeEmbedding("__retro_eval_ready__", "query");
+    } catch { }
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error(`[${label}] embedding readiness timeout: ${lastDetails}`);
+}
+
 function isPromiseLike(value: unknown): value is Promise<unknown> {
   return typeof value === "object" && value !== null && typeof (value as { then?: unknown }).then === "function";
 }
@@ -350,6 +370,7 @@ export async function evaluateAlgo(
   };
   const core = new HarnessMemCore(config);
   verifyEmbeddingGate(core, `retro-${algo}`);
+  await ensureEmbeddingReady(core, `retro-${algo}`);
 
   try {
     const cacheBefore = await readCacheStats(core);
