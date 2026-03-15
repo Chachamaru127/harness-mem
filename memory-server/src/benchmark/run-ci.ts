@@ -295,7 +295,10 @@ function layer2RelativeRegression(
       .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     if (vals.length < 2) continue;
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
-    const se = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1)) / Math.sqrt(vals.length);
+    const rawSe = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1)) / Math.sqrt(vals.length);
+    // SE=0 だと mean-2SE=mean となり微小変動で即 FAIL になるため、最小下限を設ける
+    const MIN_SE = 0.005;
+    const se = Math.max(rawSe, MIN_SE);
     const threshold = mean - 2 * se;
     const cur = current[metric];
     if (cur < threshold) {

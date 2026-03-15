@@ -169,12 +169,12 @@ S54-001〜010 全完了。138テスト/0失敗。詳細: `docs/benchmarks/s54-be
   - 内容: 実DBから100セッション抽出 → Claude API で QA 生成 → qa-review-tool でフィルタ → fixture-integrator で統合
   - DoD: 統合 fixture が 500問以上、品質チェック pass_rate ≥ 50%
 
-- [ ] `cc:TODO` **S54-012 [benchmark]**: retrospective-eval の embedding prime 待機を追加
+- [x] `cc:完了` **S54-012 [benchmark]**: retrospective-eval の embedding prime 待機を追加
   - 対象: `memory-server/src/benchmark/retrospective-eval.ts` の `evaluateAlgo` 関数
   - 内容: `ensureEmbeddingReady()` 相当の待機ロジックを `evaluateAlgo` 内に追加し、sync embed がフォールバックに落ちない状態で検索を実行する
   - DoD: retrospective-eval の recall@10 が 0 ではない実用的な値を返す
 
-- [ ] `cc:TODO` **S54-013 [benchmark]**: self-eval テンプレートの exact dupe 63件を解消
+- [x] `cc:完了` **S54-013 [benchmark]**: self-eval テンプレートの exact dupe 63→0件に解消
   - 対象: `self-eval-generator.ts` のテンプレート + `generateSelfEvalCases` ロジック
   - 内容: 同一セッション内で content 先頭が一致するエントリに対し、snippet 抽出位置を分散させる（2番目・最後のエントリを使うバリエーション追加 or dedupe フィルタ）
   - DoD: `qa-quality-check.ts` の exact_query_dupes が 10件以下

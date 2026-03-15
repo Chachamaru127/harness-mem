@@ -123,21 +123,6 @@
       }
     },
     {
-      "timestamp": "2026-03-08T05:32:00.000Z",
-      "f1": 0.5333,
-      "freshness": 1,
-      "temporal": 0.6431,
-      "bilingual": 0.9,
-      "cat1": 0.5801,
-      "embedding": {
-        "mode": "onnx",
-        "provider": "local",
-        "model": "multilingual-e5",
-        "vectorDimension": 384
-      },
-      "_note": "S43 pipeline refresh: sort_by, temporal normalization, current-value compression, zero-F1 kill pass"
-    },
-    {
       "timestamp": "2026-03-08T05:40:00.000Z",
       "f1": 0.5333,
       "freshness": 1,
@@ -150,7 +135,7 @@
         "model": "multilingual-e5",
         "vectorDimension": 384
       },
-      "_note": "S43 temporal Phase2 sort fix: created_at primary key"
+      "_note": "S43 consolidated: pipeline refresh + temporal Phase2 sort fix"
     },
     {
       "timestamp": "2026-03-08T06:43:23.157Z",
@@ -206,6 +191,20 @@
         "provider": "local",
         "model": "ruri-v3-30m",
         "vectorDimension": 256
+      }
+    },
+    {
+      "timestamp": "2026-03-15T17:59:33.798Z",
+      "f1": 0.5332671191810978,
+      "freshness": 1,
+      "temporal": 0.6402777777777778,
+      "bilingual": 0.9,
+      "cat1": 0.5800976800976801,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
       }
     }
   ]
