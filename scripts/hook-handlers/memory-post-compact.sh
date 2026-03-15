@@ -69,8 +69,9 @@ if [ -x "$CLIENT_SCRIPT" ] && command -v jq >/dev/null 2>&1; then
     --arg platform "claude" \
     --arg project "$PROJECT_NAME" \
     --arg session_id "$SESSION_ID" \
-    --arg label "post-compact" \
-    '{platform:$platform,project:$project,session_id:$session_id,label:$label}' 2>/dev/null)
+    --arg title "post-compact checkpoint" \
+    --arg content "Context compaction completed" \
+    '{platform:$platform,project:$project,session_id:$session_id,title:$title,content:$content}' 2>/dev/null)
 
   if [ -n "$CHECKPOINT_PAYLOAD" ]; then
     printf '%s' "$CHECKPOINT_PAYLOAD" | "$CLIENT_SCRIPT" record-checkpoint >/dev/null 2>&1 || true

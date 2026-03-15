@@ -204,7 +204,7 @@ async function callMemoryApi(
   }
 
   if (!parsed || !response.ok || parsed.ok === false) {
-    const message = parsed.error || `memory server returned HTTP ${response.status}`;
+    const message = parsed?.error || `memory server returned HTTP ${response.status}`;
     throw new Error(message);
   }
 
@@ -701,17 +701,15 @@ function getMcpPlatform(): string | undefined {
  * Fire-and-forget tool_use event recording for platforms where
  * tool.execute hooks do not fire for MCP tool calls (OpenCode #2319).
  */
-async function recordToolUseEvent(
+function recordToolUseEvent(
   toolName: string,
   phase: "before" | "after",
+  platform: string,
   extra?: Record<string, unknown>
-): Promise<void> {
-  const platform = getMcpPlatform();
-  if (!platform) return;
-
+): void {
   const baseUrl = getBaseUrl();
   try {
-    await fetch(`${baseUrl}/v1/events/record`, {
+    fetch(`${baseUrl}/v1/events/record`, {
       method: "POST",
       headers: buildApiHeaders(),
       body: JSON.stringify({
@@ -730,7 +728,7 @@ async function recordToolUseEvent(
           tags: [`${platform}_mcp_tool_use`, `tool.execute.${phase}`],
         },
       }),
-    });
+    }).catch(() => {});
   } catch {
     // non-blocking: best-effort recording
   }
@@ -742,6 +740,7 @@ const SELF_TRACK_SKIP = new Set([
   "harness_mem_record_event",
   "harness_mem_record_checkpoint",
   "harness_mem_finalize_session",
+  "harness_mem_bulk_add",
 ]);
 
 /**
@@ -752,18 +751,19 @@ export async function handleMemoryTool(
   name: string,
   args: Record<string, unknown> | undefined
 ): Promise<ToolResult> {
-  const shouldTrack = !!getMcpPlatform() && !SELF_TRACK_SKIP.has(name);
+  const platform = getMcpPlatform();
+  const shouldTrack = !!platform && !SELF_TRACK_SKIP.has(name);
   const startMs = Date.now();
 
   if (shouldTrack) {
-    await recordToolUseEvent(name, "before");
+    recordToolUseEvent(name, "before", platform!);
   }
 
   const result = await handleMemoryToolInner(name, args);
 
   if (shouldTrack) {
     const durationMs = Date.now() - startMs;
-    await recordToolUseEvent(name, "after", {
+    recordToolUseEvent(name, "after", platform!, {
       success: !result.isError,
       duration_ms: durationMs,
     });
