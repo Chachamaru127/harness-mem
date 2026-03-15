@@ -285,3 +285,91 @@ Phase E: 将来準備
 3. `S52-007 + S52-008 + S52-009 + S52-010`（Phase C 全並列）でマルチツール対応
 4. `S52-011`（Vitest 4）→ `S52-012`（Vite 8 同時移行）を段階的に
 5. `S52-013` は v4.0.0 正式リリースをトリガーとして着手
+
+---
+
+## §53 Technical Debt Remediation（技術的負債の解消）
+
+策定日: 2026-03-15
+背景: /simplify の3エージェント並列レビューで検出された技術的負債3件について、3つのアーキテクト・エージェントが並列で解決策を設計した。
+
+### 依存グラフ
+
+```
+Phase A: hook-common.sh 共通ライブラリ作成（最優先・他の前提）
+├── S53-001: lib/hook-common.sh 新規作成
+├── S53-002: codex系2本を移行（最も単純）
+├── S53-003: claude系シンプル4本を移行
+├── S53-004: claude系複雑3本を移行
+└── S53-005: memory-session-start + self-check を移行
+                     │
+Phase B: Gemini スクリプト統一（Phase A 完了後）
+└── S53-006: memory-gemini-event.sh を統一パターンに書き換え
+                     │
+Phase C: MCP ツール重複解消（独立）
+└── [P] S53-007: compress / admin_consolidation_run の共通関数化
+```
+
+### Phase A: hook-common.sh 共通ライブラリ（段階的移行）
+
+- [ ] `cc:TODO` **S53-001 [refactor]**: `lib/hook-common.sh` を新規作成
+  - 対象: `scripts/hook-handlers/lib/hook-common.sh`（新規）
+  - 内容: 4つの共通関数を実装
+    - `hook_init_paths [has_daemon]` — SCRIPT_DIR/PARENT_DIR/CLIENT_SCRIPT/PROJECT_CONTEXT_LIB を解決
+    - `hook_init_context [require_input]` — stdin 読み取り + PROJECT_ROOT/PROJECT_NAME 解決
+    - `hook_resolve_session_id <platform> [session_file] [mode]` — SESSION_ID 解決を3パターンに統一
+    - `hook_check_deps` — CLIENT_SCRIPT/jq の存在チェック
+  - DoD: 新規ファイル作成のみ、既存スクリプトは変更しない（リスクゼロ）
+
+- [ ] `cc:TODO` **S53-002 [refactor]**: codex系2本を hook-common.sh に移行
+  - 対象: `codex-session-start.sh`, `codex-session-stop.sh`
+  - DoD: 初期化部分を共通関数呼び出しに置換（約22行→6行）、動作維持確認
+
+- [ ] `cc:TODO` **S53-003 [refactor]**: claude系シンプル4本を移行
+  - 対象: `memory-stop.sh`, `memory-post-compact.sh`, `memory-elicitation.sh`, `memory-skill-finalize.sh`
+  - DoD: 同上
+
+- [ ] `cc:TODO` **S53-004 [refactor]**: claude系複雑3本を移行
+  - 対象: `memory-post-tool-use.sh`, `memory-user-prompt.sh`, `memory-codex-notify.sh`
+  - DoD: プライバシータグ処理など固有ロジックを保持しつつ初期化を共通化
+
+- [ ] `cc:TODO` **S53-005 [refactor]**: 最も複雑な2本を移行
+  - 対象: `memory-session-start.sh`, `memory-self-check.sh`
+  - DoD: attempt_daemon_restart 等の複雑なフォールバックを保持しつつ共通化
+
+### Phase B: Gemini スクリプト統一
+
+- [ ] `cc:TODO` **S53-006 [refactor]**: memory-gemini-event.sh を統一パターンに書き換え
+  - 対象: `scripts/hook-handlers/memory-gemini-event.sh`
+  - 変更7点:
+    1. `set -euo pipefail` → `set +e`（耐障害性向上）
+    2. `curl` 直接 → `$CLIENT_SCRIPT record-event` / `finalize-session`
+    3. `basename` → `resolve_project_context`（Git ルート解決対応）
+    4. SESSION_ID: 環境変数→stdin→session.json→フォールバックの順に統一
+    5. ペイロード: `{event:{..., tags:["hook","gemini"]}}` ラッパー追加
+    6. `echo '{}'` の Gemini CLI 必須戻り値は維持
+    7. `$1` でのイベント名受け取り規約は維持
+  - 前提: S53-001 完了後（hook-common.sh を利用）
+  - DoD: `bash memory-gemini-event.sh SessionStart < /dev/null` で `{}` 出力、デーモン未起動でも正常終了
+
+### Phase C: MCP ツール重複解消
+
+- [ ] `cc:TODO` **S53-007 [refactor]**: compress / admin_consolidation_run の共通関数化
+  - 対象: `mcp-server/src/tools/memory.ts`
+  - 方法（案B採用）: `runConsolidation(input)` 共通関数を追加し、両 case から委譲
+  - 追加: `admin_consolidation_run` の annotations を `compress` と統一（`destructiveHint: false, idempotentHint: false` を追加）
+  - DoD: typecheck パス、両ツール名は MCP クライアントに引き続き公開
+
+### 着手順
+
+1. `S53-001`（hook-common.sh 作成）→ `S53-002`（codex系移行）で安全に検証
+2. `S53-003` → `S53-004` → `S53-005` で段階的に残りを移行
+3. `S53-006`（Gemini 統一）は Phase A 完了後
+4. `S53-007`（MCP 重複解消）は独立して並列実行可能
+
+### 期待効果
+
+- 初期化コード: 各スクリプト約22行 → 約6行（10本合計で約160行削減）
+- SESSION_ID ロジック: 3パターンが1関数に集約、テスト可能に
+- バグ修正の伝播: hook-common.sh 1ファイルの修正で全スクリプトに反映
+- 新スクリプト追加コスト: 3〜4行の初期化で即使用可能
