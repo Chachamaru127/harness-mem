@@ -455,11 +455,11 @@ Phase 4: Runner 統合と Claim 更新
 
 ### Phase 2: Retrospective-Eval 組み込み
 
-- [ ] `cc:TODO` **S54-004 [benchmark]**: retrospective-eval を定期実行パイプラインに組み込み
+- [x] `cc:完了` **S54-004 [benchmark]**: retrospective-eval を定期実行パイプラインに組み込み
   - 対象: `memory-server/src/benchmark/retrospective-eval.ts`、CI 設定
   - DoD: `bun run retrospective-eval.ts` が CI で定期実行され、recall@5/10 の推移が記録される
 
-- [ ] `cc:TODO` **S54-005 [benchmark]**: audit_log の search_hit カバレッジ検証
+- [x] `cc:完了` **S54-005 [benchmark]**: audit_log の search_hit カバレッジ検証
   - 対象: `mem_audit_log` テーブル、検証スクリプト
   - DoD: search_hit の蓄積状況レポートが出力され、retrospective-eval に十分なデータがあるか判定できる
 
@@ -470,7 +470,7 @@ Phase 4: Runner 統合と Claim 更新
   - 内容: harness_mem_export でセッション抽出 → Claude API で QA ペア生成（スライス指定付き）
   - DoD: 100セッションから500問の候補 QA が自動生成される
 
-- [ ] `cc:TODO` **S54-007 [benchmark]**: 生成 QA の人間検証フロー + 品質フィルタ
+- [x] `cc:完了` **S54-007 [benchmark]**: 生成 QA の人間検証フロー + 品質フィルタ
   - 対象: 新規 `memory-server/src/benchmark/qa-review-tool.ts`
   - 内容: LLM 生成 QA を対話的にレビュー、承認/修正/却下を記録
   - DoD: レビュー済み QA に `verified: true` フラグが付与される
