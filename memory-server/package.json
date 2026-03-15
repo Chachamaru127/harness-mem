@@ -14,13 +14,13 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "^22.13.9",
-    "typescript": "^5.7.2"
+    "@types/node": "^22.19.15",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "@huggingface/transformers": "^3.8.1",
     "pdf-parse": "^2.4.5",
-    "pg": "^8.13.3",
+    "pg": "^8.20.0",
     "tesseract.js": "^7.0.0"
   }
 }

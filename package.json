@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.4.5",
+  "version": "0.4.6",
   "description": "Unified memory runtime setup CLI for Claude Code, Codex, Gemini CLI, OpenCode, and Cursor",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -40,11 +40,9 @@
     ".cursor/hooks/",
     "gemini/"
   ],
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^0.5.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "pg": "^8.13.3"
+    "pg": "^8.20.0"
   },
   "scripts": {
     "test": "bun test memory-server/tests/ ./tests/ sdk/tests/ mcp-server/tests/",
