@@ -1507,6 +1507,16 @@ EOF
     log "Copied memory-aware Codex rules: $rules_dst"
   fi
 
+  # Codex experimental hooks engine (v0.114.0+)
+  local hooks_template="${HARNESS_ROOT}/codex/.codex/hooks.json"
+  local hooks_dst="${codex_dir}/hooks.json"
+  if [ -f "$hooks_template" ] && [ ! -f "$hooks_dst" ]; then
+    local escaped_root
+    escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
+    sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template" >"$hooks_dst"
+    log "Installed Codex hooks: $hooks_dst"
+  fi
+
   if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
     install_codex_skill
   fi
@@ -2079,7 +2089,8 @@ upsert_opencode_json() {
       "environment": {
         "HARNESS_MEM_HOST": "${MEM_HOST}",
         "HARNESS_MEM_PORT": "${MEM_PORT}",
-        "HARNESS_MEM_DB_PATH": "${DB_PATH}"
+        "HARNESS_MEM_DB_PATH": "${DB_PATH}",
+        "HARNESS_MEM_MCP_PLATFORM": "opencode"
       }
     }
   }
@@ -2105,7 +2116,8 @@ EOF
       | .mcp.harness.environment = ((.mcp.harness.environment // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
-          "HARNESS_MEM_DB_PATH": $db_path
+          "HARNESS_MEM_DB_PATH": $db_path,
+          "HARNESS_MEM_MCP_PLATFORM": "opencode"
         })
       | .mcp.harness |= del(.env)
       | del(.plugins)

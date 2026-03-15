@@ -276,6 +276,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["project"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_search",
@@ -295,6 +296,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["query"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_timeline",
@@ -310,6 +312,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["id"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_get_observations",
@@ -324,6 +327,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["ids"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_sessions_list",
@@ -337,6 +341,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_session_thread",
@@ -351,6 +356,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["session_id"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_search_facets",
@@ -364,6 +370,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_record_checkpoint",
@@ -381,6 +388,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["session_id", "title", "content"],
     },
+    annotations: { idempotentHint: true },
   },
   {
     name: "harness_mem_finalize_session",
@@ -398,6 +406,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["session_id"],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_record_event",
@@ -425,6 +434,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["event"],
     },
+    annotations: { idempotentHint: true },
   },
   {
     name: "harness_mem_health",
@@ -434,6 +444,7 @@ export const memoryTools: Tool[] = [
       properties: {},
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_delete_observation",
@@ -448,6 +459,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["observation_id"],
     },
+    annotations: { destructiveHint: true },
   },
   {
     name: "harness_mem_admin_import_claude_mem",
@@ -461,6 +473,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["source_db_path"],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_admin_import_status",
@@ -472,6 +485,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["job_id"],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_admin_verify_import",
@@ -483,6 +497,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["job_id"],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_admin_reindex_vectors",
@@ -494,6 +509,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { idempotentHint: true, readOnlyHint: false },
   },
   {
     name: "harness_mem_admin_metrics",
@@ -503,6 +519,7 @@ export const memoryTools: Tool[] = [
       properties: {},
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_admin_consolidation_run",
@@ -517,6 +534,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_admin_consolidation_status",
@@ -526,6 +544,7 @@ export const memoryTools: Tool[] = [
       properties: {},
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_admin_audit_log",
@@ -539,6 +558,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_add_relation",
@@ -553,6 +573,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["from_observation_id", "to_observation_id", "relation"],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_bulk_add",
@@ -580,6 +601,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["events"],
     },
+    annotations: { readOnlyHint: false },
   },
   {
     name: "harness_mem_bulk_delete",
@@ -591,6 +613,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["ids"],
     },
+    annotations: { destructiveHint: true },
   },
   {
     name: "harness_mem_export",
@@ -604,6 +627,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_compress",
@@ -618,6 +642,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: false },
   },
   {
     name: "harness_mem_stats",
@@ -629,6 +654,7 @@ export const memoryTools: Tool[] = [
       },
       required: [],
     },
+    annotations: { readOnlyHint: true },
   },
   {
     name: "harness_mem_ingest",
@@ -645,6 +671,7 @@ export const memoryTools: Tool[] = [
       },
       required: ["file_path", "content"],
     },
+    annotations: { idempotentHint: true },
   },
   {
     name: "harness_mem_graph",
@@ -658,10 +685,94 @@ export const memoryTools: Tool[] = [
       },
       required: ["observation_id"],
     },
+    annotations: { readOnlyHint: true },
   },
 ];
 
+/**
+ * Detect the calling platform from environment.
+ * OpenCode sets HARNESS_MEM_MCP_PLATFORM=opencode when launching this MCP server.
+ */
+function getMcpPlatform(): string | undefined {
+  return (process.env.HARNESS_MEM_MCP_PLATFORM || "").trim() || undefined;
+}
+
+/**
+ * Fire-and-forget tool_use event recording for platforms where
+ * tool.execute hooks do not fire for MCP tool calls (OpenCode #2319).
+ */
+async function recordToolUseEvent(
+  toolName: string,
+  phase: "before" | "after",
+  extra?: Record<string, unknown>
+): Promise<void> {
+  const platform = getMcpPlatform();
+  if (!platform) return;
+
+  const baseUrl = getBaseUrl();
+  try {
+    await fetch(`${baseUrl}/v1/events/record`, {
+      method: "POST",
+      headers: buildApiHeaders(),
+      body: JSON.stringify({
+        event: {
+          platform,
+          project: process.env.HARNESS_MEM_OPENCODE_PROJECT_ROOT || process.cwd(),
+          session_id: `mcp-${platform}-${process.pid}`,
+          event_type: "tool_use",
+          ts: new Date().toISOString(),
+          payload: {
+            tool_name: toolName,
+            phase,
+            source: "mcp_server_hook_supplement",
+            ...extra,
+          },
+          tags: [`${platform}_mcp_tool_use`, `tool.execute.${phase}`],
+        },
+      }),
+    });
+  } catch {
+    // non-blocking: best-effort recording
+  }
+}
+
+/** Tools that should NOT trigger self-tracking to avoid recursion or noise. */
+const SELF_TRACK_SKIP = new Set([
+  "harness_mem_health",
+  "harness_mem_record_event",
+  "harness_mem_record_checkpoint",
+  "harness_mem_finalize_session",
+]);
+
+/**
+ * Wrapper that records tool_use events for platforms where
+ * tool.execute hooks do not fire for MCP tool calls (OpenCode #2319).
+ */
 export async function handleMemoryTool(
+  name: string,
+  args: Record<string, unknown> | undefined
+): Promise<ToolResult> {
+  const shouldTrack = !!getMcpPlatform() && !SELF_TRACK_SKIP.has(name);
+  const startMs = Date.now();
+
+  if (shouldTrack) {
+    await recordToolUseEvent(name, "before");
+  }
+
+  const result = await handleMemoryToolInner(name, args);
+
+  if (shouldTrack) {
+    const durationMs = Date.now() - startMs;
+    await recordToolUseEvent(name, "after", {
+      success: !result.isError,
+      duration_ms: durationMs,
+    });
+  }
+
+  return result;
+}
+
+async function handleMemoryToolInner(
   name: string,
   args: Record<string, unknown> | undefined
 ): Promise<ToolResult> {
