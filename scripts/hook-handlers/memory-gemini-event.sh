@@ -11,32 +11,33 @@
 # stdin: Hook JSON payload from Gemini CLI
 # Environment: GEMINI_SESSION_ID, GEMINI_PROJECT_DIR, GEMINI_CWD
 
-set -euo pipefail
+set +e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLIENT="${SCRIPT_DIR}/../harness-mem-client.sh"
-
-# --- Config ---
-MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
-MEM_PORT="${HARNESS_MEM_PORT:-37888}"
-BASE_URL="http://${MEM_HOST}:${MEM_PORT}"
+# shellcheck disable=SC1090
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
 
 EVENT_NAME="${1:-unknown}"
 
-# --- Read stdin (Gemini hook JSON payload) ---
-STDIN_JSON=""
-if [ ! -t 0 ]; then
-  STDIN_JSON="$(cat)"
+hook_init_paths
+
+# Gemini: stdin読み取り + 環境変数ブリッジで resolve_project_context を利用
+# GEMINI_PROJECT_DIR/GEMINI_CWD を HARNESS_MEM_PROJECT_ROOT にブリッジ
+if [ -n "${GEMINI_PROJECT_DIR:-}" ]; then
+  export HARNESS_MEM_PROJECT_ROOT="$GEMINI_PROJECT_DIR"
+elif [ -n "${GEMINI_CWD:-}" ]; then
+  export HARNESS_MEM_PROJECT_ROOT="$GEMINI_CWD"
 fi
 
-# --- Resolve session & project ---
+hook_init_context
+
+# --- Session ID: 環境変数 → stdin → フォールバック ---
 SESSION_ID="${GEMINI_SESSION_ID:-}"
-if [ -z "$SESSION_ID" ]; then
-  SESSION_ID="gemini-$(date +%s)-$$"
+if [ -z "$SESSION_ID" ] && [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
+  SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // .thread_id // empty' 2>/dev/null)"
 fi
+[ -z "$SESSION_ID" ] && SESSION_ID="gemini-$(date +%s)-$$"
 
-PROJECT_DIR="${GEMINI_PROJECT_DIR:-${GEMINI_CWD:-$(pwd)}}"
-PROJECT="$(basename "$PROJECT_DIR")"
+hook_check_deps
 
 # --- Map Gemini event to harness-mem event type ---
 map_event_type() {
@@ -55,37 +56,33 @@ map_event_type() {
 
 EVENT_TYPE="$(map_event_type "$EVENT_NAME")"
 
-# --- Build payload ---
-PAYLOAD="$(jq -n \
-  --arg session_id "$SESSION_ID" \
-  --arg platform "gemini" \
-  --arg project "$PROJECT" \
-  --arg event_type "$EVENT_TYPE" \
-  --arg hook_event "$EVENT_NAME" \
-  --argjson stdin_payload "${STDIN_JSON:-null}" \
-  '{
-    platform: $platform,
-    project: $project,
-    session_id: $session_id,
-    event_type: $event_type,
-    payload: {
-      hook_event_name: $hook_event,
-      gemini_payload: $stdin_payload
-    }
-  }'
-)"
-
-# --- Send to daemon ---
+# --- Build and send payload ---
 if [ "$EVENT_TYPE" = "session_end" ]; then
   # Finalize session
-  curl -s --connect-timeout 1 --max-time 2 -X POST "${BASE_URL}/v1/sessions/finalize" \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD" >/dev/null 2>&1 || true
+  FINALIZE_PAYLOAD=$(jq -nc \
+    --arg platform "gemini" \
+    --arg project "$PROJECT_NAME" \
+    --arg session_id "$SESSION_ID" \
+    --arg summary_mode "standard" \
+    '{platform:$platform,project:$project,session_id:$session_id,summary_mode:$summary_mode}' 2>/dev/null)
+
+  if [ -n "$FINALIZE_PAYLOAD" ]; then
+    printf '%s' "$FINALIZE_PAYLOAD" | "$CLIENT_SCRIPT" finalize-session >/dev/null 2>&1 || true
+  fi
 else
   # Record event
-  curl -s --connect-timeout 1 --max-time 2 -X POST "${BASE_URL}/v1/events/record" \
-    -H "Content-Type: application/json" \
-    -d "$PAYLOAD" >/dev/null 2>&1 || true
+  EVENT_PAYLOAD=$(jq -nc \
+    --arg platform "gemini" \
+    --arg project "$PROJECT_NAME" \
+    --arg session_id "$SESSION_ID" \
+    --arg event_type "$EVENT_TYPE" \
+    --arg hook_event "$EVENT_NAME" \
+    --argjson stdin_payload "${INPUT:-null}" \
+    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{hook_event_name:$hook_event,gemini_payload:$stdin_payload},tags:["hook","gemini"]}}' 2>/dev/null)
+
+  if [ -n "$EVENT_PAYLOAD" ]; then
+    printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
+  fi
 fi
 
 # --- Return empty JSON to Gemini CLI (required for hooks) ---

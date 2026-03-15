@@ -4,32 +4,11 @@
 
 set +e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
-DAEMON_SCRIPT="${PARENT_DIR}/harness-memd"
-PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
+# shellcheck disable=SC1090
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
 
-if [ -f "$PROJECT_CONTEXT_LIB" ]; then
-  # shellcheck disable=SC1090
-  source "$PROJECT_CONTEXT_LIB"
-fi
-
-INPUT=""
-if [ ! -t 0 ]; then
-  INPUT="$(cat 2>/dev/null)"
-fi
-
-PROJECT_ROOT=""
-PROJECT_NAME=""
-if command -v resolve_project_context >/dev/null 2>&1; then
-  CONTEXT="$(resolve_project_context "$INPUT")"
-  PROJECT_ROOT="$(printf '%s\n' "$CONTEXT" | sed -n '1p')"
-  PROJECT_NAME="$(printf '%s\n' "$CONTEXT" | sed -n '2p')"
-fi
-
-[ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
-[ -n "$PROJECT_NAME" ] || PROJECT_NAME="$(basename "$PROJECT_ROOT")"
+hook_init_paths "true"
+hook_init_context
 
 STATE_DIR="${PROJECT_ROOT}/.claude/state"
 SESSION_FILE="${STATE_DIR}/session.json"
@@ -39,22 +18,14 @@ RESUME_PENDING_FLAG="${STATE_DIR}/.memory-resume-pending"
 RESUME_ERROR_FILE="${STATE_DIR}/memory-resume-error.md"
 mkdir -p "$STATE_DIR" 2>/dev/null || true
 
-CC_SESSION_ID=""
+hook_resolve_session_id "claude" "$SESSION_FILE" "generate"
+HARNESS_SESSION_ID="$SESSION_ID"
+
 SOURCE="startup"
 HOOK_META_JSON="{}"
 if [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
-  CC_SESSION_ID="$(printf '%s' "$INPUT" | jq -r '.session_id // empty' 2>/dev/null)"
   SOURCE="$(printf '%s' "$INPUT" | jq -r '.source // "startup"' 2>/dev/null)"
   HOOK_META_JSON="$(printf '%s' "$INPUT" | jq -c '{hook_event:(.hook_event_name // "SessionStart"), source:(.source // "startup"), ts:(.ts // now | tostring)}' 2>/dev/null)"
-fi
-
-HARNESS_SESSION_ID="$CC_SESSION_ID"
-if [ -z "$HARNESS_SESSION_ID" ] && [ -f "$SESSION_FILE" ] && command -v jq >/dev/null 2>&1; then
-  HARNESS_SESSION_ID="$(jq -r '.session_id // empty' "$SESSION_FILE" 2>/dev/null)"
-fi
-
-if [ -z "$HARNESS_SESSION_ID" ]; then
-  HARNESS_SESSION_ID="session-$(date +%s)"
 fi
 
 cleanup_resume_stale_context() {

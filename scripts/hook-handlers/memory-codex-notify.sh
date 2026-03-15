@@ -4,22 +4,25 @@
 
 set +e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
-PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
+# shellcheck disable=SC1090
+source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
 
-if [ -f "$PROJECT_CONTEXT_LIB" ]; then
-  # shellcheck disable=SC1090
-  source "$PROJECT_CONTEXT_LIB"
-fi
+hook_init_paths
 
+# codex-notify: $1 引数優先、stdinフォールバック（通常の hook_init_context とは異なる）
 INPUT_JSON="${1:-}"
 if [ -z "$INPUT_JSON" ] && [ ! -t 0 ]; then
   INPUT_JSON="$(cat 2>/dev/null)"
 fi
 
 [ -z "$INPUT_JSON" ] && exit 0
+
+# project-context.sh を読み込み（hook_init_paths で解決済みのパスを使用）
+if [ -f "$PROJECT_CONTEXT_LIB" ]; then
+  # shellcheck disable=SC1090
+  source "$PROJECT_CONTEXT_LIB"
+fi
+
 command -v jq >/dev/null 2>&1 || exit 0
 [ -x "$CLIENT_SCRIPT" ] || exit 0
 
