@@ -3,7 +3,7 @@
 最終更新: 2026-03-15（§52 dependency & tool integration update plan 策定）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
-> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md)（§36 15完了, §37 10完了, §38 12完了, §39 11完了, §40 11完了, §41 3完了, §42 2完了, §43 計画, §44 4完了, §45 6完了, §46 3完了, §47 9完了, §48 2完了, §49 完了, §50 9完了）
+> **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了）
 
 ---
 
@@ -73,14 +73,8 @@
   - 対象: `Plans.md`, `README.md`, `docs/benchmarks/japanese-release-proof-bar.md`, `docs/benchmarks/competitive-analysis-*.md`
   - DoD: Gate A-D と unlock 条件が dated artifact に基づいて固定される
 
-- [x] `cc:完了` **S51-002 [feature:tdd]**: router の relative temporal / current-vs-previous 判断を回復
-  - 対象: `memory-server/src/retrieval/router.ts`, `memory-server/tests/unit/retrieval-router.test.ts`, `memory-server/tests/unit/temporal-anchor.test.ts`
-  - DoD: relative anchor canonicalization、query classification、answer hints が watch slice failure に対して改善し、単体テストで question-id 付き回帰を固定する
-  - 2026-03-14 follow-up: 英語 `before switching` / `previous` 系の route classification を `timeline` 優先へ補正し、`What was the default region before switching to the new setup?` と `Who was the previous CEO?` の回帰テストを追加
-
-- [x] `cc:完了` **S51-003 [feature:tdd]**: observation-store の temporal / previous-value retrieval を回復
-  - 対象: `memory-server/src/core/observation-store.ts`, 関連 core tests
-  - DoD: candidate depth、temporal anchor search、current/previous cue 優先、short span extraction が `relative_temporal` / `current_vs_previous` に対して改善する
+- [x] `cc:完了` **S51-002**: router temporal/current-vs-previous 回復（router.ts + 回帰テスト追加）
+- [x] `cc:完了` **S51-003**: observation-store temporal retrieval 回復（candidate depth/anchor search 改善）
 
 - [ ] `cc:TODO` **S51-004 [feature:tdd]**: adapter / normalizer で `yes_no / entity / location` を硬化
   - 対象: `tests/benchmarks/locomo-harness-adapter.ts`, `tests/benchmarks/locomo-answer-normalizer.ts`, 各 benchmark tests
@@ -124,255 +118,9 @@
 
 ### 着手順
 
-1. `S51-002 -> S51-003` で `relative_temporal` / `current_vs_previous` を戻す
-2. `S51-004` で `yes_no / entity / location` を詰める
-3. `S51-005 -> S51-006 -> S51-007` で Gate A/B を閉じる
-4. `S51-008 -> S51-010` で packaging / license / distribution surface を揃える
-5. `S51-011 -> S51-012` で market-ready 判定と claim unlock を行う
+S51-004 → S51-005/006（Gate A）→ S51-007〜010（Gate B/C）→ S51-011/012（Gate D）
 
----
-
-## §52 Dependency & Tool Integration Update（依存更新 + 対応ツール最新化）
-
-策定日: 2026-03-15
-背景: 7エージェント並列調査により、依存パッケージの最新版・対応ツール5種（Claude Code / Codex CLI / Gemini CLI / OpenCode / Cursor）の仕様変更を洗い出した。
-
-### 調査サマリー
-
-| 対象 | 現在 | 最新 | 緊急度 |
-|------|------|------|--------|
-| `@modelcontextprotocol/sdk`（root） | ^0.5.0 | 不要（削除推奨） | 高 |
-| `@modelcontextprotocol/sdk`（mcp-server） | ^1.27.1 | 1.27.1（最新） | — |
-| `@huggingface/transformers` | ^3.8.1 | 3.8.1（v3最終）/ v4.0.0-next.7 | 低（正式版待ち） |
-| pg | ^8.13.3 | 8.20.0（semver内） | 低 |
-| tesseract.js | ^7.0.0 | 7.0.0（最新） | — |
-| pdf-parse | ^2.4.5 | 2.4.5（最新） | — |
-| vite | ^7.1.10 | 8.0.0（Rolldown移行） | 中 |
-| vitest | ^3.2.4 | 4.1.0 | 中 |
-| @vitejs/plugin-react | ^5.1.0 | 6.0.1（Vite 8必須） | 中 |
-| jsdom | ^26.1.0 | 28.1.0 | 低 |
-| Claude Code hooks | PreToolUse旧形式 | `hookSpecificOutput` 形式 | **高** |
-| Codex CLI hooks | 未対応 | 実験的（SessionStart/Stop） | 低 |
-| Gemini CLI hooks | 6イベント | +BeforeModel/BeforeToolSelection | 中 |
-| OpenCode plugin | 6フック | MCP→フック未発火バグ(#2319) | 中 |
-| Cursor hooks | 5イベント | 並列実行+Marketplace | 低 |
-
-### Feature Priority Matrix
-
-| 区分 | 項目 | DoD |
-|------|------|-----|
-| Required | Claude Code PreToolUse 形式移行 | `hookSpecificOutput.permissionDecision` を使用し、旧 `decision`/`reason` を廃止 |
-| Required | ルート MCP SDK 不要依存の削除 | root `package.json` から `@modelcontextprotocol/sdk` を除去 |
-| Required | MCP Tool Annotations 追加 | memory 系ツールに `readOnlyHint`/`destructiveHint` を付与 |
-| Recommended | Claude Code 新イベント対応 | `PostCompact`/`Elicitation` のフックハンドラー実装 |
-| Recommended | Gemini CLI 新イベント対応 | `BeforeModel`/`BeforeToolSelection` のマッピング追加 |
-| Recommended | OpenCode MCP フック回避策 | MCP ツール呼び出し時のログ漏れを MCP サーバー側で補完 |
-| Recommended | Vitest 3→4 アップグレード | harness-mem-ui テストが Vitest 4 で全パス |
-| Optional | Vite 7→8 + plugin-react 6 移行 | Rolldown 移行でビルド高速化、React Compiler 対応 |
-| Optional | Cursor Marketplace / SKILL.md 対応 | Cursor 向け配布チャネル拡大 |
-| Optional | @huggingface/transformers v4 移行準備 | v4.0.0 正式リリース後に ONNX Runtime 1.24 の恩恵を取り込む |
-
-### 依存グラフ
-
-```
-Phase A: Housekeeping（即座実行、並列可）
-├── [P] S52-001: ルート MCP SDK 不要依存の削除
-├── [P] S52-002: semver 範囲内の依存更新確認
-└── [P] S52-003: MCP Tool Annotations 追加
-                     │
-Phase B: Claude Code Hooks 移行（最優先）
-├── S52-004: PreToolUse hookSpecificOutput 形式への移行
-├── [P] S52-005: PostCompact / Elicitation イベントハンドラー実装
-└── S52-006: Auto Memory (MEMORY.md) との棲み分け方針決定
-                     │
-Phase C: マルチツール統合強化（並列可）
-├── [P] S52-007: Gemini CLI 新イベント対応
-├── [P] S52-008: OpenCode MCP フック未発火の補完実装
-├── [P] S52-009: Codex CLI hooks エンジン対応準備
-└── [P] S52-010: Cursor sandbox.json / Marketplace 対応調査
-                     │
-Phase D: Frontend 近代化（段階的）
-├── S52-011: Vitest 3→4 先行アップグレード
-└── S52-012: Vite 7→8 + plugin-react 6 + jsdom 28 同時移行
-                     │
-Phase E: 将来準備
-└── S52-013: @huggingface/transformers v4 移行準備
-```
-
-### Phase A: Housekeeping（即座実行可能）
-
-- [x] `cc:完了` **S52-001 [deps]**: ルート package.json から不要な `@modelcontextprotocol/sdk: ^0.5.0` を削除
-  - 対象: `package.json`
-  - 理由: mcp-server は独自に `^1.27.1` を持ち、ルートの 0.5.0 はどのソースからも import されていない不要な残骸
-  - DoD: `npm install` / `bun install` でエラーなし、mcp-server の動作に影響なし
-
-- [x] `cc:完了` **S52-002 [deps]**: semver 範囲内の依存更新を確認・適用
-  - 対象: 全サブパッケージの lock ファイル
-  - 確認項目: pg 8.20.0（SCRAM-SHA-256-PLUS対応）、react 19.2.4、typescript 5.9.3、@playwright/test 1.58.2
-  - DoD: `bun install` 後に全テストパス
-
-- [x] `cc:完了` **S52-003 [mcp]**: MCP Tool Annotations を harness_mem_* ツールに追加
-  - 対象: `mcp-server/src/tools/memory.ts`
-  - 内容: `harness_mem_search`/`harness_mem_timeline` → `readOnlyHint: true`、`harness_mem_bulk_delete` → `destructiveHint: true`、`harness_mem_record_event`/`harness_mem_ingest` → `idempotentHint: true`
-  - DoD: MCP SDK 1.11.0+ の annotations フィールドを使用、クライアント側で確認 UI が改善される
-
-### Phase B: Claude Code Hooks 移行（最優先）
-
-- [x] `cc:完了` **S52-004 [hooks/claude]**: PreToolUse の出力を `hookSpecificOutput` 形式へ移行
-  - 対象: `scripts/hook-handlers/pretooluse-guard*`、`hooks/hooks.json` 内の PreToolUse エントリ
-  - 背景: Claude Code が `decision`/`reason` トップレベルフィールドを deprecated にし、`hookSpecificOutput.permissionDecision`（`allow`/`deny`/`ask`）と `hookSpecificOutput.permissionDecisionReason` を推奨に変更
-  - DoD: 旧形式 `approve`/`block` を `allow`/`deny` に置換、`hookSpecificOutput` 形式で出力、Claude Code 最新版で動作確認
-
-- [x] `cc:完了` **S52-005 [hooks/claude]**: PostCompact / Elicitation イベントのフックハンドラー実装
-  - 対象: `hooks/hooks.json`、新規 `scripts/hook-handlers/memory-post-compact.sh`、`scripts/hook-handlers/memory-elicitation.sh`
-  - PostCompact: コンパクション完了後にメモリのチェックポイントを記録（PreCompact と対になる）
-  - Elicitation: MCP サーバーからのユーザー入力要求をイベントとして記録
-  - DoD: hooks.json に新イベント登録、ハンドラーが daemon API にイベント送信
-
-- [x] `cc:完了` **S52-006 [design]**: Claude Code Auto Memory (MEMORY.md) と harness-mem の棲み分け方針を決定
-  - 背景: Claude Code v2.1.59+ で Auto Memory がデフォルト有効。harness-mem の外部メモリシステムと機能重複あり
-  - 検討項目: `autoMemoryDirectory` 設定による共存、harness-mem 側での MEMORY.md 取り込み、役割分離（短期 vs 長期）
-  - DoD: ADR（Architecture Decision Record）として方針を文書化
-
-### Phase C: マルチツール統合強化
-
-- [x] `cc:完了` **S52-007 [hooks/gemini]**: Gemini CLI の新イベント `BeforeModel` / `BeforeToolSelection` 対応
-  - 対象: `scripts/hook-handlers/memory-gemini-event.sh`、`gemini/GEMINI.md`
-  - 背景: Gemini CLI v0.27.0 で Hooks がデフォルト有効化、新イベントが追加
-  - DoD: 新イベントを daemon の event_type にマッピング、GEMINI.md を最新仕様に更新
-
-- [x] `cc:完了` **S52-008 [plugin/opencode]**: OpenCode の MCP ツール呼び出し時フック未発火バグの補完
-  - 対象: `opencode/plugins/harness-memory/index.ts`、`mcp-server/src/tools/memory.ts`
-  - 背景: OpenCode Issue #2319 — MCP ツール呼び出し時に `tool.execute.before/after` フックが発火しない
-  - 方針: MCP サーバー側（memory.ts）で OpenCode 検出時にイベント記録を自律的に行うフォールバックを追加
-  - DoD: OpenCode 経由の MCP ツール利用がトラッキングされる
-
-- [x] `cc:完了` **S52-009 [hooks/codex]**: Codex CLI hooks エンジン対応準備
-  - 対象: `codex/.codex/`、新規 `codex/.codex/hooks.json`
-  - 背景: Codex v0.114.0 で実験的 hooks エンジン追加（SessionStart/Stop のみ）。harness.rules の先頭コメントで移行予定を既にマーク済み
-  - DoD: `SessionStart`/`Stop` のフックハンドラーを hooks.json に登録、既存 rules との共存を確認
-
-- [x] `cc:完了` **S52-010 [integration/cursor]**: Cursor sandbox.json 互換性 + Marketplace 対応調査
-  - 対象: `.cursor/`
-  - 背景: Cursor が sandbox.json（ネットワーク/FS アクセス制御）と Marketplace（プラグインバンドル配布）を導入
-  - DoD: sandbox.json で `localhost:37888` 通信許可のテンプレート作成、Marketplace 配布可否の調査レポート
-
-### Phase D: Frontend 近代化
-
-- [x] `cc:完了` **S52-011 [deps/ui]**: Vitest 3→4 先行アップグレード
-  - 対象: `harness-mem-ui/package.json`、テストファイル群
-  - 背景: Vitest 4 は Vite 7 のままでも利用可能（peerDeps: `vite ^6|^7|^8`）
-  - DoD: `vitest: ^4.1.0` に更新、全テストパス、breaking changes 対応
-
-- [x] `cc:完了` **S52-012 [deps/ui]**: Vite 7→8 + plugin-react 5→6 + jsdom 26→28 同時移行
-  - 対象: `harness-mem-ui/package.json`、`harness-mem-ui/vite.config.ts`
-  - 背景: Vite 8 は Rollup→Rolldown 移行でビルド数倍高速化。plugin-react 6 は Vite 8 必須。jsdom 28 は Node.js 20.19+ 要件
-  - リスク: Rolldown プラグイン互換性、Rollup 固有オプション使用箇所の確認が必要
-  - DoD: ビルド・テスト・typecheck 全パス、dev サーバー動作確認
-
-### Phase E: 将来準備
-
-- [ ] `cc:TODO` **S52-013 [deps/future]**: @huggingface/transformers v4 移行準備
-  - 対象: `memory-server/package.json`、`memory-server/src/core/local-onnx.ts`
-  - 背景: v4.0.0 は現在 next.7 プレリリース。ONNX Runtime 1.21→1.24 によるパフォーマンス改善、@huggingface/tokenizers 新依存
-  - トリガー: v4.0.0 正式リリース後に着手
-  - DoD: local-onnx.ts の API 互換性確認、embedding 品質のベンチマーク比較、ONNX Runtime ネイティブバイナリ互換性テスト
-
-### 着手順
-
-1. `S52-001 + S52-002 + S52-003`（Phase A 全並列）で housekeeping を片付ける
-2. `S52-004`（PreToolUse 移行）を最優先で実施 → `S52-005 + S52-006` を並列
-3. `S52-007 + S52-008 + S52-009 + S52-010`（Phase C 全並列）でマルチツール対応
-4. `S52-011`（Vitest 4）→ `S52-012`（Vite 8 同時移行）を段階的に
-5. `S52-013` は v4.0.0 正式リリースをトリガーとして着手
-
----
-
-## §53 Technical Debt Remediation（技術的負債の解消）
-
-策定日: 2026-03-15
-背景: /simplify の3エージェント並列レビューで検出された技術的負債3件について、3つのアーキテクト・エージェントが並列で解決策を設計した。
-
-### 依存グラフ
-
-```
-Phase A: hook-common.sh 共通ライブラリ作成（最優先・他の前提）
-├── S53-001: lib/hook-common.sh 新規作成
-├── S53-002: codex系2本を移行（最も単純）
-├── S53-003: claude系シンプル4本を移行
-├── S53-004: claude系複雑3本を移行
-└── S53-005: memory-session-start + self-check を移行
-                     │
-Phase B: Gemini スクリプト統一（Phase A 完了後）
-└── S53-006: memory-gemini-event.sh を統一パターンに書き換え
-                     │
-Phase C: MCP ツール重複解消（独立）
-└── [P] S53-007: compress / admin_consolidation_run の共通関数化
-```
-
-### Phase A: hook-common.sh 共通ライブラリ（段階的移行）
-
-- [x] `cc:完了` **S53-001 [refactor]**: `lib/hook-common.sh` を新規作成
-  - 対象: `scripts/hook-handlers/lib/hook-common.sh`（新規）
-  - 内容: 4つの共通関数を実装
-    - `hook_init_paths [has_daemon]` — SCRIPT_DIR/PARENT_DIR/CLIENT_SCRIPT/PROJECT_CONTEXT_LIB を解決
-    - `hook_init_context [require_input]` — stdin 読み取り + PROJECT_ROOT/PROJECT_NAME 解決
-    - `hook_resolve_session_id <platform> [session_file] [mode]` — SESSION_ID 解決を3パターンに統一
-    - `hook_check_deps` — CLIENT_SCRIPT/jq の存在チェック
-  - DoD: 新規ファイル作成のみ、既存スクリプトは変更しない（リスクゼロ）
-
-- [x] `cc:完了` **S53-002 [refactor]**: codex系2本を hook-common.sh に移行
-  - 対象: `codex-session-start.sh`, `codex-session-stop.sh`
-  - DoD: 初期化部分を共通関数呼び出しに置換（約22行→6行）、動作維持確認
-
-- [x] `cc:完了` **S53-003 [refactor]**: claude系シンプル4本を移行
-  - 対象: `memory-stop.sh`, `memory-post-compact.sh`, `memory-elicitation.sh`, `memory-skill-finalize.sh`
-  - DoD: 同上
-
-- [x] `cc:完了` **S53-004 [refactor]**: claude系複雑3本を移行
-  - 対象: `memory-post-tool-use.sh`, `memory-user-prompt.sh`, `memory-codex-notify.sh`
-  - DoD: プライバシータグ処理など固有ロジックを保持しつつ初期化を共通化
-
-- [x] `cc:完了` **S53-005 [refactor]**: 最も複雑な2本を移行
-  - 対象: `memory-session-start.sh`, `memory-self-check.sh`
-  - DoD: attempt_daemon_restart 等の複雑なフォールバックを保持しつつ共通化
-
-### Phase B: Gemini スクリプト統一
-
-- [x] `cc:完了` **S53-006 [refactor]**: memory-gemini-event.sh を統一パターンに書き換え
-  - 対象: `scripts/hook-handlers/memory-gemini-event.sh`
-  - 変更7点:
-    1. `set -euo pipefail` → `set +e`（耐障害性向上）
-    2. `curl` 直接 → `$CLIENT_SCRIPT record-event` / `finalize-session`
-    3. `basename` → `resolve_project_context`（Git ルート解決対応）
-    4. SESSION_ID: 環境変数→stdin→session.json→フォールバックの順に統一
-    5. ペイロード: `{event:{..., tags:["hook","gemini"]}}` ラッパー追加
-    6. `echo '{}'` の Gemini CLI 必須戻り値は維持
-    7. `$1` でのイベント名受け取り規約は維持
-  - 前提: S53-001 完了後（hook-common.sh を利用）
-  - DoD: `bash memory-gemini-event.sh SessionStart < /dev/null` で `{}` 出力、デーモン未起動でも正常終了
-
-### Phase C: MCP ツール重複解消
-
-- [x] `cc:完了` **S53-007 [refactor]**: compress / admin_consolidation_run の共通関数化
-  - 対象: `mcp-server/src/tools/memory.ts`
-  - 方法（案B採用）: `runConsolidation(input)` 共通関数を追加し、両 case から委譲
-  - 追加: `admin_consolidation_run` の annotations を `compress` と統一（`destructiveHint: false, idempotentHint: false` を追加）
-  - DoD: typecheck パス、両ツール名は MCP クライアントに引き続き公開
-
-### 着手順
-
-1. `S53-001`（hook-common.sh 作成）→ `S53-002`（codex系移行）で安全に検証
-2. `S53-003` → `S53-004` → `S53-005` で段階的に残りを移行
-3. `S53-006`（Gemini 統一）は Phase A 完了後
-4. `S53-007`（MCP 重複解消）は独立して並列実行可能
-
-### 期待効果
-
-- 初期化コード: 各スクリプト約22行 → 約6行（10本合計で約160行削減）
-- SESSION_ID ロジック: 3パターンが1関数に集約、テスト可能に
-- バグ修正の伝播: hook-common.sh 1ファイルの修正で全スクリプトに反映
-- 新スクリプト追加コスト: 3〜4行の初期化で即使用可能
+> §52（12完了/1未着手）・§53（7完了）→ [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)。残: S52-013（HF transformers v4）— 正式リリース待ち
 
 ---
 
@@ -397,109 +145,49 @@ Phase C: MCP ツール重複解消（独立）
 | Gate C | runner-integrated | 拡張ベンチマークが既存の benchmark runner / CI gate に統合される |
 | Gate D | claim-ready | README / proof bar が新ベンチマーク結果を反映し、SSOT テストが通る |
 
-### QA スライス設計（コーディングセッション特化）
+### QA スライス（10種）
 
-| スライス | 問い方の例 | 測りたいこと | 目標問数 |
-|---|---|---|---:|
-| tool-recall | 「前回 Codex で実行したコマンドは？」 | ツール使用の記憶 | 40 |
-| error-resolution | 「TypeScript の型エラーが出た時どう直した？」 | エラー対処の想起 | 40 |
-| decision-why | 「Vite 8 に上げた理由は？」 | 設計判断の理由 | 40 |
-| file-change | 「最後に変更した設定ファイルは？」 | ファイル変更の追跡 | 40 |
-| cross-client | 「Codex で作業した内容を Claude Code から検索」 | クロスクライアント想起 | 40 |
-| temporal-order | 「リファクタリングとテスト追加、どちらが先？」 | 時系列の正確さ | 50 |
-| config-diff | 「tsconfig の設定、前と今で何が違う？」 | 差分の記憶 | 30 |
-| session-summary | 「昨日のセッションで何をした？」 | セッション全体の要約 | 40 |
-| dependency | 「新しく追加したパッケージは何？」 | 依存関係の追跡 | 30 |
-| noisy-ja | 「あのバグってどうやって直したんだっけ？」 | 口語日本語での検索 | 50 |
-| cross-lingual | 英語で記録→日本語で質問（逆も） | 言語横断の想起 | 60 |
+tool-recall / error-resolution / decision-why / file-change / cross-client / temporal-order / session-summary / dependency / noisy-ja / cross-lingual
 
-### 依存グラフ
+### Phase 1-4 完了サマリー（2026-03-16）
 
-```
-Phase 1: Self-Eval テンプレート拡張（既存コード活用、即着手）
-├── S54-001: self-eval テンプレートをコーディングセッション特化で20種に拡張
-├── S54-002: 実DBからの自動生成を実行し200問+を生成
-└── S54-003: 生成結果の品質検証スクリプト作成
-                     │
-Phase 2: Retrospective-Eval 組み込み（Phase 1 完了後）
-├── S54-004: retrospective-eval を定期実行パイプラインに組み込み
-└── S54-005: audit_log の search_hit カバレッジ検証
-                     │
-Phase 3: LLM-Assisted Gold Set 生成（Phase 1 と並列可）
-├── [P] S54-006: セッションデータ抽出 + LLM QA生成パイプライン構築
-├── S54-007: 生成 QA の人間検証フロー + 品質フィルタ
-└── S54-008: 検証済み QA を fixture に統合（500問+目標）
-                     │
-Phase 4: Runner 統合と Claim 更新
-├── S54-009: 拡張 benchmark を既存 runner / CI gate に統合
-└── S54-010: README / proof bar / SSOT を新結果で更新
-```
+S54-001〜010 全完了。138テスト/0失敗。詳細: `docs/benchmarks/s54-benchmark-scale-up-summary.md`
 
-### Phase 1: Self-Eval テンプレート拡張
+| Phase | タスク | 成果 |
+|-------|--------|------|
+| 1 | S54-001/002/003 | テンプレート6→20種、300問自動生成、品質検証スクリプト |
+| 2 | S54-004/005 | retrospective CI wrapper、audit coverage check (16,647 hits) |
+| 3 | S54-006/007/008 | LLM QA生成パイプライン、品質フィルタ、396問統合fixture |
+| 4 | S54-009/010 | runner gate検証、scale-up summary ドキュメント |
 
-- [x] `cc:完了` **S54-001 [benchmark]**: self-eval テンプレートをコーディングセッション特化で20種に拡張
-  - 対象: `memory-server/src/benchmark/self-eval-generator.ts`
-  - 現状: 6テンプレート（first-task / latest-task / after-anchor / sequence / recent-ja / first-ja）
-  - 追加: tool-recall / error-resolution / decision-why / file-change / cross-client / config-diff / session-summary / dependency / noisy-ja / cross-lingual 等14テンプレート
-  - DoD: テンプレート20種以上、11スライスをカバー、型定義とテスト付き
+### Phase 5: Follow-up（品質仕上げ + Gate A 到達）
 
-- [x] `cc:完了` **S54-002 [benchmark]**: 実DBからの自動生成を実行し200問+を生成（300問、15セッション、20テンプレート）
-  - 対象: `self-eval-generator.ts` の CLI 実行、出力 fixture ファイル
-  - 前提: S54-001 完了後
-  - DoD: `bun run self-eval-generator.ts <db-path>` で200問以上の QA が生成される
+背景: Phase 1-4 完了後のベンチマーク実行で判明した残課題。§51 Gate A（main gate 3連続 PASS）到達に必要。
 
-- [x] `cc:完了` **S54-003 [benchmark]**: 生成結果の品質検証スクリプト作成
-  - 対象: 新規 `memory-server/src/benchmark/qa-quality-check.ts`
-  - 内容: 重複検出、スライス分布の偏り検出、answer 長の異常検出、cross-lingual バランス検証
-  - DoD: 品質レポートが JSON で出力され、CI で実行可能
+- [ ] `cc:TODO` **S54-011 [benchmark]**: LLM QA 生成で 500問到達
+  - 対象: `llm-qa-generator.ts --generate`、`.env`（ANTHROPIC_API_KEY）
+  - 内容: 実DBから100セッション抽出 → Claude API で QA 生成 → qa-review-tool でフィルタ → fixture-integrator で統合
+  - DoD: 統合 fixture が 500問以上、品質チェック pass_rate ≥ 50%
 
-### Phase 2: Retrospective-Eval 組み込み
+- [ ] `cc:TODO` **S54-012 [benchmark]**: retrospective-eval の embedding prime 待機を追加
+  - 対象: `memory-server/src/benchmark/retrospective-eval.ts` の `evaluateAlgo` 関数
+  - 内容: `ensureEmbeddingReady()` 相当の待機ロジックを `evaluateAlgo` 内に追加し、sync embed がフォールバックに落ちない状態で検索を実行する
+  - DoD: retrospective-eval の recall@10 が 0 ではない実用的な値を返す
 
-- [x] `cc:完了` **S54-004 [benchmark]**: retrospective-eval を定期実行パイプラインに組み込み
-  - 対象: `memory-server/src/benchmark/retrospective-eval.ts`、CI 設定
-  - DoD: `bun run retrospective-eval.ts` が CI で定期実行され、recall@5/10 の推移が記録される
+- [ ] `cc:TODO` **S54-013 [benchmark]**: self-eval テンプレートの exact dupe 63件を解消
+  - 対象: `self-eval-generator.ts` のテンプレート + `generateSelfEvalCases` ロジック
+  - 内容: 同一セッション内で content 先頭が一致するエントリに対し、snippet 抽出位置を分散させる（2番目・最後のエントリを使うバリエーション追加 or dedupe フィルタ）
+  - DoD: `qa-quality-check.ts` の exact_query_dupes が 10件以下
 
-- [x] `cc:完了` **S54-005 [benchmark]**: audit_log の search_hit カバレッジ検証
-  - 対象: `mem_audit_log` テーブル、検証スクリプト
-  - DoD: search_hit の蓄積状況レポートが出力され、retrospective-eval に十分なデータがあるか判定できる
+- [ ] `cc:TODO` **S54-014 [benchmark/§51]**: Layer 2 Relative Regression の解消（§51 Gate A 連携）
+  - 対象: `memory-server/src/retrieval/router.ts`、`observation-store.ts`、run-ci gate 定義
+  - 背景: LoCoMo F1 0.5296 < mean-2SE 0.5333（-0.0037 の微小回帰）、temporal 0.6403 < mean-2SE 0.6431
+  - 方針: §51 S51-002/003 で着手済みの router temporal 改善の続き。ベンチマーク専用ハックではなく汎用改善で対処
+  - DoD: `run-ci.ts` の Layer 2 が PASS、3連続実行で安定
 
-### Phase 3: LLM-Assisted Gold Set 生成
+### 着手順（Phase 5）
 
-- [x] `cc:完了` **S54-006 [benchmark]**: セッションデータ抽出 + LLM QA生成パイプライン構築
-  - 対象: 新規 `memory-server/src/benchmark/llm-qa-generator.ts`
-  - 内容: harness_mem_export でセッション抽出 → Claude API で QA ペア生成（スライス指定付き）
-  - DoD: 100セッションから500問の候補 QA が自動生成される
-
-- [x] `cc:完了` **S54-007 [benchmark]**: 生成 QA の人間検証フロー + 品質フィルタ
-  - 対象: 新規 `memory-server/src/benchmark/qa-review-tool.ts`
-  - 内容: LLM 生成 QA を対話的にレビュー、承認/修正/却下を記録
-  - DoD: レビュー済み QA に `verified: true` フラグが付与される
-
-- [x] `cc:完了` **S54-008 [benchmark]**: 検証済み QA を fixture に統合（96+300=396問、統合fixture生成済み）
-  - 対象: `tests/benchmarks/fixtures/japanese-coding-session-pack-*.json`
-  - DoD: 既存96問 + 新規自動生成 + LLM生成検証済み = 500問以上の統合 fixture
-
-### Phase 4: Runner 統合と Claim 更新
-
-- [x] `cc:完了` **S54-009 [benchmark]**: 拡張 benchmark を既存 runner / CI gate に統合
-  - 対象: `memory-server/src/benchmark/runner.ts`、`run-ci.ts`、companion gate 定義
-  - DoD: 500問+ fixture が runner で実行可能、companion gate の閾値が新規模に対応
-
-- [x] `cc:完了` **S54-010 [docs]**: README / proof bar / SSOT を新結果で更新（s54-benchmark-scale-up-summary.md 作成）
-  - 対象: `README.md`、`README_ja.md`、`docs/benchmarks/japanese-release-proof-bar.md`、`tests/benchmark-claim-ssot.test.ts`
-  - DoD: 新ベンチマーク結果が公開ドキュメントに反映、SSOT テストがパス
-
-### 着手順
-
-1. `S54-001` → `S54-002` → `S54-003`（Phase 1、self-eval 拡張で即効性のある200問+確保）
-2. `S54-006`（Phase 3、LLM生成パイプライン構築は Phase 1 と並列可）
-3. `S54-004` → `S54-005`（Phase 2、retrospective-eval 組み込み）
-4. `S54-007` → `S54-008`（Phase 3 残、人間検証 + 統合で500問+達成）
-5. `S54-009` → `S54-010`（Phase 4、runner 統合 + claim 更新）
-
-### 期待効果
-
-- 日本語ベンチマーク: 96問 → 500問+（統計的信頼性の大幅向上）
-- スライス別信頼性: 各スライス30問以上で信頼区間が実用的に
-- ユースケース適合: 架空ビジネス会話 → 実際のコーディングセッション想起に特化
-- 競合優位の強化: 「コーディングセッション特化の日本語ベンチマーク500問+」は市場で唯一
+1. `S54-012`（retrospective-eval prime 待機）— 小修正、即効性あり
+2. `S54-013`（exact dupe 解消）— テンプレート調整のみ
+3. `S54-011`（LLM QA 生成 500問）— API 実行、`.env` の ANTHROPIC_API_KEY を使用
+4. `S54-014`（Layer 2 解消）— §51 との連携、最も工数が大きい
