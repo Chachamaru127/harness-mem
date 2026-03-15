@@ -355,10 +355,10 @@ export async function evaluateAlgo(
     const cacheBefore = await readCacheStats(core);
     // ソース DB のエントリを再投入
     const sourceDb = new Database(sourceDbPath, { readonly: true });
-    type ObsRow = { id: string; platform: string; project: string; session_id: string; event_type: string; content: string; created_at: string };
+    type ObsRow = { id: string; platform: string; project: string; session_id: string; content: string; created_at: string };
     const obs = sourceDb
       .query<ObsRow, []>(`
-        SELECT id, platform, project, session_id, event_type, content, created_at
+        SELECT id, platform, project, session_id, content, created_at
         FROM mem_observations
         WHERE content IS NOT NULL AND content != ''
         ORDER BY created_at ASC
@@ -384,7 +384,7 @@ export async function evaluateAlgo(
         platform: o.platform ?? "claude",
         project: o.project ?? "default",
         session_id: o.session_id ?? "unknown",
-        event_type: o.event_type ?? "user_prompt",
+        event_type: "user_prompt",
         ts: o.created_at,
         payload: { content: o.content },
         tags: [],
