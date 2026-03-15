@@ -1,0 +1,13 @@
+{
+  "networkPolicy": {
+    "default": "deny",
+    "allow": [
+      "localhost:37888",
+      "127.0.0.1:37888"
+    ]
+  },
+  "additionalReadwritePaths": [
+    "~/.harness-mem",
+    "~/.config/harness-mem"
+  ]
+}

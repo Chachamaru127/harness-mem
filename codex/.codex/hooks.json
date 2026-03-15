@@ -1,0 +1,27 @@
+{
+  "description": "harness-mem: Codex CLI hooks (experimental, v0.114.0+)",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __HARNESS_ROOT__/scripts/hook-handlers/codex-session-start.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash __HARNESS_ROOT__/scripts/hook-handlers/codex-session-stop.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

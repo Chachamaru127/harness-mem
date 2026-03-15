@@ -5,6 +5,8 @@
 #   bash memory-gemini-event.sh SessionEnd
 #   bash memory-gemini-event.sh AfterTool
 #   bash memory-gemini-event.sh PreCompress
+#   bash memory-gemini-event.sh BeforeModel
+#   bash memory-gemini-event.sh BeforeToolSelection
 #
 # stdin: Hook JSON payload from Gemini CLI
 # Environment: GEMINI_SESSION_ID, GEMINI_PROJECT_DIR, GEMINI_CWD
@@ -39,13 +41,15 @@ PROJECT="$(basename "$PROJECT_DIR")"
 # --- Map Gemini event to harness-mem event type ---
 map_event_type() {
   case "$1" in
-    SessionStart)  echo "session_start" ;;
-    SessionEnd)    echo "session_end" ;;
-    AfterTool)     echo "tool_use" ;;
-    PreCompress)   echo "checkpoint" ;;
-    BeforeAgent)   echo "user_prompt" ;;
-    AfterAgent)    echo "assistant_response" ;;
-    *)             echo "checkpoint" ;;
+    SessionStart)         echo "session_start" ;;
+    SessionEnd)           echo "session_end" ;;
+    AfterTool)            echo "tool_use" ;;
+    PreCompress)          echo "checkpoint" ;;
+    BeforeAgent)          echo "user_prompt" ;;
+    AfterAgent)           echo "assistant_response" ;;
+    BeforeModel)          echo "model_request" ;;
+    BeforeToolSelection)  echo "tool_selection" ;;
+    *)                    echo "checkpoint" ;;
   esac
 }
 
