@@ -373,3 +373,133 @@ Phase C: MCP ツール重複解消（独立）
 - SESSION_ID ロジック: 3パターンが1関数に集約、テスト可能に
 - バグ修正の伝播: hook-common.sh 1ファイルの修正で全スクリプトに反映
 - 新スクリプト追加コスト: 3〜4行の初期化で即使用可能
+
+---
+
+## §54 Japanese Benchmark Scale-Up（日本語ベンチマーク拡充）
+
+策定日: 2026-03-16
+背景: 現在の日本語ベンチマーク（96問）は統計的信頼性が不足。業界標準（LoCoMo 600問、LongMemEval 500問）の 1/5〜1/6 の規模。さらに、現在の96問は架空のビジネス会話ベースで、harness-mem の本来のユースケース（Claude Code / Codex 等のコーディングセッションの想起）と乖離している。
+
+### 目的
+
+1. 日本語ベンチマークを96問 → 500問以上に拡充
+2. コーディングセッション特化の QA スライスを導入（「ちゃんと思い出せるか」を測る）
+3. 既存の self-eval-generator.ts / retrospective-eval.ts を活用して自動生成を主体とする
+4. 統計的に有意な品質主張を可能にする（スライス別でも 30問以上を確保）
+
+### Success Gates
+
+| Gate | 意味 | 完了条件（DoD） |
+|------|------|-----------------|
+| Gate A | template-complete | self-eval テンプレートが20種以上、コーディングセッション11スライスをカバー |
+| Gate B | volume-complete | 自動生成 + LLM半自動 + 人間検証で合計500問以上の Gold Set が作成される |
+| Gate C | runner-integrated | 拡張ベンチマークが既存の benchmark runner / CI gate に統合される |
+| Gate D | claim-ready | README / proof bar が新ベンチマーク結果を反映し、SSOT テストが通る |
+
+### QA スライス設計（コーディングセッション特化）
+
+| スライス | 問い方の例 | 測りたいこと | 目標問数 |
+|---|---|---|---:|
+| tool-recall | 「前回 Codex で実行したコマンドは？」 | ツール使用の記憶 | 40 |
+| error-resolution | 「TypeScript の型エラーが出た時どう直した？」 | エラー対処の想起 | 40 |
+| decision-why | 「Vite 8 に上げた理由は？」 | 設計判断の理由 | 40 |
+| file-change | 「最後に変更した設定ファイルは？」 | ファイル変更の追跡 | 40 |
+| cross-client | 「Codex で作業した内容を Claude Code から検索」 | クロスクライアント想起 | 40 |
+| temporal-order | 「リファクタリングとテスト追加、どちらが先？」 | 時系列の正確さ | 50 |
+| config-diff | 「tsconfig の設定、前と今で何が違う？」 | 差分の記憶 | 30 |
+| session-summary | 「昨日のセッションで何をした？」 | セッション全体の要約 | 40 |
+| dependency | 「新しく追加したパッケージは何？」 | 依存関係の追跡 | 30 |
+| noisy-ja | 「あのバグってどうやって直したんだっけ？」 | 口語日本語での検索 | 50 |
+| cross-lingual | 英語で記録→日本語で質問（逆も） | 言語横断の想起 | 60 |
+
+### 依存グラフ
+
+```
+Phase 1: Self-Eval テンプレート拡張（既存コード活用、即着手）
+├── S54-001: self-eval テンプレートをコーディングセッション特化で20種に拡張
+├── S54-002: 実DBからの自動生成を実行し200問+を生成
+└── S54-003: 生成結果の品質検証スクリプト作成
+                     │
+Phase 2: Retrospective-Eval 組み込み（Phase 1 完了後）
+├── S54-004: retrospective-eval を定期実行パイプラインに組み込み
+└── S54-005: audit_log の search_hit カバレッジ検証
+                     │
+Phase 3: LLM-Assisted Gold Set 生成（Phase 1 と並列可）
+├── [P] S54-006: セッションデータ抽出 + LLM QA生成パイプライン構築
+├── S54-007: 生成 QA の人間検証フロー + 品質フィルタ
+└── S54-008: 検証済み QA を fixture に統合（500問+目標）
+                     │
+Phase 4: Runner 統合と Claim 更新
+├── S54-009: 拡張 benchmark を既存 runner / CI gate に統合
+└── S54-010: README / proof bar / SSOT を新結果で更新
+```
+
+### Phase 1: Self-Eval テンプレート拡張
+
+- [x] `cc:完了` **S54-001 [benchmark]**: self-eval テンプレートをコーディングセッション特化で20種に拡張
+  - 対象: `memory-server/src/benchmark/self-eval-generator.ts`
+  - 現状: 6テンプレート（first-task / latest-task / after-anchor / sequence / recent-ja / first-ja）
+  - 追加: tool-recall / error-resolution / decision-why / file-change / cross-client / config-diff / session-summary / dependency / noisy-ja / cross-lingual 等14テンプレート
+  - DoD: テンプレート20種以上、11スライスをカバー、型定義とテスト付き
+
+- [x] `cc:完了` **S54-002 [benchmark]**: 実DBからの自動生成を実行し200問+を生成（300問、15セッション、20テンプレート）
+  - 対象: `self-eval-generator.ts` の CLI 実行、出力 fixture ファイル
+  - 前提: S54-001 完了後
+  - DoD: `bun run self-eval-generator.ts <db-path>` で200問以上の QA が生成される
+
+- [x] `cc:完了` **S54-003 [benchmark]**: 生成結果の品質検証スクリプト作成
+  - 対象: 新規 `memory-server/src/benchmark/qa-quality-check.ts`
+  - 内容: 重複検出、スライス分布の偏り検出、answer 長の異常検出、cross-lingual バランス検証
+  - DoD: 品質レポートが JSON で出力され、CI で実行可能
+
+### Phase 2: Retrospective-Eval 組み込み
+
+- [ ] `cc:TODO` **S54-004 [benchmark]**: retrospective-eval を定期実行パイプラインに組み込み
+  - 対象: `memory-server/src/benchmark/retrospective-eval.ts`、CI 設定
+  - DoD: `bun run retrospective-eval.ts` が CI で定期実行され、recall@5/10 の推移が記録される
+
+- [ ] `cc:TODO` **S54-005 [benchmark]**: audit_log の search_hit カバレッジ検証
+  - 対象: `mem_audit_log` テーブル、検証スクリプト
+  - DoD: search_hit の蓄積状況レポートが出力され、retrospective-eval に十分なデータがあるか判定できる
+
+### Phase 3: LLM-Assisted Gold Set 生成
+
+- [x] `cc:完了` **S54-006 [benchmark]**: セッションデータ抽出 + LLM QA生成パイプライン構築
+  - 対象: 新規 `memory-server/src/benchmark/llm-qa-generator.ts`
+  - 内容: harness_mem_export でセッション抽出 → Claude API で QA ペア生成（スライス指定付き）
+  - DoD: 100セッションから500問の候補 QA が自動生成される
+
+- [ ] `cc:TODO` **S54-007 [benchmark]**: 生成 QA の人間検証フロー + 品質フィルタ
+  - 対象: 新規 `memory-server/src/benchmark/qa-review-tool.ts`
+  - 内容: LLM 生成 QA を対話的にレビュー、承認/修正/却下を記録
+  - DoD: レビュー済み QA に `verified: true` フラグが付与される
+
+- [ ] `cc:TODO` **S54-008 [benchmark]**: 検証済み QA を fixture に統合
+  - 対象: `tests/benchmarks/fixtures/japanese-coding-session-pack-*.json`
+  - DoD: 既存96問 + 新規自動生成 + LLM生成検証済み = 500問以上の統合 fixture
+
+### Phase 4: Runner 統合と Claim 更新
+
+- [ ] `cc:TODO` **S54-009 [benchmark]**: 拡張 benchmark を既存 runner / CI gate に統合
+  - 対象: `memory-server/src/benchmark/runner.ts`、`run-ci.ts`、companion gate 定義
+  - DoD: 500問+ fixture が runner で実行可能、companion gate の閾値が新規模に対応
+
+- [ ] `cc:TODO` **S54-010 [docs]**: README / proof bar / SSOT を新結果で更新
+  - 対象: `README.md`、`README_ja.md`、`docs/benchmarks/japanese-release-proof-bar.md`、`tests/benchmark-claim-ssot.test.ts`
+  - DoD: 新ベンチマーク結果が公開ドキュメントに反映、SSOT テストがパス
+
+### 着手順
+
+1. `S54-001` → `S54-002` → `S54-003`（Phase 1、self-eval 拡張で即効性のある200問+確保）
+2. `S54-006`（Phase 3、LLM生成パイプライン構築は Phase 1 と並列可）
+3. `S54-004` → `S54-005`（Phase 2、retrospective-eval 組み込み）
+4. `S54-007` → `S54-008`（Phase 3 残、人間検証 + 統合で500問+達成）
+5. `S54-009` → `S54-010`（Phase 4、runner 統合 + claim 更新）
+
+### 期待効果
+
+- 日本語ベンチマーク: 96問 → 500問+（統計的信頼性の大幅向上）
+- スライス別信頼性: 各スライス30問以上で信頼区間が実用的に
+- ユースケース適合: 架空ビジネス会話 → 実際のコーディングセッション想起に特化
+- 競合優位の強化: 「コーディングセッション特化の日本語ベンチマーク500問+」は市場で唯一

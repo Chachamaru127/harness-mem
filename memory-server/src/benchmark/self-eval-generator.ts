@@ -24,60 +24,263 @@ export interface SelfEvalCase {
   session_id: string;
   query: string;
   query_template: string;
+  slice: string;
   entries: SelfEvalEntry[];
   expected_order: string[];
   generated_at: string;
 }
 
-/** クエリテンプレート（日英両対応） */
-const QUERY_TEMPLATES = [
+interface QueryTemplate {
+  id: string;
+  slice: string;
+  template: (entries: SelfEvalEntry[]) => string;
+  expected_order: (entries: SelfEvalEntry[]) => string[];
+}
+
+/** セッション固有のスニペットを取得（クエリの一意性を確保） */
+function snippet(entries: SelfEvalEntry[], idx: number, len = 30): string {
+  const e = entries[idx] ?? entries[0];
+  return e.content.slice(0, len).replace(/\s+/g, " ").trim();
+}
+
+/** クエリテンプレート（日英両対応・全20種） */
+export const QUERY_TEMPLATES: QueryTemplate[] = [
+  // --- temporal-order 系（3種: 既存6種から3種に削減。スニペット埋め込みで一意化） ---
   {
     id: "first-task",
+    slice: "temporal-order",
     template: (entries: SelfEvalEntry[]) =>
-      `What was the first thing I worked on in this session?`,
+      `In the session starting with "${snippet(entries, 0)}", what was the first thing I worked on?`,
     expected_order: (entries: SelfEvalEntry[]) =>
-      entries.map((e) => e.id), // ascending (oldest first)
+      entries.map((e) => e.id),
   },
   {
     id: "latest-task",
+    slice: "temporal-order",
     template: (entries: SelfEvalEntry[]) =>
-      `What was the most recent activity in this session?`,
-    expected_order: (entries: SelfEvalEntry[]) =>
-      [...entries].reverse().map((e) => e.id), // descending (newest first)
-  },
-  {
-    id: "after-anchor",
-    template: (entries: SelfEvalEntry[]) => {
-      // 先頭から2番目のエントリをアンカーとして使用
-      const anchor = entries[1] ?? entries[0];
-      const snippet = anchor.content.slice(0, 40).replace(/\s+/g, " ").trim();
-      return `What happened after "${snippet}"?`;
-    },
-    expected_order: (entries: SelfEvalEntry[]) =>
-      entries.slice(2).map((e) => e.id), // entries after anchor
-  },
-  {
-    id: "sequence",
-    template: (entries: SelfEvalEntry[]) =>
-      `In what order did I complete tasks in this session?`,
-    expected_order: (entries: SelfEvalEntry[]) =>
-      entries.map((e) => e.id), // ascending
-  },
-  {
-    id: "recent-ja",
-    template: (entries: SelfEvalEntry[]) =>
-      `このセッションで最後に何をしましたか？`,
+      `What was the most recent activity in the session involving "${snippet(entries, 0)}"?`,
     expected_order: (entries: SelfEvalEntry[]) =>
       [...entries].reverse().map((e) => e.id),
   },
   {
-    id: "first-ja",
+    id: "after-anchor",
+    slice: "temporal-order",
+    template: (entries: SelfEvalEntry[]) => {
+      const anchor = entries[1] ?? entries[0];
+      const s = anchor.content.slice(0, 40).replace(/\s+/g, " ").trim();
+      return `What happened after "${s}"?`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.slice(2).map((e) => e.id),
+  },
+
+  // --- tool-recall 系（2種、スニペット埋め込みで一意化） ---
+  {
+    id: "tool-recall-en",
+    slice: "tool-recall",
     template: (entries: SelfEvalEntry[]) =>
-      `このセッションで最初のタスクは何でしたか？`,
+      `What tools or commands were used in the session about "${snippet(entries, 0)}"?`,
     expected_order: (entries: SelfEvalEntry[]) =>
       entries.map((e) => e.id),
   },
-] as const;
+  {
+    id: "tool-recall-ja",
+    slice: "tool-recall",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0)}」のセッションで使ったツールやコマンドは？`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- error-resolution 系（新規2種） ---
+  {
+    id: "error-resolution-en",
+    slice: "error-resolution",
+    template: (entries: SelfEvalEntry[]) => {
+      const errEntry =
+        entries.find((e) => /error|fail|bug|fix/i.test(e.content)) ??
+        entries[0];
+      const snippet = errEntry.content
+        .slice(0, 50)
+        .replace(/\s+/g, " ")
+        .trim();
+      return `How was the issue "${snippet}" resolved?`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) => {
+      const filtered = entries
+        .filter((e) =>
+          /error|fail|bug|fix|resolve|fixed/i.test(e.content)
+        )
+        .map((e) => e.id);
+      return filtered.length > 0 ? filtered : entries.map((e) => e.id);
+    },
+  },
+  {
+    id: "error-resolution-ja",
+    slice: "error-resolution",
+    template: (entries: SelfEvalEntry[]) => {
+      const errEntry =
+        entries.find((e) =>
+          /エラー|失敗|バグ|修正|error|fail|fix/i.test(e.content)
+        ) ?? entries[0];
+      const snippet = errEntry.content
+        .slice(0, 50)
+        .replace(/\s+/g, " ")
+        .trim();
+      return `「${snippet}」の問題はどう解決しましたか？`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- decision-why 系（新規2種） ---
+  {
+    id: "decision-why-en",
+    slice: "decision-why",
+    template: (entries: SelfEvalEntry[]) => {
+      const anchor = entries[Math.floor(entries.length / 2)];
+      const snippet = anchor.content
+        .slice(0, 40)
+        .replace(/\s+/g, " ")
+        .trim();
+      return `Why was the decision made regarding "${snippet}"?`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+  {
+    id: "decision-why-ja",
+    slice: "decision-why",
+    template: (entries: SelfEvalEntry[]) => {
+      const anchor = entries[Math.floor(entries.length / 2)];
+      const snippet = anchor.content
+        .slice(0, 40)
+        .replace(/\s+/g, " ")
+        .trim();
+      return `「${snippet}」に関する判断の理由は何ですか？`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- file-change 系（2種、スニペット埋め込みで一意化） ---
+  {
+    id: "file-change-en",
+    slice: "file-change",
+    template: (entries: SelfEvalEntry[]) =>
+      `Which files were modified in the session about "${snippet(entries, 0)}"?`,
+    expected_order: (entries: SelfEvalEntry[]) => {
+      const filtered = entries
+        .filter((e) =>
+          /\.(ts|js|json|md|sh|yaml|yml|css|html)/i.test(e.content)
+        )
+        .map((e) => e.id);
+      return filtered.length > 0 ? filtered : entries.map((e) => e.id);
+    },
+  },
+  {
+    id: "file-change-ja",
+    slice: "file-change",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0)}」のセッションで変更されたファイルは？`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- cross-client 系（2種、スニペット埋め込みで一意化） ---
+  {
+    id: "cross-client-en",
+    slice: "cross-client",
+    template: (entries: SelfEvalEntry[]) =>
+      `In the session about "${snippet(entries, 0)}", what work was done across different AI tools?`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+  {
+    id: "cross-client-ja",
+    slice: "cross-client",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0)}」のセッションで別のAIツールを使った作業は？`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- session-summary 系（2種、スニペット埋め込みで一意化） ---
+  {
+    id: "session-summary-en",
+    slice: "session-summary",
+    template: (entries: SelfEvalEntry[]) =>
+      `Summarize what was accomplished in the session starting with "${snippet(entries, 0)}".`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+  {
+    id: "session-summary-ja",
+    slice: "session-summary",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0)}」から始まるセッションで何を達成しましたか？`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- dependency 系（新規1種: 20種目） ---
+  {
+    id: "dependency-ja",
+    slice: "dependency",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0)}」のセッションで追加・変更したパッケージや依存関係は？`,
+    expected_order: (entries: SelfEvalEntry[]) => {
+      const filtered = entries
+        .filter((e) => /package|install|dependency|import|require|npm|bun|yarn/i.test(e.content))
+        .map((e) => e.id);
+      return filtered.length > 0 ? filtered : entries.map((e) => e.id);
+    },
+  },
+
+  // --- noisy-ja 系（口語日本語・新規1種） ---
+  {
+    id: "noisy-casual-ja",
+    slice: "noisy-ja",
+    template: (entries: SelfEvalEntry[]) => {
+      const anchor = entries[Math.floor(entries.length / 2)];
+      const snippet = anchor.content
+        .slice(0, 30)
+        .replace(/\s+/g, " ")
+        .trim();
+      return `あの${snippet}ってどうなったんだっけ？`;
+    },
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+
+  // --- noisy-ja 系（口語日本語・追加1種 → 計2種） ---
+  {
+    id: "noisy-vague-ja",
+    slice: "noisy-ja",
+    template: (entries: SelfEvalEntry[]) =>
+      `えっと、${snippet(entries, entries.length - 1, 25)}の件、結局どうなった？`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      [...entries].reverse().map((e) => e.id),
+  },
+
+  // --- cross-lingual 系（2種） ---
+  {
+    id: "cross-lingual-en-to-ja",
+    slice: "cross-lingual",
+    template: (entries: SelfEvalEntry[]) =>
+      `「${snippet(entries, 0, 40)}」について教えてください`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      entries.map((e) => e.id),
+  },
+  {
+    id: "cross-lingual-ja-to-en",
+    slice: "cross-lingual",
+    template: (entries: SelfEvalEntry[]) =>
+      `Tell me about the work related to "${snippet(entries, entries.length - 1, 40)}"`,
+    expected_order: (entries: SelfEvalEntry[]) =>
+      [...entries].reverse().map((e) => e.id),
+  },
+];
 
 interface SessionRow {
   session_id: string;
@@ -94,11 +297,11 @@ interface EntryRow {
 /**
  * 実DBからセッション別エントリを取得して SelfEvalCase を生成する。
  * @param dbPath SQLite データベースのパス
- * @param targetCount 生成目標件数（デフォルト 50）
+ * @param targetCount 生成目標件数（デフォルト 300）
  */
 export function generateSelfEvalCases(
   dbPath: string,
-  targetCount = 50
+  targetCount = 300
 ): SelfEvalCase[] {
   const db = new Database(dbPath, { readonly: true });
   try {
@@ -152,6 +355,7 @@ export function generateSelfEvalCases(
           session_id: session.session_id,
           query: tmpl.template(entries as SelfEvalEntry[]),
           query_template: tmpl.id,
+          slice: tmpl.slice,
           entries: (entries as SelfEvalEntry[]).map((e) => ({
             id: e.id,
             content: e.content.slice(0, 200), // プライバシー: 200文字に切り詰め
@@ -197,7 +401,7 @@ if (import.meta.main) {
   }
 
   const resolvedDb = resolve(dbPath);
-  const cases = generateSelfEvalCases(resolvedDb, 50);
+  const cases = generateSelfEvalCases(resolvedDb, 300);
   summarizeCases(cases);
 
   if (outputPath) {
