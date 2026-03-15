@@ -1,0 +1,3917 @@
+{
+  "schema_version": "integrated-fixture-v1",
+  "generated_at": "2026-03-15T17:14:01.812Z",
+  "sources": [
+    {
+      "name": "release-pack-96",
+      "count": 96,
+      "path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json"
+    },
+    {
+      "name": "self-eval-300",
+      "count": 300,
+      "path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-coding-session-self-eval-300.json"
+    }
+  ],
+  "total_count": 396,
+  "by_slice": {
+    "current": 12,
+    "why": 7,
+    "current_vs_previous": 12,
+    "noisy": 13,
+    "yes_no": 16,
+    "long_turn": 12,
+    "exact": 8,
+    "temporal": 8,
+    "list": 3,
+    "relative_temporal": 3,
+    "location": 1,
+    "entity": 1,
+    "temporal-order": 45,
+    "tool-recall": 30,
+    "error-resolution": 30,
+    "decision-why": 30,
+    "file-change": 30,
+    "cross-client": 30,
+    "session-summary": 30,
+    "dependency": 15,
+    "noisy-ja": 30,
+    "cross-lingual": 30
+  },
+  "by_source": {
+    "release-pack-96": 96,
+    "self-eval-300": 300
+  },
+  "by_category": {
+    "cat-1": 187,
+    "cat-3": 67,
+    "cat-2": 92,
+    "cat-4": 50
+  },
+  "items": [
+    {
+      "question_id": "current-001",
+      "question": "今、使っている CI は何ですか？",
+      "answer": "GitHub Actions",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-001",
+      "question": "CircleCI から移行した理由は何ですか？",
+      "answer": "parallel build costs が上がり続けたから",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-001",
+      "question": "変える前に使っていた CI は何でしたか？",
+      "answer": "CircleCI",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-001",
+      "question": "いま使ってるCIなに？",
+      "answer": "GitHub Actions",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-001",
+      "question": "今も CircleCI を使っていますか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-001",
+      "question": "ベータ版の話はさておき、今の CI だけ短く答えると何ですか？",
+      "answer": "GitHub Actions",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-002",
+      "question": "今のサポート時間はいつですか？",
+      "answer": "平日の 9:00〜18:00 JST",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-002",
+      "question": "サポート時間を見直す前に見たレポートは何ですか？",
+      "answer": "ticket heatmap",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-002",
+      "question": "見直す前のサポート体制は何でしたか？",
+      "answer": "24 時間体制",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-002",
+      "question": "今のサポート時間って？",
+      "answer": "平日の 9:00〜18:00 JST",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-002",
+      "question": "今もサポートは 24 時間体制ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-002",
+      "question": "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
+      "answer": "平日の 9:00〜18:00 JST",
+      "category": "cat-2",
+      "slice": "long_turn",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-003",
+      "question": "Starter プランの今の料金はいくらですか？",
+      "answer": "39 dollars a month",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-003",
+      "question": "価格改定のときに追加した機能は何ですか？",
+      "answer": "audit logs",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-003",
+      "question": "値上げ前の Starter の料金はいくらでしたか？",
+      "answer": "29 dollars a month",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-003",
+      "question": "Starter の今の値段いくら？",
+      "answer": "39 dollars a month",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-003",
+      "question": "Starter は今も 29 dollars a month ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-003",
+      "question": "価格改定の説明はさておき、今の Starter 料金だけ答えるといくらですか？",
+      "answer": "39 dollars a month",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-004",
+      "question": "Enterprise の今の retention はどれくらいですか？",
+      "answer": "90 days",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-004",
+      "question": "retention を見直すきっかけになった要望は何ですか？",
+      "answer": "quarterly audit exports の要望",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-004",
+      "question": "Free ワークスペースの保存期間は何日ですか？",
+      "answer": "30 days",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-004",
+      "question": "Enterprise の retention いま何日？",
+      "answer": "90 days",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-004",
+      "question": "quarterly audit exports の要望が retention 変更のきっかけでしたか？",
+      "answer": "Yes",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-004",
+      "question": "Free の話はいったん置いて、Enterprise retention の今の値だけ短く答えると何日ですか？",
+      "answer": "90 days",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-005",
+      "question": "SSO と team workspaces では、どちらが先に出ましたか？",
+      "answer": "team workspaces",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-005",
+      "question": "SSO が遅れた理由は何ですか？",
+      "answer": "SCIM provider contract がまだ交渉中だったから",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "list-005b",
+      "question": "同じ四半期に出す予定だった 2 つは何でしたか？",
+      "answer": "SSO, team workspaces",
+      "category": "cat-4",
+      "slice": "list",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-005",
+      "question": "どっちが先に出たの？",
+      "answer": "team workspaces",
+      "category": "cat-2",
+      "slice": "noisy",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-005",
+      "question": "SSO のほうが先に出ましたか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "relative-005",
+      "question": "先に出たあと、遅れたのはどれですか？",
+      "answer": "SSO",
+      "category": "cat-2",
+      "slice": "relative_temporal",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-006",
+      "question": "write latency を恒久的に下げたものは何ですか？",
+      "answer": "workspace_id と created_at の composite index",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-006",
+      "question": "alert の直後に最初にやったことは何ですか？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-006",
+      "question": "write latency を恒久的に下げたのは何ですか？",
+      "answer": "workspace_id と created_at の composite index",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-006",
+      "question": "アラートのあと最初にやったこと何？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "category": "cat-2",
+      "slice": "noisy",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-006",
+      "question": "write latency を下げたのは composite index ですか？",
+      "answer": "Yes",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-006",
+      "question": "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
+      "answer": "read traffic を新しい replica に逃がした",
+      "category": "cat-2",
+      "slice": "long_turn",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-007",
+      "question": "今使っている retrieval fusion の方法は何ですか？",
+      "answer": "Reciprocal Rank Fusion",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-007",
+      "question": "fusion の後に適用している signal は何ですか？",
+      "answer": "recency",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-007",
+      "question": "RRF に変える前はどんな混ぜ方でしたか？",
+      "answer": "weighted sum",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-007",
+      "question": "今の fusion 方式って何？",
+      "answer": "Reciprocal Rank Fusion",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-007",
+      "question": "recency は fusion の前にかけていますか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-007",
+      "question": "weighted sum の話は置いて、今の retrieval fusion method だけ答えると何ですか？",
+      "answer": "Reciprocal Rank Fusion",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-008",
+      "question": "英語以外で今サポートしている docs の言語は何ですか？",
+      "answer": "Japanese",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-008",
+      "question": "launch playbook の次に localize したものは何ですか？",
+      "answer": "invoice emails",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-008",
+      "question": "以前の docs は何語だけでしたか？",
+      "answer": "English",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-008",
+      "question": "最初に翻訳した docs は何ですか？",
+      "answer": "launch playbook",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-008",
+      "question": "docs は今も English only ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-008",
+      "question": "launch playbook の次に何を localize した？",
+      "answer": "invoice emails",
+      "category": "cat-2",
+      "slice": "relative_temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-009",
+      "question": "今の認証方式は何ですか？",
+      "answer": "Redis backed session cookies",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-009",
+      "question": "認証方式の変更時に削除したものは何ですか？",
+      "answer": "refresh token",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-009",
+      "question": "今の方式に変える前の認証フローは何でしたか？",
+      "answer": "JWT 方式",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-009",
+      "question": "今の認証フローは？",
+      "answer": "Redis backed session cookies",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-009",
+      "question": "refresh token は今も localStorage にありますか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-009",
+      "question": "prototype の JWT 方式はいったん忘れて、今使っている auth flow だけ短く答えると何ですか？",
+      "answer": "Redis backed session cookies",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-010",
+      "question": "今の headquarters はどこですか？",
+      "answer": "Singapore",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-010",
+      "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
+      "answer": "engineering",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-010",
+      "question": "headquarters を移す前はどこでしたか？",
+      "answer": "San Francisco",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-010",
+      "question": "今の headquarters どこ？",
+      "answer": "Singapore",
+      "category": "cat-1",
+      "slice": "location",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-010",
+      "question": "engineering も headquarters 移転後に remote-first をやめましたか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-010",
+      "question": "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
+      "answer": "Singapore",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-011",
+      "question": "今の dashboard refresh cadence は何ですか？",
+      "answer": "every five minutes",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-011",
+      "question": "nightly refresh をやめた理由は何ですか？",
+      "answer": "customers が same-day funnel drops を見逃していたから",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-011",
+      "question": "変更前の dashboard refresh cadence は何でしたか？",
+      "answer": "nightly refresh",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-011",
+      "question": "いまの refresh cadence って？",
+      "answer": "every five minutes",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-011",
+      "question": "same-day funnel drops を見逃していたことが変更理由でしたか？",
+      "answer": "Yes",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-011",
+      "question": "nightly refresh の話はさておき、今の dashboard refresh cadence だけ答えると何ですか？",
+      "answer": "every five minutes",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "list-012",
+      "question": "Q2 に出した admin 向け機能をすべて挙げてください。",
+      "answer": "export to CSV, audit logs, SAML",
+      "category": "cat-4",
+      "slice": "list",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-012",
+      "question": "最後に出た機能は何ですか？",
+      "answer": "SAML",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-012",
+      "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
+      "answer": "export to CSV",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "relative-012",
+      "question": "audit logs の次に出たものは何ですか？",
+      "answer": "SAML",
+      "category": "cat-2",
+      "slice": "relative_temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-012",
+      "question": "SAML が最初に出た機能ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-012",
+      "question": "最後に出た admin feature って何？",
+      "answer": "SAML",
+      "category": "cat-2",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-013",
+      "question": "今の default region はどこですか？",
+      "answer": "ap-northeast-1",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-013",
+      "question": "以前の既定リージョンはどこでしたか？",
+      "answer": "us-west-2",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-013",
+      "question": "以前の default region は何でしたか？",
+      "answer": "us-west-2",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-013",
+      "question": "いまの default region どこ？",
+      "answer": "ap-northeast-1",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-013",
+      "question": "default region は今も us-west-2 ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-013",
+      "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
+      "answer": "ap-northeast-1",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-014",
+      "question": "今の primary incident channel は何ですか？",
+      "answer": "Slack",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "why-014",
+      "question": "email だけの運用をやめた理由は何ですか？",
+      "answer": "ack が早く、mobile notification も確実だったから",
+      "category": "cat-3",
+      "slice": "why",
+      "cross_lingual": true,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-014",
+      "question": "primary channel を見直す前は何だけで送っていましたか？",
+      "answer": "email",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-014",
+      "question": "今の primary incident channel は？",
+      "answer": "Slack",
+      "category": "cat-1",
+      "slice": "entity",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-014",
+      "question": "今も incident channel は email だけですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-014",
+      "question": "今も補助通知として残しているものは何ですか？",
+      "answer": "email",
+      "category": "cat-1",
+      "slice": "exact",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "exact-015",
+      "question": "今の推奨 setup で指定するツールは何ですか？",
+      "answer": "codex, cursor, claude",
+      "category": "cat-4",
+      "slice": "list",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-015",
+      "question": "最初はどのツールだけを対象にしていましたか？",
+      "answer": "codex",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-015",
+      "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
+      "answer": "codex",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-015",
+      "question": "今の推奨 setup の組み合わせは？",
+      "answer": "codex, cursor, claude",
+      "category": "cat-4",
+      "slice": "noisy",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-015",
+      "question": "今の推奨 setup は codex だけですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-015",
+      "question": "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
+      "answer": "codex, cursor, claude",
+      "category": "cat-4",
+      "slice": "long_turn",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "current-016",
+      "question": "今の定期メンテナンス開始時刻は何時ですか？",
+      "answer": "03:30 JST",
+      "category": "cat-1",
+      "slice": "current",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "temporal-016",
+      "question": "以前の開始時刻は何時でしたか？",
+      "answer": "01:00 JST",
+      "category": "cat-2",
+      "slice": "temporal",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "prev-016",
+      "question": "以前の定期メンテナンス開始時刻は何時でしたか？",
+      "answer": "01:00 JST",
+      "category": "cat-1",
+      "slice": "current_vs_previous",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "noisy-016",
+      "question": "今のメンテ開始って何時？",
+      "answer": "03:30 JST",
+      "category": "cat-1",
+      "slice": "noisy",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "yesno-016",
+      "question": "定期メンテナンスは今も 01:00 JST 開始ですか？",
+      "answer": "No",
+      "category": "cat-2",
+      "slice": "yes_no",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "long-016",
+      "question": "昔の開始時刻の話はいったん置いて、今の定期メンテ開始時刻だけ短く答えると何時ですか？",
+      "answer": "03:30 JST",
+      "category": "cat-1",
+      "slice": "long_turn",
+      "cross_lingual": false,
+      "source": "release-pack-96"
+    },
+    {
+      "question_id": "self-eval-001",
+      "question": "In the session starting with \"{}\", what was the first thing I worked on?",
+      "answer": "{}; {}; {}",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-002",
+      "question": "What was the most recent activity in the session involving \"{}\"?",
+      "answer": "{}; {}; {}",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-003",
+      "question": "What happened after \"{}\"?",
+      "answer": "{}; {}; {}",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-004",
+      "question": "What tools or commands were used in the session about \"{}\"?",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-005",
+      "question": "「{}」のセッションで使ったツールやコマンドは？",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-006",
+      "question": "How was the issue \"{}\" resolved?",
+      "answer": "{}; {}; {}",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-007",
+      "question": "「{}」の問題はどう解決しましたか？",
+      "answer": "{}; {}; {}",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-008",
+      "question": "Why was the decision made regarding \"{}\"?",
+      "answer": "{}; {}; {}",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-009",
+      "question": "「{}」に関する判断の理由は何ですか？",
+      "answer": "{}; {}; {}",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-010",
+      "question": "Which files were modified in the session about \"{}\"?",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-011",
+      "question": "「{}」のセッションで変更されたファイルは？",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-012",
+      "question": "In the session about \"{}\", what work was done across different AI tools?",
+      "answer": "{}; {}; {}",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-013",
+      "question": "「{}」のセッションで別のAIツールを使った作業は？",
+      "answer": "{}; {}; {}",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-014",
+      "question": "Summarize what was accomplished in the session starting with \"{}\".",
+      "answer": "{}; {}; {}",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-015",
+      "question": "「{}」から始まるセッションで何を達成しましたか？",
+      "answer": "{}; {}; {}",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-016",
+      "question": "「{}」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-017",
+      "question": "あの{}ってどうなったんだっけ？",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-018",
+      "question": "えっと、{}の件、結局どうなった？",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-019",
+      "question": "「{}」について教えてください",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-020",
+      "question": "Tell me about the work related to \"{}\"",
+      "answer": "{}; {}; {}",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "claude-mem-import"
+    },
+    {
+      "question_id": "self-eval-021",
+      "question": "In the session starting with \"### Harness Memory Context 以下は\", what was the first thing I worked on?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-022",
+      "question": "What was the most recent activity in the session involving \"### Harness Memory Context 以下は\"?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-023",
+      "question": "What happened after \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-024",
+      "question": "What tools or commands were used in the session about \"### Harness Memory Context 以下は\"?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-025",
+      "question": "「### Harness Memory Context 以下は」のセッションで使ったツールやコマンドは？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-026",
+      "question": "How was the issue \"### Harness Memory Context 以下はこの会話に関連する過去の記憶です。必要な\" resolved?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-027",
+      "question": "「### Harness Memory Context 以下はこの会話に関連する過去の記憶です。必要な」の問題はどう解決しましたか？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-028",
+      "question": "Why was the decision made regarding \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-029",
+      "question": "「Stop hook feedback: You MUST call the St」に関する判断の理由は何ですか？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-030",
+      "question": "Which files were modified in the session about \"### Harness Memory Context 以下は\"?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-031",
+      "question": "「### Harness Memory Context 以下は」のセッションで変更されたファイルは？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-032",
+      "question": "In the session about \"### Harness Memory Context 以下は\", what work was done across different AI tools?",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-033",
+      "question": "「### Harness Memory Context 以下は」のセッションで別のAIツールを使った作業は？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-034",
+      "question": "Summarize what was accomplished in the session starting with \"### Harness Memory Context 以下は\".",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-035",
+      "question": "「### Harness Memory Context 以下は」から始まるセッションで何を達成しましたか？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-036",
+      "question": "「### Harness Memory Context 以下は」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-037",
+      "question": "あのStop hook feedback: You MUST cってどうなったんだっけ？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-038",
+      "question": "えっと、Stop hook feedback: You Mの件、結局どうなった？",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-039",
+      "question": "「### Harness Memory Context 以下はこの会話に関連する過」について教えてください",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-040",
+      "question": "Tell me about the work related to \"Stop hook feedback: You MUST call the St\"",
+      "answer": "### Harness Memory Context\n以下はこの会話に関連する過去の記憶です。必要な範囲だけ参照し、事実として扱う際は現在の入力と照合してください。\n\n【1】[checkpoint] dogfood cron\n日時: 2026-03-14T03:31:01.336Z\n内容: {\"run_id\":\"18349e0a-468d-44aa-ac3a-e76c13dca306\",\"cost",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "7503fea9-35ed-4b36-90eb-d383fb83aabf"
+    },
+    {
+      "question_id": "self-eval-041",
+      "question": "In the session starting with \"shadow sync integration measur\", what was the first thing I worked on?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-042",
+      "question": "What was the most recent activity in the session involving \"shadow sync integration measur\"?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-043",
+      "question": "What happened after \"shadow test item 0 unique content\"?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-044",
+      "question": "What tools or commands were used in the session about \"shadow sync integration measur\"?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-045",
+      "question": "「shadow sync integration measur」のセッションで使ったツールやコマンドは？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-046",
+      "question": "How was the issue \"shadow sync integration measurement unique token a\" resolved?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-047",
+      "question": "「shadow sync integration measurement unique token a」の問題はどう解決しましたか？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-048",
+      "question": "Why was the decision made regarding \"perf test item 4 content alpha beta\"?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-049",
+      "question": "「perf test item 4 content alpha beta」に関する判断の理由は何ですか？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-050",
+      "question": "Which files were modified in the session about \"shadow sync integration measur\"?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-051",
+      "question": "「shadow sync integration measur」のセッションで変更されたファイルは？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-052",
+      "question": "In the session about \"shadow sync integration measur\", what work was done across different AI tools?",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-053",
+      "question": "「shadow sync integration measur」のセッションで別のAIツールを使った作業は？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-054",
+      "question": "Summarize what was accomplished in the session starting with \"shadow sync integration measur\".",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-055",
+      "question": "「shadow sync integration measur」から始まるセッションで何を達成しましたか？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-056",
+      "question": "「shadow sync integration measur」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-057",
+      "question": "あのperf test item 4 content alphaってどうなったんだっけ？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-058",
+      "question": "えっと、shadow test item 2 uniqueの件、結局どうなった？",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-059",
+      "question": "「shadow sync integration measurement uniq」について教えてください",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-060",
+      "question": "Tell me about the work related to \"shadow test item 2 unique content\"",
+      "answer": "shadow sync integration measurement unique token alpha bravo; shadow test item 0 unique content; shadow test item 1 unique content",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "shadow-integration"
+    },
+    {
+      "question_id": "self-eval-061",
+      "question": "In the session starting with \"echo test\", what was the first thing I worked on?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-062",
+      "question": "What was the most recent activity in the session involving \"echo test\"?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-063",
+      "question": "What happened after \"Not logged in · Please run /login\"?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-064",
+      "question": "What tools or commands were used in the session about \"echo test\"?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-065",
+      "question": "「echo test」のセッションで使ったツールやコマンドは？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-066",
+      "question": "How was the issue \"echo test\" resolved?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-067",
+      "question": "「echo test」の問題はどう解決しましたか？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-068",
+      "question": "Why was the decision made regarding \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-069",
+      "question": "「Stop hook feedback: You MUST call the St」に関する判断の理由は何ですか？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-070",
+      "question": "Which files were modified in the session about \"echo test\"?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-071",
+      "question": "「echo test」のセッションで変更されたファイルは？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-072",
+      "question": "In the session about \"echo test\", what work was done across different AI tools?",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-073",
+      "question": "「echo test」のセッションで別のAIツールを使った作業は？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-074",
+      "question": "Summarize what was accomplished in the session starting with \"echo test\".",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-075",
+      "question": "「echo test」から始まるセッションで何を達成しましたか？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-076",
+      "question": "「echo test」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-077",
+      "question": "あのStop hook feedback: You MUST cってどうなったんだっけ？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-078",
+      "question": "えっと、Stop hook feedback: You Mの件、結局どうなった？",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-079",
+      "question": "「echo test」について教えてください",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-080",
+      "question": "Tell me about the work related to \"Stop hook feedback: You MUST call the St\"",
+      "answer": "echo test; Not logged in · Please run /login; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "d458f48b-1083-4d7e-b4a4-72ce9ffc6003"
+    },
+    {
+      "question_id": "self-eval-081",
+      "question": "In the session starting with \"[Request interrupted by user]\", what was the first thing I worked on?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-082",
+      "question": "What was the most recent activity in the session involving \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-083",
+      "question": "What happened after \"/breezing\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-084",
+      "question": "What tools or commands were used in the session about \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-085",
+      "question": "「[Request interrupted by user]」のセッションで使ったツールやコマンドは？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-086",
+      "question": "How was the issue \"[Request interrupted by user]\" resolved?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-087",
+      "question": "「[Request interrupted by user]」の問題はどう解決しましたか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-088",
+      "question": "Why was the decision made regarding \"{\"tool_name\":\"Glob\",\"tool_input\":{\"patte\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-089",
+      "question": "「{\"tool_name\":\"Glob\",\"tool_input\":{\"patte」に関する判断の理由は何ですか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-090",
+      "question": "Which files were modified in the session about \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-091",
+      "question": "「[Request interrupted by user]」のセッションで変更されたファイルは？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-092",
+      "question": "In the session about \"[Request interrupted by user]\", what work was done across different AI tools?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-093",
+      "question": "「[Request interrupted by user]」のセッションで別のAIツールを使った作業は？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-094",
+      "question": "Summarize what was accomplished in the session starting with \"[Request interrupted by user]\".",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-095",
+      "question": "「[Request interrupted by user]」から始まるセッションで何を達成しましたか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-096",
+      "question": "「[Request interrupted by user]」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-097",
+      "question": "あの{\"tool_name\":\"Glob\",\"tool_inpuってどうなったんだっけ？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-098",
+      "question": "えっと、{\"tool_name\":\"Bash\",\"toolの件、結局どうなった？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-099",
+      "question": "「[Request interrupted by user]」について教えてください",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-100",
+      "question": "Tell me about the work related to \"{\"tool_name\":\"Bash\",\"tool_input\":{\"comma\"",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"find /Users/tachibanashuuta/Context-Harness/packages/adapter-google -type f -o -type d | head -50\"},\"meta\":{\"hook",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8600bca5-f621-4c30-ad48-766342792f81"
+    },
+    {
+      "question_id": "self-eval-101",
+      "question": "In the session starting with \"$sync-status\", what was the first thing I worked on?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-102",
+      "question": "What was the most recent activity in the session involving \"$sync-status\"?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-103",
+      "question": "What happened after \"<skill> <name>sync-status</name> <path>/\"?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-104",
+      "question": "What tools or commands were used in the session about \"$sync-status\"?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-105",
+      "question": "「$sync-status」のセッションで使ったツールやコマンドは？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-106",
+      "question": "How was the issue \"$sync-status\" resolved?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-107",
+      "question": "「<skill> <name>harness-work</name> <path>/Users/tac」の問題はどう解決しましたか？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-108",
+      "question": "Why was the decision made regarding \"2 本とも閾値は超えました。ここで `Plans.md` を完了へ上げるために、\"?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-109",
+      "question": "「2 本とも閾値は超えました。ここで `Plans.md` を完了へ上げるために、」に関する判断の理由は何ですか？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-110",
+      "question": "Which files were modified in the session about \"$sync-status\"?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-111",
+      "question": "「$sync-status」のセッションで変更されたファイルは？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-112",
+      "question": "In the session about \"$sync-status\", what work was done across different AI tools?",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-113",
+      "question": "「$sync-status」のセッションで別のAIツールを使った作業は？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-114",
+      "question": "Summarize what was accomplished in the session starting with \"$sync-status\".",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-115",
+      "question": "「$sync-status」から始まるセッションで何を達成しましたか？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-116",
+      "question": "「$sync-status」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-117",
+      "question": "あの2 本とも閾値は超えました。ここで `Plans.md` をってどうなったんだっけ？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-118",
+      "question": "えっと、残課題は `q11` の canonical suの件、結局どうなった？",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-119",
+      "question": "「$sync-status」について教えてください",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-120",
+      "question": "Tell me about the work related to \"残課題は `q11` の canonical support selection\"",
+      "answer": "$sync-status; <skill>\n<name>sync-status</name>\n<path>/Users/tachibanashuuta/.codex/skills/sync-status/SKILL.md</path>\n---\nname: sync-status\ndescription: \"進捗とPlans.mdを現実に同期。『今どこ？』がすぐわかる現在地確認。Use when u",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce00b-c1c4-7223-a9fb-30eb253be450"
+    },
+    {
+      "question_id": "self-eval-121",
+      "question": "In the session starting with \"# AGENTS.md instructions for /\", what was the first thing I worked on?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-122",
+      "question": "What was the most recent activity in the session involving \"# AGENTS.md instructions for /\"?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-123",
+      "question": "What happened after \"以下は途中までのやり取りです。 最後の説明を非専門家にもわかるように説明してほ\"?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-124",
+      "question": "What tools or commands were used in the session about \"# AGENTS.md instructions for /\"?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-125",
+      "question": "「# AGENTS.md instructions for /」のセッションで使ったツールやコマンドは？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-126",
+      "question": "How was the issue \"# AGENTS.md instructions for /Users/tachibanashuut\" resolved?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-127",
+      "question": "「# AGENTS.md instructions for /Users/tachibanashuut」の問題はどう解決しましたか？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-128",
+      "question": "Why was the decision made regarding \"<subagent_notification> {\"agent_id\":\"019\"?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-129",
+      "question": "「<subagent_notification> {\"agent_id\":\"019」に関する判断の理由は何ですか？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-130",
+      "question": "Which files were modified in the session about \"# AGENTS.md instructions for /\"?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-131",
+      "question": "「# AGENTS.md instructions for /」のセッションで変更されたファイルは？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-132",
+      "question": "In the session about \"# AGENTS.md instructions for /\", what work was done across different AI tools?",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-133",
+      "question": "「# AGENTS.md instructions for /」のセッションで別のAIツールを使った作業は？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-134",
+      "question": "Summarize what was accomplished in the session starting with \"# AGENTS.md instructions for /\".",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-135",
+      "question": "「# AGENTS.md instructions for /」から始まるセッションで何を達成しましたか？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-136",
+      "question": "「# AGENTS.md instructions for /」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-137",
+      "question": "あの<subagent_notification> {\"agenってどうなったんだっけ？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-138",
+      "question": "えっと、まだNo GOはある？の件、結局どうなった？",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-139",
+      "question": "「# AGENTS.md instructions for /Users/tach」について教えてください",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-140",
+      "question": "Tell me about the work related to \"まだNo GOはある？\"",
+      "answer": "# AGENTS.md instructions for /Users/tachibanashuuta/Desktop/Code/CC-harness/harness-mem\n\n<INSTRUCTIONS>\n# CLAUDE.md - グローバル作業指針（Codex / Claude 共通）\n\n> **スコープ**: 全プロジェクト共通設定\n> **更新日**: 2026-02-17\n\n## 0.",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cbebc-b992-7b71-ae5c-9ab69bec97fc"
+    },
+    {
+      "question_id": "self-eval-141",
+      "question": "In the session starting with \"[Request interrupted by user]\", what was the first thing I worked on?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-142",
+      "question": "What was the most recent activity in the session involving \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-143",
+      "question": "What happened after \"/breezing\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-144",
+      "question": "What tools or commands were used in the session about \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-145",
+      "question": "「[Request interrupted by user]」のセッションで使ったツールやコマンドは？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-146",
+      "question": "How was the issue \"{\"tool_name\":\"Task\",\"tool_input\":{\"description\":\"I\" resolved?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-147",
+      "question": "「{\"tool_name\":\"TaskCreate\",\"tool_input\":{\"subject\":」の問題はどう解決しましたか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-148",
+      "question": "Why was the decision made regarding \"{\"tool_name\":\"TaskCreate\",\"tool_input\":{\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-149",
+      "question": "「{\"tool_name\":\"TaskCreate\",\"tool_input\":{」に関する判断の理由は何ですか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-150",
+      "question": "Which files were modified in the session about \"[Request interrupted by user]\"?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-151",
+      "question": "「[Request interrupted by user]」のセッションで変更されたファイルは？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-152",
+      "question": "In the session about \"[Request interrupted by user]\", what work was done across different AI tools?",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-153",
+      "question": "「[Request interrupted by user]」のセッションで別のAIツールを使った作業は？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-154",
+      "question": "Summarize what was accomplished in the session starting with \"[Request interrupted by user]\".",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-155",
+      "question": "「[Request interrupted by user]」から始まるセッションで何を達成しましたか？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-156",
+      "question": "「[Request interrupted by user]」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-157",
+      "question": "あの{\"tool_name\":\"TaskCreate\",\"tooってどうなったんだっけ？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-158",
+      "question": "えっと、{\"tool_name\":\"Read\",\"toolの件、結局どうなった？",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-159",
+      "question": "「[Request interrupted by user]」について教えてください",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-160",
+      "question": "Tell me about the work related to \"{\"tool_name\":\"Read\",\"tool_input\":{\"file_\"",
+      "answer": "[Request interrupted by user]; /breezing; {\"tool_name\":\"Read\",\"tool_input\":{\"file_path\":\"/Users/tachibanashuuta/Context-Harness/Plans.md\",\"limit\":100},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "54c96235-2651-4a77-a31d-73dacd09d062"
+    },
+    {
+      "question_id": "self-eval-161",
+      "question": "In the session starting with \"<environment_context> <shell\", what was the first thing I worked on?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-162",
+      "question": "What was the most recent activity in the session involving \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-163",
+      "question": "What happened after \"<skill> <name>harness-plan</name> <path>\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-164",
+      "question": "What tools or commands were used in the session about \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-165",
+      "question": "「<environment_context> <shell」のセッションで使ったツールやコマンドは？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-166",
+      "question": "How was the issue \"<environment_context> <shell>zsh</shell> <curr\" resolved?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-167",
+      "question": "「<skill> <name>harness-plan</name> <path>/Users/tac」の問題はどう解決しましたか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-168",
+      "question": "Why was the decision made regarding \"修正点の全量は `Plans.md` に落とし込みました。今回の `harnes\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-169",
+      "question": "「修正点の全量は `Plans.md` に落とし込みました。今回の `harnes」に関する判断の理由は何ですか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-170",
+      "question": "Which files were modified in the session about \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-171",
+      "question": "「<environment_context> <shell」のセッションで変更されたファイルは？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-172",
+      "question": "In the session about \"<environment_context> <shell\", what work was done across different AI tools?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-173",
+      "question": "「<environment_context> <shell」のセッションで別のAIツールを使った作業は？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-174",
+      "question": "Summarize what was accomplished in the session starting with \"<environment_context> <shell\".",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-175",
+      "question": "「<environment_context> <shell」から始まるセッションで何を達成しましたか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-176",
+      "question": "「<environment_context> <shell」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-177",
+      "question": "あの修正点の全量は `Plans.md` に落とし込みました。今ってどうなったんだっけ？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-178",
+      "question": "えっと、`Plans.md` の先頭ステータスがまだ旧 bの件、結局どうなった？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-179",
+      "question": "「<environment_context> <shell>zsh</shel」について教えてください",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-180",
+      "question": "Tell me about the work related to \"`Plans.md` の先頭ステータスがまだ旧 benchmark 値前提のまま\"",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-13</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; <skill>\n<name>harness-plan</name>\n<path>/Users/tachibanas",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019ce287-eec7-73c3-b95f-4735f56e2c94"
+    },
+    {
+      "question_id": "self-eval-181",
+      "question": "In the session starting with \"<turn_aborted> The user interr\", what was the first thing I worked on?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-182",
+      "question": "What was the most recent activity in the session involving \"<turn_aborted> The user interr\"?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-183",
+      "question": "What happened after \"お願いします\"?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-184",
+      "question": "What tools or commands were used in the session about \"<turn_aborted> The user interr\"?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-185",
+      "question": "「<turn_aborted> The user interr」のセッションで使ったツールやコマンドは？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-186",
+      "question": "How was the issue \"# AGENTS.md instructions for /Users/tachibanashuut\" resolved?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-187",
+      "question": "「# AGENTS.md instructions for /Users/tachibanashuut」の問題はどう解決しましたか？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-188",
+      "question": "Why was the decision made regarding \"<turn_aborted> The user interrupted the\"?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-189",
+      "question": "「<turn_aborted> The user interrupted the」に関する判断の理由は何ですか？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-190",
+      "question": "Which files were modified in the session about \"<turn_aborted> The user interr\"?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-191",
+      "question": "「<turn_aborted> The user interr」のセッションで変更されたファイルは？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-192",
+      "question": "In the session about \"<turn_aborted> The user interr\", what work was done across different AI tools?",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-193",
+      "question": "「<turn_aborted> The user interr」のセッションで別のAIツールを使った作業は？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-194",
+      "question": "Summarize what was accomplished in the session starting with \"<turn_aborted> The user interr\".",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-195",
+      "question": "「<turn_aborted> The user interr」から始まるセッションで何を達成しましたか？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-196",
+      "question": "「<turn_aborted> The user interr」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-197",
+      "question": "あの<turn_aborted> The user interrってどうなったんだっけ？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-198",
+      "question": "えっと、`01_todo` だけでも、提案準備・根回し・実の件、結局どうなった？",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-199",
+      "question": "「<turn_aborted> The user interrupted the」について教えてください",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-200",
+      "question": "Tell me about the work related to \"`01_todo` だけでも、提案準備・根回し・実行タスクの文脈が見え始めていま\"",
+      "answer": "<turn_aborted>\nThe user interrupted the previous turn on purpose. Any running unified exec processes were terminated. If any tools/commands were aborted, they may have partially executed; verify curre",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cd31d-f53e-76e2-8223-2233eec5498f"
+    },
+    {
+      "question_id": "self-eval-201",
+      "question": "In the session starting with \"{\"tool_name\":\"Bash\",\"tool_inpu\", what was the first thing I worked on?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-202",
+      "question": "What was the most recent activity in the session involving \"{\"tool_name\":\"Bash\",\"tool_inpu\"?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-203",
+      "question": "What happened after \"{\"tool_name\":\"Glob\",\"tool_input\":{\"patte\"?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-204",
+      "question": "What tools or commands were used in the session about \"{\"tool_name\":\"Bash\",\"tool_inpu\"?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-205",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_inpu」のセッションで使ったツールやコマンドは？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-206",
+      "question": "How was the issue \"{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git s\" resolved?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-207",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git s」の問題はどう解決しましたか？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-208",
+      "question": "Why was the decision made regarding \"{\"tool_name\":\"TaskCreate\",\"tool_input\":{\"?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-209",
+      "question": "「{\"tool_name\":\"TaskCreate\",\"tool_input\":{」に関する判断の理由は何ですか？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-210",
+      "question": "Which files were modified in the session about \"{\"tool_name\":\"Bash\",\"tool_inpu\"?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-211",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_inpu」のセッションで変更されたファイルは？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-212",
+      "question": "In the session about \"{\"tool_name\":\"Bash\",\"tool_inpu\", what work was done across different AI tools?",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-213",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_inpu」のセッションで別のAIツールを使った作業は？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-214",
+      "question": "Summarize what was accomplished in the session starting with \"{\"tool_name\":\"Bash\",\"tool_inpu\".",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-215",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_inpu」から始まるセッションで何を達成しましたか？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-216",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_inpu」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-217",
+      "question": "あの{\"tool_name\":\"TaskCreate\",\"tooってどうなったんだっけ？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-218",
+      "question": "えっと、{\"tool_name\":\"Grep\",\"toolの件、結局どうなった？",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-219",
+      "question": "「{\"tool_name\":\"Bash\",\"tool_input\":{\"comma」について教えてください",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-220",
+      "question": "Tell me about the work related to \"{\"tool_name\":\"Grep\",\"tool_input\":{\"patte\"",
+      "answer": "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"git status -sb\",\"description\":\"現在のgit状態を確認\"},\"meta\":{\"hook_event\":\"PostToolUse\",\"source\":\"hook\",\"ts\":\"1771178045.0274\"}}; {\"tool_name\":\"Glob\",\"tool_input\":",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "640e7175-6ab1-4e3b-80c0-06403beb7156"
+    },
+    {
+      "question_id": "self-eval-221",
+      "question": "In the session starting with \"<task-notification> <task-id>a\", what was the first thing I worked on?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-222",
+      "question": "What was the most recent activity in the session involving \"<task-notification> <task-id>a\"?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-223",
+      "question": "What happened after \"<task-notification> <task-id>ae10ff0</ta\"?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-224",
+      "question": "What tools or commands were used in the session about \"<task-notification> <task-id>a\"?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-225",
+      "question": "「<task-notification> <task-id>a」のセッションで使ったツールやコマンドは？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-226",
+      "question": "How was the issue \"<task-notification> <task-id>a3c21e9</task-id> <st\" resolved?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-227",
+      "question": "「<task-notification> <task-id>a3c21e9</task-id> <st」の問題はどう解決しましたか？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-228",
+      "question": "Why was the decision made regarding \"<task-notification> <task-id>a3c21e9</ta\"?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-229",
+      "question": "「<task-notification> <task-id>a3c21e9</ta」に関する判断の理由は何ですか？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-230",
+      "question": "Which files were modified in the session about \"<task-notification> <task-id>a\"?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-231",
+      "question": "「<task-notification> <task-id>a」のセッションで変更されたファイルは？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-232",
+      "question": "In the session about \"<task-notification> <task-id>a\", what work was done across different AI tools?",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-233",
+      "question": "「<task-notification> <task-id>a」のセッションで別のAIツールを使った作業は？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-234",
+      "question": "Summarize what was accomplished in the session starting with \"<task-notification> <task-id>a\".",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-235",
+      "question": "「<task-notification> <task-id>a」から始まるセッションで何を達成しましたか？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-236",
+      "question": "「<task-notification> <task-id>a」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-237",
+      "question": "あの<task-notification> <task-id>aってどうなったんだっけ？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-238",
+      "question": "えっと、<task-notification> <taskの件、結局どうなった？",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-239",
+      "question": "「<task-notification> <task-id>a3c21e9</ta」について教えてください",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-240",
+      "question": "Tell me about the work related to \"<task-notification> <task-id>ae10ff0</ta\"",
+      "answer": "<task-notification>\n<task-id>a3c21e9</task-id>\n<status>completed</status>\n<summary>Agent \"Codex セカンドオピニオンレビュー\" completed</summary>\n<result>Codex の出力はここで打ち切られています（タイムアウト 300 秒 = EXIT_CODE 124）。ただし十分な分析",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "67045a85-e654-45fd-ad37-119165ba4eb9"
+    },
+    {
+      "question_id": "self-eval-241",
+      "question": "In the session starting with \"未読メッセージを確認し、返信が必要なものに対応してください。\", what was the first thing I worked on?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-242",
+      "question": "What was the most recent activity in the session involving \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-243",
+      "question": "What happened after \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-244",
+      "question": "What tools or commands were used in the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-245",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで使ったツールやコマンドは？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-246",
+      "question": "How was the issue \"未読メッセージを確認し、返信が必要なものに対応してください。\" resolved?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-247",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」の問題はどう解決しましたか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-248",
+      "question": "Why was the decision made regarding \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-249",
+      "question": "「Stop hook feedback: You MUST call the St」に関する判断の理由は何ですか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-250",
+      "question": "Which files were modified in the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-251",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで変更されたファイルは？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-252",
+      "question": "In the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\", what work was done across different AI tools?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-253",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで別のAIツールを使った作業は？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-254",
+      "question": "Summarize what was accomplished in the session starting with \"未読メッセージを確認し、返信が必要なものに対応してください。\".",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-255",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」から始まるセッションで何を達成しましたか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-256",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-257",
+      "question": "あのStop hook feedback: You MUST cってどうなったんだっけ？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-258",
+      "question": "えっと、Stop hook feedback: You Mの件、結局どうなった？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-259",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」について教えてください",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-260",
+      "question": "Tell me about the work related to \"Stop hook feedback: You MUST call the St\"",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "8e3f27a0-a0e6-4958-a862-472894426fc3"
+    },
+    {
+      "question_id": "self-eval-261",
+      "question": "In the session starting with \"<environment_context> <shell\", what was the first thing I worked on?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-262",
+      "question": "What was the most recent activity in the session involving \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-263",
+      "question": "What happened after \"PC\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-264",
+      "question": "What tools or commands were used in the session about \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-265",
+      "question": "「<environment_context> <shell」のセッションで使ったツールやコマンドは？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-266",
+      "question": "How was the issue \"# AGENTS.md instructions for /Users/tachibanashuut\" resolved?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-267",
+      "question": "「# AGENTS.md instructions for /Users/tachibanashuut」の問題はどう解決しましたか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-268",
+      "question": "Why was the decision made regarding \"原因の輪郭はかなり見えました。`iCloud の設定値` は切れているのに、`D\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-269",
+      "question": "「原因の輪郭はかなり見えました。`iCloud の設定値` は切れているのに、`D」に関する判断の理由は何ですか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-270",
+      "question": "Which files were modified in the session about \"<environment_context> <shell\"?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-271",
+      "question": "「<environment_context> <shell」のセッションで変更されたファイルは？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-272",
+      "question": "In the session about \"<environment_context> <shell\", what work was done across different AI tools?",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-273",
+      "question": "「<environment_context> <shell」のセッションで別のAIツールを使った作業は？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-274",
+      "question": "Summarize what was accomplished in the session starting with \"<environment_context> <shell\".",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-275",
+      "question": "「<environment_context> <shell」から始まるセッションで何を達成しましたか？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-276",
+      "question": "「<environment_context> <shell」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-277",
+      "question": "あの原因の輪郭はかなり見えました。`iCloud の設定値` はってどうなったんだっけ？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-278",
+      "question": "えっと、`Desktop/Code` を完全ローカル側へ逃の件、結局どうなった？",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-279",
+      "question": "「<environment_context> <shell>zsh</shel」について教えてください",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-280",
+      "question": "Tell me about the work related to \"`Desktop/Code` を完全ローカル側へ逃がして、Desktop には見\"",
+      "answer": "<environment_context>\n  <shell>zsh</shell>\n  <current_date>2026-03-15</current_date>\n  <timezone>Asia/Tokyo</timezone>\n</environment_context>; PC; <turn_aborted>\nThe user interrupted the previous turn",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "019cead2-0750-7840-98e7-627cbd9e145d"
+    },
+    {
+      "question_id": "self-eval-281",
+      "question": "In the session starting with \"未読メッセージを確認し、返信が必要なものに対応してください。\", what was the first thing I worked on?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-282",
+      "question": "What was the most recent activity in the session involving \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-283",
+      "question": "What happened after \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-4",
+      "slice": "temporal-order",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-284",
+      "question": "What tools or commands were used in the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-285",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで使ったツールやコマンドは？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "tool-recall",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-286",
+      "question": "How was the issue \"未読メッセージを確認し、返信が必要なものに対応してください。\" resolved?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-287",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」の問題はどう解決しましたか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "error-resolution",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-288",
+      "question": "Why was the decision made regarding \"Stop hook feedback: You MUST call the St\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-289",
+      "question": "「Stop hook feedback: You MUST call the St」に関する判断の理由は何ですか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-3",
+      "slice": "decision-why",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-290",
+      "question": "Which files were modified in the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\"?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-291",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで変更されたファイルは？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "file-change",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-292",
+      "question": "In the session about \"未読メッセージを確認し、返信が必要なものに対応してください。\", what work was done across different AI tools?",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-293",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで別のAIツールを使った作業は？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "cross-client",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-294",
+      "question": "Summarize what was accomplished in the session starting with \"未読メッセージを確認し、返信が必要なものに対応してください。\".",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-295",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」から始まるセッションで何を達成しましたか？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-2",
+      "slice": "session-summary",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-296",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」のセッションで追加・変更したパッケージや依存関係は？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "dependency",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-297",
+      "question": "あのStop hook feedback: You MUST cってどうなったんだっけ？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-298",
+      "question": "えっと、Stop hook feedback: You Mの件、結局どうなった？",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "noisy-ja",
+      "cross_lingual": false,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-299",
+      "question": "「未読メッセージを確認し、返信が必要なものに対応してください。」について教えてください",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    },
+    {
+      "question_id": "self-eval-300",
+      "question": "Tell me about the work related to \"Stop hook feedback: You MUST call the St\"",
+      "answer": "未読メッセージを確認し、返信が必要なものに対応してください。; Stop hook feedback:\nYou MUST call the StructuredOutput tool to complete this request. Call this tool now.; Stop hook feedback:\nYou MUST call the StructuredOutput tool t",
+      "category": "cat-1",
+      "slice": "cross-lingual",
+      "cross_lingual": true,
+      "source": "self-eval-300",
+      "session_id": "4f9caebf-2bc0-48e9-94cc-def9ac112ecb"
+    }
+  ]
+}

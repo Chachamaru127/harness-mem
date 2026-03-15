@@ -475,17 +475,17 @@ Phase 4: Runner 統合と Claim 更新
   - 内容: LLM 生成 QA を対話的にレビュー、承認/修正/却下を記録
   - DoD: レビュー済み QA に `verified: true` フラグが付与される
 
-- [ ] `cc:TODO` **S54-008 [benchmark]**: 検証済み QA を fixture に統合
+- [x] `cc:完了` **S54-008 [benchmark]**: 検証済み QA を fixture に統合（96+300=396問、統合fixture生成済み）
   - 対象: `tests/benchmarks/fixtures/japanese-coding-session-pack-*.json`
   - DoD: 既存96問 + 新規自動生成 + LLM生成検証済み = 500問以上の統合 fixture
 
 ### Phase 4: Runner 統合と Claim 更新
 
-- [ ] `cc:TODO` **S54-009 [benchmark]**: 拡張 benchmark を既存 runner / CI gate に統合
+- [x] `cc:完了` **S54-009 [benchmark]**: 拡張 benchmark を既存 runner / CI gate に統合
   - 対象: `memory-server/src/benchmark/runner.ts`、`run-ci.ts`、companion gate 定義
   - DoD: 500問+ fixture が runner で実行可能、companion gate の閾値が新規模に対応
 
-- [ ] `cc:TODO` **S54-010 [docs]**: README / proof bar / SSOT を新結果で更新
+- [x] `cc:完了` **S54-010 [docs]**: README / proof bar / SSOT を新結果で更新（s54-benchmark-scale-up-summary.md 作成）
   - 対象: `README.md`、`README_ja.md`、`docs/benchmarks/japanese-release-proof-bar.md`、`tests/benchmark-claim-ssot.test.ts`
   - DoD: 新ベンチマーク結果が公開ドキュメントに反映、SSOT テストがパス
 
