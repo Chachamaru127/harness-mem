@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/logos/harness-mem/official/harness-mem-logo-official.jpg" alt="Harness-mem official logo" width="560" />
 </p>
 
-<p align="center"><strong>Claude / Codex / Cursor / OpenCode / Gemini CLI で共通利用できるメモリランタイム。</strong></p>
+<p align="center"><strong>Claude Code と Codex のメモリを橋渡し。ローカル完結、ゼロコスト。</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
@@ -17,19 +17,19 @@
   <a href="README.md">English</a> | 日本語
 </p>
 
-Harness-mem は、複数ツール間でメモリ挙動を統一するためのローカル実行ランタイムです。
+Harness-mem は Claude Code と Codex のメモリを橋渡しします。Claude Code で学習した内容を Codex で想起。完全ローカル、API キー不要。
 
 ## なぜ harness-mem？
 
 Claude 組み込みメモリは Claude の中でしか使えません。[claude-mem](https://github.com/thedotmack/claude-mem) は永続化を追加しますが Claude Code 専用です。[Mem0](https://github.com/mem0ai/mem0) はクロスアプリ対応ですがクラウド基盤と API 統合が必要です。
 
-**harness-mem のアプローチ**: ローカルデーモン1つ、SQLite 1ファイル、5つの対応ツールチェーン + 実験的 Antigravity — クラウド不要、Python不要、APIキー不要。
+**harness-mem のアプローチ**: ローカルデーモン1つ、SQLite 1ファイル、Claude Code ↔ Codex のシームレスなメモリ共有 — クラウド不要、Python不要、APIキー不要。
 
 | | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
-| **対応ツール** | Claude, Codex, Cursor, OpenCode, Gemini CLI, Antigravity | Claude のみ | Claude のみ | API経由でカスタム統合 |
+| **対応ツール** | Claude Code, Codex（Tier 1）· Cursor（Tier 2）· Gemini CLI, OpenCode（実験的） | Claude のみ | Claude のみ | API経由でカスタム統合 |
 | **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
-| **クロスツール記憶共有** | 自動 — Claude で学習、Codex で想起 | 不可 | 不可 | アプリごとに手動接続 |
+| **クロスツール記憶共有** | 自動 — Claude Code で設計、Codex で実行、どこからでも想起 | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
 | **検索方式** | ハイブリッド（lexical + vector + recency + tag + graph） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
 | **外部依存** | Node.js + Bun | なし | Node.js + Python + uv + Chroma | Python + APIキー |
@@ -38,9 +38,9 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 ### つまり、こういうことです
 
-- **複数の AI ツールを使っている** → harness-mem は、Claude / Codex / Cursor / OpenCode / Gemini をまたいで記憶を共有するローカル指向の選択肢です。
-- **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。LLM 強化はオプション。
-- **今 claude-mem を使っている** → 1コマンドで移行でき、ロールバックも可能。データ損失もダウンタイムもありません。
+- **Claude Code と Codex を使っている** → harness-mem は両ツール間のメモリを自動共有します。Claude Code での設計判断が、Codex に切り替えた瞬間に使えます。
+- **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。API キー不要。
+- **Cursor も使っている** → Tier 2 サポート: フックと MCP がそのまま動きます。Gemini CLI と OpenCode は実験的対応です。
 
 ## 実測ベンチマーク
 

@@ -4,7 +4,7 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/logos/harness-mem/official/harness-mem-logo-official.jpg" alt="Harness-mem official logo" width="560" />
 </p>
 
-<p align="center"><strong>One memory runtime for Claude, Codex, Cursor, OpenCode, and Gemini CLI workflows.</strong></p>
+<p align="center"><strong>Memory bridge for Claude Code and Codex. Local-first, zero-cost.</strong></p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
@@ -17,19 +17,19 @@
   English | <a href="README_ja.md">日本語</a>
 </p>
 
-Harness-mem keeps memory behavior consistent across coding tools without hand-editing each tool config.
+Harness-mem bridges memory between Claude Code and Codex — learn in one, recall in the other. Fully local, no cloud, no API keys.
 
 ## Why harness-mem?
 
 Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration.
 
-**harness-mem takes a different approach**: one local daemon, one SQLite database, five supported toolchains plus experimental Antigravity — no cloud, no Python, no API keys required.
+**harness-mem takes a different approach**: one local daemon, one SQLite database, seamless Claude Code ↔ Codex memory sharing — no cloud, no Python, no API keys required.
 
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
-| **Supported tools** | Claude, Codex, Cursor, OpenCode, Gemini CLI, Antigravity | Claude only | Claude only | Custom API integration |
+| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Gemini CLI, OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
-| **Cross-tool memory** | Automatic — work in Claude, recall in Codex | N/A | N/A | Manual wiring per app |
+| **Cross-tool memory** | Automatic — design in Claude Code, execute in Codex, recall everywhere | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + recency + tag + graph) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
@@ -38,9 +38,9 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 ### What this means in practice
 
-- **You use multiple AI tools** → harness-mem is a local-first option for sharing memory across Claude, Codex, Cursor, OpenCode, and Gemini in a single project.
-- **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls by default. Optional LLM enhancement if you choose.
-- **You're on claude-mem today** → One-command migration with rollback. No data loss, no downtime.
+- **You use Claude Code and Codex** → harness-mem automatically shares memory between both tools. Design decisions in Claude Code are instantly available when you switch to Codex.
+- **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
+- **You also use Cursor** → Tier 2 support: hooks and MCP work out of the box. Gemini CLI and OpenCode are experimental.
 
 ## Measured Proof
 
