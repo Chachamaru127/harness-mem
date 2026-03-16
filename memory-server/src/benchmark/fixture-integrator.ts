@@ -110,10 +110,30 @@ export function convertSelfEvalQA(c: SelfEvalCase): UnifiedQA {
   };
 }
 
+/** LLM 生成 QA → UnifiedQA */
+export function convertLlmGeneratedQA(qa: { question_id: string; question: string; answer: string; slice: string; cross_lingual: boolean; session_id: string }): UnifiedQA {
+  const sliceToCat: Record<string, string> = {
+    "temporal-order": "cat-4", "tool-recall": "cat-1", "error-resolution": "cat-3",
+    "decision-why": "cat-3", "file-change": "cat-1", "cross-client": "cat-2",
+    "session-summary": "cat-2", "noisy-ja": "cat-1", "cross-lingual": "cat-1", "dependency": "cat-1",
+  };
+  return {
+    question_id: qa.question_id,
+    question: qa.question,
+    answer: qa.answer,
+    category: sliceToCat[qa.slice] ?? "cat-1",
+    slice: qa.slice,
+    cross_lingual: qa.cross_lingual,
+    source: "llm-generated",
+    session_id: qa.session_id,
+  };
+}
+
 /** メイン統合関数 */
 export function integrateFixtures(
   locomoPath: string,
   selfEvalPath: string,
+  llmGeneratedPath?: string,
 ): IntegratedFixture {
   const items: UnifiedQA[] = [];
   const sources: IntegratedFixture["sources"] = [];
@@ -135,6 +155,16 @@ export function integrateFixtures(
       items.push(convertSelfEvalQA(c));
     }
     sources.push({ name: "self-eval-300", count: items.length - selfEvalStart, path: selfEvalPath });
+  }
+
+  // 3. LLM 生成 QA（オプション）
+  if (llmGeneratedPath && existsSync(llmGeneratedPath)) {
+    const llmStart = items.length;
+    const llmData = JSON.parse(readFileSync(llmGeneratedPath, "utf8")) as Array<{ question_id: string; question: string; answer: string; slice: string; cross_lingual: boolean; session_id: string }>;
+    for (const qa of llmData) {
+      items.push(convertLlmGeneratedQA(qa));
+    }
+    sources.push({ name: "llm-generated", count: items.length - llmStart, path: llmGeneratedPath });
   }
 
   // 集計
@@ -164,6 +194,7 @@ if (import.meta.main) {
   const FIXTURES_DIR = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures");
   const locomoPath = join(FIXTURES_DIR, "japanese-release-pack-96.json");
   const selfEvalPath = join(FIXTURES_DIR, "japanese-coding-session-self-eval-300.json");
+  const llmPath = join(FIXTURES_DIR, "japanese-llm-generated-147.json");
 
   const outputArg = process.argv.indexOf("--output");
   const outputPath = outputArg >= 0 && process.argv[outputArg + 1]
@@ -172,8 +203,9 @@ if (import.meta.main) {
 
   console.log(`[fixture-integrator] LoCoMo: ${locomoPath}`);
   console.log(`[fixture-integrator] SelfEval: ${selfEvalPath}`);
+  console.log(`[fixture-integrator] LLM Generated: ${llmPath}`);
 
-  const result = integrateFixtures(locomoPath, selfEvalPath);
+  const result = integrateFixtures(locomoPath, selfEvalPath, llmPath);
 
   console.log(`[fixture-integrator] Total: ${result.total_count} QA items`);
   console.log(`[fixture-integrator] By source:`);

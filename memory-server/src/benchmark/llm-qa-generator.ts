@@ -11,8 +11,36 @@
  */
 
 import { Database } from "bun:sqlite";
-import { writeFileSync, readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
+import { resolve, join } from "node:path";
+
+// .env ファイルから環境変数を読み込む（bun の自動読み込みに頼らないフォールバック）
+function loadDotEnv(): void {
+  const candidates = [
+    join(import.meta.dir, "../../../.env"),
+    resolve(process.cwd(), ".env"),
+  ];
+  for (const p of candidates) {
+    if (!existsSync(p)) continue;
+    try {
+      const content = readFileSync(p, "utf8");
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith("#")) continue;
+        const eqIdx = trimmed.indexOf("=");
+        if (eqIdx <= 0) continue;
+        const key = trimmed.slice(0, eqIdx).trim();
+        let val = trimmed.slice(eqIdx + 1).trim();
+        if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+          val = val.slice(1, -1);
+        }
+        if (!process.env[key]) process.env[key] = val;
+      }
+      return;
+    } catch { /* best effort */ }
+  }
+}
+loadDotEnv();
 
 // ---------------------------------------------------------------------------
 // 型定義
@@ -251,42 +279,65 @@ interface AnthropicResponse {
 }
 
 /**
- * Claude API を呼び出して QA ペアを生成する。
- * ANTHROPIC_API_KEY 環境変数が必要。
+ * LLM API を呼び出して QA ペアを生成する。
+ * ANTHROPIC_API_KEY または OPENAI_API_KEY 環境変数が必要。
+ * Anthropic 優先、なければ OpenAI にフォールバック。
  */
 async function callClaudeAPI(prompt: string): Promise<GeneratedQA[]> {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new Error("ANTHROPIC_API_KEY is required for --generate mode");
+  const anthropicKey = process.env.ANTHROPIC_API_KEY;
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!anthropicKey && !openaiKey) {
+    throw new Error("ANTHROPIC_API_KEY or OPENAI_API_KEY is required for --generate mode");
   }
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
-      max_tokens: 2000,
-      messages: [{ role: "user", content: prompt }],
-    }),
-  });
+  let text: string;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    throw new Error(`Anthropic API error ${response.status}: ${errText}`);
-  }
-
-  const data = (await response.json()) as AnthropicResponse;
-  const textContent = data.content.find((c) => c.type === "text");
-  if (!textContent?.text) {
-    throw new Error("No text content in API response");
+  if (anthropicKey) {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": anthropicKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Anthropic API error ${response.status}: ${errText}`);
+    }
+    const data = (await response.json()) as AnthropicResponse;
+    const textContent = data.content.find((c) => c.type === "text");
+    if (!textContent?.text) throw new Error("No text content in Anthropic response");
+    text = textContent.text;
+  } else {
+    // OpenAI フォールバック
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${openaiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        max_tokens: 2000,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`OpenAI API error ${response.status}: ${errText}`);
+    }
+    const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
+    text = data.choices?.[0]?.message?.content ?? "";
+    if (!text) throw new Error("No content in OpenAI response");
   }
 
   // JSON 配列部分を抽出してパース
-  const text = textContent.text;
   const jsonMatch = text.match(/\[[\s\S]*\]/);
   if (!jsonMatch) {
     throw new Error(`Could not extract JSON array from response: ${text.slice(0, 200)}`);
