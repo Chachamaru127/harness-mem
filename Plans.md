@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-15（§52 dependency & tool integration update plan 策定）
+最終更新: 2026-03-16（§55 プロダクトフォーカス戦略策定）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了）
@@ -23,8 +23,9 @@
 | 日本語 companion artifact | 再同期済み | current=`docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json`（`96 QA`, `overall_f1_mean=0.6580`, verdict `pass`）、historical=`docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json`（`32 QA`, `overall_f1_mean=0.8020`）、deprecated=`s40-ja-release-latest` |
 | README / proof bar / Plans | 再同期済み | `README.md` / `README_ja.md` / `docs/benchmarks/japanese-release-proof-bar.md` / 本節を current main gate + current companion + historical baseline の3層に揃え、FAIL を PASS と書かない状態へ修正した |
 | drift guard | 追加済み | `tests/benchmark-claim-ssot.test.ts` で README / proof bar / Plans / license badge のズレを CI で検知する |
-| 維持できている価値 | 強い | local-first multi-tool runtime、hybrid retrieval、Japanese / EN<->JA benchmark investment、recent interaction UX 改善は有効 |
-| 次フェーズの焦点 | temporal regression recovery | current main gate の Layer 2 FAIL 是正、watch slice (`current_vs_previous`, `relative_temporal`, `yes_no`, `entity`, `location`) 改善、competitive snapshot 定期更新 |
+| 維持できている価値 | 強い | local-first Claude Code + Codex memory bridge、hybrid retrieval、522問日本語ベンチマーク |
+| 次フェーズの焦点 | §55 プロダクトフォーカス | Claude Code + Codex を Tier 1 に集中。README/ポジショニング再編。Cursor は Tier 2 維持、他は Tier 3 降格 |
+| CI Gate | **全 PASS** | Layer 1/2/Companion すべて PASS（2026-03-16 §54 完了時点） |
 
 監査対象:
 - `memory-server/src/benchmark/results/ci-run-manifest-latest.json`（main benchmark artifact。current main gate の正本）
@@ -126,68 +127,61 @@ S51-004 → S51-005/006（Gate A）→ S51-007〜010（Gate B/C）→ S51-011/01
 
 ## §54 Japanese Benchmark Scale-Up（日本語ベンチマーク拡充）
 
+策定日: 2026-03-16 — **全完了**（96問 → 522問、全 Gate PASS）
+スライス: tool-recall / error-resolution / decision-why / file-change / cross-client / temporal-order / session-summary / dependency / noisy-ja / cross-lingual（10種）
+
+### 完了サマリー（2026-03-16）
+
+S54-001〜014 全14タスク完了。詳細: `docs/benchmarks/s54-benchmark-scale-up-summary.md`
+成果: 96問→522問（3ソース、22スライス）、8新規ツール、138テスト、全 CI Gate PASS、Layer 2 FAIL 解消
+
+---
+
+## §55 Product Focus Strategy（プロダクトフォーカス戦略）
+
 策定日: 2026-03-16
-背景: 現在の日本語ベンチマーク（96問）は統計的信頼性が不足。業界標準（LoCoMo 600問、LongMemEval 500問）の 1/5〜1/6 の規模。さらに、現在の96問は架空のビジネス会話ベースで、harness-mem の本来のユースケース（Claude Code / Codex 等のコーディングセッションの想起）と乖離している。
+背景: 競合分析と「必要性ディベート」の結果、harness-mem の真の堀は「マルチクライアント統合 × ローカル完結 × ゼロコスト」であり、5ツール均等サポートより Claude Code + Codex の2軸に集中すべきと判断。日本語優位は先行者利益であって技術的堀ではないため、差別化の主軸にしない。
 
-### 目的
+### ツールティア定義
 
-1. 日本語ベンチマークを96問 → 500問以上に拡充
-2. コーディングセッション特化の QA スライスを導入（「ちゃんと思い出せるか」を測る）
-3. 既存の self-eval-generator.ts / retrospective-eval.ts を活用して自動生成を主体とする
-4. 統計的に有意な品質主張を可能にする（スライス別でも 30問以上を確保）
+| Tier | ツール | サポートレベル | 方針 |
+|------|--------|--------------|------|
+| **Tier 1** | **Claude Code, Codex** | 全力サポート | フック・MCP・テストを最優先維持。バグ即時修正。README 先頭で訴求 |
+| **Tier 2** | Cursor | 動作保証・積極投資なし | hooks.json + sandbox.json は現状維持。新機能は Tier 1 完了後のみ |
+| **Tier 3** | Gemini CLI, OpenCode | 実験的 / community | README で experimental 明記。コード削除はしない。バグ修正は低優先 |
 
-### Success Gates
+### ポジショニング変更
 
-| Gate | 意味 | 完了条件（DoD） |
-|------|------|-----------------|
-| Gate A | template-complete | self-eval テンプレートが20種以上、コーディングセッション11スライスをカバー |
-| Gate B | volume-complete | 自動生成 + LLM半自動 + 人間検証で合計500問以上の Gold Set が作成される |
-| Gate C | runner-integrated | 拡張ベンチマークが既存の benchmark runner / CI gate に統合される |
-| Gate D | claim-ready | README / proof bar が新ベンチマーク結果を反映し、SSOT テストが通る |
+```
+Before: 「Claude / Codex / Cursor / OpenCode / Gemini CLI で使えるメモリランタイム」
+After:  「Claude Code と Codex のメモリを橋渡し。ローカル完結、ゼロコスト。」
+```
 
-### QA スライス（10種）
+### タスク
 
-tool-recall / error-resolution / decision-why / file-change / cross-client / temporal-order / session-summary / dependency / noisy-ja / cross-lingual
+- [ ] `cc:TODO` **S55-001 [docs]**: README.md / README_ja.md のポジショニングを Claude Code + Codex 中心に書き換え
+  - 先頭のキャッチコピーを変更
+  - 対応ツール表に Tier 1/2/3 ラベルを追加
+  - 「Claude Code で学習し、Codex で想起する」ユースケースを最初の例として配置
+  - DoD: README のファーストビューが「Claude Code + Codex のメモリブリッジ」として明確
 
-### Phase 1-4 完了サマリー（2026-03-16）
+- [ ] `cc:TODO` **S55-002 [docs]**: package.json の keywords / description を更新
+  - description: "Memory bridge for Claude Code and Codex — local-first, zero-cost"
+  - keywords: `claude-code`, `codex` を先頭に移動
+  - DoD: npm 検索で Claude Code / Codex 関連として表示される
 
-S54-001〜010 全完了。138テスト/0失敗。詳細: `docs/benchmarks/s54-benchmark-scale-up-summary.md`
+- [ ] `cc:TODO` **S55-003 [ops]**: §51 Phase B/C のスコープを Tier 制に合わせて調整
+  - S51-007〜012 のうち、Tier 3 ツール固有のタスクを Optional に降格
+  - OpenCode フック未発火バグ（#2319）の優先度を低に
+  - DoD: §51 の残タスクが Tier 1 中心に再編される
 
-| Phase | タスク | 成果 |
-|-------|--------|------|
-| 1 | S54-001/002/003 | テンプレート6→20種、300問自動生成、品質検証スクリプト |
-| 2 | S54-004/005 | retrospective CI wrapper、audit coverage check (16,647 hits) |
-| 3 | S54-006/007/008 | LLM QA生成パイプライン、品質フィルタ、396問統合fixture |
-| 4 | S54-009/010 | runner gate検証、scale-up summary ドキュメント |
+- [ ] `cc:TODO` **S55-004 [test]**: Tier 1 統合テストの強化
+  - Claude Code フック全11種の E2E テスト
+  - Codex rules + hooks.json + session の統合テスト
+  - DoD: Tier 1 の2ツールについて、セットアップからセッション完了までの全パスがテストで保証される
 
-### Phase 5: Follow-up（品質仕上げ + Gate A 到達）
+### 着手順
 
-背景: Phase 1-4 完了後のベンチマーク実行で判明した残課題。§51 Gate A（main gate 3連続 PASS）到達に必要。
-
-- [x] `cc:完了` **S54-011 [benchmark]**: LLM QA 生成で 522問到達（OpenAI GPT-4o で147問生成、98%品質通過）
-  - 対象: `llm-qa-generator.ts --generate`、`.env`（ANTHROPIC_API_KEY）
-  - 内容: 実DBから100セッション抽出 → Claude API で QA 生成 → qa-review-tool でフィルタ → fixture-integrator で統合
-  - DoD: 統合 fixture が 500問以上、品質チェック pass_rate ≥ 50%
-
-- [x] `cc:完了` **S54-012 [benchmark]**: retrospective-eval の embedding prime 待機を追加
-  - 対象: `memory-server/src/benchmark/retrospective-eval.ts` の `evaluateAlgo` 関数
-  - 内容: `ensureEmbeddingReady()` 相当の待機ロジックを `evaluateAlgo` 内に追加し、sync embed がフォールバックに落ちない状態で検索を実行する
-  - DoD: retrospective-eval の recall@10 が 0 ではない実用的な値を返す
-
-- [x] `cc:完了` **S54-013 [benchmark]**: self-eval テンプレートの exact dupe 63→0件に解消
-  - 対象: `self-eval-generator.ts` のテンプレート + `generateSelfEvalCases` ロジック
-  - 内容: 同一セッション内で content 先頭が一致するエントリに対し、snippet 抽出位置を分散させる（2番目・最後のエントリを使うバリエーション追加 or dedupe フィルタ）
-  - DoD: `qa-quality-check.ts` の exact_query_dupes が 10件以下
-
-- [x] `cc:完了` **S54-014 [benchmark/§51]**: Layer 2 Relative Regression の解消（history重複削除 + MIN_SE=0.005 追加 → 全Gate PASS）
-  - 対象: `memory-server/src/retrieval/router.ts`、`observation-store.ts`、run-ci gate 定義
-  - 背景: LoCoMo F1 0.5296 < mean-2SE 0.5333（-0.0037 の微小回帰）、temporal 0.6403 < mean-2SE 0.6431
-  - 方針: §51 S51-002/003 で着手済みの router temporal 改善の続き。ベンチマーク専用ハックではなく汎用改善で対処
-  - DoD: `run-ci.ts` の Layer 2 が PASS、3連続実行で安定
-
-### 着手順（Phase 5）
-
-1. `S54-012`（retrospective-eval prime 待機）— 小修正、即効性あり
-2. `S54-013`（exact dupe 解消）— テンプレート調整のみ
-3. `S54-011`（LLM QA 生成 500問）— API 実行、`.env` の ANTHROPIC_API_KEY を使用
-4. `S54-014`（Layer 2 解消）— §51 との連携、最も工数が大きい
+1. `S55-001` + `S55-002`（README + package.json 更新、並列可）
+2. `S55-003`（§51 スコープ調整）
+3. `S55-004`（Tier 1 テスト強化）
