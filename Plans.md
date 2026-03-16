@@ -133,38 +133,58 @@ S54-001〜014 全14タスク完了。詳細: `docs/benchmarks/s54-benchmark-scal
 | **Tier 2** | Cursor | 動作保証・積極投資なし | hooks.json + sandbox.json は現状維持。新機能は Tier 1 完了後のみ |
 | **Tier 3** | Gemini CLI, OpenCode | 実験的 / community | README で experimental 明記。コード削除はしない。バグ修正は低優先 |
 
-### ポジショニング変更
+### 完了サマリー（2026-03-16）
 
-```
-Before: 「Claude / Codex / Cursor / OpenCode / Gemini CLI で使えるメモリランタイム」
-After:  「Claude Code と Codex のメモリを橋渡し。ローカル完結、ゼロコスト。」
-```
+S55-001〜004 全完了。README/package.json を「Claude Code + Codex メモリブリッジ」に書き換え、§51 を Tier 1 中心に再編、Tier 1 統合テスト14本追加。
+
+---
+
+## §56 Differentiator Benchmarks（差別化ベンチマーク）
+
+策定日: 2026-03-16
+背景: §54 で検索品質ベンチマークを 522問に拡充したが、harness-mem の最大の差別化ポイント（Cross-Tool Transfer、セッション再開、長期記憶）を測るベンチマークが存在しない。「売りにしていることを測っていない」状態の解消が目的。
+
+### ギャップ分析
+
+| harness-mem の約束 | ベンチマーク | 状態 |
+|---|---|---|
+| Claude Code ↔ Codex メモリ橋渡し | なし | **最大のギャップ** |
+| セッション再開時の文脈復元 | なし | ギャップ |
+| 長期記憶の保持（数週間前） | なし | ギャップ |
+| 圧縮後の情報保持 | なし | ギャップ |
+| マルチプロジェクト分離 | なし | ギャップ |
+| 検索品質（英語/日本語） | §54 で 522問 | 対応済み |
+| レイテンシ | run-ci で p95 測定 | 対応済み |
 
 ### タスク
 
-- [x] `cc:完了` **S55-001 [docs]**: README.md / README_ja.md のポジショニングを Claude Code + Codex 中心に書き換え
-  - 先頭のキャッチコピーを変更
-  - 対応ツール表に Tier 1/2/3 ラベルを追加
-  - 「Claude Code で学習し、Codex で想起する」ユースケースを最初の例として配置
-  - DoD: README のファーストビューが「Claude Code + Codex のメモリブリッジ」として明確
+- [ ] `cc:TODO` **S56-001 [benchmark]**: Cross-Tool Memory Transfer ベンチマーク
+  - 内容: `recordEvent(platform:"claude")` → `search(query)` を `platform:"codex"` セッションから実行し、Recall@10 を測定
+  - テストケース: 50問（決定理由25 + ツール使用25）、Claude→Codex / Codex→Claude の双方向
+  - 対象: 新規 `tests/benchmarks/cross-tool-transfer.test.ts`
+  - DoD: Cross-Tool Recall@10 が 0.80 以上、run-ci に組み込み
 
-- [x] `cc:完了` **S55-002 [docs]**: package.json の keywords / description を更新
-  - description: "Memory bridge for Claude Code and Codex — local-first, zero-cost"
-  - keywords: `claude-code`, `codex` を先頭に移動
-  - DoD: npm 検索で Claude Code / Codex 関連として表示される
+- [ ] `cc:TODO` **S56-002 [benchmark]**: セッション再開ベンチマーク
+  - 内容: セッション A で記録 → 終了 → セッション B で検索し、前セッションの文脈が復元されるか
+  - テストケース: 30問（最終ステップ想起15 + 作業順序15）
+  - DoD: Session Resume Recall@5 が 0.75 以上
 
-- [x] `cc:完了` **S55-003 [ops]**: §51 Phase B/C のスコープを Tier 制に合わせて調整（S51-007 を Tier 1 中心に、S51-010/011 を Claude Code+Codex 軸に再編）
-  - S51-007〜012 のうち、Tier 3 ツール固有のタスクを Optional に降格
-  - OpenCode フック未発火バグ（#2319）の優先度を低に
-  - DoD: §51 の残タスクが Tier 1 中心に再編される
+- [ ] `cc:TODO` **S56-003 [benchmark]**: 長期記憶保持ベンチマーク
+  - 内容: 30日前の observation を 1000件の新しい observation の後に検索し、top-10 に入るか
+  - テストケース: 20問（重要な設計判断10 + マイグレーション記録10）
+  - DoD: Long-term Recall@10 が 0.70 以上、adaptive-decay で埋もれないことを証明
 
-- [x] `cc:完了` **S55-004 [test]**: Tier 1 統合テストの強化（14テスト全パス）
-  - Claude Code フック全11種の E2E テスト
-  - Codex rules + hooks.json + session の統合テスト
-  - DoD: Tier 1 の2ツールについて、セットアップからセッション完了までの全パスがテストで保証される
+- [ ] `cc:TODO` **S56-004 [benchmark]**: Consolidation 品質ベンチマーク
+  - 内容: 100件記録 → compress → 同一クエリで検索し、F1 が圧縮前の 95% を維持するか
+  - DoD: Post-consolidation F1 retention ≥ 0.95
+
+- [ ] `cc:TODO` **S56-005 [benchmark]**: マルチプロジェクト分離ベンチマーク
+  - 内容: project A と B に異なる記憶を記録し、project A の検索で B の結果が漏れないか
+  - DoD: Cross-project leakage rate ≤ 0.05（5%以下）
 
 ### 着手順
 
-1. `S55-001` + `S55-002`（README + package.json 更新、並列可）
-2. `S55-003`（§51 スコープ調整）
-3. `S55-004`（Tier 1 テスト強化）
+1. **S56-001**（Cross-Tool Transfer）— 最優先。差別化の核を数値化
+2. `S56-002`（セッション再開）— ユーザーが最も「欲しい」と感じる場面
+3. `S56-003` + `S56-005`（長期記憶 + プロジェクト分離、並列可）
+4. `S56-004`（圧縮品質）— 長期運用に必要だが緊急度は低い
