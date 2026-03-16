@@ -3332,7 +3332,8 @@ export class ObservationStore {
     const nodeLimit = Math.min(options?.limit ?? 100, 100);
     const projectMembers = this.resolveProjectMembers(options?.project);
 
-    // エンティティ名で観察を検索（起点ノード）
+    // エンティティ名で観察を検索（起点ノード）— 完全一致 → 部分一致フォールバック
+    const seedLimit = Math.min(50, nodeLimit);
     let seedSql = `
       SELECT DISTINCT o.id
       FROM mem_observations o
@@ -3340,11 +3341,27 @@ export class ObservationStore {
       JOIN mem_entities e ON e.id = oe.entity_id
       WHERE e.name = ?
     `;
-    const seedParams: unknown[] = [entity];
+    let seedParams: unknown[] = [entity];
     seedSql = this.appendProjectFilter(seedSql, seedParams, "o", projectMembers);
-    seedSql += " LIMIT 50";
+    seedSql += ` LIMIT ${seedLimit}`;
 
-    const seedRows = this.deps.db.query(seedSql).all(...(seedParams as any[])) as Array<{ id: string }>;
+    let seedRows = this.deps.db.query(seedSql).all(...(seedParams as any[])) as Array<{ id: string }>;
+
+    // 完全一致で見つからなければ部分一致（LIKE）で再検索
+    if (seedRows.length === 0) {
+      let likeSql = `
+        SELECT DISTINCT o.id
+        FROM mem_observations o
+        JOIN mem_observation_entities oe ON oe.observation_id = o.id
+        JOIN mem_entities e ON e.id = oe.entity_id
+        WHERE e.name LIKE ?
+      `;
+      const likeParams: unknown[] = [`%${entity}%`];
+      likeSql = this.appendProjectFilter(likeSql, likeParams, "o", projectMembers);
+      likeSql += ` LIMIT ${seedLimit}`;
+      seedRows = this.deps.db.query(likeSql).all(...(likeParams as any[])) as Array<{ id: string }>;
+    }
+
     const seedIds = seedRows.map((r) => r.id);
 
     if (seedIds.length === 0) {
