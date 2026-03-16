@@ -1,0 +1,37 @@
+{
+  "schema_version": "differentiator-benchmark-v1",
+  "generated_at": "2026-03-16T17:17:01.489Z",
+  "results": [
+    {
+      "name": "Cross-Tool Transfer",
+      "passed": false,
+      "score": 0.5,
+      "detail": "10/20"
+    },
+    {
+      "name": "Session Resume",
+      "passed": true,
+      "score": 0.8,
+      "detail": "4/5"
+    },
+    {
+      "name": "Long-term Memory",
+      "passed": false,
+      "score": 0.2,
+      "detail": "2/10"
+    },
+    {
+      "name": "Project Isolation (leak)",
+      "passed": true,
+      "score": 1,
+      "detail": "leak=0.0000"
+    },
+    {
+      "name": "Project Isolation (recall)",
+      "passed": true,
+      "score": 1,
+      "detail": "3/3"
+    }
+  ],
+  "all_passed": false
+}
