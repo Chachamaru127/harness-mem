@@ -40,7 +40,14 @@ interface QueryTemplate {
 /** セッション固有のスニペットを取得（クエリの一意性を確保） */
 function snippet(entries: SelfEvalEntry[], idx: number, len = 30): string {
   const e = entries[idx] ?? entries[0];
-  return e.content.slice(0, len).replace(/\s+/g, " ").trim();
+  const text = e.content.slice(0, len).replace(/\s+/g, " ").trim();
+  // 同一先頭テキストのセッションを区別するため、末尾のエントリからも短いスニペットを追加
+  const last = entries[entries.length - 1];
+  if (last && last.id !== e.id) {
+    const tail = last.content.slice(0, 15).replace(/\s+/g, " ").trim();
+    return `${text}...${tail}`;
+  }
+  return text;
 }
 
 /** クエリテンプレート（日英両対応・全20種） */
