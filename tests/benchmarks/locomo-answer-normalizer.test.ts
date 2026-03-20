@@ -251,4 +251,56 @@ describe("LOCOMO answer normalizer", () => {
     });
     expect(timeMismatch.normalized).toBe("No");
   });
+
+  // S51-004: location normalizer — domain names and decade-prefixed place names
+  test("S51-004: location normalizer preserves domain names like deeplearning.ai", () => {
+    const domainResult = normalizeLocomoAnswer({
+      question: "Where did I get my certification?",
+      kind: "location",
+      rawAnswer: "deeplearning.ai",
+      evidence: [],
+    });
+    expect(domainResult.normalized).toBe("deeplearning.ai");
+  });
+
+  test("S51-004: location normalizer preserves decade-prefixed place names like 1920s Shanghai", () => {
+    const decadeResult = normalizeLocomoAnswer({
+      question: "Where is my novel set?",
+      kind: "location",
+      rawAnswer: "1920s Shanghai",
+      evidence: [],
+    });
+    expect(decadeResult.normalized).toBe("1920s Shanghai");
+  });
+
+  test("S51-004: location normalizer extracts city-state from full sentence", () => {
+    const cityState = normalizeLocomoAnswer({
+      question: "Where do I live?",
+      kind: "location",
+      rawAnswer: "I moved to Portland, Oregon last year.",
+      evidence: [],
+    });
+    expect(cityState.normalized).toBe("Portland, Oregon");
+  });
+
+  // S51-004: yes_no — change/transition context implies No for continuity questions
+  test("S51-004: yes_no returns No when answer describes a change away from the asked value", () => {
+    const changedAway = normalizeLocomoAnswer({
+      question: "Are you still using Python?",
+      kind: "yes_no",
+      rawAnswer: "We switched to Go last year for better performance.",
+      evidence: [],
+    });
+    expect(changedAway.normalized).toBe("No");
+  });
+
+  test("S51-004: yes_no returns Yes when no negation or change is present", () => {
+    const stillUsing = normalizeLocomoAnswer({
+      question: "Do you still use TypeScript?",
+      kind: "yes_no",
+      rawAnswer: "Yes, TypeScript is our primary language.",
+      evidence: [],
+    });
+    expect(stillUsing.normalized).toBe("Yes");
+  });
 });

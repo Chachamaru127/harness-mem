@@ -296,6 +296,17 @@ function normalizeYesNo(text: string, question: string, evidence: LocomoEvidence
   if (/\b(no|not|never|none|cannot|can't|won't|didn't|doesn't|isn't|wasn't)\b/.test(withoutEmphaticNot)) return "No";
   if (/(ありません|ないです|ません|違います|やめました|含まれていません)/u.test(text)) return "No";
 
+  // Change/transition verbs in response to continuity questions imply No.
+  // "switched to X", "changed to X", "migrated to X" signal that the old thing is no longer used.
+  // This is scoped only to patterns where the verb follows "we/I" and precedes a destination ("to"),
+  // to avoid false positives on questions like "Did you switch to Go?" → "We switched to Go" → Yes.
+  const asksAboutContinuity =
+    /\b(still|anymore|yet)\b/.test(source) ||
+    /\b(still|anymore|yet)\b/.test(normalizeLower(question));
+  const answerShowsChange =
+    /\b(?:we|i)\s+(?:switched|changed|moved|migrated|transitioned|replaced|upgraded)\s+(?:to|away|from|over)\b/i.test(source);
+  if (asksAboutContinuity && answerShowsChange) return "No";
+
   const normalizedQuestion = normalizeLower(question);
   const asksExclusive = /\bonly\b/.test(normalizedQuestion) || /だけ/u.test(question);
   if (asksExclusive && /,|、|\band\b/iu.test(text)) return "No";
@@ -332,9 +343,23 @@ function normalizeYesNo(text: string, question: string, evidence: LocomoEvidence
 
 function normalizeLocation(text: string): string {
   const source = normalizeSpaces(text.replace(/^[^A-Za-z0-9]+/, ""));
+
+  // Domain name locations like "deeplearning.ai" — return as-is
+  const domainName = /\b([a-zA-Z][a-zA-Z0-9-]*\.[a-z]{2,})\b/.exec(source);
+  if (domainName && domainName[1]) {
+    // Only return the domain if it's a plausible short answer (not a long URL)
+    const candidate = domainName[1].trim();
+    if (candidate.length <= 40) return candidate;
+  }
+
   // "City, State/Country" - two capitalised proper nouns separated by comma
   const cityState = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2}),\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,1})\b/.exec(source);
   if (cityState && cityState[1] && cityState[2]) return `${cityState[1].trim()}, ${cityState[2].trim()}`;
+
+  // "set in 1920s Shanghai" / decade-prefixed place names
+  const decadePlace = /\b(\d{4}s\s+[A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/.exec(source);
+  if (decadePlace && decadePlace[1]) return decadePlace[1].trim();
+
   const moved = /\b(?:moved|travel(?:ed)?|lived|stayed)\s+(?:to|in|at|from)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})/.exec(source);
   if (moved && moved[1]) return moved[1].trim();
   const capitalized = /\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b/.exec(source);

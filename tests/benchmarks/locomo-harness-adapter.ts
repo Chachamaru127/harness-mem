@@ -451,8 +451,20 @@ function extractDurationPhrase(text: string): string | null {
   // Examples: "52 minutes", "about 2 hours", "around 3 weeks", "roughly 30 seconds"
   const durationPattern =
     /\b(?:about|around|roughly|approximately|nearly|almost|over|just\s+under\s+)?\s*\d+(?:\.\d+)?\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i;
-  const match = durationPattern.exec(text);
-  if (match && match[0]) return match[0].trim();
+  const numericMatch = durationPattern.exec(text);
+  if (numericMatch && numericMatch[0]) return numericMatch[0].trim();
+
+  // Hyphenated durations: "5-day", "45-minute", "2-hour"
+  const hyphenatedPattern = /\b(\d+)-(?:minute|hour|second|day|week|month|year)s?\b/i;
+  const hyphenatedMatch = hyphenatedPattern.exec(text);
+  if (hyphenatedMatch && hyphenatedMatch[0]) return hyphenatedMatch[0].trim();
+
+  // Word-based durations: "three weeks", "four months", "two hours"
+  const wordPattern =
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|a\s+few)\s+(?:minutes?|hours?|seconds?|days?|weeks?|months?|years?)\b/i;
+  const wordMatch = wordPattern.exec(text);
+  if (wordMatch && wordMatch[0]) return wordMatch[0].trim();
+
   return null;
 }
 
@@ -466,7 +478,10 @@ function extractTemporalPhrase(text: string): string | null {
     /\b(?:the\s+)?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\s+(?:before|after)\s+[^.,;!?]+/i,
     /\b\d{1,2}\s+(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{4}\b/i,
     /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\s+\d{1,2}(?:,\s*\d{4}|\s+\d{4})?\b/i,
-    /\b(?:last|next|this)\s+(?:week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
+    // Month + year: "September 2023", "January 2024" (without day)
+    /\b(?:january|february|march|april|may|june|july|august|september|october|november|december)\s+\d{4}\b/i,
+    // Relative time references: "last March", "last quarter", "last year"
+    /\b(?:last|next|this)\s+(?:week|month|year|quarter|spring|summer|autumn|fall|winter|january|february|march|april|may|june|july|august|september|october|november|december|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
     /\b\d{4}\b/,
   ];
   for (const pattern of patterns) {
@@ -1204,12 +1219,55 @@ function extractAnswerDraft(
     const orderPhrase =
       extractJapaneseTemporalOrderSlot(question, mergedTop) ||
       extractJapaneseTemporalOrderSlot(question, topN[0]?.sentence || "");
-    const phrase = orderPhrase || extractTemporalPhrase(mergedTop) || extractTemporalPhrase(topN[0]?.sentence || "");
+
+    if (orderPhrase) {
+      return {
+        raw_answer: orderPhrase,
+        selected_candidates: topN,
+        selected_evidence_ids: selectedEvidenceIds,
+        strategy: "extract:temporal-order-slot",
+      };
+    }
+
+    const normalizedQuestion = normalizeText(question);
+    const asksDuration = /\bhow\s+(?:long|many\s+(?:days?|weeks?|months?|years?|hours?|minutes?))\b/i.test(normalizedQuestion);
+    const asksDistance = /\bhow\s+(?:long|far|many\s+(?:km|kilometer|mile))\b/i.test(normalizedQuestion);
+
+    if (asksDuration || asksDistance) {
+      // For "how long" questions: scan each candidate individually for duration, prefer duration over date
+      let phrase: string | null = null;
+      for (const candidate of topN) {
+        phrase = extractDurationPhrase(candidate.sentence);
+        if (phrase) break;
+      }
+      // Also check merged text in case duration spans multiple candidates
+      if (!phrase) {
+        phrase = extractDurationPhrase(mergedTop);
+      }
+      // Fall back to non-duration temporal phrase on top candidate only (not merged) to avoid wrong-candidate contamination
+      if (!phrase) {
+        phrase = extractTemporalPhrase(topN[0]?.sentence || "");
+      }
+      return {
+        raw_answer: phrase || topN[0]?.sentence || mergedTop,
+        selected_candidates: topN,
+        selected_evidence_ids: selectedEvidenceIds,
+        strategy: "extract:temporal-duration-candidates",
+      };
+    }
+
+    // For "when" questions: scan candidates individually in rank order to avoid
+    // wrong-candidate contamination in merged text (e.g. v1.5 vs v2.0 deployment dates)
+    let phrase: string | null = null;
+    for (const candidate of topN) {
+      phrase = extractTemporalPhrase(candidate.sentence);
+      if (phrase) break;
+    }
     return {
-      raw_answer: phrase || mergedTop,
+      raw_answer: phrase || topN[0]?.sentence || mergedTop,
       selected_candidates: topN,
       selected_evidence_ids: selectedEvidenceIds,
-      strategy: orderPhrase ? "extract:temporal-order-slot" : "extract:temporal-candidates",
+      strategy: "extract:temporal-candidates",
     };
   }
 
@@ -1378,6 +1436,12 @@ function finalizeShortAnswer(
     return { answer: trimmed, template: "final:temporal-short" };
   }
   if (kind === "location") {
+    // Preserve domain names like "deeplearning.ai" — only split on sentence-ending punctuation
+    // when the result is not a domain name (which contains embedded dots)
+    const isDomainName = /^[a-zA-Z][a-zA-Z0-9-]*\.[a-z]{2,}$/.test(trimmed);
+    if (isDomainName) {
+      return { answer: trimmed, template: "final:location-domain" };
+    }
     return { answer: trimmed.split(/[.?!]/)[0]?.trim() || trimmed, template: "final:location-short" };
   }
   if (kind === "yes_no") {
