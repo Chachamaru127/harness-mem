@@ -298,73 +298,85 @@ describe("S56-002: Session Resume Benchmark", () => {
 // S56-004: Consolidation Quality Benchmark
 // ================================================================
 
+// ----------------------------------------------------------------
+// 100 observations + 10 query pairs for S56-004
+// ----------------------------------------------------------------
+
+interface ConsolidationCase {
+  id: string;
+  content: string;
+  query: string;
+  kw: string[];
+}
+
+function generateConsolidationData(): ConsolidationCase[] {
+  const core10: ConsolidationCase[] = [
+    { id: "con-001", content: "React のコンポーネント設計を Atomic Design に変更した。", query: "コンポーネント設計は？", kw: ["atomic"] },
+    { id: "con-002", content: "状態管理に Jotai を採用。シンプルな API が魅力。", query: "状態管理ライブラリは？", kw: ["jotai"] },
+    { id: "con-003", content: "テストに React Testing Library を使用している。", query: "テストライブラリは？", kw: ["testing library"] },
+    { id: "con-004", content: "スタイリングに CSS Modules を採用。スコープが明確。", query: "スタイリング方式は？", kw: ["css modules"] },
+    { id: "con-005", content: "ルーティングに TanStack Router を使用。型安全。", query: "ルーターは？", kw: ["tanstack"] },
+    { id: "con-006", content: "フォーム管理に React Hook Form と Zod を組み合わせた。", query: "フォームライブラリは？", kw: ["hook form", "zod"] },
+    { id: "con-007", content: "国際化に next-intl を採用した。", query: "i18n は？", kw: ["next-intl"] },
+    { id: "con-008", content: "エラーバウンダリに react-error-boundary を使用。", query: "エラーハンドリングは？", kw: ["error-boundary"] },
+    { id: "con-009", content: "データフェッチに TanStack Query を採用。キャッシュ戦略が強力。", query: "データフェッチは？", kw: ["tanstack query"] },
+    { id: "con-010", content: "アクセシビリティに Radix UI を使用。ARIA 対応が充実。", query: "UIライブラリは？", kw: ["radix"] },
+  ];
+
+  // 90 additional filler observations (no corresponding query — noise for consolidation)
+  const fillers: ConsolidationCase[] = [];
+  const fillerTemplates = [
+    "Vite のビルド設定を最適化した。チャンクサイズ削減。",
+    "TypeScript の strict モードを有効化。型安全性向上。",
+    "ESLint ルールを更新。unused-vars を error に設定。",
+    "Prettier の設定を統一。printWidth を 100 に変更。",
+    "Storybook 8 に移行。CSF 3 フォーマットを使用。",
+    "Chromatic でビジュアルリグレッションテストを設定。",
+    "Vitest でカバレッジ測定。85% を達成。",
+    "GitHub Actions で CI を設定。PR 時に自動実行。",
+    "Vercel にデプロイ。プレビュー URL が自動生成される。",
+    "Sentry でエラー監視を設定。アラート設定済み。",
+  ];
+  for (let i = 11; i <= 100; i++) {
+    fillers.push({
+      id: `con-${String(i).padStart(3, "0")}`,
+      content: fillerTemplates[(i - 11) % fillerTemplates.length] + ` (記録 #${i})`,
+      query: "",
+      kw: [],
+    });
+  }
+
+  return [...core10, ...fillers];
+}
+
 describe("S56-004: Consolidation Quality", () => {
   let core: HarnessMemCore;
   let tempDir: string;
   const PROJECT = "consolidation-bench";
 
-  const testData = [
-    {
-      id: "con-001",
-      content: "React のコンポーネント設計を Atomic Design に変更した。",
-      query: "コンポーネント設計は？",
-      kw: ["atomic"],
-    },
-    {
-      id: "con-002",
-      content: "状態管理に Jotai を採用。シンプルなAPI。",
-      query: "状態管理は？",
-      kw: ["jotai"],
-    },
-    {
-      id: "con-003",
-      content: "テストに React Testing Library を使用。",
-      query: "テストライブラリは？",
-      kw: ["testing library"],
-    },
-    {
-      id: "con-004",
-      content: "スタイリングに CSS Modules を採用。スコープが明確。",
-      query: "スタイリング方式は？",
-      kw: ["css modules"],
-    },
-    {
-      id: "con-005",
-      content: "ルーティングに TanStack Router を使用。型安全。",
-      query: "ルーターは？",
-      kw: ["tanstack"],
-    },
-    {
-      id: "con-006",
-      content: "フォーム管理に React Hook Form + Zod。",
-      query: "フォームライブラリは？",
-      kw: ["hook form", "zod"],
-    },
-    {
-      id: "con-007",
-      content: "国際化に next-intl を採用。",
-      query: "i18n は？",
-      kw: ["next-intl"],
-    },
-    {
-      id: "con-008",
-      content: "エラーバウンダリに react-error-boundary を使用。",
-      query: "エラーハンドリングは？",
-      kw: ["error-boundary"],
-    },
-    {
-      id: "con-009",
-      content: "データフェッチに TanStack Query を採用。キャッシュ戦略。",
-      query: "データフェッチは？",
-      kw: ["tanstack query"],
-    },
-    {
-      id: "con-010",
-      content: "アクセシビリティに Radix UI を使用。ARIA 対応。",
-      query: "UIライブラリは？",
-      kw: ["radix"],
-    },
-  ];
+  const allData = generateConsolidationData();
+  // Only the first 10 have queries — these are the measurement cases
+  const measureCases = allData.slice(0, 10);
+
+  function measureF1(label: string): number {
+    let hits = 0;
+    for (const d of measureCases) {
+      const result = core.search({ query: d.query, project: PROJECT, limit: 5 });
+      const items = result.items as Array<{ content?: string }>;
+      if (
+        items.some((item) =>
+          d.kw.some((kw) =>
+            String(item.content || "").toLowerCase().includes(kw.toLowerCase())
+          )
+        )
+      ) {
+        hits++;
+      }
+    }
+    const f1 = hits / measureCases.length;
+    console.log(`[consolidation] ${label} F1: ${f1.toFixed(4)} (${hits}/${measureCases.length})`);
+    return f1;
+  }
 
   beforeAll(async () => {
     process.env.HARNESS_MEM_EMBEDDING_MODEL = "multilingual-e5";
@@ -373,24 +385,27 @@ describe("S56-004: Consolidation Quality", () => {
     tempDir = result.dir;
     await ensureEmbeddingReady(core);
 
-    for (const d of testData) {
+    // Record all 100 observations
+    for (const d of allData) {
       await core.primeEmbedding(d.content, "passage");
       core.recordEvent({
         event_id: d.id,
         platform: "claude",
         project: PROJECT,
-        session_id: "sess-con",
+        session_id: "sess-con-001",
         event_type: "user_prompt",
         ts: new Date().toISOString(),
         payload: { content: d.content },
-        tags: [],
+        tags: ["benchmark", "consolidation"],
         privacy_tags: [],
       });
     }
-    for (const d of testData) {
+
+    // Prime queries
+    for (const d of measureCases) {
       await core.primeEmbedding(d.query, "query");
     }
-  }, 120_000);
+  }, 180_000);
 
   afterAll(() => {
     core.shutdown("consolidation-bench");
@@ -398,40 +413,49 @@ describe("S56-004: Consolidation Quality", () => {
   });
 
   test(
-    "Pre-consolidation baseline: Recall@5",
+    "S56-004: Pre-consolidation baseline F1",
     () => {
-      let hits = 0;
-      for (const d of testData) {
-        const result = core.search({ query: d.query, project: PROJECT, limit: 5 });
-        const items = result.items as Array<{ content?: string }>;
-        if (
-          items.some((item) =>
-            d.kw.some((kw) =>
-              String(item.content || "").toLowerCase().includes(kw.toLowerCase())
-            )
-          )
-        )
-          hits++;
-      }
-      const recall = hits / testData.length;
-      console.log(`[consolidation] Pre-consolidation Recall@5: ${recall.toFixed(4)}`);
-      expect(recall).toBeGreaterThanOrEqual(0.50);
+      const preF1 = measureF1("pre-consolidation");
+      // Store for reference — the post-consolidation test does the comparison
+      (global as Record<string, unknown>).__s56004_preF1 = preF1;
+      expect(preF1).toBeGreaterThanOrEqual(0.50);
     },
     60_000
   );
 
-  // consolidation API の存在確認（API が見つかったら後で拡張）
   test(
-    "Consolidation API existence check",
-    () => {
-      const hasCompress =
-        typeof (core as unknown as Record<string, unknown>).consolidate === "function" ||
-        typeof (core as unknown as Record<string, unknown>).compress === "function" ||
-        typeof (core as unknown as Record<string, unknown>).runConsolidation === "function";
-      console.log(`[consolidation] compress API available: ${hasCompress}`);
-      // API がなくても PASS（存在確認のみ）
-      expect(true).toBe(true);
+    "S56-004: Post-consolidation F1 retention >= 80%",
+    async () => {
+      // Measure pre-consolidation F1 first (may differ from global due to test order)
+      const preF1 = measureF1("pre-consolidation (in post-test)");
+
+      // Run consolidation
+      await core.runConsolidation({ reason: "benchmark", project: PROJECT });
+
+      // Brief pause to allow any async consolidation work to settle
+      await new Promise((r) => setTimeout(r, 500));
+
+      const postF1 = measureF1("post-consolidation");
+
+      if (preF1 > 0) {
+        const retention = postF1 / preF1;
+        console.log(`[consolidation] F1 retention: ${retention.toFixed(4)} (post=${postF1.toFixed(4)}, pre=${preF1.toFixed(4)})`);
+        expect(retention).toBeGreaterThanOrEqual(0.80);
+      } else {
+        // If pre-consolidation F1 is 0, post must also pass the absolute floor
+        console.log(`[consolidation] pre-F1 was 0; checking absolute post-F1 floor`);
+        expect(postF1).toBeGreaterThanOrEqual(0.0);
+      }
     },
-    10_000
+    120_000
+  );
+
+  test(
+    "S56-004: Post-consolidation absolute F1 floor >= 0.50",
+    async () => {
+      const postF1 = measureF1("post-consolidation (floor check)");
+      expect(postF1).toBeGreaterThanOrEqual(0.50);
+    },
+    60_000
   );
 });

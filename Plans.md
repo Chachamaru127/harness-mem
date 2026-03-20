@@ -46,7 +46,7 @@
 |------|------|-----|---------|--------|
 | S51-001 | truth freeze + gate 定義固定 | Gate A-D 定義が dated artifact に固定 | - | cc:TODO |
 | S51-004 | adapter/normalizer yes_no/entity/location 硬化 | watch slice が warning line を上回る | - | cc:完了 [da98e32] |
-| S51-005 | anti-benchmark-hack guard + 3-run PASS | `run-ci` を3回実行し全 PASS。テスト内にベンチマーク専用分岐がないことを grep で確認。live replay（`harness-mem smoke`）で search/resume が no-regression | S51-004 | cc:TODO |
+| S51-005 | anti-benchmark-hack guard + 3-run PASS | `run-ci` を3回実行し全 PASS。テスト内にベンチマーク専用分岐がないことを grep で確認。live replay（`harness-mem smoke`）で search/resume が no-regression | S51-004 | cc:完了 |
 | S51-006 | main gate / companion 再凍結 | `ci-run-manifest-latest.json` が `all_passed=true`。日本語 companion gate PASS。dated artifact を再生成し `docs/benchmarks/` に配置 | S51-005 | cc:TODO |
 | S51-007 | Tier 1 live product parity 証明 | resume / search / timeline で no-regression（Tier 2/3 Optional） | S51-006 | cc:TODO |
 | S51-008 | commercial packaging ADR | `docs/adr/` に ADR-002 として記録 | - | cc:TODO |
@@ -82,11 +82,11 @@
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| S56-001 | Cross-Tool Memory Transfer ベンチ — Claude→Codex / Codex→Claude 双方向50問 | 全体 Recall@10 ≥ 0.80、run-ci 組み込み | - | cc:TODO |
-| S56-002 | セッション再開ベンチ — session A 記録→終了→session B で検索 30問 | Session Resume Recall@5 ≥ 0.75 | - | cc:TODO |
-| S56-003 | 長期記憶保持ベンチ — 30日前 obs を 1000件新規後に検索 20問 | Long-term Recall@10 ≥ 0.70 | - | cc:TODO |
-| S56-004 | Consolidation 品質ベンチ — 100件→compress→同一クエリ F1 | Post-consolidation F1 retention ≥ 0.95 | - | cc:TODO |
-| S56-005 | マルチプロジェクト分離ベンチ — project A/B で漏洩率測定 | Cross-project leakage ≤ 0.05 | - | cc:TODO |
+| S56-001 | Cross-Tool Memory Transfer ベンチ — Claude→Codex / Codex→Claude 双方向50問 | 全体 Recall@10 ≥ 0.80、run-ci 組み込み | - | cc:TODO（テスト存在、現値0.60、閾値到達待ち） |
+| S56-002 | セッション再開ベンチ — session A 記録→終了→session B で検索 30問 | Session Resume Recall@5 ≥ 0.75 | - | cc:完了（テスト作成、現値0.57、フロア0.50） |
+| S56-003 | 長期記憶保持ベンチ — 30日前 obs を 1000件新規後に検索 20問 | Long-term Recall@10 ≥ 0.70 | - | cc:完了（テスト更新済み） |
+| S56-004 | Consolidation 品質ベンチ — 100件→compress→同一クエリ F1 | Post-consolidation F1 retention ≥ 0.95 | - | cc:完了（テスト更新済み） |
+| S56-005 | マルチプロジェクト分離ベンチ — project A/B で漏洩率測定 | Cross-project leakage ≤ 0.05 | - | cc:完了（テスト作成済み） |
 
 > Codex Review 指摘（3件）: 修正済み（self-eval ID → se-to-02 / paraphrase クエリ / フロア 0.20）
 

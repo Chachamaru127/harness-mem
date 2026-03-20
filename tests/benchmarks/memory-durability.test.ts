@@ -50,30 +50,40 @@ describe("S56-003: Long-term Memory Retention", () => {
   let core: HarnessMemCore;
   let tempDir: string;
 
-  const OLD_DATE = "2026-02-15T10:00:00.000Z"; // 約30日前
+  const OLD_DATE = "2026-02-18T10:00:00.000Z"; // 約30日前
   const PROJECT = "long-term-bench";
 
-  const oldMemories = [
-    { id: "old-001", content: "PostgreSQL から CockroachDB に移行完了。分散DBが必要になったため。", query: "DB移行の経緯は？", kw: ["cockroachdb", "分散"] },
-    { id: "old-002", content: "認証を Auth0 から自前実装に切り替え。コスト削減が目的。", query: "認証システムを変えた理由は？", kw: ["auth0", "コスト"] },
-    { id: "old-003", content: "API バージョニングを URL パスから Accept ヘッダに変更。", query: "API バージョニング方式は？", kw: ["accept", "ヘッダ"] },
-    { id: "old-004", content: "Redis Cluster を3ノードから5ノードに拡張。メモリ使用率80%超え。", query: "Redis の構成変更は？", kw: ["redis", "5ノード"] },
-    { id: "old-005", content: "GraphQL スキーマを code-first に移行。Pothos を採用。", query: "GraphQL の設計方針は？", kw: ["pothos", "code-first"] },
-    { id: "old-006", content: "E2E テストを Cypress から Playwright に移行。速度2倍。", query: "E2E テストフレームワークは？", kw: ["playwright", "速度"] },
-    { id: "old-007", content: "CDN を CloudFront から Cloudflare R2 に切り替え。帯域無料。", query: "CDN の選択理由は？", kw: ["cloudflare", "帯域"] },
-    { id: "old-008", content: "メール配信を SendGrid から Amazon SES に移行。月額60%削減。", query: "メール配信サービスは？", kw: ["ses", "60%"] },
-    { id: "old-009", content: "ログ基盤を ELK から Loki + Grafana に変更。運用コスト削減。", query: "ログ基盤の構成は？", kw: ["loki", "grafana"] },
-    { id: "old-010", content: "CI/CD パイプラインに Dagger を導入。ローカルとCIの一貫性確保。", query: "CI/CD ツールの選択理由は？", kw: ["dagger", "一貫性"] },
-    { id: "old-011", content: "Feature flag を LaunchDarkly から自前実装に。年間$12K削減。", query: "Feature flag の実装方針は？", kw: ["launchdarkly", "12k"] },
-    { id: "old-012", content: "静的解析に SonarQube を導入。セキュリティスキャン必須化。", query: "コード品質ツールは？", kw: ["sonarqube", "セキュリティ"] },
-    { id: "old-013", content: "バッチ処理を cron から Temporal に移行。リトライと可観測性。", query: "バッチ処理基盤は？", kw: ["temporal", "リトライ"] },
-    { id: "old-014", content: "フロントエンドの状態管理を Redux から Zustand に変更。", query: "状態管理ライブラリは？", kw: ["zustand", "redux"] },
-    { id: "old-015", content: "画像最適化に Sharp を導入。WebP/AVIF 自動変換。", query: "画像処理の仕組みは？", kw: ["sharp", "webp"] },
-    { id: "old-016", content: "API Rate Limiting を実装。1分あたり100リクエスト制限。", query: "レート制限の設定は？", kw: ["100リクエスト", "rate"] },
-    { id: "old-017", content: "マイクロサービス間通信を REST から gRPC に移行。レイテンシ40%削減。", query: "サービス間通信方式は？", kw: ["grpc", "40%"] },
-    { id: "old-018", content: "データベースマイグレーションツールを Knex から Drizzle Kit に変更。", query: "マイグレーションツールは？", kw: ["drizzle kit", "knex"] },
-    { id: "old-019", content: "OpenTelemetry を導入。分散トレーシング対応。", query: "可観測性の仕組みは？", kw: ["opentelemetry", "トレーシング"] },
-    { id: "old-020", content: "Kubernetes のノードプールを Spot インスタンスに変更。コスト70%削減。", query: "インフラコスト削減の方法は？", kw: ["spot", "70%"] },
+  // 10 design-decision memories (30 days old)
+  const designDecisions = [
+    { id: "old-d01", content: "GraphQL スキーマを code-first に移行。Pothos を採用。型安全性とコード共有が理由。", query: "GraphQL の設計方針を変えた経緯は？", kw: ["pothos", "code-first"] },
+    { id: "old-d02", content: "認証を Auth0 から自前 JWT 実装に切り替え。年間コスト削減が目的。", query: "認証基盤を独自実装にした理由は？", kw: ["auth0", "jwt"] },
+    { id: "old-d03", content: "API バージョニングを URL パスから Accept ヘッダ方式に変更。URL 汚染を避けるため。", query: "API のバージョン管理戦略は？", kw: ["accept", "バージョニング"] },
+    { id: "old-d04", content: "フロントエンドの状態管理を Redux から Zustand に変更。ボイラープレート削減。", query: "状態管理ライブラリを変えた理由は？", kw: ["zustand", "redux"] },
+    { id: "old-d05", content: "マイクロサービス間通信を REST から gRPC に移行。レイテンシ40%削減のため。", query: "サービス間の通信方式はどう決めた？", kw: ["grpc", "レイテンシ"] },
+    { id: "old-d06", content: "バッチ処理を cron から Temporal に移行。リトライと可観測性が改善。", query: "バッチジョブのオーケストレーションは？", kw: ["temporal", "リトライ"] },
+    { id: "old-d07", content: "Feature flag を LaunchDarkly から自前実装に。年間$12K の費用対効果。", query: "フィーチャーフラグの管理方針は？", kw: ["launchdarkly", "12k"] },
+    { id: "old-d08", content: "静的解析に SonarQube を導入。セキュリティスキャンを CI 必須プロセスに。", query: "コード品質ゲートの仕組みは？", kw: ["sonarqube", "セキュリティスキャン"] },
+    { id: "old-d09", content: "画像最適化に Sharp を導入。WebP/AVIF 自動変換でページ速度改善。", query: "画像配信の最適化はどう実装した？", kw: ["sharp", "webp"] },
+    { id: "old-d10", content: "API レート制限を実装。1分あたり100リクエスト。Redis バックエンド。", query: "レート制限の設計と上限値は？", kw: ["100リクエスト", "redis"] },
+  ];
+
+  // 10 migration-record memories (30 days old)
+  const migrationRecords = [
+    { id: "old-m01", content: "PostgreSQL から CockroachDB への移行完了。分散 DB が必要になったため実施。", query: "データベースを分散型に移行した経緯は？", kw: ["cockroachdb", "分散"] },
+    { id: "old-m02", content: "Redis Cluster を3ノードから5ノードに拡張。メモリ使用率80%超えがトリガー。", query: "Redis のクラスター構成を変更した理由は？", kw: ["redis", "5ノード"] },
+    { id: "old-m03", content: "E2E テストを Cypress から Playwright に移行完了。テスト速度が2倍になった。", query: "E2E テストフレームワークの移行内容は？", kw: ["playwright", "cypress"] },
+    { id: "old-m04", content: "CDN を CloudFront から Cloudflare R2 に切り替え完了。帯域コスト無料化。", query: "CDN プロバイダーを移行した詳細は？", kw: ["cloudflare", "r2"] },
+    { id: "old-m05", content: "メール配信を SendGrid から Amazon SES に移行。月額60%のコスト削減達成。", query: "メール配信インフラの移行結果は？", kw: ["ses", "sendgrid"] },
+    { id: "old-m06", content: "ログ基盤を ELK スタックから Loki + Grafana に移行。運用負荷が軽減。", query: "ログ収集と可視化基盤の移行は？", kw: ["loki", "elk"] },
+    { id: "old-m07", content: "CI/CD に Dagger を導入。ローカルと CI 環境の一貫性を確保。", query: "CI/CD パイプラインのツール移行は？", kw: ["dagger", "ci/cd"] },
+    { id: "old-m08", content: "データベースマイグレーションツールを Knex から Drizzle Kit に変更完了。", query: "スキーママイグレーションツールの変更内容は？", kw: ["drizzle kit", "knex"] },
+    { id: "old-m09", content: "OpenTelemetry を全サービスに導入。分散トレーシングが稼働開始。", query: "分散トレーシングの導入状況は？", kw: ["opentelemetry", "トレーシング"] },
+    { id: "old-m10", content: "Kubernetes ノードプールを Spot インスタンスに移行完了。インフラコスト70%削減。", query: "インフラのコスト最適化移行の結果は？", kw: ["spot", "70%"] },
+  ];
+
+  const allOldMemories = [
+    ...designDecisions.map((m) => ({ ...m, tags: ["important", "design-decision"] as string[] })),
+    ...migrationRecords.map((m) => ({ ...m, tags: ["migration"] as string[] })),
   ];
 
   function generateNoise(count: number): Array<{ id: string; content: string; ts: string }> {
@@ -88,13 +98,24 @@ describe("S56-003: Long-term Memory Retention", () => {
       "デプロイ完了。ステージング環境。",
       "パフォーマンス計測。レスポンスタイム確認。",
       "設定ファイル更新。環境変数追加。",
+      "PR マージ。コンフリクト解消済み。",
+      "ユニットテスト修正。テストデータ更新。",
+      "インポート整理。未使用変数削除。",
+      "型定義追加。strict モード対応。",
+      "ログ出力調整。verbose レベル変更。",
+      "コメント追加。複雑なロジックを説明。",
+      "スタイル修正。lint エラー解消。",
+      "環境変数追加。新機能フラグ設定。",
+      "モック更新。外部 API の変更に追従。",
+      "スナップショット更新。UI 変更反映。",
     ];
     const items = [];
     for (let i = 0; i < count; i++) {
       const template = noiseTemplates[i % noiseTemplates.length];
-      const dayOffset = Math.floor(i / 10); // 0-19日前
-      const ts = new Date(Date.now() - dayOffset * 86400000).toISOString();
-      items.push({ id: `noise-${String(i).padStart(4, "0")}`, content: `${template} (batch ${i})`, ts });
+      // 直近20日間にばらつかせる
+      const dayOffset = Math.floor(i / 50); // 0-19日前
+      const ts = new Date(Date.now() - dayOffset * 86400000 - (i % 3600) * 1000).toISOString();
+      items.push({ id: `noise-${String(i).padStart(4, "0")}`, content: `${template} (#${i})`, ts });
     }
     return items;
   }
@@ -106,8 +127,8 @@ describe("S56-003: Long-term Memory Retention", () => {
     tempDir = result.dir;
     await ensureEmbeddingReady(core);
 
-    // 1. 古い記憶を投入
-    for (const m of oldMemories) {
+    // 1. 古い記憶を投入（design-decision + migration）
+    for (const m of allOldMemories) {
       await core.primeEmbedding(m.content, "passage");
       core.recordEvent({
         event_id: m.id,
@@ -117,15 +138,14 @@ describe("S56-003: Long-term Memory Retention", () => {
         event_type: "user_prompt",
         ts: OLD_DATE,
         payload: { content: m.content },
-        tags: [],
+        tags: m.tags,
         privacy_tags: [],
       });
     }
 
-    // 2. ノイズを投入
-    const noise = generateNoise(200);
+    // 2. ノイズ1000件を投入（embedding は recordEvent 内で同期計算）
+    const noise = generateNoise(1000);
     for (const n of noise) {
-      await core.primeEmbedding(n.content, "passage");
       core.recordEvent({
         event_id: n.id,
         platform: "claude",
@@ -139,20 +159,20 @@ describe("S56-003: Long-term Memory Retention", () => {
       });
     }
 
-    // query prime
-    for (const m of oldMemories) {
+    // 3. クエリを事前ウォームアップ
+    for (const m of allOldMemories) {
       await core.primeEmbedding(m.query, "query");
     }
-  }, 120_000);
+  }, 600_000);
 
   afterAll(() => {
     core.shutdown("long-term-bench");
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  test("Long-term Recall@10", () => {
+  test("Long-term Recall@10: 全体（design + migration）", () => {
     let hits = 0;
-    for (const m of oldMemories) {
+    for (const m of allOldMemories) {
       const result = core.search({ query: m.query, project: PROJECT, limit: 10 });
       const items = result.items as Array<{ content?: string }>;
       const found = items.some((item) =>
@@ -160,8 +180,38 @@ describe("S56-003: Long-term Memory Retention", () => {
       );
       if (found) hits++;
     }
-    const recall = hits / oldMemories.length;
-    console.log(`[long-term] Recall@10: ${recall.toFixed(4)} (${hits}/${oldMemories.length})`);
+    const recall = hits / allOldMemories.length;
+    console.log(`[long-term] Overall Recall@10: ${recall.toFixed(4)} (${hits}/${allOldMemories.length})`);
+    expect(recall).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("Long-term Recall@10: design-decision カテゴリ", () => {
+    let hits = 0;
+    for (const m of designDecisions) {
+      const result = core.search({ query: m.query, project: PROJECT, limit: 10 });
+      const items = result.items as Array<{ content?: string }>;
+      const found = items.some((item) =>
+        m.kw.some((kw) => String(item.content || "").toLowerCase().includes(kw.toLowerCase()))
+      );
+      if (found) hits++;
+    }
+    const recall = hits / designDecisions.length;
+    console.log(`[long-term] Design-Decision Recall@10: ${recall.toFixed(4)} (${hits}/${designDecisions.length})`);
+    expect(recall).toBeGreaterThanOrEqual(0.50);
+  });
+
+  test("Long-term Recall@10: migration カテゴリ", () => {
+    let hits = 0;
+    for (const m of migrationRecords) {
+      const result = core.search({ query: m.query, project: PROJECT, limit: 10 });
+      const items = result.items as Array<{ content?: string }>;
+      const found = items.some((item) =>
+        m.kw.some((kw) => String(item.content || "").toLowerCase().includes(kw.toLowerCase()))
+      );
+      if (found) hits++;
+    }
+    const recall = hits / migrationRecords.length;
+    console.log(`[long-term] Migration Recall@10: ${recall.toFixed(4)} (${hits}/${migrationRecords.length})`);
     expect(recall).toBeGreaterThanOrEqual(0.50);
   });
 });
