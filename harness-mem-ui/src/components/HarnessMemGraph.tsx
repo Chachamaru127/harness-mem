@@ -122,7 +122,7 @@ export function HarnessMemGraph({ initialEntity = "", project, depth = 2 }: Harn
       >
         <input
           type="text"
-          placeholder="Entity name (e.g. react, my-file.ts)"
+          placeholder="Entity name (e.g. Plans.md, CLAUDE.md, harness)"
           value={entityInput}
           onChange={(e) => setEntityInput(e.target.value)}
           style={{

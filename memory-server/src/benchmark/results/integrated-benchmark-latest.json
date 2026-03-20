@@ -1,0 +1,47 @@
+{
+  "schema_version": "integrated-benchmark-v1",
+  "generated_at": "2026-03-16T03:29:16.230Z",
+  "fixture_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-integrated-benchmark.json",
+  "total_items": 522,
+  "by_source": {
+    "release-pack-96": 96,
+    "self-eval-300": 279,
+    "llm-generated": 147
+  },
+  "by_slice": {
+    "current": 12,
+    "why": 7,
+    "current_vs_previous": 12,
+    "noisy": 13,
+    "yes_no": 16,
+    "long_turn": 12,
+    "exact": 8,
+    "temporal": 8,
+    "list": 3,
+    "relative_temporal": 3,
+    "location": 1,
+    "entity": 1,
+    "temporal-order": 72,
+    "tool-recall": 60,
+    "error-resolution": 24,
+    "decision-why": 52,
+    "file-change": 30,
+    "cross-client": 30,
+    "session-summary": 60,
+    "dependency": 15,
+    "noisy-ja": 26,
+    "cross-lingual": 57
+  },
+  "by_category": {
+    "cat-1": 240,
+    "cat-3": 83,
+    "cat-2": 122,
+    "cat-4": 77
+  },
+  "gate": {
+    "min_items": 300,
+    "current_items": 522,
+    "passed": true,
+    "message": "PASS: 522 items >= 300 minimum"
+  }
+}
