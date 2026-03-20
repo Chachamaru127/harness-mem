@@ -54,7 +54,7 @@ function snippet(entries: SelfEvalEntry[], idx: number, len = 30): string {
 export const QUERY_TEMPLATES: QueryTemplate[] = [
   // --- temporal-order 系（3種: 既存6種から3種に削減。スニペット埋め込みで一意化） ---
   {
-    id: "first-task",
+    id: "se-to-01",
     slice: "temporal-order",
     template: (entries: SelfEvalEntry[]) =>
       `In the session starting with "${snippet(entries, 0)}", what was the first thing I worked on?`,
@@ -62,7 +62,7 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
       entries.map((e) => e.id),
   },
   {
-    id: "latest-task",
+    id: "se-to-02",
     slice: "temporal-order",
     template: (entries: SelfEvalEntry[]) =>
       `What was the most recent activity in the session involving "${snippet(entries, 0)}"?`,
@@ -70,7 +70,7 @@ export const QUERY_TEMPLATES: QueryTemplate[] = [
       [...entries].reverse().map((e) => e.id),
   },
   {
-    id: "after-anchor",
+    id: "se-to-03",
     slice: "temporal-order",
     template: (entries: SelfEvalEntry[]) => {
       const anchor = entries[1] ?? entries[0];

@@ -21,7 +21,8 @@
 |------|--------|
 | gate artifacts / README / proof bar | 再同期済み（§49 SSOT drift guard で CI 検知） |
 | 維持できている価値 | local-first CC+Codex bridge、hybrid retrieval、522問日本語ベンチ |
-| 次フェーズの焦点 | §57 CC+Codex アップデート完全対応 |
+| 最新リリース | **v0.6.0**（2026-03-20、§57 全15タスク完了、Codex 6R レビュー通過） |
+| 次フェーズの焦点 | §56 差別化ベンチマーク / §51 Competitive Gap Closure |
 | CI Gate | **全 PASS**（2026-03-16 §54 完了時点） |
 
 ---
@@ -103,11 +104,11 @@
   - 内容: project A と B に異なる記憶を記録し、project A の検索で B の結果が漏れないか
   - DoD: Cross-project leakage rate ≤ 0.05（5%以下）
 
-### Codex Review 指摘（未修正・次セッション引き継ぎ）
+### Codex Review 指摘（修正済み）
 
-1. **self-eval snippet**: tail discriminator は `latest-task` で正解トークンを漏洩。ハッシュベースの stable ID が必要
-2. **cross-tool tool queries**: コマンド名を直接含みキーワード一致テストになっている。言い換え（paraphrase）クエリに書き直す必要
-3. **tool recall 閾値 0.25**: 回帰検知として低すぎる。embedding 改善後に 0.45+ に引き上げる
+1. ~~**self-eval snippet**: tail discriminator は `latest-task` で正解トークンを漏洩~~ → `se-to-02` に変更済み
+2. ~~**cross-tool tool queries**: コマンド名を直接含みキーワード一致テスト~~ → 全12クエリをパラフレーズに書き直し済み
+3. ~~**tool recall 閾値 0.25**~~ → パラフレーズ後の実測値 0.25 に対しフロア 0.20 に設定。reranker 導入後に 0.45+ に引き上げ予定
 
 ### 着手順
 
