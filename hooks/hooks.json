@@ -427,6 +427,17 @@
           }
         ]
       }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/scripts/run-script.js\" hook-handlers/memory-stop-failure",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   }
 }

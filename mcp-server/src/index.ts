@@ -28,6 +28,9 @@ import {
 import { memoryTools, handleMemoryTool } from "./tools/memory.js";
 import { injectAuthFromEnvironment } from "./auth-inject.js";
 
+// Channel push support (CC v2.1.80+ --channels flag, research preview)
+const channelsEnabled = process.env.HARNESS_MEM_ENABLE_CHANNELS === "true";
+
 // Server instance
 const server = new Server(
   {
@@ -37,9 +40,27 @@ const server = new Server(
   {
     capabilities: {
       tools: {},
+      ...(channelsEnabled ? { logging: {} } : {}),
     },
   }
 );
+
+/**
+ * Send a proactive memory notification via MCP channels.
+ * Only active when HARNESS_MEM_ENABLE_CHANNELS=true and --channels flag is used.
+ * This is a research preview feature (CC v2.1.80+).
+ */
+export async function pushMemoryNotification(message: string): Promise<void> {
+  if (!channelsEnabled) return;
+  try {
+    await server.notification({
+      method: "notifications/message",
+      params: { level: "info", data: message },
+    });
+  } catch {
+    // Silently ignore — channels may not be active on client side
+  }
+}
 
 // Combine all tools
 const allTools: Tool[] = [

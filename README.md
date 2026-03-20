@@ -204,13 +204,13 @@ The tab is read-only in V1 and masks sensitive values before rendering.
 
 ## Supported Tools
 
-| Tool | Status | Notes |
-|---|---|---|
-| Codex | Supported | Config wiring, ingestion, doctor checks |
-| OpenCode | Supported | Global wiring + schema-safe config repair |
-| Cursor | Supported | Global hooks + global MCP wiring + doctor checks |
-| Claude workflows | Supported | Global MCP wiring (`~/.claude.json`) + migration/cutover path |
-| Antigravity | Experimental | Hidden by default, opt-in via environment flags |
+| Tier | Tool | Tested With | Notes |
+|---|---|---|---|
+| **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
+| **Tier 1** | Codex CLI | v0.116.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, rules |
+| **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
+| **Tier 3** | Gemini CLI | Latest | Experimental. Community-contributed |
+| **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 
 ## Troubleshooting
 

@@ -46,6 +46,7 @@ PURGE_DB=0
 SKIP_START=0
 SKIP_SMOKE=0
 SKIP_QUALITY=0
+INLINE_PLUGIN=0
 QUIET=0
 IMPORT_SOURCE=""
 IMPORT_JOB_ID=""
@@ -335,6 +336,9 @@ parse_options() {
         ;;
       --skip-quality)
         SKIP_QUALITY=1
+        ;;
+      --inline-plugin)
+        INLINE_PLUGIN=1
         ;;
       --quiet)
         QUIET=1
@@ -1507,14 +1511,32 @@ EOF
     log "Copied memory-aware Codex rules: $rules_dst"
   fi
 
-  # Codex experimental hooks engine (v0.114.0+)
+  # Codex experimental hooks engine (v0.116.0+)
   local hooks_template="${HARNESS_ROOT}/codex/.codex/hooks.json"
   local hooks_dst="${codex_dir}/hooks.json"
-  if [ -f "$hooks_template" ] && [ ! -f "$hooks_dst" ]; then
-    local escaped_root
-    escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
-    sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template" >"$hooks_dst"
-    log "Installed Codex hooks: $hooks_dst"
+  local escaped_root
+  escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
+  if [ -f "$hooks_template" ]; then
+    if [ ! -f "$hooks_dst" ]; then
+      sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template" >"$hooks_dst"
+      log "Installed Codex hooks: $hooks_dst"
+    elif ! jq -e '.hooks.UserPromptSubmit != null' "$hooks_dst" >/dev/null 2>&1; then
+      # Upgrade: merge UserPromptSubmit hook into existing hooks.json
+      local rendered_template
+      rendered_template="$(sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template")"
+      local ups_block
+      ups_block="$(printf '%s' "$rendered_template" | jq -c '.hooks.UserPromptSubmit' 2>/dev/null)"
+      if [ -n "$ups_block" ] && [ "$ups_block" != "null" ]; then
+        local tmp
+        tmp="$(mktemp)"
+        if jq --argjson ups "$ups_block" '.hooks.UserPromptSubmit = $ups | .description = (.description | sub("v0\\.114\\.0\\+"; "v0.116.0+"))' "$hooks_dst" >"$tmp" 2>/dev/null; then
+          mv "$tmp" "$hooks_dst"
+          log "Upgraded Codex hooks with UserPromptSubmit: $hooks_dst"
+        else
+          rm -f "$tmp"
+        fi
+      fi
+    fi
   fi
 
   if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
@@ -1633,7 +1655,62 @@ EOF
   return 1
 }
 
+upsert_claude_settings_plugin() {
+  local file="${HOME}/.claude/settings.json"
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local tmp
+
+  mkdir -p "$(dirname "$file")"
+
+  if [ ! -f "$file" ]; then
+    cat >"$file" <<'EOF'
+{}
+EOF
+    log "Created Claude settings: $file"
+  fi
+
+  tmp="$(mktemp)"
+  if jq \
+    --arg mcp_entry "$mcp_entry" \
+    --arg host "$MEM_HOST" \
+    --arg port "$MEM_PORT" \
+    --arg db_path "$DB_PATH" \
+    --arg plugin_root "$HARNESS_ROOT" \
+    '
+      .plugins = (.plugins // {})
+      | .plugins.harness = {
+          "source": "settings",
+          "name": "harness-mem",
+          "root": $plugin_root,
+          "mcpServers": {
+            "harness": {
+              "command": "node",
+              "args": [$mcp_entry],
+              "enabled": true,
+              "env": {
+                "HARNESS_MEM_HOST": $host,
+                "HARNESS_MEM_PORT": $port,
+                "HARNESS_MEM_DB_PATH": $db_path
+              }
+            }
+          }
+        }
+    ' "$file" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$file"
+    log "Updated Claude settings with inline plugin: $file"
+    return 0
+  fi
+
+  rm -f "$tmp"
+  warn "Could not write inline plugin to Claude settings: $file"
+  return 1
+}
+
 setup_claude_wiring() {
+  if [ "$INLINE_PLUGIN" -eq 1 ]; then
+    upsert_claude_settings_plugin
+    return $?
+  fi
   local failed=0
   local any_target=0
   while IFS= read -r cfg; do
@@ -2236,8 +2313,17 @@ check_claude_wiring() {
     fi
   done < <(get_claude_config_targets)
 
+  # Also check inline plugin format (source: 'settings', CC v2.1.80+)
   if [ "$found_mcp" -eq 0 ]; then
-    warn "Claude MCP wiring is missing or incomplete (expected mcpServers.harness)"
+    local settings_file="${HOME}/.claude/settings.json"
+    if [ -f "$settings_file" ] && jq -e '.plugins.harness != null and .plugins.harness.source == "settings"' "$settings_file" >/dev/null 2>&1; then
+      log "Claude inline plugin wiring: OK ($settings_file)"
+      found_mcp=1
+    fi
+  fi
+
+  if [ "$found_mcp" -eq 0 ]; then
+    warn "Claude MCP wiring is missing or incomplete (expected mcpServers.harness or plugins.harness)"
     failed=1
   fi
 
@@ -3283,6 +3369,18 @@ remove_claude_wiring_json() {
 uninstall_claude_wiring() {
   remove_claude_wiring_json "${HOME}/.claude.json"
   remove_claude_wiring_json "${HOME}/.claude/settings.json"
+  # Also remove inline plugin format (source: 'settings', CC v2.1.80+)
+  local settings_file="${HOME}/.claude/settings.json"
+  if [ -f "$settings_file" ] && jq -e '.plugins.harness != null' "$settings_file" >/dev/null 2>&1; then
+    local tmp
+    tmp="$(mktemp)"
+    if jq 'if has("plugins") then .plugins |= del(.harness) else . end' "$settings_file" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$settings_file"
+      log "Removed Claude inline plugin wiring from: $settings_file"
+    else
+      rm -f "$tmp"
+    fi
+  fi
 }
 
 uninstall_opencode_wiring() {

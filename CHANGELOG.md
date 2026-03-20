@@ -7,6 +7,103 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-03-20
+
+### テーマ: Claude Code v2.1.80 + Codex v0.116.0 完全対応
+
+**Tier 1 ツール（Claude Code / Codex）の最新アップデートに15項目で完全対応。エラー時のメモリ消失防止、Codex プロンプト記録、MCP チャネル通知、セッション名追跡など、実運用で必要な堅牢性と新機能を追加しました。Codex CLI による6ラウンドのレビューを通過済み。**
+
+---
+
+#### 1. エラー終了時のメモリ緊急保存（StopFailure hook）
+
+**今まで**: Claude Code が API レート制限（429）や認証エラーで突然終了すると、保存前のメモリが消失していました。
+
+**今後**: 新しい `StopFailure` hook（CC v2.1.78+）を検知し、終了直前にセッションメモリを緊急フラッシュします。`summary_mode: "emergency"` で即座にセッションを確定させます。
+
+```
+hooks.json → StopFailure → memory-stop-failure.sh → record-event + finalize-session
+```
+
+#### 2. プラグインデータの永続化（CLAUDE_PLUGIN_DATA）
+
+**今まで**: Claude Code のプラグイン更新時に、プラグインディレクトリ内のキャッシュやデータが消える可能性がありました。
+
+**今後**: CC v2.1.78 の `${CLAUDE_PLUGIN_DATA}` 変数をサポート。設定すると DB パスもそのディレクトリに自動連動します。未設定時は従来の `~/.harness-mem` をフォールバック。
+
+#### 3. Codex UserPromptSubmit hook（v0.116.0+）
+
+**今まで**: Codex にはユーザー入力を記録する専用フックがなく、`after_agent` の notify バックフィルに頼っていました。
+
+**今後**: Codex v0.116.0 の `UserPromptSubmit` hook に対応。ユーザー入力をリアルタイムで記録します。API キーやパスワードが含まれる場合は自動で `redact` タグを付与。バックフィルとの二重記録を防ぐガードも実装（インストール済みの hooks.json を検査して判定）。
+
+```bash
+# Codex hooks.json に自動追加
+"UserPromptSubmit": [{ "matcher": "*", "command": "codex-user-prompt.sh", "timeout": 15 }]
+```
+
+#### 4. MCP チャネルプッシュ通知（research preview）
+
+**今まで**: MCP サーバーからクライアントへの能動的な通知手段がありませんでした。
+
+**今後**: `HARNESS_MEM_ENABLE_CHANNELS=true` で MCP logging capability を有効化。検索結果がある場合に「○件見つかりました」と自動通知します。CC v2.1.80 の `--channels` フラグと連携。デフォルトはオフ。
+
+#### 5. `source: 'settings'` インラインプラグイン
+
+**今まで**: Claude Code へのインストールは `~/.claude.json` に MCP サーバーエントリを手動追加する必要がありました。
+
+**今後**: `harness-mem setup --platform claude --inline-plugin` で、`~/.claude/settings.json` に `source: "settings"` 形式のプラグインエントリを自動生成。`doctor` と `uninstall` もこの形式を認識・削除できます。
+
+#### 6. resume-pack トークン容量拡大（2,000 → 4,000）
+
+**今まで**: セッション再開時に復元されるメモリの上限が 2,000 トークンでした。
+
+**今後**: Opus 4.6 の出力トークン拡大（デフォルト64k / 上限128k）に合わせ、デフォルトを 4,000 トークンに引き上げ。`HARNESS_MEM_RESUME_PACK_MAX_TOKENS` 環境変数で調整可能。
+
+#### 7. セッション名の自動記録（`-n` / `--name` flag）
+
+**今まで**: `claude -n "bugfix-auth"` のように名前を付けて起動しても、メモリにはセッション名が記録されませんでした。
+
+**今後**: SessionStart hook がセッション名をキャプチャし、イベント payload の `session_name` フィールドに保存。名前付きセッションには `named_session` タグが自動付与され、後から名前で検索可能です。
+
+#### 8. メモリ検索結果の citation メタデータ
+
+**今まで**: 検索結果にソース情報がなく、「この記憶はいつ、どのツールで記録されたか」が不明でした。
+
+**今後**: `harness_mem_search` の結果に `_citations` フィールドを付与。各結果に `id`, `source`（claude/codex）, `session_id`, `timestamp`, `type` を含む出典情報を返します。Codex v0.116.0 の memory citation と連携。
+
+#### 9. worktree スパースチェックアウト対応
+
+**今まで**: Claude Code の `worktree.sparsePaths` 設定でスパースチェックアウトされたワークツリーを正しく認識できませんでした。
+
+**今後**: `WorktreeCreate` hook でスパースチェックアウトを検出（camelCase `.sparsePaths` + snake_case `.sparse_paths` の両対応 + git sparse-checkout list フォールバック）。イベントに `is_sparse` フラグを記録。
+
+#### 10. Codex hooks.json のアップグレード対応
+
+**今まで**: `harness-mem setup` は Codex hooks.json が既に存在する場合、上書きしませんでした。
+
+**今後**: 既存 hooks.json に `UserPromptSubmit` がない場合、jq でマージ追加。バージョン表記も `v0.116.0+` に自動更新。
+
+#### 11. effort frontmatter / plugin.json 更新
+
+`plugin.json` に `"effort": "medium"` を追加（CC v2.1.80 対応）。Claude がスキル実行時に適切なリソースを割り当てます。
+
+#### 12. sharp-libvips のクロスプラットフォーム修正
+
+`@img/sharp-libvips-darwin-arm64` を `dependencies` → `optionalDependencies` に移動。Linux / Windows / Intel macOS 環境での `npm install` 失敗を解消。
+
+#### 13. 統合テスト 27 本（+13 新規）
+
+`tests/tier1-integration.test.ts` に §57 互換テストを13本追加。StopFailure hook、CLAUDE_PLUGIN_DATA、Codex UserPromptSubmit、resume-pack 4000、session name、channels、citation、effort、sparsePaths、MCP deny を検証。全 PASS。
+
+#### 14. .gitignore にベンチマーク個人データ除外を追加
+
+`retrospective-*.json` / `retrospective-*.jsonl` を .gitignore に追加。ローカルベンチマーク結果に含まれる個人パスやクエリデータの誤コミットを防止。
+
+#### 15. Plans.md アーカイブ整理
+
+完了済みの §54（日本語ベンチマーク522問）・§55（プロダクトフォーカス戦略）を `docs/archive/Plans-s54-s55-2026-03-16.md` にアーカイブ。§51 ステータスセクションを圧縮。
+
 ## [0.5.0] - 2026-03-15
 
 ### Theme: Multi-tool integration hardening and dependency modernization

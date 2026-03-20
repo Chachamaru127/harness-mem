@@ -211,8 +211,8 @@ async function callMemoryApi(
   return parsed;
 }
 
-function successResult(payload: MemoryApiResponse): ToolResult {
-  return {
+function successResult(payload: MemoryApiResponse, options?: { citations?: boolean }): ToolResult {
+  const result: ToolResult = {
     content: [
       {
         type: "text",
@@ -220,6 +220,20 @@ function successResult(payload: MemoryApiResponse): ToolResult {
       },
     ],
   };
+
+  // Codex v0.116.0+ memory citation support: attach source metadata
+  if (options?.citations && payload.items?.length) {
+    const citations = (payload.items as Array<Record<string, unknown>>).map((item) => ({
+      id: item.id ?? null,
+      source: item.platform ?? item.source ?? "harness-mem",
+      session_id: item.session_id ?? null,
+      timestamp: item.created_at ?? item.timestamp ?? null,
+      type: item.type ?? item.event_type ?? "observation",
+    }));
+    (result as Record<string, unknown>)._citations = citations;
+  }
+
+  return result;
 }
 
 function errorResult(message: string): ToolResult {
@@ -824,7 +838,12 @@ async function handleMemoryToolInner(
           include_private: toBoolean(input.include_private, false),
           sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
         });
-        return successResult(response);
+        const result = successResult(response, { citations: true });
+        // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
+        if (response.meta?.count > 0) {
+          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${response.meta.count} results for "${query}"`)).catch(() => {});
+        }
+        return result;
       }
 
       case "harness_mem_sessions_list": {

@@ -3045,7 +3045,8 @@ export class ObservationStore {
       if (Number.isFinite(envRaw) && envRaw > 0) {
         return envRaw;
       }
-      return 2000;
+      // Default raised from 2000→4000 for Opus 4.6 (64k default / 128k max output tokens)
+      return 4000;
     })();
 
     if (maxTokens === 0) {

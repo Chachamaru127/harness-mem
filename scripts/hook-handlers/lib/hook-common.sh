@@ -17,6 +17,17 @@ hook_init_paths() {
   CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
   PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
 
+  # CLAUDE_PLUGIN_DATA (CC v2.1.78+): persistent plugin data directory that
+  # survives plugin updates. Falls back to HARNESS_MEM_HOME or ~/.harness-mem.
+  PLUGIN_DATA_DIR="${CLAUDE_PLUGIN_DATA:-${HARNESS_MEM_HOME:-$HOME/.harness-mem}}"
+  export PLUGIN_DATA_DIR
+
+  # Wire PLUGIN_DATA_DIR into DB path fallback chain so that when
+  # CLAUDE_PLUGIN_DATA is set, the daemon uses it for state/DB storage.
+  if [ -z "${HARNESS_MEM_DB_PATH:-}" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
+    export HARNESS_MEM_DB_PATH="${CLAUDE_PLUGIN_DATA}/harness-mem.db"
+  fi
+
   if [ "$has_daemon" = "true" ]; then
     DAEMON_SCRIPT="${PARENT_DIR}/harness-memd"
   fi

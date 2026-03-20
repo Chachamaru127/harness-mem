@@ -22,10 +22,13 @@ hook_resolve_session_id "claude" "$SESSION_FILE" "generate"
 HARNESS_SESSION_ID="$SESSION_ID"
 
 SOURCE="startup"
+SESSION_NAME=""
 HOOK_META_JSON="{}"
 if [ -n "$INPUT" ] && command -v jq >/dev/null 2>&1; then
   SOURCE="$(printf '%s' "$INPUT" | jq -r '.source // "startup"' 2>/dev/null)"
-  HOOK_META_JSON="$(printf '%s' "$INPUT" | jq -c '{hook_event:(.hook_event_name // "SessionStart"), source:(.source // "startup"), ts:(.ts // now | tostring)}' 2>/dev/null)"
+  # Capture session name from -n/--name CLI flag (CC v2.1.76+)
+  SESSION_NAME="$(printf '%s' "$INPUT" | jq -r '.session_name // .name // empty' 2>/dev/null)"
+  HOOK_META_JSON="$(printf '%s' "$INPUT" | jq -c '{hook_event:(.hook_event_name // "SessionStart"), source:(.source // "startup"), session_name:(.session_name // .name // null), ts:(.ts // now | tostring)}' 2>/dev/null)"
 fi
 
 cleanup_resume_stale_context() {
@@ -77,14 +80,23 @@ if [ -x "$CLIENT_SCRIPT" ]; then
     attempt_daemon_restart
   fi
 
+  SESSION_NAME_ARG=""
+  SESSION_NAME_TAGS='["hook","session_start","requeue_meta_v1"]'
+  if [ -n "$SESSION_NAME" ]; then
+    SESSION_NAME_ARG="$SESSION_NAME"
+    SESSION_NAME_TAGS='["hook","session_start","requeue_meta_v1","named_session"]'
+  fi
+
   EVENT_PAYLOAD=$(jq -nc \
     --arg platform "claude" \
     --arg project "$PROJECT_NAME" \
     --arg session_id "$HARNESS_SESSION_ID" \
     --arg event_type "session_start" \
     --arg source "$SOURCE" \
+    --arg session_name "$SESSION_NAME_ARG" \
+    --argjson tags "$SESSION_NAME_TAGS" \
     --argjson hook_meta "$HOOK_META_JSON" \
-    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{source:$source,meta:$hook_meta},tags:["hook","session_start","requeue_meta_v1"],privacy_tags:[]}}' 2>/dev/null)
+    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{source:$source,session_name:$session_name,meta:$hook_meta},tags:$tags,privacy_tags:[]}}' 2>/dev/null)
 
   if [ -n "$EVENT_PAYLOAD" ]; then
     printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true

@@ -148,7 +148,17 @@ if [ -n "$EVENT_PAYLOAD" ]; then
   printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
 fi
 
-if [ -n "$USER_PROMPT" ]; then
+# Skip user_prompt backfill if UserPromptSubmit hook is active in the INSTALLED
+# Codex hooks.json (not just the script on disk). This way, upgrades that haven't
+# rerun `harness-mem setup` yet continue to use the backfill path.
+CODEX_HOOKS_JSON="${HOME}/.codex/hooks.json"
+CODEX_UPS_ACTIVE=false
+if [ -f "$CODEX_HOOKS_JSON" ] && command -v jq >/dev/null 2>&1; then
+  if jq -e '.hooks.UserPromptSubmit != null' "$CODEX_HOOKS_JSON" >/dev/null 2>&1; then
+    CODEX_UPS_ACTIVE=true
+  fi
+fi
+if [ -n "$USER_PROMPT" ] && [ "$CODEX_UPS_ACTIVE" = "false" ]; then
   USER_EVENT_PAYLOAD="$(jq -nc \
     --arg platform "codex" \
     --arg project "$PROJECT_NAME" \

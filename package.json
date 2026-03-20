@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -40,7 +40,13 @@
     ".cursor/hooks/",
     "gemini/"
   ],
-  "dependencies": {},
+  "dependencies": {
+    "@huggingface/transformers": "^3.8.1",
+    "sharp": "0.34.5"
+  },
+  "optionalDependencies": {
+    "@img/sharp-libvips-darwin-arm64": "1.2.4"
+  },
   "devDependencies": {
     "pg": "^8.20.0"
   },
@@ -65,5 +71,9 @@
     "cursor",
     "gemini-cli",
     "opencode"
+  ],
+  "trustedDependencies": [
+    "onnxruntime-node",
+    "protobufjs"
   ]
 }

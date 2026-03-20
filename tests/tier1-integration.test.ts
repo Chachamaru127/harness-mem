@@ -107,6 +107,96 @@ describe("Tier 1: Codex integration", () => {
 });
 
 // =========================================================================
+// §57 Claude Code v2.1.80 + Codex v0.116.0 compatibility
+// =========================================================================
+describe("§57: CC v2.1.80 + Codex v0.116.0 compatibility", () => {
+  test("StopFailure hook が hooks.json に登録されていること (CC v2.1.78+)", () => {
+    const data = JSON.parse(readFileSync(resolve(ROOT, "hooks/hooks.json"), "utf8"));
+    const hooksMap: Record<string, unknown> = data.hooks ?? data;
+    expect(Object.keys(hooksMap)).toContain("StopFailure");
+  });
+
+  test("memory-stop-failure.sh ハンドラが存在すること", () => {
+    expect(existsSync(resolve(ROOT, "scripts/hook-handlers/memory-stop-failure.sh"))).toBe(true);
+  });
+
+  test("hook-common.sh に PLUGIN_DATA_DIR (CLAUDE_PLUGIN_DATA) が定義されていること", () => {
+    const content = readFileSync(resolve(ROOT, "scripts/hook-handlers/lib/hook-common.sh"), "utf8");
+    expect(content).toContain("CLAUDE_PLUGIN_DATA");
+    expect(content).toContain("PLUGIN_DATA_DIR");
+  });
+
+  test("Codex hooks.json のバージョンが v0.116.0+ であること", () => {
+    const p = resolve(ROOT, "codex/.codex/hooks.json");
+    if (existsSync(p)) {
+      const data = JSON.parse(readFileSync(p, "utf8"));
+      expect(data.description).toContain("0.116.0");
+    }
+  });
+
+  test("Codex hooks.json に UserPromptSubmit が登録されていること", () => {
+    const p = resolve(ROOT, "codex/.codex/hooks.json");
+    if (existsSync(p)) {
+      const data = JSON.parse(readFileSync(p, "utf8"));
+      const hooksMap: Record<string, unknown> = data.hooks ?? {};
+      expect(Object.keys(hooksMap)).toContain("UserPromptSubmit");
+    }
+  });
+
+  test("codex-user-prompt.sh ハンドラが存在すること", () => {
+    expect(existsSync(resolve(ROOT, "scripts/hook-handlers/codex-user-prompt.sh"))).toBe(true);
+  });
+
+  test("resume-pack デフォルトトークンが 4000 に引き上げられていること", () => {
+    const content = readFileSync(resolve(ROOT, "memory-server/src/core/observation-store.ts"), "utf8");
+    expect(content).toContain("return 4000;");
+  });
+
+  test("SessionStart hook にセッション名キャプチャがあること", () => {
+    const content = readFileSync(resolve(ROOT, "scripts/hook-handlers/memory-session-start.sh"), "utf8");
+    // Captures session_name from -n/--name flag
+    expect(content).toContain("session_name");
+    expect(content).toContain("SESSION_NAME");
+    // Session name is included in event payload for persistence
+    expect(content).toContain("session_name:$session_name");
+    // Session name is included in hook metadata for server-side extraction
+    expect(content).toContain("session_name:(.session_name");
+  });
+
+  test("MCP サーバーに channels 対応コードがあること", () => {
+    const content = readFileSync(resolve(ROOT, "mcp-server/src/index.ts"), "utf8");
+    expect(content).toContain("HARNESS_MEM_ENABLE_CHANNELS");
+    expect(content).toContain("pushMemoryNotification");
+  });
+
+  test("MCP search 結果に citation メタデータがあること", () => {
+    const content = readFileSync(resolve(ROOT, "mcp-server/src/tools/memory.ts"), "utf8");
+    expect(content).toContain("_citations");
+    expect(content).toContain("citations: true");
+  });
+
+  test("plugin.json に effort フィールドがあること", () => {
+    const data = JSON.parse(readFileSync(resolve(ROOT, ".claude-plugin/plugin.json"), "utf8"));
+    expect(data.effort).toBeDefined();
+  });
+
+  test("memory-worktree-event.sh が sparse checkout を検出できること", () => {
+    const content = readFileSync(resolve(ROOT, "scripts/hook-handlers/memory-worktree-event.sh"), "utf8");
+    expect(content).toContain("sparse");
+    expect(content).toContain("IS_SPARSE");
+  });
+
+  test("MCP deny ルール設定時にツールが graceful に処理されること（静的確認）", () => {
+    // deny: ["mcp__harness"] 設定時、Claude Code v2.1.78 はツールをモデルに送信しない。
+    // MCP サーバー側では特別な処理は不要（ツール呼び出し自体が来ない）。
+    // ここでは MCP サーバーのエラーハンドリングが Unknown tool に対応していることを確認。
+    const content = readFileSync(resolve(ROOT, "mcp-server/src/index.ts"), "utf8");
+    expect(content).toContain("Unknown tool:");
+    expect(content).toContain("isError: true");
+  });
+});
+
+// =========================================================================
 // Tier ラベルの整合性
 // =========================================================================
 describe("Tier labeling consistency", () => {
