@@ -218,6 +218,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
           "empty",
         ],
         "project": "string",
+        "reason": "string",
         "scores": {
           "final": "number",
           "graph": "number",
@@ -293,6 +294,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "session_id": "string",
       },
       "lexical_candidates": "number",
+      "llm_rerank": "boolean",
       "question_kind": "string",
       "question_kind_confidence": "number",
       "ranking": "string",

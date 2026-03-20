@@ -28,6 +28,7 @@ import { createRerankerRegistry } from "../rerank/registry";
 import {
   type Reranker,
 } from "../rerank/types";
+import { llmRerank, llmNoMemoryCheck, buildLlmRerankerConfigFromEnv } from "../rerank/llm-reranker.js";
 import {
   enqueueConsolidationJob,
   runConsolidationOnce,
@@ -1379,7 +1380,81 @@ export class HarnessMemCore {
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
     await this.prepareSearchEmbedding(request.query || "");
-    return this.search(request);
+    const response = this.search(request);
+
+    // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）
+    const llmConfig = buildLlmRerankerConfigFromEnv();
+    if (llmConfig.enabled && response.ok && Array.isArray(response.items) && response.items.length > 0) {
+      try {
+        const candidates = (response.items as Array<Record<string, unknown>>)
+          .filter((item) => typeof item.id === "string")
+          .map((item) => ({
+            id: item.id as string,
+            title: typeof item.title === "string" ? item.title : "",
+            content: typeof item.content === "string" ? item.content : "",
+            score: typeof (item.scores as Record<string, unknown> | undefined)?.final === "number"
+              ? (item.scores as Record<string, number>).final
+              : 0,
+          }));
+
+        const reranked = await llmRerank(request.query || "", candidates, llmConfig);
+        const scoreById = new Map(reranked.map((r) => [r.id, r.score]));
+
+        (response.items as Array<Record<string, unknown>>).sort((a, b) => {
+          const aScore = scoreById.get(a.id as string) ?? 0;
+          const bScore = scoreById.get(b.id as string) ?? 0;
+          return bScore - aScore;
+        });
+
+        // metadata に llm_rerank フラグを追記
+        (response.meta as Record<string, unknown>).llm_rerank = true;
+      } catch {
+        // graceful degradation: LLM リランク失敗時は元の順序を維持
+        (response.meta as Record<string, unknown>).llm_rerank = false;
+      }
+    } else {
+      (response.meta as Record<string, unknown>).llm_rerank = false;
+    }
+
+    // S58-009: LLM 不在判定（HARNESS_MEM_LLM_ENHANCE=true かつ no_memory=true のときのみ）
+    if (
+      llmConfig.enabled &&
+      (response as Record<string, unknown>).no_memory === true &&
+      Array.isArray(response.items) &&
+      response.items.length > 0
+    ) {
+      try {
+        const topItem = (response.items as Array<Record<string, unknown>>)[0];
+        const topCandidate = {
+          title: typeof topItem.title === "string" ? topItem.title : "",
+          content: typeof topItem.content === "string" ? topItem.content : "",
+          score:
+            typeof (topItem.scores as Record<string, unknown> | undefined)?.final === "number"
+              ? (topItem.scores as Record<string, number>).final
+              : 0,
+        };
+        const apiKey =
+          llmConfig.apiKey ??
+          (llmConfig.provider === "anthropic"
+            ? process.env.ANTHROPIC_API_KEY
+            : process.env.OPENAI_API_KEY) ??
+          "";
+        const checkResult = await llmNoMemoryCheck(request.query || "", topCandidate, {
+          provider: llmConfig.provider,
+          model: llmConfig.model,
+          apiKey,
+        });
+        if (checkResult.has_memory) {
+          (response as Record<string, unknown>).no_memory = false;
+          (response as Record<string, unknown>).no_memory_reason =
+            "LLM determined the memory is relevant";
+        }
+      } catch {
+        // graceful degradation: 元の no_memory 判定を維持
+      }
+    }
+
+    return response;
   }
 
   feed(request: FeedRequest): ApiResponse {
@@ -1452,6 +1527,84 @@ export class HarnessMemCore {
       [{ deleted, skipped }],
       { ids },
       { deleted_count: deleted.length, skipped_count: skipped.length }
+    );
+  }
+
+  /**
+   * observation の team_id を更新してチームに共有する。
+   * 冪等: 既に同じ team_id が設定済みの場合も成功を返す。
+   */
+  shareObservationToTeam(request: { observation_id: string; team_id: string; user_id?: string }): ApiResponse {
+    const startedAt = performance.now();
+    const { observation_id, team_id, user_id } = request;
+
+    if (!observation_id || !observation_id.trim()) {
+      return makeErrorResponse(startedAt, "observation_id is required", request as unknown as Record<string, unknown>);
+    }
+    if (!team_id || !team_id.trim()) {
+      return makeErrorResponse(startedAt, "team_id is required", request as unknown as Record<string, unknown>);
+    }
+
+    // observation の存在チェック
+    const existing = this.db
+      .query(`SELECT id, user_id, team_id, privacy_tags_json FROM mem_observations WHERE id = ?`)
+      .get(observation_id) as { id: string; user_id: string; team_id: string | null; privacy_tags_json: string } | null;
+
+    if (!existing) {
+      return makeErrorResponse(startedAt, `Observation '${observation_id}' not found`, request as unknown as Record<string, unknown>);
+    }
+
+    // 削除済みの場合はエラー
+    const privacyTags: string[] = existing.privacy_tags_json ? JSON.parse(existing.privacy_tags_json) : [];
+    if (privacyTags.includes("deleted")) {
+      return makeErrorResponse(startedAt, `Observation '${observation_id}' has been deleted`, request as unknown as Record<string, unknown>);
+    }
+
+    // 権限チェック: user_id が指定された場合、observation の所有者のみ共有可能
+    if (user_id && existing.user_id && existing.user_id !== "default" && existing.user_id !== user_id) {
+      return makeErrorResponse(startedAt, "Permission denied: you can only share your own observations", request as unknown as Record<string, unknown>);
+    }
+
+    // team の存在チェック
+    const team = this.db
+      .query(`SELECT team_id FROM mem_teams WHERE team_id = ?`)
+      .get(team_id) as { team_id: string } | null;
+
+    if (!team) {
+      return makeErrorResponse(startedAt, `Team '${team_id}' not found`, request as unknown as Record<string, unknown>);
+    }
+
+    // 冪等: 既に同じ team_id が設定済みの場合はそのまま成功
+    if (existing.team_id === team_id) {
+      this.writeAuditLog("write.share_to_team", "observation", observation_id, {
+        team_id,
+        idempotent: true,
+        user_id: user_id ?? "system",
+      });
+      return makeResponse(
+        startedAt,
+        [{ observation_id, team_id, already_shared: true }],
+        { observation_id, team_id },
+        { shared: true, idempotent: true }
+      );
+    }
+
+    // team_id を UPDATE
+    this.db
+      .query(`UPDATE mem_observations SET team_id = ?, updated_at = ? WHERE id = ?`)
+      .run(team_id, nowIso(), observation_id);
+
+    this.writeAuditLog("write.share_to_team", "observation", observation_id, {
+      team_id,
+      previous_team_id: existing.team_id ?? null,
+      user_id: user_id ?? "system",
+    });
+
+    return makeResponse(
+      startedAt,
+      [{ observation_id, team_id, already_shared: false }],
+      { observation_id, team_id },
+      { shared: true, idempotent: false }
     );
   }
 

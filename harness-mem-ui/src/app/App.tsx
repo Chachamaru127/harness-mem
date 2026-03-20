@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AuditLogView } from "../components/AuditLogView";
 import { EnvironmentPanel } from "../components/EnvironmentPanel";
 import { FeedPanel } from "../components/FeedPanel";
 import { HarnessMemGraph } from "../components/HarnessMemGraph";
@@ -381,6 +382,17 @@ export default function App() {
             >
               Graph
             </button>
+            <button
+              type="button"
+              role="tab"
+              id="tab-audit-log"
+              className={`tab ${settings.activeTab === "audit-log" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "audit-log"}
+              aria-controls="panel-audit-log"
+              onClick={() => updateSetting("activeTab", "audit-log")}
+            >
+              Audit Log
+            </button>
           </div>
 
           {settings.activeTab === "environment" ? (
@@ -401,6 +413,10 @@ export default function App() {
                 project={selectedProject !== "__all__" ? selectedProject : undefined}
                 depth={2}
               />
+            </div>
+          ) : settings.activeTab === "audit-log" ? (
+            <div role="tabpanel" id="panel-audit-log" aria-labelledby="tab-audit-log">
+              <AuditLogView />
             </div>
           ) : (
             <div role="tabpanel" id="panel-feed" aria-labelledby="tab-feed">

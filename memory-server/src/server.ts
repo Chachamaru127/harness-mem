@@ -150,6 +150,7 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/claude-code-sessions",
     "/v1/links/create",
     "/v1/observations/bulk-delete",
+    "/v1/observations/share",
     "/v1/ingest/document",
     "/v1/ingest/audio",
   ].includes(pathname);
@@ -1213,6 +1214,23 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("ids is required and must not be empty");
         }
         return jsonResponse(core.bulkDeleteObservations({ ids }));
+      }
+
+      // S58-005: POST /v1/observations/share — observation の team_id を更新してチームに共有
+      if (request.method === "POST" && url.pathname === "/v1/observations/share") {
+        const body = await parseRequestJson(request);
+        const observationId = typeof body.observation_id === "string" ? body.observation_id.trim() : "";
+        const teamId = typeof body.team_id === "string" ? body.team_id.trim() : "";
+        if (!observationId) {
+          return badRequest("observation_id is required");
+        }
+        if (!teamId) {
+          return badRequest("team_id is required");
+        }
+        // identity から user_id を取得（権限チェック用）
+        const shareIdentity = resolveRequestIdentity(request);
+        const userId = shareIdentity?.role === "member" ? shareIdentity.user_id : undefined;
+        return jsonResponse(core.shareObservationToTeam({ observation_id: observationId, team_id: teamId, user_id: userId }));
       }
 
       if (request.method === "GET" && url.pathname === "/v1/export") {

@@ -1,6 +1,6 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
-export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "graph";
+export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "graph" | "audit-log";
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "gemini";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 
@@ -129,6 +129,16 @@ export interface SubgraphResult {
   edges: SubgraphEdge[];
   center_entity: string;
   depth: number;
+}
+
+export interface AuditLogItem {
+  id: number;
+  action: string;
+  actor: string;
+  target_type: string;
+  target_id: string;
+  details: Record<string, unknown> | null;
+  created_at: string;
 }
 
 export interface SseUiEvent<T = Record<string, unknown>> {

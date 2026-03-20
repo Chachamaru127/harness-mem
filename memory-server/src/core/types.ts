@@ -227,6 +227,8 @@ export interface ApiResponse {
   items: unknown[];
   meta: ApiMeta;
   error?: string;
+  no_memory?: boolean;
+  no_memory_reason?: string;
 }
 
 export interface Config {

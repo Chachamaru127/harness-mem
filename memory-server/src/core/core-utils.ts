@@ -635,6 +635,55 @@ export interface SearchCandidate {
   created_at: string;
 }
 
+/**
+ * S58-001: スコアリング結果から「なぜこの記憶が選ばれたか」を1行で説明する。
+ * LLM不使用 — 各次元の寄与度（重み付きスコア）からルールベースで生成する。
+ */
+export function generateSearchReason(candidate: SearchCandidate): string {
+  // 各次元の寄与度を計算（observation-store.ts の resolveSearchWeights と同じデフォルト重み）
+  const contributions: Record<string, number> = {
+    lexical: 0.30 * candidate.lexical,
+    vector: 0.25 * candidate.vector,
+    recency: 0.20 * candidate.recency,
+    tag_boost: 0.10 * candidate.tag_boost,
+    importance: 0.08 * candidate.importance,
+    graph: 0.07 * candidate.graph,
+  };
+
+  // fact_boost / precision_boost が存在する場合は加味する
+  if (candidate.fact_boost && candidate.fact_boost > 0) {
+    contributions.fact_boost = 0.12 * candidate.fact_boost;
+  }
+
+  // 最も寄与した次元を特定
+  let topKey = "lexical";
+  let topValue = -1;
+  for (const [key, value] of Object.entries(contributions)) {
+    if (value > topValue) {
+      topValue = value;
+      topKey = key;
+    }
+  }
+
+  // 次元 → 説明文マッピング
+  const reasonMap: Record<string, string> = {
+    lexical: "Title or content matches query keywords",
+    vector: "Semantically similar to query",
+    recency: "Recently recorded memory",
+    tag_boost: "Tag matches query",
+    importance: "High-importance memory",
+    graph: "Expanded from related memory",
+    fact_boost: "Contains relevant facts",
+  };
+
+  // スコアがすべてゼロの場合のフォールバック
+  if (topValue <= 0) {
+    return "Matched by broad retrieval";
+  }
+
+  return reasonMap[topKey] ?? "Matched by hybrid scoring";
+}
+
 export const EVENT_TYPE_IMPORTANCE: Record<string, number> = {
   checkpoint: 0.9,
   session_end: 0.8,
@@ -849,6 +898,8 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
             o.last_accessed_at,
             o.created_at,
             o.updated_at,
+            o.user_id,
+            o.team_id,
             e.event_type
           FROM mem_observations o
           LEFT JOIN mem_events e ON e.event_id = o.event_id

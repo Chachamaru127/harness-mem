@@ -1582,3 +1582,172 @@ select:focus-visible,
 :root[data-theme="dark"] .session-group-header.expanded {
   background: color-mix(in srgb, var(--accent-soft) 50%, var(--bg-panel));
 }
+
+/* ================================================================
+   Audit Log View
+   ================================================================ */
+
+.audit-log-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.audit-log-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.audit-log-subtitle {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-subtle);
+}
+
+.audit-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.audit-log-filters select,
+.audit-log-filters input[type="text"],
+.audit-log-filters input[type="number"] {
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-family: var(--font-ui);
+}
+
+.audit-log-filters input[type="text"] {
+  min-width: 160px;
+}
+
+.audit-log-filters input[type="number"] {
+  width: 70px;
+}
+
+.audit-log-table-wrapper {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.audit-log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.audit-log-table th {
+  text-align: left;
+  padding: 8px 12px;
+  background: var(--bg-muted);
+  color: var(--text-subtle);
+  font-weight: 600;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-log-table th:first-child {
+  border-radius: 10px 0 0 0;
+}
+
+.audit-log-table th:last-child {
+  border-radius: 0 10px 0 0;
+}
+
+.audit-log-row {
+  border-bottom: 1px solid var(--border);
+  transition: background 120ms;
+}
+
+.audit-log-row:last-child {
+  border-bottom: none;
+}
+
+.audit-log-row:hover {
+  background: var(--accent-soft);
+}
+
+.audit-log-row td {
+  padding: 8px 12px;
+  vertical-align: top;
+  color: var(--text);
+}
+
+.audit-col-time {
+  white-space: nowrap;
+  color: var(--text-subtle);
+  min-width: 70px;
+}
+
+.audit-relative-time {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+}
+
+.audit-col-action {
+  white-space: nowrap;
+}
+
+.audit-action-badge {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 4px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.audit-col-actor {
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.audit-col-target {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.audit-target-type {
+  font-size: 0.74rem;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.audit-target-id {
+  font-size: 0.79rem;
+  color: var(--text);
+  word-break: break-all;
+}
+
+.audit-col-details {
+  color: var(--text-subtle);
+  font-size: 0.78rem;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-log-footer {
+  padding: 8px 12px;
+  font-size: 0.78rem;
+  color: var(--text-subtle);
+  background: var(--bg-muted);
+  border-top: 1px solid var(--border);
+  border-radius: 0 0 10px 10px;
+}

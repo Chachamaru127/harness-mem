@@ -1,5 +1,6 @@
 import type {
   ApiResponse,
+  AuditLogItem,
   EnvironmentSnapshot,
   FeedItem,
   ProjectsStatsItem,
@@ -135,6 +136,18 @@ export async function fetchSearchFacets(params: {
   if (params.project) query.set("project", params.project);
   if (typeof params.includePrivate === "boolean") query.set("include_private", params.includePrivate ? "true" : "false");
   return request<ApiResponse<Record<string, unknown>>>(`/api/search/facets?${query.toString()}`);
+}
+
+export async function fetchAuditLog(params: {
+  limit?: number;
+  action?: string;
+  target_type?: string;
+}): Promise<ApiResponse<AuditLogItem>> {
+  const query = new URLSearchParams();
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  if (params.action) query.set("action", params.action);
+  if (params.target_type) query.set("target_type", params.target_type);
+  return request<ApiResponse<AuditLogItem>>(`/api/audit-log?${query.toString()}`);
 }
 
 // V5-001: ナレッジグラフ サブグラフ取得

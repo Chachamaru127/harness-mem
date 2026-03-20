@@ -54,12 +54,19 @@ import {
   normalizeWeights,
   nowIso,
   parseArrayJson,
+  generateSearchReason,
   recencyScore,
   visibilityFilterSql,
   type RankingWeights,
   type SearchCandidate,
   type VectorSearchResult,
 } from "./core-utils.js";
+
+// ---------------------------------------------------------------------------
+// S58-002: no_memory 判定閾値
+// top1 の finalScore がこの値未満の場合は `no_memory: true` を返す
+// ---------------------------------------------------------------------------
+const NO_MEMORY_SCORE_THRESHOLD = 0.1;
 
 // ---------------------------------------------------------------------------
 // ObservationStoreDeps: HarnessMemCore から渡される内部依存
@@ -2291,6 +2298,18 @@ export class ObservationStore {
         privacy_tags: privacyTags,
         decay_tier: decayTier,
         access_count: Number(observation.access_count ?? 0),
+        reason: generateSearchReason(entry),
+        // S58-006: チーム共有ラベル — team_id が設定されている場合のみ付与
+        ...(typeof observation.team_id === "string" && observation.team_id
+          ? {
+              shared_by: typeof observation.user_id === "string" && observation.user_id
+                ? observation.user_id
+                : "unknown",
+              shared_at: typeof observation.updated_at === "string"
+                ? observation.updated_at
+                : observation.created_at,
+            }
+          : {}),
         scores: {
           lexical: Number(entry.lexical.toFixed(6)),
           vector: Number(entry.vector.toFixed(6)),
@@ -2494,7 +2513,22 @@ export class ObservationStore {
       privacy_excluded: compiled.meta.privacy_excluded,
     };
 
-    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
+    const response = makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
+
+    // S58-002: no_memory フラグ — 検索結果が閾値以下の場合にクライアントへ通知
+    if (items.length === 0) {
+      response.no_memory = true;
+      response.no_memory_reason = "No matching memories found";
+    } else {
+      const topScore = (items[0] as Record<string, unknown>)?.scores as { final?: number } | undefined;
+      const topFinalScore = topScore?.final ?? 0;
+      if (topFinalScore < NO_MEMORY_SCORE_THRESHOLD) {
+        response.no_memory = true;
+        response.no_memory_reason = "No matching memories found";
+      }
+    }
+
+    return response;
   }
 
   // ---------------------------------------------------------------------------

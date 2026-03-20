@@ -701,6 +701,19 @@ export const memoryTools: Tool[] = [
     },
     annotations: { readOnlyHint: true },
   },
+  {
+    name: "harness_mem_share_to_team",
+    description: "Share a personal memory observation with your team. Sets team_id on the observation so team members can access it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        observation_id: { type: "string", description: "ID of the observation to share" },
+        team_id: { type: "string", description: "Team ID to share with" },
+      },
+      required: ["observation_id", "team_id"],
+    },
+    annotations: { readOnlyHint: false, idempotentHint: true },
+  },
 ];
 
 /**
@@ -1143,6 +1156,22 @@ async function handleMemoryToolInner(
         const depth = toNumberOrUndefined(input.depth);
         if (depth !== undefined) query.set("depth", String(Math.min(Math.max(depth, 1), 5)));
         const response = await callMemoryApi(`/v1/graph/neighbors?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_share_to_team": {
+        const observationId = toStringOrUndefined(input.observation_id);
+        const teamId = toStringOrUndefined(input.team_id);
+        if (!observationId) {
+          return errorResult("observation_id is required");
+        }
+        if (!teamId) {
+          return errorResult("team_id is required");
+        }
+        const response = await callMemoryApi("/v1/observations/share", {
+          observation_id: observationId,
+          team_id: teamId,
+        });
         return successResult(response);
       }
 
