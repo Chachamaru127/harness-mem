@@ -48,12 +48,12 @@
 | S51-004 | adapter/normalizer yes_no/entity/location 硬化 | watch slice が warning line を上回る | - | cc:完了 [da98e32] |
 | S51-005 | anti-benchmark-hack guard + 3-run PASS | `run-ci` を3回実行し全 PASS。テスト内にベンチマーク専用分岐がないことを grep で確認。live replay（`harness-mem smoke`）で search/resume が no-regression | S51-004 | cc:完了 |
 | S51-006 | main gate / companion 再凍結 | `ci-run-manifest-latest.json` が `all_passed=true`。日本語 companion gate PASS。dated artifact を再生成し `docs/benchmarks/` に配置 | S51-005 | cc:完了 |
-| S51-007 | Tier 1 live product parity 証明 | resume / search / timeline で no-regression（Tier 2/3 Optional） | S51-006 | cc:TODO |
-| S51-008 | commercial packaging ADR | `docs/adr/` に ADR-002 として記録 | - | cc:TODO |
-| S51-009 | license / commercial / release surface | FAQ + support surface が一貫 | S51-008 | cc:TODO |
-| S51-010 | README buyer language 再編（§55で一部完了） | README が Claude Code + Codex 中心の buyer language | S51-007 | cc:TODO |
-| S51-011 | competitive snapshot 更新 | `docs/benchmarks/competitive-analysis-*.md` を最新データで更新 | S51-006 | cc:TODO |
-| S51-012 | traction proxy 測定 | installs / quickstart completion を測定可能にする | S51-011 | cc:TODO |
+| S51-007 | Tier 1 live product parity 証明 | resume / search / timeline で no-regression（Tier 2/3 Optional） | S51-006 | cc:完了 |
+| S51-008 | commercial packaging ADR | `docs/adr/` に ADR-002 として記録 | - | cc:完了 |
+| S51-009 | license / commercial / release surface | FAQ + support surface が一貫 | S51-008 | cc:完了 |
+| S51-010 | README buyer language 再編（§55で一部完了） | README が Claude Code + Codex 中心の buyer language | S51-007 | cc:完了 |
+| S51-011 | competitive snapshot 更新 | `docs/benchmarks/competitive-analysis-*.md` を最新データで更新 | S51-006 | cc:完了 |
+| S51-012 | traction proxy 測定 | installs / quickstart completion を測定可能にする | S51-011 | cc:完了 |
 
 着手順: S51-005→006(Gate A)→007〜010(Gate B/C)→011/012(Gate D)
 

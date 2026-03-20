@@ -35,6 +35,9 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
+| **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS) | — | — | — |
+| **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
+| **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
 
 ### What this means in practice
 
@@ -283,5 +286,10 @@ Business Source License 1.1 (SPDX: `BUSL-1.1`). See [`LICENSE`](LICENSE).
 **Restricted**: offering harness-mem as a managed memory service to third parties.
 
 On **2029-03-08**, the license automatically converts to **Apache License 2.0**.
+
+**FAQ**:
+- *Can I use harness-mem at work?* — Yes. Internal use within your organization is permitted.
+- *Can I build a product that uses harness-mem?* — Yes, as a component. You cannot offer harness-mem itself as a hosted memory service.
+- *What happens after 2029?* — The license converts to Apache 2.0. No action needed.
 
 **Metadata note**: The repository root is BUSL-1.1. Some distributable subpackages keep their own package-level SPDX fields (for example MIT in `sdk/`, `mcp-server/`, and `vscode-extension/`). If a GitHub repo header or API shows `Other` / `NOASSERTION`, treat [`LICENSE`](LICENSE) and each package's `package.json` as the authoritative source.
