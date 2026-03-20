@@ -40,22 +40,22 @@
 
 ### Gates: A(engineering) → B(proof) → C(packaging) → D(market-ready)　※Guardrails: no benchmark hacks, no claim inflation
 
-### タスク（S51-002/003 完了済み）
+### タスク（S51-002/003/004 完了済み）
 
-| Task | 内容 | Status |
-|------|------|--------|
-| S51-001 | truth freeze + gate 定義固定 | cc:TODO |
-| S51-004 | adapter/normalizer yes_no/entity/location 硬化 | cc:完了 [da98e32] |
-| S51-005 | anti-benchmark-hack + live parity guard | cc:TODO |
-| S51-006 | main gate / companion 再凍結 | cc:TODO |
-| S51-007 | Tier 1 live product parity 証明 | cc:TODO |
-| S51-008 | commercial packaging ADR | cc:TODO |
-| S51-009 | license / commercial / release surface | cc:TODO |
-| S51-010 | README buyer language 再編（§55で一部完了） | cc:TODO |
-| S51-011 | competitive snapshot 更新 | cc:TODO |
-| S51-012 | traction proxy 測定 | cc:TODO |
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S51-001 | truth freeze + gate 定義固定 | Gate A-D 定義が dated artifact に固定 | - | cc:TODO |
+| S51-004 | adapter/normalizer yes_no/entity/location 硬化 | watch slice が warning line を上回る | - | cc:完了 [da98e32] |
+| S51-005 | anti-benchmark-hack guard + 3-run PASS | `run-ci` を3回実行し全 PASS。テスト内にベンチマーク専用分岐がないことを grep で確認。live replay（`harness-mem smoke`）で search/resume が no-regression | S51-004 | cc:TODO |
+| S51-006 | main gate / companion 再凍結 | `ci-run-manifest-latest.json` が `all_passed=true`。日本語 companion gate PASS。dated artifact を再生成し `docs/benchmarks/` に配置 | S51-005 | cc:TODO |
+| S51-007 | Tier 1 live product parity 証明 | resume / search / timeline で no-regression（Tier 2/3 Optional） | S51-006 | cc:TODO |
+| S51-008 | commercial packaging ADR | `docs/adr/` に ADR-002 として記録 | - | cc:TODO |
+| S51-009 | license / commercial / release surface | FAQ + support surface が一貫 | S51-008 | cc:TODO |
+| S51-010 | README buyer language 再編（§55で一部完了） | README が Claude Code + Codex 中心の buyer language | S51-007 | cc:TODO |
+| S51-011 | competitive snapshot 更新 | `docs/benchmarks/competitive-analysis-*.md` を最新データで更新 | S51-006 | cc:TODO |
+| S51-012 | traction proxy 測定 | installs / quickstart completion を測定可能にする | S51-011 | cc:TODO |
 
-着手順: S51-004→005/006(Gate A)→007〜010(Gate B/C)→011/012(Gate D)
+着手順: S51-005→006(Gate A)→007〜010(Gate B/C)→011/012(Gate D)
 
 > §52（12完了/1未着手）・§53（7完了）→ [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)。残: S52-013（HF transformers v4）— 正式リリース待ち
 
@@ -80,40 +80,19 @@
 
 ### タスク
 
-- [ ] `cc:TODO` **S56-001 [benchmark]**: Cross-Tool Memory Transfer ベンチマーク
-  - 内容: `recordEvent(platform:"claude")` → `search(query)` を `platform:"codex"` セッションから実行し、Recall@10 を測定
-  - テストケース: 50問（決定理由25 + ツール使用25）、Claude→Codex / Codex→Claude の双方向
-  - 対象: 新規 `tests/benchmarks/cross-tool-transfer.test.ts`
-  - DoD: Cross-Tool Recall@10 が 0.80 以上、run-ci に組み込み
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S56-001 | Cross-Tool Memory Transfer ベンチ — Claude→Codex / Codex→Claude 双方向50問 | 全体 Recall@10 ≥ 0.80、run-ci 組み込み | - | cc:TODO |
+| S56-002 | セッション再開ベンチ — session A 記録→終了→session B で検索 30問 | Session Resume Recall@5 ≥ 0.75 | - | cc:TODO |
+| S56-003 | 長期記憶保持ベンチ — 30日前 obs を 1000件新規後に検索 20問 | Long-term Recall@10 ≥ 0.70 | - | cc:TODO |
+| S56-004 | Consolidation 品質ベンチ — 100件→compress→同一クエリ F1 | Post-consolidation F1 retention ≥ 0.95 | - | cc:TODO |
+| S56-005 | マルチプロジェクト分離ベンチ — project A/B で漏洩率測定 | Cross-project leakage ≤ 0.05 | - | cc:TODO |
 
-- [ ] `cc:TODO` **S56-002 [benchmark]**: セッション再開ベンチマーク
-  - 内容: セッション A で記録 → 終了 → セッション B で検索し、前セッションの文脈が復元されるか
-  - テストケース: 30問（最終ステップ想起15 + 作業順序15）
-  - DoD: Session Resume Recall@5 が 0.75 以上
-
-- [ ] `cc:TODO` **S56-003 [benchmark]**: 長期記憶保持ベンチマーク
-  - 内容: 30日前の observation を 1000件の新しい observation の後に検索し、top-10 に入るか
-  - テストケース: 20問（重要な設計判断10 + マイグレーション記録10）
-  - DoD: Long-term Recall@10 が 0.70 以上、adaptive-decay で埋もれないことを証明
-
-- [ ] `cc:TODO` **S56-004 [benchmark]**: Consolidation 品質ベンチマーク
-  - 内容: 100件記録 → compress → 同一クエリで検索し、F1 が圧縮前の 95% を維持するか
-  - DoD: Post-consolidation F1 retention ≥ 0.95
-
-- [ ] `cc:TODO` **S56-005 [benchmark]**: マルチプロジェクト分離ベンチマーク
-  - 内容: project A と B に異なる記憶を記録し、project A の検索で B の結果が漏れないか
-  - DoD: Cross-project leakage rate ≤ 0.05（5%以下）
-
-### Codex Review 指摘（修正済み）
-
-1. ~~**self-eval snippet**: tail discriminator は `latest-task` で正解トークンを漏洩~~ → `se-to-02` に変更済み
-2. ~~**cross-tool tool queries**: コマンド名を直接含みキーワード一致テスト~~ → 全12クエリをパラフレーズに書き直し済み
-3. ~~**tool recall 閾値 0.25**~~ → パラフレーズ後の実測値 0.25 に対しフロア 0.20 に設定。reranker 導入後に 0.45+ に引き上げ予定
+> Codex Review 指摘（3件）: 修正済み（self-eval ID → se-to-02 / paraphrase クエリ / フロア 0.20）
 
 ### 着手順
 
-1. S56 Codex 指摘の修正（self-eval snippet / cross-tool paraphrase / 閾値調整）
-2. S56-001〜005 のスコア改善（embedding モデルまたは reranker の導入、§51 連携）
+S56-001〜005 は全て並列可（独立テスト）。S51-005 と並行して実行可能。
 
 ---
 
