@@ -45,7 +45,7 @@
 | Task | 内容 | Status |
 |------|------|--------|
 | S51-001 | truth freeze + gate 定義固定 | cc:TODO |
-| S51-004 | adapter/normalizer yes_no/entity/location 硬化 | cc:TODO |
+| S51-004 | adapter/normalizer yes_no/entity/location 硬化 | cc:完了 [da98e32] |
 | S51-005 | anti-benchmark-hack + live parity guard | cc:TODO |
 | S51-006 | main gate / companion 再凍結 | cc:TODO |
 | S51-007 | Tier 1 live product parity 証明 | cc:TODO |
