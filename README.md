@@ -53,24 +53,22 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-03-12T17:02:35.532Z`
-- git_sha: `5c009a9`
+- generated_at: `2026-03-20T11:39:22.199Z`
+- git_sha: `f3902d8`
 - embedding: `multilingual-e5`
 
 | Metric | Value |
 |---|---:|
-| LoCoMo F1 | 0.5333 |
+| LoCoMo F1 | 0.5861 |
 | Bilingual recall@10 | 0.9000 |
 | Freshness | 1.0000 |
 | Temporal | 0.6403 |
-| Search p95 | 16.99ms |
+| Search p95 | 10.26ms |
 | Token avg | 428.93 |
 
-Verdict: `FAIL`
+Verdict: `PASS`
 
-Why this matters:
-- The latest current run is below the relative temporal regression guard.
-- Historical PASS runs are kept as history only and are no longer quoted as the current release verdict.
+3 consecutive runs passed (2026-03-20). Layer 1 (Absolute Floor) + Layer 2 (Relative Regression) + Japanese Companion all green.
 
 ### Japanese companion gate (`96 QA`, current claim source)
 

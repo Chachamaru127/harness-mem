@@ -206,6 +206,62 @@
         "model": "multilingual-e5",
         "vectorDimension": 384
       }
+    },
+    {
+      "timestamp": "2026-03-16T03:32:05.499Z",
+      "f1": 0.5332671191810978,
+      "freshness": 1,
+      "temporal": 0.6402777777777778,
+      "bilingual": 0.9,
+      "cat1": 0.5800976800976801,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-20T11:37:47.160Z",
+      "f1": 0.5861185727852394,
+      "freshness": 1,
+      "temporal": 0.6402777777777778,
+      "bilingual": 0.9,
+      "cat1": 0.5897595158464723,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-20T11:38:33.477Z",
+      "f1": 0.5861185727852394,
+      "freshness": 1,
+      "temporal": 0.6402777777777778,
+      "bilingual": 0.9,
+      "cat1": 0.5897595158464723,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
+    },
+    {
+      "timestamp": "2026-03-20T11:39:22.199Z",
+      "f1": 0.5861185727852394,
+      "freshness": 1,
+      "temporal": 0.6402777777777778,
+      "bilingual": 0.9,
+      "cat1": 0.5897595158464723,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
     }
   ]
 }

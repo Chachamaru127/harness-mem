@@ -47,7 +47,7 @@
 | S51-001 | truth freeze + gate 定義固定 | Gate A-D 定義が dated artifact に固定 | - | cc:TODO |
 | S51-004 | adapter/normalizer yes_no/entity/location 硬化 | watch slice が warning line を上回る | - | cc:完了 [da98e32] |
 | S51-005 | anti-benchmark-hack guard + 3-run PASS | `run-ci` を3回実行し全 PASS。テスト内にベンチマーク専用分岐がないことを grep で確認。live replay（`harness-mem smoke`）で search/resume が no-regression | S51-004 | cc:完了 |
-| S51-006 | main gate / companion 再凍結 | `ci-run-manifest-latest.json` が `all_passed=true`。日本語 companion gate PASS。dated artifact を再生成し `docs/benchmarks/` に配置 | S51-005 | cc:TODO |
+| S51-006 | main gate / companion 再凍結 | `ci-run-manifest-latest.json` が `all_passed=true`。日本語 companion gate PASS。dated artifact を再生成し `docs/benchmarks/` に配置 | S51-005 | cc:完了 |
 | S51-007 | Tier 1 live product parity 証明 | resume / search / timeline で no-regression（Tier 2/3 Optional） | S51-006 | cc:TODO |
 | S51-008 | commercial packaging ADR | `docs/adr/` に ADR-002 として記録 | - | cc:TODO |
 | S51-009 | license / commercial / release surface | FAQ + support surface が一貫 | S51-008 | cc:TODO |
