@@ -149,22 +149,22 @@ describe("template functions", () => {
     }
   });
 
-  test("first-task: セッション固有スニペットを含むクエリを返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "first-task")!;
+  test("se-to-01: セッション固有スニペットを含むクエリを返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-01")!;
     const result = tmpl.template(dummyEntries);
     expect(result).toContain("first thing I worked on");
     expect(result).toContain("start project setup");
   });
 
-  test("latest-task: セッション固有スニペットを含むクエリを返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "latest-task")!;
+  test("se-to-02: セッション固有スニペットを含むクエリを返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-02")!;
     const result = tmpl.template(dummyEntries);
     expect(result).toContain("most recent activity");
     expect(result).toContain("start project setup");
   });
 
-  test("after-anchor: 2番目エントリのスニペットを含むクエリを返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "after-anchor")!;
+  test("se-to-03: 2番目エントリのスニペットを含むクエリを返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-03")!;
     const result = tmpl.template(dummyEntries);
     expect(result).toContain("implement feature error");
   });
@@ -227,22 +227,22 @@ describe("expected_order functions", () => {
     }
   });
 
-  test("first-task: 昇順（全エントリ）を返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "first-task")!;
+  test("se-to-01: 昇順（全エントリ）を返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-01")!;
     expect(tmpl.expected_order(dummyEntries)).toEqual(
       dummyEntries.map((e) => e.id)
     );
   });
 
-  test("latest-task: 降順（全エントリ）を返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "latest-task")!;
+  test("se-to-02: 降順（全エントリ）を返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-02")!;
     expect(tmpl.expected_order(dummyEntries)).toEqual(
       [...dummyEntries].reverse().map((e) => e.id)
     );
   });
 
-  test("after-anchor: 3番目以降のエントリを返すこと", () => {
-    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "after-anchor")!;
+  test("se-to-03: 3番目以降のエントリを返すこと", () => {
+    const tmpl = QUERY_TEMPLATES.find((t) => t.id === "se-to-03")!;
     expect(tmpl.expected_order(dummyEntries)).toEqual(
       dummyEntries.slice(2).map((e) => e.id)
     );
@@ -292,23 +292,23 @@ describe("expected_order functions", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 既存テンプレートの後方互換性
+// temporal-order テンプレートの ID 追従
 // ---------------------------------------------------------------------------
 
-describe("backward compatibility", () => {
+describe("temporal-order template IDs", () => {
   const existingIds = [
-    "first-task",
-    "latest-task",
-    "after-anchor",
+    "se-to-01",
+    "se-to-02",
+    "se-to-03",
   ];
 
   for (const id of existingIds) {
-    test(`既存テンプレート "${id}" が存在すること`, () => {
+    test(`テンプレート "${id}" が存在すること`, () => {
       const tmpl = QUERY_TEMPLATES.find((t) => t.id === id);
       expect(tmpl).toBeDefined();
     });
 
-    test(`既存テンプレート "${id}" の slice が "temporal-order" であること`, () => {
+    test(`テンプレート "${id}" の slice が "temporal-order" であること`, () => {
       const tmpl = QUERY_TEMPLATES.find((t) => t.id === id)!;
       expect(tmpl.slice).toBe("temporal-order");
     });
