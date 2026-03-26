@@ -302,4 +302,228 @@ describe("resume-pack integration behavior", () => {
       runtime.stop();
     }
   });
+
+  test("resume-pack exposes continuity briefing with latest interaction context", async () => {
+    const runtime = createRuntime("continuity-briefing");
+    const { core, baseUrl } = runtime;
+    const project = "resume-pack-briefing";
+
+    try {
+      recordEvent(core, {
+        event_id: "briefing-user",
+        project,
+        session_id: "previous-session",
+        ts: "2026-02-20T04:00:00.000Z",
+        payload: { content: "Figure out why new sessions lose context" },
+      });
+      recordEvent(core, {
+        event_id: "briefing-assistant",
+        project,
+        session_id: "previous-session",
+        event_type: "checkpoint",
+        ts: "2026-02-20T04:00:05.000Z",
+        payload: {
+          title: "assistant_response",
+          content: "We decided to ship a continuity briefing and fix adapter delivery next.",
+        },
+      });
+
+      const finalizeResponse = core.finalizeSession({
+        session_id: "previous-session",
+        project,
+        platform: "codex",
+        summary_mode: "standard",
+      });
+      expect(finalizeResponse.ok).toBe(true);
+
+      const payload = await postResumePack(baseUrl, {
+        project,
+        session_id: "current-session",
+        include_private: true,
+        limit: 5,
+      });
+      expect(payload.ok).toBe(true);
+
+      const latestInteraction = payload.meta.latest_interaction as Record<string, unknown>;
+      expect(latestInteraction).toBeTruthy();
+      expect(latestInteraction.scope).toBe("project");
+      expect(latestInteraction.session_id).toBe("previous-session");
+      expect(latestInteraction.incomplete).toBe(false);
+
+      const prompt = latestInteraction.prompt as Record<string, unknown>;
+      const response = latestInteraction.response as Record<string, unknown>;
+      expect(String(prompt.content)).toContain("lose context");
+      expect(String(response.content)).toContain("continuity briefing");
+
+      const briefing = payload.meta.continuity_briefing as Record<string, unknown>;
+      expect(briefing).toBeTruthy();
+      expect(briefing.source_session_id).toBe("previous-session");
+      expect(briefing.includes_summary).toBe(true);
+      expect(briefing.includes_latest_interaction).toBe(true);
+      expect(String(briefing.content)).toContain("Continuity Briefing");
+      expect(String(briefing.content)).toContain("lose context");
+      expect(String(briefing.content)).toContain("continuity briefing");
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("resume-pack carry-forward surfaces explicit decisions and next actions near the top", async () => {
+    const runtime = createRuntime("continuity-carry-forward");
+    const { core, baseUrl } = runtime;
+    const project = "resume-pack-carry-forward";
+
+    try {
+      recordEvent(core, {
+        event_id: "carry-user",
+        project,
+        session_id: "previous-session",
+        ts: "2026-03-25T00:00:00.000Z",
+        payload: {
+          content: [
+            "問題:",
+            "- 新しいセッションを開くと、前に何を話していたかが途切れやすい",
+            "",
+            "決定:",
+            "- continuity briefing を最初のターンで必ず見せる",
+            "- Claude と Codex で同じ品質にする",
+            "",
+            "次アクション:",
+            "- adapter delivery を両方で揃える",
+            "- OpenAPI や DB index の話は今回の本筋ではない",
+          ].join("\n"),
+        },
+      });
+
+      const finalizeResponse = core.finalizeSession({
+        session_id: "previous-session",
+        project,
+        platform: "claude",
+        summary_mode: "standard",
+      });
+      expect(finalizeResponse.ok).toBe(true);
+
+      const payload = await postResumePack(baseUrl, {
+        project,
+        session_id: "current-session",
+        include_private: true,
+        limit: 5,
+      });
+
+      const briefing = payload.meta.continuity_briefing as Record<string, unknown>;
+      expect(briefing).toBeTruthy();
+      expect(String(briefing.content)).toContain("## Carry Forward");
+      expect(String(briefing.content)).toContain("Decision: continuity briefing を最初のターンで必ず見せる");
+      expect(String(briefing.content)).toContain("Decision: Claude と Codex で同じ品質にする");
+      expect(String(briefing.content)).toContain("Next Action: adapter delivery を両方で揃える");
+      expect(String(briefing.content)).not.toContain("Next Action: OpenAPI や DB index の話は今回の本筋ではない");
+      expect(String(briefing.content)).toContain("## Key Points");
+      expect(String(briefing.content)).toContain("OpenAPI や DB index の話は今回の本筋ではない");
+      expect(String(briefing.content).match(/## Latest Exchange/g)?.length ?? 0).toBe(1);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("pinned continuity keeps the original next action visible across follow-up sessions", async () => {
+    const runtime = createRuntime("pinned-continuity");
+    const { core, baseUrl } = runtime;
+    const project = "resume-pack-pinned";
+    const correlationId = "corr-pinned";
+    const explicitHandoff = [
+      "問題:",
+      "- 新しいセッションを開くと、前に何を話していたかが途切れやすい",
+      "",
+      "決定:",
+      "- continuity briefing を最初のターンで必ず見せる",
+      "- Claude と Codex で同じ品質にする",
+      "",
+      "次アクション:",
+      "- adapter delivery を両方で揃える",
+      "- OpenAPI や DB index の話は今回の本筋ではない",
+    ].join("\n");
+
+    try {
+      recordEvent(core, {
+        event_id: "pinned-user",
+        project,
+        session_id: "session-1",
+        correlation_id: correlationId,
+        ts: "2026-03-25T01:00:00.000Z",
+        payload: { prompt: explicitHandoff },
+        tags: ["hook", "user_prompt"],
+      });
+      recordEvent(core, {
+        event_id: "pinned-explicit-handoff",
+        project,
+        session_id: "session-1",
+        correlation_id: correlationId,
+        event_type: "checkpoint",
+        ts: "2026-03-25T01:00:01.000Z",
+        payload: { title: "continuity_handoff", content: explicitHandoff },
+        tags: ["hook", "continuity_handoff", "pinned_continuity"],
+      });
+
+      const firstFinalize = core.finalizeSession({
+        session_id: "session-1",
+        project,
+        platform: "claude",
+        correlation_id: correlationId,
+        summary_mode: "standard",
+      });
+      expect(firstFinalize.ok).toBe(true);
+
+      recordEvent(core, {
+        event_id: "thin-follow-up-response",
+        project,
+        session_id: "session-2",
+        correlation_id: correlationId,
+        event_type: "checkpoint",
+        ts: "2026-03-25T01:10:00.000Z",
+        payload: {
+          title: "assistant_response",
+          content: [
+            "1. 問題: 新しいセッションを開始すると前の会話の文脈が途切れる",
+            "2. 決定: continuity briefing を最初のターンで必ず表示する",
+            "3. 次にやるべきこと: S59-006 を完了する",
+          ].join("\n"),
+        },
+        tags: ["hook", "assistant_response"],
+      });
+
+      const secondFinalize = core.finalizeSession({
+        session_id: "session-2",
+        project,
+        platform: "claude",
+        correlation_id: correlationId,
+        summary_mode: "standard",
+      });
+      expect(secondFinalize.ok).toBe(true);
+
+      const payload = await postResumePack(baseUrl, {
+        project,
+        session_id: "session-3",
+        correlation_id: correlationId,
+        include_private: true,
+        limit: 5,
+      });
+
+      const briefing = payload.meta.continuity_briefing as Record<string, unknown>;
+      expect(briefing).toBeTruthy();
+      const content = String(briefing.content);
+      expect(content).toContain("## Pinned Continuity");
+      expect(content).toContain("## Recent Update");
+      expect(content).toContain("Next Action: adapter delivery を両方で揃える");
+      expect(content).toContain("S59-006 を完了する");
+      expect(content.indexOf("## Pinned Continuity")).toBeLessThan(content.indexOf("## Current Focus"));
+      expect(content.indexOf("adapter delivery を両方で揃える")).toBeLessThan(content.indexOf("S59-006 を完了する"));
+      expect(content).not.toContain("continuity_handoff:");
+      expect(content).not.toContain("session_start:");
+      expect(content).not.toContain("## Carry Forward");
+      expect(content).not.toContain("## Memory Anchors");
+      expect(content).not.toContain("## Last Session Summary");
+    } finally {
+      runtime.stop();
+    }
+  });
 });

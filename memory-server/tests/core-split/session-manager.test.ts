@@ -428,4 +428,243 @@ describe("session-manager: finalizeSession", () => {
     );
     expect(session).toBeTruthy();
   });
+
+  test("構造化 handoff が decisions / open_loops / next_actions / risks を含む", () => {
+    const { sm, db } = createSessionManager("finalize-handoff-structured");
+    const recordEvent = createRecordEventMock(db);
+
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-001",
+      event_type: "user_prompt",
+      ts: "2026-03-24T10:00:00.000Z",
+      payload: { prompt: "Why is session continuity still failing?" },
+      tags: [],
+      privacy_tags: [],
+    });
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-001",
+      event_type: "checkpoint",
+      ts: "2026-03-24T10:00:02.000Z",
+      payload: {
+        title: "assistant_response",
+        content: "We decided to reuse correlation_id handoff across sessions.",
+      },
+      tags: [],
+      privacy_tags: [],
+    });
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-001",
+      event_type: "checkpoint",
+      ts: "2026-03-24T10:00:03.000Z",
+      payload: {
+        title: "next action",
+        content: "Next action: wire correlation_id through session start and stop hooks.",
+      },
+      tags: [],
+      privacy_tags: [],
+    });
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-001",
+      event_type: "checkpoint",
+      ts: "2026-03-24T10:00:04.000Z",
+      payload: {
+        title: "risk note",
+        content: "Risk: wrong chain contamination if multiple threads stay open.",
+      },
+      tags: [],
+      privacy_tags: [],
+    });
+
+    const res = sm.finalizeSession({
+      session_id: "sess-001",
+      project: "proj-session",
+      correlation_id: "corr-structured",
+      summary_mode: "standard",
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    expect(String(item.summary)).toContain("# Session Handoff");
+    expect(String(item.summary)).toContain("## Decisions");
+    expect(String(item.summary)).toContain("## Open Loops");
+    expect(String(item.summary)).toContain("## Next Actions");
+    expect(String(item.summary)).toContain("## Risks");
+
+    const handoff = item.handoff as Record<string, unknown>;
+    expect(String(handoff.overview)).toContain("correlation_id");
+    expect((handoff.decisions as string[]).length).toBeGreaterThan(0);
+    expect((handoff.open_loops as string[]).length).toBeGreaterThan(0);
+    expect((handoff.next_actions as string[]).length).toBeGreaterThan(0);
+    expect((handoff.risks as string[]).length).toBeGreaterThan(0);
+  });
+
+  test("明示的な 問題 / 決定 / 次アクション メモを handoff に優先反映する", () => {
+    const { sm, db } = createSessionManager("finalize-handoff-explicit-sections");
+    const recordEvent = createRecordEventMock(db);
+
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-explicit",
+      event_type: "user_prompt",
+      ts: "2026-03-25T09:00:00.000Z",
+      payload: {
+        prompt: [
+          "この3点を次の新しいセッションでも引き継げるか確認したいです。",
+          "",
+          "問題:",
+          "- 新しいセッションを開くと、前に何を話していたかが途切れやすい",
+          "",
+          "決定:",
+          "- continuity briefing を最初のターンで必ず見せる",
+          "- Claude と Codex で同じ品質にする",
+          "",
+          "次アクション:",
+          "- adapter delivery を両方で揃える",
+          "- OpenAPI や DB index の話は今回の本筋ではない",
+        ].join("\n"),
+      },
+      tags: [],
+      privacy_tags: [],
+    });
+
+    const res = sm.finalizeSession({
+      session_id: "sess-explicit",
+      project: "proj-session",
+      correlation_id: "corr-explicit",
+      summary_mode: "standard",
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    const handoff = item.handoff as Record<string, unknown>;
+    const decisions = handoff.decisions as string[];
+    const nextActions = handoff.next_actions as string[];
+    const keyPoints = handoff.key_points as string[];
+
+    expect(decisions).toContain("continuity briefing を最初のターンで必ず見せる");
+    expect(decisions).toContain("Claude と Codex で同じ品質にする");
+    expect(nextActions).toContain("adapter delivery を両方で揃える");
+    expect(keyPoints).toContain("新しいセッションを開くと、前に何を話していたかが途切れやすい");
+    expect(keyPoints).toContain("OpenAPI や DB index の話は今回の本筋ではない");
+    expect(String(item.summary)).toContain("## Decisions");
+    expect(String(item.summary)).toContain("adapter delivery を両方で揃える");
+  });
+
+  test("番号付き assistant summary 行を handoff に反映する", () => {
+    const { sm, db } = createSessionManager("finalize-handoff-numbered-assistant");
+    const recordEvent = createRecordEventMock(db);
+
+    recordEvent({
+      platform: "claude",
+      project: "proj-session",
+      session_id: "sess-numbered",
+      event_type: "checkpoint",
+      ts: "2026-03-25T10:00:00.000Z",
+      payload: {
+        title: "assistant_response",
+        content:
+          "1. 問題: 新しいセッションを開くと前の会話の文脈が途切れる\n2. 決定: continuity briefing を最初のターンで必ず表示する\n3. 次にやるべきこと: adapter delivery を Claude / Codex 両方で揃える",
+      },
+      tags: [],
+      privacy_tags: [],
+    });
+
+    const res = sm.finalizeSession({
+      session_id: "sess-numbered",
+      project: "proj-session",
+      correlation_id: "corr-numbered",
+      summary_mode: "standard",
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    const handoff = item.handoff as Record<string, unknown>;
+    expect(handoff.decisions as string[]).toContain("continuity briefing を最初のターンで必ず表示する");
+    expect(handoff.next_actions as string[]).toContain("adapter delivery を Claude / Codex 両方で揃える");
+    expect(handoff.key_points as string[]).toContain("新しいセッションを開くと前の会話の文脈が途切れる");
+  });
+
+  test("session_start と continuity_handoff の生ラッパーを handoff summary に混ぜない", () => {
+    const { sm, db } = createSessionManager("finalize-handoff-noise-filter");
+    const recordEvent = createRecordEventMock(db);
+
+    recordEvent({
+      platform: "codex",
+      project: "proj-session",
+      session_id: "sess-noise",
+      event_type: "session_start",
+      ts: "2026-03-25T11:00:00.000Z",
+      payload: {
+        source: "codex_hooks_engine",
+      },
+      tags: ["codex_hook", "session_start"],
+      privacy_tags: [],
+    });
+    recordEvent({
+      platform: "codex",
+      project: "proj-session",
+      session_id: "sess-noise",
+      event_type: "checkpoint",
+      ts: "2026-03-25T11:00:01.000Z",
+      payload: {
+        title: "continuity_handoff",
+        content: [
+          "問題:",
+          "- 新しいセッションを開くと、前に何を話していたかが途切れやすい",
+          "",
+          "決定:",
+          "- continuity briefing を最初のターンで必ず見せる",
+          "- Claude と Codex で同じ品質にする",
+          "",
+          "次アクション:",
+          "- adapter delivery を両方で揃える",
+          "- OpenAPI や DB index の話は今回の本筋ではない",
+        ].join("\n"),
+      },
+      tags: ["continuity_handoff", "pinned_continuity"],
+      privacy_tags: [],
+    });
+    recordEvent({
+      platform: "codex",
+      project: "proj-session",
+      session_id: "sess-noise",
+      event_type: "checkpoint",
+      ts: "2026-03-25T11:00:02.000Z",
+      payload: {
+        title: "assistant_response",
+        content:
+          "1. 問題: 新しいセッションを開くと前の会話の文脈が途切れる\n2. 決定: continuity briefing を最初のターンで必ず表示する\n3. 次にやるべきこと: adapter delivery を Claude / Codex 両方で揃える",
+      },
+      tags: ["assistant_response"],
+      privacy_tags: [],
+    });
+
+    const res = sm.finalizeSession({
+      session_id: "sess-noise",
+      project: "proj-session",
+      correlation_id: "corr-noise",
+      summary_mode: "standard",
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    const summary = String(item.summary);
+    const handoff = item.handoff as Record<string, unknown>;
+
+    expect(summary).not.toContain("session_start:");
+    expect(summary).not.toContain("continuity_handoff:");
+    expect(summary).toContain("adapter delivery を両方で揃える");
+    expect(handoff.decisions as string[]).toContain("continuity briefing を最初のターンで必ず見せる");
+    expect(handoff.next_actions as string[]).toContain("adapter delivery を両方で揃える");
+    expect(handoff.key_points as string[]).toContain("OpenAPI や DB index の話は今回の本筋ではない");
+  });
 });

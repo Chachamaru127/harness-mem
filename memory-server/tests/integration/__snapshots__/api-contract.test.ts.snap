@@ -49,6 +49,30 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     "items": [
       {
         "finalized_at": "string",
+        "handoff": {
+          "decisions": [
+            "empty",
+          ],
+          "key_points": [
+            "string",
+          ],
+          "latest_exchange": {
+            "assistant": "null",
+            "incomplete": "boolean",
+            "user": "null",
+          },
+          "next_actions": [
+            "empty",
+          ],
+          "observation_count": "number",
+          "open_loops": [
+            "empty",
+          ],
+          "overview": "string",
+          "risks": [
+            "empty",
+          ],
+        },
         "session_id": "string",
         "summary": "string",
         "summary_mode": "string",
@@ -179,6 +203,19 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     "meta": {
       "compacted_count": "number",
       "compaction_ratio": "number",
+      "continuity_briefing": {
+        "anchor_count": "number",
+        "cache_hint": "string",
+        "cited_item_ids": [
+          "empty",
+        ],
+        "content": "string",
+        "includes_latest_interaction": "boolean",
+        "includes_summary": "boolean",
+        "latest_turn_at": "string",
+        "source_scope": "string",
+        "source_session_id": "string",
+      },
       "correlation_id": "null",
       "count": "number",
       "detailed_count": "number",
@@ -310,6 +347,8 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "vector_engine": "string",
       "vector_model": "string",
     },
+    "no_memory": "boolean",
+    "no_memory_reason": "string",
     "ok": "boolean",
     "source": "string",
   },

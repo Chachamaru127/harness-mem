@@ -17,19 +17,19 @@
   English | <a href="README_ja.md">日本語</a>
 </p>
 
-Harness-mem bridges memory between Claude Code and Codex — learn in one, recall in the other. Fully local, no cloud, no API keys.
+Harness-mem bridges memory between Claude Code and Codex through a shared local runtime. Learn in one, recall in the other. Fully local, no cloud, no API keys.
 
 ## Why harness-mem?
 
 Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration.
 
-**harness-mem takes a different approach**: one local daemon, one SQLite database, seamless Claude Code ↔ Codex memory sharing — no cloud, no Python, no API keys required.
+**harness-mem takes a different approach**: one local daemon, one SQLite database, shared Claude Code ↔ Codex runtime with first-turn continuity on supported hook paths — no cloud, no Python, no API keys required.
 
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Gemini CLI, OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
-| **Cross-tool memory** | Automatic — design in Claude Code, execute in Codex, recall everywhere | N/A | N/A | Manual wiring per app |
+| **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + recency + tag + graph) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
@@ -41,9 +41,22 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 ### What this means in practice
 
-- **You use Claude Code and Codex** → harness-mem automatically shares memory between both tools. Design decisions in Claude Code are instantly available when you switch to Codex.
+- **You use Claude Code and Codex** → harness-mem gives both tools the same local memory runtime. With supported hook paths enabled, recent decisions and next actions can appear on the first turn when you switch tools.
 - **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
 - **You also use Cursor** → Tier 2 support: hooks and MCP work out of the box. Gemini CLI and OpenCode are experimental.
+
+### Current behavior today
+
+- Claude Code and Codex share one local daemon and one local SQLite database.
+- First-turn continuity is supported on the Claude Code and Codex hook paths after `harness-mem setup` and `harness-mem doctor` are green.
+- If hook wiring or the local runtime is stale, search and recall can still work while the "open a fresh session and it already remembers" UX degrades.
+- Experimental or maintenance-tier clients can still ingest/search, but parity with Claude Code and Codex is not claimed.
+
+### What this does not claim
+
+- Perfect automatic understanding for every brand-new session on every client.
+- Parity on unsupported clients, broken hook wiring, or unhealthy local runtime.
+- Perfect chain selection in every long-lived project with multiple mixed threads.
 
 ## Measured Proof
 
@@ -139,7 +152,7 @@ What this does **not** claim:
 /plugin install harness-mem@chachamaru127
 ```
 
-Hooks and MCP wiring are configured automatically. The daemon auto-starts on next session via the self-check hook.
+Claude-side hooks and MCP wiring are configured automatically. If you also want Codex or Cursor wired, run `harness-mem setup --platform codex,cursor` once. The daemon auto-starts on the next Claude session via the self-check hook.
 
 ### Option B: Run with npx (no global install)
 
@@ -164,7 +177,7 @@ harness-mem setup --platform codex,cursor,claude
 harness-mem update
 ```
 
-`harness-mem update` prompts for auto-update opt-in only when auto-update is currently disabled, then updates the global package.
+`harness-mem update` prompts for auto-update opt-in only when auto-update is currently disabled, then updates the global package. After a successful update, it also runs a quiet `doctor --fix` for remembered client platforms so stale wiring can self-heal.
 You can still update manually with `npm install -g @chachamaru127/harness-mem@latest`.
 
 ### Verify setup
@@ -173,6 +186,8 @@ You can still update manually with `npm install -g @chachamaru127/harness-mem@la
 harness-mem doctor --platform codex,cursor,claude
 harness-mem doctor --fix --platform codex,cursor,claude
 ```
+
+A green `doctor` plus active `SessionStart`, `UserPromptSubmit`, and `Stop` hooks is the runtime contract for first-turn continuity on Claude Code and Codex.
 
 ### Open Mem UI
 

@@ -230,7 +230,7 @@ function successResult(payload: MemoryApiResponse, options?: { citations?: boole
       timestamp: item.created_at ?? item.timestamp ?? null,
       type: item.type ?? item.event_type ?? "observation",
     }));
-    (result as Record<string, unknown>)._citations = citations;
+    (result as unknown as Record<string, unknown>)._citations = citations;
   }
 
   return result;
@@ -413,6 +413,7 @@ export const memoryTools: Tool[] = [
         platform: { type: "string" },
         project: { type: "string" },
         session_id: { type: "string" },
+        correlation_id: { type: "string" },
         summary_mode: {
           type: "string",
           enum: ["standard", "short", "detailed"],
@@ -964,6 +965,7 @@ async function handleMemoryToolInner(
           platform: toStringOrUndefined(input.platform),
           project: toStringOrUndefined(input.project),
           session_id: sessionId,
+          correlation_id: toStringOrUndefined(input.correlation_id),
           summary_mode: toStringOrUndefined(input.summary_mode),
         });
         return successResult(response);

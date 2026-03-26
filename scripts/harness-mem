@@ -72,6 +72,8 @@ BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
 BEGIN_CODEX_MCP="# >>> harness-mem codex mcp"
 END_CODEX_MCP="# <<< harness-mem codex mcp"
+BEGIN_CODEX_FEATURES="# >>> harness-mem codex features"
+END_CODEX_FEATURES="# <<< harness-mem codex features"
 
 usage() {
   cat <<'EOF'
@@ -170,7 +172,8 @@ ensure_config() {
   "auto_update": {
     "enabled": false,
     "package_name": "@chachamaru127/harness-mem",
-    "channel": "latest"
+    "channel": "latest",
+    "repair_platforms": []
   }
 }
 CONF
@@ -187,7 +190,12 @@ CONF
       | .auto_update = ((.auto_update // {}) + {
           enabled: (.auto_update.enabled // false),
           package_name: (.auto_update.package_name // "@chachamaru127/harness-mem"),
-          channel: (.auto_update.channel // "latest")
+          channel: (.auto_update.channel // "latest"),
+          repair_platforms: (
+            (.auto_update.repair_platforms // [])
+            | if type == "array" then . else [] end
+            | map(select(type == "string" and . != ""))
+          )
         })
     ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
   fi
@@ -287,6 +295,154 @@ write_auto_update_enabled() {
         channel: $channel
       })
     ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+}
+
+normalize_managed_platform_csv() {
+  local raw="${1:-}"
+  local normalized result=""
+  local item expanded
+  local -a items=()
+
+  if [ -z "$raw" ]; then
+    printf ''
+    return 0
+  fi
+
+  IFS=',' read -r -a items <<<"$raw"
+  for item in "${items[@]}"; do
+    normalized="$(printf '%s' "$item" | xargs)"
+    [ -n "$normalized" ] || continue
+    case "$normalized" in
+      all)
+        for expanded in codex opencode claude cursor antigravity gemini; do
+          result="$(csv_append_unique "$result" "$expanded")"
+        done
+        ;;
+      codex|opencode|claude|cursor|antigravity|gemini)
+        result="$(csv_append_unique "$result" "$normalized")"
+        ;;
+    esac
+  done
+
+  printf '%s' "$result"
+}
+
+read_auto_update_repair_platforms() {
+  ensure_config
+  local csv
+  csv="$(jq -r '(.auto_update.repair_platforms // []) | if type == "array" then map(select(type == "string" and . != "")) | join(",") else "" end' "$CONFIG_PATH" 2>/dev/null || echo "")"
+  normalize_managed_platform_csv "$csv"
+}
+
+write_auto_update_repair_platforms() {
+  local raw="${1:-}"
+  local normalized
+  normalized="$(normalize_managed_platform_csv "$raw")"
+
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq \
+    --arg csv "$normalized" \
+    '
+      .auto_update = ((.auto_update // {}) + {
+        repair_platforms: (
+          if ($csv | length) == 0 then
+            []
+          else
+            ($csv | split(",") | map(select(length > 0)))
+          end
+        )
+      })
+    ' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
+}
+
+remember_auto_update_repair_platforms() {
+  local requested="${1:-}"
+  local current merged
+  current="$(read_auto_update_repair_platforms)"
+  merged="$(normalize_managed_platform_csv "${current:+$current,}${requested}")"
+  write_auto_update_repair_platforms "$merged"
+}
+
+forget_auto_update_repair_platforms() {
+  local requested="${1:-}"
+  local current drop normalized result=""
+  local -a current_items=()
+  [ -f "$CONFIG_PATH" ] || return 0
+  current="$(read_auto_update_repair_platforms)"
+  drop="$(normalize_managed_platform_csv "$requested")"
+
+  if [ -z "$current" ]; then
+    return 0
+  fi
+
+  IFS=',' read -r -a current_items <<<"$current"
+  for item in "${current_items[@]}"; do
+    normalized="$(printf '%s' "$item" | xargs)"
+    [ -n "$normalized" ] || continue
+    if [ -n "$drop" ] && csv_has_value "$drop" "$normalized"; then
+      continue
+    fi
+    result="$(csv_append_unique "$result" "$normalized")"
+  done
+
+  write_auto_update_repair_platforms "$result"
+}
+
+infer_auto_update_repair_platforms() {
+  local remembered inferred=""
+  remembered="$(read_auto_update_repair_platforms)"
+  if [ -n "$remembered" ]; then
+    printf '%s' "$remembered"
+    return 0
+  fi
+
+  if [ -f "${HOME}/.codex/config.toml" ] || [ -f "${HOME}/.codex/hooks.json" ]; then
+    inferred="$(csv_append_unique "$inferred" "codex")"
+  fi
+  if [ -f "${HOME}/.claude.json" ] || [ -f "${HOME}/.claude/settings.json" ] || [ -d "${HOME}/.claude" ]; then
+    inferred="$(csv_append_unique "$inferred" "claude")"
+  fi
+  if [ -f "${HOME}/.cursor/hooks.json" ] || [ -f "${HOME}/.cursor/mcp.json" ]; then
+    inferred="$(csv_append_unique "$inferred" "cursor")"
+  fi
+  if [ -f "${HOME}/.config/opencode/opencode.json" ]; then
+    inferred="$(csv_append_unique "$inferred" "opencode")"
+  fi
+  if [ -f "${HOME}/.gemini/settings.json" ]; then
+    inferred="$(csv_append_unique "$inferred" "gemini")"
+  fi
+  if [ -n "${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}" ]; then
+    inferred="$(csv_append_unique "$inferred" "antigravity")"
+  fi
+
+  printf '%s' "$inferred"
+}
+
+run_post_update_repair() {
+  local reason="${1:-update}"
+  local platforms="${2:-}"
+  local harness_bin
+
+  platforms="$(normalize_managed_platform_csv "${platforms:-$(infer_auto_update_repair_platforms)}")"
+  if [ -z "$platforms" ]; then
+    log "Post-update repair: no managed platforms recorded; skipping"
+    return 0
+  fi
+
+  harness_bin="$(command -v harness-mem || true)"
+  if [ -z "$harness_bin" ]; then
+    warn "Post-update repair skipped: harness-mem executable not found on PATH"
+    return 0
+  fi
+
+  log "Post-update repair: doctor --fix --platform ${platforms} (${reason})"
+  if HARNESS_MEM_SKIP_AUTO_UPDATE=1 HARNESS_MEM_NON_INTERACTIVE=1 \
+    "$harness_bin" doctor --fix --platform "$platforms" --skip-version-check --quiet >/dev/null 2>&1; then
+    log "Post-update repair completed for: ${platforms}"
+  else
+    warn "Post-update repair failed for: ${platforms}. Run manually: harness-mem doctor --fix --platform ${platforms}"
+  fi
 }
 
 fetch() {
@@ -1011,6 +1167,7 @@ maybe_auto_update() {
   if npm install -g "${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}" >/dev/null 2>&1; then
     log "Auto-update completed. Updated version will be used on the next command."
     write_auto_update_state "$now" "$current_version" "$latest_version" "updated"
+    run_post_update_repair "auto-update"
   else
     warn "Auto-update failed. Run manually: npm install -g ${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}"
     write_auto_update_state "$now" "$current_version" "$latest_version" "update_failed"
@@ -1433,6 +1590,167 @@ remove_marked_block() {
   mv "$tmp" "$file"
 }
 
+render_codex_hooks_template() {
+  local hooks_template="$1"
+  local output_path="$2"
+  local escaped_root
+  escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
+  sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template" >"$output_path"
+}
+
+merge_codex_hooks_json() {
+  local hooks_dst="$1"
+  local rendered_template="$2"
+  local tmp
+  tmp="$(mktemp)"
+
+  if jq --slurpfile tpl "$rendered_template" '
+    def entry_commands($entry):
+      [($entry.hooks // [])[]? | .command? // empty];
+    def existing_commands($entries):
+      [($entries // [])[]? | (.hooks // [])[]? | .command? // empty];
+    .description = ($tpl[0].description // .description)
+    | .hooks = (.hooks // {})
+    | reduce ["SessionStart", "UserPromptSubmit", "Stop"][] as $event (
+        .;
+        .hooks[$event] = (
+          (.hooks[$event] // []) as $existing
+          | existing_commands($existing) as $existing_cmds
+          | $existing + [
+              ($tpl[0].hooks[$event] // [])[]
+              | select(
+                  entry_commands(.) as $required_cmds
+                  | ($required_cmds | length) > 0
+                  and ((($required_cmds - $existing_cmds) | length) == ($required_cmds | length))
+                )
+            ]
+        )
+      )
+  ' "$hooks_dst" >"$tmp" 2>/dev/null; then
+    mv "$tmp" "$hooks_dst"
+    return 0
+  fi
+
+  rm -f "$tmp"
+  return 1
+}
+
+check_codex_hooks_wiring() {
+  local hooks_dst="${HOME}/.codex/hooks.json"
+  local failed=0
+  local event command
+
+  if [ ! -f "$hooks_dst" ]; then
+    warn "Missing Codex hooks file: $hooks_dst"
+    return 1
+  fi
+
+  if ! jq empty "$hooks_dst" >/dev/null 2>&1; then
+    warn "Codex hooks.json is invalid JSON: $hooks_dst"
+    return 1
+  fi
+
+  while IFS='|' read -r event command; do
+    if jq -e --arg event "$event" --arg command "$command" \
+      'any((.hooks[$event] // [])[]?.hooks[]?; .command == $command)' \
+      "$hooks_dst" >/dev/null 2>&1; then
+      log "Codex ${event} hook: OK"
+    else
+      warn "Codex ${event} hook is missing in: $hooks_dst"
+      failed=1
+    fi
+  done <<EOF
+SessionStart|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-session-start.sh
+UserPromptSubmit|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-user-prompt.sh
+Stop|bash ${HARNESS_ROOT}/scripts/hook-handlers/codex-session-stop.sh
+EOF
+
+  return "$failed"
+}
+
+ensure_codex_hooks_feature_enabled() {
+  local cfg="$1"
+  local tmp
+
+  [ -f "$cfg" ] || return 1
+
+  if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+    return 0
+  fi
+
+  if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=' "$cfg"; then
+    tmp="$(mktemp)"
+    sed -E 's/^[[:space:]]*features\.codex_hooks[[:space:]]*=.*/features.codex_hooks = true/' "$cfg" >"$tmp"
+    mv "$tmp" "$cfg"
+    return 0
+  fi
+
+  if rg -q '^[[:space:]]*\[features\][[:space:]]*$' "$cfg"; then
+    tmp="$(mktemp)"
+    awk '
+      BEGIN { in_features = 0; done = 0 }
+      /^[[:space:]]*\[features\][[:space:]]*$/ {
+        print
+        in_features = 1
+        next
+      }
+      in_features && /^[[:space:]]*\[/ {
+        if (!done) {
+          print "codex_hooks = true"
+          done = 1
+        }
+        in_features = 0
+      }
+      in_features && /^[[:space:]]*codex_hooks[[:space:]]*=/ {
+        if (!done) {
+          print "codex_hooks = true"
+          done = 1
+        }
+        next
+      }
+      { print }
+      END {
+        if (in_features && !done) {
+          print "codex_hooks = true"
+        }
+      }
+    ' "$cfg" >"$tmp"
+    mv "$tmp" "$cfg"
+    return 0
+  fi
+
+  cat >>"$cfg" <<EOF
+
+$BEGIN_CODEX_FEATURES
+[features]
+codex_hooks = true
+$END_CODEX_FEATURES
+EOF
+}
+
+check_codex_hooks_feature_enabled() {
+  local cfg="$1"
+
+  if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+    log "Codex hooks feature flag: OK"
+    return 0
+  fi
+
+  if awk '
+    BEGIN { in_features = 0; enabled = 0 }
+    /^[[:space:]]*\[features\][[:space:]]*$/ { in_features = 1; next }
+    in_features && /^[[:space:]]*\[/ { in_features = 0 }
+    in_features && /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)/ { enabled = 1 }
+    END { exit enabled ? 0 : 1 }
+  ' "$cfg"; then
+    log "Codex hooks feature flag: OK"
+    return 0
+  fi
+
+  warn "Codex hooks feature flag is missing or disabled in: $cfg"
+  return 1
+}
+
 setup_codex_wiring() {
   local codex_dir="${HOME}/.codex"
   local cfg="${codex_dir}/config.toml"
@@ -1505,6 +1823,9 @@ EOF
     fi
   fi
 
+  ensure_codex_hooks_feature_enabled "$cfg"
+  log "Ensured Codex hooks feature flag: $cfg"
+
   if [ -f "$rules_src" ] && [ ! -f "$rules_dst" ]; then
     mkdir -p "$(dirname "$rules_dst")"
     cp "$rules_src" "$rules_dst"
@@ -1514,29 +1835,22 @@ EOF
   # Codex experimental hooks engine (v0.116.0+)
   local hooks_template="${HARNESS_ROOT}/codex/.codex/hooks.json"
   local hooks_dst="${codex_dir}/hooks.json"
-  local escaped_root
-  escaped_root="$(printf '%s' "$HARNESS_ROOT" | sed 's/[\/&]/\\&/g')"
+  local rendered_template=""
   if [ -f "$hooks_template" ]; then
+    rendered_template="$(mktemp)"
+    render_codex_hooks_template "$hooks_template" "$rendered_template"
     if [ ! -f "$hooks_dst" ]; then
-      sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template" >"$hooks_dst"
+      cp "$rendered_template" "$hooks_dst"
       log "Installed Codex hooks: $hooks_dst"
-    elif ! jq -e '.hooks.UserPromptSubmit != null' "$hooks_dst" >/dev/null 2>&1; then
-      # Upgrade: merge UserPromptSubmit hook into existing hooks.json
-      local rendered_template
-      rendered_template="$(sed "s/__HARNESS_ROOT__/${escaped_root}/g" "$hooks_template")"
-      local ups_block
-      ups_block="$(printf '%s' "$rendered_template" | jq -c '.hooks.UserPromptSubmit' 2>/dev/null)"
-      if [ -n "$ups_block" ] && [ "$ups_block" != "null" ]; then
-        local tmp
-        tmp="$(mktemp)"
-        if jq --argjson ups "$ups_block" '.hooks.UserPromptSubmit = $ups | .description = (.description | sub("v0\\.114\\.0\\+"; "v0.116.0+"))' "$hooks_dst" >"$tmp" 2>/dev/null; then
-          mv "$tmp" "$hooks_dst"
-          log "Upgraded Codex hooks with UserPromptSubmit: $hooks_dst"
-        else
-          rm -f "$tmp"
-        fi
+    else
+      if merge_codex_hooks_json "$hooks_dst" "$rendered_template"; then
+        log "Merged Codex hooks into existing hooks.json: $hooks_dst"
+      else
+        rm -f "$rendered_template"
+        fail "Failed to merge Codex hooks: $hooks_dst"
       fi
     fi
+    rm -f "$rendered_template"
   fi
 
   if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
@@ -1567,11 +1881,23 @@ check_codex_wiring() {
     failed=1
   fi
 
+  if check_codex_hooks_feature_enabled "$cfg"; then
+    :
+  else
+    failed=1
+  fi
+
   local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
   if [ -f "$skill_dst" ]; then
     log "Codex Agent Skill: OK ($skill_dst)"
   else
     log "Codex Agent Skill: not installed (run setup or update to install)"
+  fi
+
+  if check_codex_hooks_wiring; then
+    :
+  else
+    failed=1
   fi
 
   local prepare_hook
@@ -3113,6 +3439,8 @@ setup_impl() {
     _setup_record "auto_update_opt_in" "ok:disabled" ""
   fi
 
+  remember_auto_update_repair_platforms "$PLATFORM"
+
   # 依存チェック
   if ensure_dependencies 2>/dev/null; then
     _setup_record "dependencies" "ok" ""
@@ -3461,6 +3789,8 @@ uninstall_impl() {
     uninstall_gemini_wiring
   fi
 
+  forget_auto_update_repair_platforms "$PLATFORM"
+
   rm -f "${STATE_DIR}/daemon.pid" "${STATE_DIR}/daemon.lock" "${STATE_DIR}/daemon.heartbeat"
   rm -rf "${STATE_DIR}/runtime"
   log "Removed runtime cache: ${STATE_DIR}/runtime"
@@ -3655,6 +3985,7 @@ update_impl() {
   if [ "$SETUP_INSTALL_CODEX_SKILL" -eq 1 ]; then
     install_codex_skill
   fi
+  run_post_update_repair "manual-update"
   log "Update complete. Restart daemon/UI if running: harness-memd restart"
 }
 

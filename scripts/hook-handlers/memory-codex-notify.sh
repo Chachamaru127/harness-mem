@@ -99,6 +99,7 @@ fi
 
 [ -n "$PROJECT_ROOT" ] || PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 [ -n "$PROJECT_NAME" ] || PROJECT_NAME="$(basename "$PROJECT_ROOT")"
+hook_init_continuity_state
 
 NOTIFY_TYPE="$(printf '%s' "$INPUT_JSON" | jq -r '.type // empty' 2>/dev/null)"
 [ "$NOTIFY_TYPE" = "agent-turn-complete" ] || exit 0
@@ -111,6 +112,8 @@ USER_PROMPT="$(printf '%s' "$INPUT_JSON" | jq -r '.last_user_message // .user_pr
 if [ -z "$SESSION_ID" ]; then
   SESSION_ID="codex-$(date +%s)"
 fi
+
+hook_resolve_correlation_id "$SESSION_ID" "codex" "$INPUT_JSON"
 
 if [ -z "$USER_PROMPT" ]; then
   USER_PROMPT="$(extract_latest_codex_user_prompt "$SESSION_ID")"
@@ -131,18 +134,27 @@ if [ -n "$USER_PROMPT" ]; then
   USER_PROMPT="$(printf '%s' "$USER_PROMPT" | cut -c 1-4000)"
 fi
 
+ASSISTANT_TAGS_JSON='["codex_hook","after_agent","notify"]'
+USER_TAGS_JSON='["codex_hook","user_prompt","notify_backfill"]'
+if hook_session_visibility_suppressed "$SESSION_ID"; then
+  ASSISTANT_TAGS_JSON="$(jq -cn --argjson base "$ASSISTANT_TAGS_JSON" '$base + ["visibility_suppressed"] | unique' 2>/dev/null || echo '["codex_hook","after_agent","notify","visibility_suppressed"]')"
+  USER_TAGS_JSON="$(jq -cn --argjson base "$USER_TAGS_JSON" '$base + ["visibility_suppressed"] | unique' 2>/dev/null || echo '["codex_hook","user_prompt","notify_backfill","visibility_suppressed"]')"
+fi
+
 EVENT_PAYLOAD="$(jq -nc \
   --arg platform "codex" \
   --arg project "$PROJECT_NAME" \
   --arg session_id "$SESSION_ID" \
   --arg event_type "checkpoint" \
+  --arg correlation_id "$CORRELATION_ID" \
   --arg turn_id "$TURN_ID" \
   --arg notify_type "$NOTIFY_TYPE" \
   --arg title "assistant_response" \
   --arg content "$LAST_ASSISTANT" \
   --arg prompt "$USER_PROMPT" \
   --arg last_assistant_message "$LAST_ASSISTANT" \
-  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{turn_id:$turn_id,notify_type:$notify_type,title:$title,content:$content,last_assistant_message:$last_assistant_message,prompt:$prompt,role:"assistant",source:"codex_notify"},tags:["codex_hook","after_agent","notify"],privacy_tags:[]}}' 2>/dev/null)"
+  --argjson tags "$ASSISTANT_TAGS_JSON" \
+  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,correlation_id:$correlation_id,payload:{turn_id:$turn_id,notify_type:$notify_type,title:$title,content:$content,last_assistant_message:$last_assistant_message,prompt:$prompt,role:"assistant",source:"codex_notify"},tags:$tags,privacy_tags:[]}}' 2>/dev/null)"
 
 if [ -n "$EVENT_PAYLOAD" ]; then
   printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
@@ -164,9 +176,11 @@ if [ -n "$USER_PROMPT" ] && [ "$CODEX_UPS_ACTIVE" = "false" ]; then
     --arg project "$PROJECT_NAME" \
     --arg session_id "$SESSION_ID" \
     --arg event_type "user_prompt" \
+    --arg correlation_id "$CORRELATION_ID" \
     --arg turn_id "$TURN_ID" \
     --arg prompt "$USER_PROMPT" \
-    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{turn_id:$turn_id,prompt:$prompt,source:"codex_notify_backfill"},tags:["codex_hook","user_prompt","notify_backfill"],privacy_tags:[]}}' 2>/dev/null)"
+    --argjson tags "$USER_TAGS_JSON" \
+    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,correlation_id:$correlation_id,payload:{turn_id:$turn_id,prompt:$prompt,source:"codex_notify_backfill"},tags:$tags,privacy_tags:[]}}' 2>/dev/null)"
 
   if [ -n "$USER_EVENT_PAYLOAD" ]; then
     printf '%s' "$USER_EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true

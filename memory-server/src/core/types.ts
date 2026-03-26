@@ -209,6 +209,7 @@ export interface FinalizeSessionRequest {
   platform?: Platform | string;
   project?: string;
   session_id: string;
+  correlation_id?: string;
   summary_mode?: "standard" | "short" | "detailed";
 }
 

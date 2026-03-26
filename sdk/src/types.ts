@@ -127,6 +127,7 @@ export interface FinalizeSessionInput {
   session_id: string;
   platform?: string;
   project?: string;
+  correlation_id?: string;
   summary_mode?: "standard" | "brief" | "detailed";
 }
 
@@ -135,6 +136,7 @@ export interface SessionFinalizeItem {
   session_id: string;
   summary_mode?: string;
   summary?: string;
+  handoff?: Record<string, unknown>;
   finalized_at?: string;
 }
 

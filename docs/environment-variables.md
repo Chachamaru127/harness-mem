@@ -2,7 +2,7 @@
 
 harness-mem で使用する全環境変数の一覧です。
 
-最終更新: 2026-03-03
+最終更新: 2026-03-26
 
 ---
 
@@ -87,7 +87,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_OPENAI_EMBED_MODEL` | `text-embedding-3-small` | No | OpenAI 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=openai` の場合に使用 | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | No | Ollama サーバーの URL（埋め込み用） | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | No | Ollama 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=ollama` の場合に使用 | `core/core-utils.ts` |
-| `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | `2000` | No | resume_pack レスポンスの最大トークン数。0 を指定すると resume_pack を無効化 | `core/core-utils.ts`, `core/observation-store.ts` |
+| `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | `4000` | No | resume_pack / continuity briefing の最大トークン数。0 を指定すると resume_pack を無効化 | `core/core-utils.ts`, `core/observation-store.ts` |
 
 ---
 

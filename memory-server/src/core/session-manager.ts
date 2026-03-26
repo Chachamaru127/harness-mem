@@ -34,6 +34,7 @@ import {
 } from "./core-utils.js";
 import {
   buildVisibleInteractionText,
+  hasIgnoredVisibleTag,
   isIgnoredVisiblePromptText,
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
@@ -60,6 +61,205 @@ export interface SessionManagerDeps {
   appendStreamEvent: (type: StreamEvent["type"], data: Record<string, unknown>) => StreamEvent;
   /** enqueueConsolidation への参照 */
   enqueueConsolidation: (project: string, sessionId: string, reason: string) => void;
+}
+
+interface SessionSummaryRow {
+  title: string | null;
+  content_redacted: string | null;
+  created_at: string;
+  event_type: string | null;
+  tags_json: string | null;
+}
+
+interface SessionHandoff {
+  overview: string;
+  decisions: string[];
+  open_loops: string[];
+  next_actions: string[];
+  risks: string[];
+  key_points: string[];
+  latest_exchange: {
+    user: string | null;
+    assistant: string | null;
+    incomplete: boolean;
+  };
+  observation_count: number;
+}
+
+const DECISION_HINT_PATTERN =
+  /\b(decided|decision|chose|choose|picked|adopted|switched|implemented|fixed|completed)\b|(決定|方針|採用|選択|切り替え|実装完了|修正した|完了)/i;
+const OPEN_LOOP_HINT_PATTERN =
+  /\b(pending|need to|needs to|investigate|follow up|unknown|unresolved|confirm|check)\b|(保留|未完|未解決|要確認|確認する|調査する|検討する)/i;
+const NEXT_ACTION_HINT_PATTERN =
+  /\b(next step|next action|todo|follow up|continue|remaining|plan to)\b|(次対応|次の対応|次アクション|次の一手|TODO|続き|今後やる|残件)/i;
+const RISK_HINT_PATTERN =
+  /\b(risk|blocker|blocked|issue|problem|concern|regression)\b|(リスク|懸念|課題|問題|ブロッカー|詰まり|後退)/i;
+const SCOPE_GUARD_PATTERN =
+  /\b(out of scope|not the main thread|not the focus|do not mix|avoid mixing)\b|(本筋ではない|スコープ外|混ぜない|対象外)/i;
+
+type ExplicitSectionKey = "problems" | "decisions" | "open_loops" | "next_actions" | "risks";
+
+interface ExplicitHandoffSections {
+  problems: string[];
+  decisions: string[];
+  open_loops: string[];
+  next_actions: string[];
+  risks: string[];
+}
+
+function hasExplicitHandoffSections(sections: ExplicitHandoffSections): boolean {
+  return (
+    sections.problems.length > 0 ||
+    sections.decisions.length > 0 ||
+    sections.open_loops.length > 0 ||
+    sections.next_actions.length > 0 ||
+    sections.risks.length > 0
+  );
+}
+
+function isStructuredHandoffNoiseRow(eventType: string | null | undefined, title: string): boolean {
+  const normalizedEventType = (eventType || "").trim().toLowerCase();
+  const normalizedTitle = title.trim().toLowerCase();
+  return (
+    normalizedEventType === "session_start" ||
+    normalizedEventType === "session_end" ||
+    normalizedTitle === "session_start" ||
+    normalizedTitle === "session_end" ||
+    normalizedTitle === "continuity_handoff"
+  );
+}
+
+function summarizeLine(text: string | null | undefined, maxLength: number): string {
+  if (!text) return "";
+  return text.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function pushUniqueLine(target: string[], value: string, maxItems: number): void {
+  if (!value) return;
+  if (target.includes(value)) return;
+  if (target.length >= maxItems) return;
+  target.push(value);
+}
+
+function unwrapStructuredObservationText(raw: string | null | undefined): string {
+  const trimmed = (raw || "").trim();
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+    return raw || "";
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as Record<string, unknown>;
+    if (typeof parsed.content === "string" && parsed.content.trim()) {
+      return parsed.content;
+    }
+    if (typeof parsed.prompt === "string" && parsed.prompt.trim()) {
+      return parsed.prompt;
+    }
+    if (typeof parsed.title === "string" && parsed.title.trim()) {
+      return parsed.title;
+    }
+  } catch {
+    return raw || "";
+  }
+
+  return raw || "";
+}
+
+function normalizeBulletContent(line: string, maxLength: number): string {
+  return line
+    .replace(/^(?:[-*+]|(?:\d+\.))\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function isPlaceholderSectionLine(line: string): boolean {
+  return /^(?:no |not captured|none\b|なし\b|未記載\b|未設定\b)/i.test(line);
+}
+
+function classifyExplicitSection(line: string): { key: ExplicitSectionKey; value: string } | null {
+  const trimmed = line.trim();
+  const prefix = "(?:(?:[-*+]\\s*)|(?:(?:\\d+)[.)]\\s*))?";
+  const sectionMatchers: Array<{ key: ExplicitSectionKey; pattern: RegExp }> = [
+    {
+      key: "problems",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:problem|problems|issue|issues|問題|課題)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+    {
+      key: "decisions",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:decision|decisions|決定|方針)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+    {
+      key: "open_loops",
+      pattern: new RegExp(
+        `^(?:#+\\s*)?${prefix}(?:open loops?|open questions?|unresolved|pending|保留|未解決|確認事項)\\s*[:：]?\\s*(.*)$`,
+        "i"
+      ),
+    },
+    {
+      key: "next_actions",
+      pattern: new RegExp(
+        `^(?:#+\\s*)?${prefix}(?:next actions?|next steps?|next step|next action|todo|todos|次アクション|次の対応|次対応|次にやるべきこと|残件)\\s*[:：]?\\s*(.*)$`,
+        "i"
+      ),
+    },
+    {
+      key: "risks",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:risk|risks|懸念|リスク)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+  ];
+
+  for (const matcher of sectionMatchers) {
+    const match = trimmed.match(matcher.pattern);
+    if (match) {
+      return { key: matcher.key, value: normalizeBulletContent(match[1] || "", 220) };
+    }
+  }
+  return null;
+}
+
+function parseExplicitHandoffSections(text: string | null | undefined, maxItems: number): ExplicitHandoffSections {
+  const sections: ExplicitHandoffSections = {
+    problems: [],
+    decisions: [],
+    open_loops: [],
+    next_actions: [],
+    risks: [],
+  };
+  if (!text) {
+    return sections;
+  }
+
+  let currentSection: ExplicitSectionKey | null = null;
+  const lines = text.split(/\r?\n/);
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    const explicitSection = classifyExplicitSection(trimmed);
+    if (explicitSection) {
+      currentSection = explicitSection.key;
+      if (explicitSection.value && !isPlaceholderSectionLine(explicitSection.value)) {
+        pushUniqueLine(sections[currentSection], explicitSection.value, maxItems);
+      }
+      continue;
+    }
+
+    if (!currentSection) {
+      continue;
+    }
+
+    const normalized = normalizeBulletContent(trimmed, 220);
+    if (!normalized || isPlaceholderSectionLine(normalized)) {
+      continue;
+    }
+    pushUniqueLine(sections[currentSection], normalized, maxItems);
+  }
+
+  return sections;
 }
 
 // ---------------------------------------------------------------------------
@@ -93,6 +293,197 @@ export class SessionManager {
     const placeholders = projects.map(() => "?").join(", ");
     params.push(...projects);
     return `${sql} AND ${alias}.project IN (${placeholders})`;
+  }
+
+  private loadSessionSummaryRows(sessionId: string, maxRows: number): SessionSummaryRow[] {
+    return this.deps.db
+      .query(
+        `
+          SELECT
+            o.title,
+            o.content_redacted,
+            o.created_at,
+            e.event_type,
+            o.tags_json
+          FROM mem_observations o
+          LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE o.session_id = ?
+          ORDER BY o.created_at ASC, o.id ASC
+          LIMIT ?
+        `
+      )
+      .all(sessionId, maxRows) as SessionSummaryRow[];
+  }
+
+  private buildStructuredHandoff(
+    sessionId: string,
+    rows: SessionSummaryRow[],
+    summaryMode: string
+  ): SessionHandoff {
+    const sectionLimit = summaryMode === "detailed" ? 5 : summaryMode === "short" ? 2 : 3;
+    const keyPointLimit = summaryMode === "detailed" ? 6 : summaryMode === "short" ? 2 : 4;
+
+    const decisions: string[] = [];
+    const openLoops: string[] = [];
+    const nextActions: string[] = [];
+    const risks: string[] = [];
+    const keyPoints: string[] = [];
+
+    let currentPrompt: string | null = null;
+    let latestExchangeUser: string | null = null;
+    let latestExchangeAssistant: string | null = null;
+
+    for (const row of rows) {
+      const tags = parseArrayJson(row.tags_json);
+      const normalizedContent = unwrapStructuredObservationText(row.content_redacted);
+      const normalizedTitle = unwrapStructuredObservationText(row.title);
+      const explicitSections = parseExplicitHandoffSections(normalizedContent || normalizedTitle, sectionLimit);
+      const hasExplicitSections = hasExplicitHandoffSections(explicitSections);
+      for (const problem of explicitSections.problems) {
+        pushUniqueLine(keyPoints, problem, keyPointLimit);
+      }
+      for (const decision of explicitSections.decisions) {
+        pushUniqueLine(decisions, decision, sectionLimit);
+      }
+      for (const openLoop of explicitSections.open_loops) {
+        pushUniqueLine(openLoops, openLoop, sectionLimit);
+      }
+      for (const nextAction of explicitSections.next_actions) {
+        if (SCOPE_GUARD_PATTERN.test(nextAction)) {
+          pushUniqueLine(keyPoints, nextAction, keyPointLimit);
+        } else {
+          pushUniqueLine(nextActions, nextAction, sectionLimit);
+        }
+      }
+      for (const risk of explicitSections.risks) {
+        pushUniqueLine(risks, risk, sectionLimit);
+      }
+
+      const title = summarizeLine(normalizedTitle, 120);
+      const content = summarizeLine(normalizedContent, 240);
+      const visibleText = buildVisibleInteractionText(title, content);
+      const line = title && content && title !== content ? `${title}: ${content}` : content || title;
+
+      if (row.event_type === "user_prompt") {
+        if (hasIgnoredVisibleTag(tags) || isIgnoredVisiblePromptText(visibleText)) {
+          continue;
+        }
+        currentPrompt = content || title;
+        if (/\?$/.test(content || "") || OPEN_LOOP_HINT_PATTERN.test(visibleText)) {
+          pushUniqueLine(openLoops, currentPrompt, sectionLimit);
+        }
+        continue;
+      }
+
+      if (isStructuredHandoffNoiseRow(row.event_type, title)) {
+        continue;
+      }
+
+      if (title === "assistant_response") {
+        if (hasIgnoredVisibleTag(tags) || isIgnoredVisibleResponseText(content)) {
+          continue;
+        }
+        latestExchangeUser = currentPrompt;
+        latestExchangeAssistant = content || title;
+        if (hasExplicitSections) {
+          continue;
+        }
+      } else if (hasExplicitSections) {
+        continue;
+      }
+
+      if (DECISION_HINT_PATTERN.test(visibleText)) {
+        pushUniqueLine(decisions, line, sectionLimit);
+      }
+      if (NEXT_ACTION_HINT_PATTERN.test(visibleText)) {
+        pushUniqueLine(nextActions, line, sectionLimit);
+      }
+      if (RISK_HINT_PATTERN.test(visibleText)) {
+        pushUniqueLine(risks, line, sectionLimit);
+      }
+      if (OPEN_LOOP_HINT_PATTERN.test(visibleText)) {
+        pushUniqueLine(openLoops, line, sectionLimit);
+      }
+      if (!DECISION_HINT_PATTERN.test(visibleText) && !NEXT_ACTION_HINT_PATTERN.test(visibleText)) {
+        pushUniqueLine(keyPoints, line, keyPointLimit);
+      }
+    }
+
+    const fallbackOverview = rows
+      .slice(-2)
+      .map((row) => summarizeLine(row.content_redacted || row.title, 140))
+      .filter(Boolean)
+      .join(" / ");
+    const overview = [
+      decisions[0],
+      nextActions[0],
+      openLoops[0],
+      risks[0],
+      keyPoints[0],
+    ].filter(Boolean).slice(0, 2).join(" ") || fallbackOverview || `Session ${sessionId} handoff.`;
+
+    return {
+      overview,
+      decisions,
+      open_loops: openLoops,
+      next_actions: nextActions,
+      risks,
+      key_points: keyPoints,
+      latest_exchange: {
+        user: latestExchangeUser,
+        assistant: latestExchangeAssistant,
+        incomplete: Boolean(latestExchangeUser && !latestExchangeAssistant),
+      },
+      observation_count: rows.length,
+    };
+  }
+
+  private renderHandoffSummary(
+    sessionId: string,
+    summaryMode: string,
+    handoff: SessionHandoff
+  ): string {
+    const lines: string[] = [
+      "# Session Handoff",
+      "",
+      `- Session: ${sessionId}`,
+      `- Summary mode: ${summaryMode}`,
+      `- Observations reviewed: ${handoff.observation_count}`,
+      "",
+      "## Overview",
+      handoff.overview || "- no overview captured",
+      "",
+    ];
+
+    const renderSection = (title: string, items: string[], emptyText: string) => {
+      lines.push(`## ${title}`);
+      if (items.length === 0) {
+        lines.push(`- ${emptyText}`);
+      } else {
+        for (const item of items) {
+          lines.push(`- ${item}`);
+        }
+      }
+      lines.push("");
+    };
+
+    renderSection("Decisions", handoff.decisions, "No explicit decisions captured.");
+    renderSection("Open Loops", handoff.open_loops, "No unresolved follow-ups captured.");
+    renderSection("Next Actions", handoff.next_actions, "No next actions captured.");
+    renderSection("Risks", handoff.risks, "No explicit risks captured.");
+    renderSection("Key Points", handoff.key_points, "No additional key points captured.");
+
+    lines.push("## Latest Exchange");
+    lines.push(`- User: ${handoff.latest_exchange.user || "not captured"}`);
+    if (handoff.latest_exchange.assistant) {
+      lines.push(`- Assistant: ${handoff.latest_exchange.assistant}`);
+    } else if (handoff.latest_exchange.incomplete) {
+      lines.push("- Assistant: no response recorded yet");
+    } else {
+      lines.push("- Assistant: not captured");
+    }
+
+    return lines.join("\n");
   }
 
   sessionsList(request: SessionsListRequest): ApiResponse {
@@ -236,6 +627,10 @@ export class SessionManager {
       const eventType = typeof row.event_type === "string" ? row.event_type : "";
       const title = typeof row.title === "string" ? row.title : "";
       const content = typeof row.content_redacted === "string" ? row.content_redacted : "";
+      const tags = parseArrayJson(row.tags_json);
+      if (hasIgnoredVisibleTag(tags)) {
+        return false;
+      }
       if (eventType === "user_prompt" && isIgnoredVisiblePromptText(buildVisibleInteractionText(title, content))) {
         return false;
       }
@@ -302,54 +697,33 @@ export class SessionManager {
     }
 
     const summaryMode = request.summary_mode || "standard";
-    const rows = this.deps.db
-      .query(
-        `
-          SELECT title, content_redacted, created_at
-          FROM mem_observations
-          WHERE session_id = ?
-          ORDER BY created_at DESC
-          LIMIT 12
-        `
-      )
-      .all(request.session_id) as Array<{
-      title: string;
-      content_redacted: string;
-      created_at: string;
-    }>;
-
-    const lines: string[] = [];
-    for (const row of rows.reverse()) {
-      const title = row.title || "untitled";
-      const snippet = (row.content_redacted || "").replace(/\s+/g, " ").trim().slice(0, 100);
-      lines.push(`- ${title}: ${snippet}`);
-    }
-
-    const summary =
-      lines.length > 0
-        ? `Session ${request.session_id} summary (${summaryMode})\n${lines.join("\n")}`
-        : `Session ${request.session_id} summary (${summaryMode})\n- no observations`;
+    const maxRows = summaryMode === "detailed" ? 48 : summaryMode === "short" ? 20 : 32;
+    const rows = this.loadSessionSummaryRows(request.session_id, maxRows);
+    const handoff = this.buildStructuredHandoff(request.session_id, rows, summaryMode);
+    const summary = this.renderHandoffSummary(request.session_id, summaryMode, handoff);
 
     const current = nowIso();
     this.deps.db
       .query(
         `
           UPDATE mem_sessions
-          SET ended_at = ?, summary = ?, summary_mode = ?, updated_at = ?
+          SET ended_at = ?, summary = ?, summary_mode = ?, correlation_id = COALESCE(correlation_id, ?), updated_at = ?
           WHERE session_id = ?
         `
       )
-      .run(current, summary, summaryMode, current, request.session_id);
+      .run(current, summary, summaryMode, request.correlation_id ?? null, current, request.session_id);
 
     this.deps.recordEvent({
       platform: request.platform || "claude",
       project: request.project || basename(process.cwd()),
       session_id: request.session_id,
+      correlation_id: request.correlation_id,
       event_type: "session_end",
       ts: current,
       payload: {
         summary,
         summary_mode: summaryMode,
+        handoff,
       },
       tags: ["finalized"],
       privacy_tags: [],
@@ -374,6 +748,7 @@ export class SessionManager {
           session_id: request.session_id,
           summary_mode: summaryMode,
           summary,
+          handoff,
           finalized_at: current,
         },
       ],

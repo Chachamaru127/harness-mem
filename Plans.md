@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-20（§57 Claude Code + Codex アップデート対応計画策定）
+最終更新: 2026-03-26（§59 docs truth correction + auto-update wiring self-heal 完了）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了）
@@ -22,7 +22,7 @@
 | gate artifacts / README / proof bar | 再同期済み（§49 SSOT drift guard で CI 検知） |
 | 維持できている価値 | local-first CC+Codex bridge、hybrid retrieval、522問日本語ベンチ |
 | 最新リリース | **v0.6.0**（2026-03-20、§57 全15タスク完了、Codex 6R レビュー通過） |
-| 次フェーズの焦点 | §56 差別化ベンチマーク / §51 Competitive Gap Closure |
+| 次フェーズの焦点 | §59 Session Continuity UX Reboot / §51 Competitive Gap Closure |
 | CI Gate | **全 PASS**（2026-03-16 §54 完了時点） |
 
 ---
@@ -189,3 +189,41 @@ Phase A 内は並列可。Phase B は S57-006/007/009 が並列可。
 
 Phase A（S58-001, 002, 005）→ Phase B（S58-003, 004, 006, 007）→ Phase C（S58-008, 009）→ Phase D（S58-010）
 Phase A 内は並列可。Phase C は LLM 統合のため Phase A 完了後。
+
+---
+
+## §59 Session Continuity UX Reboot
+
+策定日: 2026-03-24
+背景: 現状の harness-mem は新規 Claude/Codex セッションで「今何を話していたか」が初手で十分に伝わらない。Claude-mem の再確認で優れていたのは検索器そのものではなく、`SessionStart` 時点でモデル可視の文脈を強く注入すること、そしてその注入元が「前回会話の要点 + 直近のやり取り」に寄っていることだった。harness-mem は `resume_pack` / 3-layer retrieval / `correlation_id` をすでに持つため、正解は Claude 専用実装の模倣ではなく、client-agnostic な `Continuity Briefing` を正本に再定義し、client ごとの注入は adapter に分離すること。
+
+### 方針
+
+- `resume_pack` を「最近の item 一覧」から「最初のターンで読む continuity briefing」へ再定義する
+- deep retrieval (`search -> timeline -> get_observations`) は維持し、briefing はその前段に置く
+- runtime は `project/session/correlation/privacy` 境界と briefing 生成を持つ
+- Claude/Codex の hook 注入経路と first-turn UX は sibling adapter owner に寄せる
+- benchmark は `core.search()` 直叩きだけでなく、`SessionStart -> resume_pack -> first turn continuity` を測る
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S59-001 | `resume_pack` continuity briefing ABI v1 — `meta.latest_interaction` / `meta.continuity_briefing` を追加し、hook script は item 列挙より briefing を優先表示 | `/v1/resume-pack` が briefing を返し、SessionStart contract / integration test が通る | - | cc:完了 |
+| S59-002 | chain-first source selection — runtime は `correlation_id` を最優先し、project-wide fallback を明示的な二次経路に下げる。adapter 側は `correlation_id` を transport する | targeted chain の briefing が project-wide ノイズより優先。cross-repo で hook transport 方針が確定 | S59-001 | cc:完了 |
+| S59-003 | structured handoff summary — `finalize_session` / checkpoint を `decisions`, `open_loops`, `next_actions`, `risks` を含む構造化 handoff に更新 | latest summary が listing ではなく handoff artifact になり、`resume_pack` がそれを優先利用 | S59-001 | cc:完了 |
+| S59-004 | runtime vs adapter owner split を文書化 — `harness-mem` が持つ ABI と sibling repo が持つ hook/injection/policy を分離 | `docs/plans/2026-03-24-session-continuity-ux-reboot.md` に owner boundary と実装順が記録される | - | cc:完了 |
+| S59-005 | first-turn continuity benchmark + client parity — repo 内で `SessionStart -> resume_pack -> injected artifact` を通し、Claude/Codex の required-fact recall / false carryover / parity を測る | harness runtime + hook script を使う benchmark/test が存在し、Claude/Codex の first-turn artifact が同一 fixture で比較・採点できる | S59-002, S59-003 | cc:完了 |
+| S59-007 | Claude-mem local baseline runner — local clone を使った opt-in 実測 runner を追加し、memory recall と context inject continuity を同一 fixture で比較できるようにする | `CLAUDE_MEM_REPO` 指定時に Claude-mem local worker を起動し、`search recall` と `context/inject` を harness-mem と同一シナリオで比較出力できる | S59-005 | cc:完了 |
+| S59-006 | README / setup / env docs の truth correction — 「自動で理解する」表現と実装現実の drift を修正 | README 系と setup docs が current behavior と planned behavior を区別する | S59-002 | cc:完了 |
+| S59-008 | explicit handoff capture hardening — ユーザーが `問題 / 決定 / 次アクション` を明示的に書いた場合、`finalize_session` と `continuity_briefing` がそれを優先抽出して初手に出す | 手動 acceptance と同型の fixture で `decision` と `next action` が欠落せず、briefing 上部に carry-forward として表示される | S59-002, S59-003 | cc:完了 |
+| S59-009 | pinned continuity persistence — 明示 handoff を follow-up session の薄い要約で上書きさせず、元の `問題 / 決定 / 次アクション` を chain 上で pin して優先表示する | 3-session acceptance と同型の fixture で、3本目でも元の `next action` が `resume_pack` の visible context に残る。Claude/Codex prompt hook parity test が通る | S59-008 | cc:完了 |
+| S59-010 | Codex hook merge hardening — 既存 `~/.codex/hooks.json` がある環境でも `SessionStart / UserPromptSubmit / Stop` を欠落なく共存マージし、実地で Claude 同等の continuity UX を得る | setup が既存 Codex hooks に 3 hook を追記共存できる。doctor/contract test が欠落を検知し、実機 `~/.codex/hooks.json` でも反映済み | S59-005, S59-009 | cc:完了 |
+| S59-011 | Codex hook ABI parity fix — `stderr` 出力ではなく Codex が実際に turn context へ載せる `hookSpecificOutput.additionalContext` を返し、fresh session で AGENTS 指示より前に continuity を見せる | 実 rollout の `turn_context` / request history で Codex visible context に continuity が載る。fresh Codex session の no-tool prompt で `問題 / 決定 / 次アクション` が取れる | S59-010 | cc:完了 |
+| S59-012 | continuity briefing UX polish — `Pinned Continuity` を前面に保ちつつ `session_start` / `continuity_handoff` などの機械ノイズを visible context から除き、raw summary dump を短い要点表示へ置き換える | fresh Codex/Claude session の hook context で raw `session_start:` / `continuity_handoff:` が出ず、`Pinned Continuity` と必要最小限の key points だけが見える。回帰テストが通る | S59-011 | cc:完了 |
+| S59-013 | review feedback cleanup — `Pinned Continuity` から scope guard を `Next Action` 扱いで出さず、acceptance prompt の非表示は content 文面ではなく session tag で制御する | fresh Codex session の hook context で `OpenAPI や DB index` が `Next Action` に出ない。`visibility_suppressed` tag 付き prompt/assistant が latest interaction / summary から除外される | S59-012 | cc:完了 |
+| S59-014 | auto-update wiring self-heal — `setup` で管理対象 platform を記録し、`update` / auto-update 後にその対象へ quiet `doctor --fix` を流して stale wiring を自動修復する | package 更新後に remembered platform だけ post-update repair が走る。`setup` / `uninstall` で対象一覧が同期され、Codex hooks merge / doctor / continuity 回帰が通る | S59-006, S59-010, S59-011 | cc:完了 |
+
+### 着手順
+
+S59-001 → S59-002 → S59-003 を最短経路とし、S59-004 は並列で固定。S59-005 → S59-007 で repo-local benchmark を閉じ、S59-006 は benchmark truth を確認してから着手。

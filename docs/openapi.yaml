@@ -950,6 +950,8 @@ paths:
                     - type: string
                 project:
                   type: string
+                correlation_id:
+                  type: string
                 summary_mode:
                   type: string
                   enum: [standard, short, detailed]

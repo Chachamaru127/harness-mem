@@ -17,19 +17,19 @@
   <a href="README.md">English</a> | 日本語
 </p>
 
-Harness-mem は Claude Code と Codex のメモリを橋渡しします。Claude Code で学習した内容を Codex で想起。完全ローカル、API キー不要。
+Harness-mem は Claude Code と Codex のメモリを、共有されたローカルランタイム経由で橋渡しします。Claude Code で得た文脈を Codex で想起。完全ローカル、API キー不要です。
 
 ## なぜ harness-mem？
 
 Claude 組み込みメモリは Claude の中でしか使えません。[claude-mem](https://github.com/thedotmack/claude-mem) は永続化を追加しますが Claude Code 専用です。[Mem0](https://github.com/mem0ai/mem0) はクロスアプリ対応ですがクラウド基盤と API 統合が必要です。
 
-**harness-mem のアプローチ**: ローカルデーモン1つ、SQLite 1ファイル、Claude Code ↔ Codex のシームレスなメモリ共有 — クラウド不要、Python不要、APIキー不要。
+**harness-mem のアプローチ**: ローカルデーモン1つ、SQLite 1ファイル、Claude Code ↔ Codex の共有ランタイムと、対応 hook path 上の first-turn continuity。クラウド不要、Python不要、APIキー不要です。
 
 | | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **対応ツール** | Claude Code, Codex（Tier 1）· Cursor（Tier 2）· Gemini CLI, OpenCode（実験的） | Claude のみ | Claude のみ | API経由でカスタム統合 |
 | **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
-| **クロスツール記憶共有** | 自動 — Claude Code で設計、Codex で実行、どこからでも想起 | 不可 | 不可 | アプリごとに手動接続 |
+| **クロスツール記憶共有** | 共有ローカルランタイム + 対応 hook path 上の first-turn continuity | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
 | **検索方式** | ハイブリッド（lexical + vector + recency + tag + graph） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
 | **外部依存** | Node.js + Bun | なし | Node.js + Python + uv + Chroma | Python + APIキー |
@@ -38,9 +38,22 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 ### つまり、こういうことです
 
-- **Claude Code と Codex を使っている** → harness-mem は両ツール間のメモリを自動共有します。Claude Code での設計判断が、Codex に切り替えた瞬間に使えます。
+- **Claude Code と Codex を使っている** → harness-mem は両ツールに同じローカルメモリランタイムを渡します。対応 hook path が有効なら、直近の決定や次アクションが切り替え直後の初手で見えるようになります。
 - **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。API キー不要。
 - **Cursor も使っている** → Tier 2 サポート: フックと MCP がそのまま動きます。Gemini CLI と OpenCode は実験的対応です。
+
+### 現在の挙動
+
+- Claude Code と Codex は、1つのローカルデーモンと 1つの SQLite DB を共有します。
+- first-turn continuity は、Claude Code / Codex の対応 hook path が有効で、`harness-mem setup` と `harness-mem doctor` が green のときに使えます。
+- hook 配線やローカル runtime が stale の場合、検索や recall は動いていても、「新しいセッションを開いた瞬間に覚えている」体験は崩れます。
+- 実験的 / maintenance tier のクライアントでも ingest/search はできますが、Claude Code / Codex と同じ parity までは現時点で主張しません。
+
+### 現時点で保証しないこと
+
+- どのクライアントでも、どんな fresh session でも完全自動で理解できること。
+- hook 配線が壊れている環境や runtime 不整合下での parity。
+- 長期運用で複数スレッドが混ざった project すべてでの perfect な chain selection。
 
 ## 実測ベンチマーク
 
@@ -125,13 +138,22 @@ Source:
 
 ## クイックスタート
 
-### A) npx で実行（グローバルインストール不要）
+### A) Claude Code Plugin Marketplace（Claude Code を主に使う場合）
+
+```text
+/plugin marketplace add Chachamaru127/harness-mem
+/plugin install harness-mem@chachamaru127
+```
+
+Claude 側の hooks と MCP は自動で配線されます。Codex や Cursor も使うなら、別途 `harness-mem setup --platform codex,cursor` を 1 回実行してください。Claude の次回セッション開始時に self-check hook から daemon が起動します。
+
+### B) npx で実行（グローバルインストール不要）
 
 ```bash
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,cursor,claude
 ```
 
-### B) グローバルインストール
+### C) グローバルインストール
 
 ```bash
 npm install -g @chachamaru127/harness-mem
@@ -144,7 +166,7 @@ harness-mem setup --platform codex,cursor,claude
 harness-mem update
 ```
 
-`harness-mem update` 実行時は、自動更新が無効な場合のみ「harness-mem の自動更新（opt-in）を有効化しますか?」の確認が表示され、選択後にグローバル更新を実行します。
+`harness-mem update` 実行時は、自動更新が無効な場合のみ「harness-mem の自動更新（opt-in）を有効化しますか?」の確認が表示され、選択後にグローバル更新を実行します。更新成功後は、記憶している client platform に対して静かな `doctor --fix` も流し、stale wiring を自動修復します。
 従来どおり `npm install -g @chachamaru127/harness-mem@latest` で手動更新も可能です。
 
 ### セットアップ確認
@@ -153,6 +175,8 @@ harness-mem update
 harness-mem doctor --platform codex,cursor,claude
 harness-mem doctor --fix --platform codex,cursor,claude
 ```
+
+Claude Code / Codex の first-turn continuity は、`doctor` が green で、`SessionStart` / `UserPromptSubmit` / `Stop` hooks が有効なときの挙動です。
 
 ### Mem UI を開く
 
@@ -203,7 +227,7 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 
 ### `doctor` で依存不足が出る
 
-`bun`, `node`, `curl`, `jq`, `ripgrep` をインストールして再実行:
+macOS では `bun` と `ripgrep` は setup 時に自動導入されます。その他の依存 (`node`, `curl`, `jq`) を入れてから再実行してください:
 
 ```bash
 harness-mem doctor --fix

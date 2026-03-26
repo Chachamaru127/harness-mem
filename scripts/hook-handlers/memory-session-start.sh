@@ -20,6 +20,15 @@ mkdir -p "$STATE_DIR" 2>/dev/null || true
 
 hook_resolve_session_id "claude" "$SESSION_FILE" "generate"
 HARNESS_SESSION_ID="$SESSION_ID"
+hook_init_continuity_state
+hook_resolve_correlation_id "$HARNESS_SESSION_ID" "claude" "$INPUT"
+
+RESUME_CORRELATION_ID=""
+case "${CORRELATION_ID_SOURCE:-generated}" in
+  input|session_state|latest_handoff)
+    RESUME_CORRELATION_ID="$CORRELATION_ID"
+    ;;
+esac
 
 SOURCE="startup"
 SESSION_NAME=""
@@ -92,20 +101,29 @@ if [ -x "$CLIENT_SCRIPT" ]; then
     --arg project "$PROJECT_NAME" \
     --arg session_id "$HARNESS_SESSION_ID" \
     --arg event_type "session_start" \
+    --arg correlation_id "$CORRELATION_ID" \
     --arg source "$SOURCE" \
     --arg session_name "$SESSION_NAME_ARG" \
     --argjson tags "$SESSION_NAME_TAGS" \
     --argjson hook_meta "$HOOK_META_JSON" \
-    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,payload:{source:$source,session_name:$session_name,meta:$hook_meta},tags:$tags,privacy_tags:[]}}' 2>/dev/null)
+    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:$event_type,correlation_id:$correlation_id,payload:{source:$source,session_name:$session_name,meta:$hook_meta},tags:$tags,privacy_tags:[]}}' 2>/dev/null)
 
   if [ -n "$EVENT_PAYLOAD" ]; then
     printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
   fi
 
-  RESUME_PAYLOAD=$(jq -nc \
-    --arg project "$PROJECT_NAME" \
-    --arg session_id "$HARNESS_SESSION_ID" \
-    '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
+  if [ -n "$RESUME_CORRELATION_ID" ]; then
+    RESUME_PAYLOAD=$(jq -nc \
+      --arg project "$PROJECT_NAME" \
+      --arg session_id "$HARNESS_SESSION_ID" \
+      --arg correlation_id "$RESUME_CORRELATION_ID" \
+      '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false}' 2>/dev/null)
+  else
+    RESUME_PAYLOAD=$(jq -nc \
+      --arg project "$PROJECT_NAME" \
+      --arg session_id "$HARNESS_SESSION_ID" \
+      '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
+  fi
 
   if [ -z "$RESUME_PAYLOAD" ]; then
     cleanup_resume_stale_context
@@ -166,22 +184,9 @@ if [ -x "$CLIENT_SCRIPT" ]; then
       printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
 
       if command -v jq >/dev/null 2>&1; then
-        ITEM_COUNT="$(printf '%s' "$RESUME_RESPONSE" | jq -r '.meta.count // 0' 2>/dev/null)"
-        if [ -n "$ITEM_COUNT" ] && [ "$ITEM_COUNT" != "0" ]; then
-          {
-            echo "## Memory Resume Pack"
-            echo ""
-            echo "直近セッションから再利用可能な文脈です。"
-            echo ""
-            printf '%s' "$RESUME_RESPONSE" | jq -r '
-              .items[] |
-              if .type == "session_summary" then
-                "- [summary] " + (.summary // "") | .[0:260]
-              else
-                "- [" + (.id // "") + "] " + ((.title // "untitled") + " :: " + ((.content // "") | gsub("\\n"; " ") | .[0:140]))
-              end
-            ' 2>/dev/null
-          } > "$RESUME_FILE"
+        RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
+        if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
+          printf '%s\n' "$RENDERED_RESUME_CONTEXT" > "$RESUME_FILE"
           touch "$RESUME_PENDING_FLAG" 2>/dev/null || true
         else
           rm -f "$RESUME_FILE" "$RESUME_PENDING_FLAG" 2>/dev/null || true

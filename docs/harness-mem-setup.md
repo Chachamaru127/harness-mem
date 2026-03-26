@@ -30,6 +30,8 @@ harness-mem update
 npm install -g @chachamaru127/harness-mem@latest
 ```
 
+After a successful package update, harness-mem also runs a quiet post-update repair (`doctor --fix`) for the client platforms remembered from prior `setup` runs so broken hook/config wiring can self-heal.
+
 ## 2. Setup Flow
 
 `harness-mem setup` performs:
@@ -57,10 +59,18 @@ If auto-update opt-in is enabled, `harness-mem` checks npm for newer versions pe
 npm install -g @chachamaru127/harness-mem@latest
 ```
 
+That post-update flow also attempts a quiet wiring repair for remembered client platforms. It does not blanket-wire every supported tool.
+
 Notes:
 - Config is stored in `~/.harness-mem/config.json` (`auto_update.enabled`).
 - Auto-update checks are skipped in repo checkout mode and npx runtime mode.
 - Temporarily disable auto-update checks per command with `HARNESS_MEM_SKIP_AUTO_UPDATE=1`.
+
+### Continuity UX contract today
+
+- Claude Code and Codex can show first-turn continuity when the client hook path is active, the daemon is healthy, and `harness-mem doctor` is green.
+- This is a runtime contract, not a blanket guarantee for every client: unsupported or experimental clients may still ingest/search without matching the Claude/Codex continuity UX.
+- If hooks or the local runtime are stale, search and manual recall can still work while the "open a new session and it already remembers" UX degrades.
 
 ## 3. Command Reference
 
@@ -197,8 +207,11 @@ Options:
 
 ### Codex
 
+- Maintains `~/.codex/hooks.json` entries for `SessionStart`, `UserPromptSubmit`, and `Stop`
+- Ensures `~/.codex/config.toml` enables the experimental hooks engine (`features.codex_hooks = true` or `[features] codex_hooks = true`)
 - Verifies memory bridge entries in `~/.codex/config.toml`
 - Checks ingest path from Codex session logs
+- First-turn continuity on Codex depends on the hook path above plus a healthy daemon/runtime
 
 ### OpenCode
 
@@ -214,8 +227,12 @@ Options:
 
 ### Claude workflows
 
+- Claude Code Plugin Marketplace wiring configures the Claude-side hooks and MCP automatically
+- `harness-mem setup --platform claude` configures the same Claude-side runtime path without the marketplace flow
 - Configures `mcpServers.harness` in `~/.claude.json`
 - Updates `~/.claude/settings.json` if an MCP block already exists
+- First-turn continuity on Claude depends on the `SessionStart` / `UserPromptSubmit` / `Stop` hook path and a healthy daemon/runtime
+- If you also use Codex or Cursor, run `harness-mem setup --platform codex,cursor` so those clients are wired separately
 - Supports import/verify/cutover migration flow
 
 ### Antigravity

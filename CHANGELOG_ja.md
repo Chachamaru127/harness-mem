@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.7.0] - 2026-03-26
+
+### ユーザー向け要約
+
+- `resume_pack` を `Continuity Briefing` 中心に再設計し、Claude Code / Codex の新規セッション初手で `問題 / 決定 / 次アクション` が見えるよう改善。
+- `correlation_id` 優先の chain-first 選別と `continuity_handoff` pin 保持を追加し、同じ repo 内の別話題ノイズに引っ張られにくくした。
+- Codex の hooks merge、`codex_hooks = true`、`hookSpecificOutput.additionalContext` を揃え、Claude / Codex の first-turn parity を実測ベンチで確認。
+- `harness-mem update` / auto-update 後に remembered platform へ quiet `doctor --fix` を流し、stale wiring を自動修復するよう改善。
+- README / setup / env docs を current behavior ベースに更新し、`HARNESS_MEM_RESUME_PACK_MAX_TOKENS` の既定値 `4000` も明記。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.5.0] - 2026-03-15
 
 ### ユーザー向け要約

@@ -11,7 +11,16 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
 hook_init_paths "true"
 hook_init_context
 hook_resolve_session_id "codex" "" "generate"
+hook_init_continuity_state
+hook_resolve_correlation_id "$SESSION_ID" "codex" "$INPUT"
 hook_check_deps
+
+RESUME_CORRELATION_ID=""
+case "${CORRELATION_ID_SOURCE:-generated}" in
+  input|session_state|latest_handoff)
+    RESUME_CORRELATION_ID="$CORRELATION_ID"
+    ;;
+esac
 
 # Ensure daemon is running
 HEALTH_CHECK="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC=2 "$CLIENT_SCRIPT" health 2>/dev/null || true)"
@@ -28,33 +37,33 @@ EVENT_PAYLOAD=$(jq -nc \
   --arg platform "codex" \
   --arg project "$PROJECT_NAME" \
   --arg session_id "$SESSION_ID" \
-  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:"session_start",payload:{source:"codex_hooks_engine"},tags:["codex_hook","session_start"]}}' 2>/dev/null)
+  --arg correlation_id "$CORRELATION_ID" \
+  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:"session_start",correlation_id:$correlation_id,payload:{source:"codex_hooks_engine"},tags:["codex_hook","session_start"]}}' 2>/dev/null)
 
 if [ -n "$EVENT_PAYLOAD" ]; then
   printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
 fi
 
 # Retrieve resume pack
-RESUME_PAYLOAD=$(jq -nc \
-  --arg project "$PROJECT_NAME" \
-  --arg session_id "$SESSION_ID" \
-  '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
+if [ -n "$RESUME_CORRELATION_ID" ]; then
+  RESUME_PAYLOAD=$(jq -nc \
+    --arg project "$PROJECT_NAME" \
+    --arg session_id "$SESSION_ID" \
+    --arg correlation_id "$RESUME_CORRELATION_ID" \
+    '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false}' 2>/dev/null)
+else
+  RESUME_PAYLOAD=$(jq -nc \
+    --arg project "$PROJECT_NAME" \
+    --arg session_id "$SESSION_ID" \
+    '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
+fi
 
 if [ -n "$RESUME_PAYLOAD" ]; then
   RESUME_RESPONSE="$(printf '%s' "$RESUME_PAYLOAD" | "$CLIENT_SCRIPT" resume-pack 2>/dev/null || true)"
   if [ -n "$RESUME_RESPONSE" ] && printf '%s' "$RESUME_RESPONSE" | jq -e '.ok != false' >/dev/null 2>&1; then
-    ITEM_COUNT="$(printf '%s' "$RESUME_RESPONSE" | jq -r '.meta.count // 0' 2>/dev/null)"
-    if [ -n "$ITEM_COUNT" ] && [ "$ITEM_COUNT" != "0" ]; then
-      echo "## Memory Resume Pack (Codex)" >&2
-      echo "" >&2
-      printf '%s' "$RESUME_RESPONSE" | jq -r '
-        .items[] |
-        if .type == "session_summary" then
-          "- [summary] " + (.summary // "") | .[0:260]
-        else
-          "- [" + (.id // "") + "] " + ((.title // "untitled") + " :: " + ((.content // "") | gsub("\\n"; " ") | .[0:140]))
-        end
-      ' 2>/dev/null >&2 || true
+    RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
+    if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
+      hook_emit_codex_additional_context "SessionStart" "$RENDERED_RESUME_CONTEXT"
     fi
   fi
 fi

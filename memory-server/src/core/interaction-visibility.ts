@@ -15,6 +15,8 @@ export const IGNORED_VISIBLE_RESPONSE_PATTERNS = [
   /^No response requested\.?$/i,
 ];
 
+export const IGNORED_VISIBLE_TAGS = new Set(["visibility_suppressed"]);
+
 export function buildVisibleInteractionText(title: string | null | undefined, content: string | null | undefined): string {
   return `${title || ""}\n${content || ""}`.trim();
 }
@@ -29,4 +31,8 @@ export function isIgnoredVisibleResponseText(text: string): boolean {
   const normalized = text.trim();
   if (!normalized) return true;
   return IGNORED_VISIBLE_RESPONSE_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
+export function hasIgnoredVisibleTag(tags: string[] | null | undefined): boolean {
+  return (tags || []).some((tag) => IGNORED_VISIBLE_TAGS.has(String(tag || "").trim()));
 }

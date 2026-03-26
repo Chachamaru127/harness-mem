@@ -7,6 +7,64 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-03-26
+
+### テーマ: Session continuity reboot + auto-healing wiring
+
+**新しい Claude Code / Codex セッションを開いた瞬間に前の会話を思い出せる UX を主目標に据え、`resume_pack`・handoff・hook transport を組み直しました。さらに、package の auto-update 後に stale wiring を quiet repair できるようにし、体験と運用の両方を揃えています。**
+
+---
+
+#### 1. Continuity Briefing を初手 artifact に昇格
+
+**今まで**: `resume_pack` は「最近の item 一覧」に近く、新しいセッションの最初のターンで「何を話していたか」「何を決めたか」「次に何をやるか」が欠落しがちでした。
+
+**今後**: `resume_pack` は `Continuity Briefing` を返し、`Pinned Continuity` / `Carry Forward` / `Current Focus` を優先表示します。Claude Code と Codex の `SessionStart` は raw item dump ではなく、この briefing をそのまま turn context に載せます。
+
+```text
+## Pinned Continuity
+- Problem: 新しいセッションを開くと、前に何を話していたかが途切れやすい
+- Decision: continuity briefing を最初のターンで必ず見せる
+- Next Action: adapter delivery を両方で揃える
+```
+
+#### 2. 会話チェーン優先と explicit handoff の pin 保持
+
+**今まで**: 同じ repo の中で別話題が近い時刻に走ると、project-wide な最近ノイズが本来の会話チェーンより前に出ることがありました。`問題 / 決定 / 次アクション` を明示しても、その後の薄い follow-up session に上書きされることもありました。
+
+**今後**: `correlation_id` を chain-first で優先し、explicit handoff は `continuity_handoff` として pin 保存します。`finalize_session` も `decisions / open_loops / next_actions / risks / latest_exchange` を持つ構造化 handoff を返すようになり、3-session の follow-up でも元の next action を visible context に残せます。
+
+```json
+{
+  "decisions": ["continuity briefing を最初のターンで必ず表示する"],
+  "next_actions": ["adapter delivery を Claude / Codex 両方で揃える"]
+}
+```
+
+#### 3. Claude / Codex first-turn parity の実装と acceptance 実測
+
+**今まで**: Claude 側は runtime があっても transport が切れていた時期があり、Codex 側も hooks merge、`codex_hooks = true`、`hookSpecificOutput.additionalContext` の返し方が揃っていませんでした。その結果、「検索すると出る」が「開いた瞬間に覚えている」に直結しませんでした。
+
+**今後**: Claude / Codex ともに `SessionStart + UserPromptSubmit + Stop` の continuity 経路を揃え、Codex は既存 `~/.codex/hooks.json` への共存マージ、hooks feature flag、有効な `additionalContext` 注入まで実装しました。repo 内 benchmark では first-turn continuity の required-fact recall と false carryover を parity 付きで検証しています。
+
+```bash
+bun test tests/session-start-parity-contract.test.ts \
+  tests/benchmarks/first-turn-continuity.test.ts \
+  memory-server/tests/integration/resume-pack-behavior.test.ts
+```
+
+#### 4. auto-update 後の wiring self-heal と docs truth correction
+
+**今まで**: `harness-mem update` や opt-in auto-update は global package を更新するだけで、`~/.claude` / `~/.codex` の wiring が stale でもそのままでした。README / setup docs も「自動で理解する」寄りに見え、実装現実との差分がありました。
+
+**今後**: `setup` で管理対象 platform を記録し、`update` / auto-update 成功後に remembered platform へ quiet `doctor --fix` を流して stale wiring を自動修復します。`uninstall` はその記録も同期して、消した wiring を次回 update で勝手に戻しません。README / setup / env docs も、現在の契約を `shared runtime + supported hook path 上の first-turn continuity` として明示しました。
+
+```bash
+harness-mem update
+# package update
+# -> quiet doctor --fix for remembered platforms
+```
+
 ## [0.6.0] - 2026-03-20
 
 ### テーマ: Claude Code v2.1.80 + Codex v0.116.0 完全対応

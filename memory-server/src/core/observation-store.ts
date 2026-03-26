@@ -21,6 +21,7 @@ import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
 import {
   buildVisibleInteractionText,
+  hasIgnoredVisibleTag,
   isIgnoredVisiblePromptText,
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
@@ -131,6 +132,338 @@ function escapeLikePattern(input: string): string {
   return input.replace(/([\\%_])/g, "\\$1");
 }
 
+function collapseWhitespace(input: string | null | undefined, maxLength: number): string {
+  if (!input) return "";
+  return input.replace(/\s+/g, " ").trim().slice(0, maxLength);
+}
+
+function compactTextBlock(input: string | null | undefined, maxLength: number): string {
+  if (!input) return "";
+  return input.replace(/\r\n/g, "\n").trim().slice(0, maxLength);
+}
+
+function extractMarkdownSectionItems(
+  markdown: string | null | undefined,
+  sectionTitle: string,
+  maxItems: number
+): string[] {
+  if (!markdown) return [];
+
+  const items: string[] = [];
+  const lines = markdown.split(/\r?\n/);
+  let inSection = false;
+
+  for (const rawLine of lines) {
+    const trimmed = rawLine.trim();
+    if (/^##\s+/.test(trimmed)) {
+      inSection = trimmed.toLowerCase() === `## ${sectionTitle.toLowerCase()}`;
+      continue;
+    }
+    if (!inSection || !trimmed.startsWith("- ")) {
+      continue;
+    }
+    let item = collapseWhitespace(trimmed.slice(2), 180);
+    if (!item || /^no /i.test(item) || /^not captured/i.test(item) || isNoisyContinuityWrapper(item)) {
+      continue;
+    }
+    item = stripContinuityWrapperPrefix(item);
+    if (!item || /^no /i.test(item) || /^not captured/i.test(item) || /^\{/.test(item)) {
+      continue;
+    }
+    if (!items.includes(item)) {
+      items.push(item);
+    }
+    if (items.length >= maxItems) {
+      break;
+    }
+  }
+
+  return items;
+}
+
+function extractMarkdownSectionBody(
+  markdown: string | null | undefined,
+  sectionTitle: string,
+  maxLength: number
+): string {
+  if (!markdown) return "";
+
+  const lines: string[] = [];
+  const targetHeading = `## ${sectionTitle.toLowerCase()}`;
+  let inSection = false;
+
+  for (const rawLine of markdown.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (/^##\s+/.test(trimmed)) {
+      if (inSection) break;
+      inSection = trimmed.toLowerCase() === targetHeading;
+      continue;
+    }
+    if (!inSection || !trimmed) {
+      continue;
+    }
+    if (isNoisyContinuityWrapper(trimmed)) {
+      continue;
+    }
+    const cleaned = stripContinuityWrapperPrefix(trimmed);
+    if (!cleaned || /^\{/.test(cleaned)) {
+      continue;
+    }
+    lines.push(cleaned);
+  }
+
+  return collapseWhitespace(lines.join(" "), maxLength);
+}
+
+function stripContinuityWrapperPrefix(line: string | null | undefined): string {
+  const normalized = collapseWhitespace(line, 260);
+  return normalized.replace(/^(?:assistant_response|user_prompt)\s*:\s*/i, "").trim();
+}
+
+function isNoisyContinuityWrapper(line: string | null | undefined): boolean {
+  const normalized = collapseWhitespace(line, 260).toLowerCase();
+  if (!normalized) return true;
+  return (
+    normalized.startsWith("session_start:") ||
+    normalized.startsWith("session_end:") ||
+    normalized.startsWith("continuity_handoff:") ||
+    normalized.startsWith("assistant_response:") ||
+    normalized.startsWith("user_prompt:")
+  );
+}
+
+function buildCarryForwardLines(summary: string | null | undefined): string[] {
+  if (!summary) return [];
+
+  const lines: string[] = [];
+  const pushWithLabel = (label: string, values: string[]) => {
+    for (const value of values) {
+      const item = `${label}: ${value}`;
+      if (!lines.includes(item)) {
+        lines.push(item);
+      }
+      if (lines.length >= 4) {
+        return;
+      }
+    }
+  };
+
+  pushWithLabel("Decision", extractMarkdownSectionItems(summary, "Decisions", 2));
+  if (lines.length < 4) {
+    pushWithLabel("Next Action", extractMarkdownSectionItems(summary, "Next Actions", 2));
+  }
+  if (lines.length < 4) {
+    pushWithLabel("Open Loop", extractMarkdownSectionItems(summary, "Open Loops", 1));
+  }
+  if (lines.length < 4) {
+    pushWithLabel("Risk", extractMarkdownSectionItems(summary, "Risks", 1));
+  }
+  if (lines.length < 4) {
+    pushWithLabel("Key Point", extractMarkdownSectionItems(summary, "Key Points", 2));
+  }
+
+  return lines.slice(0, 4);
+}
+
+function buildRecentUpdateLines(summary: string | null | undefined): string[] {
+  if (!summary) return [];
+  const lines: string[] = [];
+  const pushWithLabel = (label: string, values: string[]) => {
+    for (const value of values) {
+      const item = `${label}: ${value}`;
+      if (!lines.includes(item)) {
+        lines.push(item);
+      }
+      if (lines.length >= 3) {
+        return;
+      }
+    }
+  };
+
+  pushWithLabel("Decision", extractMarkdownSectionItems(summary, "Decisions", 2));
+  if (lines.length < 3) {
+    pushWithLabel("Next Action", extractMarkdownSectionItems(summary, "Next Actions", 2));
+  }
+  if (lines.length < 3) {
+    pushWithLabel("Open Loop", extractMarkdownSectionItems(summary, "Open Loops", 1));
+  }
+  if (lines.length < 3) {
+    pushWithLabel("Risk", extractMarkdownSectionItems(summary, "Risks", 1));
+  }
+
+  return lines.slice(0, 3);
+}
+
+function subtractContinuityLines(lines: string[], excluded: string[]): string[] {
+  if (excluded.length === 0) return lines.slice();
+  const excludedSet = new Set(excluded.map((line) => collapseWhitespace(line, 220).toLowerCase()));
+  return lines.filter((line) => !excludedSet.has(collapseWhitespace(line, 220).toLowerCase()));
+}
+
+type ContinuitySectionKey = "problems" | "decisions" | "open_loops" | "next_actions" | "risks";
+
+interface ContinuitySections {
+  problems: string[];
+  decisions: string[];
+  open_loops: string[];
+  next_actions: string[];
+  risks: string[];
+}
+
+const CONTINUITY_SCOPE_GUARD_PATTERN =
+  /\b(out of scope|not the main thread|not the focus|do not mix|avoid mixing)\b|(本筋ではない|スコープ外|混ぜない|対象外)/i;
+
+function normalizeContinuityBulletContent(line: string, maxLength: number): string {
+  return line
+    .replace(/^(?:[-*+]|(?:\d+[.)]))\s*/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function isContinuityPlaceholder(line: string): boolean {
+  return /^(?:no |not captured|none\b|なし\b|未記載\b|未設定\b)/i.test(line);
+}
+
+function classifyContinuitySection(line: string): { key: ContinuitySectionKey; value: string } | null {
+  const trimmed = line.trim();
+  const prefix = "(?:(?:[-*+]\\s*)|(?:(?:\\d+)[.)]\\s*))?";
+  const patterns: Array<{ key: ContinuitySectionKey; pattern: RegExp }> = [
+    {
+      key: "problems",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:problem|problems|issue|issues|問題|課題)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+    {
+      key: "decisions",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:decision|decisions|決定|方針)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+    {
+      key: "open_loops",
+      pattern: new RegExp(
+        `^(?:#+\\s*)?${prefix}(?:open loops?|open questions?|unresolved|pending|保留|未解決|確認事項)\\s*[:：]?\\s*(.*)$`,
+        "i"
+      ),
+    },
+    {
+      key: "next_actions",
+      pattern: new RegExp(
+        `^(?:#+\\s*)?${prefix}(?:next actions?|next steps?|next step|next action|todo|todos|次アクション|次の対応|次対応|次にやるべきこと|残件)\\s*[:：]?\\s*(.*)$`,
+        "i"
+      ),
+    },
+    {
+      key: "risks",
+      pattern: new RegExp(`^(?:#+\\s*)?${prefix}(?:risk|risks|懸念|リスク)\\s*[:：]?\\s*(.*)$`, "i"),
+    },
+  ];
+
+  for (const entry of patterns) {
+    const match = trimmed.match(entry.pattern);
+    if (match) {
+      return { key: entry.key, value: normalizeContinuityBulletContent(match[1] || "", 220) };
+    }
+  }
+  return null;
+}
+
+function parseContinuitySections(text: string | null | undefined, maxItems: number): ContinuitySections {
+  const sections: ContinuitySections = {
+    problems: [],
+    decisions: [],
+    open_loops: [],
+    next_actions: [],
+    risks: [],
+  };
+  if (!text) return sections;
+
+  let currentSection: ContinuitySectionKey | null = null;
+  for (const rawLine of text.split(/\r?\n/)) {
+    const trimmed = rawLine.trim();
+    if (!trimmed) continue;
+
+    const explicitSection = classifyContinuitySection(trimmed);
+    if (explicitSection) {
+      currentSection = explicitSection.key;
+      if (explicitSection.value && !isContinuityPlaceholder(explicitSection.value)) {
+        if (!sections[currentSection].includes(explicitSection.value) && sections[currentSection].length < maxItems) {
+          sections[currentSection].push(explicitSection.value);
+        }
+      }
+      continue;
+    }
+
+    if (!currentSection) continue;
+    const value = normalizeContinuityBulletContent(trimmed, 220);
+    if (!value || isContinuityPlaceholder(value)) continue;
+    if (!sections[currentSection].includes(value) && sections[currentSection].length < maxItems) {
+      sections[currentSection].push(value);
+    }
+  }
+
+  return sections;
+}
+
+function buildPinnedCarryForwardLines(text: string | null | undefined): string[] {
+  const sections = parseContinuitySections(text, 2);
+  const lines: string[] = [];
+  const push = (label: string, values: string[]) => {
+    for (const value of values) {
+      const entry = `${label}: ${value}`;
+      if (!lines.includes(entry)) {
+        lines.push(entry);
+      }
+      if (lines.length >= 5) return;
+    }
+  };
+
+  push("Problem", sections.problems);
+  if (lines.length < 5) push("Decision", sections.decisions);
+  if (lines.length < 5) push("Next Action", sections.next_actions.filter((value) => !CONTINUITY_SCOPE_GUARD_PATTERN.test(value)));
+  if (lines.length < 5) push("Open Loop", sections.open_loops);
+  if (lines.length < 5) push("Risk", sections.risks);
+  return lines;
+}
+
+function shouldIncludeBriefingAnchor(
+  item: Record<string, unknown>,
+  pinnedContinuityPresent: boolean
+): boolean {
+  const title = collapseWhitespace(
+    typeof item.title === "string" ? item.title : typeof item.id === "string" ? item.id : "",
+    80
+  );
+  const content = collapseWhitespace(
+    typeof item.content === "string"
+      ? item.content
+      : typeof item.summary === "string"
+        ? item.summary
+        : "",
+    220
+  );
+
+  if (!title && !content) return false;
+  if (isNoisyContinuityWrapper(title) || isNoisyContinuityWrapper(`${title}: ${content}`) || isNoisyContinuityWrapper(content)) {
+    return false;
+  }
+
+  const normalizedTitle = title.trim().toLowerCase();
+  if (normalizedTitle === "session_start" || normalizedTitle === "session_end" || normalizedTitle === "continuity_handoff") {
+    return false;
+  }
+  if (pinnedContinuityPresent && normalizedTitle === "assistant_response") {
+    return false;
+  }
+
+  const visibleText = buildVisibleInteractionText(title, content);
+  if (hasIgnoredVisibleTag(Array.isArray(item.tags) ? (item.tags as string[]) : []) ||
+    isIgnoredVisiblePromptText(visibleText) ||
+    isIgnoredVisibleResponseText(content)) {
+    return false;
+  }
+
+  return true;
+}
+
 interface FeedCursor {
   created_at: string;
   id: string;
@@ -159,7 +492,7 @@ interface LatestInteractionObservation {
 }
 
 interface LatestInteractionContext {
-  scope: "project" | "session";
+  scope: "project" | "session" | "chain";
   project: string;
   session_id: string;
   platform: string;
@@ -253,11 +586,12 @@ function isLatestInteractionIntent(query: string): boolean {
 }
 
 function isIgnoredLatestInteractionPrompt(observation: LatestInteractionObservation): boolean {
-  return isIgnoredVisiblePromptText(buildVisibleInteractionText(observation.title, observation.content));
+  return hasIgnoredVisibleTag(observation.tags) ||
+    isIgnoredVisiblePromptText(buildVisibleInteractionText(observation.title, observation.content));
 }
 
 function isIgnoredLatestInteractionResponse(observation: LatestInteractionObservation): boolean {
-  return isIgnoredVisibleResponseText(observation.content);
+  return hasIgnoredVisibleTag(observation.tags) || isIgnoredVisibleResponseText(observation.content);
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +632,8 @@ export class ObservationStore {
   private queryLatestInteractionObservations(options: {
     projects?: string[];
     session_id?: string;
+    exclude_session_id?: string;
+    correlation_id?: string;
     include_private: boolean;
     user_id?: string;
     team_id?: string;
@@ -322,10 +658,24 @@ export class ObservationStore {
       WHERE 1 = 1
     `;
 
+    if (options.correlation_id) {
+      sql = sql.replace(
+        "LEFT JOIN mem_events e ON e.event_id = o.event_id",
+        "JOIN mem_sessions s ON s.session_id = o.session_id\n      LEFT JOIN mem_events e ON e.event_id = o.event_id"
+      );
+    }
+
     sql = this.appendProjectFilter(sql, params, "o", options.projects || []);
     if (options.session_id) {
       sql += " AND o.session_id = ?";
       params.push(options.session_id);
+    } else if (options.exclude_session_id) {
+      sql += " AND o.session_id <> ?";
+      params.push(options.exclude_session_id);
+    }
+    if (options.correlation_id) {
+      sql += " AND s.correlation_id = ?";
+      params.push(options.correlation_id);
     }
 
     sql += this.deps.platformVisibilityFilterSql("o");
@@ -368,28 +718,10 @@ export class ObservationStore {
     }));
   }
 
-  private getLatestInteractionContext(request: SearchRequest, projectMembers: string[] = [], scanLimit?: number): LatestInteractionContext | null {
-    if (projectMembers.length === 0 && !request.session_id) {
-      return null;
-    }
-
-    const includePrivate = Boolean(request.include_private);
-    const userId = typeof request.user_id === "string" && request.user_id.trim()
-      ? request.user_id.trim()
-      : undefined;
-    const teamId = typeof request.team_id === "string" && request.team_id.trim()
-      ? request.team_id.trim()
-      : undefined;
-    const scope: "project" | "session" = request.session_id ? "session" : "project";
-    const candidates = this.queryLatestInteractionObservations({
-      projects: projectMembers,
-      session_id: request.session_id,
-      include_private: includePrivate,
-      user_id: userId,
-      team_id: teamId,
-      limit: scanLimit,
-    });
-
+  private selectLatestInteractionContext(
+    candidates: LatestInteractionObservation[],
+    scope: LatestInteractionContext["scope"]
+  ): LatestInteractionContext | null {
     if (candidates.length === 0) {
       return null;
     }
@@ -488,6 +820,50 @@ export class ObservationStore {
     };
   }
 
+  private getLatestInteractionContext(request: SearchRequest, projectMembers: string[] = [], scanLimit?: number): LatestInteractionContext | null {
+    if (projectMembers.length === 0 && !request.session_id) {
+      return null;
+    }
+
+    const includePrivate = Boolean(request.include_private);
+    const userId = typeof request.user_id === "string" && request.user_id.trim()
+      ? request.user_id.trim()
+      : undefined;
+    const teamId = typeof request.team_id === "string" && request.team_id.trim()
+      ? request.team_id.trim()
+      : undefined;
+    const scope: "project" | "session" = request.session_id ? "session" : "project";
+    const candidates = this.queryLatestInteractionObservations({
+      projects: projectMembers,
+      session_id: request.session_id,
+      include_private: includePrivate,
+      user_id: userId,
+      team_id: teamId,
+      limit: scanLimit,
+    });
+    return this.selectLatestInteractionContext(candidates, scope);
+  }
+
+  private getResumeInteractionContext(
+    request: ResumePackRequest,
+    projectMembers: string[] = [],
+    scanLimit?: number
+  ): LatestInteractionContext | null {
+    if (projectMembers.length === 0) {
+      return null;
+    }
+
+    const candidates = this.queryLatestInteractionObservations({
+      projects: projectMembers,
+      exclude_session_id: request.session_id,
+      correlation_id: request.correlation_id,
+      include_private: Boolean(request.include_private),
+      limit: scanLimit,
+    });
+
+    return this.selectLatestInteractionContext(candidates, request.correlation_id ? "chain" : "project");
+  }
+
   private buildLatestInteractionMeta(context: LatestInteractionContext | null): Record<string, unknown> | null {
     if (!context) return null;
 
@@ -514,6 +890,132 @@ export class ObservationStore {
       incomplete: context.incomplete,
       prompt: serializeObservation(context.prompt),
       response: serializeObservation(context.response),
+    };
+  }
+
+  private buildContinuityBriefing(options: {
+    correlationId: string | null;
+    latestSummary: { session_id: string; summary: string; ended_at: string } | null;
+    latestInteraction: LatestInteractionContext | null;
+    pinnedContinuity: { session_id: string; content: string; created_at: string } | null;
+    detailedItems: Array<Record<string, unknown>>;
+    compactItems: Array<Record<string, unknown>>;
+  }): Record<string, unknown> | null {
+    const { correlationId, latestSummary, latestInteraction, pinnedContinuity, detailedItems, compactItems } = options;
+    const anchorItems = [...detailedItems.slice(0, 3), ...compactItems.slice(0, 2)];
+    if (!latestSummary && !latestInteraction && !pinnedContinuity && anchorItems.length === 0) {
+      return null;
+    }
+
+    const sourceScope = latestInteraction?.scope ?? (correlationId ? "chain" : "project");
+    const sourceSessionId = latestInteraction?.session_id ?? latestSummary?.session_id ?? pinnedContinuity?.session_id ?? null;
+    const latestTurnAt = latestInteraction?.latest_turn_at ?? latestSummary?.ended_at ?? pinnedContinuity?.created_at ?? null;
+    const lines: string[] = ["# Continuity Briefing"];
+
+    const pinnedCarryForward = buildPinnedCarryForwardLines(pinnedContinuity?.content);
+    const pinnedContinuityPresent = pinnedCarryForward.length > 0;
+    if (pinnedCarryForward.length > 0) {
+      lines.push("", "## Pinned Continuity");
+      for (const line of pinnedCarryForward) {
+        lines.push(`- ${line}`);
+      }
+    }
+
+    lines.push("", "## Current Focus");
+    lines.push(`- Resume scope: ${sourceScope}`);
+    if (sourceSessionId) {
+      lines.push(`- Source session: ${sourceSessionId}`);
+    }
+    if (latestTurnAt) {
+      lines.push(`- Latest turn: ${latestTurnAt}`);
+    }
+    if (correlationId) {
+      lines.push(`- Correlation: ${correlationId}`);
+    }
+
+    if (latestSummary) {
+      const carryForward = buildCarryForwardLines(latestSummary.summary);
+      const summaryKeyPoints = extractMarkdownSectionItems(latestSummary.summary, "Key Points", 3);
+
+      if (pinnedContinuityPresent) {
+        const recentUpdate = subtractContinuityLines(
+          buildRecentUpdateLines(latestSummary.summary),
+          pinnedCarryForward
+        ).slice(0, 3);
+        if (recentUpdate.length > 0) {
+          lines.push("", "## Recent Update");
+          for (const updateLine of recentUpdate) {
+            lines.push(`- ${updateLine}`);
+          }
+        }
+      } else if (carryForward.length > 0) {
+        lines.push("", "## Carry Forward");
+        for (const carryLine of carryForward) {
+          lines.push(`- ${carryLine}`);
+        }
+        if (summaryKeyPoints.length > 0) {
+          lines.push("", "## Key Points");
+          for (const item of summaryKeyPoints) {
+            lines.push(`- ${item}`);
+          }
+        }
+        if (carryForward.length === 0 && summaryKeyPoints.length === 0) {
+          const overview = extractMarkdownSectionBody(latestSummary.summary, "Overview", 220);
+          if (overview) {
+            lines.push("", "## Last Session Snapshot", `- ${overview}`);
+          } else {
+            lines.push("", "## Last Session Summary", compactTextBlock(latestSummary.summary, 400));
+          }
+        }
+      }
+    }
+
+    if (latestInteraction?.prompt || latestInteraction?.response) {
+      lines.push("", "## Latest Exchange");
+      if (latestInteraction.prompt) {
+        lines.push(`- User: ${collapseWhitespace(latestInteraction.prompt.content, 280)}`);
+      }
+      if (latestInteraction.response) {
+        lines.push(`- Assistant: ${collapseWhitespace(latestInteraction.response.content, 280)}`);
+      } else if (latestInteraction.incomplete) {
+        lines.push("- Assistant: no response recorded yet");
+      }
+    }
+
+    const visibleAnchorItems = pinnedContinuityPresent
+      ? []
+      : anchorItems
+          .filter((item) => shouldIncludeBriefingAnchor(item, pinnedContinuityPresent))
+          .slice(0, anchorItems.length);
+
+    if (visibleAnchorItems.length > 0) {
+      lines.push("", "## Memory Anchors");
+      for (const item of visibleAnchorItems) {
+        const title = collapseWhitespace(typeof item.title === "string" ? item.title : String(item.id), 80) || "observation";
+        const summary = collapseWhitespace(
+          typeof item.content === "string"
+            ? item.content
+            : typeof item.summary === "string"
+              ? item.summary
+              : "",
+          180
+        );
+        lines.push(summary ? `- ${title}: ${summary}` : `- ${title}`);
+      }
+    }
+
+    return {
+      content: lines.join("\n"),
+      cache_hint: "volatile",
+      source_scope: sourceScope,
+      source_session_id: sourceSessionId,
+      latest_turn_at: latestTurnAt,
+      includes_summary: Boolean(latestSummary),
+      includes_latest_interaction: Boolean(latestInteraction),
+      anchor_count: anchorItems.length,
+      cited_item_ids: anchorItems
+        .map((item) => (typeof item.id === "string" ? item.id : ""))
+        .filter((id) => id.length > 0),
     };
   }
 
@@ -3113,6 +3615,35 @@ export class ObservationStore {
       .query(latestSummarySql)
       .get(...(summaryParams as any[])) as { session_id: string; summary: string; ended_at: string } | null;
 
+    const pinnedContinuityParams: unknown[] = [];
+    let pinnedContinuitySql = `
+      SELECT o.session_id, o.content_redacted AS content, o.created_at
+      FROM mem_observations o
+    `;
+    if (useCorrelationId) {
+      pinnedContinuitySql += "\n      JOIN mem_sessions s ON s.session_id = o.session_id";
+    }
+    pinnedContinuitySql += "\n      WHERE 1 = 1";
+    pinnedContinuitySql = this.appendProjectFilter(pinnedContinuitySql, pinnedContinuityParams, "o", projectMembers);
+    pinnedContinuitySql += " AND o.title = 'continuity_handoff'";
+    pinnedContinuitySql += " AND o.tags_json LIKE '%\"continuity_handoff\"%'";
+    if (useCorrelationId) {
+      pinnedContinuitySql += " AND s.correlation_id = ?";
+      pinnedContinuityParams.push(correlationId as string);
+    }
+    if (request.session_id) {
+      pinnedContinuitySql += " AND o.session_id <> ?";
+      pinnedContinuityParams.push(request.session_id);
+    }
+    pinnedContinuitySql += `${visibility} ORDER BY o.created_at DESC LIMIT 1`;
+    const pinnedContinuity = this.deps.db
+      .query(pinnedContinuitySql)
+      .get(...(pinnedContinuityParams as any[])) as {
+      session_id: string;
+      content: string;
+      created_at: string;
+    } | null;
+
     let rows: Array<Record<string, unknown>>;
 
     if (useCorrelationId) {
@@ -3341,6 +3872,17 @@ export class ObservationStore {
       };
     }
 
+    const latestInteraction = this.getResumeInteractionContext(request, projectMembers, Math.max(limit * 4, 40));
+    const latestInteractionMeta = this.buildLatestInteractionMeta(latestInteraction);
+    const continuityBriefing = this.buildContinuityBriefing({
+      correlationId,
+      latestSummary,
+      latestInteraction,
+      pinnedContinuity,
+      detailedItems,
+      compactItems,
+    });
+
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
       correlation_id: request.correlation_id ?? null,
@@ -3348,6 +3890,8 @@ export class ObservationStore {
       resume_pack_max_tokens: maxTokens,
       detailed_count: detailedItems.length,
       compacted_count: compactItems.length,
+      ...(latestInteractionMeta !== null ? { latest_interaction: latestInteractionMeta } : {}),
+      ...(continuityBriefing !== null ? { continuity_briefing: continuityBriefing } : {}),
       ...(static_section !== undefined ? { static_section } : {}),
       ...(dynamic_section !== undefined ? { dynamic_section } : {}),
     });

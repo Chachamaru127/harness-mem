@@ -26,6 +26,10 @@ import {
   handleCodeIntelligenceTool,
 } from "./tools/code-intelligence.js";
 import { memoryTools, handleMemoryTool } from "./tools/memory.js";
+import {
+  contextBoxTools,
+  handleContextBoxTool,
+} from "./tools/context-box.js";
 import { injectAuthFromEnvironment } from "./auth-inject.js";
 
 // Channel push support (CC v2.1.80+ --channels flag, research preview)
@@ -69,6 +73,7 @@ const allTools: Tool[] = [
   ...statusTools,
   ...codeIntelligenceTools,
   ...memoryTools,
+  ...contextBoxTools,
 ];
 
 // List available tools
@@ -100,6 +105,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
     if (name.startsWith("harness_mem_")) {
       return await handleMemoryTool(name, args);
+    }
+
+    if (name.startsWith("harness_cb_")) {
+      return await handleContextBoxTool(name, args);
     }
 
     return {

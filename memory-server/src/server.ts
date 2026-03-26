@@ -723,6 +723,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           platform: typeof body.platform === "string" ? body.platform : undefined,
           project: typeof body.project === "string" ? body.project : undefined,
           session_id: sessionId,
+          correlation_id: typeof body.correlation_id === "string" ? body.correlation_id : undefined,
           summary_mode: typeof body.summary_mode === "string"
             ? (body.summary_mode as FinalizeSessionRequest["summary_mode"])
             : undefined,
