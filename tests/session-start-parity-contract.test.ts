@@ -159,6 +159,10 @@ describe("session-start parity contract", () => {
           content:
             "# Continuity Briefing\n\n## Current Focus\n- Continue the first-turn continuity benchmark\n\n## Next Actions\n- Keep Claude and Codex in parity",
         },
+        recent_project_context: {
+          content:
+            "## Also Recently in This Project\n- OpenAPI docs refresh is still pending visual cleanup",
+        },
       },
       items: [{ id: "summary-1", type: "session_summary", summary: "fallback summary" }],
     });
@@ -168,7 +172,11 @@ describe("session-start parity contract", () => {
 
     expect(normalize(claude.content)).toBe(normalize(codex.content));
     expect(claude.content).toContain("Continuity Briefing");
+    expect(claude.content).toContain("## Also Recently in This Project");
     expect(codex.content).toContain("Keep Claude and Codex in parity");
+    expect(codex.content.indexOf("## Current Focus")).toBeLessThan(
+      codex.content.indexOf("## Also Recently in This Project")
+    );
     expect(codex.rawStdout).toContain('"hookSpecificOutput"');
     expect(codex.rawStderr.trim()).toBe("");
   });

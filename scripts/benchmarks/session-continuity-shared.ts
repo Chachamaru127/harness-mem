@@ -52,6 +52,12 @@ export const CONTINUITY_SCENARIO = {
       anyOf: ["database index", "dark mode styles"],
     },
   ],
+  recentProjectFacts: [
+    {
+      id: "recent_project_context",
+      anyOf: ["openapi 3.1", "swagger dark mode", "database index", "docs refresh"],
+    },
+  ],
   recallProject: "session-memory-compare",
   recallQueries: [
     {
@@ -126,6 +132,8 @@ export interface FactScore {
 
 export interface ArtifactScore {
   artifact: string;
+  chainArtifact: string;
+  recentProjectArtifact: string;
   latencyMs: number;
   tokenCount: number;
   requiredHitCount: number;
@@ -134,6 +142,10 @@ export interface ArtifactScore {
   falseCarryoverCount: number;
   requiredFacts: FactScore[];
   falseCarryoverFacts: FactScore[];
+  recentProjectHitCount: number;
+  recentProjectTotal: number;
+  recentProjectRecall: number;
+  recentProjectFacts: FactScore[];
 }
 
 export interface HarnessClientScore extends ArtifactScore {
@@ -187,21 +199,59 @@ function countTokens(value: string): number {
   return value.trim().split(/\s+/).filter(Boolean).length;
 }
 
+function extractRecentProjectSection(artifact: string): string {
+  const lines = artifact.split(/\r?\n/);
+  const startIndex = lines.findIndex((line) =>
+    /^##\s+Also Recently in This Project\b/i.test(line.trim())
+  );
+  if (startIndex === -1) {
+    return "";
+  }
+
+  const endIndex = lines.findIndex(
+    (line, index) => index > startIndex && /^##\s+/.test(line.trim())
+  );
+  const sectionLines = endIndex === -1 ? lines.slice(startIndex) : lines.slice(startIndex, endIndex);
+  return sectionLines.join("\n").trim();
+}
+
+function extractChainArtifact(artifact: string): string {
+  const recentProjectSection = extractRecentProjectSection(artifact);
+  if (!recentProjectSection) {
+    return artifact.trim();
+  }
+
+  const sectionIndex = artifact.indexOf(recentProjectSection);
+  if (sectionIndex === -1) {
+    return artifact.trim();
+  }
+
+  return artifact.slice(0, sectionIndex).trimEnd();
+}
+
+function scoreFacts(text: string, facts: ReadonlyArray<{ id: string; anyOf: readonly string[] }>): FactScore[] {
+  const normalized = normalizeText(text);
+  return facts.map((fact) => {
+    const match = fact.anyOf.find((candidate) => normalized.includes(candidate.toLowerCase())) || null;
+    return { id: fact.id, hit: match !== null, match };
+  });
+}
+
 function scoreArtifact(artifact: string): ArtifactScore {
-  const normalized = normalizeText(artifact);
-  const requiredFacts = CONTINUITY_SCENARIO.requiredFacts.map((fact) => {
-    const match = fact.anyOf.find((candidate) => normalized.includes(candidate.toLowerCase())) || null;
-    return { id: fact.id, hit: match !== null, match };
-  });
-  const falseCarryoverFacts = CONTINUITY_SCENARIO.forbiddenFacts.map((fact) => {
-    const match = fact.anyOf.find((candidate) => normalized.includes(candidate.toLowerCase())) || null;
-    return { id: fact.id, hit: match !== null, match };
-  });
+  const chainArtifact = extractChainArtifact(artifact);
+  const recentProjectArtifact = extractRecentProjectSection(artifact);
+  const requiredFacts = scoreFacts(chainArtifact, CONTINUITY_SCENARIO.requiredFacts);
+  const falseCarryoverFacts = scoreFacts(chainArtifact, CONTINUITY_SCENARIO.forbiddenFacts);
+  const recentProjectFacts = scoreFacts(recentProjectArtifact, CONTINUITY_SCENARIO.recentProjectFacts);
   const requiredHitCount = requiredFacts.filter((fact) => fact.hit).length;
   const requiredTotal = requiredFacts.length;
+  const recentProjectHitCount = recentProjectFacts.filter((fact) => fact.hit).length;
+  const recentProjectTotal = CONTINUITY_SCENARIO.recentProjectFacts.length;
 
   return {
     artifact,
+    chainArtifact,
+    recentProjectArtifact,
     latencyMs: 0,
     tokenCount: countTokens(artifact),
     requiredHitCount,
@@ -210,6 +260,10 @@ function scoreArtifact(artifact: string): ArtifactScore {
     falseCarryoverCount: falseCarryoverFacts.filter((fact) => fact.hit).length,
     requiredFacts,
     falseCarryoverFacts,
+    recentProjectHitCount,
+    recentProjectTotal,
+    recentProjectRecall: recentProjectTotal === 0 ? 0 : recentProjectHitCount / recentProjectTotal,
+    recentProjectFacts,
   };
 }
 

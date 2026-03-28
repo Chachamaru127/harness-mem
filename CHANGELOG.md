@@ -7,6 +7,88 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-03-28
+
+### テーマ: Hybrid continuity context
+
+**「この話の続き」を最優先で思い出せる感覚は維持したまま、「最近この project で何があったか」も新しいセッションの初手で薄く見えるようにしました。Claude Code と Codex の両方で、chain-first continuity を崩さずに project-wide な近傍文脈を補助表示できる状態まで揃えています。**
+
+---
+
+#### 1. chain-first の下に recent-project teaser を追加
+
+**今まで**: 新しいセッションを開いたときに「この話の続き」は強く出せても、「最近この project で何があったか」は別途検索しないと見えにくい状態でした。project-wide な文脈を前に出しすぎると別話題が混ざるので、広さと正確さを両立しにくい構造でした。
+
+**今後**: SessionStart artifact は chain-first を最上段に維持したまま、その下に `Also Recently in This Project` を短い teaser として追加できます。主役はあくまで現在の会話チェーンで、周辺の最近文脈は補助表示に限定されます。
+
+```md
+# Continuity Briefing
+
+## Current Focus
+- Resume scope: chain
+
+## Latest Exchange
+- Assistant: We agreed to ship a continuity briefing first and then fix adapter delivery for both Claude and Codex.
+
+## Also Recently in This Project
+- OpenAPI 3.1 docs refresh is still pending visual cleanup.
+```
+
+#### 2. `resume_pack` に secondary ABI を追加し、Claude / Codex の renderer を統一
+
+**今まで**: first-turn continuity の ABI は実質 `continuity_briefing` 中心で、recent project context を足すにしても client ごとに render 条件がぶれやすい形でした。どの section が主役かを contract として固定しにくく、parity の維持も曖昧でした。
+
+**今後**: `resume_pack.meta.recent_project_context` を secondary ABI として追加し、same-chain・機械ノイズ・duplicate を除いた 2-3 bullet の project teaser を返します。Claude Code / Codex の SessionStart renderer は同じ hierarchy でこれを表示し、top section が chain-first から崩れないことを contract test で固定しました。
+
+```json
+{
+  "meta": {
+    "continuity_briefing": { "content": "# Continuity Briefing ..." },
+    "recent_project_context": {
+      "content": "## Also Recently in This Project\n- OpenAPI 3.1 bundle refreshed.",
+      "source_scope": "project"
+    }
+  }
+}
+```
+
+#### 3. benchmark を hybrid 評価へ拡張
+
+**今まで**: acceptance は主に `chain recall` と `false carryover` に寄っていて、「最近この project で何があったか」が本当に少し見えるようになったかを独立指標で測れていませんでした。
+
+**今後**: benchmark は `chain recall` / `false carryover` を維持したまま、`recent_project_hits` / `recent_project_recall` も計測します。parallel-topic fixture で Claude / Codex ともに chain-first を保ったまま recent-project awareness が改善したことを実測で確認できます。
+
+```bash
+bun run scripts/bench-session-continuity.ts
+# Claude: recall 1.00 / false_carryover 0 / recent_project_recall 1.00
+# Codex:  recall 1.00 / false_carryover 0 / recent_project_recall 1.00
+```
+
+#### 4. docs と rollout 条件を hybrid の現実に同期
+
+**今まで**: README / setup / env docs は continuity UX を chain-first 中心に説明していましたが、「最近文脈を補助表示する」という新しい契約までは書かれていませんでした。利用者から見ると、何が default でどこまで保証されるかが読み取りにくい状態でした。
+
+**今後**: README / setup / env docs は、`supported hook paths 上では first turn が hybrid になる` ことを明記します。`HARNESS_MEM_RESUME_PACK_MAX_TOKENS` も continuity briefing と recent-project teaser の両方を含む budget として説明を更新しました。
+
+```bash
+rg "Also Recently in This Project|hybrid" README.md README_ja.md docs/harness-mem-setup.md docs/environment-variables.md
+```
+
+#### 5. release gate 向けの retrieval 安定化を追加
+
+**今まで**: hybrid continuity の実装後も、release 前の gate では 3 つの粗さが残っていました。wrapper prompt が latest interaction に混ざることがあり、`no_memory` が正常マッチで誤判定することがあり、日本語の previous-value / session-resume 系クエリで望ましい候補が押し下がるケースがありました。
+
+**今後**: wrapper prompt は visible latest interaction から除外し、`no_memory` は低スコアでも lexical / fact / precision 根拠が強ければ false positive しないようにしました。さらに `default` を current cue と誤認しないよう修正し、timeline の progress 系クエリでは best-matching session の末尾を補助的に押し上げて、release gate の session resume benchmark も安定して通る状態にしています。
+
+```bash
+bun test memory-server/tests/integration/search-quality.test.ts \
+  memory-server/tests/integration/s58-memory-ux.test.ts \
+  memory-server/tests/core-split/observation-store.test.ts \
+  tests/unit/no-memory-flag.test.ts
+
+bun test tests/benchmarks/session-consolidation.test.ts
+```
+
 ## [0.7.0] - 2026-03-26
 
 ### テーマ: Session continuity reboot + auto-healing wiring

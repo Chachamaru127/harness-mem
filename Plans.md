@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-03-26（§59 docs truth correction + auto-update wiring self-heal 完了）
+最終更新: 2026-03-28（§60 hybrid continuity + release gate stabilization complete）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了）
@@ -21,9 +21,13 @@
 |------|--------|
 | gate artifacts / README / proof bar | 再同期済み（§49 SSOT drift guard で CI 検知） |
 | 維持できている価値 | local-first CC+Codex bridge、hybrid retrieval、522問日本語ベンチ |
-| 最新リリース | **v0.6.0**（2026-03-20、§57 全15タスク完了、Codex 6R レビュー通過） |
-| 次フェーズの焦点 | §59 Session Continuity UX Reboot / §51 Competitive Gap Closure |
+| 最新リリース | **v0.8.0**（2026-03-28、§60 hybrid continuity / release gate stabilization、chain-first + recent-project teaser を含む） |
+| 次フェーズの焦点 | §51 Competitive Gap Closure |
 | CI Gate | **全 PASS**（2026-03-16 §54 完了時点） |
+
+- benchmark SSOT: `generated_at=2026-03-20T11:39:22.199Z`, `git_sha=f3902d8`
+- Japanese companion current: `overall_f1_mean=0.6580`
+- Japanese historical baseline: `overall_f1_mean=0.8020`
 
 ---
 
@@ -227,3 +231,33 @@ Phase A 内は並列可。Phase C は LLM 統合のため Phase A 完了後。
 ### 着手順
 
 S59-001 → S59-002 → S59-003 を最短経路とし、S59-004 は並列で固定。S59-005 → S59-007 で repo-local benchmark を閉じ、S59-006 は benchmark truth を確認してから着手。
+
+---
+
+## §60 Hybrid Continuity Context
+
+策定日: 2026-03-28
+背景: §59 で chain-first continuity は成立したが、UX としては「この話の続き」は強くても「最近この project で何があったか」を同時に思い出す広さがまだ弱い。Claude-mem 的な「開いた瞬間に最近の流れも見える」良さは残したい一方で、project-wide 文脈を主役に戻すと別話題の混線が増える。次フェーズでは `Pinned Continuity` を最上段に維持したまま、補助的な `Also Recently in This Project` を追加する hybrid 方式を検証し、chain recall を壊さずに最近文脈の有用性を上げる。
+
+### 方針
+
+- 主役は引き続き chain-first (`Pinned Continuity` / `Carry Forward`) とし、recent project context は二段目に限定する
+- recent project context は project-wide の最近全部ではなく、重複除去・機械ノイズ除去・topic 多様性をかけた 2-3 bullet の teaser に絞る
+- `correlation_id` がある場合でも recent project context は消さないが、同一 chain の重複項目は出さない
+- 評価軸は `first-turn chain recall` と `false carryover` を維持したうえで、`recent project awareness` が改善するかで測る
+- Claude/Codex で同じ hierarchy・同じ budget・同じ suppression ルールを守る
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S60-001 | [spike] hybrid continuity policy — `Pinned Continuity > Carry Forward > Also Recently in This Project` の優先順位、件数上限、suppression 条件、duplicate 除去ルールを固定する | `docs/plans/` か本節に、parallel-topic fixture を含む設計メモが残り、`いつ recent project context を出す/出さないか` が Yes/No で判定できる | - | cc:完了 |
+| S60-002 | `resume_pack` secondary ABI — `meta.recent_project_context` を追加し、同一 chain 重複・機械ノイズ・low-signal 項目を除いた 2-3 bullet の project teaser を返す | integration / contract test で `continuity_briefing` の主役を維持したまま secondary context が返り、重複・`session_start:`・raw handoff が混ざらない | S60-001 | cc:完了 |
+| S60-003 | Claude/Codex adapter rendering parity — SessionStart artifact で `Pinned Continuity` の下にだけ `Also Recently in This Project` を表示し、両 client の見え方を揃える | fresh Claude/Codex session fixture で section hierarchy が一致し、top section は常に chain-first のまま | S60-002 | cc:完了 |
+| S60-004 | hybrid benchmark / acceptance — 3話題並行 repo fixture で `chain recall`, `false carryover`, `recent project awareness` を比較し、chain-only と hybrid の差を実測する | benchmark artifact に `chain_recall`, `false_carryover`, `recent_project_hits` が出力され、hybrid が chain recall / false carryover を悪化させずに `recent_project_hits` を改善したと判定できる | S60-002, S60-003 | cc:完了 |
+| S60-005 | rollout / docs truth update — hybrid を default にするか opt-in にするかを S60-004 の結果で決め、README / setup / env docs を同期する | default policy と rollback 条件が `Plans.md` または docs に明記され、README / setup / env docs が実装現実と一致する | S60-004 | cc:完了 |
+| S60-006 | release gate stabilization — wrapper-visible filtering / `no_memory` false positive / session-resume recall regression を v0.8.0 release gate 前に閉じる | `search-quality` / `s58-memory-ux` / `observation-store` / `session-consolidation` の targeted gate が green で、v0.8.0 の release notes に stabilization が反映される | S60-004 | cc:完了 |
+
+### 着手順
+
+S60-001 で policy を固定 → S60-002 で runtime ABI を実装 → S60-003 で Claude/Codex 表示 parity を取る → S60-004 で parallel-topic acceptance を実測 → S60-005 で default 化判断と docs 同期。

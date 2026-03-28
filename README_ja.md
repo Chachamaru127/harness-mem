@@ -38,7 +38,7 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 ### つまり、こういうことです
 
-- **Claude Code と Codex を使っている** → harness-mem は両ツールに同じローカルメモリランタイムを渡します。対応 hook path が有効なら、直近の決定や次アクションが切り替え直後の初手で見えるようになります。
+- **Claude Code と Codex を使っている** → harness-mem は両ツールに同じローカルメモリランタイムを渡します。対応 hook path が有効なら、初手は chain-first（いまの続き）が主役のまま、その下に `Also Recently in This Project` として周辺の最近文脈を短く出せます。
 - **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。API キー不要。
 - **Cursor も使っている** → Tier 2 サポート: フックと MCP がそのまま動きます。Gemini CLI と OpenCode は実験的対応です。
 
@@ -46,6 +46,7 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 - Claude Code と Codex は、1つのローカルデーモンと 1つの SQLite DB を共有します。
 - first-turn continuity は、Claude Code / Codex の対応 hook path が有効で、`harness-mem setup` と `harness-mem doctor` が green のときに使えます。
+- この対応 hook path では、SessionStart artifact は hybrid です。最上段は常に chain-first continuity で、その下に distinct な最近作業がある場合だけ短い recent-project teaser を補助表示します。
 - hook 配線やローカル runtime が stale の場合、検索や recall は動いていても、「新しいセッションを開いた瞬間に覚えている」体験は崩れます。
 - 実験的 / maintenance tier のクライアントでも ingest/search はできますが、Claude Code / Codex と同じ parity までは現時点で主張しません。
 
@@ -54,6 +55,7 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 - どのクライアントでも、どんな fresh session でも完全自動で理解できること。
 - hook 配線が壊れている環境や runtime 不整合下での parity。
 - 長期運用で複数スレッドが混ざった project すべてでの perfect な chain selection。
+- 毎回フルな project ダイジェストを出すこと。recent-project 部分はノイズを抑えるため数 bullet に制限します。
 
 ## 実測ベンチマーク
 

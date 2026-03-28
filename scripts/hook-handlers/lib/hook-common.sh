@@ -540,9 +540,19 @@ hook_render_resume_pack_markdown() {
   command -v jq >/dev/null 2>&1 || return 0
 
   local continuity_briefing=""
+  local recent_project_context=""
   continuity_briefing="$(printf '%s' "$resume_response" | jq -r '.meta.continuity_briefing.content // empty' 2>/dev/null)"
+  recent_project_context="$(printf '%s' "$resume_response" | jq -r '.meta.recent_project_context.content // empty' 2>/dev/null)"
   if [ -n "$continuity_briefing" ]; then
-    printf '%s\n' "$continuity_briefing"
+    if [ -n "$recent_project_context" ] && [ "$recent_project_context" != "$continuity_briefing" ]; then
+      printf '%s\n\n%s\n' "$continuity_briefing" "$recent_project_context"
+    else
+      printf '%s\n' "$continuity_briefing"
+    fi
+    return 0
+  fi
+  if [ -n "$recent_project_context" ]; then
+    printf '%s\n' "$recent_project_context"
     return 0
   fi
 

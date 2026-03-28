@@ -526,4 +526,118 @@ describe("resume-pack integration behavior", () => {
       runtime.stop();
     }
   });
+
+  test("resume-pack exposes a secondary recent-project context without breaking chain-first continuity", async () => {
+    const runtime = createRuntime("recent-project-context");
+    const { core, baseUrl } = runtime;
+    const project = "resume-pack-recent-project";
+    const correlationId = "corr-hybrid";
+
+    try {
+      recordEvent(core, {
+        event_id: "hybrid-user",
+        project,
+        session_id: "session-chain-1",
+        correlation_id: correlationId,
+        ts: "2026-03-28T01:00:00.000Z",
+        payload: { content: "Users say opening a new session forgets the current thread." },
+        tags: ["continuity"],
+      });
+      recordEvent(core, {
+        event_id: "hybrid-assistant",
+        project,
+        session_id: "session-chain-1",
+        correlation_id: correlationId,
+        event_type: "checkpoint",
+        ts: "2026-03-28T01:00:05.000Z",
+        payload: {
+          title: "assistant_response",
+          content: "Decision: ship continuity briefing first. Next Action: align adapter delivery.",
+        },
+        tags: ["continuity"],
+      });
+      expect(
+        core.finalizeSession({
+          session_id: "session-chain-1",
+          project,
+          platform: "claude",
+          correlation_id: correlationId,
+          summary_mode: "standard",
+        }).ok
+      ).toBe(true);
+
+      recordEvent(core, {
+        event_id: "recent-openapi-user",
+        project,
+        session_id: "session-openapi",
+        correlation_id: "corr-openapi",
+        ts: "2026-03-28T02:00:00.000Z",
+        payload: { content: "Regenerate OpenAPI 3.1 docs and polish Swagger dark mode." },
+        tags: ["docs"],
+      });
+      recordEvent(core, {
+        event_id: "recent-openapi-assistant",
+        project,
+        session_id: "session-openapi",
+        correlation_id: "corr-openapi",
+        event_type: "checkpoint",
+        ts: "2026-03-28T02:00:05.000Z",
+        payload: {
+          title: "assistant_response",
+          content: "OpenAPI 3.1 bundle refreshed. Swagger dark mode tweaks are pending.",
+        },
+        tags: ["docs"],
+      });
+
+      recordEvent(core, {
+        event_id: "recent-db-user",
+        project,
+        session_id: "session-db",
+        correlation_id: "corr-db",
+        ts: "2026-03-28T03:00:00.000Z",
+        payload: { content: "Investigate the database index slowdown on users queries." },
+        tags: ["perf"],
+      });
+      recordEvent(core, {
+        event_id: "recent-db-assistant",
+        project,
+        session_id: "session-db",
+        correlation_id: "corr-db",
+        event_type: "checkpoint",
+        ts: "2026-03-28T03:00:05.000Z",
+        payload: {
+          title: "assistant_response",
+          content: "Composite database index reduced the query time from 120ms to 8ms.",
+        },
+        tags: ["perf"],
+      });
+
+      const payload = await postResumePack(baseUrl, {
+        project,
+        session_id: "session-current",
+        correlation_id: correlationId,
+        include_private: true,
+        limit: 5,
+      });
+
+      const briefing = payload.meta.continuity_briefing as Record<string, unknown>;
+      expect(String(briefing.content)).toContain("align adapter delivery");
+
+      const recentProject = payload.meta.recent_project_context as Record<string, unknown>;
+      expect(recentProject).toBeTruthy();
+      expect(recentProject.source_scope).toBe("project");
+      expect(recentProject.item_count).toBe(2);
+      const recentContent = String(recentProject.content);
+      expect(recentContent).toContain("## Also Recently in This Project");
+      expect(recentContent).toContain("OpenAPI 3.1");
+      expect(recentContent).toContain("Swagger dark mode");
+      expect(recentContent).toContain("database index");
+      expect(recentContent).toContain("120ms to 8ms");
+      expect(recentContent).not.toContain("align adapter delivery");
+      expect(recentContent).not.toContain("session_start:");
+      expect(recentContent).not.toContain("continuity_handoff:");
+    } finally {
+      runtime.stop();
+    }
+  });
 });

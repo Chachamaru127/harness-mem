@@ -41,7 +41,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 ### What this means in practice
 
-- **You use Claude Code and Codex** → harness-mem gives both tools the same local memory runtime. With supported hook paths enabled, recent decisions and next actions can appear on the first turn when you switch tools.
+- **You use Claude Code and Codex** → harness-mem gives both tools the same local memory runtime. With supported hook paths enabled, the first turn stays chain-first (`what we were just doing`) and can also show a small `Also Recently in This Project` teaser for nearby project context.
 - **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
 - **You also use Cursor** → Tier 2 support: hooks and MCP work out of the box. Gemini CLI and OpenCode are experimental.
 
@@ -49,6 +49,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 - Claude Code and Codex share one local daemon and one local SQLite database.
 - First-turn continuity is supported on the Claude Code and Codex hook paths after `harness-mem setup` and `harness-mem doctor` are green.
+- On those supported hook paths, the default SessionStart artifact is hybrid: chain-first continuity stays on top, and a short recent-project teaser may appear second when there is distinct nearby work worth surfacing.
 - If hook wiring or the local runtime is stale, search and recall can still work while the "open a fresh session and it already remembers" UX degrades.
 - Experimental or maintenance-tier clients can still ingest/search, but parity with Claude Code and Codex is not claimed.
 
@@ -57,6 +58,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 - Perfect automatic understanding for every brand-new session on every client.
 - Parity on unsupported clients, broken hook wiring, or unhealthy local runtime.
 - Perfect chain selection in every long-lived project with multiple mixed threads.
+- A full project digest on every fresh session. The recent-project portion is intentionally capped to a few low-noise bullets.
 
 ## Measured Proof
 

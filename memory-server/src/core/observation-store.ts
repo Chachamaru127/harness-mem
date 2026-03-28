@@ -507,6 +507,92 @@ interface LatestCompletedInteraction {
   response: LatestInteractionObservation;
 }
 
+function buildInteractionSignature(context: LatestInteractionContext | null): string {
+  if (!context) return "";
+  return collapseWhitespace(
+    [
+      context.prompt?.content || "",
+      context.response?.content || "",
+    ]
+      .filter(Boolean)
+      .join(" || "),
+    360
+  ).toLowerCase();
+}
+
+const RECENT_PROJECT_LOW_SIGNAL_PATTERN =
+  /\b(?:running\s+(?:sessionstart|userpromptsubmit|stop)\s+hook|sessionstart hook|userpromptsubmit hook|stop hook|agents\.md|claude\.md|owner repo|impacted repos|cross-repo governance|session-start-checklist|governance bootstrap)\b|^(?:了解しました|現状を確認します|let me check|i(?:'| wi)ll check)\b/i;
+
+function normalizeRecentProjectSnippet(input: string | null | undefined, maxLength: number): string {
+  if (!input) return "";
+  return collapseWhitespace(
+    compactTextBlock(stripContinuityWrapperPrefix(input), maxLength * 2).replace(/\s+/g, " ").trim(),
+    maxLength
+  );
+}
+
+function isLowSignalRecentProjectSnippet(input: string | null | undefined): boolean {
+  const normalized = normalizeRecentProjectSnippet(input, 220);
+  if (!normalized) return true;
+  if (normalized.length < 16) return true;
+  if (isNoisyContinuityWrapper(normalized) || CONTINUITY_SCOPE_GUARD_PATTERN.test(normalized)) {
+    return true;
+  }
+  if (/^\{/.test(normalized) || RECENT_PROJECT_LOW_SIGNAL_PATTERN.test(normalized)) {
+    return true;
+  }
+  return false;
+}
+
+function buildContinuityBriefingCorpus(markdown: string | null | undefined): string {
+  const sectionBodies = [
+    extractMarkdownSectionBody(markdown, "Pinned Continuity", 600),
+    extractMarkdownSectionBody(markdown, "Carry Forward", 600),
+    extractMarkdownSectionBody(markdown, "Recent Update", 600),
+    extractMarkdownSectionBody(markdown, "Latest Exchange", 800),
+  ].filter(Boolean);
+  const combined = sectionBodies.length > 0
+    ? sectionBodies.join(" ")
+    : collapseWhitespace(markdown, 1600);
+  return combined.toLowerCase();
+}
+
+function formatRecentProjectContextItem(context: LatestInteractionContext): string {
+  const segments: string[] = [];
+  const response = normalizeRecentProjectSnippet(context.response?.content, 150);
+  const prompt = normalizeRecentProjectSnippet(context.prompt?.content, 120);
+
+  if (!isLowSignalRecentProjectSnippet(response)) {
+    segments.push(response);
+  }
+  if (!isLowSignalRecentProjectSnippet(prompt)) {
+    const duplicatePrompt = segments.some((segment) => segment.includes(prompt) || prompt.includes(segment));
+    if (!duplicatePrompt) {
+      segments.push(prompt);
+    }
+  } else if (segments.length === 0 && context.incomplete) {
+    segments.push("Pending follow-up in this session.");
+  }
+
+  return collapseWhitespace(segments.join(" "), 260);
+}
+
+function isRecentProjectContextDuplicate(
+  context: LatestInteractionContext,
+  continuityBriefingCorpus: string
+): boolean {
+  if (!continuityBriefingCorpus) return false;
+  const fragments = [
+    normalizeRecentProjectSnippet(context.prompt?.content, 220),
+    normalizeRecentProjectSnippet(context.response?.content, 220),
+    formatRecentProjectContextItem(context),
+    buildInteractionSignature(context),
+  ]
+    .map((value) => value.toLowerCase())
+    .filter((value) => value.length >= 24);
+  return fragments.some((fragment) => continuityBriefingCorpus.includes(fragment));
+}
+
 function encodeFeedCursor(cursor: FeedCursor): string {
   return Buffer.from(JSON.stringify(cursor)).toString("base64url");
 }
@@ -538,7 +624,8 @@ const JAPANESE_PREVIOUS_PATTERN = /(以前|前の|前回|前は|もともと|元
 const JAPANESE_REASON_PATTERN = /(なぜ|理由|きっかけ|どうして|背景|原因)/;
 const JAPANESE_LIST_PATTERN = /(一覧|すべて|全て|挙げて|列挙)/;
 const JAPANESE_TEMPORAL_ORDER_PATTERN = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時|変える前|見直す前|移す前|切り替える前|変更前)/;
-const CURRENT_CUE_PATTERN = /\b(current|currently|now|latest|active|default|primary)\b/i;
+const CURRENT_CUE_PATTERN = /\b(current|currently|now|latest|active|in use|used now)\b/i;
+const CURRENT_SLOT_ONLY_PATTERN = /\b(default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
 const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
 const LIST_CUE_PATTERN = /\b(and|all|list|including)\b/i;
@@ -547,6 +634,8 @@ const LATEST_INTERACTION_CUE_PATTERN =
   /\b(prompt|response|reply|answer|conversation|thread|exchange|recent work|latest work|last work|what happened recently|what happened last)\b|(プロンプト|回答|返答|会話|やり取り|直近の作業|最近の作業|最後の作業)/i;
 const GENERIC_RECENT_QUERY_PATTERN =
   /^(?:直近|最近|最後|latest|recent|last)(?:\s*(?:を|の|について|見て|調べて|教えて|show|check|tell me).*)?$/i;
+const SESSION_PROGRESS_QUERY_PATTERN =
+  /\b(last step|final step|latest step|most recent step|where did .* leave off|how far .* progress)\b|(どこまで進んだ|最後のステップ|最後に何をした|前回.*どこまで|進捗)/i;
 
 function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
@@ -585,13 +674,32 @@ function isLatestInteractionIntent(query: string): boolean {
   return GENERIC_RECENT_QUERY_PATTERN.test(normalized) || LATEST_INTERACTION_CUE_PATTERN.test(normalized);
 }
 
+function hasSessionProgressIntent(query: string): boolean {
+  const normalized = query.trim();
+  if (!normalized) return false;
+  return SESSION_PROGRESS_QUERY_PATTERN.test(normalized);
+}
+
 function isIgnoredLatestInteractionPrompt(observation: LatestInteractionObservation): boolean {
   return hasIgnoredVisibleTag(observation.tags) ||
+    isIgnoredVisiblePromptText(observation.content) ||
     isIgnoredVisiblePromptText(buildVisibleInteractionText(observation.title, observation.content));
 }
 
 function isIgnoredLatestInteractionResponse(observation: LatestInteractionObservation): boolean {
   return hasIgnoredVisibleTag(observation.tags) || isIgnoredVisibleResponseText(observation.content);
+}
+
+function hasCurrentValueCue(text: string): boolean {
+  if (!text.trim()) return false;
+  if (CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text)) {
+    return true;
+  }
+  const hasSlotOnlyCue = CURRENT_SLOT_ONLY_PATTERN.test(text);
+  if (!hasSlotOnlyCue) {
+    return false;
+  }
+  return !(PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text));
 }
 
 // ---------------------------------------------------------------------------
@@ -718,12 +826,12 @@ export class ObservationStore {
     }));
   }
 
-  private selectLatestInteractionContext(
+  private collectLatestInteractionContexts(
     candidates: LatestInteractionObservation[],
     scope: LatestInteractionContext["scope"]
-  ): LatestInteractionContext | null {
+  ): LatestInteractionContext[] {
     if (candidates.length === 0) {
-      return null;
+      return [];
     }
 
     const bySession = new Map<string, LatestInteractionObservation[]>();
@@ -733,8 +841,7 @@ export class ObservationStore {
       bySession.set(candidate.session_id, sessionRows);
     }
 
-    let latestCompleted: LatestCompletedInteraction | null = null;
-    let latestPendingPrompt: LatestInteractionObservation | null = null;
+    const contexts: LatestInteractionContext[] = [];
 
     for (const sessionRows of bySession.values()) {
       const chronological = [...sessionRows].sort((lhs, rhs) => {
@@ -774,50 +881,47 @@ export class ObservationStore {
       }
 
       if (sessionLatestCompleted) {
-        if (
-          !latestCompleted ||
-          compareCreatedAt(sessionLatestCompleted.response.created_at, latestCompleted.response.created_at) > 0
-        ) {
-          latestCompleted = sessionLatestCompleted;
-        }
+        contexts.push({
+          scope,
+          project: this.deps.canonicalizeProject(sessionLatestCompleted.response.project),
+          session_id: sessionLatestCompleted.response.session_id,
+          platform: sessionLatestCompleted.response.platform,
+          latest_turn_at: sessionLatestCompleted.response.created_at,
+          incomplete: false,
+          prompt: sessionLatestCompleted.prompt,
+          response: sessionLatestCompleted.response,
+        });
         continue;
       }
 
-      if (
-        currentPrompt &&
-        (!latestPendingPrompt || compareCreatedAt(currentPrompt.created_at, latestPendingPrompt.created_at) > 0)
-      ) {
-        latestPendingPrompt = currentPrompt;
+      if (currentPrompt) {
+        contexts.push({
+          scope,
+          project: this.deps.canonicalizeProject(currentPrompt.project),
+          session_id: currentPrompt.session_id,
+          platform: currentPrompt.platform,
+          latest_turn_at: currentPrompt.created_at,
+          incomplete: true,
+          prompt: currentPrompt,
+          response: null,
+        });
       }
     }
 
-    if (latestCompleted) {
-      return {
-        scope,
-        project: this.deps.canonicalizeProject(latestCompleted.response.project),
-        session_id: latestCompleted.response.session_id,
-        platform: latestCompleted.response.platform,
-        latest_turn_at: latestCompleted.response.created_at,
-        incomplete: false,
-        prompt: latestCompleted.prompt,
-        response: latestCompleted.response,
-      };
-    }
+    contexts.sort((lhs, rhs) => {
+      const byTime = compareCreatedAt(rhs.latest_turn_at, lhs.latest_turn_at);
+      if (byTime !== 0) return byTime;
+      return lhs.session_id.localeCompare(rhs.session_id);
+    });
+    return contexts;
+  }
 
-    if (!latestPendingPrompt) {
-      return null;
-    }
-
-    return {
-      scope,
-      project: this.deps.canonicalizeProject(latestPendingPrompt.project),
-      session_id: latestPendingPrompt.session_id,
-      platform: latestPendingPrompt.platform,
-      latest_turn_at: latestPendingPrompt.created_at,
-      incomplete: true,
-      prompt: latestPendingPrompt,
-      response: null,
-    };
+  private selectLatestInteractionContext(
+    candidates: LatestInteractionObservation[],
+    scope: LatestInteractionContext["scope"]
+  ): LatestInteractionContext | null {
+    const contexts = this.collectLatestInteractionContexts(candidates, scope);
+    return contexts[0] ?? null;
   }
 
   private getLatestInteractionContext(request: SearchRequest, projectMembers: string[] = [], scanLimit?: number): LatestInteractionContext | null {
@@ -864,6 +968,24 @@ export class ObservationStore {
     return this.selectLatestInteractionContext(candidates, request.correlation_id ? "chain" : "project");
   }
 
+  private listChainSessionIds(correlationId: string | null, projectMembers: string[] = []): Set<string> {
+    if (!correlationId) return new Set();
+    const params: unknown[] = [];
+    let sql = `
+      SELECT s.session_id
+      FROM mem_sessions s
+      WHERE s.correlation_id = ?
+    `;
+    params.push(correlationId);
+    sql = this.appendProjectFilter(sql, params, "s", projectMembers);
+    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<{ session_id?: string }>;
+    return new Set(
+      rows
+        .map((row) => (typeof row.session_id === "string" ? row.session_id : ""))
+        .filter((sessionId) => sessionId.length > 0)
+    );
+  }
+
   private buildLatestInteractionMeta(context: LatestInteractionContext | null): Record<string, unknown> | null {
     if (!context) return null;
 
@@ -890,6 +1012,95 @@ export class ObservationStore {
       incomplete: context.incomplete,
       prompt: serializeObservation(context.prompt),
       response: serializeObservation(context.response),
+    };
+  }
+
+  private buildRecentProjectContext(options: {
+    request: ResumePackRequest;
+    projectMembers: string[];
+    latestInteraction: LatestInteractionContext | null;
+    pinnedContinuity: { session_id: string; content: string; created_at: string } | null;
+    continuityBriefing: Record<string, unknown> | null;
+  }): Record<string, unknown> | null {
+    const { request, projectMembers, latestInteraction, pinnedContinuity, continuityBriefing } = options;
+    if (projectMembers.length === 0) {
+      return null;
+    }
+
+    const candidates = this.queryLatestInteractionObservations({
+      projects: projectMembers,
+      exclude_session_id: request.session_id,
+      include_private: Boolean(request.include_private),
+      limit: 120,
+    });
+    const contexts = this.collectLatestInteractionContexts(candidates, "project");
+    if (contexts.length === 0) {
+      return null;
+    }
+
+    const excludedSessions = new Set<string>();
+    if (request.session_id) excludedSessions.add(request.session_id);
+    if (latestInteraction?.session_id) excludedSessions.add(latestInteraction.session_id);
+    if (pinnedContinuity?.session_id) excludedSessions.add(pinnedContinuity.session_id);
+    for (const sessionId of this.listChainSessionIds(request.correlation_id ?? null, projectMembers)) {
+      excludedSessions.add(sessionId);
+    }
+
+    const primarySignature = buildInteractionSignature(latestInteraction);
+    const continuityBriefingCorpus = buildContinuityBriefingCorpus(
+      typeof continuityBriefing?.content === "string" ? continuityBriefing.content : ""
+    );
+    const seen = new Set<string>();
+    const bullets: string[] = [];
+    const sessionIds: string[] = [];
+    let latestTurnAt: string | null = null;
+
+    for (const context of contexts) {
+      if (excludedSessions.has(context.session_id)) {
+        continue;
+      }
+
+      const bullet = formatRecentProjectContextItem(context);
+      if (!bullet) {
+        continue;
+      }
+
+      const normalized = collapseWhitespace(bullet, 260).toLowerCase();
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+
+      const signature = buildInteractionSignature(context);
+      if (primarySignature && signature && signature === primarySignature) {
+        continue;
+      }
+      if (isRecentProjectContextDuplicate(context, continuityBriefingCorpus)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      bullets.push(`- ${bullet}`);
+      sessionIds.push(context.session_id);
+      if (!latestTurnAt || compareCreatedAt(context.latest_turn_at, latestTurnAt) > 0) {
+        latestTurnAt = context.latest_turn_at;
+      }
+
+      if (bullets.length >= 3) {
+        break;
+      }
+    }
+
+    if (bullets.length === 0) {
+      return null;
+    }
+
+    return {
+      content: ["## Also Recently in This Project", ...bullets].join("\n"),
+      cache_hint: "volatile",
+      source_scope: "project",
+      item_count: bullets.length,
+      source_session_ids: sessionIds,
+      latest_turn_at: latestTurnAt,
     };
   }
 
@@ -1796,7 +2007,7 @@ export class ObservationStore {
     const hasExactMetricNumericLine = this.hasFocusedNumericLine(text, exactMetricKeywords);
     const hasNumericValue = this.hasNumericValue(text);
     const commandLike = this.isCommandLikeObservation(observation);
-    const hasCurrentCue = /\b(current|currently|now|latest|active|default|primary)\b/i.test(text) || /(今|現在|今の|現行|最新|primary|default)/.test(text);
+    const hasCurrentCue = hasCurrentValueCue(text);
     const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
     const hasReasonCue = /\b(because|since|due to|reason|caused by|triggered by)\b/i.test(text) || /(から|ため|ので|理由|きっかけ|背景|原因)/.test(text);
     const hasListCue = /[,、]/.test(text) || /\b(and|all|list|including)\b/i.test(text) || /(一覧|すべて|全て|挙げて|列挙)/.test(text);
@@ -2087,7 +2298,7 @@ export class ObservationStore {
       const lower = text.toLowerCase();
       const conciseSpan = this.extractConciseAnswerSpan(query, answerHints, text);
       const sentenceCount = this.countAnswerSentences(text);
-      const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text);
+      const hasCurrentCue = hasCurrentValueCue(text);
       const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
       const hasReasonCue = REASON_CUE_PATTERN.test(text) || JAPANESE_REASON_PATTERN.test(text);
       const hasListCue = LIST_CUE_PATTERN.test(text) || /[,、]/.test(text) || JAPANESE_LIST_PATTERN.test(text);
@@ -2145,6 +2356,80 @@ export class ObservationStore {
         return String(rhs.created_at).localeCompare(String(lhs.created_at));
       }
       return lhs.id.localeCompare(rhs.id);
+    });
+  }
+
+  private applySessionProgressBoost(
+    query: string,
+    routeDecision: RouteDecision,
+    ranked: SearchCandidate[],
+    observations: Map<string, Record<string, unknown>>
+  ): void {
+    if (routeDecision.kind !== "timeline" || !hasSessionProgressIntent(query) || ranked.length === 0) {
+      return;
+    }
+
+    const focusKeywords = routeDecision.answerHints?.focusKeywords ?? [];
+    if (focusKeywords.length === 0) {
+      return;
+    }
+
+    const sessionStats = new Map<string, { bestSignal: number; latestTurnAt: string }>();
+
+    for (const candidate of ranked) {
+      const observation = observations.get(candidate.id);
+      if (!observation) continue;
+      const sessionId = typeof observation.session_id === "string" ? observation.session_id : "";
+      if (!sessionId) continue;
+      const text = `${typeof observation.title === "string" ? observation.title : ""} ${
+        typeof observation.content_redacted === "string" ? observation.content_redacted : ""
+      }`.trim().toLowerCase();
+      const focusHits = this.countKeywordHits(text, focusKeywords);
+      const signal = Math.max(
+        candidate.lexical,
+        candidate.vector,
+        candidate.precision_boost ?? 0,
+        Math.min(0.9, focusHits * 0.18)
+      );
+      const existing = sessionStats.get(sessionId);
+      if (!existing) {
+        sessionStats.set(sessionId, { bestSignal: signal, latestTurnAt: candidate.created_at });
+        continue;
+      }
+      existing.bestSignal = Math.max(existing.bestSignal, signal);
+      if (compareCreatedAt(candidate.created_at, existing.latestTurnAt) > 0) {
+        existing.latestTurnAt = candidate.created_at;
+      }
+    }
+
+    const bestSession = [...sessionStats.entries()]
+      .sort((lhs, rhs) => {
+        if (rhs[1].bestSignal !== lhs[1].bestSignal) {
+          return rhs[1].bestSignal - lhs[1].bestSignal;
+        }
+        return compareCreatedAt(rhs[1].latestTurnAt, lhs[1].latestTurnAt);
+      })[0];
+
+    if (!bestSession || bestSession[1].bestSignal < 0.3) {
+      return;
+    }
+
+    const [bestSessionId] = bestSession;
+    const sessionCandidates = ranked
+      .filter((candidate) => {
+        const observation = observations.get(candidate.id);
+        return observation && observation.session_id === bestSessionId;
+      })
+      .sort((lhs, rhs) => compareCreatedAt(lhs.created_at, rhs.created_at));
+
+    if (sessionCandidates.length === 0) {
+      return;
+    }
+
+    const denominator = Math.max(1, sessionCandidates.length - 1);
+    sessionCandidates.forEach((candidate, index) => {
+      const progress = sessionCandidates.length === 1 ? 1 : index / denominator;
+      candidate.final += 0.08 + progress * 0.28;
     });
   }
 
@@ -2728,6 +3013,8 @@ export class ObservationStore {
       }
     }
 
+    this.applySessionProgressBoost(request.query, routeDecision, ranked, observations);
+
     ranked.sort((lhs, rhs) => {
       if (rhs.final !== lhs.final) return rhs.final - lhs.final;
       if (rhs.created_at !== lhs.created_at) {
@@ -3016,15 +3303,26 @@ export class ObservationStore {
     };
 
     const response = makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
+    response.no_memory = false;
+    response.no_memory_reason = "";
 
-    // S58-002: no_memory フラグ — 検索結果が閾値以下の場合にクライアントへ通知
+    const topCandidate = rankedAfterRerank[0];
+    const hasStrongMemoryEvidence = Boolean(topCandidate) && (
+      (topCandidate.lexical ?? 0) >= 0.35 ||
+      (topCandidate.tag_boost ?? 0) >= 0.2 ||
+      (topCandidate.fact_boost ?? 0) >= 0.18 ||
+      (topCandidate.precision_boost ?? 0) >= 0.18
+    );
+
+    // S58-002: no_memory フラグ — 低スコアでも lexical / fact / precision の
+    // 根拠が十分強い場合は false positive を避ける
     if (items.length === 0) {
       response.no_memory = true;
       response.no_memory_reason = "No matching memories found";
     } else {
       const topScore = (items[0] as Record<string, unknown>)?.scores as { final?: number } | undefined;
       const topFinalScore = topScore?.final ?? 0;
-      if (topFinalScore < NO_MEMORY_SCORE_THRESHOLD) {
+      if (topFinalScore < NO_MEMORY_SCORE_THRESHOLD && !hasStrongMemoryEvidence) {
         response.no_memory = true;
         response.no_memory_reason = "No matching memories found";
       }
@@ -3882,6 +4180,13 @@ export class ObservationStore {
       detailedItems,
       compactItems,
     });
+    const recentProjectContext = this.buildRecentProjectContext({
+      request,
+      projectMembers,
+      latestInteraction,
+      pinnedContinuity,
+      continuityBriefing,
+    });
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
@@ -3892,6 +4197,7 @@ export class ObservationStore {
       compacted_count: compactItems.length,
       ...(latestInteractionMeta !== null ? { latest_interaction: latestInteractionMeta } : {}),
       ...(continuityBriefing !== null ? { continuity_briefing: continuityBriefing } : {}),
+      ...(recentProjectContext !== null ? { recent_project_context: recentProjectContext } : {}),
       ...(static_section !== undefined ? { static_section } : {}),
       ...(dynamic_section !== undefined ? { dynamic_section } : {}),
     });

@@ -5,6 +5,21 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [0.8.0] - 2026-03-28
+
+### ユーザー向け要約
+
+- 新しいセッションの初手で、chain-first continuity を最上段に保ったまま `Also Recently in This Project` として project 周辺の最近文脈を短く補助表示する hybrid UX を追加。
+- `resume_pack.meta.recent_project_context` を追加し、same-chain・機械ノイズ・重複を除いた 2-3 bullet の recent-project teaser を Claude Code / Codex 共通で返すよう改善。
+- SessionStart renderer の hierarchy を Claude / Codex で統一し、top section が chain-first から崩れないことを contract test で固定。
+- benchmark を `chain recall / false carryover / recent_project_recall` の 3 軸へ拡張し、Claude / Codex ともに `1.00 / 0 / 1.00` の local acceptance を確認。
+- wrapper prompt の latest interaction 混入、`no_memory` の false positive、日本語 previous-value / session-resume query の順位崩れを補正し、release gate の retrieval 回帰を安定化。
+- README / setup / env docs を hybrid continuity の current behavior に合わせて更新。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.7.0] - 2026-03-26
 
 ### ユーザー向け要約

@@ -141,13 +141,14 @@ describe("benchmark / claim SSOT", () => {
   });
 
   test("main gate metrics copy matches current manifest", () => {
+    const mainVerdict = manifest.results.all_passed ? "PASS" : "FAIL";
     expect(readme).toContain(`| LoCoMo F1 | ${format4(manifest.results.locomo_f1)} |`);
     expect(readme).toContain(`| Bilingual recall@10 | ${format4(manifest.results.bilingual_recall)} |`);
     expect(readme).toContain(`| Freshness | ${format4(manifest.results.freshness)} |`);
     expect(readme).toContain(`| Temporal | ${format4(manifest.results.temporal)} |`);
     expect(readme).toContain(`| Search p95 | ${format2(manifest.performance.locomo_search_p95_ms)}ms |`);
     expect(readme).toContain(`| Token avg | ${format2(manifest.performance.locomo_token_avg)} |`);
-    expect(readme).toContain(`Verdict: \`${manifest.results.all_passed ? "PASS" : "FAIL"}\``);
+    expect(readme).toContain(`Verdict: \`${mainVerdict}\``);
 
     expect(readmeJa).toContain(`| LoCoMo F1 | ${format4(manifest.results.locomo_f1)} |`);
     expect(readmeJa).toContain(`| bilingual recall@10 | ${format4(manifest.results.bilingual_recall)} |`);
@@ -155,13 +156,13 @@ describe("benchmark / claim SSOT", () => {
     expect(readmeJa).toContain(`| temporal | ${format4(manifest.results.temporal)} |`);
     expect(readmeJa).toContain(`| search p95 | ${format2(manifest.performance.locomo_search_p95_ms)}ms |`);
     expect(readmeJa).toContain(`| token avg | ${format2(manifest.performance.locomo_token_avg)} |`);
-    expect(readmeJa).toContain("判定: `FAIL`");
+    expect(readmeJa).toContain(`判定: \`${mainVerdict}\``);
 
     expect(proofBar).toContain(`| LoCoMo F1 | ${format4(manifest.results.locomo_f1)} |`);
     expect(proofBar).toContain(`| Temporal | ${format4(manifest.results.temporal)} |`);
     expect(proofBar).toContain(`| Search p95 | ${format2(manifest.performance.locomo_search_p95_ms)}ms |`);
     expect(proofBar).toContain(`| Token avg | ${format2(manifest.performance.locomo_token_avg)} |`);
-    expect(proofBar).toContain("Verdict: `FAIL`");
+    expect(proofBar).toContain(`Verdict: \`${mainVerdict}\``);
   });
 
   test("main gate metadata copy matches current manifest", () => {

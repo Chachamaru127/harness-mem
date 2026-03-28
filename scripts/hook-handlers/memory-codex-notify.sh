@@ -4,10 +4,17 @@
 
 set +e
 
-# shellcheck disable=SC1090
-source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
+PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
+HOOK_COMMON_SH="${SCRIPT_DIR}/lib/hook-common.sh"
 
-hook_init_paths
+if [ -f "$HOOK_COMMON_SH" ]; then
+  # shellcheck disable=SC1090
+  source "$HOOK_COMMON_SH"
+  hook_init_paths
+fi
 
 # codex-notify: $1 引数優先、stdinフォールバック（通常の hook_init_context とは異なる）
 INPUT_JSON="${1:-}"

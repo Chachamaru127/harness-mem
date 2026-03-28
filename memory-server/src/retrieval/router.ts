@@ -309,8 +309,27 @@ const ANSWER_HINT_RULES: Array<{
     patterns: [
       /\b(how many|how much|number of|count of|what percentage|what percent)\b/i,
       /(いくつ|何個|何人|何回|何時間|何分|何日|割合|パーセント|件数)/,
+      /\b(expiration|expiry|expires?|ttl|time to live)\b/i,
+      /(有効期限|期限)/,
     ],
-    slotKeywords: ["count", "number", "quantity", "percentage", "percent", "rate", "hours", "件数", "割合", "数"],
+    slotKeywords: [
+      "count",
+      "number",
+      "quantity",
+      "percentage",
+      "percent",
+      "rate",
+      "hours",
+      "expiration",
+      "expiry",
+      "expires",
+      "ttl",
+      "有効期限",
+      "期限",
+      "件数",
+      "割合",
+      "数",
+    ],
   },
   {
     intent: "language",
@@ -393,6 +412,14 @@ const CONTEXT_FOCUS_RULES: Array<{ pattern: RegExp; keywords: string[] }> = [
   {
     pattern: /(§\s*39|\bs39\b)/iu,
     keywords: ["§39", "s39"],
+  },
+  {
+    pattern: /\b(refresh\s*token|refresh-token)\b|リフレッシュトークン/iu,
+    keywords: ["refresh token", "refresh-token", "リフレッシュトークン"],
+  },
+  {
+    pattern: /\b(expiration|expiry|expires?|ttl|time to live)\b|有効期限|期限/iu,
+    keywords: ["expiration", "expiry", "ttl", "有効期限", "期限"],
   },
 ];
 

@@ -104,7 +104,7 @@ printf '{"ok":true,"meta":{"count":0},"items":[]}\n'
 set -euo pipefail
 command="\${1:-health}"
 if [ "$command" = "resume-pack" ]; then
-  printf '%s\n' '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n\\n## Current Focus\\n- Continue from the previous adapter fix"}},"items":[{"id":"session:prev","type":"session_summary","summary":"fallback summary"}]}'
+  printf '%s\n' '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n\\n## Current Focus\\n- Continue from the previous adapter fix"},"recent_project_context":{"content":"## Also Recently in This Project\\n- OpenAPI docs refresh is still pending visual cleanup"}},"items":[{"id":"session:prev","type":"session_summary","summary":"fallback summary"}]}'
   exit 0
 fi
 printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
@@ -129,6 +129,10 @@ printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
       const resumeText = readFileSync(resumePath, "utf8");
       expect(resumeText).toContain("# Continuity Briefing");
       expect(resumeText).toContain("Continue from the previous adapter fix");
+      expect(resumeText).toContain("## Also Recently in This Project");
+      expect(resumeText.indexOf("# Continuity Briefing")).toBeLessThan(
+        resumeText.indexOf("## Also Recently in This Project")
+      );
       expect(resumeText).not.toContain("## Memory Resume Pack");
     } finally {
       rmSync(tmp, { recursive: true, force: true });

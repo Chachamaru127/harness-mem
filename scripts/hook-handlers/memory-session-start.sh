@@ -9,6 +9,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/hook-common.sh"
 
 hook_init_paths "true"
 hook_init_context
+DAEMON_SCRIPT="${PARENT_DIR}/harness-memd"
 
 STATE_DIR="${PROJECT_ROOT}/.claude/state"
 SESSION_FILE="${STATE_DIR}/session.json"

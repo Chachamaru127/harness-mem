@@ -69,6 +69,7 @@ Notes:
 ### Continuity UX contract today
 
 - Claude Code and Codex can show first-turn continuity when the client hook path is active, the daemon is healthy, and `harness-mem doctor` is green.
+- On those supported hook paths, SessionStart is hybrid by default: the top of the artifact remains chain-first continuity, and a short `Also Recently in This Project` teaser may be appended when there is distinct nearby project activity.
 - This is a runtime contract, not a blanket guarantee for every client: unsupported or experimental clients may still ingest/search without matching the Claude/Codex continuity UX.
 - If hooks or the local runtime are stale, search and manual recall can still work while the "open a new session and it already remembers" UX degrades.
 

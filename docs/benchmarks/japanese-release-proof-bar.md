@@ -1,6 +1,6 @@
 # Japanese Release Proof Bar
 
-Last updated: 2026-03-13
+Last updated: 2026-03-28
 
 This document defines what harness-mem can safely claim about Japanese capability after the §49 SSOT remediation.
 
@@ -8,7 +8,7 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 
 | Role | Source | Status | Notes |
 |---|---|---|---|
-| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-03-12T17:02:35.532Z`, `git_sha=5c009a9`, verdict `FAIL` |
+| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-03-20T11:39:22.199Z`, `git_sha=f3902d8`, verdict `PASS` |
 | Current Japanese companion | `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json` | current truth | `96 QA`, run family is canonicalized to `run1/run2/run3` only |
 | Historical Japanese baseline | `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json` | historical snapshot | `32 QA`, kept only as baseline context |
 | Deprecated alias | `docs/benchmarks/artifacts/s40-ja-release-latest/` | deprecated | do not cite this path in README / proof / Plans |
@@ -20,21 +20,18 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 Source:
 - `memory-server/src/benchmark/results/ci-run-manifest-latest.json`
 
-Current latest run (`multilingual-e5`, `git_sha=5c009a9`):
+Current latest run (`multilingual-e5`, `git_sha=f3902d8`):
 
 | Metric | Value | Meaning |
 |---|---:|---|
-| LoCoMo F1 | 0.5333 | Main retrieval + answer quality gate |
+| LoCoMo F1 | 0.5861 | Main retrieval + answer quality gate |
 | Bilingual recall@10 | 0.9000 | EN<->JA retrieval companion metric |
 | Freshness | 1.0000 | Current-state questions stay correct |
 | Temporal | 0.6403 | Ordering / time reasoning gate |
-| Search p95 | 16.99ms | Latency envelope |
+| Search p95 | 10.26ms | Latency envelope |
 | Token avg | 428.93 | Cost / verbosity envelope |
 
-Verdict: `FAIL`
-
-Reason kept visible:
-- The latest current run missed the relative temporal regression guard.
+Verdict: `PASS`
 
 ### Current Japanese companion (`96 QA`, README-safe current claim source)
 
