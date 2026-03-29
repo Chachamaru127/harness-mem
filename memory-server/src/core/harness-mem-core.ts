@@ -1419,7 +1419,7 @@ export class HarnessMemCore {
     // S58-009: LLM 不在判定（HARNESS_MEM_LLM_ENHANCE=true かつ no_memory=true のときのみ）
     if (
       llmConfig.enabled &&
-      (response as Record<string, unknown>).no_memory === true &&
+      response.no_memory === true &&
       Array.isArray(response.items) &&
       response.items.length > 0
     ) {
@@ -1445,9 +1445,8 @@ export class HarnessMemCore {
           apiKey,
         });
         if (checkResult.has_memory) {
-          (response as Record<string, unknown>).no_memory = false;
-          (response as Record<string, unknown>).no_memory_reason =
-            "LLM determined the memory is relevant";
+          response.no_memory = false;
+          response.no_memory_reason = "LLM determined the memory is relevant";
         }
       } catch {
         // graceful degradation: 元の no_memory 判定を維持

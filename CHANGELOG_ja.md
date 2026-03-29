@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-29
+
+### ユーザー向け要約
+
+- `v0.8.1` の release workflow を止めていた `memory-server` 側の TypeScript 型チェックエラーを修正。
+- `ApiResponse` を無理に汎用オブジェクト扱いしていた箇所を、正式な `no_memory` / `no_memory_reason` フィールド参照へ置き換え、tag release の publish job が通る状態へ戻した。
+- これは release 安定化パッチで、ユーザー向けの記憶 UX や機能仕様は変えていない。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.8.1] - 2026-03-29
 
 ### ユーザー向け要約

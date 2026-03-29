@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-03-29
+
+### Release gate repair
+
+**Before**: `v0.8.1` aligned the docs and release contract, but the tag release workflow still failed in CI. The actual blocker was a strict TypeScript check in `memory-server`: `ApiResponse` fields were being accessed through unsafe `Record<string, unknown>` casts, so the publish job stopped before npm and GitHub Release could finish.
+
+**After**: the release path now uses the typed `ApiResponse.no_memory` / `no_memory_reason` fields directly, which removes the CI-only typecheck failure and restores a green tag release path. This is a release hardening patch only; it does not change user-facing memory behavior.
+
+```bash
+# CI failure removed
+cd memory-server
+bunx tsc --noEmit
+```
+
 ## [0.8.1] - 2026-03-29
 
 ### Docs / release reproducibility
