@@ -317,6 +317,7 @@ harness-mem uninstall --purge-db
 
 - `README.md`
 - `README_ja.md`
+- `docs/release-process.md`
 - `docs/plans/environment-tab-v1-contract.md`
 - `CHANGELOG.md`
 - `CHANGELOG_ja.md`

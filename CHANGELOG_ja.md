@@ -5,6 +5,20 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
+## [Unreleased]
+
+## [0.8.1] - 2026-03-29
+
+### ユーザー向け要約
+
+- README / README_ja に release の再現性に関する説明を追加し、通常変更は `CHANGELOG.md` の `[Unreleased]` に積むこと、`CHANGELOG_ja.md` は日本語要約であることを明記。
+- `harness-release` skill を使う場合でも、手動で release する場合でも、`package.json` version・git tag・GitHub Release・npm publish が同じ版を指すべきという共通契約を docs 化。
+- maintainer 向けの正式チェックリストとして `docs/release-process.md` を追加。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.8.0] - 2026-03-28
 
 ### ユーザー向け要約

@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-03-29
+
+### Docs / release reproducibility
+
+**Before**: README and setup docs already described product behavior well, but the release contract still depended too much on team memory. It was not obvious enough that regular changes belong in `CHANGELOG.md [Unreleased]`, that `CHANGELOG_ja.md` is only a summary, or that the `harness-release` skill and a manual release are supposed to land on the exact same outputs.
+
+**After**: README / README_ja now explain the release contract in plain language, and a dedicated maintainer runbook documents the reproducible path from `[Unreleased]` to `package.json` version, git tag, GitHub Release, and npm publish. The runbook is explicit that the `harness-release` skill is a convenience wrapper over the same checklist, not a separate policy.
+
+```bash
+# canonical maintainer reference
+open docs/release-process.md
+```
+
 ## [0.8.0] - 2026-03-28
 
 ### テーマ: Hybrid continuity context

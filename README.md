@@ -220,6 +220,24 @@ The tab is read-only in V1 and masks sensitive values before rendering.
 | `uninstall` | Remove wiring and optional local DB (`--purge-db`) |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Safe migration from Claude-mem |
 
+## Release Reproducibility
+
+If you maintain this repo, release quality should not depend on whether you used a skill, a shell script, or a manual checklist.
+
+- Normal feature work goes to `CHANGELOG.md` under `## [Unreleased]`.
+- `CHANGELOG.md` is the source of truth for release notes. `CHANGELOG_ja.md` is a Japanese summary, not a separate contract.
+- The release contract is the same whether you use the `harness-release` skill or run the commands yourself: `package.json` version, changelog entry, git tag, GitHub Release, and npm publish must all refer to the same version.
+- The canonical maintainer checklist lives in [`docs/release-process.md`](docs/release-process.md).
+
+In practice, a reproducible release means all of these are true before you ship:
+
+1. Working tree is clean.
+2. User-visible changes are already written in `CHANGELOG.md` under `[Unreleased]`.
+3. Quality gates are green.
+4. `npm pack --dry-run` passes.
+5. The release tag matches `package.json`.
+6. The resulting npm version and GitHub Release point to the same shipped version.
+
 ## Supported Tools
 
 | Tier | Tool | Tested With | Notes |
