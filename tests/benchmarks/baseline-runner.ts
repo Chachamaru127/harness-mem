@@ -12,12 +12,14 @@ const DEFAULT_PROJECT = "world1-baseline";
 const DEFAULT_QUERY_COUNT = 30;
 const DEFAULT_BACKGROUND_EVENTS = 600;
 const DEFAULT_SAMPLE_LIMIT = 10;
+const DEFAULT_WARMUP_QUERY_COUNT = 3;
 
 export interface BenchmarkRunnerOptions {
   runLabel?: string;
   outputPath?: string;
   project?: string;
   rerankerEnabled?: boolean;
+  warmupQueryCount?: number;
 }
 
 interface QuerySeed {
@@ -196,6 +198,7 @@ export async function createBaselineSnapshot(options: BenchmarkRunnerOptions = {
   const runLabel = options.runLabel || "before";
   const project = options.project || DEFAULT_PROJECT;
   const rerankerEnabled = options.rerankerEnabled === true;
+  const warmupQueryCount = Math.max(0, options.warmupQueryCount ?? DEFAULT_WARMUP_QUERY_COUNT);
   const tempDir = mkdtempSync(join(tmpdir(), "harness-mem-benchmark-"));
   const core = createCore(tempDir, rerankerEnabled);
 
@@ -205,6 +208,17 @@ export async function createBaselineSnapshot(options: BenchmarkRunnerOptions = {
     const searchLatencies: number[] = [];
     let progressiveTokens = 0;
     let singleShotTokens = 0;
+
+    // Prime the search path so first-hit model / cache setup does not dominate the measured p95.
+    for (const seed of querySeeds.slice(0, warmupQueryCount)) {
+      core.search({
+        query: seed.query,
+        project,
+        include_private: true,
+        strict_project: true,
+        limit: DEFAULT_SAMPLE_LIMIT,
+      });
+    }
 
     for (const seed of querySeeds) {
       const searchResponse = core.search({

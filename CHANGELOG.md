@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Test runner hardening
+
+**Before**: root `npm test` sent `memory-server/tests/` through one large `bun test` invocation together with the root / SDK / MCP suites. In this repository that path could finish with `all tests passed` and then still die during Bun teardown with `panic(main thread): A C++ exception occurred`, which made release verification noisy and hard to trust.
+
+**After**: root `npm test` now delegates `memory-server` to its existing chunked runner (`cd memory-server && bun run test`) and runs the remaining root / SDK / MCP suites through a batched runner (`bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests`). That batched runner uses `scripts/run-bun-test-safe.sh`, which treats only the very specific case of `0 fail` + known Bun panic banner as upstream runtime noise; real test failures still fail the command. This does not change the intended test surface; it changes the execution path and exit handling to avoid the crash-prone Bun shutdown pattern. `docs/TESTING.md` and contract tests now pin that behavior.
+
+### Release / CI alignment
+
+**Before**: local maintainers were told to trust `npm test`, but the release workflow still used a different memory-server-only command path. That made it harder to explain whether local verification and release verification were really checking the same behavior.
+
+**After**: the release workflow now uses the same repository behavior gate (`npm test`) that maintainers run locally, while keeping `harness-mem-ui` quality gates and `memory-server` typecheck as separate explicit checks. The repo also now includes `docs/bun-test-panic-repro.md` plus `scripts/repro-bun-panic.sh`, so the Bun panic can be explained and reproduced without guessing.
+
+```bash
+npm test
+```
+
 ## [0.8.2] - 2026-03-29
 
 ### Release gate repair

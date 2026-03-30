@@ -102,12 +102,17 @@ jobs:
           bun run test:ui
           bun run typecheck
 
-      - name: Run memory server quality gates
+      - name: Run repository behavior gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Run memory server typecheck
         shell: bash
         run: |
           set -euo pipefail
           cd memory-server
-          bun run test
           bun run typecheck
 
       - name: Dry-run package check

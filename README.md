@@ -228,6 +228,8 @@ If you maintain this repo, release quality should not depend on whether you used
 - `CHANGELOG.md` is the source of truth for release notes. `CHANGELOG_ja.md` is a Japanese summary, not a separate contract.
 - The release contract is the same whether you use the `harness-release` skill or run the commands yourself: `package.json` version, changelog entry, git tag, GitHub Release, and npm publish must all refer to the same version.
 - The canonical maintainer checklist lives in [`docs/release-process.md`](docs/release-process.md).
+- The test execution details, including the Bun panic mitigation path used by `npm test`, live in [`docs/TESTING.md`](docs/TESTING.md).
+- If you need the maintainer-facing repro notes for the known Bun teardown crash, see [`docs/bun-test-panic-repro.md`](docs/bun-test-panic-repro.md).
 
 In practice, a reproducible release means all of these are true before you ship:
 

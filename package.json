@@ -52,7 +52,7 @@
     "pg": "^8.20.0"
   },
   "scripts": {
-    "test": "bun test memory-server/tests/ ./tests/ sdk/tests/ mcp-server/tests/",
+    "test": "(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests",
     "test:ui": "cd harness-mem-ui && bunx vitest",
     "test:e2e": "cd harness-mem-ui && bunx playwright test"
   },

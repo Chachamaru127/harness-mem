@@ -75,6 +75,14 @@ npm test
 npm pack --dry-run
 ```
 
+What `npm test` means in this repository:
+
+- it is the maintainer-facing behavior gate
+- it already includes the panic-mitigated root test path described in [`docs/TESTING.md`](./TESTING.md)
+- it is intentionally different from "one huge `bun test` over everything", because that path can report `0 fail` and then die in Bun teardown
+
+If you need the deeper background or want to report the Bun crash upstream, see [`docs/bun-test-panic-repro.md`](./bun-test-panic-repro.md).
+
 Recommended additional checks when the touched area justifies them:
 
 ```bash
@@ -116,10 +124,18 @@ git push origin main --tags
 
 After that, `.github/workflows/release.yml` is expected to:
 
+- run the same repository behavior gate as local maintainers (`npm test`)
 - run quality gates
 - run `npm pack --dry-run`
 - publish to npm
 - create a GitHub Release
+
+In practice today, the release workflow also keeps two extra checks separate:
+
+- `harness-mem-ui` test / typecheck
+- `memory-server` typecheck
+
+That split is intentional. It keeps the local contract easy to explain while still protecting the UI and the strict TypeScript gate in CI.
 
 ## 7. Post-release verification
 

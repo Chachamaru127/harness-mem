@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- root の `npm test` が `memory-server/tests/` を 1 本の大きい `bun test` で流していたため、テストは全件通っても終了時に Bun 本体が panic することがあった。
+- これを避けるため、`memory-server` は既存の chunked runner (`cd memory-server && bun run test`) に委譲し、残りの root / SDK / MCP suites も `scripts/run-bun-test-batches.sh` で小分け実行する形へ変更。
+- テスト対象の意図は変えず、実行経路だけを安定化。`docs/TESTING.md` と contract test にもこの前提を反映。
+- release workflow も local maintainer と同じ `npm test` を behavior gate として使うようにそろえ、Bun panic の最小再現手順は `docs/bun-test-panic-repro.md` と `scripts/repro-bun-panic.sh` にまとめた。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.8.2] - 2026-03-29
 
 ### ユーザー向け要約

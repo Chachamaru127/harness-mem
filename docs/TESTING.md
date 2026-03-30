@@ -1,6 +1,6 @@
 # TESTING.md — テストカタログと実行ガイド
 
-> 更新日: 2026-03-02
+> 更新日: 2026-03-30
 
 ## フレームワーク使い分け
 
@@ -62,8 +62,19 @@
 ### 全テスト（bun:test）
 
 ```bash
-bun test
+npm test
 ```
+
+`npm test` は内部で 2 段に分けて実行します。
+
+1. `memory-server/` は `cd memory-server && bun run test`
+   - これは `tests/*.test.ts`, `tests/unit`, `tests/core-split`, `tests/integration`, `tests/benchmark`, `tests/performance` を小分けに実行する既存の安定 runner です
+   - 理由: `memory-server/tests/` を 1 回の大きい `bun test` で流すと、テスト自体は通っても Bun 本体が終了時に panic することがあり、release やローカル確認の再現性を崩すため
+2. ルート / SDK / MCP は `bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests`
+   - この runner は `*.test.ts` / `*.test.js` だけを拾い、既定では 1ファイルずつ `bun test` に分けて実行します
+   - 理由: `./tests/ sdk/tests/ mcp-server/tests/` を 1 本の大きい `bun test` にすると、こちらも終了時 panic に当たるため
+   - テスト対象の意図は変えず、実行経路だけを小分けにしています
+   - 内部では `scripts/run-bun-test-safe.sh` を通し、`0 fail` を出したあとにだけ起きる既知の Bun panic は upstream runtime noise として扱います。テスト失敗や途中クラッシュは従来どおり fail です
 
 ### 特定ディレクトリ
 
@@ -82,6 +93,9 @@ bun test sdk/tests/
 
 # 契約テスト
 bun test tests/
+
+# root 相当の実行（panic mitigation 版）
+(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests
 
 # ベンチマーク（手動実行推奨）
 bun test tests/benchmarks/

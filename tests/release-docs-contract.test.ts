@@ -32,10 +32,13 @@ describe("release docs contract", () => {
     expect(doc).toContain("CHANGELOG.md");
     expect(doc).toContain("[Unreleased]");
     expect(doc).toContain("package.json");
+    expect(doc).toContain("docs/TESTING.md");
+    expect(doc).toContain("docs/bun-test-panic-repro.md");
     expect(doc).toContain("npm pack --dry-run");
     expect(doc).toContain("npm publish");
     expect(doc).toContain("GitHub Release");
     expect(doc).toContain("git tag");
+    expect(doc).toContain("release.yml");
   });
 
   test("changelog files mention the release reproducibility docs update", () => {
