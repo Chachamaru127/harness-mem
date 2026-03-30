@@ -88,6 +88,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | No | Ollama サーバーの URL（埋め込み用） | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | No | Ollama 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=ollama` の場合に使用 | `core/core-utils.ts` |
 | `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | `4000` | No | resume_pack 全体の最大トークン数。continuity briefing と recent-project teaser の両方に適用される。0 を指定すると resume_pack を無効化 | `core/core-utils.ts`, `core/observation-store.ts` |
+| `HARNESS_MEM_WHISPER_MAX_TOKENS` | `400` | No | Contextual Recall（番頭モード）が 1 プロンプトで追加できる最大トークン数。Claude/Codex の UserPromptSubmit hook で使う。小さくすると whisper が静かになり、大きくすると 1 回の注入量が増える | `scripts/userprompt-inject-policy.sh`, `scripts/hook-handlers/codex-user-prompt.sh`, `scripts/hook-handlers/lib/hook-common.sh` |
 
 ---
 
@@ -301,6 +302,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_RERANKER_MODEL` | Performance |
 | `HARNESS_MEM_RERANKER_PROVIDER` | Performance |
 | `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | Embedding |
+| `HARNESS_MEM_WHISPER_MAX_TOKENS` | Session |
 | `HARNESS_MEM_SEARCH_EXPAND_LINKS` | Performance |
 | `HARNESS_MEM_SEARCH_RANKING` | Performance |
 | `HARNESS_MEM_SQLITE_VEC_PATH` | Database |

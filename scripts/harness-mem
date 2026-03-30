@@ -82,6 +82,7 @@ Unified Harness Memory helper
 Commands:
   setup      Configure Codex/OpenCode/Cursor/Claude wiring, start daemon, run smoke and quality checks.
   doctor     Validate wiring and daemon health (optionally repair with --fix).
+  recall     Manage contextual recall mode (on|quiet|off|status).
   versions   Snapshot local/upstream versions for Codex/OpenCode/Cursor/Claude/Antigravity.
   update     Update global harness-mem package and prompt auto-update opt-in (interactive).
   smoke      Run isolated daemon smoke test against record/search privacy flow.
@@ -132,6 +133,11 @@ Command options:
     no additional options
   update:
     (interactive tty)  Prompt auto-update opt-in (yes/no), then run npm install -g @chachamaru127/harness-mem@latest
+  recall:
+    on                Enable full contextual recall (rerank threshold 0.6 / fallback top 3)
+    quiet             Enable quiet contextual recall (default, rerank threshold 0.8 / fallback top 1)
+    off               Disable contextual recall injection
+    status            Show current contextual recall mode
 EOF
 }
 
@@ -163,6 +169,9 @@ ensure_config() {
     cat > "$CONFIG_PATH" <<'CONF'
 {
   "backend_mode": "local",
+  "recall": {
+    "mode": "quiet"
+  },
   "embedding_provider": "auto",
   "embedding_model": "multilingual-e5",
   "managed": {
@@ -181,6 +190,9 @@ CONF
     local tmp="${CONFIG_PATH}.tmp.$$"
     jq '
       .backend_mode = (.backend_mode // "local")
+      | .recall = ((.recall // {}) + {
+          mode: (.recall.mode // "quiet")
+        })
       | .embedding_provider = (.embedding_provider // "auto")
       | .embedding_model = (.embedding_model // "multilingual-e5")
       | .managed = ((.managed // {}) + {
@@ -209,6 +221,23 @@ read_backend_mode() {
     local|managed|hybrid) echo "$mode" ;;
     *) echo "local" ;;
   esac
+}
+
+read_recall_mode() {
+  ensure_config
+  local mode
+  mode="$(jq -r '.recall.mode // "quiet"' "$CONFIG_PATH" 2>/dev/null || echo "quiet")"
+  case "$mode" in
+    on|quiet|off) echo "$mode" ;;
+    *) echo "quiet" ;;
+  esac
+}
+
+write_recall_mode() {
+  local new_mode="$1"
+  ensure_config
+  local tmp="${CONFIG_PATH}.tmp.$$"
+  jq --arg mode "$new_mode" '.recall = ((.recall // {}) + {mode: $mode})' "$CONFIG_PATH" > "$tmp" && mv "$tmp" "$CONFIG_PATH"
 }
 
 write_backend_mode() {
@@ -4187,6 +4216,26 @@ model_impl() {
   esac
 }
 
+recall_impl() {
+  local subcmd="${1:-status}"
+  case "$subcmd" in
+    on|quiet|off)
+      write_recall_mode "$subcmd"
+      if ui_is_en; then
+        echo "contextual recall mode: $subcmd"
+      else
+        echo "contextual recall mode: $subcmd"
+      fi
+      ;;
+    status)
+      echo "contextual recall mode: $(read_recall_mode)"
+      ;;
+    *)
+      fail "Unknown recall subcommand: ${subcmd}. Use: on | quiet | off | status"
+      ;;
+  esac
+}
+
 main() {
   local command="${1:-help}"
   shift || true
@@ -4194,6 +4243,10 @@ main() {
   # model subcommand uses positional args, bypass parse_options
   if [ "$command" = "model" ]; then
     model_impl "$@"
+    return
+  fi
+  if [ "$command" = "recall" ]; then
+    recall_impl "$@"
     return
   fi
 
@@ -4232,6 +4285,9 @@ main() {
       ;;
     doctor)
       doctor_impl
+      ;;
+    recall)
+      recall_impl "$@"
       ;;
     smoke)
       ensure_dependencies

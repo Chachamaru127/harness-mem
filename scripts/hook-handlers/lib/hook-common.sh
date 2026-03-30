@@ -12,10 +12,20 @@ hook_init_paths() {
 
   # BASH_SOURCE[0] is hook-common.sh itself; the caller is BASH_SOURCE[1]
   local caller_source="${BASH_SOURCE[1]}"
-  SCRIPT_DIR="$(cd "$(dirname "$caller_source")" && pwd)"
-  PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-  CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
-  PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
+  local caller_dir
+  caller_dir="$(cd "$(dirname "$caller_source")" && pwd)"
+
+  if [ -f "${caller_dir}/harness-mem-client.sh" ] || [ -f "${caller_dir}/harness-memd" ]; then
+    SCRIPT_DIR="$caller_dir"
+    PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    CLIENT_SCRIPT="${SCRIPT_DIR}/harness-mem-client.sh"
+    PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/hook-handlers/lib/project-context.sh"
+  else
+    SCRIPT_DIR="$caller_dir"
+    PARENT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+    CLIENT_SCRIPT="${PARENT_DIR}/harness-mem-client.sh"
+    PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
+  fi
 
   # CLAUDE_PLUGIN_DATA (CC v2.1.78+): persistent plugin data directory that
   # survives plugin updates. Falls back to HARNESS_MEM_HOME or ~/.harness-mem.
@@ -29,7 +39,11 @@ hook_init_paths() {
   fi
 
   if [ "$has_daemon" = "true" ]; then
-    DAEMON_SCRIPT="${PARENT_DIR}/harness-memd"
+    if [ -f "${SCRIPT_DIR}/harness-memd" ]; then
+      DAEMON_SCRIPT="${SCRIPT_DIR}/harness-memd"
+    else
+      DAEMON_SCRIPT="${PARENT_DIR}/harness-memd"
+    fi
   fi
 }
 
@@ -576,6 +590,464 @@ hook_render_resume_pack_markdown() {
       end
     ' 2>/dev/null
   }
+}
+
+hook_emit_claude_additional_context() {
+  local hook_event_name="${1:-UserPromptSubmit}"
+  local additional_context="${2:-}"
+
+  if command -v jq >/dev/null 2>&1; then
+    if [ -n "$additional_context" ]; then
+      jq -nc \
+        --arg hook_event_name "$hook_event_name" \
+        --arg additional_context "$additional_context" \
+        '{
+          hookSpecificOutput: {
+            hookEventName: $hook_event_name,
+            additionalContext: $additional_context
+          }
+        }'
+    else
+      jq -nc --arg hook_event_name "$hook_event_name" '{hookSpecificOutput:{hookEventName:$hook_event_name}}'
+    fi
+    return 0
+  fi
+
+  [ -n "$additional_context" ] && printf '%s\n' "$additional_context"
+}
+
+hook_init_whisper_state() {
+  WHISPER_STATE_DIR="${PROJECT_ROOT}/.harness-mem/state"
+  WHISPER_STATE_FILE="${WHISPER_STATE_DIR}/whisper-budget.json"
+  mkdir -p "$WHISPER_STATE_DIR" 2>/dev/null || true
+}
+
+hook_default_whisper_state() {
+  if ! command -v jq >/dev/null 2>&1; then
+    printf '{}'
+    return
+  fi
+
+  jq -nc --arg project "${PROJECT_NAME:-}" '{version:1,project:$project,sessions:{}}'
+}
+
+hook_read_whisper_state() {
+  if [ ! -f "${WHISPER_STATE_FILE:-}" ] || ! command -v jq >/dev/null 2>&1; then
+    hook_default_whisper_state
+    return
+  fi
+
+  if jq -e '.' "$WHISPER_STATE_FILE" >/dev/null 2>&1; then
+    cat "$WHISPER_STATE_FILE"
+  else
+    hook_default_whisper_state
+  fi
+}
+
+hook_write_whisper_state() {
+  local state_json="${1:-}"
+  [ -n "$state_json" ] || return 0
+  [ -n "${WHISPER_STATE_FILE:-}" ] || return 0
+  mkdir -p "$(dirname "$WHISPER_STATE_FILE")" 2>/dev/null || true
+  local tmp="${WHISPER_STATE_FILE}.tmp.$$"
+  printf '%s\n' "$state_json" > "$tmp" && mv "$tmp" "$WHISPER_STATE_FILE"
+}
+
+hook_clamp_integer() {
+  local raw="${1:-}"
+  local fallback="${2:-0}"
+  local minimum="${3:-0}"
+  local maximum="${4:-999999}"
+  local value
+
+  case "$raw" in
+    ''|*[!0-9]*) value="$fallback" ;;
+    *) value="$raw" ;;
+  esac
+
+  if [ "$value" -lt "$minimum" ]; then
+    value="$minimum"
+  fi
+  if [ "$value" -gt "$maximum" ]; then
+    value="$maximum"
+  fi
+  printf '%s' "$value"
+}
+
+hook_read_recall_mode() {
+  local config_path="${HARNESS_MEM_HOME:-$HOME/.harness-mem}/config.json"
+  local mode="quiet"
+
+  if [ -f "$config_path" ] && command -v jq >/dev/null 2>&1; then
+    mode="$(jq -r '.recall.mode // "quiet"' "$config_path" 2>/dev/null || printf 'quiet')"
+  fi
+
+  case "$mode" in
+    on|quiet|off) printf '%s' "$mode" ;;
+    *) printf 'quiet' ;;
+  esac
+}
+
+hook_read_whisper_max_tokens() {
+  hook_clamp_integer "${HARNESS_MEM_WHISPER_MAX_TOKENS:-400}" "400" "80" "2000"
+}
+
+hook_read_whisper_query_max_chars() {
+  hook_clamp_integer "${HARNESS_MEM_WHISPER_QUERY_MAX_CHARS:-120}" "120" "32" "400"
+}
+
+hook_read_whisper_timeout_sec() {
+  hook_clamp_integer "${HARNESS_MEM_WHISPER_TIMEOUT_SEC:-10}" "10" "2" "30"
+}
+
+hook_estimate_tokens() {
+  local text="${1:-}"
+  [ -n "$text" ] || {
+    printf '0'
+    return
+  }
+
+  local chars
+  chars="$(printf '%s' "$text" | wc -m | tr -d '[:space:]')"
+  chars="$(hook_clamp_integer "$chars" "0" "0" "999999")"
+  if [ "$chars" -eq 0 ]; then
+    printf '0'
+    return
+  fi
+  printf '%s' $(( (chars + 3) / 4 ))
+}
+
+hook_upsert_whisper_session_defaults() {
+  local session_id="${1:-}"
+  [ -n "$session_id" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local state_json
+  state_json="$(hook_read_whisper_state)"
+  state_json="$(
+    printf '%s' "$state_json" | jq -c \
+      --arg project "${PROJECT_NAME:-}" \
+      --arg sid "$session_id" \
+      '
+        .version = 1
+        | .project = $project
+        | .sessions = (.sessions // {})
+        | .sessions[$sid] = ((.sessions[$sid] // {}) + {
+            seen_ids: ((.sessions[$sid].seen_ids // []) | if type == "array" then . else [] end),
+            accumulated_tokens: (.sessions[$sid].accumulated_tokens // 0),
+            prompt_count_since_last_inject: (.sessions[$sid].prompt_count_since_last_inject // 99),
+            inject_count: (.sessions[$sid].inject_count // 0),
+            pending_resume_skip: (.sessions[$sid].pending_resume_skip // false),
+            updated_at: (.sessions[$sid].updated_at // null)
+          })
+      ' 2>/dev/null
+  )"
+  [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+}
+
+hook_mark_whisper_prompt() {
+  local session_id="${1:-}"
+  [ -n "$session_id" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  hook_upsert_whisper_session_defaults "$session_id"
+
+  local current_ts state_json
+  current_ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  state_json="$(hook_read_whisper_state)"
+  state_json="$(
+    printf '%s' "$state_json" | jq -c \
+      --arg sid "$session_id" \
+      --arg updated_at "$current_ts" \
+      '
+        .sessions[$sid].prompt_count_since_last_inject = ((.sessions[$sid].prompt_count_since_last_inject // 0) + 1)
+        | .sessions[$sid].updated_at = $updated_at
+      ' 2>/dev/null
+  )"
+  [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+}
+
+hook_mark_whisper_resume_skip() {
+  local session_id="${1:-}"
+  [ -n "$session_id" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  hook_upsert_whisper_session_defaults "$session_id"
+
+  local state_json
+  state_json="$(hook_read_whisper_state)"
+  state_json="$(
+    printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
+      .sessions[$sid].pending_resume_skip = true
+    ' 2>/dev/null
+  )"
+  [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+}
+
+hook_consume_whisper_resume_skip() {
+  local session_id="${1:-}"
+  [ -n "$session_id" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+  [ -f "${WHISPER_STATE_FILE:-}" ] || return 1
+
+  if ! jq -e --arg sid "$session_id" '.sessions[$sid].pending_resume_skip == true' "$WHISPER_STATE_FILE" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  local state_json
+  state_json="$(hook_read_whisper_state)"
+  state_json="$(
+    printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
+      .sessions[$sid].pending_resume_skip = false
+    ' 2>/dev/null
+  )"
+  [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  return 0
+}
+
+hook_record_whisper_injection() {
+  local session_id="${1:-}"
+  local ids_json="${2:-[]}"
+  local tokens="${3:-0}"
+  [ -n "$session_id" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+  hook_upsert_whisper_session_defaults "$session_id"
+
+  local current_ts state_json
+  current_ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  state_json="$(hook_read_whisper_state)"
+  state_json="$(
+    printf '%s' "$state_json" | jq -c \
+      --arg sid "$session_id" \
+      --arg updated_at "$current_ts" \
+      --argjson ids "$ids_json" \
+      --argjson tokens "$tokens" \
+      '
+        .sessions[$sid].seen_ids = (((.sessions[$sid].seen_ids // []) + $ids) | unique)
+        | .sessions[$sid].accumulated_tokens = ((.sessions[$sid].accumulated_tokens // 0) + $tokens)
+        | .sessions[$sid].inject_count = ((.sessions[$sid].inject_count // 0) + 1)
+        | .sessions[$sid].prompt_count_since_last_inject = 0
+        | .sessions[$sid].updated_at = $updated_at
+      ' 2>/dev/null
+  )"
+  [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+}
+
+hook_whisper_prompt_has_trigger() {
+  local prompt_text="${1:-}"
+  [ -n "$prompt_text" ] || return 1
+
+  printf '%s\n' "$prompt_text" | grep -Eiq \
+    '([A-Za-z0-9_/.-]+\.(ts|tsx|js|jsx|py|rb|go|rs|java|kt|swift|json|md|yaml|yml|toml|sh|sql))|([A-Za-z0-9_/.-]+/[A-Za-z0-9_/.-]+)|(\berror\b|\bfailed\b|\bfailure\b|\bexception\b|\btrace\b|\bbug\b|エラー|失敗|例外|不具合|スタックトレース)|(\bdecid(e|ed|ing)\b|\bchoose\b|\boption\b|\btrade-?off\b|\bnext step\b|\baction item\b|決定|方針|選択|判断|次アクション)'
+}
+
+hook_render_contextual_recall_lines() {
+  local selected_json="${1:-[]}"
+  [ -n "$selected_json" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local body
+  body="$(printf '%s' "$selected_json" | jq -r '
+    .[]
+    | "- "
+      + (
+          [
+            (.title // empty),
+            ((.content // "") | gsub("\\n"; " ") | .[0:72])
+          ]
+          | map(select(length > 0))
+          | join(" — ")
+        )
+  ' 2>/dev/null)"
+  [ -n "$body" ] || return 0
+
+  printf '## Contextual Recall\n%s\n' "$body"
+}
+
+hook_run_contextual_recall() {
+  local platform="${1:-}"
+  local session_id="${2:-}"
+  local prompt_text="${3:-}"
+  local mode="${4:-}"
+  [ -n "$session_id" ] || {
+    printf '%s' '{"ok":false,"reason":"missing_session"}'
+    return 0
+  }
+
+  command -v jq >/dev/null 2>&1 || {
+    printf '%s' '{"ok":false,"reason":"jq_unavailable"}'
+    return 0
+  }
+
+  hook_init_whisper_state
+  hook_upsert_whisper_session_defaults "$session_id"
+  hook_mark_whisper_prompt "$session_id"
+
+  mode="${mode:-$(hook_read_recall_mode)}"
+  case "$mode" in
+    off)
+      printf '%s' '{"ok":true,"injected":false,"reason":"mode_off"}'
+      return 0
+      ;;
+    on|quiet)
+      ;;
+    *)
+      mode="quiet"
+      ;;
+  esac
+
+  if ! hook_whisper_prompt_has_trigger "$prompt_text"; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"no_trigger"}'
+    return 0
+  fi
+
+  if hook_consume_whisper_resume_skip "$session_id"; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"resume_skip"}'
+    return 0
+  fi
+
+  local state_json session_state inject_count cooldown_count
+  state_json="$(hook_read_whisper_state)"
+  session_state="$(printf '%s' "$state_json" | jq -c --arg sid "$session_id" '.sessions[$sid] // {}' 2>/dev/null)"
+  inject_count="$(printf '%s' "$session_state" | jq -r '.inject_count // 0' 2>/dev/null)"
+  cooldown_count="$(printf '%s' "$session_state" | jq -r '.prompt_count_since_last_inject // 99' 2>/dev/null)"
+  inject_count="$(hook_clamp_integer "$inject_count" "0" "0" "99")"
+  cooldown_count="$(hook_clamp_integer "$cooldown_count" "99" "0" "999")"
+  if [ "$inject_count" -ge 5 ]; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"session_limit"}'
+    return 0
+  fi
+  if [ "$inject_count" -gt 0 ] && [ "$cooldown_count" -lt 3 ]; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"cooldown"}'
+    return 0
+  fi
+
+  local query_max_chars query timeout_sec payload response
+  query_max_chars="$(hook_read_whisper_query_max_chars)"
+  timeout_sec="$(hook_read_whisper_timeout_sec)"
+  query="$(
+    printf '%s' "$prompt_text" \
+      | tr '\n' ' ' \
+      | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' \
+      | cut -c1-"$query_max_chars"
+  )"
+  [ -n "$query" ] || {
+    printf '%s' '{"ok":true,"injected":false,"reason":"empty_query"}'
+    return 0
+  }
+
+  payload="$(jq -nc \
+    --arg project "$PROJECT_NAME" \
+    --arg query "$query" \
+    '{project:$project,query:$query,limit:3,include_private:false,strict_project:true}' 2>/dev/null)"
+  [ -n "$payload" ] || {
+    printf '%s' '{"ok":false,"reason":"payload_build_failed"}'
+    return 0
+  }
+
+  response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="$timeout_sec" printf '%s' "$payload" | "$CLIENT_SCRIPT" search 2>/dev/null || true)"
+  if [ -z "$response" ] || ! printf '%s' "$response" | jq -e '.ok != false' >/dev/null 2>&1; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"search_unavailable"}'
+    return 0
+  fi
+
+  local rerank_enabled threshold selected_json seen_ids_json
+  rerank_enabled="$(printf '%s' "$response" | jq -r '
+    [
+      .items[]?
+      | (((.scores.rerank // .scores.final // 0) - (.scores.final // 0)) | if . < 0 then -. else . end)
+    ]
+    | any(. > 0.000001)
+  ' 2>/dev/null)"
+  case "$rerank_enabled" in
+    true|false) ;;
+    *) rerank_enabled="false" ;;
+  esac
+
+  seen_ids_json="$(printf '%s' "$session_state" | jq -c '.seen_ids // []' 2>/dev/null)"
+  [ -n "$seen_ids_json" ] || seen_ids_json='[]'
+
+  if [ "$rerank_enabled" = "true" ]; then
+    if [ "$mode" = "quiet" ]; then
+      threshold="0.8"
+    else
+      threshold="0.6"
+    fi
+    selected_json="$(
+      printf '%s' "$response" | jq -c \
+        --argjson threshold "$threshold" \
+        --argjson seen_ids "$seen_ids_json" \
+        '
+          [(.items // [])[]
+           | select(((.scores.rerank // .scores.final // 0) >= $threshold))
+           | .id as $item_id
+           | select(($seen_ids | index($item_id) | not))
+          ][:3]
+        ' 2>/dev/null
+    )"
+  else
+    local fallback_limit
+    if [ "$mode" = "quiet" ]; then
+      fallback_limit=1
+    else
+      fallback_limit=3
+    fi
+    selected_json="$(
+      printf '%s' "$response" | jq -c \
+        --argjson limit "$fallback_limit" \
+        --argjson seen_ids "$seen_ids_json" \
+        '
+          [(.items // [])[]
+           | .id as $item_id
+           | select(($seen_ids | index($item_id) | not))
+          ][:$limit]
+        ' 2>/dev/null
+    )"
+  fi
+
+  [ -n "$selected_json" ] || selected_json='[]'
+  if [ "$(printf '%s' "$selected_json" | jq 'length' 2>/dev/null)" -eq 0 ]; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"no_match"}'
+    return 0
+  fi
+
+  local rendered tokens accumulated tokens_limit ids_json
+  rendered="$(hook_render_contextual_recall_lines "$selected_json")"
+  [ -n "$rendered" ] || {
+    printf '%s' '{"ok":true,"injected":false,"reason":"render_empty"}'
+    return 0
+  }
+
+  tokens="$(hook_estimate_tokens "$rendered")"
+  tokens_limit="$(hook_read_whisper_max_tokens)"
+  accumulated="$(printf '%s' "$session_state" | jq -r '.accumulated_tokens // 0' 2>/dev/null)"
+  accumulated="$(hook_clamp_integer "$accumulated" "0" "0" "99999")"
+  if [ "$tokens" -gt "$tokens_limit" ]; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"prompt_budget"}'
+    return 0
+  fi
+  if [ $((accumulated + tokens)) -gt 2000 ]; then
+    printf '%s' '{"ok":true,"injected":false,"reason":"session_budget"}'
+    return 0
+  fi
+
+  ids_json="$(printf '%s' "$selected_json" | jq -c '[.[].id]' 2>/dev/null)"
+  [ -n "$ids_json" ] || ids_json='[]'
+  hook_record_whisper_injection "$session_id" "$ids_json" "$tokens"
+
+  jq -nc \
+    --arg content "$rendered" \
+    --argjson selected_ids "$ids_json" \
+    --argjson tokens "$tokens" \
+    --arg mode "$mode" \
+    --arg rerank_enabled "$rerank_enabled" \
+    '{
+      ok: true,
+      injected: true,
+      mode: $mode,
+      rerank_enabled: ($rerank_enabled == "true"),
+      content: $content,
+      selected_ids: $selected_ids,
+      tokens: $tokens
+    }'
 }
 
 hook_emit_codex_additional_context() {

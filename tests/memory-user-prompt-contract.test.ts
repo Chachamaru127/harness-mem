@@ -111,17 +111,16 @@ describe("memory-user-prompt contract", () => {
 
     for (const client of ["claude", "codex"] as const) {
       const payloads = await runUserPromptHook(client, explicitPrompt);
-      expect(payloads).toHaveLength(2);
+      const eventPayloads = payloads.filter((entry) => entry.command === "record-event");
+      expect(eventPayloads).toHaveLength(2);
 
-      const firstEvent = payloads[0].payload.event as Record<string, unknown>;
-      expect(payloads[0].command).toBe("record-event");
+      const firstEvent = eventPayloads[0].payload.event as Record<string, unknown>;
       expect(firstEvent.event_type).toBe("user_prompt");
       expect(firstEvent.correlation_id).toBe("corr-explicit");
       expect((firstEvent.tags as string[])).toContain("visibility_suppressed");
 
-      const pinnedEvent = payloads[1].payload.event as Record<string, unknown>;
+      const pinnedEvent = eventPayloads[1].payload.event as Record<string, unknown>;
       const pinnedPayload = pinnedEvent.payload as Record<string, unknown>;
-      expect(payloads[1].command).toBe("record-event");
       expect(pinnedEvent.event_type).toBe("checkpoint");
       expect(pinnedEvent.correlation_id).toBe("corr-explicit");
       expect(pinnedPayload.title).toBe("continuity_handoff");
@@ -138,8 +137,9 @@ describe("memory-user-prompt contract", () => {
   test("plain prompt does not emit pinned continuity checkpoint", async () => {
     for (const client of ["claude", "codex"] as const) {
       const payloads = await runUserPromptHook(client, "セッション継続性の現状を確認したい");
-      expect(payloads).toHaveLength(1);
-      const onlyEvent = payloads[0].payload.event as Record<string, unknown>;
+      const eventPayloads = payloads.filter((entry) => entry.command === "record-event");
+      expect(eventPayloads).toHaveLength(1);
+      const onlyEvent = eventPayloads[0].payload.event as Record<string, unknown>;
       expect(onlyEvent.event_type).toBe("user_prompt");
     }
   });

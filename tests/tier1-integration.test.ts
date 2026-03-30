@@ -34,6 +34,8 @@ describe("Tier 1: Claude Code integration", () => {
 
   test("各フックハンドラスクリプトが存在すること", () => {
     const scripts = [
+      "scripts/run-script.js",
+      "scripts/userprompt-inject-policy.sh",
       "scripts/hook-handlers/memory-session-start.sh",
       "scripts/hook-handlers/memory-stop.sh",
       "scripts/hook-handlers/memory-user-prompt.sh",

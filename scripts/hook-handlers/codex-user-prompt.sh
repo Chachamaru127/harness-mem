@@ -13,6 +13,7 @@ hook_init_context "true"
 
 hook_resolve_session_id "codex" "" "generate"
 hook_init_continuity_state
+hook_init_whisper_state
 hook_resolve_correlation_id "$SESSION_ID" "codex" "$INPUT"
 
 PROMPT_TEXT=""
@@ -58,5 +59,12 @@ hook_record_explicit_continuity_handoff \
   "$PRIVACY_TAGS_JSON" \
   "$HOOK_META_JSON" \
   "$BASE_TAGS_JSON"
+
+RECALL_MODE="$(hook_read_recall_mode)"
+RECALL_RESULT="$(hook_run_contextual_recall "codex" "$SESSION_ID" "$PROMPT_TEXT" "$RECALL_MODE")"
+RECALL_CONTEXT="$(printf '%s' "$RECALL_RESULT" | jq -r '.content // empty' 2>/dev/null)"
+if [ -n "$RECALL_CONTEXT" ]; then
+  hook_emit_codex_additional_context "UserPromptSubmit" "$RECALL_CONTEXT"
+fi
 
 exit 0

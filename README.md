@@ -191,6 +191,22 @@ harness-mem doctor --fix --platform codex,cursor,claude
 
 A green `doctor` plus active `SessionStart`, `UserPromptSubmit`, and `Stop` hooks is the runtime contract for first-turn continuity on Claude Code and Codex.
 
+### Contextual recall ("Banto mode")
+
+`UserPromptSubmit` can surface a short memory whisper when the prompt looks like a file-path jump, error investigation, or decision point.
+
+```bash
+harness-mem recall status
+harness-mem recall quiet
+harness-mem recall on
+harness-mem recall off
+```
+
+- `quiet` is the default. It is conservative: high rerank threshold when reranking is available, otherwise only the top recall item.
+- `on` is more proactive: lower rerank threshold and up to 3 fallback items when reranking is unavailable.
+- `off` disables contextual recall while keeping normal search and SessionStart continuity intact.
+- `HARNESS_MEM_WHISPER_MAX_TOKENS` controls the per-prompt recall budget. See [`docs/environment-variables.md`](docs/environment-variables.md).
+
 ### Open Mem UI
 
 ```bash
@@ -214,6 +230,7 @@ The tab is read-only in V1 and masks sensitive values before rendering.
 |---|---|
 | `setup` | Configure tool wiring and start daemon + Mem UI |
 | `doctor` | Validate wiring/health and optionally repair with `--fix` |
+| `recall` | Switch contextual recall mode (`on`, `quiet`, `off`, `status`) |
 | `versions` | Snapshot local vs upstream tool versions |
 | `update` | Update global package; prompt auto-update opt-in only if currently disabled |
 | `smoke` | Run isolated privacy/search sanity checks |

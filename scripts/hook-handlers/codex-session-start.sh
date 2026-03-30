@@ -12,6 +12,7 @@ hook_init_paths "true"
 hook_init_context
 hook_resolve_session_id "codex" "" "generate"
 hook_init_continuity_state
+hook_init_whisper_state
 hook_resolve_correlation_id "$SESSION_ID" "codex" "$INPUT"
 hook_check_deps
 
@@ -63,6 +64,7 @@ if [ -n "$RESUME_PAYLOAD" ]; then
   if [ -n "$RESUME_RESPONSE" ] && printf '%s' "$RESUME_RESPONSE" | jq -e '.ok != false' >/dev/null 2>&1; then
     RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
     if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
+      hook_mark_whisper_resume_skip "$SESSION_ID"
       hook_emit_codex_additional_context "SessionStart" "$RENDERED_RESUME_CONTEXT"
     fi
   fi
