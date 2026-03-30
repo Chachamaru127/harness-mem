@@ -619,7 +619,57 @@ hook_emit_claude_additional_context() {
 hook_init_whisper_state() {
   WHISPER_STATE_DIR="${PROJECT_ROOT}/.harness-mem/state"
   WHISPER_STATE_FILE="${WHISPER_STATE_DIR}/whisper-budget.json"
+  WHISPER_LOCK_DIR="${WHISPER_STATE_FILE}.lock"
   mkdir -p "$WHISPER_STATE_DIR" 2>/dev/null || true
+}
+
+hook_acquire_whisper_lock() {
+  hook_init_whisper_state
+
+  local depth="${WHISPER_LOCK_DEPTH:-0}"
+  depth="$(hook_clamp_integer "$depth" "0" "0" "99")"
+  if [ "$depth" -gt 0 ]; then
+    WHISPER_LOCK_DEPTH=$((depth + 1))
+    return 0
+  fi
+
+  local attempts=50
+  local attempt=0
+  local owner_pid=""
+  while [ "$attempt" -lt "$attempts" ]; do
+    if mkdir "$WHISPER_LOCK_DIR" 2>/dev/null; then
+      printf '%s\n' "$$" > "${WHISPER_LOCK_DIR}/pid" 2>/dev/null || true
+      WHISPER_LOCK_DEPTH=1
+      return 0
+    fi
+
+    owner_pid="$(cat "${WHISPER_LOCK_DIR}/pid" 2>/dev/null | tr -dc '0-9')"
+    if [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; then
+      rm -rf "$WHISPER_LOCK_DIR" 2>/dev/null || true
+      continue
+    fi
+
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
+hook_release_whisper_lock() {
+  local depth="${WHISPER_LOCK_DEPTH:-0}"
+  depth="$(hook_clamp_integer "$depth" "0" "0" "99")"
+
+  if [ "$depth" -gt 1 ]; then
+    WHISPER_LOCK_DEPTH=$((depth - 1))
+    return 0
+  fi
+
+  if [ "$depth" -eq 1 ]; then
+    rm -rf "${WHISPER_LOCK_DIR:-${WHISPER_STATE_FILE}.lock}" 2>/dev/null || true
+  fi
+
+  WHISPER_LOCK_DEPTH=0
 }
 
 hook_default_whisper_state() {
@@ -721,6 +771,10 @@ hook_upsert_whisper_session_defaults() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_whisper_lock; then
+    return 0
+  fi
 
   local state_json
   state_json="$(hook_read_whisper_state)"
@@ -743,12 +797,19 @@ hook_upsert_whisper_session_defaults() {
       ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_whisper_lock
+  fi
 }
 
 hook_mark_whisper_prompt() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_whisper_lock; then
+    return 0
+  fi
   hook_upsert_whisper_session_defaults "$session_id"
 
   local current_ts state_json
@@ -764,12 +825,19 @@ hook_mark_whisper_prompt() {
       ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_whisper_lock
+  fi
 }
 
 hook_mark_whisper_resume_skip() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_whisper_lock; then
+    return 0
+  fi
   hook_upsert_whisper_session_defaults "$session_id"
 
   local state_json
@@ -780,15 +848,30 @@ hook_mark_whisper_resume_skip() {
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_whisper_lock
+  fi
 }
 
 hook_consume_whisper_resume_skip() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 1
   command -v jq >/dev/null 2>&1 || return 1
-  [ -f "${WHISPER_STATE_FILE:-}" ] || return 1
+  local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_whisper_lock; then
+    return 1
+  fi
+  if [ ! -f "${WHISPER_STATE_FILE:-}" ]; then
+    if [ "$lock_depth_before" -eq 0 ]; then
+      hook_release_whisper_lock
+    fi
+    return 1
+  fi
 
   if ! jq -e --arg sid "$session_id" '.sessions[$sid].pending_resume_skip == true' "$WHISPER_STATE_FILE" >/dev/null 2>&1; then
+    if [ "$lock_depth_before" -eq 0 ]; then
+      hook_release_whisper_lock
+    fi
     return 1
   fi
 
@@ -800,6 +883,9 @@ hook_consume_whisper_resume_skip() {
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_whisper_lock
+  fi
   return 0
 }
 
@@ -809,6 +895,10 @@ hook_record_whisper_injection() {
   local tokens="${3:-0}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_whisper_lock; then
+    return 0
+  fi
   hook_upsert_whisper_session_defaults "$session_id"
 
   local current_ts state_json
@@ -829,6 +919,9 @@ hook_record_whisper_injection() {
       ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_whisper_lock
+  fi
 }
 
 hook_whisper_prompt_has_trigger() {
@@ -863,191 +956,199 @@ hook_render_contextual_recall_lines() {
 }
 
 hook_run_contextual_recall() {
-  local platform="${1:-}"
-  local session_id="${2:-}"
-  local prompt_text="${3:-}"
-  local mode="${4:-}"
-  [ -n "$session_id" ] || {
-    printf '%s' '{"ok":false,"reason":"missing_session"}'
-    return 0
-  }
+  (
+    local platform="${1:-}"
+    local session_id="${2:-}"
+    local prompt_text="${3:-}"
+    local mode="${4:-}"
+    [ -n "$session_id" ] || {
+      printf '%s' '{"ok":false,"reason":"missing_session"}'
+      exit 0
+    }
 
-  command -v jq >/dev/null 2>&1 || {
-    printf '%s' '{"ok":false,"reason":"jq_unavailable"}'
-    return 0
-  }
+    command -v jq >/dev/null 2>&1 || {
+      printf '%s' '{"ok":false,"reason":"jq_unavailable"}'
+      exit 0
+    }
 
-  hook_init_whisper_state
-  hook_upsert_whisper_session_defaults "$session_id"
-  hook_mark_whisper_prompt "$session_id"
-
-  mode="${mode:-$(hook_read_recall_mode)}"
-  case "$mode" in
-    off)
-      printf '%s' '{"ok":true,"injected":false,"reason":"mode_off"}'
-      return 0
-      ;;
-    on|quiet)
-      ;;
-    *)
-      mode="quiet"
-      ;;
-  esac
-
-  if ! hook_whisper_prompt_has_trigger "$prompt_text"; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"no_trigger"}'
-    return 0
-  fi
-
-  if hook_consume_whisper_resume_skip "$session_id"; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"resume_skip"}'
-    return 0
-  fi
-
-  local state_json session_state inject_count cooldown_count
-  state_json="$(hook_read_whisper_state)"
-  session_state="$(printf '%s' "$state_json" | jq -c --arg sid "$session_id" '.sessions[$sid] // {}' 2>/dev/null)"
-  inject_count="$(printf '%s' "$session_state" | jq -r '.inject_count // 0' 2>/dev/null)"
-  cooldown_count="$(printf '%s' "$session_state" | jq -r '.prompt_count_since_last_inject // 99' 2>/dev/null)"
-  inject_count="$(hook_clamp_integer "$inject_count" "0" "0" "99")"
-  cooldown_count="$(hook_clamp_integer "$cooldown_count" "99" "0" "999")"
-  if [ "$inject_count" -ge 5 ]; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"session_limit"}'
-    return 0
-  fi
-  if [ "$inject_count" -gt 0 ] && [ "$cooldown_count" -lt 3 ]; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"cooldown"}'
-    return 0
-  fi
-
-  local query_max_chars query timeout_sec payload response
-  query_max_chars="$(hook_read_whisper_query_max_chars)"
-  timeout_sec="$(hook_read_whisper_timeout_sec)"
-  query="$(
-    printf '%s' "$prompt_text" \
-      | tr '\n' ' ' \
-      | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' \
-      | cut -c1-"$query_max_chars"
-  )"
-  [ -n "$query" ] || {
-    printf '%s' '{"ok":true,"injected":false,"reason":"empty_query"}'
-    return 0
-  }
-
-  payload="$(jq -nc \
-    --arg project "$PROJECT_NAME" \
-    --arg query "$query" \
-    '{project:$project,query:$query,limit:3,include_private:false,strict_project:true}' 2>/dev/null)"
-  [ -n "$payload" ] || {
-    printf '%s' '{"ok":false,"reason":"payload_build_failed"}'
-    return 0
-  }
-
-  response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="$timeout_sec" printf '%s' "$payload" | "$CLIENT_SCRIPT" search 2>/dev/null || true)"
-  if [ -z "$response" ] || ! printf '%s' "$response" | jq -e '.ok != false' >/dev/null 2>&1; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"search_unavailable"}'
-    return 0
-  fi
-
-  local rerank_enabled threshold selected_json seen_ids_json
-  rerank_enabled="$(printf '%s' "$response" | jq -r '
-    [
-      .items[]?
-      | (((.scores.rerank // .scores.final // 0) - (.scores.final // 0)) | if . < 0 then -. else . end)
-    ]
-    | any(. > 0.000001)
-  ' 2>/dev/null)"
-  case "$rerank_enabled" in
-    true|false) ;;
-    *) rerank_enabled="false" ;;
-  esac
-
-  seen_ids_json="$(printf '%s' "$session_state" | jq -c '.seen_ids // []' 2>/dev/null)"
-  [ -n "$seen_ids_json" ] || seen_ids_json='[]'
-
-  if [ "$rerank_enabled" = "true" ]; then
-    if [ "$mode" = "quiet" ]; then
-      threshold="0.8"
-    else
-      threshold="0.6"
+    hook_init_whisper_state
+    if ! hook_acquire_whisper_lock; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"lock_unavailable"}'
+      exit 0
     fi
-    selected_json="$(
-      printf '%s' "$response" | jq -c \
-        --argjson threshold "$threshold" \
-        --argjson seen_ids "$seen_ids_json" \
-        '
-          [(.items // [])[]
-           | select(((.scores.rerank // .scores.final // 0) >= $threshold))
-           | .id as $item_id
-           | select(($seen_ids | index($item_id) | not))
-          ][:3]
-        ' 2>/dev/null
-    )"
-  else
-    local fallback_limit
-    if [ "$mode" = "quiet" ]; then
-      fallback_limit=1
-    else
-      fallback_limit=3
+    trap 'hook_release_whisper_lock' EXIT
+
+    hook_upsert_whisper_session_defaults "$session_id"
+    hook_mark_whisper_prompt "$session_id"
+
+    mode="${mode:-$(hook_read_recall_mode)}"
+    case "$mode" in
+      off)
+        printf '%s' '{"ok":true,"injected":false,"reason":"mode_off"}'
+        exit 0
+        ;;
+      on|quiet)
+        ;;
+      *)
+        mode="quiet"
+        ;;
+    esac
+
+    if ! hook_whisper_prompt_has_trigger "$prompt_text"; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"no_trigger"}'
+      exit 0
     fi
-    selected_json="$(
-      printf '%s' "$response" | jq -c \
-        --argjson limit "$fallback_limit" \
-        --argjson seen_ids "$seen_ids_json" \
-        '
-          [(.items // [])[]
-           | .id as $item_id
-           | select(($seen_ids | index($item_id) | not))
-          ][:$limit]
-        ' 2>/dev/null
+
+    if hook_consume_whisper_resume_skip "$session_id"; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"resume_skip"}'
+      exit 0
+    fi
+
+    local state_json session_state inject_count cooldown_count
+    state_json="$(hook_read_whisper_state)"
+    session_state="$(printf '%s' "$state_json" | jq -c --arg sid "$session_id" '.sessions[$sid] // {}' 2>/dev/null)"
+    inject_count="$(printf '%s' "$session_state" | jq -r '.inject_count // 0' 2>/dev/null)"
+    cooldown_count="$(printf '%s' "$session_state" | jq -r '.prompt_count_since_last_inject // 99' 2>/dev/null)"
+    inject_count="$(hook_clamp_integer "$inject_count" "0" "0" "99")"
+    cooldown_count="$(hook_clamp_integer "$cooldown_count" "99" "0" "999")"
+    if [ "$inject_count" -ge 5 ]; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"session_limit"}'
+      exit 0
+    fi
+    if [ "$inject_count" -gt 0 ] && [ "$cooldown_count" -lt 3 ]; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"cooldown"}'
+      exit 0
+    fi
+
+    local query_max_chars query timeout_sec payload response
+    query_max_chars="$(hook_read_whisper_query_max_chars)"
+    timeout_sec="$(hook_read_whisper_timeout_sec)"
+    query="$(
+      printf '%s' "$prompt_text" \
+        | tr '\n' ' ' \
+        | sed -E 's/[[:space:]]+/ /g; s/^ //; s/ $//' \
+        | cut -c1-"$query_max_chars"
     )"
-  fi
+    [ -n "$query" ] || {
+      printf '%s' '{"ok":true,"injected":false,"reason":"empty_query"}'
+      exit 0
+    }
 
-  [ -n "$selected_json" ] || selected_json='[]'
-  if [ "$(printf '%s' "$selected_json" | jq 'length' 2>/dev/null)" -eq 0 ]; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"no_match"}'
-    return 0
-  fi
+    payload="$(jq -nc \
+      --arg project "$PROJECT_NAME" \
+      --arg query "$query" \
+      '{project:$project,query:$query,limit:3,include_private:false,strict_project:true}' 2>/dev/null)"
+    [ -n "$payload" ] || {
+      printf '%s' '{"ok":false,"reason":"payload_build_failed"}'
+      exit 0
+    }
 
-  local rendered tokens accumulated tokens_limit ids_json
-  rendered="$(hook_render_contextual_recall_lines "$selected_json")"
-  [ -n "$rendered" ] || {
-    printf '%s' '{"ok":true,"injected":false,"reason":"render_empty"}'
-    return 0
-  }
+    response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="$timeout_sec" printf '%s' "$payload" | "$CLIENT_SCRIPT" search 2>/dev/null || true)"
+    if [ -z "$response" ] || ! printf '%s' "$response" | jq -e '.ok != false' >/dev/null 2>&1; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"search_unavailable"}'
+      exit 0
+    fi
 
-  tokens="$(hook_estimate_tokens "$rendered")"
-  tokens_limit="$(hook_read_whisper_max_tokens)"
-  accumulated="$(printf '%s' "$session_state" | jq -r '.accumulated_tokens // 0' 2>/dev/null)"
-  accumulated="$(hook_clamp_integer "$accumulated" "0" "0" "99999")"
-  if [ "$tokens" -gt "$tokens_limit" ]; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"prompt_budget"}'
-    return 0
-  fi
-  if [ $((accumulated + tokens)) -gt 2000 ]; then
-    printf '%s' '{"ok":true,"injected":false,"reason":"session_budget"}'
-    return 0
-  fi
+    local rerank_enabled threshold selected_json seen_ids_json
+    rerank_enabled="$(printf '%s' "$response" | jq -r '
+      [
+        .items[]?
+        | (((.scores.rerank // .scores.final // 0) - (.scores.final // 0)) | if . < 0 then -. else . end)
+      ]
+      | any(. > 0.000001)
+    ' 2>/dev/null)"
+    case "$rerank_enabled" in
+      true|false) ;;
+      *) rerank_enabled="false" ;;
+    esac
 
-  ids_json="$(printf '%s' "$selected_json" | jq -c '[.[].id]' 2>/dev/null)"
-  [ -n "$ids_json" ] || ids_json='[]'
-  hook_record_whisper_injection "$session_id" "$ids_json" "$tokens"
+    seen_ids_json="$(printf '%s' "$session_state" | jq -c '.seen_ids // []' 2>/dev/null)"
+    [ -n "$seen_ids_json" ] || seen_ids_json='[]'
 
-  jq -nc \
-    --arg content "$rendered" \
-    --argjson selected_ids "$ids_json" \
-    --argjson tokens "$tokens" \
-    --arg mode "$mode" \
-    --arg rerank_enabled "$rerank_enabled" \
-    '{
-      ok: true,
-      injected: true,
-      mode: $mode,
-      rerank_enabled: ($rerank_enabled == "true"),
-      content: $content,
-      selected_ids: $selected_ids,
-      tokens: $tokens
-    }'
+    if [ "$rerank_enabled" = "true" ]; then
+      if [ "$mode" = "quiet" ]; then
+        threshold="0.8"
+      else
+        threshold="0.6"
+      fi
+      selected_json="$(
+        printf '%s' "$response" | jq -c \
+          --argjson threshold "$threshold" \
+          --argjson seen_ids "$seen_ids_json" \
+          '
+            [(.items // [])[]
+             | select(((.scores.rerank // .scores.final // 0) >= $threshold))
+             | .id as $item_id
+             | select(($seen_ids | index($item_id) | not))
+            ][:3]
+          ' 2>/dev/null
+      )"
+    else
+      local fallback_limit
+      if [ "$mode" = "quiet" ]; then
+        fallback_limit=1
+      else
+        fallback_limit=3
+      fi
+      selected_json="$(
+        printf '%s' "$response" | jq -c \
+          --argjson limit "$fallback_limit" \
+          --argjson seen_ids "$seen_ids_json" \
+          '
+            [(.items // [])[]
+             | .id as $item_id
+             | select(($seen_ids | index($item_id) | not))
+            ][:$limit]
+          ' 2>/dev/null
+      )"
+    fi
+
+    [ -n "$selected_json" ] || selected_json='[]'
+    if [ "$(printf '%s' "$selected_json" | jq 'length' 2>/dev/null)" -eq 0 ]; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"no_match"}'
+      exit 0
+    fi
+
+    local rendered tokens accumulated tokens_limit ids_json
+    rendered="$(hook_render_contextual_recall_lines "$selected_json")"
+    [ -n "$rendered" ] || {
+      printf '%s' '{"ok":true,"injected":false,"reason":"render_empty"}'
+      exit 0
+    }
+
+    tokens="$(hook_estimate_tokens "$rendered")"
+    tokens_limit="$(hook_read_whisper_max_tokens)"
+    accumulated="$(printf '%s' "$session_state" | jq -r '.accumulated_tokens // 0' 2>/dev/null)"
+    accumulated="$(hook_clamp_integer "$accumulated" "0" "0" "99999")"
+    if [ "$tokens" -gt "$tokens_limit" ]; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"prompt_budget"}'
+      exit 0
+    fi
+    if [ $((accumulated + tokens)) -gt 2000 ]; then
+      printf '%s' '{"ok":true,"injected":false,"reason":"session_budget"}'
+      exit 0
+    fi
+
+    ids_json="$(printf '%s' "$selected_json" | jq -c '[.[].id]' 2>/dev/null)"
+    [ -n "$ids_json" ] || ids_json='[]'
+    hook_record_whisper_injection "$session_id" "$ids_json" "$tokens"
+
+    jq -nc \
+      --arg content "$rendered" \
+      --argjson selected_ids "$ids_json" \
+      --argjson tokens "$tokens" \
+      --arg mode "$mode" \
+      --arg rerank_enabled "$rerank_enabled" \
+      '{
+        ok: true,
+        injected: true,
+        mode: $mode,
+        rerank_enabled: ($rerank_enabled == "true"),
+        content: $content,
+        selected_ids: $selected_ids,
+        tokens: $tokens
+      }'
+  )
 }
 
 hook_emit_codex_additional_context() {

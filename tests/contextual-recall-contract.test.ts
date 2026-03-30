@@ -387,4 +387,66 @@ describe("contextual recall contract", () => {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }
   });
+
+  test("Claude policy serializes concurrent recall updates for the same session", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "parallel fix",
+          content: "Only one concurrent prompt should inject this recall.",
+          scores: { final: 0.02, rerank: 0.93 },
+        },
+      ])
+    );
+
+    try {
+      const stateDir = join(sandbox.projectDir, ".claude", "state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
+
+      const inputPath = join(sandbox.projectDir, "input.json");
+      writeFileSync(
+        inputPath,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "claude-session",
+          prompt: "parallel fix の次アクションを決めたい",
+        })
+      );
+
+      const spawnPolicy = () =>
+        Bun.spawn(["node", join(sandbox.projectDir, "scripts", "run-script.js"), "userprompt-inject-policy"], {
+          cwd: sandbox.projectDir,
+          env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+          stdin: Bun.file(inputPath),
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+
+      const first = spawnPolicy();
+      const second = spawnPolicy();
+      const [firstStdout, secondStdout] = await Promise.all([
+        new Response(first.stdout).text(),
+        new Response(second.stdout).text(),
+      ]);
+      await Promise.all([first.exited, second.exited]);
+
+      expect(first.exitCode).toBe(0);
+      expect(second.exitCode).toBe(0);
+
+      const outputs = [extractAdditionalContext(firstStdout), extractAdditionalContext(secondStdout)];
+      const injectedCount = outputs.filter((context) => context.includes("Contextual Recall")).length;
+      expect(injectedCount).toBe(1);
+
+      const whisperStatePath = join(sandbox.projectDir, ".harness-mem", "state", "whisper-budget.json");
+      const whisperState = JSON.parse(readFileSync(whisperStatePath, "utf8")) as {
+        sessions?: Record<string, { inject_count?: number; seen_ids?: string[] }>;
+      };
+      expect(whisperState.sessions?.["claude-session"]?.inject_count).toBe(1);
+      expect(whisperState.sessions?.["claude-session"]?.seen_ids).toEqual(["obs-1"]);
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
 });
