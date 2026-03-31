@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Maintainers can now preflight npm publish credentials before tagging
+
+**Before**: when the GitHub Actions `NPM_TOKEN` was stale or belonged to the wrong npm identity, maintainers often discovered that only after the full release tag workflow had already run every quality gate and reached `npm publish`. At that point the code and package could already be correct, but the release still stopped at the very last step.
+
+**After**: the repository now includes a manual `npm Auth Check` workflow that verifies GitHub Actions can authenticate to npm, read collaborator access for `@chachamaru127/harness-mem`, confirm the package is still public, and prepare the publish tarball with `npm pack --dry-run` without actually publishing. This makes it possible to test "does this secret still have the right to publish?" before cutting the next release tag.
+
+```bash
+gh workflow run "npm Auth Check"
+```
+
 ## [0.8.10] - 2026-04-01
 
 ### Release runner prerequisites are now explicit

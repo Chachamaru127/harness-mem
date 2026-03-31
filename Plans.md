@@ -80,6 +80,18 @@
 
 ---
 
+## §69 npm Publish Auth Preflight
+
+策定日: 2026-04-01
+背景: `v0.8.10` の release 復旧では、コードと release workflow 自体は通る状態まで直せた一方、GitHub Actions に入っていた `NPM_TOKEN` が publish 権限を持たず、最後の `npm publish` だけが失敗した。次回以降は tag を打ってから気づくのではなく、publish を伴わない手動 workflow で「GitHub Actions 上の token が本当にこの package を公開できるか」を先に確認できるようにする。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S69-001 | npm auth preflight workflow 追加 | `.github/workflows/npm-auth-check.yml` が `workflow_dispatch` で実行でき、`NPM_TOKEN` を使って `npm whoami`、package collaborator 権限、public status、`npm pack --dry-run` を確認できる | - | cc:完了 |
+| S69-002 | contract / docs / changelog sync | workflow 契約テストと `docs/release-process.md` が preflight workflow を説明し、`CHANGELOG.md` / `CHANGELOG_ja.md` の `[Unreleased]` に maintainer-facing 改善として反映される | S69-001 | cc:完了 |
+
+---
+
 ## §51 Competitive Gap Closure Program
 
 - 状態: 2026-03-13 計画確定（実装未着手）

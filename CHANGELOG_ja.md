@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- GitHub Actions の `NPM_TOKEN` を差し替えた直後でも、これまでは実際に release tag を打つまで「その token が本当に npm publish できるか」を確かめにくかった。
+- これからは、手動の `npm Auth Check` workflow で、GitHub Actions 上の npm 認証、package collaborator 権限、public status、`npm pack --dry-run` までを publish なしで事前確認できる。
+
 ## [0.8.10] - 2026-04-01
 
 ### ユーザー向け要約

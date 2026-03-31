@@ -1,0 +1,55 @@
+name: npm Auth Check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  verify-npm-token:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      PACKAGE_NAME: "@chachamaru127/harness-mem"
+      NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Validate npm token is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            echo "::error::NPM_TOKEN secret is missing."
+            exit 1
+          fi
+
+      - name: Show npm identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm whoami
+
+      - name: Verify package collaborator access
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm access list collaborators "${PACKAGE_NAME}" --json
+
+      - name: Verify package visibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm access get status "${PACKAGE_NAME}" --json
+
+      - name: Verify package tarball can be prepared
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm pack --dry-run

@@ -64,6 +64,35 @@ Why this matters:
 - release notes should be accumulated during normal work
 - the release step should mostly reorganize and ship, not rediscover what changed
 
+### npm auth preflight
+
+If you have rotated `NPM_TOKEN`, changed npm ownership, or just recovered from a failed publish, run the manual auth check workflow before tagging the next release.
+
+Workflow:
+
+- GitHub Actions: `npm Auth Check`
+- file: `.github/workflows/npm-auth-check.yml`
+
+What it verifies:
+
+- `NPM_TOKEN` exists in GitHub Actions secrets
+- GitHub Actions can authenticate with `npm whoami`
+- the token can read collaborator access for `@chachamaru127/harness-mem`
+- the package is still marked `public`
+- the current repo state can still produce the publish tarball with `npm pack --dry-run`
+
+What it intentionally does **not** do:
+
+- it does not run `npm publish`
+- it does not create or modify tags
+- it does not replace the real release workflow
+
+Why this matters:
+
+- it lets maintainers verify "the key still opens the door" before a real release
+- it separates credential failures from code / package failures
+- it prevents the frustrating case where the tag and all tests are green, but publish fails at the last step because the secret was stale or belonged to the wrong npm identity
+
 ## 4. Local quality gate
 
 Run the quality checks that protect the published package.
@@ -142,6 +171,8 @@ After that, `.github/workflows/release.yml` is expected to:
 - publish to npm
 - create a GitHub Release
 
+When npm credentials were recently changed, run `.github/workflows/npm-auth-check.yml` manually first. Treat it as a preflight for registry identity, not as a substitute for the release workflow itself.
+
 In practice today, the release workflow also keeps two extra checks separate:
 
 - `harness-mem-ui` test / typecheck
@@ -178,6 +209,11 @@ Examples of acceptable manual recovery:
 
 - manually creating the GitHub Release after the tag already exists
 - manually publishing to npm after confirming the package and version are correct
+
+Examples of good pre-release diagnostics:
+
+- running the manual `npm Auth Check` workflow after updating `NPM_TOKEN`
+- confirming `npm whoami` and package collaborator access on the GitHub runner before tagging
 
 Examples of unacceptable shortcuts:
 
