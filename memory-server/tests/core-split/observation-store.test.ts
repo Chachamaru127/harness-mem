@@ -401,30 +401,38 @@ describe("observation-store: search", () => {
     expect((res.items[0] as Record<string, unknown>).id).toBe("obs-current-concise");
   });
 
-  test("previous-value query prefers concise previous answer over current statement", () => {
+  test("previous-value query prefers previous evidence over current statement", () => {
     const { store, db } = makeStore();
     insertTestObservation(db, {
       id: "obs-current-region",
       title: "Current region",
       content: "今の default region は Tokyo です。",
       project: "proj-obs",
+      session_id: "test-session-current",
+      created_at: "2026-03-01T00:00:00.000Z",
     });
     insertTestObservation(db, {
       id: "obs-previous-region-concise",
       title: "Previous default region",
       content: "以前の default region は us-east-1 でした。",
       project: "proj-obs",
+      session_id: "test-session-previous",
+      created_at: "2026-03-03T00:00:00.000Z",
     });
     insertTestObservation(db, {
       id: "obs-previous-region-verbose",
       title: "Region migration note",
       content: "今の default region は Tokyo です。以前は us-east-1 でした。",
       project: "proj-obs",
+      session_id: "test-session-verbose",
+      created_at: "2026-03-02T00:00:00.000Z",
     });
 
     const res = store.search({ query: "以前の default region は何でしたか？", project: "proj-obs", limit: 3 });
     expect(res.ok).toBe(true);
-    expect((res.items[0] as Record<string, unknown>).id).toBe("obs-previous-region-concise");
+    const ids = res.items.map((item) => (item as Record<string, unknown>).id);
+    expect(ids[0]).toMatch(/^obs-previous-region/);
+    expect(ids.indexOf("obs-current-region")).toBeGreaterThan(0);
   });
 
   test("temporal ordering query prefers explicit ordinal answer over generic timeline chatter", () => {

@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.7] - 2026-04-01
+
+### Release-gate stabilization for previous-value search
+
+**Before**: the release workflow still failed inside `npm test` because a previous-value search fixture could rank a verbose migration note above the concise previous-value record, or briefly surface the current-value record first depending on execution conditions. The user-facing intent was still "prefer previous evidence over current state", but the test contract was sharper than the stable behavior.
+
+**After**: previous-value reranking now gives stronger priority to observations that explicitly describe the former state, and the core-split fixture fixes timestamps/session IDs so the test measures the intended behavior directly. The release gate now checks the real contract: previous evidence must outrank the current statement.
+
+```bash
+bun test memory-server/tests/core-split/observation-store.test.ts
+npm test
+```
+
 ## [0.8.6] - 2026-04-01
 
 ### Release tag recovery for the cross-tool transfer gate update

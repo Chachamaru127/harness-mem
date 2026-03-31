@@ -2326,6 +2326,12 @@ export class ObservationStore {
     ranked.sort((lhs, rhs) => {
       const left = priorityFor(lhs);
       const right = priorityFor(rhs);
+      // "以前は?" のような質問では、現行値の短い答えよりも
+      // 過去値を明示した観察を最優先にする。
+      if (answerHints.intent === "temporal_value" && queryHasPreviousCue) {
+        if (right.hasPreviousCue !== left.hasPreviousCue) return right.hasPreviousCue - left.hasPreviousCue;
+        if (left.hasCurrentCue !== right.hasCurrentCue) return left.hasCurrentCue - right.hasCurrentCue;
+      }
       if (right.hasConciseSpan !== left.hasConciseSpan) return right.hasConciseSpan - left.hasConciseSpan;
       if (answerHints.intent === "current_value") {
         if (right.hasCurrentCue !== left.hasCurrentCue) return right.hasCurrentCue - left.hasCurrentCue;
@@ -2338,12 +2344,19 @@ export class ObservationStore {
         return right.hasListCue - left.hasListCue;
       }
       if (answerHints.intent === "temporal_value") {
-        if (queryHasPreviousCue) {
-          if (right.hasPreviousCue !== left.hasPreviousCue) return right.hasPreviousCue - left.hasPreviousCue;
-          if (left.hasCurrentCue !== right.hasCurrentCue) return left.hasCurrentCue - right.hasCurrentCue;
-        }
         if (right.hasTemporalCue !== left.hasTemporalCue) {
           return right.hasTemporalCue - left.hasTemporalCue;
+        }
+        if (queryHasPreviousCue) {
+          if (left.overlongPenalty !== right.overlongPenalty) {
+            return left.overlongPenalty - right.overlongPenalty;
+          }
+          if (left.fillerPenalty !== right.fillerPenalty) {
+            return left.fillerPenalty - right.fillerPenalty;
+          }
+          if (left.conciseLength !== right.conciseLength) {
+            return left.conciseLength - right.conciseLength;
+          }
         }
       }
       if (right.focusHits !== left.focusHits) return right.focusHits - left.focusHits;
