@@ -147,6 +147,25 @@ What this does **not** claim:
 
 ## Quick Start
 
+### First-time setup in one view
+
+There are three separate steps:
+
+1. Install or invoke the CLI
+   Use one of the options below: Claude plugin, `npx`, or global `npm install -g`.
+2. Run `harness-mem setup`
+   This is the real wiring step. It writes hooks and MCP settings for the selected clients and starts the local runtime.
+3. Run `harness-mem doctor`
+   This verifies the daemon, hooks, and MCP wiring are healthy.
+
+`npm install` by itself is not the whole setup. It only makes the command available.
+
+Important:
+
+- Prefer `npx` if global npm install asks for `sudo`.
+- Do not run `harness-mem setup` with `sudo`.
+- `setup` writes into user config locations like `~/.harness-mem`, `~/.codex`, `~/.claude*`, and `~/.cursor`. Running it as root can create the wrong ownership and wire the wrong home directory.
+
 ### Option A: Claude Code Plugin Marketplace (recommended for Claude Code users)
 
 ```
@@ -163,6 +182,8 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 ```
 
 > **Note**: npx downloads are temporary, but harness-mem automatically copies itself to `~/.harness-mem/runtime/` for persistence. The daemon and hooks keep working after the npx cache is cleaned.
+>
+> **Recommended when npm suggests sudo**: choose this path instead of forcing a root-owned global install.
 
 ### Option C: Global install (full CLI access)
 
@@ -172,6 +193,8 @@ harness-mem setup --platform codex,cursor,claude
 ```
 
 > **When to use global install**: Choose this if you want `harness-mem doctor`, `harness-memd restart`, and other CLI commands available in your terminal. Options A and B install the runtime but don't add CLI commands to your PATH.
+>
+> **Important**: only use this path when your normal user can run `npm install -g` without `sudo`. Do not run `sudo harness-mem setup`.
 
 ### Update existing install
 
@@ -190,6 +213,20 @@ harness-mem doctor --fix --platform codex,cursor,claude
 ```
 
 A green `doctor` plus active `SessionStart`, `UserPromptSubmit`, and `Stop` hooks is the runtime contract for first-turn continuity on Claude Code and Codex.
+
+### If you already used sudo and ownership is broken
+
+Typical symptom: later `setup` or `doctor --fix` only works with `sudo`, because files under your home directory became root-owned.
+
+Recovery:
+
+```bash
+sudo chown -R "$USER":staff ~/.harness-mem ~/.codex ~/.cursor ~/.claude ~/.claude.json 2>/dev/null || true
+harness-mem setup --platform codex,claude
+harness-mem doctor --fix --platform codex,claude
+```
+
+Adjust the group if your machine does not use `staff`.
 
 ### Contextual recall ("Banto mode")
 

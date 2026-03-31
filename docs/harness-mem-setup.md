@@ -5,6 +5,40 @@ If you only need a quick start, read `README.md` first.
 
 ## 1. Installation Paths
 
+### Recommended clean install flow
+
+Think of setup in three separate stages:
+
+1. Package delivery
+   Install or invoke the `harness-mem` command itself via `npx`, global `npm install -g`, or the Claude plugin marketplace.
+2. Client wiring
+   Run `harness-mem setup` so harness-mem can write the required hooks and MCP wiring into each client config under your home directory.
+3. Verification
+   Run `harness-mem doctor` to confirm the daemon, hooks, and MCP wiring are actually healthy.
+
+`npm install` alone is not the full setup. It only makes the CLI available. The Claude/Codex/Cursor connection work happens in `harness-mem setup`.
+
+### Important: do not run setup with sudo
+
+`harness-mem setup` writes to user-scoped paths such as:
+
+- `~/.harness-mem/`
+- `~/.codex/`
+- `~/.claude.json`
+- `~/.claude/settings.json`
+- `~/.cursor/`
+
+If you run `sudo harness-mem setup`, `HOME` usually becomes root's home directory, so the wiring may be written to the wrong place and the created files may become root-owned. In practice, that makes later updates and self-repair harder.
+
+Recommended rule:
+
+- `npx ... harness-mem setup`: safe, no global install required
+- `npm install -g ...`: only if your normal user can do global installs without `sudo`
+- `sudo npm install -g ...`: avoid if possible
+- `sudo harness-mem setup`: do not use
+
+If your environment requires elevated privileges for global npm installs, prefer the `npx` path instead of forcing the whole setup flow through `sudo`.
+
 ### npx (no global install)
 
 ```bash
@@ -17,6 +51,8 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup
 npm install -g @chachamaru127/harness-mem
 harness-mem setup
 ```
+
+Use the global install path only when your normal shell user can run `npm install -g` without `sudo`, or when your npm prefix is already configured to a user-writable directory.
 
 ### update existing install
 
@@ -52,6 +88,34 @@ When `--platform` is omitted, setup is interactive:
 3. Import from Claude-mem (yes/no)
 4. Stop Claude-mem after verified import (yes/no)
 5. Enable auto-update opt-in (yes/no)
+
+### What "one command setup" means in practice
+
+The intended first-run flow is:
+
+1. Choose one install path
+   `npx` is the safest default because it avoids global npm permission problems.
+2. Run `harness-mem setup`
+   This is the actual wiring step. It configures hooks and MCP for the selected clients, starts the local runtime, and runs checks.
+3. Run `harness-mem doctor`
+   This confirms the installation really works.
+
+Examples:
+
+For Codex + Claude without global install:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
+```
+
+For Claude Plugin Marketplace only:
+
+- Install the plugin inside Claude Code.
+- Claude-side hooks and MCP are wired automatically.
+- If you also want Codex or Cursor wired, run `harness-mem setup --platform codex,cursor` separately.
+
+That is why some users see an extra plugin command for Claude: the plugin route is a Claude-specific install surface, while `setup` is the general cross-client wiring command.
 
 If auto-update opt-in is enabled, `harness-mem` checks npm for newer versions periodically (default: every 24 hours) before command execution and runs:
 
@@ -312,6 +376,43 @@ curl -sS http://127.0.0.1:37901/api/health | jq '.ok'
 ```bash
 harness-mem uninstall --purge-db
 ```
+
+### npm asked for sudo
+
+That means your global npm location is not writable by your current user.
+
+Best workaround:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
+```
+
+This avoids global installation entirely.
+
+If you really want global install, first fix npm itself so global packages are user-writable, then reinstall without `sudo`.
+
+### I already used sudo and files became root-owned
+
+Typical symptoms:
+
+- `harness-mem doctor --fix` fails unless you add `sudo`
+- files under `~/.harness-mem`, `~/.codex`, `~/.claude*`, or `~/.cursor` are owned by `root`
+
+Recovery approach:
+
+1. Stop using `sudo` for `harness-mem setup` and `harness-mem doctor`
+2. Change ownership of the affected user-scoped files back to your user
+3. Re-run setup and doctor as your normal user
+
+Example:
+
+```bash
+sudo chown -R "$USER":staff ~/.harness-mem ~/.codex ~/.cursor ~/.claude ~/.claude.json 2>/dev/null || true
+harness-mem setup --platform codex,claude
+harness-mem doctor --fix --platform codex,claude
+```
+
+Adjust the group name if your machine does not use `staff`.
 
 ## 8. Related Docs
 

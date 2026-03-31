@@ -7,6 +7,40 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-04-01
+
+### Setup path clarification
+
+**Before**: the quick start explained the available install paths, but it still left room for a common misread: users could come away thinking `npm install` alone finished setup, or that a global npm permission error meant the whole harness-mem flow should be retried with `sudo`. That ambiguity was especially risky because `harness-mem setup` writes user-scoped Claude / Codex / Cursor wiring under the home directory.
+
+**After**: README, `README_ja.md`, and the detailed setup guide now separate setup into three explicit stages: install or invoke the CLI, run `harness-mem setup`, then verify with `harness-mem doctor`. The docs also now state directly that `setup` must not be run with `sudo`, explain why `npx` is the preferred fallback when global npm asks for elevation, and document the recovery path if a prior sudo run left root-owned files behind.
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform claude
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform claude
+```
+
+### Packaging hygiene for local-only files
+
+**Before**: repo-local runtime and operator files such as `AGENTS.override.md`, `.harness-mem/`, and the user-specific `.codex/config.toml` could remain visible in the working tree. Even when they were not intended for npm packaging, that still made the maintainer surface noisier and risked leaking machine-specific release inputs into commits.
+
+**After**: `.gitignore` now explicitly treats those artifacts as local-only, and `.codex/config.toml` is no longer tracked as a release surface. That keeps the repository contract focused on distributable assets, while preserving local Codex runtime wiring only on each maintainer machine.
+
+```bash
+git status --short
+# no repo-local runtime state should appear as release content
+```
+
+### Benchmark gate stability
+
+**Before**: the reranker quality gate compared reranked vs non-reranked p95 search latency on a very small local benchmark sample. On a busy machine that could fail from one-off local jitter even when recall and MRR stayed healthy, which made release readiness depend on timing noise instead of a repeatable regression signal.
+
+**After**: the reranker latency gate now allows one automatic re-measurement before failing. The contract is unchanged, but a single transient p95 spike is no longer enough to block a release by itself.
+
+```bash
+bun test tests/benchmarks/rerank-quality-gate.test.ts
+```
+
 ### Test runner hardening
 
 **Before**: root `npm test` sent `memory-server/tests/` through one large `bun test` invocation together with the root / SDK / MCP suites. In this repository that path could finish with `all tests passed` and then still die during Bun teardown with `panic(main thread): A C++ exception occurred`, which made release verification noisy and hard to trust.

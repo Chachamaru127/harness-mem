@@ -31,6 +31,18 @@
 
 ---
 
+## §65 Setup Flow Clarification
+
+策定日: 2026-03-31
+背景: 初回導線で `npm install` と `harness-mem setup` の役割分担、`sudo` 利用可否、Claude Plugin Marketplace と手動 MCP 配線の境界が分かりにくく、root 所有ファイルや「セットアップも sudo で」という誤解を招く報告が出た。README / setup guide で clean install の一本道を先に示し、権限事故を避ける。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S65-001 | install/setup/doctor 導線の truth clarification | README.md / README_ja.md / docs/harness-mem-setup.md に、`sudo` 非推奨理由、`npm` と `setup` と `doctor` の役割、Claude plugin と手動 setup の違い、root 所有になったときの復旧手順が反映される | - | cc:完了 |
+| S65-002 | local-only 配布除外の `.gitignore` 整備 | `AGENTS.override.md`、`.harness-mem/`、`.codex/config.toml` が repo-local runtime / governance artifact として ignore される | - | cc:完了 |
+
+---
+
 ## §51 Competitive Gap Closure Program
 
 - 状態: 2026-03-13 計画確定（実装未着手）

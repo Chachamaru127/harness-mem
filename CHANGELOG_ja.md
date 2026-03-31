@@ -7,6 +7,21 @@
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-04-01
+
+### ユーザー向け要約
+
+- README / README_ja / setup guide を更新し、初回導線を「CLI を使えるようにする → `harness-mem setup` で配線する → `harness-mem doctor` で確認する」の 3 段階として明示。
+- `npm install` だけでは完了ではないこと、global npm が権限不足でも `sudo harness-mem setup` はしてはいけないこと、代わりに `npx` を使うのが安全なことを明文化。
+- 過去に sudo 実行して root 所有ファイルが混ざった場合の復旧手順を README / setup docs に追加。
+- 配布対象ではない local-only artifact として `AGENTS.override.md`、`.harness-mem/`、`.codex/config.toml` を整理し、`.codex/config.toml` は release surface から外した。
+- reranker quality gate は、ローカル計測の一時的な p95 ぶれだけで release blocker にならないよう、1 回だけ自動再測を許す形に安定化。
+- あわせて、未出荷だった test runner hardening / release gate alignment の変更を `0.8.3` として確定。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ### ユーザー向け要約
 
 - root の `npm test` が `memory-server/tests/` を 1 本の大きい `bun test` で流していたため、テストは全件通っても終了時に Bun 本体が panic することがあった。
