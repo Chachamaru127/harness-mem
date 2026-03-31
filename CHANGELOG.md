@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-04-01
+
+### Release artifact completeness
+
+**Before**: the repository contract and README treated `memory-server/src/benchmark/results/ci-run-manifest-latest.json` as the source-of-truth artifact for shipped benchmark claims, but `.gitignore` still excluded that file. Local maintainers could pass `npm test` because the manifest existed on their machine, while GitHub Actions failed the same test on a clean checkout with `ENOENT`.
+
+**After**: `ci-run-manifest-latest.json` is now tracked as a release artifact instead of being ignored. That makes the benchmark-claim contract reproducible on a clean clone, which is required for tag-based release automation to publish to npm and create a GitHub Release reliably.
+
+```bash
+git ls-files memory-server/src/benchmark/results/ci-run-manifest-latest.json
+npm test
+```
+
 ## [0.8.3] - 2026-04-01
 
 ### Setup path clarification

@@ -54,7 +54,6 @@ test-ruri-v3/
 # Benchmark freeze artifacts (generated locally)
 memory-server/src/benchmark/results/freeze-run-*.log
 memory-server/src/benchmark/results/freeze-run-*.tsv
-memory-server/src/benchmark/results/ci-run-manifest-latest.json
 memory-server/src/benchmark/results/ci-run-manifest-history.jsonl
 memory-server/src/benchmark/results/retrospective-*.json
 memory-server/src/benchmark/results/retrospective-*.jsonl

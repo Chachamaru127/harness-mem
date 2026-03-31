@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.8.4] - 2026-04-01
+
+### ユーザー向け要約
+
+- `README` や benchmark claim の正本として参照している `memory-server/src/benchmark/results/ci-run-manifest-latest.json` を release artifact として追跡対象に戻した。
+- これまではローカルだけにそのファイルがあると `npm test` が通り、GitHub Actions の clean checkout では同じテストが `ENOENT` で落ちる、という再現性のない状態だった。
+- `.gitignore` を見直し、local-only の freeze ログや履歴は無視したまま、公開契約に必要な latest manifest だけは repo に含めるよう修正した。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.8.3] - 2026-04-01
 
 ### ユーザー向け要約
