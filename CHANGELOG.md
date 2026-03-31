@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.8] - 2026-04-01
+
+### Release smoke-test portability for LOCOMO benchmark runner
+
+**Before**: the release workflow still failed in `locomo-runner-smoke` on GitHub Actions because the smoke test implicitly required the local ONNX embedding model to be present. In CI the runtime legitimately fell back to `local-hash-v3`, so the ONNX gate stopped the release even though the smoke test's real goal was just "the runner works end-to-end."
+
+**After**: the LOCOMO smoke tests now disable the strict ONNX gate and focus on runner behavior, output generation, and per-sample isolation. The dedicated ONNX and benchmark-gate checks stay elsewhere, while release CI no longer depends on a local model cache being preinstalled.
+
+```bash
+bun test tests/benchmarks/locomo-runner-smoke.test.ts
+npm test
+```
+
 ## [0.8.7] - 2026-04-01
 
 ### Release-gate stabilization for previous-value search

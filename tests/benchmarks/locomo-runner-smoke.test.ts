@@ -14,6 +14,7 @@ describe("LOCOMO runner smoke", () => {
         system: "harness-mem",
         datasetPath: fixturePath,
         outputPath,
+        onnxGate: false,
       });
 
       expect(result.schema_version).toBe("locomo-benchmark-v2");
@@ -83,6 +84,7 @@ describe("LOCOMO runner smoke", () => {
       const result = await runLocomoBenchmark({
         system: "harness-mem",
         datasetPath,
+        onnxGate: false,
       });
 
       const startTime = result.records.find((record) => record.sample_id === "sample-a");
