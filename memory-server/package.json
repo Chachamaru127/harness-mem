@@ -7,10 +7,10 @@
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
     "typecheck": "bunx tsc --noEmit",
-    "test": "bun test tests/*.test.ts && bun test tests/unit && bun test tests/core-split && bun test tests/integration && bun test tests/benchmark tests/performance",
-    "test:unit": "bun test tests/unit",
-    "test:integration": "bun test tests/integration",
-    "test:benchmark": "bun test tests/benchmark"
+    "test": "bash ../scripts/run-bun-test-safe.sh tests/*.test.ts && bash ../scripts/run-bun-test-batches.sh tests/unit tests/core-split tests/integration tests/benchmark tests/performance",
+    "test:unit": "bash ../scripts/run-bun-test-safe.sh tests/unit",
+    "test:integration": "bash ../scripts/run-bun-test-safe.sh tests/integration",
+    "test:benchmark": "bash ../scripts/run-bun-test-safe.sh tests/benchmark"
   },
   "devDependencies": {
     "@types/bun": "latest",

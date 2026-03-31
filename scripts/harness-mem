@@ -96,7 +96,7 @@ Commands:
   promote                    Promote backend mode: local → hybrid → managed.
   rollback                   Rollback backend mode to local.
   model list                 List available models in the catalog.
-  model pull <id>            Download a model (~size confirmation required).
+  model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
   model status [<id>]        Show install status of a model (or all installed).
 
@@ -4103,6 +4103,20 @@ model_impl() {
     pull)
       local model_id="${1:-}"
       [ -n "$model_id" ] || fail "Usage: harness-mem model pull <id>"
+      shift || true
+
+      local auto_confirm=0
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --yes|-y)
+            auto_confirm=1
+            ;;
+          *)
+            fail "Unknown option for model pull: $1"
+            ;;
+        esac
+        shift || true
+      done
 
       # Validate id is in catalog
       local found=0
@@ -4132,13 +4146,17 @@ model_impl() {
       echo "  Dim   : ${dim}"
       echo "  Dest  : ${model_dir}"
       echo ""
-      printf "Download this model? [y/N] "
-      local answer=""
-      read -r answer </dev/tty || true
-      case "$answer" in
-        y|Y|yes|Yes|YES) ;;
-        *) echo "Aborted."; return 1 ;;
-      esac
+      if [ "$auto_confirm" -eq 1 ]; then
+        log "Auto-confirm enabled for model download (${model_id})"
+      else
+        printf "Download this model? [y/N] "
+        local answer=""
+        read -r answer </dev/tty || true
+        case "$answer" in
+          y|Y|yes|Yes|YES) ;;
+          *) echo "Aborted."; return 1 ;;
+        esac
+      fi
 
       log "Pulling model ${model_id}..."
       bun --eval "

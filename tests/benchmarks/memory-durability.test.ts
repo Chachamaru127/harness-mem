@@ -12,6 +12,7 @@ function createTestCore(): { core: HarnessMemCore; dir: string } {
     bindPort: 0,
     vectorDimension: 384,
     embeddingProvider: "local",
+    embeddingModel: "multilingual-e5",
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -25,6 +26,20 @@ function createTestCore(): { core: HarnessMemCore; dir: string } {
     antigravityIngestEnabled: false,
   };
   return { core: new HarnessMemCore(config), dir };
+}
+
+function assertSemanticBenchmarkModel(core: HarnessMemCore, benchmarkName: string): void {
+  const runtime = core.getEmbeddingRuntimeInfo();
+  const providerName = runtime.provider.name;
+  const modelName = runtime.provider.model;
+
+  if (providerName !== "local" || modelName !== "multilingual-e5" || runtime.readiness.ready !== true) {
+    throw new Error(
+      `${benchmarkName} requires local multilingual-e5 embeddings. ` +
+      `Current runtime=${providerName}:${modelName}, ready=${runtime.readiness.ready ? "yes" : "no"}. ` +
+      `Install the model with: bash scripts/harness-mem model pull multilingual-e5 --yes`
+    );
+  }
 }
 
 async function ensureEmbeddingReady(core: HarnessMemCore): Promise<void> {
@@ -126,6 +141,7 @@ describe("S56-003: Long-term Memory Retention", () => {
     core = result.core;
     tempDir = result.dir;
     await ensureEmbeddingReady(core);
+    assertSemanticBenchmarkModel(core, "S56-003 Long-term Memory Retention");
 
     // 1. 古い記憶を投入（design-decision + migration）
     for (const m of allOldMemories) {

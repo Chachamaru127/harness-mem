@@ -43,6 +43,31 @@
 
 ---
 
+## §66 Release CI Embedding Bootstrap
+
+策定日: 2026-04-01
+背景: `v0.8.8` の Release workflow は `.gitignore` と package 内容の問題ではなく、`tests/benchmarks/memory-durability.test.ts` が GitHub Actions 上で `multilingual-e5` 未導入の fallback embedding に落ち、長期記憶ベンチマークの品質ゲートを誤って fail して停止した。release CI でも benchmark が想定するローカル ONNX モデル前提を満たし、未導入時は低 recall ではなく明示エラーで止める必要がある。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S66-001 | release workflow の embedding model bootstrap | `.github/workflows/release.yml` が `multilingual-e5` を非対話で restore / download し、`npm test` 前に利用可能にする。workflow contract test が bootstrap を検知する | - | cc:完了 |
+| S66-002 | benchmark 前提の明示化 | `tests/benchmarks/memory-durability.test.ts` が fallback provider を品質低下として誤診せず、`multilingual-e5` 未導入を明示的な前提違反として fail する | S66-001 | cc:完了 |
+| S66-003 | maintainer docs の truth sync | `docs/TESTING.md` / `docs/release-process.md` が semantic benchmark に必要な local model bootstrap と release CI 側の事前取得を説明する | S66-001 | cc:完了 |
+
+---
+
+## §67 Memory-Server Bun Panic Mitigation Follow-up
+
+策定日: 2026-04-01
+背景: `v0.8.9` の release 直前検証で、semantic embedding bootstrap 修正後の `npm test` を再実行したところ、`memory-server/tests/unit` が 859 pass / 0 fail のあとに Bun 本体だけ `panic(main thread): A C++ exception occurred` で落ちることを再現した。root 側は safe runner を使っていたが、`memory-server/package.json` はまだ raw `bun test` を叩いていたため、release gate が upstream runtime noise によって再度停止し得る状態だった。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S67-001 | `memory-server` test script hardening | `memory-server/package.json` が safe runner / batched runner を使い、`tests/unit` の 0-fail Bun panic を吸収できる | - | cc:完了 |
+| S67-002 | docs / contract sync | `docs/TESTING.md` / `docs/bun-test-panic-repro.md` / contract test が `memory-server` 側の実行経路も正として説明・検証する | S67-001 | cc:完了 |
+
+---
+
 ## §51 Competitive Gap Closure Program
 
 - 状態: 2026-03-13 計画確定（実装未着手）

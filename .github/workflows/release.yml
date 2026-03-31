@@ -94,6 +94,18 @@ jobs:
           cd memory-server
           bun install --frozen-lockfile
 
+      - name: Restore multilingual-e5 cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.harness-mem/models/multilingual-e5
+          key: release-embedding-${{ runner.os }}-multilingual-e5-v1
+
+      - name: Ensure release embedding model
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/harness-mem model pull multilingual-e5 --yes
+
       - name: Run UI quality gates
         shell: bash
         run: |

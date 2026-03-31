@@ -71,9 +71,18 @@ Run the quality checks that protect the published package.
 Minimum expected checks:
 
 ```bash
+bash scripts/harness-mem model pull multilingual-e5 --yes
 npm test
 npm pack --dry-run
 ```
+
+Why the extra model bootstrap matters:
+
+- the release workflow runs semantic benchmark suites such as `tests/benchmarks/memory-durability.test.ts`
+- those suites assume the local ONNX embedding model `multilingual-e5` is available
+- without that model, the runtime falls back to a lightweight hash embedding and the benchmark no longer measures the intended quality bar
+- GitHub Actions now restores/downloads this model before `npm test`, so local maintainers should use the same precondition when validating a clean machine
+- `npm test` itself also relies on the repo's Bun panic mitigation path, so maintainers should run the scripted command instead of replacing it with raw `bun test ...` one-liners
 
 What `npm test` means in this repository:
 
@@ -124,6 +133,7 @@ git push origin main --tags
 
 After that, `.github/workflows/release.yml` is expected to:
 
+- restore or download the `multilingual-e5` local embedding model before the repository behavior gate
 - run the same repository behavior gate as local maintainers (`npm test`)
 - run quality gates
 - run `npm pack --dry-run`

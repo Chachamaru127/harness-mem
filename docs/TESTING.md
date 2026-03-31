@@ -65,11 +65,24 @@
 npm test
 ```
 
+初回のクリーン環境で `npm test` を回すときは、長期記憶ベンチマークが使うローカル埋め込みモデルを 1 回だけ取得しておくと再現性が安定します。
+
+```bash
+bash scripts/harness-mem model pull multilingual-e5 --yes
+npm test
+```
+
+理由:
+- `tests/benchmarks/memory-durability.test.ts` は単純な文字一致ではなく、意味ベースの埋め込み検索を前提にしています
+- `multilingual-e5` が未導入だと fallback embedding に切り替わり、ベンチマークが本来の条件を満たしません
+- 現在はその状態を低い recall ではなく「前提不足」として明示エラーで止めます
+
 `npm test` は内部で 2 段に分けて実行します。
 
 1. `memory-server/` は `cd memory-server && bun run test`
-   - これは `tests/*.test.ts`, `tests/unit`, `tests/core-split`, `tests/integration`, `tests/benchmark`, `tests/performance` を小分けに実行する既存の安定 runner です
-   - 理由: `memory-server/tests/` を 1 回の大きい `bun test` で流すと、テスト自体は通っても Bun 本体が終了時に panic することがあり、release やローカル確認の再現性を崩すため
+   - これは `tests/*.test.ts` を `scripts/run-bun-test-safe.sh` 経由で、`tests/unit`, `tests/core-split`, `tests/integration`, `tests/benchmark`, `tests/performance` を `scripts/run-bun-test-batches.sh` 経由で小分けに実行する安定 runner です
+   - 理由: `memory-server/tests/unit` のような個別スイートでも、テスト自体は全件通っているのに Bun 本体が終了時に panic することがあるためです
+   - 既知の `0 fail` 後だけ起きる Bun panic は safe runner が warning 扱いにし、本当のテスト失敗や途中クラッシュはそのまま fail にします
 2. ルート / SDK / MCP は `bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests`
    - この runner は `*.test.ts` / `*.test.js` だけを拾い、既定では 1ファイルずつ `bun test` に分けて実行します
    - 理由: `./tests/ sdk/tests/ mcp-server/tests/` を 1 本の大きい `bun test` にすると、こちらも終了時 panic に当たるため
@@ -96,6 +109,9 @@ bun test tests/
 
 # root 相当の実行（panic mitigation 版）
 (cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests
+
+# memory-server 単体の安定 runner
+cd memory-server && bun run test
 
 # ベンチマーク（手動実行推奨）
 bun test tests/benchmarks/

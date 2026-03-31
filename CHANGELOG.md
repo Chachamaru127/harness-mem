@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-04-01
+
+### Release CI now bootstraps the semantic embedding model
+
+**Before**: `v0.8.8` still failed in GitHub Actions even after the LOCOMO smoke-test fix, because `tests/benchmarks/memory-durability.test.ts` expected semantic retrieval with the local `multilingual-e5` ONNX model, while the release runner had never downloaded that model. CI therefore fell back to `local-hash-v3` and reported misleading low recall numbers instead of a clear setup failure.
+
+**After**: the release workflow now restores or downloads `multilingual-e5` before `npm test`, and the benchmark itself now fails fast with an explicit "semantic model required" message if the runtime is on fallback embeddings. The helper CLI also supports `harness-mem model pull <id> --yes`, so the same bootstrap can run safely in non-interactive automation.
+
+While validating the patch on a real machine, another release blocker surfaced: `memory-server/tests/unit` could still report `0 fail` and then die during Bun teardown, which meant `npm test` could fail even after the semantic benchmark issue was fixed. `memory-server/package.json` now uses the same safe wrapper / batched runner pattern as the rest of the repo, so the release gate no longer depends on raw Bun exit behavior after a green suite.
+
+```bash
+bash scripts/harness-mem model pull multilingual-e5 --yes
+npm test
+npm pack --dry-run
+```
+
 ## [0.8.8] - 2026-04-01
 
 ### Release smoke-test portability for LOCOMO benchmark runner

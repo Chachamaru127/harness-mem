@@ -7,6 +7,20 @@
 
 ## [Unreleased]
 
+## [0.8.9] - 2026-04-01
+
+### ユーザー向け要約
+
+- `0.8.8` の時点では、LOCOMO 煙テストを直しても、Release CI が長期記憶ベンチマーク用の `multilingual-e5` モデルを持っておらず、fallback embedding に落ちて release が止まっていた。
+- `0.8.9` では、GitHub Actions 側で release 前に `multilingual-e5` を restore / download するようにし、long-term benchmark を本来の条件で実行できるようにした。
+- あわせて、もしモデル未導入のままベンチマークを走らせた場合は、低 recall を出して誤解させるのではなく、「このベンチマークは semantic model 前提」と明示エラーで止めるようにした。
+- `harness-mem model pull <id> --yes` を追加し、非対話の自動環境でも同じモデル事前取得を実行できるようにした。
+- さらに、`memory-server/tests/unit` が `0 fail` のあとに Bun 本体だけ落ちるケースを確認したため、`memory-server/package.json` も safe runner / batched runner 経由の実行に切り替え、release gate が生の Bun 終了挙動に引きずられないようにした。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
 ## [0.8.8] - 2026-04-01
 
 ### ユーザー向け要約

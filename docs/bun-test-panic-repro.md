@@ -12,7 +12,7 @@
 
 - この repo では、一部の `bun test` 実行が **`0 fail` のあとに** `panic(main thread): A C++ exception occurred` で終わることがあります。
 - これは特に、benchmark 系や teardown が重い suite で観測しやすいです。
-- `memory-server` は 1 本の巨大実行より、既存の chunked runner (`cd memory-server && bun run test`) の方が安定します。
+- `memory-server` は 1 本の巨大実行より、safe runner + batched runner を使う既存の chunked runner (`cd memory-server && bun run test`) の方が安定します。
 - root `npm test` は現在、この現象を踏みにくい実行経路に変更済みです。
 - その具体的な実行分解は `docs/TESTING.md` に残しています。
 
@@ -23,7 +23,7 @@
 
 ### この repo 側の対策
 
-- `memory-server` は既存の chunked runner を使います。
+- `memory-server` は `scripts/run-bun-test-safe.sh` と `scripts/run-bun-test-batches.sh` を使う既存の chunked runner を使います。
 - root / SDK / MCP のテストは `scripts/run-bun-test-batches.sh` で 1 ファイルずつ回します。
 - `scripts/run-bun-test-safe.sh` は、**`0 fail` + 既知の Bun panic banner** のときだけ warning 扱いにします。
 - 本当のテスト失敗は、これまで通り fail のままです。
