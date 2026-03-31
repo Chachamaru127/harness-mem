@@ -6,7 +6,7 @@
   },
   "metadata": {
     "description": "Cross-tool persistent memory runtime for AI coding agents (Claude Code, Codex, Cursor, OpenCode, Gemini CLI)",
-  "version": "0.8.5",
+  "version": "0.8.6",
     "homepage": "https://github.com/Chachamaru127/harness-mem"
   },
   "plugins": [
@@ -17,7 +17,7 @@
         "repo": "Chachamaru127/harness-mem"
       },
       "description": "Persistent memory system for AI coding sessions — cross-tool memory sharing with hybrid search",
-      "version": "0.8.5",
+      "version": "0.8.6",
       "author": {
         "name": "Chachamaru",
         "email": "chachamaru@harness-mem.dev"

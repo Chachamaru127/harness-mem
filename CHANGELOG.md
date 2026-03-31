@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.6] - 2026-04-01
+
+### Release tag recovery for the cross-tool transfer gate update
+
+**Before**: the `0.8.5` code update was correct, but the release tag was attached to the previous `0.8.4` commit. That made the release workflow compare `tag=0.8.5` with `package=0.8.4`, so publish stopped before npm release.
+
+**After**: `0.8.6` republishes the same cross-tool transfer gate stabilization on the correct commit, with package metadata, Claude plugin metadata, and the release tag aligned again.
+
+```bash
+git rev-parse v0.8.6^{}
+node -p "require('./package.json').version"
+```
+
 ## [0.8.5] - 2026-04-01
 
 ### Benchmark gate stability for release CI
