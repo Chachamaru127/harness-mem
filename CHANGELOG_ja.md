@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-04-01
+
+### ユーザー向け要約
+
+- `0.8.9` までの修正で semantic model bootstrap と Bun panic 緩和は入ったが、Release runner 側にはまだ `setup` / `doctor` が前提にする `jq` と `ripgrep` の明示導入がなかった。
+- さらに clean checkout の Linux runner では `mcp-server/dist/index.js` が未生成なので、Codex wiring contract の `doctor --json` がその場ビルドに入り、タイムアウトしやすかった。
+- 今回の follow-up では、release workflow に runner prerequisites 導入と `mcp-server` 事前 build を追加し、契約テストと release docs もその前提にそろえる。
+
 ## [0.8.9] - 2026-04-01
 
 ### ユーザー向け要約

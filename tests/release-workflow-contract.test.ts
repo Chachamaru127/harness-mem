@@ -8,6 +8,12 @@ describe("release workflow contract", () => {
   test("release workflow uses the same repository behavior gate as local maintainers", () => {
     const workflow = readFileSync(RELEASE_WORKFLOW_PATH, "utf8");
 
+    expect(workflow).toContain("name: Install release runner prerequisites");
+    expect(workflow).toContain("sudo apt-get install -y jq ripgrep");
+    expect(workflow).toContain("name: Install MCP server dependencies");
+    expect(workflow).toContain("cd mcp-server");
+    expect(workflow).toContain("npm ci");
+    expect(workflow).toContain("npm run build --silent");
     expect(workflow).toContain("name: Restore multilingual-e5 cache");
     expect(workflow).toContain("actions/cache@v4");
     expect(workflow).toContain("name: Ensure release embedding model");

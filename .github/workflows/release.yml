@@ -31,6 +31,13 @@ jobs:
         with:
           bun-version: "1.3.10"
 
+      - name: Install release runner prerequisites
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y jq ripgrep
+
       - name: Verify tag commit is on main
         shell: bash
         env:
@@ -93,6 +100,14 @@ jobs:
           set -euo pipefail
           cd memory-server
           bun install --frozen-lockfile
+
+      - name: Install MCP server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server
+          npm ci
+          npm run build --silent
 
       - name: Restore multilingual-e5 cache
         uses: actions/cache@v4

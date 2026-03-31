@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.10] - 2026-04-01
+
+### Release runner prerequisites are now explicit
+
+**Before**: `v0.8.9` fixed the semantic embedding bootstrap and the Bun teardown panic, but the release workflow still assumed the Ubuntu runner already had every shell prerequisite that `harness-mem setup` and `doctor` need. In practice the Codex wiring contract could fail because `jq` / `ripgrep` were not guaranteed, and `doctor --json` could burn its entire timeout bootstrapping `mcp-server/dist/index.js` on a clean checkout.
+
+**After**: the release workflow now installs the CLI prerequisites (`jq`, `ripgrep`) and prebuilds `mcp-server` before `npm test`. The release workflow contract and maintainer docs now describe that runner setup explicitly, so the tag-based publish path matches what the Codex setup/doctor tests actually require on a fresh Linux machine.
+
 ## [0.8.9] - 2026-04-01
 
 ### Release CI now bootstraps the semantic embedding model

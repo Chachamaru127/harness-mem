@@ -68,6 +68,18 @@
 
 ---
 
+## §68 Release Runner Prerequisites Hardening
+
+策定日: 2026-04-01
+背景: `v0.8.9` の Release workflow では、semantic model bootstrap と Bun panic 緩和の修正後も `tests/codex-hooks-merge-contract.test.ts` が GitHub Actions 上だけ失敗した。原因は 2 段あり、(1) release runner が `jq` / `ripgrep` を明示インストールしておらず `harness-mem setup --platform codex` が依存チェックで即終了すること、(2) fresh checkout では `mcp-server/dist/index.js` と依存が未準備で `doctor --json` がその場ビルドに入り、contract test の 5 秒制限を超えやすいこと。release workflow に runner 前提の明示セットアップを追加し、同条件を contract と docs に固定する。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S68-001 | release workflow に runner prerequisites を追加 | `.github/workflows/release.yml` が `jq` / `ripgrep` を先に導入し、`mcp-server` の依存解決と build を `npm test` 前に済ませる | - | cc:完了 |
+| S68-002 | workflow contract / docs sync | `tests/release-workflow-contract.test.ts` と `docs/release-process.md` が release runner prerequisites を release contract として説明・検証する | S68-001 | cc:完了 |
+
+---
+
 ## §51 Competitive Gap Closure Program
 
 - 状態: 2026-03-13 計画確定（実装未着手）

@@ -133,6 +133,8 @@ git push origin main --tags
 
 After that, `.github/workflows/release.yml` is expected to:
 
+- install the CLI prerequisites used by `harness-mem setup` / `doctor` on a fresh Linux runner (`jq`, `ripgrep`)
+- build the MCP server runtime before the repository behavior gate, so setup/doctor contract tests do not spend their timeout budget bootstrapping `mcp-server/dist/index.js`
 - restore or download the `multilingual-e5` local embedding model before the repository behavior gate
 - run the same repository behavior gate as local maintainers (`npm test`)
 - run quality gates
