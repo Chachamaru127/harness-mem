@@ -3,58 +3,48 @@
  *
  * IVectorRepository の PostgreSQL + pgvector 実装。
  *
- * - mem_vectors テーブルは TEXT vector_json ではなく pgvector の vector 型（embedding カラム）を使用。
- * - upsert は $4::vector キャストで embedding を保存する。
- * - pgvectorSearchAsync() でコサイン距離ベースのベクトル検索を提供する。
- * - すべてのメソッドは async-first（PgClientLike を直接使用）。
+ * - mem_vectors は observation_id + model を複合主キーとして扱う。
+ * - 単数取得 API は互換のため残し、複数モデルがある場合は最新行を返す。
+ * - pgvectorSearchAsync() は model / dimension 条件で絞り込める。
  */
 
 import type { PgClientLike, PgvectorSearchResult } from "../postgres-adapter.js";
-import {
-  buildPgvectorSearchSql,
-  formatVectorForPg,
-  parsePgvectorResult,
-} from "../postgres-adapter.js";
+import { formatVectorForPg, parsePgvectorResult } from "../postgres-adapter.js";
 import type {
   IVectorRepository,
+  VectorCoverage,
   VectorRow,
   UpsertVectorInput,
-  VectorCoverage,
 } from "./IVectorRepository.js";
 
-// ---------------------------------------------------------------------------
-// PgVectorRepository
-// ---------------------------------------------------------------------------
+type PgVectorDbRow = {
+  observation_id: string;
+  model: string;
+  dimension: number;
+  embedding: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
 
 export class PgVectorRepository implements IVectorRepository {
-  /**
-   * @param client     pg ライブラリの Pool / Client（PgClientLike 準拠）
-   * @param dimension  ベクトル次元数（pgvectorSearchAsync の SQL 生成に使用）
-   */
   constructor(
     private readonly client: PgClientLike,
     private readonly dimension: number,
   ) {}
 
-  // -------------------------------------------------------------------------
-  // upsert
-  // -------------------------------------------------------------------------
-
   async upsert(input: UpsertVectorInput): Promise<void> {
-    // vector_json を number[] に変換し pgvector 形式文字列にキャスト
     let vectorStr: string;
     try {
       const arr = JSON.parse(input.vector_json) as number[];
       vectorStr = formatVectorForPg(arr);
     } catch {
-      // パース失敗時は空ベクトルとして扱う
       vectorStr = formatVectorForPg(new Array(this.dimension).fill(0));
     }
 
     await this.client.query(
       `INSERT INTO mem_vectors(observation_id, model, dimension, embedding, created_at, updated_at)
        VALUES ($1, $2, $3, $4::vector, $5, $6)
-       ON CONFLICT(observation_id) DO UPDATE SET
+       ON CONFLICT(observation_id, model) DO UPDATE SET
          model      = EXCLUDED.model,
          dimension  = EXCLUDED.dimension,
          embedding  = EXCLUDED.embedding,
@@ -70,34 +60,48 @@ export class PgVectorRepository implements IVectorRepository {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // findByObservationId
-  // -------------------------------------------------------------------------
-
   async findByObservationId(observationId: string): Promise<VectorRow | null> {
     const result = await this.client.query(
       `SELECT observation_id, model, dimension, embedding, created_at, updated_at
        FROM mem_vectors
-       WHERE observation_id = $1`,
+       WHERE observation_id = $1
+       ORDER BY updated_at DESC, model ASC
+       LIMIT 1`,
       [observationId],
     );
 
     if (result.rows.length === 0) return null;
-
-    const row = result.rows[0] as {
-      observation_id: string;
-      model: string;
-      dimension: number;
-      embedding: string | null;
-      created_at: Date | string;
-      updated_at: Date | string;
-    };
-    return this._toVectorRow(row);
+    return this._toVectorRow(result.rows[0] as PgVectorDbRow);
   }
 
-  // -------------------------------------------------------------------------
-  // findByObservationIds
-  // -------------------------------------------------------------------------
+  async findAllByObservationId(observationId: string): Promise<VectorRow[]> {
+    const result = await this.client.query(
+      `SELECT observation_id, model, dimension, embedding, created_at, updated_at
+       FROM mem_vectors
+       WHERE observation_id = $1
+       ORDER BY updated_at DESC, model ASC`,
+      [observationId],
+    );
+
+    return (result.rows as PgVectorDbRow[]).map((row) => this._toVectorRow(row));
+  }
+
+  async findByObservationIdAndModel(
+    observationId: string,
+    model: string,
+  ): Promise<VectorRow | null> {
+    const result = await this.client.query(
+      `SELECT observation_id, model, dimension, embedding, created_at, updated_at
+       FROM mem_vectors
+       WHERE observation_id = $1
+         AND model = $2
+       LIMIT 1`,
+      [observationId, model],
+    );
+
+    if (result.rows.length === 0) return null;
+    return this._toVectorRow(result.rows[0] as PgVectorDbRow);
+  }
 
   async findByObservationIds(observationIds: string[]): Promise<VectorRow[]> {
     if (observationIds.length === 0) return [];
@@ -107,22 +111,15 @@ export class PgVectorRepository implements IVectorRepository {
 
     for (let offset = 0; offset < observationIds.length; offset += MAX_BATCH) {
       const batch = observationIds.slice(offset, offset + MAX_BATCH);
-      // $1, $2, ... のプレースホルダーを動的生成
       const placeholders = batch.map((_, i) => `$${i + 1}`).join(", ");
       const result = await this.client.query(
         `SELECT observation_id, model, dimension, embedding, created_at, updated_at
          FROM mem_vectors
-         WHERE observation_id IN (${placeholders})`,
+         WHERE observation_id IN (${placeholders})
+         ORDER BY observation_id ASC, updated_at DESC, model ASC`,
         batch,
       );
-      for (const row of result.rows as Array<{
-        observation_id: string;
-        model: string;
-        dimension: number;
-        embedding: string | null;
-        created_at: Date | string;
-        updated_at: Date | string;
-      }>) {
+      for (const row of result.rows as PgVectorDbRow[]) {
         results.push(this._toVectorRow(row));
       }
     }
@@ -130,32 +127,25 @@ export class PgVectorRepository implements IVectorRepository {
     return results;
   }
 
-  // -------------------------------------------------------------------------
-  // findLegacyObservationIds
-  // -------------------------------------------------------------------------
-
   async findLegacyObservationIds(currentModel: string, limit: number): Promise<string[]> {
     const safeLimit = Math.max(1, Math.trunc(limit));
     const result = await this.client.query(
       `SELECT observation_id
        FROM mem_vectors
-       WHERE model != $1
-       ORDER BY updated_at ASC
+       GROUP BY observation_id
+       HAVING SUM(CASE WHEN model = $1 THEN 1 ELSE 0 END) = 0
+       ORDER BY MIN(updated_at) ASC
        LIMIT $2`,
       [currentModel, safeLimit],
     );
-    return (result.rows as Array<{ observation_id: string }>).map((r) => r.observation_id);
+    return (result.rows as Array<{ observation_id: string }>).map((row) => row.observation_id);
   }
-
-  // -------------------------------------------------------------------------
-  // coverage
-  // -------------------------------------------------------------------------
 
   async coverage(currentModel: string): Promise<VectorCoverage> {
     const result = await this.client.query(
       `SELECT
-         COUNT(*) AS total,
-         SUM(CASE WHEN model = $1 THEN 1 ELSE 0 END) AS current_model_count
+         COUNT(DISTINCT observation_id) AS total,
+         COUNT(DISTINCT CASE WHEN model = $1 THEN observation_id END) AS current_model_count
        FROM mem_vectors`,
       [currentModel],
     );
@@ -169,10 +159,6 @@ export class PgVectorRepository implements IVectorRepository {
     };
   }
 
-  // -------------------------------------------------------------------------
-  // delete
-  // -------------------------------------------------------------------------
-
   async delete(observationId: string): Promise<void> {
     await this.client.query(
       `DELETE FROM mem_vectors WHERE observation_id = $1`,
@@ -180,53 +166,39 @@ export class PgVectorRepository implements IVectorRepository {
     );
   }
 
-  // -------------------------------------------------------------------------
-  // pgvectorSearchAsync — pgvector コサイン距離ベースのベクトル検索
-  // -------------------------------------------------------------------------
-
-  /**
-   * pgvector の <=> 演算子（コサイン距離）でベクトル検索を実行する。
-   *
-   * @param queryVector クエリ埋め込みベクトル
-   * @param limit       最大取得件数（デフォルト 50）
-   * @returns           observationId と distance（0=完全一致、2=正反対）のリスト
-   */
   async pgvectorSearchAsync(
     queryVector: number[],
     limit = 50,
+    model?: string,
   ): Promise<PgvectorSearchResult[]> {
     const safeLimit = Math.max(1, Math.trunc(limit));
-    const sql = buildPgvectorSearchSql(this.dimension, safeLimit);
-    const vectorStr = formatVectorForPg(queryVector);
-    const result = await this.client.query(sql, [vectorStr]);
+    const safeDimension = Math.max(1, Math.trunc(queryVector.length || this.dimension));
+    const filters = ["v.dimension = $2"];
+    const params: unknown[] = [formatVectorForPg(queryVector), safeDimension];
+
+    if (model) {
+      filters.push(`v.model = $${params.length + 1}`);
+      params.push(model);
+    }
+
+    const sql = `
+      SELECT
+        v.observation_id,
+        (v.embedding <=> $1::vector(${safeDimension})) AS distance
+      FROM mem_vectors v
+      WHERE ${filters.join(" AND ")}
+      ORDER BY distance ASC
+      LIMIT ${safeLimit}
+    `.trim();
+
+    const result = await this.client.query(sql, params);
     return parsePgvectorResult(
       result.rows as Array<{ observation_id: string; distance: string | number }>,
     );
   }
 
-  // -------------------------------------------------------------------------
-  // プライベートヘルパー
-  // -------------------------------------------------------------------------
-
-  /**
-   * DB 行を VectorRow に変換する。
-   * PostgreSQL では embedding は vector 型（pg ドライバーが文字列として返す）。
-   * VectorRow.vector_json には JSON 文字列を格納する。
-   */
-  private _toVectorRow(row: {
-    observation_id: string;
-    model: string;
-    dimension: number;
-    embedding: string | null;
-    created_at: Date | string;
-    updated_at: Date | string;
-  }): VectorRow {
-    // pg driver は pgvector の vector 型を "[0.1,0.2,...]" の文字列で返す
-    // VectorRow.vector_json は JSON 配列文字列を期待するため、
-    // "[...]" 形式はそのまま、それ以外は "[]" にフォールバック
+  private _toVectorRow(row: PgVectorDbRow): VectorRow {
     const rawEmbedding = row.embedding ?? "[]";
-    // pgvector は "[0.1,0.2]" 形式（最外のブラケットはあり）を返すため
-    // そのままでも JSON.parse 可能だが、念のため妥当性確認
     let vectorJson: string;
     try {
       JSON.parse(rawEmbedding);
@@ -235,8 +207,8 @@ export class PgVectorRepository implements IVectorRepository {
       vectorJson = "[]";
     }
 
-    const toIso = (v: Date | string): string =>
-      v instanceof Date ? v.toISOString() : v;
+    const toIso = (value: Date | string): string =>
+      value instanceof Date ? value.toISOString() : value;
 
     return {
       observation_id: row.observation_id,

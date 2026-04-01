@@ -98,7 +98,7 @@ describe("PgVectorRepository: upsert", () => {
     expect(client.queries).toHaveLength(1);
     const q = client.queries[0]!;
     expect(q.text).toContain("INSERT INTO mem_vectors");
-    expect(q.text).toContain("ON CONFLICT");
+    expect(q.text).toContain("ON CONFLICT(observation_id, model)");
     expect(q.text).toContain("$4::vector");
     expect(q.values[0]).toBe("obs_001");
     expect(q.values[1]).toBe("test-model-v1");
@@ -108,7 +108,7 @@ describe("PgVectorRepository: upsert", () => {
     expect(vectorStr).toMatch(/^\[.*\]$/);
   });
 
-  test("2. upsert でモデルが異なっても ON CONFLICT UPDATE で上書きされる（SQL 構造確認）", async () => {
+  test("2. upsert でモデルが異なれば別行として保存できる前提の SQL になる", async () => {
     const client = new MockPgClient();
     const repo = new PgVectorRepository(client, 64);
 
@@ -116,7 +116,7 @@ describe("PgVectorRepository: upsert", () => {
     await repo.upsert(makeInput({ model: "model-v2" }));
 
     expect(client.queries).toHaveLength(2);
-    // 2回目の query でも同じ UPSERT SQL が使われる
+    expect(client.queries[0]!.text).toContain("ON CONFLICT(observation_id, model)");
     expect(client.queries[1]!.values[1]).toBe("model-v2");
   });
 
@@ -166,6 +166,33 @@ describe("PgVectorRepository: findByObservationId", () => {
     const row = await repo.findByObservationId("nonexistent");
 
     expect(row).toBeNull();
+  });
+
+  test("5-1. findAllByObservationId は同一 observation の複数モデルを返す", async () => {
+    const client = new MockPgClient();
+    client.setRows([
+      makePgVectorRow("obs_multi", "model-ja"),
+      makePgVectorRow("obs_multi", "model-en"),
+    ]);
+    const repo = new PgVectorRepository(client, 64);
+
+    const rows = await repo.findAllByObservationId("obs_multi");
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.model)).toEqual(["model-ja", "model-en"]);
+  });
+
+  test("5-2. findByObservationIdAndModel は対象モデルだけ返す", async () => {
+    const client = new MockPgClient();
+    client.setRows([makePgVectorRow("obs_target", "model-en")]);
+    const repo = new PgVectorRepository(client, 64);
+
+    const row = await repo.findByObservationIdAndModel("obs_target", "model-en");
+
+    expect(row?.observation_id).toBe("obs_target");
+    expect(row?.model).toBe("model-en");
+    const q = client.queries[0]!;
+    expect(q.values).toEqual(["obs_target", "model-en"]);
   });
 });
 
@@ -217,7 +244,8 @@ describe("PgVectorRepository: findLegacyObservationIds", () => {
 
     expect(ids).toEqual(["obs_old"]);
     const q = client.queries[0]!;
-    expect(q.text).toContain("model != $1");
+    expect(q.text).toContain("GROUP BY observation_id");
+    expect(q.text).toContain("HAVING SUM(CASE WHEN model = $1 THEN 1 ELSE 0 END) = 0");
     expect(q.values[0]).toBe("current-model");
   });
 
@@ -314,6 +342,7 @@ describe("PgVectorRepository: pgvectorSearchAsync", () => {
 
     const q = client.queries[0]!;
     expect(q.text).toContain("LIMIT 5");
+    expect(q.text).toContain("v.dimension = $2");
   });
 
   test("15. queryVector が pgvector 形式文字列として渡される", async () => {
@@ -325,6 +354,19 @@ describe("PgVectorRepository: pgvectorSearchAsync", () => {
 
     const q = client.queries[0]!;
     expect(q.values[0]).toBe("[0.1,0.2,0.3]");
+    expect(q.values[1]).toBe(3);
+  });
+
+  test("15-1. model 指定時は SQL とパラメータに反映される", async () => {
+    const client = new MockPgClient();
+    client.setRows([]);
+    const repo = new PgVectorRepository(client, 3);
+
+    await repo.pgvectorSearchAsync([0.1, 0.2, 0.3], 20, "adaptive-japanese");
+
+    const q = client.queries[0]!;
+    expect(q.text).toContain("v.model = $3");
+    expect(q.values[2]).toBe("adaptive-japanese");
   });
 });
 

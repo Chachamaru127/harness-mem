@@ -19,6 +19,8 @@ export interface AdaptiveEmbeddingProvider extends EmbeddingProvider {
   embedSecondary(text: string): number[] | null;
   analyze(text: string): QueryAnalysis;
   routeFor(text: string): AdaptiveRoute;
+  primaryModelFor(text: string): string;
+  secondaryModelFor(text: string): string | null;
 }
 
 function normalizeVector(vector: number[], dimension: number): number[] {
@@ -63,6 +65,8 @@ export function createAdaptiveEmbeddingProvider(
     (value): value is Promise<void> => value instanceof Promise
   );
   const ready = readyPromises.length > 0 ? Promise.all(readyPromises).then(() => undefined) : undefined;
+  const japaneseLabel = `adaptive:ruri:${japaneseProvider.name}:${japaneseProvider.model}`;
+  const generalLabel = `adaptive:general:${generalProvider.name}:${generalProvider.model}`;
 
   const resolveRoute = (text: string): { analysis: QueryAnalysis; route: AdaptiveRoute } => {
     const analysis = analyzeText(text);
@@ -163,6 +167,14 @@ export function createAdaptiveEmbeddingProvider(
     },
     routeFor(text: string): AdaptiveRoute {
       return resolveRoute(text || "").route;
+    },
+    primaryModelFor(text: string): string {
+      const { route } = resolveRoute(text || "");
+      return route === "openai" ? generalLabel : japaneseLabel;
+    },
+    secondaryModelFor(text: string): string | null {
+      const { route } = resolveRoute(text || "");
+      return route === "ensemble" ? generalLabel : null;
     },
     health(): EmbeddingHealth {
       return chooseWorstHealth(japaneseProvider.health(), generalProvider.health());

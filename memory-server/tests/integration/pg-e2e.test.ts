@@ -327,19 +327,27 @@ describe.skipIf(!HAS_POSTGRES)("PG E2E: Pg*Repository 統合テスト", () => {
       updated_at: now,
     });
 
-    // findByObservationId で確認
+    // findByObservationId / findAllByObservationId で確認
     const vec1 = await vectorRepo.findByObservationId(obs1Id);
     expect(vec1).not.toBeNull();
     expect(vec1!.observation_id).toBe(obs1Id);
     expect(vec1!.model).toBe("text-embedding-3");
     expect(vec1!.dimension).toBe(VECTOR_DIM);
 
+    const vec1All = await vectorRepo.findAllByObservationId(obs1Id);
+    expect(vec1All).toHaveLength(1);
+    expect(vec1All[0]!.model).toBe("text-embedding-3");
+
     // findByObservationIds で複数取得
     const vecs = await vectorRepo.findByObservationIds([obs1Id, obs2Id]);
     expect(vecs.length).toBe(2);
 
+    const vecByModel = await vectorRepo.findByObservationIdAndModel(obs1Id, "text-embedding-3");
+    expect(vecByModel).not.toBeNull();
+    expect(vecByModel!.observation_id).toBe(obs1Id);
+
     // pgvectorSearchAsync: [1,0,0] に最も近いのは obs1Id
-    const searchResults = await vectorRepo.pgvectorSearchAsync([1, 0, 0], 10);
+    const searchResults = await vectorRepo.pgvectorSearchAsync([1, 0, 0], 10, "text-embedding-3");
     expect(searchResults.length).toBeGreaterThanOrEqual(2);
     const nearestId = searchResults[0]!.observationId;
     expect(nearestId).toBe(obs1Id);
@@ -463,7 +471,7 @@ describe.skipIf(!HAS_POSTGRES)("PG E2E: Pg*Repository 統合テスト", () => {
     expect(byIds.length).toBe(2);
 
     // Step 5: ベクトル検索（クエリ [1,0,0] に最も近いのは obs1）
-    const searchResults = await vectorRepo.pgvectorSearchAsync([1, 0, 0], 5);
+    const searchResults = await vectorRepo.pgvectorSearchAsync([1, 0, 0], 5, "text-embedding-3");
     expect(searchResults.length).toBeGreaterThanOrEqual(3);
     const topResult = searchResults.find((r) => r.observationId === obs1Id);
     expect(topResult).toBeDefined();

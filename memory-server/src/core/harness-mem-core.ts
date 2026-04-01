@@ -21,8 +21,10 @@ import {
 } from "../embedding/registry";
 import {
   type EmbeddingProvider,
+  type AdaptiveRoute,
   type EmbeddingCacheStats,
   type EmbeddingHealth,
+  type QueryAnalysis,
 } from "../embedding/types";
 import { createRerankerRegistry } from "../rerank/registry";
 import {
@@ -72,6 +74,7 @@ import {
   fileUriToPath,
   makeErrorResponse,
   makeResponse,
+  normalizeVectorDimension,
   nowIso,
   parseBackendMode,
   resolveHomePath,
@@ -137,6 +140,18 @@ const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
+
+interface ResolvedEmbeddingVariant {
+  model: string;
+  vector: number[];
+}
+
+interface ResolvedEmbeddingVariants {
+  route: AdaptiveRoute | null;
+  analysis: QueryAnalysis | null;
+  primary: ResolvedEmbeddingVariant;
+  secondary: ResolvedEmbeddingVariant | null;
+}
 
 interface EmbeddingReadiness {
   required: boolean;
@@ -445,6 +460,7 @@ export class HarnessMemCore {
       getVecTableReady: () => this.vecTableReady,
       setVecTableReady: (value) => { this.vecTableReady = value; },
       embedContent: (content) => this.embedContentSync(content, "passage"),
+      buildPassageEmbeddings: (content) => this.resolveEmbeddings(content, "passage"),
       getEmbeddingProviderName: () => this.embeddingProvider.name,
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       getVectorModelVersion: () => this.vectorModelVersion,
@@ -480,6 +496,7 @@ export class HarnessMemCore {
       getVecTableReady: () => this.vecTableReady,
       setVecTableReady: (value) => { this.vecTableReady = value; },
       embedContent: (content) => this.embedContentSync(content, "query"),
+      buildQueryEmbeddings: (content) => this.resolveEmbeddings(content, "query"),
       refreshEmbeddingHealth: () => this.refreshEmbeddingHealth(),
       getEmbeddingProviderName: () => this.embeddingProvider.name,
       embeddingProviderModel: this.embeddingProvider.model,
@@ -1068,6 +1085,50 @@ export class HarnessMemCore {
         }
       );
     }
+  }
+
+  private resolveEmbeddings(text: string, mode: EmbeddingPrimeMode): ResolvedEmbeddingVariants {
+    const normalized = text || "";
+    const primaryVector = normalizeVectorDimension(
+      this.embedContentSync(normalized, mode),
+      this.config.vectorDimension
+    );
+    const route =
+      typeof this.embeddingProvider.routeFor === "function"
+        ? this.embeddingProvider.routeFor(normalized)
+        : null;
+    const analysis =
+      typeof this.embeddingProvider.analyze === "function"
+        ? this.embeddingProvider.analyze(normalized)
+        : null;
+    const primaryModel =
+      typeof this.embeddingProvider.primaryModelFor === "function"
+        ? this.embeddingProvider.primaryModelFor(normalized)
+        : this.vectorModelVersion;
+
+    let secondary: ResolvedEmbeddingVariant | null = null;
+    if (typeof this.embeddingProvider.embedSecondary === "function") {
+      const secondaryVector = this.embeddingProvider.embedSecondary(normalized);
+      if (secondaryVector && secondaryVector.length > 0) {
+        secondary = {
+          model:
+            typeof this.embeddingProvider.secondaryModelFor === "function"
+              ? this.embeddingProvider.secondaryModelFor(normalized) || this.vectorModelVersion
+              : this.vectorModelVersion,
+          vector: normalizeVectorDimension(secondaryVector, this.config.vectorDimension),
+        };
+      }
+    }
+
+    return {
+      route,
+      analysis,
+      primary: {
+        model: primaryModel,
+        vector: primaryVector,
+      },
+      secondary,
+    };
   }
 
   private async prepareEmbeddingForSync(text: string, mode: EmbeddingPrimeMode): Promise<void> {
@@ -1810,10 +1871,25 @@ export class HarnessMemCore {
       .query(`
         SELECT
           (SELECT COUNT(*) FROM mem_vectors) AS mem_vectors_count,
-          (SELECT COUNT(*) FROM mem_vectors_vec_map) AS vec_map_count,
           (SELECT COUNT(*) FROM mem_observations) AS observations_count
       `)
-      .get() as { mem_vectors_count: number; vec_map_count: number; observations_count: number } | null;
+      .get() as { mem_vectors_count: number; observations_count: number } | null;
+
+    const vecMapTables = this.db
+      .query<{ name: string }, []>(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND (name = 'mem_vectors_vec_map' OR name LIKE 'mem_vectors_vec_map_%')`,
+      )
+      .all();
+    let vecMapCount = 0;
+    for (const row of vecMapTables) {
+      const tableCount = this.db
+        .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM ${row.name}`)
+        .get();
+      vecMapCount += Number(tableCount?.count ?? 0);
+    }
 
     const queueStats = this.db
       .query(`
@@ -1867,7 +1943,7 @@ export class HarnessMemCore {
           coverage: {
             observations: Number(vectorCoverage?.observations_count ?? 0),
             mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
-            mem_vectors_vec_map: Number(vectorCoverage?.vec_map_count ?? 0),
+            mem_vectors_vec_map: vecMapCount,
           },
           retry_queue: {
             count: Number(queueStats?.count ?? 0),

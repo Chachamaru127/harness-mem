@@ -33,6 +33,10 @@ export interface EmbeddingProvider {
   embed(text: string): number[];
   embedQuery?(text: string): number[];
   embedSecondary?(text: string): number[] | null;
+  analyze?(text: string): QueryAnalysis;
+  routeFor?(text: string): AdaptiveRoute;
+  primaryModelFor?(text: string): string;
+  secondaryModelFor?(text: string): string | null;
   prime?(text: string): Promise<number[]>;
   primeQuery?(text: string): Promise<number[]>;
   cacheStats?(): EmbeddingCacheStats;

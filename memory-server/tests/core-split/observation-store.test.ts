@@ -40,9 +40,12 @@ function platformVisibilityFilterSql(_alias: string): string {
 function createDeps(
   db: Database,
   config: Config,
-  overrides: { rerankerEnabled?: boolean; reranker?: Reranker | null } = {}
+  overrides: Partial<ObservationStoreDeps> & {
+    rerankerEnabled?: boolean;
+    reranker?: Reranker | null;
+  } = {}
 ): ObservationStoreDeps {
-  return {
+  const deps: ObservationStoreDeps = {
     db,
     repo: new SqliteObservationRepository(db),
     config,
@@ -70,6 +73,12 @@ function createDeps(
     managedShadowRead: null,
     searchRanking: "hybrid_v3",
     searchExpandLinks: false,
+  };
+  return {
+    ...deps,
+    ...overrides,
+    getRerankerEnabled: () => overrides.rerankerEnabled ?? deps.getRerankerEnabled(),
+    getReranker: () => overrides.reranker ?? deps.getReranker(),
   };
 }
 
@@ -252,6 +261,49 @@ describe("observation-store: search", () => {
     const res = store.search({ query: "debug test", project: "proj-obs", debug: true });
     expect(res.ok).toBe(true);
     expect(res.meta).toBeTruthy();
+  });
+
+  test("adaptive ensemble query は primary / secondary の両モデル結果を融合する", () => {
+    const { store, db } = makeStore(
+      {},
+      {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => "local:ruri-v3-30m",
+        vectorDimension: 2,
+        buildQueryEmbeddings: () => ({
+          route: "ensemble",
+          analysis: { jaRatio: 0.7 },
+          primary: { model: "local:ruri-v3-30m", vector: [1, 0] },
+          secondary: { model: "openai:text-embedding-3-small", vector: [0, 1] },
+        }),
+      },
+    );
+    insertTestObservation(db, {
+      id: "obs-ja",
+      title: "alpha",
+      content: "alpha content",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-en",
+      title: "beta",
+      content: "beta content",
+      project: "proj-obs",
+    });
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-ja", "local:ruri-v3-30m", "[1,0]");
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-en", "openai:text-embedding-3-small", "[0,1]");
+
+    const res = store.search({ query: "mixed bilingual retrieval", project: "proj-obs", limit: 5 });
+    expect(res.ok).toBe(true);
+    const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
+    expect(ids).toContain("obs-ja");
+    expect(ids).toContain("obs-en");
   });
 
   test("active facts を持つ exact-value 候補を company query で優先する", () => {

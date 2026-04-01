@@ -203,7 +203,8 @@ export class ConfigManager {
         SELECT o.id, o.content_redacted, o.created_at
         FROM mem_observations o
         JOIN mem_vectors v ON v.observation_id = o.id
-        WHERE v.model != ?
+        GROUP BY o.id
+        HAVING SUM(CASE WHEN v.model = ? THEN 1 ELSE 0 END) = 0
         ORDER BY o.created_at DESC
         LIMIT ?
       `)
@@ -224,8 +225,8 @@ export class ConfigManager {
     const beforeCounts = this.deps.db
       .query(
         `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_count
+           COUNT(DISTINCT observation_id) AS total,
+           COUNT(DISTINCT CASE WHEN model = ? THEN observation_id END) AS current_count
          FROM mem_vectors`
       )
       .get(this.deps.getVectorModelVersion()) as { total: number; current_count: number } | null;

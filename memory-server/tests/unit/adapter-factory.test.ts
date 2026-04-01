@@ -61,6 +61,8 @@ function assertSessionRepoInterface(repo: ISessionRepository): void {
 function assertVectorRepoInterface(repo: IVectorRepository): void {
   expect(typeof repo.upsert).toBe("function");
   expect(typeof repo.findByObservationId).toBe("function");
+  expect(typeof repo.findAllByObservationId).toBe("function");
+  expect(typeof repo.findByObservationIdAndModel).toBe("function");
   expect(typeof repo.findByObservationIds).toBe("function");
   expect(typeof repo.findLegacyObservationIds).toBe("function");
   expect(typeof repo.coverage).toBe("function");

@@ -3,46 +3,33 @@
  *
  * IVectorRepository の SQLite 実装。
  *
- * - sqlite-vec 拡張が利用可能な場合はネイティブ vec0 仮想テーブルを使用。
- * - 拡張が利用不可の場合は mem_vectors テーブルへの JS fallback（コサイン類似度）を使用。
- * - エンジン切り替えは外部から透過的（呼び出し元はエンジン種別を意識しない）。
+ * - sqlite-vec 拡張が利用可能な場合は model ごとの vec0 仮想テーブルを使う。
+ * - 拡張が利用不可の場合は mem_vectors テーブルへの JS fallback を使う。
+ * - 単数取得 API は互換のため残しつつ、内部保存は observation_id + model を主キーとする。
  */
 
 import type { Database } from "bun:sqlite";
 import type {
   IVectorRepository,
+  VectorCoverage,
   VectorRow,
   UpsertVectorInput,
-  VectorCoverage,
 } from "./IVectorRepository.js";
-
-// ---------------------------------------------------------------------------
-// SqliteVectorRepository
-// ---------------------------------------------------------------------------
+import { deleteSqliteVecRow, upsertSqliteVecRow } from "../../vector/providers.js";
 
 export class SqliteVectorRepository implements IVectorRepository {
-  /**
-   * @param db             bun:sqlite Database インスタンス
-   * @param vectorDimension ベクトル次元数（sqlite-vec 仮想テーブル作成に使用）
-   * @param vecTableReady  sqlite-vec 仮想テーブルが利用可能か否か（外部から注入）
-   */
   constructor(
     private readonly db: Database,
     private readonly vectorDimension: number,
     private readonly vecTableReady: boolean,
   ) {}
 
-  // -------------------------------------------------------------------------
-  // upsert
-  // -------------------------------------------------------------------------
-
   async upsert(input: UpsertVectorInput): Promise<void> {
-    // mem_vectors（JS fallback 用の通常テーブル）に常に書き込む
     this.db
       .query(
         `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
          VALUES (?, ?, ?, ?, ?, ?)
-         ON CONFLICT(observation_id) DO UPDATE SET
+         ON CONFLICT(observation_id, model) DO UPDATE SET
            model       = excluded.model,
            dimension   = excluded.dimension,
            vector_json = excluded.vector_json,
@@ -57,30 +44,59 @@ export class SqliteVectorRepository implements IVectorRepository {
         input.updated_at,
       );
 
-    // sqlite-vec が使える場合は仮想テーブルにも書き込む
     if (this.vecTableReady) {
-      this._upsertVecRow(input.observation_id, input.vector_json, input.updated_at);
+      upsertSqliteVecRow(
+        this.db,
+        input.observation_id,
+        input.vector_json,
+        input.updated_at,
+        {
+          model: input.model,
+          vectorDimension: input.dimension || this.vectorDimension,
+        },
+      );
     }
   }
-
-  // -------------------------------------------------------------------------
-  // findByObservationId
-  // -------------------------------------------------------------------------
 
   async findByObservationId(observationId: string): Promise<VectorRow | null> {
     const row = this.db
       .query<VectorRow, [string]>(
         `SELECT observation_id, model, dimension, vector_json, created_at, updated_at
          FROM mem_vectors
-         WHERE observation_id = ?`,
+         WHERE observation_id = ?
+         ORDER BY updated_at DESC, model ASC
+         LIMIT 1`,
       )
       .get(observationId);
     return row ?? null;
   }
 
-  // -------------------------------------------------------------------------
-  // findByObservationIds
-  // -------------------------------------------------------------------------
+  async findAllByObservationId(observationId: string): Promise<VectorRow[]> {
+    return this.db
+      .query<VectorRow, [string]>(
+        `SELECT observation_id, model, dimension, vector_json, created_at, updated_at
+         FROM mem_vectors
+         WHERE observation_id = ?
+         ORDER BY updated_at DESC, model ASC`,
+      )
+      .all(observationId);
+  }
+
+  async findByObservationIdAndModel(
+    observationId: string,
+    model: string,
+  ): Promise<VectorRow | null> {
+    const row = this.db
+      .query<VectorRow, [string, string]>(
+        `SELECT observation_id, model, dimension, vector_json, created_at, updated_at
+         FROM mem_vectors
+         WHERE observation_id = ?
+           AND model = ?
+         LIMIT 1`,
+      )
+      .get(observationId, model);
+    return row ?? null;
+  }
 
   async findByObservationIds(observationIds: string[]): Promise<VectorRow[]> {
     if (observationIds.length === 0) return [];
@@ -95,7 +111,8 @@ export class SqliteVectorRepository implements IVectorRepository {
         .query<VectorRow, string[]>(
           `SELECT observation_id, model, dimension, vector_json, created_at, updated_at
            FROM mem_vectors
-           WHERE observation_id IN (${placeholders})`,
+           WHERE observation_id IN (${placeholders})
+           ORDER BY observation_id ASC, updated_at DESC, model ASC`,
         )
         .all(...batch);
       results.push(...rows);
@@ -104,34 +121,27 @@ export class SqliteVectorRepository implements IVectorRepository {
     return results;
   }
 
-  // -------------------------------------------------------------------------
-  // findLegacyObservationIds
-  // -------------------------------------------------------------------------
-
   async findLegacyObservationIds(currentModel: string, limit: number): Promise<string[]> {
     const safeLimit = Math.max(1, Math.trunc(limit));
     const rows = this.db
       .query<{ observation_id: string }, [string, number]>(
         `SELECT observation_id
          FROM mem_vectors
-         WHERE model != ?
-         ORDER BY updated_at ASC
+         GROUP BY observation_id
+         HAVING SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) = 0
+         ORDER BY MIN(updated_at) ASC
          LIMIT ?`,
       )
       .all(currentModel, safeLimit);
-    return rows.map((r) => r.observation_id);
+    return rows.map((row) => row.observation_id);
   }
-
-  // -------------------------------------------------------------------------
-  // coverage
-  // -------------------------------------------------------------------------
 
   async coverage(currentModel: string): Promise<VectorCoverage> {
     const row = this.db
       .query<{ total: number; current_model_count: number }, [string]>(
         `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_model_count
+           COUNT(DISTINCT observation_id) AS total,
+           COUNT(DISTINCT CASE WHEN model = ? THEN observation_id END) AS current_model_count
          FROM mem_vectors`,
       )
       .get(currentModel);
@@ -142,79 +152,25 @@ export class SqliteVectorRepository implements IVectorRepository {
     };
   }
 
-  // -------------------------------------------------------------------------
-  // delete
-  // -------------------------------------------------------------------------
-
   async delete(observationId: string): Promise<void> {
-    // mem_vectors からの削除（カスケード制約があるが明示削除）
+    const models = this.db
+      .query<{ model: string }, [string]>(
+        `SELECT model
+         FROM mem_vectors
+         WHERE observation_id = ?`,
+      )
+      .all(observationId)
+      .map((row) => row.model);
+
     this.db
       .query(`DELETE FROM mem_vectors WHERE observation_id = ?`)
       .run(observationId);
 
-    // sqlite-vec 仮想テーブル側も削除
     if (this.vecTableReady) {
-      try {
-        const mapRow = this.db
-          .query<{ rowid: number }, [string]>(
-            `SELECT rowid FROM mem_vectors_vec_map WHERE observation_id = ?`,
-          )
-          .get(observationId);
-        if (mapRow) {
-          this.db
-            .query(`DELETE FROM mem_vectors_vec WHERE rowid = ?`)
-            .run(mapRow.rowid);
-          this.db
-            .query(`DELETE FROM mem_vectors_vec_map WHERE rowid = ?`)
-            .run(mapRow.rowid);
-        }
-      } catch {
-        // vec テーブルが存在しない環境では無視
+      deleteSqliteVecRow(this.db, observationId);
+      for (const model of models) {
+        deleteSqliteVecRow(this.db, observationId, model);
       }
-    }
-  }
-
-  // -------------------------------------------------------------------------
-  // プライベートヘルパー: sqlite-vec 仮想テーブルへの upsert
-  // -------------------------------------------------------------------------
-
-  private _upsertVecRow(
-    observationId: string,
-    vectorJson: string,
-    updatedAt: string,
-  ): void {
-    try {
-      const mapRow = this.db
-        .query<{ rowid: number }, [string]>(
-          `SELECT rowid FROM mem_vectors_vec_map WHERE observation_id = ?`,
-        )
-        .get(observationId);
-
-      if (mapRow) {
-        this.db
-          .query(`INSERT OR REPLACE INTO mem_vectors_vec(rowid, embedding) VALUES (?, ?)`)
-          .run(mapRow.rowid, vectorJson);
-        this.db
-          .query(`UPDATE mem_vectors_vec_map SET updated_at = ? WHERE rowid = ?`)
-          .run(updatedAt, mapRow.rowid);
-      } else {
-        this.db
-          .query(`INSERT INTO mem_vectors_vec(embedding) VALUES (?)`)
-          .run(vectorJson);
-        const lastRow = this.db
-          .query<{ rowid: number }, []>(`SELECT last_insert_rowid() AS rowid`)
-          .get();
-        if (lastRow) {
-          this.db
-            .query(
-              `INSERT OR REPLACE INTO mem_vectors_vec_map(rowid, observation_id, updated_at)
-               VALUES (?, ?, ?)`,
-            )
-            .run(lastRow.rowid, observationId, updatedAt);
-        }
-      }
-    } catch {
-      // sqlite-vec 操作が失敗しても mem_vectors への書き込みは成功済み
     }
   }
 }

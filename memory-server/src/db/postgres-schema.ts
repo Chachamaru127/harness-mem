@@ -145,16 +145,20 @@ export const POSTGRES_INIT_SQL = `
     ON mem_links(from_observation_id, to_observation_id, relation);
 
   CREATE TABLE IF NOT EXISTS mem_vectors (
-    observation_id TEXT PRIMARY KEY REFERENCES mem_observations(id) ON DELETE CASCADE,
+    observation_id TEXT NOT NULL REFERENCES mem_observations(id) ON DELETE CASCADE,
     model TEXT NOT NULL,
     dimension INTEGER NOT NULL,
     embedding vector,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(observation_id, model)
   );
 
   CREATE INDEX IF NOT EXISTS idx_pg_vectors_model_dim_obs
     ON mem_vectors(model, dimension, observation_id);
+
+  CREATE INDEX IF NOT EXISTS idx_pg_vectors_observation
+    ON mem_vectors(observation_id, updated_at DESC);
 
   CREATE TABLE IF NOT EXISTS mem_facts (
     fact_id TEXT PRIMARY KEY,

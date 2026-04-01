@@ -37,17 +37,29 @@ export interface VectorCoverage {
 
 export interface IVectorRepository {
   /**
-   * ベクトルを upsert する（observation_id が主キー）。
+   * ベクトルを upsert する（observation_id + model が複合主キー）。
    */
   upsert(input: UpsertVectorInput): Promise<void>;
 
   /**
-   * observation_id でベクトルを取得する。存在しない場合は null。
+   * observation_id に紐づく代表ベクトルを1件返す。
+   * 複数モデルがある場合は updated_at が最新の行を返す。
    */
   findByObservationId(observationId: string): Promise<VectorRow | null>;
 
   /**
-   * 複数の observation_id でベクトルをまとめて取得する。
+   * observation_id に紐づく全ベクトルを返す。
+   */
+  findAllByObservationId(observationId: string): Promise<VectorRow[]>;
+
+  /**
+   * observation_id + model でベクトルを取得する。
+   */
+  findByObservationIdAndModel(observationId: string, model: string): Promise<VectorRow | null>;
+
+  /**
+   * 複数の observation_id に紐づく全ベクトルをまとめて取得する。
+   * 同じ observation_id に複数行が返ることがある。
    */
   findByObservationIds(observationIds: string[]): Promise<VectorRow[]>;
 

@@ -71,7 +71,7 @@ describe("buildPgVectorUpsertSql", () => {
   test("INSERT ON CONFLICT UPSERT SQL を生成する", () => {
     const sql = buildPgVectorUpsertSql();
     expect(sql).toContain("INSERT INTO mem_vectors");
-    expect(sql).toContain("ON CONFLICT");
+    expect(sql).toContain("ON CONFLICT(observation_id, model)");
     expect(sql).toContain("embedding");
   });
 
@@ -100,6 +100,12 @@ describe("buildPgVectorSearchSql", () => {
     const sql = buildPgVectorSearchSql(512);
     expect(sql).toBeDefined();
     expect(typeof sql).toBe("string");
+    expect(sql).toContain("vector(512)");
+  });
+
+  test("model 指定時は model 条件が追加される", () => {
+    const sql = buildPgVectorSearchSql(256, 10, "adaptive-japanese");
+    expect(sql).toContain("v.model = $2");
   });
 });
 

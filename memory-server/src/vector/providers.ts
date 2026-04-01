@@ -1,6 +1,8 @@
 import { type Database } from "bun:sqlite";
 
 export type VectorEngine = "js-fallback" | "sqlite-vec" | "disabled";
+const LEGACY_SQLITE_VEC_TABLE = "mem_vectors_vec";
+const LEGACY_SQLITE_VEC_MAP_TABLE = "mem_vectors_vec_map";
 
 export function tokenize(text: string): string[] {
   return text
@@ -117,46 +119,146 @@ export function resolveVectorEngine(
   try {
     const dbAny = db as unknown as { loadExtension?: (path: string) => void };
     dbAny.loadExtension?.(extensionPath);
-    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS mem_vectors_vec USING vec0(embedding float[${vectorDimension}]);`);
+    db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${LEGACY_SQLITE_VEC_TABLE} USING vec0(embedding float[${vectorDimension}]);`);
     return { engine: "sqlite-vec", vecTableReady: true };
   } catch {
     return { engine: "js-fallback", vecTableReady: false };
   }
 }
 
+function normalizeSqliteIdentifierPart(value: string): string {
+  const normalized = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized.length > 0 ? normalized.slice(0, 48) : "default";
+}
+
+export function getSqliteVecTableName(model: string): string {
+  return `mem_vectors_vec_${normalizeSqliteIdentifierPart(model)}`;
+}
+
+export function getSqliteVecMapTableName(model: string): string {
+  return `mem_vectors_vec_map_${normalizeSqliteIdentifierPart(model)}`;
+}
+
+function ensureSqliteVecTableForModel(
+  db: Database,
+  model: string,
+  vectorDimension: number,
+): { tableName: string; mapTableName: string } {
+  const safeDimension = Math.max(1, Math.trunc(vectorDimension));
+  const tableName = getSqliteVecTableName(model);
+  const mapTableName = getSqliteVecMapTableName(model);
+
+  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${tableName} USING vec0(embedding float[${safeDimension}]);`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${mapTableName} (
+      rowid INTEGER PRIMARY KEY,
+      observation_id TEXT NOT NULL UNIQUE,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_${mapTableName}_observation
+      ON ${mapTableName}(observation_id);
+  `);
+
+  return { tableName, mapTableName };
+}
+
+function deleteSqliteVecRowFromTables(
+  db: Database,
+  observationId: string,
+  tableName: string,
+  mapTableName: string,
+): boolean {
+  try {
+    const mapRow = db
+      .query(`SELECT rowid FROM ${mapTableName} WHERE observation_id = ?`)
+      .get(observationId) as { rowid?: number } | null;
+
+    if (typeof mapRow?.rowid !== "number") {
+      return false;
+    }
+
+    db.query(`DELETE FROM ${tableName} WHERE rowid = ?`).run(mapRow.rowid);
+    db.query(`DELETE FROM ${mapTableName} WHERE rowid = ?`).run(mapRow.rowid);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export interface SqliteVecUpsertOptions {
+  model?: string;
+  vectorDimension?: number;
+}
+
 export function upsertSqliteVecRow(
   db: Database,
   observationId: string,
   vectorJson: string,
-  updatedAt: string
+  updatedAt: string,
+  options: SqliteVecUpsertOptions = {}
 ): boolean {
+  const hasModelSpecificTarget =
+    typeof options.model === "string" &&
+    options.model.length > 0 &&
+    typeof options.vectorDimension === "number" &&
+    Number.isFinite(options.vectorDimension);
+
+  const target = hasModelSpecificTarget
+    ? ensureSqliteVecTableForModel(db, options.model!, options.vectorDimension!)
+    : {
+        tableName: LEGACY_SQLITE_VEC_TABLE,
+        mapTableName: LEGACY_SQLITE_VEC_MAP_TABLE,
+      };
+
   try {
     const mapRow = db
-      .query(`SELECT rowid FROM mem_vectors_vec_map WHERE observation_id = ?`)
+      .query(`SELECT rowid FROM ${target.mapTableName} WHERE observation_id = ?`)
       .get(observationId) as { rowid?: number } | null;
 
     if (typeof mapRow?.rowid === "number") {
-      db.query(`INSERT OR REPLACE INTO mem_vectors_vec(rowid, embedding) VALUES (?, ?)`)
+      db.query(`INSERT OR REPLACE INTO ${target.tableName}(rowid, embedding) VALUES (?, ?)`)
         .run(mapRow.rowid, vectorJson);
-      db.query(`UPDATE mem_vectors_vec_map SET updated_at = ? WHERE rowid = ?`)
+      db.query(`UPDATE ${target.mapTableName} SET updated_at = ? WHERE rowid = ?`)
         .run(updatedAt, mapRow.rowid);
       return true;
     }
 
-    db.query(`INSERT INTO mem_vectors_vec(embedding) VALUES (?)`).run(vectorJson);
+    db.query(`INSERT INTO ${target.tableName}(embedding) VALUES (?)`).run(vectorJson);
     const lastRow = db.query(`SELECT last_insert_rowid() AS rowid`).get() as { rowid?: number } | null;
     if (typeof lastRow?.rowid !== "number") {
       return false;
     }
 
     db.query(`
-      INSERT OR REPLACE INTO mem_vectors_vec_map(rowid, observation_id, updated_at)
+      INSERT OR REPLACE INTO ${target.mapTableName}(rowid, observation_id, updated_at)
       VALUES (?, ?, ?)
     `).run(lastRow.rowid, observationId, updatedAt);
     return true;
   } catch {
     return false;
   }
+}
+
+export function deleteSqliteVecRow(
+  db: Database,
+  observationId: string,
+  model?: string,
+): boolean {
+  if (model) {
+    const { tableName, mapTableName } = ensureSqliteVecTableForModel(db, model, 1);
+    return deleteSqliteVecRowFromTables(db, observationId, tableName, mapTableName);
+  }
+
+  return deleteSqliteVecRowFromTables(
+    db,
+    observationId,
+    LEGACY_SQLITE_VEC_TABLE,
+    LEGACY_SQLITE_VEC_MAP_TABLE,
+  );
 }
 
 // ---- NEXT-008: pgvector バックエンド統合ヘルパー ----
@@ -177,7 +279,7 @@ export function buildPgVectorUpsertSql(): string {
   return `
     INSERT INTO mem_vectors(observation_id, model, dimension, embedding, created_at, updated_at)
     VALUES ($1, $2, $3, $4::vector, NOW(), NOW())
-    ON CONFLICT(observation_id) DO UPDATE SET
+    ON CONFLICT(observation_id, model) DO UPDATE SET
       model = EXCLUDED.model,
       dimension = EXCLUDED.dimension,
       embedding = EXCLUDED.embedding,
@@ -187,19 +289,22 @@ export function buildPgVectorUpsertSql(): string {
 
 /**
  * pgvector コサイン距離でベクトル検索する SQL を返す。
- * パラメータ順: (query_embedding::vector, [limit])
- *
- * @param _dimension  ベクトル次元数（将来の型指定用、現在は参照のみ）
- * @param limit       返却件数上限（デフォルト 50）
+ * パラメータ順: (query_embedding::vector, [model])
  */
-export function buildPgVectorSearchSql(_dimension: number, limit = 50): string {
+export function buildPgVectorSearchSql(dimension: number, limit = 50, model?: string): string {
   const safeLimit = Math.trunc(limit);
+  const safeDimension = Math.max(1, Math.trunc(dimension));
+  const filters = [`v.dimension = ${safeDimension}`];
+  if (model) {
+    filters.push("v.model = $2");
+  }
   return `
     SELECT
       v.observation_id,
-      1 - (v.embedding <=> $1::vector) AS cosine_similarity
+      1 - (v.embedding <=> $1::vector(${safeDimension})) AS cosine_similarity
     FROM mem_vectors v
-    ORDER BY v.embedding <=> $1::vector
+    WHERE ${filters.join(" AND ")}
+    ORDER BY v.embedding <=> $1::vector(${safeDimension})
     LIMIT ${safeLimit}
   `.trim();
 }

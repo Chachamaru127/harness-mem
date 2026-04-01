@@ -219,4 +219,18 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(registry.provider.name).toBe("adaptive");
     expect(registry.provider.model).toContain("+");
   });
+
+  test("adaptive provider は route ごとの model label を公開する", () => {
+    const registry = createEmbeddingProviderRegistry({
+      providerName: "adaptive",
+      dimension: 64,
+    });
+
+    expect(registry.provider.routeFor?.("これは日本語です")).toBe("ruri");
+    expect(registry.provider.primaryModelFor?.("これは日本語です")).toContain(":");
+    expect(registry.provider.routeFor?.("deploy rollback plan")).toBe("openai");
+    const mixedQuery = "本番 deploy の手順と rollback plan を確認したい";
+    expect(registry.provider.routeFor?.(mixedQuery)).toBe("ensemble");
+    expect(registry.provider.secondaryModelFor?.(mixedQuery)).toContain(":");
+  });
 });

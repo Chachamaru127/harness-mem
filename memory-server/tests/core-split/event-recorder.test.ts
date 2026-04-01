@@ -21,7 +21,8 @@ import { createTestDb, createTestConfig, makeEvent } from "./test-helpers";
 // ---------------------------------------------------------------------------
 
 function makeRecorder(
-  configOverrides: Partial<Config> = {}
+  configOverrides: Partial<Config> = {},
+  depOverrides: Partial<EventRecorderDeps> = {},
 ): EventRecorder {
   const db = createTestDb();
   const config = createTestConfig(configOverrides);
@@ -42,6 +43,7 @@ function makeRecorder(
     getEmbeddingHealthStatus: () => "healthy",
     getVectorModelVersion: () => "local-hash-v3",
     refreshEmbeddingHealth: () => {},
+    ...depOverrides,
   };
   return new EventRecorder(deps);
 }
@@ -135,6 +137,37 @@ describe("event-recorder: recordEvent", () => {
     });
     expect(res.ok).toBe(false);
     expect(res.error).toBeTruthy();
+  });
+
+  test("adaptive の ensemble 保存では 1 observation に 2 ベクトル保存される", () => {
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => ({
+          primary: { model: "local:ruri-v3-30m", vector: [1, 0, 0, 0] },
+          secondary: { model: "local:gte-small", vector: [0, 1, 0, 0] },
+        }),
+      },
+    );
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "ensemble-write-001",
+        payload: { content: "本番 deploy と rollback のメモ" },
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    const rows = (recorder as unknown as { deps: EventRecorderDeps }).deps.db
+      .query<{ model: string }, [string]>(
+        `SELECT model
+         FROM mem_vectors
+         WHERE observation_id = ?
+         ORDER BY model ASC`,
+      )
+      .all("obs_ensemble-write-001");
+    expect(rows.map((row) => row.model)).toEqual(["local:gte-small", "local:ruri-v3-30m"]);
   });
 });
 

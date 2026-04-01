@@ -26,7 +26,11 @@ import {
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
-import type { VectorEngine } from "../vector/providers";
+import {
+  getSqliteVecMapTableName,
+  getSqliteVecTableName,
+  type VectorEngine,
+} from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
 import type {
@@ -102,6 +106,13 @@ export interface ObservationStoreDeps {
   setVecTableReady: (value: boolean) => void;
   /** embeddingProvider.embed() のバインド済みバージョン */
   embedContent: (content: string) => number[];
+  /** adaptive 用の検索ベクトル計画。未指定時は embedContent にフォールバック */
+  buildQueryEmbeddings?: (content: string) => {
+    route: "ruri" | "openai" | "ensemble" | null;
+    analysis: { jaRatio: number } | null;
+    primary: { model: string; vector: number[] };
+    secondary: { model: string; vector: number[] } | null;
+  };
   refreshEmbeddingHealth: () => void;
   getEmbeddingProviderName: () => string;
   embeddingProviderModel: string;
@@ -1392,66 +1403,127 @@ export class ObservationStore {
       return { scores: new Map<string, number>(), coverage: 0 };
     }
 
-    const queryVector = normalizeVectorDimension(
-      this.deps.embedContent(request.query),
-      this.deps.vectorDimension
-    );
     this.deps.refreshEmbeddingHealth();
-    const queryVectorJson = JSON.stringify(queryVector);
+    const embeddingPlan = this.deps.buildQueryEmbeddings?.(request.query);
+    const primaryVector = embeddingPlan
+      ? embeddingPlan.primary.vector
+      : normalizeVectorDimension(
+          this.deps.embedContent(request.query),
+          this.deps.vectorDimension
+        );
+    const primaryModel = embeddingPlan?.primary.model ?? this.deps.getVectorModelVersion();
+    const hasEnsemble = embeddingPlan?.route === "ensemble" && !!embeddingPlan.secondary;
+    const primaryWeight = hasEnsemble
+      ? Math.max(0.3, embeddingPlan?.analysis?.jaRatio ?? 0.5)
+      : 1;
+    const secondaryWeight = hasEnsemble ? 1 - primaryWeight : 0;
+    const searchTargets = [
+      { model: primaryModel, vector: primaryVector, weight: primaryWeight },
+      ...(embeddingPlan?.secondary
+        ? [{
+            model: embeddingPlan.secondary.model,
+            vector: embeddingPlan.secondary.vector,
+            weight: secondaryWeight || 1,
+          }]
+        : []),
+    ];
+
+    const mergeScoreSets = (
+      scoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }>
+    ): VectorSearchResult => {
+      const fused = new Map<string, number>();
+      let matchedRows = 0;
+      for (const scoreSet of scoreSets) {
+        matchedRows += scoreSet.matchedRows;
+        for (const [id, score] of scoreSet.scores.entries()) {
+          fused.set(id, (fused.get(id) ?? 0) + score * scoreSet.weight);
+        }
+      }
+      const normalized = normalizeScoreMap(fused);
+      const migrationWarning = this.getMigrationProgress(primaryModel) ?? undefined;
+      return {
+        scores: normalized,
+        coverage: matchedRows === 0 ? 0 : normalized.size / matchedRows,
+        migrationWarning,
+      };
+    };
 
     if (this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()) {
       try {
-        const params: unknown[] = [
-          queryVectorJson,
-          internalLimit * 3,
-          this.deps.getVectorModelVersion(),
-          this.deps.vectorDimension,
-        ];
-        let sql = `
-          SELECT
-            c.id AS id,
-            c.distance AS distance,
-            o.created_at AS created_at
-          FROM (
+        const sqliteScoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }> = [];
+        let sqliteReady = true;
+
+        for (const target of searchTargets) {
+          const tableName = getSqliteVecTableName(target.model);
+          const mapTableName = getSqliteVecMapTableName(target.model);
+          const tableCount = this.deps.db
+            .query<{ count: number }, [string, string]>(
+              `SELECT COUNT(*) AS count
+               FROM sqlite_master
+               WHERE type IN ('table', 'view')
+                 AND name IN (?, ?)`,
+            )
+            .get(tableName, mapTableName);
+
+          if (Number(tableCount?.count ?? 0) < 2) {
+            sqliteReady = false;
+            break;
+          }
+
+          const params: unknown[] = [
+            JSON.stringify(target.vector),
+            internalLimit * 3,
+            target.model,
+            this.deps.vectorDimension,
+          ];
+          let sql = `
             SELECT
-              m.observation_id AS id,
-              v.distance AS distance
-            FROM mem_vectors_vec v
-            JOIN mem_vectors_vec_map m ON m.rowid = v.rowid
-            WHERE v.embedding MATCH ? AND k = ?
-          ) c
-          JOIN mem_vectors mv
-            ON mv.observation_id = c.id
-            AND mv.model = ?
-            AND mv.dimension = ?
-          JOIN mem_observations o ON o.id = c.id
-          WHERE 1 = 1
-        `;
-        sql = this.applyCommonFilters(sql, params, "o", request);
-        sql += " ORDER BY c.distance ASC LIMIT ?";
-        params.push(internalLimit);
+              c.id AS id,
+              c.distance AS distance,
+              o.created_at AS created_at
+            FROM (
+              SELECT
+                m.observation_id AS id,
+                v.distance AS distance
+              FROM ${tableName} v
+              JOIN ${mapTableName} m ON m.rowid = v.rowid
+              WHERE v.embedding MATCH ? AND k = ?
+            ) c
+            JOIN mem_vectors mv
+              ON mv.observation_id = c.id
+              AND mv.model = ?
+              AND mv.dimension = ?
+            JOIN mem_observations o ON o.id = c.id
+            WHERE 1 = 1
+          `;
+          sql = this.applyCommonFilters(sql, params, "o", request);
+          sql += " ORDER BY c.distance ASC LIMIT ?";
+          params.push(internalLimit);
 
-        const rows = this.deps.db
-          .query(sql)
-          .all(...(params as any[])) as Array<{
-          id: string;
-          distance: number;
-          created_at: string;
-        }>;
+          const rows = this.deps.db
+            .query(sql)
+            .all(...(params as any[])) as Array<{
+            id: string;
+            distance: number;
+            created_at: string;
+          }>;
 
-        const raw = new Map<string, number>();
-        for (const row of rows) {
-          const distance = Number(row.distance);
-          if (Number.isNaN(distance)) continue;
-          raw.set(row.id, 1 / (1 + Math.max(0, distance)));
+          const raw = new Map<string, number>();
+          for (const row of rows) {
+            const distance = Number(row.distance);
+            if (Number.isNaN(distance)) continue;
+            raw.set(row.id, 1 / (1 + Math.max(0, distance)));
+          }
+          sqliteScoreSets.push({
+            weight: target.weight,
+            scores: normalizeScoreMap(raw),
+            matchedRows: rows.length,
+          });
         }
-        const normalized = normalizeScoreMap(raw);
-        const migrationWarning = this.getMigrationProgress(this.deps.getVectorModelVersion()) ?? undefined;
-        return {
-          scores: normalized,
-          coverage: rows.length === 0 ? 0 : normalized.size / rows.length,
-          migrationWarning,
-        };
+
+        if (sqliteReady && sqliteScoreSets.length > 0) {
+          return mergeScoreSets(sqliteScoreSets);
+        }
       } catch {
         this.deps.setVecTableReady(false);
       }
@@ -1463,7 +1535,7 @@ export class ObservationStore {
         ? Math.min(1500, Math.max(600, internalLimit * 12))
         : Math.min(2000, Math.max(800, internalLimit * 20));
 
-    const runBruteForce = (model: string): Array<{ id: string; score: number }> => {
+    const runBruteForce = (model: string, queryVector: number[]): Array<{ id: string; score: number }> => {
       const p: unknown[] = [model, this.deps.vectorDimension];
       let q = `
         SELECT
@@ -1501,24 +1573,24 @@ export class ObservationStore {
       return bfScored;
     };
 
-    const scored = runBruteForce(this.deps.getVectorModelVersion());
-    const migrationWarning: string | undefined =
-      this.getMigrationProgress(this.deps.getVectorModelVersion()) ?? undefined;
+    const bruteForceSets = searchTargets.map((target) => {
+      const scored = runBruteForce(target.model, target.vector);
+      scored.sort((lhs, rhs) => rhs.score - lhs.score);
+      const sliced = scored.slice(0, internalLimit);
 
-    scored.sort((lhs, rhs) => rhs.score - lhs.score);
-    const sliced = scored.slice(0, internalLimit);
+      const raw = new Map<string, number>();
+      for (const entry of sliced) {
+        raw.set(entry.id, entry.score);
+      }
 
-    const raw = new Map<string, number>();
-    for (const entry of sliced) {
-      raw.set(entry.id, entry.score);
-    }
+      return {
+        weight: target.weight,
+        scores: normalizeScoreMap(raw),
+        matchedRows: scored.length,
+      };
+    });
 
-    const normalized = normalizeScoreMap(raw);
-    return {
-      scores: normalized,
-      coverage: scored.length === 0 ? 0 : normalized.size / scored.length,
-      migrationWarning,
-    };
+    return mergeScoreSets(bruteForceSets);
   }
 
   private resolveFallbackVectorModel(currentModel: string): string | null {
@@ -1541,8 +1613,8 @@ export class ObservationStore {
     const totals = this.deps.db
       .query(
         `SELECT
-           COUNT(*) AS total,
-           SUM(CASE WHEN model = ? THEN 1 ELSE 0 END) AS current_count
+           COUNT(DISTINCT observation_id) AS total,
+           COUNT(DISTINCT CASE WHEN model = ? THEN observation_id END) AS current_count
          FROM mem_vectors`
       )
       .get(currentModel) as { total: number; current_count: number } | null;

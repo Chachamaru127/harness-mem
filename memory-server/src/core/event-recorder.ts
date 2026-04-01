@@ -200,6 +200,11 @@ export interface EventRecorderDeps {
   setVecTableReady: (value: boolean) => void;
   /** テキストをベクターに変換 */
   embedContent: (content: string) => number[];
+  /** primary / secondary を含む保存用ベクトル計画。未指定時は embedContent にフォールバック */
+  buildPassageEmbeddings?: (content: string) => {
+    primary: { model: string; vector: number[] };
+    secondary: { model: string; vector: number[] } | null;
+  };
   /** 埋め込みプロバイダ名 */
   getEmbeddingProviderName: () => string;
   /** 埋め込みヘルスステータス */
@@ -375,27 +380,52 @@ export class EventRecorder {
       return;
     }
 
-    const vector = normalizeVectorDimension(this.deps.embedContent(content), this.deps.config.vectorDimension);
     this.deps.refreshEmbeddingHealth();
-    const vectorJson = JSON.stringify(vector);
     const updatedAt = nowIso();
+    const embeddingPlan = this.deps.buildPassageEmbeddings?.(content);
+    const variants = embeddingPlan
+      ? [embeddingPlan.primary, embeddingPlan.secondary].filter(
+          (variant): variant is { model: string; vector: number[] } => !!variant,
+        )
+      : [
+          {
+            model: this.deps.getVectorModelVersion(),
+            vector: normalizeVectorDimension(
+              this.deps.embedContent(content),
+              this.deps.config.vectorDimension,
+            ),
+          },
+        ];
 
-    this.deps.db
-      .query(`
-        INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?)
-        ON CONFLICT(observation_id) DO UPDATE SET
-          model = excluded.model,
-          dimension = excluded.dimension,
-          vector_json = excluded.vector_json,
-          updated_at = excluded.updated_at
-      `)
-      .run(observationId, this.deps.getVectorModelVersion(), this.deps.config.vectorDimension, vectorJson, createdAt, updatedAt);
+    for (const variant of variants) {
+      const vectorJson = JSON.stringify(variant.vector);
 
-    if (this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()) {
-      const ok = upsertSqliteVecRow(this.deps.db, observationId, vectorJson, updatedAt);
-      if (!ok) {
-        this.deps.setVecTableReady(false);
+      this.deps.db
+        .query(`
+          INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(observation_id, model) DO UPDATE SET
+            dimension = excluded.dimension,
+            vector_json = excluded.vector_json,
+            updated_at = excluded.updated_at
+        `)
+        .run(
+          observationId,
+          variant.model,
+          this.deps.config.vectorDimension,
+          vectorJson,
+          createdAt,
+          updatedAt,
+        );
+
+      if (this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()) {
+        const ok = upsertSqliteVecRow(this.deps.db, observationId, vectorJson, updatedAt, {
+          model: variant.model,
+          vectorDimension: this.deps.config.vectorDimension,
+        });
+        if (!ok) {
+          this.deps.setVecTableReady(false);
+        }
       }
     }
   }

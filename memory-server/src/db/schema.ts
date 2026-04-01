@@ -126,12 +126,13 @@ export function initSchema(db: Database): void {
       ON mem_links(from_observation_id, to_observation_id, relation);
 
     CREATE TABLE IF NOT EXISTS mem_vectors (
-      observation_id TEXT PRIMARY KEY,
+      observation_id TEXT NOT NULL,
       model TEXT NOT NULL,
       dimension INTEGER NOT NULL,
       vector_json TEXT NOT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
+      PRIMARY KEY(observation_id, model),
       FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
     );
 
@@ -289,6 +290,8 @@ export function initSchema(db: Database): void {
 }
 
 export function migrateSchema(db: Database): void {
+  migrateMemVectorsPrimaryKey(db);
+
   try {
     db.exec(`ALTER TABLE mem_observations ADD COLUMN observation_type TEXT NOT NULL DEFAULT 'context'`);
   } catch {
@@ -731,4 +734,54 @@ export function initVecTable(db: Database, vectorDimension: number): boolean {
   } catch {
     return false;
   }
+}
+
+function migrateMemVectorsPrimaryKey(db: Database): void {
+  const tableExists = db
+    .query<{ name: string }, [string]>(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'table'
+         AND name = ?`,
+    )
+    .get("mem_vectors");
+
+  if (!tableExists) {
+    return;
+  }
+
+  const pkColumns = db
+    .query<{ name: string; pk: number }, []>(`PRAGMA table_info(mem_vectors)`)
+    .all()
+    .filter((row) => Number(row.pk) > 0)
+    .sort((lhs, rhs) => lhs.pk - rhs.pk)
+    .map((row) => row.name);
+
+  if (pkColumns.length === 2 && pkColumns[0] === "observation_id" && pkColumns[1] === "model") {
+    return;
+  }
+
+  db.exec(`
+    ALTER TABLE mem_vectors RENAME TO mem_vectors_legacy_s70;
+
+    CREATE TABLE mem_vectors (
+      observation_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimension INTEGER NOT NULL,
+      vector_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(observation_id, model),
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+
+    INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+    SELECT observation_id, model, dimension, vector_json, created_at, updated_at
+    FROM mem_vectors_legacy_s70;
+
+    DROP TABLE mem_vectors_legacy_s70;
+
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
+      ON mem_vectors(model, dimension, observation_id);
+  `);
 }

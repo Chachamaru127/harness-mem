@@ -190,6 +190,19 @@ describe("embedding provider integration", () => {
         privacy_tags: [],
       });
 
+      const db = new Database(config.dbPath, { readonly: true });
+      const storedModels = db
+        .query<{ model: string }, []>(
+          `SELECT model
+           FROM mem_vectors
+           WHERE observation_id = 'obs_adaptive-search-001'
+           ORDER BY model ASC`,
+        )
+        .all()
+        .map((row) => row.model);
+      db.close(false);
+      expect(storedModels.length).toBeGreaterThanOrEqual(2);
+
       const result = core.search({
         query: "本番 deploy の手順",
         project: "adaptive-search",

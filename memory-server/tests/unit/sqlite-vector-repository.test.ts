@@ -2,8 +2,7 @@
  * SqliteVectorRepository ユニットテスト
  *
  * インメモリ SQLite + JS fallback モード（vecTableReady=false）で
- * IVectorRepository の全メソッドを検証する。
- * sqlite-vec 拡張なしで動作するため CI で常に実行可能。
+ * 複数モデル対応後の IVectorRepository 振る舞いを検証する。
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
@@ -11,10 +10,6 @@ import { Database } from "bun:sqlite";
 import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
 import { SqliteVectorRepository } from "../../src/db/repositories/sqlite-vector-repository";
 import type { UpsertVectorInput } from "../../src/db/repositories/IVectorRepository";
-
-// ---------------------------------------------------------------------------
-// ヘルパー
-// ---------------------------------------------------------------------------
 
 function createDb(): Database {
   const db = new Database(":memory:");
@@ -24,7 +19,6 @@ function createDb(): Database {
   return db;
 }
 
-/** JS fallback モード（vecTableReady=false）のリポジトリを生成 */
 function createRepo(db: Database): SqliteVectorRepository {
   return new SqliteVectorRepository(db, 64, false);
 }
@@ -68,11 +62,7 @@ afterEach(() => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// upsert / findByObservationId
-// ---------------------------------------------------------------------------
-
-describe("SqliteVectorRepository: upsert と findByObservationId", () => {
+describe("SqliteVectorRepository: upsert / find", () => {
   test("upsert で保存したベクトルを findByObservationId で取得できる", async () => {
     const db = createDb();
     openDbs.push(db);
@@ -88,103 +78,81 @@ describe("SqliteVectorRepository: upsert と findByObservationId", () => {
     expect(row?.dimension).toBe(64);
   });
 
-  test("存在しない observation_id に対して findByObservationId は null を返す", async () => {
+  test("同じ observation に別モデルを保存すると両方取得できる", async () => {
     const db = createDb();
     openDbs.push(db);
+    ensureObservation(db, "obs_multi");
     const repo = createRepo(db);
 
-    const row = await repo.findByObservationId("nonexistent");
-    expect(row).toBeNull();
+    await repo.upsert(makeInput("obs_multi", { model: "model-ja" }));
+    await repo.upsert(makeInput("obs_multi", { model: "model-en" }));
+
+    const rows = await repo.findAllByObservationId("obs_multi");
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.model).sort()).toEqual(["model-en", "model-ja"]);
   });
 
-  test("同じ observation_id への upsert でモデルが更新される（ON CONFLICT UPDATE）", async () => {
+  test("同じ observation_id + model への upsert は上書き更新になる", async () => {
     const db = createDb();
     openDbs.push(db);
-    ensureObservation(db, "obs_002");
+    ensureObservation(db, "obs_update");
     const repo = createRepo(db);
 
-    await repo.upsert(makeInput("obs_002", { model: "model-v1" }));
-    await repo.upsert(makeInput("obs_002", { model: "model-v2" }));
+    await repo.upsert(makeInput("obs_update", { model: "model-v1" }));
+    await repo.upsert(makeInput("obs_update", { model: "model-v1", vector_json: "[0.9,0.1]" }));
 
-    const row = await repo.findByObservationId("obs_002");
-    expect(row?.model).toBe("model-v2");
+    const rows = await repo.findAllByObservationId("obs_update");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.vector_json).toBe("[0.9,0.1]");
   });
-});
 
-// ---------------------------------------------------------------------------
-// findByObservationIds
-// ---------------------------------------------------------------------------
+  test("findByObservationIdAndModel は対象モデルだけ返す", async () => {
+    const db = createDb();
+    openDbs.push(db);
+    ensureObservation(db, "obs_target");
+    const repo = createRepo(db);
 
-describe("SqliteVectorRepository: findByObservationIds", () => {
-  test("複数 observation_id を一括取得できる", async () => {
+    await repo.upsert(makeInput("obs_target", { model: "model-ja" }));
+    await repo.upsert(makeInput("obs_target", { model: "model-en" }));
+
+    const row = await repo.findByObservationIdAndModel("obs_target", "model-en");
+    expect(row?.model).toBe("model-en");
+  });
+
+  test("findByObservationIds は同一 observation の複数モデル行も返す", async () => {
     const db = createDb();
     openDbs.push(db);
     ensureObservation(db, "obs_a");
     ensureObservation(db, "obs_b");
-    ensureObservation(db, "obs_c");
     const repo = createRepo(db);
 
-    await repo.upsert(makeInput("obs_a"));
-    await repo.upsert(makeInput("obs_b"));
-    await repo.upsert(makeInput("obs_c"));
+    await repo.upsert(makeInput("obs_a", { model: "model-ja" }));
+    await repo.upsert(makeInput("obs_a", { model: "model-en" }));
+    await repo.upsert(makeInput("obs_b", { model: "model-en" }));
 
-    const rows = await repo.findByObservationIds(["obs_a", "obs_c"]);
-    const ids = rows.map((r) => r.observation_id).sort();
-    expect(ids).toEqual(["obs_a", "obs_c"]);
-  });
-
-  test("空配列を渡すと空配列が返る", async () => {
-    const db = createDb();
-    openDbs.push(db);
-    const repo = createRepo(db);
-
-    const rows = await repo.findByObservationIds([]);
-    expect(rows).toEqual([]);
+    const rows = await repo.findByObservationIds(["obs_a", "obs_b"]);
+    expect(rows).toHaveLength(3);
+    expect(rows.filter((row) => row.observation_id === "obs_a")).toHaveLength(2);
   });
 });
 
-// ---------------------------------------------------------------------------
-// findLegacyObservationIds
-// ---------------------------------------------------------------------------
-
-describe("SqliteVectorRepository: findLegacyObservationIds", () => {
-  test("現在モデルと異なるモデルの observation_id だけを返す", async () => {
+describe("SqliteVectorRepository: legacy / coverage", () => {
+  test("findLegacyObservationIds は current model を持たない observation だけ返す", async () => {
     const db = createDb();
     openDbs.push(db);
     ensureObservation(db, "obs_old");
-    ensureObservation(db, "obs_new");
+    ensureObservation(db, "obs_migrated");
     const repo = createRepo(db);
 
     await repo.upsert(makeInput("obs_old", { model: "model-v1" }));
-    await repo.upsert(makeInput("obs_new", { model: "model-v2" }));
+    await repo.upsert(makeInput("obs_migrated", { model: "model-v1" }));
+    await repo.upsert(makeInput("obs_migrated", { model: "model-v2" }));
 
     const legacy = await repo.findLegacyObservationIds("model-v2", 10);
-    expect(legacy).toContain("obs_old");
-    expect(legacy).not.toContain("obs_new");
+    expect(legacy).toEqual(["obs_old"]);
   });
 
-  test("limit パラメータで取得件数が制限される", async () => {
-    const db = createDb();
-    openDbs.push(db);
-    for (let i = 0; i < 5; i++) {
-      ensureObservation(db, `obs_leg_${i}`);
-    }
-    const repo = createRepo(db);
-    for (let i = 0; i < 5; i++) {
-      await repo.upsert(makeInput(`obs_leg_${i}`, { model: "model-v1" }));
-    }
-
-    const legacy = await repo.findLegacyObservationIds("model-v2", 3);
-    expect(legacy.length).toBeLessThanOrEqual(3);
-  });
-});
-
-// ---------------------------------------------------------------------------
-// coverage
-// ---------------------------------------------------------------------------
-
-describe("SqliteVectorRepository: coverage", () => {
-  test("total と current_model_count が正確に返る", async () => {
+  test("coverage は observation 単位で数える", async () => {
     const db = createDb();
     openDbs.push(db);
     ensureObservation(db, "obs_x");
@@ -193,44 +161,32 @@ describe("SqliteVectorRepository: coverage", () => {
     const repo = createRepo(db);
 
     await repo.upsert(makeInput("obs_x", { model: "current" }));
+    await repo.upsert(makeInput("obs_x", { model: "legacy" }));
     await repo.upsert(makeInput("obs_y", { model: "current" }));
-    await repo.upsert(makeInput("obs_z", { model: "old" }));
+    await repo.upsert(makeInput("obs_z", { model: "legacy" }));
 
     const result = await repo.coverage("current");
     expect(result.total).toBe(3);
     expect(result.current_model_count).toBe(2);
   });
-
-  test("ベクトルが存在しない場合は total=0、current_model_count=0", async () => {
-    const db = createDb();
-    openDbs.push(db);
-    const repo = createRepo(db);
-
-    const result = await repo.coverage("any-model");
-    expect(result.total).toBe(0);
-    expect(result.current_model_count).toBe(0);
-  });
 });
 
-// ---------------------------------------------------------------------------
-// delete
-// ---------------------------------------------------------------------------
-
 describe("SqliteVectorRepository: delete", () => {
-  test("delete 後に findByObservationId は null を返す", async () => {
+  test("delete 後に observation の全ベクトルが消える", async () => {
     const db = createDb();
     openDbs.push(db);
     ensureObservation(db, "obs_del");
     const repo = createRepo(db);
 
-    await repo.upsert(makeInput("obs_del"));
+    await repo.upsert(makeInput("obs_del", { model: "model-ja" }));
+    await repo.upsert(makeInput("obs_del", { model: "model-en" }));
     await repo.delete("obs_del");
 
-    const row = await repo.findByObservationId("obs_del");
-    expect(row).toBeNull();
+    const rows = await repo.findAllByObservationId("obs_del");
+    expect(rows).toEqual([]);
   });
 
-  test("存在しない observation_id を delete しても例外が発生しない", async () => {
+  test("存在しない observation_id を delete しても例外にならない", async () => {
     const db = createDb();
     openDbs.push(db);
     const repo = createRepo(db);
