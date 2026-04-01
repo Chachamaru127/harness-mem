@@ -4,6 +4,13 @@ import { createOpenAiEmbeddingProvider } from "./openai";
 import { createLocalOnnxEmbeddingProvider } from "./local-onnx";
 import { ModelManager } from "./model-manager";
 import { findModelById, formatSize } from "./model-catalog";
+import { createAdaptiveEmbeddingProvider } from "./adaptive-provider";
+import {
+  DEFAULT_ADAPTIVE_CODE_THRESHOLD,
+  DEFAULT_ADAPTIVE_JA_THRESHOLD,
+  detectLanguage,
+  selectModelByLanguage,
+} from "./query-analyzer";
 import {
   type EmbeddingProvider,
   type EmbeddingProviderName,
@@ -23,6 +30,7 @@ function normalizeProviderName(name: string | undefined): NormalizedProviderName
     normalized === "openai" ||
     normalized === "ollama" ||
     normalized === "local" ||
+    normalized === "adaptive" ||
     normalized === "auto"
   ) {
     return normalized;
@@ -30,50 +38,37 @@ function normalizeProviderName(name: string | undefined): NormalizedProviderName
   return null;
 }
 
-/**
- * COMP-005: テキストの言語を検出する。
- * - 日本語文字（ひらがな・カタカナ）の比率が閾値以上なら "ja"
- * - ハングル（U+AC00-U+D7AF）が含まれれば "multilingual"
- * - それ以外は "en"
- *
- * 注意: CJK漢字は日本語・中国語・韓国語で共通するため、ひらがな/カタカナで日本語を識別する。
- */
-export function detectLanguage(text: string): "ja" | "en" | "multilingual" {
-  if (!text || text.length === 0) {
-    return "en";
+function createLocalOrFallbackProvider(
+  manager: ModelManager,
+  warnings: string[],
+  fallback: EmbeddingProvider,
+  modelId: string
+): EmbeddingProvider {
+  const catalogEntry = findModelById(modelId);
+  if (!catalogEntry) {
+    warnings.push(
+      `Unknown local model id "${modelId}". Falling back to "fallback". Run 'harness-mem model list' to see available models.`
+    );
+    return fallback;
   }
-  // ひらがな (U+3040-U+309F) またはカタカナ (U+30A0-U+30FF) で日本語を識別
-  const kanaPattern = /[\u3040-\u309F\u30A0-\u30FF]/g;
-  const kanaMatches = text.match(kanaPattern);
-  const kanaCount = kanaMatches ? kanaMatches.length : 0;
-  if (kanaCount / text.length >= 0.05) {
-    return "ja";
-  }
-  // ハングル (U+AC00-U+D7AF, U+1100-U+11FF) → multilingual
-  const hangulPattern = /[\uAC00-\uD7AF\u1100-\u11FF]/g;
-  if (hangulPattern.test(text)) {
-    return "multilingual";
-  }
-  // CJK漢字のみ（中国語等）も multilingual へ
-  const cjkPattern = /[\u4E00-\u9FFF\u3400-\u4DBF]/g;
-  const cjkMatches = text.match(cjkPattern);
-  const cjkCount = cjkMatches ? cjkMatches.length : 0;
-  if (cjkCount / text.length >= 0.1) {
-    return "multilingual";
-  }
-  return "en";
-}
 
-/**
- * COMP-005: 言語に応じてデフォルトモデルIDを選択する。
- * - 日本語: ruri-v3-30m
- * - 多言語（韓国語/中国語等）: multilingual-e5
- * - 英語: gte-small
- */
-export function selectModelByLanguage(language: "ja" | "en" | "multilingual"): string {
-  if (language === "ja") return "ruri-v3-30m";
-  if (language === "multilingual") return "multilingual-e5";
-  return "gte-small";
+  const modelPath = manager.getModelPath(modelId);
+  if (!modelPath) {
+    warnings.push(
+      `Local model "${modelId}" (${formatSize(catalogEntry.sizeBytes)}) is not installed. ` +
+      `Run 'harness-mem model pull ${modelId}' to download it. Falling back to "fallback".`
+    );
+    return fallback;
+  }
+
+  return createLocalOnnxEmbeddingProvider({
+    modelId,
+    modelPath,
+    dimension: catalogEntry.dimension,
+    queryPrefix: catalogEntry.queryPrefix,
+    passagePrefix: catalogEntry.passagePrefix,
+    fallback,
+  });
 }
 
 export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOptions): EmbeddingRegistryResult {
@@ -99,7 +94,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
     ? selectModelByLanguage(options.defaultLanguage ?? "ja")
     : rawModelId;
   const catalogEntry = findModelById(modelId);
-  const manager = new ModelManager(options.localModelsDir);
+  const manager = new ModelManager(options.localModelsDir || process.env.HARNESS_MEM_LOCAL_MODELS_DIR);
   const modelPath = catalogEntry ? manager.getModelPath(modelId) : null;
 
   if (providerName === "openai") {
@@ -115,6 +110,31 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       baseUrl: options.ollamaBaseUrl,
       model: options.ollamaEmbedModel,
       fallback,
+    });
+  } else if (providerName === "adaptive") {
+    const japaneseProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "ruri-v3-30m");
+    const generalProvider =
+      options.proApiKey && options.openaiApiKey
+        ? createOpenAiEmbeddingProvider({
+            dimension: options.dimension,
+            apiKey: options.openaiApiKey,
+            model: "text-embedding-3-large",
+            fallback,
+          })
+        : createLocalOrFallbackProvider(manager, warnings, fallback, "gte-small");
+
+    if (options.proApiKey && !options.openaiApiKey) {
+      warnings.push(
+        "HARNESS_MEM_PRO_API_KEY is set but HARNESS_MEM_OPENAI_API_KEY is missing. Adaptive provider is using the local secondary model until the Pro embedding path is configured."
+      );
+    }
+
+    provider = createAdaptiveEmbeddingProvider({
+      japaneseProvider,
+      generalProvider,
+      dimension: options.dimension,
+      jaThreshold: options.adaptiveJaThreshold ?? DEFAULT_ADAPTIVE_JA_THRESHOLD,
+      codeThreshold: options.adaptiveCodeThreshold ?? DEFAULT_ADAPTIVE_CODE_THRESHOLD,
     });
   } else if (providerName === "auto") {
     if (!catalogEntry) {
@@ -162,3 +182,5 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
     requestedProvider,
   };
 }
+
+export { detectLanguage, selectModelByLanguage };

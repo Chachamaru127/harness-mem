@@ -2,7 +2,7 @@
 
 harness-mem で使用する全環境変数の一覧です。
 
-最終更新: 2026-03-28
+最終更新: 2026-04-01
 
 ---
 
@@ -82,11 +82,16 @@ SQLite データベースの設定です。
 
 | 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
 |--------|-------------|------|------|----------|
-| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`openai` / `ollama` / `local` / `fallback` から選択 | `core/core-utils.ts` |
-| `HARNESS_MEM_EMBEDDING_MODEL` | `ruri-v3-30m` | No | ローカル埋め込みモデルのID。`auto` を指定すると言語に応じて自動選択 | `embedding/registry.ts` |
+| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`adaptive` / `openai` / `ollama` / `local` / `fallback` から選択。`adaptive` は日本語比率とコード比率を見て Route A/B/C を切り替える | `core/core-utils.ts`, `embedding/registry.ts` |
+| `HARNESS_MEM_EMBEDDING_MODEL` | `multilingual-e5` | No | ローカル埋め込みモデルのID。`auto` を指定すると言語に応じて自動選択。`adaptive` では primary/secondary の固定組み合わせを優先するため、この値は fallback/local 系の既定に主に影響する | `embedding/registry.ts` |
+| `HARNESS_MEM_LOCAL_MODELS_DIR` | `~/.harness-mem/models` | No | ローカル ONNX モデルの格納ディレクトリ。`local` と `adaptive` がローカルモデルを探す場所を上書きしたいときに使う | `core/core-utils.ts`, `embedding/model-manager.ts` |
 | `HARNESS_MEM_OPENAI_EMBED_MODEL` | `text-embedding-3-small` | No | OpenAI 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=openai` の場合に使用 | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | No | Ollama サーバーの URL（埋め込み用） | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | No | Ollama 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=ollama` の場合に使用 | `core/core-utils.ts` |
+| `HARNESS_MEM_PRO_API_KEY` | `""` (空文字) | No | Adaptive Retrieval Engine の Pro 経路を有効にするための API キー。設定時は adaptive provider が Pro 向け secondary 経路を優先し、未設定時はローカル secondary モデルにフォールバックする | `core/core-utils.ts`, `embedding/registry.ts` |
+| `HARNESS_MEM_PRO_API_URL` | `""` (空文字) | No | Pro 埋め込み API のベース URL。Phase 1 では設定値を config に保持し、Adaptive Retrieval Engine の後続フェーズで remote provider に引き渡す | `core/core-utils.ts` |
+| `HARNESS_MEM_ADAPTIVE_JA_THRESHOLD` | `0.85` | No | `adaptive` provider で Route A（日本語優先）に切り替える閾値。0〜1 の範囲で指定する | `core/core-utils.ts`, `embedding/query-analyzer.ts` |
+| `HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD` | `0.50` | No | `adaptive` provider で Route B（英語/コード優先）に切り替えるコード比率閾値。0〜1 の範囲で指定する | `core/core-utils.ts`, `embedding/query-analyzer.ts` |
 | `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | `4000` | No | resume_pack 全体の最大トークン数。continuity briefing と recent-project teaser の両方に適用される。0 を指定すると resume_pack を無効化 | `core/core-utils.ts`, `core/observation-store.ts` |
 | `HARNESS_MEM_WHISPER_MAX_TOKENS` | `400` | No | Contextual Recall（番頭モード）が 1 プロンプトで追加できる最大トークン数。Claude/Codex の UserPromptSubmit hook で使う。小さくすると whisper が静かになり、大きくすると 1 回の注入量が増える | `scripts/userprompt-inject-policy.sh`, `scripts/hook-handlers/codex-user-prompt.sh`, `scripts/hook-handlers/lib/hook-common.sh` |
 
@@ -260,8 +265,11 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_CURSOR_EVENTS_PATH` | Ingestion |
 | `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` | Ingestion |
 | `HARNESS_MEM_DB_PATH` | Database |
+| `HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD` | Embedding |
+| `HARNESS_MEM_ADAPTIVE_JA_THRESHOLD` | Embedding |
 | `HARNESS_MEM_EMBEDDING_MODEL` | Embedding |
 | `HARNESS_MEM_EMBEDDING_PROVIDER` | Embedding |
+| `HARNESS_MEM_LOCAL_MODELS_DIR` | Embedding |
 | `HARNESS_MEM_ENABLE_ANTIGRAVITY_INGEST` | Ingestion |
 | `HARNESS_MEM_ENABLE_CAPTURE` | Core |
 | `HARNESS_MEM_ENABLE_CODEX_INGEST` | Ingestion |
@@ -294,6 +302,8 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_PII_FILTER` | Security |
 | `HARNESS_MEM_PII_RULES_PATH` | Security |
 | `HARNESS_MEM_PORT` | Core |
+| `HARNESS_MEM_PRO_API_KEY` | Embedding |
+| `HARNESS_MEM_PRO_API_URL` | Embedding |
 | `HARNESS_MEM_RATE_LIMIT` | Security |
 | `HARNESS_MEM_RECENCY_HALF_LIFE_DAYS` | Performance |
 | `HARNESS_MEM_REMOTE_TOKEN` | Security |

@@ -1001,10 +1001,15 @@ export function getConfig(): Config {
   const embeddingProviderRaw = (process.env.HARNESS_MEM_EMBEDDING_PROVIDER || "fallback").trim().toLowerCase();
   const embeddingProvider = embeddingProviderRaw || "fallback";
   const embeddingModel = (process.env.HARNESS_MEM_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5";
+  const localModelsDir = (process.env.HARNESS_MEM_LOCAL_MODELS_DIR || "").trim();
   const openaiApiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
   const openaiEmbedModel = (process.env.HARNESS_MEM_OPENAI_EMBED_MODEL || "text-embedding-3-small").trim();
   const ollamaBaseUrl = (process.env.HARNESS_MEM_OLLAMA_BASE_URL || "http://127.0.0.1:11434").trim();
   const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
+  const proApiKey = (process.env.HARNESS_MEM_PRO_API_KEY || "").trim();
+  const proApiUrl = (process.env.HARNESS_MEM_PRO_API_URL || "").trim();
+  const adaptiveJaThreshold = Number(process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || 0.85);
+  const adaptiveCodeThreshold = Number(process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || 0.5);
   const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
 
   return {
@@ -1014,10 +1019,19 @@ export function getConfig(): Config {
     vectorDimension: clampLimit(Number(process.env.HARNESS_MEM_VECTOR_DIM || DEFAULT_VECTOR_DIM), DEFAULT_VECTOR_DIM, 32, 4096),
     embeddingProvider,
     embeddingModel,
+    localModelsDir: localModelsDir || undefined,
     openaiApiKey,
     openaiEmbedModel,
     ollamaBaseUrl,
     ollamaEmbedModel,
+    proApiKey,
+    proApiUrl,
+    adaptiveJaThreshold: Number.isFinite(adaptiveJaThreshold)
+      ? Math.max(0, Math.min(1, adaptiveJaThreshold))
+      : 0.85,
+    adaptiveCodeThreshold: Number.isFinite(adaptiveCodeThreshold)
+      ? Math.max(0, Math.min(1, adaptiveCodeThreshold))
+      : 0.5,
     captureEnabled: envFlag("HARNESS_MEM_ENABLE_CAPTURE", true),
     retrievalEnabled: envFlag("HARNESS_MEM_ENABLE_RETRIEVAL", true),
     injectionEnabled: envFlag("HARNESS_MEM_ENABLE_INJECTION", true),

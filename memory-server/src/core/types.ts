@@ -243,6 +243,11 @@ export interface Config {
   openaiEmbedModel?: string;
   ollamaBaseUrl?: string;
   ollamaEmbedModel?: string;
+  localModelsDir?: string;
+  proApiKey?: string;
+  proApiUrl?: string;
+  adaptiveJaThreshold?: number;
+  adaptiveCodeThreshold?: number;
   captureEnabled: boolean;
   retrievalEnabled: boolean;
   injectionEnabled: boolean;

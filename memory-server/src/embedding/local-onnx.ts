@@ -385,6 +385,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     name: "local",
     model: modelId,
     dimension,
+    usesLocalModels: true,
 
     embed(text: string): number[] {
       try {

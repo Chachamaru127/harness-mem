@@ -23,6 +23,17 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     passagePrefix: "passage: ",
   },
   {
+    id: "ruri-v3-310m",
+    displayName: "Ruri V3 310M (Japanese)",
+    onnxRepo: "cl-nagoya/ruri-v3-310m",
+    tokenizerRepo: "cl-nagoya/ruri-v3-310m",
+    dimension: 1024,
+    sizeBytes: 1_200_000_000,
+    language: "ja",
+    queryPrefix: "query: ",
+    passagePrefix: "passage: ",
+  },
+  {
     id: "gte-small",
     displayName: "GTE Small (English)",
     onnxRepo: "Xenova/gte-small",

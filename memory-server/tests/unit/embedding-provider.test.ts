@@ -78,6 +78,13 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(e5Entry?.dimension).toBe(384);
   });
 
+  test("model catalog に ruri-v3-310m が登録されている", () => {
+    const ruriEntry = MODEL_CATALOG.find((m) => m.id === "ruri-v3-310m");
+    expect(ruriEntry).toBeDefined();
+    expect(ruriEntry?.language).toBe("ja");
+    expect(ruriEntry?.dimension).toBe(1024);
+  });
+
   test("detectLanguage: 日本語テキストを ja と判定する", () => {
     expect(detectLanguage("今日はとても良い天気です")).toBe("ja");
     expect(detectLanguage("データベースはPostgreSQLを使用しています")).toBe("ja");
@@ -176,5 +183,40 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     } finally {
       rmSync(modelsDir, { recursive: true, force: true });
     }
+  });
+
+  test("registry: adaptive provider は free 構成で adaptive を返す", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-adaptive-provider-"));
+    const installModel = (modelId: string) => {
+      const modelDir = join(modelsDir, modelId);
+      mkdirSync(join(modelDir, "onnx"), { recursive: true });
+      writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+      writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+    };
+    installModel("ruri-v3-30m");
+    installModel("gte-small");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "adaptive",
+        dimension: 64,
+        localModelsDir: modelsDir,
+      });
+      expect(registry.provider.name).toBe("adaptive");
+      expect(registry.provider.usesLocalModels).toBe(true);
+      expect(registry.warnings).toEqual([]);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: provider=adaptive は adaptive provider を返す", () => {
+    const registry = createEmbeddingProviderRegistry({
+      providerName: "adaptive",
+      dimension: 64,
+    });
+
+    expect(registry.provider.name).toBe("adaptive");
+    expect(registry.provider.model).toContain("+");
   });
 });

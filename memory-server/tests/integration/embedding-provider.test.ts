@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { Database } from "bun:sqlite";
@@ -11,6 +11,8 @@ function makeConfig(dir: string): Config {
     bindHost: "127.0.0.1",
     bindPort: 0,
     vectorDimension: 64,
+    adaptiveJaThreshold: 0.85,
+    adaptiveCodeThreshold: 0.5,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -59,7 +61,9 @@ describe("embedding provider integration", () => {
     delete process.env.HARNESS_MEM_OPENAI_API_KEY;
 
     process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "fallback";
-    const core1 = new HarnessMemCore(makeConfig(dir));
+    const config1 = makeConfig(dir);
+    config1.embeddingProvider = "fallback";
+    const core1 = new HarnessMemCore(config1);
     try {
       core1.recordEvent({
         event_id: "provider-migration",
@@ -82,7 +86,9 @@ describe("embedding provider integration", () => {
     beforeDb.close(false);
 
     process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "openai";
-    const core2 = new HarnessMemCore(makeConfig(dir));
+    const config2 = makeConfig(dir);
+    config2.embeddingProvider = "openai";
+    const core2 = new HarnessMemCore(config2);
     try {
       const search = core2.search({
         query: "provider migration smoke",
@@ -110,5 +116,102 @@ describe("embedding provider integration", () => {
       process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
     }
     rmSync(dir, { recursive: true, force: true });
+  });
+
+  test("adaptive provider exposes readiness and health metadata with local models", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-health-"));
+    const modelsDir = join(dir, "models");
+    const installModel = (modelId: string) => {
+      const modelDir = join(modelsDir, modelId);
+      mkdirSync(join(modelDir, "onnx"), { recursive: true });
+      writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+      writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+    };
+    installModel("ruri-v3-30m");
+    installModel("gte-small");
+
+    const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    const previousModelsDir = process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+    process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "adaptive";
+    process.env.HARNESS_MEM_LOCAL_MODELS_DIR = modelsDir;
+
+    const config = makeConfig(dir);
+    config.embeddingProvider = "adaptive";
+    config.localModelsDir = modelsDir;
+
+    const core = new HarnessMemCore(config);
+    try {
+      const readinessItem = core.readiness().items[0] as Record<string, unknown>;
+      const healthItem = core.health().items[0] as Record<string, unknown>;
+
+      expect(readinessItem.embedding_ready).toBeDefined();
+      expect(typeof readinessItem.embedding_readiness_required).toBe("boolean");
+      expect(typeof healthItem.embedding_provider_status).toBe("string");
+      expect(healthItem.embedding_provider).toBe("adaptive");
+    } finally {
+      core.shutdown("test");
+      if (previousProvider === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
+      }
+      if (previousModelsDir === undefined) {
+        delete process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+      } else {
+        process.env.HARNESS_MEM_LOCAL_MODELS_DIR = previousModelsDir;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("adaptive provider records and searches mixed-language observations", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-search-"));
+    const modelsDir = join(dir, "empty-models");
+    mkdirSync(modelsDir, { recursive: true });
+    const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    const previousModelsDir = process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+
+    process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "adaptive";
+    process.env.HARNESS_MEM_LOCAL_MODELS_DIR = modelsDir;
+
+    const config = makeConfig(dir);
+    config.embeddingProvider = "adaptive";
+    config.localModelsDir = modelsDir;
+    const core = new HarnessMemCore(config);
+    try {
+      core.recordEvent({
+        event_id: "adaptive-search-001",
+        platform: "codex",
+        project: "adaptive-search",
+        session_id: "adaptive-search-session",
+        event_type: "user_prompt",
+        payload: { content: "本番 deploy の手順と rollback plan を確認したい" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const result = core.search({
+        query: "本番 deploy の手順",
+        project: "adaptive-search",
+        limit: 5,
+        include_private: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.items.length).toBeGreaterThan(0);
+    } finally {
+      core.shutdown("test");
+      if (previousProvider === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
+      }
+      if (previousModelsDir === undefined) {
+        delete process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+      } else {
+        process.env.HARNESS_MEM_LOCAL_MODELS_DIR = previousModelsDir;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

@@ -938,11 +938,16 @@ export class HarnessMemCore {
     const registry = createEmbeddingProviderRegistry({
       providerName: this.config.embeddingProvider,
       localModelId: this.config.embeddingModel,
+      localModelsDir: this.config.localModelsDir,
       dimension: this.config.vectorDimension,
       openaiApiKey: this.config.openaiApiKey,
       openaiEmbedModel: this.config.openaiEmbedModel,
       ollamaBaseUrl: this.config.ollamaBaseUrl,
       ollamaEmbedModel: this.config.ollamaEmbedModel,
+      proApiKey: this.config.proApiKey,
+      proApiUrl: this.config.proApiUrl,
+      adaptiveJaThreshold: this.config.adaptiveJaThreshold,
+      adaptiveCodeThreshold: this.config.adaptiveCodeThreshold,
     });
     this.embeddingProvider = registry.provider;
     this.embeddingWarnings = [...registry.warnings];
@@ -961,10 +966,18 @@ export class HarnessMemCore {
     }
   }
 
+  private embeddingProviderUsesLocalModels(): boolean {
+    return this.embeddingProvider.name === "local" || this.embeddingProvider.usesLocalModels === true;
+  }
+
   private getEmbeddingReadiness(): EmbeddingReadiness {
     this.refreshEmbeddingHealth();
 
-    if (this.embeddingProvider.name !== "local") {
+    const requiresReadiness =
+      this.embeddingProviderUsesLocalModels() ||
+      !!this.embeddingProvider.ready;
+
+    if (!requiresReadiness) {
       return {
         required: false,
         ready: true,
@@ -1058,7 +1071,7 @@ export class HarnessMemCore {
   }
 
   private async prepareEmbeddingForSync(text: string, mode: EmbeddingPrimeMode): Promise<void> {
-    if (this.embeddingProvider.name !== "local") {
+    if (!this.embeddingProviderUsesLocalModels()) {
       return;
     }
 
