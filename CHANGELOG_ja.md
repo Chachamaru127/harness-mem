@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-04-01
+
 ### ユーザー向け要約
 
 - GitHub Actions の `NPM_TOKEN` を差し替えた直後でも、これまでは実際に release tag を打つまで「その token が本当に npm publish できるか」を確かめにくかった。

@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.8.11] - 2026-04-01
+
 ### Maintainers can now preflight npm publish credentials before tagging
 
 **Before**: when the GitHub Actions `NPM_TOKEN` was stale or belonged to the wrong npm identity, maintainers often discovered that only after the full release tag workflow had already run every quality gate and reached `npm publish`. At that point the code and package could already be correct, but the release still stopped at the very last step.
