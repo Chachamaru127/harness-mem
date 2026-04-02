@@ -1,4 +1,4 @@
-export type EmbeddingProviderName = "fallback" | "openai" | "ollama" | "local" | "adaptive";
+export type EmbeddingProviderName = "fallback" | "openai" | "ollama" | "local" | "adaptive" | "pro-api";
 
 export type AdaptiveRoute = "ruri" | "openai" | "ensemble";
 

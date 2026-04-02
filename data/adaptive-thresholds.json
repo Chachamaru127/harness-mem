@@ -1,0 +1,7 @@
+{
+  "jaThreshold": 0.85,
+  "codeThreshold": 0.5,
+  "source": "section-70-phase-3-initial",
+  "updatedAt": "2026-04-02T00:00:00.000Z",
+  "notes": "Default adaptive routing thresholds. Override at runtime with HARNESS_MEM_ADAPTIVE_JA_THRESHOLD and HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD."
+}

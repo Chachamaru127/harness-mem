@@ -6,6 +6,8 @@
   "scripts": {
     "start": "bun run src/index.ts",
     "dev": "bun --watch run src/index.ts",
+    "benchmark": "bun run src/benchmark/run-ci.ts",
+    "benchmark:tune-adaptive": "bun run src/benchmark/adaptive-tuning.ts",
     "typecheck": "bunx tsc --noEmit",
     "test": "bash ../scripts/run-bun-test-safe.sh tests/*.test.ts && bash ../scripts/run-bun-test-batches.sh tests/unit tests/core-split tests/integration tests/benchmark tests/performance",
     "test:unit": "bash ../scripts/run-bun-test-safe.sh tests/unit",

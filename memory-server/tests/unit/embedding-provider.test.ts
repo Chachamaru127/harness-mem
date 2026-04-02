@@ -3,8 +3,11 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createEmbeddingProviderRegistry, detectLanguage, selectModelByLanguage } from "../../src/embedding/registry";
+import { createAdaptiveEmbeddingProvider } from "../../src/embedding/adaptive-provider";
 import { createFallbackEmbeddingProvider } from "../../src/embedding/fallback";
 import { MODEL_CATALOG } from "../../src/embedding/model-catalog";
+import { createProApiEmbeddingProvider } from "../../src/embedding/pro-api-provider";
+import type { EmbeddingHealth, EmbeddingProvider } from "../../src/embedding/types";
 
 function resetEnv(name: string, value: string | undefined): void {
   if (value === undefined) {
@@ -12,6 +15,48 @@ function resetEnv(name: string, value: string | undefined): void {
   } else {
     process.env[name] = value;
   }
+}
+
+function createStubProvider(
+  name: EmbeddingProvider["name"],
+  model: string,
+  baseVector: number[],
+  healthRef: { current: EmbeddingHealth },
+  onPrime?: () => void,
+  throwWhenDegraded = false
+): EmbeddingProvider {
+  return {
+    name,
+    model,
+    dimension: baseVector.length,
+    embed: () => {
+      if (throwWhenDegraded && healthRef.current.status === "degraded") {
+        throw new Error(healthRef.current.details);
+      }
+      return [...baseVector];
+    },
+    embedQuery: () => {
+      if (throwWhenDegraded && healthRef.current.status === "degraded") {
+        throw new Error(healthRef.current.details);
+      }
+      return [...baseVector];
+    },
+    prime: async () => {
+      onPrime?.();
+      if (throwWhenDegraded && healthRef.current.status === "degraded") {
+        throw new Error(healthRef.current.details);
+      }
+      return [...baseVector];
+    },
+    primeQuery: async () => {
+      onPrime?.();
+      if (throwWhenDegraded && healthRef.current.status === "degraded") {
+        throw new Error(healthRef.current.details);
+      }
+      return [...baseVector];
+    },
+    health: () => ({ ...healthRef.current }),
+  };
 }
 
 describe("embedding providers", () => {
@@ -232,5 +277,141 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     const mixedQuery = "本番 deploy の手順と rollback plan を確認したい";
     expect(registry.provider.routeFor?.(mixedQuery)).toBe("ensemble");
     expect(registry.provider.secondaryModelFor?.(mixedQuery)).toContain(":");
+  });
+
+  test("pro api provider は prime 後に cache を使い、再リクエストしない", async () => {
+    let calls = 0;
+
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      fetchImpl: async (url: string | URL | Request, init?: RequestInit) => {
+        calls += 1;
+        expect(String(url)).toBe("https://example.test/embeddings");
+        expect(init?.method).toBe("POST");
+        return new Response(JSON.stringify({ embedding: [0.1, 0.2, 0.3, 0.4] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    const primed = await provider.primeQuery?.("deploy rollback");
+    const embedded = provider.embedQuery?.("deploy rollback");
+    const stats = provider.cacheStats?.();
+
+    expect(calls).toBe(1);
+    expect(embedded).toEqual(primed);
+    expect(stats?.entries).toBe(1);
+    expect(stats?.hits).toBeGreaterThanOrEqual(1);
+    expect(provider.health().status).toBe("healthy");
+  });
+
+  test("pro api provider は障害時に degraded を返す", async () => {
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      fetchImpl: async () => new Response("boom", { status: 503 }),
+    });
+
+    await expect(provider.prime?.("incident review")).rejects.toThrow("503");
+    expect(provider.health().status).toBe("degraded");
+    expect(provider.health().details).toContain("503");
+  });
+
+  test("registry: adaptive provider は Pro API が設定されると general route に pro-api を使う", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-adaptive-pro-provider-"));
+    const installModel = (modelId: string) => {
+      const modelDir = join(modelsDir, modelId);
+      mkdirSync(join(modelDir, "onnx"), { recursive: true });
+      writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+      writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+    };
+    installModel("ruri-v3-30m");
+    installModel("gte-small");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "adaptive",
+        dimension: 64,
+        localModelsDir: modelsDir,
+        proApiKey: "pro-key",
+        proApiUrl: "https://example.test/embeddings",
+      });
+      expect(registry.warnings).toEqual([]);
+      expect(registry.provider.primaryModelFor?.("deploy rollback plan")).toContain("adaptive:general:pro-api:");
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("adaptive provider は general route 障害時に fallback provider へ切り替える", () => {
+    const japaneseHealth = { current: { status: "healthy", details: "ruri ok" } satisfies EmbeddingHealth };
+    const proHealth = { current: { status: "degraded", details: "remote down" } satisfies EmbeddingHealth };
+    const freeHealth = { current: { status: "healthy", details: "gte ok" } satisfies EmbeddingHealth };
+    const fallbackVector = [0.4, 0.6, 0, 0, 0, 0, 0, 0];
+
+    const provider = createAdaptiveEmbeddingProvider({
+      japaneseProvider: createStubProvider("local", "ruri-v3-30m", [0.9, 0.1, 0, 0, 0, 0, 0, 0], japaneseHealth),
+      generalProvider: createStubProvider(
+        "pro-api",
+        "text-embedding-3-large",
+        [0.1, 0.9, 0, 0, 0, 0, 0, 0],
+        proHealth,
+        undefined,
+        true
+      ),
+      generalFallbackProvider: createStubProvider("local", "gte-small", fallbackVector, freeHealth),
+      dimension: 8,
+    });
+
+    expect(provider.embedQuery("deploy rollback plan")).toEqual(fallbackVector);
+    expect(provider.primaryModelFor("deploy rollback plan")).toContain("adaptive:general:local:gte-small");
+    expect(provider.health().status).toBe("degraded");
+  });
+
+  test("adaptive provider は backoff 後に general route の recovery probe を行う", async () => {
+    const originalNow = Date.now;
+    let now = 1_000;
+    Date.now = () => now;
+    try {
+      const japaneseHealth = { current: { status: "healthy", details: "ruri ok" } satisfies EmbeddingHealth };
+      const proHealth = { current: { status: "degraded", details: "remote down" } satisfies EmbeddingHealth };
+      const freeHealth = { current: { status: "healthy", details: "gte ok" } satisfies EmbeddingHealth };
+      const proVector = [0.1, 0.9, 0, 0, 0, 0, 0, 0];
+      let proPrimeCalls = 0;
+
+      const provider = createAdaptiveEmbeddingProvider({
+        japaneseProvider: createStubProvider("local", "ruri-v3-30m", [0.9, 0.1, 0, 0, 0, 0, 0, 0], japaneseHealth),
+        generalProvider: createStubProvider(
+          "pro-api",
+          "text-embedding-3-large",
+          proVector,
+          proHealth,
+          () => {
+            proPrimeCalls += 1;
+          },
+          true
+        ),
+        generalFallbackProvider: createStubProvider("local", "gte-small", [0.4, 0.6, 0, 0, 0, 0, 0, 0], freeHealth),
+        dimension: 8,
+      });
+
+      await provider.primeQuery?.("deploy rollback plan");
+      expect(proPrimeCalls).toBe(0);
+
+      now += 10_001;
+      proHealth.current = { status: "healthy", details: "remote recovered" };
+      const recovered = await provider.primeQuery?.("deploy rollback plan");
+
+      expect(proPrimeCalls).toBe(1);
+      expect(recovered).toEqual(proVector);
+      expect(provider.primaryModelFor("deploy rollback plan")).toContain("adaptive:general:pro-api:text-embedding-3-large");
+      expect(provider.health().status).toBe("healthy");
+    } finally {
+      Date.now = originalNow;
+    }
   });
 });

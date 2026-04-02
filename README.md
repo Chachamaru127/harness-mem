@@ -60,6 +60,54 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 - Perfect chain selection in every long-lived project with multiple mixed threads.
 - A full project digest on every fresh session. The recent-project portion is intentionally capped to a few low-noise bullets.
 
+## Adaptive Retrieval Engine
+
+Harness-mem also includes an `adaptive` embedding mode for teams that mix Japanese, English, and code in the same project.
+
+What it does:
+
+- Route A: Japanese-heavy queries go to the Japanese model.
+- Route B: English-heavy or code-heavy queries go to the general model.
+- Route C: Mixed queries search both routes and fuse the scores.
+- Query expansion adds a few controlled synonyms, so `本番反映` can still find notes written as `deploy`.
+
+Why this exists:
+
+- A single embedding model is usually a compromise.
+- Japanese-focused models are often better for Japanese nuance.
+- General-purpose models are often better for English API names, logs, and code-like text.
+- Adaptive routing lets harness-mem choose the better path per query instead of forcing one model to do everything.
+
+Free path vs Pro path:
+
+- Free path: local Japanese route + local or fallback general route. No external API required.
+- Pro path: set `HARNESS_MEM_PRO_API_KEY` and `HARNESS_MEM_PRO_API_URL` to enable the remote general route. If that route becomes unhealthy, harness-mem automatically falls back to the free path and retries with exponential backoff.
+
+Quick example:
+
+```bash
+export HARNESS_MEM_EMBEDDING_PROVIDER=adaptive
+export HARNESS_MEM_ADAPTIVE_JA_THRESHOLD=0.85
+export HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD=0.50
+
+# optional: enable Pro path
+export HARNESS_MEM_PRO_API_KEY=your-token
+export HARNESS_MEM_PRO_API_URL=https://example.com/embeddings
+```
+
+Useful commands:
+
+```bash
+npm run benchmark
+npm run benchmark:tune-adaptive
+```
+
+More detail:
+
+- [`docs/adaptive-retrieval.md`](docs/adaptive-retrieval.md)
+- [`docs/pro-api-data-policy.md`](docs/pro-api-data-policy.md)
+- [`docs/environment-variables.md`](docs/environment-variables.md)
+
 ## Measured Proof
 
 Primary release gate, current Japanese companion, and historical baseline are intentionally separated.

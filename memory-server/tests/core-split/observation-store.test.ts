@@ -306,6 +306,44 @@ describe("observation-store: search", () => {
     expect(ids).toContain("obs-en");
   });
 
+  test("adaptive query expander は同義語 variant でも vector search を行う", () => {
+    const { store, db } = makeStore(
+      {},
+      {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => "adaptive:general:pro-api:text-embedding-3-large",
+        getEmbeddingProviderName: () => "adaptive",
+        vectorDimension: 2,
+        buildQueryEmbeddings: (content: string) => ({
+          route: "ruri",
+          analysis: { jaRatio: 1 },
+          primary: {
+            model: "adaptive:general:pro-api:text-embedding-3-large",
+            vector: content.includes("deploy") ? [0, 1] : [1, 0],
+          },
+          secondary: null,
+        }),
+      },
+    );
+
+    insertTestObservation(db, {
+      id: "obs-deploy",
+      title: "release note",
+      content: "deployment rollout playbook",
+      project: "proj-obs",
+    });
+
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-deploy", "adaptive:general:pro-api:text-embedding-3-large", "[0,1]");
+
+    const res = store.search({ query: "本番反映の流れ", project: "proj-obs", limit: 5 });
+    expect(res.ok).toBe(true);
+    const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
+    expect(ids).toContain("obs-deploy");
+  });
+
   test("active facts を持つ exact-value 候補を company query で優先する", () => {
     const { store, db } = makeStore();
     insertTestObservation(db, {

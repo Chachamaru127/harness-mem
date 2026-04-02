@@ -118,7 +118,7 @@ read_embedding_provider() {
     local provider
     provider="$(jq -r '.embedding_provider // "auto"' "$CONFIG_PATH" 2>/dev/null || echo "auto")"
     case "$provider" in
-      auto|fallback|openai|ollama|local) echo "$provider" ;;
+      auto|adaptive|fallback|openai|ollama|local) echo "$provider" ;;
       *) echo "auto" ;;
     esac
   else

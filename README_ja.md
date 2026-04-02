@@ -57,6 +57,53 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 - 長期運用で複数スレッドが混ざった project すべてでの perfect な chain selection。
 - 毎回フルな project ダイジェストを出すこと。recent-project 部分はノイズを抑えるため数 bullet に制限します。
 
+## Adaptive Retrieval Engine
+
+`adaptive` は、日本語・英語・コードが混ざる現場向けの埋め込みモードです。
+
+やることはシンプルです。
+
+- Route A: 日本語が多い検索は、日本語向けモデルを使います。
+- Route B: 英語やコードが多い検索は、汎用モデルを使います。
+- Route C: 日本語と英語が混ざる検索は、両方で検索して結果を合成します。
+- さらに query expansion（検索語の言い換え展開）で、`本番反映` と `deploy` のような言い換えも少数だけ自動で補います。
+
+なぜ必要か:
+
+- 1つのモデルだけだと、日本語の細かい言い回しと英語の API 名・ログ・コード記述を同時にうまく扱いにくいからです。
+- `adaptive` なら、検索のたびに「どの経路が向いているか」を見て、より合うモデルへ自動で振り分けられます。
+
+Free 経路と Pro 経路:
+
+- Free 経路: ローカル日本語モデル + ローカルまたは fallback の汎用経路。外部 API は不要です。
+- Pro 経路: `HARNESS_MEM_PRO_API_KEY` と `HARNESS_MEM_PRO_API_URL` を設定すると、汎用側をリモート API で強化できます。
+- Pro 経路が落ちた場合でも、harness-mem は自動で Free 経路へ切り替え、しばらく待ってから再試行します。つまり「止まる」のではなく「精度を少し落として継続する」設計です。
+
+最小設定例:
+
+```bash
+export HARNESS_MEM_EMBEDDING_PROVIDER=adaptive
+export HARNESS_MEM_ADAPTIVE_JA_THRESHOLD=0.85
+export HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD=0.50
+
+# Pro 経路を使う場合だけ設定
+export HARNESS_MEM_PRO_API_KEY=your-token
+export HARNESS_MEM_PRO_API_URL=https://example.com/embeddings
+```
+
+よく使うコマンド:
+
+```bash
+npm run benchmark
+npm run benchmark:tune-adaptive
+```
+
+詳しい説明:
+
+- [`docs/adaptive-retrieval.md`](docs/adaptive-retrieval.md)
+- [`docs/pro-api-data-policy.md`](docs/pro-api-data-policy.md)
+- [`docs/environment-variables.md`](docs/environment-variables.md)
+
 ## 実測ベンチマーク
 
 primary release gate、current Japanese companion、historical baseline は意図的に分けて管理しています。

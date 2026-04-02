@@ -9,6 +9,7 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import type { Database } from "bun:sqlite";
+import { loadAdaptiveThresholdDefaults } from "../embedding/adaptive-config";
 import type { ApiResponse, Config } from "./types.js";
 
 // ---------------------------------------------------------------------------
@@ -1008,8 +1009,13 @@ export function getConfig(): Config {
   const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
   const proApiKey = (process.env.HARNESS_MEM_PRO_API_KEY || "").trim();
   const proApiUrl = (process.env.HARNESS_MEM_PRO_API_URL || "").trim();
-  const adaptiveJaThreshold = Number(process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || 0.85);
-  const adaptiveCodeThreshold = Number(process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || 0.5);
+  const adaptiveDefaults = loadAdaptiveThresholdDefaults();
+  const adaptiveJaThreshold = Number(
+    process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || adaptiveDefaults.jaThreshold
+  );
+  const adaptiveCodeThreshold = Number(
+    process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || adaptiveDefaults.codeThreshold
+  );
   const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
 
   return {
@@ -1028,10 +1034,10 @@ export function getConfig(): Config {
     proApiUrl,
     adaptiveJaThreshold: Number.isFinite(adaptiveJaThreshold)
       ? Math.max(0, Math.min(1, adaptiveJaThreshold))
-      : 0.85,
+      : adaptiveDefaults.jaThreshold,
     adaptiveCodeThreshold: Number.isFinite(adaptiveCodeThreshold)
       ? Math.max(0, Math.min(1, adaptiveCodeThreshold))
-      : 0.5,
+      : adaptiveDefaults.codeThreshold,
     captureEnabled: envFlag("HARNESS_MEM_ENABLE_CAPTURE", true),
     retrievalEnabled: envFlag("HARNESS_MEM_ENABLE_RETRIEVAL", true),
     injectionEnabled: envFlag("HARNESS_MEM_ENABLE_INJECTION", true),

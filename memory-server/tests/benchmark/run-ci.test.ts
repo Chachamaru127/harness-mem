@@ -8,6 +8,7 @@ import {
   checkJapaneseCompanionGate,
   collectTemporalAnchorReferenceTexts,
   layer3WilcoxonImprovement,
+  resolveBenchEmbeddingProfile,
 } from "../../src/benchmark/run-ci";
 import type { LocomoBenchmarkResult } from "../../../tests/benchmarks/run-locomo-benchmark";
 
@@ -134,6 +135,34 @@ describe("benchmark fixture helpers", () => {
     );
     expect(refs.length).toBeGreaterThan(0);
     expect(new Set(refs).size).toBe(refs.length);
+  });
+});
+
+describe("resolveBenchEmbeddingProfile", () => {
+  test("adaptive mode は adaptive provider と tuned threshold を返す", () => {
+    const profile = resolveBenchEmbeddingProfile({
+      HARNESS_BENCH_EMBEDDING_MODE: "adaptive",
+      HARNESS_MEM_ADAPTIVE_JA_THRESHOLD: "0.9",
+      HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD: "0.35",
+    });
+
+    expect(profile.mode).toBe("adaptive");
+    expect(profile.provider).toBe("adaptive");
+    expect(profile.adaptive).toEqual({
+      jaThreshold: 0.9,
+      codeThreshold: 0.35,
+    });
+  });
+
+  test("fallback mode は local-hash-v3 を使う", () => {
+    const profile = resolveBenchEmbeddingProfile({
+      HARNESS_BENCH_EMBEDDING_MODE: "fallback",
+    });
+
+    expect(profile.mode).toBe("fallback");
+    expect(profile.provider).toBe("fallback");
+    expect(profile.model).toBe("local-hash-v3");
+    expect(profile.adaptive).toBeNull();
   });
 });
 

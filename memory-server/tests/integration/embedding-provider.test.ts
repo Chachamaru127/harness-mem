@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -26,6 +26,12 @@ function makeConfig(dir: string): Config {
     antigravityIngestEnabled: false,
   };
 }
+
+const originalFetch = globalThis.fetch;
+
+afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
 
 describe("embedding provider integration", () => {
   test("health and metrics expose embedding provider information", () => {
@@ -223,6 +229,201 @@ describe("embedding provider integration", () => {
         delete process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
       } else {
         process.env.HARNESS_MEM_LOCAL_MODELS_DIR = previousModelsDir;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("adaptive provider stores pro-api model labels when Pro API route succeeds", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-pro-success-"));
+    const modelsDir = join(dir, "empty-models");
+    mkdirSync(modelsDir, { recursive: true });
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      return new Response(JSON.stringify({ embedding: [0.11, 0.22, 0.33, 0.44] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    const previousModelsDir = process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+    const previousProKey = process.env.HARNESS_MEM_PRO_API_KEY;
+    const previousProUrl = process.env.HARNESS_MEM_PRO_API_URL;
+    process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "adaptive";
+    process.env.HARNESS_MEM_LOCAL_MODELS_DIR = modelsDir;
+    process.env.HARNESS_MEM_PRO_API_KEY = "pro-key";
+    process.env.HARNESS_MEM_PRO_API_URL = "https://example.test/embeddings";
+
+    const config = makeConfig(dir);
+    config.embeddingProvider = "adaptive";
+    config.localModelsDir = modelsDir;
+    config.proApiKey = "pro-key";
+    config.proApiUrl = "https://example.test/embeddings";
+
+    const core = new HarnessMemCore(config);
+    try {
+      const event = {
+        event_id: "adaptive-pro-success-001",
+        platform: "codex",
+        project: "adaptive-pro-success",
+        session_id: "adaptive-pro-success-session",
+        event_type: "user_prompt",
+        payload: { content: "deploy rollback plan" },
+        tags: [],
+        privacy_tags: [],
+      } as const;
+      await core.primeEmbedding("deploy rollback plan", "passage");
+      const response = core.recordEvent(event);
+      expect(response.ok).toBe(true);
+
+      const db = new Database(config.dbPath, { readonly: true });
+      const storedModels = db
+        .query<{ model: string }, []>(
+          `SELECT model
+           FROM mem_vectors
+           WHERE observation_id = 'obs_adaptive-pro-success-001'
+           ORDER BY model ASC`,
+        )
+        .all()
+        .map((row) => row.model);
+      db.close(false);
+
+      expect(fetchCalls).toBeGreaterThan(0);
+      expect(storedModels).toEqual(["adaptive:general:pro-api:text-embedding-3-large"]);
+    } finally {
+      core.shutdown("test");
+      if (previousProvider === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
+      }
+      if (previousModelsDir === undefined) {
+        delete process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+      } else {
+        process.env.HARNESS_MEM_LOCAL_MODELS_DIR = previousModelsDir;
+      }
+      if (previousProKey === undefined) {
+        delete process.env.HARNESS_MEM_PRO_API_KEY;
+      } else {
+        process.env.HARNESS_MEM_PRO_API_KEY = previousProKey;
+      }
+      if (previousProUrl === undefined) {
+        delete process.env.HARNESS_MEM_PRO_API_URL;
+      } else {
+        process.env.HARNESS_MEM_PRO_API_URL = previousProUrl;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("adaptive provider falls back to local general model and later recovers after backoff", async () => {
+    const originalNow = Date.now;
+    let now = 1_000;
+    Date.now = () => now;
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-pro-recovery-"));
+    const modelsDir = join(dir, "empty-models");
+    mkdirSync(modelsDir, { recursive: true });
+
+    let fetchCalls = 0;
+    globalThis.fetch = mock(async () => {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return new Response("unavailable", { status: 503 });
+      }
+      return new Response(JSON.stringify({ embedding: [0.11, 0.22, 0.33, 0.44] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    const previousModelsDir = process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+    const previousProKey = process.env.HARNESS_MEM_PRO_API_KEY;
+    const previousProUrl = process.env.HARNESS_MEM_PRO_API_URL;
+    process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "adaptive";
+    process.env.HARNESS_MEM_LOCAL_MODELS_DIR = modelsDir;
+    process.env.HARNESS_MEM_PRO_API_KEY = "pro-key";
+    process.env.HARNESS_MEM_PRO_API_URL = "https://example.test/embeddings";
+
+    const config = makeConfig(dir);
+    config.embeddingProvider = "adaptive";
+    config.localModelsDir = modelsDir;
+    config.proApiKey = "pro-key";
+    config.proApiUrl = "https://example.test/embeddings";
+
+    const core = new HarnessMemCore(config);
+    try {
+      const firstEvent = {
+        event_id: "adaptive-pro-recovery-001",
+        platform: "codex",
+        project: "adaptive-pro-recovery",
+        session_id: "adaptive-pro-recovery-session",
+        event_type: "user_prompt",
+        payload: { content: "deploy rollback plan" },
+        tags: [],
+        privacy_tags: [],
+      } as const;
+      await core.primeEmbedding("deploy rollback plan", "passage");
+      const firstResponse = core.recordEvent(firstEvent);
+      expect(firstResponse.ok).toBe(true);
+
+      now += 10_001;
+
+      const secondEvent = {
+        event_id: "adaptive-pro-recovery-002",
+        platform: "codex",
+        project: "adaptive-pro-recovery",
+        session_id: "adaptive-pro-recovery-session",
+        event_type: "user_prompt",
+        payload: { content: "deploy rollback checklist" },
+        tags: [],
+        privacy_tags: [],
+      } as const;
+      await core.primeEmbedding("deploy rollback checklist", "passage");
+      const secondResponse = core.recordEvent(secondEvent);
+      expect(secondResponse.ok).toBe(true);
+
+      const db = new Database(config.dbPath, { readonly: true });
+      const rows = db
+        .query<{ observation_id: string; model: string }, []>(
+          `SELECT observation_id, model
+           FROM mem_vectors
+           WHERE observation_id IN ('obs_adaptive-pro-recovery-001', 'obs_adaptive-pro-recovery-002')
+           ORDER BY observation_id ASC`,
+        )
+        .all();
+      db.close(false);
+
+      const firstModel = rows.find((row) => row.observation_id === "obs_adaptive-pro-recovery-001")?.model;
+      const secondModel = rows.find((row) => row.observation_id === "obs_adaptive-pro-recovery-002")?.model;
+
+      expect(fetchCalls).toBe(2);
+      expect(firstModel).toBe("adaptive:general:fallback:local-hash-v3");
+      expect(secondModel).toBe("adaptive:general:pro-api:text-embedding-3-large");
+    } finally {
+      Date.now = originalNow;
+      core.shutdown("test");
+      if (previousProvider === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
+      }
+      if (previousModelsDir === undefined) {
+        delete process.env.HARNESS_MEM_LOCAL_MODELS_DIR;
+      } else {
+        process.env.HARNESS_MEM_LOCAL_MODELS_DIR = previousModelsDir;
+      }
+      if (previousProKey === undefined) {
+        delete process.env.HARNESS_MEM_PRO_API_KEY;
+      } else {
+        process.env.HARNESS_MEM_PRO_API_KEY = previousProKey;
+      }
+      if (previousProUrl === undefined) {
+        delete process.env.HARNESS_MEM_PRO_API_URL;
+      } else {
+        process.env.HARNESS_MEM_PRO_API_URL = previousProUrl;
       }
       rmSync(dir, { recursive: true, force: true });
     }

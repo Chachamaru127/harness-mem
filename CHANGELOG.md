@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Adaptive retrieval now has a full Phase 3 path
+
+**Before**: the Adaptive Retrieval Engine already had the free local route, dual-vector storage, and ensemble search, but the Pro path was still incomplete. The runtime could not yet use a dedicated Pro API embedding provider, automatic fallback was only a plan, query expansion was not benchmark-aware, and the benchmark pipeline itself still assumed ONNX-only runs.
+
+**After**: the Pro path now has a dedicated `pro-api-provider` with timeout handling, health reporting, and LRU caching; adaptive search now falls back automatically to the free route and later recovers with exponential backoff; query expansion and ensemble weights are externalized through data files; and the benchmark runner can now execute in `adaptive` mode, compare bilingual recall against earlier non-adaptive runs, and tune route thresholds with `npm run benchmark:tune-adaptive`. The CLI/docs surface now explains `adaptive`, and package contents now include the runtime `data/` files required by the new query-expansion and weighting paths.
+
 ## [0.8.11] - 2026-04-01
 
 ### Maintainers can now preflight npm publish credentials before tagging

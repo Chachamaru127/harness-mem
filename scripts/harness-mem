@@ -138,6 +138,10 @@ Command options:
     quiet             Enable quiet contextual recall (default, rerank threshold 0.8 / fallback top 1)
     off               Disable contextual recall injection
     status            Show current contextual recall mode
+
+Embedding note:
+  HARNESS_MEM_EMBEDDING_PROVIDER accepts auto|adaptive|fallback|openai|ollama|local.
+  adaptive automatically routes Japanese-heavy queries to the Japanese model and mixed/code-heavy queries to the general model.
 EOF
 }
 
@@ -252,7 +256,7 @@ read_embedding_provider() {
   local provider
   provider="$(jq -r '.embedding_provider // "auto"' "$CONFIG_PATH" 2>/dev/null || echo "auto")"
   case "$provider" in
-    auto|fallback|openai|ollama|local) echo "$provider" ;;
+    auto|adaptive|fallback|openai|ollama|local) echo "$provider" ;;
     *) echo "auto" ;;
   esac
 }

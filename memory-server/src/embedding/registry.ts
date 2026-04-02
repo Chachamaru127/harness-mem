@@ -1,6 +1,7 @@
 import { createFallbackEmbeddingProvider } from "./fallback";
 import { createOllamaEmbeddingProvider } from "./ollama";
 import { createOpenAiEmbeddingProvider } from "./openai";
+import { createProApiEmbeddingProvider } from "./pro-api-provider";
 import { createLocalOnnxEmbeddingProvider } from "./local-onnx";
 import { ModelManager } from "./model-manager";
 import { findModelById, formatSize } from "./model-catalog";
@@ -18,7 +19,7 @@ import {
   type EmbeddingRegistryResult,
 } from "./types";
 
-type NormalizedProviderName = EmbeddingProviderName | "auto";
+type NormalizedProviderName = Exclude<EmbeddingProviderName, "pro-api"> | "auto";
 
 function normalizeProviderName(name: string | undefined): NormalizedProviderName | null {
   if (!name || !name.trim()) {
@@ -79,7 +80,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
 
   if (providerName === null) {
     warnings.push(
-      `Invalid HARNESS_MEM_EMBEDDING_PROVIDER=\"${requestedProvider}\". Falling back to \"fallback\".`
+      `Invalid HARNESS_MEM_EMBEDDING_PROVIDER=\"${requestedProvider}\". Falling back to "fallback".`
     );
     return {
       provider: fallback,
@@ -113,25 +114,28 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
     });
   } else if (providerName === "adaptive") {
     const japaneseProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "ruri-v3-30m");
-    const generalProvider =
-      options.proApiKey && options.openaiApiKey
-        ? createOpenAiEmbeddingProvider({
-            dimension: options.dimension,
-            apiKey: options.openaiApiKey,
-            model: "text-embedding-3-large",
-            fallback,
-          })
-        : createLocalOrFallbackProvider(manager, warnings, fallback, "gte-small");
+    const freeGeneralProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "gte-small");
+    const hasProApi = Boolean(options.proApiKey && options.proApiUrl);
+    const generalProvider = hasProApi
+      ? createProApiEmbeddingProvider({
+          dimension: options.dimension,
+          apiKey: options.proApiKey,
+          baseUrl: options.proApiUrl,
+          model: options.openaiEmbedModel || "text-embedding-3-large",
+          fallback: freeGeneralProvider,
+        })
+      : freeGeneralProvider;
 
-    if (options.proApiKey && !options.openaiApiKey) {
+    if ((options.proApiKey || options.proApiUrl) && !hasProApi) {
       warnings.push(
-        "HARNESS_MEM_PRO_API_KEY is set but HARNESS_MEM_OPENAI_API_KEY is missing. Adaptive provider is using the local secondary model until the Pro embedding path is configured."
+        "HARNESS_MEM_PRO_API_KEY and HARNESS_MEM_PRO_API_URL must both be set to enable the Pro adaptive path. Falling back to the free secondary model."
       );
     }
 
     provider = createAdaptiveEmbeddingProvider({
       japaneseProvider,
       generalProvider,
+      generalFallbackProvider: hasProApi ? freeGeneralProvider : undefined,
       dimension: options.dimension,
       jaThreshold: options.adaptiveJaThreshold ?? DEFAULT_ADAPTIVE_JA_THRESHOLD,
       codeThreshold: options.adaptiveCodeThreshold ?? DEFAULT_ADAPTIVE_CODE_THRESHOLD,
@@ -156,23 +160,20 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       warnings.push(
         `Unknown local model id "${modelId}". Falling back to "fallback". Run 'harness-mem model list' to see available models.`
       );
+    } else if (!modelPath) {
+      warnings.push(
+        `Local model "${modelId}" (${formatSize(catalogEntry.sizeBytes)}) is not installed. ` +
+        `Run 'harness-mem model pull ${modelId}' to download it. Falling back to "fallback".`
+      );
     } else {
-      if (!modelPath) {
-        warnings.push(
-          `Local model "${modelId}" (${formatSize(catalogEntry.sizeBytes)}) is not installed. ` +
-          `Run 'harness-mem model pull ${modelId}' to download it. Falling back to "fallback".`
-        );
-      } else {
-        const localDimension = catalogEntry.dimension;
-        provider = createLocalOnnxEmbeddingProvider({
-          modelId,
-          modelPath,
-          dimension: localDimension,
-          queryPrefix: catalogEntry.queryPrefix,
-          passagePrefix: catalogEntry.passagePrefix,
-          fallback,
-        });
-      }
+      provider = createLocalOnnxEmbeddingProvider({
+        modelId,
+        modelPath,
+        dimension: catalogEntry.dimension,
+        queryPrefix: catalogEntry.queryPrefix,
+        passagePrefix: catalogEntry.passagePrefix,
+        fallback,
+      });
     }
   }
 

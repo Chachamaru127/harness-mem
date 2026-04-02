@@ -19,6 +19,7 @@ import {
 import {
   createEmbeddingProviderRegistry,
 } from "../embedding/registry";
+import { expandQuery } from "../embedding/query-expander";
 import {
   type EmbeddingProvider,
   type AdaptiveRoute,
@@ -1131,25 +1132,46 @@ export class HarnessMemCore {
     };
   }
 
-  private async prepareEmbeddingForSync(text: string, mode: EmbeddingPrimeMode): Promise<void> {
-    if (!this.embeddingProviderUsesLocalModels()) {
-      return;
+  private getQueryPrimeVariants(query: string): string[] {
+    const normalized = query || "";
+    if (
+      this.embeddingProvider.name !== "adaptive" ||
+      typeof this.embeddingProvider.routeFor !== "function"
+    ) {
+      return [normalized];
     }
 
-    this.ensureEmbeddingReadyForSync(mode);
     try {
+      const expanded = expandQuery(normalized, this.embeddingProvider.routeFor(normalized));
+      return [...new Set([expanded.original, ...expanded.expanded].filter(Boolean))];
+    } catch {
+      return [normalized];
+    }
+  }
+
+  private async prepareEmbeddingForSync(text: string, mode: EmbeddingPrimeMode): Promise<void> {
+    try {
+      if (this.embeddingProviderUsesLocalModels()) {
+        this.ensureEmbeddingReadyForSync(mode);
+      }
       const normalized = text || "";
       if (mode === "query") {
         if (typeof this.embeddingProvider.primeQuery === "function") {
-          await this.embeddingProvider.primeQuery(normalized);
+          for (const variant of this.getQueryPrimeVariants(normalized)) {
+            await this.embeddingProvider.primeQuery(variant);
+          }
           return;
         }
         if (typeof this.embeddingProvider.prime === "function") {
-          await this.embeddingProvider.prime(normalized);
+          for (const variant of this.getQueryPrimeVariants(normalized)) {
+            await this.embeddingProvider.prime(variant);
+          }
           return;
         }
         if (typeof this.embeddingProvider.embedQuery === "function") {
-          this.embeddingProvider.embedQuery(normalized);
+          for (const variant of this.getQueryPrimeVariants(normalized)) {
+            this.embeddingProvider.embedQuery(variant);
+          }
           return;
         }
       }
@@ -1259,10 +1281,24 @@ export class HarnessMemCore {
     const normalized = text || "";
     if (mode === "query") {
       if (typeof this.embeddingProvider.primeQuery === "function") {
-        return this.embeddingProvider.primeQuery(normalized);
+        let first: number[] | null = null;
+        for (const variant of this.getQueryPrimeVariants(normalized)) {
+          const primed = await this.embeddingProvider.primeQuery(variant);
+          if (first === null) {
+            first = primed;
+          }
+        }
+        return first ?? this.embeddingProvider.primeQuery(normalized);
       }
       if (typeof this.embeddingProvider.embedQuery === "function") {
-        return Promise.resolve(this.embeddingProvider.embedQuery(normalized));
+        let first: number[] | null = null;
+        for (const variant of this.getQueryPrimeVariants(normalized)) {
+          const embedded = this.embeddingProvider.embedQuery(variant);
+          if (first === null) {
+            first = embedded;
+          }
+        }
+        return Promise.resolve(first ?? this.embeddingProvider.embedQuery(normalized));
       }
     }
 

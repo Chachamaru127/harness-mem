@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- Adaptive Retrieval Engine の Phase 3 を通しで実装し、Pro API provider、障害時の自動フォールバック、自動復帰、query expansion、重み設定の外部ファイル化までそろえた。
+- benchmark 側も `adaptive` モードを扱えるようになり、bilingual recall を従来モードと比較しながら計測できるようにした。
+- `npm run benchmark:tune-adaptive` を追加し、日本語しきい値とコードしきい値をグリッドサーチして最適値候補を JSON で出せるようにした。
+- README / README_ja / 環境変数 docs / Pro API data policy を更新し、`adaptive` の使い方と注意点を一通り追える状態にした。
+
 ## [0.8.11] - 2026-04-01
 
 ### ユーザー向け要約

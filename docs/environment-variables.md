@@ -82,16 +82,16 @@ SQLite データベースの設定です。
 
 | 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
 |--------|-------------|------|------|----------|
-| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`adaptive` / `openai` / `ollama` / `local` / `fallback` から選択。`adaptive` は日本語比率とコード比率を見て Route A/B/C を切り替える | `core/core-utils.ts`, `embedding/registry.ts` |
-| `HARNESS_MEM_EMBEDDING_MODEL` | `multilingual-e5` | No | ローカル埋め込みモデルのID。`auto` を指定すると言語に応じて自動選択。`adaptive` では primary/secondary の固定組み合わせを優先するため、この値は fallback/local 系の既定に主に影響する | `embedding/registry.ts` |
-| `HARNESS_MEM_LOCAL_MODELS_DIR` | `~/.harness-mem/models` | No | ローカル ONNX モデルの格納ディレクトリ。`local` と `adaptive` がローカルモデルを探す場所を上書きしたいときに使う | `core/core-utils.ts`, `embedding/model-manager.ts` |
+| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`adaptive` / `openai` / `ollama` / `local` / `fallback` から選択。`adaptive` は検索文を見て「日本語優先」「英語/コード優先」「両方検索して合成」のどれを使うか自動で切り替える | `core/core-utils.ts`, `embedding/registry.ts` |
+| `HARNESS_MEM_EMBEDDING_MODEL` | `multilingual-e5` | No | ローカル埋め込みモデルのID。`auto` を指定すると言語に応じて自動選択。`adaptive` では route ごとの固定構成を優先するため、この値は主に `local` / `fallback` / benchmark 側の既定に影響する | `embedding/registry.ts` |
+| `HARNESS_MEM_LOCAL_MODELS_DIR` | `~/.harness-mem/models` | No | ローカル ONNX モデルの格納ディレクトリ。`local` と `adaptive` がローカルモデルを探す場所を上書きしたいときに使う。Adaptive の Free 経路ではここから日本語モデルと汎用モデルを探す | `core/core-utils.ts`, `embedding/model-manager.ts` |
 | `HARNESS_MEM_OPENAI_EMBED_MODEL` | `text-embedding-3-small` | No | OpenAI 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=openai` の場合に使用 | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_BASE_URL` | `http://127.0.0.1:11434` | No | Ollama サーバーの URL（埋め込み用） | `core/core-utils.ts` |
 | `HARNESS_MEM_OLLAMA_EMBED_MODEL` | `nomic-embed-text` | No | Ollama 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=ollama` の場合に使用 | `core/core-utils.ts` |
-| `HARNESS_MEM_PRO_API_KEY` | `""` (空文字) | No | Adaptive Retrieval Engine の Pro 経路を有効にするための API キー。設定時は adaptive provider が Pro 向け secondary 経路を優先し、未設定時はローカル secondary モデルにフォールバックする | `core/core-utils.ts`, `embedding/registry.ts` |
-| `HARNESS_MEM_PRO_API_URL` | `""` (空文字) | No | Pro 埋め込み API のベース URL。Phase 1 では設定値を config に保持し、Adaptive Retrieval Engine の後続フェーズで remote provider に引き渡す | `core/core-utils.ts` |
-| `HARNESS_MEM_ADAPTIVE_JA_THRESHOLD` | `0.85` | No | `adaptive` provider で Route A（日本語優先）に切り替える閾値。0〜1 の範囲で指定する | `core/core-utils.ts`, `embedding/query-analyzer.ts` |
-| `HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD` | `0.50` | No | `adaptive` provider で Route B（英語/コード優先）に切り替えるコード比率閾値。0〜1 の範囲で指定する | `core/core-utils.ts`, `embedding/query-analyzer.ts` |
+| `HARNESS_MEM_PRO_API_KEY` | `""` (空文字) | No | Adaptive Retrieval Engine の Pro 経路を有効にするための API キー。`HARNESS_MEM_PRO_API_URL` と両方そろったときだけ remote provider が有効になる。片方だけだと安全のため Free 経路を使う | `core/core-utils.ts`, `embedding/registry.ts`, `embedding/pro-api-provider.ts` |
+| `HARNESS_MEM_PRO_API_URL` | `""` (空文字) | No | Pro 埋め込み API の URL。Adaptive の汎用側ルートが POST で埋め込みを取得する先。応答失敗や timeout 時は `degraded` 扱いになり、adaptive provider が Free 経路へ自動フォールバックする | `core/core-utils.ts`, `embedding/registry.ts`, `embedding/pro-api-provider.ts` |
+| `HARNESS_MEM_ADAPTIVE_JA_THRESHOLD` | `0.85` | No | `adaptive` provider で Route A（日本語優先）へ切り替える閾値。未設定時は `data/adaptive-thresholds.json` の値を既定として使う | `core/core-utils.ts`, `embedding/query-analyzer.ts`, `embedding/adaptive-config.ts` |
+| `HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD` | `0.50` | No | `adaptive` provider で Route B（英語/コード優先）へ切り替えるコード比率閾値。未設定時は `data/adaptive-thresholds.json` の値を既定として使う | `core/core-utils.ts`, `embedding/query-analyzer.ts`, `embedding/adaptive-config.ts` |
 | `HARNESS_MEM_RESUME_PACK_MAX_TOKENS` | `4000` | No | resume_pack 全体の最大トークン数。continuity briefing と recent-project teaser の両方に適用される。0 を指定すると resume_pack を無効化 | `core/core-utils.ts`, `core/observation-store.ts` |
 | `HARNESS_MEM_WHISPER_MAX_TOKENS` | `400` | No | Contextual Recall（番頭モード）が 1 プロンプトで追加できる最大トークン数。Claude/Codex の UserPromptSubmit hook で使う。小さくすると whisper が静かになり、大きくすると 1 回の注入量が増える | `scripts/userprompt-inject-policy.sh`, `scripts/hook-handlers/codex-user-prompt.sh`, `scripts/hook-handlers/lib/hook-common.sh` |
 

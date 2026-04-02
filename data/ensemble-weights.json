@@ -1,0 +1,10 @@
+{
+  "minJapaneseWeight": 0.3,
+  "maxJapaneseWeight": 0.9,
+  "defaultJapaneseWeight": 0.5,
+  "jaRatioScale": 1,
+  "jaRatioBias": 0,
+  "source": "section-70-phase-3-initial",
+  "updatedAt": "2026-04-02T00:00:00.000Z",
+  "notes": "Japanese route weight is clamp(min, max, jaRatio * jaRatioScale + jaRatioBias). The general route weight is 1 - japaneseWeight."
+}

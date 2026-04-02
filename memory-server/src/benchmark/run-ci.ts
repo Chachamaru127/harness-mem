@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { runLocomoBenchmark, type LocomoBenchmarkResult } from "../../../tests/benchmarks/run-locomo-benchmark";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
+import { loadAdaptiveThresholdDefaults } from "../embedding/adaptive-config";
 import { findModelById } from "../embedding/model-catalog";
 import { extractTemporalAnchors } from "../retrieval/router";
 import { nowIso } from "../core/core-utils";
@@ -180,7 +181,7 @@ interface CIScoreEntry {
   cat1?: number;
   embedding?: {
     mode: BenchEmbeddingMode;
-    provider: "local" | "fallback";
+    provider: "local" | "fallback" | "adaptive";
     model: string;
     vectorDimension: number;
   };
@@ -221,11 +222,15 @@ interface CIRunManifest {
   strict_mode: boolean;
   embedding: {
     mode: BenchEmbeddingMode;
-    provider: "local" | "fallback";
+    provider: "local" | "fallback" | "adaptive";
     model: string;
     vector_dimension: number;
     onnx_gate: boolean;
     prime_enabled: boolean;
+    adaptive_thresholds?: {
+      ja_threshold: number;
+      code_threshold: number;
+    };
   };
   fixtures: BenchFixtureManifest;
   results: {
@@ -247,6 +252,11 @@ interface CIRunManifest {
   performance: {
     locomo_search_p95_ms: number;
     locomo_token_avg: number;
+  };
+  comparisons?: {
+    bilingual_baseline_mode: string | null;
+    bilingual_baseline_recall: number | null;
+    bilingual_delta: number | null;
   };
 }
 
@@ -324,6 +334,28 @@ function isSameEmbeddingProfile(
 function selectComparableHistoryEntries(entries: CIScoreEntry[], profile: BenchEmbeddingProfile): CIScoreEntry[] {
   if (entries.length === 0) return [];
   return entries.filter((entry) => isSameEmbeddingProfile(entry.embedding, profile));
+}
+
+function findLatestAlternativeBilingualBaseline(
+  entries: CIScoreEntry[],
+  profile: BenchEmbeddingProfile,
+): CIScoreEntry | null {
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const entry = entries[index];
+    if (!entry?.embedding) {
+      continue;
+    }
+    if (profile.mode === "adaptive") {
+      if (entry.embedding.mode !== "adaptive") {
+        return entry;
+      }
+      continue;
+    }
+    if (entry.embedding.mode === "adaptive") {
+      return entry;
+    }
+  }
+  return null;
 }
 
 /** Wilcoxon signed-rank test (two-sided, p < alpha で有意) */
@@ -407,16 +439,18 @@ interface DevWorkflowCase {
 }
 
 /** §34 FD-015: dev-workflow-20 ベンチマーク（実使用パターン recall@10） */
-async function runDevWorkflowBenchmark(
-  fixturePath: string
+export async function runDevWorkflowBenchmark(
+  fixturePath: string,
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
 ): Promise<{ recall: number; perSampleScores: number[]; cacheStats: CacheStatsSummary }> {
-  const { core, dir } = createTempCore();
+  const { core, dir } = createTempCore(profile);
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as DevWorkflowCase[];
     const project = "ci-dev-workflow";
     const runner = new BenchmarkRunner(core as unknown as ConstructorParameters<typeof BenchmarkRunner>[0]);
     const cacheBefore = await readCacheStats(core);
+    await ensureEmbeddingReady(core, "dev-workflow-20");
 
     await maybePrimeEmbedding(
       core,
@@ -447,7 +481,12 @@ async function runDevWorkflowBenchmark(
 
     const perSampleScores: number[] = [];
     for (const dwCase of cases) {
-      const result = core.search({ query: dwCase.query, project, include_private: true, limit: 10 });
+      const result = await runPreparedSearch(core, {
+        query: dwCase.query,
+        project,
+        include_private: true,
+        limit: 10,
+      });
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const relevantIds = dwCase.relevant_ids.map((rid) => `obs_${rid}`);
       const recall = runner.calculateRecallAtK(retrievedIds, relevantIds, 10);
@@ -474,16 +513,19 @@ function loadScoreHistory(): CIScoreHistory {
 }
 
 /** スコア履歴に追記する */
-function appendScoreHistory(scores: { f1: number; freshness: number; temporal: number; bilingual: number; cat1: number }): void {
+function appendScoreHistory(
+  scores: { f1: number; freshness: number; temporal: number; bilingual: number; cat1: number },
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
+): void {
   const history = loadScoreHistory();
   history.entries.push({
     timestamp: new Date().toISOString(),
     ...scores,
     embedding: {
-      mode: BENCH_EMBEDDING.mode,
-      provider: BENCH_EMBEDDING.provider,
-      model: BENCH_EMBEDDING.model,
-      vectorDimension: BENCH_EMBEDDING.vectorDimension,
+      mode: profile.mode,
+      provider: profile.provider,
+      model: profile.model,
+      vectorDimension: profile.vectorDimension,
     },
   });
   // 最大30件まで保持
@@ -491,15 +533,19 @@ function appendScoreHistory(scores: { f1: number; freshness: number; temporal: n
   writeFileSync(CI_SCORE_HISTORY_PATH, JSON.stringify(history, null, 2));
 }
 
-type BenchEmbeddingMode = "onnx" | "fallback";
+export type BenchEmbeddingMode = "onnx" | "fallback" | "adaptive";
 
-interface BenchEmbeddingProfile {
+export interface BenchEmbeddingProfile {
   mode: BenchEmbeddingMode;
-  provider: "local" | "fallback";
+  provider: "local" | "fallback" | "adaptive";
   model: string;
   vectorDimension: number;
   gateEnabled: boolean;
   primeEnabled: boolean;
+  adaptive: {
+    jaThreshold: number;
+    codeThreshold: number;
+  } | null;
 }
 
 interface EmbeddingRuntime {
@@ -542,13 +588,8 @@ function readGitSha(): string {
 function normalizeMode(value: string | undefined): BenchEmbeddingMode {
   const normalized = (value || "").trim().toLowerCase();
   if (normalized === "onnx") return "onnx";
+  if (normalized === "adaptive") return "adaptive";
   return "fallback";
-}
-
-function assertOnnxOnlyMode(mode: BenchEmbeddingMode): void {
-  if (mode !== "onnx") {
-    throw new Error(`[CI] strict ONNX-only mode violated: HARNESS_BENCH_EMBEDDING_MODE=${mode}`);
-  }
 }
 
 function resolveNumericGate(name: string, fallback: number): number {
@@ -566,19 +607,52 @@ function normalizeVectorDimension(value: unknown, fallback: number): number {
   return rounded;
 }
 
-function resolveBenchEmbeddingProfile(): BenchEmbeddingProfile {
-  const mode = normalizeMode(process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
-  assertOnnxOnlyMode(mode);
-  const provider: "local" | "fallback" = "local";
-  const model = (process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5";
-  const vectorDimension = normalizeVectorDimension(process.env.HARNESS_BENCH_VECTOR_DIM, 384);
+export function resolveBenchEmbeddingProfile(
+  env: Record<string, string | undefined> = process.env,
+): BenchEmbeddingProfile {
+  const mode = normalizeMode(env.HARNESS_BENCH_EMBEDDING_MODE || "onnx");
+  const vectorDimension = normalizeVectorDimension(env.HARNESS_BENCH_VECTOR_DIM, 384);
+  const gateEnabled = parseBooleanFlag(env.HARNESS_BENCH_ONNX_GATE, true);
+  const primeEnabled = parseBooleanFlag(env.HARNESS_BENCH_PRIME_EMBEDDING, true);
+
+  if (mode === "adaptive") {
+    const defaults = loadAdaptiveThresholdDefaults();
+    const jaThreshold = Number(env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || defaults.jaThreshold);
+    const codeThreshold = Number(env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || defaults.codeThreshold);
+    return {
+      mode,
+      provider: "adaptive",
+      model: (env.HARNESS_BENCH_EMBEDDING_MODEL || "adaptive").trim() || "adaptive",
+      vectorDimension,
+      gateEnabled,
+      primeEnabled,
+      adaptive: {
+        jaThreshold: Number.isFinite(jaThreshold) ? Math.max(0, Math.min(1, jaThreshold)) : defaults.jaThreshold,
+        codeThreshold: Number.isFinite(codeThreshold) ? Math.max(0, Math.min(1, codeThreshold)) : defaults.codeThreshold,
+      },
+    };
+  }
+
+  if (mode === "fallback") {
+    return {
+      mode,
+      provider: "fallback",
+      model: (env.HARNESS_BENCH_EMBEDDING_MODEL || "local-hash-v3").trim() || "local-hash-v3",
+      vectorDimension,
+      gateEnabled,
+      primeEnabled,
+      adaptive: null,
+    };
+  }
+
   return {
     mode,
-    provider,
-    model,
+    provider: "local",
+    model: (env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() || "multilingual-e5",
     vectorDimension,
-    gateEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, true),
-    primeEnabled: parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true),
+    gateEnabled,
+    primeEnabled,
+    adaptive: null,
   };
 }
 
@@ -639,28 +713,36 @@ function readEmbeddingRuntime(core: HarnessMemCore): EmbeddingRuntime {
   };
 }
 
-function verifyEmbeddingGate(core: HarnessMemCore, label: string): void {
-  if (!BENCH_EMBEDDING.gateEnabled || BENCH_EMBEDDING.mode !== "onnx") {
+function verifyEmbeddingGate(
+  core: HarnessMemCore,
+  label: string,
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
+): void {
+  if (!profile.gateEnabled) {
     return;
   }
   const runtime = readEmbeddingRuntime(core);
   const failures: string[] = [];
-  if (runtime.provider !== BENCH_EMBEDDING.provider) {
-    failures.push(`provider=${runtime.provider || "unknown"} (expected ${BENCH_EMBEDDING.provider})`);
+  if (runtime.provider !== profile.provider) {
+    failures.push(`provider=${runtime.provider || "unknown"} (expected ${profile.provider})`);
   }
-  if (runtime.model !== BENCH_EMBEDDING.model) {
-    failures.push(`model=${runtime.model || "unknown"} (expected ${BENCH_EMBEDDING.model})`);
-  }
-  const catalog = findModelById(BENCH_EMBEDDING.model);
-  if (!catalog) {
-    failures.push(`unknown model "${BENCH_EMBEDDING.model}"`);
-  } else if (BENCH_EMBEDDING.vectorDimension !== catalog.dimension) {
-    failures.push(
-      `vector_dim=${BENCH_EMBEDDING.vectorDimension} (expected ${catalog.dimension} for ${BENCH_EMBEDDING.model})`
-    );
+  if (profile.mode === "onnx") {
+    if (runtime.model !== profile.model) {
+      failures.push(`model=${runtime.model || "unknown"} (expected ${profile.model})`);
+    }
+    const catalog = findModelById(profile.model);
+    if (!catalog) {
+      failures.push(`unknown model "${profile.model}"`);
+    } else if (profile.vectorDimension !== catalog.dimension) {
+      failures.push(
+        `vector_dim=${profile.vectorDimension} (expected ${catalog.dimension} for ${profile.model})`
+      );
+    }
+  } else if (profile.mode === "adaptive" && !runtime.model) {
+    failures.push("adaptive runtime model is missing");
   }
   if (failures.length > 0) {
-    throw new Error(`[${label}] ONNX gate failed: ${failures.join(", ")}`);
+    throw new Error(`[${label}] embedding gate failed: ${failures.join(", ")}`);
   }
 }
 
@@ -730,6 +812,19 @@ async function maybePrimeEmbedding(
       // best effort
     }
   }
+}
+
+async function runPreparedSearch(
+  core: HarnessMemCore,
+  request: Parameters<HarnessMemCore["search"]>[0],
+): Promise<ReturnType<HarnessMemCore["search"]>> {
+  const target = core as HarnessMemCore & {
+    searchPrepared?: (request: Parameters<HarnessMemCore["search"]>[0]) => Promise<ReturnType<HarnessMemCore["search"]>>;
+  };
+  if (typeof target.searchPrepared === "function") {
+    return await target.searchPrepared(request);
+  }
+  return core.search(request);
 }
 
 async function readCacheStats(core: HarnessMemCore): Promise<Record<string, unknown> | null> {
@@ -926,14 +1021,16 @@ function insertKnowledgeFixtureLinks(core: HarnessMemCore, kCase: KnowledgeUpdat
   }
 }
 
-function createTempCore(): { core: HarnessMemCore; dir: string } {
+function createTempCore(profile: BenchEmbeddingProfile = BENCH_EMBEDDING): { core: HarnessMemCore; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), "harness-mem-ci-bench-"));
   const config: Config = {
     dbPath: join(dir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 0,
-    vectorDimension: BENCH_EMBEDDING.vectorDimension,
-    embeddingProvider: BENCH_EMBEDDING.provider,
+    vectorDimension: profile.vectorDimension,
+    embeddingProvider: profile.provider,
+    adaptiveJaThreshold: profile.adaptive?.jaThreshold,
+    adaptiveCodeThreshold: profile.adaptive?.codeThreshold,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -947,7 +1044,7 @@ function createTempCore(): { core: HarnessMemCore; dir: string } {
     antigravityIngestEnabled: false,
   };
   const core = new HarnessMemCore(config);
-  verifyEmbeddingGate(core, "run-ci");
+  verifyEmbeddingGate(core, "run-ci", profile);
   return { core, dir };
 }
 
@@ -963,8 +1060,9 @@ async function recordBenchEvent(core: HarnessMemCore, event: BenchEventInput): P
   }
 }
 
-async function runBilingualBenchmark(
-  fixturePath: string
+export async function runBilingualBenchmark(
+  fixturePath: string,
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
 ): Promise<{
   recall: number;
   passed: boolean;
@@ -973,7 +1071,7 @@ async function runBilingualBenchmark(
   cacheStats: CacheStatsSummary;
   failures: BilingualFailureCase[];
 }> {
-  const { core, dir } = createTempCore();
+  const { core, dir } = createTempCore(profile);
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const fixture = JSON.parse(raw) as { samples: BilingualSample[] };
@@ -1014,7 +1112,7 @@ async function runBilingualBenchmark(
     const perSampleScores: number[] = [];
     const failures: BilingualFailureCase[] = [];
     for (const s of samples) {
-      const result = core.search({ query: s.query, project, include_private: true, limit: 10 });
+      const result = await runPreparedSearch(core, { query: s.query, project, include_private: true, limit: 10 });
       assertApiOk(result, `bilingual:${s.id}:search`);
       const retrievedIds = result.items.map((item) => String((item as Record<string, unknown>).id ?? ""));
       const relevantIds = s.relevant_ids.map((rid) => `obs_${rid}`);
@@ -1051,7 +1149,8 @@ async function runBilingualBenchmark(
 }
 
 async function runKnowledgeUpdateBenchmark(
-  fixturePath: string
+  fixturePath: string,
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
 ): Promise<{
   freshnessAtK: number;
   passed: boolean;
@@ -1059,7 +1158,7 @@ async function runKnowledgeUpdateBenchmark(
   perSampleScores: number[];
   cacheStats: CacheStatsSummary;
 }> {
-  const { core, dir } = createTempCore();
+  const { core, dir } = createTempCore(profile);
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as KnowledgeUpdateCase[];
@@ -1113,7 +1212,7 @@ async function runKnowledgeUpdateBenchmark(
     for (const kCase of cases) {
       const caseProject = `${project}-${kCase.id}`;
       await maybePrimeEmbedding(core, [kCase.query], "query");
-      const result = core.search({
+      const result = await runPreparedSearch(core, {
         query: kCase.query,
         project: caseProject,
         include_private: true,
@@ -1148,7 +1247,10 @@ async function runKnowledgeUpdateBenchmark(
   }
 }
 
-async function runTemporalBenchmark(fixturePath: string): Promise<{
+async function runTemporalBenchmark(
+  fixturePath: string,
+  profile: BenchEmbeddingProfile = BENCH_EMBEDDING,
+): Promise<{
   temporalScore: number;
   weightedTau: number;
   ndcgAt5: number;
@@ -1158,7 +1260,7 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
   domainBreakdown: Record<string, { tau: number; n: number }>;
   cacheStats: CacheStatsSummary;
 }> {
-  const { core, dir } = createTempCore();
+  const { core, dir } = createTempCore(profile);
   try {
     const raw = readFileSync(fixturePath, "utf-8");
     const cases = JSON.parse(raw) as TemporalCase[];
@@ -1199,7 +1301,7 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
       const caseProject = `${project}-${tCase.id}`;
       await maybePrimeEmbedding(core, [tCase.query], "query");
       await maybePrimeEmbedding(core, collectTemporalAnchorReferenceTexts(tCase.query), "query");
-      const result = core.search({
+      const result = await runPreparedSearch(core, {
         query: tCase.query,
         project: caseProject,
         include_private: true,
@@ -1269,19 +1371,31 @@ async function runTemporalBenchmark(fixturePath: string): Promise<{
 
 async function main(): Promise<void> {
   assertNoPanicMarkerFromEnv();
-  console.log("[CI] §34 Benchmark CI Runner (locomo-120 + bilingual-30 + knowledge-update + temporal)");
+  console.log("[CI] §34 Benchmark CI Runner (locomo-120 + bilingual-50 + knowledge-update + temporal)");
+  const adaptiveThresholdLog = BENCH_EMBEDDING.adaptive
+    ? `, adaptive_ja=${BENCH_EMBEDDING.adaptive.jaThreshold}, adaptive_code=${BENCH_EMBEDDING.adaptive.codeThreshold}`
+    : "";
   console.log(
     `[CI] embedding profile: mode=${BENCH_EMBEDDING.mode}, provider=${BENCH_EMBEDDING.provider}, ` +
       `model=${BENCH_EMBEDDING.model}, vector_dim=${BENCH_EMBEDDING.vectorDimension}, ` +
-      `onnx_gate=${BENCH_EMBEDDING.gateEnabled}, prime=${BENCH_EMBEDDING.primeEnabled}`
+      `onnx_gate=${BENCH_EMBEDDING.gateEnabled}, prime=${BENCH_EMBEDDING.primeEnabled}` +
+      adaptiveThresholdLog
   );
   console.log(`[CI] strict_mode=${BENCH_STRICT_MODE} panic_markers=${PANIC_MARKERS.join(" | ")}`);
 
   // ベンチマーク専用設定
   process.env.HARNESS_MEM_DECAY_DISABLED = "1";
   process.env.HARNESS_MEM_RERANKER_ENABLED = "1";
-  process.env.HARNESS_BENCH_EMBEDDING_MODE = "onnx";
+  process.env.HARNESS_BENCH_EMBEDDING_MODE = BENCH_EMBEDDING.mode;
+  process.env.HARNESS_MEM_EMBEDDING_PROVIDER = BENCH_EMBEDDING.provider;
   process.env.HARNESS_MEM_EMBEDDING_MODEL = BENCH_EMBEDDING.model;
+  if (BENCH_EMBEDDING.adaptive) {
+    process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD = String(BENCH_EMBEDDING.adaptive.jaThreshold);
+    process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD = String(BENCH_EMBEDDING.adaptive.codeThreshold);
+  } else {
+    delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+    delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
+  }
 
   mkdirSync(RESULTS_DIR, { recursive: true });
 
@@ -1299,6 +1413,13 @@ async function main(): Promise<void> {
   const searchP95Gate = resolveNumericGate("HARNESS_BENCH_SEARCH_P95_MS_GATE", 25);
   const tokenAvgGate = resolveNumericGate("HARNESS_BENCH_TOKEN_AVG_GATE", 450);
   const fixtureManifest = buildFixtureManifest();
+  const history = loadScoreHistory();
+  const bilingualBaselineEntry = findLatestAlternativeBilingualBaseline(history.entries, BENCH_EMBEDDING);
+  let bilingualBaselineMode = bilingualBaselineEntry?.embedding
+    ? `${bilingualBaselineEntry.embedding.mode}:${bilingualBaselineEntry.embedding.provider}:${bilingualBaselineEntry.embedding.model}`
+    : null;
+  let bilingualBaselineRecall = bilingualBaselineEntry?.bilingual ?? null;
+  let bilingualDelta: number | null = null;
 
   // §34 FD-012: 3層 CI ゲート用スコア集約
   const ciScores = { f1: 0, freshness: 0, temporal: 0, bilingual: 0, cat1: 0 };
@@ -1347,10 +1468,12 @@ async function main(): Promise<void> {
     );
 
     if (result.pipeline.embedding.gate.enabled && !result.pipeline.embedding.gate.passed) {
-      throw new Error(`[CI] locomo-120 ONNX gate failed: ${result.pipeline.embedding.gate.failures.join(", ")}`);
+      throw new Error(`[CI] locomo-120 embedding gate failed: ${result.pipeline.embedding.gate.failures.join(", ")}`);
     }
-    if (result.pipeline.embedding.mode !== "onnx") {
-      throw new Error(`[CI] locomo-120 invalid embedding mode=${result.pipeline.embedding.mode}; strict mode requires onnx`);
+    if (result.pipeline.embedding.mode !== BENCH_EMBEDDING.mode) {
+      throw new Error(
+        `[CI] locomo-120 invalid embedding mode=${result.pipeline.embedding.mode}; expected ${BENCH_EMBEDDING.mode}`
+      );
     }
 
     ciScores.f1 = overallF1; // §34 FD-012: 3層ゲート用
@@ -1420,6 +1543,16 @@ async function main(): Promise<void> {
       console.log(`[CI] bilingual-50 recall@10: ${recall.toFixed(4)} (threshold: ${gate})`);
       console.log(`[CI] bilingual-50 95% Bootstrap CI: [${biCI.lower.toFixed(4)}, ${biCI.upper.toFixed(4)}] (method: ${biCI.method})`);
       console.log(`[CI] bilingual-50 cacheStats delta: ${JSON.stringify(cacheStats.delta)}`);
+      if (typeof bilingualBaselineRecall === "number") {
+        bilingualDelta = recall - bilingualBaselineRecall;
+        const sign = bilingualDelta >= 0 ? "+" : "";
+        console.log(
+          `[CI] bilingual-50 vs baseline (${bilingualBaselineMode}): ` +
+            `${sign}${bilingualDelta.toFixed(4)} (current=${recall.toFixed(4)}, baseline=${bilingualBaselineRecall.toFixed(4)})`
+        );
+      } else if (BENCH_EMBEDDING.mode === "adaptive") {
+        console.log("[CI] bilingual-50 vs baseline: no prior non-adaptive history entry found yet");
+      }
       if (passed) {
         console.log("[CI] bilingual-50 PASSED");
       } else {
@@ -1524,8 +1657,6 @@ async function main(): Promise<void> {
 
   // §34 FD-012: 3層 CI ゲート
   console.log("\n[CI] === 3-Layer CI Gate ===");
-  const history = loadScoreHistory();
-
   // Layer 1: 絶対下限
   const l1 = layer1AbsoluteFloor(ciScores);
   if (l1.passed) {
@@ -1575,7 +1706,7 @@ async function main(): Promise<void> {
 
   // スコアを履歴に追記（全ゲート通過した場合のみ）
   if (allPassed) {
-    appendScoreHistory(ciScores);
+    appendScoreHistory(ciScores, BENCH_EMBEDDING);
     console.log(`[CI] Score appended to history: f1=${ciScores.f1.toFixed(4)}, freshness=${ciScores.freshness.toFixed(4)}, temporal=${ciScores.temporal.toFixed(4)}, bilingual=${ciScores.bilingual.toFixed(4)}`);
   }
 
@@ -1590,6 +1721,12 @@ async function main(): Promise<void> {
       vector_dimension: BENCH_EMBEDDING.vectorDimension,
       onnx_gate: BENCH_EMBEDDING.gateEnabled,
       prime_enabled: BENCH_EMBEDDING.primeEnabled,
+      adaptive_thresholds: BENCH_EMBEDDING.adaptive
+        ? {
+            ja_threshold: BENCH_EMBEDDING.adaptive.jaThreshold,
+            code_threshold: BENCH_EMBEDDING.adaptive.codeThreshold,
+          }
+        : undefined,
     },
     fixtures: fixtureManifest,
     results: {
@@ -1611,6 +1748,11 @@ async function main(): Promise<void> {
     performance: {
       locomo_search_p95_ms: locomoSearchP95,
       locomo_token_avg: locomoTokenAvg,
+    },
+    comparisons: {
+      bilingual_baseline_mode: bilingualBaselineMode,
+      bilingual_baseline_recall: bilingualBaselineRecall,
+      bilingual_delta: bilingualDelta,
     },
   };
   writeRunManifest(manifest);

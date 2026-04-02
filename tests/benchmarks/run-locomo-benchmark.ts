@@ -2,21 +2,26 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { HarnessMemCore, type Config } from "../../memory-server/src/core/harness-mem-core";
+import { loadAdaptiveThresholdDefaults } from "../../memory-server/src/embedding/adaptive-config";
 import { findModelById } from "../../memory-server/src/embedding/model-catalog";
 import { evaluateLocomoQa, type LocomoMetricSummary } from "./locomo-evaluator";
 import { HarnessMemLocomoAdapter, type HarnessLocomoAnswerTrace } from "./locomo-harness-adapter";
 import { loadLocomoDataset } from "./locomo-loader";
 
 export type BenchmarkSystem = "harness-mem" | "mem0" | "claude-mem";
-export type BenchmarkEmbeddingMode = "onnx" | "fallback";
+export type BenchmarkEmbeddingMode = "onnx" | "fallback" | "adaptive";
 
 interface EmbeddingProfile {
   mode: BenchmarkEmbeddingMode;
-  provider: "local" | "fallback";
+  provider: "local" | "fallback" | "adaptive";
   model: string;
   vectorDimension: number;
   gateEnabled: boolean;
   primeEnabled: boolean;
+  adaptive: {
+    jaThreshold: number;
+    codeThreshold: number;
+  } | null;
 }
 
 interface EmbeddingRuntime {
@@ -223,15 +228,8 @@ function parseBooleanFlag(value: string | undefined, fallback: boolean): boolean
 function normalizeEmbeddingMode(input: string | undefined): BenchmarkEmbeddingMode {
   const normalized = (input || "").trim().toLowerCase();
   if (normalized === "onnx") return "onnx";
+  if (normalized === "adaptive") return "adaptive";
   return "fallback";
-}
-
-function assertOnnxOnlyMode(mode: BenchmarkEmbeddingMode): void {
-  if (mode !== "onnx") {
-    throw new Error(
-      `[locomo-benchmark] strict ONNX-only mode violated: HARNESS_BENCH_EMBEDDING_MODE=${mode}`
-    );
-  }
 }
 
 function normalizeVectorDimension(raw: unknown, fallback: number): number {
@@ -246,11 +244,6 @@ function resolveEmbeddingProfile(options: RunLocomoBenchmarkOptions): EmbeddingP
   const mode = normalizeEmbeddingMode(
     options.embeddingMode || process.env.HARNESS_BENCH_EMBEDDING_MODE || "onnx"
   );
-  assertOnnxOnlyMode(mode);
-  const provider: "local" | "fallback" = "local";
-  const model =
-    (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
-    "multilingual-e5";
   const defaultVectorDimension = 384;
   const vectorDimension = normalizeVectorDimension(
     options.vectorDimension ?? process.env.HARNESS_BENCH_VECTOR_DIM,
@@ -260,13 +253,56 @@ function resolveEmbeddingProfile(options: RunLocomoBenchmarkOptions): EmbeddingP
     options.onnxGate ?? parseBooleanFlag(process.env.HARNESS_BENCH_ONNX_GATE, true);
   const primeEnabled =
     options.primeEmbedding ?? parseBooleanFlag(process.env.HARNESS_BENCH_PRIME_EMBEDDING, true);
+
+  if (mode === "adaptive") {
+    const defaults = loadAdaptiveThresholdDefaults();
+    const jaThreshold = Number(
+      process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || defaults.jaThreshold
+    );
+    const codeThreshold = Number(
+      process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || defaults.codeThreshold
+    );
+    return {
+      mode,
+      provider: "adaptive",
+      model:
+        (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "adaptive").trim() ||
+        "adaptive",
+      vectorDimension,
+      gateEnabled,
+      primeEnabled,
+      adaptive: {
+        jaThreshold: Number.isFinite(jaThreshold) ? Math.max(0, Math.min(1, jaThreshold)) : defaults.jaThreshold,
+        codeThreshold: Number.isFinite(codeThreshold) ? Math.max(0, Math.min(1, codeThreshold)) : defaults.codeThreshold,
+      },
+    };
+  }
+
+  if (mode === "fallback") {
+    return {
+      mode,
+      provider: "fallback",
+      model:
+        (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "local-hash-v3").trim() ||
+        "local-hash-v3",
+      vectorDimension,
+      gateEnabled,
+      primeEnabled,
+      adaptive: null,
+    };
+  }
+
+  const model =
+    (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
+    "multilingual-e5";
   return {
     mode,
-    provider,
+    provider: "local",
     model,
     vectorDimension,
     gateEnabled,
     primeEnabled,
+    adaptive: null,
   };
 }
 
@@ -293,10 +329,10 @@ function evaluateEmbeddingGate(profile: EmbeddingProfile, runtime: EmbeddingRunt
     return { enabled: false, passed: true, failures: [] };
   }
   const failures: string[] = [];
+  if (runtime.provider !== profile.provider) {
+    failures.push(`provider mismatch: expected=${profile.provider}, actual=${runtime.provider || "unknown"}`);
+  }
   if (profile.mode === "onnx") {
-    if (runtime.provider !== profile.provider) {
-      failures.push(`provider mismatch: expected=${profile.provider}, actual=${runtime.provider || "unknown"}`);
-    }
     if (runtime.model !== profile.model) {
       failures.push(`model mismatch: expected=${profile.model}, actual=${runtime.model || "unknown"}`);
     }
@@ -307,6 +343,10 @@ function evaluateEmbeddingGate(profile: EmbeddingProfile, runtime: EmbeddingRunt
       failures.push(
         `vector dimension mismatch: expected=${catalog.dimension} for model=${profile.model}, configured=${profile.vectorDimension}`
       );
+    }
+  } else if (profile.mode === "adaptive") {
+    if (!runtime.model || runtime.model === "unknown") {
+      failures.push("adaptive runtime model is missing");
     }
   }
   return {
@@ -412,6 +452,8 @@ function createCore(tempDir: string, profile: EmbeddingProfile): HarnessMemCore 
     bindPort: 37888,
     vectorDimension: profile.vectorDimension,
     embeddingProvider: profile.provider,
+    adaptiveJaThreshold: profile.adaptive?.jaThreshold,
+    adaptiveCodeThreshold: profile.adaptive?.codeThreshold,
     captureEnabled: true,
     retrievalEnabled: true,
     injectionEnabled: true,
@@ -443,9 +485,23 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   }
   const project = options.project || "locomo-benchmark";
   const tempDir = mkdtempSync(join(tmpdir(), "locomo-harness-"));
+  const previousProviderEnv = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
   const previousModelEnv = process.env.HARNESS_MEM_EMBEDDING_MODEL;
+  const previousJaThresholdEnv = process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+  const previousCodeThresholdEnv = process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
+  process.env.HARNESS_MEM_EMBEDDING_PROVIDER = embeddingProfile.provider;
   if (embeddingProfile.mode === "onnx") {
     process.env.HARNESS_MEM_EMBEDDING_MODEL = embeddingProfile.model;
+    delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+    delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
+  } else if (embeddingProfile.mode === "adaptive") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = "adaptive";
+    process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD = String(embeddingProfile.adaptive?.jaThreshold ?? 0.85);
+    process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD = String(embeddingProfile.adaptive?.codeThreshold ?? 0.5);
+  } else {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = embeddingProfile.model;
+    delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+    delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
   }
   const core = createCore(tempDir, embeddingProfile);
   const runtime = readEmbeddingRuntime(core);
@@ -546,10 +602,25 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   } finally {
     core.shutdown("benchmark");
     rmSync(tempDir, { recursive: true, force: true });
+    if (previousProviderEnv == null) {
+      delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    } else {
+      process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProviderEnv;
+    }
     if (previousModelEnv == null) {
       delete process.env.HARNESS_MEM_EMBEDDING_MODEL;
     } else {
       process.env.HARNESS_MEM_EMBEDDING_MODEL = previousModelEnv;
+    }
+    if (previousJaThresholdEnv == null) {
+      delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+    } else {
+      process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD = previousJaThresholdEnv;
+    }
+    if (previousCodeThresholdEnv == null) {
+      delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
+    } else {
+      process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD = previousCodeThresholdEnv;
     }
   }
 }

@@ -20,7 +20,10 @@
   "files": [
     "README.md",
     "CHANGELOG.md",
+    "data/",
+    "docs/adaptive-retrieval.md",
     "docs/harness-mem-setup.md",
+    "docs/pro-api-data-policy.md",
     "docs/release-process.md",
     "scripts/",
     "tests/test-memory-search-quality.sh",
@@ -53,6 +56,8 @@
   },
   "scripts": {
     "test": "(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests",
+    "benchmark": "cd memory-server && bun run src/benchmark/run-ci.ts",
+    "benchmark:tune-adaptive": "cd memory-server && bun run src/benchmark/adaptive-tuning.ts",
     "test:ui": "cd harness-mem-ui && bunx vitest",
     "test:e2e": "cd harness-mem-ui && bunx playwright test"
   },
