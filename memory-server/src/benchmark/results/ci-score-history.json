@@ -262,6 +262,20 @@
         "model": "multilingual-e5",
         "vectorDimension": 384
       }
+    },
+    {
+      "timestamp": "2026-04-02T03:45:49.851Z",
+      "f1": 0.5805630172296838,
+      "freshness": 1,
+      "temporal": 0.6458333333333334,
+      "bilingual": 0.82,
+      "cat1": 0.5897595158464723,
+      "embedding": {
+        "mode": "adaptive",
+        "provider": "adaptive",
+        "model": "adaptive",
+        "vectorDimension": 384
+      }
     }
   ]
 }

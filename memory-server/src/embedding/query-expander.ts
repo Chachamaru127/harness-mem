@@ -9,6 +9,13 @@ export interface ExpandedQuery {
 }
 
 type SynonymMap = Record<string, string[]>;
+type VariantOrigin = "replaced" | "appended";
+
+interface VariantCandidate {
+  value: string;
+  score: number;
+  origin: VariantOrigin;
+}
 
 function loadSynonymMap(fileName: string): SynonymMap {
   const filePath = resolve(import.meta.dir, "../../../data", fileName);
@@ -48,6 +55,14 @@ function tokenCount(value: string): number {
   return normalized.split(/\s+/).length;
 }
 
+function hasJapaneseScript(value: string): boolean {
+  return /[\u3040-\u30FF\u3400-\u9FFF]/.test(value);
+}
+
+function hasLatinScript(value: string): boolean {
+  return /[A-Za-z]/.test(value);
+}
+
 function collectMatches(query: string, dictionary: SynonymMap): Array<{ key: string; synonym: string }> {
   const normalizedQuery = normalizeText(query).toLowerCase();
   const matches: Array<{ key: string; synonym: string }> = [];
@@ -66,29 +81,81 @@ function collectMatches(query: string, dictionary: SynonymMap): Array<{ key: str
   return matches;
 }
 
-function buildVariants(query: string, matches: Array<{ key: string; synonym: string }>, maxVariants: number): string[] {
+function scoreCandidate(
+  original: string,
+  candidate: string,
+  route: AdaptiveRoute | null,
+  origin: VariantOrigin,
+): number {
+  const originalHasJa = hasJapaneseScript(original);
+  const originalHasEn = hasLatinScript(original);
+  const candidateHasJa = hasJapaneseScript(candidate);
+  const candidateHasEn = hasLatinScript(candidate);
+
+  let score = origin === "replaced" ? 1.5 : 1;
+
+  if (!originalHasJa && candidateHasJa) {
+    score += route === "openai" ? 5 : 3;
+  }
+  if (!originalHasEn && candidateHasEn) {
+    score += route === "ruri" ? 5 : 3;
+  }
+  if (candidateHasJa && candidateHasEn) {
+    score += route === "ensemble" ? 4 : 2.5;
+  }
+
+  score += Math.max(0, 0.5 - tokenCount(candidate) * 0.01);
+  return score;
+}
+
+function buildVariants(
+  query: string,
+  route: AdaptiveRoute | null,
+  matches: Array<{ key: string; synonym: string }>,
+  maxVariants: number,
+): string[] {
   const original = normalizeText(query);
   const originalTokens = Math.max(1, tokenCount(original));
   const maxTokens = originalTokens * 3;
-  const variants: string[] = [];
+  const candidateMap = new Map<string, VariantCandidate>();
 
   for (const match of matches) {
     const replaced = normalizeText(original.replace(match.key, match.synonym));
     const appended = normalizeText(`${original} ${match.synonym}`);
-    for (const candidate of [replaced, appended]) {
+    for (const [candidate, origin] of [
+      [replaced, "replaced"],
+      [appended, "appended"],
+    ] as const) {
       if (!candidate || candidate === original || tokenCount(candidate) > maxTokens) {
         continue;
       }
-      if (!variants.includes(candidate)) {
-        variants.push(candidate);
-      }
-      if (variants.length >= maxVariants) {
-        return variants;
+      const scored: VariantCandidate = {
+        value: candidate,
+        origin,
+        score: scoreCandidate(original, candidate, route, origin),
+      };
+      const existing = candidateMap.get(candidate);
+      if (!existing || scored.score > existing.score) {
+        candidateMap.set(candidate, scored);
       }
     }
   }
 
-  return variants;
+  return [...candidateMap.values()]
+    .sort((lhs, rhs) => {
+      if (rhs.score !== lhs.score) {
+        return rhs.score - lhs.score;
+      }
+      if (lhs.origin !== rhs.origin) {
+        return lhs.origin === "replaced" ? -1 : 1;
+      }
+      if (tokenCount(lhs.value) !== tokenCount(rhs.value)) {
+        return tokenCount(lhs.value) - tokenCount(rhs.value);
+      }
+      return lhs.value.localeCompare(rhs.value);
+    })
+    .slice(0, maxVariants)
+    .map((candidate) => candidate.value);
 }
 
 export function expandQuery(
@@ -114,7 +181,7 @@ export function expandQuery(
   const matches = dictionaries.flatMap((dictionary) => collectMatches(original, dictionary));
   return {
     original,
-    expanded: buildVariants(original, matches, maxVariants),
+    expanded: buildVariants(original, route, matches, maxVariants),
     route,
   };
 }
