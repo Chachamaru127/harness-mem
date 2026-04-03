@@ -1034,6 +1034,22 @@ ensure_bun() {
       fi
       fail "Failed to install bun automatically. Install it manually: curl -fsSL https://bun.sh/install | bash"
       ;;
+    MINGW*|MSYS*|CYGWIN*)
+      # On Windows (Git Bash), try the official installer which supports MINGW64
+      log "Installing bun via official installer..."
+      if curl -fsSL https://bun.sh/install | bash; then
+        hash -r 2>/dev/null || true
+        if [ -d "$HOME/.bun/bin" ]; then
+          export PATH="$HOME/.bun/bin:$PATH"
+          hash -r 2>/dev/null || true
+        fi
+        if check_cmd bun; then
+          log "bun installed: $(command -v bun)"
+          return 0
+        fi
+      fi
+      fail "Required command not found: bun. Install: powershell -c 'irm bun.sh/install.ps1 | iex'  or  npm install -g bun"
+      ;;
     *)
       fail "Required command not found: bun. Install it first (https://bun.sh/docs/installation)."
       ;;
@@ -1065,7 +1081,14 @@ ensure_ripgrep() {
     fail "Failed to install ripgrep automatically. Install it manually: brew install ripgrep"
   fi
 
-  fail "Required command not found: rg (ripgrep). Install it first (macOS: brew install ripgrep)."
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      fail "Required command not found: rg (ripgrep). Install it first: winget install BurntSushi.ripgrep.MSVC  or  scoop install ripgrep"
+      ;;
+    *)
+      fail "Required command not found: rg (ripgrep). Install it first (macOS: brew install ripgrep, Linux: apt install ripgrep)."
+      ;;
+  esac
 }
 
 get_cursor_hooks_command() {
