@@ -12,7 +12,6 @@ function windowsUnsupportedMessage(commandName) {
   return [
     `[harness-mem][error] \`${commandName}\` requires bash, which was not found on this system.`,
     "Reason: the current setup and hook wiring still depend on POSIX shell scripts.",
-    "Native exception: `harness-mem mcp-config --write --client claude,codex` is available for MCP-only config updates on Windows.",
     "",
     "Recommended solutions:",
     "  1. Install Git for Windows (https://gitforwindows.org/) — it includes Git Bash",
@@ -100,6 +99,7 @@ function findWindowsBash({
     }
   }
 
+  // If bash is already on PATH, make sure it is the Windows Git Bash / MSYS flavor.
   const pathCheck = spawnImpl("bash", ["--version"], {
     stdio: "pipe",
     timeout: 5000,
@@ -116,7 +116,13 @@ function findWindowsBash({
   return null;
 }
 
-function runBashEntry({ commandName, scriptRelativePath, args = process.argv.slice(2), env = process.env, cwd = process.cwd() }) {
+function runBashEntry({
+  commandName,
+  scriptRelativePath,
+  args = process.argv.slice(2),
+  env = process.env,
+  cwd = process.cwd(),
+}) {
   const platform = effectivePlatform(env);
   let bashPath = "bash";
 
@@ -141,7 +147,9 @@ function runBashEntry({ commandName, scriptRelativePath, args = process.argv.sli
   });
 
   if (result.error) {
-    console.error(`[harness-mem][error] Failed to start bash for \`${commandName}\`: ${result.error.message}`);
+    console.error(
+      `[harness-mem][error] Failed to start bash for \`${commandName}\`: ${result.error.message}`
+    );
     return 1;
   }
 
