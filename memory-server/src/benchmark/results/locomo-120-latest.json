@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-benchmark-v2",
-  "generated_at": "2026-04-02T03:45:45.747Z",
+  "generated_at": "2026-04-03T19:19:43.171Z",
   "system": "harness-mem",
   "pipeline": {
     "embedding": {
@@ -9,9 +9,9 @@
       "model": "adaptive",
       "vector_dimension": 384,
       "runtime_provider": "adaptive",
-      "runtime_model": "ruri-v3-30m+local-hash-v3",
+      "runtime_model": "ruri-v3-30m+multilingual-e5",
       "runtime_health_status": "degraded",
-      "runtime_health_details": "local model ruri-v3-30m: initializing...",
+      "runtime_health_details": "local model ruri-v3-30m: initializing...; local model multilingual-e5: initializing...",
       "gate": {
         "enabled": true,
         "passed": true,
@@ -28,8 +28,8 @@
   "metrics": {
     "overall": {
       "count": 180,
-      "em": 0.5277777777777778,
-      "f1": 0.5805630172296838
+      "em": 0.5333333333333333,
+      "f1": 0.5861185727852394
     },
     "by_category": {
       "cat-1": {
@@ -49,16 +49,16 @@
       },
       "cat-4": {
         "count": 35,
-        "em": 0.42857142857142855,
-        "f1": 0.5466666666666666
+        "em": 0.45714285714285713,
+        "f1": 0.5752380952380952
       }
     }
   },
   "comparison": {
     "cat_1_to_4": {
       "count": 180,
-      "em": 0.5277777777777778,
-      "f1": 0.5805630172296838
+      "em": 0.5333333333333333,
+      "f1": 0.5861185727852394
     },
     "cat_5": {
       "count": 0,
@@ -69,11 +69,11 @@
   "performance": {
     "search_latency_ms": {
       "count": 180,
-      "min": 2.57,
-      "max": 14.809999999999999,
-      "avg": 5.445149744444435,
-      "p50": 4.66,
-      "p95": 10.259999999999309
+      "min": 3.5,
+      "max": 20.82,
+      "avg": 7.662510400000012,
+      "p50": 6.709999999999999,
+      "p95": 14.04
     },
     "cache_stats": {
       "available": false,
@@ -85,12 +85,12 @@
   "cost": {
     "search_token_estimate": {
       "count": 180,
-      "input_total": 16682,
-      "output_total": 59304,
-      "total_total": 75986,
-      "input_avg": 92.67777777777778,
-      "output_avg": 329.46666666666664,
-      "total_avg": 422.14444444444445
+      "input_total": 16950,
+      "output_total": 60258,
+      "total_total": 77208,
+      "input_avg": 94.16666666666667,
+      "output_avg": 334.76666666666665,
+      "total_avg": 428.93333333333334
     }
   },
   "records": [
@@ -163,7 +163,7 @@
         },
         "final_short_answer": "January 2024"
       },
-      "search_latency_ms": 11.700000000000001,
+      "search_latency_ms": 12.2,
       "token_estimate_input_tokens": 151,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 551,
@@ -237,7 +237,7 @@
         },
         "final_short_answer": "data science project"
       },
-      "search_latency_ms": 3.9499999999999997,
+      "search_latency_ms": 4.76,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -284,7 +284,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-001-full-001-3",
               "sentence": "I'm using it for my data science project at MIT.",
-              "score": 0.525,
+              "score": 0.575,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -296,7 +296,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-001-full-001-1",
               "sentence": "I started learning Python in January 2024.",
-              "score": 0.375,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:00.000Z"
             }
           ]
@@ -311,7 +311,7 @@
         },
         "final_short_answer": "MIT"
       },
-      "search_latency_ms": 4.359999999999999,
+      "search_latency_ms": 5.14,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 305,
@@ -385,7 +385,7 @@
         },
         "final_short_answer": "golden retriever"
       },
-      "search_latency_ms": 3.23,
+      "search_latency_ms": 4,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -459,7 +459,7 @@
         },
         "final_short_answer": "Austin"
       },
-      "search_latency_ms": 3.83,
+      "search_latency_ms": 7.1899999999999995,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 306,
@@ -533,7 +533,7 @@
         },
         "final_short_answer": "Austin, Texas"
       },
-      "search_latency_ms": 3.79,
+      "search_latency_ms": 5.98,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 301,
@@ -580,7 +580,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-003-full-003-2",
               "sentence": "Congratulations on the new role!",
-              "score": 0.695,
+              "score": 0.778333,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
@@ -592,7 +592,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-003-full-003-3",
               "sentence": "I work as a backend engineer focusing on distributed systems.",
-              "score": 0.378333,
+              "score": 0.295,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -607,7 +607,7 @@
         },
         "final_short_answer": "NeuralBridge"
       },
-      "search_latency_ms": 3.08,
+      "search_latency_ms": 4.5,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 311,
@@ -683,7 +683,7 @@
         },
         "final_short_answer": "February 2024"
       },
-      "search_latency_ms": 5.710000000000001,
+      "search_latency_ms": 8.5,
       "token_estimate_input_tokens": 138,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 538,
@@ -757,7 +757,7 @@
         },
         "final_short_answer": "backend engineer"
       },
-      "search_latency_ms": 3.7199999999999998,
+      "search_latency_ms": 5.3100000000000005,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -830,7 +830,7 @@
         },
         "final_short_answer": "I loved it"
       },
-      "search_latency_ms": 4.08,
+      "search_latency_ms": 3.94,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -903,7 +903,7 @@
         },
         "final_short_answer": "Foundation"
       },
-      "search_latency_ms": 3.42,
+      "search_latency_ms": 3.8499999999999996,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 309,
@@ -976,7 +976,7 @@
         },
         "final_short_answer": "Isaac Asimov"
       },
-      "search_latency_ms": 3.9299999999999997,
+      "search_latency_ms": 4.630000000000001,
       "token_estimate_input_tokens": 88,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 328,
@@ -1023,7 +1023,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-005-full-005-3",
               "sentence": "Yes, we all flew from Toronto to attend the ceremony.",
-              "score": 0.645,
+              "score": 0.695,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -1035,7 +1035,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-005-full-005-4",
               "sentence": "That must have been an amazing trip.",
-              "score": 0.295,
+              "score": 0.245,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -1050,7 +1050,7 @@
         },
         "final_short_answer": "Emma"
       },
-      "search_latency_ms": 3.1900000000000004,
+      "search_latency_ms": 4.25,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 309,
@@ -1124,7 +1124,7 @@
         },
         "final_short_answer": "Kyoto"
       },
-      "search_latency_ms": 3.41,
+      "search_latency_ms": 6.35,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -1198,7 +1198,7 @@
         },
         "final_short_answer": "Kyoto"
       },
-      "search_latency_ms": 6.199999999999999,
+      "search_latency_ms": 4.5,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 326,
@@ -1216,9 +1216,9 @@
       "answer_strategy": "extract:factual-organization-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-006-full-006-1",
+        "obs_locomo-locomo-benchmark-full-006-full-006-3",
         "obs_locomo-locomo-benchmark-full-006-full-006-4",
-        "obs_locomo-locomo-benchmark-full-006-full-006-2",
-        "obs_locomo-locomo-benchmark-full-006-full-006-3"
+        "obs_locomo-locomo-benchmark-full-006-full-006-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -1243,22 +1243,22 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-locomo-benchmark-full-006-full-006-3",
+              "sentence": "My thesis was on natural language processing for low-resource languages.",
+              "score": 0.458333,
+              "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
               "id": "obs_locomo-locomo-benchmark-full-006-full-006-4",
               "sentence": "That is a very impactful research area.",
-              "score": 0.458333,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-006-full-006-2",
               "sentence": "Stanford is a prestigious institution.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-full-006-full-006-3",
-              "sentence": "My thesis was on natural language processing for low-resource languages.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -1272,7 +1272,7 @@
         },
         "final_short_answer": "Stanford University"
       },
-      "search_latency_ms": 3.7700000000000005,
+      "search_latency_ms": 4.569999999999999,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 324,
@@ -1290,9 +1290,9 @@
       "answer_strategy": "extract:temporal-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-006-full-006-1",
-        "obs_locomo-locomo-benchmark-full-006-full-006-4",
         "obs_locomo-locomo-benchmark-full-006-full-006-3",
-        "obs_locomo-locomo-benchmark-full-006-full-006-2"
+        "obs_locomo-locomo-benchmark-full-006-full-006-2",
+        "obs_locomo-locomo-benchmark-full-006-full-006-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -1319,22 +1319,22 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-006-full-006-4",
-              "sentence": "That is a very impactful research area.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-006-full-006-3",
               "sentence": "My thesis was on natural language processing for low-resource languages.",
-              "score": 0.375,
+              "score": 0.458333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-006-full-006-2",
               "sentence": "Stanford is a prestigious institution.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-006-full-006-4",
+              "sentence": "That is a very impactful research area.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -1348,7 +1348,7 @@
         },
         "final_short_answer": "June 2022"
       },
-      "search_latency_ms": 6.27,
+      "search_latency_ms": 9.23,
       "token_estimate_input_tokens": 120,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 520,
@@ -1366,9 +1366,9 @@
       "answer_strategy": "extract:factual-topic-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-006-full-006-3",
-        "obs_locomo-locomo-benchmark-full-006-full-006-2",
+        "obs_locomo-locomo-benchmark-full-006-full-006-1",
         "obs_locomo-locomo-benchmark-full-006-full-006-4",
-        "obs_locomo-locomo-benchmark-full-006-full-006-1"
+        "obs_locomo-locomo-benchmark-full-006-full-006-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -1393,10 +1393,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-006-full-006-2",
-              "sentence": "Stanford is a prestigious institution.",
+              "id": "obs_locomo-locomo-benchmark-full-006-full-006-1",
+              "sentence": "I graduated from Stanford University in June 2022 with a degree in computer science.",
               "score": 0.378333,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-006-full-006-4",
@@ -1405,10 +1405,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-006-full-006-1",
-              "sentence": "I graduated from Stanford University in June 2022 with a degree in computer science.",
+              "id": "obs_locomo-locomo-benchmark-full-006-full-006-2",
+              "sentence": "Stanford is a prestigious institution.",
               "score": 0.245,
-              "created_at": "2026-01-01T00:00:00.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -1422,7 +1422,7 @@
         },
         "final_short_answer": "low-resource languages"
       },
-      "search_latency_ms": 2.98,
+      "search_latency_ms": 4.08,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -1496,7 +1496,7 @@
         },
         "final_short_answer": "Amsterdam"
       },
-      "search_latency_ms": 4.66,
+      "search_latency_ms": 5.029999999999999,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 310,
@@ -1570,7 +1570,7 @@
         },
         "final_short_answer": "Flowpay"
       },
-      "search_latency_ms": 3.62,
+      "search_latency_ms": 4.41,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 314,
@@ -1644,7 +1644,7 @@
         },
         "final_short_answer": "Amsterdam"
       },
-      "search_latency_ms": 3.5999999999999996,
+      "search_latency_ms": 20.67,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 308,
@@ -1718,7 +1718,7 @@
         },
         "final_short_answer": "Leo"
       },
-      "search_latency_ms": 4.23,
+      "search_latency_ms": 5.51,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 309,
@@ -1792,7 +1792,7 @@
         },
         "final_short_answer": "Leo"
       },
-      "search_latency_ms": 3.74,
+      "search_latency_ms": 5.8,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 314,
@@ -1866,7 +1866,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 3.52,
+      "search_latency_ms": 5.84,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 314,
@@ -1940,7 +1940,7 @@
         },
         "final_short_answer": "English"
       },
-      "search_latency_ms": 4.06,
+      "search_latency_ms": 5.74,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 318,
@@ -2014,7 +2014,7 @@
         },
         "final_short_answer": "Montreal"
       },
-      "search_latency_ms": 3.98,
+      "search_latency_ms": 5.01,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 306,
@@ -2088,7 +2088,7 @@
         },
         "final_short_answer": "English"
       },
-      "search_latency_ms": 5.699999999999999,
+      "search_latency_ms": 6.55,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 332,
@@ -2107,8 +2107,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-010-full-010-1",
         "obs_locomo-locomo-benchmark-full-010-full-010-3",
-        "obs_locomo-locomo-benchmark-full-010-full-010-4",
-        "obs_locomo-locomo-benchmark-full-010-full-010-2"
+        "obs_locomo-locomo-benchmark-full-010-full-010-2",
+        "obs_locomo-locomo-benchmark-full-010-full-010-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2141,16 +2141,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-010-full-010-4",
-              "sentence": "Greger's book has inspired many people.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-010-full-010-2",
               "sentence": "That is a meaningful lifestyle choice.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-010-full-010-4",
+              "sentence": "Greger's book has inspired many people.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -2162,7 +2162,7 @@
         },
         "final_short_answer": "three years"
       },
-      "search_latency_ms": 5.76,
+      "search_latency_ms": 8.870000000000001,
       "token_estimate_input_tokens": 134,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 534,
@@ -2181,8 +2181,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-010-full-010-1",
         "obs_locomo-locomo-benchmark-full-010-full-010-3",
-        "obs_locomo-locomo-benchmark-full-010-full-010-4",
-        "obs_locomo-locomo-benchmark-full-010-full-010-2"
+        "obs_locomo-locomo-benchmark-full-010-full-010-2",
+        "obs_locomo-locomo-benchmark-full-010-full-010-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2213,16 +2213,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-010-full-010-4",
-              "sentence": "Greger's book has inspired many people.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-010-full-010-2",
               "sentence": "That is a meaningful lifestyle choice.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-010-full-010-4",
+              "sentence": "Greger's book has inspired many people.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -2236,7 +2236,7 @@
         },
         "final_short_answer": "January"
       },
-      "search_latency_ms": 2.79,
+      "search_latency_ms": 6.67,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 310,
@@ -2289,13 +2289,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-010-full-010-1",
               "sentence": "I have been vegan for three years since January 2021.",
-              "score": 0.565,
+              "score": 0.615,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-010-full-010-2",
               "sentence": "That is a meaningful lifestyle choice.",
-              "score": 0.295,
+              "score": 0.245,
               "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
@@ -2310,7 +2310,7 @@
         },
         "final_short_answer": "Greger"
       },
-      "search_latency_ms": 2.9699999999999998,
+      "search_latency_ms": 4.78,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -2330,7 +2330,7 @@
         "obs_locomo-locomo-benchmark-full-011-full-011-1",
         "obs_locomo-locomo-benchmark-full-011-full-011-3",
         "obs_locomo-locomo-benchmark-full-011-full-011-2",
-        "obs_locomo-locomo-benchmark-full-011-full-011-6"
+        "obs_locomo-locomo-benchmark-full-011-full-011-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2367,10 +2367,10 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-011-full-011-6",
-              "sentence": "Having the right containers makes a big difference.",
+              "id": "obs_locomo-locomo-benchmark-full-011-full-011-4",
+              "sentence": "Tomatoes can thrive in containers with enough sunlight.",
               "score": 0.295,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -2384,7 +2384,7 @@
         },
         "final_short_answer": "Tomatoes, basil, and peppers"
       },
-      "search_latency_ms": 3.52,
+      "search_latency_ms": 6.69,
       "token_estimate_input_tokens": 88,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 445,
@@ -2457,7 +2457,7 @@
         },
         "final_short_answer": "Tomatoes"
       },
-      "search_latency_ms": 3.5500000000000003,
+      "search_latency_ms": 4.63,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 443,
@@ -2531,7 +2531,7 @@
         },
         "final_short_answer": "GreenThumb"
       },
-      "search_latency_ms": 3.9699999999999998,
+      "search_latency_ms": 5.11,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 434,
@@ -2613,7 +2613,7 @@
         },
         "final_short_answer": "October 2023"
       },
-      "search_latency_ms": 7.47,
+      "search_latency_ms": 11.150000000000002,
       "token_estimate_input_tokens": 155,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 750,
@@ -2680,7 +2680,7 @@
         },
         "final_short_answer": "52 minutes"
       },
-      "search_latency_ms": 10.119375000000218,
+      "search_latency_ms": 19.54666700000007,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -2754,7 +2754,7 @@
         },
         "final_short_answer": "November"
       },
-      "search_latency_ms": 4.12,
+      "search_latency_ms": 8.51,
       "token_estimate_input_tokens": 76,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 433,
@@ -2773,7 +2773,7 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-013-full-013-1",
         "obs_locomo-locomo-benchmark-full-013-full-013-3",
-        "obs_locomo-locomo-benchmark-full-013-full-013-6"
+        "obs_locomo-locomo-benchmark-full-013-full-013-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2810,10 +2810,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-013-full-013-6",
-              "sentence": "Professor Müller is well-known in the field.",
+              "id": "obs_locomo-locomo-benchmark-full-013-full-013-5",
+              "sentence": "My supervisor is Professor Müller who has published over 80 papers.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -2827,7 +2827,7 @@
         },
         "final_short_answer": "New York"
       },
-      "search_latency_ms": 3.38,
+      "search_latency_ms": 5.01,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 425,
@@ -2846,8 +2846,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-013-full-013-1",
         "obs_locomo-locomo-benchmark-full-013-full-013-4",
-        "obs_locomo-locomo-benchmark-full-013-full-013-5",
-        "obs_locomo-locomo-benchmark-full-013-full-013-3"
+        "obs_locomo-locomo-benchmark-full-013-full-013-3",
+        "obs_locomo-locomo-benchmark-full-013-full-013-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -2878,16 +2878,16 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-013-full-013-5",
-              "sentence": "My supervisor is Professor Müller who has published over 80 papers.",
-              "score": 0.645,
-              "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-013-full-013-3",
               "sentence": "I arrived in September 2023.",
-              "score": 0.611667,
+              "score": 0.645,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-013-full-013-5",
+              "sentence": "My supervisor is Professor Müller who has published over 80 papers.",
+              "score": 0.611667,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -2901,7 +2901,7 @@
         },
         "final_short_answer": "Humboldt University"
       },
-      "search_latency_ms": 4.38,
+      "search_latency_ms": 6.28,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 439,
@@ -2954,7 +2954,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-013-full-013-1",
               "sentence": "I moved from New York to Berlin for research at Humboldt University.",
-              "score": 1.065,
+              "score": 1.031667,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -2975,7 +2975,7 @@
         },
         "final_short_answer": "Professor Müller"
       },
-      "search_latency_ms": 5.06,
+      "search_latency_ms": 16.939999999999998,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 436,
@@ -3049,7 +3049,7 @@
         },
         "final_short_answer": "SweetByte"
       },
-      "search_latency_ms": 5.880000000000001,
+      "search_latency_ms": 6.21,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 438,
@@ -3122,7 +3122,7 @@
         },
         "final_short_answer": "almond croissant"
       },
-      "search_latency_ms": 2.91,
+      "search_latency_ms": 6.92,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 444,
@@ -3195,7 +3195,7 @@
         },
         "final_short_answer": "SweetByte"
       },
-      "search_latency_ms": 3.25,
+      "search_latency_ms": 6.140000000000001,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 438,
@@ -3216,7 +3216,7 @@
         "obs_locomo-locomo-benchmark-full-015-full-015-2",
         "obs_locomo-locomo-benchmark-full-015-full-015-3",
         "obs_locomo-locomo-benchmark-full-015-full-015-4",
-        "obs_locomo-locomo-benchmark-full-015-full-015-6"
+        "obs_locomo-locomo-benchmark-full-015-full-015-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3261,10 +3261,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-015-full-015-6",
-              "sentence": "Hanami in Ueno Park is truly special.",
+              "id": "obs_locomo-locomo-benchmark-full-015-full-015-5",
+              "sentence": "The highlight was attending the cherry blossom festival in Ueno Park.",
               "score": 0.458333,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -3278,7 +3278,7 @@
         },
         "final_short_answer": "March 2024"
       },
-      "search_latency_ms": 6.640000000000001,
+      "search_latency_ms": 8.709999999999999,
       "token_estimate_input_tokens": 137,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 732,
@@ -3291,15 +3291,15 @@
       "category": "cat-2",
       "question": "How long was my trip to Japan?",
       "answer": "three weeks",
-      "prediction": "Three weeks",
+      "prediction": "three weeks",
       "question_kind": "temporal",
       "answer_strategy": "extract:temporal-duration-candidates -> normalize -> final:temporal-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-015-full-015-1",
         "obs_locomo-locomo-benchmark-full-015-full-015-2",
-        "obs_locomo-locomo-benchmark-full-015-full-015-4",
         "obs_locomo-locomo-benchmark-full-015-full-015-3",
-        "obs_locomo-locomo-benchmark-full-015-full-015-5"
+        "obs_locomo-locomo-benchmark-full-015-full-015-4",
+        "obs_locomo-locomo-benchmark-full-015-full-015-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3317,7 +3317,7 @@
         },
         "extraction": {
           "strategy": "extract:temporal-duration-candidates",
-          "raw_answer": "Three weeks",
+          "raw_answer": "three weeks",
           "selected_candidates": [
             {
               "id": "obs_locomo-locomo-benchmark-full-015-full-015-1",
@@ -3332,34 +3332,34 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-015-full-015-4",
-              "sentence": "Three weeks is a great amount of time.",
-              "score": 0.725,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-015-full-015-3",
               "sentence": "I visited Tokyo, Osaka, and Hiroshima over three weeks.",
-              "score": 0.641667,
+              "score": 0.725,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-015-full-015-5",
-              "sentence": "The highlight was attending the cherry blossom festival in Ueno Park.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "id": "obs_locomo-locomo-benchmark-full-015-full-015-4",
+              "sentence": "Three weeks is a great amount of time.",
+              "score": 0.675,
+              "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-015-full-015-6",
+              "sentence": "Hanami in Ueno Park is truly special.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
         "normalization": {
-          "before": "Three weeks",
-          "after": "Three weeks",
+          "before": "three weeks",
+          "after": "three weeks",
           "notes": [],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "Three weeks"
+        "final_short_answer": "three weeks"
       },
-      "search_latency_ms": 8.02,
+      "search_latency_ms": 9.459999999999999,
       "token_estimate_input_tokens": 137,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 732,
@@ -3433,7 +3433,7 @@
         },
         "final_short_answer": "March"
       },
-      "search_latency_ms": 3.4,
+      "search_latency_ms": 5.72,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 440,
@@ -3506,7 +3506,7 @@
         },
         "final_short_answer": "I adopted two cats last year."
       },
-      "search_latency_ms": 3.17,
+      "search_latency_ms": 7.9,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 434,
@@ -3579,7 +3579,7 @@
         },
         "final_short_answer": "Vector"
       },
-      "search_latency_ms": 2.57,
+      "search_latency_ms": 8.61,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 423,
@@ -3653,7 +3653,7 @@
         },
         "final_short_answer": "It"
       },
-      "search_latency_ms": 3.01,
+      "search_latency_ms": 6.32,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 440,
@@ -3673,7 +3673,7 @@
         "obs_locomo-locomo-benchmark-full-017-full-017-1",
         "obs_locomo-locomo-benchmark-full-017-full-017-2",
         "obs_locomo-locomo-benchmark-full-017-full-017-4",
-        "obs_locomo-locomo-benchmark-full-017-full-017-5"
+        "obs_locomo-locomo-benchmark-full-017-full-017-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -3710,10 +3710,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-017-full-017-5",
-              "sentence": "I stayed with a host family in the Palermo neighborhood.",
+              "id": "obs_locomo-locomo-benchmark-full-017-full-017-3",
+              "sentence": "I improved my Spanish significantly and learned tango dancing.",
               "score": 0.375,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -3727,7 +3727,7 @@
         },
         "final_short_answer": "Buenos Aires"
       },
-      "search_latency_ms": 3.35,
+      "search_latency_ms": 5.35,
       "token_estimate_input_tokens": 76,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 433,
@@ -3801,7 +3801,7 @@
         },
         "final_short_answer": "Buenos Aires"
       },
-      "search_latency_ms": 3.3200000000000003,
+      "search_latency_ms": 5.58,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 448,
@@ -3875,7 +3875,7 @@
         },
         "final_short_answer": "Buenos Aires"
       },
-      "search_latency_ms": 3.42,
+      "search_latency_ms": 5.79,
       "token_estimate_input_tokens": 93,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 450,
@@ -3948,7 +3948,7 @@
         },
         "final_short_answer": "Gateron Blue"
       },
-      "search_latency_ms": 2.9699999999999998,
+      "search_latency_ms": 6.06,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 441,
@@ -4028,7 +4028,7 @@
         },
         "final_short_answer": "about 8 hours"
       },
-      "search_latency_ms": 5.539999999999999,
+      "search_latency_ms": 11.48,
       "token_estimate_input_tokens": 170,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 765,
@@ -4102,7 +4102,7 @@
         },
         "final_short_answer": "$180"
       },
-      "search_latency_ms": 7.960000000000001,
+      "search_latency_ms": 7.1,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 439,
@@ -4176,7 +4176,7 @@
         },
         "final_short_answer": "Mind"
       },
-      "search_latency_ms": 3.6500000000000004,
+      "search_latency_ms": 9.03,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 430,
@@ -4243,7 +4243,7 @@
         },
         "final_short_answer": "40 episodes is great traction."
       },
-      "search_latency_ms": 11.63866599999983,
+      "search_latency_ms": 14.868291000000227,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -4317,7 +4317,7 @@
         },
         "final_short_answer": "We interview professionals who switched industries"
       },
-      "search_latency_ms": 3.2800000000000002,
+      "search_latency_ms": 5.050000000000001,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 443,
@@ -4337,7 +4337,7 @@
         "obs_locomo-locomo-benchmark-full-020-full-020-1",
         "obs_locomo-locomo-benchmark-full-020-full-020-6",
         "obs_locomo-locomo-benchmark-full-020-full-020-3",
-        "obs_locomo-locomo-benchmark-full-020-full-020-5"
+        "obs_locomo-locomo-benchmark-full-020-full-020-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4374,10 +4374,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-020-full-020-5",
-              "sentence": "I learned fire-starting, navigation, and foraging.",
+              "id": "obs_locomo-locomo-benchmark-full-020-full-020-2",
+              "sentence": "That sounds like an intense experience!",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -4391,7 +4391,7 @@
         },
         "final_short_answer": "Montana"
       },
-      "search_latency_ms": 5.6,
+      "search_latency_ms": 8.66,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 437,
@@ -4412,7 +4412,7 @@
         "obs_locomo-locomo-benchmark-full-020-full-020-3",
         "obs_locomo-locomo-benchmark-full-020-full-020-6",
         "obs_locomo-locomo-benchmark-full-020-full-020-4",
-        "obs_locomo-locomo-benchmark-full-020-full-020-5"
+        "obs_locomo-locomo-benchmark-full-020-full-020-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4457,10 +4457,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-020-full-020-5",
-              "sentence": "I learned fire-starting, navigation, and foraging.",
+              "id": "obs_locomo-locomo-benchmark-full-020-full-020-2",
+              "sentence": "That sounds like an intense experience!",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -4472,7 +4472,7 @@
         },
         "final_short_answer": "5-day"
       },
-      "search_latency_ms": 6.41,
+      "search_latency_ms": 9.48,
       "token_estimate_input_tokens": 166,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 761,
@@ -4492,7 +4492,7 @@
         "obs_locomo-locomo-benchmark-full-020-full-020-1",
         "obs_locomo-locomo-benchmark-full-020-full-020-6",
         "obs_locomo-locomo-benchmark-full-020-full-020-3",
-        "obs_locomo-locomo-benchmark-full-020-full-020-4"
+        "obs_locomo-locomo-benchmark-full-020-full-020-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4529,10 +4529,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-020-full-020-4",
-              "sentence": "No electronics for five days is a real challenge.",
-              "score": 0.645,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-locomo-benchmark-full-020-full-020-5",
+              "sentence": "It was run by an outfit called Wild Edge.",
+              "score": 0.611667,
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -4546,7 +4546,7 @@
         },
         "final_short_answer": "Montana"
       },
-      "search_latency_ms": 3.57,
+      "search_latency_ms": 5.47,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 442,
@@ -4592,20 +4592,20 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-021-full-021-3",
               "sentence": "The project started in December 2023.",
-              "score": 1.111667,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-full-021-full-021-3",
-              "sentence": "We use Go and Kubernetes.",
-              "score": 0.778333,
+              "score": 1.028333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-021-full-021-4",
               "sentence": "Go is well-suited for infrastructure work.",
-              "score": 0.695,
+              "score": 0.778333,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-021-full-021-3",
+              "sentence": "We use Go and Kubernetes.",
+              "score": 0.695,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -4619,7 +4619,7 @@
         },
         "final_short_answer": "Project Phoenix"
       },
-      "search_latency_ms": 3.86,
+      "search_latency_ms": 6.3100000000000005,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 434,
@@ -4671,7 +4671,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-021-full-021-5",
               "sentence": "Our first production release is planned for July 2024.",
-              "score": 0.611667,
+              "score": 0.587857,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -4692,7 +4692,7 @@
         },
         "final_short_answer": "Go"
       },
-      "search_latency_ms": 3.05,
+      "search_latency_ms": 5.85,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 444,
@@ -4745,7 +4745,7 @@
         },
         "final_short_answer": "That gives you a solid runway to build."
       },
-      "search_latency_ms": 14.365749999999935,
+      "search_latency_ms": 15.654915999999957,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -4765,7 +4765,7 @@
         "obs_locomo-locomo-benchmark-full-022-full-022-4",
         "obs_locomo-locomo-benchmark-full-022-full-022-2",
         "obs_locomo-locomo-benchmark-full-022-full-022-1",
-        "obs_locomo-locomo-benchmark-full-022-full-022-6"
+        "obs_locomo-locomo-benchmark-full-022-full-022-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -4802,10 +4802,10 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-022-full-022-6",
-              "sentence": "B2 is conversational proficiency, a great target.",
+              "id": "obs_locomo-locomo-benchmark-full-022-full-022-3",
+              "sentence": "I practice 30 minutes every day using Duolingo alongside the course.",
               "score": 0.245,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -4819,7 +4819,7 @@
         },
         "final_short_answer": "Spanish"
       },
-      "search_latency_ms": 4.67,
+      "search_latency_ms": 8.08,
       "token_estimate_input_tokens": 76,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 433,
@@ -4900,7 +4900,7 @@
         },
         "final_short_answer": "30 minutes"
       },
-      "search_latency_ms": 5.69,
+      "search_latency_ms": 8.88,
       "token_estimate_input_tokens": 148,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 743,
@@ -4974,7 +4974,7 @@
         },
         "final_short_answer": "B2"
       },
-      "search_latency_ms": 3.23,
+      "search_latency_ms": 4.92,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 439,
@@ -4993,8 +4993,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-023-full-023-3",
         "obs_locomo-locomo-benchmark-full-023-full-023-1",
-        "obs_locomo-locomo-benchmark-full-023-full-023-6",
-        "obs_locomo-locomo-benchmark-full-023-full-023-5"
+        "obs_locomo-locomo-benchmark-full-023-full-023-5",
+        "obs_locomo-locomo-benchmark-full-023-full-023-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5025,16 +5025,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-023-full-023-6",
-              "sentence": "Regular scheduled sessions are very effective.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:05.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-023-full-023-5",
               "sentence": "We meet every Tuesday for a 45-minute session.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-023-full-023-6",
+              "sentence": "Regular scheduled sessions are very effective.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -5048,7 +5048,7 @@
         },
         "final_short_answer": "React"
       },
-      "search_latency_ms": 3.5200000000000005,
+      "search_latency_ms": 5.51,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 442,
@@ -5068,7 +5068,7 @@
         "obs_locomo-locomo-benchmark-full-023-full-023-3",
         "obs_locomo-locomo-benchmark-full-023-full-023-1",
         "obs_locomo-locomo-benchmark-full-023-full-023-2",
-        "obs_locomo-locomo-benchmark-full-023-full-023-6"
+        "obs_locomo-locomo-benchmark-full-023-full-023-5"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5105,10 +5105,10 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-023-full-023-6",
-              "sentence": "Regular scheduled sessions are very effective.",
+              "id": "obs_locomo-locomo-benchmark-full-023-full-023-5",
+              "sentence": "We meet every Tuesday for a 45-minute session.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:04.000Z"
             }
           ]
         },
@@ -5122,7 +5122,7 @@
         },
         "final_short_answer": "React"
       },
-      "search_latency_ms": 3.1899999999999995,
+      "search_latency_ms": 6.42,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 425,
@@ -5143,7 +5143,7 @@
         "obs_locomo-locomo-benchmark-full-023-full-023-6",
         "obs_locomo-locomo-benchmark-full-023-full-023-5",
         "obs_locomo-locomo-benchmark-full-023-full-023-1",
-        "obs_locomo-locomo-benchmark-full-023-full-023-4"
+        "obs_locomo-locomo-benchmark-full-023-full-023-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5178,20 +5178,20 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-023-full-023-5",
               "sentence": "We meet every Tuesday for a 45-minute session.",
-              "score": 0.617857,
+              "score": 0.725,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-023-full-023-1",
               "sentence": "I mentor two junior developers at my company named Carlos and Priya.",
-              "score": 0.375,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-023-full-023-4",
-              "sentence": "Both are highly valuable skills.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "id": "obs_locomo-locomo-benchmark-full-023-full-023-3",
+              "sentence": "Carlos focuses on frontend with React, while Priya is learning cloud infrastructure.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5203,7 +5203,7 @@
         },
         "final_short_answer": "45-minute"
       },
-      "search_latency_ms": 5.7299999999999995,
+      "search_latency_ms": 9.889999999999999,
       "token_estimate_input_tokens": 156,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 751,
@@ -5222,8 +5222,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-024-full-024-1",
         "obs_locomo-locomo-benchmark-full-024-full-024-2",
-        "obs_locomo-locomo-benchmark-full-024-full-024-3",
-        "obs_locomo-locomo-benchmark-full-024-full-024-5"
+        "obs_locomo-locomo-benchmark-full-024-full-024-5",
+        "obs_locomo-locomo-benchmark-full-024-full-024-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5254,16 +5254,16 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-024-full-024-3",
-              "sentence": "The main change was simplifying the form from 12 fields to 5 fields.",
-              "score": 0.615,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-024-full-024-5",
               "sentence": "We ran an A/B test for six weeks before rolling it out fully in March 2024.",
-              "score": 0.565,
+              "score": 0.615,
               "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-024-full-024-3",
+              "sentence": "The main change was simplifying the form from 12 fields to 5 fields.",
+              "score": 0.565,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5277,7 +5277,7 @@
         },
         "final_short_answer": "18%"
       },
-      "search_latency_ms": 3.71,
+      "search_latency_ms": 6.9,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 444,
@@ -5351,7 +5351,7 @@
         },
         "final_short_answer": "12"
       },
-      "search_latency_ms": 6.07,
+      "search_latency_ms": 8.53,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 448,
@@ -5372,7 +5372,7 @@
         "obs_locomo-locomo-benchmark-full-024-full-024-1",
         "obs_locomo-locomo-benchmark-full-024-full-024-3",
         "obs_locomo-locomo-benchmark-full-024-full-024-4",
-        "obs_locomo-locomo-benchmark-full-024-full-024-6"
+        "obs_locomo-locomo-benchmark-full-024-full-024-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5417,10 +5417,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-024-full-024-6",
-              "sentence": "A six-week A/B test gives robust results.",
+              "id": "obs_locomo-locomo-benchmark-full-024-full-024-2",
+              "sentence": "An 18% reduction is a significant business impact.",
               "score": 0.291667,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -5432,7 +5432,7 @@
         },
         "final_short_answer": "six weeks"
       },
-      "search_latency_ms": 6.9399999999999995,
+      "search_latency_ms": 17.790000000000003,
       "token_estimate_input_tokens": 155,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 750,
@@ -5479,7 +5479,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-025-full-025-6",
               "sentence": "60,000 words is a full novel's worth of progress.",
-              "score": 0.825,
+              "score": 0.791667,
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
@@ -5506,7 +5506,7 @@
         },
         "final_short_answer": "1920s Shanghai"
       },
-      "search_latency_ms": 4.24,
+      "search_latency_ms": 6.709999999999999,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 426,
@@ -5524,8 +5524,8 @@
       "answer_strategy": "extract:factual-name-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-025-full-025-3",
-        "obs_locomo-locomo-benchmark-full-025-full-025-5",
         "obs_locomo-locomo-benchmark-full-025-full-025-1",
+        "obs_locomo-locomo-benchmark-full-025-full-025-5",
         "obs_locomo-locomo-benchmark-full-025-full-025-2"
       ],
       "answer_trace": {
@@ -5551,16 +5551,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-025-full-025-5",
-              "sentence": "I started writing it in August 2023 and I'm 60,000 words in now.",
-              "score": 0.645,
-              "created_at": "2026-01-01T00:00:04.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-025-full-025-1",
               "sentence": "I am writing a novel set in 1920s Shanghai.",
-              "score": 0.587857,
+              "score": 0.645,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-025-full-025-5",
+              "sentence": "I started writing it in August 2023 and I'm 60,000 words in now.",
+              "score": 0.611667,
+              "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-025-full-025-2",
@@ -5580,7 +5580,7 @@
         },
         "final_short_answer": "Mei"
       },
-      "search_latency_ms": 3.15,
+      "search_latency_ms": 4.6,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 429,
@@ -5601,7 +5601,7 @@
         "obs_locomo-locomo-benchmark-full-025-full-025-1",
         "obs_locomo-locomo-benchmark-full-025-full-025-6",
         "obs_locomo-locomo-benchmark-full-025-full-025-3",
-        "obs_locomo-locomo-benchmark-full-025-full-025-2"
+        "obs_locomo-locomo-benchmark-full-025-full-025-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5646,10 +5646,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-025-full-025-2",
-              "sentence": "That is a rich historical setting.",
+              "id": "obs_locomo-locomo-benchmark-full-025-full-025-4",
+              "sentence": "That sounds like a compelling story.",
               "score": 0.291667,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -5663,7 +5663,7 @@
         },
         "final_short_answer": "August 2023"
       },
-      "search_latency_ms": 10.870000000000001,
+      "search_latency_ms": 13.6,
       "token_estimate_input_tokens": 146,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 741,
@@ -5736,7 +5736,7 @@
         },
         "final_short_answer": "I drink three cups per day."
       },
-      "search_latency_ms": 4.29,
+      "search_latency_ms": 5.5200000000000005,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 443,
@@ -5810,7 +5810,7 @@
         },
         "final_short_answer": "Kyoto"
       },
-      "search_latency_ms": 3.0600000000000005,
+      "search_latency_ms": 5.33,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 437,
@@ -5828,8 +5828,9 @@
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-core-phrase",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-026-full-026-2",
-        "obs_locomo-locomo-benchmark-full-026-full-026-4",
-        "obs_locomo-locomo-benchmark-full-026-full-026-3"
+        "obs_locomo-locomo-benchmark-full-026-full-026-1",
+        "obs_locomo-locomo-benchmark-full-026-full-026-5",
+        "obs_locomo-locomo-benchmark-full-026-full-026-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5850,26 +5851,26 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-026-full-026-2",
               "sentence": "Green tea has many health benefits.",
-              "score": 1.053571,
+              "score": 0.886905,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-026-full-026-1",
+              "sentence": "I switched from coffee to green tea about eight months ago.",
+              "score": 0.660714,
+              "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-026-full-026-5",
+              "sentence": "I noticed my sleep improved significantly within the first two weeks.",
+              "score": 0.625,
+              "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-026-full-026-4",
               "sentence": "Ippodo is a highly regarded tea brand.",
-              "score": 0.517857,
+              "score": 0.467857,
               "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-full-026-full-026-3",
-              "sentence": "I drink three cups per day.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-full-026-full-026-3",
-              "sentence": "My favorite brand is Ippodo from Kyoto.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5883,10 +5884,10 @@
         },
         "final_short_answer": "Green"
       },
-      "search_latency_ms": 4.488416999999572,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 6.2,
+      "token_estimate_input_tokens": 100,
+      "token_estimate_output_tokens": 357,
+      "token_estimate_total_tokens": 457,
       "em": 0,
       "f1": 0
     },
@@ -5903,7 +5904,7 @@
         "obs_locomo-locomo-benchmark-full-027-full-027-1",
         "obs_locomo-locomo-benchmark-full-027-full-027-2",
         "obs_locomo-locomo-benchmark-full-027-full-027-5",
-        "obs_locomo-locomo-benchmark-full-027-full-027-6"
+        "obs_locomo-locomo-benchmark-full-027-full-027-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -5940,10 +5941,10 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-027-full-027-6",
-              "sentence": "that it is publicly available.",
+              "id": "obs_locomo-locomo-benchmark-full-027-full-027-3",
+              "sentence": "The talk was 30 minutes and attended by about 200 people.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -5957,7 +5958,7 @@
         },
         "final_short_answer": "Pittsburgh"
       },
-      "search_latency_ms": 3.69,
+      "search_latency_ms": 5.300000000000001,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 428,
@@ -6031,7 +6032,7 @@
         },
         "final_short_answer": "async Python patterns"
       },
-      "search_latency_ms": 3.3600000000000003,
+      "search_latency_ms": 4.880000000000001,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 427,
@@ -6105,7 +6106,7 @@
         },
         "final_short_answer": "30 minutes"
       },
-      "search_latency_ms": 5.0200000000000005,
+      "search_latency_ms": 8.2,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 438,
@@ -6179,7 +6180,7 @@
         },
         "final_short_answer": "Mapo"
       },
-      "search_latency_ms": 4.59,
+      "search_latency_ms": 5.67,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 438,
@@ -6253,7 +6254,7 @@
         },
         "final_short_answer": "Mapo"
       },
-      "search_latency_ms": 3.41,
+      "search_latency_ms": 5.550000000000001,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 431,
@@ -6271,9 +6272,9 @@
       "answer_strategy": "extract:location-candidates -> normalize -> final:location-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-028-full-028-1",
-        "obs_locomo-locomo-benchmark-full-028-full-028-4",
         "obs_locomo-locomo-benchmark-full-028-full-028-5",
-        "obs_locomo-locomo-benchmark-full-028-full-028-3"
+        "obs_locomo-locomo-benchmark-full-028-full-028-6",
+        "obs_locomo-locomo-benchmark-full-028-full-028-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -6294,26 +6295,26 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-028-full-028-1",
               "sentence": "My apartment in Seoul is in the Mapo district near Hongdae.",
-              "score": 1.158333,
+              "score": 0.908333,
               "created_at": "2026-01-01T00:00:00.000Z"
-            },
-            {
-              "id": "obs_locomo-locomo-benchmark-full-028-full-028-4",
-              "sentence": "That is a reasonable rate for central Seoul.",
-              "score": 0.895833,
-              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-028-full-028-5",
               "sentence": "I've been here for 18 months since I moved from Busan.",
-              "score": 0.741667,
+              "score": 0.825,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-028-full-028-3",
-              "sentence": "I rent a 45 square meter studio and pay 900,000 won per month.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:02.000Z"
+              "id": "obs_locomo-locomo-benchmark-full-028-full-028-6",
+              "sentence": "Busan to Seoul is quite a change of pace.",
+              "score": 0.791667,
+              "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-028-full-028-4",
+              "sentence": "That is a reasonable rate for central Seoul.",
+              "score": 0.658333,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -6327,10 +6328,10 @@
         },
         "final_short_answer": "Busan"
       },
-      "search_latency_ms": 4.78191599999991,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 6.16,
+      "token_estimate_input_tokens": 78,
+      "token_estimate_output_tokens": 357,
+      "token_estimate_total_tokens": 435,
       "em": 1,
       "f1": 1
     },
@@ -6401,7 +6402,7 @@
         },
         "final_short_answer": "CloudScale Inc"
       },
-      "search_latency_ms": 3.63,
+      "search_latency_ms": 5.959999999999999,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 434,
@@ -6460,7 +6461,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-029-full-029-6",
               "sentence": "Slightly above target is a healthy place to be.",
-              "score": 0.587857,
+              "score": 0.611667,
               "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
@@ -6475,7 +6476,7 @@
         },
         "final_short_answer": "Monday"
       },
-      "search_latency_ms": 4.31,
+      "search_latency_ms": 6.67,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 430,
@@ -6493,9 +6494,9 @@
       "answer_strategy": "extract:factual-top-candidate -> normalize -> final:factual-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-029-full-029-5",
-        "obs_locomo-locomo-benchmark-full-029-full-029-2",
         "obs_locomo-locomo-benchmark-full-029-full-029-3",
-        "obs_locomo-locomo-benchmark-full-029-full-029-1"
+        "obs_locomo-locomo-benchmark-full-029-full-029-1",
+        "obs_locomo-locomo-benchmark-full-029-full-029-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -6520,22 +6521,22 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-029-full-029-2",
-              "sentence": "Leading a team of eight is a significant responsibility.",
-              "score": 0.458333,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-029-full-029-3",
               "sentence": "We do weekly 1:1s every Monday and a team retrospective every two weeks.",
-              "score": 0.391667,
+              "score": 0.475,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-029-full-029-1",
               "sentence": "I lead a team of eight engineers at CloudScale Inc.",
-              "score": 0.375,
+              "score": 0.458333,
               "created_at": "2026-01-01T00:00:00.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-029-full-029-6",
+              "sentence": "Slightly above target is a healthy place to be.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -6549,7 +6550,7 @@
         },
         "final_short_answer": "Our current sprint velocity is 42 story points and we target 40."
       },
-      "search_latency_ms": 4.15,
+      "search_latency_ms": 7.34,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 440,
@@ -6632,7 +6633,7 @@
         },
         "final_short_answer": "1972"
       },
-      "search_latency_ms": 8.25,
+      "search_latency_ms": 10.620000000000001,
       "token_estimate_input_tokens": 181,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 776,
@@ -6706,7 +6707,7 @@
         },
         "final_short_answer": "1972"
       },
-      "search_latency_ms": 3.6599999999999997,
+      "search_latency_ms": 5.42,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 435,
@@ -6725,7 +6726,7 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-030-full-030-5",
         "obs_locomo-locomo-benchmark-full-030-full-030-1",
-        "obs_locomo-locomo-benchmark-full-030-full-030-6"
+        "obs_locomo-locomo-benchmark-full-030-full-030-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -6762,10 +6763,10 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-030-full-030-6",
-              "sentence": "Racing green is a classic and elegant color choice.",
+              "id": "obs_locomo-locomo-benchmark-full-030-full-030-4",
+              "sentence": "That is a reasonable price for a Beetle project car.",
               "score": 0.625,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -6779,7 +6780,7 @@
         },
         "final_short_answer": "I plan to paint it racing green."
       },
-      "search_latency_ms": 6.81,
+      "search_latency_ms": 6.67,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 357,
       "token_estimate_total_tokens": 442,
@@ -6861,7 +6862,7 @@
         },
         "final_short_answer": "The Amber Keys"
       },
-      "search_latency_ms": 4.73,
+      "search_latency_ms": 7.84,
       "token_estimate_input_tokens": 100,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 576,
@@ -6942,7 +6943,7 @@
         },
         "final_short_answer": "guitar in a"
       },
-      "search_latency_ms": 4.86,
+      "search_latency_ms": 11.71,
       "token_estimate_input_tokens": 118,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 594,
@@ -7024,7 +7025,7 @@
         },
         "final_short_answer": "Drift"
       },
-      "search_latency_ms": 7.91,
+      "search_latency_ms": 6.78,
       "token_estimate_input_tokens": 111,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 587,
@@ -7043,8 +7044,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-032-full-032-1",
         "obs_locomo-locomo-benchmark-full-032-full-032-5",
-        "obs_locomo-locomo-benchmark-full-032-full-032-4",
         "obs_locomo-locomo-benchmark-full-032-full-032-3",
+        "obs_locomo-locomo-benchmark-full-032-full-032-4",
         "obs_locomo-locomo-benchmark-full-032-full-032-2"
       ],
       "answer_trace": {
@@ -7077,16 +7078,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-032-full-032-4",
-              "sentence": "Harvest Hope sounds like an essential resource.",
-              "score": 0.611667,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-032-full-032-3",
               "sentence": "It serves about 300 families per week.",
-              "score": 0.587857,
+              "score": 0.611667,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-032-full-032-4",
+              "sentence": "Harvest Hope sounds like an essential resource.",
+              "score": 0.587857,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-032-full-032-2",
@@ -7106,7 +7107,7 @@
         },
         "final_short_answer": "Harvest Hope"
       },
-      "search_latency_ms": 5.75,
+      "search_latency_ms": 7.720000000000001,
       "token_estimate_input_tokens": 127,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 603,
@@ -7126,8 +7127,8 @@
         "obs_locomo-locomo-benchmark-full-032-full-032-3",
         "obs_locomo-locomo-benchmark-full-032-full-032-1",
         "obs_locomo-locomo-benchmark-full-032-full-032-5",
-        "obs_locomo-locomo-benchmark-full-032-full-032-4",
-        "obs_locomo-locomo-benchmark-full-032-full-032-6"
+        "obs_locomo-locomo-benchmark-full-032-full-032-6",
+        "obs_locomo-locomo-benchmark-full-032-full-032-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -7165,16 +7166,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-032-full-032-4",
-              "sentence": "Harvest Hope sounds like an essential resource.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-032-full-032-6",
               "sentence": "That is an impressive fundraising result.",
-              "score": 0.291667,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-032-full-032-4",
+              "sentence": "Harvest Hope sounds like an essential resource.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -7188,7 +7189,7 @@
         },
         "final_short_answer": "300"
       },
-      "search_latency_ms": 6.52,
+      "search_latency_ms": 7.4,
       "token_estimate_input_tokens": 132,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 608,
@@ -7208,8 +7209,8 @@
         "obs_locomo-locomo-benchmark-full-032-full-032-5",
         "obs_locomo-locomo-benchmark-full-032-full-032-1",
         "obs_locomo-locomo-benchmark-full-032-full-032-3",
-        "obs_locomo-locomo-benchmark-full-032-full-032-2",
-        "obs_locomo-locomo-benchmark-full-032-full-032-6"
+        "obs_locomo-locomo-benchmark-full-032-full-032-6",
+        "obs_locomo-locomo-benchmark-full-032-full-032-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -7247,16 +7248,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-032-full-032-2",
-              "sentence": "That is a meaningful commitment.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-032-full-032-6",
               "sentence": "That is an impressive fundraising result.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:05.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-032-full-032-2",
+              "sentence": "That is a meaningful commitment.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -7270,7 +7271,7 @@
         },
         "final_short_answer": "$12,000"
       },
-      "search_latency_ms": 6.07,
+      "search_latency_ms": 8.370000000000001,
       "token_estimate_input_tokens": 128,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 604,
@@ -7352,7 +7353,7 @@
         },
         "final_short_answer": "I built a home studio for recording music in my spare bedroom."
       },
-      "search_latency_ms": 8.219999999999999,
+      "search_latency_ms": 20.82,
       "token_estimate_input_tokens": 128,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 604,
@@ -7372,8 +7373,8 @@
         "obs_locomo-locomo-benchmark-full-033-full-033-3",
         "obs_locomo-locomo-benchmark-full-033-full-033-1",
         "obs_locomo-locomo-benchmark-full-033-full-033-5",
-        "obs_locomo-locomo-benchmark-full-033-full-033-6",
-        "obs_locomo-locomo-benchmark-full-033-full-033-2"
+        "obs_locomo-locomo-benchmark-full-033-full-033-4",
+        "obs_locomo-locomo-benchmark-full-033-full-033-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -7411,16 +7412,16 @@
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-033-full-033-6",
-              "sentence": "That is a well-invested budget for a home studio.",
+              "id": "obs_locomo-locomo-benchmark-full-033-full-033-4",
+              "sentence": "Apollo Twin is a professional-grade interface.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-033-full-033-2",
-              "sentence": "A home studio is a great creative space.",
+              "id": "obs_locomo-locomo-benchmark-full-033-full-033-6",
+              "sentence": "That is a well-invested budget for a home studio.",
               "score": 0.291667,
-              "created_at": "2026-01-01T00:00:01.000Z"
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -7434,7 +7435,7 @@
         },
         "final_short_answer": "KRK Rokit"
       },
-      "search_latency_ms": 4.86,
+      "search_latency_ms": 7.85,
       "token_estimate_input_tokens": 100,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 576,
@@ -7447,15 +7448,15 @@
       "category": "cat-4",
       "question": "How much did I spend on my home studio?",
       "answer": "$2,200",
-      "prediction": "5",
+      "prediction": "$2,200",
       "question_kind": "factual",
       "answer_strategy": "extract:factual-numeric-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-033-full-033-1",
         "obs_locomo-locomo-benchmark-full-033-full-033-2",
         "obs_locomo-locomo-benchmark-full-033-full-033-6",
-        "obs_locomo-locomo-benchmark-full-033-full-033-3",
-        "obs_locomo-locomo-benchmark-full-033-full-033-5"
+        "obs_locomo-locomo-benchmark-full-033-full-033-5",
+        "obs_locomo-locomo-benchmark-full-033-full-033-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -7493,35 +7494,35 @@
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-033-full-033-3",
-              "sentence": "I use an Apollo Twin interface and KRK Rokit 5 monitors.",
-              "score": 0.565,
-              "created_at": "2026-01-01T00:00:02.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-033-full-033-5",
               "sentence": "I spent about $2,200 setting it all up over six months.",
-              "score": 0.531667,
+              "score": 0.565,
               "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-033-full-033-3",
+              "sentence": "I use an Apollo Twin interface and KRK Rokit 5 monitors.",
+              "score": 0.531667,
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
         "normalization": {
           "before": "$2,200",
-          "after": "5",
+          "after": "$2,200",
           "notes": [
             "factual:evidence_bounded_span"
           ],
           "reference_time": "2026-01-01T00:00:00.000Z"
         },
-        "final_short_answer": "5"
+        "final_short_answer": "$2,200"
       },
-      "search_latency_ms": 4.63,
+      "search_latency_ms": 8.49,
       "token_estimate_input_tokens": 119,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 595,
-      "em": 0,
-      "f1": 0
+      "em": 1,
+      "f1": 1
     },
     {
       "sample_id": "full-034",
@@ -7598,7 +7599,7 @@
         },
         "final_short_answer": "That is a strong first year for a photography business."
       },
-      "search_latency_ms": 6.300000000000001,
+      "search_latency_ms": 9.35,
       "token_estimate_input_tokens": 134,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 610,
@@ -7652,7 +7653,7 @@
         },
         "final_short_answer": "That is a strong first year for a photography business."
       },
-      "search_latency_ms": 9.774083000000246,
+      "search_latency_ms": 9.51629100000082,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -7706,7 +7707,7 @@
         },
         "final_short_answer": "That is a strong first year for a photography business."
       },
-      "search_latency_ms": 9.003122999999505,
+      "search_latency_ms": 10.264916999999514,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -7788,7 +7789,7 @@
         },
         "final_short_answer": "200"
       },
-      "search_latency_ms": 7.8100000000000005,
+      "search_latency_ms": 8.68,
       "token_estimate_input_tokens": 148,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 624,
@@ -7870,7 +7871,7 @@
         },
         "final_short_answer": "Shanti Yoga School"
       },
-      "search_latency_ms": 5.6499999999999995,
+      "search_latency_ms": 9.13,
       "token_estimate_input_tokens": 119,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 595,
@@ -7952,7 +7953,7 @@
         },
         "final_short_answer": "Shanti Yoga School"
       },
-      "search_latency_ms": 7.27,
+      "search_latency_ms": 7.91,
       "token_estimate_input_tokens": 128,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 604,
@@ -7973,7 +7974,7 @@
         "obs_locomo-locomo-benchmark-full-036-full-036-5",
         "obs_locomo-locomo-benchmark-full-036-full-036-2",
         "obs_locomo-locomo-benchmark-full-036-full-036-4",
-        "obs_locomo-locomo-benchmark-full-036-full-036-6"
+        "obs_locomo-locomo-benchmark-full-036-full-036-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8017,10 +8018,10 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-036-full-036-6",
-              "sentence": "Those are practical and marketable skills.",
+              "id": "obs_locomo-locomo-benchmark-full-036-full-036-3",
+              "sentence": "We have taught over 500 students across three cities since founding in 2020.",
               "score": 0.211667,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -8034,7 +8035,7 @@
         },
         "final_short_answer": "CodeBridge"
       },
-      "search_latency_ms": 6.050000000000001,
+      "search_latency_ms": 9.05,
       "token_estimate_input_tokens": 129,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 605,
@@ -8054,8 +8055,8 @@
         "obs_locomo-locomo-benchmark-full-036-full-036-3",
         "obs_locomo-locomo-benchmark-full-036-full-036-4",
         "obs_locomo-locomo-benchmark-full-036-full-036-1",
-        "obs_locomo-locomo-benchmark-full-036-full-036-6",
-        "obs_locomo-locomo-benchmark-full-036-full-036-5"
+        "obs_locomo-locomo-benchmark-full-036-full-036-5",
+        "obs_locomo-locomo-benchmark-full-036-full-036-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8093,16 +8094,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-036-full-036-6",
-              "sentence": "Those are practical and marketable skills.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-036-full-036-5",
               "sentence": "Our curriculum focuses on Python, web development, and computational thinking.",
-              "score": 0.291667,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-036-full-036-6",
+              "sentence": "Those are practical and marketable skills.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -8116,7 +8117,7 @@
         },
         "final_short_answer": "500"
       },
-      "search_latency_ms": 5.86,
+      "search_latency_ms": 6.76,
       "token_estimate_input_tokens": 126,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 602,
@@ -8136,8 +8137,8 @@
         "obs_locomo-locomo-benchmark-full-036-full-036-1",
         "obs_locomo-locomo-benchmark-full-036-full-036-3",
         "obs_locomo-locomo-benchmark-full-036-full-036-4",
-        "obs_locomo-locomo-benchmark-full-036-full-036-6",
-        "obs_locomo-locomo-benchmark-full-036-full-036-5"
+        "obs_locomo-locomo-benchmark-full-036-full-036-5",
+        "obs_locomo-locomo-benchmark-full-036-full-036-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8176,16 +8177,16 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-036-full-036-6",
-              "sentence": "Those are practical and marketable skills.",
-              "score": 0.325,
-              "created_at": "2026-01-01T00:00:05.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-036-full-036-5",
               "sentence": "Our curriculum focuses on Python, web development, and computational thinking.",
-              "score": 0.291667,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:04.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-036-full-036-2",
+              "sentence": "That is an impactful mission.",
+              "score": 0.291667,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -8199,7 +8200,7 @@
         },
         "final_short_answer": "2020"
       },
-      "search_latency_ms": 9.22,
+      "search_latency_ms": 14.26,
       "token_estimate_input_tokens": 138,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 733,
@@ -8281,7 +8282,7 @@
         },
         "final_short_answer": "French"
       },
-      "search_latency_ms": 5.55,
+      "search_latency_ms": 7.5,
       "token_estimate_input_tokens": 114,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 590,
@@ -8343,7 +8344,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-037-full-037-5",
               "sentence": "It took me 33 days to complete and I walked alone the entire time.",
-              "score": 0.641667,
+              "score": 0.675,
               "created_at": "2026-01-01T00:00:04.000Z"
             },
             {
@@ -8362,7 +8363,7 @@
         },
         "final_short_answer": "33 days"
       },
-      "search_latency_ms": 6.67,
+      "search_latency_ms": 8.05,
       "token_estimate_input_tokens": 143,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 738,
@@ -8444,7 +8445,7 @@
         },
         "final_short_answer": "33 days"
       },
-      "search_latency_ms": 6.91,
+      "search_latency_ms": 9.84,
       "token_estimate_input_tokens": 129,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 605,
@@ -8505,13 +8506,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-038-full-038-4",
               "sentence": "Four months is a solid investment in learning.",
-              "score": 0.575,
+              "score": 0.541667,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-038-full-038-2",
               "sentence": "deeplearning.ai offers excellent courses.",
-              "score": 0.291667,
+              "score": 0.325,
               "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
@@ -8526,7 +8527,7 @@
         },
         "final_short_answer": "deeplearning.ai"
       },
-      "search_latency_ms": 12.52,
+      "search_latency_ms": 8.08,
       "token_estimate_input_tokens": 137,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 613,
@@ -8546,8 +8547,8 @@
         "obs_locomo-locomo-benchmark-full-038-full-038-1",
         "obs_locomo-locomo-benchmark-full-038-full-038-3",
         "obs_locomo-locomo-benchmark-full-038-full-038-4",
-        "obs_locomo-locomo-benchmark-full-038-full-038-6",
-        "obs_locomo-locomo-benchmark-full-038-full-038-5"
+        "obs_locomo-locomo-benchmark-full-038-full-038-2",
+        "obs_locomo-locomo-benchmark-full-038-full-038-6"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8586,16 +8587,16 @@
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-038-full-038-6",
-              "sentence": "Practical application is the best way to solidify learning.",
+              "id": "obs_locomo-locomo-benchmark-full-038-full-038-2",
+              "sentence": "deeplearning.ai offers excellent courses.",
               "score": 0.458333,
-              "created_at": "2026-01-01T00:00:05.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-038-full-038-5",
-              "sentence": "I now apply these skills at my job at DataVision Corp.",
+              "id": "obs_locomo-locomo-benchmark-full-038-full-038-6",
+              "sentence": "Practical application is the best way to solidify learning.",
               "score": 0.325,
-              "created_at": "2026-01-01T00:00:04.000Z"
+              "created_at": "2026-01-01T00:00:05.000Z"
             }
           ]
         },
@@ -8607,7 +8608,7 @@
         },
         "final_short_answer": "four months"
       },
-      "search_latency_ms": 10.77,
+      "search_latency_ms": 9.679999999999998,
       "token_estimate_input_tokens": 157,
       "token_estimate_output_tokens": 595,
       "token_estimate_total_tokens": 752,
@@ -8628,7 +8629,7 @@
         "obs_locomo-locomo-benchmark-full-038-full-038-1",
         "obs_locomo-locomo-benchmark-full-038-full-038-2",
         "obs_locomo-locomo-benchmark-full-038-full-038-6",
-        "obs_locomo-locomo-benchmark-full-038-full-038-4"
+        "obs_locomo-locomo-benchmark-full-038-full-038-3"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8656,13 +8657,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-038-full-038-1",
               "sentence": "I recently completed a machine learning certification from deeplearning.ai.",
-              "score": 0.575,
+              "score": 0.658333,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-full-038-full-038-2",
               "sentence": "deeplearning.ai offers excellent courses.",
-              "score": 0.458333,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
@@ -8672,10 +8673,10 @@
               "created_at": "2026-01-01T00:00:05.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-038-full-038-4",
-              "sentence": "Four months is a solid investment in learning.",
+              "id": "obs_locomo-locomo-benchmark-full-038-full-038-3",
+              "sentence": "The specialization took me four months and covered neural networks, CNNs, and NLP.",
               "score": 0.291667,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
         },
@@ -8689,7 +8690,7 @@
         },
         "final_short_answer": "deeplearning.ai"
       },
-      "search_latency_ms": 7.73,
+      "search_latency_ms": 8.870000000000001,
       "token_estimate_input_tokens": 113,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 589,
@@ -8771,7 +8772,7 @@
         },
         "final_short_answer": "Lake Tahoe"
       },
-      "search_latency_ms": 10.259999999999309,
+      "search_latency_ms": 12.914290999999139,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -8853,7 +8854,7 @@
         },
         "final_short_answer": "Finishing"
       },
-      "search_latency_ms": 6.16,
+      "search_latency_ms": 9,
       "token_estimate_input_tokens": 126,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 602,
@@ -8935,7 +8936,7 @@
         },
         "final_short_answer": "1 hour"
       },
-      "search_latency_ms": 5.28,
+      "search_latency_ms": 9.96,
       "token_estimate_input_tokens": 122,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 598,
@@ -8954,8 +8955,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-full-040-full-040-1",
         "obs_locomo-locomo-benchmark-full-040-full-040-6",
-        "obs_locomo-locomo-benchmark-full-040-full-040-2",
-        "obs_locomo-locomo-benchmark-full-040-full-040-3"
+        "obs_locomo-locomo-benchmark-full-040-full-040-3",
+        "obs_locomo-locomo-benchmark-full-040-full-040-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -8993,16 +8994,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-full-040-full-040-2",
-              "sentence": "Watercolor is a beautiful but challenging medium.",
-              "score": 0.495,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-full-040-full-040-3",
               "sentence": "I take a weekly class at the Riverside Art Center every Thursday evening.",
-              "score": 0.461667,
+              "score": 0.495,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-full-040-full-040-2",
+              "sentence": "Watercolor is a beautiful but challenging medium.",
+              "score": 0.461667,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -9016,7 +9017,7 @@
         },
         "final_short_answer": "watercolors"
       },
-      "search_latency_ms": 8.39,
+      "search_latency_ms": 7.760000000000001,
       "token_estimate_input_tokens": 112,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 588,
@@ -9097,7 +9098,7 @@
         },
         "final_short_answer": "Riverside Art Center"
       },
-      "search_latency_ms": 5.22,
+      "search_latency_ms": 7.16,
       "token_estimate_input_tokens": 102,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 578,
@@ -9146,7 +9147,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-040-full-040-3",
               "sentence": "I take a weekly class at the Riverside Art Center every Thursday evening.",
-              "score": 0.978333,
+              "score": 1.028333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
@@ -9158,7 +9159,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-full-040-full-040-2",
               "sentence": "Watercolor is a beautiful but challenging medium.",
-              "score": 0.695,
+              "score": 0.645,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
@@ -9179,7 +9180,7 @@
         },
         "final_short_answer": "Diane Cho"
       },
-      "search_latency_ms": 5.5,
+      "search_latency_ms": 8.629999999999999,
       "token_estimate_input_tokens": 107,
       "token_estimate_output_tokens": 476,
       "token_estimate_total_tokens": 583,
@@ -9255,7 +9256,7 @@
         },
         "final_short_answer": "January 2024"
       },
-      "search_latency_ms": 8.95,
+      "search_latency_ms": 12.809999999999999,
       "token_estimate_input_tokens": 151,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 551,
@@ -9331,7 +9332,7 @@
         },
         "final_short_answer": "March 2023"
       },
-      "search_latency_ms": 8.09,
+      "search_latency_ms": 14.04,
       "token_estimate_input_tokens": 158,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 558,
@@ -9405,7 +9406,7 @@
         },
         "final_short_answer": "Python"
       },
-      "search_latency_ms": 3.66,
+      "search_latency_ms": 7.96,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -9479,7 +9480,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 4.1899999999999995,
+      "search_latency_ms": 4.65,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 305,
@@ -9553,7 +9554,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 3.41,
+      "search_latency_ms": 5.739999999999999,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 318,
@@ -9627,7 +9628,7 @@
         },
         "final_short_answer": "Stanford"
       },
-      "search_latency_ms": 3.5700000000000003,
+      "search_latency_ms": 19.15,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 317,
@@ -9701,7 +9702,7 @@
         },
         "final_short_answer": "Max"
       },
-      "search_latency_ms": 4.14,
+      "search_latency_ms": 7.3,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 306,
@@ -9775,7 +9776,7 @@
         },
         "final_short_answer": "Max"
       },
-      "search_latency_ms": 14.809999999999999,
+      "search_latency_ms": 5.49,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 314,
@@ -9830,13 +9831,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-003-dist-003-2",
               "sentence": "Buddy sounds adorable!",
-              "score": 0.615,
+              "score": 0.565,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-003-dist-003-4",
               "sentence": "Two golden retrievers nearby.",
-              "score": 0.245,
+              "score": 0.295,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -9849,7 +9850,7 @@
         },
         "final_short_answer": "last March"
       },
-      "search_latency_ms": 7.25,
+      "search_latency_ms": 9.799999999999999,
       "token_estimate_input_tokens": 132,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 532,
@@ -9923,7 +9924,7 @@
         },
         "final_short_answer": "NeuralBridge"
       },
-      "search_latency_ms": 5.71,
+      "search_latency_ms": 5.84,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 321,
@@ -9976,13 +9977,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-004-dist-004-2",
               "sentence": "Exciting new role!",
-              "score": 0.695,
+              "score": 0.645,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-004-dist-004-4",
               "sentence": "You've had a busy career.",
-              "score": 0.245,
+              "score": 0.295,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -9997,7 +9998,7 @@
         },
         "final_short_answer": "DataCore"
       },
-      "search_latency_ms": 6.5,
+      "search_latency_ms": 7.74,
       "token_estimate_input_tokens": 92,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 332,
@@ -10073,7 +10074,7 @@
         },
         "final_short_answer": "August 2022"
       },
-      "search_latency_ms": 7.12,
+      "search_latency_ms": 10.64,
       "token_estimate_input_tokens": 135,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 535,
@@ -10146,7 +10147,7 @@
         },
         "final_short_answer": "Austin, Texas"
       },
-      "search_latency_ms": 4.04,
+      "search_latency_ms": 6.34,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 301,
@@ -10165,7 +10166,7 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-005-dist-005-3",
         "obs_locomo-locomo-benchmark-dist-005-dist-005-1",
-        "obs_locomo-locomo-benchmark-dist-005-dist-005-4"
+        "obs_locomo-locomo-benchmark-dist-005-dist-005-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10202,10 +10203,10 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-005-dist-005-4",
-              "sentence": "Portland has a wonderful vibe too.",
+              "id": "obs_locomo-locomo-benchmark-dist-005-dist-005-2",
+              "sentence": "Austin is a great city!",
               "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -10219,7 +10220,7 @@
         },
         "final_short_answer": "Portland, Oregon"
       },
-      "search_latency_ms": 3.9399999999999995,
+      "search_latency_ms": 5.1899999999999995,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -10301,7 +10302,7 @@
         },
         "final_short_answer": "2021"
       },
-      "search_latency_ms": 7.14,
+      "search_latency_ms": 12.68,
       "token_estimate_input_tokens": 146,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 546,
@@ -10375,7 +10376,7 @@
         },
         "final_short_answer": "Project Alpha"
       },
-      "search_latency_ms": 8.06,
+      "search_latency_ms": 7.91,
       "token_estimate_input_tokens": 90,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 330,
@@ -10449,7 +10450,7 @@
         },
         "final_short_answer": "Project Beta"
       },
-      "search_latency_ms": 8.29,
+      "search_latency_ms": 10.8,
       "token_estimate_input_tokens": 100,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 340,
@@ -10523,7 +10524,7 @@
         },
         "final_short_answer": "Project Beta"
       },
-      "search_latency_ms": 2.92,
+      "search_latency_ms": 4.58,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 322,
@@ -10541,8 +10542,8 @@
       "answer_strategy": "extract:factual-item-slot -> normalize -> final:factual-normalized-short",
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-007-dist-007-1",
-        "obs_locomo-locomo-benchmark-dist-007-dist-007-3",
         "obs_locomo-locomo-benchmark-dist-007-dist-007-2",
+        "obs_locomo-locomo-benchmark-dist-007-dist-007-3",
         "obs_locomo-locomo-benchmark-dist-007-dist-007-4"
       ],
       "answer_trace": {
@@ -10568,21 +10569,21 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
+              "id": "obs_locomo-locomo-benchmark-dist-007-dist-007-2",
+              "sentence": "Docker simplifies deployment.",
+              "score": 0.615,
+              "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
               "id": "obs_locomo-locomo-benchmark-dist-007-dist-007-3",
               "sentence": "The frontend team also uses Docker, but they switched to Kubernetes last month.",
               "score": 0.578333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-007-dist-007-2",
-              "sentence": "Docker simplifies deployment.",
-              "score": 0.565,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-007-dist-007-4",
               "sentence": "Kubernetes is great for orchestration at scale.",
-              "score": 0.295,
+              "score": 0.245,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -10597,7 +10598,7 @@
         },
         "final_short_answer": "Docker"
       },
-      "search_latency_ms": 4.0600000000000005,
+      "search_latency_ms": 6.05,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 331,
@@ -10671,7 +10672,7 @@
         },
         "final_short_answer": "Kubernetes"
       },
-      "search_latency_ms": 3.8200000000000003,
+      "search_latency_ms": 5.15,
       "token_estimate_input_tokens": 82,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 322,
@@ -10745,7 +10746,7 @@
         },
         "final_short_answer": "last month"
       },
-      "search_latency_ms": 10.239999999999998,
+      "search_latency_ms": 11.27,
       "token_estimate_input_tokens": 176,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 576,
@@ -10819,7 +10820,7 @@
         },
         "final_short_answer": "TypeScript"
       },
-      "search_latency_ms": 6.6899999999999995,
+      "search_latency_ms": 8.23,
       "token_estimate_input_tokens": 102,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 342,
@@ -10838,8 +10839,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-008-dist-008-3",
         "obs_locomo-locomo-benchmark-dist-008-dist-008-1",
-        "obs_locomo-locomo-benchmark-dist-008-dist-008-4",
-        "obs_locomo-locomo-benchmark-dist-008-dist-008-2"
+        "obs_locomo-locomo-benchmark-dist-008-dist-008-2",
+        "obs_locomo-locomo-benchmark-dist-008-dist-008-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -10870,16 +10871,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-008-dist-008-4",
-              "sentence": "Different languages, same functionality.",
-              "score": 0.615,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-008-dist-008-2",
               "sentence": "TypeScript adds type safety.",
-              "score": 0.565,
+              "score": 0.615,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-008-dist-008-4",
+              "sentence": "Different languages, same functionality.",
+              "score": 0.565,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -10893,7 +10894,7 @@
         },
         "final_short_answer": "Python"
       },
-      "search_latency_ms": 5.18,
+      "search_latency_ms": 8.75,
       "token_estimate_input_tokens": 86,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 326,
@@ -10967,7 +10968,7 @@
         },
         "final_short_answer": "Python"
       },
-      "search_latency_ms": 6.789999999999999,
+      "search_latency_ms": 8.16,
       "token_estimate_input_tokens": 100,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 340,
@@ -10986,8 +10987,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-009-dist-009-1",
         "obs_locomo-locomo-benchmark-dist-009-dist-009-3",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-2"
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11018,16 +11019,16 @@
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
-              "sentence": "Steady progress over time.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
               "sentence": "A milestone deployment!",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
+              "sentence": "Steady progress over time.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -11041,7 +11042,7 @@
         },
         "final_short_answer": "API"
       },
-      "search_latency_ms": 6.029999999999999,
+      "search_latency_ms": 8.69,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 336,
@@ -11060,8 +11061,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-009-dist-009-3",
         "obs_locomo-locomo-benchmark-dist-009-dist-009-1",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-2"
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11094,16 +11095,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
-              "sentence": "Steady progress over time.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
               "sentence": "A milestone deployment!",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:01.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
+              "sentence": "Steady progress over time.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -11117,7 +11118,7 @@
         },
         "final_short_answer": "September 2023"
       },
-      "search_latency_ms": 10.15,
+      "search_latency_ms": 13.870000000000001,
       "token_estimate_input_tokens": 160,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 560,
@@ -11136,8 +11137,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-009-dist-009-3",
         "obs_locomo-locomo-benchmark-dist-009-dist-009-1",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
-        "obs_locomo-locomo-benchmark-dist-009-dist-009-4"
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
+        "obs_locomo-locomo-benchmark-dist-009-dist-009-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11168,16 +11169,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
-              "sentence": "A milestone deployment!",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-4",
               "sentence": "Steady progress over time.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-009-dist-009-2",
+              "sentence": "A milestone deployment!",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -11191,7 +11192,7 @@
         },
         "final_short_answer": "September"
       },
-      "search_latency_ms": 4.4799999999999995,
+      "search_latency_ms": 7.41,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 324,
@@ -11210,8 +11211,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-010-dist-010-3",
         "obs_locomo-locomo-benchmark-dist-010-dist-010-1",
-        "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
-        "obs_locomo-locomo-benchmark-dist-010-dist-010-4"
+        "obs_locomo-locomo-benchmark-dist-010-dist-010-4",
+        "obs_locomo-locomo-benchmark-dist-010-dist-010-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11242,16 +11243,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
-              "sentence": "Lambda is very cost-effective for event-driven workloads.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-4",
               "sentence": "Both are serverless options.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
+              "sentence": "Lambda is very cost-effective for event-driven workloads.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -11265,7 +11266,7 @@
         },
         "final_short_answer": "Google Cloud Functions"
       },
-      "search_latency_ms": 6.3999999999999995,
+      "search_latency_ms": 7.880000000000001,
       "token_estimate_input_tokens": 97,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 337,
@@ -11284,8 +11285,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-010-dist-010-3",
         "obs_locomo-locomo-benchmark-dist-010-dist-010-1",
-        "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
-        "obs_locomo-locomo-benchmark-dist-010-dist-010-4"
+        "obs_locomo-locomo-benchmark-dist-010-dist-010-4",
+        "obs_locomo-locomo-benchmark-dist-010-dist-010-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11316,16 +11317,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
-              "sentence": "Lambda is very cost-effective for event-driven workloads.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-4",
               "sentence": "Both are serverless options.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-010-dist-010-2",
+              "sentence": "Lambda is very cost-effective for event-driven workloads.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -11339,7 +11340,7 @@
         },
         "final_short_answer": "Google Cloud Functions"
       },
-      "search_latency_ms": 4.53,
+      "search_latency_ms": 6.78,
       "token_estimate_input_tokens": 89,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 329,
@@ -11413,7 +11414,7 @@
         },
         "final_short_answer": "Both"
       },
-      "search_latency_ms": 4,
+      "search_latency_ms": 6.08,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 320,
@@ -11488,7 +11489,7 @@
         },
         "final_short_answer": "San Francisco"
       },
-      "search_latency_ms": 4.94,
+      "search_latency_ms": 5.12,
       "token_estimate_input_tokens": 105,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 425,
@@ -11507,6 +11508,7 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-011-dist-011-1",
         "obs_locomo-locomo-benchmark-dist-011-dist-011-3",
+        "obs_locomo-locomo-benchmark-dist-011-dist-011-4",
         "obs_locomo-locomo-benchmark-dist-011-dist-011-2"
       ],
       "answer_trace": {
@@ -11528,14 +11530,20 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-011-dist-011-1",
               "sentence": "I used to live in New York City until 2022.",
-              "score": 1.318333,
+              "score": 1.485,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-011-dist-011-3",
               "sentence": "Now I live in San Francisco since March 2022.",
-              "score": 1.245,
+              "score": 0.945,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-011-dist-011-4",
+              "sentence": "San Francisco has a great tech scene.",
+              "score": 0.858333,
+              "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-011-dist-011-2",
@@ -11555,10 +11563,10 @@
         },
         "final_short_answer": "New York City"
       },
-      "search_latency_ms": 5.305499999998574,
-      "token_estimate_input_tokens": 0,
-      "token_estimate_output_tokens": 0,
-      "token_estimate_total_tokens": 0,
+      "search_latency_ms": 5.64,
+      "token_estimate_input_tokens": 90,
+      "token_estimate_output_tokens": 240,
+      "token_estimate_total_tokens": 330,
       "em": 1,
       "f1": 1
     },
@@ -11631,7 +11639,7 @@
         },
         "final_short_answer": "March 2022"
       },
-      "search_latency_ms": 6.84,
+      "search_latency_ms": 8.2,
       "token_estimate_input_tokens": 139,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 539,
@@ -11678,13 +11686,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-3",
               "sentence": "I made the switch in June 2023 when I joined NeuralBridge.",
-              "score": 0.395,
+              "score": 0.478333,
               "created_at": "2026-01-01T00:00:02.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-4",
               "sentence": "NeuralBridge is a great place to grow.",
-              "score": 0.378333,
+              "score": 0.295,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -11699,7 +11707,7 @@
         },
         "final_short_answer": "That's quite a career transition."
       },
-      "search_latency_ms": 6.93,
+      "search_latency_ms": 6.52,
       "token_estimate_input_tokens": 108,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 428,
@@ -11718,8 +11726,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-012-dist-012-1",
         "obs_locomo-locomo-benchmark-dist-012-dist-012-2",
-        "obs_locomo-locomo-benchmark-dist-012-dist-012-4",
-        "obs_locomo-locomo-benchmark-dist-012-dist-012-3"
+        "obs_locomo-locomo-benchmark-dist-012-dist-012-3",
+        "obs_locomo-locomo-benchmark-dist-012-dist-012-4"
       ],
       "answer_trace": {
         "query_variants": [
@@ -11740,7 +11748,7 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-1",
               "sentence": "I used to work as a data analyst before becoming a backend engineer.",
-              "score": 0.638333,
+              "score": 0.555,
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
@@ -11750,16 +11758,16 @@
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-4",
-              "sentence": "NeuralBridge is a great place to grow.",
-              "score": 0.295,
-              "created_at": "2026-01-01T00:00:03.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-3",
               "sentence": "I made the switch in June 2023 when I joined NeuralBridge.",
-              "score": 0.245,
+              "score": 0.378333,
               "created_at": "2026-01-01T00:00:02.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-012-dist-012-4",
+              "sentence": "NeuralBridge is a great place to grow.",
+              "score": 0.245,
+              "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
         },
@@ -11773,7 +11781,7 @@
         },
         "final_short_answer": "I used to work as a data analyst before becoming a backend engineer."
       },
-      "search_latency_ms": 6.86,
+      "search_latency_ms": 5,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -11849,7 +11857,7 @@
         },
         "final_short_answer": "June 2023"
       },
-      "search_latency_ms": 5.78,
+      "search_latency_ms": 8.52,
       "token_estimate_input_tokens": 137,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 537,
@@ -11917,7 +11925,7 @@
         },
         "final_short_answer": "I used to read mostly thrillers"
       },
-      "search_latency_ms": 6.000000000000001,
+      "search_latency_ms": 7.07,
       "token_estimate_input_tokens": 115,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 435,
@@ -11984,7 +11992,7 @@
         },
         "final_short_answer": "I used to read mostly thrillers"
       },
-      "search_latency_ms": 4.52,
+      "search_latency_ms": 6.43,
       "token_estimate_input_tokens": 73,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 313,
@@ -12051,7 +12059,7 @@
         },
         "final_short_answer": "Dune"
       },
-      "search_latency_ms": 3.97,
+      "search_latency_ms": 5.65,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 323,
@@ -12070,8 +12078,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-014-dist-014-3",
         "obs_locomo-locomo-benchmark-dist-014-dist-014-1",
-        "obs_locomo-locomo-benchmark-dist-014-dist-014-2",
-        "obs_locomo-locomo-benchmark-dist-014-dist-014-4"
+        "obs_locomo-locomo-benchmark-dist-014-dist-014-4",
+        "obs_locomo-locomo-benchmark-dist-014-dist-014-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12103,16 +12111,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-2",
-              "sentence": "I'm sorry to hear about Luna.",
-              "score": 0.295,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-4",
               "sentence": "Rocky will bring you joy.",
-              "score": 0.245,
+              "score": 0.295,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-2",
+              "sentence": "I'm sorry to hear about Luna.",
+              "score": 0.245,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -12126,7 +12134,7 @@
         },
         "final_short_answer": "Rocky"
       },
-      "search_latency_ms": 6.92,
+      "search_latency_ms": 6.24,
       "token_estimate_input_tokens": 105,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 425,
@@ -12173,19 +12181,19 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-2",
               "sentence": "I'm sorry to hear about Luna.",
-              "score": 0.778333,
+              "score": 0.695,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-4",
               "sentence": "Rocky will bring you joy.",
-              "score": 0.695,
+              "score": 0.645,
               "created_at": "2026-01-01T00:00:03.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-014-dist-014-3",
               "sentence": "I now have a dog named Rocky that I adopted three months ago.",
-              "score": 0.465,
+              "score": 0.598333,
               "created_at": "2026-01-01T00:00:02.000Z"
             }
           ]
@@ -12200,7 +12208,7 @@
         },
         "final_short_answer": "Luna"
       },
-      "search_latency_ms": 4.1,
+      "search_latency_ms": 4.37,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 317,
@@ -12274,7 +12282,7 @@
         },
         "final_short_answer": "Rocky"
       },
-      "search_latency_ms": 2.9000000000000004,
+      "search_latency_ms": 4.26,
       "token_estimate_input_tokens": 75,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 315,
@@ -12342,7 +12350,7 @@
         },
         "final_short_answer": "Remote"
       },
-      "search_latency_ms": 5.449999999999999,
+      "search_latency_ms": 5.49,
       "token_estimate_input_tokens": 103,
       "token_estimate_output_tokens": 320,
       "token_estimate_total_tokens": 423,
@@ -12416,7 +12424,7 @@
         },
         "final_short_answer": "I used to commute by car to the office every day."
       },
-      "search_latency_ms": 4.85,
+      "search_latency_ms": 4.5200000000000005,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 318,
@@ -12435,8 +12443,8 @@
       "selected_evidence_ids": [
         "obs_locomo-locomo-benchmark-dist-015-dist-015-3",
         "obs_locomo-locomo-benchmark-dist-015-dist-015-1",
-        "obs_locomo-locomo-benchmark-dist-015-dist-015-2",
-        "obs_locomo-locomo-benchmark-dist-015-dist-015-4"
+        "obs_locomo-locomo-benchmark-dist-015-dist-015-4",
+        "obs_locomo-locomo-benchmark-dist-015-dist-015-2"
       ],
       "answer_trace": {
         "query_variants": [
@@ -12469,16 +12477,16 @@
               "created_at": "2026-01-01T00:00:00.000Z"
             },
             {
-              "id": "obs_locomo-locomo-benchmark-dist-015-dist-015-2",
-              "sentence": "That sounds exhausting.",
-              "score": 0.375,
-              "created_at": "2026-01-01T00:00:01.000Z"
-            },
-            {
               "id": "obs_locomo-locomo-benchmark-dist-015-dist-015-4",
               "sentence": "Remote work offers great flexibility.",
-              "score": 0.325,
+              "score": 0.375,
               "created_at": "2026-01-01T00:00:03.000Z"
+            },
+            {
+              "id": "obs_locomo-locomo-benchmark-dist-015-dist-015-2",
+              "sentence": "That sounds exhausting.",
+              "score": 0.325,
+              "created_at": "2026-01-01T00:00:01.000Z"
             }
           ]
         },
@@ -12492,7 +12500,7 @@
         },
         "final_short_answer": "September 2023"
       },
-      "search_latency_ms": 8,
+      "search_latency_ms": 9.43,
       "token_estimate_input_tokens": 153,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 553,
@@ -12566,7 +12574,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 3.3800000000000003,
+      "search_latency_ms": 4.760000000000001,
       "token_estimate_input_tokens": 75,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 315,
@@ -12640,7 +12648,7 @@
         },
         "final_short_answer": "Greece"
       },
-      "search_latency_ms": 6.07,
+      "search_latency_ms": 3.5,
       "token_estimate_input_tokens": 75,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 315,
@@ -12714,7 +12722,7 @@
         },
         "final_short_answer": "Hawaii"
       },
-      "search_latency_ms": 4.29,
+      "search_latency_ms": 5.82,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 314,
@@ -12788,7 +12796,7 @@
         },
         "final_short_answer": "Harvard"
       },
-      "search_latency_ms": 3.8,
+      "search_latency_ms": 6.1899999999999995,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 325,
@@ -12862,7 +12870,7 @@
         },
         "final_short_answer": "Harvard"
       },
-      "search_latency_ms": 4.11,
+      "search_latency_ms": 5.719999999999999,
       "token_estimate_input_tokens": 88,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 328,
@@ -12936,7 +12944,7 @@
         },
         "final_short_answer": "MBA"
       },
-      "search_latency_ms": 3.88,
+      "search_latency_ms": 4.98,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,
@@ -13010,7 +13018,7 @@
         },
         "final_short_answer": "Sarah"
       },
-      "search_latency_ms": 3.66,
+      "search_latency_ms": 5.07,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 321,
@@ -13084,7 +13092,7 @@
         },
         "final_short_answer": "5 years"
       },
-      "search_latency_ms": 10.47,
+      "search_latency_ms": 10.879999999999999,
       "token_estimate_input_tokens": 167,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 567,
@@ -13158,7 +13166,7 @@
         },
         "final_short_answer": "last quarter"
       },
-      "search_latency_ms": 11,
+      "search_latency_ms": 10.530000000000001,
       "token_estimate_input_tokens": 150,
       "token_estimate_output_tokens": 400,
       "token_estimate_total_tokens": 550,
@@ -13211,7 +13219,7 @@
         },
         "final_short_answer": "Different"
       },
-      "search_latency_ms": 6.310124000001451,
+      "search_latency_ms": 8.556499000002077,
       "token_estimate_input_tokens": 0,
       "token_estimate_output_tokens": 0,
       "token_estimate_total_tokens": 0,
@@ -13285,7 +13293,7 @@
         },
         "final_short_answer": "Japanese"
       },
-      "search_latency_ms": 4.36,
+      "search_latency_ms": 7.3999999999999995,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 336,
@@ -13359,7 +13367,7 @@
         },
         "final_short_answer": "Beijing"
       },
-      "search_latency_ms": 3.92,
+      "search_latency_ms": 4.71,
       "token_estimate_input_tokens": 91,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 331,
@@ -13412,13 +13420,13 @@
             {
               "id": "obs_locomo-locomo-benchmark-dist-020-dist-020-2",
               "sentence": "Physics at Princeton, very impressive.",
-              "score": 0.565,
+              "score": 0.615,
               "created_at": "2026-01-01T00:00:01.000Z"
             },
             {
               "id": "obs_locomo-locomo-benchmark-dist-020-dist-020-4",
               "sentence": "A family of academics!",
-              "score": 0.295,
+              "score": 0.245,
               "created_at": "2026-01-01T00:00:03.000Z"
             }
           ]
@@ -13433,7 +13441,7 @@
         },
         "final_short_answer": "Physics at Princeton, very impressive"
       },
-      "search_latency_ms": 4.1899999999999995,
+      "search_latency_ms": 5.140000000000001,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 321,
@@ -13507,7 +13515,7 @@
         },
         "final_short_answer": "Princeton"
       },
-      "search_latency_ms": 4.77,
+      "search_latency_ms": 5.48,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 327,
@@ -13581,7 +13589,7 @@
         },
         "final_short_answer": "Physics at Princeton, very impressive"
       },
-      "search_latency_ms": 2.7800000000000002,
+      "search_latency_ms": 4.96,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 240,
       "token_estimate_total_tokens": 319,

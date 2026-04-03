@@ -114,7 +114,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
     });
   } else if (providerName === "adaptive") {
     const japaneseProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "ruri-v3-30m");
-    const freeGeneralProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "gte-small");
+    const freeGeneralProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "multilingual-e5");
     const hasProApi = Boolean(options.proApiKey && options.proApiUrl);
     const generalProvider = hasProApi
       ? createProApiEmbeddingProvider({

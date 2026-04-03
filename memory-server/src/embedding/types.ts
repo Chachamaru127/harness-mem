@@ -32,7 +32,7 @@ export interface EmbeddingProvider {
   dimension: number;
   embed(text: string): number[];
   embedQuery?(text: string): number[];
-  embedSecondary?(text: string): number[] | null;
+  embedSecondary?(text: string, mode?: "passage" | "query"): number[] | null;
   analyze?(text: string): QueryAnalysis;
   routeFor?(text: string): AdaptiveRoute;
   primaryModelFor?(text: string): string;

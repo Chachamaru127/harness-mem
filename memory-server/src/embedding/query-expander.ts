@@ -17,6 +17,11 @@ interface VariantCandidate {
   origin: VariantOrigin;
 }
 
+interface MatchCandidate {
+  key: string;
+  synonym: string;
+}
+
 function loadSynonymMap(fileName: string): SynonymMap {
   const filePath = resolve(import.meta.dir, "../../../data", fileName);
   if (!existsSync(filePath)) {
@@ -63,9 +68,9 @@ function hasLatinScript(value: string): boolean {
   return /[A-Za-z]/.test(value);
 }
 
-function collectMatches(query: string, dictionary: SynonymMap): Array<{ key: string; synonym: string }> {
+function collectMatches(query: string, dictionary: SynonymMap): MatchCandidate[] {
   const normalizedQuery = normalizeText(query).toLowerCase();
-  const matches: Array<{ key: string; synonym: string }> = [];
+  const matches: MatchCandidate[] = [];
   for (const [rawKey, synonyms] of Object.entries(dictionary)) {
     const key = rawKey.toLowerCase();
     if (!normalizedQuery.includes(key)) {
@@ -79,6 +84,58 @@ function collectMatches(query: string, dictionary: SynonymMap): Array<{ key: str
     }
   }
   return matches;
+}
+
+function pickBridgeSynonym(
+  original: string,
+  route: AdaptiveRoute | null,
+  matches: MatchCandidate[],
+): MatchCandidate[] {
+  const wantsJapanese = route === "openai";
+  const wantsEnglish = route === "ruri";
+
+  const picked = new Map<string, MatchCandidate>();
+  for (const match of matches) {
+    const existing = picked.get(match.key);
+    const synonymHasJa = hasJapaneseScript(match.synonym);
+    const synonymHasEn = hasLatinScript(match.synonym);
+    const candidatePriority =
+      (wantsJapanese && synonymHasJa ? 4 : 0) +
+      (wantsEnglish && synonymHasEn ? 4 : 0) +
+      (synonymHasJa && synonymHasEn ? 2 : 0) +
+      (match.synonym.length > 0 ? 1 : 0);
+    const existingPriority = existing
+      ? ((wantsJapanese && hasJapaneseScript(existing.synonym) ? 4 : 0) +
+        (wantsEnglish && hasLatinScript(existing.synonym) ? 4 : 0) +
+        (hasJapaneseScript(existing.synonym) && hasLatinScript(existing.synonym) ? 2 : 0) +
+        (existing.synonym.length > 0 ? 1 : 0))
+      : -1;
+    if (!existing || candidatePriority > existingPriority) {
+      picked.set(match.key, match);
+    }
+  }
+  return [...picked.values()];
+}
+
+function buildBridgeVariant(
+  original: string,
+  route: AdaptiveRoute | null,
+  matches: MatchCandidate[],
+): string | null {
+  const bridgeMatches = pickBridgeSynonym(original, route, matches);
+  if (bridgeMatches.length === 0) {
+    return null;
+  }
+
+  let candidate = original;
+  for (const match of bridgeMatches) {
+    candidate = candidate.replace(match.key, match.synonym);
+  }
+  const normalized = normalizeText(candidate);
+  if (!normalized || normalized === original) {
+    return null;
+  }
+  return normalized;
 }
 
 function scoreCandidate(
@@ -111,13 +168,22 @@ function scoreCandidate(
 function buildVariants(
   query: string,
   route: AdaptiveRoute | null,
-  matches: Array<{ key: string; synonym: string }>,
+  matches: MatchCandidate[],
   maxVariants: number,
 ): string[] {
   const original = normalizeText(query);
   const originalTokens = Math.max(1, tokenCount(original));
   const maxTokens = originalTokens * 3;
   const candidateMap = new Map<string, VariantCandidate>();
+
+  const bridgeVariant = buildBridgeVariant(original, route, matches);
+  if (bridgeVariant && tokenCount(bridgeVariant) <= maxTokens) {
+    candidateMap.set(bridgeVariant, {
+      value: bridgeVariant,
+      origin: "replaced",
+      score: scoreCandidate(original, bridgeVariant, route, "replaced") + 6,
+    });
+  }
 
   for (const match of matches) {
     const replaced = normalizeText(original.replace(match.key, match.synonym));

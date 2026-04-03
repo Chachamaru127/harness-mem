@@ -1109,7 +1109,7 @@ export class HarnessMemCore {
 
     let secondary: ResolvedEmbeddingVariant | null = null;
     if (typeof this.embeddingProvider.embedSecondary === "function") {
-      const secondaryVector = this.embeddingProvider.embedSecondary(normalized);
+      const secondaryVector = this.embeddingProvider.embedSecondary(normalized, mode);
       if (secondaryVector && secondaryVector.length > 0) {
         secondary = {
           model:

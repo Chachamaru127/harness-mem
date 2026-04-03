@@ -239,7 +239,7 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
       writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
     };
     installModel("ruri-v3-30m");
-    installModel("gte-small");
+    installModel("multilingual-e5");
 
     try {
       const registry = createEmbeddingProviderRegistry({
@@ -330,7 +330,7 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
       writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
     };
     installModel("ruri-v3-30m");
-    installModel("gte-small");
+    installModel("multilingual-e5");
 
     try {
       const registry = createEmbeddingProviderRegistry({
@@ -350,7 +350,7 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
   test("adaptive provider は general route 障害時に fallback provider へ切り替える", () => {
     const japaneseHealth = { current: { status: "healthy", details: "ruri ok" } satisfies EmbeddingHealth };
     const proHealth = { current: { status: "degraded", details: "remote down" } satisfies EmbeddingHealth };
-    const freeHealth = { current: { status: "healthy", details: "gte ok" } satisfies EmbeddingHealth };
+    const freeHealth = { current: { status: "healthy", details: "multilingual ok" } satisfies EmbeddingHealth };
     const fallbackVector = [0.4, 0.6, 0, 0, 0, 0, 0, 0];
 
     const provider = createAdaptiveEmbeddingProvider({
@@ -363,12 +363,12 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
         undefined,
         true
       ),
-      generalFallbackProvider: createStubProvider("local", "gte-small", fallbackVector, freeHealth),
+      generalFallbackProvider: createStubProvider("local", "multilingual-e5", fallbackVector, freeHealth),
       dimension: 8,
     });
 
     expect(provider.embedQuery("deploy rollback plan")).toEqual(fallbackVector);
-    expect(provider.primaryModelFor("deploy rollback plan")).toContain("adaptive:general:local:gte-small");
+    expect(provider.primaryModelFor("deploy rollback plan")).toContain("adaptive:general:local:multilingual-e5");
     expect(provider.health().status).toBe("degraded");
   });
 
@@ -395,7 +395,7 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
           },
           true
         ),
-        generalFallbackProvider: createStubProvider("local", "gte-small", [0.4, 0.6, 0, 0, 0, 0, 0, 0], freeHealth),
+        generalFallbackProvider: createStubProvider("local", "multilingual-e5", [0.4, 0.6, 0, 0, 0, 0, 0, 0], freeHealth),
         dimension: 8,
       });
 

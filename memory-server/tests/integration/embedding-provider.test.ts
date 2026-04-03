@@ -134,7 +134,7 @@ describe("embedding provider integration", () => {
       writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
     };
     installModel("ruri-v3-30m");
-    installModel("gte-small");
+    installModel("multilingual-e5");
 
     const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
     const previousModelsDir = process.env.HARNESS_MEM_LOCAL_MODELS_DIR;

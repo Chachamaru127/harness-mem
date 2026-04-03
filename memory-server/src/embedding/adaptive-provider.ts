@@ -28,7 +28,7 @@ interface GeneralFallbackState {
 }
 
 export interface AdaptiveEmbeddingProvider extends EmbeddingProvider {
-  embedSecondary(text: string): number[] | null;
+  embedSecondary(text: string, mode?: "passage" | "query"): number[] | null;
   analyze(text: string): QueryAnalysis;
   routeFor(text: string): AdaptiveRoute;
   primaryModelFor(text: string): string;
@@ -312,12 +312,12 @@ export function createAdaptiveEmbeddingProvider(
       const { route } = resolveRoute(text || "");
       return primeForRoute(text || "", route, true);
     },
-    embedSecondary(text: string): number[] | null {
+    embedSecondary(text: string, mode: "passage" | "query" = "query"): number[] | null {
       const { route } = resolveRoute(text || "");
       if (route !== "ensemble") {
         return null;
       }
-      return runGeneralSync(text || "", true);
+      return runGeneralSync(text || "", mode === "query");
     },
     analyze(text: string): QueryAnalysis {
       return resolveRoute(text || "").analysis;
