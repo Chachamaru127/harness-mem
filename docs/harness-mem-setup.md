@@ -37,6 +37,25 @@ Recommended rule:
 - `sudo npm install -g ...`: avoid if possible
 - `sudo harness-mem setup`: do not use
 
+### Windows note
+
+Native Windows PowerShell / CMD is not supported yet.
+
+Reason:
+
+- the published CLI still relies on POSIX shell scripts for setup and hook wiring
+- runtime wiring writes Unix-oriented hook commands and paths
+- Git Bash may let some scripts start, but the native Windows wiring path is not verified and should not be treated as supported
+
+Recommended path on Windows:
+
+1. Install WSL2
+2. Open Ubuntu (or another Linux distribution inside WSL2)
+3. Run `npx ... harness-mem setup` or `npm install -g ...` there
+4. Run `harness-mem doctor` in the same WSL2 environment
+
+If you try to run the published CLI from native PowerShell / CMD, the command now fails fast with an explicit guidance message instead of an opaque `/bin/bash.exe` style error.
+
 If your environment requires elevated privileges for global npm installs, prefer the `npx` path instead of forcing the whole setup flow through `sudo`.
 
 ### npx (no global install)
@@ -45,12 +64,16 @@ If your environment requires elevated privileges for global npm installs, prefer
 npx -y --package @chachamaru127/harness-mem harness-mem setup
 ```
 
+On Windows, run this inside WSL2.
+
 ### global install
 
 ```bash
 npm install -g @chachamaru127/harness-mem
 harness-mem setup
 ```
+
+On Windows, run this inside WSL2 if you want the CLI on your shell PATH.
 
 Use the global install path only when your normal shell user can run `npm install -g` without `sudo`, or when your npm prefix is already configured to a user-writable directory.
 
@@ -108,6 +131,8 @@ For Codex + Claude without global install:
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
 npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
 ```
+
+On Windows, run both commands inside WSL2.
 
 For Claude Plugin Marketplace only:
 

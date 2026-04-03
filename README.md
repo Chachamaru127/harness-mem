@@ -212,6 +212,8 @@ Important:
 
 - Prefer `npx` if global npm install asks for `sudo`.
 - Do not run `harness-mem setup` with `sudo`.
+- Native Windows PowerShell / Command Prompt is not supported yet.
+- If you are on Windows, use WSL2 (for example Ubuntu) and run `harness-mem` inside that Linux shell.
 - `setup` writes into user config locations like `~/.harness-mem`, `~/.codex`, `~/.claude*`, and `~/.cursor`. Running it as root can create the wrong ownership and wire the wrong home directory.
 
 ### Option A: Claude Code Plugin Marketplace (recommended for Claude Code users)
@@ -229,6 +231,8 @@ Claude-side hooks and MCP wiring are configured automatically. If you also want 
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,cursor,claude
 ```
 
+On Windows, run this command inside WSL2 instead of native PowerShell / CMD.
+
 > **Note**: npx downloads are temporary, but harness-mem automatically copies itself to `~/.harness-mem/runtime/` for persistence. The daemon and hooks keep working after the npx cache is cleaned.
 >
 > **Recommended when npm suggests sudo**: choose this path instead of forcing a root-owned global install.
@@ -239,6 +243,8 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,cursor,claude
 ```
+
+On Windows, run the global install path inside WSL2 if you want CLI access.
 
 > **When to use global install**: Choose this if you want `harness-mem doctor`, `harness-memd restart`, and other CLI commands available in your terminal. Options A and B install the runtime but don't add CLI commands to your PATH.
 >
@@ -414,6 +420,13 @@ Update the marker to `cc:完了` and note any unresolved issues.
 
 <p align="center">
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/logos/harness-mem/official/harness-mem-mascot-official.jpg" alt="Harness-mem official mascot" width="360" />
+</p>
+
+## Maintained by
+
+<p align="center">
+  Developed and maintained by <a href="https://canai.jp/">CAN AI Inc.</a><br />
+  AI adoption consulting — helping organizations build lasting AI capabilities.
 </p>
 
 ## License

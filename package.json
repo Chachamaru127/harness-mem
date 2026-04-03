@@ -13,9 +13,9 @@
   "license": "BUSL-1.1",
   "type": "commonjs",
   "bin": {
-    "harness-mem": "scripts/harness-mem",
-    "harness-memd": "scripts/harness-memd",
-    "harness-mem-client": "scripts/harness-mem-client.sh"
+    "harness-mem": "scripts/harness-mem.js",
+    "harness-memd": "scripts/harness-memd.js",
+    "harness-mem-client": "scripts/harness-mem-client.js"
   },
   "files": [
     "README.md",

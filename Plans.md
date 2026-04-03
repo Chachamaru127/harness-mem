@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-04-01（§70 Adaptive Retrieval Engine 計画追加）
+最終更新: 2026-04-02（§71 Windows native setup guardrail 追加）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了）
@@ -89,6 +89,22 @@
 |------|------|-----|---------|--------|
 | S69-001 | npm auth preflight workflow 追加 | `.github/workflows/npm-auth-check.yml` が `workflow_dispatch` で実行でき、`NPM_TOKEN` を使って `npm whoami`、package collaborator 権限、public status、`npm pack --dry-run` を確認できる | - | cc:完了 |
 | S69-002 | contract / docs / changelog sync | workflow 契約テストと `docs/release-process.md` が preflight workflow を説明し、`CHANGELOG.md` / `CHANGELOG_ja.md` の `[Unreleased]` に maintainer-facing 改善として反映される | S69-001 | cc:完了 |
+
+---
+
+## §71 Windows Native Setup Guardrail
+
+策定日: 2026-04-02
+背景: Windows PowerShell / CMD から `npx ... harness-mem setup` や `harness-mem setup` を実行すると、npm が生成する `.ps1` / `.cmd` shim が package の `#!/bin/bash` shebang をそのまま `/bin/bash.exe` として解釈し、`CommandNotFoundException` や「指定されたパスが見つかりません」で落ちる報告が出た。いったん配布入口を Node launcher 化して fail-fast へ寄せたが、その後 `Windows 11 + Git Bash + jq/bun 導入済み` では手動 setup が通った実報告も出た。今後は「PowerShell / CMD 単体」と「Git Bash 付き Windows」を分けて扱い、docs / dependency guidance / shell compatibility を事実ベースで再整理する。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S71-001 | npm bin entrypoint を Node launcher 化し native Windows shim crash を fail-fast 化 | `harness-mem` / `harness-memd` / `harness-mem-client` が npm の Windows shim から起動されても `/bin/bash.exe` ではなく actionable message を返す | - | cc:完了 |
+| S71-002 | 初期 Windows docs guardrail | `README.md` / `README_ja.md` / `docs/harness-mem-setup.md` に PowerShell / CMD 単体では不安定であること、当面の安定ルートを明記する | S71-001 | cc:完了 |
+| S71-003 | Git Bash 前提の Windows compatibility truth sync | docs を「Windows 全面不可」から更新し、`Git Bash + node/npm/curl/jq/bun/rg` を前提にした手動 setup 条件、plugin route 優先、PowerShell/CMD 単体は未推奨、WSL2 は fallback という整理に修正する | S71-002 | cc:TODO |
+| S71-004 | Windows dependency guidance hardening | `setup` / `doctor` の不足依存メッセージと quickstart 冒頭が Windows 利用者にも分かる形で `node`, `npm`, `curl`, `jq`, `bun`, `rg` を案内する | S71-003 | cc:TODO |
+| S71-005 | `harness-memd` log rotation の Git Bash 互換修正 | `file_size_bytes()` が Git Bash で `stat -f` の誤検出を起こさず、`stat -c "%s"` 優先または数値検証で overflow warning を防ぐ。回帰テストを追加する | S71-003 | cc:TODO |
+| S71-006 | Windows 実機 validation artifact | `Windows 11 + Git Bash` で `setup --platform claude` / `doctor` / plugin route の通過条件と既知制約を proof として残す | S71-003, S71-004, S71-005 | cc:TODO |
 
 ---
 
