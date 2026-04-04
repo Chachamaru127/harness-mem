@@ -66,6 +66,14 @@ describe("harness-memd guardrails", () => {
     expect(script).toContain('log "harness-memd restarted via launchctl');
   });
 
+  test("log rotation size detection prefers GNU stat before BSD stat for Git Bash compatibility", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+
+    expect(script).toContain('result="$(stat -c "%s" "$file" 2>/dev/null)"');
+    expect(script).toContain('result="$(stat -f "%z" "$file" 2>/dev/null)"');
+    expect(script).toContain('wc -c < "$file"');
+  });
+
   test("status does not treat non-JSON health endpoint as healthy", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-guard-status-"));
     const port = randomPort();

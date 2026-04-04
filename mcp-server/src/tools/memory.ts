@@ -11,6 +11,7 @@ import { execFile } from "child_process";
 import { promisify } from "util";
 import { getProjectRoot } from "../utils.js";
 import { applyPiiFilter, getActivePiiRules } from "../pii/pii-filter.js";
+import { createJsonToolResult, type ToolResult } from "../tool-result.js";
 
 interface MemoryApiResponse {
   ok: boolean;
@@ -24,11 +25,6 @@ interface MemoryApiResponse {
     [key: string]: unknown;
   };
   error?: string;
-}
-
-interface ToolResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
 }
 
 const execFileAsync = promisify(execFile);
@@ -212,40 +208,31 @@ async function callMemoryApi(
 }
 
 function successResult(payload: MemoryApiResponse, options?: { citations?: boolean }): ToolResult {
-  const result: ToolResult = {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(payload, null, 2),
-      },
-    ],
-  };
+  const citations =
+    options?.citations && payload.items?.length
+      ? (payload.items as Array<Record<string, unknown>>).map((item) => ({
+          id: item.id ?? null,
+          source: item.platform ?? item.source ?? "harness-mem",
+          session_id: item.session_id ?? null,
+          timestamp: item.created_at ?? item.timestamp ?? null,
+          type: item.type ?? item.event_type ?? "observation",
+        }))
+      : undefined;
 
-  // Codex v0.116.0+ memory citation support: attach source metadata
-  if (options?.citations && payload.items?.length) {
-    const citations = (payload.items as Array<Record<string, unknown>>).map((item) => ({
-      id: item.id ?? null,
-      source: item.platform ?? item.source ?? "harness-mem",
-      session_id: item.session_id ?? null,
-      timestamp: item.created_at ?? item.timestamp ?? null,
-      type: item.type ?? item.event_type ?? "observation",
-    }));
-    (result as unknown as Record<string, unknown>)._citations = citations;
-  }
-
-  return result;
+  return createJsonToolResult(payload, { citations });
 }
 
 function errorResult(message: string): ToolResult {
-  return {
-    content: [
-      {
-        type: "text",
-        text: message,
-      },
-    ],
-    isError: true,
-  };
+  return createJsonToolResult(
+    {
+      ok: false,
+      error: message,
+    },
+    {
+      isError: true,
+      text: message,
+    }
+  );
 }
 
 function toObject(args: unknown): Record<string, unknown> {

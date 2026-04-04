@@ -122,8 +122,9 @@ describe("plugin.json schema", () => {
   test("mcpServers uses ${CLAUDE_PLUGIN_ROOT} for portable paths", () => {
     const harness = plugin.mcpServers.harness;
     expect(harness.command).toBe("node");
+    expect(harness.cwd).toBe("${CLAUDE_PLUGIN_ROOT}");
     const argsStr = JSON.stringify(harness.args);
-    expect(argsStr).toContain("${CLAUDE_PLUGIN_ROOT}");
+    expect(argsStr).not.toContain("${CLAUDE_PLUGIN_ROOT}/");
     expect(argsStr).not.toContain("/Users/");
   });
 

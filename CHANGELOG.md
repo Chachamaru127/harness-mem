@@ -7,11 +7,75 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-### Adaptive retrieval now has a full Phase 3 path
+## [0.9.0] - 2026-04-04
 
-**Before**: the Adaptive Retrieval Engine already had the free local route, dual-vector storage, and ensemble search, but the Pro path was still incomplete. The runtime could not yet use a dedicated Pro API embedding provider, automatic fallback was only a plan, query expansion was not benchmark-aware, and the benchmark pipeline itself still assumed ONNX-only runs.
+### Theme: Adaptive retrieval is now production-shaped, and Claude / Codex integration is more robust across macOS and Windows
 
-**After**: the Pro path now has a dedicated `pro-api-provider` with timeout handling, health reporting, and LRU caching; adaptive search now falls back automatically to the free route and later recovers with exponential backoff; query expansion and ensemble weights are externalized through data files; and the benchmark runner can now execute in `adaptive` mode, compare bilingual recall against earlier non-adaptive runs, and tune route thresholds with `npm run benchmark:tune-adaptive`. The CLI/docs surface now explains `adaptive`, and package contents now include the runtime `data/` files required by the new query-expansion and weighting paths.
+**This release finishes the planned Adaptive Retrieval Engine work and also updates the Claude / Codex integration layer to match the latest MCP client behavior more closely. The result is better bilingual retrieval quality, larger MCP result handling for Claude Code, safer cross-platform config generation, and a clearer Windows story: native Windows is now practical for MCP wiring and Git-Bash-assisted setup paths, while WSL2 remains the most reliable full setup route.**
+
+---
+
+#### 1. Adaptive retrieval now ships as a complete user-facing path
+
+**Before**: the Adaptive Retrieval Engine had already gained the local free route, dual-vector storage, and ensemble search groundwork, but the overall path was still incomplete. The Pro API route was not yet a finished provider, automatic fallback/recovery was not fully wired, query expansion still needed to become benchmark-aware, and the bilingual benchmark gate was not yet tuned back to a releasable level.
+
+**After**: the Adaptive Retrieval Engine now includes the full planned path: dedicated Pro API embeddings, automatic fallback and later recovery, adaptive query expansion, externalized routing/weight data, benchmark execution in `adaptive` mode, and threshold tuning through `npm run benchmark:tune-adaptive`. The retrieval stack now stores and searches dual vectors intentionally, and the benchmark gate was tuned back to a passing bilingual quality bar instead of stopping halfway through implementation.
+
+```bash
+HARNESS_MEM_EMBEDDING_PROVIDER=adaptive
+HARNESS_MEM_PRO_API_KEY=...
+HARNESS_MEM_PRO_API_URL=...
+
+npm run benchmark:tune-adaptive
+```
+
+#### 2. Claude Code and Codex MCP results now use a richer response shape
+
+**Before**: large memory-heavy MCP tool results were still sent mainly as plain JSON text, which meant newer Claude Code tool-result metadata was not being used and clients had less structured data to consume. That made big result sets more fragile and made it harder for clients to reason about the payload shape directly.
+
+**After**: the main memory/context-box MCP responses now return `content` text plus `structuredContent`, and Claude Code can additionally receive `_meta["anthropic/maxResultSizeChars"] = 500000` on those results. Codex-specific citation metadata is still preserved, so the richer result shape does not throw away existing client behavior.
+
+```json
+{
+  "content": [{ "type": "text", "text": "{...summary...}" }],
+  "structuredContent": { "results": [] },
+  "_meta": { "anthropic/maxResultSizeChars": 500000 }
+}
+```
+
+#### 3. Claude / Codex wiring is less path-fragile on macOS and Windows
+
+**Before**: generated MCP settings depended more heavily on absolute script paths like `.../mcp-server/dist/index.js`, which is the kind of setup that often breaks when a repo moves, when a shell resolves paths differently, or when Windows path handling differs from macOS/Linux assumptions.
+
+**After**: the generated Claude / Codex wiring now prefers `cwd + relative args`, and the bundled Claude plugin metadata matches that model too. This makes the generated config less sensitive to path movement and improves parity between macOS and Windows setups.
+
+```json
+{
+  "command": "node",
+  "cwd": "/path/to/harness-mem",
+  "args": ["mcp-server/dist/index.js"]
+}
+```
+
+#### 4. Windows now has two supported routes, with different reliability levels
+
+**Before**: the practical guidance for Windows was still too binary. In reality, some users could make Git Bash work, but the docs and CLI story did not give a clear, first-party route for MCP-only config refreshes, and the launcher path was still brittle around shell detection and path conversion.
+
+**After**: Windows now has a clearer split:
+
+- native Windows can refresh Claude / Codex MCP config directly with `harness-mem mcp-config --write --client claude,codex`
+- Git Bash can be detected by the launcher so the existing setup scripts can run with safer Windows-path normalization
+- `harness-memd` log-rotation checks no longer trip over the wrong `stat` flavor in Git Bash
+- WSL2 is still documented as the most reliable full setup path, because it remains the least surprising environment for shell scripts, hooks, and daemon flows
+
+```bash
+# Native Windows MCP-only route
+harness-mem mcp-config --write --client claude,codex
+
+# Most reliable full setup route
+wsl
+harness-mem setup --platform claude,codex
+```
 
 ## [0.8.11] - 2026-04-01
 

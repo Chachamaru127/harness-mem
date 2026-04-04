@@ -14,13 +14,9 @@
  */
 
 import { type Tool } from "@modelcontextprotocol/sdk/types.js";
+import { createJsonToolResult, type ToolResult } from "../tool-result.js";
 
 // ─── Types ───
-
-interface ToolResult {
-  content: Array<{ type: string; text: string }>;
-  isError?: boolean;
-}
 
 interface RecallResult {
   chunkId: string;
@@ -153,21 +149,20 @@ async function callContextBoxApi<T = unknown>(
 // ─── Response helpers ───
 
 function successResult(data: unknown): ToolResult {
-  return {
-    content: [
-      {
-        type: "text",
-        text: JSON.stringify(data, null, 2),
-      },
-    ],
-  };
+  return createJsonToolResult(data);
 }
 
 function errorResult(message: string): ToolResult {
-  return {
-    content: [{ type: "text", text: message }],
-    isError: true,
-  };
+  return createJsonToolResult(
+    {
+      ok: false,
+      error: message,
+    },
+    {
+      isError: true,
+      text: message,
+    }
+  );
 }
 
 // ─── Type helpers ───

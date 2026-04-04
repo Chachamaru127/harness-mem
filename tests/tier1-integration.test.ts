@@ -172,9 +172,11 @@ describe("§57: CC v2.1.80 + Codex v0.116.0 compatibility", () => {
   });
 
   test("MCP search 結果に citation メタデータがあること", () => {
-    const content = readFileSync(resolve(ROOT, "mcp-server/src/tools/memory.ts"), "utf8");
-    expect(content).toContain("_citations");
-    expect(content).toContain("citations: true");
+    const memoryTool = readFileSync(resolve(ROOT, "mcp-server/src/tools/memory.ts"), "utf8");
+    const toolResult = readFileSync(resolve(ROOT, "mcp-server/src/tool-result.ts"), "utf8");
+    expect(memoryTool).toContain("citations: true");
+    expect(toolResult).toContain("_citations");
+    expect(toolResult).toContain("result._citations = options.citations");
   });
 
   test("plugin.json に effort フィールドがあること", () => {

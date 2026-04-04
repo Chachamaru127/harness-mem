@@ -1804,7 +1804,8 @@ $END_CODEX_NOTIFY
 $BEGIN_CODEX_MCP
 [mcp_servers.harness]
 command = "node"
-args = ["${HARNESS_ROOT}/mcp-server/dist/index.js"]
+args = ["mcp-server/dist/index.js"]
+cwd = "${HARNESS_ROOT}"
 enabled = true
 
 [mcp_servers.harness.env]
@@ -1843,7 +1844,8 @@ EOF
 $BEGIN_CODEX_MCP
 [mcp_servers.harness]
 command = "node"
-args = ["${HARNESS_ROOT}/mcp-server/dist/index.js"]
+args = ["mcp-server/dist/index.js"]
+cwd = "${HARNESS_ROOT}"
 enabled = true
 
 [mcp_servers.harness.env]
@@ -1972,7 +1974,8 @@ get_claude_config_targets() {
 
 upsert_claude_json() {
   local file="$1"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="mcp-server/dist/index.js"
+  local mcp_cwd="${HARNESS_ROOT}"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -1989,6 +1992,7 @@ EOF
   tmp="$(mktemp)"
   if jq \
     --arg mcp_entry "$mcp_entry" \
+    --arg mcp_cwd "$mcp_cwd" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
@@ -1997,6 +2001,7 @@ EOF
       | .mcpServers.harness = (.mcpServers.harness // {})
       | .mcpServers.harness.command = "node"
       | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.cwd = $mcp_cwd
       | .mcpServers.harness.enabled = true
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
@@ -2016,7 +2021,8 @@ EOF
 
 upsert_claude_settings_plugin() {
   local file="${HOME}/.claude/settings.json"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="mcp-server/dist/index.js"
+  local mcp_cwd="${HARNESS_ROOT}"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -2031,6 +2037,7 @@ EOF
   tmp="$(mktemp)"
   if jq \
     --arg mcp_entry "$mcp_entry" \
+    --arg mcp_cwd "$mcp_cwd" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
@@ -2045,6 +2052,7 @@ EOF
             "harness": {
               "command": "node",
               "args": [$mcp_entry],
+              "cwd": $mcp_cwd,
               "enabled": true,
               "env": {
                 "HARNESS_MEM_HOST": $host,
@@ -2626,6 +2634,8 @@ check_claude_wiring() {
   local failed=0
   local hooks="${HARNESS_ROOT}/hooks/hooks.json"
   local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_relative_entry="mcp-server/dist/index.js"
+  local mcp_cwd="${HARNESS_ROOT}"
   local found_mcp=0
 
   if [ ! -f "$hooks" ]; then
@@ -2652,14 +2662,20 @@ check_claude_wiring() {
       continue
     fi
 
-    if jq -e --arg mcp_entry "$mcp_entry" '
+    if jq -e --arg mcp_entry "$mcp_entry" --arg mcp_relative_entry "$mcp_relative_entry" --arg mcp_cwd "$mcp_cwd" '
       .mcpServers.harness != null
       and ((.mcpServers.harness.enabled // true) != false)
       and (
         (
           (.mcpServers.harness.command // "") == "node"
           and ((.mcpServers.harness.args // []) | type == "array")
-          and ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
+          and (
+            ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
+            or (
+              ((.mcpServers.harness.args // []) | any(. == $mcp_relative_entry))
+              and ((.mcpServers.harness.cwd // "") == $mcp_cwd)
+            )
+          )
         )
         or (
           (.mcpServers.harness.command // "") == "npx"

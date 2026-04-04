@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-04-02（§71 Windows native setup guardrail 追加）
+最終更新: 2026-04-04（§72 Claude / Codex 公式アップデート追従、release sync）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了）
@@ -15,17 +15,17 @@
 
 ## 現在のステータス
 
-**§47 memSearch 直近対話アンカー改善 — 完了 / §48 repo bootstrap 整合化 — 完了 / §49 benchmark claim SSOT remediation — 完了**（2026-03-13）
+**§70 Adaptive Retrieval Engine — 完了 / §71 Windows native setup guardrail — 進行中 / §72 Claude / Codex 公式アップデート追従 — 完了**（2026-04-04）
 
 | 項目 | 現在地 |
 |------|--------|
-| gate artifacts / README / proof bar | 再同期済み（§49 SSOT drift guard で CI 検知） |
-| 維持できている価値 | local-first CC+Codex bridge、hybrid retrieval、522問日本語ベンチ |
-| 最新リリース | **v0.8.2**（2026-03-29、§61 release docs reproducibility hardening、CI typecheck repair を含む） |
-| 次フェーズの焦点 | §70 Adaptive Retrieval Engine — 日本語特化+汎用モデルの動的ルーティング |
-| CI Gate | **全 PASS**（2026-03-16 §54 完了時点） |
+| gate artifacts / README / proof bar | adaptive manifest / README / proof bar / SSOT matrix を再同期済み |
+| 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ |
+| 最新リリース | **v0.9.0**（2026-04-04、§70 Adaptive Retrieval Engine 完了と §72 Claude/Codex integration 改善を含む） |
+| 次フェーズの焦点 | §71 Windows 実機 validation artifact と dependency guidance の残タスク整理 |
+| CI Gate | **全 PASS**（adaptive `run-ci` PASS、release gate 再同期済み） |
 
-- benchmark SSOT: `generated_at=2026-03-20T11:39:22.199Z`, `git_sha=f3902d8`
+- benchmark SSOT: `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`
 - Japanese companion current: `overall_f1_mean=0.6580`
 - Japanese historical baseline: `overall_f1_mean=0.8020`
 
@@ -101,9 +101,9 @@
 |------|------|-----|---------|--------|
 | S71-001 | npm bin entrypoint を Node launcher 化し native Windows shim crash を fail-fast 化 | `harness-mem` / `harness-memd` / `harness-mem-client` が npm の Windows shim から起動されても `/bin/bash.exe` ではなく actionable message を返す | - | cc:完了 |
 | S71-002 | 初期 Windows docs guardrail | `README.md` / `README_ja.md` / `docs/harness-mem-setup.md` に PowerShell / CMD 単体では不安定であること、当面の安定ルートを明記する | S71-001 | cc:完了 |
-| S71-003 | Git Bash 前提の Windows compatibility truth sync | docs を「Windows 全面不可」から更新し、`Git Bash + node/npm/curl/jq/bun/rg` を前提にした手動 setup 条件、plugin route 優先、PowerShell/CMD 単体は未推奨、WSL2 は fallback という整理に修正する | S71-002 | cc:TODO |
+| S71-003 | Git Bash 前提の Windows compatibility truth sync | docs を「Windows 全面不可」から更新し、`Git Bash + node/npm/curl/jq/bun/rg` を前提にした手動 setup 条件、plugin route 優先、PowerShell/CMD 単体は未推奨、WSL2 は fallback という整理に修正する | S71-002 | cc:完了 |
 | S71-004 | Windows dependency guidance hardening | `setup` / `doctor` の不足依存メッセージと quickstart 冒頭が Windows 利用者にも分かる形で `node`, `npm`, `curl`, `jq`, `bun`, `rg` を案内する | S71-003 | cc:TODO |
-| S71-005 | `harness-memd` log rotation の Git Bash 互換修正 | `file_size_bytes()` が Git Bash で `stat -f` の誤検出を起こさず、`stat -c "%s"` 優先または数値検証で overflow warning を防ぐ。回帰テストを追加する | S71-003 | cc:TODO |
+| S71-005 | `harness-memd` log rotation の Git Bash 互換修正 | `file_size_bytes()` が Git Bash で `stat -f` の誤検出を起こさず、`stat -c "%s"` 優先または数値検証で overflow warning を防ぐ。回帰テストを追加する | S71-003 | cc:完了 |
 | S71-006 | Windows 実機 validation artifact | `Windows 11 + Git Bash` で `setup --platform claude` / `doctor` / plugin route の通過条件と既知制約を proof として残す | S71-003, S71-004, S71-005 | cc:TODO |
 
 ---
@@ -641,3 +641,25 @@ Phase 4（最適化）:
 | Ensemble 検索のレイテンシ増大（2モデル並列） | 中 | API 並列呼び出し + キャッシュ。p95 目標 500ms 以内 |
 | ruri-v3-310m の ONNX 変換品質 | 中 | HuggingFace 公式 ONNX がなければ Pro API のみで提供、ローカルは 30m を維持 |
 | 複合 PK マイグレーションの後方互換 | 高 | マイグレーション前に自動バックアップ。rollback DDL を同梱 |
+
+---
+
+## §72 Claude / Codex 公式アップデート追従（MCP 結果 + Mac / Windows 配線）
+
+背景: 2026-04 時点の Claude Code / Codex の公式更新で、MCP ツール結果の取り扱いとクライアント内の MCP UX が強化された。harness-mem は記憶データや resume context のような「大きくて構造化された結果」を返すことが多く、旧来の「JSON を text で返すだけ」「絶対パス前提の配線」では最新クライアントの改善点を取り込みきれない。今回のフェーズでは、(1) MCP 結果を構造化して大きい payload を正しく渡す、(2) Claude / Codex の MCP 配線を `cwd + relative args` へ寄せて Mac / Windows で壊れにくくする、(3) native Windows でも MCP-only の設定更新だけは CLI から行えるようにする、を実装対象にする。
+
+### 対応対象
+
+- Claude Code: `_meta["anthropic/maxResultSizeChars"]` による最大 500K 文字の MCP 結果許可
+- Claude Code / Codex: `structuredContent` を使った構造化ツール結果
+- Codex / Claude setup: `cwd` を持つ MCP server config に揃え、script arg は relative path に寄せる
+- Windows: POSIX hook まで含む full setup は WSL2 推奨のまま維持しつつ、MCP-only config 更新は native Windows で実行可能にする
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S72-001 | MCP 結果メタデータ拡張 — memory / context-box の成功・失敗レスポンスに `structuredContent` と `_meta["anthropic/maxResultSizeChars"]` を付与し、Codex 用 `_citations` を維持する | `harness_mem_search` など主要 memory tool が text + structuredContent の両方を返し、Claude Code 2.1.92+ で 500K 許可メタを持つ。既存 citation 契約は維持 | - | cc:完了 |
+| S72-002 | Claude / Codex MCP 配線を `cwd + relative args` に更新 — setup/plugin/config generator を絶対パス arg 依存から脱却させ、Mac / Windows で壊れにくい設定へ寄せる | `.claude-plugin/plugin.json`、`harness-mem setup` が生成する Claude / Codex config、doctor 契約が `cwd` 前提で通る。旧絶対パス設定も doctor 互換として読む | S72-001 | cc:完了 |
+| S72-003 | native Windows 向け `mcp-config` サブコマンド — full setup は未対応のまま、Claude / Codex の MCP-only config 更新だけは `harness-mem mcp-config --write --client claude,codex` で実行可能にする | `HARNESS_MEM_FORCE_PLATFORM=win32` 契約テストで `mcp-config` が exit 0。native Windows 向けに actionable な経路が 1 本ある | S72-002 | cc:完了 |
+| S72-004 | 契約テスト + docs/changelog 同期 — 新しいレスポンス形状、plugin schema、Windows contract、setup guide を更新する | root / mcp-server テスト green。README / README_ja / setup guide / CHANGELOG が実装現実と一致 | S72-001, S72-002, S72-003 | cc:完了 |

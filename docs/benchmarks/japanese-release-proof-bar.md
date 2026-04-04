@@ -1,6 +1,6 @@
 # Japanese Release Proof Bar
 
-Last updated: 2026-03-28
+Last updated: 2026-04-04
 
 This document defines what harness-mem can safely claim about Japanese capability after the §49 SSOT remediation.
 
@@ -8,7 +8,7 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 
 | Role | Source | Status | Notes |
 |---|---|---|---|
-| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-03-20T11:39:22.199Z`, `git_sha=f3902d8`, verdict `PASS` |
+| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`, verdict `PASS` |
 | Current Japanese companion | `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json` | current truth | `96 QA`, run family is canonicalized to `run1/run2/run3` only |
 | Historical Japanese baseline | `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json` | historical snapshot | `32 QA`, kept only as baseline context |
 | Deprecated alias | `docs/benchmarks/artifacts/s40-ja-release-latest/` | deprecated | do not cite this path in README / proof / Plans |
@@ -20,15 +20,15 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 Source:
 - `memory-server/src/benchmark/results/ci-run-manifest-latest.json`
 
-Current latest run (`multilingual-e5`, `git_sha=f3902d8`):
+Current latest run (`adaptive`, `git_sha=c77da08`):
 
 | Metric | Value | Meaning |
 |---|---:|---|
 | LoCoMo F1 | 0.5861 | Main retrieval + answer quality gate |
-| Bilingual recall@10 | 0.9000 | EN<->JA retrieval companion metric |
+| Bilingual recall@10 | 0.8400 | EN<->JA retrieval companion metric |
 | Freshness | 1.0000 | Current-state questions stay correct |
-| Temporal | 0.6403 | Ordering / time reasoning gate |
-| Search p95 | 10.26ms | Latency envelope |
+| Temporal | 0.6472 | Ordering / time reasoning gate |
+| Search p95 | 14.04ms | Latency envelope |
 | Token avg | 428.93 | Cost / verbosity envelope |
 
 Verdict: `PASS`
@@ -74,7 +74,7 @@ This baseline is historical context only. It must not be quoted as the current J
 
 - `Cross-lingual EN<->JA retrieval is benchmarked.`
 - `Japanese short-answer quality is evaluated on dedicated release packs.`
-- `Primary release gate remains run-ci; the latest current run is failing and the companion proof is separate.`
+- `Primary release gate remains run-ci; the latest current run is passing and the companion proof is separate.`
 - `Japanese current / exact / why / list / temporal slices are tracked in the current companion gate.`
 
 ### Safe only when paired with this proof bar
@@ -102,6 +102,6 @@ This baseline is historical context only. It must not be quoted as the current J
 
 ## 5. Residual Risks
 
-- The current main gate is still failing on temporal relative regression.
+- The current main gate is passing, but the adaptive bilingual score still sits below the older `multilingual-e5` baseline and should continue to be tracked.
 - `current_vs_previous`, `relative_temporal`, `yes_no`, `entity`, and `location` remain watch slices in the companion artifact.
 - The Japanese companion gate is a release-readiness supplement, not a replacement for `run-ci`.

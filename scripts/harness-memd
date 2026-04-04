@@ -202,7 +202,10 @@ normalize_rotation_settings() {
 
 file_size_bytes() {
   local file="$1"
-  stat -f "%z" "$file" 2>/dev/null || stat -c "%s" "$file" 2>/dev/null || wc -c < "$file"
+  local result
+  result="$(stat -c "%s" "$file" 2>/dev/null)" && echo "$result" && return 0
+  result="$(stat -f "%z" "$file" 2>/dev/null)" && echo "$result" && return 0
+  wc -c < "$file"
 }
 
 rotate_log_file_if_needed() {

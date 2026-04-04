@@ -39,13 +39,15 @@ Recommended rule:
 
 ### Windows note
 
-Native Windows PowerShell / CMD is not supported yet.
+Native Windows PowerShell / CMD by itself is still not the strongest support path for full setup.
 
 Reason:
 
 - the published CLI still relies on POSIX shell scripts for setup and hook wiring
 - runtime wiring writes Unix-oriented hook commands and paths
-- Git Bash may let some scripts start, but the native Windows wiring path is not verified and should not be treated as supported
+- harness-mem now tries to detect Git Bash on Windows and can launch the existing shell scripts through it
+- even with that compatibility path, WSL2 remains the most reliable route for the full setup / doctor / hook lifecycle
+- exception: MCP-only config updates for Claude / Codex can now be done natively with `harness-mem mcp-config --write --client claude,codex`
 
 Recommended path on Windows:
 
@@ -55,6 +57,23 @@ Recommended path on Windows:
 4. Run `harness-mem doctor` in the same WSL2 environment
 
 If you try to run the published CLI from native PowerShell / CMD, the command now fails fast with an explicit guidance message instead of an opaque `/bin/bash.exe` style error.
+
+If your goal is only "update the Claude / Codex MCP server config", you can do that natively on Windows:
+
+```bash
+harness-mem mcp-config --write --client claude,codex
+```
+
+This command updates only the MCP wiring. It does not install the POSIX hook path, so first-turn continuity still depends on the WSL2 or Git Bash setup route.
+
+If you want to try the Git Bash route for full setup on Windows, treat these as required:
+
+- `node`
+- `npm`
+- `curl`
+- `jq`
+- `bun`
+- `rg` (`ripgrep`)
 
 If your environment requires elevated privileges for global npm installs, prefer the `npx` path instead of forcing the whole setup flow through `sudo`.
 

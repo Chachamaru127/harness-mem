@@ -7,12 +7,19 @@
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-04-04
+
 ### ユーザー向け要約
 
-- Adaptive Retrieval Engine の Phase 3 を通しで実装し、Pro API provider、障害時の自動フォールバック、自動復帰、query expansion、重み設定の外部ファイル化までそろえた。
-- benchmark 側も `adaptive` モードを扱えるようになり、bilingual recall を従来モードと比較しながら計測できるようにした。
-- `npm run benchmark:tune-adaptive` を追加し、日本語しきい値とコードしきい値をグリッドサーチして最適値候補を JSON で出せるようにした。
-- README / README_ja / 環境変数 docs / Pro API data policy を更新し、`adaptive` の使い方と注意点を一通り追える状態にした。
+- Adaptive Retrieval Engine を計画どおり最後まで仕上げ、Pro API provider、自動フォールバック、自動復帰、query expansion、外部化された重み設定、`adaptive` benchmark / tuning まで通した。
+- bilingual benchmark の精度調整も反映し、adaptive モードで release gate を通せる状態まで戻した。
+- Claude Code / Codex 向けの MCP 結果を `structuredContent` つきに拡張し、Claude Code では `_meta["anthropic/maxResultSizeChars"] = 500000` を使って大きい結果をより安全に渡せるようにした。
+- Claude / Codex の MCP 配線は `cwd + relative args` ベースに寄せ、絶対パス依存を減らして macOS / Windows で壊れにくくした。
+- Windows は案内を整理し、`native Windows` と `WSL2` を分けて考える形にした。native Windows では `harness-mem mcp-config --write --client claude,codex` で MCP-only 更新ができ、Git Bash があれば既存 setup script も通しやすくなった。一方で、full setup は引き続き WSL2 が最も安定している。
+
+### 補足
+
+- 詳細は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
 ## [0.8.11] - 2026-04-01
 

@@ -52,6 +52,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 - On those supported hook paths, the default SessionStart artifact is hybrid: chain-first continuity stays on top, and a short recent-project teaser may appear second when there is distinct nearby work worth surfacing.
 - If hook wiring or the local runtime is stale, search and recall can still work while the "open a fresh session and it already remembers" UX degrades.
 - Experimental or maintenance-tier clients can still ingest/search, but parity with Claude Code and Codex is not claimed.
+- Large MCP search responses now also return `structuredContent`, so newer Claude / Codex clients can consume machine-readable results instead of only long JSON text.
 
 ### What this does not claim
 
@@ -119,22 +120,22 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-03-20T11:39:22.199Z`
-- git_sha: `f3902d8`
-- embedding: `multilingual-e5`
+- generated_at: `2026-04-03T19:20:02.437Z`
+- git_sha: `c77da08`
+- embedding: `adaptive`
 
 | Metric | Value |
 |---|---:|
 | LoCoMo F1 | 0.5861 |
-| Bilingual recall@10 | 0.9000 |
+| Bilingual recall@10 | 0.8400 |
 | Freshness | 1.0000 |
-| Temporal | 0.6403 |
-| Search p95 | 10.26ms |
+| Temporal | 0.6472 |
+| Search p95 | 14.04ms |
 | Token avg | 428.93 |
 
 Verdict: `PASS`
 
-3 consecutive runs passed (2026-03-20). Layer 1 (Absolute Floor) + Layer 2 (Relative Regression) + Japanese Companion all green.
+Latest adaptive run passed the current release gate. The companion Japanese proof remains a separate artifact-backed evidence pack rather than a replacement for `run-ci`.
 
 ### Japanese companion gate (`96 QA`, current claim source)
 
@@ -212,8 +213,10 @@ Important:
 
 - Prefer `npx` if global npm install asks for `sudo`.
 - Do not run `harness-mem setup` with `sudo`.
-- Native Windows PowerShell / Command Prompt is not supported yet.
-- If you are on Windows, use WSL2 (for example Ubuntu) and run `harness-mem` inside that Linux shell.
+- Native Windows PowerShell / Command Prompt by itself is still not the safest path.
+- If Git for Windows is installed, `harness-mem` now tries to run the existing POSIX setup scripts through Git Bash automatically.
+- The most reliable Windows path is still WSL2 (for example Ubuntu) and running `harness-mem` inside that Linux shell.
+- Exception: native Windows can also run `harness-mem mcp-config --write --client claude,codex` for MCP-only config updates even when you do not want the full hook/setup flow there.
 - `setup` writes into user config locations like `~/.harness-mem`, `~/.codex`, `~/.claude*`, and `~/.cursor`. Running it as root can create the wrong ownership and wire the wrong home directory.
 
 ### Option A: Claude Code Plugin Marketplace (recommended for Claude Code users)
@@ -249,6 +252,27 @@ On Windows, run the global install path inside WSL2 if you want CLI access.
 > **When to use global install**: Choose this if you want `harness-mem doctor`, `harness-memd restart`, and other CLI commands available in your terminal. Options A and B install the runtime but don't add CLI commands to your PATH.
 >
 > **Important**: only use this path when your normal user can run `npm install -g` without `sudo`. Do not run `sudo harness-mem setup`.
+
+### Native Windows options
+
+If you are on Windows, there are now two practical paths:
+
+1. **Git Bash route**: if Git for Windows is installed, the Node launcher will try to find `bash.exe` and run the existing setup scripts through Git Bash.
+2. **MCP-only route**: if you only want Claude / Codex MCP wiring, run:
+
+```bash
+harness-mem mcp-config --write --client claude,codex
+```
+
+The MCP-only route updates only the MCP server wiring. It does not install POSIX hook scripts or daemon auto-start logic. For the full hook-based continuity path, WSL2 is still the most reliable option, and Git Bash should be treated as a practical compatibility route rather than the strongest support target.
+
+If you use the Git Bash route, treat these as required prerequisites on Windows:
+
+- `node` and `npm`
+- `curl`
+- `jq`
+- `bun`
+- `rg` (`ripgrep`)
 
 ### Update existing install
 
@@ -353,7 +377,7 @@ In practice, a reproducible release means all of these are true before you ship:
 | Tier | Tool | Tested With | Notes |
 |---|---|---|---|
 | **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
-| **Tier 1** | Codex CLI | v0.116.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, rules |
+| **Tier 1** | Codex CLI | v0.116.0+ | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules |
 | **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
 | **Tier 3** | Gemini CLI | Latest | Experimental. Community-contributed |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
