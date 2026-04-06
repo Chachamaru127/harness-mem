@@ -10,7 +10,7 @@ const {
 } = require("../scripts/lib/mcp-config");
 
 describe("mcp-config CLI", () => {
-  test("builds Codex config with cwd + relative MCP entry", () => {
+  test("builds Codex config with absolute MCP entry path (no cwd)", () => {
     const spec = resolveServerSpec({
       platform: "win32",
       homeDir: "C:\\Users\\alice",
@@ -20,8 +20,10 @@ describe("mcp-config CLI", () => {
 
     const block = buildCodexManagedBlock(spec);
 
-    expect(block).toContain('args = ["mcp-server\\\\dist\\\\index.js"]');
-    expect(block).toContain('cwd = "C:\\\\repo\\\\harness-mem"');
+    // Args should be absolute path, no cwd field
+    expect(block).toContain('args = ["C:\\\\repo\\\\harness-mem\\\\mcp-server\\\\dist\\\\index.js"]');
+    expect(block).not.toContain("cwd =");
+    expect(block).toContain("NODE_PATH =");
   });
 
   test("writes Claude and Codex config files when --write is passed", () => {
@@ -48,10 +50,12 @@ describe("mcp-config CLI", () => {
         mcpServers: { harness: { args: string[]; cwd: string } };
       };
 
-      expect(codexConfig).toContain('args = ["mcp-server/dist/index.js"]');
-      expect(codexConfig).toContain('cwd = "');
-      expect(claudeConfig.mcpServers.harness.args).toEqual(["mcp-server/dist/index.js"]);
-      expect(claudeConfig.mcpServers.harness.cwd).toContain("harness-mem");
+      // Args should contain absolute path to mcp-server/dist/index.js
+      expect(codexConfig).toContain("mcp-server/dist/index.js");
+      expect(codexConfig).not.toContain('cwd = "');
+      expect(claudeConfig.mcpServers.harness.args[0]).toContain("mcp-server/dist/index.js");
+      expect(claudeConfig.mcpServers.harness.args[0]).toMatch(/^\//); // absolute path
+      expect(claudeConfig.mcpServers.harness.cwd).toBeUndefined();
       expect(chunks.join("")).toContain("[ok] codex:");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
