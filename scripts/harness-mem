@@ -1770,7 +1770,9 @@ check_codex_config_wiring() {
   local cfg="$1"
   local failed=0
   local notify_value notify_script mcp_args_value mcp_cwd_value mcp_entry_path
+  local harness_section harness_env_section
 
+  # notify is intentionally file-global — it lives at top-level config, not under [mcp_servers.harness]
   notify_value="$(sed -nE 's/^[[:space:]]*notify[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$cfg" | head -n1)"
   notify_script="${notify_value#bash }"
   if [ -n "$notify_value" ] && [ -f "$notify_script" ]; then
@@ -1780,15 +1782,19 @@ check_codex_config_wiring() {
     failed=1
   fi
 
-  if rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
+  if grep -qE '^\[mcp_servers\.harness\]' "$cfg"; then
     log "Codex MCP wiring section: OK"
   else
     warn "Codex MCP wiring is missing in: $cfg"
     failed=1
   fi
 
-  mcp_args_value="$(sed -nE 's/^[[:space:]]*args[[:space:]]*=[[:space:]]*\["([^"]+)"\].*/\1/p' "$cfg" | head -n1)"
-  mcp_cwd_value="$(sed -nE 's/^[[:space:]]*cwd[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$cfg" | head -n1)"
+  # Section-scoped extraction: awk Pass 1 — [mcp_servers.harness] parent keys only
+  # Stops at [mcp_servers.harness.env] or any other [section] — intentional
+  # Pattern allows trailing whitespace/comments per TOML spec
+  harness_section="$(awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg")"
+  mcp_args_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*args[[:space:]]*=[[:space:]]*\[[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  mcp_cwd_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*cwd[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
   mcp_entry_path=""
   if [ -n "$mcp_args_value" ]; then
     if [[ "$mcp_args_value" = /* ]]; then
@@ -1814,13 +1820,26 @@ check_codex_config_wiring() {
     fi
   fi
 
-  if rg -q 'HARNESS_MEM_HOST[[:space:]]*=' "$cfg" && \
-     rg -q 'HARNESS_MEM_PORT[[:space:]]*=' "$cfg" && \
-     rg -q 'HARNESS_MEM_DB_PATH[[:space:]]*=' "$cfg"; then
-    log "Codex MCP env wiring: OK"
-  else
-    warn "Codex MCP env wiring is stale or incomplete in: $cfg"
+  # Section-scoped extraction: awk Pass 2 — [mcp_servers.harness.env] keys
+  harness_env_section="$(awk '/^\[mcp_servers\.harness\.env\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg")"
+
+  # Validate env values — trust boundary: read-only check, values are never written to
+  local cfg_host cfg_port cfg_db_path
+  cfg_host="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_HOST[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  cfg_port="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_PORT[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  cfg_db_path="$(echo "$harness_env_section" | sed -nE 's/^[[:space:]]*HARNESS_MEM_DB_PATH[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+
+  if [ -z "$cfg_host" ] || [ -z "$cfg_port" ] || [ -z "$cfg_db_path" ]; then
+    warn "Codex MCP env wiring is incomplete (missing keys) in: $cfg"
     failed=1
+  elif [ "$cfg_host" != "$MEM_HOST" ] || [ "$cfg_port" != "$MEM_PORT" ]; then
+    warn "Codex MCP env wiring has stale HOST/PORT values in: $cfg (expected ${MEM_HOST}:${MEM_PORT}, got ${cfg_host}:${cfg_port})"
+    failed=1
+  elif [ -n "$cfg_db_path" ] && [ ! -d "$(dirname "$cfg_db_path")" ]; then
+    warn "Codex MCP DB_PATH parent directory does not exist in: $cfg (${cfg_db_path})"
+    failed=1
+  else
+    log "Codex MCP env wiring: OK"
   fi
 
   return "$failed"
@@ -1889,7 +1908,7 @@ EOF
 check_codex_hooks_feature_enabled() {
   local cfg="$1"
 
-  if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+  if grep -qE '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
     log "Codex hooks feature flag: OK"
     return 0
   fi
@@ -2055,7 +2074,7 @@ check_codex_wiring() {
   local prepare_hook
   prepare_hook="$(git -C "$TARGET_DIR" rev-parse --git-path hooks/prepare-commit-msg 2>/dev/null || true)"
   if [ -n "$prepare_hook" ] && [ -f "$prepare_hook" ]; then
-    if rg -qi 'codex|command_attribution|prepare-commit-msg' "$prepare_hook"; then
+    if grep -qiE 'codex|command_attribution|prepare-commit-msg' "$prepare_hook"; then
       log "Codex git hook coexistence: prepare-commit-msg detected ($prepare_hook)"
     else
       log "Git prepare-commit-msg hook detected (left untouched by harness-mem): $prepare_hook"

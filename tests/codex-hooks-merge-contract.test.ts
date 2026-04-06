@@ -239,7 +239,10 @@ describe("codex hooks merge contract", () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-stale-root-"));
 
     try {
-      const staleRoot = "/tmp/old-harness-mem";
+      // 5a: Use mkdtempSync + rmSync for a guaranteed-nonexistent stale path
+      const staleRoot = mkdtempSync(join(tmpdir(), "hmem-stale-root-"));
+      rmSync(staleRoot, { recursive: true, force: true });
+
       mkdirSync(join(tmpHome, ".codex"), { recursive: true });
       writeFileSync(
         join(tmpHome, ".codex", "config.toml"),
@@ -301,6 +304,181 @@ codex_hooks = true
           null,
           2
         )
+      );
+
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+      });
+
+      const parsed = JSON.parse(result.stdout) as {
+        all_green: boolean;
+        checks: Array<{ name: string; status: string }>;
+      };
+      const codexCheck = parsed.checks.find((check) => check.name === "codex_wiring");
+
+      expect(parsed.all_green).toBe(false);
+      expect(codexCheck?.status).toBe("missing");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  // 5b: Section-scoped extraction — other MCP server before harness should not affect checks
+  test("doctor checks only [mcp_servers.harness] section, ignoring other MCP servers", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-multi-mcp-"));
+    const staleRoot = mkdtempSync(join(tmpdir(), "hmem-stale-root-"));
+    rmSync(staleRoot, { recursive: true, force: true });
+
+    try {
+      mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+      mkdirSync(join(tmpHome, ".harness-mem"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".codex", "config.toml"),
+        `
+notify = "bash ${ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+
+[mcp_servers.other]
+command = "node"
+args = ["other-server/dist/index.js"]
+cwd = "${ROOT}"
+enabled = true
+
+[mcp_servers.other.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
+
+[mcp_servers.harness]
+command = "node"
+args = ["mcp-server/dist/index.js"]
+cwd = "${staleRoot}"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "${join(staleRoot, ".harness-mem", "harness-mem.db")}"
+
+[features]
+codex_hooks = true
+`.trimStart()
+      );
+      writeFileSync(
+        join(tmpHome, ".codex", "hooks.json"),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh` }] }],
+            UserPromptSubmit: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh` }] }],
+            Stop: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh` }] }],
+          },
+        }, null, 2)
+      );
+
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+      });
+
+      const parsed = JSON.parse(result.stdout) as {
+        all_green: boolean;
+        checks: Array<{ name: string; status: string }>;
+      };
+      const codexCheck = parsed.checks.find((check) => check.name === "codex_wiring");
+
+      // harness section has stale cwd/db_path, so should be missing
+      // even though [mcp_servers.other] has valid paths
+      expect(parsed.all_green).toBe(false);
+      expect(codexCheck?.status).toBe("missing");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  // 5d: Missing [mcp_servers.harness] section entirely
+  test("doctor --json marks codex_wiring missing when [mcp_servers.harness] section is absent", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-no-section-"));
+
+    try {
+      mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".codex", "config.toml"),
+        `
+notify = "bash ${ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+
+[features]
+codex_hooks = true
+`.trimStart()
+      );
+      writeFileSync(
+        join(tmpHome, ".codex", "hooks.json"),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh` }] }],
+            UserPromptSubmit: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh` }] }],
+            Stop: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh` }] }],
+          },
+        }, null, 2)
+      );
+
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+      });
+
+      const parsed = JSON.parse(result.stdout) as {
+        all_green: boolean;
+        checks: Array<{ name: string; status: string }>;
+      };
+      const codexCheck = parsed.checks.find((check) => check.name === "codex_wiring");
+
+      expect(parsed.all_green).toBe(false);
+      expect(codexCheck?.status).toBe("missing");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  // 5e: [mcp_servers.harness] present but no args key
+  test("doctor --json marks codex_wiring missing when harness section has no args key", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-no-args-"));
+
+    try {
+      mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+      mkdirSync(join(tmpHome, ".harness-mem"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".codex", "config.toml"),
+        `
+notify = "bash ${ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+
+[mcp_servers.harness]
+command = "node"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
+
+[features]
+codex_hooks = true
+`.trimStart()
+      );
+      writeFileSync(
+        join(tmpHome, ".codex", "hooks.json"),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh` }] }],
+            UserPromptSubmit: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh` }] }],
+            Stop: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh` }] }],
+          },
+        }, null, 2)
       );
 
       const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
