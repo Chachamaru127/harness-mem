@@ -28,14 +28,19 @@ function resolveServerSpec(options = {}) {
   const dbPath =
     env.HARNESS_MEM_DB_PATH || pathApi.join(homeDir, ".harness-mem", "harness-mem.db");
 
+  // Use absolute paths — Claude Code CLI ignores `cwd` in MCP server config (v2.1.92+).
+  // Relative args would resolve against the user's project directory, not harness root.
+  const mcpEntry = pathApi.join(harnessRoot, "mcp-server", "dist", "index.js");
+  const nodePath = pathApi.join(harnessRoot, "mcp-server", "node_modules");
+
   return {
     command: "node",
-    args: [pathApi.join("mcp-server", "dist", "index.js")],
-    cwd: harnessRoot,
+    args: [mcpEntry],
     env: {
       HARNESS_MEM_HOST: env.HARNESS_MEM_HOST || "127.0.0.1",
       HARNESS_MEM_PORT: env.HARNESS_MEM_PORT || "37888",
       HARNESS_MEM_DB_PATH: dbPath,
+      NODE_PATH: nodePath,
     },
   };
 }
@@ -50,13 +55,13 @@ function buildCodexManagedBlock(serverSpec) {
     "[mcp_servers.harness]",
     `command = "${escapeTomlString(serverSpec.command)}"`,
     `args = ["${escapeTomlString(serverSpec.args[0])}"]`,
-    `cwd = "${escapeTomlString(serverSpec.cwd)}"`,
     "enabled = true",
     "",
     "[mcp_servers.harness.env]",
     `HARNESS_MEM_HOST = "${escapeTomlString(serverSpec.env.HARNESS_MEM_HOST)}"`,
     `HARNESS_MEM_PORT = "${escapeTomlString(serverSpec.env.HARNESS_MEM_PORT)}"`,
     `HARNESS_MEM_DB_PATH = "${escapeTomlString(serverSpec.env.HARNESS_MEM_DB_PATH)}"`,
+    `NODE_PATH = "${escapeTomlString(serverSpec.env.NODE_PATH)}"`,
     END_CODEX_MCP,
     "",
   ].join("\n");
@@ -169,13 +174,14 @@ function writeClaudeConfig(options = {}) {
     ...(parsed.mcpServers.harness || {}),
     command: serverSpec.command,
     args: serverSpec.args,
-    cwd: serverSpec.cwd,
     enabled: true,
     env: {
       ...((parsed.mcpServers.harness && parsed.mcpServers.harness.env) || {}),
       ...serverSpec.env,
     },
   };
+  // Remove legacy cwd field — Claude Code CLI ignores it, causing MODULE_NOT_FOUND
+  delete parsed.mcpServers.harness.cwd;
 
   fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return { client: "claude", status: "updated", filePath };
@@ -230,7 +236,6 @@ function buildPrintableSummary(results, serverSpec) {
         harness: {
           command: serverSpec.command,
           args: serverSpec.args,
-          cwd: serverSpec.cwd,
           enabled: true,
           env: serverSpec.env,
         },
@@ -245,7 +250,6 @@ function buildPrintableSummary(results, serverSpec) {
     "",
     `command: ${serverSpec.command}`,
     `args[0]: ${serverSpec.args[0]}`,
-    `cwd: ${serverSpec.cwd}`,
     "",
   ];
 

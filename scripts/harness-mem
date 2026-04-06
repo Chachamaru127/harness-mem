@@ -1766,6 +1766,54 @@ EOF
   return "$failed"
 }
 
+check_codex_config_wiring() {
+  local cfg="$1"
+  local failed=0
+  local notify_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+  local mcp_cwd="${HARNESS_ROOT}"
+  local mcp_args='args = ["mcp-server/dist/index.js"]'
+  local host_line="HARNESS_MEM_HOST = \"${MEM_HOST}\""
+  local port_line="HARNESS_MEM_PORT = \"${MEM_PORT}\""
+  local db_line="HARNESS_MEM_DB_PATH = \"${DB_PATH}\""
+
+  if rg -Fq "$notify_script" "$cfg"; then
+    log "Codex notify wiring path: OK"
+  else
+    warn "Codex notify wiring points at a different harness-mem path in: $cfg"
+    failed=1
+  fi
+
+  if rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
+    log "Codex MCP wiring section: OK"
+  else
+    warn "Codex MCP wiring is missing in: $cfg"
+    failed=1
+  fi
+
+  if rg -Fq "cwd = \"${mcp_cwd}\"" "$cfg"; then
+    log "Codex MCP cwd path: OK"
+  else
+    warn "Codex MCP cwd does not match the current harness-mem checkout in: $cfg"
+    failed=1
+  fi
+
+  if rg -Fq "$mcp_args" "$cfg"; then
+    log "Codex MCP args path: OK"
+  else
+    warn "Codex MCP args are missing the harness-mem MCP entrypoint in: $cfg"
+    failed=1
+  fi
+
+  if rg -Fq "$host_line" "$cfg" && rg -Fq "$port_line" "$cfg" && rg -Fq "$db_line" "$cfg"; then
+    log "Codex MCP env wiring: OK"
+  else
+    warn "Codex MCP env wiring is stale or incomplete in: $cfg"
+    failed=1
+  fi
+
+  return "$failed"
+}
+
 ensure_codex_hooks_feature_enabled() {
   local cfg="$1"
   local tmp
@@ -1967,17 +2015,9 @@ check_codex_wiring() {
     return 1
   fi
 
-  if rg -q 'memory-codex-notify\.sh' "$cfg"; then
-    log "Codex notify wiring: OK"
+  if check_codex_config_wiring "$cfg"; then
+    :
   else
-    warn "Codex notify wiring is missing in: $cfg"
-    failed=1
-  fi
-
-  if rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
-    log "Codex MCP wiring: OK"
-  else
-    warn "Codex MCP wiring is missing in: $cfg"
     failed=1
   fi
 
@@ -2039,8 +2079,9 @@ get_claude_config_targets() {
 
 upsert_claude_json() {
   local file="$1"
-  local mcp_entry="mcp-server/dist/index.js"
-  local mcp_cwd="${HARNESS_ROOT}"
+  # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -2057,21 +2098,22 @@ EOF
   tmp="$(mktemp)"
   if jq \
     --arg mcp_entry "$mcp_entry" \
-    --arg mcp_cwd "$mcp_cwd" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
+    --arg node_path "$node_path" \
     '
       .mcpServers = (.mcpServers // {})
       | .mcpServers.harness = (.mcpServers.harness // {})
       | .mcpServers.harness.command = "node"
       | .mcpServers.harness.args = [$mcp_entry]
-      | .mcpServers.harness.cwd = $mcp_cwd
+      | del(.mcpServers.harness.cwd)
       | .mcpServers.harness.enabled = true
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
-          "HARNESS_MEM_DB_PATH": $db_path
+          "HARNESS_MEM_DB_PATH": $db_path,
+          "NODE_PATH": $node_path
         })
     ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
@@ -2086,8 +2128,9 @@ EOF
 
 upsert_claude_settings_plugin() {
   local file="${HOME}/.claude/settings.json"
-  local mcp_entry="mcp-server/dist/index.js"
-  local mcp_cwd="${HARNESS_ROOT}"
+  # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
+  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -2102,10 +2145,10 @@ EOF
   tmp="$(mktemp)"
   if jq \
     --arg mcp_entry "$mcp_entry" \
-    --arg mcp_cwd "$mcp_cwd" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
+    --arg node_path "$node_path" \
     --arg plugin_root "$HARNESS_ROOT" \
     '
       .plugins = (.plugins // {})
@@ -2117,12 +2160,12 @@ EOF
             "harness": {
               "command": "node",
               "args": [$mcp_entry],
-              "cwd": $mcp_cwd,
               "enabled": true,
               "env": {
                 "HARNESS_MEM_HOST": $host,
                 "HARNESS_MEM_PORT": $port,
-                "HARNESS_MEM_DB_PATH": $db_path
+                "HARNESS_MEM_DB_PATH": $db_path,
+                "NODE_PATH": $node_path
               }
             }
           }
