@@ -19,6 +19,9 @@ tests/benchmarks/output/
 # Build/dependency artifacts
 **/node_modules/
 **/dist/
+# Allow mcp-server/dist/ so the plugin works on fresh clone
+!mcp-server/dist/
+!mcp-server/dist/**
 
 # Local Codex runtime files
 .codex/config.toml

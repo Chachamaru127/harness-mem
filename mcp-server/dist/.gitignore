@@ -1,0 +1,5 @@
+# Only track the esbuild bundle (self-contained, no node_modules needed)
+*
+!.gitignore
+!index.js
+!index.js.map
