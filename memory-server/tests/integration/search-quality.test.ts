@@ -1,9 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, type ApiResponse, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
+import { removeDirWithRetry } from "../fs-cleanup";
 
 function createCore(name: string): { core: HarnessMemCore; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-search-${name}-`));
@@ -90,7 +91,7 @@ describe("search quality integration", () => {
       }
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -157,7 +158,7 @@ describe("search quality integration", () => {
       expect(String(items[1]?.content || "")).toContain("latest claude prompt");
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -271,7 +272,7 @@ describe("search quality integration", () => {
       expect(String(items[1]?.content || "")).toContain("shared last user prompt");
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -321,7 +322,7 @@ describe("search quality integration", () => {
       expect(privateHits.length).toBeGreaterThan(0);
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -367,7 +368,7 @@ describe("search quality integration", () => {
       expect(p95).toBeLessThan(MEDIUM_CORPUS_LATENCY_BUDGET_MS);
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   }, 120_000);
 
@@ -415,7 +416,7 @@ describe("search quality integration", () => {
       expect(p95).toBeLessThan(650);
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -463,7 +464,7 @@ describe("search quality integration", () => {
       }
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -517,7 +518,7 @@ describe("search quality integration", () => {
       }
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -559,7 +560,7 @@ describe("search quality integration", () => {
       expect(Number(weights.vector ?? 1)).toBe(0);
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 
@@ -594,7 +595,7 @@ describe("search quality integration", () => {
       expect(ids.includes("obs_strict-private-tag")).toBe(false);
     } finally {
       core.shutdown("test");
-      rmSync(dir, { recursive: true, force: true });
+      removeDirWithRetry(dir);
     }
   });
 });

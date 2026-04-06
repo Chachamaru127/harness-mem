@@ -102,9 +102,10 @@
 | S71-001 | npm bin entrypoint を Node launcher 化し native Windows shim crash を fail-fast 化 | `harness-mem` / `harness-memd` / `harness-mem-client` が npm の Windows shim から起動されても `/bin/bash.exe` ではなく actionable message を返す | - | cc:完了 |
 | S71-002 | 初期 Windows docs guardrail | `README.md` / `README_ja.md` / `docs/harness-mem-setup.md` に PowerShell / CMD 単体では不安定であること、当面の安定ルートを明記する | S71-001 | cc:完了 |
 | S71-003 | Git Bash 前提の Windows compatibility truth sync | docs を「Windows 全面不可」から更新し、`Git Bash + node/npm/curl/jq/bun/rg` を前提にした手動 setup 条件、plugin route 優先、PowerShell/CMD 単体は未推奨、WSL2 は fallback という整理に修正する | S71-002 | cc:完了 |
-| S71-004 | Windows dependency guidance hardening | `setup` / `doctor` の不足依存メッセージと quickstart 冒頭が Windows 利用者にも分かる形で `node`, `npm`, `curl`, `jq`, `bun`, `rg` を案内する | S71-003 | cc:TODO |
+| S71-004 | Windows dependency guidance hardening | `setup` / `doctor` の不足依存メッセージと quickstart 冒頭が Windows 利用者にも分かる形で `node`, `npm`, `curl`, `jq`, `bun`, `rg` を案内する | S71-003 | cc:完了 |
 | S71-005 | `harness-memd` log rotation の Git Bash 互換修正 | `file_size_bytes()` が Git Bash で `stat -f` の誤検出を起こさず、`stat -c "%s"` 優先または数値検証で overflow warning を防ぐ。回帰テストを追加する | S71-003 | cc:完了 |
 | S71-006 | Windows 実機 validation artifact | `Windows 11 + Git Bash` で `setup --platform claude` / `doctor` / plugin route の通過条件と既知制約を proof として残す | S71-003, S71-004, S71-005 | cc:TODO |
+| S71-007 | Windows Codex validation | `Windows 11 + Git Bash` で `setup --platform codex` / `doctor --platform codex` / Codex hooks / notify / MCP の実動作を確認し、案内可否を確定する | S71-003, S71-004 | cc:完了 |
 
 ---
 

@@ -2349,7 +2349,7 @@ export class HarnessMemCore {
     }
 
     try {
-      this.db.close(false);
+      this.db.close(process.platform === "win32");
     } catch {
       // ignore close errors
     }

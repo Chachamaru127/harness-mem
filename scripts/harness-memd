@@ -203,6 +203,9 @@ normalize_rotation_settings() {
 file_size_bytes() {
   local file="$1"
   local result
+  # Try GNU stat first (Linux, MINGW64/Git Bash), then BSD stat (macOS), then wc fallback.
+  # Each variant is captured in a variable to prevent stdout leakage from failed attempts
+  # (MINGW64 stat -f prints filesystem info to stdout even on failure).
   result="$(stat -c "%s" "$file" 2>/dev/null)" && echo "$result" && return 0
   result="$(stat -f "%z" "$file" 2>/dev/null)" && echo "$result" && return 0
   wc -c < "$file"

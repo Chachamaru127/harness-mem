@@ -8,7 +8,8 @@
     "harness-mcp-server": "./dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && node esbuild.config.js",
+    "build:bundle": "node esbuild.config.js",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
@@ -27,6 +28,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.19.37",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "yaml": "^2.8.2"

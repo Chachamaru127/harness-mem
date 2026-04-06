@@ -1034,6 +1034,22 @@ ensure_bun() {
       fi
       fail "Failed to install bun automatically. Install it manually: curl -fsSL https://bun.sh/install | bash"
       ;;
+    MINGW*|MSYS*|CYGWIN*)
+      # On Windows (Git Bash), try the official installer which supports MINGW64
+      log "Installing bun via official installer..."
+      if curl -fsSL https://bun.sh/install | bash; then
+        hash -r 2>/dev/null || true
+        if [ -d "$HOME/.bun/bin" ]; then
+          export PATH="$HOME/.bun/bin:$PATH"
+          hash -r 2>/dev/null || true
+        fi
+        if check_cmd bun; then
+          log "bun installed: $(command -v bun)"
+          return 0
+        fi
+      fi
+      fail "Required command not found: bun. Install: powershell -c 'irm bun.sh/install.ps1 | iex'  or  npm install -g bun"
+      ;;
     *)
       fail "Required command not found: bun. Install it first (https://bun.sh/docs/installation)."
       ;;
@@ -1065,7 +1081,14 @@ ensure_ripgrep() {
     fail "Failed to install ripgrep automatically. Install it manually: brew install ripgrep"
   fi
 
-  fail "Required command not found: rg (ripgrep). Install it first (macOS: brew install ripgrep)."
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      fail "Required command not found: rg (ripgrep). Install it first: winget install BurntSushi.ripgrep.MSVC  or  scoop install ripgrep"
+      ;;
+    *)
+      fail "Required command not found: rg (ripgrep). Install it first (macOS: brew install ripgrep, Linux: apt install ripgrep)."
+      ;;
+  esac
 }
 
 get_cursor_hooks_command() {
@@ -1081,10 +1104,52 @@ ensure_dependencies() {
   ensure_ripgrep
 }
 
+have_python3_command() {
+  if check_cmd python3; then
+    return 0
+  fi
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      check_cmd py && py -3 -c "print('ok')" >/dev/null 2>&1
+      return
+      ;;
+  esac
+
+  return 1
+}
+
+run_python3() {
+  if check_cmd python3; then
+    python3 "$@"
+    return
+  fi
+
+  case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*)
+      if check_cmd py; then
+        py -3 "$@"
+        return
+      fi
+      ;;
+  esac
+
+  fail "Required command not found: python3"
+}
+
 ensure_version_dependencies() {
   require_cmd curl
   require_cmd jq
-  require_cmd python3
+  if ! have_python3_command; then
+    case "$(uname -s)" in
+      MINGW*|MSYS*|CYGWIN*)
+        fail "Required command not found: python3 (Windows accepts either python3 or py -3)"
+        ;;
+      *)
+        fail "Required command not found: python3"
+        ;;
+    esac
+  fi
 }
 
 is_repo_checkout() {
@@ -1433,7 +1498,7 @@ versions_impl() {
   antigravity_latest="$(jq -r '.[0].version // empty' "$tmp_dir/antigravity-releases-api.json")"
 
   local cursor_parsed
-  cursor_parsed="$(python3 - "$tmp_dir/cursor-changelog.html" <<'PY'
+  cursor_parsed="$(run_python3 - "$tmp_dir/cursor-changelog.html" <<'PY'
 import re
 import sys
 from pathlib import Path

@@ -46,25 +46,20 @@ Reason:
 - the published CLI still relies on POSIX shell scripts for setup and hook wiring
 - runtime wiring writes Unix-oriented hook commands and paths
 - harness-mem now tries to detect Git Bash on Windows and can launch the existing shell scripts through it
-- even with that compatibility path, WSL2 remains the most reliable route for the full setup / doctor / hook lifecycle
-- exception: MCP-only config updates for Claude / Codex can now be done natively with `harness-mem mcp-config --write --client claude,codex`
+- the Git Bash route is the practical native Windows path for Codex / Claude manual setup and doctor; keep WSL2 as the fallback when your shell/toolchain is inconsistent
+- exception: MCP-only config updates for Claude / Codex can be done natively with `harness-mem mcp-config --write --client claude,codex`
 
 Recommended path on Windows:
 
-1. Install WSL2
-2. Open Ubuntu (or another Linux distribution inside WSL2)
-3. Run `npx ... harness-mem setup` or `npm install -g ...` there
-4. Run `harness-mem doctor` in the same WSL2 environment
+1. If you use Claude Code, prefer the plugin route first
+2. If you want manual native Windows setup, install Git for Windows and use Git Bash
+3. If you only need MCP config updates for Claude / Codex, `harness-mem mcp-config --write --client claude,codex` works natively on Windows
+4. Keep WSL2 as the most reliable fallback for the full setup / doctor lifecycle
+5. For native Windows, prefer global install over `npx`
 
 If you try to run the published CLI from native PowerShell / CMD, the command now fails fast with an explicit guidance message instead of an opaque `/bin/bash.exe` style error.
 
-If your goal is only "update the Claude / Codex MCP server config", you can do that natively on Windows:
-
-```bash
-harness-mem mcp-config --write --client claude,codex
-```
-
-This command updates only the MCP wiring. It does not install the POSIX hook path, so first-turn continuity still depends on the WSL2 or Git Bash setup route.
+The `mcp-config` route updates only MCP wiring. It does not install the POSIX hook path, so first-turn continuity and hook-based Codex behavior still need the Git Bash / WSL2 full setup path.
 
 If you want to try the Git Bash route for full setup on Windows, treat these as required:
 
@@ -83,7 +78,7 @@ If your environment requires elevated privileges for global npm installs, prefer
 npx -y --package @chachamaru127/harness-mem harness-mem setup
 ```
 
-On Windows, run this inside WSL2.
+On native Windows, prefer the global install path instead of `npx`.
 
 ### global install
 
@@ -92,7 +87,7 @@ npm install -g @chachamaru127/harness-mem
 harness-mem setup
 ```
 
-On Windows, run this inside WSL2 if you want the CLI on your shell PATH.
+On Windows, run this from Git Bash when using the native compatibility path.
 
 Use the global install path only when your normal shell user can run `npm install -g` without `sudo`, or when your npm prefix is already configured to a user-writable directory.
 
@@ -151,7 +146,7 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
 ```
 
-On Windows, run both commands inside WSL2.
+On native Windows, use Git Bash + global install instead. `npx` is less reliable there.
 
 For Claude Plugin Marketplace only:
 

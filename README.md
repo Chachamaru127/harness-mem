@@ -234,7 +234,7 @@ Claude-side hooks and MCP wiring are configured automatically. If you also want 
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,cursor,claude
 ```
 
-On Windows, run this command inside WSL2 instead of native PowerShell / CMD.
+On Windows, `npx` is currently less reliable than Git Bash + global install. Prefer Option C when testing on native Windows.
 
 > **Note**: npx downloads are temporary, but harness-mem automatically copies itself to `~/.harness-mem/runtime/` for persistence. The daemon and hooks keep working after the npx cache is cleaned.
 >
@@ -247,7 +247,7 @@ npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,cursor,claude
 ```
 
-On Windows, run the global install path inside WSL2 if you want CLI access.
+On Windows, this is the preferred native route when Git for Windows / Git Bash is installed.
 
 > **When to use global install**: Choose this if you want `harness-mem doctor`, `harness-memd restart`, and other CLI commands available in your terminal. Options A and B install the runtime but don't add CLI commands to your PATH.
 >
@@ -257,14 +257,15 @@ On Windows, run the global install path inside WSL2 if you want CLI access.
 
 If you are on Windows, there are now two practical paths:
 
-1. **Git Bash route**: if Git for Windows is installed, the Node launcher will try to find `bash.exe` and run the existing setup scripts through Git Bash.
-2. **MCP-only route**: if you only want Claude / Codex MCP wiring, run:
+1. **Claude plugin route**: best option for Claude Code users on Windows.
+2. **Git Bash + global install**: preferred native route for manual `setup` / `doctor`.
+3. **MCP-only route**: if you only want Claude / Codex MCP wiring, run:
 
 ```bash
 harness-mem mcp-config --write --client claude,codex
 ```
 
-The MCP-only route updates only the MCP server wiring. It does not install POSIX hook scripts or daemon auto-start logic. For the full hook-based continuity path, WSL2 is still the most reliable option, and Git Bash should be treated as a practical compatibility route rather than the strongest support target.
+4. **WSL2**: still the most reliable full-lifecycle route.
 
 If you use the Git Bash route, treat these as required prerequisites on Windows:
 
@@ -273,6 +274,12 @@ If you use the Git Bash route, treat these as required prerequisites on Windows:
 - `jq`
 - `bun`
 - `rg` (`ripgrep`)
+
+Current validation status:
+
+- Claude Code on Windows: validated with Git Bash
+- Codex on Windows: Git Bash route validated for `setup --platform codex`, `doctor --platform codex`, exact hook commands, notify, and MCP connection
+- `mcp-config` on Windows: available for MCP-only config updates; it does not validate the Codex hook lifecycle
 
 ### Update existing install
 
