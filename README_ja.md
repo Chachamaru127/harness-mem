@@ -258,7 +258,7 @@ harness-mem mcp-config --write --client claude,codex
 現在の検証状況:
 
 - Claude Code on Windows: Git Bash で実機確認あり
-- Codex on Windows: まだ検証中なので、full hook path が安定するとまでは案内しません
+- Codex on Windows: Git Bash ルートで `setup --platform codex` / `doctor --platform codex` / exact hook command / notify / MCP 接続まで確認済み
 - `mcp-config` on Windows: MCP-only 更新には使えますが、Codex hook lifecycle が動く証明にはなりません
 
 Git Bash ルートを使う場合の前提:

@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdtempSync, mkdirSync } from "node:fs";
+import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
 import { HarnessMemCore, getConfig, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
+import { removeDirWithRetry } from "../fs-cleanup";
 
 const cleanupPaths: string[] = [];
 
@@ -10,7 +11,7 @@ afterEach(() => {
   while (cleanupPaths.length > 0) {
     const dir = cleanupPaths.pop();
     if (!dir) continue;
-    rmSync(dir, { recursive: true, force: true });
+    removeDirWithRetry(dir);
   }
 });
 
@@ -275,7 +276,7 @@ describe("HarnessMemCore unit", () => {
   test("project stats group repo path and scoped projects under canonical repo name", () => {
     const core = new HarnessMemCore(createConfig("project-stats-canonical"));
     const repoRoot = createFakeRepo("grouped-project");
-    const repoName = repoRoot.split("/").filter(Boolean).pop() || "grouped-project";
+    const repoName = basename(repoRoot) || "grouped-project";
     try {
       core.recordEvent(
         baseEvent({
@@ -315,7 +316,7 @@ describe("HarnessMemCore unit", () => {
   test("canonical project filter fans out to repo members in feed and search", () => {
     const core = new HarnessMemCore(createConfig("project-filter-canonical"));
     const repoRoot = createFakeRepo("filter-project");
-    const repoName = repoRoot.split("/").filter(Boolean).pop() || "filter-project";
+    const repoName = basename(repoRoot) || "filter-project";
     try {
       core.recordEvent(
         baseEvent({
@@ -382,7 +383,7 @@ describe("HarnessMemCore unit", () => {
       const items = stats.items as Array<{ project: string; member_projects?: string[] }>;
       const workspaceOneStats = items.find((item) => item.project === "workspace-one");
       const workspaceTwoStats = items.find((item) => item.project === "workspace-two");
-      const ancestorStats = items.find((item) => item.project === (ancestorRoot.split("/").pop() || ""));
+      const ancestorStats = items.find((item) => item.project === basename(ancestorRoot));
       const workspaceOneFeed = core.feed({ project: workspaceOne, limit: 10, include_private: true });
 
       expect(workspaceOneStats?.member_projects).toHaveLength(1);
