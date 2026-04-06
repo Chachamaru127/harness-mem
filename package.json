@@ -55,6 +55,8 @@
     "pg": "^8.20.0"
   },
   "scripts": {
+    "codex:setup": "bash scripts/setup-codex-memory.sh",
+    "codex:doctor": "node scripts/harness-mem.js doctor --platform codex",
     "test": "(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests",
     "benchmark": "cd memory-server && bun run src/benchmark/run-ci.ts",
     "benchmark:tune-adaptive": "cd memory-server && bun run src/benchmark/adaptive-tuning.ts",

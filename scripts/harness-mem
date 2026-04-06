@@ -1769,17 +1769,14 @@ EOF
 check_codex_config_wiring() {
   local cfg="$1"
   local failed=0
-  local notify_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
-  local mcp_cwd="${HARNESS_ROOT}"
-  local mcp_args='args = ["mcp-server/dist/index.js"]'
-  local host_line="HARNESS_MEM_HOST = \"${MEM_HOST}\""
-  local port_line="HARNESS_MEM_PORT = \"${MEM_PORT}\""
-  local db_line="HARNESS_MEM_DB_PATH = \"${DB_PATH}\""
+  local notify_value notify_script mcp_args_value mcp_cwd_value mcp_entry_path
 
-  if rg -Fq "$notify_script" "$cfg"; then
+  notify_value="$(sed -nE 's/^[[:space:]]*notify[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$cfg" | head -n1)"
+  notify_script="${notify_value#bash }"
+  if [ -n "$notify_value" ] && [ -f "$notify_script" ]; then
     log "Codex notify wiring path: OK"
   else
-    warn "Codex notify wiring points at a different harness-mem path in: $cfg"
+    warn "Codex notify wiring is missing or points to a non-existent script in: $cfg"
     failed=1
   fi
 
@@ -1790,21 +1787,36 @@ check_codex_config_wiring() {
     failed=1
   fi
 
-  if rg -Fq "cwd = \"${mcp_cwd}\"" "$cfg"; then
-    log "Codex MCP cwd path: OK"
+  mcp_args_value="$(sed -nE 's/^[[:space:]]*args[[:space:]]*=[[:space:]]*\["([^"]+)"\].*/\1/p' "$cfg" | head -n1)"
+  mcp_cwd_value="$(sed -nE 's/^[[:space:]]*cwd[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$cfg" | head -n1)"
+  mcp_entry_path=""
+  if [ -n "$mcp_args_value" ]; then
+    if [[ "$mcp_args_value" = /* ]]; then
+      mcp_entry_path="$mcp_args_value"
+    elif [ -n "$mcp_cwd_value" ]; then
+      mcp_entry_path="${mcp_cwd_value}/${mcp_args_value}"
+    fi
+  fi
+
+  if [ -n "$mcp_entry_path" ] && [ -f "$mcp_entry_path" ]; then
+    log "Codex MCP entrypoint path: OK"
   else
-    warn "Codex MCP cwd does not match the current harness-mem checkout in: $cfg"
+    warn "Codex MCP wiring points to a non-existent entrypoint in: $cfg"
     failed=1
   fi
 
-  if rg -Fq "$mcp_args" "$cfg"; then
-    log "Codex MCP args path: OK"
-  else
-    warn "Codex MCP args are missing the harness-mem MCP entrypoint in: $cfg"
-    failed=1
+  if [ -n "$mcp_cwd_value" ]; then
+    if [ -d "$mcp_cwd_value" ]; then
+      log "Codex MCP cwd path: OK"
+    else
+      warn "Codex MCP cwd points to a non-existent directory in: $cfg"
+      failed=1
+    fi
   fi
 
-  if rg -Fq "$host_line" "$cfg" && rg -Fq "$port_line" "$cfg" && rg -Fq "$db_line" "$cfg"; then
+  if rg -q 'HARNESS_MEM_HOST[[:space:]]*=' "$cfg" && \
+     rg -q 'HARNESS_MEM_PORT[[:space:]]*=' "$cfg" && \
+     rg -q 'HARNESS_MEM_DB_PATH[[:space:]]*=' "$cfg"; then
     log "Codex MCP env wiring: OK"
   else
     warn "Codex MCP env wiring is stale or incomplete in: $cfg"

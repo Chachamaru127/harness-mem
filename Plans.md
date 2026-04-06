@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-04-04（§72 Claude / Codex 公式アップデート追従、release sync）
+最終更新: 2026-04-07（§73 Codex bootstrap reproducibility 完了、v0.9.1 hotfix リリース）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了）
@@ -15,19 +15,31 @@
 
 ## 現在のステータス
 
-**§70 Adaptive Retrieval Engine — 完了 / §71 Windows native setup guardrail — 進行中 / §72 Claude / Codex 公式アップデート追従 — 完了**（2026-04-04）
+**§70 Adaptive Retrieval Engine — 完了 / §71 Windows native setup guardrail — 進行中 / §72 Claude / Codex 公式アップデート追従 — 完了 / §73 Codex bootstrap reproducibility — 完了**（2026-04-06）
 
 | 項目 | 現在地 |
 |------|--------|
 | gate artifacts / README / proof bar | adaptive manifest / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ |
-| 最新リリース | **v0.9.0**（2026-04-04、§70 Adaptive Retrieval Engine 完了と §72 Claude/Codex integration 改善を含む） |
+| 最新リリース | **v0.9.1**（2026-04-06、MCP バンドル化 + 絶対パス修正で zero-install プラグイン対応） |
 | 次フェーズの焦点 | §71 Windows 実機 validation artifact と dependency guidance の残タスク整理 |
 | CI Gate | **全 PASS**（adaptive `run-ci` PASS、release gate 再同期済み） |
 
 - benchmark SSOT: `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`
 - Japanese companion current: `overall_f1_mean=0.6580`
 - Japanese historical baseline: `overall_f1_mean=0.8020`
+
+---
+
+## §73 Codex Bootstrap Reproducibility
+
+策定日: 2026-04-06
+背景: Codex の初期配線は `~/.codex/config.toml` と `~/.codex/hooks.json` に absolute path を書くため、repo の移動や更新後に stale path が残ると接続不能になりやすい。README / setup guide には概念説明がある一方、repo ローカルで再現しやすい bootstrap 入口と stale path を検知する doctor 契約が不足していたため、再セットアップの再現性を強化する。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S73-001 | Codex doctor の stale path 検知強化 | `doctor --platform codex` が `~/.codex/config.toml` の notify / MCP `cwd` / env の path drift を検知し、false green を返さない | - | cc:完了 |
+| S73-002 | repo ローカル bootstrap / doctor 入口追加 | `scripts/setup-codex-memory.sh` と `npm run codex:doctor` が追加され、README / setup guide が repo checkout 前提の導線を説明する | S73-001 | cc:完了 |
 
 ---
 

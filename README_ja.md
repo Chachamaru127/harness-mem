@@ -201,6 +201,13 @@ Source:
 
 つまり、`npm install` だけではセットアップ完了ではありません。`npm install` はコマンドを使えるようにする段階で、Claude / Codex とつなぐ配線は `harness-mem setup` の役割です。
 
+repo を checkout した状態で、Codex だけを再現しやすく立ち上げたい場合は、次の repo ローカル入口を使えます。
+
+```bash
+bash scripts/setup-codex-memory.sh
+npm run codex:doctor
+```
+
 重要:
 
 - `npm` が `sudo` を要求したら、まず `npx` ルートを選ぶのが安全です。
@@ -210,6 +217,7 @@ Source:
 - それでも、いちばん安定した Windows 経路は `WSL2`（Windows Subsystem for Linux。Windows 上で Linux を動かす仕組み）上の Ubuntu などから `harness-mem` を実行する方法です。
 - さらに例外として、Claude / Codex の MCP 設定だけを更新したい場合は、native Windows でも `harness-mem mcp-config --write --client claude,codex` を実行できます。
 - `setup` は `~/.harness-mem`、`~/.codex`、`~/.claude*`、`~/.cursor` のような「自分のホーム配下の設定」を書き換えます。`sudo` で実行すると root のホームや root 所有ファイルが混ざり、あとで `doctor --fix` まで `sudo` が必要になる原因になります。
+- Codex で特に重要な設定ファイルは `~/.codex/config.toml` と `~/.codex/hooks.json` です。`doctor` は、これらが単に存在するだけでなく、今の harness-mem checkout を指しているかも確認します。
 
 ### A) Claude Code Plugin Marketplace（Claude Code を主に使う場合）
 

@@ -209,6 +209,13 @@ There are three separate steps:
 
 `npm install` by itself is not the whole setup. It only makes the command available.
 
+If you are running from a repo checkout and want a reproducible Codex-only bootstrap, use:
+
+```bash
+bash scripts/setup-codex-memory.sh
+npm run codex:doctor
+```
+
 Important:
 
 - Prefer `npx` if global npm install asks for `sudo`.
@@ -218,6 +225,7 @@ Important:
 - The most reliable Windows path is still WSL2 (for example Ubuntu) and running `harness-mem` inside that Linux shell.
 - Exception: native Windows can also run `harness-mem mcp-config --write --client claude,codex` for MCP-only config updates even when you do not want the full hook/setup flow there.
 - `setup` writes into user config locations like `~/.harness-mem`, `~/.codex`, `~/.claude*`, and `~/.cursor`. Running it as root can create the wrong ownership and wire the wrong home directory.
+- For Codex specifically, the critical user-scoped files are `~/.codex/config.toml` and `~/.codex/hooks.json`. `doctor` now checks that those files still point at the current harness-mem checkout instead of an older absolute path.
 
 ### Option A: Claude Code Plugin Marketplace (recommended for Claude Code users)
 

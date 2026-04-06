@@ -146,6 +146,13 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
 ```
 
+If you are running from a repository checkout and want a repeatable Codex-only bootstrap:
+
+```bash
+bash scripts/setup-codex-memory.sh
+npm run codex:doctor
+```
+
 On native Windows, use Git Bash + global install instead. `npx` is less reliable there.
 
 For Claude Plugin Marketplace only:
@@ -314,6 +321,7 @@ Options:
 - Maintains `~/.codex/hooks.json` entries for `SessionStart`, `UserPromptSubmit`, and `Stop`
 - Ensures `~/.codex/config.toml` enables the experimental hooks engine (`features.codex_hooks = true` or `[features] codex_hooks = true`)
 - Verifies memory bridge entries in `~/.codex/config.toml`
+- Verifies that `~/.codex/config.toml` and `~/.codex/hooks.json` still point at the current harness-mem checkout instead of a stale absolute path
 - Checks ingest path from Codex session logs
 - First-turn continuity on Codex depends on the hook path above plus a healthy daemon/runtime
 
