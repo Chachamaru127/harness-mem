@@ -46,7 +46,7 @@ Reason:
 - the published CLI still relies on POSIX shell scripts for setup and hook wiring
 - runtime wiring writes Unix-oriented hook commands and paths
 - harness-mem now tries to detect Git Bash on Windows and can launch the existing shell scripts through it
-- even with that compatibility path, WSL2 remains the most reliable route for the full setup / doctor / hook lifecycle
+- the Git Bash route is the practical native Windows path for Codex / Claude manual setup and doctor; keep WSL2 as the fallback when your shell/toolchain is inconsistent
 - exception: MCP-only config updates for Claude / Codex can be done natively with `harness-mem mcp-config --write --client claude,codex`
 
 Recommended path on Windows:
@@ -59,7 +59,7 @@ Recommended path on Windows:
 
 If you try to run the published CLI from native PowerShell / CMD, the command now fails fast with an explicit guidance message instead of an opaque `/bin/bash.exe` style error.
 
-The `mcp-config` route updates only MCP wiring. It does not install the POSIX hook path, so first-turn continuity and hook-based Codex behavior still need Git Bash or WSL2 and separate validation.
+The `mcp-config` route updates only MCP wiring. It does not install the POSIX hook path, so first-turn continuity and hook-based Codex behavior still need the Git Bash / WSL2 full setup path.
 
 If you want to try the Git Bash route for full setup on Windows, treat these as required:
 

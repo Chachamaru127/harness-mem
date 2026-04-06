@@ -278,7 +278,7 @@ If you use the Git Bash route, treat these as required prerequisites on Windows:
 Current validation status:
 
 - Claude Code on Windows: validated with Git Bash
-- Codex on Windows: still under validation, so do not treat full hook-based Codex wiring as confirmed yet
+- Codex on Windows: Git Bash route validated for `setup --platform codex`, `doctor --platform codex`, exact hook commands, notify, and MCP connection
 - `mcp-config` on Windows: available for MCP-only config updates; it does not validate the Codex hook lifecycle
 
 ### Update existing install
