@@ -1241,6 +1241,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
       }
 
+      // S74-004: Fact History API
+      if (request.method === "GET" && url.pathname.startsWith("/v1/facts/") && url.pathname.endsWith("/history")) {
+        const factKey = decodeURIComponent(url.pathname.replace("/v1/facts/", "").replace("/history", ""));
+        const project = url.searchParams.get("project") || undefined;
+        const limit = parseInteger(url.searchParams.get("limit"), 100);
+        return jsonResponse(core.getFactHistory({ fact_key: factKey, project, limit }));
+      }
+
       // V5-006: Analytics API
       if (request.method === "GET" && url.pathname === "/v1/analytics/usage") {
         const period = url.searchParams.get("period") || "day";

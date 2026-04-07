@@ -31,7 +31,7 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 | **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
 | **クロスツール記憶共有** | 共有ローカルランタイム + 対応 hook path 上の first-turn continuity | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
-| **検索方式** | ハイブリッド（lexical + vector + recency + tag + graph） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
+| **検索方式** | ハイブリッド（lexical + vector + nugget + recency + tag + graph + fact chain） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
 | **外部依存** | Node.js + Bun | なし | Node.js + Python + uv + Chroma | Python + APIキー |
 | **移行パス** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **ワークスペース分離** | 厳格（symlink 解決済みパス） | グローバル | basename のみ | ユーザー / エージェント単位 |
@@ -116,18 +116,18 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-03T19:20:02.437Z`
-- git_sha: `c77da08`
+- generated_at: `2026-04-07`
+- git_sha: `677c10f`
 - embedding: `adaptive`
 
 | 指標 | 値 |
 |---|---:|
 | LoCoMo F1 | 0.5861 |
-| bilingual recall@10 | 0.8400 |
+| bilingual recall@10 | 0.8800 |
 | freshness | 1.0000 |
-| temporal | 0.6472 |
-| search p95 | 14.04ms |
-| token avg | 428.93 |
+| temporal | 0.6458 |
+| search p95 | 10.67ms |
+| token avg | 427.71 |
 
 判定: `PASS`
 

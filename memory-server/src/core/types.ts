@@ -232,6 +232,36 @@ export interface ApiResponse {
   no_memory_reason?: string;
 }
 
+/** S74-004: Fact History — fact_key の時系列変遷エントリ */
+export interface FactHistoryEntry {
+  fact_id: string;
+  fact_type: string;
+  fact_key: string;
+  fact_value: string;
+  confidence: number;
+  valid_from: string | null;
+  valid_to: string | null;
+  superseded_by: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
+/** S74-004: Fact History リクエスト */
+export interface FactHistoryRequest {
+  fact_key: string;
+  project?: string;
+  limit?: number;
+}
+
+/** S74-005: Code Provenance メタデータ — tool_use イベントから抽出されるファイル変更情報 */
+export interface CodeProvenance {
+  file_path: string;
+  action: "create" | "edit" | "delete" | "read";
+  lines_changed?: [number, number][];  // [[start, end], ...]
+  model_id?: string;  // e.g. "anthropic/claude-opus-4-6"
+  language?: string;   // file extension or detected language
+}
+
 export interface Config {
   dbPath: string;
   bindHost: string;

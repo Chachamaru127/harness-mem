@@ -47,7 +47,7 @@ export interface IReranker {
   rerank(query: string, items: RerankerInput[], options?: { topK?: number }): Promise<RerankerResult[]>;
 }
 
-export type RerankerProvider = 'simple' | 'cohere' | 'huggingface' | 'sentence-transformers';
+export type RerankerProvider = 'simple' | 'cohere' | 'huggingface' | 'sentence-transformers' | 'onnx-cross-encoder';
 
 export interface RerankerConfig {
   provider: RerankerProvider;

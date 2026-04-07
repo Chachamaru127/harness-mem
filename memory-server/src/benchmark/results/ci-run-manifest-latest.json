@@ -1,18 +1,14 @@
 {
-  "generated_at": "2026-04-03T19:20:02.437Z",
-  "git_sha": "c77da08c9585336fe898bdef19914afd433b66f7",
+  "generated_at": "2026-04-07T02:26:32.235Z",
+  "git_sha": "677c10f856f075cb559788bbd3bebea5a0d66169",
   "strict_mode": true,
   "embedding": {
-    "mode": "adaptive",
-    "provider": "adaptive",
-    "model": "adaptive",
+    "mode": "onnx",
+    "provider": "local",
+    "model": "multilingual-e5",
     "vector_dimension": 384,
     "onnx_gate": true,
-    "prime_enabled": true,
-    "adaptive_thresholds": {
-      "ja_threshold": 0.85,
-      "code_threshold": 0.5
-    }
+    "prime_enabled": true
   },
   "fixtures": {
     "locomo120": {
@@ -37,28 +33,28 @@
     }
   },
   "results": {
-    "all_passed": true,
+    "all_passed": false,
     "locomo_f1": 0.5861185727852394,
-    "bilingual_recall": 0.84,
+    "bilingual_recall": 0.88,
     "freshness": 1,
-    "temporal": 0.6472222222222223,
-    "cat1_f1": 0.5897595158464723,
+    "temporal": 0.6458333333333334,
+    "cat1_f1": 0.575266762223284,
     "cat2_f1": 0.6849206349206349,
-    "cat3_f1": 0.46788048552754435
+    "cat3_f1": 0.4972922502334267
   },
   "paired_improvement": {
     "label": "cat-2/cat-3",
     "matched": 76,
-    "mean_delta": 0.43592358569475265,
+    "mean_delta": 0.44908148043159474,
     "gate_enabled": false
   },
   "performance": {
-    "locomo_search_p95_ms": 14.04,
-    "locomo_token_avg": 428.93333333333334
+    "locomo_search_p95_ms": 10.67,
+    "locomo_token_avg": 427.7111111111111
   },
   "comparisons": {
-    "bilingual_baseline_mode": "onnx:local:multilingual-e5",
-    "bilingual_baseline_recall": 0.9,
-    "bilingual_delta": -0.06000000000000005
+    "bilingual_baseline_mode": "adaptive:adaptive:adaptive",
+    "bilingual_baseline_recall": 0.84,
+    "bilingual_delta": 0.040000000000000036
   }
 }
