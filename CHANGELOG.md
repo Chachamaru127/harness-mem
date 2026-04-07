@@ -7,6 +7,84 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-07
+
+### Theme: Search precision and recall granularity — five new retrieval layers with zero-cost constraint
+
+**This release adds five new search improvement layers (nugget chunking, ONNX cross-encoder reranker, auto link generation, temporal fact versioning, and code provenance) while keeping all external dependencies optional. Bilingual recall improved +4.8%, search p95 dropped from 14ms to 10.7ms, and all other metrics remained stable.**
+
+---
+
+#### 1. Sub-chunk nugget extraction (S74-001)
+
+**Before**: Each observation was stored and embedded as a single block. Long observations produced "averaged-out" embeddings that lost fine-grained details — a specific decision buried in a long conversation was hard to retrieve.
+
+**After**: Observations are automatically split into 1–3 sentence "nuggets" at sentence boundaries (supporting both English `.` and Japanese `。`). Each nugget gets its own embedding. Search matches nuggets first, then boosts the parent observation's score. The nugget search is candidate-scoped (only checks nuggets belonging to lexical/vector candidates), keeping latency low.
+
+```
+Observation: "auth middleware を express-session から Clerk に変更。理由はコンプラ要件。session token は JWT に統一。"
+  → Nugget 0: "auth middleware を express-session から Clerk に変更"
+  → Nugget 1: "理由はコンプラ要件"
+  → Nugget 2: "session token は JWT に統一"
+```
+
+New tables: `mem_nuggets`, `mem_nugget_vectors`
+
+#### 2. ONNX cross-encoder reranker (S74-002)
+
+**Before**: The reranker used N-gram overlap (bigram Jaccard similarity), which was fast but could not capture semantic relevance beyond lexical matches.
+
+**After**: A new `onnx-cross-encoder` reranker provider uses `ms-marco-MiniLM-L6-v2` via `@huggingface/transformers` for local ONNX inference. The model is downloaded on first use (~90MB) and cached in `memory-server/models/`. Falls back gracefully to `simple-v1` if the ONNX runtime or model is unavailable. Activate with `HARNESS_MEM_RERANKER_PROVIDER=onnx-cross-encoder`.
+
+#### 3. Auto link generation (S74-003)
+
+**Before**: Graph links between observations were only created manually (`harness_mem_add_relation`) or through basic session-boundary heuristics. The graph was sparse, so the graph signal in hybrid search was weak.
+
+**After**: Three automatic linking strategies run on every event recording:
+- **Entity co-occurrence**: Observations mentioning the same file/package/symbol get `shared_entity` links (weight by entity type)
+- **Temporal proximity**: Consecutive observations in the same session get `follows` links with content-based relation inference (contradicts/causes/updates/extends)
+- **Semantic similarity** (opt-in via `HARNESS_MEM_AUTO_LINK_SEMANTIC=true`): Observations with cosine similarity ≥ 0.85 get `extends` links
+
+#### 4. Temporal fact versioning (S74-004)
+
+**Before**: Facts in `mem_facts` had a `superseded_by` field, but there was no API to traverse the version chain. "What was the auth middleware before?" required manual DB inspection.
+
+**After**: New `GET /v1/facts/:key/history` endpoint returns the complete revision chain for any fact key, ordered by `created_at ASC`. Each entry includes `is_active: true/false` to distinguish current from superseded values. Protected by admin token authentication. New `idx_mem_facts_key_project` index for fast lookups.
+
+```json
+GET /v1/facts/auth_middleware/history?project=myproject
+
+[
+  { "fact_value": "express-session", "is_active": false, "created_at": "2026-01" },
+  { "fact_value": "passport",        "is_active": false, "created_at": "2026-02" },
+  { "fact_value": "clerk",           "is_active": true,  "created_at": "2026-03" }
+]
+```
+
+#### 5. Code provenance metadata (S74-005)
+
+**Before**: `tool_use` events were recorded but did not capture structured information about which files were modified, what action was taken, or what language was involved.
+
+**After**: A provenance extractor parses `tool_use` payloads (Write/Edit/Read/Bash tools) and attaches structured `CodeProvenance` metadata: `file_path`, `action` (create/edit/delete/read), `language` (auto-detected from extension), and optionally `lines_changed`. File paths are also added as `file:path/to/file` tags, enabling `file:` prefix search filters in queries.
+
+#### 6. Performance optimization
+
+Search p95 latency improved from 14.04ms (pre-§74 baseline) to **10.67ms** after optimizing the nugget search from a brute-force scan (2000 rows) to a candidate-scoped query.
+
+### Benchmark results
+
+| Metric | v0.9.1 | v0.10.0 | Change |
+|--------|--------|---------|--------|
+| LoCoMo F1 | 0.5861 | 0.5861 | — |
+| Bilingual recall@10 | 0.8400 | 0.8800 | **+4.8%** |
+| Freshness | 1.0000 | 1.0000 | — |
+| Temporal | 0.6472 | 0.6458 | -0.2% |
+| Search p95 | 14.04ms | 10.67ms | **-24%** |
+
+### Tests
+
+991 pass / 0 fail (97 new tests across 4 test files)
+
 ## [0.9.0] - 2026-04-04
 
 ### Theme: Adaptive retrieval is now production-shaped, and Claude / Codex integration is more robust across macOS and Windows

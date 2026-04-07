@@ -15,17 +15,17 @@
 
 ## 現在のステータス
 
-**§74 Search Precision & Recall Granularity — 進行中 / §73 Codex bootstrap reproducibility — 完了**（2026-04-07）
+**§74 Search Precision & Recall Granularity — 完了 / §73 Codex bootstrap reproducibility — 完了**（2026-04-07）
 
 | 項目 | 現在地 |
 |------|--------|
 | gate artifacts / README / proof bar | adaptive manifest / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ |
-| 最新リリース | **v0.9.1**（2026-04-06、MCP バンドル化 + 絶対パス修正で zero-install プラグイン対応） |
-| 次フェーズの焦点 | §74 サブチャンク分割 + Cross-encoder + 自動リンク + Fact チェーン + Code Provenance |
-| CI Gate | **全 PASS**（adaptive `run-ci` PASS、release gate 再同期済み） |
+| 最新リリース | **v0.10.0**（2026-04-07、§74 Search Precision & Recall Granularity） |
+| 次フェーズの焦点 | TBD |
+| CI Gate | **Layer 1 PASS**（adaptive `run-ci` PASS、bilingual +4.8%、p95 -24%） |
 
-- benchmark SSOT: `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`
+- benchmark SSOT: `generated_at=2026-04-07`, `git_sha=677c10f`
 - Japanese companion current: `overall_f1_mean=0.6580`
 - Japanese historical baseline: `overall_f1_mean=0.8020`
 

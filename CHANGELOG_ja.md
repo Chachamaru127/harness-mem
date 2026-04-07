@@ -7,6 +7,24 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-04-07
+
+### ユーザー向け要約
+
+- 検索精度と想起粒度を 5 つの新レイヤーで強化。Bilingual recall が 84% → 88% に改善、検索速度は 14ms → 10.7ms に高速化。
+- **サブチャンク分割**: observation を 1〜3 文の nugget に分割し、各 nugget に独立 embedding を付与。長い記録の中から具体的な情報をピンポイントで検索可能に。
+- **ONNX Cross-encoder reranker**: `ms-marco-MiniLM-L6-v2` によるローカル推論 reranker を追加。ONNX 未対応環境では自動的に simple-v1 にフォールバック。
+- **自動リンク生成**: entity co-occurrence / temporal proximity / semantic similarity の 3 戦略でグラフリンクを自動生成。グラフ信号が検索スコアに効きやすくなった。
+- **Fact バージョニング**: `GET /v1/facts/:key/history` で fact の時系列変遷を追跡可能に。「以前は何だった？」に答えられる。
+- **Code Provenance**: tool_use イベントから file_path / action / language を自動抽出。`file:path/to/file` 検索フィルターに対応。
+
+### 補足
+
+- 新テーブル: `mem_nuggets`, `mem_nugget_vectors`
+- 新インデックス: `idx_mem_facts_key_project`
+- テスト: 991 pass / 0 fail（+97 新規）
+- 詳細は英語版 CHANGELOG.md を参照
+
 ## [0.9.0] - 2026-04-04
 
 ### ユーザー向け要約
