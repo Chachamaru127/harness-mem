@@ -652,9 +652,10 @@ export class EventRecorder {
       const model = this.deps.getVectorModelVersion();
       const now = nowIso();
 
+      // JS 側で nugget_id を生成し、N+1 SELECT を排除
       const insertNuggetStmt = this.deps.db.query(`
         INSERT OR IGNORE INTO mem_nuggets(nugget_id, observation_id, seq, content, content_hash, created_at)
-        VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?)
       `);
 
       const insertVecStmt = this.deps.db.query(`
@@ -666,23 +667,15 @@ export class EventRecorder {
       `);
 
       for (const nugget of nuggets) {
-        insertNuggetStmt.run(observationId, nugget.seq, nugget.content, nugget.content_hash, createdAt);
-
-        // nugget_id を取得（直前の INSERT OR IGNORE の結果）
-        const row = this.deps.db
-          .query<{ nugget_id: string }, [string, number]>(
-            `SELECT nugget_id FROM mem_nuggets WHERE observation_id = ? AND seq = ?`
-          )
-          .get(observationId, nugget.seq);
-
-        if (!row?.nugget_id) continue;
+        const nuggetId = generateEventId();
+        insertNuggetStmt.run(nuggetId, observationId, nugget.seq, nugget.content, nugget.content_hash, createdAt);
 
         const vector = normalizeVectorDimension(
           this.deps.embedContent(nugget.content),
           this.deps.config.vectorDimension,
         );
         insertVecStmt.run(
-          row.nugget_id,
+          nuggetId,
           observationId,
           model,
           this.deps.config.vectorDimension,
@@ -910,34 +903,37 @@ export class EventRecorder {
         this.autoLinkObservation(observationId, event.session_id, timestamp);
         this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
 
-        // S74-003: auto-linker モジュール経由での追加リンク生成
-        // autoLinkObservation が Strategy A (entity co-occurrence) と B (temporal proximity) を担当
-        // runAutoLinker は Strategy C (semantic similarity) を担当（HARNESS_MEM_AUTO_LINK_SEMANTIC=true の場合のみ）
-        // INSERT OR IGNORE により重複リンクは作成されない
-        try {
-          runAutoLinker(
-            {
-              db: this.deps.db,
-              getEmbedding: (obsId: string) => {
-                const row = this.deps.db
-                  .query<{ vector_json: string }, [string]>(`
-                    SELECT vector_json FROM mem_vectors WHERE observation_id = ? LIMIT 1
-                  `)
-                  .get(obsId);
-                if (!row) return null;
-                try {
-                  return JSON.parse(row.vector_json) as number[];
-                } catch {
-                  return null;
-                }
+        // S74-003: auto-linker — Strategy C (semantic similarity) のみ実行
+        // Strategy A (entity co-occurrence) と B (temporal proximity) は
+        // autoLinkObservation が高度な推論付きで担当済み（contradicts/causes/updates 判定含む）
+        // runAutoLinker は semantic similarity リンクのみを追加する
+        if (process.env["HARNESS_MEM_AUTO_LINK_SEMANTIC"] === "true") {
+          try {
+            runAutoLinker(
+              {
+                db: this.deps.db,
+                semanticEnabled: true,
+                getEmbedding: (obsId: string) => {
+                  const row = this.deps.db
+                    .query<{ vector_json: string }, [string]>(`
+                      SELECT vector_json FROM mem_vectors WHERE observation_id = ? LIMIT 1
+                    `)
+                    .get(obsId);
+                  if (!row) return null;
+                  try {
+                    return JSON.parse(row.vector_json) as number[];
+                  } catch {
+                    return null;
+                  }
+                },
               },
-            },
-            observationId,
-            event.session_id,
-            timestamp,
-          );
-        } catch {
-          // best effort: auto-linker エラーは event recording を中断しない
+              observationId,
+              event.session_id,
+              timestamp,
+            );
+          } catch {
+            // best effort: auto-linker エラーは event recording を中断しない
+          }
         }
         this.insertNuggets(observationId, redactedContent, timestamp);
 

@@ -122,10 +122,14 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   }
   // GET エンドポイントで admin 認証が必要なもの
   if (method === "GET") {
-    return [
-      "/v1/export",
-      "/v1/graph/neighbors",
-    ].includes(pathname);
+    if (["/v1/export", "/v1/graph/neighbors"].includes(pathname)) {
+      return true;
+    }
+    // S74-004: fact history contains potentially sensitive data
+    if (pathname.startsWith("/v1/facts/") && pathname.endsWith("/history")) {
+      return true;
+    }
+    return false;
   }
   if (method !== "POST") {
     return false;

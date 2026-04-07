@@ -1794,7 +1794,7 @@ export class HarnessMemCore {
 
       const entries = rows.map((row) => ({
         ...row,
-        is_active: row.superseded_by === null || row.superseded_by === undefined,
+        is_active: (row.superseded_by === null || row.superseded_by === undefined) && row.valid_to === null,
       }));
 
       return makeResponse(
