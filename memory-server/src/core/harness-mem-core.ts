@@ -97,6 +97,7 @@ import type {
   GetObservationsRequest,
   ImportJobStatusRequest,
   ProjectsStatsRequest,
+  FactHistoryRequest,
   RecordCheckpointRequest,
   ResumePackRequest,
   SearchFacetsRequest,
@@ -117,6 +118,7 @@ export type {
   ConsolidationRunRequest,
   CreateLinkRequest,
   EventEnvelope,
+  FactHistoryRequest,
   FeedRequest,
   FinalizeSessionRequest,
   GetLinksRequest,
@@ -1745,6 +1747,64 @@ export class HarnessMemCore {
       return makeResponse(startedAt, rows as Record<string, unknown>[], { project, limit, include_private }, { ranking: "export_v1" });
     } catch (err) {
       return makeErrorResponse(startedAt, `export failed: ${String(err)}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
+  /**
+   * S74-004: fact_key の時系列変遷を取得する。
+   * superseded_by チェーンを辿り、active fact を特定する。
+   */
+  getFactHistory(request: FactHistoryRequest): ApiResponse {
+    const startedAt = performance.now();
+    const { fact_key, project, limit = 100 } = request;
+
+    if (!fact_key) {
+      return makeErrorResponse(startedAt, "fact_key is required", request as unknown as Record<string, unknown>);
+    }
+
+    try {
+      let sql = `
+        SELECT fact_id, fact_type, fact_key, fact_value, confidence,
+               valid_from, valid_to, superseded_by, created_at
+        FROM mem_facts
+        WHERE fact_key = ?
+          AND merged_into_fact_id IS NULL
+      `;
+      const params: unknown[] = [fact_key];
+
+      if (project) {
+        const normalizedProject = this.normalizeProjectInput(project);
+        sql += ` AND project = ?`;
+        params.push(normalizedProject);
+      }
+      sql += ` ORDER BY created_at ASC LIMIT ?`;
+      params.push(limit);
+
+      const rows = this.db.query(sql).all(...(params as any[])) as Array<{
+        fact_id: string;
+        fact_type: string;
+        fact_key: string;
+        fact_value: string;
+        confidence: number;
+        valid_from: string | null;
+        valid_to: string | null;
+        superseded_by: string | null;
+        created_at: string;
+      }>;
+
+      const entries = rows.map((row) => ({
+        ...row,
+        is_active: row.superseded_by === null || row.superseded_by === undefined,
+      }));
+
+      return makeResponse(
+        startedAt,
+        entries as unknown as Record<string, unknown>[],
+        { fact_key, project, limit },
+        { ranking: "fact_history_v1" },
+      );
+    } catch (err) {
+      return makeErrorResponse(startedAt, `getFactHistory failed: ${String(err)}`, request as unknown as Record<string, unknown>);
     }
   }
 

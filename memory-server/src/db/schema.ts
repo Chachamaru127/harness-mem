@@ -164,6 +164,9 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_facts_merged_into
       ON mem_facts(merged_into_fact_id);
 
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_key_project
+      ON mem_facts(fact_key, project, created_at ASC);
+
     CREATE TABLE IF NOT EXISTS mem_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       action TEXT NOT NULL,
@@ -245,6 +248,34 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_vec_map_observation
       ON mem_vectors_vec_map(observation_id);
+
+    CREATE TABLE IF NOT EXISTS mem_nuggets (
+      nugget_id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+      observation_id TEXT NOT NULL REFERENCES mem_observations(id) ON DELETE CASCADE,
+      seq INTEGER NOT NULL,
+      content TEXT NOT NULL,
+      content_hash TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(observation_id, seq)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_nuggets_observation ON mem_nuggets(observation_id);
+
+    CREATE TABLE IF NOT EXISTS mem_nugget_vectors (
+      nugget_id TEXT NOT NULL,
+      observation_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      dimension INTEGER NOT NULL,
+      vector_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY(nugget_id, model),
+      FOREIGN KEY(nugget_id) REFERENCES mem_nuggets(nugget_id) ON DELETE CASCADE,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_nugget_vectors_observation
+      ON mem_nugget_vectors(observation_id, model);
 
     CREATE TABLE IF NOT EXISTS mem_teams (
       team_id TEXT PRIMARY KEY,
@@ -623,6 +654,67 @@ export function migrateSchema(db: Database): void {
   }
   try {
     db.exec(`ALTER TABLE mem_observations ADD COLUMN content_fts TEXT`);
+  } catch {
+    // already exists
+  }
+
+  // S74-001: Nugget Extraction — サブチャンク分割テーブル
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_nuggets (
+        nugget_id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+        observation_id TEXT NOT NULL REFERENCES mem_observations(id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL,
+        content TEXT NOT NULL,
+        content_hash TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        UNIQUE(observation_id, seq)
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_nuggets_observation ON mem_nuggets(observation_id)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_nugget_vectors (
+        nugget_id TEXT NOT NULL,
+        observation_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        dimension INTEGER NOT NULL,
+        vector_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(nugget_id, model),
+        FOREIGN KEY(nugget_id) REFERENCES mem_nuggets(nugget_id) ON DELETE CASCADE,
+        FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_mem_nugget_vectors_observation
+        ON mem_nugget_vectors(observation_id, model)
+    `);
+  } catch {
+    // already exists
+  }
+
+  // S74-004: fact_key + project で高速にヒストリー検索するためのインデックス
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_mem_facts_key_project
+        ON mem_facts(fact_key, project, created_at ASC)
+    `);
   } catch {
     // already exists
   }

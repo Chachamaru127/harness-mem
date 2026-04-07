@@ -15,14 +15,14 @@
 
 ## 現在のステータス
 
-**§70 Adaptive Retrieval Engine — 完了 / §71 Windows native setup guardrail — 進行中 / §72 Claude / Codex 公式アップデート追従 — 完了 / §73 Codex bootstrap reproducibility — 完了**（2026-04-06）
+**§74 Search Precision & Recall Granularity — 進行中 / §73 Codex bootstrap reproducibility — 完了**（2026-04-07）
 
 | 項目 | 現在地 |
 |------|--------|
 | gate artifacts / README / proof bar | adaptive manifest / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ |
 | 最新リリース | **v0.9.1**（2026-04-06、MCP バンドル化 + 絶対パス修正で zero-install プラグイン対応） |
-| 次フェーズの焦点 | §71 Windows 実機 validation artifact と dependency guidance の残タスク整理 |
+| 次フェーズの焦点 | §74 サブチャンク分割 + Cross-encoder + 自動リンク + Fact チェーン + Code Provenance |
 | CI Gate | **全 PASS**（adaptive `run-ci` PASS、release gate 再同期済み） |
 
 - benchmark SSOT: `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`
@@ -676,3 +676,23 @@ Phase 4（最適化）:
 | S72-002 | Claude / Codex MCP 配線を `cwd + relative args` に更新 — setup/plugin/config generator を絶対パス arg 依存から脱却させ、Mac / Windows で壊れにくい設定へ寄せる | `.claude-plugin/plugin.json`、`harness-mem setup` が生成する Claude / Codex config、doctor 契約が `cwd` 前提で通る。旧絶対パス設定も doctor 互換として読む | S72-001 | cc:完了 |
 | S72-003 | native Windows 向け `mcp-config` サブコマンド — full setup は未対応のまま、Claude / Codex の MCP-only config 更新だけは `harness-mem mcp-config --write --client claude,codex` で実行可能にする | `HARNESS_MEM_FORCE_PLATFORM=win32` 契約テストで `mcp-config` が exit 0。native Windows 向けに actionable な経路が 1 本ある | S72-002 | cc:完了 |
 | S72-004 | 契約テスト + docs/changelog 同期 — 新しいレスポンス形状、plugin schema、Windows contract、setup guide を更新する | root / mcp-server テスト green。README / README_ja / setup guide / CHANGELOG が実装現実と一致 | S72-001, S72-002, S72-003 | cc:完了 |
+
+---
+
+## §74 Search Precision & Recall Granularity
+
+策定日: 2026-04-07
+背景: harness-mem の検索パイプライン (hybrid_v3) は LoCoMo F1=0.5861、Bilingual Recall@10=0.8400 を達成しているが、observation 粒度が粗く（1イベント=1観測）、reranker が N-gram overlap ベース、グラフが疎い、fact チェーンが flat、code provenance がないことが精度・想起粒度のボトルネック。5 施策を段階的に導入し、zero-cost 原則を維持しつつ検索品質を引き上げる。
+
+### 設計方針
+- **zero-cost 維持**: 外部 API 不要の施策を優先（ONNX ローカル推論）
+- **破壊的変更なし**: 既存 observation テーブルに nullable カラム追加、新テーブルは additive
+- **ベンチマーク駆動**: 各施策の前後で LoCoMo F1 + Bilingual Recall@10 を計測し regression を検知
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S74-001 [P] | **サブチャンク分割** — observation を 1〜3 文の nugget に分割し `mem_nuggets` テーブルに格納。各 nugget に独立 embedding。検索は nugget 単位でヒット → 親 observation に展開 | `mem_nuggets` テーブル存在。recordEvent 時に自動分割。search が nugget 経由で親を返す。既存テスト green | - | cc:完了 |
+| S74-002 [P] | **Cross-encoder ONNX reranker** — `ms-marco-MiniLM-L6` を ONNX Runtime でローカル推論する reranker を `rerank/` に追加。デフォルト reranker を置換 | `rerank/onnx-cross-encoder.ts` が存在。`HARNESS_MEM_RERANKER_PROVIDER=onnx-cross-encoder` で切替可能。ベンチマーク F1 が simple-v1 以上 | - | cc:完了 |
+| S74-003 [P] | **自動リンク生成** — recordEvent 時に entity co-occurrence / temporal proximity / semantic similarity で `mem_links` を自動追加 | 同一 entity を持つ observation 間に `shared_entity` リンクが自動生成される。同セッション連続 observation に `follows` リンク。graph signal が疎→密に改善 | - | cc:完了 |
+| S74-004 | **Temporal Fact Versioning** — `mem_facts` の `superseded_by` チェーンを活用し、fact_key の時系列変遷を追跡可能にする。search 時に「以前の値」「現在の値」を区別して返す | `GET /v1/facts/:key/history` が時系列チェーンを返す。search の precision_boost が fact chain を考慮。「以前は？」クエリで旧値が上位に来る | S74-001 | cc:完了 |
+| S74-005 | **Code Provenance メタデータ** — tool_use イベントから `{file_path, lines_changed, action, model_id}` を構造化抽出し observation.metadata に格納。ファイル単位の変更履歴検索を可能にする | tool_use イベントの observation に `code_provenance` メタデータが付与される。`search` で `file:path/to/file` フィルターが使える | S74-001, S74-003 | cc:完了 |

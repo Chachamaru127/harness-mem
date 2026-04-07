@@ -18,6 +18,7 @@
 import { createHash } from "node:crypto";
 import type { Database } from "bun:sqlite";
 import type { ApiResponse, Config, EventEnvelope, MemoryType, StreamEvent } from "./types.js";
+import { splitIntoNuggets } from "./nugget-splitter.js";
 import {
   clampLimit,
   ensureSession,
@@ -35,6 +36,8 @@ import {
   type VectorEngine,
 } from "../vector/providers";
 import type { StoredEvent } from "../projector/types";
+import { runAutoLinker } from "./auto-linker.js";
+import { extractCodeProvenance } from "./provenance-extractor.js";
 
 // ---------------------------------------------------------------------------
 // ローカルユーティリティ（recordEvent ロジックで使用する純粋関数）
@@ -633,6 +636,66 @@ export class EventRecorder {
     }
   }
 
+  /**
+   * S74-001: Observation を nugget に分割して mem_nuggets / mem_nugget_vectors に保存する。
+   * best-effort: 失敗しても observation 記録には影響しない。
+   */
+  private insertNuggets(observationId: string, content: string, createdAt: string): void {
+    if (this.deps.getVectorEngine() === "disabled") {
+      return;
+    }
+
+    try {
+      const nuggets = splitIntoNuggets(content);
+      if (nuggets.length === 0) return;
+
+      const model = this.deps.getVectorModelVersion();
+      const now = nowIso();
+
+      const insertNuggetStmt = this.deps.db.query(`
+        INSERT OR IGNORE INTO mem_nuggets(nugget_id, observation_id, seq, content, content_hash, created_at)
+        VALUES (lower(hex(randomblob(16))), ?, ?, ?, ?, ?)
+      `);
+
+      const insertVecStmt = this.deps.db.query(`
+        INSERT INTO mem_nugget_vectors(nugget_id, observation_id, model, dimension, vector_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(nugget_id, model) DO UPDATE SET
+          vector_json = excluded.vector_json,
+          updated_at = excluded.updated_at
+      `);
+
+      for (const nugget of nuggets) {
+        insertNuggetStmt.run(observationId, nugget.seq, nugget.content, nugget.content_hash, createdAt);
+
+        // nugget_id を取得（直前の INSERT OR IGNORE の結果）
+        const row = this.deps.db
+          .query<{ nugget_id: string }, [string, number]>(
+            `SELECT nugget_id FROM mem_nuggets WHERE observation_id = ? AND seq = ?`
+          )
+          .get(observationId, nugget.seq);
+
+        if (!row?.nugget_id) continue;
+
+        const vector = normalizeVectorDimension(
+          this.deps.embedContent(nugget.content),
+          this.deps.config.vectorDimension,
+        );
+        insertVecStmt.run(
+          row.nugget_id,
+          observationId,
+          model,
+          this.deps.config.vectorDimension,
+          JSON.stringify(vector),
+          createdAt,
+          now,
+        );
+      }
+    } catch {
+      // best effort: nugget 生成に失敗しても observation 記録は継続
+    }
+  }
+
   private enqueueRetry(event: EventEnvelope, reason: string): void {
     const current = nowIso();
     this.deps.db
@@ -811,10 +874,72 @@ export class EventRecorder {
             .run(observationId, tag, current);
         }
 
+        // S74-005: Code Provenance — tool_use イベントから file: タグと code_provenance を付与
+        if (event.event_type === "tool_use") {
+          try {
+            const provenance = extractCodeProvenance(payload);
+            if (provenance) {
+              // mem_tags に file:path タグを追加（entity 検索でフィルター可能にする）
+              const fileTag = `file:${provenance.file_path}`;
+              this.deps.db
+                .query(`
+                  INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at)
+                  VALUES (?, ?, 'provenance', ?)
+                `)
+                .run(observationId, fileTag, current);
+
+              // mem_events の payload_json に code_provenance を追加（既に parseJsonSafe 済みの payload を再利用）
+              try {
+                const payloadWithProvenance = { ...payload, code_provenance: provenance };
+                this.deps.db
+                  .query(`
+                    UPDATE mem_events SET payload_json = ? WHERE event_id = ?
+                  `)
+                  .run(JSON.stringify(payloadWithProvenance), eventId);
+              } catch {
+                // best effort: payload_json 更新に失敗しても記録は継続
+              }
+            }
+          } catch {
+            // best effort: provenance 抽出に失敗しても記録は継続
+          }
+        }
+
         this.upsertVector(observationId, redactedContent, timestamp);
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
         this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
+
+        // S74-003: auto-linker モジュール経由での追加リンク生成
+        // autoLinkObservation が Strategy A (entity co-occurrence) と B (temporal proximity) を担当
+        // runAutoLinker は Strategy C (semantic similarity) を担当（HARNESS_MEM_AUTO_LINK_SEMANTIC=true の場合のみ）
+        // INSERT OR IGNORE により重複リンクは作成されない
+        try {
+          runAutoLinker(
+            {
+              db: this.deps.db,
+              getEmbedding: (obsId: string) => {
+                const row = this.deps.db
+                  .query<{ vector_json: string }, [string]>(`
+                    SELECT vector_json FROM mem_vectors WHERE observation_id = ? LIMIT 1
+                  `)
+                  .get(obsId);
+                if (!row) return null;
+                try {
+                  return JSON.parse(row.vector_json) as number[];
+                } catch {
+                  return null;
+                }
+              },
+            },
+            observationId,
+            event.session_id,
+            timestamp,
+          );
+        } catch {
+          // best effort: auto-linker エラーは event recording を中断しない
+        }
+        this.insertNuggets(observationId, redactedContent, timestamp);
 
         if (isPrivateTag(privacyTags)) {
           this.deps.db.query(`

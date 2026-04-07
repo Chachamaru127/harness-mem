@@ -2,6 +2,7 @@ import { createSimpleReranker, createCrossEncoderReranker } from "./simple-reran
 import { createCohereReranker } from "./cohere-reranker";
 import { createHfReranker } from "./hf-reranker";
 import { createStReranker } from "./st-reranker";
+import { createOnnxCrossEncoderReranker } from "./onnx-cross-encoder";
 import type { IReranker, RerankerConfig, RerankerRegistryResult } from "./types";
 
 function parseEnabled(raw: unknown): boolean {
@@ -104,6 +105,17 @@ export function createRerankerRegistry(enabledInput: unknown): RerankerRegistryR
     return {
       enabled: true,
       reranker: createCrossEncoderReranker(),
+      warnings: [],
+    };
+  }
+
+  if (provider === "onnx-cross-encoder") {
+    // ONNX ローカル推論 cross-encoder。
+    // ロード失敗時は reranker 内部で simple-v1 にフォールバックするため
+    // warnings は不要。
+    return {
+      enabled: true,
+      reranker: createOnnxCrossEncoderReranker(),
       warnings: [],
     };
   }

@@ -1640,6 +1640,62 @@ export class ObservationStore {
     };
   }
 
+  // ---------------------------------------------------------------------------
+  // S74-001: nuggetSearch — nugget レベルのベクトル検索で親 observation を boost
+  // ---------------------------------------------------------------------------
+
+  /**
+   * クエリベクトルと mem_nugget_vectors の brute-force コサイン類似度を計算し、
+   * 親 observation_id → 最大スコアのマップを返す。
+   * 検索できない場合は空 Map を返す（best-effort）。
+   */
+  private nuggetSearch(query: string, internalLimit: number): Map<string, number> {
+    if (this.deps.getVectorEngine() === "disabled") {
+      return new Map<string, number>();
+    }
+
+    try {
+      const model = this.deps.getVectorModelVersion();
+      const queryVector = normalizeVectorDimension(
+        this.deps.embedContent(query),
+        this.deps.vectorDimension,
+      );
+
+      const window = Math.min(2000, Math.max(600, internalLimit * 20));
+      const rows = this.deps.db
+        .query<{ nugget_id: string; observation_id: string; vector_json: string }, [string, number, number]>(
+          `SELECT nv.nugget_id, nv.observation_id, nv.vector_json
+           FROM mem_nugget_vectors nv
+           WHERE nv.model = ? AND nv.dimension = ?
+           ORDER BY nv.created_at DESC
+           LIMIT ?`
+        )
+        .all(model, this.deps.vectorDimension, window);
+
+      const raw = new Map<string, number>();
+      for (const row of rows) {
+        let vector: number[];
+        try {
+          const parsed = JSON.parse(row.vector_json);
+          if (!Array.isArray(parsed)) continue;
+          vector = parsed.filter((value): value is number => typeof value === "number");
+        } catch {
+          continue;
+        }
+        const cosine = cosineSimilarity(queryVector, vector);
+        const score = (cosine + 1) / 2;
+        const existing = raw.get(row.observation_id) ?? 0;
+        if (score > existing) {
+          raw.set(row.observation_id, score);
+        }
+      }
+
+      return normalizeScoreMap(raw);
+    } catch {
+      return new Map<string, number>();
+    }
+  }
+
   private resolveFallbackVectorModel(currentModel: string): string | null {
     const row = this.deps.db
       .query(
@@ -2813,6 +2869,57 @@ export class ObservationStore {
   }
 
   // ---------------------------------------------------------------------------
+  // S74-005: file: フィルター — クエリから "file:xxx" を解析し、該当するObservationIDセットを返す
+  // ---------------------------------------------------------------------------
+
+  /**
+   * クエリ文字列から `file:path/to/file` パターンを抽出し、
+   * mem_tags テーブルを使って一致する observation_id のセットを返す。
+   * マッチがなければ null を返す（フィルターなし扱い）。
+   */
+  private extractFileFilterIds(query: string): Set<string> | null {
+    const FILE_FILTER_RE = /\bfile:(\S+)/g;
+    const filePaths: string[] = [];
+    let match: RegExpExecArray | null;
+    FILE_FILTER_RE.lastIndex = 0;
+    while ((match = FILE_FILTER_RE.exec(query)) !== null) {
+      if (match[1]) {
+        filePaths.push(match[1]);
+      }
+    }
+    if (filePaths.length === 0) return null;
+
+    const matchedIds = new Set<string>();
+    try {
+      for (const filePath of filePaths) {
+        // 完全一致（file:exact/path）と部分一致（LIKE %path%）の両方を試みる
+        const exactTag = `file:${filePath}`;
+        const exactRows = this.deps.db
+          .query(`SELECT observation_id FROM mem_tags WHERE tag = ? AND tag_type = 'provenance'`)
+          .all(exactTag) as Array<{ observation_id: string }>;
+        for (const row of exactRows) {
+          matchedIds.add(row.observation_id);
+        }
+
+        // 完全一致で見つからなければ部分一致（パスの一部でも検索できるように）
+        if (exactRows.length === 0) {
+          const likeRows = this.deps.db
+            .query(`SELECT observation_id FROM mem_tags WHERE tag LIKE ? AND tag_type = 'provenance'`)
+            .all(`%${filePath}%`) as Array<{ observation_id: string }>;
+          for (const row of likeRows) {
+            matchedIds.add(row.observation_id);
+          }
+        }
+      }
+    } catch {
+      // best effort: フィルター失敗時はフィルターなし扱い
+      return null;
+    }
+
+    return matchedIds;
+  }
+
+  // ---------------------------------------------------------------------------
   // search: ハイブリッド検索（lexical + vector + graph + recency + tag + importance）
   // ---------------------------------------------------------------------------
 
@@ -2852,8 +2959,11 @@ export class ObservationStore {
         : undefined;
     // IMP-002 / FQ-013: exclude_updated が明示的に指定された場合のみ有効化
     const excludeUpdated = Boolean(request.exclude_updated);
+    // S74-005: file: フィルターをクエリから除去して検索エンジンに渡す（lexical/vector には不要なトークン）
+    const cleanedQuery = request.query.replace(/\bfile:\S+/g, "").replace(/\s+/g, " ").trim();
     const normalizedRequest: SearchRequest = {
       ...request,
+      query: cleanedQuery || request.query,
       project: normalizedProject,
       project_members: projectMembers,
       include_private: includePrivate,
@@ -2874,9 +2984,11 @@ export class ObservationStore {
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
     const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);
     const vector = vectorResult.scores;
+    // S74-001: nugget-level vector search for parent observation boost
+    const nuggetScores = this.nuggetSearch(normalizedRequest.query, internalLimit);
     const graph = new Map<string, number>();
 
-    const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys()]);
+    const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys(), ...nuggetScores.keys()]);
     if (prioritizeLatestInteraction) {
       if (latestInteraction?.prompt?.id) candidateIds.add(latestInteraction.prompt.id);
       if (latestInteraction?.response?.id) candidateIds.add(latestInteraction.response.id);
@@ -2896,6 +3008,23 @@ export class ObservationStore {
           candidateIds.add(id);
         }
         graph.set(id, score);
+      }
+    }
+
+    // S74-005: file: フィルター — クエリに "file:xxx" が含まれる場合、候補を絞り込む
+    const fileFilterIds = this.extractFileFilterIds(request.query);
+    if (fileFilterIds !== null) {
+      if (candidateIds.size > 0) {
+        // 既存候補との intersection
+        for (const id of [...candidateIds]) {
+          if (!fileFilterIds.has(id)) {
+            candidateIds.delete(id);
+          }
+        }
+      }
+      // 検索結果が空でも file filter にヒットした観察は直接追加する
+      for (const id of fileFilterIds) {
+        candidateIds.add(id);
       }
     }
 
@@ -2965,7 +3094,9 @@ export class ObservationStore {
       // IMP-009: signal_score を加算 (上限1.0、下限0.0)
       const signalAdj =
         typeof observation.signal_score === "number" ? observation.signal_score : 0;
-      const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj));
+      // S74-001: nugget スコアを importance に加点（最大 +0.15）
+      const nuggetAdj = Math.min(0.15, (nuggetScores.get(id) ?? 0) * 0.15);
+      const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj + nuggetAdj));
       const graphScore = graph.get(id) ?? 0;
       const factBoost = this.computeActiveFactBoost(
         request.query,
