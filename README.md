@@ -31,11 +31,11 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
 | **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
-| **Search** | Hybrid (lexical + vector + recency + tag + graph) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
+| **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
-| **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS) | — | — | — |
+| **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS, p95 10.7ms) | — | — | — |
 | **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
 | **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
 
@@ -120,18 +120,18 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-03T19:20:02.437Z`
-- git_sha: `c77da08`
+- generated_at: `2026-04-07`
+- git_sha: `677c10f`
 - embedding: `adaptive`
 
 | Metric | Value |
 |---|---:|
 | LoCoMo F1 | 0.5861 |
-| Bilingual recall@10 | 0.8400 |
+| Bilingual recall@10 | 0.8800 |
 | Freshness | 1.0000 |
-| Temporal | 0.6472 |
-| Search p95 | 14.04ms |
-| Token avg | 428.93 |
+| Temporal | 0.6458 |
+| Search p95 | 10.67ms |
+| Token avg | 427.71 |
 
 Verdict: `PASS`
 

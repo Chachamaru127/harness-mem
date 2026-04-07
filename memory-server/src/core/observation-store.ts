@@ -1645,12 +1645,15 @@ export class ObservationStore {
   // ---------------------------------------------------------------------------
 
   /**
-   * クエリベクトルと mem_nugget_vectors の brute-force コサイン類似度を計算し、
+   * クエリベクトルと mem_nugget_vectors のコサイン類似度を計算し、
    * 親 observation_id → 最大スコアのマップを返す。
-   * 検索できない場合は空 Map を返す（best-effort）。
+   *
+   * 最適化: candidateObsIds が指定された場合、その observation の nugget のみ検索する。
+   * 全件スキャン (brute-force) を回避し、候補数に比例する高速な検索を実現。
+   * candidateObsIds が空または未指定の場合は空 Map を返す。
    */
-  private nuggetSearch(query: string, internalLimit: number): Map<string, number> {
-    if (this.deps.getVectorEngine() === "disabled") {
+  private nuggetSearch(query: string, candidateObsIds: Set<string>): Map<string, number> {
+    if (this.deps.getVectorEngine() === "disabled" || candidateObsIds.size === 0) {
       return new Map<string, number>();
     }
 
@@ -1661,32 +1664,38 @@ export class ObservationStore {
         this.deps.vectorDimension,
       );
 
-      const window = Math.min(2000, Math.max(600, internalLimit * 20));
-      const rows = this.deps.db
-        .query<{ nugget_id: string; observation_id: string; vector_json: string }, [string, number, number]>(
-          `SELECT nv.nugget_id, nv.observation_id, nv.vector_json
-           FROM mem_nugget_vectors nv
-           WHERE nv.model = ? AND nv.dimension = ?
-           ORDER BY nv.created_at DESC
-           LIMIT ?`
-        )
-        .all(model, this.deps.vectorDimension, window);
-
+      // 候補 observation の nugget のみ取得（バッチ処理で SQL IN 句のサイズ制限を回避）
+      const MAX_BATCH = 200;
+      const allCandidates = [...candidateObsIds];
       const raw = new Map<string, number>();
-      for (const row of rows) {
-        let vector: number[];
-        try {
-          const parsed = JSON.parse(row.vector_json);
-          if (!Array.isArray(parsed)) continue;
-          vector = parsed.filter((value): value is number => typeof value === "number");
-        } catch {
-          continue;
-        }
-        const cosine = cosineSimilarity(queryVector, vector);
-        const score = (cosine + 1) / 2;
-        const existing = raw.get(row.observation_id) ?? 0;
-        if (score > existing) {
-          raw.set(row.observation_id, score);
+
+      for (let i = 0; i < allCandidates.length; i += MAX_BATCH) {
+        const batch = allCandidates.slice(i, i + MAX_BATCH);
+        const placeholders = batch.map(() => "?").join(", ");
+        const rows = this.deps.db
+          .query<{ observation_id: string; vector_json: string }, (string | number)[]>(
+            `SELECT nv.observation_id, nv.vector_json
+             FROM mem_nugget_vectors nv
+             WHERE nv.observation_id IN (${placeholders})
+               AND nv.model = ? AND nv.dimension = ?`
+          )
+          .all(...batch, model, this.deps.vectorDimension);
+
+        for (const row of rows) {
+          let vector: number[];
+          try {
+            const parsed = JSON.parse(row.vector_json);
+            if (!Array.isArray(parsed)) continue;
+            vector = parsed.filter((value): value is number => typeof value === "number");
+          } catch {
+            continue;
+          }
+          const cosine = cosineSimilarity(queryVector, vector);
+          const score = (cosine + 1) / 2;
+          const existing = raw.get(row.observation_id) ?? 0;
+          if (score > existing) {
+            raw.set(row.observation_id, score);
+          }
         }
       }
 
@@ -2984,11 +2993,13 @@ export class ObservationStore {
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
     const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);
     const vector = vectorResult.scores;
-    // S74-001: nugget-level vector search for parent observation boost
-    const nuggetScores = this.nuggetSearch(normalizedRequest.query, internalLimit);
     const graph = new Map<string, number>();
 
-    const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys(), ...nuggetScores.keys()]);
+    const candidateIds = new Set<string>([...lexical.keys(), ...vector.keys()]);
+
+    // S74-001: nugget-level vector search — lexical/vector で見つかった候補の nugget のみ検索
+    // 全件スキャンを回避し、候補数に比例する高速検索を実現
+    const nuggetScores = this.nuggetSearch(normalizedRequest.query, candidateIds);
     if (prioritizeLatestInteraction) {
       if (latestInteraction?.prompt?.id) candidateIds.add(latestInteraction.prompt.id);
       if (latestInteraction?.response?.id) candidateIds.add(latestInteraction.response.id);
