@@ -1244,6 +1244,29 @@ export class ObservationStore {
   }
 
   // ---------------------------------------------------------------------------
+  // appendTenantFilter: TEAM-005 テナント分離用の軽量ヘルパー
+  // applyCommonFilters を使えない箇所（resumePack 等）で直接 SQL に追加する。
+  // ---------------------------------------------------------------------------
+
+  private appendTenantFilter(
+    sql: string,
+    params: unknown[],
+    alias: string,
+    user_id?: string,
+    team_id?: string
+  ): string {
+    if (!user_id) return sql;
+    if (team_id) {
+      sql += ` AND (${alias}.user_id = ? OR ${alias}.team_id = ?)`;
+      params.push(user_id, team_id);
+    } else {
+      sql += ` AND ${alias}.user_id = ?`;
+      params.push(user_id);
+    }
+    return sql;
+  }
+
+  // ---------------------------------------------------------------------------
   // applyCommonFilters: SQL WHERE 句に共通フィルタを追加
   // ---------------------------------------------------------------------------
 
@@ -3783,6 +3806,16 @@ export class ObservationStore {
         whereClauses += " " + this.deps.accessFilter.sql;
         baseParams.push(...this.deps.accessFilter.params);
       }
+      // TEAM-005: テナント分離 — per-request user_id/team_id フィルタ
+      if (request.user_id) {
+        if (request.team_id) {
+          whereClauses += ` AND (o.user_id = ? OR o.team_id = ?)`;
+          baseParams.push(request.user_id, request.team_id);
+        } else {
+          whereClauses += ` AND o.user_id = ?`;
+          baseParams.push(request.user_id);
+        }
+      }
       if (query) {
         if (this.deps.ftsEnabled) {
           whereClauses += ` AND o.rowid IN (SELECT rowid FROM mem_observations_fts WHERE mem_observations_fts MATCH ?)`;
@@ -3935,6 +3968,19 @@ export class ObservationStore {
 
     const includePrivate = Boolean(request.include_private);
 
+    // TEAM-005: テナント分離 — center observation の所有権チェック
+    if (request.user_id) {
+      const centerUserId = typeof center.user_id === "string" ? center.user_id : "";
+      const centerTeamId = typeof center.team_id === "string" ? center.team_id : "";
+      const isOwner = centerUserId === request.user_id;
+      const isSameTeam = request.team_id ? centerTeamId === request.team_id : false;
+      if (!isOwner && !isSameTeam) {
+        return makeErrorResponse(startedAt, `observation not found: ${request.id}`, {
+          id: request.id,
+        });
+      }
+    }
+
     if (!includePrivate) {
       const centerPrivacyTags = parseArrayJson(
         typeof center.privacy_tags_json === "string" ? center.privacy_tags_json : "[]"
@@ -3952,18 +3998,29 @@ export class ObservationStore {
       typeof center.created_at === "string" ? center.created_at : nowIso();
     const visibility = visibilityFilterSql("o", includePrivate);
 
+    // TEAM-005: テナント分離 — before/after クエリにもテナントフィルタ適用
+    const tenantFilterSql = request.user_id
+      ? (request.team_id
+        ? ` AND (o.user_id = ? OR o.team_id = ?)`
+        : ` AND o.user_id = ?`)
+      : "";
+    const tenantFilterParams: unknown[] = request.user_id
+      ? (request.team_id ? [request.user_id, request.team_id] : [request.user_id])
+      : [];
+
     const beforeRows = this.deps.db
       .query(
         `
           SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at < ?
+          ${tenantFilterSql}
           ${visibility}
           ORDER BY o.created_at DESC
           LIMIT ?
         `
       )
-      .all(centerProject, centerSession, centerCreatedAt, before) as Array<
+      .all(...([centerProject, centerSession, centerCreatedAt, ...tenantFilterParams, before] as any[])) as Array<
       Record<string, unknown>
     >;
 
@@ -3973,12 +4030,13 @@ export class ObservationStore {
           SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at > ?
+          ${tenantFilterSql}
           ${visibility}
           ORDER BY o.created_at ASC
           LIMIT ?
         `
       )
-      .all(centerProject, centerSession, centerCreatedAt, after) as Array<
+      .all(...([centerProject, centerSession, centerCreatedAt, ...tenantFilterParams, after] as any[])) as Array<
       Record<string, unknown>
     >;
 
@@ -4057,14 +4115,15 @@ export class ObservationStore {
       const row = observationMap.get(id);
       if (!row) continue;
 
-      // アクセス制御: admin は全許可、member は自分 or 同チームのみ
-      if (accessFilter?.sql) {
+      // TEAM-005: アクセス制御 — admin は全許可、member は自分 or 同チームのみ
+      // per-request user_id/team_id（server.ts から注入）を優先チェック
+      const effectiveUserId = request.user_id ?? accessFilter?.user_id;
+      const effectiveTeamId = request.team_id ?? accessFilter?.team_id;
+      if (effectiveUserId) {
         const rowUserId = typeof row.user_id === "string" ? row.user_id : "";
         const rowTeamId = typeof row.team_id === "string" ? row.team_id : null;
-        const allowedUserId = accessFilter.user_id ?? "";
-        const allowedTeamId = accessFilter.team_id ?? null;
-        const allowed = rowUserId === allowedUserId ||
-          (allowedTeamId !== null && rowTeamId === allowedTeamId);
+        const allowed = rowUserId === effectiveUserId ||
+          (effectiveTeamId != null && rowTeamId === effectiveTeamId);
         if (!allowed) {
           continue;
         }
@@ -4178,6 +4237,8 @@ export class ObservationStore {
       WHERE 1 = 1
     `;
     latestSummarySql = this.appendProjectFilter(latestSummarySql, summaryParams, "s", projectMembers);
+    // TEAM-005: テナント分離 — session テーブルの user_id でフィルタ
+    latestSummarySql = this.appendTenantFilter(latestSummarySql, summaryParams, "s", request.user_id, request.team_id);
     latestSummarySql += useCorrelationId ? " AND s.correlation_id = ?" : " AND s.summary IS NOT NULL";
     if (useCorrelationId) {
       summaryParams.push(correlationId as string);
@@ -4197,6 +4258,8 @@ export class ObservationStore {
     }
     pinnedContinuitySql += "\n      WHERE 1 = 1";
     pinnedContinuitySql = this.appendProjectFilter(pinnedContinuitySql, pinnedContinuityParams, "o", projectMembers);
+    // TEAM-005: テナント分離
+    pinnedContinuitySql = this.appendTenantFilter(pinnedContinuitySql, pinnedContinuityParams, "o", request.user_id, request.team_id);
     pinnedContinuitySql += " AND o.title = 'continuity_handoff'";
     pinnedContinuitySql += " AND o.tags_json LIKE '%\"continuity_handoff\"%'";
     if (useCorrelationId) {
@@ -4239,6 +4302,8 @@ export class ObservationStore {
         WHERE 1 = 1
       `;
       rowsSql = this.appendProjectFilter(rowsSql, rowParams, "o", projectMembers);
+      // TEAM-005: テナント分離
+      rowsSql = this.appendTenantFilter(rowsSql, rowParams, "o", request.user_id, request.team_id);
       rowsSql += " AND s.correlation_id = ?";
       rowParams.push(correlationId as string);
       if (request.session_id) {
@@ -4270,6 +4335,8 @@ export class ObservationStore {
         WHERE 1 = 1
       `;
       rowsSql = this.appendProjectFilter(rowsSql, rowParams, "o", projectMembers);
+      // TEAM-005: テナント分離
+      rowsSql = this.appendTenantFilter(rowsSql, rowParams, "o", request.user_id, request.team_id);
       if (request.session_id) {
         rowsSql += " AND o.session_id <> ?";
         rowParams.push(request.session_id);
@@ -4485,7 +4552,7 @@ export class ObservationStore {
   getSubgraph(
     entity: string,
     depth: number,
-    options?: { project?: string; limit?: number }
+    options?: { project?: string; limit?: number; user_id?: string; team_id?: string }
   ): SubgraphResult {
     const maxDepth = Math.min(depth, 5);
     const nodeLimit = Math.min(options?.limit ?? 100, 100);
@@ -4502,6 +4569,8 @@ export class ObservationStore {
     `;
     let seedParams: unknown[] = [entity];
     seedSql = this.appendProjectFilter(seedSql, seedParams, "o", projectMembers);
+    // TEAM-005: テナント分離
+    seedSql = this.appendTenantFilter(seedSql, seedParams, "o", options?.user_id, options?.team_id);
     seedSql += ` LIMIT ${seedLimit}`;
 
     let seedRows = this.deps.db.query(seedSql).all(...(seedParams as any[])) as Array<{ id: string }>;
@@ -4517,6 +4586,8 @@ export class ObservationStore {
       `;
       const likeParams: unknown[] = [`%${entity}%`];
       likeSql = this.appendProjectFilter(likeSql, likeParams, "o", projectMembers);
+      // TEAM-005: テナント分離
+      likeSql = this.appendTenantFilter(likeSql, likeParams, "o", options?.user_id, options?.team_id);
       likeSql += ` LIMIT ${seedLimit}`;
       seedRows = this.deps.db.query(likeSql).all(...(likeParams as any[])) as Array<{ id: string }>;
     }
@@ -4567,13 +4638,17 @@ export class ObservationStore {
       return { nodes: [], edges: [], center_entity: entity, depth: maxDepth };
     }
     const placeholders = allIds.map(() => "?").join(", ");
+    // TEAM-005: テナント分離 — ノード詳細もテナントでフィルタ
+    const nodeQueryParams: unknown[] = [...allIds];
+    let nodeQuerySql = `
+        SELECT mo.id, mo.title, mo.observation_type, mo.created_at
+        FROM mem_observations mo
+        WHERE mo.id IN (${placeholders})
+    `;
+    nodeQuerySql = this.appendTenantFilter(nodeQuerySql, nodeQueryParams, "mo", options?.user_id, options?.team_id);
     const nodeRows = this.deps.db
-      .query(`
-        SELECT id, title, observation_type, created_at
-        FROM mem_observations
-        WHERE id IN (${placeholders})
-      `)
-      .all(...allIds) as Array<{ id: string; title: string | null; observation_type: string; created_at: string }>;
+      .query(nodeQuerySql)
+      .all(...(nodeQueryParams as any[])) as Array<{ id: string; title: string | null; observation_type: string; created_at: string }>;
 
     // エンティティ情報を一括取得
     const entityRows = this.deps.db
@@ -4600,12 +4675,17 @@ export class ObservationStore {
       entities: entityMap.get(row.id) ?? [],
     }));
 
-    const edges: SubgraphResult["edges"] = [...edgeSet.values()].map((e) => ({
-      source: e.source,
-      target: e.target,
-      relation: e.relation,
-      weight: e.weight,
-    }));
+    // TEAM-005: テナント分離 — nodeQuerySql でフィルタされたノード集合に基づき
+    // edges もフィルタする。BFS で発見されたが tenant 外のノードを参照するエッジを除外。
+    const permittedNodeIds = new Set(nodeRows.map((row) => row.id));
+    const edges: SubgraphResult["edges"] = [...edgeSet.values()]
+      .filter((e) => permittedNodeIds.has(e.source) && permittedNodeIds.has(e.target))
+      .map((e) => ({
+        source: e.source,
+        target: e.target,
+        relation: e.relation,
+        weight: e.weight,
+      }));
 
     return { nodes, edges, center_entity: entity, depth: maxDepth };
   }

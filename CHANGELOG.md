@@ -7,6 +7,49 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-04-09
+
+### テーマ: マルチテナント分離の全面修復 — retrieval 層の致命的なテナント越境を根絶
+
+**DB にはテナント情報（user_id/team_id）が正しく保存されていたが、13 以上の retrieval エンドポイントのうち 4 つしかテナントフィルタを適用していなかった。特に resume-pack（セッション復元の主要パス）は完全にテナント条件なしで検索しており、A 社のセッション開始時に B 社のメモリが注入される状況が成立していた。本リリースで全 retrieval エンドポイントにテナント分離を適用し、write-path の偽装防止と AuthConfig 時の 401 ガードも追加。**
+
+---
+
+#### 1. resume-pack テナント分離 (TEAM-005)
+
+**今まで**: `/v1/resume-pack` は `appendProjectFilter`（プロジェクト名フィルタ）のみで、`user_id`/`team_id` によるテナント分離が一切なかった。マルチテナント環境で member ロールのユーザーが同一プロジェクト名の他テナントの observation を取得可能だった。
+
+**今後**: resumePack 内の 4 つの SQL クエリ全てに `appendTenantFilter` を適用。member ロール時は自分 or 同チームのデータのみ返却される。
+
+#### 2. 全 retrieval エンドポイントへのテナントフィルタ適用
+
+**今まで**: 4 エンドポイントのみがテナントフィルタを適用。以下の 9+ エンドポイントはフィルタなしだった:
+`/v1/timeline`, `/v1/observations/get`, `/v1/observations/bulk-delete`, `/v1/search/facets`, `/v1/export`, `/v1/graph`, `/v1/graph/neighbors`, `/v1/facts/{key}/history`, `/v1/analytics/*`
+
+**今後**: `resolveAccess()` ヘルパーを導入し、全 13 エンドポイントでテナントフィルタを統一適用。
+
+#### 3. AuthConfig 時の 401 ガード
+
+**今まで**: AuthConfig 環境で無効トークンを送った場合、フィルタなしでデータが返却されていた。
+
+**今後**: `resolveAccess()` が AuthConfig 存在 + identity null を検知すると即座に 401 を返す。
+
+#### 4. write-path のテナント偽装防止
+
+**今まで**: `/v1/events/record` でクライアントが任意の `user_id` を指定可能だった。
+
+**今後**: member ロール時はサーバー解決の identity で強制上書き。
+
+#### 5. bulk-delete / getLinks / getSubgraph の所有権チェック
+
+**今まで**: observation ID さえ分かれば他テナントのデータを削除・グラフ探索可能だった。
+
+**今後**: 各操作で observation の所有権を検証。getSubgraph は seed・ノード・edges の 3 層でテナント分離。
+
+#### 6. テナント分離テスト追加
+
+`tests/unit/tenant-isolation-endpoints.test.ts` で 6 テストケースを追加。
+
 ## [0.10.0] - 2026-04-07
 
 ### Theme: Search precision and recall granularity — five new retrieval layers with zero-cost constraint

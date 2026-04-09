@@ -194,13 +194,39 @@ export function resolveRequestIdentity(request: Request): ResolvedIdentity | nul
   }
 
   // フォールバック: 従来の HARNESS_MEM_ADMIN_TOKEN のみ
+  // TEAM-005 設計意図: AuthConfig も ADMIN_TOKEN も未設定 = ローカル単一ユーザーモード。
+  // admin ロールを返すことで全テナントフィルタがスキップされる（後方互換性維持）。
+  // マルチテナント環境では必ず AuthConfig を設定すること。
   const configured = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
-  if (!configured) return { user_id: "admin", role: "admin" }; // 未設定は全許可
+  if (!configured) return { user_id: "admin", role: "admin" };
   if (!token || token.length !== configured.length) return null;
   if (timingSafeEqual(Buffer.from(token), Buffer.from(configured))) {
     return { user_id: "admin", role: "admin" };
   }
   return null;
+}
+
+/**
+ * TEAM-005: テナント分離ヘルパー
+ * resolveRequestIdentity + buildAccessFilter のボイラープレートを集約。
+ * admin ロールまたは未認証時は user_id/team_id が undefined → フィルタなし（後方互換性維持）
+ *
+ * AuthConfig が設定されている場合に identity が解決できなければ
+ * 401 Response を返す。呼び出し元は戻り値が Response かどうかで判定する。
+ */
+function resolveAccess(request: Request, alias: string = "o"):
+  | { user_id: string | undefined; team_id: string | undefined }
+  | Response {
+  const identity = resolveRequestIdentity(request);
+  // AuthConfig が設定されている場合に identity が null → 無効トークン → 401
+  if (getAuthConfig() !== null && identity === null) {
+    return unauthorized("missing or invalid token");
+  }
+  const filter = identity ? buildAccessFilter(alias, identity) : null;
+  return {
+    user_id: filter?.user_id ?? undefined,
+    team_id: filter?.team_id ?? undefined,
+  };
 }
 
 function hasValidAdminToken(request: Request, remoteAddress: string | null): boolean {
@@ -508,6 +534,12 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             return badRequest(evtValidation.errors.join("; "));
           }
           const event = toRecord(body.event) as unknown as EventEnvelope;
+          // TEAM-005: テナント分離 — member ロール時はサーバー解決の identity で上書き
+          const writeIdentity = resolveRequestIdentity(request);
+          if (writeIdentity && writeIdentity.role !== "admin") {
+            (event as unknown as Record<string, unknown>).user_id = writeIdentity.user_id;
+            (event as unknown as Record<string, unknown>).team_id = writeIdentity.team_id;
+          }
           const result = await core.recordEventQueued(event);
           if (result === "queue_full") {
             return new Response(
@@ -655,10 +687,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/search/facets") {
+        // TEAM-005: テナント分離
+        const facetsAccess = resolveAccess(request);
+        if (facetsAccess instanceof Response) return facetsAccess;
         const req: SearchFacetsRequest = {
           query: url.searchParams.get("query") || undefined,
           project: url.searchParams.get("project") || undefined,
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          user_id: facetsAccess.user_id,
+          team_id: facetsAccess.team_id,
         };
         return jsonResponse(core.searchFacets(req));
       }
@@ -669,21 +706,31 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("id is required");
         }
 
+        // TEAM-005: テナント分離
+        const timelineAccess = resolveAccess(request);
+        if (timelineAccess instanceof Response) return timelineAccess;
         const req: TimelineRequest = {
           id: body.id,
           before: typeof body.before === "number" ? body.before : undefined,
           after: typeof body.after === "number" ? body.after : undefined,
           include_private: parseBooleanLike(body.include_private, false),
+          user_id: timelineAccess.user_id,
+          team_id: timelineAccess.team_id,
         };
         return jsonResponse(await core.timeline(req));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/observations/get") {
         const body = await parseRequestJson(request);
+        // TEAM-005: テナント分離
+        const getObsAccess = resolveAccess(request);
+        if (getObsAccess instanceof Response) return getObsAccess;
         const req: GetObservationsRequest = {
           ids: toStringArray(body.ids),
           include_private: parseBooleanLike(body.include_private, false),
           compact: body.compact !== false,
+          user_id: getObsAccess.user_id,
+          team_id: getObsAccess.team_id,
         };
         return jsonResponse(core.getObservations(req));
       }
@@ -742,6 +789,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("project is required");
         }
 
+        // TEAM-005: テナント分離 — resume-pack にアクセス制御フィルタを適用
+        const resumeAccess = resolveAccess(request);
+        if (resumeAccess instanceof Response) return resumeAccess;
+
         const req: ResumePackRequest = {
           project,
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
@@ -749,6 +800,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           limit: typeof body.limit === "number" ? body.limit : undefined,
           include_private: parseBooleanLike(body.include_private, false),
           resume_pack_max_tokens: typeof body.resume_pack_max_tokens === "number" ? body.resume_pack_max_tokens : undefined,
+          user_id: resumeAccess.user_id,
+          team_id: resumeAccess.team_id,
         };
         return jsonResponse(core.resumePack(req));
       }
@@ -1218,7 +1271,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (ids.length === 0) {
           return badRequest("ids is required and must not be empty");
         }
-        return jsonResponse(core.bulkDeleteObservations({ ids }));
+        // TEAM-005: テナント分離 — member は自分の observation のみ削除可
+        const bulkDelAccess = resolveAccess(request);
+        if (bulkDelAccess instanceof Response) return bulkDelAccess;
+        return jsonResponse(core.bulkDeleteObservations({ ids, user_id: bulkDelAccess.user_id, team_id: bulkDelAccess.team_id }));
       }
 
       // S58-005: POST /v1/observations/share — observation の team_id を更新してチームに共有
@@ -1239,22 +1295,31 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/export") {
+        // TEAM-005: テナント分離
+        const exportAccess = resolveAccess(request);
+        if (exportAccess instanceof Response) return exportAccess;
         const project = url.searchParams.get("project") || undefined;
         const limit = parseInteger(url.searchParams.get("limit"), 1000);
         const includePrivate = parseBoolean(url.searchParams.get("include_private"), false);
-        return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate }));
+        return jsonResponse(core.exportObservations({ project, limit, include_private: includePrivate, user_id: exportAccess.user_id, team_id: exportAccess.team_id }));
       }
 
       // S74-004: Fact History API
+      // TEAM-005: factsMode — facts は全社共有だが認証は強制する
       if (request.method === "GET" && url.pathname.startsWith("/v1/facts/") && url.pathname.endsWith("/history")) {
+        const factsAccess = resolveAccess(request);
+        if (factsAccess instanceof Response) return factsAccess;
         const factKey = decodeURIComponent(url.pathname.replace("/v1/facts/", "").replace("/history", ""));
         const project = url.searchParams.get("project") || undefined;
         const limit = parseInteger(url.searchParams.get("limit"), 100);
-        return jsonResponse(core.getFactHistory({ fact_key: factKey, project, limit }));
+        return jsonResponse(core.getFactHistory({ fact_key: factKey, project, limit, user_id: factsAccess.user_id, team_id: factsAccess.team_id }));
       }
 
       // V5-006: Analytics API
+      // TEAM-005: テナント分離 — analytics 全エンドポイントにアクセス制御適用
       if (request.method === "GET" && url.pathname === "/v1/analytics/usage") {
+        const analyticsAccess = resolveAccess(request);
+        if (analyticsAccess instanceof Response) return analyticsAccess;
         const period = url.searchParams.get("period") || "day";
         const validPeriods = ["day", "week", "month"];
         const stats = await core.usageStats({
@@ -1262,6 +1327,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           from: url.searchParams.get("from") || undefined,
           to: url.searchParams.get("to") || undefined,
           project: url.searchParams.get("project") || undefined,
+          user_id: analyticsAccess.user_id,
+          team_id: analyticsAccess.team_id,
         });
         return jsonResponse({
           ok: true,
@@ -1272,11 +1339,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/analytics/entities") {
+        const entitiesAccess = resolveAccess(request);
+        if (entitiesAccess instanceof Response) return entitiesAccess;
         const limit = parseInteger(url.searchParams.get("limit"), 50);
         const stats = await core.entityDistribution({
           limit: Math.min(limit, 500),
           project: url.searchParams.get("project") || undefined,
           entity_type: url.searchParams.get("entity_type") || undefined,
+          user_id: entitiesAccess.user_id,
+          team_id: entitiesAccess.team_id,
         });
         return jsonResponse({
           ok: true,
@@ -1287,10 +1358,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/analytics/timeline-stats") {
+        const tlStatsAccess = resolveAccess(request);
+        if (tlStatsAccess instanceof Response) return tlStatsAccess;
         const stats = await core.timelineStats({
           from: url.searchParams.get("from") || undefined,
           to: url.searchParams.get("to") || undefined,
           project: url.searchParams.get("project") || undefined,
+          user_id: tlStatsAccess.user_id,
+          team_id: tlStatsAccess.team_id,
         });
         return jsonResponse({
           ok: true,
@@ -1301,8 +1376,12 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/analytics/overview") {
+        const overviewAccess = resolveAccess(request);
+        if (overviewAccess instanceof Response) return overviewAccess;
         const stats = await core.overviewStats({
           project: url.searchParams.get("project") || undefined,
+          user_id: overviewAccess.user_id,
+          team_id: overviewAccess.team_id,
         });
         return jsonResponse({
           ok: true,
@@ -1312,8 +1391,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         });
       }
 
-      // V5-001: サブグラフ取得 API（一般ユーザー用、認証不要）
+      // V5-001: サブグラフ取得 API
+      // TEAM-005: テナント分離
       if (request.method === "GET" && url.pathname === "/v1/graph") {
+        const graphAccess = resolveAccess(request);
+        if (graphAccess instanceof Response) return graphAccess;
         const entity = url.searchParams.get("entity") || "";
         if (!entity) {
           return badRequest("entity is required");
@@ -1323,11 +1405,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const limitParam = parseInteger(url.searchParams.get("limit"), 100);
         const limit = Math.min(limitParam, 100);
         const project = url.searchParams.get("project") || undefined;
-        const result = core.getSubgraph(entity, depth, { project, limit });
+        const result = core.getSubgraph(entity, depth, { project, limit, user_id: graphAccess.user_id, team_id: graphAccess.team_id });
         return rawJsonResponse({ ok: true, ...result });
       }
 
       if (request.method === "GET" && url.pathname === "/v1/graph/neighbors") {
+        // TEAM-005: テナント分離
+        const neighborsAccess = resolveAccess(request);
+        if (neighborsAccess instanceof Response) return neighborsAccess;
         const observationId = url.searchParams.get("observation_id") || "";
         if (!observationId) {
           return badRequest("observation_id is required");
@@ -1335,7 +1420,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const relation = url.searchParams.get("relation") || undefined;
         const depthRaw = url.searchParams.get("depth");
         const depth = depthRaw ? Math.min(Math.max(parseInt(depthRaw, 10) || 1, 1), 5) : 1;
-        return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth }));
+        return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth, user_id: neighborsAccess.user_id, team_id: neighborsAccess.team_id }));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/document") {

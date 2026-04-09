@@ -15,6 +15,10 @@ export interface UsageParams {
   from?: string;
   to?: string;
   project?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface UsageStatRow {
@@ -35,6 +39,10 @@ export interface EntityParams {
   limit?: number;
   project?: string;
   entity_type?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface EntityStats {
@@ -48,6 +56,10 @@ export interface TimelineParams {
   from?: string;
   to?: string;
   project?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface HourBucket {
@@ -64,6 +76,10 @@ export interface TimelineStats {
 
 export interface OverviewParams {
   project?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface MemoryTypeDistribution {
@@ -108,6 +124,19 @@ export class AnalyticsService {
   // -------------------------------------------------------------------------
   // getUsageStats
   // -------------------------------------------------------------------------
+  // TEAM-005: テナント分離ヘルパー — 条件配列にテナントフィルタを追加
+  private appendTenantConditions(conditions: string[], bindArgs: unknown[], params: { user_id?: string; team_id?: string }): void {
+    if (params.user_id) {
+      if (params.team_id) {
+        conditions.push("(user_id = ? OR team_id = ?)");
+        bindArgs.push(params.user_id, params.team_id);
+      } else {
+        conditions.push("user_id = ?");
+        bindArgs.push(params.user_id);
+      }
+    }
+  }
+
   async getUsageStats(params: UsageParams): Promise<UsageStats> {
     const { period = "day", from, to, project } = params;
 
@@ -129,6 +158,8 @@ export class AnalyticsService {
       conditions.push("project = ?");
       bindArgs.push(project);
     }
+    // TEAM-005: テナント分離
+    this.appendTenantConditions(conditions, bindArgs, params);
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -223,6 +254,16 @@ export class AnalyticsService {
       conditions.push("e.entity_type = ?");
       bindArgs.push(entity_type);
     }
+    // TEAM-005: テナント分離 (alias "o" で mem_observations を参照)
+    if (params.user_id) {
+      if (params.team_id) {
+        conditions.push("(o.user_id = ? OR o.team_id = ?)");
+        bindArgs.push(params.user_id, params.team_id);
+      } else {
+        conditions.push("o.user_id = ?");
+        bindArgs.push(params.user_id);
+      }
+    }
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -277,6 +318,8 @@ export class AnalyticsService {
       conditions.push("project = ?");
       bindArgs.push(project);
     }
+    // TEAM-005: テナント分離
+    this.appendTenantConditions(conditions, bindArgs, params);
 
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
@@ -331,8 +374,16 @@ export class AnalyticsService {
   async getOverview(params: OverviewParams): Promise<OverviewStats> {
     const { project } = params;
 
-    const projectCondition = project ? "WHERE project = ?" : "";
-    const projectArgs: unknown[] = project ? [project] : [];
+    // TEAM-005: テナント分離 — project + tenant の条件を構築
+    const conditions: string[] = [];
+    const conditionArgs: unknown[] = [];
+    if (project) {
+      conditions.push("project = ?");
+      conditionArgs.push(project);
+    }
+    this.appendTenantConditions(conditions, conditionArgs, params);
+    const projectCondition = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const projectArgs: unknown[] = [...conditionArgs];
 
     // total_observations
     const obsCountRow = this.deps.db
@@ -346,17 +397,25 @@ export class AnalyticsService {
       .all() as Array<{ cnt: number }>;
     const total_sessions = sessCountRow[0]?.cnt ?? 0;
 
-    // total_entities（プロジェクトフィルタあり場合は JOIN が必要）
+    // total_entities（プロジェクトフィルタまたはテナントフィルタがある場合は JOIN が必要）
     let total_entities: number;
-    if (project) {
+    if (project || params.user_id) {
+      const entityConditions: string[] = [];
+      const entityArgs: unknown[] = [];
+      if (project) { entityConditions.push("o.project = ?"); entityArgs.push(project); }
+      if (params.user_id) {
+        if (params.team_id) { entityConditions.push("(o.user_id = ? OR o.team_id = ?)"); entityArgs.push(params.user_id, params.team_id); }
+        else { entityConditions.push("o.user_id = ?"); entityArgs.push(params.user_id); }
+      }
+      const entityWhere = entityConditions.length > 0 ? `WHERE ${entityConditions.join(" AND ")}` : "";
       const entityCountRow = this.deps.db
         .query(
           `SELECT COUNT(DISTINCT e.id) AS cnt
            FROM mem_entities e
            JOIN mem_observation_entities oe ON oe.entity_id = e.id
            JOIN mem_observations o ON o.id = oe.observation_id
-           WHERE o.project = ?`,
-          [project]
+           ${entityWhere}`,
+          entityArgs
         )
         .all() as Array<{ cnt: number }>;
       total_entities = entityCountRow[0]?.cnt ?? 0;
@@ -394,8 +453,9 @@ export class AnalyticsService {
     );
 
     // recent_activity (直近7日)
-    const recentConditions = project ? ["project = ?"] : [];
-    const recentArgs: unknown[] = project ? [project] : [];
+    // TEAM-005: テナント分離 — projectCondition と同じ条件を再利用
+    const recentConditions = [...conditions];
+    const recentArgs: unknown[] = [...conditionArgs];
     const recentWhere = recentConditions.length > 0 ? `WHERE ${recentConditions.join(" AND ")}` : "";
 
     const recentRows = this.deps.db
