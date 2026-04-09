@@ -1644,7 +1644,52 @@ PY
   rm -rf "$tmp_dir"
 }
 
+download_go_binary() {
+  local os arch bin_name bin_path release_url
+  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+  arch="$(uname -m)"
+  case "$arch" in
+    x86_64)  arch="amd64" ;;
+    aarch64) arch="arm64" ;;
+  esac
+  bin_name="harness-mcp-${os}-${arch}"
+  bin_path="${HARNESS_ROOT}/bin/${bin_name}"
+
+  # Already present — skip
+  if [ -x "$bin_path" ]; then
+    return 0
+  fi
+
+  # Ensure bin directory exists
+  mkdir -p "${HARNESS_ROOT}/bin"
+
+  # Fetch latest release asset URL
+  release_url="$(curl -sf --max-time 5 \
+    "https://api.github.com/repos/Chachamaru127/harness-mem/releases/latest" \
+    | grep "browser_download_url.*${bin_name}" \
+    | head -1 \
+    | cut -d'"' -f4 2>/dev/null)" || true
+
+  if [ -z "$release_url" ]; then
+    log "Go MCP binary not available for ${os}/${arch} — using Node.js"
+    return 1
+  fi
+
+  log "Downloading Go MCP binary: ${bin_name}"
+  if curl -sfL --max-time 30 "$release_url" -o "$bin_path" && chmod +x "$bin_path"; then
+    log "Go MCP binary installed: ${bin_path}"
+    return 0
+  else
+    rm -f "$bin_path"
+    log "Go MCP binary download failed — using Node.js fallback"
+    return 1
+  fi
+}
+
 ensure_mcp_runtime() {
+  # Try to install Go MCP binary (best-effort, silent failure)
+  download_go_binary 2>/dev/null || true
+
   local mcp_dir="${HARNESS_ROOT}/mcp-server"
   local mcp_dist="${mcp_dir}/dist/index.js"
   local mcp_src_entry="${mcp_dir}/src/index.ts"
@@ -3321,6 +3366,25 @@ doctor_impl() {
     warn "rg (ripgrep) is missing"
     _doctor_record "rg" "missing" "brew install ripgrep"
     failed=1
+  fi
+
+  # Go MCP binary check
+  local go_bin_name go_bin_path
+  go_bin_name="harness-mcp-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+  go_bin_path="${HARNESS_ROOT}/bin/${go_bin_name}"
+  if [ -x "$go_bin_path" ]; then
+    # Smoke test: send initialize and check for valid response
+    if printf '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"doctor","version":"0.1"}}}\n' \
+      | "$go_bin_path" 2>/dev/null | grep -q '"serverInfo"'; then
+      _doctor_record "go_mcp_binary" "ok" ""
+      log "Go MCP binary: ${go_bin_path} (healthy)"
+    else
+      _doctor_record "go_mcp_binary" "broken" "rm ${go_bin_path} && harness-mem setup"
+      warn "Go MCP binary exists but smoke test failed: ${go_bin_path}"
+    fi
+  else
+    _doctor_record "go_mcp_binary" "not_installed" "harness-mem setup (auto-downloads from GitHub Releases)"
+    log "Go MCP binary: not installed (Node.js fallback active)"
   fi
 
   if check_cmd bun && check_cmd curl && check_cmd npm; then
