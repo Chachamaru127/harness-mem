@@ -1,0 +1,23 @@
+#!/bin/sh
+# Harness MCP Server launcher — Go binary preferred, Node.js fallback
+set -e
+
+SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
+PLUGIN_ROOT="$(cd "$SELF_DIR/.." && pwd)"
+
+# Detect OS and architecture
+OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64)  ARCH="amd64" ;;
+  aarch64) ARCH="arm64" ;;
+esac
+
+GO_BIN="$SELF_DIR/harness-mcp-${OS}-${ARCH}"
+
+if [ -x "$GO_BIN" ]; then
+  exec "$GO_BIN" "$@"
+else
+  # Fallback to Node.js TypeScript version
+  exec node "$PLUGIN_ROOT/mcp-server/dist/index.js" "$@"
+fi

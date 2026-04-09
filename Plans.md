@@ -696,3 +696,66 @@ Phase 4（最適化）:
 | S74-003 [P] | **自動リンク生成** — recordEvent 時に entity co-occurrence / temporal proximity / semantic similarity で `mem_links` を自動追加 | 同一 entity を持つ observation 間に `shared_entity` リンクが自動生成される。同セッション連続 observation に `follows` リンク。graph signal が疎→密に改善 | - | cc:完了 |
 | S74-004 | **Temporal Fact Versioning** — `mem_facts` の `superseded_by` チェーンを活用し、fact_key の時系列変遷を追跡可能にする。search 時に「以前の値」「現在の値」を区別して返す | `GET /v1/facts/:key/history` が時系列チェーンを返す。search の precision_boost が fact chain を考慮。「以前は？」クエリで旧値が上位に来る | S74-001 | cc:完了 |
 | S74-005 | **Code Provenance メタデータ** — tool_use イベントから `{file_path, lines_changed, action, model_id}` を構造化抽出し observation.metadata に格納。ファイル単位の変更履歴検索を可能にする | tool_use イベントの observation に `code_provenance` メタデータが付与される。`search` で `file:path/to/file` フィルターが使える | S74-001, S74-003 | cc:完了 |
+
+---
+
+## §75 MCP Server Go — Phase 2 (テスト・統合・リリース)
+
+策定日: 2026-04-09
+背景: Phase 1 完了済み (commit `9af2327`, branch `feature/mcp-server-go`)。Go MCP Server 46/46 ツール登録、2,885 LOC、ビルド成功、stdio プロトコル動作確認済み。テスト・統合・リリース準備が残。
+
+**完成基準**: `go test ./...` 全 PASS (70%+カバレッジ) / Schema Parity 46/46 一致 / E2E 往復成功 / cold start <60ms / wrapper script 動作 / PR 作成
+
+### Phase 2A: Unit Tests
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-001 [P] | **auth_test.go** — ResolveUserID 優先度チェーン、ResolveTeamID、InjectFromEnvironment | 9 テストケース PASS | - | cc:完了 |
+| S75-002 [P] | **pii/filter_test.go** — 電話番号/メール/LINE ID マスク、複数 PII、スルー | 6 テストケース PASS | - | cc:完了 |
+| S75-003 [P] | **types/toolresult_test.go** — structuredContent/\_meta/\_citations 構造検証 | 3 テストケース PASS | - | cc:完了 |
+| S75-004 [P] | **util/validate_test.go** — IsValidPath/IsValidID 正常/異常 | 9 テストケース PASS | - | cc:完了 |
+| S75-005 [P] | **util/projectroot_test.go** — GetProjectRoot/SafeReadJSON/FormatTimeAgo | 7 テストケース PASS | - | cc:完了 |
+| S75-006 [P] | **proxy/httpclient_test.go** — mock server で GetBaseURL/CheckHealth/CallMemoryAPI | 11 テストケース PASS | - | cc:完了 |
+| S75-007 [P] | **proxy/headers_test.go** — BuildAPIHeaders/BuildCBHeaders | 6 テストケース PASS | - | cc:完了 |
+| S75-008 [P] | **tools/registry_test.go** — AllTools()=46 件、arg ヘルパー | 12 テストケース PASS | - | cc:完了 |
+| S75-009 [P] | **tools/session_test.go** — list/broadcast/inbox/register | 6 テストケース PASS | - | cc:完了 |
+| S75-010 [P] | **tools/workflow_test.go** — plan/work/review | 5 テストケース PASS | - | cc:完了 |
+| S75-011 [P] | **tools/memory_test.go** — mock daemon で主要 5 ツール + エラー分類 | 10 テストケース PASS | - | cc:完了 |
+| S75-012 [P] | **tools/contextbox_test.go** — mock CB API で 4 ツール | 5 テストケース PASS | - | cc:完了 |
+| S75-013 [P] | **tools/codeintel_test.go** — AST search + LSP instruction | 5 テストケース PASS | - | cc:完了 |
+| S75-014 [P] | **tools/status_test.go** — Plans.md 有無/verbose | 6 テストケース PASS | - | cc:完了 |
+
+### Phase 2B: Schema Parity Test
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-020 | **schema_parity_test.go** — 46 ツールの name/description/inputSchema 完全一致 | go test PASS、差分 0 | S75-008 | cc:完了 |
+| S75-021 | **TS snapshot 生成スクリプト** | 46 tools snapshot 生成 | - | cc:完了 |
+
+### Phase 2C: Integration Test
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-030 | **E2E 往復テストスクリプト** — daemon → Go MCP → search/health | スクリプト作成済 (daemon 必要) | S75-020 | cc:完了 |
+
+### Phase 2D: Performance Gate
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-040 [P] | **Cold start 計測** — initialize+tools/list 往復 ~7ms | 平均 ~7ms < 60ms PASS | - | cc:完了 |
+| S75-041 [P] | **バイナリサイズ** — stripped 7.0MB | 7.0MB < 10MB PASS | - | cc:完了 |
+
+### Phase 2E: Wrapper Script + 統合
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-050 | **bin/harness-mcp-server** wrapper script | Go 優先/Node.js フォールバック動作確認 | S75-040 | cc:完了 |
+| S75-051 | **plugin.json 更新** | 新エントリ確認 | S75-050 | cc:完了 |
+| S75-052 | **scripts/harness-mem 更新** — 10 箇所 | grep count = 0 | S75-050 | cc:完了 |
+| S75-053 | **Makefile install ターゲット** | make install 動作確認 | S75-050 | cc:完了 |
+
+### Phase 2F: PR
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S75-060 | **PR 作成** | PR URL 発行 | S75-050, S75-020 | cc:TODO |

@@ -25,11 +25,8 @@
   ],
   "mcpServers": {
     "harness": {
-      "command": "node",
-      "cwd": "${CLAUDE_PLUGIN_ROOT}",
-      "args": [
-        "mcp-server/dist/index.js"
-      ]
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/harness-mcp-server",
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
     }
   }
 }

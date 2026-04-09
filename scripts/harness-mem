@@ -1947,8 +1947,8 @@ $END_CODEX_NOTIFY
 
 $BEGIN_CODEX_MCP
 [mcp_servers.harness]
-command = "node"
-args = ["mcp-server/dist/index.js"]
+command = "${HARNESS_ROOT}/bin/harness-mcp-server"
+args = []
 cwd = "${HARNESS_ROOT}"
 enabled = true
 
@@ -1987,8 +1987,8 @@ EOF
 
 $BEGIN_CODEX_MCP
 [mcp_servers.harness]
-command = "node"
-args = ["mcp-server/dist/index.js"]
+command = "${HARNESS_ROOT}/bin/harness-mcp-server"
+args = []
 cwd = "${HARNESS_ROOT}"
 enabled = true
 
@@ -2111,7 +2111,7 @@ get_claude_config_targets() {
 upsert_claude_json() {
   local file="$1"
   # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
   local tmp
 
@@ -2136,15 +2136,14 @@ EOF
     '
       .mcpServers = (.mcpServers // {})
       | .mcpServers.harness = (.mcpServers.harness // {})
-      | .mcpServers.harness.command = "node"
-      | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.command = $mcp_entry
+      | del(.mcpServers.harness.args)
       | del(.mcpServers.harness.cwd)
       | .mcpServers.harness.enabled = true
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
-          "HARNESS_MEM_DB_PATH": $db_path,
-          "NODE_PATH": $node_path
+          "HARNESS_MEM_DB_PATH": $db_path
         })
     ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
@@ -2160,7 +2159,7 @@ EOF
 upsert_claude_settings_plugin() {
   local file="${HOME}/.claude/settings.json"
   # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
   local tmp
 
@@ -2336,7 +2335,7 @@ setup_cursor_wiring() {
 
 upsert_cursor_mcp_json() {
   local file="$1"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -2360,8 +2359,8 @@ EOF
       .mcpServers = (.mcpServers // {})
       | .mcpServers.harness = (.mcpServers.harness // {})
       | .mcpServers.harness.type = (.mcpServers.harness.type // "stdio")
-      | .mcpServers.harness.command = "node"
-      | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.command = $mcp_entry
+      | del(.mcpServers.harness.args)
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
@@ -2382,7 +2381,7 @@ check_cursor_wiring() {
   local hooks_json="${HOME}/.cursor/hooks.json"
   local mcp_json="${HOME}/.cursor/mcp.json"
   local hook_script="${HOME}/.cursor/hooks/memory-cursor-event.sh"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local hook_command
   hook_command="$(get_cursor_hooks_command)"
   local failed=0
@@ -2419,10 +2418,7 @@ check_cursor_wiring() {
     if jq -e --arg mcp_entry "$mcp_entry" '
       .mcpServers.harness != null
       and (
-        (
-          (.mcpServers.harness.command // "") == "node"
-          and ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
-        )
+        ((.mcpServers.harness.command // "") == $mcp_entry)
         or (
           (.mcpServers.harness.command // "") == "npx"
           and ((.mcpServers.harness.args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
@@ -2468,7 +2464,7 @@ check_antigravity_wiring() {
 
 upsert_gemini_json() {
   local file="$1"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local hook_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-gemini-event.sh"
   local tmp
 
@@ -2493,8 +2489,8 @@ EOF
     '
       .mcpServers = (.mcpServers // {})
       | .mcpServers.harness = (.mcpServers.harness // {})
-      | .mcpServers.harness.command = "node"
-      | .mcpServers.harness.args = [$mcp_entry]
+      | .mcpServers.harness.command = $mcp_entry
+      | del(.mcpServers.harness.args)
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
@@ -2655,7 +2651,7 @@ print_post_setup_next_steps() {
 
 upsert_opencode_json() {
   local file="$1"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local tmp
 
   mkdir -p "$(dirname "$file")"
@@ -2668,7 +2664,7 @@ upsert_opencode_json() {
     "harness": {
       "type": "local",
       "enabled": true,
-      "command": ["node", "${mcp_entry}"],
+      "command": ["${mcp_entry}"],
       "environment": {
         "HARNESS_MEM_HOST": "${MEM_HOST}",
         "HARNESS_MEM_PORT": "${MEM_PORT}",
@@ -2695,7 +2691,7 @@ EOF
       | .mcp.harness = (.mcp.harness // {})
       | .mcp.harness.type = "local"
       | .mcp.harness.enabled = true
-      | .mcp.harness.command = ["node", $mcp_entry]
+      | .mcp.harness.command = [$mcp_entry]
       | .mcp.harness.environment = ((.mcp.harness.environment // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
@@ -2772,8 +2768,8 @@ check_opencode_wiring() {
 check_claude_wiring() {
   local failed=0
   local hooks="${HARNESS_ROOT}/hooks/hooks.json"
-  local mcp_entry="${HARNESS_ROOT}/mcp-server/dist/index.js"
-  local mcp_relative_entry="mcp-server/dist/index.js"
+  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
+  local mcp_relative_entry="bin/harness-mcp-server"
   local mcp_cwd="${HARNESS_ROOT}"
   local found_mcp=0
 
@@ -2806,14 +2802,10 @@ check_claude_wiring() {
       and ((.mcpServers.harness.enabled // true) != false)
       and (
         (
-          (.mcpServers.harness.command // "") == "node"
-          and ((.mcpServers.harness.args // []) | type == "array")
-          and (
-            ((.mcpServers.harness.args // []) | any(. == $mcp_entry))
-            or (
-              ((.mcpServers.harness.args // []) | any(. == $mcp_relative_entry))
-              and ((.mcpServers.harness.cwd // "") == $mcp_cwd)
-            )
+          ((.mcpServers.harness.command // "") == $mcp_entry)
+          or (
+            ((.mcpServers.harness.command // "") | endswith($mcp_relative_entry))
+            and ((.mcpServers.harness.cwd // "") == $mcp_cwd)
           )
         )
         or (
