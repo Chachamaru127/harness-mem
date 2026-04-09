@@ -1,0 +1,1329 @@
+[
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Search code by structural patterns using AST-Grep. Use for: finding code smells, pattern matching, structural refactoring. Examples: 'console.log($$$)', 'if ($COND) { return $X }', 'async function $NAME($$$) { $$$ }'",
+    "inputSchema": {
+      "properties": {
+        "language": {
+          "description": "Target language",
+          "enum": [
+            "typescript",
+            "javascript",
+            "python",
+            "go",
+            "rust",
+            "java",
+            "c",
+            "cpp"
+          ],
+          "type": "string"
+        },
+        "path": {
+          "description": "Search path (default: current directory)",
+          "type": "string"
+        },
+        "pattern": {
+          "description": "AST pattern using ast-grep syntax. Use $ for single node, $$$ for multiple nodes.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pattern",
+        "language"
+      ],
+      "type": "object"
+    },
+    "name": "harness_ast_search"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Search the Context Box (business context DB) using TEMPR hybrid retrieval. Finds relevant context from LINE messages, meeting notes, customer data, emails, etc. Supports 4 search strategies: hybrid (best), hybrid-lite, bm25, graph.",
+    "inputSchema": {
+      "properties": {
+        "author": {
+          "description": "Filter by author/speaker",
+          "type": "string"
+        },
+        "customer": {
+          "description": "Filter by customer name",
+          "type": "string"
+        },
+        "date_from": {
+          "description": "Filter: earliest date (ISO 8601)",
+          "type": "string"
+        },
+        "date_to": {
+          "description": "Filter: latest date (ISO 8601)",
+          "type": "string"
+        },
+        "group_id": {
+          "description": "Filter by group ID (LINE group, Slack workspace, etc.)",
+          "type": "string"
+        },
+        "limit": {
+          "description": "Max results (1-50, default 10)",
+          "type": "number"
+        },
+        "query": {
+          "description": "Natural language search query",
+          "type": "string"
+        },
+        "source_type": {
+          "description": "Filter by data source type",
+          "enum": [
+            "line",
+            "slack",
+            "chatwork",
+            "kintone",
+            "email",
+            "file",
+            "meeting",
+            "plaud",
+            "omi",
+            "fieldy"
+          ],
+          "type": "string"
+        },
+        "strategy": {
+          "description": "Search strategy. 'hybrid' uses all 4 TEMPR channels (best quality). Default: 'hybrid'",
+          "enum": [
+            "hybrid",
+            "hybrid-lite",
+            "bm25",
+            "graph",
+            "default"
+          ],
+          "type": "string"
+        },
+        "workspace_id": {
+          "description": "Workspace ID to scope the search (uses CONTEXT_BOX_WORKSPACE_ID env if omitted)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "harness_cb_recall"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Simplified search for the Context Box (Web UI API). Easier to use than cb_recall -- just provide a query and workspace. Returns text, score, sourceType, documentId, createdAt for each result.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "description": "Max results (1-50, default 10)",
+          "type": "number"
+        },
+        "query": {
+          "description": "Search query",
+          "type": "string"
+        },
+        "strategy": {
+          "description": "Search strategy (default: 'hybrid-lite')",
+          "enum": [
+            "hybrid",
+            "hybrid-lite",
+            "bm25",
+            "graph",
+            "default"
+          ],
+          "type": "string"
+        },
+        "workspace_id": {
+          "description": "Workspace ID (uses CONTEXT_BOX_WORKSPACE_ID env if omitted)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "harness_cb_search"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Check the health and connectivity of the Context Box API. Returns server status, database availability, and feature flags.",
+    "inputSchema": {
+      "properties": {
+        "detailed": {
+          "description": "If true, use /health/detailed endpoint for full diagnostics",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_cb_status"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Retrieve the full raw text and source metadata for a specific document from the Context Box. Use this after recall/search to get the complete original content.",
+    "inputSchema": {
+      "properties": {
+        "document_id": {
+          "description": "Document ID (UUID) from recall/search results",
+          "type": "string"
+        }
+      },
+      "required": [
+        "document_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_cb_trace"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Go to the definition of a symbol. Use for: understanding implementation details, navigating to source.",
+    "inputSchema": {
+      "properties": {
+        "column": {
+          "description": "Column number",
+          "type": "number"
+        },
+        "file": {
+          "description": "File path",
+          "type": "string"
+        },
+        "line": {
+          "description": "Line number",
+          "type": "number"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "name": "harness_lsp_definition"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get code diagnostics (errors, warnings, hints) for a file. Use for: pre-commit validation, error detection.",
+    "inputSchema": {
+      "properties": {
+        "file": {
+          "description": "File path to diagnose",
+          "type": "string"
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "type": "object"
+    },
+    "name": "harness_lsp_diagnostics"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get type information and documentation for a symbol. Use for: understanding types, checking signatures.",
+    "inputSchema": {
+      "properties": {
+        "column": {
+          "description": "Column number",
+          "type": "number"
+        },
+        "file": {
+          "description": "File path",
+          "type": "string"
+        },
+        "line": {
+          "description": "Line number",
+          "type": "number"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "name": "harness_lsp_hover"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Find all references to a symbol across the codebase. Use for: impact analysis before refactoring, understanding usage patterns.",
+    "inputSchema": {
+      "properties": {
+        "column": {
+          "description": "Column number (1-indexed)",
+          "type": "number"
+        },
+        "file": {
+          "description": "File path containing the symbol",
+          "type": "string"
+        },
+        "line": {
+          "description": "Line number (1-indexed)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "file",
+        "line",
+        "column"
+      ],
+      "type": "object"
+    },
+    "name": "harness_lsp_references"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Add a directed relation (link) between two observations.",
+    "inputSchema": {
+      "properties": {
+        "from_observation_id": {
+          "description": "Source observation ID",
+          "type": "string"
+        },
+        "relation": {
+          "description": "Relation type",
+          "enum": [
+            "updates",
+            "extends",
+            "derives",
+            "follows",
+            "shared_entity"
+          ],
+          "type": "string"
+        },
+        "to_observation_id": {
+          "description": "Target observation ID",
+          "type": "string"
+        },
+        "weight": {
+          "description": "Link weight (default: 1.0)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "from_observation_id",
+        "to_observation_id",
+        "relation"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_add_relation"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get audit log entries for retrieval/admin actions.",
+    "inputSchema": {
+      "properties": {
+        "action": {
+          "type": "string"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "target_type": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_audit_log"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Run consolidation worker (extract + dedupe) immediately.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_consolidation_run"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get consolidation queue/facts status.",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_consolidation_status"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Run one-shot import from Claude-mem SQLite.",
+    "inputSchema": {
+      "properties": {
+        "dry_run": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "source_db_path": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_db_path"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_import_claude_mem"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get status/result for an import job.",
+    "inputSchema": {
+      "properties": {
+        "job_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_import_status"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get memory metrics and vector/fts coverage.",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_metrics"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Rebuild vector index from stored observations.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "type": "number"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_reindex_vectors"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Verify import job integrity/privacy checks.",
+    "inputSchema": {
+      "properties": {
+        "job_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "job_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_admin_verify_import"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Record multiple observations in a single batch operation.",
+    "inputSchema": {
+      "properties": {
+        "events": {
+          "description": "Array of events to record",
+          "type": "array"
+        }
+      },
+      "required": [
+        "events"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_bulk_add"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Soft-delete multiple observations by ID in a single batch operation.",
+    "inputSchema": {
+      "properties": {
+        "ids": {
+          "description": "Array of observation IDs to delete",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_bulk_delete"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Run consolidation (compress/dedupe) worker immediately to extract facts and reduce redundancy.",
+    "inputSchema": {
+      "properties": {
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_compress"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Soft-delete (archive) a specific observation by ID. The observation is marked as deleted and excluded from search results.",
+    "inputSchema": {
+      "properties": {
+        "observation_id": {
+          "description": "The ID of the observation to delete",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_delete_observation"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Export observations as JSON for backup or analysis.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "description": "Include deleted/private observations",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Maximum number of observations to export (default: 1000)",
+          "type": "number"
+        },
+        "project": {
+          "description": "Filter by project (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_export"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Finalize session and generate summary.",
+    "inputSchema": {
+      "properties": {
+        "correlation_id": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "summary_mode": {
+          "enum": [
+            "standard",
+            "short",
+            "detailed"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_finalize_session"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Step 3 of 3-layer workflow. Fetch full details only for filtered IDs. Returns meta.token_estimate and warnings for large batches.",
+    "inputSchema": {
+      "properties": {
+        "compact": {
+          "type": "boolean"
+        },
+        "ids": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "include_private": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "ids"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_get_observations"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Explore graph neighbors of an observation (linked observations by relation). Supports BFS traversal up to depth 5.",
+    "inputSchema": {
+      "properties": {
+        "depth": {
+          "description": "BFS traversal depth (1-5, default 1)",
+          "type": "number"
+        },
+        "observation_id": {
+          "description": "Source observation ID to explore neighbors from",
+          "type": "string"
+        },
+        "relation": {
+          "description": "Filter by relation type",
+          "enum": [
+            "updates",
+            "extends",
+            "derives",
+            "follows",
+            "shared_entity",
+            "contradicts",
+            "causes",
+            "part_of"
+          ],
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_graph"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get unified harness memory daemon health.",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_health"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Ingest a document (knowledge file, ADR, decisions.md) into memory.",
+    "inputSchema": {
+      "properties": {
+        "content": {
+          "description": "Text content of the document",
+          "type": "string"
+        },
+        "file_path": {
+          "description": "Path identifier for the document",
+          "type": "string"
+        },
+        "kind": {
+          "description": "Document kind (auto-detected if omitted)",
+          "enum": [
+            "decisions_md",
+            "adr"
+          ],
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "project": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "file_path",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_ingest"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Record a checkpoint observation for a session.",
+    "inputSchema": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "privacy_tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "project": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "tags": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id",
+        "title",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_record_checkpoint"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Record normalized event envelope (adapter-internal use).",
+    "inputSchema": {
+      "properties": {
+        "event": {
+          "properties": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "event"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_record_event"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions.",
+    "inputSchema": {
+      "properties": {
+        "correlation_id": {
+          "type": "string"
+        },
+        "include_private": {
+          "type": "boolean"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "project"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_resume_pack"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Step 1 of 3-layer workflow (search -> timeline -> get_observations). Returns candidate IDs with meta.token_estimate.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "type": "boolean"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        },
+        "since": {
+          "type": "string"
+        },
+        "sort_by": {
+          "description": "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)",
+          "enum": [
+            "relevance",
+            "date_desc",
+            "date_asc"
+          ],
+          "type": "string"
+        },
+        "until": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_search"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get project/type/tag/time facets for a query.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "type": "boolean"
+        },
+        "project": {
+          "type": "string"
+        },
+        "query": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_search_facets"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get ordered thread events for a session.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "type": "boolean"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        },
+        "session_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_session_thread"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "List sessions with summary/count metadata for a project.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "type": "boolean"
+        },
+        "limit": {
+          "type": "number"
+        },
+        "project": {
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_sessions_list"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Share a personal memory observation with your team. Sets team_id on the observation so team members can access it.",
+    "inputSchema": {
+      "properties": {
+        "observation_id": {
+          "description": "ID of the observation to share",
+          "type": "string"
+        },
+        "team_id": {
+          "description": "Team ID to share with",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id",
+        "team_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_share_to_team"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get per-project memory statistics including observation counts and session summaries.",
+    "inputSchema": {
+      "properties": {
+        "include_private": {
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_mem_stats"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Step 2 of 3-layer workflow. Expands one observation into before/after context with meta.token_estimate.",
+    "inputSchema": {
+      "properties": {
+        "after": {
+          "type": "number"
+        },
+        "before": {
+          "type": "number"
+        },
+        "id": {
+          "type": "string"
+        },
+        "include_private": {
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_timeline"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Broadcast a message to all active sessions. Use this to notify other sessions about important changes (API modifications, schema updates, etc.)",
+    "inputSchema": {
+      "properties": {
+        "message": {
+          "description": "The message to broadcast to all sessions",
+          "type": "string"
+        }
+      },
+      "required": [
+        "message"
+      ],
+      "type": "object"
+    },
+    "name": "harness_session_broadcast"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Check inbox for messages from other sessions. Returns unread messages since last check.",
+    "inputSchema": {
+      "properties": {
+        "since": {
+          "description": "ISO timestamp to get messages since (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_session_inbox"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "List all active Harness sessions across different AI clients (Claude Code, Codex, etc.)",
+    "inputSchema": {
+      "properties": {},
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_session_list"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Register current session with the Harness MCP server. Call this when starting a new session.",
+    "inputSchema": {
+      "properties": {
+        "client": {
+          "description": "Client name (e.g., 'claude-code', 'codex', 'cursor')",
+          "type": "string"
+        },
+        "sessionId": {
+          "description": "Unique session identifier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "client",
+        "sessionId"
+      ],
+      "type": "object"
+    },
+    "name": "harness_session_register"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Get current project status including Plans.md progress, active sessions, and recent activity",
+    "inputSchema": {
+      "properties": {
+        "verbose": {
+          "description": "Include detailed information",
+          "type": "boolean"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_status"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Create an implementation plan for a task. Generates structured tasks in Plans.md",
+    "inputSchema": {
+      "properties": {
+        "mode": {
+          "description": "Planning mode: quick (minimal) or detailed (comprehensive)",
+          "enum": [
+            "quick",
+            "detailed"
+          ],
+          "type": "string"
+        },
+        "task": {
+          "description": "Description of what you want to build or implement",
+          "type": "string"
+        }
+      },
+      "required": [
+        "task"
+      ],
+      "type": "object"
+    },
+    "name": "harness_workflow_plan"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Run multi-perspective code review. 8 expert reviewers analyze your code in parallel",
+    "inputSchema": {
+      "properties": {
+        "ci": {
+          "description": "CI mode: output machine-readable results",
+          "type": "boolean"
+        },
+        "files": {
+          "description": "Specific files to review (optional, defaults to recent changes)",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "focus": {
+          "description": "Review focus areas: security, performance, accessibility, etc.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_workflow_review"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Execute tasks from Plans.md. Implements tasks marked as cc:TODO",
+    "inputSchema": {
+      "properties": {
+        "full": {
+          "description": "Run full cycle: implement -> self-review -> fix -> commit",
+          "type": "boolean"
+        },
+        "parallel": {
+          "description": "Number of parallel workers (1-5)",
+          "type": "number"
+        },
+        "taskId": {
+          "description": "Specific task ID to work on (optional)",
+          "type": "string"
+        }
+      },
+      "required": [],
+      "type": "object"
+    },
+    "name": "harness_workflow_work"
+  }
+]
