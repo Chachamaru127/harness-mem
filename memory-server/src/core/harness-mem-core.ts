@@ -1605,7 +1605,7 @@ export class HarnessMemCore {
   /**
    * 複数の observation を一括ソフトデリート（privacy_tags に "deleted" を付与）する。
    */
-  bulkDeleteObservations(request: { ids: string[] }): ApiResponse {
+  bulkDeleteObservations(request: { ids: string[]; user_id?: string; team_id?: string }): ApiResponse {
     const startedAt = performance.now();
     const { ids } = request;
     if (!ids || ids.length === 0) {
@@ -1618,10 +1618,19 @@ export class HarnessMemCore {
     const skipped: string[] = [];
     for (const id of ids) {
       try {
-        const existing = this.db.query(`SELECT id, privacy_tags FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string } | null;
+        const existing = this.db.query(`SELECT id, privacy_tags, user_id, team_id FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string; user_id: string; team_id: string | null } | null;
         if (!existing) {
           skipped.push(id);
           continue;
+        }
+        // TEAM-005: テナント分離 — member は自分 or 同チームの observation のみ削除可
+        if (request.user_id) {
+          const isOwner = existing.user_id === request.user_id;
+          const isSameTeam = request.team_id ? existing.team_id === request.team_id : false;
+          if (!isOwner && !isSameTeam) {
+            skipped.push(id);
+            continue;
+          }
         }
         const tags: string[] = existing.privacy_tags ? JSON.parse(existing.privacy_tags) : [];
         if (!tags.includes("deleted")) {
@@ -1722,7 +1731,7 @@ export class HarnessMemCore {
   /**
    * 観察データを JSON 形式でエクスポートする。
    */
-  exportObservations(request: { project?: string; limit?: number; include_private?: boolean }): ApiResponse {
+  exportObservations(request: { project?: string; limit?: number; include_private?: boolean; user_id?: string; team_id?: string }): ApiResponse {
     const startedAt = performance.now();
     const { project, limit = 1000, include_private = false } = request;
     try {
@@ -1739,6 +1748,16 @@ export class HarnessMemCore {
       }
       if (!include_private) {
         sql += ` AND (privacy_tags IS NULL OR privacy_tags NOT LIKE '%"deleted"%')`;
+      }
+      // TEAM-005: テナント分離
+      if (request.user_id) {
+        if (request.team_id) {
+          sql += ` AND (user_id = ? OR team_id = ?)`;
+          params.push(request.user_id, request.team_id);
+        } else {
+          sql += ` AND user_id = ?`;
+          params.push(request.user_id);
+        }
       }
       sql += ` ORDER BY created_at DESC LIMIT ?`;
       params.push(limit);
@@ -2276,6 +2295,35 @@ export class HarnessMemCore {
         frontier = nextFrontier;
       }
 
+      // TEAM-005: テナント分離 — link 先 observation の所有権でフィルタ
+      if (request.user_id) {
+        const linkedIds = new Set<string>();
+        for (const row of allRows) {
+          linkedIds.add(row.from_observation_id);
+          linkedIds.add(row.to_observation_id);
+        }
+        const idsArray = [...linkedIds];
+        if (idsArray.length > 0) {
+          const placeholders = idsArray.map(() => "?").join(", ");
+          let ownerSql = `SELECT id FROM mem_observations WHERE id IN (${placeholders})`;
+          const ownerParams: unknown[] = [...idsArray];
+          if (request.team_id) {
+            ownerSql += ` AND (user_id = ? OR team_id = ?)`;
+            ownerParams.push(request.user_id, request.team_id);
+          } else {
+            ownerSql += ` AND user_id = ?`;
+            ownerParams.push(request.user_id);
+          }
+          const allowedIds = new Set(
+            (this.db.query(ownerSql).all(...(ownerParams as any[])) as Array<{ id: string }>).map(r => r.id)
+          );
+          const filteredRows = allRows.filter(
+            r => allowedIds.has(r.from_observation_id) && allowedIds.has(r.to_observation_id)
+          );
+          return makeResponse(startedAt, filteredRows, { observation_id, relation, depth });
+        }
+      }
+
       return makeResponse(startedAt, allRows, { observation_id, relation, depth });
     } catch (err) {
       return makeErrorResponse(startedAt, `failed to get links: ${String(err)}`, request as unknown as Record<string, unknown>);
@@ -2283,7 +2331,7 @@ export class HarnessMemCore {
   }
 
 
-  getSubgraph(entity: string, depth: number, options?: { project?: string; limit?: number }) {
+  getSubgraph(entity: string, depth: number, options?: { project?: string; limit?: number; user_id?: string; team_id?: string }) {
     return this.obsStore.getSubgraph(entity, depth, options);
   }
 

@@ -110,6 +110,10 @@ export interface SearchFacetsRequest {
   project?: string;
   project_members?: string[];
   include_private?: boolean;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface ImportJobStatusRequest {
@@ -149,6 +153,10 @@ export interface TimelineRequest {
   before?: number;
   after?: number;
   include_private?: boolean;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface ResumePackRequest {
@@ -159,12 +167,20 @@ export interface ResumePackRequest {
   limit?: number;
   include_private?: boolean;
   resume_pack_max_tokens?: number;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface GetObservationsRequest {
   ids: string[];
   include_private?: boolean;
   compact?: boolean;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 /** IMP-002: メモリリンクの関係性タイプ（8種）*/
@@ -193,6 +209,10 @@ export interface GetLinksRequest {
   relation?: string;
   /** BFS 探索深度 (1-5, デフォルト 1) */
   depth?: number;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID */
+  team_id?: string;
 }
 
 export interface RecordCheckpointRequest {
@@ -251,6 +271,10 @@ export interface FactHistoryRequest {
   fact_key: string;
   project?: string;
   limit?: number;
+  /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID (factsMode: 認証のみ) */
+  user_id?: string;
+  /** TEAM-005: member ロール適用 — アクセス制御用チームID (factsMode: 認証のみ) */
+  team_id?: string;
 }
 
 /** S74-005: Code Provenance メタデータ — tool_use イベントから抽出されるファイル変更情報 */
