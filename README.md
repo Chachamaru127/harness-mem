@@ -4,7 +4,11 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/hero.png" alt="Harness-mem — one local memory shared between Claude Code and Codex" width="820" />
 </p>
 
-<p align="center"><strong>Stop re-explaining yesterday's work.</strong><br/>One local memory. Claude Code + Codex. ~5ms cold start. Zero cloud.</p>
+<p align="center"><strong>One project. One memory. Every AI coding agent.</strong></p>
+
+<p align="center">
+  Stop re-explaining yesterday's work to Claude Code, Codex, or Cursor. Harness-mem keeps a single local SQLite memory <em>per project</em> and shares it across every AI coding agent you use. ~5ms cold start. Zero cloud, zero API keys.
+</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
@@ -79,6 +83,27 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 | **Bilingual recall@10** | 0.8800 | same manifest |
 
 The Go MCP server is the layer Claude Code and Codex actually talk to. If the Go binary is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
+
+### How this compares (LoCoMo F1, self-reported)
+
+LoCoMo is the reference long-term conversational memory benchmark. The table below lists published F1 scores from each tool's own docs or papers. We do not re-run competitors — we cite their published numbers verbatim, with the evaluation scope column so you can judge comparability yourself.
+
+| Tool | LoCoMo F1 | Scope | Source |
+|---|---:|---|---|
+| **harness-mem** | **0.5917** | LoCoMo 120 Q subset, 3-run PASS, release-gate | [`ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
+| LangMem | 0.581 | LoCoMo (p95 search: 59.82 s) | [2026 comparison](https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3) |
+| Kumiho | 0.565 | LoCoMo full (1,986 Q / 10 conversations) | [kumihoclouds/kumiho-benchmarks](https://github.com/kumihoclouds/kumiho-benchmarks) |
+| SimpleMem | 0.432 | LoCoMo (average) | [alphaXiv 2601.02553](https://www.alphaxiv.org/overview/2601.02553v1) |
+| Mem0 (single-hop) | 0.387 | LoCoMo single-hop token-F1 | [arXiv 2504.19413](https://arxiv.org/abs/2504.19413) |
+| claude-mem / Claude built-in memory / ChatGPT memory | — | not published | — |
+
+**Caveats we keep visible**
+
+- harness-mem benchmarks on the LoCoMo **120-question subset**; Kumiho benchmarks on the full 1,986. Subsets can flatter the score — this is **not** an apples-to-apples comparison and we say so explicitly.
+- Mem0 also publishes a **0.669 LLM-as-judge** score vs OpenAI memory (0.529) on a broader metric. harness-mem's 0.5917 is **token-level F1**, not LLM-judge — different axes, different absolute numbers.
+- Letta publishes 0.832 on **LongMemEval**, which is a different benchmark. It is intentionally not in the table above because comparing across benchmarks would mislead.
+- We do not run competitors ourselves — every non-harness number above is a self-reported figure from the source linked in the same row.
+- Watch slices that still fail our Japanese companion gate are listed in [Measured Proof](#measured-proof). We publish those failures on purpose.
 
 Full benchmark gate (primary ship gate + Japanese companion + historical baseline) is in the [Measured Proof](#measured-proof) section below.
 

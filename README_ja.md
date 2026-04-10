@@ -4,7 +4,11 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/hero.png" alt="Harness-mem — Claude Code と Codex で共有する1つのローカルメモリ" width="820" />
 </p>
 
-<p align="center"><strong>昨日の作業を、もう説明し直さなくていい。</strong><br/>Claude Code と Codex で共有する1つのローカルメモリ。コールドスタート ~5ms。クラウド不要。</p>
+<p align="center"><strong>プロジェクトごとに、1つの記憶。すべての AI コーディングエージェントで。</strong></p>
+
+<p align="center">
+  Claude Code にも、Codex にも、Cursor にも、昨日の作業を説明し直さなくていい。harness-mem は<em>プロジェクト単位で</em> 1 つのローカル SQLite を、あなたが使うすべての AI コーディングエージェントに共有します。コールドスタート ~5ms。クラウドゼロ、API キーゼロ。
+</p>
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@chachamaru127/harness-mem"><img src="https://img.shields.io/npm/v/@chachamaru127/harness-mem" alt="npm version" /></a>
@@ -79,6 +83,27 @@
 | **Bilingual recall@10** | 0.8800 | 同 manifest |
 
 Go MCP サーバーは Claude Code / Codex が実際に通信する層です。Go バイナリが無ければ wrapper script が透過的に Node.js 版にフォールバックします。機能は全部使えて、コールドスタートだけ Node.js 相当になります。
+
+### 他ツールとの比較（LoCoMo F1、全て自社公開値）
+
+LoCoMo は長期会話メモリの代表的なベンチマークです。下表は各ツールが **自分で公開している** F1 スコアをそのまま並べたものです。harness-mem 以外は再計測していません。評価スコープ列を付けているので、公平な比較かは読者側で判断できます。
+
+| ツール | LoCoMo F1 | スコープ | 出典 |
+|---|---:|---|---|
+| **harness-mem** | **0.5917** | LoCoMo 120 Q サブセット、3-run PASS、release gate | [`ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
+| LangMem | 0.581 | LoCoMo（p95 検索: 59.82 秒） | [2026 比較記事](https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3) |
+| Kumiho | 0.565 | LoCoMo 全量（1,986 Q / 10 会話） | [kumihoclouds/kumiho-benchmarks](https://github.com/kumihoclouds/kumiho-benchmarks) |
+| SimpleMem | 0.432 | LoCoMo（平均） | [alphaXiv 2601.02553](https://www.alphaxiv.org/overview/2601.02553v1) |
+| Mem0（single-hop） | 0.387 | LoCoMo single-hop token-F1 | [arXiv 2504.19413](https://arxiv.org/abs/2504.19413) |
+| claude-mem / Claude 組み込みメモリ / ChatGPT メモリ | — | 非公開 | — |
+
+**明示しておく前提**
+
+- harness-mem は LoCoMo の **120 問サブセット** で計測しています。Kumiho は全 1,986 問で計測。サブセットの方がスコアが出やすい傾向があります — **同じ土俵ではありません**。ここをはっきり書いておきます。
+- Mem0 は別途 LLM-as-judge で **0.669**（対 OpenAI memory 0.529）という broader metric の数字も公開しています。harness-mem の 0.5917 は **token-level F1** で、LLM-judge ではありません — 軸が違うので絶対値もそのまま比較できません。
+- Letta は **LongMemEval** という別ベンチマークで 0.832 を公開していますが、違うベンチマーク同士の比較は読者を誤解させるのであえて表に入れていません。
+- 他社ツールは私たちの手元では実行していません。表の harness-mem 以外の値は全て各社の公開値をそのまま引用しています。
+- Japanese companion gate で残っている watch slice（fail しているもの）は [実測ベンチマーク](#実測ベンチマーク) セクションに書いています。隠す意味がないので公開しています。
 
 完全な benchmark gate（main ship gate + 日本語 companion + 歴史 baseline）は [実測ベンチマーク](#実測ベンチマーク) セクションに残してあります。
 
