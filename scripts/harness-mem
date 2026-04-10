@@ -3425,7 +3425,30 @@ doctor_impl() {
     fi
   fi
 
-  if is_platform_enabled codex; then
+  # Platform wiring checks — when --platform is not explicitly set,
+  # only check platforms that are actually installed on this machine.
+  _should_check_platform() {
+    local plat="$1"
+    # If user explicitly specified --platform, respect that
+    if [ "$PLATFORM_EXPLICIT" -eq 1 ]; then
+      is_platform_enabled "$plat"
+      return $?
+    fi
+    # Auto-detect: only check platforms where harness-mem wiring
+    # has been previously set up (partial or full). Skip platforms
+    # the user has never configured — avoids noisy FAIL for unused tools.
+    case "$plat" in
+      codex)       [ -f "$HOME/.codex/config.toml" ] && grep -q "harness" "$HOME/.codex/config.toml" 2>/dev/null ;;
+      opencode)    [ -f "$HOME/.config/opencode/plugins/harness-memory/index.ts" ] ;;
+      claude)      check_claude_wiring 2>/dev/null ;;
+      cursor)      [ -f "$HOME/.cursor/mcp.json" ] && grep -q "harness" "$HOME/.cursor/mcp.json" 2>/dev/null ;;
+      antigravity) [ -f "$HOME/.antigravity/config.json" ] && grep -q "harness" "$HOME/.antigravity/config.json" 2>/dev/null ;;
+      gemini)      [ -f "$HOME/.gemini/settings.json" ] && grep -q "harness" "$HOME/.gemini/settings.json" 2>/dev/null ;;
+      *) return 1 ;;
+    esac
+  }
+
+  if _should_check_platform codex; then
     if check_codex_wiring; then
       _doctor_record "codex_wiring" "ok" ""
     else
@@ -3433,7 +3456,7 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if is_platform_enabled opencode; then
+  if _should_check_platform opencode; then
     if check_opencode_wiring; then
       _doctor_record "opencode_wiring" "ok" ""
     else
@@ -3441,7 +3464,7 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if is_platform_enabled claude; then
+  if _should_check_platform claude; then
     if check_claude_wiring; then
       _doctor_record "claude_wiring" "ok" ""
     else
@@ -3449,7 +3472,7 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if is_platform_enabled cursor; then
+  if _should_check_platform cursor; then
     if check_cursor_wiring; then
       _doctor_record "cursor_wiring" "ok" ""
     else
@@ -3457,7 +3480,7 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if is_platform_enabled antigravity; then
+  if _should_check_platform antigravity; then
     if check_antigravity_wiring; then
       _doctor_record "antigravity_wiring" "ok" ""
     else
@@ -3465,7 +3488,7 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if is_platform_enabled gemini; then
+  if _should_check_platform gemini; then
     if check_gemini_wiring; then
       _doctor_record "gemini_wiring" "ok" ""
     else
