@@ -120,18 +120,37 @@ describe("plugin.json schema", () => {
   });
 
   test("mcpServers uses ${CLAUDE_PLUGIN_ROOT} for portable paths", () => {
+    // Since §75 Phase 2 the mcpServers.harness entry launches a wrapper
+    // shell script at `${CLAUDE_PLUGIN_ROOT}/bin/harness-mcp-server`. The
+    // wrapper picks the Go binary if present and falls back to node + the
+    // built TS dist. Both the command and cwd must stay under
+    // ${CLAUDE_PLUGIN_ROOT} so the plugin is relocatable; no /Users/
+    // absolute path may leak through.
     const harness = plugin.mcpServers.harness;
-    expect(harness.command).toBe("node");
+    expect(typeof harness.command).toBe("string");
+    expect(harness.command.startsWith("${CLAUDE_PLUGIN_ROOT}/")).toBe(true);
+    expect(harness.command).not.toContain("/Users/");
     expect(harness.cwd).toBe("${CLAUDE_PLUGIN_ROOT}");
-    const argsStr = JSON.stringify(harness.args);
-    expect(argsStr).not.toContain("${CLAUDE_PLUGIN_ROOT}/");
-    expect(argsStr).not.toContain("/Users/");
+    if (harness.args !== undefined) {
+      const argsStr = JSON.stringify(harness.args);
+      expect(argsStr).not.toContain("/Users/");
+    }
   });
 
-  test("mcpServers points to built MCP server dist", () => {
-    const argsStr = JSON.stringify(plugin.mcpServers.harness.args);
-    expect(argsStr).toContain("mcp-server/dist/index.js");
-    // Verify the dist file actually exists
+  test("mcpServers launches a wrapper that can reach the built MCP server dist", () => {
+    // Wrapper shell script must exist at the declared command path.
+    const commandPath = plugin.mcpServers.harness.command.replace(
+      "${CLAUDE_PLUGIN_ROOT}",
+      ROOT,
+    );
+    expect(existsSync(commandPath)).toBe(true);
+
+    // The wrapper must reference the TS fallback so `dist/index.js` stays
+    // a ship-time contract even when the Go binary is absent.
+    const wrapperSrc = readFileSync(commandPath, "utf8");
+    expect(wrapperSrc).toContain("mcp-server/dist/index.js");
+
+    // The built dist must exist so the fallback actually resolves.
     expect(existsSync(resolve(ROOT, "mcp-server/dist/index.js"))).toBe(true);
   });
 });

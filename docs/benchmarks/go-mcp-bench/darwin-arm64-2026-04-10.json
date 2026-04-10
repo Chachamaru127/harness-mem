@@ -1,8 +1,8 @@
 {
   "schema": "harness-mem.go-mcp-bench/v1",
-  "version": "0.10.0",
-  "git_commit": "80d2d27",
-  "measured_at": "2026-04-10T06:00:36Z",
+  "version": "0.11.0",
+  "git_commit": "512f027",
+  "measured_at": "2026-04-10T08:21:22Z",
   "host": {
     "os": "Darwin",
     "arch": "arm64",
@@ -15,27 +15,27 @@
   },
   "cold_start": {
     "runs": 10,
-    "min_ms": 4.727,
-    "max_ms": 5.735,
-    "mean_ms": 5.098,
-    "median_ms": 5.021,
-    "stdev_ms": 0.288,
+    "min_ms": 4.768,
+    "max_ms": 6.157,
+    "mean_ms": 5.207,
+    "median_ms": 5.086,
+    "stdev_ms": 0.415,
     "samples_ms": [
-      5.735,
-      5.133,
-      5.013,
-      5.03,
-      4.833,
-      5.158,
-      4.963,
-      4.995,
-      4.727,
-      5.395
+      5.124,
+      5.147,
+      4.916,
+      5.043,
+      6.157,
+      5.048,
+      4.768,
+      4.873,
+      5.382,
+      5.615
     ]
   },
   "memory": {
-    "rss_kb_after_initialize_and_tools_list": 13472,
-    "rss_mb": 13.16
+    "rss_kb_after_initialize_and_tools_list": 13360,
+    "rss_mb": 13.05
   },
   "method": {
     "cold_start": "Spawn process, write initialize JSON-RPC, readline() until response, measured wall-clock with time.perf_counter_ns().",

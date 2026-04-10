@@ -1,12 +1,12 @@
 # Benchmark / Claim SSOT Matrix
 
-Last updated: 2026-04-04
+Last updated: 2026-04-10
 
 ## Current truth
 
 | Artifact | Role | Current value | Notes |
 |---|---|---|---|
-| `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | main ship / no-ship gate | `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`, `all_passed=true` | latest current main gate |
+| `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | main ship / no-ship gate | `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`, `all_passed=true` | latest current main gate |
 | `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json` | current Japanese companion | `96 QA`, `overall_f1_mean=0.6580`, `verdict=pass` | README-safe current Japanese claim source |
 | `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json` | historical baseline | `32 QA`, `overall_f1_mean=0.8020`, `verdict=pass` | baseline only, not current claim source |
 

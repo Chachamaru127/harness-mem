@@ -36,7 +36,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
-| **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS, p95 10.7ms) | — | — | — |
+| **Benchmark (F1)** | 0.5917 (LoCoMo 120Q, 3-run PASS, p95 13.28ms) | — | — | — |
 | **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
 | **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
 
@@ -136,18 +136,18 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-07`
-- git_sha: `677c10f`
-- embedding: `adaptive`
+- generated_at: `2026-04-10T08:10:51.561Z`
+- git_sha: `512f027`
+- embedding: `onnx`
 
 | Metric | Value |
 |---|---:|
-| LoCoMo F1 | 0.5861 |
+| LoCoMo F1 | 0.5917 |
 | Bilingual recall@10 | 0.8800 |
 | Freshness | 1.0000 |
 | Temporal | 0.6458 |
-| Search p95 | 10.67ms |
-| Token avg | 427.71 |
+| Search p95 | 13.28ms |
+| Token avg | 427.75 |
 
 Verdict: `PASS`
 

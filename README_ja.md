@@ -132,23 +132,23 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-07`
-- git_sha: `677c10f`
-- embedding: `adaptive`
+- generated_at: `2026-04-10T08:10:51.561Z`
+- git_sha: `512f027`
+- embedding: `onnx`
 
 | 指標 | 値 |
 |---|---:|
-| LoCoMo F1 | 0.5861 |
+| LoCoMo F1 | 0.5917 |
 | bilingual recall@10 | 0.8800 |
 | freshness | 1.0000 |
 | temporal | 0.6458 |
-| search p95 | 10.67ms |
-| token avg | 427.71 |
+| search p95 | 13.28ms |
+| token avg | 427.75 |
 
 判定: `PASS`
 
 補足:
-- 最新の adaptive run は現行 release gate を通過しています。
+- 最新の onnx run は現行 release gate を通過しています。
 - Japanese companion は別の artifact-backed evidence として保持し、`run-ci` の代替ではなく補助証跡として扱います。
 
 ### Japanese companion gate（`96 QA`, current claim source）
