@@ -5,15 +5,27 @@ set -e
 SELF_DIR="$(cd "$(dirname "$0")" && pwd)"
 PLUGIN_ROOT="$(cd "$SELF_DIR/.." && pwd)"
 
-# Detect OS and architecture
-OS="$(uname -s | tr '[:upper:]' '[:lower:]')"
-ARCH="$(uname -m)"
-case "$ARCH" in
-  x86_64)  ARCH="amd64" ;;
-  aarch64) ARCH="arm64" ;;
+# Detect OS and architecture (Git Bash / MSYS / Cygwin map to "windows")
+UNAME_S="$(uname -s)"
+case "$UNAME_S" in
+  Darwin)                            OS="darwin" ;;
+  Linux)                             OS="linux" ;;
+  MINGW*|MSYS*|CYGWIN*|Windows_NT)   OS="windows" ;;
+  *)                                 OS="$(printf '%s' "$UNAME_S" | tr '[:upper:]' '[:lower:]')" ;;
 esac
 
-GO_BIN="$SELF_DIR/harness-mcp-${OS}-${ARCH}"
+ARCH="$(uname -m)"
+case "$ARCH" in
+  x86_64|amd64)   ARCH="amd64" ;;
+  aarch64|arm64)  ARCH="arm64" ;;
+esac
+
+EXT=""
+if [ "$OS" = "windows" ]; then
+  EXT=".exe"
+fi
+
+GO_BIN="$SELF_DIR/harness-mcp-${OS}-${ARCH}${EXT}"
 
 if [ -x "$GO_BIN" ]; then
   exec "$GO_BIN" "$@"

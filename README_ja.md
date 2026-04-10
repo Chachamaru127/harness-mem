@@ -32,7 +32,7 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 | **クロスツール記憶共有** | 共有ローカルランタイム + 対応 hook path 上の first-turn continuity | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
 | **検索方式** | ハイブリッド（lexical + vector + nugget + recency + tag + graph + fact chain） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
-| **MCP サーバー起動** | ~7ms（Go バイナリ） | — | — | — |
+| **MCP サーバー起動** | ~5ms 中央値（Go バイナリ、実測） | — | — | — |
 | **外部依存** | Node.js + Bun（Go バイナリは自動ダウンロード） | なし | Node.js + Python + uv + Chroma | Python + APIキー |
 | **移行パス** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **ワークスペース分離** | 厳格（symlink 解決済みパス） | グローバル | basename のみ | ユーザー / エージェント単位 |
@@ -47,14 +47,16 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 MCP サーバー（Claude Code / Codex との通信層）は Go で実装されており、高速に応答します:
 
-| 指標 | 値 |
+| 指標 | 実測値 |
 |---|---|
-| コールドスタート | ~7ms |
-| バイナリサイズ | 7.0MB（stripped） |
-| メモリ使用量 | ~30MB |
+| コールドスタート | ~5ms（中央値、n=10） |
+| バイナリサイズ | 7.04MB（stripped） |
+| メモリ使用量（RSS） | ~13MB（`initialize` + `tools/list` 後） |
 | 対応 OS | macOS（arm64/amd64）, Linux, Windows |
 
-Go バイナリは `harness-mem setup` 時に自動ダウンロードされます。入手できない場合は Node.js 版に自動フォールバックします。
+実測環境: Apple M1 (darwin/arm64)。再現は `scripts/bench-go-mcp.sh` で可能。生サンプルは [`docs/benchmarks/go-mcp-bench/`](docs/benchmarks/go-mcp-bench/) に commit 済み。
+
+Go バイナリは `harness-mem setup` 時に自動ダウンロードされます（インストール済み npm package version に pin されます）。入手できない場合は Node.js 版に自動フォールバックします。
 
 ### 現在の挙動
 

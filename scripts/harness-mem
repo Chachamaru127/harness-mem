@@ -1644,15 +1644,33 @@ PY
   rm -rf "$tmp_dir"
 }
 
-download_go_binary() {
-  local os arch bin_name bin_path release_url
-  os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+# Resolve Go MCP binary file name for the current OS/arch.
+# Outputs the bare filename (e.g. harness-mcp-darwin-arm64 or harness-mcp-windows-amd64.exe).
+# Maps Git Bash / MSYS / Cygwin to "windows" and appends .exe for that case.
+_resolve_go_bin_name() {
+  local os arch uname_s
+  uname_s="$(uname -s)"
+  case "$uname_s" in
+    Darwin)                            os="darwin" ;;
+    Linux)                             os="linux" ;;
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)   os="windows" ;;
+    *)                                 os="$(printf '%s' "$uname_s" | tr '[:upper:]' '[:lower:]')" ;;
+  esac
   arch="$(uname -m)"
   case "$arch" in
-    x86_64)  arch="amd64" ;;
-    aarch64) arch="arm64" ;;
+    x86_64|amd64)   arch="amd64" ;;
+    aarch64|arm64)  arch="arm64" ;;
   esac
-  bin_name="harness-mcp-${os}-${arch}"
+  if [ "$os" = "windows" ]; then
+    printf '%s\n' "harness-mcp-${os}-${arch}.exe"
+  else
+    printf '%s\n' "harness-mcp-${os}-${arch}"
+  fi
+}
+
+download_go_binary() {
+  local bin_name bin_path release_url version
+  bin_name="$(_resolve_go_bin_name)"
   bin_path="${HARNESS_ROOT}/bin/${bin_name}"
 
   # Already present — skip
@@ -1663,15 +1681,31 @@ download_go_binary() {
   # Ensure bin directory exists
   mkdir -p "${HARNESS_ROOT}/bin"
 
-  # Fetch latest release asset URL
-  release_url="$(curl -sf --max-time 5 \
-    "https://api.github.com/repos/Chachamaru127/harness-mem/releases/latest" \
-    | grep "browser_download_url.*${bin_name}" \
-    | head -1 \
-    | cut -d'"' -f4 2>/dev/null)" || true
+  # Pin to current package version to avoid version skew
+  version="$(read_current_harness_mem_version 2>/dev/null || true)"
+
+  if [ -n "$version" ]; then
+    release_url="$(curl -sf --max-time 5 \
+      "https://api.github.com/repos/Chachamaru127/harness-mem/releases/tags/v${version}" \
+      | grep "browser_download_url.*${bin_name}\"" \
+      | head -1 \
+      | cut -d'"' -f4 2>/dev/null)" || true
+  fi
+
+  # Fallback: latest release (warn about possible version skew)
+  if [ -z "$release_url" ]; then
+    if [ -n "$version" ]; then
+      log "Go MCP binary v${version} not found in Releases — falling back to latest (version skew possible)"
+    fi
+    release_url="$(curl -sf --max-time 5 \
+      "https://api.github.com/repos/Chachamaru127/harness-mem/releases/latest" \
+      | grep "browser_download_url.*${bin_name}\"" \
+      | head -1 \
+      | cut -d'"' -f4 2>/dev/null)" || true
+  fi
 
   if [ -z "$release_url" ]; then
-    log "Go MCP binary not available for ${os}/${arch} — using Node.js"
+    log "Go MCP binary not available for ${bin_name} — using Node.js"
     return 1
   fi
 
@@ -3370,7 +3404,7 @@ doctor_impl() {
 
   # Go MCP binary check
   local go_bin_name go_bin_path
-  go_bin_name="harness-mcp-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/')"
+  go_bin_name="$(_resolve_go_bin_name)"
   go_bin_path="${HARNESS_ROOT}/bin/${go_bin_name}"
   if [ -x "$go_bin_path" ]; then
     # Smoke test: send initialize and check for valid response

@@ -9,17 +9,19 @@
 
 ### ユーザー向け要約
 
-- **MCP サーバーを Go で書き直し、コールドスタートを 22 倍高速化**（~158ms → ~7ms）。メモリ使用量も ~90% 削減。
+- **MCP サーバーを Go で書き直し、コールドスタートを ~30 倍高速化**（~158ms → ~5ms 中央値）。メモリ使用量も ~95% 削減（200–400MB → ~13MB）。
 - メモリサーバー（検索・embedding・SQLite）は TypeScript のまま。ユーザーから見た動作は一切変わらない。
-- **セットアップ時に Go バイナリを自動ダウンロード**。Go のインストール不要。ダウンロード失敗時は Node.js 版に自動フォールバック。
+- **セットアップ時に Go バイナリを自動ダウンロード**。Go のインストール不要。インストール済み npm package version に pin されるので version skew が起きない。ダウンロード失敗時は Node.js 版に自動フォールバック。
+- **Windows 対応の修正**: Git Bash / MSYS / Cygwin 環境で `harness-mcp-windows-amd64.exe` を正しく解決するようになった。
 - **`harness-mem doctor` の UX 改善**: 使っていないプラットフォーム（Cursor, Gemini 等）の FAIL 表示を廃止。インストール済みのツールだけチェックするようになった。
 - 4 プラットフォーム対応の単一バイナリ配布（macOS arm64/amd64, Linux amd64, Windows amd64）。
-- 100+ の Go ユニットテスト追加。46 ツール全ての JSON Schema が TypeScript 版と完全一致することを CI で検証。
+- 100+ の Go ユニットテスト追加。46 ツール全ての JSON Schema が TypeScript 版と完全一致することを CI で検証（type / enum / nested 構造まで deep compare）。
+- 再現可能なベンチマークスクリプト（`scripts/bench-go-mcp.sh`）と JSON proof artifact を `docs/benchmarks/go-mcp-bench/` に commit。
 
 ### 補足
 
 - Go 実装: 2,885 LOC（17 ファイル）、テスト: ~3,000 LOC（15 ファイル）
-- バイナリサイズ: 7.0MB（stripped, darwin/arm64）
+- 実測値（Apple M1, darwin/arm64）: cold start 5.10ms (mean), 4.73-5.74ms (range), binary 7.04MB stripped, RSS 13.16MB
 - 詳細は英語版 CHANGELOG.md を参照
 
 ## [0.10.1] - 2026-04-09

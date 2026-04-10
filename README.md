@@ -32,7 +32,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
-| **MCP server cold start** | ~7ms (Go binary) | — | — | — |
+| **MCP server cold start** | ~5ms median (Go binary, measured) | — | — | — |
 | **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
@@ -50,14 +50,16 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 The MCP server (the layer that Claude Code and Codex talk to) is written in Go for maximum responsiveness:
 
-| Metric | Value |
+| Metric | Value (measured) |
 |---|---|
-| Cold start | ~7ms |
-| Binary size | 7.0MB (stripped) |
-| Memory (RSS) | ~30MB |
+| Cold start | ~5ms (median, n=10) |
+| Binary size | 7.04MB (stripped) |
+| Memory (RSS) | ~13MB after `initialize` + `tools/list` |
 | Platforms | macOS (arm64/amd64), Linux, Windows |
 
-The Go binary is auto-downloaded during `harness-mem setup`. If unavailable, it falls back to the Node.js version transparently.
+Measured on Apple M1 (darwin/arm64). Reproducible via `scripts/bench-go-mcp.sh`. Raw samples committed at [`docs/benchmarks/go-mcp-bench/`](docs/benchmarks/go-mcp-bench/).
+
+The Go binary is auto-downloaded during `harness-mem setup`, pinned to the same version as the installed npm package. If unavailable, it falls back to the Node.js version transparently.
 
 ### Current behavior today
 
