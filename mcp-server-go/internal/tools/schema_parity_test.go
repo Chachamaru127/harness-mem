@@ -6,7 +6,9 @@ package tools
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
+	"reflect"
 	"sort"
 	"testing"
 )
@@ -72,6 +74,32 @@ func equalStringSlices(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// normalizeJSON round-trips a value through JSON to canonicalize types
+// (so int vs float64, []string vs []any, etc., compare equal).
+func normalizeJSON(v any) any {
+	if v == nil {
+		return nil
+	}
+	data, err := json.Marshal(v)
+	if err != nil {
+		return v
+	}
+	var out any
+	if err := json.Unmarshal(data, &out); err != nil {
+		return v
+	}
+	return out
+}
+
+// mustJSONIndent renders any value as indented JSON for error messages.
+func mustJSONIndent(v any) string {
+	b, err := json.MarshalIndent(v, "  ", "  ")
+	if err != nil {
+		return fmt.Sprintf("%v", v)
+	}
+	return string(b)
 }
 
 func TestSchemaParity(t *testing.T) {
@@ -164,6 +192,35 @@ func TestSchemaParity(t *testing.T) {
 		if !equalStringSlices(actualRequired, snapRequired) {
 			t.Errorf("tool %q: inputSchema.required mismatch:\n  got:  %v\n  want: %v",
 				name, actualRequired, snapRequired)
+			continue
+		}
+
+		// --- Deep compare each property (type, enum, description, items, nested) ---
+		actualProps, _ := actualSchema["properties"].(map[string]any)
+		snapProps, _ := snap.InputSchema["properties"].(map[string]any)
+		for _, propName := range actualKeys {
+			actualProp := normalizeJSON(actualProps[propName])
+			snapProp := normalizeJSON(snapProps[propName])
+			if !reflect.DeepEqual(actualProp, snapProp) {
+				t.Errorf("tool %q property %q deep schema mismatch:\n  got:  %s\n  want: %s",
+					name, propName, mustJSONIndent(actualProp), mustJSONIndent(snapProp))
+			}
+		}
+
+		// --- Compare top-level schema fields beyond properties/required ---
+		// (e.g. additionalProperties, type, $schema, etc.)
+		for _, key := range []string{"type", "additionalProperties"} {
+			actualVal, hasActual := actualSchema[key]
+			snapVal, hasSnap := snap.InputSchema[key]
+			if hasActual != hasSnap {
+				t.Errorf("tool %q: schema key %q presence mismatch (actual=%v, snapshot=%v)",
+					name, key, hasActual, hasSnap)
+				continue
+			}
+			if hasActual && !reflect.DeepEqual(normalizeJSON(actualVal), normalizeJSON(snapVal)) {
+				t.Errorf("tool %q: schema key %q value mismatch:\n  got:  %v\n  want: %v",
+					name, key, actualVal, snapVal)
+			}
 		}
 	}
 

@@ -1,6 +1,6 @@
 # Japanese Release Proof Bar
 
-Last updated: 2026-04-04
+Last updated: 2026-04-10
 
 This document defines what harness-mem can safely claim about Japanese capability after the §49 SSOT remediation.
 
@@ -8,7 +8,7 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 
 | Role | Source | Status | Notes |
 |---|---|---|---|
-| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-04-03T19:20:02.437Z`, `git_sha=c77da08`, verdict `PASS` |
+| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`, verdict `PASS` |
 | Current Japanese companion | `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json` | current truth | `96 QA`, run family is canonicalized to `run1/run2/run3` only |
 | Historical Japanese baseline | `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json` | historical snapshot | `32 QA`, kept only as baseline context |
 | Deprecated alias | `docs/benchmarks/artifacts/s40-ja-release-latest/` | deprecated | do not cite this path in README / proof / Plans |
@@ -20,16 +20,16 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 Source:
 - `memory-server/src/benchmark/results/ci-run-manifest-latest.json`
 
-Current latest run (`adaptive`, `git_sha=c77da08`):
+Current latest run (`onnx`, `git_sha=512f027`):
 
 | Metric | Value | Meaning |
 |---|---:|---|
-| LoCoMo F1 | 0.5861 | Main retrieval + answer quality gate |
-| Bilingual recall@10 | 0.8400 | EN<->JA retrieval companion metric |
+| LoCoMo F1 | 0.5917 | Main retrieval + answer quality gate |
+| Bilingual recall@10 | 0.8800 | EN<->JA retrieval companion metric |
 | Freshness | 1.0000 | Current-state questions stay correct |
-| Temporal | 0.6472 | Ordering / time reasoning gate |
-| Search p95 | 14.04ms | Latency envelope |
-| Token avg | 428.93 | Cost / verbosity envelope |
+| Temporal | 0.6458 | Ordering / time reasoning gate |
+| Search p95 | 13.28ms | Latency envelope |
+| Token avg | 427.75 | Cost / verbosity envelope |
 
 Verdict: `PASS`
 

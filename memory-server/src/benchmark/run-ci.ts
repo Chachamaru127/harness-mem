@@ -802,14 +802,12 @@ async function maybePrimeEmbedding(
   };
   if (typeof target.primeEmbedding !== "function") return;
 
+  // No silent fallback: prime failures propagate so benchmarks fail-fast
+  // instead of quietly running against an incompletely primed cache.
   for (const text of normalized) {
-    try {
-      const result = target.primeEmbedding.call(core, text, mode);
-      if (isPromiseLike(result)) {
-        await result;
-      }
-    } catch {
-      // best effort
+    const result = target.primeEmbedding.call(core, text, mode);
+    if (isPromiseLike(result)) {
+      await result;
     }
   }
 }

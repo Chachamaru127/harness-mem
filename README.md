@@ -32,11 +32,11 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
-| **MCP server cold start** | ~7ms (Go binary) | — | — | — |
+| **MCP server cold start** | ~5ms median (Go binary, measured) | — | — | — |
 | **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
-| **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS, p95 10.7ms) | — | — | — |
+| **Benchmark (F1)** | 0.5917 (LoCoMo 120Q, 3-run PASS, p95 13.28ms) | — | — | — |
 | **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
 | **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
 
@@ -50,14 +50,16 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 The MCP server (the layer that Claude Code and Codex talk to) is written in Go for maximum responsiveness:
 
-| Metric | Value |
+| Metric | Value (measured) |
 |---|---|
-| Cold start | ~7ms |
-| Binary size | 7.0MB (stripped) |
-| Memory (RSS) | ~30MB |
+| Cold start | ~5ms (median, n=10) |
+| Binary size | 7.04MB (stripped) |
+| Memory (RSS) | ~13MB after `initialize` + `tools/list` |
 | Platforms | macOS (arm64/amd64), Linux, Windows |
 
-The Go binary is auto-downloaded during `harness-mem setup`. If unavailable, it falls back to the Node.js version transparently.
+Measured on Apple M1 (darwin/arm64). Reproducible via `scripts/bench-go-mcp.sh`. Raw samples committed at [`docs/benchmarks/go-mcp-bench/`](docs/benchmarks/go-mcp-bench/).
+
+The Go binary is auto-downloaded during `harness-mem setup`, pinned to the same version as the installed npm package. If unavailable, it falls back to the Node.js version transparently.
 
 ### Current behavior today
 
@@ -134,18 +136,18 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-07`
-- git_sha: `677c10f`
-- embedding: `adaptive`
+- generated_at: `2026-04-10T08:10:51.561Z`
+- git_sha: `512f027`
+- embedding: `onnx`
 
 | Metric | Value |
 |---|---:|
-| LoCoMo F1 | 0.5861 |
+| LoCoMo F1 | 0.5917 |
 | Bilingual recall@10 | 0.8800 |
 | Freshness | 1.0000 |
 | Temporal | 0.6458 |
-| Search p95 | 10.67ms |
-| Token avg | 427.71 |
+| Search p95 | 13.28ms |
+| Token avg | 427.75 |
 
 Verdict: `PASS`
 
