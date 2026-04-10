@@ -32,7 +32,8 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 | **クロスツール記憶共有** | 共有ローカルランタイム + 対応 hook path 上の first-turn continuity | 不可 | 不可 | アプリごとに手動接続 |
 | **セットアップ** | `harness-mem setup`（1コマンド） | 組み込み | npm install + 設定編集 | SDK統合が必要 |
 | **検索方式** | ハイブリッド（lexical + vector + nugget + recency + tag + graph + fact chain） | 非公開 | FTS5 + Chroma vector | ベクター中心 |
-| **外部依存** | Node.js + Bun | なし | Node.js + Python + uv + Chroma | Python + APIキー |
+| **MCP サーバー起動** | ~7ms（Go バイナリ） | — | — | — |
+| **外部依存** | Node.js + Bun（Go バイナリは自動ダウンロード） | なし | Node.js + Python + uv + Chroma | Python + APIキー |
 | **移行パス** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **ワークスペース分離** | 厳格（symlink 解決済みパス） | グローバル | basename のみ | ユーザー / エージェント単位 |
 
@@ -41,6 +42,19 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 - **Claude Code と Codex を使っている** → harness-mem は両ツールに同じローカルメモリランタイムを渡します。対応 hook path が有効なら、初手は chain-first（いまの続き）が主役のまま、その下に `Also Recently in This Project` として周辺の最近文脈を短く出せます。
 - **プライバシーを重視する** → すべて `~/.harness-mem/harness-mem.db` にローカル保存。クラウド通信ゼロ。API キー不要。
 - **Cursor も使っている** → Tier 2 サポート: フックと MCP がそのまま動きます。Gemini CLI と OpenCode は実験的対応です。
+
+### パフォーマンス
+
+MCP サーバー（Claude Code / Codex との通信層）は Go で実装されており、高速に応答します:
+
+| 指標 | 値 |
+|---|---|
+| コールドスタート | ~7ms |
+| バイナリサイズ | 7.0MB（stripped） |
+| メモリ使用量 | ~30MB |
+| 対応 OS | macOS（arm64/amd64）, Linux, Windows |
+
+Go バイナリは `harness-mem setup` 時に自動ダウンロードされます。入手できない場合は Node.js 版に自動フォールバックします。
 
 ### 現在の挙動
 

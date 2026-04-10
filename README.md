@@ -32,7 +32,8 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
-| **External dependencies** | Node.js + Bun | None | Node.js + Python + uv + Chroma | Python + API keys |
+| **MCP server cold start** | ~7ms (Go binary) | — | — | — |
+| **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
 | **Benchmark (F1)** | 0.5861 (LoCoMo 120Q, 3-run PASS, p95 10.7ms) | — | — | — |
@@ -44,6 +45,19 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 - **You use Claude Code and Codex** → harness-mem gives both tools the same local memory runtime. With supported hook paths enabled, the first turn stays chain-first (`what we were just doing`) and can also show a small `Also Recently in This Project` teaser for nearby project context.
 - **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
 - **You also use Cursor** → Tier 2 support: hooks and MCP work out of the box. Gemini CLI and OpenCode are experimental.
+
+### Performance
+
+The MCP server (the layer that Claude Code and Codex talk to) is written in Go for maximum responsiveness:
+
+| Metric | Value |
+|---|---|
+| Cold start | ~7ms |
+| Binary size | 7.0MB (stripped) |
+| Memory (RSS) | ~30MB |
+| Platforms | macOS (arm64/amd64), Linux, Windows |
+
+The Go binary is auto-downloaded during `harness-mem setup`. If unavailable, it falls back to the Node.js version transparently.
 
 ### Current behavior today
 

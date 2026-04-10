@@ -7,6 +7,44 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Theme: Go MCP Server — 22x faster cold start, single-binary distribution
+
+**The MCP server (the "front desk" that Claude Code and Codex talk to) has been rewritten in Go. The memory server (the "AI brain" with embeddings, search, and SQLite) stays in TypeScript — unchanged. This hybrid architecture delivers a 22x cold start improvement with zero behavior changes for users.**
+
+---
+
+#### 1. Go MCP Server (46 tools, schema-identical to TypeScript)
+
+**Before**: MCP server required Node.js runtime (~158ms cold start, 200–400MB RSS). `npm install` native module errors were the top support burden. Cross-platform distribution was difficult.
+
+**After**: Single 7MB Go binary. ~7ms cold start. 4-platform cross-compile (darwin/arm64, darwin/amd64, linux/amd64, windows/amd64). All 46 tool definitions are schema-parity tested against the TypeScript version — name, description, and inputSchema match exactly. If the Go binary is absent, the wrapper script falls back to Node.js transparently.
+
+| Metric | TypeScript | Go | Improvement |
+|---|---|---|---|
+| Cold start | ~158ms | ~7ms | **22x faster** |
+| Memory (RSS) | 200–400MB | ~30MB | **~90% reduction** |
+| Distribution | npm + Bun + Node.js | Single binary | **Zero runtime deps** |
+| Cross-compile | Difficult | `make cross` | **4 platforms** |
+
+#### 2. Automated binary distribution (CI + setup)
+
+**Before**: Go binary required manual `make install` with Go toolchain installed.
+
+**After**: `release.yml` now includes a parallel `go-build` job that cross-compiles 4 platform binaries, runs Go tests, and attaches stripped binaries to the GitHub Release. `harness-mem setup` automatically downloads the matching binary from GitHub Releases — no Go installation required. Falls back to Node.js if download fails.
+
+#### 3. Doctor UX improvement
+
+**Before**: `harness-mem doctor` checked all 6 platforms (Codex, Claude, Cursor, OpenCode, Gemini, Antigravity) regardless of whether they were installed, showing confusing FAIL entries for unused tools.
+
+**After**: Doctor auto-detects which platforms have existing harness-mem wiring and only checks those. Unused platforms are silently skipped. `--platform all` still forces a full check when needed.
+
+#### 4. Test coverage
+
+- 100+ Go unit tests across all packages (auth, pii, types, util, proxy, tools)
+- Schema parity test: 46/46 tool definitions verified identical to TypeScript
+- Integration test script for live daemon verification
+- Performance gate: cold start <60ms, binary <10MB (both passed with margin)
+
 ## [0.10.1] - 2026-04-09
 
 ### テーマ: マルチテナント分離の全面修復 — retrieval 層の致命的なテナント越境を根絶
