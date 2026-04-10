@@ -3403,6 +3403,12 @@ doctor_impl() {
   fi
 
   # Go MCP binary check
+  #
+  # Status semantics must match _doctor_emit_json's "ok" / "ok:*" contract
+  # so that failed_count and all_green stay consistent. Go binary absence
+  # is an acceptable state (the wrapper script falls back to Node.js), so
+  # it is reported with an "ok:*" prefix. A broken-but-present binary is
+  # a real failure and flips the failed flag.
   local go_bin_name go_bin_path
   go_bin_name="$(_resolve_go_bin_name)"
   go_bin_path="${HARNESS_ROOT}/bin/${go_bin_name}"
@@ -3415,9 +3421,10 @@ doctor_impl() {
     else
       _doctor_record "go_mcp_binary" "broken" "rm ${go_bin_path} && harness-mem setup"
       warn "Go MCP binary exists but smoke test failed: ${go_bin_path}"
+      failed=1
     fi
   else
-    _doctor_record "go_mcp_binary" "not_installed" "harness-mem setup (auto-downloads from GitHub Releases)"
+    _doctor_record "go_mcp_binary" "ok:nodejs_fallback" "harness-mem setup (optional: auto-downloads Go binary from GitHub Releases)"
     log "Go MCP binary: not installed (Node.js fallback active)"
   fi
 
