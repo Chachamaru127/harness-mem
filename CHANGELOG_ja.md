@@ -5,7 +5,7 @@
 - 公式の変更履歴（Source of Truth）: [CHANGELOG.md](./CHANGELOG.md)
 - 最新のリリース内容と移行手順は英語版を参照してください。
 
-## [Unreleased]
+## [0.11.0] - 2026-04-10
 
 ### ユーザー向け要約
 
