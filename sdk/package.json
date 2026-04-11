@@ -27,6 +27,7 @@
     "ai",
     "claude"
   ],
+  "author": "CAN AI LLC",
   "license": "MIT",
   "devDependencies": {
     "@types/bun": "latest",

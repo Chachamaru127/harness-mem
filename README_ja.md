@@ -567,7 +567,7 @@ harness-mem ではタスク管理の single source of truth として `Plans.md`
 ## 開発・運営
 
 <p align="center">
-  開発・運営: <a href="https://canai.jp/">CAN AI Inc.</a><br />
+  開発・運営: <a href="https://canai.jp/">CAN AI LLC</a><br />
   AI 定着コンサルティング — AI を組織の当たり前にする伴走。
 </p>
 

@@ -1,6 +1,6 @@
 # Harness MCP Server
 
-MCP (Model Context Protocol) server for Claude Code Harness.
+MCP (Model Context Protocol) server for harness-mem.
 Enables cross-client session communication between Claude Code, Codex, Cursor, and other MCP-compatible AI tools.
 
 ## Features
@@ -14,7 +14,7 @@ Enables cross-client session communication between Claude Code, Codex, Cursor, a
 
 ```bash
 # From npm (when published)
-npm install -g @anthropic-ai/harness-mcp-server
+npm install -g @canai/mcp-server
 
 # From source
 cd mcp-server
@@ -32,7 +32,7 @@ npm run build
   "mcpServers": {
     "harness": {
       "command": "npx",
-      "args": ["@anthropic-ai/harness-mcp-server"]
+      "args": ["@canai/mcp-server"]
     }
   }
 }
@@ -46,7 +46,7 @@ npm run build
   "servers": {
     "harness": {
       "command": "npx",
-      "args": ["@anthropic-ai/harness-mcp-server"]
+      "args": ["@canai/mcp-server"]
     }
   }
 }
@@ -59,7 +59,7 @@ npm run build
 {
   "harness": {
     "command": "npx",
-    "args": ["@anthropic-ai/harness-mcp-server"]
+    "args": ["@canai/mcp-server"]
   }
 }
 ```
@@ -167,4 +167,18 @@ mcp-server/
 
 ## License
 
-MIT - Same as Claude Code Harness
+MIT — as declared in this package's `package.json`.
+
+Note that the overall **harness-mem distribution** (including this
+sub-package when bundled) is published under the **Business Source
+License 1.1** at the repository root. The MIT designation on this
+individual sub-package reflects the **Open Core** structure: the MCP
+integration surface is intentionally kept permissive so that AI clients
+(Claude Code, Codex, Cursor, Zed, etc.) can freely integrate with
+harness-mem, while the core memory runtime and overall distribution
+remain under BSL to protect the commercial offering.
+
+See the repository root [LICENSE](../LICENSE) and [NOTICE](../NOTICE)
+for the distribution-level terms.
+
+Copyright (c) 2026 CAN AI LLC

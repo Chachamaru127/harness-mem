@@ -31,6 +31,74 @@
 
 ---
 
+## §79 Pro 日本語差別化: Ruri Tiered Routing + 独自 API — cc:WIP
+
+策定日: 2026-04-12
+背景: 現状の Pro 経路 (`pro-api-provider.ts`) は汎用側のみ OpenAI `text-embedding-3-large` に差し替える設計で、**日本語側は Free/Pro で同一 (`ruri-v3-30m`)**。harness-mem のブランド "日本語に強い AI coding memory" と価値提案が噛み合わず、Pro が「OpenAI 転売」になってしまう。差別化を技術資産として内製化するため、**日本語ルートを Pro で大型モデル (`ruri-v3-310m`) + CAN AI 独自 API に切り替える**方向へ再設計する。
+
+**設計原則** (UX 損失防止):
+1. Pro は完全 opt-in (`HARNESS_MEM_PRO_API_KEY` + URL 未設定なら挙動不変)
+2. Free 側のコードパスを一切壊さない (既存 `ruri-v3-30m` + `multilingual-e5` 維持)
+3. Pro 失敗時は Free に自動フォールバック (既存の adaptive-provider 機構を流用)
+4. 既存 `mem_vectors` の複合キー設計を利用して 30m/310m を共存保存
+5. 既存ベンチマーク (LoCoMo F1 0.5917) は Pro 実装後も同じ数字で再現可能
+6. Pro ベンチ結果は `ci-run-manifest-pro-latest.json` に別ファイル分離
+7. 段階的 feature flag (`HARNESS_MEM_PRO_JA_ROUTE=1`) で merge 隠蔽
+
+**作業ブランチ**: `feature/pro-japanese-differentiation` (worktree: `../harness-mem-feature-pro-ja`)
+
+**Phase 0-1 調査タスク** (並列実行中):
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S79-001 | [P] ruri-v3-310m 実機検証 | `harness-mem model pull ruri-v3-310m` で download、ONNX load、1 embed サンプル取得、メモリ使用量/latency/ディスク使用量を計測し `docs/pro-api-redesign-2026-04.md` に記録 | - | cc:WIP |
+| S79-002 | [P] ベクトル次元 256→1024 の移行戦略設計 | `mem_vectors` の複合キー `(observation_id, model)` で 30m/310m を共存保存する contract 確認。新規保存は 310m、既存 30m は lazy re-index の ON/OFF を決定。schema 変更の要否を判定し設計 doc に記録 | - | cc:WIP |
+| S79-003 | [P] transformers.js の ruri-v3-310m 対応確認 | `@huggingface/transformers` で `cl-nagoya/ruri-v3-310m` の ONNX model と tokenizer をロードできるか検証。tokenizer は WordPiece 変換問題が過去に 30m で発生したので要注意 | - | cc:WIP |
+| S79-004 | [P] Free vs Pro ベンチマーク仕様書 | `run-ci.ts` を Pro 経路でも走らせる CI 拡張設計。`ci-run-manifest-pro-latest.json` schema 定義、Free vs Pro 比較表の出力 format、差分判定閾値。設計 doc に記録 | - | cc:WIP |
+| S79-005 | [P] Pro API サーバー技術選定 | Node.js (transformers.js) / Go (onnx-go) / Python (transformers) の比較表。Fly.io / Cloud Run / Railway のコスト試算 (ruri-v3-310m + 1.2GB + CPU インスタンスで最小 ~¥3,000/月 想定)。MVP 推奨構成を決定 | - | cc:WIP |
+| S79-006 | [P] JMTEB / LoCoMo 公式スコア収集 | ruri-v3-30m (72.95) と ruri-v3-310m の公式 JMTEB スコア確認。他日本語 embedding 比較表 | - | cc:WIP |
+| S79-007 | 設計ドキュメント `docs/pro-api-redesign-2026-04.md` drafting | 上記 S79-001〜006 の調査結果を統合した設計 doc を feature branch に永続化。現状分析 / 新設計 / feature flag gate / PR 分割 / UX 損失防止ルール / Phase ロードマップを含む | S79-001..006 | cc:TODO |
+
+**Phase 2 実装タスク** (調査結果確定後に着手):
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S79-010 | PR #1: `pro-api-provider` の日本語ルート拡張 | `ruri-v3-310m` を想定したモデル指定、prefix `query: / passage:`、1024次元対応、feature flag off で既存テスト全 PASS | S79-007 | cc:TODO |
+| S79-011 | PR #2: `registry.ts` と `adaptive-provider.ts` の japaneseProvider 切替ロジック | `HARNESS_MEM_PRO_JA_ROUTE=1` 時のみ Pro 日本語 API に切替。未設定時は現状 `ruri-v3-30m` | S79-010 | cc:TODO |
+| S79-012 | PR #3: 別 private repo `canai-ops/harness-mem-pro-api` の MVP サーバー実装 | Node.js + @huggingface/transformers + ruri-v3-310m の最小 HTTP サーバー (POST /v1/embeddings)、API key 認証、LRU キャッシュ、health check、Fly.io deploy | S79-007, S79-005 | cc:TODO |
+| S79-013 | PR #4: Pro 経路の E2E ベンチマーク | `run-ci.ts` を Pro 経路で走らせる CI ジョブ追加、`ci-run-manifest-pro-latest.json` 出力、Free vs Pro の F1 差分を CHANGELOG で報告 | S79-012, S79-010, S79-011 | cc:TODO |
+| S79-014 | PR #5: ドキュメント更新 | `docs/adaptive-retrieval.md` と `docs/pro-api-data-policy.md` を新設計 (CAN AI 独自 API 前提) に書き直し | S79-013 | cc:TODO |
+| S79-015 | PR #6: feature flag 削除 + GA | `HARNESS_MEM_PRO_JA_ROUTE` flag を削除して正式機能化、v0.12.0 でリリース | S79-014 | cc:TODO |
+
+---
+
+## §78 Legal Refresh: CAN AI LLC + Open Core 整理 — cc:WIP
+
+策定日: 2026-04-11
+背景: 以下の法的リスクが発見された: (1) LICENSE の Licensor が `Claude Code Harness` という曖昧表記で BSL 違反時の権利行使主体が不明、(2) `mcp-server/package.json` の license が誤って `MIT` のまま (本来は Open Core 意図どおり)、(3) `mcp-server/README.md` で `@anthropic-ai/harness-mcp-server` という Anthropic 公式 scope を誤用、(4) CLA 不在で将来の商用ライセンス販売が不可能、(5) README で `CAN AI Inc.` と表記されるが実態は合同会社 (正しい英訳は LLC)。これらを一括で塞ぐ。
+
+**方針**: Open Core 戦略を維持 (ルート = BSL、mcp-server/sdk/vscode-extension = MIT)。CAN AI LLC を実在する Licensor として確定。
+
+**作業ブランチ**: `legal/refresh-can-ai-llc-2026-04`
+
+| Task | 内容 | DoD | Status |
+|------|------|-----|--------|
+| S78-001 | LICENSE の Licensor を `CAN AI LLC` に確定 | `LICENSE` の Licensor 行と Copyright 行が `CAN AI LLC` になっている | cc:完了 |
+| S78-002 | NOTICE 新規作成 | BSL 要約、商標通告、CLA 意図、商用ライセンス窓口 (GitHub Discussions 暫定) を含む NOTICE がルートに存在 | cc:完了 |
+| S78-003 | CONTRIBUTING.md 新規作成 | License grant 条項、moral rights waiver (日本法 著作者人格権不行使)、originality、no warranty を含む CONTRIBUTING.md がルートに存在 | cc:完了 |
+| S78-004 | TRADEMARK.md 新規作成 | harness-mem 名称・ロゴの使用ポリシー (nominative fair use / 禁止事項 / フェアユース / エンフォースメント) を含む TRADEMARK.md がルートに存在 | cc:完了 |
+| S78-005 | Anthropic 商標侵害の除去 | `mcp-server/README.md` の `@anthropic-ai/harness-mcp-server` 参照を `@canai/mcp-server` に置換済み | cc:完了 |
+| S78-006 | mcp-server / memory-server の scope 変更 | `@claude-code-harness/*` → `@canai/*` に変更済み (商標リスク回避) | cc:完了 |
+| S78-007 | mcp-server license rollback (Open Core 維持) | `mcp-server/package.json` の license を `MIT` に戻し、`mcp-server/README.md` の License 節も MIT + Open Core 説明に差し替え | cc:完了 |
+| S78-008 | README の `CAN AI Inc.` → `CAN AI LLC` 統一 | `README.md:575` と `README_ja.md:571` の表記を統一 | cc:完了 |
+| S78-009 | sdk / vscode-extension に author 追加 | `sdk/package.json` と `vscode-extension/package.json` に `"author": "CAN AI LLC"` を追加 (license は MIT 維持) | cc:完了 |
+| S78-010 | Plans.md に §78 と §79 を追記 | 本ドキュメントが Plans.md に永続化される | cc:WIP |
+| S78-011 | commit + PR 作成 | `legal/refresh-can-ai-llc-2026-04` ブランチでコミット、PR を main に向けて作成 | cc:TODO |
+
+**リリースブロッカー**: v0.12.0 までに S78 を main にマージしておくこと。
+
+---
+
 ## §77 Retrieval Quality Regression 調査 — cc:TODO
 
 **背景**: v0.11.0 リリース作業中、`memory-server/src` が v0.9.0 以降 1 行も変更されていないにもかかわらず、以下の retrieval 指標が劣化していることが判明した:

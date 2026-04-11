@@ -17,6 +17,7 @@
     "claude",
     "harness"
   ],
+  "author": "CAN AI LLC",
   "license": "MIT",
   "activationEvents": [],
   "main": "./dist/extension.js",

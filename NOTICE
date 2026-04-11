@@ -1,0 +1,76 @@
+harness-mem
+Copyright (c) 2026 CAN AI LLC
+
+-------------------------------------------------------------------------------
+License
+-------------------------------------------------------------------------------
+
+This software is licensed under the Business Source License 1.1 (BSL).
+See the LICENSE file at the repository root for the full, legally binding
+terms. The summary below is informational only and does not override the
+LICENSE file.
+
+Summary (non-binding)
+---------------------
+
+- Source code is available for reading, modification, internal use,
+  personal and non-commercial use, development, testing, and evaluation.
+- You MAY NOT use this software to provide a commercial "Memory Service"
+  to third parties — that is, a managed service whose memory storage,
+  retrieval, or synchronization functionality is substantially derived
+  from this software.
+- On the Change Date (2029-03-08), or four years after the first public
+  distribution of a given version (whichever is earlier), that version
+  automatically relicenses to Apache License, Version 2.0.
+
+Commercial Licensing
+--------------------
+
+For use cases that fall outside the BSL's Additional Use Grant —
+including offering a managed Memory Service, embedding harness-mem in
+a closed-source commercial product, or any other arrangement that
+requires removal of the BSL restrictions — a separate commercial
+license is available from CAN AI LLC.
+
+Contact channels (in order of preference):
+  1. GitHub Discussions (public, for general licensing questions):
+     https://github.com/Chachamaru127/harness-mem/discussions
+  2. GitHub Issue with label "licensing" (for specific requests):
+     https://github.com/Chachamaru127/harness-mem/issues
+  3. For legal notices requiring a written address, please open a
+     GitHub Discussion requesting contact details; CAN AI LLC will
+     respond with the appropriate channel.
+
+CAN AI LLC will publish a dedicated legal contact email on the project
+website prior to accepting commercial license applications.
+
+-------------------------------------------------------------------------------
+Trademarks
+-------------------------------------------------------------------------------
+
+"harness-mem" and any associated logos and marks are trademarks of
+CAN AI LLC. The BSL grants you rights to the source code; it does
+NOT grant you rights to use the "harness-mem" name or logo to promote
+derivative works, forks, or competing services.
+
+If you distribute a modified version, you must use a different name
+that is not confusingly similar to "harness-mem".
+
+-------------------------------------------------------------------------------
+Contributions
+-------------------------------------------------------------------------------
+
+Contributions to this project are accepted under the terms described in
+CONTRIBUTING.md. By submitting a pull request, contributors agree that
+their contributions are licensed under the same Business Source License
+1.1 and assign the necessary rights to CAN AI LLC to enable future
+relicensing (including dual-licensing for commercial use).
+
+-------------------------------------------------------------------------------
+Third-Party Components
+-------------------------------------------------------------------------------
+
+This product includes software developed by third parties, distributed
+under their respective open source licenses. See the dependency manifests
+(package.json, go.mod, etc.) and individual component directories for
+details.

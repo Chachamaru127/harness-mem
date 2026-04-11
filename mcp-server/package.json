@@ -1,7 +1,7 @@
 {
-  "name": "@claude-code-harness/mcp-server",
+  "name": "@canai/mcp-server",
   "version": "1.0.0",
-  "description": "MCP Server for Claude Code Harness - enables cross-client session communication",
+  "description": "MCP Server for harness-mem - enables cross-client session communication",
   "main": "dist/index.js",
   "type": "module",
   "bin": {
@@ -21,7 +21,7 @@
     "ai",
     "codex"
   ],
-  "author": "Claude Code Harness",
+  "author": "CAN AI LLC",
   "license": "MIT",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1"
