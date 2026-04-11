@@ -1,0 +1,104 @@
+{
+  "schema": "harness-mem.competitor-benchmarks/v1",
+  "snapshot_date": "2026-04-11",
+  "benchmark": "LoCoMo",
+  "benchmark_reference": "https://snap-research.github.io/locomo/",
+  "metric_default": "token-level F1 (harmonic mean of precision and recall over response tokens), unless noted",
+  "we_did_not_rerun": true,
+  "we_did_not_rerun_explanation": "Every non-harness-mem row below is a self-reported figure copied verbatim from the source linked in the same entry. harness-mem does not install or execute competitor memory tools. Readers who want a head-to-head with identical runtime, identical prompt, and identical LLM judge should consult each competitor's own repo.",
+  "entries": [
+    {
+      "tool": "harness-mem",
+      "score": 0.5917,
+      "metric": "token-level F1",
+      "scope": "LoCoMo 120 Q subset, 3-run PASS, release-gate",
+      "source": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
+      "source_type": "committed_manifest",
+      "self_reported": true,
+      "fetched_at": "2026-04-10T08:10:51.561Z",
+      "notes": "Release-gate number from v0.11.0 HEAD, generated_at 2026-04-10T08:10:51.561Z, git_sha 512f027, embedding onnx/multilingual-e5. Reproducible via `npm run benchmark`."
+    },
+    {
+      "tool": "LangMem",
+      "score": 0.581,
+      "metric": "token-level F1",
+      "scope": "LoCoMo",
+      "source": "https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3",
+      "source_type": "third_party_article",
+      "self_reported": false,
+      "fetched_at": "2026-04-11",
+      "notes": "The same article reports LangMem's p95 search latency at 59.82 seconds, which is a practical blocker for interactive agents."
+    },
+    {
+      "tool": "Kumiho",
+      "score": 0.565,
+      "metric": "token-level F1",
+      "scope": "LoCoMo full (1,986 Q across 10 conversations)",
+      "source": "https://github.com/kumihoclouds/kumiho-benchmarks",
+      "source_type": "repo",
+      "self_reported": true,
+      "fetched_at": "2026-04-11",
+      "notes": "Kumiho runs the full LoCoMo question set, not a subset. Their scope is larger than harness-mem's 120-question subset, so a direct F1 comparison is not apples-to-apples."
+    },
+    {
+      "tool": "SimpleMem",
+      "score": 0.432,
+      "metric": "token-level F1 (average)",
+      "scope": "LoCoMo",
+      "source": "https://www.alphaxiv.org/overview/2601.02553v1",
+      "source_type": "paper",
+      "self_reported": true,
+      "fetched_at": "2026-04-11",
+      "notes": "Reported as 43.24% in the paper; normalized to 0.432 here for a consistent 0-1 scale with other rows."
+    },
+    {
+      "tool": "Mem0",
+      "score": 0.387,
+      "metric": "single-hop token-F1",
+      "scope": "LoCoMo single-hop subset",
+      "source": "https://arxiv.org/abs/2504.19413",
+      "source_type": "paper",
+      "self_reported": true,
+      "fetched_at": "2026-04-11",
+      "notes": "Mem0 also publishes a 0.669 LLM-as-judge score on a broader metric vs OpenAI memory's 0.529, reported in their state-of-AI-agent-memory-2026 blog post. That number is on a different axis (LLM-judge, not token-F1) so it is tracked separately here to avoid misleading comparisons."
+    }
+  ],
+  "excluded_on_purpose": [
+    {
+      "tool": "Letta",
+      "score": 0.832,
+      "metric": "LongMemEval (different benchmark)",
+      "source": "https://www.letta.com/blog/benchmarking-ai-agent-memory",
+      "reason": "Letta's 0.832 is on LongMemEval, which is a different benchmark with a different evaluation protocol. Placing it in the LoCoMo table above would be misleading, so it is intentionally kept out of the comparison."
+    },
+    {
+      "tool": "Zep",
+      "score": null,
+      "metric": "LongMemEval temporal reasoning (Graphiti)",
+      "source": "https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3",
+      "reason": "Zep's headline number is a +15 point delta on LongMemEval temporal reasoning, not an absolute LoCoMo F1. Also: Zep Community Edition is deprecated as of 2026, so the local-first story does not apply."
+    }
+  ],
+  "not_published": [
+    {
+      "tool": "claude-mem",
+      "reason": "No official benchmark in the thedotmack/claude-mem repository or documentation site as of the snapshot date."
+    },
+    {
+      "tool": "Claude built-in memory",
+      "reason": "Anthropic does not publish F1 or recall numbers for the Claude Code built-in memory feature."
+    },
+    {
+      "tool": "ChatGPT memory",
+      "reason": "OpenAI does not publish F1 or recall numbers for the ChatGPT memory feature. The 0.529 figure cited in the table context was measured by Mem0, not by OpenAI."
+    }
+  ],
+  "caveats": [
+    "harness-mem benchmarks on the LoCoMo 120-question subset while Kumiho benchmarks on the full 1,986. Subsets can flatter the score. This is not an apples-to-apples comparison and we say so explicitly.",
+    "harness-mem's 0.5917 is token-level F1. Mem0 also publishes 0.669 on LLM-as-judge, a different axis with different absolute numbers.",
+    "Letta's 0.832 is on LongMemEval, a different benchmark. It is intentionally excluded from the table to avoid misleading cross-benchmark comparisons.",
+    "Every non-harness-mem score above is a self-reported figure from the source linked in the same entry. We do not install or execute competitor tools.",
+    "Watch slices that still fail harness-mem's Japanese companion gate are not hidden — they are published under the Measured Proof section of README.md."
+  ],
+  "how_to_update": "When the industry landscape shifts, snapshot a new file (e.g. competitors-2026-10.json) rather than mutating this one in place. Commit the new file and bump the README link to point at it. Keep this file for historical audit."
+}

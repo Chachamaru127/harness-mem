@@ -105,6 +105,8 @@ LoCoMo is the reference long-term conversational memory benchmark. The table bel
 - We do not run competitors ourselves — every non-harness number above is a self-reported figure from the source linked in the same row.
 - Watch slices that still fail our Japanese companion gate are listed in [Measured Proof](#measured-proof). We publish those failures on purpose.
 
+Raw data (source URLs, fetched dates, exclusion reasons, per-row notes) is committed as a machine-readable audit trail at [`docs/benchmarks/competitors-2026-04.json`](docs/benchmarks/competitors-2026-04.json). New snapshots will be added as dated files rather than mutating the existing one.
+
 Full benchmark gate (primary ship gate + Japanese companion + historical baseline) is in the [Measured Proof](#measured-proof) section below.
 
 ---
