@@ -84,33 +84,12 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 
 The Go MCP server is the layer Claude Code and Codex actually talk to. If the Go binary is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
 
-### harness-mem's target domain is developer workflow memory (not general lifelog)
+### harness-mem's target domain is developer workflow memory
 
 Memory benchmarks cluster into two domains:
 
 - **General lifelog** — remembering a fictional person's everyday life ("when did Caroline go to the support group?"). This is what **LoCoMo**, LongMemEval, and most of Mem0/MemPalace/SuperMemory evaluate.
 - **Developer workflow** — remembering yesterday's race fix, the tech-stack decisions, the half-done migration, the deploy recipe. This is what harness-mem actually serves.
-
-We run LoCoMo on purpose anyway — as a transparency reference, not as a target to tune for. Here is the honest zero-LLM comparison:
-
-| Tool | LoCoMo F1 | Scope | Tool's target domain | Source |
-|---|---:|---|---|---|
-| **harness-mem (120 Q subset)** | **0.5917** | subset, 3-run PASS, used internally as a release-gate smoke | developer-workflow | [`ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
-| **harness-mem (full 1,986 Q, reference-only)** | **0.0546** | full LoCoMo, zero-LLM token-F1, **NOT a release gate** | developer-workflow | [`locomo-full-reference.json`](docs/benchmarks/locomo-full-reference.json) |
-| LangMem | 0.581 | LoCoMo (p95 search: 59.82 s) | generic-agent | [2026 comparison](https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3) |
-| Kumiho | 0.565 | LoCoMo full (1,986 Q / 10 conversations) | general-lifelog | [kumihoclouds/kumiho-benchmarks](https://github.com/kumihoclouds/kumiho-benchmarks) |
-| MemPalace (raw, zero-LLM) | ≈0.603 | LoCoMo top-10, zero API calls | general-lifelog | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) |
-| SimpleMem | 0.432 | LoCoMo (average) | generic-agent | [alphaXiv 2601.02553](https://www.alphaxiv.org/overview/2601.02553v1) |
-| Mem0 (single-hop) | 0.387 | LoCoMo single-hop token-F1 (LLM-dependent extractor + judge) | generic-agent | [arXiv 2504.19413](https://arxiv.org/abs/2504.19413) |
-| claude-mem / Claude built-in / ChatGPT memory | — | not published | varies | — |
-
-**Caveats we keep visible**
-
-- **harness-mem publishes 0.0546 on the full LoCoMo 1,986 Q on purpose.** We do not tune for it. LoCoMo measures general lifelog memory over fictional characters' everyday conversations (e.g. "When did Caroline attend the LGBTQ support group?"). That is not harness-mem's target domain — tuning for it would weaken our session-lifecycle, project-scoped, developer-workflow design. Kumiho (0.565) and MemPalace (≈0.603 raw) explicitly target general lifelog memory; harness-mem does not.
-- The 120 Q subset number (0.5917) is a smaller sample that happens to fit harness-mem's session-like ingestion shape. We report it with the same "not apples-to-apples" caveat: smaller subsets can flatter the score.
-- Mem0's token-F1 score (0.387) is on an LLM-dependent pipeline (GPT-4o-mini extractor + LLM-as-judge). Mem0's separately reported 0.669 is on the LLM-as-judge metric. harness-mem's numbers above are on **zero-LLM** methodology throughout, which is a fundamentally different axis.
-- Letta publishes 0.832 on **LongMemEval**, a different benchmark. It is intentionally not in the table above because cross-benchmark comparison would mislead.
-- We do not run competitors ourselves — every non-harness number above is a self-reported figure from the source linked in the same row.
 
 **Where harness-mem actually competes**
 
@@ -123,9 +102,9 @@ Our release gate lives in `ci-run-manifest-latest.json` on the developer-workflo
 | `knowledge-update` freshness@K | **1.00** | ≥ 0.95 ✓ | Supersede stale facts when content is updated |
 | `temporal` ordering score | 0.65 | ≥ 0.70 | "When did X happen relative to Y?" on project history |
 
-These are what harness-mem actually competes on. The domain column in the comparison table exists so readers can judge which benchmarks map to their real-world use case.
+For general-lifelog comparisons (LoCoMo, LongMemEval, etc.), see each competitor's own published numbers — they target that domain and we do not.
 
-Raw data (source URLs, fetched dates, exclusion reasons, per-row notes) is committed as a machine-readable audit trail at [`docs/benchmarks/competitors-2026-04.json`](docs/benchmarks/competitors-2026-04.json). New snapshots will be added as dated files rather than mutating the existing one.
+Raw data of the general-lifelog landscape (source URLs, fetched dates, per-row notes for competitor scores) is kept as a machine-readable audit trail at [`docs/benchmarks/competitors-2026-04.json`](docs/benchmarks/competitors-2026-04.json).
 
 Full benchmark gate (primary ship gate + Japanese companion + historical baseline) is in the [Measured Proof](#measured-proof) section below.
 
