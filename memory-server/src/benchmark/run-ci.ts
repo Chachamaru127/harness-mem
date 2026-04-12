@@ -25,12 +25,24 @@ import { nowIso } from "../core/core-utils";
 import { BenchmarkRunner } from "./runner";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
+// Default to the committed 120 Q subset. Override with
+// HARNESS_BENCH_LOCOMO_FIXTURE=... to run against a different LoCoMo
+// dataset (e.g. tests/benchmarks/fixtures/locomo-full-1986.json for the
+// full snap-research set). The loader auto-converts category ints and
+// session_N conversation shapes, so the full fixture works unchanged.
 const LOCOMO_120_PATH = resolve(
   import.meta.dir,
-  "../../../tests/benchmarks/fixtures/locomo-120.json",
+  process.env.HARNESS_BENCH_LOCOMO_FIXTURE
+    ? process.env.HARNESS_BENCH_LOCOMO_FIXTURE
+    : "../../../tests/benchmarks/fixtures/locomo-120.json",
 );
-const LOCOMO_120_BASELINE = join(RESULTS_DIR, "locomo-120-baseline.json");
-const LOCOMO_120_LATEST = join(RESULTS_DIR, "locomo-120-latest.json");
+// Output filenames mirror the fixture when running the full set, so the
+// 120 Q release-gate artifacts are not overwritten by an ad-hoc full run.
+const LOCOMO_OUTPUT_SLUG = process.env.HARNESS_BENCH_LOCOMO_FIXTURE
+  ? "locomo-full"
+  : "locomo-120";
+const LOCOMO_120_BASELINE = join(RESULTS_DIR, `${LOCOMO_OUTPUT_SLUG}-baseline.json`);
+const LOCOMO_120_LATEST = join(RESULTS_DIR, `${LOCOMO_OUTPUT_SLUG}-latest.json`);
 const CI_MANIFEST_LATEST = join(RESULTS_DIR, "ci-run-manifest-latest.json");
 const CI_MANIFEST_HISTORY = join(RESULTS_DIR, "ci-run-manifest-history.jsonl");
 const BILINGUAL_50_PATH = resolve(import.meta.dir, "../../../tests/benchmarks/fixtures/bilingual-50.json");
