@@ -11,12 +11,25 @@
       "tool": "harness-mem",
       "score": 0.5917,
       "metric": "token-level F1",
-      "scope": "LoCoMo 120 Q subset, 3-run PASS, release-gate",
+      "scope": "LoCoMo 120 Q subset (3-run PASS, release-gate snapshot) — informational reference only, not a main gate",
+      "domain": "general-lifelog (informational reference)",
       "source": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
       "source_type": "committed_manifest",
       "self_reported": true,
       "fetched_at": "2026-04-10T08:10:51.561Z",
-      "notes": "Release-gate number from v0.11.0 HEAD, generated_at 2026-04-10T08:10:51.561Z, git_sha 512f027, embedding onnx/multilingual-e5. Reproducible via `npm run benchmark`."
+      "notes": "From v0.11.0 HEAD (generated_at 2026-04-10T08:10:51.561Z, git_sha 512f027, embedding onnx/multilingual-e5, zero LLM calls). Reproducible via `npm run benchmark`. See harness-mem-locomo-full entry below for the full 1,986-question reference score and why LoCoMo is not harness-mem's main gate."
+    },
+    {
+      "tool": "harness-mem (LoCoMo full reference)",
+      "score": 0.0546,
+      "metric": "token-level F1",
+      "scope": "LoCoMo full 1,986 Q — reference-only, NOT a release gate",
+      "domain": "general-lifelog (outside harness-mem's target domain)",
+      "source": "docs/benchmarks/locomo-full-reference.json",
+      "source_type": "committed_manifest",
+      "self_reported": true,
+      "fetched_at": "2026-04-12T19:13:46.494Z",
+      "notes": "Measured 2026-04-13 with zero LLM calls (token-F1 evaluator, ONNX embedding). We publish this on purpose and do not tune for it. LoCoMo measures general lifelog memory (fictional characters' everyday lives); harness-mem targets developer workflow memory. Competitor context: Kumiho 0.565 on full 1,986 Q, MemPalace raw 0.603 on top-10 — both explicitly target general lifelog. harness-mem's main gate is developer-domain: dev-workflow recall, bilingual recall, knowledge-update freshness, temporal ordering — see ci-run-manifest-latest.json for those."
     },
     {
       "tool": "LangMem",

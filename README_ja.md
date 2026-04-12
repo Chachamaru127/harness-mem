@@ -84,28 +84,46 @@
 
 Go MCP サーバーは Claude Code / Codex が実際に通信する層です。Go バイナリが無ければ wrapper script が透過的に Node.js 版にフォールバックします。機能は全部使えて、コールドスタートだけ Node.js 相当になります。
 
-### 他ツールとの比較（LoCoMo F1、全て自社公開値）
+### harness-mem の target domain は "developer workflow memory"（一般会話メモリではない）
 
-LoCoMo は長期会話メモリの代表的なベンチマークです。下表は各ツールが **自分で公開している** F1 スコアをそのまま並べたものです。harness-mem 以外は再計測していません。評価スコープ列を付けているので、公平な比較かは読者側で判断できます。
+メモリ系ベンチは大きく 2 つのドメインに分かれます:
 
-| ツール | LoCoMo F1 | スコープ | 出典 |
-|---|---:|---|---|
-| **harness-mem** | **0.5917** | LoCoMo 120 Q サブセット、3-run PASS、release gate | [`ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
-| LangMem | 0.581 | LoCoMo（p95 検索: 59.82 秒） | [2026 比較記事](https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3) |
-| Kumiho | 0.565 | LoCoMo 全量（1,986 Q / 10 会話） | [kumihoclouds/kumiho-benchmarks](https://github.com/kumihoclouds/kumiho-benchmarks) |
-| SimpleMem | 0.432 | LoCoMo（平均） | [alphaXiv 2601.02553](https://www.alphaxiv.org/overview/2601.02553v1) |
-| Mem0（single-hop） | 0.387 | LoCoMo single-hop token-F1 | [arXiv 2504.19413](https://arxiv.org/abs/2504.19413) |
-| claude-mem / Claude 組み込みメモリ / ChatGPT メモリ | — | 非公開 | — |
+- **一般会話メモリ（general lifelog）** — 架空の人物の日常の記憶を問う（「Caroline はいつ LGBTQ サポートグループに行った？」）。LoCoMo / LongMemEval / Mem0 / MemPalace / SuperMemory が主にこちら。
+- **Developer workflow memory** — 昨日の race fix、技術スタックの決定、やりかけの migration、deploy 手順。harness-mem が実際に担う領域。
+
+その前提を置いた上で、LoCoMo は透明性リファレンスとして公開します（目標メトリクスではない）。zero-LLM の honest 比較:
+
+| ツール | LoCoMo F1 | スコープ | そのツールの target domain | 出典 |
+|---|---:|---|---|---|
+| **harness-mem（120 Q サブセット）** | **0.5917** | サブセット、3-run PASS、release-gate の smoke として内部利用 | developer-workflow | [`ci-run-manifest-latest.json`](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
+| **harness-mem（full 1,986 Q reference-only）** | **0.0546** | LoCoMo 全量、zero-LLM token-F1、**リリースゲートではない** | developer-workflow | [`locomo-full-reference.json`](docs/benchmarks/locomo-full-reference.json) |
+| LangMem | 0.581 | LoCoMo（p95 検索: 59.82 秒） | generic-agent | [2026 比較記事](https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3) |
+| Kumiho | 0.565 | LoCoMo 全量（1,986 Q / 10 会話） | general-lifelog | [kumihoclouds/kumiho-benchmarks](https://github.com/kumihoclouds/kumiho-benchmarks) |
+| MemPalace（raw, zero-LLM） | ≈0.603 | LoCoMo top-10、API 呼び出しゼロ | general-lifelog | [milla-jovovich/mempalace](https://github.com/milla-jovovich/mempalace) |
+| SimpleMem | 0.432 | LoCoMo（平均） | generic-agent | [alphaXiv 2601.02553](https://www.alphaxiv.org/overview/2601.02553v1) |
+| Mem0（single-hop） | 0.387 | LoCoMo single-hop token-F1（GPT-4o-mini extractor + LLM judge） | generic-agent | [arXiv 2504.19413](https://arxiv.org/abs/2504.19413) |
+| claude-mem / Claude 組み込みメモリ / ChatGPT メモリ | — | 非公開 | さまざま | — |
 
 **明示しておく前提**
 
-- harness-mem は LoCoMo の **120 問サブセット** で計測しています。Kumiho は全 1,986 問で計測。サブセットの方がスコアが出やすい傾向があります — **同じ土俵ではありません**。ここをはっきり書いておきます。
-- Mem0 は別途 LLM-as-judge で **0.669**（対 OpenAI memory 0.529）という broader metric の数字も公開しています。harness-mem の 0.5917 は **token-level F1** で、LLM-judge ではありません — 軸が違うので絶対値もそのまま比較できません。
-- Letta は **LongMemEval** という別ベンチマークで 0.832 を公開していますが、違うベンチマーク同士の比較は読者を誤解させるのであえて表に入れていません。
+- **harness-mem は LoCoMo 全量 1,986 Q で 0.0546 をあえて公開しています。** ここを tune する気はありません。LoCoMo は架空の人物の日常会話の記憶を測る general lifelog domain で、harness-mem の target domain（developer workflow）ではないためです。Kumiho（0.565）や MemPalace（≈0.603 raw）は一般会話メモリとして設計されているので LoCoMo で強いのは当然の話です。
+- 120 Q サブセットの 0.5917 は、harness-mem の session 的な取り込み形式と偶然相性が良い小規模セットです。「subset なので score は盛られやすい」の caveat をそのまま残しています。
+- Mem0 の token-F1 数値（0.387）は LLM 依存パイプライン（GPT-4o-mini extractor + LLM-as-judge）での計測です。別軸の LLM-judge では 0.669。harness-mem の上記 2 値は **全工程 zero-LLM** で計測したもので、完全に別の軸です。
+- Letta の 0.832 は **LongMemEval** という別ベンチマーク。違うベンチ同士を並べると誤解を生むのであえて表に入れていません。
 - 他社ツールは私たちの手元では実行していません。表の harness-mem 以外の値は全て各社の公開値をそのまま引用しています。
-- Japanese companion gate で残っている watch slice（fail しているもの）は [実測ベンチマーク](#実測ベンチマーク) セクションに書いています。隠す意味がないので公開しています。
 
-表の生データ（出典 URL、取得日、除外理由、行ごとの注釈）は機械可読な監査証跡として [`docs/benchmarks/competitors-2026-04.json`](docs/benchmarks/competitors-2026-04.json) に commit しています。業界側の数値が更新された場合は、既存ファイルを上書きするのではなく日付付きの新しいスナップショット（例: `competitors-2026-10.json`）として追加します。
+**harness-mem が実際に戦う場所**
+
+harness-mem のリリースゲートは `ci-run-manifest-latest.json` の developer-workflow domain にあります:
+
+| 指標 | 現状 | 目標（main gate） | 何を測っている |
+|---|---:|---:|---|
+| `dev-workflow` recall@10 | 0.59 | ≥ 0.70 | 開発者的なファイル / 判断ジャンプのクエリ |
+| `bilingual` recall@10 | **0.88** | ≥ 0.90 | 日本語 / 英語 / コード混在の検索 |
+| `knowledge-update` freshness@K | **1.00** | ≥ 0.95 ✓ | 情報が更新された時に古い事実を外せるか |
+| `temporal` ordering score | 0.65 | ≥ 0.70 | 「X の後に Y があったか？」的な時系列推論 |
+
+読者が自分のユースケースに照らして「どのベンチが自分に効くか」を判断できるよう、domain 列を明示しています。生データ（出典 URL、取得日、除外理由、行ごとの注釈）は機械可読な監査証跡として [`docs/benchmarks/competitors-2026-04.json`](docs/benchmarks/competitors-2026-04.json) に commit しています。
 
 完全な benchmark gate（main ship gate + 日本語 companion + 歴史 baseline）は [実測ベンチマーク](#実測ベンチマーク) セクションに残してあります。
 
