@@ -203,6 +203,14 @@ export function collectForgetCandidates(
   const scanned = rows.length;
   const candidates: ForgetPolicyCandidate[] = [];
 
+  // S81-B02 hardening (Codex round 3 P2.2): scoreFactors' `age` factor
+  // rises from 0 at 30d, but the access/signal factors can still push
+  // the composite score over 0.7 for a brand-new row (age=0, access=1,
+  // signal=1 → 0.7 with default weights). That is the opposite of the
+  // "protect freshly-ingested data" promise in the design doc. Enforce
+  // a hard minimum-age gate before candidates are even scored.
+  const MIN_AGE_DAYS_FOR_EVICTION = 30;
+
   for (const row of rows) {
     // Never auto-archive privacy-sensitive rows.
     const tags = parsePrivacyTags(row.privacy_tags_json);
@@ -213,6 +221,10 @@ export function collectForgetCandidates(
 
     const signalScore = row.signal_score ?? 0;
     const ageDays = daysBetween(row.created_at, now);
+
+    // Protect anything younger than the minimum age, regardless of how
+    // the other two axes score.
+    if (ageDays < MIN_AGE_DAYS_FOR_EVICTION) continue;
 
     const factors = scoreFactors({
       access_count: accessCount,

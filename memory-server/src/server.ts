@@ -774,7 +774,12 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       // S81-C03: citation trace / provenance verify.
+      // TEAM-005 / Codex round 3 P1: verify must also enforce tenant
+      // access filtering — without `resolveAccess()` any caller who knows
+      // another tenant's observation_id could read its provenance tree.
       if (request.method === "POST" && url.pathname === "/v1/observations/verify") {
+        const verifyAccess = resolveAccess(request);
+        if (verifyAccess instanceof Response) return verifyAccess;
         const body = await parseRequestJson(request);
         const observationId =
           typeof body.observation_id === "string" ? body.observation_id : "";
@@ -785,6 +790,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           core.verifyObservation({
             observation_id: observationId,
             include_private: parseBooleanLike(body.include_private, false),
+            user_id: verifyAccess.user_id,
+            team_id: verifyAccess.team_id,
           })
         );
       }

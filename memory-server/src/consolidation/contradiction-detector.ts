@@ -115,7 +115,13 @@ function loadConceptGroups(
   db: Database,
   projectFilter?: string
 ): Map<string, GroupRow[]> {
-  const primary = db
+  // S81-B03 (Codex round 3 P2.3): load concept-tagged rows and
+  // legacy topic/category-tagged rows separately, then use the legacy
+  // tags ONLY for observations that have no concept tag. Previous
+  // implementation dropped legacy tags globally as soon as any concept
+  // tag existed anywhere in the DB, which silently broke partially
+  // migrated setups.
+  const conceptRows = db
     .query(
       `
         SELECT o.project AS project, t.tag AS concept, o.id AS observation_id,
@@ -129,20 +135,32 @@ function loadConceptGroups(
     )
     .all(...((projectFilter ? [projectFilter] : []) as never[])) as GroupRow[];
 
-  const rows = primary.length > 0
-    ? primary
-    : (db
-        .query(
-          `
-            SELECT o.project AS project, t.tag AS concept, o.id AS observation_id,
-                   o.content_redacted AS content, o.created_at AS created_at
-              FROM mem_observations o
-              JOIN mem_tags t ON t.observation_id = o.id
-             WHERE o.archived_at IS NULL
-               ${projectFilter ? "AND o.project = ?" : ""}
-          `
-        )
-        .all(...((projectFilter ? [projectFilter] : []) as never[])) as GroupRow[]);
+  const legacyRows = db
+    .query(
+      `
+        SELECT o.project AS project, t.tag AS concept, o.id AS observation_id,
+               o.content_redacted AS content, o.created_at AS created_at
+          FROM mem_observations o
+          JOIN mem_tags t ON t.observation_id = o.id
+         WHERE o.archived_at IS NULL
+           AND t.tag_type IN ('topic', 'category')
+           ${projectFilter ? "AND o.project = ?" : ""}
+      `
+    )
+    .all(...((projectFilter ? [projectFilter] : []) as never[])) as GroupRow[];
+
+  // Observations already covered by at least one concept tag.
+  const obsHasConcept = new Set<string>();
+  for (const r of conceptRows) {
+    obsHasConcept.add(r.observation_id);
+  }
+
+  const rows: GroupRow[] = [...conceptRows];
+  for (const r of legacyRows) {
+    if (!obsHasConcept.has(r.observation_id)) {
+      rows.push(r);
+    }
+  }
 
   const groups = new Map<string, GroupRow[]>();
   for (const r of rows) {

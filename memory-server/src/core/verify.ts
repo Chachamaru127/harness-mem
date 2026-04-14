@@ -25,6 +25,15 @@ import type { CodeProvenance } from "./types";
 export interface VerifyObservationRequest {
   observation_id: string;
   include_private?: boolean;
+  /**
+   * TEAM-005 / Codex round 3 P1: tenant access filters. If provided,
+   * the verify walk is only permitted when the observation row's
+   * `user_id` matches or its `team_id` matches. Cross-tenant lookups
+   * return the same `observation not found` shape as a truly missing
+   * row (no metadata leak).
+   */
+  user_id?: string;
+  team_id?: string;
 }
 
 export interface VerifyObservationNode {
@@ -73,6 +82,8 @@ interface ObservationRow {
   title: string | null;
   created_at: string | null;
   privacy_tags_json: string | null;
+  user_id: string | null;
+  team_id: string | null;
 }
 
 interface EventRow {
@@ -141,7 +152,8 @@ export function verifyObservation(
   const obsRow = db
     .query(
       `
-        SELECT id, event_id, platform, project, session_id, title, created_at, privacy_tags_json
+        SELECT id, event_id, platform, project, session_id, title, created_at,
+               privacy_tags_json, user_id, team_id
         FROM mem_observations
         WHERE id = ?
       `
@@ -165,6 +177,36 @@ export function verifyObservation(
       provenance: null,
       notes: ["observation not found"],
     };
+  }
+
+  // TEAM-005 / Codex round 3 P1: tenant check. When the caller has a
+  // scoped identity (user_id and/or team_id), the observation must
+  // belong to the same user OR same team. Return the same "not found"
+  // shape as a truly missing row to avoid leaking existence.
+  if (typeof request.user_id === "string" && request.user_id !== "") {
+    const matchesUser = obsRow.user_id === request.user_id;
+    const matchesTeam =
+      typeof request.team_id === "string" &&
+      request.team_id !== "" &&
+      obsRow.team_id === request.team_id;
+    if (!matchesUser && !matchesTeam) {
+      return {
+        ok: false,
+        observation: {
+          observation_id: id,
+          session_id: null,
+          project: null,
+          platform: null,
+          event_id: null,
+          created_at: null,
+          title: null,
+          missing: true,
+        },
+        event: null,
+        provenance: null,
+        notes: ["observation not found"],
+      };
+    }
   }
 
   if (!request.include_private) {

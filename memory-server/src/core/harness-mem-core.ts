@@ -1705,6 +1705,8 @@ export class HarnessMemCore {
   verifyObservation(request: {
     observation_id: string;
     include_private?: boolean;
+    user_id?: string;
+    team_id?: string;
   }): ApiResponse {
     const startedAt = performance.now();
     const result = verifyObservationTrace(this.db, request);
