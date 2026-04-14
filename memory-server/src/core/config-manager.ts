@@ -398,11 +398,11 @@ export class ConfigManager {
       return canonical;
     };
 
-    // S81-B02: exclude soft-archived observations from stats unless the
-    // caller asked for include_private (admin/inspect). Keeping archive
-    // hidden from `harness_mem_stats` avoids the "forget policy was run
-    // but counts didn't drop" confusion reported in Codex review.
-    const archivedFilter = includePrivate ? "" : " AND o.archived_at IS NULL ";
+    // S81-B02 (Codex round 9 P2): soft-archive visibility gated on its
+    // own dedicated flag so asking for private notes does not also
+    // resurrect forgotten rows. Admin tooling can still opt in.
+    const includeArchived = Boolean((request as { include_archived?: boolean }).include_archived);
+    const archivedFilter = includeArchived ? "" : " AND o.archived_at IS NULL ";
 
     const rows = this.deps.db
       .query(`

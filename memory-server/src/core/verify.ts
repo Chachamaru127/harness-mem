@@ -26,6 +26,12 @@ export interface VerifyObservationRequest {
   observation_id: string;
   include_private?: boolean;
   /**
+   * S81-B02 round 9 P2: admin-only override to inspect archived rows.
+   * Orthogonal to include_private so a caller who wants private notes
+   * does NOT automatically bypass auto-forget.
+   */
+  include_archived?: boolean;
+  /**
    * TEAM-005 / Codex round 3 P1: tenant access filters. If provided,
    * the verify walk is only permitted when the observation row's
    * `user_id` matches or its `team_id` matches. Cross-tenant lookups
@@ -187,13 +193,11 @@ export function verifyObservation(
     };
   }
 
-  // S81-C03 (Codex round 7 P2): hide archived observations from verify
-  // by default. After `forget_policy` wet run sets archived_at, the
-  // normal read APIs (search / timeline / get_observations) stop
-  // returning the row; verify must follow the same default. Admin
-  // callers who truly need the archived trail can pass
-  // include_private=true — same escape hatch as private/secret rows.
-  if (!request.include_private && obsRow.archived_at !== null) {
+  // S81-C03 (Codex round 9 P2): hide archived observations from verify
+  // by default. Gated on `include_archived` (not `include_private`) so
+  // callers that only want their private notes do NOT also bypass
+  // auto-forget.
+  if (!request.include_archived && obsRow.archived_at !== null) {
     return {
       ok: false,
       observation: {

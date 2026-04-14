@@ -1720,6 +1720,7 @@ export class HarnessMemCore {
   verifyObservation(request: {
     observation_id: string;
     include_private?: boolean;
+    include_archived?: boolean;
     user_id?: string;
     team_id?: string;
   }): ApiResponse {

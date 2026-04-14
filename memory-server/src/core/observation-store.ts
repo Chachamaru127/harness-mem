@@ -1282,6 +1282,8 @@ export class ObservationStore {
       until?: string;
       as_of?: string;
       include_private?: boolean;
+      /** S81-B02 round 9 P2: admin-only archived visibility override. */
+      include_archived?: boolean;
       strict_project?: boolean;
       memory_type?: import("./types.js").MemoryType | import("./types.js").MemoryType[];
       /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
@@ -1348,9 +1350,14 @@ export class ObservationStore {
     if (!options.skipPrivacy) {
       nextSql += visibilityFilterSql(alias, Boolean(filters.include_private));
     }
-    // S81-B02: exclude soft-archived observations unless includePrivate is set
-    // (admin tools like verify / audit can pass include_private=true to see all).
-    if (!filters.include_private) {
+    // S81-B02 (Codex round 9 P2): soft-archive visibility is gated by
+    // its own dedicated `include_archived` flag, NOT by `include_private`.
+    // `include_private` is a user-facing toggle for private notes;
+    // entangling the two would let any caller asking for their private
+    // data accidentally see rows that forget_policy has pruned and
+    // bypass auto-forget entirely on inspection paths.
+    const extraFilters = filters as { include_archived?: boolean };
+    if (!extraFilters.include_archived) {
       nextSql += ` AND ${alias}.archived_at IS NULL`;
     }
     return nextSql;

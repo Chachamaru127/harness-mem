@@ -187,18 +187,34 @@ export async function detectContradictions(
   const confirmed: ContradictionPair[] = [];
   const pending: ContradictionPair[] = [];
 
+  // S81-B03 (Codex round 9 P2): dedup across shared concept tags. A pair
+  // (older_id, newer_id) that sits in more than one concept group must
+  // only be adjudicated once — otherwise the detector burns LLM calls
+  // on a duplicate and inflates candidate_pairs even though only one
+  // `superseded` link can be written.
+  const pairKey = (a: string, b: string): string => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const seenPairs = new Set<string>();
+
   for (const rows of groups.values()) {
     if (rows.length < 2) continue;
     scannedGroups += 1;
 
-    // Precompute tokens once per row.
-    const tokenised = rows.map((r) => ({ row: r, tokens: tokenize(r.content) }));
+    // S81-B03 round 9 P2: enforce max_pairs_per_group BEFORE the full
+    // N² scan. We sort rows by created_at DESC and take the newest
+    // (2 * maxPairs) — the quadratic comparison then runs on at most
+    // ~(2M)² pairs, which bounds consolidation cost regardless of how
+    // many observations a broad concept tag accumulates.
+    const sortedRows = [...rows].sort((x, y) => {
+      const tx = Date.parse(x.created_at) || 0;
+      const ty = Date.parse(y.created_at) || 0;
+      return ty - tx;
+    });
+    const windowSize = Math.min(sortedRows.length, Math.max(2, maxPairs * 2));
+    const window = sortedRows.slice(0, windowSize);
 
-    // S81-B03 (Codex round 8 P2): collect ALL qualifying pairs first,
-    // then sort by newer observation recency DESC before applying
-    // maxPairs. Previously the loop truncated at maxPairs in DB order,
-    // so the freshest contradictions inside a big concept group could
-    // be silently dropped. Sorting keeps recall stable as groups grow.
+    // Precompute tokens once per row.
+    const tokenised = window.map((r) => ({ row: r, tokens: tokenize(r.content) }));
+
     type Pair = { ai: number; bi: number; sim: number; newer_ts: number };
     const groupPairs: Pair[] = [];
     for (let i = 0; i < tokenised.length; i += 1) {
@@ -215,9 +231,12 @@ export async function detectContradictions(
     groupPairs.sort((x, y) => y.newer_ts - x.newer_ts);
 
     for (const p of groupPairs.slice(0, maxPairs)) {
-      candidatePairs += 1;
       const a = tokenised[p.ai]!.row;
       const b = tokenised[p.bi]!.row;
+      const key = pairKey(a.observation_id, b.observation_id);
+      if (seenPairs.has(key)) continue;
+      seenPairs.add(key);
+      candidatePairs += 1;
       const [older, newer] = Date.parse(a.created_at) <= Date.parse(b.created_at) ? [a, b] : [b, a];
       pending.push({
         older_id: older.observation_id,

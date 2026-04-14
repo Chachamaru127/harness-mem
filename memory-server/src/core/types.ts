@@ -38,6 +38,13 @@ export interface SearchRequest {
   until?: string;
   limit?: number;
   include_private?: boolean;
+  /**
+   * S81-B02 (Codex round 9 P2): admin-only override to include
+   * soft-archived observations in the result set. Orthogonal to
+   * `include_private` — a caller who only wants their private notes
+   * should NOT also see rows that `forget_policy` has pruned.
+   */
+  include_archived?: boolean;
   expand_links?: boolean;
   strict_project?: boolean;
   debug?: boolean;

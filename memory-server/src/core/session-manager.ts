@@ -609,9 +609,12 @@ export class SessionManager {
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
 
-    // S81-B02 (Codex round 8 P2): hide soft-archived observations unless
-    // include_private=true.
-    if (!includePrivate) {
+    // S81-B02 (Codex round 9 P2): hide soft-archived observations by
+    // default. Admin callers need to pass `include_archived=true`
+    // explicitly — the old code used include_private as a proxy which
+    // bypassed auto-forget on detailed-inspection paths.
+    const includeArchived = Boolean((request as { include_archived?: boolean }).include_archived);
+    if (!includeArchived) {
       sql += " AND o.archived_at IS NULL";
     }
 

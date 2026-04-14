@@ -189,17 +189,39 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
     // different repos with the same relative `target` must NOT collide.
     // Null project matches only other null-project leases (global scope).
     const project = req.project ?? null;
+    // S81-A02 tenant scoping (Codex round 9 P1): once tenant columns are
+    // populated, include them in the contention check. Otherwise another
+    // tenant's active lease on the same (project, target) returns
+    // `already_leased` even though the caller can't release it. Rows
+    // without tenant stamps (pre-migration) participate in the classic
+    // global-lease contention.
+    const clauses: string[] = [
+      "target = ?",
+      "status = 'active'",
+      "expires_at > ?",
+      "((project IS NULL AND ? IS NULL) OR project = ?)",
+    ];
+    const params: unknown[] = [target, nowIso, project, project];
+    if (req.userId !== undefined || req.teamId !== undefined) {
+      const tenantClauses: string[] = ["(user_id IS NULL AND team_id IS NULL)"];
+      if (req.userId !== undefined) {
+        tenantClauses.push("user_id = ?");
+        params.push(req.userId);
+      }
+      if (req.teamId !== undefined) {
+        tenantClauses.push("team_id = ?");
+        params.push(req.teamId);
+      }
+      clauses.push(`(${tenantClauses.join(" OR ")})`);
+    }
     const existing = db
       .query(
         `SELECT * FROM mem_leases
-          WHERE target = ?
-            AND status = 'active'
-            AND expires_at > ?
-            AND ((project IS NULL AND ? IS NULL) OR project = ?)
+          WHERE ${clauses.join(" AND ")}
           ORDER BY acquired_at DESC
           LIMIT 1`
       )
-      .get(target, nowIso, project, project) as Record<string, unknown> | null;
+      .get(...(params as never[])) as Record<string, unknown> | null;
 
     if (existing) {
       const held = parseRow(existing);
