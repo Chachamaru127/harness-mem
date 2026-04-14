@@ -46,6 +46,15 @@ export interface AcquireRequest {
   project?: string | null;
   ttlMs?: number;
   metadata?: Record<string, unknown> | null;
+  /**
+   * S81-A02 tenant (Codex round 6 P1): when the daemon has auth config
+   * enabled, the caller's `resolveAccess()` user_id/team_id are stored
+   * on the lease so release/renew can enforce tenant ownership. Leave
+   * both undefined in local single-tenant deployments — behavior is
+   * unchanged in that case.
+   */
+  userId?: string;
+  teamId?: string;
 }
 
 export type AcquireResponse =
@@ -78,10 +87,21 @@ export interface RenewResponse {
   error?: "not_found" | "not_owner" | "expired" | "invalid_ttl";
 }
 
+/**
+ * S81-A02 tenant scope (Codex round 6 P1): when the caller is
+ * authenticated, this struct carries their user_id/team_id so
+ * release/renew can reject other tenants even if they guess lease_id.
+ * Leave both undefined for single-tenant local deployments.
+ */
+export interface TenantScope {
+  userId?: string;
+  teamId?: string;
+}
+
 export interface LeaseStore {
   acquire(req: AcquireRequest): AcquireResponse;
-  release(leaseId: string, agentId: string): ReleaseResponse;
-  renew(leaseId: string, agentId: string, ttlMs?: number): RenewResponse;
+  release(leaseId: string, agentId: string, tenant?: TenantScope): ReleaseResponse;
+  renew(leaseId: string, agentId: string, ttlMs?: number, tenant?: TenantScope): RenewResponse;
   get(leaseId: string): LeaseRow | null;
   listActive(target?: string): LeaseRow[];
 }
@@ -197,8 +217,9 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
     db.run(
       `INSERT INTO mem_leases
          (lease_id, target, agent_id, project, status, ttl_ms,
-          acquired_at, renewed_at, expires_at, released_at, metadata_json)
-       VALUES (?, ?, ?, ?, 'active', ?, ?, NULL, ?, NULL, ?)`,
+          acquired_at, renewed_at, expires_at, released_at, metadata_json,
+          user_id, team_id)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, NULL, ?, NULL, ?, ?, ?)`,
       [
         leaseId,
         target,
@@ -208,6 +229,8 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
         nowIso,
         expiresAt,
         req.metadata ? JSON.stringify(req.metadata) : null,
+        req.userId ?? null,
+        req.teamId ?? null,
       ]
     );
 
@@ -229,11 +252,33 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
     };
   };
 
-  const release = (leaseId: string, agentId: string): ReleaseResponse => {
+  // S81-A02 tenant check (Codex round 6 P1): when the caller provides
+  // a TenantScope, the stored lease's user_id/team_id must match.
+  // Return `not_found` (same shape as a truly missing row) to avoid
+  // leaking existence. Rows without a tenant stamp (pre-migration or
+  // single-tenant installs) are treated as belonging to every caller
+  // so older databases keep working.
+  const matchesTenant = (
+    row: Record<string, unknown>,
+    tenant?: TenantScope
+  ): boolean => {
+    if (!tenant || (tenant.userId === undefined && tenant.teamId === undefined)) return true;
+    const rowUser = row.user_id == null ? null : String(row.user_id);
+    const rowTeam = row.team_id == null ? null : String(row.team_id);
+    if (rowUser === null && rowTeam === null) return true; // legacy untagged
+    if (tenant.userId !== undefined && rowUser === tenant.userId) return true;
+    if (tenant.teamId !== undefined && rowTeam !== null && rowTeam === tenant.teamId) return true;
+    return false;
+  };
+
+  const release = (leaseId: string, agentId: string, tenant?: TenantScope): ReleaseResponse => {
     const row = db
       .query(`SELECT * FROM mem_leases WHERE lease_id = ?`)
       .get(leaseId) as Record<string, unknown> | null;
     if (!row) {
+      return { ok: false, error: "not_found" };
+    }
+    if (!matchesTenant(row, tenant)) {
       return { ok: false, error: "not_found" };
     }
     if (String(row.agent_id) !== agentId) {
@@ -253,11 +298,12 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
     return { ok: true, lease: parseRow(updated) };
   };
 
-  const renew = (leaseId: string, agentId: string, ttlMs?: number): RenewResponse => {
+  const renew = (leaseId: string, agentId: string, ttlMs?: number, tenant?: TenantScope): RenewResponse => {
     const row = db
       .query(`SELECT * FROM mem_leases WHERE lease_id = ?`)
       .get(leaseId) as Record<string, unknown> | null;
     if (!row) return { ok: false, error: "not_found" };
+    if (!matchesTenant(row, tenant)) return { ok: false, error: "not_found" };
     if (String(row.agent_id) !== agentId) return { ok: false, error: "not_owner" };
     const parsed = parseRow(row);
     const nowMs = now();

@@ -1773,6 +1773,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             body.metadata && typeof body.metadata === "object"
               ? (body.metadata as Record<string, unknown>)
               : undefined,
+          userId: acc.user_id,
+          teamId: acc.team_id,
         });
         return jsonResponse(res);
       }
@@ -1786,7 +1788,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!leaseId || !agentId) {
           return badRequest("lease_id and agent_id are required");
         }
-        return jsonResponse(leaseStore.release(leaseId, agentId));
+        return jsonResponse(
+          leaseStore.release(leaseId, agentId, { userId: acc.user_id, teamId: acc.team_id })
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/v1/lease/renew") {
@@ -1799,7 +1803,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("lease_id and agent_id are required");
         }
         const ttlMs = typeof body.ttl_ms === "number" ? body.ttl_ms : undefined;
-        return jsonResponse(leaseStore.renew(leaseId, agentId, ttlMs));
+        return jsonResponse(
+          leaseStore.renew(leaseId, agentId, ttlMs, { userId: acc.user_id, teamId: acc.team_id })
+        );
       }
 
       // S81-A03: Signal primitives.
@@ -1815,6 +1821,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           content: typeof body.content === "string" ? body.content : "",
           project: typeof body.project === "string" ? body.project : undefined,
           expiresInMs: typeof body.expires_in_ms === "number" ? body.expires_in_ms : undefined,
+          userId: acc.user_id,
+          teamId: acc.team_id,
         });
         return jsonResponse(res);
       }
@@ -1831,6 +1839,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           includeBroadcast: body.include_broadcast !== false,
           project: typeof body.project === "string" ? body.project : undefined,
           all_projects: body.all_projects === true,
+          userId: acc.user_id,
+          teamId: acc.team_id,
           limit: typeof body.limit === "number" ? body.limit : undefined,
         });
         return jsonResponse({ ok: true, signals });
@@ -1845,7 +1855,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!signalId || !agentId) {
           return badRequest("signal_id and agent_id are required");
         }
-        return jsonResponse(signalStore.ack({ signalId, agentId }));
+        return jsonResponse(
+          signalStore.ack({ signalId, agentId, userId: acc.user_id, teamId: acc.team_id })
+        );
       }
 
         return new Response("Not Found", { status: 404 });

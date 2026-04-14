@@ -42,6 +42,13 @@ export interface SendRequest {
   content: string;
   project?: string | null;
   expiresInMs?: number;
+  /**
+   * S81-A03 tenant (Codex round 6 P1). Populated from the authenticated
+   * caller's resolveAccess() so read/ack can reject cross-tenant
+   * access. Optional for local single-tenant deployments.
+   */
+  userId?: string;
+  teamId?: string;
 }
 
 export type SendResponse =
@@ -70,12 +77,28 @@ export interface ReadRequest {
    * behavior.
    */
   all_projects?: boolean;
+  /**
+   * S81-A03 tenant (Codex round 6 P1): when the daemon is auth-enabled,
+   * the caller's resolveAccess() user_id / team_id are forwarded here
+   * and the inbox is further restricted so only rows belonging to the
+   * same tenant are visible.
+   */
+  userId?: string;
+  teamId?: string;
   limit?: number;
+}
+
+export interface AckTenant {
+  userId?: string;
+  teamId?: string;
 }
 
 export interface AckRequest {
   signalId: string;
   agentId: string;
+  /** S81-A03 tenant (Codex round 6 P1): ack ownership check. */
+  userId?: string;
+  teamId?: string;
 }
 
 export type AckResponse =
@@ -157,8 +180,9 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
     db.run(
       `INSERT INTO mem_signals
          (signal_id, thread_id, from_agent, to_agent, reply_to, content,
-          project, sent_at, expires_at, acked_at, acked_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
+          project, sent_at, expires_at, acked_at, acked_by,
+          user_id, team_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
       [
         signalId,
         threadId,
@@ -169,6 +193,8 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
         req.project ?? null,
         sentAt,
         expiresAt,
+        req.userId ?? null,
+        req.teamId ?? null,
       ]
     );
 
@@ -219,6 +245,22 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
     // accidentally see another repo's signals. Explicit opt-in via
     // `all_projects: true` restores the legacy global view for audit
     // and admin tools.
+    // S81-A03 tenant scoping (Codex round 6 P1): when the caller is
+    // authenticated (userId or teamId present), require rows to match.
+    // Untagged (legacy, pre-migration) rows are visible to any caller
+    // so old DBs keep working.
+    if (req.userId !== undefined || req.teamId !== undefined) {
+      const clauses: string[] = ["(user_id IS NULL AND team_id IS NULL)"];
+      if (req.userId !== undefined) {
+        clauses.push("user_id = ?");
+        params.push(req.userId);
+      }
+      if (req.teamId !== undefined) {
+        clauses.push("team_id = ?");
+        params.push(req.teamId);
+      }
+      where.push(`(${clauses.join(" OR ")})`);
+    }
     if (!req.all_projects) {
       if (req.project === null || req.project === undefined) {
         where.push(`project IS NULL`);
@@ -244,6 +286,21 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
       .query(`SELECT * FROM mem_signals WHERE signal_id = ?`)
       .get(req.signalId) as Record<string, unknown> | null;
     if (!row) return { ok: false, error: "not_found" };
+    // S81-A03 tenant check (Codex round 6 P1): a different tenant must
+    // see the same "not_found" shape so ack cannot be used as an
+    // existence oracle. Rows without user_id/team_id predate the
+    // tenant migration and remain accessible so the older DB keeps
+    // working.
+    if (req.userId !== undefined || req.teamId !== undefined) {
+      const rowUser = row.user_id == null ? null : String(row.user_id);
+      const rowTeam = row.team_id == null ? null : String(row.team_id);
+      const legacy = rowUser === null && rowTeam === null;
+      const matches =
+        legacy ||
+        (req.userId !== undefined && rowUser === req.userId) ||
+        (req.teamId !== undefined && rowTeam !== null && rowTeam === req.teamId);
+      if (!matches) return { ok: false, error: "not_found" };
+    }
     if (row.acked_at != null) {
       return { ok: false, error: "already_acked" };
     }

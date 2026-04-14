@@ -333,7 +333,12 @@ export function initSchema(db: Database): void {
       renewed_at TEXT,
       expires_at TEXT NOT NULL,
       released_at TEXT,
-      metadata_json TEXT
+      metadata_json TEXT,
+      -- S81-A02 tenant columns (Codex round 6 P1): when auth config
+      -- is enabled these are populated from resolveAccess() so release
+      -- / renew cannot be performed by other tenants.
+      user_id TEXT,
+      team_id TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_mem_leases_target_status_exp
@@ -356,7 +361,12 @@ export function initSchema(db: Database): void {
       sent_at TEXT NOT NULL,
       expires_at TEXT,
       acked_at TEXT,
-      acked_by TEXT
+      acked_by TEXT,
+      -- S81-A03 tenant columns (Codex round 6 P1): populated from the
+      -- sender's resolveAccess() so read/ack refuse cross-tenant access
+      -- when auth config is enabled.
+      user_id TEXT,
+      team_id TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_mem_signals_to_ack
@@ -422,6 +432,19 @@ export function migrateSchema(db: Database): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_user ON mem_observations(project, user_id, created_at DESC)`);
   } catch {
     // already exists
+  }
+
+  // S81-A02/A03 (Codex round 6 P1): add tenant columns to the new
+  // coordination tables. Pre-existing DBs created the tables before
+  // tenant tracking existed; newly-created DBs already have them via
+  // initSchema. Both paths are idempotent.
+  for (const stmt of [
+    `ALTER TABLE mem_leases ADD COLUMN user_id TEXT`,
+    `ALTER TABLE mem_leases ADD COLUMN team_id TEXT`,
+    `ALTER TABLE mem_signals ADD COLUMN user_id TEXT`,
+    `ALTER TABLE mem_signals ADD COLUMN team_id TEXT`,
+  ]) {
+    try { db.exec(stmt); } catch { /* already exists */ }
   }
 
   try {

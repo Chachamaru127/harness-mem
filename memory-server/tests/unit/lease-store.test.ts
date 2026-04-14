@@ -150,7 +150,9 @@ describe("lease-store S81-A02", () => {
         "renewed_at",
         "status",
         "target",
+        "team_id",
         "ttl_ms",
+        "user_id",
       ].sort()
     );
   });

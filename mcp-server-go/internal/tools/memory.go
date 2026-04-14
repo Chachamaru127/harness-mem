@@ -741,9 +741,14 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			return errorResult("target and agent_id are required")
 		}
 		payload := map[string]any{"target": target, "agent_id": agentID}
-		if v := argString(args, "project"); v != "" {
-			payload["project"] = v
+		// S81-A02/A03 (Codex round 6 P2): auto-inject the worktree-unified
+		// project key when the caller did not pass one. Prevents
+		// unrelated repos from colliding on the same relative target.
+		project := argString(args, "project")
+		if project == "" {
+			project = util.ResolveProjectKey("")
 		}
+		payload["project"] = project
 		if n, ok := argNumber(args, "ttl_ms"); ok {
 			payload["ttl_ms"] = n
 		}
@@ -804,9 +809,13 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "reply_to"); v != "" {
 			payload["reply_to"] = v
 		}
-		if v := argString(args, "project"); v != "" {
-			payload["project"] = v
+		// S81-A03 (Codex round 6 P2): auto-inject worktree-unified project
+		// key so signals stay within the caller's repo by default.
+		project := argString(args, "project")
+		if project == "" {
+			project = util.ResolveProjectKey("")
 		}
+		payload["project"] = project
 		if n, ok := argNumber(args, "expires_in_ms"); ok {
 			payload["expires_in_ms"] = n
 		}
@@ -825,13 +834,18 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
-		// S81-A03: forward project scope so signal reads do not leak across
-		// repos that share an agent identity.
-		if v := argString(args, "project"); v != "" {
-			payload["project"] = v
+		// S81-A03 (Codex round 6 P2): auto-inject worktree-unified project
+		// key so read does not pick up another repo's signals by default.
+		project := argString(args, "project")
+		if project == "" {
+			project = util.ResolveProjectKey("")
 		}
+		payload["project"] = project
 		if v, ok := args["include_broadcast"].(bool); ok {
 			payload["include_broadcast"] = v
+		}
+		if v, ok := args["all_projects"].(bool); ok {
+			payload["all_projects"] = v
 		}
 		if n, ok := argNumber(args, "limit"); ok {
 			payload["limit"] = n

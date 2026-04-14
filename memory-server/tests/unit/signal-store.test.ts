@@ -127,8 +127,10 @@ describe("signal-store S81-A03", () => {
         "reply_to",
         "sent_at",
         "signal_id",
+        "team_id",
         "thread_id",
         "to_agent",
+        "user_id",
       ].sort()
     );
   });
