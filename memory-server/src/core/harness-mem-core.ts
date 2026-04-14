@@ -230,40 +230,56 @@ function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: str
 }
 
 function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
-  const cursor = normalizePathLike(existingPath);
-  if (!cursor.startsWith("/")) {
+  // S80-A01: walk up from `existingPath` looking for .git so that nested
+  // subdirectories inside a worktree or main repo are collapsed onto the
+  // common git root. Previously this function only inspected `existingPath`
+  // itself which broke 3-worktree ingest from nested `src/` dirs.
+  const start = normalizePathLike(existingPath);
+  if (!start.startsWith("/")) {
     return null;
   }
 
-  const gitMarker = join(cursor, ".git");
-  if (!existsSync(gitMarker)) {
-    return null;
-  }
-
-  try {
-    const markerStat = statSync(gitMarker);
-    if (markerStat.isDirectory()) {
-      return realpathOrNormalized(cursor);
-    }
-    if (markerStat.isFile()) {
-      const markerBody = readFileSync(gitMarker, "utf8");
-      const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
-      if (!match) {
+  let cursor = start;
+  // Hard upper bound on walks to avoid pathological inputs; filesystem depth
+  // caps us well below this but keep the guard explicit.
+  const MAX_WALKS = 64;
+  for (let i = 0; i < MAX_WALKS; i += 1) {
+    const gitMarker = join(cursor, ".git");
+    if (existsSync(gitMarker)) {
+      try {
+        const markerStat = statSync(gitMarker);
+        if (markerStat.isDirectory()) {
+          return realpathOrNormalized(cursor);
+        }
+        if (markerStat.isFile()) {
+          const markerBody = readFileSync(gitMarker, "utf8");
+          const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
+          if (!match) {
+            return realpathOrNormalized(cursor);
+          }
+          const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
+          const worktreeToken = "/.git/worktrees/";
+          const worktreeIndex = gitDirPath.indexOf(worktreeToken);
+          if (worktreeIndex > 0) {
+            return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
+          }
+          return realpathOrNormalized(cursor);
+        }
+      } catch {
         return realpathOrNormalized(cursor);
       }
-      const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
-      const worktreeToken = "/.git/worktrees/";
-      const worktreeIndex = gitDirPath.indexOf(worktreeToken);
-      if (worktreeIndex > 0) {
-        return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
-      }
-      return realpathOrNormalized(cursor);
     }
-  } catch {
-    return realpathOrNormalized(cursor);
+    const parent = normalizePathLike(resolve(cursor, ".."));
+    if (!parent || parent === cursor) {
+      return null;
+    }
+    // Stop at filesystem root.
+    if (parent === "/" || /^[A-Za-z]:\/?$/.test(parent)) {
+      return null;
+    }
+    cursor = parent;
   }
-
-  return realpathOrNormalized(cursor);
+  return null;
 }
 
 function normalizeExplicitProjectPath(project: string): string {
