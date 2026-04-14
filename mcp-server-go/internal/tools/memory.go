@@ -741,14 +741,16 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			return errorResult("target and agent_id are required")
 		}
 		payload := map[string]any{"target": target, "agent_id": agentID}
-		// S81-A02/A03 (Codex round 6 P2): auto-inject the worktree-unified
-		// project key when the caller did not pass one. Prevents
-		// unrelated repos from colliding on the same relative target.
-		project := argString(args, "project")
-		if project == "" {
-			project = util.ResolveProjectKey("")
+		// S81-A02/A03 project scoping (Codex round 6 P2 + round 8 P1):
+		// prefer explicit `project`, then resolve from an explicit `cwd`,
+		// otherwise leave the scope NULL. Earlier rounds auto-ran
+		// ResolveProjectKey("") which used os.Getwd() — the daemon's
+		// launch directory, shared across all clients — so that is now
+		// removed. Callers that want worktree isolation must pass either
+		// `project` or `cwd`.
+		if v := resolveProjectScope(args); v != "" {
+			payload["project"] = v
 		}
-		payload["project"] = project
 		if n, ok := argNumber(args, "ttl_ms"); ok {
 			payload["ttl_ms"] = n
 		}
@@ -809,13 +811,11 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "reply_to"); v != "" {
 			payload["reply_to"] = v
 		}
-		// S81-A03 (Codex round 6 P2): auto-inject worktree-unified project
-		// key so signals stay within the caller's repo by default.
-		project := argString(args, "project")
-		if project == "" {
-			project = util.ResolveProjectKey("")
+		// S81-A03 (Codex round 8 P1): prefer explicit project, else
+		// resolve from caller-supplied cwd, else leave scope NULL.
+		if v := resolveProjectScope(args); v != "" {
+			payload["project"] = v
 		}
-		payload["project"] = project
 		if n, ok := argNumber(args, "expires_in_ms"); ok {
 			payload["expires_in_ms"] = n
 		}
@@ -834,13 +834,11 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
-		// S81-A03 (Codex round 6 P2): auto-inject worktree-unified project
-		// key so read does not pick up another repo's signals by default.
-		project := argString(args, "project")
-		if project == "" {
-			project = util.ResolveProjectKey("")
+		// S81-A03 (Codex round 8 P1): prefer explicit project, else
+		// resolve from caller-supplied cwd, else leave scope NULL.
+		if v := resolveProjectScope(args); v != "" {
+			payload["project"] = v
 		}
-		payload["project"] = project
 		if v, ok := args["include_broadcast"].(bool); ok {
 			payload["include_broadcast"] = v
 		}

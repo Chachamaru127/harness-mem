@@ -156,26 +156,35 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
     if (!content) return { ok: false, error: "invalid_content" };
 
     let threadId = (req.threadId ?? "").trim();
+    // Derive the effective project for this send. Starts from the
+    // explicit request field; if omitted AND we are replying to a
+    // parent, we fall back to the parent's project so the reply joins
+    // the thread without the caller having to repeat the key
+    // (Codex round 8 P3). The effective project is also what we store
+    // and use for tenant checks below.
+    let effectiveProject: string | null = req.project === undefined ? null : (req.project ?? null);
+
     if (req.replyTo) {
       const parent = db
         .query(
           `SELECT thread_id, project, user_id, team_id FROM mem_signals WHERE signal_id = ?`
         )
         .get(req.replyTo) as Record<string, unknown> | null;
-      // S81-A03 (Codex round 7 P2): the parent must belong to the same
-      // project and tenant as the incoming reply. Otherwise a caller in
-      // repo B could attach a new message to repo A's thread, leaking
-      // the foreign thread across the project isolation line and
-      // (on auth-enabled daemons) acting as an existence oracle on
-      // cross-tenant signal IDs. Both a genuinely missing parent and a
-      // foreign-scope parent surface the same `reply_target_missing`
-      // error.
+      // S81-A03 (Codex round 7/8 P3): missing parent, foreign-project
+      // parent, and foreign-tenant parent all surface the same
+      // `reply_target_missing` error to avoid exposing an existence
+      // oracle across scopes.
       if (!parent) {
         return { ok: false, error: "reply_target_missing" };
       }
       const parentProject = parent.project == null ? null : String(parent.project);
-      const callerProject = req.project === undefined ? null : req.project;
-      if (parentProject !== callerProject) {
+      // Codex round 8 P3: when the caller did not pass `project`, the
+      // reply inherits the parent's scope instead of being forced to
+      // the null default. When the caller did pass a project, it must
+      // match the parent's project exactly.
+      if (req.project === undefined) {
+        effectiveProject = parentProject;
+      } else if (parentProject !== effectiveProject) {
         return { ok: false, error: "reply_target_missing" };
       }
       if (req.userId !== undefined || req.teamId !== undefined) {
@@ -217,7 +226,7 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
         req.to ?? null,
         req.replyTo ?? null,
         content,
-        req.project ?? null,
+        effectiveProject,
         sentAt,
         expiresAt,
         req.userId ?? null,
@@ -234,7 +243,7 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
         to: req.to ?? null,
         replyTo: req.replyTo ?? null,
         content,
-        project: req.project ?? null,
+        project: effectiveProject,
         sentAt,
         expiresAt,
         ackedAt: null,

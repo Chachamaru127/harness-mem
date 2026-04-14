@@ -193,26 +193,39 @@ export async function detectContradictions(
 
     // Precompute tokens once per row.
     const tokenised = rows.map((r) => ({ row: r, tokens: tokenize(r.content) }));
-    let seen = 0;
-    for (let i = 0; i < tokenised.length && seen < maxPairs; i += 1) {
-      for (let j = i + 1; j < tokenised.length && seen < maxPairs; j += 1) {
+
+    // S81-B03 (Codex round 8 P2): collect ALL qualifying pairs first,
+    // then sort by newer observation recency DESC before applying
+    // maxPairs. Previously the loop truncated at maxPairs in DB order,
+    // so the freshest contradictions inside a big concept group could
+    // be silently dropped. Sorting keeps recall stable as groups grow.
+    type Pair = { ai: number; bi: number; sim: number; newer_ts: number };
+    const groupPairs: Pair[] = [];
+    for (let i = 0; i < tokenised.length; i += 1) {
+      for (let j = i + 1; j < tokenised.length; j += 1) {
         const sim = jaccard(tokenised[i]!.tokens, tokenised[j]!.tokens);
         if (sim < threshold) continue;
-        seen += 1;
-        candidatePairs += 1;
         const a = tokenised[i]!.row;
         const b = tokenised[j]!.row;
-        const [older, newer] = Date.parse(a.created_at) <= Date.parse(b.created_at) ? [a, b] : [b, a];
-        pending.push({
-          older_id: older.observation_id,
-          newer_id: newer.observation_id,
-          project: older.project,
-          concept: rows[0]!.row?.concept ?? older.project, // placeholder, overwritten below
-          jaccard: sim,
-        });
-        // Fix concept reference — rows share the same concept so use the first.
-        pending[pending.length - 1]!.concept = (rows[0] as GroupRow).concept;
+        const ta = Date.parse(a.created_at) || 0;
+        const tb = Date.parse(b.created_at) || 0;
+        groupPairs.push({ ai: i, bi: j, sim, newer_ts: Math.max(ta, tb) });
       }
+    }
+    groupPairs.sort((x, y) => y.newer_ts - x.newer_ts);
+
+    for (const p of groupPairs.slice(0, maxPairs)) {
+      candidatePairs += 1;
+      const a = tokenised[p.ai]!.row;
+      const b = tokenised[p.bi]!.row;
+      const [older, newer] = Date.parse(a.created_at) <= Date.parse(b.created_at) ? [a, b] : [b, a];
+      pending.push({
+        older_id: older.observation_id,
+        newer_id: newer.observation_id,
+        project: older.project,
+        concept: (rows[0] as GroupRow).concept,
+        jaccard: p.sim,
+      });
     }
   }
 

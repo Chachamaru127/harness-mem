@@ -7,6 +7,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/Chachamaru127/harness-mem/mcp-server-go/internal/types"
+	"github.com/Chachamaru127/harness-mem/mcp-server-go/internal/util"
 )
 
 // HandlerFunc is the signature for all tool handlers.
@@ -110,6 +111,28 @@ func argString(args map[string]any, key string) string {
 		if s, ok := v.(string); ok {
 			return s
 		}
+	}
+	return ""
+}
+
+// resolveProjectScope (S81-A02/A03 Codex round 8 P1): derive the project
+// scope for coordination tools (lease/signal) from MCP call args.
+//
+// Order:
+//  1. explicit `project` argument
+//  2. `cwd` argument → run through util.ResolveProjectKey so multiple
+//     worktrees of the same repo collapse to the shared root
+//  3. empty string — caller did not scope; leave the stored project NULL
+//
+// Never falls back to os.Getwd(): that would be the daemon's launch
+// directory (shared across all MCP clients on a global install), which
+// defeats the repo/worktree isolation coordination tools promise.
+func resolveProjectScope(args map[string]any) string {
+	if v := argString(args, "project"); v != "" {
+		return v
+	}
+	if cwd := argString(args, "cwd"); cwd != "" {
+		return util.ResolveProjectKey(cwd)
 	}
 	return ""
 }

@@ -848,13 +848,17 @@
           "description": "Requesting agent id",
           "type": "string"
         },
+        "cwd": {
+          "description": "Caller's current working directory. When set and `project` is omitted, the scope is derived via worktree-aware resolution so the same repo collapses onto one key.",
+          "type": "string"
+        },
         "metadata": {
           "description": "Optional JSON metadata attached to the lease",
           "properties": {},
           "type": "object"
         },
         "project": {
-          "description": "Optional project scope",
+          "description": "Optional explicit project scope. Overrides cwd-based derivation.",
           "type": "string"
         },
         "target": {
@@ -1227,6 +1231,10 @@
           "description": "Audit/admin escape hatch: when true, disables project scoping and returns signals across every repo. Use only when you explicitly need the cross-project view.",
           "type": "boolean"
         },
+        "cwd": {
+          "description": "Caller's current working directory. When set and `project` is omitted, the project is derived via worktree-aware resolution so repo-scoped inboxes stay isolated.",
+          "type": "string"
+        },
         "include_broadcast": {
           "description": "Include broadcast signals (default true)",
           "type": "boolean"
@@ -1236,7 +1244,7 @@
           "type": "number"
         },
         "project": {
-          "description": "Scope reads to signals tagged with this project (plus null-project broadcasts). Auto-derived from the caller's cwd when omitted.",
+          "description": "Explicit project scope. Overrides cwd-based derivation.",
           "type": "string"
         },
         "thread_id": {
@@ -1264,6 +1272,10 @@
         "content": {
           "type": "string"
         },
+        "cwd": {
+          "description": "Caller's current working directory. When set and `project` is omitted, the project is derived via worktree-aware resolution.",
+          "type": "string"
+        },
         "expires_in_ms": {
           "description": "Auto-hide the signal after this many ms",
           "type": "number"
@@ -1273,7 +1285,7 @@
           "type": "string"
         },
         "project": {
-          "description": "Optional project scope",
+          "description": "Optional explicit project scope. Overrides cwd-based derivation.",
           "type": "string"
         },
         "reply_to": {
