@@ -521,7 +521,32 @@ export function archivedFilterSql(alias: string, includeArchived: boolean): stri
   if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
     throw new Error(`Invalid SQL alias: ${alias}`);
   }
-  return ` AND ${alias}.archived_at IS NULL`;
+  // §78-D01: archived (score-based soft-delete) and expired (TTL-based
+  // soft-delete) are both gated on the same admin flag — asking to see
+  // soft-deleted rows implies the caller wants *all* soft-deleted rows,
+  // and mixing the two would force every read path to thread a second
+  // flag just to stay consistent.
+  return ` AND ${alias}.archived_at IS NULL${expiredFilterSql(alias)}`;
+}
+
+/**
+ * §78-D01 / S81-B02 helper: emits
+ * `AND (<alias>.expires_at IS NULL OR <alias>.expires_at > <nowIso>)`
+ * so expired rows are filtered at read time even before the forget policy
+ * sweeps them into archived_at. The timestamp is inlined (single-quoted)
+ * so callers don't have to thread a bind parameter through every query;
+ * `nowIso` must be an ISO 8601 string with no embedded single quotes
+ * (it's validated below to keep this SQL-injection-safe).
+ */
+export function expiredFilterSql(alias: string, nowIso?: string): string {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
+    throw new Error(`Invalid SQL alias: ${alias}`);
+  }
+  const iso = nowIso ?? new Date().toISOString();
+  if (!/^[0-9T:.\-Z+]+$/.test(iso)) {
+    throw new Error(`Invalid ISO timestamp for expiredFilterSql: ${iso}`);
+  }
+  return ` AND (${alias}.expires_at IS NULL OR ${alias}.expires_at > '${iso}')`;
 }
 
 export function visibilityFilterSql(alias: string, includePrivate: boolean): string {
@@ -901,7 +926,13 @@ export function loadObservations(
   // feed / timeline / resume_pack / searchFacets / getObservations that
   // bypass applyCommonFilters(). Admin / audit callers pass
   // includeArchived=true explicitly.
-  const archivedClause = options.includeArchived ? "" : " AND o.archived_at IS NULL";
+  //
+  // §78-D01: expired rows are hidden on the same admin flag. The forget
+  // policy eventually flips archived_at for expired rows, but we don't
+  // want readers to see stale TTL'd data in the meantime.
+  const archivedClause = options.includeArchived
+    ? ""
+    : ` AND o.archived_at IS NULL${expiredFilterSql("o")}`;
 
   for (let offset = 0; offset < ids.length; offset += MAX_BATCH) {
     const batch = ids.slice(offset, offset + MAX_BATCH);

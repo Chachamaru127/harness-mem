@@ -29,6 +29,7 @@
  */
 
 import { type Database } from "bun:sqlite";
+import { expiredFilterSql } from "../core/core-utils.js";
 
 export interface ContradictionPair {
   older_id: string;
@@ -121,6 +122,10 @@ function loadConceptGroups(
   // implementation dropped legacy tags globally as soon as any concept
   // tag existed anywhere in the DB, which silently broke partially
   // migrated setups.
+  // §78-D01: expired rows are filtered at read time in the same way
+  // archived rows are, so contradiction detection never wastes an LLM
+  // round on a row that is about to be swept out by the forget policy.
+  const expiredClause = expiredFilterSql("o");
   const conceptRows = db
     .query(
       `
@@ -129,6 +134,7 @@ function loadConceptGroups(
           FROM mem_observations o
           JOIN mem_tags t ON t.observation_id = o.id
          WHERE o.archived_at IS NULL
+           ${expiredClause}
            AND t.tag_type = 'concept'
            ${projectFilter ? "AND o.project = ?" : ""}
       `
@@ -143,6 +149,7 @@ function loadConceptGroups(
           FROM mem_observations o
           JOIN mem_tags t ON t.observation_id = o.id
          WHERE o.archived_at IS NULL
+           ${expiredClause}
            AND t.tag_type IN ('topic', 'category')
            ${projectFilter ? "AND o.project = ?" : ""}
       `

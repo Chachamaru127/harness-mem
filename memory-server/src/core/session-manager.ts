@@ -28,6 +28,7 @@ import {
   clampLimit,
   makeErrorResponse,
   makeResponse,
+  expiredFilterSql,
   nowIso,
   parseArrayJson,
   visibilityFilterSql,
@@ -309,6 +310,7 @@ export class SessionManager {
           LEFT JOIN mem_events e ON e.event_id = o.event_id
           WHERE o.session_id = ?
             AND o.archived_at IS NULL
+            ${expiredFilterSql("o")}
           ORDER BY o.created_at ASC, o.id ASC
           LIMIT ?
         `
@@ -613,9 +615,11 @@ export class SessionManager {
     // default. Admin callers need to pass `include_archived=true`
     // explicitly — the old code used include_private as a proxy which
     // bypassed auto-forget on detailed-inspection paths.
+    // §78-D01: expired rows are hidden under the same admin flag.
     const includeArchived = Boolean((request as { include_archived?: boolean }).include_archived);
     if (!includeArchived) {
       sql += " AND o.archived_at IS NULL";
+      sql += expiredFilterSql("o");
     }
 
     // TEAM-005: member ロール — observations の user_id / team_id で絞る

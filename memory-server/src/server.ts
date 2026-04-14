@@ -1508,6 +1508,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             project: typeof body.project === "string" ? body.project : undefined,
             platform: typeof body.platform === "string" ? body.platform : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+            // §78-D01: optional ISO timestamp for temporal forgetting.
+            expires_at:
+              typeof body.expires_at === "string" && body.expires_at.length > 0
+                ? body.expires_at
+                : undefined,
           })
         );
       }

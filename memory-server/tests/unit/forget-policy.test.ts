@@ -43,6 +43,7 @@ interface SeedRow {
   signal_score?: number;
   privacy_tags?: string[];
   archived_at?: string | null;
+  expires_at?: string | null;
 }
 
 function seed(db: Database, row: SeedRow) {
@@ -51,8 +52,8 @@ function seed(db: Database, row: SeedRow) {
   db.query(
     `INSERT INTO mem_observations(id, event_id, platform, project, session_id, title, content,
        content_redacted, observation_type, memory_type, tags_json, privacy_tags_json,
-       user_id, team_id, created_at, updated_at, access_count, signal_score, archived_at)
-     VALUES (?, NULL, 'test', ?, ?, 't', 'c', 'c', 'context', 'semantic', '[]', ?, 'default', NULL, ?, ?, ?, ?, ?)`
+       user_id, team_id, created_at, updated_at, access_count, signal_score, archived_at, expires_at)
+     VALUES (?, NULL, 'test', ?, ?, 't', 'c', 'c', 'context', 'semantic', '[]', ?, 'default', NULL, ?, ?, ?, ?, ?, ?)`
   ).run(
     row.id,
     row.project ?? "p",
@@ -62,7 +63,8 @@ function seed(db: Database, row: SeedRow) {
     now,
     row.access_count ?? 0,
     row.signal_score ?? 0,
-    row.archived_at ?? null
+    row.archived_at ?? null,
+    row.expires_at ?? null
   );
 }
 
@@ -227,5 +229,125 @@ describe("forget-policy S81-B02", () => {
     const ids = r.candidates.map((c) => c.observation_id);
     expect(ids).toContain("p1-old");
     expect(ids).not.toContain("p2-old");
+  });
+
+  // -------------------------------------------------------------------------
+  // §78-D01 temporal-forgetting specialisation
+  // -------------------------------------------------------------------------
+
+  test("expires_at in the past evicts regardless of score / age / access", () => {
+    // A fresh (5d old), high-signal (0.9), accessed (3 hits) row is normally
+    // safe from the score-based path. If its TTL has passed, it must still
+    // be evicted.
+    seed(db, {
+      id: "ttl-expired",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 3,
+      signal_score: 0.9,
+      expires_at: daysAgo(1), // expired 1 day ago
+    });
+    seed(db, {
+      id: "ttl-future",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 0,
+      signal_score: 0,
+      expires_at: new Date(NOW.getTime() + 86400 * 1000).toISOString(), // expires 1 day from now
+    });
+    seed(db, {
+      id: "no-ttl",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 0,
+      signal_score: 0,
+    });
+
+    const { candidates } = collectForgetCandidates(db, { now: () => NOW });
+    const ids = candidates.map((c) => c.observation_id);
+    expect(ids).toContain("ttl-expired");
+    expect(ids).not.toContain("ttl-future");
+    expect(ids).not.toContain("no-ttl");
+
+    const expiredCandidate = candidates.find((c) => c.observation_id === "ttl-expired");
+    expect(expiredCandidate?.expired_at).toBeDefined();
+    // TTL candidates reserve score = 1.0 so they sort above score hits.
+    expect(expiredCandidate?.score).toBe(1);
+  });
+
+  test("TTL path ignores protect_accessed — expired rows are always evictable", () => {
+    seed(db, {
+      id: "accessed-but-expired",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 42,
+      signal_score: 1,
+      expires_at: daysAgo(1),
+    });
+    const { candidates } = collectForgetCandidates(db, {
+      now: () => NOW,
+      protect_accessed: true,
+    });
+    expect(candidates.map((c) => c.observation_id)).toContain("accessed-but-expired");
+  });
+
+  test("legal_hold still trumps an expired TTL", () => {
+    seed(db, {
+      id: "legal-and-expired",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 0,
+      signal_score: 0,
+      expires_at: daysAgo(1),
+      privacy_tags: ["legal_hold"],
+    });
+    const { candidates } = collectForgetCandidates(db, { now: () => NOW });
+    expect(candidates.map((c) => c.observation_id)).not.toContain("legal-and-expired");
+  });
+
+  test("wet mode actually flips archived_at for TTL candidates", () => {
+    seed(db, {
+      id: "ttl-hit",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 0,
+      signal_score: 1,
+      expires_at: daysAgo(1),
+    });
+    process.env.HARNESS_MEM_AUTO_FORGET = "1";
+    const r = runForgetPolicy(db, { dry_run: false, now: () => NOW });
+    expect(r.evicted).toBe(1);
+    const archived = (
+      db.query(`SELECT id FROM mem_observations WHERE archived_at IS NOT NULL`).all() as Array<{
+        id: string;
+      }>
+    ).map((r) => r.id);
+    expect(archived).toContain("ttl-hit");
+  });
+
+  test("audit payload exposes expired_candidate_ids for TTL hits only", () => {
+    seed(db, {
+      id: "ttl-hit",
+      session_id: "s1",
+      created_at: daysAgo(5),
+      access_count: 0,
+      signal_score: 1,
+      expires_at: daysAgo(1),
+    });
+    seed(db, {
+      id: "score-hit",
+      session_id: "s1",
+      created_at: daysAgo(500),
+      access_count: 0,
+      signal_score: 0,
+    });
+    process.env.HARNESS_MEM_AUTO_FORGET = "1";
+    const events: Array<{ action: string; details: Record<string, unknown> }> = [];
+    runForgetPolicy(db, { dry_run: false, now: () => NOW }, (action, details) =>
+      events.push({ action, details })
+    );
+    const d = events[0]!.details;
+    expect((d.expired_candidate_ids as string[]).sort()).toEqual(["ttl-hit"]);
+    expect((d.candidate_ids as string[]).sort()).toEqual(["score-hit", "ttl-hit"]);
   });
 });

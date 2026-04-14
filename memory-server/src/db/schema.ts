@@ -69,6 +69,11 @@ export function initSchema(db: Database): void {
       -- in the base CREATE TABLE so fresh test DBs that call initSchema()
       -- without migrateSchema() still have the column.
       archived_at TEXT DEFAULT NULL,
+      -- §78-D01 / S81-B02 temporal-forgetting specialisation: ISO
+      -- timestamp after which the row must be treated as expired. NULL
+      -- means "never expires". Expired rows are excluded from reads
+      -- even before the forget policy sweeps them into archived_at.
+      expires_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(event_id) REFERENCES mem_events(event_id) ON DELETE SET NULL,
@@ -810,6 +815,24 @@ export function migrateSchema(db: Database): void {
   try {
     db.exec(
       `CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`
+    );
+  } catch {
+    // already exists
+  }
+
+  // §78-D01 / S81-B02 temporal-forgetting specialisation: TTL column on
+  // observations. NULL = never expires. Rows whose expires_at <= now are
+  // excluded from reads (see expiredFilterSql in core-utils.ts) and are
+  // archived by the forget policy regardless of score.
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN expires_at TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mem_obs_expires_at ON mem_observations(expires_at)`
     );
   } catch {
     // already exists

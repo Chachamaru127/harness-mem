@@ -13,6 +13,12 @@
  * score is also 0..1; anything at or above `score_threshold` is evicted in
  * "wet" mode (sets `archived_at`) or merely reported in "dry" mode.
  *
+ * §78-D01 temporal-forgetting specialisation:
+ *   Rows with an `expires_at` timestamp in the past are force-archived on
+ *   every run, independent of the score axes. This is the concrete landing
+ *   ground for §78-D01 TTL semantics that was previously shipped as a
+ *   design direction; the score-based and TTL-based paths coexist here.
+ *
  * Design notes:
  *   - Pure function of the rows + options. Tests pass a literal fixture so
  *     the maths is exercised without needing a full core instance.
@@ -73,6 +79,11 @@ export interface ForgetPolicyCandidate {
   age_days: number;
   access_count: number;
   signal_score: number;
+  /**
+   * §78-D01: populated when the row was picked up via the TTL path
+   * (expires_at <= now). Score-axis candidates leave this undefined.
+   */
+  expired_at?: string;
 }
 
 export interface ForgetPolicyResult {
@@ -92,6 +103,7 @@ interface ObsRow {
   access_count: number | null;
   signal_score: number | null;
   archived_at: string | null;
+  expires_at: string | null;
   privacy_tags_json: string | null;
 }
 
@@ -190,7 +202,7 @@ export function collectForgetCandidates(
 
   const params: unknown[] = [];
   let sql = `
-    SELECT id, project, created_at, access_count, signal_score, archived_at, privacy_tags_json
+    SELECT id, project, created_at, access_count, signal_score, archived_at, expires_at, privacy_tags_json
     FROM mem_observations
     WHERE archived_at IS NULL
   `;
@@ -202,6 +214,7 @@ export function collectForgetCandidates(
   const rows = db.query(sql).all(...(params as never[])) as ObsRow[];
   const scanned = rows.length;
   const candidates: ForgetPolicyCandidate[] = [];
+  const nowIso = now.toISOString();
 
   // S81-B02 hardening (Codex round 3 P2.2): scoreFactors' `age` factor
   // rises from 0 at 30d, but the access/signal factors can still push
@@ -215,19 +228,46 @@ export function collectForgetCandidates(
     // Never auto-archive privacy-sensitive rows. S81-B02 (Codex round 4
     // P2.3): match the full privacy set the search-side filter treats as
     // non-default-visible. `sensitive` is the Codex-flagged leak.
+    // §78-D01: legal_hold trumps expires_at too — a compliance hold
+    // must survive past its TTL rather than silently disappear.
     const tags = parsePrivacyTags(row.privacy_tags_json).map((t) => t.toLowerCase());
-    if (
+    const isProtectedByPrivacy =
       tags.includes("private") ||
       tags.includes("secret") ||
       tags.includes("sensitive") ||
-      tags.includes("legal_hold")
-    ) continue;
+      tags.includes("legal_hold");
+    if (isProtectedByPrivacy) continue;
 
     const accessCount = row.access_count ?? 0;
-    if (protectAccessed && accessCount > 0) continue;
-
     const signalScore = row.signal_score ?? 0;
     const ageDays = daysBetween(row.created_at, now);
+
+    // §78-D01 TTL path: rows whose expires_at has passed are always
+    // forget candidates, independent of score / age / access gates.
+    // `access_count > 0` does NOT protect an expired row — an expired
+    // TTL is an explicit author intent to forget, not a value signal.
+    if (row.expires_at && row.expires_at <= nowIso) {
+      const factors = scoreFactors({
+        access_count: accessCount,
+        signal_score: signalScore,
+        age_days: ageDays,
+      });
+      candidates.push({
+        observation_id: row.id,
+        project: row.project,
+        // Reserve 1.0 for TTL hits so they always rank above score
+        // candidates under the descending sort below.
+        score: 1,
+        factors,
+        age_days: Math.round(ageDays * 100) / 100,
+        access_count: accessCount,
+        signal_score: signalScore,
+        expired_at: row.expires_at,
+      });
+      continue;
+    }
+
+    if (protectAccessed && accessCount > 0) continue;
 
     // Protect anything younger than the minimum age, regardless of how
     // the other two axes score.
@@ -298,6 +338,7 @@ export function runForgetPolicy(
   }
 
   if (writeAudit) {
+    const expiredIds = candidates.filter((c) => c.expired_at).map((c) => c.observation_id);
     writeAudit("admin.forget_policy.run", {
       dry_run: effectiveDryRun,
       requested_dry_run: dryRequested,
@@ -307,6 +348,10 @@ export function runForgetPolicy(
       score_threshold: scoreThreshold,
       weights,
       candidate_ids: candidates.map((c) => c.observation_id),
+      // §78-D01: expose which evictions came from the TTL path vs the
+      // score path so operators can reverse a misconfigured expires_at
+      // backfill without also reverting score-based hits.
+      expired_candidate_ids: expiredIds,
       project: options.project,
     });
   }

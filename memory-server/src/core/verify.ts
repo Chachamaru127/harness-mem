@@ -91,6 +91,7 @@ interface ObservationRow {
   user_id: string | null;
   team_id: string | null;
   archived_at: string | null;
+  expires_at: string | null;
 }
 
 interface EventRow {
@@ -167,7 +168,7 @@ export function verifyObservation(
     .query(
       `
         SELECT id, event_id, platform, project, session_id, title, created_at,
-               privacy_tags_json, user_id, team_id, archived_at
+               privacy_tags_json, user_id, team_id, archived_at, expires_at
         FROM mem_observations
         WHERE id = ?
       `
@@ -197,7 +198,11 @@ export function verifyObservation(
   // by default. Gated on `include_archived` (not `include_private`) so
   // callers that only want their private notes do NOT also bypass
   // auto-forget.
-  if (!request.include_archived && obsRow.archived_at !== null) {
+  // §78-D01: expired rows are hidden under the same flag — a TTL that
+  // has passed is semantically equivalent to a forget-policy archive.
+  const isExpired =
+    obsRow.expires_at !== null && Date.parse(obsRow.expires_at) <= Date.now();
+  if (!request.include_archived && (obsRow.archived_at !== null || isExpired)) {
     return {
       ok: false,
       observation: {

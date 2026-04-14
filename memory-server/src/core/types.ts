@@ -27,6 +27,13 @@ export interface EventEnvelope {
   user_id?: string;
   /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
   team_id?: string;
+  /**
+   * §78-D01 / S81-B02 temporal-forgetting: optional ISO 8601 timestamp
+   * after which the resulting observation must be treated as expired
+   * (excluded from reads and archived by the forget policy). NULL =
+   * never expires.
+   */
+  expires_at?: string;
 }
 
 export interface SearchRequest {

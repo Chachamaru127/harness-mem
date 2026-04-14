@@ -181,13 +181,14 @@ var memToolStats = mcp.NewTool("harness_mem_stats",
 )
 
 var memToolIngest = mcp.NewTool("harness_mem_ingest",
-	mcp.WithDescription("Ingest a document (knowledge file, ADR, decisions.md) into memory."),
+	mcp.WithDescription("Ingest a document (knowledge file, ADR, decisions.md) into memory. Supports §78-D01 temporal forgetting via optional expires_at."),
 	mcp.WithString("file_path", mcp.Required(), mcp.Description("Path identifier for the document")),
 	mcp.WithString("content", mcp.Required(), mcp.Description("Text content of the document")),
 	mcp.WithString("kind", mcp.Description("Document kind (auto-detected if omitted)"), mcp.Enum("decisions_md", "adr")),
 	mcp.WithString("project"),
 	mcp.WithString("platform"),
 	mcp.WithString("session_id"),
+	mcp.WithString("expires_at", mcp.Description("§78-D01 temporal forgetting: ISO 8601 timestamp after which the observation is treated as expired (excluded from reads and archived by the forget policy). Omit for \"never expires\".")),
 )
 
 var memToolGraph = mcp.NewTool("harness_mem_graph",

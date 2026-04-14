@@ -698,6 +698,8 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"project":    optStr(args, "project"),
 			"platform":   optStr(args, "platform"),
 			"session_id": optStr(args, "session_id"),
+			// §78-D01 temporal forgetting — optional TTL on the ingested document.
+			"expires_at": optStr(args, "expires_at"),
 		})
 		if err != nil {
 			return classifyError(err)

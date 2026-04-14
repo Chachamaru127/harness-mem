@@ -2719,6 +2719,8 @@ export class HarnessMemCore {
     project?: string;
     platform?: string;
     session_id?: string;
+    /** §78-D01: optional ISO timestamp after which the observation expires. */
+    expires_at?: string;
   }): ApiResponse {
     return this.ingestCoord.ingestKnowledgeFile(request);
   }
