@@ -184,12 +184,21 @@ describe("verifyObservation S81-C03", () => {
     insertEvent(db, "e-7", "s-7", { tool_name: "Write", file_path: "a.ts" });
     insertObservation(db, "obs-7", "s-7", "e-7", { privacyTags: ["private"] });
 
+    // S81-C03 round 15 P2: private rows now surface the same shape as
+    // a genuinely missing observation — no session_id / project /
+    // platform / created_at leak — to prevent verify from being used
+    // as a metadata oracle.
     const hidden = verifyObservation(db, { observation_id: "obs-7" });
     expect(hidden.ok).toBe(false);
+    expect(hidden.observation.missing).toBe(true);
     expect(hidden.observation.event_id).toBeNull();
+    expect(hidden.observation.session_id).toBeNull();
+    expect(hidden.observation.project).toBeNull();
+    expect(hidden.observation.platform).toBeNull();
+    expect(hidden.observation.created_at).toBeNull();
     expect(hidden.event).toBeNull();
     expect(hidden.provenance).toBeNull();
-    expect(hidden.notes.some((n) => n.includes("private"))).toBe(true);
+    expect(hidden.notes).toEqual(["observation not found"]);
 
     const visible = verifyObservation(db, {
       observation_id: "obs-7",

@@ -249,21 +249,26 @@ export function verifyObservation(
   if (!request.include_private) {
     const tags = parseArrayJson(obsRow.privacy_tags_json);
     if (isPrivate(tags)) {
-      notes.push("observation is private; pass include_private=true to see provenance");
+      // S81-C03 (Codex round 15 P2): return the same redacted shape as
+      // the "observation not found" / archived / cross-tenant paths so
+      // a caller who knows the observation_id cannot use verify as a
+      // metadata oracle for private notes. Previously session_id,
+      // project, platform, and created_at leaked through here.
       return {
         ok: false,
         observation: {
           observation_id: obsRow.id,
-          session_id: obsRow.session_id,
-          project: obsRow.project,
-          platform: obsRow.platform,
-          event_id: null, // hide linkage when redacted
-          created_at: obsRow.created_at,
+          session_id: null,
+          project: null,
+          platform: null,
+          event_id: null,
+          created_at: null,
           title: null,
+          missing: true,
         },
         event: null,
         provenance: null,
-        notes,
+        notes: ["observation not found"],
       };
     }
   }

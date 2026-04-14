@@ -64,6 +64,7 @@ import {
   generateSearchReason,
   recencyScore,
   visibilityFilterSql,
+  archivedFilterSql,
   type RankingWeights,
   type SearchCandidate,
   type VectorSearchResult,
@@ -1350,16 +1351,13 @@ export class ObservationStore {
     if (!options.skipPrivacy) {
       nextSql += visibilityFilterSql(alias, Boolean(filters.include_private));
     }
-    // S81-B02 (Codex round 9 P2): soft-archive visibility is gated by
-    // its own dedicated `include_archived` flag, NOT by `include_private`.
-    // `include_private` is a user-facing toggle for private notes;
-    // entangling the two would let any caller asking for their private
-    // data accidentally see rows that forget_policy has pruned and
-    // bypass auto-forget entirely on inspection paths.
+    // S81-B02 (Codex round 9 P2 / 15 P1): archived visibility is gated
+    // by its own dedicated `include_archived` flag via archivedFilterSql
+    // so every direct-SQL reader in observation-store uses the same
+    // predicate as the shared helper. include_private stays focused on
+    // private / secret / sensitive tag visibility.
     const extraFilters = filters as { include_archived?: boolean };
-    if (!extraFilters.include_archived) {
-      nextSql += ` AND ${alias}.archived_at IS NULL`;
-    }
+    nextSql += archivedFilterSql(alias, Boolean(extraFilters.include_archived));
     return nextSql;
   }
 
@@ -3699,6 +3697,8 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: archived rows stay hidden from feed too.
+    sql += archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
 
     if (this.deps.accessFilter?.sql) {
       sql += " " + this.deps.accessFilter.sql;
@@ -3820,6 +3820,7 @@ export class ObservationStore {
       whereClauses = this.appendProjectFilter(whereClauses, baseParams, "o", projectMembers);
       whereClauses += this.deps.platformVisibilityFilterSql("o");
       whereClauses += visibilityFilterSql("o", includePrivate);
+      whereClauses += archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
       if (this.deps.accessFilter?.sql) {
         whereClauses += " " + this.deps.accessFilter.sql;
         baseParams.push(...this.deps.accessFilter.params);
@@ -4015,6 +4016,10 @@ export class ObservationStore {
     const centerCreatedAt =
       typeof center.created_at === "string" ? center.created_at : nowIso();
     const visibility = visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: timeline before/after should not surface
+    // archived rows either. include_archived is forwarded from the
+    // caller exactly like the other admin-only flags.
+    const archived = archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
 
     // TEAM-005: テナント分離 — before/after クエリにもテナントフィルタ適用
     const tenantFilterSql = request.user_id
@@ -4034,6 +4039,7 @@ export class ObservationStore {
           WHERE o.project = ? AND o.session_id = ? AND o.created_at < ?
           ${tenantFilterSql}
           ${visibility}
+          ${archived}
           ORDER BY o.created_at DESC
           LIMIT ?
         `
@@ -4050,6 +4056,7 @@ export class ObservationStore {
           WHERE o.project = ? AND o.session_id = ? AND o.created_at > ?
           ${tenantFilterSql}
           ${visibility}
+          ${archived}
           ORDER BY o.created_at ASC
           LIMIT ?
         `
@@ -4216,6 +4223,12 @@ export class ObservationStore {
     const limit = clampLimit(request.limit, 5, 1, 20);
     const includePrivate = Boolean(request.include_private);
     const visibility = visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: resume_pack reads mem_observations directly
+    // through several ad-hoc queries. Add the archive filter uniformly.
+    const archived = archivedFilterSql(
+      "o",
+      Boolean((request as { include_archived?: boolean }).include_archived)
+    );
 
     // max_tokens: request > config > env > default (2000)
     const requestedBudget = request.resume_pack_max_tokens;
@@ -4288,7 +4301,7 @@ export class ObservationStore {
       pinnedContinuitySql += " AND o.session_id <> ?";
       pinnedContinuityParams.push(request.session_id);
     }
-    pinnedContinuitySql += `${visibility} ORDER BY o.created_at DESC LIMIT 1`;
+    pinnedContinuitySql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT 1`;
     const pinnedContinuity = this.deps.db
       .query(pinnedContinuitySql)
       .get(...(pinnedContinuityParams as any[])) as {
@@ -4328,7 +4341,7 @@ export class ObservationStore {
         rowsSql += " AND o.session_id <> ?";
         rowParams.push(request.session_id);
       }
-      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowsSql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT ?`;
       rowParams.push(limit);
       rows = this.deps.db
         .query(rowsSql)
@@ -4359,7 +4372,7 @@ export class ObservationStore {
         rowsSql += " AND o.session_id <> ?";
         rowParams.push(request.session_id);
       }
-      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowsSql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT ?`;
       rowParams.push(limit);
       rows = this.deps.db
         .query(rowsSql)

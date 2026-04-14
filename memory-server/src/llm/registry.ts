@@ -84,7 +84,13 @@ export async function createClaudeProviderAsync(
     // endpoint. The provider treats OPENAI_API_KEY/endpoint identically;
     // we synthesise the equivalent config here so the caller does not
     // have to set both envs.
-    const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com/v1/";
+    // OpenAIProvider appends `/v1/chat/completions` to the endpoint itself,
+    // so the base URL must NOT already end in `/v1`. Accept both forms from
+    // ANTHROPIC_BASE_URL and normalise — stripping a trailing `/v1` or `/v1/`
+    // prevents the `/v1/v1/chat/completions` 404 reported by Codex round 15.
+    let anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com";
+    anthropicBase = anthropicBase.replace(/\/+$/, "");
+    anthropicBase = anthropicBase.replace(/\/v1$/, "");
     return createLLMProvider({
       ...config,
       provider: "openai",
