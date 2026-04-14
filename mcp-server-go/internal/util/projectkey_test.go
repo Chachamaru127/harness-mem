@@ -7,12 +7,23 @@ import (
 	"testing"
 )
 
+// writeGitHEAD creates a minimal .git/HEAD file so ResolveProjectKey's
+// "real repo" check (round 12 P2 parity with TS) accepts the directory.
+func writeGitHEAD(t *testing.T, gitDir string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(gitDir, "HEAD"), []byte("ref: refs/heads/main\n"), 0o644); err != nil {
+		t.Fatalf("write .git/HEAD: %v", err)
+	}
+}
+
 func TestResolveProjectKey_PlainRepo(t *testing.T) {
 	root := t.TempDir()
 	repo := filepath.Join(root, "myrepo")
-	if err := os.MkdirAll(filepath.Join(repo, ".git"), 0o755); err != nil {
+	gitDir := filepath.Join(repo, ".git")
+	if err := os.MkdirAll(gitDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
+	writeGitHEAD(t, gitDir)
 	nested := filepath.Join(repo, "src", "internal")
 	if err := os.MkdirAll(nested, 0o755); err != nil {
 		t.Fatalf("mkdir nested: %v", err)
@@ -35,6 +46,7 @@ func TestResolveProjectKey_ThreeWorktreesSameRoot(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(mainRepo, ".git", "worktrees", "feature-b"), 0o755); err != nil {
 		t.Fatalf("mkdir main/.git/worktrees/feature-b: %v", err)
 	}
+	writeGitHEAD(t, filepath.Join(mainRepo, ".git"))
 
 	mkWorktree := func(name string) string {
 		wt := filepath.Join(root, name)
@@ -96,6 +108,7 @@ func TestResolveProjectKey_WorktreeFromParentDir(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(mainRepo, ".git", "worktrees", "wt"), 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
+	writeGitHEAD(t, filepath.Join(mainRepo, ".git"))
 
 	wt := filepath.Join(root, "wt")
 	if err := os.MkdirAll(wt, 0o755); err != nil {

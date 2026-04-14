@@ -2301,36 +2301,11 @@ export class HarnessMemCore {
       // best effort
     }
 
-    // S81-B02: Opt-in low-value eviction policy. Runs *after* the normal
-    // consolidation pass so fact extraction and dedupe complete against the
-    // full observation set first. Dry-run by default; wet mode additionally
-    // requires HARNESS_MEM_AUTO_FORGET=1.
-    let forget: ForgetPolicyResult | undefined;
-    if (request.forget_policy) {
-      forget = runForgetPolicy(
-        this.db,
-        {
-          dry_run: request.forget_policy.dry_run,
-          score_threshold: request.forget_policy.score_threshold,
-          weights: request.forget_policy.weights,
-          limit: request.forget_policy.limit,
-          protect_accessed: request.forget_policy.protect_accessed,
-          project: request.project,
-        },
-        (action, details) => {
-          try {
-            this.writeAuditLog(action, "observation", "", details);
-          } catch {
-            // best effort
-          }
-        }
-      );
-    }
-
-    // S81-B03: Opt-in contradiction detection. The adjudicator is the LLM
-    // (Claude Agent SDK first, falling back through the existing registry).
-    // If no provider is available, we degrade to a conservative stub that
-    // reports zero contradictions so the run still completes.
+    // S81-B03 (Codex round 12 P2): run contradiction detection BEFORE
+    // forget_policy. If forget archived rows first, detectContradictions
+    // (which filters `archived_at IS NULL`) would never see pairs that
+    // involve a just-archived row, silently dropping findings in a
+    // combined run.
     let contradiction: ContradictionDetectorResult | undefined;
     if (request.contradiction_scan) {
       const adjudicator = await this.buildContradictionAdjudicator();
@@ -2354,6 +2329,33 @@ export class HarnessMemCore {
       } catch {
         // best effort
       }
+    }
+
+    // S81-B02: Opt-in low-value eviction policy. Runs *after* the normal
+    // consolidation pass AND after contradiction detection so fact
+    // extraction, dedupe, and contradiction findings complete against
+    // the full observation set first. Dry-run by default; wet mode
+    // additionally requires HARNESS_MEM_AUTO_FORGET=1.
+    let forget: ForgetPolicyResult | undefined;
+    if (request.forget_policy) {
+      forget = runForgetPolicy(
+        this.db,
+        {
+          dry_run: request.forget_policy.dry_run,
+          score_threshold: request.forget_policy.score_threshold,
+          weights: request.forget_policy.weights,
+          limit: request.forget_policy.limit,
+          protect_accessed: request.forget_policy.protect_accessed,
+          project: request.project,
+        },
+        (action, details) => {
+          try {
+            this.writeAuditLog(action, "observation", "", details);
+          } catch {
+            // best effort
+          }
+        }
+      );
     }
 
     return makeResponse(

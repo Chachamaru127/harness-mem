@@ -1837,12 +1837,29 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const body = await parseRequestJson(request);
         const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
         if (!agentId) return badRequest("agent_id is required");
+        // Codex round 12 P1: `all_projects` is the documented "audit /
+        // admin cross-project" escape hatch. In auth-enabled
+        // deployments a plain member token must NOT be able to read
+        // same-tenant signals across every repo by opting into it.
+        // Allow only when either (a) no auth is configured (local /
+        // single-tenant) or (b) the identity has role=admin.
+        let allProjects = body.all_projects === true;
+        if (allProjects && getAuthConfig() !== null) {
+          const identity = resolveRequestIdentity(request);
+          if (identity === null || identity.role !== "admin") {
+            return jsonResponse({
+              ok: false,
+              error: "admin_only",
+              details: "all_projects requires an admin token in auth-enabled deployments",
+            }, 403);
+          }
+        }
         const signals = signalStore.read({
           agentId,
           threadId: typeof body.thread_id === "string" ? body.thread_id : undefined,
           includeBroadcast: body.include_broadcast !== false,
           project: typeof body.project === "string" ? body.project : undefined,
-          all_projects: body.all_projects === true,
+          all_projects: allProjects,
           userId: acc.user_id,
           teamId: acc.team_id,
           limit: typeof body.limit === "number" ? body.limit : undefined,

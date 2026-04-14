@@ -53,10 +53,16 @@ func ResolveProjectKey(cwd string) string {
 		gitPath := filepath.Join(current, ".git")
 		if info, err := os.Lstat(gitPath); err == nil {
 			if info.IsDir() {
-				// Plain repo root.
-				return realpathOrSelf(current)
-			}
-			if info.Mode().IsRegular() {
+				// Plain repo root — only when .git/HEAD actually exists.
+				// Codex round 12 P2: parity with the TS implementation
+				// (resolveDirectGitWorkspaceRoot), which requires HEAD
+				// so that empty / synthetic `.git/` directories below
+				// an ancestor (dotfiles, test scaffolds) do not
+				// accidentally unify unrelated workspaces onto one key.
+				if _, err := os.Stat(filepath.Join(gitPath, "HEAD")); err == nil {
+					return realpathOrSelf(current)
+				}
+			} else if info.Mode().IsRegular() {
 				// Linked worktree. Parse gitdir pointer.
 				if commonRoot := commonRootFromGitFile(gitPath); commonRoot != "" {
 					return realpathOrSelf(commonRoot)
