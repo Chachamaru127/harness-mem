@@ -117,7 +117,14 @@ function parseArrayJson(raw: string | null): string[] {
 }
 
 function isPrivate(tags: string[]): boolean {
-  return tags.some((t) => t === "private" || t === "secret");
+  // S81-C03 (Codex round 4 P2): align with existing visibility filter in
+  // core-utils.ts which treats `sensitive` equivalent to `private`.
+  // Without this the verify endpoint could leak metadata of rows that
+  // the normal search APIs already hide.
+  return tags.some((t) => {
+    const lowered = t.toLowerCase();
+    return lowered === "private" || lowered === "secret" || lowered === "sensitive";
+  });
 }
 
 export function verifyObservation(

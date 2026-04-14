@@ -212,9 +212,16 @@ export function collectForgetCandidates(
   const MIN_AGE_DAYS_FOR_EVICTION = 30;
 
   for (const row of rows) {
-    // Never auto-archive privacy-sensitive rows.
-    const tags = parsePrivacyTags(row.privacy_tags_json);
-    if (tags.includes("private") || tags.includes("legal_hold")) continue;
+    // Never auto-archive privacy-sensitive rows. S81-B02 (Codex round 4
+    // P2.3): match the full privacy set the search-side filter treats as
+    // non-default-visible. `sensitive` is the Codex-flagged leak.
+    const tags = parsePrivacyTags(row.privacy_tags_json).map((t) => t.toLowerCase());
+    if (
+      tags.includes("private") ||
+      tags.includes("secret") ||
+      tags.includes("sensitive") ||
+      tags.includes("legal_hold")
+    ) continue;
 
     const accessCount = row.access_count ?? 0;
     if (protectAccessed && accessCount > 0) continue;

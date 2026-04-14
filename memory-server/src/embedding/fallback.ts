@@ -111,10 +111,33 @@ export function withCircuitBreaker(
   const { fallbackTo, ...breakerOptions } = options;
   const breaker = createCircuitBreaker(breakerOptions);
 
+  // S81-D01 (Codex round 4 P1): the wrapped OpenAI/Ollama embedding
+  // providers DO NOT throw on network/protocol failure — they return a
+  // local fallback vector and flag their `health()` as "degraded". So
+  // an exception-only breaker never observed failures and the cooldown
+  // never engaged. Observe health() after each call too: a degraded /
+  // unhealthy status counts as a failure for breaker purposes even
+  // when embed() returns "successfully".
   const callWrapped = (text: string): number[] => {
     try {
       const vector = wrapped.embed(text);
-      breaker.recordSuccess();
+      let degraded = false;
+      let details = "";
+      try {
+        const health = wrapped.health();
+        if (health.status === "degraded") {
+          degraded = true;
+          details = typeof health.details === "string" ? health.details : "degraded";
+        }
+      } catch {
+        degraded = true;
+        details = "health() threw";
+      }
+      if (degraded) {
+        breaker.recordFailure(details || "provider health degraded");
+      } else {
+        breaker.recordSuccess();
+      }
       return vector;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
