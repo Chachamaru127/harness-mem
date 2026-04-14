@@ -745,17 +745,17 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if target == "" || agentID == "" {
 			return errorResult("target and agent_id are required")
 		}
-		payload := map[string]any{"target": target, "agent_id": agentID}
-		// S81-A02/A03 project scoping (Codex round 6 P2 + round 8 P1):
-		// prefer explicit `project`, then resolve from an explicit `cwd`,
-		// otherwise leave the scope NULL. Earlier rounds auto-ran
-		// ResolveProjectKey("") which used os.Getwd() — the daemon's
-		// launch directory, shared across all clients — so that is now
-		// removed. Callers that want worktree isolation must pass either
-		// `project` or `cwd`.
-		if v := resolveProjectScope(args); v != "" {
-			payload["project"] = v
+		// S81-A02/A03 project scoping (Codex round 6/8/11):
+		// - prefer explicit `project` (canonicalised if it looks like
+		//   a path) → else resolve from explicit `cwd`
+		// - neither set → REJECT with scope_required so two unrelated
+		//   repos using a common target like `file:README.md` or a
+		//   shared agent id can never collide on a null-project row.
+		scope := resolveProjectScope(args)
+		if scope == "" {
+			return errorResult("scope_required: pass project or cwd to avoid cross-repo collisions on shared targets. If you really want a global lease, pass project=\"__global__\" explicitly.")
 		}
+		payload := map[string]any{"target": target, "agent_id": agentID, "project": scope}
 		if n, ok := argNumber(args, "ttl_ms"); ok {
 			payload["ttl_ms"] = n
 		}
@@ -806,6 +806,16 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if from == "" || content == "" {
 			return errorResult("from and content are required")
 		}
+		// S81-A03 project scoping (Codex round 11 P1): same scope_required
+		// semantics as lease_acquire. A signal with no scope becomes a
+		// global broadcast addressable by anyone reusing `from`, which
+		// leaks contents across repos. Reply-to is the only exception
+		// because the store derives the project from the parent signal.
+		replyTo := argString(args, "reply_to")
+		scope := resolveProjectScope(args)
+		if scope == "" && replyTo == "" {
+			return errorResult("scope_required: pass project or cwd (or reply_to to inherit the parent's scope) so signals stay repo-isolated.")
+		}
 		payload := map[string]any{"from": from, "content": content}
 		if v := argString(args, "to"); v != "" {
 			payload["to"] = v
@@ -813,13 +823,11 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
-		if v := argString(args, "reply_to"); v != "" {
-			payload["reply_to"] = v
+		if replyTo != "" {
+			payload["reply_to"] = replyTo
 		}
-		// S81-A03 (Codex round 8 P1): prefer explicit project, else
-		// resolve from caller-supplied cwd, else leave scope NULL.
-		if v := resolveProjectScope(args); v != "" {
-			payload["project"] = v
+		if scope != "" {
+			payload["project"] = scope
 		}
 		if n, ok := argNumber(args, "expires_in_ms"); ok {
 			payload["expires_in_ms"] = n
@@ -835,14 +843,20 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if agentID == "" {
 			return errorResult("agent_id is required")
 		}
+		// S81-A03 project scoping (Codex round 11 P1): require scope on
+		// signal_read too unless the caller asked for the admin-only
+		// cross-project view via all_projects=true.
+		allProjects, _ := args["all_projects"].(bool)
+		scope := resolveProjectScope(args)
+		if scope == "" && !allProjects {
+			return errorResult("scope_required: pass project or cwd (or all_projects=true for the admin cross-project view).")
+		}
 		payload := map[string]any{"agent_id": agentID}
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
-		// S81-A03 (Codex round 8 P1): prefer explicit project, else
-		// resolve from caller-supplied cwd, else leave scope NULL.
-		if v := resolveProjectScope(args); v != "" {
-			payload["project"] = v
+		if scope != "" {
+			payload["project"] = scope
 		}
 		if v, ok := args["include_broadcast"].(bool); ok {
 			payload["include_broadcast"] = v

@@ -790,6 +790,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           core.verifyObservation({
             observation_id: observationId,
             include_private: parseBooleanLike(body.include_private, false),
+            // Codex round 11 P2: forward the round-9 admin-only
+            // include_archived flag so operators can actually inspect
+            // soft-archived rows through the HTTP surface.
+            include_archived: parseBooleanLike(body.include_archived, false),
             user_id: verifyAccess.user_id,
             team_id: verifyAccess.team_id,
           })
