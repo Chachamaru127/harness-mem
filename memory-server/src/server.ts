@@ -468,11 +468,29 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
           const body = await parseRequestJson(request);
+          // S80-B02: accept forget_policy as a sub-object on the run request.
+          let forgetPolicy: ConsolidationRunRequest["forget_policy"];
+          if (body.forget_policy && typeof body.forget_policy === "object") {
+            const fp = body.forget_policy as Record<string, unknown>;
+            forgetPolicy = {
+              dry_run: typeof fp.dry_run === "boolean" ? fp.dry_run : undefined,
+              score_threshold:
+                typeof fp.score_threshold === "number" ? fp.score_threshold : undefined,
+              limit: typeof fp.limit === "number" ? fp.limit : undefined,
+              protect_accessed:
+                typeof fp.protect_accessed === "boolean" ? fp.protect_accessed : undefined,
+              weights:
+                fp.weights && typeof fp.weights === "object"
+                  ? (fp.weights as { access?: number; signal?: number; age?: number })
+                  : undefined,
+            };
+          }
           const req: ConsolidationRunRequest = {
             reason: typeof body.reason === "string" ? body.reason : undefined,
             project: typeof body.project === "string" ? body.project : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
             limit: parseIntegerLike(body.limit),
+            forget_policy: forgetPolicy,
           };
           return jsonResponse(await core.runConsolidation(req));
         }

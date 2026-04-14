@@ -129,6 +129,15 @@ export interface ConsolidationRunRequest {
   project?: string;
   session_id?: string;
   limit?: number;
+  /** S80-B02: opt-in low-value eviction policy. See consolidation/forget-policy.ts. */
+  forget_policy?: {
+    /** Default true — wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1. */
+    dry_run?: boolean;
+    score_threshold?: number;
+    weights?: { access?: number; signal?: number; age?: number };
+    limit?: number;
+    protect_accessed?: boolean;
+  };
 }
 
 export interface AuditLogRequest {

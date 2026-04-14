@@ -38,6 +38,10 @@ import {
   type ConsolidationRunOptions,
   type ConsolidationRunStats,
 } from "../consolidation/worker";
+import {
+  runForgetPolicy,
+  type ForgetPolicyResult,
+} from "../consolidation/forget-policy";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
@@ -2197,12 +2201,39 @@ export class HarnessMemCore {
       // best effort
     }
 
+    // S80-B02: Opt-in low-value eviction policy. Runs *after* the normal
+    // consolidation pass so fact extraction and dedupe complete against the
+    // full observation set first. Dry-run by default; wet mode additionally
+    // requires HARNESS_MEM_AUTO_FORGET=1.
+    let forget: ForgetPolicyResult | undefined;
+    if (request.forget_policy) {
+      forget = runForgetPolicy(
+        this.db,
+        {
+          dry_run: request.forget_policy.dry_run,
+          score_threshold: request.forget_policy.score_threshold,
+          weights: request.forget_policy.weights,
+          limit: request.forget_policy.limit,
+          protect_accessed: request.forget_policy.protect_accessed,
+          project: request.project,
+        },
+        (action, details) => {
+          try {
+            this.writeAuditLog(action, "observation", "", details);
+          } catch {
+            // best effort
+          }
+        }
+      );
+    }
+
     return makeResponse(
       startedAt,
       [
         {
           ...stats,
           reason: options.reason,
+          ...(forget ? { forget_policy: forget } : {}),
         },
       ],
       request as unknown as Record<string, unknown>,

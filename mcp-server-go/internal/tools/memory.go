@@ -194,12 +194,17 @@ func firstNonNil(vals ...any) any {
 // ---- Consolidation shared handler ----
 
 func runConsolidation(args map[string]any) types.ToolResult {
-	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", map[string]any{
+	payload := map[string]any{
 		"reason":     argString(args, "reason"),
 		"project":    argString(args, "project"),
 		"session_id": argString(args, "session_id"),
 		"limit":      optNum(args, "limit"),
-	})
+	}
+	// S80-B02: pass through the forget_policy sub-object when supplied.
+	if fp, ok := args["forget_policy"].(map[string]any); ok {
+		payload["forget_policy"] = fp
+	}
+	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", payload)
 	if err != nil {
 		return classifyError(err)
 	}

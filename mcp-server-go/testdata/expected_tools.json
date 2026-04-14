@@ -393,7 +393,7 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Run consolidation worker (extract + dedupe) immediately.",
+    "description": "Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S80-B02) to soft-archive low-value observations based on access_count / signal_score / age_days.",
     "inputSchema": {
       "properties": {
         "limit": {
@@ -407,6 +407,11 @@
         },
         "session_id": {
           "type": "string"
+        },
+        "forget_policy": {
+          "description": "Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.",
+          "type": "object",
+          "properties": {}
         }
       },
       "required": [],

@@ -768,6 +768,24 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S80-B02: Low-value eviction — soft-delete marker for archived observations.
+  // `archived_at` is NULL for active rows; ISO timestamp for rows the forget
+  // policy has demoted. Always coexists with the `archived_by_score` field in
+  // audit-log payloads so analysts can reverse specific runs.
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN archived_at TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`
+    );
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {
