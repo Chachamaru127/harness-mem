@@ -241,18 +241,17 @@ function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: str
 }
 
 function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
-  // S81-A01: walk up from `existingPath` looking for .git so that nested
-  // subdirectories inside a worktree or main repo are collapsed onto the
-  // common git root. Previously this function only inspected `existingPath`
-  // itself which broke 3-worktree ingest from nested `src/` dirs.
+  // S81-A01: walk up from `existingPath` looking for a *real* git repo
+  // (dir containing .git/HEAD, or worktree pointer file). Nested src/ dirs
+  // inside a genuine repo collapse onto its root; sibling folders that
+  // merely share an ancestor containing an empty `.git/` (fake or dotfiles)
+  // are not collapsed — confirmed via `.git/HEAD` existence check.
   const start = normalizePathLike(existingPath);
   if (!start.startsWith("/")) {
     return null;
   }
 
   let cursor = start;
-  // Hard upper bound on walks to avoid pathological inputs; filesystem depth
-  // caps us well below this but keep the guard explicit.
   const MAX_WALKS = 64;
   for (let i = 0; i < MAX_WALKS; i += 1) {
     const gitMarker = join(cursor, ".git");
@@ -260,9 +259,10 @@ function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
       try {
         const markerStat = statSync(gitMarker);
         if (markerStat.isDirectory()) {
-          return realpathOrNormalized(cursor);
-        }
-        if (markerStat.isFile()) {
+          if (existsSync(join(gitMarker, "HEAD"))) {
+            return realpathOrNormalized(cursor);
+          }
+        } else if (markerStat.isFile()) {
           const markerBody = readFileSync(gitMarker, "utf8");
           const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
           if (!match) {
@@ -284,7 +284,6 @@ function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
     if (!parent || parent === cursor) {
       return null;
     }
-    // Stop at filesystem root.
     if (parent === "/" || /^[A-Za-z]:\/?$/.test(parent)) {
       return null;
     }
