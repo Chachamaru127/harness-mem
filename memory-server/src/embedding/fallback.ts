@@ -1,4 +1,5 @@
 import { type EmbeddingProvider, type EmbeddingHealth } from "./types";
+import { createCircuitBreaker, type CircuitBreaker, type CircuitBreakerOptions } from "./circuit-breaker";
 
 function tokenize(text: string): string[] {
   return text
@@ -79,6 +80,99 @@ export function createFallbackEmbeddingProvider(options: FallbackProviderOptions
     },
     health(): EmbeddingHealth {
       return { ...health };
+    },
+  };
+}
+
+/**
+ * S80-D01: Wraps an EmbeddingProvider with a circuit breaker so repeated
+ * failures trigger a cooldown window during which calls are diverted to
+ * `fallbackTo` instead of hammering the failing endpoint.
+ *
+ * Contract:
+ *   - Closed state   → delegate directly to the wrapped provider.
+ *   - Open state     → skip wrapped provider, use fallbackTo. No probe.
+ *   - Half-open      → permit exactly one probe on the wrapped provider;
+ *                      success closes, failure re-opens with fresh cooldown.
+ *
+ * When fallbackTo is undefined the breaker is passive: it still tracks
+ * state for observability via `breaker.status()` but always delegates to
+ * the wrapped provider (so callers can decide how to react to `shouldSkip`
+ * out-of-band).
+ */
+export interface CircuitBreakerAwareProvider extends EmbeddingProvider {
+  readonly breaker: CircuitBreaker;
+}
+
+export function withCircuitBreaker(
+  wrapped: EmbeddingProvider,
+  options: CircuitBreakerOptions & { fallbackTo?: EmbeddingProvider } = {}
+): CircuitBreakerAwareProvider {
+  const { fallbackTo, ...breakerOptions } = options;
+  const breaker = createCircuitBreaker(breakerOptions);
+
+  const callWrapped = (text: string): number[] => {
+    try {
+      const vector = wrapped.embed(text);
+      breaker.recordSuccess();
+      return vector;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      breaker.recordFailure(message);
+      throw error;
+    }
+  };
+
+  const embed = (text: string): number[] => {
+    // Half-open first: one probe permitted.
+    if (breaker.allowProbe()) {
+      try {
+        return callWrapped(text);
+      } catch (error) {
+        if (fallbackTo) {
+          return fallbackTo.embed(text);
+        }
+        throw error;
+      }
+    }
+    if (breaker.shouldSkip()) {
+      if (fallbackTo) {
+        return fallbackTo.embed(text);
+      }
+      // No fallback: be permissive but keep breaker state accurate.
+      return callWrapped(text);
+    }
+    try {
+      return callWrapped(text);
+    } catch (error) {
+      if (fallbackTo) {
+        return fallbackTo.embed(text);
+      }
+      throw error;
+    }
+  };
+
+  return {
+    get breaker() {
+      return breaker;
+    },
+    name: wrapped.name,
+    model: wrapped.model,
+    dimension: wrapped.dimension,
+    embed,
+    health(): EmbeddingHealth {
+      const status = breaker.status();
+      if (status.state === "open") {
+        return {
+          status: "degraded",
+          details: `circuit open (${status.consecutiveFailures} consecutive failures)`,
+        };
+      }
+      try {
+        return wrapped.health();
+      } catch {
+        return { status: "degraded", details: "health check failed" };
+      }
     },
   };
 }
