@@ -1754,8 +1754,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         });
       }
 
-      // S81-A02: Lease primitives.
+      // S81-A02/A03 (Codex round 5 P1): enforce the same authentication
+      // gate as all other user-scoped APIs. `resolveAccess` returns 401
+      // when AuthConfig is configured but the request carries no valid
+      // token, so a plain guess of lease_id / signal_id is no longer
+      // enough to manipulate or read another tenant's coordination state
+      // on auth-enabled deployments.
       if (request.method === "POST" && url.pathname === "/v1/lease/acquire") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const res = leaseStore.acquire({
           target: typeof body.target === "string" ? body.target : "",
@@ -1771,6 +1778,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/lease/release") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
         const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
@@ -1781,6 +1790,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/lease/renew") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
         const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
@@ -1793,6 +1804,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       // S81-A03: Signal primitives.
       if (request.method === "POST" && url.pathname === "/v1/signal/send") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const res = signalStore.send({
           from: typeof body.from === "string" ? body.from : "",
@@ -1807,6 +1820,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "POST" && url.pathname === "/v1/signal/read") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
         if (!agentId) return badRequest("agent_id is required");
@@ -1815,12 +1830,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           threadId: typeof body.thread_id === "string" ? body.thread_id : undefined,
           includeBroadcast: body.include_broadcast !== false,
           project: typeof body.project === "string" ? body.project : undefined,
+          all_projects: body.all_projects === true,
           limit: typeof body.limit === "number" ? body.limit : undefined,
         });
         return jsonResponse({ ok: true, signals });
       }
 
       if (request.method === "POST" && url.pathname === "/v1/signal/ack") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
         const body = await parseRequestJson(request);
         const signalId = typeof body.signal_id === "string" ? body.signal_id : "";
         const agentId = typeof body.agent_id === "string" ? body.agent_id : "";

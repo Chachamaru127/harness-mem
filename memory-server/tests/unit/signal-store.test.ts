@@ -148,9 +148,15 @@ describe("signal-store S81-A03", () => {
     expect(repoBView).toHaveLength(1);
     expect(repoBView[0]?.content).toBe("repo B note");
 
-    // Without project filter: both visible (legacy behavior preserved).
-    const all = store.read({ agentId: "codex" });
-    expect(all).toHaveLength(2);
+    // S81-A03 Codex round 5 P2: default scope is null-project only; no
+    // project-tagged signal is visible without an explicit project or
+    // all_projects opt-in.
+    const defaultView = store.read({ agentId: "codex" });
+    expect(defaultView).toHaveLength(0);
+
+    // Opt-in all_projects returns the legacy global view.
+    const allView = store.read({ agentId: "codex", all_projects: true });
+    expect(allView).toHaveLength(2);
   });
 
   test("read with project also returns null-project (global) signals", () => {

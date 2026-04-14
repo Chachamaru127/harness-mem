@@ -55,11 +55,21 @@ export interface ReadRequest {
   /** If true, include broadcast (to=null) signals. Default: true. */
   includeBroadcast?: boolean;
   /**
-   * S81-A03 scoping: if provided, only return signals sent with this
-   * project tag (or broadcasts when project is null/undefined). Prevents
-   * cross-project signal leak when the same agent identity is reused.
+   * S81-A03 scoping (Codex round 5 P2): when omitted, `read()` only
+   * returns signals that were **also** sent without a project key (truly
+   * global broadcasts). Signals tagged with any project are hidden until
+   * the caller passes the matching project. This flips the default from
+   * the previous "no filter ⇒ all projects" semantics that could leak
+   * inbox contents across repos. Callers who really need the legacy
+   * cross-project view must pass `all_projects: true`.
    */
   project?: string | null;
+  /**
+   * Escape hatch for audit / admin tooling that needs the old global
+   * view. When true, no project filter is applied, matching pre-round-5
+   * behavior.
+   */
+  all_projects?: boolean;
   limit?: number;
 }
 
@@ -203,12 +213,14 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
       where.push(`thread_id = ?`);
       params.push(req.threadId);
     }
-    // S81-A03: project scoping on read side. When caller passes a project,
-    // only return signals tagged with that project (nulls are global-scope
-    // and are always visible). Without this filter the same agent identity
-    // reused across repos would leak coordination messages.
-    if (req.project !== undefined) {
-      if (req.project === null) {
+    // S81-A03 project scoping — Codex round 5 P2 hardening. Default now
+    // isolates: no project arg means the inbox is reduced to null-project
+    // broadcasts only, so an agent identity reused across repos cannot
+    // accidentally see another repo's signals. Explicit opt-in via
+    // `all_projects: true` restores the legacy global view for audit
+    // and admin tools.
+    if (!req.all_projects) {
+      if (req.project === null || req.project === undefined) {
         where.push(`project IS NULL`);
       } else {
         where.push(`(project = ? OR project IS NULL)`);
