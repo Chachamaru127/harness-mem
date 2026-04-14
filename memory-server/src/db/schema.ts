@@ -64,6 +64,16 @@ export function initSchema(db: Database): void {
       privacy_tags_json TEXT NOT NULL,
       user_id TEXT NOT NULL DEFAULT 'default',
       team_id TEXT DEFAULT NULL,
+      -- S81-B02: soft-archive marker written by the forget policy. NULL
+      -- for live rows, ISO timestamp once wet-mode eviction runs. Kept
+      -- in the base CREATE TABLE so fresh test DBs that call initSchema()
+      -- without migrateSchema() still have the column.
+      archived_at TEXT DEFAULT NULL,
+      -- §78-D01 / S81-B02 temporal-forgetting specialisation: ISO
+      -- timestamp after which the row must be treated as expired. NULL
+      -- means "never expires". Expired rows are excluded from reads
+      -- even before the forget policy sweeps them into archived_at.
+      expires_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(event_id) REFERENCES mem_events(event_id) ON DELETE SET NULL,
@@ -317,6 +327,66 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_team_status
       ON mem_team_invitations(team_id, status);
+
+    -- S81-A02: Lease primitive for inter-agent coordination.
+    -- A lease is a time-bounded exclusive claim on a string "target"
+    -- (file path, action id, or arbitrary key). A second agent trying
+    -- to acquire the same active target gets {error:"already_leased"}.
+    CREATE TABLE IF NOT EXISTS mem_leases (
+      lease_id TEXT PRIMARY KEY,
+      target TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      project TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      ttl_ms INTEGER NOT NULL,
+      acquired_at TEXT NOT NULL,
+      renewed_at TEXT,
+      expires_at TEXT NOT NULL,
+      released_at TEXT,
+      metadata_json TEXT,
+      -- S81-A02 tenant columns (Codex round 6 P1): when auth config
+      -- is enabled these are populated from resolveAccess() so release
+      -- / renew cannot be performed by other tenants.
+      user_id TEXT,
+      team_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_leases_target_status_exp
+      ON mem_leases(target, status, expires_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_leases_agent
+      ON mem_leases(agent_id, status);
+
+    -- S81-A03: Signal primitive for inter-agent messaging.
+    -- Signals are append-only messages between agents. A signal becomes
+    -- invisible to _read once ack'ed. reply_to links threaded signals.
+    CREATE TABLE IF NOT EXISTS mem_signals (
+      signal_id TEXT PRIMARY KEY,
+      thread_id TEXT,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT,
+      reply_to TEXT,
+      content TEXT NOT NULL,
+      project TEXT,
+      sent_at TEXT NOT NULL,
+      expires_at TEXT,
+      acked_at TEXT,
+      acked_by TEXT,
+      -- S81-A03 tenant columns (Codex round 6 P1): populated from the
+      -- sender's resolveAccess() so read/ack refuse cross-tenant access
+      -- when auth config is enabled.
+      user_id TEXT,
+      team_id TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_to_ack
+      ON mem_signals(to_agent, acked_at, sent_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_thread
+      ON mem_signals(thread_id, sent_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_broadcast
+      ON mem_signals(to_agent, sent_at) WHERE to_agent IS NULL;
   `);
 }
 
@@ -372,6 +442,19 @@ export function migrateSchema(db: Database): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_project_user ON mem_observations(project, user_id, created_at DESC)`);
   } catch {
     // already exists
+  }
+
+  // S81-A02/A03 (Codex round 6 P1): add tenant columns to the new
+  // coordination tables. Pre-existing DBs created the tables before
+  // tenant tracking existed; newly-created DBs already have them via
+  // initSchema. Both paths are idempotent.
+  for (const stmt of [
+    `ALTER TABLE mem_leases ADD COLUMN user_id TEXT`,
+    `ALTER TABLE mem_leases ADD COLUMN team_id TEXT`,
+    `ALTER TABLE mem_signals ADD COLUMN user_id TEXT`,
+    `ALTER TABLE mem_signals ADD COLUMN team_id TEXT`,
+  ]) {
+    try { db.exec(stmt); } catch { /* already exists */ }
   }
 
   try {
@@ -715,6 +798,42 @@ export function migrateSchema(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_mem_facts_key_project
         ON mem_facts(fact_key, project, created_at ASC)
     `);
+  } catch {
+    // already exists
+  }
+
+  // S81-B02: Low-value eviction — soft-delete marker for archived observations.
+  // `archived_at` is NULL for active rows; ISO timestamp for rows the forget
+  // policy has demoted. Always coexists with the `archived_by_score` field in
+  // audit-log payloads so analysts can reverse specific runs.
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN archived_at TEXT`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`
+    );
+  } catch {
+    // already exists
+  }
+
+  // §78-D01 / S81-B02 temporal-forgetting specialisation: TTL column on
+  // observations. NULL = never expires. Rows whose expires_at <= now are
+  // excluded from reads (see expiredFilterSql in core-utils.ts) and are
+  // archived by the forget policy regardless of score.
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN expires_at TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_mem_obs_expires_at ON mem_observations(expires_at)`
+    );
   } catch {
     // already exists
   }

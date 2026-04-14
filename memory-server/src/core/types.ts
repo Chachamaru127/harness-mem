@@ -27,6 +27,13 @@ export interface EventEnvelope {
   user_id?: string;
   /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
   team_id?: string;
+  /**
+   * §78-D01 / S81-B02 temporal-forgetting: optional ISO 8601 timestamp
+   * after which the resulting observation must be treated as expired
+   * (excluded from reads and archived by the forget policy). NULL =
+   * never expires.
+   */
+  expires_at?: string;
 }
 
 export interface SearchRequest {
@@ -38,6 +45,13 @@ export interface SearchRequest {
   until?: string;
   limit?: number;
   include_private?: boolean;
+  /**
+   * S81-B02 (Codex round 9 P2): admin-only override to include
+   * soft-archived observations in the result set. Orthogonal to
+   * `include_private` — a caller who only wants their private notes
+   * should NOT also see rows that `forget_policy` has pruned.
+   */
+  include_archived?: boolean;
   expand_links?: boolean;
   strict_project?: boolean;
   debug?: boolean;
@@ -129,6 +143,21 @@ export interface ConsolidationRunRequest {
   project?: string;
   session_id?: string;
   limit?: number;
+  /** S81-B02: opt-in low-value eviction policy. See consolidation/forget-policy.ts. */
+  forget_policy?: {
+    /** Default true — wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1. */
+    dry_run?: boolean;
+    score_threshold?: number;
+    weights?: { access?: number; signal?: number; age?: number };
+    limit?: number;
+    protect_accessed?: boolean;
+  };
+  /** S81-B03: opt-in contradiction detection. See consolidation/contradiction-detector.ts. */
+  contradiction_scan?: {
+    jaccard_threshold?: number;
+    min_confidence?: number;
+    max_pairs_per_group?: number;
+  };
 }
 
 export interface AuditLogRequest {

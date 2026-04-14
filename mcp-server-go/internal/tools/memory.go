@@ -27,9 +27,22 @@ var selfTrackSkip = map[string]bool{
 	"harness_mem_record_checkpoint": true,
 	"harness_mem_finalize_session":  true,
 	"harness_mem_bulk_add":          true,
+	// S81-A02/A03: coordination primitives are high-frequency and should
+	// not trigger recursive tool-use recording.
+	"harness_mem_lease_acquire": true,
+	"harness_mem_lease_release": true,
+	"harness_mem_lease_renew":   true,
+	"harness_mem_signal_send":   true,
+	"harness_mem_signal_read":   true,
+	"harness_mem_signal_ack":    true,
+	// S81-C03 (Codex round 10 P2): verify is a read-only audit walk.
+	// Self-tracking would emit before/after tool_use events and turn
+	// every provenance lookup into an action observation, polluting
+	// the very store the caller is inspecting.
+	"harness_mem_verify": true,
 }
 
-// MemoryToolDefs returns all 25 memory tool definitions.
+// MemoryToolDefs returns all memory tool definitions (25 core + 6 coordination primitives).
 func MemoryToolDefs() []ToolDef {
 	return []ToolDef{
 		{memToolResumePack, handleMemTool("harness_mem_resume_pack")},
@@ -61,6 +74,16 @@ func MemoryToolDefs() []ToolDef {
 		{memToolIngest, handleMemTool("harness_mem_ingest")},
 		{memToolGraph, handleMemTool("harness_mem_graph")},
 		{memToolShareToTeam, handleMemTool("harness_mem_share_to_team")},
+		// S81-A02: Lease primitives.
+		{memToolLeaseAcquire, handleMemTool("harness_mem_lease_acquire")},
+		{memToolLeaseRelease, handleMemTool("harness_mem_lease_release")},
+		{memToolLeaseRenew, handleMemTool("harness_mem_lease_renew")},
+		// S81-A03: Signal primitives.
+		{memToolSignalSend, handleMemTool("harness_mem_signal_send")},
+		{memToolSignalRead, handleMemTool("harness_mem_signal_read")},
+		{memToolSignalAck, handleMemTool("harness_mem_signal_ack")},
+		// S81-C03: Citation trace.
+		{memToolVerify, handleMemTool("harness_mem_verify")},
 	}
 }
 
@@ -176,12 +199,21 @@ func firstNonNil(vals ...any) any {
 // ---- Consolidation shared handler ----
 
 func runConsolidation(args map[string]any) types.ToolResult {
-	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", map[string]any{
+	payload := map[string]any{
 		"reason":     argString(args, "reason"),
 		"project":    argString(args, "project"),
 		"session_id": argString(args, "session_id"),
 		"limit":      optNum(args, "limit"),
-	})
+	}
+	// S81-B02: pass through the forget_policy sub-object when supplied.
+	if fp, ok := args["forget_policy"].(map[string]any); ok {
+		payload["forget_policy"] = fp
+	}
+	// S81-B03: pass through the contradiction_scan sub-object when supplied.
+	if cs, ok := args["contradiction_scan"].(map[string]any); ok {
+		payload["contradiction_scan"] = cs
+	}
+	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", payload)
 	if err != nil {
 		return classifyError(err)
 	}
@@ -341,6 +373,25 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"ids":             ids,
 			"include_private": argBool(args, "include_private", false),
 			"compact":         argBool(args, "compact", true),
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S81-C03: observation citation trace.
+	case "harness_mem_verify":
+		observationID := argString(args, "observation_id")
+		if observationID == "" {
+			return errorResult("observation_id is required")
+		}
+		// Codex round 13 P2: forward `include_archived` so operators
+		// can inspect rows archived by forget_policy without having to
+		// call the HTTP endpoint directly.
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/verify", map[string]any{
+			"observation_id":    observationID,
+			"include_private":   argBool(args, "include_private", false),
+			"include_archived":  argBool(args, "include_archived", false),
 		})
 		if err != nil {
 			return classifyError(err)
@@ -647,6 +698,8 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"project":    optStr(args, "project"),
 			"platform":   optStr(args, "platform"),
 			"session_id": optStr(args, "session_id"),
+			// §78-D01 temporal forgetting — optional TTL on the ingested document.
+			"expires_at": optStr(args, "expires_at"),
 		})
 		if err != nil {
 			return classifyError(err)
@@ -685,6 +738,155 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/share", map[string]any{
 			"observation_id": obsID,
 			"team_id":        teamID,
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S81-A02: Lease primitives for inter-agent coordination.
+	case "harness_mem_lease_acquire":
+		target := argString(args, "target")
+		agentID := argString(args, "agent_id")
+		if target == "" || agentID == "" {
+			return errorResult("target and agent_id are required")
+		}
+		// S81-A02/A03 project scoping (Codex round 6/8/11):
+		// - prefer explicit `project` (canonicalised if it looks like
+		//   a path) → else resolve from explicit `cwd`
+		// - neither set → REJECT with scope_required so two unrelated
+		//   repos using a common target like `file:README.md` or a
+		//   shared agent id can never collide on a null-project row.
+		scope := resolveProjectScope(args)
+		if scope == "" {
+			return errorResult("scope_required: pass project or cwd to avoid cross-repo collisions on shared targets. If you really want a global lease, pass project=\"__global__\" explicitly.")
+		}
+		payload := map[string]any{"target": target, "agent_id": agentID, "project": scope}
+		if n, ok := argNumber(args, "ttl_ms"); ok {
+			payload["ttl_ms"] = n
+		}
+		if md, ok := args["metadata"].(map[string]any); ok {
+			payload["metadata"] = md
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/acquire", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_lease_release":
+		leaseID := argString(args, "lease_id")
+		agentID := argString(args, "agent_id")
+		if leaseID == "" || agentID == "" {
+			return errorResult("lease_id and agent_id are required")
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/release", map[string]any{
+			"lease_id": leaseID,
+			"agent_id": agentID,
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_lease_renew":
+		leaseID := argString(args, "lease_id")
+		agentID := argString(args, "agent_id")
+		if leaseID == "" || agentID == "" {
+			return errorResult("lease_id and agent_id are required")
+		}
+		payload := map[string]any{"lease_id": leaseID, "agent_id": agentID}
+		if n, ok := argNumber(args, "ttl_ms"); ok {
+			payload["ttl_ms"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/renew", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S81-A03: Signal primitives for inter-agent messaging.
+	case "harness_mem_signal_send":
+		from := argString(args, "from")
+		content := argString(args, "content")
+		if from == "" || content == "" {
+			return errorResult("from and content are required")
+		}
+		// S81-A03 project scoping (Codex round 11 P1): same scope_required
+		// semantics as lease_acquire. A signal with no scope becomes a
+		// global broadcast addressable by anyone reusing `from`, which
+		// leaks contents across repos. Reply-to is the only exception
+		// because the store derives the project from the parent signal.
+		replyTo := argString(args, "reply_to")
+		scope := resolveProjectScope(args)
+		if scope == "" && replyTo == "" {
+			return errorResult("scope_required: pass project or cwd (or reply_to to inherit the parent's scope) so signals stay repo-isolated.")
+		}
+		payload := map[string]any{"from": from, "content": content}
+		if v := argString(args, "to"); v != "" {
+			payload["to"] = v
+		}
+		if v := argString(args, "thread_id"); v != "" {
+			payload["thread_id"] = v
+		}
+		if replyTo != "" {
+			payload["reply_to"] = replyTo
+		}
+		if scope != "" {
+			payload["project"] = scope
+		}
+		if n, ok := argNumber(args, "expires_in_ms"); ok {
+			payload["expires_in_ms"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/send", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_signal_read":
+		agentID := argString(args, "agent_id")
+		if agentID == "" {
+			return errorResult("agent_id is required")
+		}
+		// S81-A03 project scoping — Codex round 13 P1:
+		// `all_projects` is deliberately *not* accepted via the MCP
+		// surface. The HTTP /v1/signal/read route validates the caller
+		// is admin; MCP proxies typically front the daemon with a
+		// shared admin/service token so the HTTP check cannot
+		// distinguish between the proxy's identity and the end user.
+		// Admin tooling that genuinely needs the cross-project view
+		// must hit /v1/signal/read over HTTP directly with an admin
+		// credential.
+		scope := resolveProjectScope(args)
+		if scope == "" {
+			return errorResult("scope_required: pass project or cwd to read repo-scoped signals. The cross-project (admin) view is available only via the HTTP /v1/signal/read endpoint.")
+		}
+		payload := map[string]any{"agent_id": agentID, "project": scope}
+		if v := argString(args, "thread_id"); v != "" {
+			payload["thread_id"] = v
+		}
+		if v, ok := args["include_broadcast"].(bool); ok {
+			payload["include_broadcast"] = v
+		}
+		if n, ok := argNumber(args, "limit"); ok {
+			payload["limit"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/read", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_signal_ack":
+		signalID := argString(args, "signal_id")
+		agentID := argString(args, "agent_id")
+		if signalID == "" || agentID == "" {
+			return errorResult("signal_id and agent_id are required")
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/ack", map[string]any{
+			"signal_id": signalID,
+			"agent_id":  agentID,
 		})
 		if err != nil {
 			return classifyError(err)

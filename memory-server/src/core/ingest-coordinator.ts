@@ -2782,6 +2782,8 @@ export class IngestCoordinator {
     project?: string;
     platform?: string;
     session_id?: string;
+    /** §78-D01: optional ISO timestamp after which the observation expires. */
+    expires_at?: string;
   }): ApiResponse {
     const startedAt = performance.now();
     if (!request.file_path || !request.content) {
@@ -2835,6 +2837,7 @@ export class IngestCoordinator {
           tags: obs.tags,
           privacy_tags: [],
           dedupe_hash: obs.dedupeHash,
+          expires_at: request.expires_at,
         },
         { allowQueue: false }
       );

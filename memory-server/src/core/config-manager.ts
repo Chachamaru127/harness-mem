@@ -34,6 +34,7 @@ export { getConfig } from "./core-utils.js";
 import {
   clampLimit,
   ensureDir,
+  expiredFilterSql,
   makeErrorResponse,
   makeResponse,
   nowIso,
@@ -398,6 +399,15 @@ export class ConfigManager {
       return canonical;
     };
 
+    // S81-B02 (Codex round 9 P2): soft-archive visibility gated on its
+    // own dedicated flag so asking for private notes does not also
+    // resurrect forgotten rows. Admin tooling can still opt in.
+    // §78-D01: expired rows follow the same admin flag.
+    const includeArchived = Boolean((request as { include_archived?: boolean }).include_archived);
+    const archivedFilter = includeArchived
+      ? ""
+      : ` AND o.archived_at IS NULL ${expiredFilterSql("o")} `;
+
     const rows = this.deps.db
       .query(`
         SELECT
@@ -408,6 +418,7 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${archivedFilter}
         ${visibility}
         GROUP BY o.project
         ORDER BY updated_at DESC
@@ -422,6 +433,7 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${archivedFilter}
         ${visibility}
       `)
       .all() as Array<{ project: string; session_id: string }>;

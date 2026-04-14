@@ -558,4 +558,90 @@ describe("workspace boundary", () => {
       migratedCore.shutdown("test");
     }
   });
+
+  // S81-A01: Worktree / repo-root unifier.
+  // DoD: 3 worktree から ingest した observation が `project` で同一 key に集約され、
+  // `harness_mem_stats` で 1 プロジェクト扱いになる integration test が PASS。
+  test("three linked worktrees of the same repo collapse into one project key", () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), "harness-mem-wb-3wt-"));
+    cleanupPaths.push(fixtureRoot);
+
+    const mainRepoRoot = join(fixtureRoot, "main-repo");
+    // Create .git/worktrees/<name> pointers for the 3 linked worktrees.
+    mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature-a"), { recursive: true });
+    mkdirSync(join(mainRepoRoot, ".git", "worktrees", "feature-b"), { recursive: true });
+    const canonicalMainRoot = realpathSync(mainRepoRoot);
+
+    // Also create a src/ dir in the main repo to ingest from.
+    mkdirSync(join(mainRepoRoot, "src"), { recursive: true });
+
+    const mkWorktree = (name: string): string => {
+      const wt = join(fixtureRoot, name);
+      const nested = join(wt, "src");
+      mkdirSync(nested, { recursive: true });
+      writeFileSync(
+        join(wt, ".git"),
+        `gitdir: ${join(mainRepoRoot, ".git", "worktrees", name)}\n`,
+        "utf8"
+      );
+      return wt;
+    };
+    const wtA = mkWorktree("feature-a");
+    const wtB = mkWorktree("feature-b");
+
+    const core = new HarnessMemCore(
+      createConfig("three-worktrees-collapse", {
+        codexProjectRoot: mainRepoRoot,
+        codexSessionsRoot: mainRepoRoot,
+      })
+    );
+    try {
+      // Ingest from 3 distinct worktree subdirs with 3 different session ids.
+      const cwdsAndSessions: Array<{ cwd: string; session: string; eventId: string }> = [
+        { cwd: join(mainRepoRoot, "src"), session: "sess-main", eventId: "ev-main" },
+        { cwd: join(wtA, "src"), session: "sess-a", eventId: "ev-a" },
+        { cwd: join(wtB, "src"), session: "sess-b", eventId: "ev-b" },
+      ];
+      for (const entry of cwdsAndSessions) {
+        const res = core.recordEvent(
+          baseEvent({
+            event_id: entry.eventId,
+            session_id: entry.session,
+            project: entry.cwd,
+            payload: { prompt: `worktree ingest from ${entry.cwd}` },
+          })
+        );
+        expect(res.ok).toBe(true);
+        const inserted = res.items[0] as { project: string };
+        // Every worktree ingest must collapse to the main repo canonical root.
+        expect(inserted.project).toBe(canonicalMainRoot);
+      }
+
+      // projectsStats must see exactly 1 project row for the main repo
+      // (member_projects collapses all 3 worktree-origin paths under one
+      // canonical "main-repo" entry).
+      const stats = core.projectsStats({ include_private: true });
+      const rows = stats.items as Array<{
+        project: string;
+        canonical_project: string;
+        observations: number;
+        member_projects: string[];
+      }>;
+      const mainRows = rows.filter((r) => r.member_projects.includes(canonicalMainRoot));
+      expect(mainRows.length).toBe(1);
+      expect(mainRows[0]?.observations ?? 0).toBeGreaterThanOrEqual(3);
+      // All 3 ingest events must be gathered into the SAME stats row.
+      expect(mainRows[0]?.member_projects).toContain(canonicalMainRoot);
+      // No phantom per-worktree rows should leak — the worktree root paths
+      // themselves must never appear as member_projects (they were collapsed
+      // to the main repo canonical root before insertion).
+      const allMembers = rows.flatMap((r) => r.member_projects);
+      const realWtA = realpathSync(wtA);
+      const realWtB = realpathSync(wtB);
+      expect(allMembers).not.toContain(realWtA);
+      expect(allMembers).not.toContain(realWtB);
+    } finally {
+      core.shutdown("test");
+    }
+  });
 });
