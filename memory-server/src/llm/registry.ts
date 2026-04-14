@@ -12,6 +12,7 @@
 import type { LLMConfig, LLMProvider } from "./types";
 import { OllamaProvider } from "./ollama-provider";
 import { OpenAIProvider } from "./openai-provider";
+import { tryCreateClaudeAgentSDKProvider } from "./claude-agent-sdk-provider";
 
 /** 環境変数からデフォルト LLM プロバイダー名を解決する */
 function resolveDefaultProvider(): LLMConfig["provider"] {
@@ -46,14 +47,33 @@ export function createLLMProvider(config: Partial<LLMConfig> = {}): LLMProvider 
     case "openai":
       return new OpenAIProvider(fullConfig);
     case "anthropic":
-      // Anthropic は将来的に AnthropicProvider を追加予定
-      // 暫定: API キーがあれば OpenAI 互換エンドポイント経由で扱う
-      // （anthropic SDK 非依存で維持するため）
+      // S80-C02: Anthropic はまず Claude Agent SDK 経路を試み、
+      // SDK 未インストール or 失敗時は Ollama にフォールバックする。
+      // SDK は dynamic import なので async な検証は別 API
+      // (tryCreateClaudeAgentSDKProvider) を通す必要があり、ここでは
+      // 同期インターフェース維持のため Ollama を返す。SDK 経路を使う
+      // caller は createClaudeProviderAsync() を呼ぶこと。
       return new OllamaProvider({ ...fullConfig, provider: "ollama" });
     default:
       // 不明なプロバイダーは Ollama にフォールバック
       return new OllamaProvider({ ...fullConfig, provider: "ollama" });
   }
+}
+
+/**
+ * S80-C02: `claude-agent-sdk` が利用可能なら SDK ベースの provider を、
+ * 不可用なら従来 registry の fallback chain を返す async 版。
+ * consolidation / rerank から呼ばれる想定で、同期経路を壊さないよう
+ * 別関数に分離している。
+ */
+export async function createClaudeProviderAsync(
+  config: Partial<LLMConfig> = {}
+): Promise<LLMProvider> {
+  const fullConfig: LLMConfig = { provider: "anthropic", ...config };
+  const sdkProvider = await tryCreateClaudeAgentSDKProvider(fullConfig);
+  if (sdkProvider) return sdkProvider;
+  // Fallback: registry の既存 chain (openai → ollama)
+  return createLLMProvider({ ...config, provider: undefined });
 }
 
 /**
