@@ -158,10 +158,37 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
     let threadId = (req.threadId ?? "").trim();
     if (req.replyTo) {
       const parent = db
-        .query(`SELECT thread_id FROM mem_signals WHERE signal_id = ?`)
+        .query(
+          `SELECT thread_id, project, user_id, team_id FROM mem_signals WHERE signal_id = ?`
+        )
         .get(req.replyTo) as Record<string, unknown> | null;
+      // S81-A03 (Codex round 7 P2): the parent must belong to the same
+      // project and tenant as the incoming reply. Otherwise a caller in
+      // repo B could attach a new message to repo A's thread, leaking
+      // the foreign thread across the project isolation line and
+      // (on auth-enabled daemons) acting as an existence oracle on
+      // cross-tenant signal IDs. Both a genuinely missing parent and a
+      // foreign-scope parent surface the same `reply_target_missing`
+      // error.
       if (!parent) {
         return { ok: false, error: "reply_target_missing" };
+      }
+      const parentProject = parent.project == null ? null : String(parent.project);
+      const callerProject = req.project === undefined ? null : req.project;
+      if (parentProject !== callerProject) {
+        return { ok: false, error: "reply_target_missing" };
+      }
+      if (req.userId !== undefined || req.teamId !== undefined) {
+        const parentUser = parent.user_id == null ? null : String(parent.user_id);
+        const parentTeam = parent.team_id == null ? null : String(parent.team_id);
+        const legacy = parentUser === null && parentTeam === null;
+        const matches =
+          legacy ||
+          (req.userId !== undefined && parentUser === req.userId) ||
+          (req.teamId !== undefined && parentTeam !== null && parentTeam === req.teamId);
+        if (!matches) {
+          return { ok: false, error: "reply_target_missing" };
+        }
       }
       // Threaded replies always inherit the parent's thread_id.
       threadId = String(parent.thread_id);

@@ -268,7 +268,22 @@ function parseContradictionVerdict(raw: string): {
   }
   // Plain text fallback (Claude Agent SDK / Anthropic direct non-JSON).
   const lowered = trimmed.toLowerCase();
-  if (/^(yes|true|contradiction)\b/.test(lowered)) {
+  // Label-style lines like `contradiction: false`, `contradiction = true`,
+  // `contradiction - no`, etc. Codex round 7 P1: previously matched the
+  // `contradiction` prefix alone and reported true, yielding bogus
+  // `superseded` links when the model returned `contradiction: false`.
+  const labelMatch = lowered.match(/^contradiction\s*[:=\-]\s*(.+)$/);
+  if (labelMatch) {
+    const value = labelMatch[1].trim();
+    if (/^(yes|true)\b/.test(value)) {
+      return { contradiction: true, confidence: 0.9, reason: trimmed };
+    }
+    if (/^(no|false)\b/.test(value)) {
+      return { contradiction: false, confidence: 0.9, reason: trimmed };
+    }
+    return { contradiction: false, confidence: 0, reason: `ambiguous label: ${trimmed.slice(0, 80)}` };
+  }
+  if (/^(yes|true)\b/.test(lowered)) {
     return { contradiction: true, confidence: 0.9, reason: trimmed };
   }
   if (/^(no|false|agree)\b/.test(lowered)) {

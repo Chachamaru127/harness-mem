@@ -64,6 +64,11 @@ export function initSchema(db: Database): void {
       privacy_tags_json TEXT NOT NULL,
       user_id TEXT NOT NULL DEFAULT 'default',
       team_id TEXT DEFAULT NULL,
+      -- S81-B02: soft-archive marker written by the forget policy. NULL
+      -- for live rows, ISO timestamp once wet-mode eviction runs. Kept
+      -- in the base CREATE TABLE so fresh test DBs that call initSchema()
+      -- without migrateSchema() still have the column.
+      archived_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
       FOREIGN KEY(event_id) REFERENCES mem_events(event_id) ON DELETE SET NULL,

@@ -239,11 +239,12 @@ var memToolSignalSend = mcp.NewTool("harness_mem_signal_send",
 )
 
 var memToolSignalRead = mcp.NewTool("harness_mem_signal_read",
-	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Pass project to scope reads to a repo and avoid cross-project leak when the same agent_id is reused."),
+	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Defaults to the caller's repo-derived project scope; set all_projects=true for the audit/admin cross-project view."),
 	mcp.WithString("agent_id", mcp.Required()),
 	mcp.WithString("thread_id", mcp.Description("Filter to a specific thread")),
-	mcp.WithString("project", mcp.Description("Scope reads to signals tagged with this project (plus null-project broadcasts)")),
+	mcp.WithString("project", mcp.Description("Scope reads to signals tagged with this project (plus null-project broadcasts). Auto-derived from the caller's cwd when omitted.")),
 	mcp.WithBoolean("include_broadcast", mcp.Description("Include broadcast signals (default true)")),
+	mcp.WithBoolean("all_projects", mcp.Description("Audit/admin escape hatch: when true, disables project scoping and returns signals across every repo. Use only when you explicitly need the cross-project view.")),
 	mcp.WithNumber("limit", mcp.Description("Max signals returned (default 100)")),
 )
 

@@ -84,6 +84,7 @@ interface ObservationRow {
   privacy_tags_json: string | null;
   user_id: string | null;
   team_id: string | null;
+  archived_at: string | null;
 }
 
 interface EventRow {
@@ -160,7 +161,7 @@ export function verifyObservation(
     .query(
       `
         SELECT id, event_id, platform, project, session_id, title, created_at,
-               privacy_tags_json, user_id, team_id
+               privacy_tags_json, user_id, team_id, archived_at
         FROM mem_observations
         WHERE id = ?
       `
@@ -168,6 +169,31 @@ export function verifyObservation(
     .get(id) as ObservationRow | null;
 
   if (!obsRow) {
+    return {
+      ok: false,
+      observation: {
+        observation_id: id,
+        session_id: null,
+        project: null,
+        platform: null,
+        event_id: null,
+        created_at: null,
+        title: null,
+        missing: true,
+      },
+      event: null,
+      provenance: null,
+      notes: ["observation not found"],
+    };
+  }
+
+  // S81-C03 (Codex round 7 P2): hide archived observations from verify
+  // by default. After `forget_policy` wet run sets archived_at, the
+  // normal read APIs (search / timeline / get_observations) stop
+  // returning the row; verify must follow the same default. Admin
+  // callers who truly need the archived trail can pass
+  // include_private=true — same escape hatch as private/secret rows.
+  if (!request.include_private && obsRow.archived_at !== null) {
     return {
       ok: false,
       observation: {

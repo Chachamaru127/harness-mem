@@ -1217,11 +1217,15 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Pass project to scope reads to a repo and avoid cross-project leak when the same agent_id is reused.",
+    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Defaults to the caller's repo-derived project scope; set all_projects=true for the audit/admin cross-project view.",
     "inputSchema": {
       "properties": {
         "agent_id": {
           "type": "string"
+        },
+        "all_projects": {
+          "description": "Audit/admin escape hatch: when true, disables project scoping and returns signals across every repo. Use only when you explicitly need the cross-project view.",
+          "type": "boolean"
         },
         "include_broadcast": {
           "description": "Include broadcast signals (default true)",
@@ -1232,7 +1236,7 @@
           "type": "number"
         },
         "project": {
-          "description": "Scope reads to signals tagged with this project (plus null-project broadcasts)",
+          "description": "Scope reads to signals tagged with this project (plus null-project broadcasts). Auto-derived from the caller's cwd when omitted.",
           "type": "string"
         },
         "thread_id": {
