@@ -115,26 +115,49 @@ func argString(args map[string]any, key string) string {
 	return ""
 }
 
-// resolveProjectScope (S81-A02/A03 Codex round 8 P1): derive the project
-// scope for coordination tools (lease/signal) from MCP call args.
+// resolveProjectScope (S81-A02/A03 Codex round 8 P1 / round 10 P1):
+// derive the project scope for coordination tools (lease/signal) from
+// MCP call args.
 //
 // Order:
-//  1. explicit `project` argument
+//  1. explicit `project` — if it looks like an absolute filesystem
+//     path it is canonicalized via util.ResolveProjectKey so that
+//     passing a worktree path (e.g. /repo/worktrees/feat) collapses
+//     onto the shared repo root instead of producing a per-worktree
+//     scope. Short identifier projects (e.g. "acme", "harness-mem")
+//     are kept as-is.
 //  2. `cwd` argument → run through util.ResolveProjectKey so multiple
-//     worktrees of the same repo collapse to the shared root
-//  3. empty string — caller did not scope; leave the stored project NULL
+//     worktrees of the same repo collapse to the shared root.
+//  3. empty string — caller did not scope; leave the stored project NULL.
 //
 // Never falls back to os.Getwd(): that would be the daemon's launch
 // directory (shared across all MCP clients on a global install), which
 // defeats the repo/worktree isolation coordination tools promise.
 func resolveProjectScope(args map[string]any) string {
 	if v := argString(args, "project"); v != "" {
+		if looksLikePath(v) {
+			return util.ResolveProjectKey(v)
+		}
 		return v
 	}
 	if cwd := argString(args, "cwd"); cwd != "" {
 		return util.ResolveProjectKey(cwd)
 	}
 	return ""
+}
+
+func looksLikePath(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	if s[0] == '/' || s[0] == '~' {
+		return true
+	}
+	// Windows drive letter, e.g. "C:\\foo" or "C:/foo".
+	if len(s) >= 3 && s[1] == ':' && (s[2] == '\\' || s[2] == '/') {
+		return true
+	}
+	return false
 }
 
 func argNumber(args map[string]any, key string) (float64, bool) {

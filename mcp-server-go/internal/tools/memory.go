@@ -35,6 +35,11 @@ var selfTrackSkip = map[string]bool{
 	"harness_mem_signal_send":   true,
 	"harness_mem_signal_read":   true,
 	"harness_mem_signal_ack":    true,
+	// S81-C03 (Codex round 10 P2): verify is a read-only audit walk.
+	// Self-tracking would emit before/after tool_use events and turn
+	// every provenance lookup into an action observation, polluting
+	// the very store the caller is inspecting.
+	"harness_mem_verify": true,
 }
 
 // MemoryToolDefs returns all memory tool definitions (25 core + 6 coordination primitives).

@@ -2379,26 +2379,34 @@ export class HarnessMemCore {
    * spurious `superseded` links.
    */
   private async buildContradictionAdjudicator(): Promise<ContradictionAdjudicator> {
-    // S81-B03 hardening: Codex 2回目レビュー指摘 (P1) 対応。
+    // S81-B03 hardening: Codex round 2 P1 対応。
     // claude-agent-sdk が import できただけでは認証が通っている保証は
     // ないため (未ログイン / トークン失効で import は成功するが
     // generate が毎回失敗する)、adjudicator 側でランタイム失敗を検知し
     // openai/ollama への自動切替を行う。
     let primary: Awaited<ReturnType<typeof createClaudeProviderAsync>> | null = null;
+    let primaryIsClaudeSDK = false;
     try {
       primary = await createClaudeProviderAsync({ provider: "anthropic" });
+      // createClaudeProviderAsync returns the native Agent SDK provider
+      // when available, otherwise it degrades to the registry default
+      // (openai or ollama). Only the SDK case warrants spinning up a
+      // separate non-claude fallback — otherwise primary and fallback
+      // would be the same backend and every contradiction pair would
+      // pay two failing network calls (Codex round 10 P2).
+      primaryIsClaudeSDK = primary?.name === "claude-agent-sdk";
     } catch {
       primary = null;
     }
-    // Non-claude fallback: creator は lazy に呼ぶ (不要なら初期化しない)。
+    // Non-claude fallback: only attempted when the primary is the
+    // Claude SDK. If the SDK is unavailable, primary IS already the
+    // registry default, so duplicating it would only add latency.
     let fallback: ReturnType<typeof createLLMProvider> | null = null;
     const ensureFallback = (): ReturnType<typeof createLLMProvider> | null => {
       if (fallback) return fallback;
+      if (!primaryIsClaudeSDK) return null;
       try {
         fallback = createLLMProvider({ provider: undefined });
-        // primary と fallback が同じ provider instance を返すケースを避ける
-        // (createClaudeProviderAsync が SDK 不可用時に createLLMProvider を
-        // 返すので、同じオブジェクトなら fallback 無し扱いにする)。
         if (fallback === primary) fallback = null;
       } catch {
         fallback = null;
