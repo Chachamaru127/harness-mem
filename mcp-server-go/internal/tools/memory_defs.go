@@ -200,3 +200,52 @@ var memToolShareToTeam = mcp.NewTool("harness_mem_share_to_team",
 	mcp.WithString("observation_id", mcp.Required(), mcp.Description("ID of the observation to share")),
 	mcp.WithString("team_id", mcp.Required(), mcp.Description("Team ID to share with")),
 )
+
+// S80-A02: Lease primitives for inter-agent coordination.
+var memToolLeaseAcquire = mcp.NewTool("harness_mem_lease_acquire",
+	mcp.WithDescription("Acquire an exclusive, time-bounded lease on a target (file path, action id, or arbitrary key) so dual agents (Claude + Codex) can coordinate without stepping on each other."),
+	mcp.WithString("target", mcp.Required(), mcp.Description("Lease target (file path, action id, etc.)")),
+	mcp.WithString("agent_id", mcp.Required(), mcp.Description("Requesting agent id")),
+	mcp.WithString("project", mcp.Description("Optional project scope")),
+	mcp.WithNumber("ttl_ms", mcp.Description("TTL in milliseconds (default 600000, max 3600000)")),
+	mcp.WithObject("metadata", mcp.Description("Optional JSON metadata attached to the lease")),
+)
+
+var memToolLeaseRelease = mcp.NewTool("harness_mem_lease_release",
+	mcp.WithDescription("Release a previously acquired lease. Only the owning agent_id may release."),
+	mcp.WithString("lease_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+)
+
+var memToolLeaseRenew = mcp.NewTool("harness_mem_lease_renew",
+	mcp.WithDescription("Renew an active lease, extending expires_at by the provided (or original) ttl_ms."),
+	mcp.WithString("lease_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+	mcp.WithNumber("ttl_ms", mcp.Description("Optional new TTL; defaults to the original TTL")),
+)
+
+// S80-A03: Signal primitives for inter-agent messaging.
+var memToolSignalSend = mcp.NewTool("harness_mem_signal_send",
+	mcp.WithDescription("Send an inter-agent signal. to=null means broadcast. reply_to threads signals under the same thread_id."),
+	mcp.WithString("from", mcp.Required(), mcp.Description("Sending agent id")),
+	mcp.WithString("to", mcp.Description("Recipient agent id (omit for broadcast)")),
+	mcp.WithString("thread_id", mcp.Description("Optional thread id; server-assigned if omitted")),
+	mcp.WithString("reply_to", mcp.Description("Signal id this message replies to")),
+	mcp.WithString("content", mcp.Required()),
+	mcp.WithString("project", mcp.Description("Optional project scope")),
+	mcp.WithNumber("expires_in_ms", mcp.Description("Auto-hide the signal after this many ms")),
+)
+
+var memToolSignalRead = mcp.NewTool("harness_mem_signal_read",
+	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false)."),
+	mcp.WithString("agent_id", mcp.Required()),
+	mcp.WithString("thread_id", mcp.Description("Filter to a specific thread")),
+	mcp.WithBoolean("include_broadcast", mcp.Description("Include broadcast signals (default true)")),
+	mcp.WithNumber("limit", mcp.Description("Max signals returned (default 100)")),
+)
+
+var memToolSignalAck = mcp.NewTool("harness_mem_signal_ack",
+	mcp.WithDescription("Acknowledge a signal so it is no longer returned by signal_read."),
+	mcp.WithString("signal_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+)

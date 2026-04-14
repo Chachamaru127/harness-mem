@@ -27,9 +27,17 @@ var selfTrackSkip = map[string]bool{
 	"harness_mem_record_checkpoint": true,
 	"harness_mem_finalize_session":  true,
 	"harness_mem_bulk_add":          true,
+	// S80-A02/A03: coordination primitives are high-frequency and should
+	// not trigger recursive tool-use recording.
+	"harness_mem_lease_acquire": true,
+	"harness_mem_lease_release": true,
+	"harness_mem_lease_renew":   true,
+	"harness_mem_signal_send":   true,
+	"harness_mem_signal_read":   true,
+	"harness_mem_signal_ack":    true,
 }
 
-// MemoryToolDefs returns all 25 memory tool definitions.
+// MemoryToolDefs returns all memory tool definitions (25 core + 6 coordination primitives).
 func MemoryToolDefs() []ToolDef {
 	return []ToolDef{
 		{memToolResumePack, handleMemTool("harness_mem_resume_pack")},
@@ -61,6 +69,14 @@ func MemoryToolDefs() []ToolDef {
 		{memToolIngest, handleMemTool("harness_mem_ingest")},
 		{memToolGraph, handleMemTool("harness_mem_graph")},
 		{memToolShareToTeam, handleMemTool("harness_mem_share_to_team")},
+		// S80-A02: Lease primitives.
+		{memToolLeaseAcquire, handleMemTool("harness_mem_lease_acquire")},
+		{memToolLeaseRelease, handleMemTool("harness_mem_lease_release")},
+		{memToolLeaseRenew, handleMemTool("harness_mem_lease_renew")},
+		// S80-A03: Signal primitives.
+		{memToolSignalSend, handleMemTool("harness_mem_signal_send")},
+		{memToolSignalRead, handleMemTool("harness_mem_signal_read")},
+		{memToolSignalAck, handleMemTool("harness_mem_signal_ack")},
 	}
 }
 
@@ -685,6 +701,125 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/share", map[string]any{
 			"observation_id": obsID,
 			"team_id":        teamID,
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S80-A02: Lease primitives for inter-agent coordination.
+	case "harness_mem_lease_acquire":
+		target := argString(args, "target")
+		agentID := argString(args, "agent_id")
+		if target == "" || agentID == "" {
+			return errorResult("target and agent_id are required")
+		}
+		payload := map[string]any{"target": target, "agent_id": agentID}
+		if v := argString(args, "project"); v != "" {
+			payload["project"] = v
+		}
+		if n, ok := argNumber(args, "ttl_ms"); ok {
+			payload["ttl_ms"] = n
+		}
+		if md, ok := args["metadata"].(map[string]any); ok {
+			payload["metadata"] = md
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/acquire", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_lease_release":
+		leaseID := argString(args, "lease_id")
+		agentID := argString(args, "agent_id")
+		if leaseID == "" || agentID == "" {
+			return errorResult("lease_id and agent_id are required")
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/release", map[string]any{
+			"lease_id": leaseID,
+			"agent_id": agentID,
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_lease_renew":
+		leaseID := argString(args, "lease_id")
+		agentID := argString(args, "agent_id")
+		if leaseID == "" || agentID == "" {
+			return errorResult("lease_id and agent_id are required")
+		}
+		payload := map[string]any{"lease_id": leaseID, "agent_id": agentID}
+		if n, ok := argNumber(args, "ttl_ms"); ok {
+			payload["ttl_ms"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/renew", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S80-A03: Signal primitives for inter-agent messaging.
+	case "harness_mem_signal_send":
+		from := argString(args, "from")
+		content := argString(args, "content")
+		if from == "" || content == "" {
+			return errorResult("from and content are required")
+		}
+		payload := map[string]any{"from": from, "content": content}
+		if v := argString(args, "to"); v != "" {
+			payload["to"] = v
+		}
+		if v := argString(args, "thread_id"); v != "" {
+			payload["thread_id"] = v
+		}
+		if v := argString(args, "reply_to"); v != "" {
+			payload["reply_to"] = v
+		}
+		if v := argString(args, "project"); v != "" {
+			payload["project"] = v
+		}
+		if n, ok := argNumber(args, "expires_in_ms"); ok {
+			payload["expires_in_ms"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/send", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_signal_read":
+		agentID := argString(args, "agent_id")
+		if agentID == "" {
+			return errorResult("agent_id is required")
+		}
+		payload := map[string]any{"agent_id": agentID}
+		if v := argString(args, "thread_id"); v != "" {
+			payload["thread_id"] = v
+		}
+		if v, ok := args["include_broadcast"].(bool); ok {
+			payload["include_broadcast"] = v
+		}
+		if n, ok := argNumber(args, "limit"); ok {
+			payload["limit"] = n
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/read", payload)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_signal_ack":
+		signalID := argString(args, "signal_id")
+		agentID := argString(args, "agent_id")
+		if signalID == "" || agentID == "" {
+			return errorResult("signal_id and agent_id are required")
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/ack", map[string]any{
+			"signal_id": signalID,
+			"agent_id":  agentID,
 		})
 		if err != nil {
 			return classifyError(err)

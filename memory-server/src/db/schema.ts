@@ -317,6 +317,56 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_team_status
       ON mem_team_invitations(team_id, status);
+
+    -- S80-A02: Lease primitive for inter-agent coordination.
+    -- A lease is a time-bounded exclusive claim on a string "target"
+    -- (file path, action id, or arbitrary key). A second agent trying
+    -- to acquire the same active target gets {error:"already_leased"}.
+    CREATE TABLE IF NOT EXISTS mem_leases (
+      lease_id TEXT PRIMARY KEY,
+      target TEXT NOT NULL,
+      agent_id TEXT NOT NULL,
+      project TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      ttl_ms INTEGER NOT NULL,
+      acquired_at TEXT NOT NULL,
+      renewed_at TEXT,
+      expires_at TEXT NOT NULL,
+      released_at TEXT,
+      metadata_json TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_leases_target_status_exp
+      ON mem_leases(target, status, expires_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_leases_agent
+      ON mem_leases(agent_id, status);
+
+    -- S80-A03: Signal primitive for inter-agent messaging.
+    -- Signals are append-only messages between agents. A signal becomes
+    -- invisible to _read once ack'ed. reply_to links threaded signals.
+    CREATE TABLE IF NOT EXISTS mem_signals (
+      signal_id TEXT PRIMARY KEY,
+      thread_id TEXT,
+      from_agent TEXT NOT NULL,
+      to_agent TEXT,
+      reply_to TEXT,
+      content TEXT NOT NULL,
+      project TEXT,
+      sent_at TEXT NOT NULL,
+      expires_at TEXT,
+      acked_at TEXT,
+      acked_by TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_to_ack
+      ON mem_signals(to_agent, acked_at, sent_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_thread
+      ON mem_signals(thread_id, sent_at);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_signals_broadcast
+      ON mem_signals(to_agent, sent_at) WHERE to_agent IS NULL;
   `);
 }
 

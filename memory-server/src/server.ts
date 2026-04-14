@@ -14,6 +14,8 @@ import type { ConnectorConfig } from "./sync/types";
 import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
+import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
+import { createSignalStore, type SignalStore } from "./lease/signal-store";
 import type {
   FeedRequest,
   ImportJobStatusRequest,
@@ -402,6 +404,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
   // TEAM-003: Team CRUD リポジトリ
   const teamRepo: ITeamRepository = new SqliteTeamRepository(core.getRawDb());
+
+  // S80-A02/A03: Lease + Signal primitives for dual-agent coordination.
+  const leaseStore: LeaseStore = createLeaseStore(core.getRawDb());
+  const signalStore: SignalStore = createSignalStore(core.getRawDb());
 
   return Bun.serve({
     hostname: config.bindHost,
@@ -1691,6 +1697,81 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           items: [syncResult],
           meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
         });
+      }
+
+      // S80-A02: Lease primitives.
+      if (request.method === "POST" && url.pathname === "/v1/lease/acquire") {
+        const body = await parseRequestJson(request);
+        const res = leaseStore.acquire({
+          target: typeof body.target === "string" ? body.target : "",
+          agentId: typeof body.agent_id === "string" ? body.agent_id : "",
+          project: typeof body.project === "string" ? body.project : undefined,
+          ttlMs: typeof body.ttl_ms === "number" ? body.ttl_ms : undefined,
+          metadata:
+            body.metadata && typeof body.metadata === "object"
+              ? (body.metadata as Record<string, unknown>)
+              : undefined,
+        });
+        return jsonResponse(res);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/lease/release") {
+        const body = await parseRequestJson(request);
+        const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!leaseId || !agentId) {
+          return badRequest("lease_id and agent_id are required");
+        }
+        return jsonResponse(leaseStore.release(leaseId, agentId));
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/lease/renew") {
+        const body = await parseRequestJson(request);
+        const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!leaseId || !agentId) {
+          return badRequest("lease_id and agent_id are required");
+        }
+        const ttlMs = typeof body.ttl_ms === "number" ? body.ttl_ms : undefined;
+        return jsonResponse(leaseStore.renew(leaseId, agentId, ttlMs));
+      }
+
+      // S80-A03: Signal primitives.
+      if (request.method === "POST" && url.pathname === "/v1/signal/send") {
+        const body = await parseRequestJson(request);
+        const res = signalStore.send({
+          from: typeof body.from === "string" ? body.from : "",
+          to: typeof body.to === "string" ? body.to : null,
+          threadId: typeof body.thread_id === "string" ? body.thread_id : null,
+          replyTo: typeof body.reply_to === "string" ? body.reply_to : null,
+          content: typeof body.content === "string" ? body.content : "",
+          project: typeof body.project === "string" ? body.project : undefined,
+          expiresInMs: typeof body.expires_in_ms === "number" ? body.expires_in_ms : undefined,
+        });
+        return jsonResponse(res);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/signal/read") {
+        const body = await parseRequestJson(request);
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!agentId) return badRequest("agent_id is required");
+        const signals = signalStore.read({
+          agentId,
+          threadId: typeof body.thread_id === "string" ? body.thread_id : undefined,
+          includeBroadcast: body.include_broadcast !== false,
+          limit: typeof body.limit === "number" ? body.limit : undefined,
+        });
+        return jsonResponse({ ok: true, signals });
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/signal/ack") {
+        const body = await parseRequestJson(request);
+        const signalId = typeof body.signal_id === "string" ? body.signal_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!signalId || !agentId) {
+          return badRequest("signal_id and agent_id are required");
+        }
+        return jsonResponse(signalStore.ack({ signalId, agentId }));
       }
 
         return new Response("Not Found", { status: 404 });

@@ -130,7 +130,8 @@ func TestSchemaParity(t *testing.T) {
 	})
 
 	// --- Count check ---
-	const wantCount = 46
+	// 46 baseline + 6 S80-A02/A03 coordination primitives (lease_*, signal_*).
+	const wantCount = 52
 	if len(snapshot) != wantCount {
 		t.Errorf("snapshot count: got %d, want %d", len(snapshot), wantCount)
 	}
