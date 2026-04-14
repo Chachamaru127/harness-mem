@@ -72,7 +72,7 @@
 
 ---
 
-## §78 Legal Refresh: CAN AI LLC + Open Core 整理 — cc:WIP
+## §82 Legal Refresh: CAN AI LLC + Open Core 整理 — cc:WIP
 
 策定日: 2026-04-11
 背景: 以下の法的リスクが発見された: (1) LICENSE の Licensor が `Claude Code Harness` という曖昧表記で BSL 違反時の権利行使主体が不明、(2) `mcp-server/package.json` の license が誤って `MIT` のまま (本来は Open Core 意図どおり)、(3) `mcp-server/README.md` で `@anthropic-ai/harness-mcp-server` という Anthropic 公式 scope を誤用、(4) CLA 不在で将来の商用ライセンス販売が不可能、(5) README で `CAN AI Inc.` と表記されるが実態は合同会社 (正しい英訳は LLC)。これらを一括で塞ぐ。
@@ -83,19 +83,19 @@
 
 | Task | 内容 | DoD | Status |
 |------|------|-----|--------|
-| S78-001 | LICENSE の Licensor を `CAN AI LLC` に確定 | `LICENSE` の Licensor 行と Copyright 行が `CAN AI LLC` になっている | cc:完了 |
-| S78-002 | NOTICE 新規作成 | BSL 要約、商標通告、CLA 意図、商用ライセンス窓口 (GitHub Discussions 暫定) を含む NOTICE がルートに存在 | cc:完了 |
-| S78-003 | CONTRIBUTING.md 新規作成 | License grant 条項、moral rights waiver (日本法 著作者人格権不行使)、originality、no warranty を含む CONTRIBUTING.md がルートに存在 | cc:完了 |
-| S78-004 | TRADEMARK.md 新規作成 | harness-mem 名称・ロゴの使用ポリシー (nominative fair use / 禁止事項 / フェアユース / エンフォースメント) を含む TRADEMARK.md がルートに存在 | cc:完了 |
-| S78-005 | Anthropic 商標侵害の除去 | `mcp-server/README.md` の `@anthropic-ai/harness-mcp-server` 参照を `@canai/mcp-server` に置換済み | cc:完了 |
-| S78-006 | mcp-server / memory-server の scope 変更 | `@claude-code-harness/*` → `@canai/*` に変更済み (商標リスク回避) | cc:完了 |
-| S78-007 | mcp-server license rollback (Open Core 維持) | `mcp-server/package.json` の license を `MIT` に戻し、`mcp-server/README.md` の License 節も MIT + Open Core 説明に差し替え | cc:完了 |
-| S78-008 | README の `CAN AI Inc.` → `CAN AI LLC` 統一 | `README.md:575` と `README_ja.md:571` の表記を統一 | cc:完了 |
-| S78-009 | sdk / vscode-extension に author 追加 | `sdk/package.json` と `vscode-extension/package.json` に `"author": "CAN AI LLC"` を追加 (license は MIT 維持) | cc:完了 |
-| S78-010 | Plans.md に §78 と §79 を追記 | 本ドキュメントが Plans.md に永続化される | cc:WIP |
-| S78-011 | commit + PR 作成 | `legal/refresh-can-ai-llc-2026-04` ブランチでコミット、PR を main に向けて作成 | cc:TODO |
+| S82-001 | LICENSE の Licensor を `CAN AI LLC` に確定 | `LICENSE` の Licensor 行と Copyright 行が `CAN AI LLC` になっている | cc:完了 |
+| S82-002 | NOTICE 新規作成 | BSL 要約、商標通告、CLA 意図、商用ライセンス窓口 (GitHub Discussions 暫定) を含む NOTICE がルートに存在 | cc:完了 |
+| S82-003 | CONTRIBUTING.md 新規作成 | License grant 条項、moral rights waiver (日本法 著作者人格権不行使)、originality、no warranty を含む CONTRIBUTING.md がルートに存在 | cc:完了 |
+| S82-004 | TRADEMARK.md 新規作成 | harness-mem 名称・ロゴの使用ポリシー (nominative fair use / 禁止事項 / フェアユース / エンフォースメント) を含む TRADEMARK.md がルートに存在 | cc:完了 |
+| S82-005 | Anthropic 商標侵害の除去 | `mcp-server/README.md` の `@anthropic-ai/harness-mcp-server` 参照を `@canai/mcp-server` に置換済み | cc:完了 |
+| S82-006 | mcp-server / memory-server の scope 変更 | `@claude-code-harness/*` → `@canai/*` に変更済み (商標リスク回避) | cc:完了 |
+| S82-007 | mcp-server license rollback (Open Core 維持) | `mcp-server/package.json` の license を `MIT` に戻し、`mcp-server/README.md` の License 節も MIT + Open Core 説明に差し替え | cc:完了 |
+| S82-008 | README の `CAN AI Inc.` → `CAN AI LLC` 統一 | `README.md:575` と `README_ja.md:571` の表記を統一 | cc:完了 |
+| S82-009 | sdk / vscode-extension に author 追加 | `sdk/package.json` と `vscode-extension/package.json` に `"author": "CAN AI LLC"` を追加 (license は MIT 維持) | cc:完了 |
+| S82-010 | Plans.md に §82 と §79 を追記 | 本ドキュメントが Plans.md に永続化される | cc:WIP |
+| S82-011 | commit + PR 作成 | `legal/refresh-can-ai-llc-2026-04` ブランチでコミット、PR を main に向けて作成 | cc:TODO |
 
-**リリースブロッカー**: v0.12.0 までに S78 を main にマージしておくこと。
+**リリースブロッカー**: v0.12.0 までに §82 を main にマージしておくこと。
 
 ---
 
