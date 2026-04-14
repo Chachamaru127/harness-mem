@@ -30,6 +30,79 @@ func AllTools() []ToolDef {
 	return all
 }
 
+// ---------------------------------------------------------------------------
+// S80-C01: Tool visibility tiering
+// ---------------------------------------------------------------------------
+
+// Visibility controls how many tools are exposed over MCP.
+// Value matches the contents of HARNESS_MEM_TOOLS.
+type Visibility string
+
+const (
+	VisibilityAll  Visibility = "all"
+	VisibilityCore Visibility = "core"
+)
+
+// coreToolNames is the 7-tool core set defined in §80-C01 DoD.
+//
+//   - harness_mem_search
+//   - harness_mem_timeline
+//   - harness_mem_get_observations
+//   - harness_mem_sessions_list
+//   - harness_mem_record_checkpoint
+//   - harness_mem_resume_pack
+//   - harness_mem_health
+var coreToolNames = map[string]struct{}{
+	"harness_mem_search":            {},
+	"harness_mem_timeline":          {},
+	"harness_mem_get_observations":  {},
+	"harness_mem_sessions_list":     {},
+	"harness_mem_record_checkpoint": {},
+	"harness_mem_resume_pack":       {},
+	"harness_mem_health":            {},
+}
+
+// CoreToolNames returns a copy of the core-set tool names. Tests and docs use
+// this to verify parity without mutating internal state.
+func CoreToolNames() []string {
+	names := make([]string, 0, len(coreToolNames))
+	for n := range coreToolNames {
+		names = append(names, n)
+	}
+	return names
+}
+
+// ResolveVisibility parses `HARNESS_MEM_TOOLS` (or any raw string) into a
+// Visibility value. Unknown / empty / malformed inputs fall back to
+// VisibilityAll, preserving backward compatibility for existing installs.
+func ResolveVisibility(raw string) Visibility {
+	switch raw {
+	case "core", "CORE", "Core":
+		return VisibilityCore
+	case "all", "ALL", "All", "":
+		return VisibilityAll
+	default:
+		// Unknown value: behave as "all" so a typo never silently drops tools.
+		return VisibilityAll
+	}
+}
+
+// FilterByVisibility returns the subset of ToolDef matching the requested
+// visibility. VisibilityAll returns the input unchanged; VisibilityCore
+// returns only tools whose Name is in coreToolNames.
+func FilterByVisibility(defs []ToolDef, vis Visibility) []ToolDef {
+	if vis == VisibilityAll {
+		return defs
+	}
+	out := make([]ToolDef, 0, len(coreToolNames))
+	for _, d := range defs {
+		if _, ok := coreToolNames[d.Tool.Name]; ok {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
 // ---- Argument extraction helpers (port of toStringOrUndefined etc.) ----
 
 func argString(args map[string]any, key string) string {
