@@ -146,7 +146,7 @@ var memToolAddRelation = mcp.NewTool("harness_mem_add_relation",
 	mcp.WithDescription("Add a directed relation (link) between two observations."),
 	mcp.WithString("from_observation_id", mcp.Required(), mcp.Description("Source observation ID")),
 	mcp.WithString("to_observation_id", mcp.Required(), mcp.Description("Target observation ID")),
-	mcp.WithString("relation", mcp.Required(), mcp.Description("Relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity")),
+	mcp.WithString("relation", mcp.Required(), mcp.Description("Relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "superseded")),
 	mcp.WithNumber("weight", mcp.Description("Link weight (default: 1.0)")),
 )
 
@@ -193,7 +193,7 @@ var memToolIngest = mcp.NewTool("harness_mem_ingest",
 var memToolGraph = mcp.NewTool("harness_mem_graph",
 	mcp.WithDescription("Explore graph neighbors of an observation (linked observations by relation). Supports BFS traversal up to depth 5."),
 	mcp.WithString("observation_id", mcp.Required(), mcp.Description("Source observation ID to explore neighbors from")),
-	mcp.WithString("relation", mcp.Description("Filter by relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of")),
+	mcp.WithString("relation", mcp.Description("Filter by relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "superseded")),
 	mcp.WithNumber("depth", mcp.Description("BFS traversal depth (1-5, default 1)")),
 )
 

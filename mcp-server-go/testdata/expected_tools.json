@@ -339,7 +339,8 @@
             "extends",
             "derives",
             "follows",
-            "shared_entity"
+            "shared_entity",
+            "superseded"
           ],
           "type": "string"
         },
@@ -763,7 +764,8 @@
             "shared_entity",
             "contradicts",
             "causes",
-            "part_of"
+            "part_of",
+            "superseded"
           ],
           "type": "string"
         }

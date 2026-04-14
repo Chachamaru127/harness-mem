@@ -72,6 +72,27 @@ export async function createClaudeProviderAsync(
   const fullConfig: LLMConfig = { provider: "anthropic", ...config };
   const sdkProvider = await tryCreateClaudeAgentSDKProvider(fullConfig);
   if (sdkProvider) return sdkProvider;
+  // Codex round 14 P1: when the Agent SDK is not installed but
+  // ANTHROPIC_API_KEY is present (common on CI / headless servers),
+  // prefer the OpenAI-compatible Anthropic route via a thin wrapper
+  // before dropping to the generic openai/ollama chain. Without this,
+  // an Anthropic-only environment silently had no LLM available for
+  // contradiction detection.
+  if (typeof process !== "undefined" && typeof process.env?.ANTHROPIC_API_KEY === "string"
+      && process.env.ANTHROPIC_API_KEY.trim() !== "") {
+    // Route via openai-provider with Anthropic's OpenAI-compatible
+    // endpoint. The provider treats OPENAI_API_KEY/endpoint identically;
+    // we synthesise the equivalent config here so the caller does not
+    // have to set both envs.
+    const anthropicBase = process.env.ANTHROPIC_BASE_URL?.trim() || "https://api.anthropic.com/v1/";
+    return createLLMProvider({
+      ...config,
+      provider: "openai",
+      apiKey: process.env.ANTHROPIC_API_KEY,
+      endpoint: anthropicBase,
+      model: config.model || "claude-3-5-sonnet-20241022",
+    });
+  }
   // Fallback: registry の既存 chain (openai → ollama)
   return createLLMProvider({ ...config, provider: undefined });
 }
