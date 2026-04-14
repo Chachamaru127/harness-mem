@@ -239,7 +239,7 @@ mem の "Claude Code + Codex 二刀流" 看板を**機能面で回収**する。
 |------|------|-----|---------|--------|
 | S80-B01 | **§78-D との整合整理** — §78-D01 (temporal forgetting) / D02 (contradiction resolution) と本 Phase の重複範囲を棚卸し、実装 plan を 1 本に統合 (どちらの節に task を置くか確定) | §78-D01 → §80-B02 に吸収 (score 軸の `age_days` + `expires_at` override)。§78-D02 → §80-B03 に吸収 (detection + relation 書き込みを B03 が一気通貫で担当)。§78-D03 は独立維持、depends を S80-B02, S80-B03 に更新 | - | cc:完了 |
 | S80-B02 | **Low-value eviction policy** — `access_count` / `strength` / `age_days` の複合スコアで低価値 observation を自動 archive (soft delete のみ、hard delete はしない)。default は dry_run、`HARNESS_MEM_AUTO_FORGET=1` で有効化 | `harness_mem_admin_consolidation_run` に `forget_policy` オプション追加、evict 件数と対象 ID を audit log に記録、dry_run と wet で結果一致 test PASS | S80-B01 | cc:完了 |
-| S80-B03 | **Contradiction detection (Jaccard + LLM 確認)** — 同一 `concept` を持つ memory 2 件で content の Jaccard 類似度 > 0.9 をペア候補、LLM で矛盾判定、confirmed なら古い方を `superseded` relation 経由で格下げ | fixture に矛盾 pair を 3 件注入、detection precision ≥ 0.95 / recall ≥ 0.8 が 3-run で PASS | S80-B02 | cc:TODO |
+| S80-B03 | **Contradiction detection (Jaccard + LLM 確認)** — 同一 `concept` を持つ memory 2 件で content の Jaccard 類似度 > 0.9 をペア候補、LLM で矛盾判定、confirmed なら古い方を `superseded` relation 経由で格下げ | fixture に矛盾 pair を 3 件注入、detection precision ≥ 0.95 / recall ≥ 0.8 が 3-run で PASS | S80-B02 | cc:完了 |
 
 ### Phase C: UX Friction Reduction
 

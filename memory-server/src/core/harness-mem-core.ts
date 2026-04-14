@@ -42,6 +42,12 @@ import {
   runForgetPolicy,
   type ForgetPolicyResult,
 } from "../consolidation/forget-policy";
+import {
+  detectContradictions,
+  type ContradictionAdjudicator,
+  type ContradictionDetectorResult,
+} from "../consolidation/contradiction-detector";
+import { createClaudeProviderAsync } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
@@ -2227,6 +2233,35 @@ export class HarnessMemCore {
       );
     }
 
+    // S80-B03: Opt-in contradiction detection. The adjudicator is the LLM
+    // (Claude Agent SDK first, falling back through the existing registry).
+    // If no provider is available, we degrade to a conservative stub that
+    // reports zero contradictions so the run still completes.
+    let contradiction: ContradictionDetectorResult | undefined;
+    if (request.contradiction_scan) {
+      const adjudicator = await this.buildContradictionAdjudicator();
+      contradiction = await detectContradictions(this.db, {
+        jaccard_threshold: request.contradiction_scan.jaccard_threshold,
+        min_confidence: request.contradiction_scan.min_confidence,
+        max_pairs_per_group: request.contradiction_scan.max_pairs_per_group,
+        project: request.project,
+        adjudicator,
+      });
+      try {
+        this.writeAuditLog("admin.contradiction_scan.run", "observation", "", {
+          scanned_groups: contradiction.scanned_groups,
+          candidate_pairs: contradiction.candidate_pairs,
+          confirmed: contradiction.contradictions.length,
+          links_created: contradiction.links_created,
+          jaccard_threshold: contradiction.jaccard_threshold,
+          min_confidence: contradiction.min_confidence,
+          project: request.project,
+        });
+      } catch {
+        // best effort
+      }
+    }
+
     return makeResponse(
       startedAt,
       [
@@ -2234,11 +2269,52 @@ export class HarnessMemCore {
           ...stats,
           reason: options.reason,
           ...(forget ? { forget_policy: forget } : {}),
+          ...(contradiction ? { contradiction_scan: contradiction } : {}),
         },
       ],
       request as unknown as Record<string, unknown>,
       { ranking: "consolidation_v1" }
     );
+  }
+
+  /**
+   * S80-B03: build the LLM-backed adjudicator used by contradiction
+   * detection. Attempts the Claude Agent SDK provider (S80-C02) first, then
+   * degrades gracefully: on any provider failure the pair is reported as
+   * `{contradiction: false, confidence: 0}` so a flaky LLM can never create
+   * spurious `superseded` links.
+   */
+  private async buildContradictionAdjudicator(): Promise<ContradictionAdjudicator> {
+    let provider: Awaited<ReturnType<typeof createClaudeProviderAsync>> | null = null;
+    try {
+      provider = await createClaudeProviderAsync({ provider: "anthropic" });
+    } catch {
+      provider = null;
+    }
+    if (!provider) {
+      // No LLM available — never confirm a contradiction.
+      return () => ({ contradiction: false, confidence: 0, reason: "llm unavailable" });
+    }
+    return async (a, b) => {
+      const prompt = [
+        "You are reviewing two observations that share a concept and have near-identical content.",
+        "Return `yes` if they contradict (i.e., one fact supersedes the other), otherwise `no`.",
+        `Observation A (${a.observation_id}, ${a.created_at}):\n${a.content}`,
+        `Observation B (${b.observation_id}, ${b.created_at}):\n${b.content}`,
+        "Answer with strictly `yes` or `no` on the first line.",
+      ].join("\n\n");
+      try {
+        const text = (await provider!.generate(prompt, { maxTokens: 4 })).trim().toLowerCase();
+        const contradiction = text.startsWith("yes");
+        return {
+          contradiction,
+          confidence: contradiction ? 0.9 : 0.9,
+          reason: text,
+        };
+      } catch {
+        return { contradiction: false, confidence: 0, reason: "llm error" };
+      }
+    };
   }
 
   getConsolidationStatus(): ApiResponse {
@@ -2289,7 +2365,19 @@ export class HarnessMemCore {
       });
     }
 
-    const validRelations: string[] = ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of"];
+    const validRelations: string[] = [
+      "updates",
+      "extends",
+      "derives",
+      "follows",
+      "shared_entity",
+      "contradicts",
+      "causes",
+      "part_of",
+      // S80-B03: contradiction-detection output relation. Points newer → older,
+      // explicitly flagging the older observation as demoted by a newer one.
+      "superseded",
+    ];
     if (!validRelations.includes(relation)) {
       return makeErrorResponse(startedAt, `invalid relation type: ${relation}. Must be one of: ${validRelations.join(", ")}`, request as unknown as Record<string, unknown>);
     }

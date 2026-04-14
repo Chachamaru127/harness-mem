@@ -138,6 +138,12 @@ export interface ConsolidationRunRequest {
     limit?: number;
     protect_accessed?: boolean;
   };
+  /** S80-B03: opt-in contradiction detection. See consolidation/contradiction-detector.ts. */
+  contradiction_scan?: {
+    jaccard_threshold?: number;
+    min_confidence?: number;
+    max_pairs_per_group?: number;
+  };
 }
 
 export interface AuditLogRequest {

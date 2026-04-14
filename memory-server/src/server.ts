@@ -485,12 +485,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                   : undefined,
             };
           }
+          // S80-B03: accept contradiction_scan sub-object.
+          let contradictionScan: ConsolidationRunRequest["contradiction_scan"];
+          if (body.contradiction_scan && typeof body.contradiction_scan === "object") {
+            const cs = body.contradiction_scan as Record<string, unknown>;
+            contradictionScan = {
+              jaccard_threshold:
+                typeof cs.jaccard_threshold === "number" ? cs.jaccard_threshold : undefined,
+              min_confidence:
+                typeof cs.min_confidence === "number" ? cs.min_confidence : undefined,
+              max_pairs_per_group:
+                typeof cs.max_pairs_per_group === "number" ? cs.max_pairs_per_group : undefined,
+            };
+          }
           const req: ConsolidationRunRequest = {
             reason: typeof body.reason === "string" ? body.reason : undefined,
             project: typeof body.project === "string" ? body.project : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
             limit: parseIntegerLike(body.limit),
             forget_policy: forgetPolicy,
+            contradiction_scan: contradictionScan,
           };
           return jsonResponse(await core.runConsolidation(req));
         }

@@ -122,12 +122,13 @@ var memToolAdminMetrics = mcp.NewTool("harness_mem_admin_metrics",
 )
 
 var memToolAdminConsolidationRun = mcp.NewTool("harness_mem_admin_consolidation_run",
-	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S80-B02) to soft-archive low-value observations based on access_count / signal_score / age_days."),
+	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S80-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S80-B03) to detect and mark superseded observations via Jaccard + LLM adjudication."),
 	mcp.WithString("reason"),
 	mcp.WithString("project"),
 	mcp.WithString("session_id"),
 	mcp.WithNumber("limit"),
 	mcp.WithObject("forget_policy", mcp.Description("Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.")),
+	mcp.WithObject("contradiction_scan", mcp.Description("Contradiction detection (S80-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S80-C02 Claude Agent SDK provider or fallback.")),
 )
 
 var memToolAdminConsolidationStatus = mcp.NewTool("harness_mem_admin_consolidation_status",

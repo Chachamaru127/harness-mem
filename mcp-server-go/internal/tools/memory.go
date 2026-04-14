@@ -204,6 +204,10 @@ func runConsolidation(args map[string]any) types.ToolResult {
 	if fp, ok := args["forget_policy"].(map[string]any); ok {
 		payload["forget_policy"] = fp
 	}
+	// S80-B03: pass through the contradiction_scan sub-object when supplied.
+	if cs, ok := args["contradiction_scan"].(map[string]any); ok {
+		payload["contradiction_scan"] = cs
+	}
 	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", payload)
 	if err != nil {
 		return classifyError(err)
