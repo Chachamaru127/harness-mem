@@ -44,6 +44,7 @@ import { TtlCache } from "../system-environment/cache";
 import { SessionManager } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
+import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
@@ -1608,6 +1609,29 @@ export class HarnessMemCore {
 
   getObservations(request: GetObservationsRequest): ApiResponse {
     return this.obsStore.getObservations(request);
+  }
+
+  /**
+   * S80-C03: observation citation trace.
+   * Resolves an observation back to its source event and (when possible)
+   * to the CodeProvenance the event payload describes.
+   */
+  verifyObservation(request: {
+    observation_id: string;
+    include_private?: boolean;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    const result = verifyObservationTrace(this.db, request);
+    const response = makeResponse(
+      startedAt,
+      [result as unknown as Record<string, unknown>],
+      request as unknown as Record<string, unknown>,
+      { verify_ok: result.ok }
+    );
+    if (!result.ok) {
+      response.ok = false;
+    }
+    return response;
   }
 
   sessionsList(request: SessionsListRequest): ApiResponse {

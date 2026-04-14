@@ -741,6 +741,22 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.getObservations(req));
       }
 
+      // S80-C03: citation trace / provenance verify.
+      if (request.method === "POST" && url.pathname === "/v1/observations/verify") {
+        const body = await parseRequestJson(request);
+        const observationId =
+          typeof body.observation_id === "string" ? body.observation_id : "";
+        if (!observationId) {
+          return badRequest("observation_id is required");
+        }
+        return jsonResponse(
+          core.verifyObservation({
+            observation_id: observationId,
+            include_private: parseBooleanLike(body.include_private, false),
+          })
+        );
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/checkpoints/record") {
         const body = await parseRequestJson(request);
         // V5-010: 入力バリデーション

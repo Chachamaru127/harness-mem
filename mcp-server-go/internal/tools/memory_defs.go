@@ -249,3 +249,11 @@ var memToolSignalAck = mcp.NewTool("harness_mem_signal_ack",
 	mcp.WithString("signal_id", mcp.Required()),
 	mcp.WithString("agent_id", mcp.Required()),
 )
+
+
+// S80-C03: citation trace — walks observation -> event -> code provenance.
+var memToolVerify = mcp.NewTool("harness_mem_verify",
+	mcp.WithDescription("Trace an observation back to its source session/event and (when possible) the file path + action recorded by the originating tool_use. Combine with harness_mem_graph for multi-hop provenance audit."),
+	mcp.WithString("observation_id", mcp.Required(), mcp.Description("Observation id returned by search / timeline / resume_pack")),
+	mcp.WithBoolean("include_private", mcp.Description("Surface provenance even for private observations (default false)")),
+)

@@ -77,6 +77,8 @@ func MemoryToolDefs() []ToolDef {
 		{memToolSignalSend, handleMemTool("harness_mem_signal_send")},
 		{memToolSignalRead, handleMemTool("harness_mem_signal_read")},
 		{memToolSignalAck, handleMemTool("harness_mem_signal_ack")},
+		// S80-C03: Citation trace.
+		{memToolVerify, handleMemTool("harness_mem_verify")},
 	}
 }
 
@@ -357,6 +359,21 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"ids":             ids,
 			"include_private": argBool(args, "include_private", false),
 			"compact":         argBool(args, "compact", true),
+		})
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	// S80-C03: observation citation trace.
+	case "harness_mem_verify":
+		observationID := argString(args, "observation_id")
+		if observationID == "" {
+			return errorResult("observation_id is required")
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/verify", map[string]any{
+			"observation_id":  observationID,
+			"include_private": argBool(args, "include_private", false),
 		})
 		if err != nil {
 			return classifyError(err)
