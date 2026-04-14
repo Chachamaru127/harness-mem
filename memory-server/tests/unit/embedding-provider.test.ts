@@ -127,7 +127,14 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     const ruriEntry = MODEL_CATALOG.find((m) => m.id === "ruri-v3-310m");
     expect(ruriEntry).toBeDefined();
     expect(ruriEntry?.language).toBe("ja");
-    expect(ruriEntry?.dimension).toBe(1024);
+    expect(ruriEntry?.dimension).toBe(768);
+  });
+
+  test("model catalog に ruri-v3-130m が登録されている", () => {
+    const ruriEntry = MODEL_CATALOG.find((m) => m.id === "ruri-v3-130m");
+    expect(ruriEntry).toBeDefined();
+    expect(ruriEntry?.language).toBe("ja");
+    expect(ruriEntry?.dimension).toBe(512);
   });
 
   test("detectLanguage: 日本語テキストを ja と判定する", () => {
