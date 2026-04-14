@@ -571,7 +571,7 @@ Update the marker to `cc:完了` and note any unresolved issues.
 ## Maintained by
 
 <p align="center">
-  Developed and maintained by <a href="https://canai.jp/">CAN AI Inc.</a><br />
+  Developed and maintained by <a href="https://canai.jp/">CAN AI LLC</a><br />
   AI adoption consulting — helping organizations build lasting AI capabilities.
 </p>
 

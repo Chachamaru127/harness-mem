@@ -1,7 +1,7 @@
 /**
  * Harness MCP Server
  *
- * Enables cross-client session communication for Claude Code Harness.
+ * Enables cross-client session communication for harness-mem.
  * Supports Claude Code, Codex, and other MCP-compatible clients.
  *
  * Usage:
