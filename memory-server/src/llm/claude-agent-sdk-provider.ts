@@ -1,5 +1,5 @@
 /**
- * S80-C02: Claude Agent SDK provider.
+ * S81-C02: Claude Agent SDK provider.
  *
  * When `@anthropic-ai/claude-agent-sdk` is installed and a Claude Code
  * subscription is reachable (i.e. the user is logged into `claude`), the

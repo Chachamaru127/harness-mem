@@ -393,7 +393,7 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S80-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S80-B03) to detect and mark superseded observations via Jaccard + LLM adjudication.",
+    "description": "Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S81-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S81-B03) to detect and mark superseded observations via Jaccard + LLM adjudication.",
     "inputSchema": {
       "properties": {
         "limit": {
@@ -414,7 +414,7 @@
           "properties": {}
         },
         "contradiction_scan": {
-          "description": "Contradiction detection (S80-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S80-C02 Claude Agent SDK provider or fallback.",
+          "description": "Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.",
           "type": "object",
           "properties": {}
         }

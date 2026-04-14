@@ -1,5 +1,5 @@
 /**
- * S80-D01: Circuit breaker with cooldown.
+ * S81-D01: Circuit breaker with cooldown.
  *
  * Tracks consecutive failures per provider and, once the threshold is
  * crossed, parks the provider in a cooldown window so embedding requests
@@ -13,7 +13,7 @@
  *   half-open — a single probe is permitted. Success closes the breaker;
  *               failure re-opens it and resets the cooldown.
  *
- * Defaults match the §80 plan: 3 failures → 60s cooldown → 1 probe.
+ * Defaults match the §81 plan: 3 failures → 60s cooldown → 1 probe.
  * The breaker is deterministic thanks to an injectable `now()` clock so
  * tests can fast-forward without wall-clock sleeps.
  */

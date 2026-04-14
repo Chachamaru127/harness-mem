@@ -85,7 +85,7 @@ export function createFallbackEmbeddingProvider(options: FallbackProviderOptions
 }
 
 /**
- * S80-D01: Wraps an EmbeddingProvider with a circuit breaker so repeated
+ * S81-D01: Wraps an EmbeddingProvider with a circuit breaker so repeated
  * failures trigger a cooldown window during which calls are diverted to
  * `fallbackTo` instead of hammering the failing endpoint.
  *

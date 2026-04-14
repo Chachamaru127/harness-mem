@@ -47,7 +47,7 @@ export function createLLMProvider(config: Partial<LLMConfig> = {}): LLMProvider 
     case "openai":
       return new OpenAIProvider(fullConfig);
     case "anthropic":
-      // S80-C02: Anthropic はまず Claude Agent SDK 経路を試み、
+      // S81-C02: Anthropic はまず Claude Agent SDK 経路を試み、
       // SDK 未インストール or 失敗時は Ollama にフォールバックする。
       // SDK は dynamic import なので async な検証は別 API
       // (tryCreateClaudeAgentSDKProvider) を通す必要があり、ここでは
@@ -61,7 +61,7 @@ export function createLLMProvider(config: Partial<LLMConfig> = {}): LLMProvider 
 }
 
 /**
- * S80-C02: `claude-agent-sdk` が利用可能なら SDK ベースの provider を、
+ * S81-C02: `claude-agent-sdk` が利用可能なら SDK ベースの provider を、
  * 不可用なら従来 registry の fallback chain を返す async 版。
  * consolidation / rerank から呼ばれる想定で、同期経路を壊さないよう
  * 別関数に分離している。

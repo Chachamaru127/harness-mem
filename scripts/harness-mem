@@ -3482,7 +3482,7 @@ doctor_impl() {
       fi
     fi
 
-    # S80-A04: Lease + Signal availability probe.
+    # S81-A04: Lease + Signal availability probe.
     # Drives the daemon's /v1/lease/acquire and /v1/signal/send endpoints with
     # a throwaway agent_id so we verify the mem_leases / mem_signals schema is
     # present end-to-end. Reachability alone is sufficient — detailed contract
@@ -3503,7 +3503,7 @@ doctor_impl() {
           -d "{\"lease_id\":\"$lease_probe_id\",\"agent_id\":\"__doctor__\"}" 2>/dev/null || true
       fi
     else
-      _doctor_record "lease_primitive" "unreachable" "S80-A02: restart daemon or run 'bun test tests/unit/lease-store.test.ts'"
+      _doctor_record "lease_primitive" "unreachable" "S81-A02: restart daemon or run 'bun test tests/unit/lease-store.test.ts'"
       failed=1
     fi
     rm -f /tmp/harness-lease-probe.json
@@ -3515,7 +3515,7 @@ doctor_impl() {
         -d '{"agent_id":"__doctor__","limit":1}' 2>/dev/null)" && [ "$signal_probe_status" = "200" ]; then
       _doctor_record "signal_primitive" "ok" ""
     else
-      _doctor_record "signal_primitive" "unreachable" "S80-A03: restart daemon or run 'bun test tests/unit/signal-store.test.ts'"
+      _doctor_record "signal_primitive" "unreachable" "S81-A03: restart daemon or run 'bun test tests/unit/signal-store.test.ts'"
       failed=1
     fi
   fi

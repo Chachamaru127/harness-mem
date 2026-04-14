@@ -1,5 +1,5 @@
 /**
- * S80-A03: Signal primitive for inter-agent messaging.
+ * S81-A03: Signal primitive for inter-agent messaging.
  *
  * Signals are append-only messages routed between agents via the
  * `mem_signals` table. Each signal has:

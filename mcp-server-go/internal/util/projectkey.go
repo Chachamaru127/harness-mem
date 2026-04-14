@@ -1,4 +1,4 @@
-// projectkey.go — S80-A01: Worktree / repo-root unifier.
+// projectkey.go — S81-A01: Worktree / repo-root unifier.
 //
 // ResolveProjectKey inspects `cwd` and returns a canonical project key that
 // collapses all linked worktrees of the same repo onto the same key.

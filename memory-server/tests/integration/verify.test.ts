@@ -1,5 +1,5 @@
 /**
- * S80-C03 integration DoD:
+ * S81-C03 integration DoD:
  *   > 1 call で observation → (session_id, event_id, file_path, action)
  *   > が返り、harness_mem_graph の BFS と組合せて 2-hop 遡及が可能な
  *   > integration test PASS.
@@ -35,7 +35,7 @@ function createCore(name: string): { core: HarnessMemCore; dir: string } {
   return { core: new HarnessMemCore(config), dir };
 }
 
-describe("S80-C03 verify integration", () => {
+describe("S81-C03 verify integration", () => {
   test("verify → links BFS covers the 2-hop derived → origin → file chain", () => {
     const { core, dir } = createCore("2hop");
     try {

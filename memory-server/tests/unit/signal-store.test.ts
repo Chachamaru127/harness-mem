@@ -1,5 +1,5 @@
 /**
- * S80-A03: Signal primitive unit tests.
+ * S81-A03: Signal primitive unit tests.
  *
  * DoD: Claude が送った signal を Codex の _read が取得でき、ack 済みは
  * 再取得されない。reply_to で thread が繋がる。
@@ -15,7 +15,7 @@ function makeDb(): Database {
   return db;
 }
 
-describe("signal-store S80-A03", () => {
+describe("signal-store S81-A03", () => {
   let db: Database;
   let store: SignalStore;
   let t: number;

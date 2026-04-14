@@ -31,7 +31,7 @@ func AllTools() []ToolDef {
 }
 
 // ---------------------------------------------------------------------------
-// S80-C01: Tool visibility tiering
+// S81-C01: Tool visibility tiering
 // ---------------------------------------------------------------------------
 
 // Visibility controls how many tools are exposed over MCP.
@@ -43,7 +43,7 @@ const (
 	VisibilityCore Visibility = "core"
 )
 
-// coreToolNames is the 7-tool core set defined in §80-C01 DoD.
+// coreToolNames is the 7-tool core set defined in §81-C01 DoD.
 //
 //   - harness_mem_search
 //   - harness_mem_timeline

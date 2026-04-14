@@ -405,7 +405,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // TEAM-003: Team CRUD リポジトリ
   const teamRepo: ITeamRepository = new SqliteTeamRepository(core.getRawDb());
 
-  // S80-A02/A03: Lease + Signal primitives for dual-agent coordination.
+  // S81-A02/A03: Lease + Signal primitives for dual-agent coordination.
   const leaseStore: LeaseStore = createLeaseStore(core.getRawDb());
   const signalStore: SignalStore = createSignalStore(core.getRawDb());
 
@@ -468,7 +468,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
           const body = await parseRequestJson(request);
-          // S80-B02: accept forget_policy as a sub-object on the run request.
+          // S81-B02: accept forget_policy as a sub-object on the run request.
           let forgetPolicy: ConsolidationRunRequest["forget_policy"];
           if (body.forget_policy && typeof body.forget_policy === "object") {
             const fp = body.forget_policy as Record<string, unknown>;
@@ -485,7 +485,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                   : undefined,
             };
           }
-          // S80-B03: accept contradiction_scan sub-object.
+          // S81-B03: accept contradiction_scan sub-object.
           let contradictionScan: ConsolidationRunRequest["contradiction_scan"];
           if (body.contradiction_scan && typeof body.contradiction_scan === "object") {
             const cs = body.contradiction_scan as Record<string, unknown>;
@@ -773,7 +773,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.getObservations(req));
       }
 
-      // S80-C03: citation trace / provenance verify.
+      // S81-C03: citation trace / provenance verify.
       if (request.method === "POST" && url.pathname === "/v1/observations/verify") {
         const body = await parseRequestJson(request);
         const observationId =
@@ -1747,7 +1747,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         });
       }
 
-      // S80-A02: Lease primitives.
+      // S81-A02: Lease primitives.
       if (request.method === "POST" && url.pathname === "/v1/lease/acquire") {
         const body = await parseRequestJson(request);
         const res = leaseStore.acquire({
@@ -1784,7 +1784,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(leaseStore.renew(leaseId, agentId, ttlMs));
       }
 
-      // S80-A03: Signal primitives.
+      // S81-A03: Signal primitives.
       if (request.method === "POST" && url.pathname === "/v1/signal/send") {
         const body = await parseRequestJson(request);
         const res = signalStore.send({

@@ -1,5 +1,5 @@
 /**
- * S80-A02: Lease primitive unit tests.
+ * S81-A02: Lease primitive unit tests.
  *
  * DoD: 2 つの agent が同一 target を lease すると後発は
  * `{error:"already_leased", heldBy, expiresAt}` を返す。TTL 超過で以降の
@@ -21,7 +21,7 @@ function makeDb(): Database {
   return db;
 }
 
-describe("lease-store S80-A02", () => {
+describe("lease-store S81-A02", () => {
   let db: Database;
   let t: number;
   let store: LeaseStore;

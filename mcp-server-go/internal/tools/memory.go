@@ -27,7 +27,7 @@ var selfTrackSkip = map[string]bool{
 	"harness_mem_record_checkpoint": true,
 	"harness_mem_finalize_session":  true,
 	"harness_mem_bulk_add":          true,
-	// S80-A02/A03: coordination primitives are high-frequency and should
+	// S81-A02/A03: coordination primitives are high-frequency and should
 	// not trigger recursive tool-use recording.
 	"harness_mem_lease_acquire": true,
 	"harness_mem_lease_release": true,
@@ -69,15 +69,15 @@ func MemoryToolDefs() []ToolDef {
 		{memToolIngest, handleMemTool("harness_mem_ingest")},
 		{memToolGraph, handleMemTool("harness_mem_graph")},
 		{memToolShareToTeam, handleMemTool("harness_mem_share_to_team")},
-		// S80-A02: Lease primitives.
+		// S81-A02: Lease primitives.
 		{memToolLeaseAcquire, handleMemTool("harness_mem_lease_acquire")},
 		{memToolLeaseRelease, handleMemTool("harness_mem_lease_release")},
 		{memToolLeaseRenew, handleMemTool("harness_mem_lease_renew")},
-		// S80-A03: Signal primitives.
+		// S81-A03: Signal primitives.
 		{memToolSignalSend, handleMemTool("harness_mem_signal_send")},
 		{memToolSignalRead, handleMemTool("harness_mem_signal_read")},
 		{memToolSignalAck, handleMemTool("harness_mem_signal_ack")},
-		// S80-C03: Citation trace.
+		// S81-C03: Citation trace.
 		{memToolVerify, handleMemTool("harness_mem_verify")},
 	}
 }
@@ -200,11 +200,11 @@ func runConsolidation(args map[string]any) types.ToolResult {
 		"session_id": argString(args, "session_id"),
 		"limit":      optNum(args, "limit"),
 	}
-	// S80-B02: pass through the forget_policy sub-object when supplied.
+	// S81-B02: pass through the forget_policy sub-object when supplied.
 	if fp, ok := args["forget_policy"].(map[string]any); ok {
 		payload["forget_policy"] = fp
 	}
-	// S80-B03: pass through the contradiction_scan sub-object when supplied.
+	// S81-B03: pass through the contradiction_scan sub-object when supplied.
 	if cs, ok := args["contradiction_scan"].(map[string]any); ok {
 		payload["contradiction_scan"] = cs
 	}
@@ -374,7 +374,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		}
 		return successResult(resp, false)
 
-	// S80-C03: observation citation trace.
+	// S81-C03: observation citation trace.
 	case "harness_mem_verify":
 		observationID := argString(args, "observation_id")
 		if observationID == "" {
@@ -733,7 +733,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		}
 		return successResult(resp, false)
 
-	// S80-A02: Lease primitives for inter-agent coordination.
+	// S81-A02: Lease primitives for inter-agent coordination.
 	case "harness_mem_lease_acquire":
 		target := argString(args, "target")
 		agentID := argString(args, "agent_id")
@@ -787,7 +787,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		}
 		return successResult(resp, false)
 
-	// S80-A03: Signal primitives for inter-agent messaging.
+	// S81-A03: Signal primitives for inter-agent messaging.
 	case "harness_mem_signal_send":
 		from := argString(args, "from")
 		content := argString(args, "content")

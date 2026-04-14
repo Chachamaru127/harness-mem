@@ -122,13 +122,13 @@ var memToolAdminMetrics = mcp.NewTool("harness_mem_admin_metrics",
 )
 
 var memToolAdminConsolidationRun = mcp.NewTool("harness_mem_admin_consolidation_run",
-	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S80-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S80-B03) to detect and mark superseded observations via Jaccard + LLM adjudication."),
+	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S81-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S81-B03) to detect and mark superseded observations via Jaccard + LLM adjudication."),
 	mcp.WithString("reason"),
 	mcp.WithString("project"),
 	mcp.WithString("session_id"),
 	mcp.WithNumber("limit"),
 	mcp.WithObject("forget_policy", mcp.Description("Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.")),
-	mcp.WithObject("contradiction_scan", mcp.Description("Contradiction detection (S80-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S80-C02 Claude Agent SDK provider or fallback.")),
+	mcp.WithObject("contradiction_scan", mcp.Description("Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.")),
 )
 
 var memToolAdminConsolidationStatus = mcp.NewTool("harness_mem_admin_consolidation_status",
@@ -203,7 +203,7 @@ var memToolShareToTeam = mcp.NewTool("harness_mem_share_to_team",
 	mcp.WithString("team_id", mcp.Required(), mcp.Description("Team ID to share with")),
 )
 
-// S80-A02: Lease primitives for inter-agent coordination.
+// S81-A02: Lease primitives for inter-agent coordination.
 var memToolLeaseAcquire = mcp.NewTool("harness_mem_lease_acquire",
 	mcp.WithDescription("Acquire an exclusive, time-bounded lease on a target (file path, action id, or arbitrary key) so dual agents (Claude + Codex) can coordinate without stepping on each other."),
 	mcp.WithString("target", mcp.Required(), mcp.Description("Lease target (file path, action id, etc.)")),
@@ -226,7 +226,7 @@ var memToolLeaseRenew = mcp.NewTool("harness_mem_lease_renew",
 	mcp.WithNumber("ttl_ms", mcp.Description("Optional new TTL; defaults to the original TTL")),
 )
 
-// S80-A03: Signal primitives for inter-agent messaging.
+// S81-A03: Signal primitives for inter-agent messaging.
 var memToolSignalSend = mcp.NewTool("harness_mem_signal_send",
 	mcp.WithDescription("Send an inter-agent signal. to=null means broadcast. reply_to threads signals under the same thread_id."),
 	mcp.WithString("from", mcp.Required(), mcp.Description("Sending agent id")),
@@ -253,7 +253,7 @@ var memToolSignalAck = mcp.NewTool("harness_mem_signal_ack",
 )
 
 
-// S80-C03: citation trace — walks observation -> event -> code provenance.
+// S81-C03: citation trace — walks observation -> event -> code provenance.
 var memToolVerify = mcp.NewTool("harness_mem_verify",
 	mcp.WithDescription("Trace an observation back to its source session/event and (when possible) the file path + action recorded by the originating tool_use. Combine with harness_mem_graph for multi-hop provenance audit."),
 	mcp.WithString("observation_id", mcp.Required(), mcp.Description("Observation id returned by search / timeline / resume_pack")),

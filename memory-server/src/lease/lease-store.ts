@@ -1,5 +1,5 @@
 /**
- * S80-A02: Lease primitive for inter-agent coordination.
+ * S81-A02: Lease primitive for inter-agent coordination.
  *
  * A lease is an exclusive, time-bounded claim on a string `target`
  * (file path, action id, or arbitrary key). A second agent that tries
@@ -8,7 +8,7 @@
  * TTL elapses the lease becomes invisible to further acquires — the
  * next acquire transparently replaces it.
  *
- * Design constraints (see Plans.md §80 S80-A02):
+ * Design constraints (see Plans.md §81 S81-A02):
  *   - default TTL 600_000 ms, max 3_600_000 ms
  *   - `(target, status='active', now<expires_at)` index backs contention
  *   - release/renew are idempotent and scoped to the acquirer's agent_id

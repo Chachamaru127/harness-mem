@@ -1,5 +1,5 @@
 /**
- * S80-D01: circuit breaker unit tests.
+ * S81-D01: circuit breaker unit tests.
  *
  * DoD: provider 故意落としテストで cooldown 時間は他 provider、復帰後に
  * 元が戻る 3-run test PASS。
@@ -9,7 +9,7 @@ import { createCircuitBreaker } from "../../src/embedding/circuit-breaker";
 import { createFallbackEmbeddingProvider, withCircuitBreaker } from "../../src/embedding/fallback";
 import type { EmbeddingProvider } from "../../src/embedding/types";
 
-describe("circuit-breaker S80-D01", () => {
+describe("circuit-breaker S81-D01", () => {
   test("starts closed and allows requests", () => {
     const b = createCircuitBreaker();
     expect(b.status().state).toBe("closed");
@@ -154,10 +154,10 @@ describe("circuit-breaker S80-D01", () => {
 });
 
 /**
- * S80-D01 DoD integration: breaker-wrapped provider routes to a secondary
+ * S81-D01 DoD integration: breaker-wrapped provider routes to a secondary
  * provider while the primary is in cooldown, then recovers on probe success.
  */
-describe("withCircuitBreaker S80-D01 integration", () => {
+describe("withCircuitBreaker S81-D01 integration", () => {
   function makeFlakyProvider(shouldFail: { v: boolean }): EmbeddingProvider {
     return {
       name: "flaky",

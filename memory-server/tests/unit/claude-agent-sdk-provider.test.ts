@@ -1,5 +1,5 @@
 /**
- * S80-C02: Claude Agent SDK provider unit tests.
+ * S81-C02: Claude Agent SDK provider unit tests.
  *
  * DoD: ANTHROPIC_API_KEY 未設定かつ Claude subscription あり環境で
  * consolidation の LLM 呼び出しが成功、provider switch log が記録される。
@@ -55,7 +55,7 @@ function makeLoader(fn: MaybeQueryFn | null): AgentSDKLoader {
 }
 
 
-describe("claude-agent-sdk-provider S80-C02", () => {
+describe("claude-agent-sdk-provider S81-C02", () => {
   test("detectAgentSDKAvailability reports unavailable when loader returns null", async () => {
     const result = await detectAgentSDKAvailability(makeLoader(null));
     expect(result.available).toBe(false);

@@ -1,4 +1,4 @@
-// projectkey_test.go — S80-A01 unit tests.
+// projectkey_test.go — S81-A01 unit tests.
 package util
 
 import (

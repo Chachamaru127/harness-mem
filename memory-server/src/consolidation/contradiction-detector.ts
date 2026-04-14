@@ -1,5 +1,5 @@
 /**
- * S80-B03: Contradiction detection.
+ * S81-B03: Contradiction detection.
  *
  * Pipeline:
  *   1. Group active (non-archived) observations by "concept" — in this
@@ -16,7 +16,7 @@
  *
  * The adjudicator is injected because:
  *   - Unit tests run offline (no provider calls).
- *   - §80-C02 lets consolidation opt into a Claude Agent SDK provider —
+ *   - §81-C02 lets consolidation opt into a Claude Agent SDK provider —
  *     contradiction adjudication is the first real caller of that path.
  *
  * Design constraints:

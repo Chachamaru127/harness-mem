@@ -1,5 +1,5 @@
 /**
- * S80-B02: Low-value eviction unit tests.
+ * S81-B02: Low-value eviction unit tests.
  *
  * DoD: evict 件数と対象 ID を audit log に記録、dry_run と wet で結果一致.
  *
@@ -72,7 +72,7 @@ function daysAgo(n: number): string {
   return new Date(NOW.getTime() - n * 86400 * 1000).toISOString();
 }
 
-describe("forget-policy S80-B02", () => {
+describe("forget-policy S81-B02", () => {
   let db: Database;
   const originalEnv = process.env.HARNESS_MEM_AUTO_FORGET;
 

@@ -1,5 +1,5 @@
 /**
- * S80-C03: harness_mem_verify (citation trace) unit tests.
+ * S81-C03: harness_mem_verify (citation trace) unit tests.
  *
  * DoD: 1 call で observation → (session_id, event_id, file_path, action)
  * が返り、`harness_mem_graph` の BFS と組合せて 2-hop 遡及が可能な
@@ -79,7 +79,7 @@ function insertObservation(
   );
 }
 
-describe("verifyObservation S80-C03", () => {
+describe("verifyObservation S81-C03", () => {
   let db: Database;
 
   beforeEach(() => {

@@ -1,5 +1,5 @@
 /**
- * S80-B02: Low-value eviction policy.
+ * S81-B02: Low-value eviction policy.
  *
  * Produces a deterministic ranking over observations that are candidates for
  * soft-delete, based on three factors:
@@ -24,7 +24,7 @@
  *     an explicit reason — we never silently archive data.
  *   - "Archive" here means soft-delete: we flip `archived_at`. Hard delete
  *     is not exposed; if operators want to reclaim space they must run a
- *     follow-up vacuum job. §80 explicitly scopes B02 to soft-delete only.
+ *     follow-up vacuum job. §81 explicitly scopes B02 to soft-delete only.
  */
 
 import { type Database } from "bun:sqlite";

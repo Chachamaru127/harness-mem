@@ -129,7 +129,7 @@ export interface ConsolidationRunRequest {
   project?: string;
   session_id?: string;
   limit?: number;
-  /** S80-B02: opt-in low-value eviction policy. See consolidation/forget-policy.ts. */
+  /** S81-B02: opt-in low-value eviction policy. See consolidation/forget-policy.ts. */
   forget_policy?: {
     /** Default true — wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1. */
     dry_run?: boolean;
@@ -138,7 +138,7 @@ export interface ConsolidationRunRequest {
     limit?: number;
     protect_accessed?: boolean;
   };
-  /** S80-B03: opt-in contradiction detection. See consolidation/contradiction-detector.ts. */
+  /** S81-B03: opt-in contradiction detection. See consolidation/contradiction-detector.ts. */
   contradiction_scan?: {
     jaccard_threshold?: number;
     min_confidence?: number;

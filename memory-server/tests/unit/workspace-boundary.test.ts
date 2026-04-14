@@ -559,7 +559,7 @@ describe("workspace boundary", () => {
     }
   });
 
-  // S80-A01: Worktree / repo-root unifier.
+  // S81-A01: Worktree / repo-root unifier.
   // DoD: 3 worktree から ingest した observation が `project` で同一 key に集約され、
   // `harness_mem_stats` で 1 プロジェクト扱いになる integration test が PASS。
   test("three linked worktrees of the same repo collapse into one project key", () => {

@@ -1,5 +1,5 @@
 /**
- * S80-B03: Contradiction detection unit tests.
+ * S81-B03: Contradiction detection unit tests.
  *
  * DoD: fixture に矛盾 pair を 3 件注入、detection precision ≥ 0.95 /
  *      recall ≥ 0.8 が 3-run で PASS。
@@ -177,7 +177,7 @@ function measure(result: {
   return { precision, recall };
 }
 
-describe("contradiction-detector S80-B03", () => {
+describe("contradiction-detector S81-B03", () => {
   let db: Database;
 
   beforeEach(() => {

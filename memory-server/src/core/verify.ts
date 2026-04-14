@@ -1,5 +1,5 @@
 /**
- * S80-C03: observation citation-trace / provenance verify.
+ * S81-C03: observation citation-trace / provenance verify.
  *
  * Given an observation ID, walks the chain:
  *   observation → mem_events.event_id → payload.tool_use

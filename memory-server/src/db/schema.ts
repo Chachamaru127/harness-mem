@@ -318,7 +318,7 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_team_invitations_team_status
       ON mem_team_invitations(team_id, status);
 
-    -- S80-A02: Lease primitive for inter-agent coordination.
+    -- S81-A02: Lease primitive for inter-agent coordination.
     -- A lease is a time-bounded exclusive claim on a string "target"
     -- (file path, action id, or arbitrary key). A second agent trying
     -- to acquire the same active target gets {error:"already_leased"}.
@@ -342,7 +342,7 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_leases_agent
       ON mem_leases(agent_id, status);
 
-    -- S80-A03: Signal primitive for inter-agent messaging.
+    -- S81-A03: Signal primitive for inter-agent messaging.
     -- Signals are append-only messages between agents. A signal becomes
     -- invisible to _read once ack'ed. reply_to links threaded signals.
     CREATE TABLE IF NOT EXISTS mem_signals (
@@ -769,7 +769,7 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
-  // S80-B02: Low-value eviction — soft-delete marker for archived observations.
+  // S81-B02: Low-value eviction — soft-delete marker for archived observations.
   // `archived_at` is NULL for active rows; ISO timestamp for rows the forget
   // policy has demoted. Always coexists with the `archived_by_score` field in
   // audit-log payloads so analysts can reverse specific runs.

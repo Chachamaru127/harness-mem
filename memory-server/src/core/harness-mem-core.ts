@@ -241,7 +241,7 @@ function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: str
 }
 
 function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
-  // S80-A01: walk up from `existingPath` looking for .git so that nested
+  // S81-A01: walk up from `existingPath` looking for .git so that nested
   // subdirectories inside a worktree or main repo are collapsed onto the
   // common git root. Previously this function only inspected `existingPath`
   // itself which broke 3-worktree ingest from nested `src/` dirs.
@@ -1622,7 +1622,7 @@ export class HarnessMemCore {
   }
 
   /**
-   * S80-C03: observation citation trace.
+   * S81-C03: observation citation trace.
    * Resolves an observation back to its source event and (when possible)
    * to the CodeProvenance the event payload describes.
    */
@@ -2207,7 +2207,7 @@ export class HarnessMemCore {
       // best effort
     }
 
-    // S80-B02: Opt-in low-value eviction policy. Runs *after* the normal
+    // S81-B02: Opt-in low-value eviction policy. Runs *after* the normal
     // consolidation pass so fact extraction and dedupe complete against the
     // full observation set first. Dry-run by default; wet mode additionally
     // requires HARNESS_MEM_AUTO_FORGET=1.
@@ -2233,7 +2233,7 @@ export class HarnessMemCore {
       );
     }
 
-    // S80-B03: Opt-in contradiction detection. The adjudicator is the LLM
+    // S81-B03: Opt-in contradiction detection. The adjudicator is the LLM
     // (Claude Agent SDK first, falling back through the existing registry).
     // If no provider is available, we degrade to a conservative stub that
     // reports zero contradictions so the run still completes.
@@ -2278,8 +2278,8 @@ export class HarnessMemCore {
   }
 
   /**
-   * S80-B03: build the LLM-backed adjudicator used by contradiction
-   * detection. Attempts the Claude Agent SDK provider (S80-C02) first, then
+   * S81-B03: build the LLM-backed adjudicator used by contradiction
+   * detection. Attempts the Claude Agent SDK provider (S81-C02) first, then
    * degrades gracefully: on any provider failure the pair is reported as
    * `{contradiction: false, confidence: 0}` so a flaky LLM can never create
    * spurious `superseded` links.
@@ -2374,7 +2374,7 @@ export class HarnessMemCore {
       "contradicts",
       "causes",
       "part_of",
-      // S80-B03: contradiction-detection output relation. Points newer → older,
+      // S81-B03: contradiction-detection output relation. Points newer → older,
       // explicitly flagging the older observation as demoted by a newer one.
       "superseded",
     ];

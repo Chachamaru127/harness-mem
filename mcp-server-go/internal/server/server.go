@@ -30,7 +30,7 @@ func Run() error {
 }
 
 // registerTools registers tool definitions and handlers on the server.
-// §80-C01: obeys HARNESS_MEM_TOOLS=core|all to narrow the exposed set.
+// §81-C01: obeys HARNESS_MEM_TOOLS=core|all to narrow the exposed set.
 // Unrecognized / missing values fall back to "all" (backward compatible).
 func registerTools(s *mcpserver.MCPServer) {
 	vis := tools.ResolveVisibility(strings.TrimSpace(os.Getenv("HARNESS_MEM_TOOLS")))

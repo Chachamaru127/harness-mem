@@ -1,4 +1,4 @@
-// visibility_test.go — S80-C01 unit tests for tool visibility tiering.
+// visibility_test.go — S81-C01 unit tests for tool visibility tiering.
 package tools
 
 import (
