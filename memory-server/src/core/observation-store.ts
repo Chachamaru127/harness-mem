@@ -1348,6 +1348,11 @@ export class ObservationStore {
     if (!options.skipPrivacy) {
       nextSql += visibilityFilterSql(alias, Boolean(filters.include_private));
     }
+    // S81-B02: exclude soft-archived observations unless includePrivate is set
+    // (admin tools like verify / audit can pass include_private=true to see all).
+    if (!filters.include_private) {
+      nextSql += ` AND ${alias}.archived_at IS NULL`;
+    }
     return nextSql;
   }
 

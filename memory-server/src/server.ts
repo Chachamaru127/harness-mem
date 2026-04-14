@@ -1807,6 +1807,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           agentId,
           threadId: typeof body.thread_id === "string" ? body.thread_id : undefined,
           includeBroadcast: body.include_broadcast !== false,
+          project: typeof body.project === "string" ? body.project : undefined,
           limit: typeof body.limit === "number" ? body.limit : undefined,
         });
         return jsonResponse({ ok: true, signals });

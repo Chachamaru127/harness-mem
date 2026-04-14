@@ -825,6 +825,11 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
+		// S81-A03: forward project scope so signal reads do not leak across
+		// repos that share an agent identity.
+		if v := argString(args, "project"); v != "" {
+			payload["project"] = v
+		}
 		if v, ok := args["include_broadcast"].(bool); ok {
 			payload["include_broadcast"] = v
 		}

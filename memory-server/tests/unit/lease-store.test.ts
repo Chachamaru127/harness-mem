@@ -154,4 +154,38 @@ describe("lease-store S81-A02", () => {
       ].sort()
     );
   });
+
+  // S81-A02 hardening: project scoping (Codex review 2026-04-14 finding P2.3)
+
+  test("two different projects can lease the same target simultaneously", () => {
+    const a = store.acquire({ target: "file:/src/index.ts", agentId: "claude", project: "repo-a" });
+    expect(a.ok).toBe(true);
+
+    const b = store.acquire({ target: "file:/src/index.ts", agentId: "codex", project: "repo-b" });
+    expect(b.ok).toBe(true);
+    if (a.ok && b.ok) {
+      expect(a.lease.leaseId).not.toBe(b.lease.leaseId);
+    }
+  });
+
+  test("same project cannot double-lease the same target", () => {
+    const a = store.acquire({ target: "file:/src/auth.ts", agentId: "claude", project: "repo-a" });
+    expect(a.ok).toBe(true);
+
+    const b = store.acquire({ target: "file:/src/auth.ts", agentId: "codex", project: "repo-a" });
+    expect(b.ok).toBe(false);
+    if (!b.ok && b.error === "already_leased") {
+      expect(b.heldBy).toBe("claude");
+    } else {
+      throw new Error(`expected already_leased, got ${JSON.stringify(b)}`);
+    }
+  });
+
+  test("null-project lease does not collide with scoped lease on same target", () => {
+    const scoped = store.acquire({ target: "file:/src/app.ts", agentId: "claude", project: "repo-a" });
+    expect(scoped.ok).toBe(true);
+
+    const global = store.acquire({ target: "file:/src/app.ts", agentId: "mallory" });
+    expect(global.ok).toBe(true);
+  });
 });

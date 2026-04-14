@@ -54,6 +54,12 @@ export interface ReadRequest {
   threadId?: string;
   /** If true, include broadcast (to=null) signals. Default: true. */
   includeBroadcast?: boolean;
+  /**
+   * S81-A03 scoping: if provided, only return signals sent with this
+   * project tag (or broadcasts when project is null/undefined). Prevents
+   * cross-project signal leak when the same agent identity is reused.
+   */
+  project?: string | null;
   limit?: number;
 }
 
@@ -64,7 +70,7 @@ export interface AckRequest {
 
 export type AckResponse =
   | { ok: true; signal: SignalRow }
-  | { ok: false; error: "not_found" | "already_acked" };
+  | { ok: false; error: "not_found" | "already_acked" | "not_recipient" };
 
 export interface SignalStore {
   send(req: SendRequest): SendResponse;
@@ -197,6 +203,18 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
       where.push(`thread_id = ?`);
       params.push(req.threadId);
     }
+    // S81-A03: project scoping on read side. When caller passes a project,
+    // only return signals tagged with that project (nulls are global-scope
+    // and are always visible). Without this filter the same agent identity
+    // reused across repos would leak coordination messages.
+    if (req.project !== undefined) {
+      if (req.project === null) {
+        where.push(`project IS NULL`);
+      } else {
+        where.push(`(project = ? OR project IS NULL)`);
+        params.push(req.project);
+      }
+    }
     params.push(limit);
     const rows = db
       .query(
@@ -216,6 +234,17 @@ export function createSignalStore(db: Database, options: SignalStoreOptions = {}
     if (!row) return { ok: false, error: "not_found" };
     if (row.acked_at != null) {
       return { ok: false, error: "already_acked" };
+    }
+    // S81-A03: ownership check. Direct signals (to_agent non-null) may
+    // only be acked by the intended recipient — otherwise a sender could
+    // self-ack and delete their own point-to-point message, or any caller
+    // who learned the signalId could dismiss someone else's inbox entry.
+    // Broadcast signals (to_agent IS NULL) remain acknowledgeable by any
+    // caller (the semantics of "read receipt per agent" would need a
+    // separate ack-log table and is out of scope).
+    const toAgent = row.to_agent == null ? null : String(row.to_agent);
+    if (toAgent !== null && toAgent !== req.agentId) {
+      return { ok: false, error: "not_recipient" };
     }
     const nowIso = toIso(now());
     db.run(

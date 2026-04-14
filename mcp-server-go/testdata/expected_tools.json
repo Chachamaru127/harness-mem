@@ -1217,7 +1217,7 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false).",
+    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Pass project to scope reads to a repo and avoid cross-project leak when the same agent_id is reused.",
     "inputSchema": {
       "properties": {
         "agent_id": {
@@ -1230,6 +1230,10 @@
         "limit": {
           "description": "Max signals returned (default 100)",
           "type": "number"
+        },
+        "project": {
+          "description": "Scope reads to signals tagged with this project (plus null-project broadcasts)",
+          "type": "string"
         },
         "thread_id": {
           "description": "Filter to a specific thread",

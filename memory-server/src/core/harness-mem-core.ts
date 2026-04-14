@@ -200,6 +200,83 @@ interface ProjectNormalizationOptions {
   preferredRoots?: string[];
 }
 
+/**
+ * S81-B03: parse an LLM contradiction verdict from raw text. Handles both
+ * JSON mode providers (OpenAI/Ollama force JSON object output) and plain
+ * text providers (Claude Agent SDK or Anthropic direct). Degrades to
+ * {contradiction: false, confidence: 0} on any parse failure so an
+ * untrustworthy response can never create a spurious `superseded` link.
+ */
+function parseContradictionVerdict(raw: string): {
+  contradiction: boolean;
+  confidence: number;
+  reason: string;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { contradiction: false, confidence: 0, reason: "empty response" };
+  }
+  // Try JSON first (OpenAI/Ollama force JSON mode).
+  const jsonCandidates: string[] = [];
+  if (trimmed.startsWith("{")) {
+    jsonCandidates.push(trimmed);
+  }
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch && jsonMatch[0] !== trimmed) {
+    jsonCandidates.push(jsonMatch[0]);
+  }
+  for (const candidate of jsonCandidates) {
+    try {
+      const parsed = JSON.parse(candidate) as {
+        contradiction?: unknown;
+        reason?: unknown;
+        verdict?: unknown;
+        answer?: unknown;
+      };
+      const contradictionVal =
+        parsed.contradiction ?? parsed.verdict ?? parsed.answer;
+      if (typeof contradictionVal === "boolean") {
+        return {
+          contradiction: contradictionVal,
+          confidence: 0.9,
+          reason:
+            typeof parsed.reason === "string" ? parsed.reason : candidate,
+        };
+      }
+      if (typeof contradictionVal === "string") {
+        const lower = contradictionVal.trim().toLowerCase();
+        if (lower === "yes" || lower === "true") {
+          return {
+            contradiction: true,
+            confidence: 0.9,
+            reason:
+              typeof parsed.reason === "string" ? parsed.reason : candidate,
+          };
+        }
+        if (lower === "no" || lower === "false") {
+          return {
+            contradiction: false,
+            confidence: 0.9,
+            reason:
+              typeof parsed.reason === "string" ? parsed.reason : candidate,
+          };
+        }
+      }
+    } catch {
+      // fall through to plain text path
+    }
+  }
+  // Plain text fallback (Claude Agent SDK / Anthropic direct non-JSON).
+  const lowered = trimmed.toLowerCase();
+  if (/^(yes|true|contradiction)\b/.test(lowered)) {
+    return { contradiction: true, confidence: 0.9, reason: trimmed };
+  }
+  if (/^(no|false|agree)\b/.test(lowered)) {
+    return { contradiction: false, confidence: 0.9, reason: trimmed };
+  }
+  return { contradiction: false, confidence: 0, reason: `unparseable: ${trimmed.slice(0, 80)}` };
+}
+
 function normalizePathLike(inputPath: string): string {
   return inputPath.replace(/\/+$/, "").replace(/\\/g, "/");
 }
@@ -2297,18 +2374,18 @@ export class HarnessMemCore {
     return async (a, b) => {
       const prompt = [
         "You are reviewing two observations that share a concept and have near-identical content.",
-        "Return `yes` if they contradict (i.e., one fact supersedes the other), otherwise `no`.",
+        "Decide if they contradict (i.e., one fact supersedes the other).",
         `Observation A (${a.observation_id}, ${a.created_at}):\n${a.content}`,
         `Observation B (${b.observation_id}, ${b.created_at}):\n${b.content}`,
-        "Answer with strictly `yes` or `no` on the first line.",
+        'Respond with STRICT JSON: {"contradiction": true|false, "reason": "<short explanation>"}. No other text.',
       ].join("\n\n");
       try {
-        const text = (await provider!.generate(prompt, { maxTokens: 4 })).trim().toLowerCase();
-        const contradiction = text.startsWith("yes");
+        const raw = (await provider!.generate(prompt, { maxTokens: 80 })).trim();
+        const verdict = parseContradictionVerdict(raw);
         return {
-          contradiction,
-          confidence: contradiction ? 0.9 : 0.9,
-          reason: text,
+          contradiction: verdict.contradiction,
+          confidence: verdict.confidence,
+          reason: verdict.reason,
         };
       } catch {
         return { contradiction: false, confidence: 0, reason: "llm error" };

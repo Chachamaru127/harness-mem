@@ -132,4 +132,65 @@ describe("signal-store S81-A03", () => {
       ].sort()
     );
   });
+
+  // S81-A03 hardening: project scoping + recipient-only ack
+  // (Codex review 2026-04-14 findings P2.4 and P2.5)
+
+  test("read with project filter excludes signals tagged to another project", () => {
+    store.send({ from: "claude", to: "codex", content: "repo A note", project: "repo-a" });
+    store.send({ from: "claude", to: "codex", content: "repo B note", project: "repo-b" });
+
+    const repoAView = store.read({ agentId: "codex", project: "repo-a" });
+    expect(repoAView).toHaveLength(1);
+    expect(repoAView[0]?.content).toBe("repo A note");
+
+    const repoBView = store.read({ agentId: "codex", project: "repo-b" });
+    expect(repoBView).toHaveLength(1);
+    expect(repoBView[0]?.content).toBe("repo B note");
+
+    // Without project filter: both visible (legacy behavior preserved).
+    const all = store.read({ agentId: "codex" });
+    expect(all).toHaveLength(2);
+  });
+
+  test("read with project also returns null-project (global) signals", () => {
+    store.send({ from: "claude", to: "codex", content: "global note" }); // no project
+    store.send({ from: "claude", to: "codex", content: "repo-a note", project: "repo-a" });
+
+    const repoAView = store.read({ agentId: "codex", project: "repo-a" });
+    expect(repoAView.map((s) => s.content).sort()).toEqual(["global note", "repo-a note"]);
+  });
+
+  test("ack by non-recipient is rejected for direct signals", () => {
+    const sent = store.send({ from: "claude", to: "codex", content: "direct message" });
+    expect(sent.ok).toBe(true);
+    if (!sent.ok) return;
+
+    // Sender self-ack is forbidden.
+    const selfAck = store.ack({ signalId: sent.signal.signalId, agentId: "claude" });
+    expect(selfAck.ok).toBe(false);
+    if (!selfAck.ok) {
+      expect(selfAck.error).toBe("not_recipient");
+    }
+
+    // Random third party is forbidden.
+    const mallory = store.ack({ signalId: sent.signal.signalId, agentId: "mallory" });
+    expect(mallory.ok).toBe(false);
+    if (!mallory.ok) {
+      expect(mallory.error).toBe("not_recipient");
+    }
+
+    // Actual recipient can ack.
+    const recipient = store.ack({ signalId: sent.signal.signalId, agentId: "codex" });
+    expect(recipient.ok).toBe(true);
+  });
+
+  test("ack on broadcast signals is allowed by any caller", () => {
+    const bcast = store.send({ from: "claude", content: "broadcast" }); // to=null
+    expect(bcast.ok).toBe(true);
+    if (!bcast.ok) return;
+
+    const acked = store.ack({ signalId: bcast.signal.signalId, agentId: "anyone" });
+    expect(acked.ok).toBe(true);
+  });
 });

@@ -239,9 +239,10 @@ var memToolSignalSend = mcp.NewTool("harness_mem_signal_send",
 )
 
 var memToolSignalRead = mcp.NewTool("harness_mem_signal_read",
-	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false)."),
+	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Pass project to scope reads to a repo and avoid cross-project leak when the same agent_id is reused."),
 	mcp.WithString("agent_id", mcp.Required()),
 	mcp.WithString("thread_id", mcp.Description("Filter to a specific thread")),
+	mcp.WithString("project", mcp.Description("Scope reads to signals tagged with this project (plus null-project broadcasts)")),
 	mcp.WithBoolean("include_broadcast", mcp.Description("Include broadcast signals (default true)")),
 	mcp.WithNumber("limit", mcp.Description("Max signals returned (default 100)")),
 )

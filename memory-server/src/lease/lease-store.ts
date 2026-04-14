@@ -165,17 +165,21 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
     const nowIso = toIso(nowMs);
     sweepExpired(nowIso);
 
-    // Contention check: is an active lease on this target still alive?
+    // S81-A02 project scoping: exclusivity is per (project, target). Two
+    // different repos with the same relative `target` must NOT collide.
+    // Null project matches only other null-project leases (global scope).
+    const project = req.project ?? null;
     const existing = db
       .query(
         `SELECT * FROM mem_leases
           WHERE target = ?
             AND status = 'active'
             AND expires_at > ?
+            AND ((project IS NULL AND ? IS NULL) OR project = ?)
           ORDER BY acquired_at DESC
           LIMIT 1`
       )
-      .get(target, nowIso) as Record<string, unknown> | null;
+      .get(target, nowIso, project, project) as Record<string, unknown> | null;
 
     if (existing) {
       const held = parseRow(existing);
@@ -199,7 +203,7 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
         leaseId,
         target,
         agentId,
-        req.project ?? null,
+        project,
         ttlMs,
         nowIso,
         expiresAt,
@@ -213,7 +217,7 @@ export function createLeaseStore(db: Database, options: LeaseStoreOptions = {}):
         leaseId,
         target,
         agentId,
-        project: req.project ?? null,
+        project,
         status: "active",
         ttlMs,
         acquiredAt: nowIso,
