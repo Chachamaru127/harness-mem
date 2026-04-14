@@ -385,9 +385,13 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if observationID == "" {
 			return errorResult("observation_id is required")
 		}
+		// Codex round 13 P2: forward `include_archived` so operators
+		// can inspect rows archived by forget_policy without having to
+		// call the HTTP endpoint directly.
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/verify", map[string]any{
-			"observation_id":  observationID,
-			"include_private": argBool(args, "include_private", false),
+			"observation_id":    observationID,
+			"include_private":   argBool(args, "include_private", false),
+			"include_archived":  argBool(args, "include_archived", false),
 		})
 		if err != nil {
 			return classifyError(err)
@@ -843,26 +847,25 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if agentID == "" {
 			return errorResult("agent_id is required")
 		}
-		// S81-A03 project scoping (Codex round 11 P1): require scope on
-		// signal_read too unless the caller asked for the admin-only
-		// cross-project view via all_projects=true.
-		allProjects, _ := args["all_projects"].(bool)
+		// S81-A03 project scoping — Codex round 13 P1:
+		// `all_projects` is deliberately *not* accepted via the MCP
+		// surface. The HTTP /v1/signal/read route validates the caller
+		// is admin; MCP proxies typically front the daemon with a
+		// shared admin/service token so the HTTP check cannot
+		// distinguish between the proxy's identity and the end user.
+		// Admin tooling that genuinely needs the cross-project view
+		// must hit /v1/signal/read over HTTP directly with an admin
+		// credential.
 		scope := resolveProjectScope(args)
-		if scope == "" && !allProjects {
-			return errorResult("scope_required: pass project or cwd (or all_projects=true for the admin cross-project view).")
+		if scope == "" {
+			return errorResult("scope_required: pass project or cwd to read repo-scoped signals. The cross-project (admin) view is available only via the HTTP /v1/signal/read endpoint.")
 		}
-		payload := map[string]any{"agent_id": agentID}
+		payload := map[string]any{"agent_id": agentID, "project": scope}
 		if v := argString(args, "thread_id"); v != "" {
 			payload["thread_id"] = v
 		}
-		if scope != "" {
-			payload["project"] = scope
-		}
 		if v, ok := args["include_broadcast"].(bool); ok {
 			payload["include_broadcast"] = v
-		}
-		if v, ok := args["all_projects"].(bool); ok {
-			payload["all_projects"] = v
 		}
 		if n, ok := argNumber(args, "limit"); ok {
 			payload["limit"] = n

@@ -849,7 +849,7 @@
           "type": "string"
         },
         "cwd": {
-          "description": "Caller's current working directory. When set and `project` is omitted, the scope is derived via worktree-aware resolution so the same repo collapses onto one key.",
+          "description": "REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key. Without project or cwd, lease_acquire returns scope_required to avoid cross-repo collisions on shared targets like `file:README.md`.",
           "type": "string"
         },
         "metadata": {
@@ -858,7 +858,7 @@
           "type": "object"
         },
         "project": {
-          "description": "Optional explicit project scope. Overrides cwd-based derivation.",
+          "description": "REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution. Pass project=\"__global__\" to deliberately acquire a daemon-wide lease.",
           "type": "string"
         },
         "target": {
@@ -1221,18 +1221,14 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). Defaults to the caller's repo-derived project scope; set all_projects=true for the audit/admin cross-project view.",
+    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). REQUIRED: pass project or cwd — the tool is repo-scoped by design. For the cross-project (admin) view, call the HTTP /v1/signal/read endpoint directly with an admin credential.",
     "inputSchema": {
       "properties": {
         "agent_id": {
           "type": "string"
         },
-        "all_projects": {
-          "description": "Audit/admin escape hatch: when true, disables project scoping and returns signals across every repo. Use only when you explicitly need the cross-project view.",
-          "type": "boolean"
-        },
         "cwd": {
-          "description": "Caller's current working directory. When set and `project` is omitted, the project is derived via worktree-aware resolution so repo-scoped inboxes stay isolated.",
+          "description": "REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key.",
           "type": "string"
         },
         "include_broadcast": {
@@ -1244,7 +1240,7 @@
           "type": "number"
         },
         "project": {
-          "description": "Explicit project scope. Overrides cwd-based derivation.",
+          "description": "REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.",
           "type": "string"
         },
         "thread_id": {
@@ -1273,7 +1269,7 @@
           "type": "string"
         },
         "cwd": {
-          "description": "Caller's current working directory. When set and `project` is omitted, the project is derived via worktree-aware resolution.",
+          "description": "REQUIRED (unless `project` or `reply_to` is supplied): caller's current working directory. The project is derived via worktree-aware resolution. When `reply_to` is set the scope is inherited from the parent signal instead.",
           "type": "string"
         },
         "expires_in_ms": {
@@ -1285,7 +1281,7 @@
           "type": "string"
         },
         "project": {
-          "description": "Optional explicit project scope. Overrides cwd-based derivation.",
+          "description": "REQUIRED (unless `cwd` or `reply_to` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.",
           "type": "string"
         },
         "reply_to": {
@@ -1368,6 +1364,10 @@
     "description": "Trace an observation back to its source session/event and (when possible) the file path + action recorded by the originating tool_use. Combine with harness_mem_graph for multi-hop provenance audit.",
     "inputSchema": {
       "properties": {
+        "include_archived": {
+          "description": "Inspect rows that forget_policy soft-archived. Admin-only diagnostic flag (default false).",
+          "type": "boolean"
+        },
         "include_private": {
           "description": "Surface provenance even for private observations (default false)",
           "type": "boolean"
