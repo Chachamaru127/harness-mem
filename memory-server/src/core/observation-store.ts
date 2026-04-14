@@ -1830,7 +1830,10 @@ export class ObservationStore {
       // backward: to_observation_id がフロンティア → from 方向へ辿る
       // applyCommonFilters は SQL 末尾に AND 句を追記するため、
       // 各 SELECT ブランチに個別適用してから UNION ALL で結合する
-      const RELATIONS = "'shared_entity', 'follows', 'extends', 'derives', 'contradicts', 'causes', 'part_of', 'updates'";
+      // S81-B03: `superseded` をグラフ伝播対象に含める (contradiction detector
+      // が古い観察を新しい観察に「superseded」で繋ぐため、近傍探索でも
+      // 辿れるようにする)。
+      const RELATIONS = "'shared_entity', 'follows', 'extends', 'derives', 'contradicts', 'causes', 'part_of', 'updates', 'superseded'";
 
       const forwardParams: unknown[] = [...params];
       let forwardSql = `
@@ -3067,7 +3070,10 @@ export class ObservationStore {
       }
     }
 
-    // IMP-002: exclude_updated=true の場合、updatesリンクで上書きされた旧観察を除外
+    // IMP-002 + S81-B03: exclude_updated=true の場合、旧観察を除外する。
+    // `updates` は手動で張られる上書き関係、`superseded` は contradiction
+    // detector (S81-B03) が貼る自動格下げ関係。両方とも「新しい方が正」の
+    // セマンティクスなので除外対象に含める。
     const updatedObsIds = new Set<string>();
     if (excludeUpdated && candidateIds.size > 0) {
       try {
@@ -3079,7 +3085,7 @@ export class ObservationStore {
           const updatedRows = this.deps.db
             .query(
               `SELECT to_observation_id FROM mem_links
-               WHERE relation = 'updates' AND to_observation_id IN (${placeholders})`
+               WHERE relation IN ('updates', 'superseded') AND to_observation_id IN (${placeholders})`
             )
             .all(...batch) as Array<{ to_observation_id: string }>;
           for (const row of updatedRows) {

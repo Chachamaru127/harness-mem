@@ -47,7 +47,7 @@ import {
   type ContradictionAdjudicator,
   type ContradictionDetectorResult,
 } from "../consolidation/contradiction-detector";
-import { createClaudeProviderAsync } from "../llm/registry";
+import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
@@ -2361,16 +2361,53 @@ export class HarnessMemCore {
    * spurious `superseded` links.
    */
   private async buildContradictionAdjudicator(): Promise<ContradictionAdjudicator> {
-    let provider: Awaited<ReturnType<typeof createClaudeProviderAsync>> | null = null;
+    // S81-B03 hardening: Codex 2回目レビュー指摘 (P1) 対応。
+    // claude-agent-sdk が import できただけでは認証が通っている保証は
+    // ないため (未ログイン / トークン失効で import は成功するが
+    // generate が毎回失敗する)、adjudicator 側でランタイム失敗を検知し
+    // openai/ollama への自動切替を行う。
+    let primary: Awaited<ReturnType<typeof createClaudeProviderAsync>> | null = null;
     try {
-      provider = await createClaudeProviderAsync({ provider: "anthropic" });
+      primary = await createClaudeProviderAsync({ provider: "anthropic" });
     } catch {
-      provider = null;
+      primary = null;
     }
-    if (!provider) {
-      // No LLM available — never confirm a contradiction.
+    // Non-claude fallback: creator は lazy に呼ぶ (不要なら初期化しない)。
+    let fallback: ReturnType<typeof createLLMProvider> | null = null;
+    const ensureFallback = (): ReturnType<typeof createLLMProvider> | null => {
+      if (fallback) return fallback;
+      try {
+        fallback = createLLMProvider({ provider: undefined });
+        // primary と fallback が同じ provider instance を返すケースを避ける
+        // (createClaudeProviderAsync が SDK 不可用時に createLLMProvider を
+        // 返すので、同じオブジェクトなら fallback 無し扱いにする)。
+        if (fallback === primary) fallback = null;
+      } catch {
+        fallback = null;
+      }
+      return fallback;
+    };
+
+    if (!primary && !ensureFallback()) {
       return () => ({ contradiction: false, confidence: 0, reason: "llm unavailable" });
     }
+
+    let primaryConsecutiveFailures = 0;
+    const PRIMARY_FAILURE_BUDGET = 2;
+    let primaryDisabled = !primary;
+
+    const runOne = async (
+      p: ReturnType<typeof createLLMProvider>,
+      prompt: string
+    ): Promise<{
+      contradiction: boolean;
+      confidence: number;
+      reason: string;
+    }> => {
+      const raw = (await p.generate(prompt, { maxTokens: 80 })).trim();
+      return parseContradictionVerdict(raw);
+    };
+
     return async (a, b) => {
       const prompt = [
         "You are reviewing two observations that share a concept and have near-identical content.",
@@ -2379,17 +2416,34 @@ export class HarnessMemCore {
         `Observation B (${b.observation_id}, ${b.created_at}):\n${b.content}`,
         'Respond with STRICT JSON: {"contradiction": true|false, "reason": "<short explanation>"}. No other text.',
       ].join("\n\n");
-      try {
-        const raw = (await provider!.generate(prompt, { maxTokens: 80 })).trim();
-        const verdict = parseContradictionVerdict(raw);
-        return {
-          contradiction: verdict.contradiction,
-          confidence: verdict.confidence,
-          reason: verdict.reason,
-        };
-      } catch {
-        return { contradiction: false, confidence: 0, reason: "llm error" };
+
+      // 1) Primary (Claude SDK or registry default).
+      if (!primaryDisabled && primary) {
+        try {
+          const verdict = await runOne(primary, prompt);
+          primaryConsecutiveFailures = 0;
+          return verdict;
+        } catch {
+          primaryConsecutiveFailures += 1;
+          if (primaryConsecutiveFailures >= PRIMARY_FAILURE_BUDGET) {
+            primaryDisabled = true;
+          }
+        }
       }
+
+      // 2) Fallback (openai / ollama) — try once per call when primary failed
+      // or is disabled. Lazy initialize so environments with a healthy
+      // primary never pay the fallback setup cost.
+      const fb = ensureFallback();
+      if (fb) {
+        try {
+          return await runOne(fb, prompt);
+        } catch {
+          return { contradiction: false, confidence: 0, reason: "llm error (fallback failed)" };
+        }
+      }
+
+      return { contradiction: false, confidence: 0, reason: "llm error" };
     };
   }
 

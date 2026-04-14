@@ -398,6 +398,12 @@ export class ConfigManager {
       return canonical;
     };
 
+    // S81-B02: exclude soft-archived observations from stats unless the
+    // caller asked for include_private (admin/inspect). Keeping archive
+    // hidden from `harness_mem_stats` avoids the "forget policy was run
+    // but counts didn't drop" confusion reported in Codex review.
+    const archivedFilter = includePrivate ? "" : " AND o.archived_at IS NULL ";
+
     const rows = this.deps.db
       .query(`
         SELECT
@@ -408,6 +414,7 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${archivedFilter}
         ${visibility}
         GROUP BY o.project
         ORDER BY updated_at DESC
@@ -422,6 +429,7 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${archivedFilter}
         ${visibility}
       `)
       .all() as Array<{ project: string; session_id: string }>;
