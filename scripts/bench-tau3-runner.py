@@ -138,20 +138,31 @@ def compact_text(value: str, *, limit: int) -> str:
     return collapsed[: max(limit - 1, 0)].rstrip() + "…"
 
 
-def render_recall_block(items: list[dict[str, Any]], *, max_chars: int) -> str:
+def render_recall_block(items: list[dict[str, Any]], *, max_chars: int, domain: str = "") -> str:
+    normalized_domain = (domain or "").strip().lower()
     lines: list[str] = [
         "## Contextual Recall",
         "Reference only. Use these notes only if they clearly help the current request.",
         "Do not repeat them verbatim, do not restart the workflow from scratch, and do not add extra confirmation steps because of them.",
         "If the user already gave the required details or a clear yes/no, continue to the next needed lookup or tool call.",
     ]
+    if normalized_domain == "retail":
+        lines.extend(
+            [
+                "Retail rule: do not treat recall as proof that the active order, customer, or identity is already verified.",
+                "Before the order or account is found, focus on the next lookup or verification step instead of the recall note.",
+                "After lookup, reuse the customer's stated yes/no or item choice unless a required field is still missing.",
+                "Ask for at most one final confirmation before an irreversible exchange, return, cancellation, or refund.",
+            ]
+        )
     for item in items:
         title = str(item.get("title") or "").strip()
         content = compact_text(str(item.get("content") or ""), limit=max_chars)
         parts = [part for part in (title, content) if part]
         if parts:
             lines.append("- " + " — ".join(parts))
-    if len(lines) <= 4:
+    minimum_line_count = 8 if normalized_domain == "retail" else 4
+    if len(lines) <= minimum_line_count:
         return ""
     return "\n".join(lines)
 
@@ -282,6 +293,44 @@ def _tool_result_count(message: Any) -> int:
     if role == "tool":
         return 1
     return 0
+
+
+def _count_user_turns(messages: Iterable[Any] | None) -> int:
+    if not messages:
+        return 0
+    count = 0
+    for message in messages:
+        role = str(getattr(message, "role", "") or "").strip().lower()
+        if role == "user" and _clean_text_content(message):
+            count += 1
+    return count
+
+
+def _conversation_has_tool_history(messages: Iterable[Any] | None) -> bool:
+    if not messages:
+        return False
+    for message in messages:
+        if _tool_call_count(message) > 0 or _tool_result_count(message) > 0:
+            return True
+    return False
+
+
+def determine_recall_gate(messages: Iterable[Any] | None, *, domain: str) -> tuple[bool, str]:
+    """
+    Decide whether contextual recall should be injected for the next user turn.
+
+    For this benchmark, the first visible user turn should not get recall. Retail
+    conversations also wait until some lookup / verification tool activity exists,
+    so memory does not short-circuit identity/order resolution.
+    """
+    visible_user_turns = _count_user_turns(messages)
+    if visible_user_turns == 0:
+        return False, "wait_for_first_turn"
+
+    if (domain or "").strip().lower() == "retail" and not _conversation_has_tool_history(messages):
+        return False, "wait_for_identity_or_lookup"
+
+    return True, ""
 
 
 def _matches_any(text: str, patterns: tuple[re.Pattern[str], ...]) -> bool:
@@ -433,6 +482,7 @@ def register_harness_mem_agent(registry: Any) -> str:
             self.project_name = str(
                 config.pop("harness_mem_project_name", Path(self.project_root or ".").name)
             ).strip()
+            self.domain_name = str(config.pop("harness_mem_domain", os.environ.get("HARNESS_MEM_DOMAIN", ""))).strip()
             self.session_id = str(config.pop("harness_mem_session_id", "tau3-session")).strip()
             self.max_recall_items = int(config.pop("harness_mem_max_recall_items", 1) or 1)
             self.max_recall_chars = int(config.pop("harness_mem_max_recall_chars", 120) or 120)
@@ -441,6 +491,7 @@ def register_harness_mem_agent(registry: Any) -> str:
             self._seen_recall_ids: set[str] = set()
             self._seen_recall_signatures: set[str] = set()
             self._last_recall_count = 0
+            self._last_recall_skip_reason = ""
             super().__init__(tools=tools, domain_policy=domain_policy, llm=llm, llm_args=config)
 
         def _write_metrics(self) -> None:
@@ -456,6 +507,7 @@ def register_harness_mem_agent(registry: Any) -> str:
                         "seen_recall_ids": sorted(self._seen_recall_ids),
                         "seen_recall_count": len(self._seen_recall_ids),
                         "last_recall_count": self._last_recall_count,
+                        "last_recall_skip_reason": self._last_recall_skip_reason,
                     },
                     indent=2,
                 )
@@ -463,13 +515,23 @@ def register_harness_mem_agent(registry: Any) -> str:
                 encoding="utf-8",
             )
 
-        def _search_memory(self, prompt: str) -> str:
+        def _search_memory(self, prompt: str, state: Any) -> str:
             self._last_recall_count = 0
+            self._last_recall_skip_reason = ""
             if self.benchmark_mode != "on":
                 self._write_metrics()
                 return ""
             query = " ".join((prompt or "").split()).strip()
             if not query:
+                self._write_metrics()
+                return ""
+
+            recall_allowed, skip_reason = determine_recall_gate(
+                getattr(state, "messages", None),
+                domain=self.domain_name,
+            )
+            if not recall_allowed:
+                self._last_recall_skip_reason = skip_reason
                 self._write_metrics()
                 return ""
 
@@ -513,7 +575,11 @@ def register_harness_mem_agent(registry: Any) -> str:
                 filtered.append(item)
             self._last_recall_count = len(filtered)
             self._write_metrics()
-            return render_recall_block(filtered, max_chars=self.max_recall_chars)
+            return render_recall_block(
+                filtered,
+                max_chars=self.max_recall_chars,
+                domain=self.domain_name,
+            )
 
         def _generate_next_message(self, message, state):
             if isinstance(message, UserMessage) and getattr(message, "is_audio", False):
@@ -521,7 +587,7 @@ def register_harness_mem_agent(registry: Any) -> str:
 
             recall_block = ""
             if isinstance(message, UserMessage):
-                recall_block = self._search_memory(getattr(message, "content", "") or "")
+                recall_block = self._search_memory(getattr(message, "content", "") or "", state)
 
             if isinstance(message, MultiToolMessage):
                 state.messages.extend(message.tool_messages)
@@ -629,6 +695,7 @@ def main() -> int:
                     "harness_mem_home": str(benchmark_home),
                     "harness_mem_project_root": str(benchmark_project_root),
                     "harness_mem_project_name": benchmark_project_name,
+                    "harness_mem_domain": args.domain,
                     "harness_mem_session_id": session_id,
                     "harness_mem_metrics_path": str(task_output_dir / "agent-metrics.json"),
                 }

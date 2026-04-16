@@ -19,6 +19,77 @@ function runPythonJson(code: string) {
 }
 
 describe("tau3 runner conversation metrics", () => {
+  test("suppresses recall on the first turn and until retail lookup starts", () => {
+    const result = runPythonJson(`
+import importlib.util
+import json
+import pathlib
+import sys
+import types
+
+runner_path = pathlib.Path(${JSON.stringify(RUNNER_PATH)})
+spec = importlib.util.spec_from_file_location("tau3_runner", runner_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+first_gate = module.determine_recall_gate([], domain="retail")
+
+lookup_pending_messages = [
+    types.SimpleNamespace(role="user", content="I need to exchange two items.", tool_calls=None),
+    types.SimpleNamespace(role="assistant", content="Sure, I can help with that.", tool_calls=None),
+]
+lookup_pending_gate = module.determine_recall_gate(lookup_pending_messages, domain="retail")
+
+lookup_complete_messages = [
+    *lookup_pending_messages,
+    types.SimpleNamespace(
+        role="assistant",
+        content=None,
+        tool_calls=[types.SimpleNamespace(name="get_order_details")],
+    ),
+    types.SimpleNamespace(role="tool", content="ok", tool_messages=None),
+]
+lookup_complete_gate = module.determine_recall_gate(lookup_complete_messages, domain="retail")
+
+print(json.dumps({
+    "first_gate": first_gate,
+    "lookup_pending_gate": lookup_pending_gate,
+    "lookup_complete_gate": lookup_complete_gate,
+}))
+    `);
+
+    expect(result.first_gate).toEqual([false, "wait_for_first_turn"]);
+    expect(result.lookup_pending_gate).toEqual([false, "wait_for_identity_or_lookup"]);
+    expect(result.lookup_complete_gate).toEqual([true, ""]);
+  });
+
+  test("adds retail-specific confirmation guidance to recall blocks", () => {
+    const result = runPythonJson(`
+import importlib.util
+import json
+import pathlib
+import sys
+
+runner_path = pathlib.Path(${JSON.stringify(RUNNER_PATH)})
+spec = importlib.util.spec_from_file_location("tau3_runner", runner_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+payload = module.render_recall_block(
+    [{"title": "Prior task note", "content": "Customer already chose a compatible thermostat."}],
+    max_chars=120,
+    domain="retail",
+)
+print(json.dumps({"payload": payload}))
+    `);
+
+    expect(result.payload).toContain("Retail rule: do not treat recall as proof");
+    expect(result.payload).toContain("After lookup, reuse the customer's stated yes/no or item choice");
+    expect(result.payload).toContain("Ask for at most one final confirmation");
+  });
+
   test("summarizes confirmation and clarification pressure from visible turns", () => {
     const result = runPythonJson(`
 import importlib.util
