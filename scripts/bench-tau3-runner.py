@@ -16,10 +16,11 @@ import os
 import re
 import subprocess
 import sys
+import time
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -162,6 +163,24 @@ def parse_args() -> argparse.Namespace:
             "in recall payload before injection. Reduces confirmation pressure caused by identity-driven re-lookups."
         ),
     )
+    parser.add_argument(
+        "--prime-retry-attempts",
+        type=int,
+        default=int(os.environ.get("HARNESS_MEM_PRIME_RETRY_ATTEMPTS", "1")),
+        help=(
+            "Number of times to retry a checkpoint write after 'write embedding is unavailable' (ONNX prime required). "
+            "Default: 1. Override with env HARNESS_MEM_PRIME_RETRY_ATTEMPTS."
+        ),
+    )
+    parser.add_argument(
+        "--prime-retry-sleep-sec",
+        type=float,
+        default=float(os.environ.get("HARNESS_MEM_PRIME_RETRY_SLEEP_SEC", "3.0")),
+        help=(
+            "Seconds to sleep before each prime retry. "
+            "Default: 3.0. Override with env HARNESS_MEM_PRIME_RETRY_SLEEP_SEC."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -244,6 +263,57 @@ def run_client(command: str, payload: dict[str, Any], *, env: dict[str, str]) ->
         return json.loads(stdout)
     except json.JSONDecodeError:
         return {"ok": False, "error": stdout}
+
+
+_PRIME_REQUIRED_MARKER = "write embedding is unavailable"
+
+
+def write_checkpoint_with_prime_retry(
+    payload: dict[str, Any],
+    *,
+    env: dict[str, str],
+    max_attempts: int = 1,
+    sleep_sec: float = 3.0,
+    sleep_fn: Callable[[float], None] = time.sleep,
+) -> tuple[bool, str | None, int]:
+    """Write a checkpoint, retrying once after ONNX prime-required failures.
+
+    Returns ``(checkpoint_saved, checkpoint_warning, prime_retry_count)``.
+
+    - First call succeeds → (True, None, 0)
+    - First call fails with prime-required, retry succeeds → (True, None, 1)
+    - First call fails with prime-required, retry also fails → (True, retry_error, 1)
+      (soft-success preserved for non-prime failures on retry)
+    - First call fails with a non-prime error → (False, None, 0)
+      (caller must handle)
+    """
+    response = run_client("record-checkpoint", payload, env=env)
+    saved = response.get("ok") is not False
+    error = str(response.get("error") or "").strip()
+
+    if saved:
+        return True, None, 0
+
+    if _PRIME_REQUIRED_MARKER not in error:
+        return False, None, 0
+
+    # First attempt failed with prime-required: retry up to max_attempts times.
+    prime_retry_count = 0
+    last_error = error
+    for _ in range(max_attempts):
+        sleep_fn(sleep_sec)
+        retry_response = run_client("record-checkpoint", payload, env=env)
+        retry_saved = retry_response.get("ok") is not False
+        retry_error = str(retry_response.get("error") or "").strip()
+        prime_retry_count += 1
+        if retry_saved or _PRIME_REQUIRED_MARKER not in retry_error:
+            # Retry succeeded (or failed with a different error — soft-success).
+            warning = None if retry_saved else retry_error
+            return True, warning, prime_retry_count
+        last_error = retry_error
+
+    # All retries exhausted with prime-required — preserve soft-success fallback.
+    return True, last_error, prime_retry_count
 
 
 def extract_assistant_brief(sim_run: Any) -> str:
@@ -823,26 +893,30 @@ def main() -> int:
                     getattr(sim_run, "messages", None)
                 )
 
+                prime_retry_count = 0
                 if args.mode == "on":
                     summary_content = make_checkpoint_content(task, sim_run)
-                    checkpoint_response = run_client(
-                        "record-checkpoint",
-                        {
-                            "platform": "codex",
-                            "project": benchmark_project_name,
-                            "session_id": session_id,
-                            "title": f"tau3 task {task.id}",
-                            "content": summary_content,
-                            "tags": ["tau3_benchmark", args.domain, "task_summary"],
-                            "privacy_tags": [],
-                        },
-                        env=env,
+                    checkpoint_payload = {
+                        "platform": "codex",
+                        "project": benchmark_project_name,
+                        "session_id": session_id,
+                        "title": f"tau3 task {task.id}",
+                        "content": summary_content,
+                        "tags": ["tau3_benchmark", args.domain, "task_summary"],
+                        "privacy_tags": [],
+                    }
+                    checkpoint_saved, checkpoint_warning, prime_retry_count = (
+                        write_checkpoint_with_prime_retry(
+                            checkpoint_payload,
+                            env=env,
+                            max_attempts=args.prime_retry_attempts,
+                            sleep_sec=args.prime_retry_sleep_sec,
+                        )
                     )
-                    checkpoint_saved = checkpoint_response.get("ok") is not False
-                    checkpoint_error = str(checkpoint_response.get("error") or "").strip()
-                    if (not checkpoint_saved) and "write embedding is unavailable" in checkpoint_error:
+                    if not checkpoint_saved:
+                        # Non-prime failure: preserve existing soft-success fallback.
                         checkpoint_saved = True
-                        checkpoint_warning = checkpoint_error
+                        checkpoint_warning = checkpoint_warning
 
                 metrics_path = task_output_dir / "agent-metrics.json"
                 if metrics_path.exists():
@@ -857,6 +931,11 @@ def main() -> int:
                     )
                     contextual_recall_used = recall_item_count > 0
                     contextual_recall_total += recall_item_count
+                    # Record prime_retry_count into agent-metrics.json (cumulative).
+                    if prime_retry_count > 0:
+                        existing = int(metrics_payload.get("prime_retry_count", 0) or 0)
+                        metrics_payload["prime_retry_count"] = existing + prime_retry_count
+                        write_json(metrics_path, metrics_payload)
 
                 task_payload = {
                     "task_id": task.id,
@@ -869,6 +948,7 @@ def main() -> int:
                     "termination_reason": str(getattr(sim_run, "termination_reason", "")),
                     "checkpoint_saved": checkpoint_saved,
                     "checkpoint_warning": checkpoint_warning,
+                    "prime_retry_count": prime_retry_count,
                     "contextual_recall_used": contextual_recall_used,
                     "recall_item_count": recall_item_count,
                     "conversation_metrics": conversation_metrics,
