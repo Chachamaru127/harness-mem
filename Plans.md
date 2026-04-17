@@ -560,7 +560,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 | 85.2 | **embedding async prime fix** — `bench-tau3-runner.py` の checkpoint write 前に ONNX multilingual-e5 を 1 回 prime して `write embedding is unavailable` warning を消す | smoke run の checkpoint_warning が null になる | - | cc:完了 [73cf71c] |
 | 85.3 | **multi-task paired compare 拡大** — `5 tasks × 2 trials = 10 runs` で 85.1 適用前後を比較し、turn 圧縮を確認 | `on` の avg total turns が `off` 以下、かつ pass_rate ≥ §84 水準 | 85.1 | cc:完了 [a7497ae] |
 | 85.4 | **research brief 更新** — `tau3-improvement-research-brief-2026-04.md` に「recall payload に identity field を入れない」を優先度 B に追記 | brief に追記され、§85 の根拠として参照可 | 85.3 | cc:完了 [1863c26] |
-| 85.5 | **§85 retrospective** — 85.3 artifact を整理して §85 を閉じる or 次仮説を §86 として切る | retrospective doc が追加され Plans.md が同期 | 85.3, 85.4 | cc:WIP |
+| 85.5 | **§85 retrospective** — 85.3 artifact を整理して §85 を閉じる or 次仮説を §86 として切る | retrospective doc が追加され Plans.md が同期 | 85.3, 85.4 | cc:完了 [620c1a6] |
 
 ### §85 が終わると起きる変化
 
