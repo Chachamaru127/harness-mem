@@ -913,10 +913,9 @@ def main() -> int:
                             sleep_sec=args.prime_retry_sleep_sec,
                         )
                     )
-                    if not checkpoint_saved:
-                        # Non-prime failure: preserve existing soft-success fallback.
-                        checkpoint_saved = True
-                        checkpoint_warning = checkpoint_warning
+                    # write_checkpoint_with_prime_retry already handles the
+                    # prime-required case internally. Non-prime failures return
+                    # (False, None, 0) and must stay observable — no coercion here.
 
                 metrics_path = task_output_dir / "agent-metrics.json"
                 if metrics_path.exists():

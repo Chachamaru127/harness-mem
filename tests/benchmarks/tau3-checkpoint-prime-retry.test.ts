@@ -163,4 +163,51 @@ print(json.dumps({
     expect(result.retry_count).toBe(1);
     expect(result.call_count).toBe(2);
   });
+
+  test("first call non-prime error — saved=False, warning=null, retry_count=0, no retry", () => {
+    const result = runPythonJson(`
+import importlib.util
+import json
+import pathlib
+import sys
+
+runner_path = pathlib.Path(${JSON.stringify(RUNNER_PATH)})
+spec = importlib.util.spec_from_file_location("tau3_runner", runner_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[spec.name] = module
+spec.loader.exec_module(module)
+
+call_count = [0]
+
+def mock_run_client(command, payload, *, env):
+    call_count[0] += 1
+    return {"ok": False, "error": "schema validation failed"}
+
+original = module.run_client
+module.run_client = mock_run_client
+
+try:
+    saved, warning, retry_count = module.write_checkpoint_with_prime_retry(
+        {"content": "test"},
+        env={},
+        max_attempts=1,
+        sleep_sec=0.0,
+        sleep_fn=lambda s: None,
+    )
+finally:
+    module.run_client = original
+
+print(json.dumps({
+    "saved": saved,
+    "warning": warning,
+    "retry_count": retry_count,
+    "call_count": call_count[0],
+}))
+    `);
+
+    expect(result.saved).toBe(false);
+    expect(result.warning).toBeNull();
+    expect(result.retry_count).toBe(0);
+    expect(result.call_count).toBe(1);
+  });
 });
