@@ -54,6 +54,56 @@ QUESTION_LEAD_PATTERNS = (
     re.compile(r"^(can|could|would|do|did|is|are|when|where|which|what|who|how)\b", re.IGNORECASE),
 )
 
+RECALL_IDENTITY_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    # user_id like user_jane_smith_1024 — at least two underscore-joined segments after "user_"
+    (re.compile(r"\buser_[a-z0-9]+(?:_[a-z0-9]+)+\b", re.IGNORECASE), "user_[REDACTED]"),
+    # Labeled name fields: "Name: ..." / "Customer name = ..."
+    (
+        re.compile(
+            r"\b(?:full[ _-]?name|customer[ _-]?name|name)\s*[:=]\s*[^\n,;]+",
+            re.IGNORECASE,
+        ),
+        "name: [REDACTED]",
+    ),
+    # Labeled address fields
+    (
+        re.compile(
+            r"\b(?:shipping[ _-]?address|billing[ _-]?address|street[ _-]?address|address|street)\s*[:=]\s*[^\n,;]+",
+            re.IGNORECASE,
+        ),
+        "address: [REDACTED]",
+    ),
+    # Standalone 5-digit zip with optional ZIP+4 (does not match longer digit runs because of word boundary)
+    (re.compile(r"\b\d{5}(?:-\d{4})?\b"), "[REDACTED_ZIP]"),
+)
+
+
+def _coerce_bool(value: Any) -> bool:
+    """Interpret config / env string-ish values as booleans."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "on"}
+    return False
+
+
+def scrub_recall_identity(text: Any) -> tuple[str, int]:
+    """Mask user identity tokens in recall payload text.
+
+    Returns ``(scrubbed_text, replacement_count)``. Non-string or empty input
+    returns ``("", 0)``.
+    """
+    if not isinstance(text, str) or not text:
+        return "", 0
+    scrubbed = text
+    total = 0
+    for pattern, replacement in RECALL_IDENTITY_PATTERNS:
+        scrubbed, count = pattern.subn(replacement, scrubbed)
+        total += count
+    return scrubbed, total
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -102,6 +152,15 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=0,
         help="Optional dedicated harness-mem UI port. Defaults to API port + 100.",
+    )
+    parser.add_argument(
+        "--scrub-recall-identity",
+        action="store_true",
+        default=False,
+        help=(
+            "Mask user identity tokens (user_id / labeled name / labeled address / 5-digit zip) "
+            "in recall payload before injection. Reduces confirmation pressure caused by identity-driven re-lookups."
+        ),
     )
     return parser.parse_args()
 
@@ -488,10 +547,17 @@ def register_harness_mem_agent(registry: Any) -> str:
             self.max_recall_chars = int(config.pop("harness_mem_max_recall_chars", 120) or 120)
             self.client_timeout_sec = str(config.pop("harness_mem_client_timeout_sec", "8"))
             self.metrics_path = str(config.pop("harness_mem_metrics_path", "")).strip()
+            scrub_flag = config.pop(
+                "harness_mem_scrub_recall_identity",
+                os.environ.get("HARNESS_MEM_SCRUB_RECALL_IDENTITY", ""),
+            )
+            self.scrub_recall_identity_enabled = _coerce_bool(scrub_flag)
             self._seen_recall_ids: set[str] = set()
             self._seen_recall_signatures: set[str] = set()
             self._last_recall_count = 0
             self._last_recall_skip_reason = ""
+            self._scrub_replacements_total = 0
+            self._last_scrub_replacements = 0
             super().__init__(tools=tools, domain_policy=domain_policy, llm=llm, llm_args=config)
 
         def _write_metrics(self) -> None:
@@ -508,6 +574,9 @@ def register_harness_mem_agent(registry: Any) -> str:
                         "seen_recall_count": len(self._seen_recall_ids),
                         "last_recall_count": self._last_recall_count,
                         "last_recall_skip_reason": self._last_recall_skip_reason,
+                        "scrub_recall_identity_enabled": self.scrub_recall_identity_enabled,
+                        "scrub_recall_identity_replacements_total": self._scrub_replacements_total,
+                        "scrub_recall_identity_replacements_last": self._last_scrub_replacements,
                     },
                     indent=2,
                 )
@@ -518,6 +587,7 @@ def register_harness_mem_agent(registry: Any) -> str:
         def _search_memory(self, prompt: str, state: Any) -> str:
             self._last_recall_count = 0
             self._last_recall_skip_reason = ""
+            self._last_scrub_replacements = 0
             if self.benchmark_mode != "on":
                 self._write_metrics()
                 return ""
@@ -559,10 +629,15 @@ def register_harness_mem_agent(registry: Any) -> str:
                 return ""
 
             filtered: list[dict[str, Any]] = []
+            scrub_count = 0
             for item in response.get("items", []) or []:
                 item_id = str(item.get("id") or "").strip()
                 title = str(item.get("title") or "").strip()
                 content = compact_text(str(item.get("content") or ""), limit=self.max_recall_chars)
+                if self.scrub_recall_identity_enabled:
+                    title, title_subs = scrub_recall_identity(title)
+                    content, content_subs = scrub_recall_identity(content)
+                    scrub_count += title_subs + content_subs
                 signature = " | ".join(part for part in (title, content) if part)
                 if item_id and item_id in self._seen_recall_ids:
                     continue
@@ -572,8 +647,16 @@ def register_harness_mem_agent(registry: Any) -> str:
                     self._seen_recall_ids.add(item_id)
                 if signature:
                     self._seen_recall_signatures.add(signature)
+                # Pass scrubbed text into render_recall_block by mutating the
+                # item dict — render_recall_block re-reads title/content.
+                if self.scrub_recall_identity_enabled:
+                    item = dict(item)
+                    item["title"] = title
+                    item["content"] = content
                 filtered.append(item)
             self._last_recall_count = len(filtered)
+            self._last_scrub_replacements = scrub_count
+            self._scrub_replacements_total += scrub_count
             self._write_metrics()
             return render_recall_block(
                 filtered,
@@ -698,6 +781,7 @@ def main() -> int:
                     "harness_mem_domain": args.domain,
                     "harness_mem_session_id": session_id,
                     "harness_mem_metrics_path": str(task_output_dir / "agent-metrics.json"),
+                    "harness_mem_scrub_recall_identity": bool(args.scrub_recall_identity),
                 }
 
                 config = TextRunConfig(
@@ -843,6 +927,7 @@ def main() -> int:
         "total_user_cost": total_user_cost,
         "total_cost": total_agent_cost + total_user_cost,
         "contextual_recall_item_total": contextual_recall_total,
+        "scrub_recall_identity_enabled": bool(args.scrub_recall_identity),
         "conversation_efficiency": aggregate_conversation_metrics(
             [row.conversation_metrics for row in rows]
         ),

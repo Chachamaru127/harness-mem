@@ -556,7 +556,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 85.1 | **recall payload から user identity 抑制** — `user_id` / `name` / `zip` / `address` を recall 出力から除外 or mask する option を bench-tau3-runner に足す | option ON 時 recall snapshot に identity field が含まれない | - | cc:TODO |
+| 85.1 | **recall payload から user identity 抑制** — `user_id` / `name` / `zip` / `address` を recall 出力から除外 or mask する option を bench-tau3-runner に足す | option ON 時 recall snapshot に identity field が含まれない | - | cc:WIP |
 | 85.2 | **embedding async prime fix** — `bench-tau3-runner.py` の checkpoint write 前に ONNX multilingual-e5 を 1 回 prime して `write embedding is unavailable` warning を消す | smoke run の checkpoint_warning が null になる | - | cc:TODO |
 | 85.3 | **multi-task paired compare 拡大** — `5 tasks × 2 trials = 10 runs` で 85.1 適用前後を比較し、turn 圧縮を確認 | `on` の avg total turns が `off` 以下、かつ pass_rate ≥ §84 水準 | 85.1 | cc:TODO |
 | 85.4 | **research brief 更新** — `tau3-improvement-research-brief-2026-04.md` に「recall payload に identity field を入れない」を優先度 B に追記 | brief に追記され、§85 の根拠として参照可 | 85.3 | cc:TODO |
