@@ -536,7 +536,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 ---
 
-## §85 τ³ Recall Payload Compression — cc:TODO
+## §85 τ³ Recall Payload Compression — cc:完了
 
 策定日: 2026-04-17
 背景: `§84` で `on > off` (+0.25 pass_rate) は達成したが、turn/confirmation 圧はむしろ +0.50 turns / +0.25 confirm に膨張した。`task 0 / trial 2` の row 分析で、recall に user identity 情報が乗ると agent が `get_user_details` を再呼び出しして confirmation を増やす挙動が観察された。recall payload の中身を絞ることで「`on > off` かつ `on` のほうが軽い」状態に進める。
@@ -560,13 +560,54 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 | 85.2 | **embedding async prime fix** — `bench-tau3-runner.py` の checkpoint write 前に ONNX multilingual-e5 を 1 回 prime して `write embedding is unavailable` warning を消す | smoke run の checkpoint_warning が null になる | - | cc:完了 [73cf71c] |
 | 85.3 | **multi-task paired compare 拡大** — `5 tasks × 2 trials = 10 runs` で 85.1 適用前後を比較し、turn 圧縮を確認 | `on` の avg total turns が `off` 以下、かつ pass_rate ≥ §84 水準 | 85.1 | cc:完了 [a7497ae] |
 | 85.4 | **research brief 更新** — `tau3-improvement-research-brief-2026-04.md` に「recall payload に identity field を入れない」を優先度 B に追記 | brief に追記され、§85 の根拠として参照可 | 85.3 | cc:完了 [1863c26] |
-| 85.5 | **§85 retrospective** — 85.3 artifact を整理して §85 を閉じる or 次仮説を §86 として切る | retrospective doc が追加され Plans.md が同期 | 85.3, 85.4 | cc:TODO |
+| 85.5 | **§85 retrospective** — 85.3 artifact を整理して §85 を閉じる or 次仮説を §86 として切る | retrospective doc が追加され Plans.md が同期 | 85.3, 85.4 | cc:WIP |
 
 ### §85 が終わると起きる変化
 
 1. `τ³-bench` で `on > off` の主張に **「効率も改善」** が加わる
 2. recall payload 設計に「何を渡すか」だけでなく **「何を渡さないか」** の運用ルールが入る
 3. embedding write path の degraded warning が消え、後続 benchmark の noise 源が 1 つ減る
+
+### §85 振り返り (2026-04-17)
+
+主条件 (turn 圧縮: `on` の avg total turns が `off` 以下) は未達 (10.0 > 9.6)。
+ただし「identity scrub の対象が recall payload に存在しなかった (仮説 A の前提が違った)」「§84.4 の +0.25 は noise 圏内だった」「prime-retry fix は runner 安定性として確実な改善」という 3 つの学びを得て閉じる。
+詳細は `docs/benchmarks/tau3-s85-retrospective-2026-04-17.md`。
+次の改善 (recall 文体 ablation) は §86 として継続する。
+
+---
+
+## §86 τ³ Recall Note Style Ablation — cc:TODO
+
+策定日: 2026-04-17
+背景: §85 で仮説 A (identity scrub) が no-op と判明。recall payload の identity フィールドは最初から存在せず、recall content の実体は `make_checkpoint_content` が生成する compact summary (`Task ID / Customer scenario / Agent note`) だった。`Agent note` の文体 (active voice / passive voice / label-only) が confirmation pressure に影響するかを ablation で検証する。
+
+### Scope 判定
+
+- 判定: **Local**
+- 理由: bench runner の note template 分岐であり、harness-mem 本体の責務変更を伴わない
+
+### Global DoD
+
+1. `on` の avg total turns が `off` 以下になる multi-task 比較を 1 つ作る、または note style 間で有意差が確認できる
+2. pass_rate ≥ §85 水準 (0.70) を維持する
+3. 各 note style の avg confirm/turn 比率が記録される
+
+### Loop Task Queue
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 86.1 | **recall note 文体パターンを実装** — `make_checkpoint_content` の `Agent note:` 部分を `active` / `passive` / `label` の 3 パターンに切り替えられる option を bench-tau3-runner に追加 | 各パターンが runner 出力の recall content に反映されている | - | cc:TODO |
+| 86.2 | **bench-tau3-runner に `--note-style` オプションを追加** — `{active\|passive\|label}` を指定すると recall content が対応 style になる | option ON 時、recall content が指定 style のフォーマットになる | 86.1 | cc:TODO |
+| 86.3 | **5 tasks × 2 trials × 3 styles = 30 runs を実行し avg confirm/turn 比較** | 各 style の avg confirm turns / avg total turns が記録され、style 間の比較が可能になる | 86.2 | cc:TODO |
+| 86.4 | **best style を採用、§85 brief に追記** — 最も confirm pressure が低い style を採用し、`tau3-improvement-research-brief-2026-04.md` を更新 | brief に採用 style と根拠が追記される | 86.3 | cc:TODO |
+| 86.5 | **§86 retrospective** — 86.3 artifact を整理して §86 を閉じる or 次仮説を §87 として切る | retrospective doc が追加され Plans.md が同期 | 86.4 | cc:TODO |
+
+### §86 が終わると起きる変化
+
+1. recall note の文体が confirmation pressure に影響するかどうかの実証データが得られる
+2. 文体が有効なら recall payload の「書き方ルール」として runner に組み込める
+3. 文体が無効なら「recall content の内容面 (長さ / 件数 / タイミング)」に絞り込めるため、次仮説の設計精度が上がる
 
 ---
 
