@@ -519,7 +519,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 | 84.2 | **turn / confirmation 計測観点を runner artifact に足す** — 少なくとも final summary だけでなく、比較に使える conversational efficiency 指標を追加する | results または task summary から turn / confirmation 圧を比較できる | 84.1 | cc:完了 [b9f7bc4] |
 | 84.3 | **first-turn guidance を詰める** — 初回 recall 発火タイミング、本人確認前後の guidance、retail 向けの確認圧を改善する | `retail` smoke で冗長確認が減り、`on` が `off` に劣後しない | 84.2 | cc:完了 [33d568e] |
 | 84.4 | **multi-task paired compare を回す** — `retail` で複数 task / 複数 trial の `off` / `on` を取り、勝敗と効率差を確認する | `on > off` または `on = off` with lower turn/confirmation の判定材料がそろう | 84.3 | cc:完了 [2c32780] |
-| 84.5 | **artifact を見て仮説更新する** — 勝てなければ敗因を整理し、次の最有力仮説を task 化する | Plans と research brief に学びが戻る | 84.4 | cc:完了 |
+| 84.5 | **artifact を見て仮説更新する** — 勝てなければ敗因を整理し、次の最有力仮説を task 化する | Plans と research brief に学びが戻る | 84.4 | cc:完了 [2d15bdd] |
 
 ### §84 が終わると起きる変化
 
