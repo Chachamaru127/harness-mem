@@ -18,6 +18,16 @@ import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass
+
+# Python 3.13 removed the deprecated `audioop` stdlib module. tau2-bench
+# imports it indirectly via the voice module (audio_preprocessing.py). Since
+# the runner never uses voice features, we inject a lightweight stub so the
+# import chain resolves without error.
+try:
+    import audioop  # noqa: F401
+except ModuleNotFoundError:
+    from unittest.mock import MagicMock as _MagicMock
+    sys.modules["audioop"] = _MagicMock()
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable, Iterable
