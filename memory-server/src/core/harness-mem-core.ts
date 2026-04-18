@@ -2218,7 +2218,8 @@ export class HarnessMemCore {
       });
     }
 
-    const validRelations: string[] = ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of"];
+    // S78-D02: "supersedes" added — (A, B, 'supersedes') means A supersedes B (B is made stale by A)
+    const validRelations: string[] = ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "supersedes"];
     if (!validRelations.includes(relation)) {
       return makeErrorResponse(startedAt, `invalid relation type: ${relation}. Must be one of: ${validRelations.join(", ")}`, request as unknown as Record<string, unknown>);
     }

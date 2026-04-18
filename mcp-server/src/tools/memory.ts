@@ -582,7 +582,8 @@ export const memoryTools: Tool[] = [
       properties: {
         from_observation_id: { type: "string", description: "Source observation ID" },
         to_observation_id: { type: "string", description: "Target observation ID" },
-        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Relation type" },
+        // S78-D02: "supersedes" added — (A, B, 'supersedes') = "A supersedes B" (B is made stale)
+        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "supersedes"], description: "Relation type" },
         weight: { type: "number", description: "Link weight (default: 1.0)" },
       },
       required: ["from_observation_id", "to_observation_id", "relation"],

@@ -3407,7 +3407,58 @@ export class ObservationStore {
       });
     }
 
-    const items = rankedAfterRerank.slice(0, limit).map((entry) => {
+    // S78-D02: Contradiction resolution — superseded 観察の post-filter
+    // superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
+    // include_superseded=false → 除外。デフォルト(true) → rank を 0.5 倍に下げ、後方に沈める。
+    const includeSuperseeded = request.include_superseded !== false; // default: true
+    const supersededObsIds = new Set<string>();
+    if (rankedAfterRerank.length > 0) {
+      try {
+        const allRankedIds = rankedAfterRerank.map((r) => r.id);
+        const MAX_BATCH = 500;
+        for (let i = 0; i < allRankedIds.length; i += MAX_BATCH) {
+          const batch = allRankedIds.slice(i, i + MAX_BATCH);
+          const placeholders = batch.map(() => "?").join(", ");
+          const supersededRows = this.deps.db
+            .query(
+              `SELECT to_observation_id FROM mem_links
+               WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
+            )
+            .all(...batch) as Array<{ to_observation_id: string }>;
+          for (const row of supersededRows) {
+            supersededObsIds.add(row.to_observation_id);
+          }
+        }
+      } catch {
+        // best effort: supersedes rank 調整失敗時は通常のランキングで継続
+      }
+    }
+
+    // superseded 観察を除外 or rank 下げ
+    let finalRanked = rankedAfterRerank;
+    if (supersededObsIds.size > 0) {
+      if (!includeSuperseeded) {
+        // include_superseded=false: 完全除外
+        finalRanked = rankedAfterRerank.filter((r) => !supersededObsIds.has(r.id));
+      } else {
+        // include_superseded=true (default): final score を 0.5 倍にして後方に沈める
+        for (const r of rankedAfterRerank) {
+          if (supersededObsIds.has(r.id)) {
+            r.final = r.final * 0.5;
+          }
+        }
+        // score 変更後に再ソート
+        finalRanked = [...rankedAfterRerank].sort((lhs, rhs) => {
+          if (rhs.final !== lhs.final) return rhs.final - lhs.final;
+          if (rhs.created_at !== lhs.created_at) {
+            return String(rhs.created_at).localeCompare(String(lhs.created_at));
+          }
+          return lhs.id.localeCompare(rhs.id);
+        });
+      }
+    }
+
+    const items = finalRanked.slice(0, limit).map((entry) => {
       const observation = observations.get(entry.id) ?? {};
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
@@ -3489,7 +3540,7 @@ export class ObservationStore {
         lexical: lexical.size,
         vector: vector.size,
         graph: graph.size,
-        final: rankedAfterRerank.length,
+        final: finalRanked.length,
       },
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };

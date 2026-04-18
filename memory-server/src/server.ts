@@ -627,6 +627,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             include_expired: parseBooleanLike(body.include_expired, false),
             // S78-E02: Branch-scoped memory フィルタ（呼び出し元が明示的に渡す）
             branch: typeof body.branch === "string" ? body.branch : undefined,
+            // S78-D02: Contradiction resolution — superseded 観察を含むか（デフォルト: 含む・rank 下げ）
+            include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
           };
           return jsonResponse(await core.searchPrepared(req));
         }
@@ -1283,7 +1285,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("from_observation_id, to_observation_id, relation are required");
         }
         const weight = typeof body.weight === "number" ? body.weight : 1.0;
-        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity", weight }));
+        // S78-D02: "supersedes" added to valid cast list
+        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity" | "contradicts" | "causes" | "part_of" | "supersedes", weight }));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/observations/bulk-delete") {

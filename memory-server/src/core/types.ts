@@ -95,6 +95,13 @@ export interface SearchRequest {
    *   branch=NULL の既存観察は全ブランチから参照可能（後方互換デフォルト）。
    */
   branch?: string;
+  /**
+   * S78-D02: Contradiction resolution — superseded 観察の扱い。
+   * - true（デフォルト）: superseded 観察も含むが rank を 0.5 倍に下げる。
+   * - false: superseded 観察を結果から除外する。
+   * superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
+   */
+  include_superseded?: boolean;
 }
 
 export interface FeedRequest {
@@ -230,7 +237,9 @@ export type RelationType =
   | "derives"
   | "contradicts"
   | "causes"
-  | "part_of";
+  | "part_of"
+  /** S78-D02: (A, B, 'supersedes') = "A supersedes B" — B は A によって古くなった */
+  | "supersedes";
 
 /** IMP-002: メモリリンク作成リクエスト */
 export interface CreateLinkRequest {
