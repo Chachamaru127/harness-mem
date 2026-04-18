@@ -1917,7 +1917,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           userId: acc.user_id,
           teamId: acc.team_id,
         });
-        return jsonResponse(res);
+        return rawJsonResponse(res);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/lease/release") {
@@ -1929,7 +1929,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!leaseId || !agentId) {
           return badRequest("lease_id and agent_id are required");
         }
-        return jsonResponse(
+        return rawJsonResponse(
           leaseStore.release(leaseId, agentId, { userId: acc.user_id, teamId: acc.team_id })
         );
       }
@@ -1944,7 +1944,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("lease_id and agent_id are required");
         }
         const ttlMs = typeof body.ttl_ms === "number" ? body.ttl_ms : undefined;
-        return jsonResponse(
+        return rawJsonResponse(
           leaseStore.renew(leaseId, agentId, ttlMs, { userId: acc.user_id, teamId: acc.team_id })
         );
       }
@@ -1965,7 +1965,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           userId: acc.user_id,
           teamId: acc.team_id,
         });
-        return jsonResponse(res);
+        return rawJsonResponse(res);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/signal/read") {
@@ -1984,7 +1984,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (allProjects && getAuthConfig() !== null) {
           const identity = resolveRequestIdentity(request);
           if (identity === null || identity.role !== "admin") {
-            return jsonResponse({
+            return rawJsonResponse({
               ok: false,
               error: "admin_only",
               details: "all_projects requires an admin token in auth-enabled deployments",
@@ -2001,7 +2001,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           teamId: acc.team_id,
           limit: typeof body.limit === "number" ? body.limit : undefined,
         });
-        return jsonResponse({ ok: true, signals });
+        return rawJsonResponse({ ok: true, signals });
       }
 
       if (request.method === "POST" && url.pathname === "/v1/signal/ack") {
@@ -2013,7 +2013,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!signalId || !agentId) {
           return badRequest("signal_id and agent_id are required");
         }
-        return jsonResponse(
+        return rawJsonResponse(
           signalStore.ack({ signalId, agentId, userId: acc.user_id, teamId: acc.team_id })
         );
       }
