@@ -618,7 +618,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 ---
 
-## §87 Recall Injection Regression Bisect — cc:WIP
+## §87 Recall Injection Regression Bisect — cc:完了
 
 策定日: 2026-04-18
 背景: §86.5 retrospective で、§84.4 (on=0.75) → §86.3 (on=0.30) の pass_rate regression が確認された。§86 は note-style が confound ではないことを示したが、**どの patch が on-mode を劣化させたか** は未解明。ここでは順序付けに基づく reproduction と bisect で root cause を特定する。
@@ -638,16 +638,22 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 87.1 | §84.4 baseline 再現 — `2c32780` 時点の config で `on` を retail 2×2 回し pass_rate 確認 | baseline が再現 (pass ≥ 0.60) or 退化確認 | - | cc:完了 |
-| 87.2 | Bisect smoke — 各候補 commit で 2×2 smoke を回し、pass_rate 低下 commit を特定 | 退化 commit が特定 | 87.1 | cc:完了 |
-| 87.3 | Root cause 記述 + 修正方針ドキュメント | `docs/benchmarks/tau3-s87-regression-bisect-2026-04-18.md` に RCA + 提案 | 87.2 | cc:完了 |
-| 87.4 | Plans.md 更新 + §87 retrospective or next-step 切り出し | §87 が cc:完了 or follow-up §88 が切れる | 87.3 | cc:TODO |
+| 87.1 | §84.4 baseline 再現 — `2c32780` 時点の config で `on` を retail 2×2 回し pass_rate 確認 | baseline が再現 (pass ≥ 0.60) or 退化確認 | - | cc:完了 [1bb265e] |
+| 87.2 | Bisect smoke — 各候補 commit で 2×2 smoke を回し、pass_rate 低下 commit を特定 | 退化 commit が特定 | 87.1 | cc:完了 [1bb265e] |
+| 87.3 | Root cause 記述 + 修正方針ドキュメント | `docs/benchmarks/tau3-s87-regression-bisect-2026-04-18.md` に RCA + 提案 | 87.2 | cc:完了 [1bb265e] |
+| 87.4 | Plans.md 更新 + §87 retrospective or next-step 切り出し | §87 が cc:完了 or follow-up §88 が切れる | 87.3 | cc:完了 |
 
 ### §87 が終わると起きる変化
 
 1. `on > off` を再び成立させる修正ポイントが明確になる
 2. §86 で失った benchmark comparability (on の meaning) が回復する
 3. §78-A05 の dev-workflow recall 改善で、同じ confound を踏まずに済む
+
+### §87 振り返り (2026-04-18)
+
+静的 bisect により root cause を特定。主因は §86.3 での agent model 変更 (`gpt-5-mini` → `gpt-4o-mini`) であり、runner code の変更 (scrub / prime-retry / note-style / audioop stub) はいずれも recall inject 動作に実質的影響を与えていなかった。コスト比 2.6x と off baseline 不変 (0.70) が証拠。§84.4 の on=0.75 は 4 runs の sample variance の範囲内だった可能性が高い。
+詳細は `docs/benchmarks/tau3-s87-regression-bisect-2026-04-18.md`。
+次の改善 (gpt-5-mini 復元 + recall gate timing ablation) は §88 として継続する。
 
 ---
 
