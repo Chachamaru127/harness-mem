@@ -765,6 +765,39 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S78-C02: Entity-relation graph — co-occurrence relations between extracted entities
+  // mem_entities already exists (id INTEGER PK, name, entity_type, created_at).
+  // mem_relations is new: src/dst reference entity name+kind via mem_entities.name.
+  // (PG upgrade path: out of scope for §78-C02; see §78-C02b spike for partitioned PG table.)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        src TEXT NOT NULL,
+        dst TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        strength REAL NOT NULL DEFAULT 1.0,
+        observation_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_relations_src ON mem_relations(src, kind)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_relations_obs ON mem_relations(observation_id)`);
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {
