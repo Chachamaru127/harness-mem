@@ -5,7 +5,7 @@
     "": {
       "name": "@chachamaru127/harness-mem",
       "dependencies": {
-        "@huggingface/transformers": "^3.8.1",
+        "@huggingface/transformers": "3.8.1",
         "@img/sharp-libvips-darwin-arm64": "1.2.4",
         "sharp": "0.34.5",
       },
