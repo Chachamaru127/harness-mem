@@ -304,6 +304,7 @@ export const memoryTools: Tool[] = [
             topic: { type: "string" },
           },
         },
+        include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
       },
       required: ["query"],
     },
@@ -680,6 +681,7 @@ export const memoryTools: Tool[] = [
         project: { type: "string" },
         platform: { type: "string" },
         session_id: { type: "string" },
+        expires_at: { type: "string", description: "S78-D01: TTL for this observation as ISO-8601 string or Unix seconds. Null/omitted = no expiration. Past values accepted (observation stored as already-expired)." },
       },
       required: ["file_path", "content"],
     },
@@ -859,6 +861,8 @@ async function handleMemoryToolInner(
           include_private: toBoolean(input.include_private, false),
           sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
           scope,
+          // S78-D01: 期限切れ観察を含むか
+          include_expired: toBoolean(input.include_expired, false),
         });
         const result = successResult(response, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
@@ -1143,6 +1147,7 @@ async function handleMemoryToolInner(
         if (!filePath || !content) {
           return errorResult("file_path and content are required");
         }
+        const expiresAt = toStringOrUndefined(input.expires_at);
         const response = await callMemoryApi("/v1/ingest/document", {
           file_path: filePath,
           content,
@@ -1150,6 +1155,8 @@ async function handleMemoryToolInner(
           project: toStringOrUndefined(input.project),
           platform: toStringOrUndefined(input.platform),
           session_id: toStringOrUndefined(input.session_id),
+          // S78-D01: TTL パススルー
+          ...(expiresAt !== undefined && { expires_at: expiresAt }),
         });
         return successResult(response);
       }
