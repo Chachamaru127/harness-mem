@@ -1,4 +1,4 @@
-import { createFallbackEmbeddingProvider } from "./fallback";
+import { createFallbackEmbeddingProvider, withCircuitBreaker } from "./fallback";
 import { createOllamaEmbeddingProvider } from "./ollama";
 import { createOpenAiEmbeddingProvider } from "./openai";
 import { createProApiEmbeddingProvider } from "./pro-api-provider";
@@ -99,19 +99,28 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
   const modelPath = catalogEntry ? manager.getModelPath(modelId) : null;
 
   if (providerName === "openai") {
-    provider = createOpenAiEmbeddingProvider({
-      dimension: options.dimension,
-      apiKey: options.openaiApiKey,
-      model: options.openaiEmbedModel,
-      fallback,
-    });
+    // S81-D01 (Codex round 3 P2.4): wrap remote provider in circuit
+    // breaker so consecutive failures trigger a cooldown and divert
+    // to the local fallback instead of hammering the flapping endpoint.
+    provider = withCircuitBreaker(
+      createOpenAiEmbeddingProvider({
+        dimension: options.dimension,
+        apiKey: options.openaiApiKey,
+        model: options.openaiEmbedModel,
+        fallback,
+      }),
+      { fallbackTo: fallback }
+    );
   } else if (providerName === "ollama") {
-    provider = createOllamaEmbeddingProvider({
-      dimension: options.dimension,
-      baseUrl: options.ollamaBaseUrl,
-      model: options.ollamaEmbedModel,
-      fallback,
-    });
+    provider = withCircuitBreaker(
+      createOllamaEmbeddingProvider({
+        dimension: options.dimension,
+        baseUrl: options.ollamaBaseUrl,
+        model: options.ollamaEmbedModel,
+        fallback,
+      }),
+      { fallbackTo: fallback }
+    );
   } else if (providerName === "adaptive") {
     const japaneseProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "ruri-v3-30m");
     const freeGeneralProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "multilingual-e5");

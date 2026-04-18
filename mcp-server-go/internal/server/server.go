@@ -5,6 +5,8 @@ package server
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	mcpserver "github.com/mark3labs/mcp-go/server"
@@ -27,9 +29,13 @@ func Run() error {
 	return mcpserver.ServeStdio(s)
 }
 
-// registerTools registers all tool definitions and handlers on the server.
+// registerTools registers tool definitions and handlers on the server.
+// §81-C01: obeys HARNESS_MEM_TOOLS=core|all to narrow the exposed set.
+// Unrecognized / missing values fall back to "all" (backward compatible).
 func registerTools(s *mcpserver.MCPServer) {
-	for _, def := range tools.AllTools() {
+	vis := tools.ResolveVisibility(strings.TrimSpace(os.Getenv("HARNESS_MEM_TOOLS")))
+	defs := tools.FilterByVisibility(tools.AllTools(), vis)
+	for _, def := range defs {
 		s.AddTool(def.Tool, makeHandler(def.Handler))
 	}
 }

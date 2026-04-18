@@ -1,0 +1,375 @@
+/**
+ * S81-A03: Signal primitive for inter-agent messaging.
+ *
+ * Signals are append-only messages routed between agents via the
+ * `mem_signals` table. Each signal has:
+ *   - `from_agent` / `to_agent` (null = broadcast)
+ *   - optional `thread_id` (server-assigned if omitted; `reply_to` reuses
+ *     the parent's thread_id so conversations stay linked)
+ *   - `content` (opaque to the server, any JSON-serialisable string)
+ *   - optional `expires_in_ms` → `expires_at`
+ *
+ * `_read` returns unacked signals addressed to the caller (plus unaddressed
+ * broadcasts). `_ack` marks them read so `_read` never returns the same
+ * message twice. This is the minimal contract required by the DoD.
+ *
+ * The store intentionally uses the same bun:sqlite Database handle as the
+ * rest of memory-server so tests can rely on the single in-memory DB
+ * configured in `initSchema()` without extra plumbing.
+ */
+
+import { Database } from "bun:sqlite";
+
+export interface SignalRow {
+  signalId: string;
+  threadId: string;
+  from: string;
+  to: string | null;
+  replyTo: string | null;
+  content: string;
+  project: string | null;
+  sentAt: string;
+  expiresAt: string | null;
+  ackedAt: string | null;
+  ackedBy: string | null;
+}
+
+export interface SendRequest {
+  from: string;
+  to?: string | null;
+  threadId?: string | null;
+  replyTo?: string | null;
+  content: string;
+  project?: string | null;
+  expiresInMs?: number;
+  /**
+   * S81-A03 tenant (Codex round 6 P1). Populated from the authenticated
+   * caller's resolveAccess() so read/ack can reject cross-tenant
+   * access. Optional for local single-tenant deployments.
+   */
+  userId?: string;
+  teamId?: string;
+}
+
+export type SendResponse =
+  | { ok: true; signal: SignalRow }
+  | { ok: false; error: "invalid_from" | "invalid_content" | "reply_target_missing" };
+
+export interface ReadRequest {
+  agentId: string;
+  /** If provided, only return signals on this thread. */
+  threadId?: string;
+  /** If true, include broadcast (to=null) signals. Default: true. */
+  includeBroadcast?: boolean;
+  /**
+   * S81-A03 scoping (Codex round 5 P2): when omitted, `read()` only
+   * returns signals that were **also** sent without a project key (truly
+   * global broadcasts). Signals tagged with any project are hidden until
+   * the caller passes the matching project. This flips the default from
+   * the previous "no filter ⇒ all projects" semantics that could leak
+   * inbox contents across repos. Callers who really need the legacy
+   * cross-project view must pass `all_projects: true`.
+   */
+  project?: string | null;
+  /**
+   * Escape hatch for audit / admin tooling that needs the old global
+   * view. When true, no project filter is applied, matching pre-round-5
+   * behavior.
+   */
+  all_projects?: boolean;
+  /**
+   * S81-A03 tenant (Codex round 6 P1): when the daemon is auth-enabled,
+   * the caller's resolveAccess() user_id / team_id are forwarded here
+   * and the inbox is further restricted so only rows belonging to the
+   * same tenant are visible.
+   */
+  userId?: string;
+  teamId?: string;
+  limit?: number;
+}
+
+export interface AckTenant {
+  userId?: string;
+  teamId?: string;
+}
+
+export interface AckRequest {
+  signalId: string;
+  agentId: string;
+  /** S81-A03 tenant (Codex round 6 P1): ack ownership check. */
+  userId?: string;
+  teamId?: string;
+}
+
+export type AckResponse =
+  | { ok: true; signal: SignalRow }
+  | { ok: false; error: "not_found" | "already_acked" | "not_recipient" };
+
+export interface SignalStore {
+  send(req: SendRequest): SendResponse;
+  read(req: ReadRequest): SignalRow[];
+  ack(req: AckRequest): AckResponse;
+  get(signalId: string): SignalRow | null;
+}
+
+export interface SignalStoreOptions {
+  now?: () => number;
+  idGenerator?: () => string;
+}
+
+function defaultId(): string {
+  const g = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (g?.randomUUID) return g.randomUUID();
+  let out = "";
+  for (let i = 0; i < 32; i += 1) out += Math.floor(Math.random() * 16).toString(16);
+  return out;
+}
+
+function toIso(ms: number): string {
+  return new Date(ms).toISOString();
+}
+
+function parseRow(row: Record<string, unknown>): SignalRow {
+  return {
+    signalId: String(row.signal_id),
+    threadId: String(row.thread_id ?? row.signal_id),
+    from: String(row.from_agent),
+    to: row.to_agent == null ? null : String(row.to_agent),
+    replyTo: row.reply_to == null ? null : String(row.reply_to),
+    content: String(row.content),
+    project: row.project == null ? null : String(row.project),
+    sentAt: String(row.sent_at),
+    expiresAt: row.expires_at == null ? null : String(row.expires_at),
+    ackedAt: row.acked_at == null ? null : String(row.acked_at),
+    ackedBy: row.acked_by == null ? null : String(row.acked_by),
+  };
+}
+
+export function createSignalStore(db: Database, options: SignalStoreOptions = {}): SignalStore {
+  const now = options.now ?? (() => Date.now());
+  const id = options.idGenerator ?? defaultId;
+
+  const send = (req: SendRequest): SendResponse => {
+    const from = (req.from ?? "").trim();
+    if (!from) return { ok: false, error: "invalid_from" };
+    const content = typeof req.content === "string" ? req.content : "";
+    if (!content) return { ok: false, error: "invalid_content" };
+
+    let threadId = (req.threadId ?? "").trim();
+    // Derive the effective project for this send. Starts from the
+    // explicit request field; if omitted AND we are replying to a
+    // parent, we fall back to the parent's project so the reply joins
+    // the thread without the caller having to repeat the key
+    // (Codex round 8 P3). The effective project is also what we store
+    // and use for tenant checks below.
+    let effectiveProject: string | null = req.project === undefined ? null : (req.project ?? null);
+
+    if (req.replyTo) {
+      const parent = db
+        .query(
+          `SELECT thread_id, project, user_id, team_id FROM mem_signals WHERE signal_id = ?`
+        )
+        .get(req.replyTo) as Record<string, unknown> | null;
+      // S81-A03 (Codex round 7/8 P3): missing parent, foreign-project
+      // parent, and foreign-tenant parent all surface the same
+      // `reply_target_missing` error to avoid exposing an existence
+      // oracle across scopes.
+      if (!parent) {
+        return { ok: false, error: "reply_target_missing" };
+      }
+      const parentProject = parent.project == null ? null : String(parent.project);
+      // Codex round 8 P3: when the caller did not pass `project`, the
+      // reply inherits the parent's scope instead of being forced to
+      // the null default. When the caller did pass a project, it must
+      // match the parent's project exactly.
+      if (req.project === undefined) {
+        effectiveProject = parentProject;
+      } else if (parentProject !== effectiveProject) {
+        return { ok: false, error: "reply_target_missing" };
+      }
+      if (req.userId !== undefined || req.teamId !== undefined) {
+        const parentUser = parent.user_id == null ? null : String(parent.user_id);
+        const parentTeam = parent.team_id == null ? null : String(parent.team_id);
+        const legacy = parentUser === null && parentTeam === null;
+        const matches =
+          legacy ||
+          (req.userId !== undefined && parentUser === req.userId) ||
+          (req.teamId !== undefined && parentTeam !== null && parentTeam === req.teamId);
+        if (!matches) {
+          return { ok: false, error: "reply_target_missing" };
+        }
+      }
+      // Threaded replies always inherit the parent's thread_id.
+      threadId = String(parent.thread_id);
+    }
+
+    const signalId = id();
+    if (!threadId) threadId = signalId;
+
+    const nowMs = now();
+    const sentAt = toIso(nowMs);
+    const expiresAt =
+      typeof req.expiresInMs === "number" && req.expiresInMs > 0
+        ? toIso(nowMs + req.expiresInMs)
+        : null;
+
+    db.run(
+      `INSERT INTO mem_signals
+         (signal_id, thread_id, from_agent, to_agent, reply_to, content,
+          project, sent_at, expires_at, acked_at, acked_by,
+          user_id, team_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?)`,
+      [
+        signalId,
+        threadId,
+        from,
+        req.to ?? null,
+        req.replyTo ?? null,
+        content,
+        effectiveProject,
+        sentAt,
+        expiresAt,
+        req.userId ?? null,
+        req.teamId ?? null,
+      ]
+    );
+
+    return {
+      ok: true,
+      signal: {
+        signalId,
+        threadId,
+        from,
+        to: req.to ?? null,
+        replyTo: req.replyTo ?? null,
+        content,
+        project: effectiveProject,
+        sentAt,
+        expiresAt,
+        ackedAt: null,
+        ackedBy: null,
+      },
+    };
+  };
+
+  const read = (req: ReadRequest): SignalRow[] => {
+    const agentId = (req.agentId ?? "").trim();
+    if (!agentId) return [];
+    const nowIso = toIso(now());
+    const includeBroadcast = req.includeBroadcast !== false;
+    const limit = typeof req.limit === "number" && req.limit > 0 ? Math.floor(req.limit) : 100;
+
+    // Signals addressed directly to agentId OR (optionally) broadcasts.
+    // Exclude acked and expired.
+    const where: string[] = ["acked_at IS NULL"];
+    where.push(`(expires_at IS NULL OR expires_at > ?)`);
+    const params: unknown[] = [nowIso];
+    if (includeBroadcast) {
+      where.push(`(to_agent = ? OR to_agent IS NULL)`);
+      params.push(agentId);
+    } else {
+      where.push(`to_agent = ?`);
+      params.push(agentId);
+    }
+    if (req.threadId) {
+      where.push(`thread_id = ?`);
+      params.push(req.threadId);
+    }
+    // S81-A03 project scoping — Codex round 5 P2 hardening. Default now
+    // isolates: no project arg means the inbox is reduced to null-project
+    // broadcasts only, so an agent identity reused across repos cannot
+    // accidentally see another repo's signals. Explicit opt-in via
+    // `all_projects: true` restores the legacy global view for audit
+    // and admin tools.
+    // S81-A03 tenant scoping (Codex round 6 P1): when the caller is
+    // authenticated (userId or teamId present), require rows to match.
+    // Untagged (legacy, pre-migration) rows are visible to any caller
+    // so old DBs keep working.
+    if (req.userId !== undefined || req.teamId !== undefined) {
+      const clauses: string[] = ["(user_id IS NULL AND team_id IS NULL)"];
+      if (req.userId !== undefined) {
+        clauses.push("user_id = ?");
+        params.push(req.userId);
+      }
+      if (req.teamId !== undefined) {
+        clauses.push("team_id = ?");
+        params.push(req.teamId);
+      }
+      where.push(`(${clauses.join(" OR ")})`);
+    }
+    if (!req.all_projects) {
+      if (req.project === null || req.project === undefined) {
+        where.push(`project IS NULL`);
+      } else {
+        where.push(`(project = ? OR project IS NULL)`);
+        params.push(req.project);
+      }
+    }
+    params.push(limit);
+    const rows = db
+      .query(
+        `SELECT * FROM mem_signals
+          WHERE ${where.join(" AND ")}
+          ORDER BY sent_at ASC
+          LIMIT ?`
+      )
+      .all(...(params as [])) as Record<string, unknown>[];
+    return rows.map(parseRow);
+  };
+
+  const ack = (req: AckRequest): AckResponse => {
+    const row = db
+      .query(`SELECT * FROM mem_signals WHERE signal_id = ?`)
+      .get(req.signalId) as Record<string, unknown> | null;
+    if (!row) return { ok: false, error: "not_found" };
+    // S81-A03 tenant check (Codex round 6 P1): a different tenant must
+    // see the same "not_found" shape so ack cannot be used as an
+    // existence oracle. Rows without user_id/team_id predate the
+    // tenant migration and remain accessible so the older DB keeps
+    // working.
+    if (req.userId !== undefined || req.teamId !== undefined) {
+      const rowUser = row.user_id == null ? null : String(row.user_id);
+      const rowTeam = row.team_id == null ? null : String(row.team_id);
+      const legacy = rowUser === null && rowTeam === null;
+      const matches =
+        legacy ||
+        (req.userId !== undefined && rowUser === req.userId) ||
+        (req.teamId !== undefined && rowTeam !== null && rowTeam === req.teamId);
+      if (!matches) return { ok: false, error: "not_found" };
+    }
+    if (row.acked_at != null) {
+      return { ok: false, error: "already_acked" };
+    }
+    // S81-A03: ownership check. Direct signals (to_agent non-null) may
+    // only be acked by the intended recipient — otherwise a sender could
+    // self-ack and delete their own point-to-point message, or any caller
+    // who learned the signalId could dismiss someone else's inbox entry.
+    // Broadcast signals (to_agent IS NULL) remain acknowledgeable by any
+    // caller (the semantics of "read receipt per agent" would need a
+    // separate ack-log table and is out of scope).
+    const toAgent = row.to_agent == null ? null : String(row.to_agent);
+    if (toAgent !== null && toAgent !== req.agentId) {
+      return { ok: false, error: "not_recipient" };
+    }
+    const nowIso = toIso(now());
+    db.run(
+      `UPDATE mem_signals
+          SET acked_at = ?, acked_by = ?
+        WHERE signal_id = ?`,
+      [nowIso, req.agentId, req.signalId]
+    );
+    const updated = db
+      .query(`SELECT * FROM mem_signals WHERE signal_id = ?`)
+      .get(req.signalId) as Record<string, unknown>;
+    return { ok: true, signal: parseRow(updated) };
+  };
+
+  const get = (signalId: string): SignalRow | null => {
+    const row = db
+      .query(`SELECT * FROM mem_signals WHERE signal_id = ?`)
+      .get(signalId) as Record<string, unknown> | null;
+    return row ? parseRow(row) : null;
+  };
+
+  return { send, read, ack, get };
+}

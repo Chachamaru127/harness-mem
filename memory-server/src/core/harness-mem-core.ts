@@ -38,12 +38,23 @@ import {
   type ConsolidationRunOptions,
   type ConsolidationRunStats,
 } from "../consolidation/worker";
+import {
+  runForgetPolicy,
+  type ForgetPolicyResult,
+} from "../consolidation/forget-policy";
+import {
+  detectContradictions,
+  type ContradictionAdjudicator,
+  type ContradictionDetectorResult,
+} from "../consolidation/contradiction-detector";
+import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
 import { SessionManager } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
+import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
@@ -189,6 +200,98 @@ interface ProjectNormalizationOptions {
   preferredRoots?: string[];
 }
 
+/**
+ * S81-B03: parse an LLM contradiction verdict from raw text. Handles both
+ * JSON mode providers (OpenAI/Ollama force JSON object output) and plain
+ * text providers (Claude Agent SDK or Anthropic direct). Degrades to
+ * {contradiction: false, confidence: 0} on any parse failure so an
+ * untrustworthy response can never create a spurious `superseded` link.
+ */
+function parseContradictionVerdict(raw: string): {
+  contradiction: boolean;
+  confidence: number;
+  reason: string;
+} {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    return { contradiction: false, confidence: 0, reason: "empty response" };
+  }
+  // Try JSON first (OpenAI/Ollama force JSON mode).
+  const jsonCandidates: string[] = [];
+  if (trimmed.startsWith("{")) {
+    jsonCandidates.push(trimmed);
+  }
+  const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+  if (jsonMatch && jsonMatch[0] !== trimmed) {
+    jsonCandidates.push(jsonMatch[0]);
+  }
+  for (const candidate of jsonCandidates) {
+    try {
+      const parsed = JSON.parse(candidate) as {
+        contradiction?: unknown;
+        reason?: unknown;
+        verdict?: unknown;
+        answer?: unknown;
+      };
+      const contradictionVal =
+        parsed.contradiction ?? parsed.verdict ?? parsed.answer;
+      if (typeof contradictionVal === "boolean") {
+        return {
+          contradiction: contradictionVal,
+          confidence: 0.9,
+          reason:
+            typeof parsed.reason === "string" ? parsed.reason : candidate,
+        };
+      }
+      if (typeof contradictionVal === "string") {
+        const lower = contradictionVal.trim().toLowerCase();
+        if (lower === "yes" || lower === "true") {
+          return {
+            contradiction: true,
+            confidence: 0.9,
+            reason:
+              typeof parsed.reason === "string" ? parsed.reason : candidate,
+          };
+        }
+        if (lower === "no" || lower === "false") {
+          return {
+            contradiction: false,
+            confidence: 0.9,
+            reason:
+              typeof parsed.reason === "string" ? parsed.reason : candidate,
+          };
+        }
+      }
+    } catch {
+      // fall through to plain text path
+    }
+  }
+  // Plain text fallback (Claude Agent SDK / Anthropic direct non-JSON).
+  const lowered = trimmed.toLowerCase();
+  // Label-style lines like `contradiction: false`, `contradiction = true`,
+  // `contradiction - no`, etc. Codex round 7 P1: previously matched the
+  // `contradiction` prefix alone and reported true, yielding bogus
+  // `superseded` links when the model returned `contradiction: false`.
+  const labelMatch = lowered.match(/^contradiction\s*[:=\-]\s*(.+)$/);
+  if (labelMatch) {
+    const value = labelMatch[1].trim();
+    if (/^(yes|true)\b/.test(value)) {
+      return { contradiction: true, confidence: 0.9, reason: trimmed };
+    }
+    if (/^(no|false)\b/.test(value)) {
+      return { contradiction: false, confidence: 0.9, reason: trimmed };
+    }
+    return { contradiction: false, confidence: 0, reason: `ambiguous label: ${trimmed.slice(0, 80)}` };
+  }
+  if (/^(yes|true)\b/.test(lowered)) {
+    return { contradiction: true, confidence: 0.9, reason: trimmed };
+  }
+  if (/^(no|false|agree)\b/.test(lowered)) {
+    return { contradiction: false, confidence: 0.9, reason: trimmed };
+  }
+  return { contradiction: false, confidence: 0, reason: `unparseable: ${trimmed.slice(0, 80)}` };
+}
+
 function normalizePathLike(inputPath: string): string {
   return inputPath.replace(/\/+$/, "").replace(/\\/g, "/");
 }
@@ -230,40 +333,55 @@ function resolvePreferredWorkspaceRoot(existingPath: string, preferredRoots: str
 }
 
 function resolveDirectGitWorkspaceRoot(existingPath: string): string | null {
-  const cursor = normalizePathLike(existingPath);
-  if (!cursor.startsWith("/")) {
+  // S81-A01: walk up from `existingPath` looking for a *real* git repo
+  // (dir containing .git/HEAD, or worktree pointer file). Nested src/ dirs
+  // inside a genuine repo collapse onto its root; sibling folders that
+  // merely share an ancestor containing an empty `.git/` (fake or dotfiles)
+  // are not collapsed — confirmed via `.git/HEAD` existence check.
+  const start = normalizePathLike(existingPath);
+  if (!start.startsWith("/")) {
     return null;
   }
 
-  const gitMarker = join(cursor, ".git");
-  if (!existsSync(gitMarker)) {
-    return null;
-  }
-
-  try {
-    const markerStat = statSync(gitMarker);
-    if (markerStat.isDirectory()) {
-      return realpathOrNormalized(cursor);
-    }
-    if (markerStat.isFile()) {
-      const markerBody = readFileSync(gitMarker, "utf8");
-      const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
-      if (!match) {
+  let cursor = start;
+  const MAX_WALKS = 64;
+  for (let i = 0; i < MAX_WALKS; i += 1) {
+    const gitMarker = join(cursor, ".git");
+    if (existsSync(gitMarker)) {
+      try {
+        const markerStat = statSync(gitMarker);
+        if (markerStat.isDirectory()) {
+          if (existsSync(join(gitMarker, "HEAD"))) {
+            return realpathOrNormalized(cursor);
+          }
+        } else if (markerStat.isFile()) {
+          const markerBody = readFileSync(gitMarker, "utf8");
+          const match = markerBody.match(/^\s*gitdir:\s*(.+)\s*$/i);
+          if (!match) {
+            return realpathOrNormalized(cursor);
+          }
+          const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
+          const worktreeToken = "/.git/worktrees/";
+          const worktreeIndex = gitDirPath.indexOf(worktreeToken);
+          if (worktreeIndex > 0) {
+            return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
+          }
+          return realpathOrNormalized(cursor);
+        }
+      } catch {
         return realpathOrNormalized(cursor);
       }
-      const gitDirPath = normalizePathLike(resolve(cursor, match[1].trim()));
-      const worktreeToken = "/.git/worktrees/";
-      const worktreeIndex = gitDirPath.indexOf(worktreeToken);
-      if (worktreeIndex > 0) {
-        return realpathOrNormalized(gitDirPath.slice(0, worktreeIndex));
-      }
-      return realpathOrNormalized(cursor);
     }
-  } catch {
-    return realpathOrNormalized(cursor);
+    const parent = normalizePathLike(resolve(cursor, ".."));
+    if (!parent || parent === cursor) {
+      return null;
+    }
+    if (parent === "/" || /^[A-Za-z]:\/?$/.test(parent)) {
+      return null;
+    }
+    cursor = parent;
   }
-
-  return realpathOrNormalized(cursor);
+  return null;
 }
 
 function normalizeExplicitProjectPath(project: string): string {
@@ -1594,6 +1712,32 @@ export class HarnessMemCore {
     return this.obsStore.getObservations(request);
   }
 
+  /**
+   * S81-C03: observation citation trace.
+   * Resolves an observation back to its source event and (when possible)
+   * to the CodeProvenance the event payload describes.
+   */
+  verifyObservation(request: {
+    observation_id: string;
+    include_private?: boolean;
+    include_archived?: boolean;
+    user_id?: string;
+    team_id?: string;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    const result = verifyObservationTrace(this.db, request);
+    const response = makeResponse(
+      startedAt,
+      [result as unknown as Record<string, unknown>],
+      request as unknown as Record<string, unknown>,
+      { verify_ok: result.ok }
+    );
+    if (!result.ok) {
+      response.ok = false;
+    }
+    return response;
+  }
+
   sessionsList(request: SessionsListRequest): ApiResponse {
     return this.sessionMgr.sessionsList(request);
   }
@@ -2157,17 +2301,178 @@ export class HarnessMemCore {
       // best effort
     }
 
+    // S81-B03 (Codex round 12 P2): run contradiction detection BEFORE
+    // forget_policy. If forget archived rows first, detectContradictions
+    // (which filters `archived_at IS NULL`) would never see pairs that
+    // involve a just-archived row, silently dropping findings in a
+    // combined run.
+    let contradiction: ContradictionDetectorResult | undefined;
+    if (request.contradiction_scan) {
+      const adjudicator = await this.buildContradictionAdjudicator();
+      contradiction = await detectContradictions(this.db, {
+        jaccard_threshold: request.contradiction_scan.jaccard_threshold,
+        min_confidence: request.contradiction_scan.min_confidence,
+        max_pairs_per_group: request.contradiction_scan.max_pairs_per_group,
+        project: request.project,
+        adjudicator,
+      });
+      try {
+        this.writeAuditLog("admin.contradiction_scan.run", "observation", "", {
+          scanned_groups: contradiction.scanned_groups,
+          candidate_pairs: contradiction.candidate_pairs,
+          confirmed: contradiction.contradictions.length,
+          links_created: contradiction.links_created,
+          jaccard_threshold: contradiction.jaccard_threshold,
+          min_confidence: contradiction.min_confidence,
+          project: request.project,
+        });
+      } catch {
+        // best effort
+      }
+    }
+
+    // S81-B02: Opt-in low-value eviction policy. Runs *after* the normal
+    // consolidation pass AND after contradiction detection so fact
+    // extraction, dedupe, and contradiction findings complete against
+    // the full observation set first. Dry-run by default; wet mode
+    // additionally requires HARNESS_MEM_AUTO_FORGET=1.
+    let forget: ForgetPolicyResult | undefined;
+    if (request.forget_policy) {
+      forget = runForgetPolicy(
+        this.db,
+        {
+          dry_run: request.forget_policy.dry_run,
+          score_threshold: request.forget_policy.score_threshold,
+          weights: request.forget_policy.weights,
+          limit: request.forget_policy.limit,
+          protect_accessed: request.forget_policy.protect_accessed,
+          project: request.project,
+        },
+        (action, details) => {
+          try {
+            this.writeAuditLog(action, "observation", "", details);
+          } catch {
+            // best effort
+          }
+        }
+      );
+    }
+
     return makeResponse(
       startedAt,
       [
         {
           ...stats,
           reason: options.reason,
+          ...(forget ? { forget_policy: forget } : {}),
+          ...(contradiction ? { contradiction_scan: contradiction } : {}),
         },
       ],
       request as unknown as Record<string, unknown>,
       { ranking: "consolidation_v1" }
     );
+  }
+
+  /**
+   * S81-B03: build the LLM-backed adjudicator used by contradiction
+   * detection. Attempts the Claude Agent SDK provider (S81-C02) first, then
+   * degrades gracefully: on any provider failure the pair is reported as
+   * `{contradiction: false, confidence: 0}` so a flaky LLM can never create
+   * spurious `superseded` links.
+   */
+  private async buildContradictionAdjudicator(): Promise<ContradictionAdjudicator> {
+    // S81-B03 hardening: Codex round 2 P1 対応。
+    // claude-agent-sdk が import できただけでは認証が通っている保証は
+    // ないため (未ログイン / トークン失効で import は成功するが
+    // generate が毎回失敗する)、adjudicator 側でランタイム失敗を検知し
+    // openai/ollama への自動切替を行う。
+    let primary: Awaited<ReturnType<typeof createClaudeProviderAsync>> | null = null;
+    let primaryIsClaudeSDK = false;
+    try {
+      primary = await createClaudeProviderAsync({ provider: "anthropic" });
+      // createClaudeProviderAsync returns the native Agent SDK provider
+      // when available, otherwise it degrades to the registry default
+      // (openai or ollama). Only the SDK case warrants spinning up a
+      // separate non-claude fallback — otherwise primary and fallback
+      // would be the same backend and every contradiction pair would
+      // pay two failing network calls (Codex round 10 P2).
+      primaryIsClaudeSDK = primary?.name === "claude-agent-sdk";
+    } catch {
+      primary = null;
+    }
+    // Non-claude fallback: only attempted when the primary is the
+    // Claude SDK. If the SDK is unavailable, primary IS already the
+    // registry default, so duplicating it would only add latency.
+    let fallback: ReturnType<typeof createLLMProvider> | null = null;
+    const ensureFallback = (): ReturnType<typeof createLLMProvider> | null => {
+      if (fallback) return fallback;
+      if (!primaryIsClaudeSDK) return null;
+      try {
+        fallback = createLLMProvider({ provider: undefined });
+        if (fallback === primary) fallback = null;
+      } catch {
+        fallback = null;
+      }
+      return fallback;
+    };
+
+    if (!primary && !ensureFallback()) {
+      return () => ({ contradiction: false, confidence: 0, reason: "llm unavailable" });
+    }
+
+    let primaryConsecutiveFailures = 0;
+    const PRIMARY_FAILURE_BUDGET = 2;
+    let primaryDisabled = !primary;
+
+    const runOne = async (
+      p: ReturnType<typeof createLLMProvider>,
+      prompt: string
+    ): Promise<{
+      contradiction: boolean;
+      confidence: number;
+      reason: string;
+    }> => {
+      const raw = (await p.generate(prompt, { maxTokens: 80 })).trim();
+      return parseContradictionVerdict(raw);
+    };
+
+    return async (a, b) => {
+      const prompt = [
+        "You are reviewing two observations that share a concept and have near-identical content.",
+        "Decide if they contradict (i.e., one fact supersedes the other).",
+        `Observation A (${a.observation_id}, ${a.created_at}):\n${a.content}`,
+        `Observation B (${b.observation_id}, ${b.created_at}):\n${b.content}`,
+        'Respond with STRICT JSON: {"contradiction": true|false, "reason": "<short explanation>"}. No other text.',
+      ].join("\n\n");
+
+      // 1) Primary (Claude SDK or registry default).
+      if (!primaryDisabled && primary) {
+        try {
+          const verdict = await runOne(primary, prompt);
+          primaryConsecutiveFailures = 0;
+          return verdict;
+        } catch {
+          primaryConsecutiveFailures += 1;
+          if (primaryConsecutiveFailures >= PRIMARY_FAILURE_BUDGET) {
+            primaryDisabled = true;
+          }
+        }
+      }
+
+      // 2) Fallback (openai / ollama) — try once per call when primary failed
+      // or is disabled. Lazy initialize so environments with a healthy
+      // primary never pay the fallback setup cost.
+      const fb = ensureFallback();
+      if (fb) {
+        try {
+          return await runOne(fb, prompt);
+        } catch {
+          return { contradiction: false, confidence: 0, reason: "llm error (fallback failed)" };
+        }
+      }
+
+      return { contradiction: false, confidence: 0, reason: "llm error" };
+    };
   }
 
   getConsolidationStatus(): ApiResponse {
@@ -2218,7 +2523,19 @@ export class HarnessMemCore {
       });
     }
 
-    const validRelations: string[] = ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of"];
+    const validRelations: string[] = [
+      "updates",
+      "extends",
+      "derives",
+      "follows",
+      "shared_entity",
+      "contradicts",
+      "causes",
+      "part_of",
+      // S81-B03: contradiction-detection output relation. Points newer → older,
+      // explicitly flagging the older observation as demoted by a newer one.
+      "superseded",
+    ];
     if (!validRelations.includes(relation)) {
       return makeErrorResponse(startedAt, `invalid relation type: ${relation}. Must be one of: ${validRelations.join(", ")}`, request as unknown as Record<string, unknown>);
     }
@@ -2402,6 +2719,8 @@ export class HarnessMemCore {
     project?: string;
     platform?: string;
     session_id?: string;
+    /** §78-D01: optional ISO timestamp after which the observation expires. */
+    expires_at?: string;
   }): ApiResponse {
     return this.ingestCoord.ingestKnowledgeFile(request);
   }

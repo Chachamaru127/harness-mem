@@ -816,8 +816,9 @@ export class EventRecorder {
               title, content, content_redacted, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
+              expires_at,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -827,6 +828,7 @@ export class EventRecorder {
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
+              expires_at = excluded.expires_at,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -845,6 +847,8 @@ export class EventRecorder {
             signalScore,
             userId,
             teamId,
+            // §78-D01: optional TTL. Empty string → NULL (never expires).
+            event.expires_at && event.expires_at.length > 0 ? event.expires_at : null,
             timestamp,
             current
           );

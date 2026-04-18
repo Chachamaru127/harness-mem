@@ -122,11 +122,13 @@ var memToolAdminMetrics = mcp.NewTool("harness_mem_admin_metrics",
 )
 
 var memToolAdminConsolidationRun = mcp.NewTool("harness_mem_admin_consolidation_run",
-	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately."),
+	mcp.WithDescription("Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S81-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S81-B03) to detect and mark superseded observations via Jaccard + LLM adjudication."),
 	mcp.WithString("reason"),
 	mcp.WithString("project"),
 	mcp.WithString("session_id"),
 	mcp.WithNumber("limit"),
+	mcp.WithObject("forget_policy", mcp.Description("Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.")),
+	mcp.WithObject("contradiction_scan", mcp.Description("Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.")),
 )
 
 var memToolAdminConsolidationStatus = mcp.NewTool("harness_mem_admin_consolidation_status",
@@ -144,7 +146,7 @@ var memToolAddRelation = mcp.NewTool("harness_mem_add_relation",
 	mcp.WithDescription("Add a directed relation (link) between two observations."),
 	mcp.WithString("from_observation_id", mcp.Required(), mcp.Description("Source observation ID")),
 	mcp.WithString("to_observation_id", mcp.Required(), mcp.Description("Target observation ID")),
-	mcp.WithString("relation", mcp.Required(), mcp.Description("Relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity")),
+	mcp.WithString("relation", mcp.Required(), mcp.Description("Relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "superseded")),
 	mcp.WithNumber("weight", mcp.Description("Link weight (default: 1.0)")),
 )
 
@@ -179,19 +181,20 @@ var memToolStats = mcp.NewTool("harness_mem_stats",
 )
 
 var memToolIngest = mcp.NewTool("harness_mem_ingest",
-	mcp.WithDescription("Ingest a document (knowledge file, ADR, decisions.md) into memory."),
+	mcp.WithDescription("Ingest a document (knowledge file, ADR, decisions.md) into memory. Supports §78-D01 temporal forgetting via optional expires_at."),
 	mcp.WithString("file_path", mcp.Required(), mcp.Description("Path identifier for the document")),
 	mcp.WithString("content", mcp.Required(), mcp.Description("Text content of the document")),
 	mcp.WithString("kind", mcp.Description("Document kind (auto-detected if omitted)"), mcp.Enum("decisions_md", "adr")),
 	mcp.WithString("project"),
 	mcp.WithString("platform"),
 	mcp.WithString("session_id"),
+	mcp.WithString("expires_at", mcp.Description("§78-D01 temporal forgetting: ISO 8601 timestamp after which the observation is treated as expired (excluded from reads and archived by the forget policy). Omit for \"never expires\".")),
 )
 
 var memToolGraph = mcp.NewTool("harness_mem_graph",
 	mcp.WithDescription("Explore graph neighbors of an observation (linked observations by relation). Supports BFS traversal up to depth 5."),
 	mcp.WithString("observation_id", mcp.Required(), mcp.Description("Source observation ID to explore neighbors from")),
-	mcp.WithString("relation", mcp.Description("Filter by relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of")),
+	mcp.WithString("relation", mcp.Description("Filter by relation type"), mcp.Enum("updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "superseded")),
 	mcp.WithNumber("depth", mcp.Description("BFS traversal depth (1-5, default 1)")),
 )
 
@@ -199,4 +202,66 @@ var memToolShareToTeam = mcp.NewTool("harness_mem_share_to_team",
 	mcp.WithDescription("Share a personal memory observation with your team. Sets team_id on the observation so team members can access it."),
 	mcp.WithString("observation_id", mcp.Required(), mcp.Description("ID of the observation to share")),
 	mcp.WithString("team_id", mcp.Required(), mcp.Description("Team ID to share with")),
+)
+
+// S81-A02: Lease primitives for inter-agent coordination.
+var memToolLeaseAcquire = mcp.NewTool("harness_mem_lease_acquire",
+	mcp.WithDescription("Acquire an exclusive, time-bounded lease on a target (file path, action id, or arbitrary key) so dual agents (Claude + Codex) can coordinate without stepping on each other."),
+	mcp.WithString("target", mcp.Required(), mcp.Description("Lease target (file path, action id, etc.)")),
+	mcp.WithString("agent_id", mcp.Required(), mcp.Description("Requesting agent id")),
+	mcp.WithString("project", mcp.Description("REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution. Pass project=\"__global__\" to deliberately acquire a daemon-wide lease.")),
+	mcp.WithString("cwd", mcp.Description("REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key. Without project or cwd, lease_acquire returns scope_required to avoid cross-repo collisions on shared targets like `file:README.md`.")),
+	mcp.WithNumber("ttl_ms", mcp.Description("TTL in milliseconds (default 600000, max 3600000)")),
+	mcp.WithObject("metadata", mcp.Description("Optional JSON metadata attached to the lease")),
+)
+
+var memToolLeaseRelease = mcp.NewTool("harness_mem_lease_release",
+	mcp.WithDescription("Release a previously acquired lease. Only the owning agent_id may release."),
+	mcp.WithString("lease_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+)
+
+var memToolLeaseRenew = mcp.NewTool("harness_mem_lease_renew",
+	mcp.WithDescription("Renew an active lease, extending expires_at by the provided (or original) ttl_ms."),
+	mcp.WithString("lease_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+	mcp.WithNumber("ttl_ms", mcp.Description("Optional new TTL; defaults to the original TTL")),
+)
+
+// S81-A03: Signal primitives for inter-agent messaging.
+var memToolSignalSend = mcp.NewTool("harness_mem_signal_send",
+	mcp.WithDescription("Send an inter-agent signal. to=null means broadcast. reply_to threads signals under the same thread_id."),
+	mcp.WithString("from", mcp.Required(), mcp.Description("Sending agent id")),
+	mcp.WithString("to", mcp.Description("Recipient agent id (omit for broadcast)")),
+	mcp.WithString("thread_id", mcp.Description("Optional thread id; server-assigned if omitted")),
+	mcp.WithString("reply_to", mcp.Description("Signal id this message replies to")),
+	mcp.WithString("content", mcp.Required()),
+	mcp.WithString("project", mcp.Description("REQUIRED (unless `cwd` or `reply_to` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.")),
+	mcp.WithString("cwd", mcp.Description("REQUIRED (unless `project` or `reply_to` is supplied): caller's current working directory. The project is derived via worktree-aware resolution. When `reply_to` is set the scope is inherited from the parent signal instead.")),
+	mcp.WithNumber("expires_in_ms", mcp.Description("Auto-hide the signal after this many ms")),
+)
+
+var memToolSignalRead = mcp.NewTool("harness_mem_signal_read",
+	mcp.WithDescription("Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). REQUIRED: pass project or cwd — the tool is repo-scoped by design. For the cross-project (admin) view, call the HTTP /v1/signal/read endpoint directly with an admin credential."),
+	mcp.WithString("agent_id", mcp.Required()),
+	mcp.WithString("thread_id", mcp.Description("Filter to a specific thread")),
+	mcp.WithString("project", mcp.Description("REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.")),
+	mcp.WithString("cwd", mcp.Description("REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key.")),
+	mcp.WithBoolean("include_broadcast", mcp.Description("Include broadcast signals (default true)")),
+	mcp.WithNumber("limit", mcp.Description("Max signals returned (default 100)")),
+)
+
+var memToolSignalAck = mcp.NewTool("harness_mem_signal_ack",
+	mcp.WithDescription("Acknowledge a signal so it is no longer returned by signal_read."),
+	mcp.WithString("signal_id", mcp.Required()),
+	mcp.WithString("agent_id", mcp.Required()),
+)
+
+
+// S81-C03: citation trace — walks observation -> event -> code provenance.
+var memToolVerify = mcp.NewTool("harness_mem_verify",
+	mcp.WithDescription("Trace an observation back to its source session/event and (when possible) the file path + action recorded by the originating tool_use. Combine with harness_mem_graph for multi-hop provenance audit."),
+	mcp.WithString("observation_id", mcp.Required(), mcp.Description("Observation id returned by search / timeline / resume_pack")),
+	mcp.WithBoolean("include_private", mcp.Description("Surface provenance even for private observations (default false)")),
+	mcp.WithBoolean("include_archived", mcp.Description("Inspect rows that forget_policy soft-archived. Admin-only diagnostic flag (default false).")),
 )

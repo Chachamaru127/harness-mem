@@ -4,11 +4,14 @@ import (
 	"testing"
 )
 
-// TestAllToolsCount verifies that AllTools returns exactly 46 tools.
+// TestAllToolsCount verifies that AllTools returns exactly 53 tools
+// (46 baseline + 6 S81-A02/A03 coordination primitives: lease_acquire,
+// lease_release, lease_renew, signal_send, signal_read, signal_ack
+// + 1 S81-C03 citation trace: harness_mem_verify).
 func TestAllToolsCount(t *testing.T) {
 	tools := AllTools()
-	if len(tools) != 46 {
-		t.Errorf("AllTools() returned %d tools, want 46", len(tools))
+	if len(tools) != 53 {
+		t.Errorf("AllTools() returned %d tools, want 53", len(tools))
 	}
 }
 
