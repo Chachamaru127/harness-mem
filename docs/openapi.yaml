@@ -710,6 +710,9 @@ paths:
                       type: string
                     topic:
                       type: string
+                branch:
+                  type: string
+                  description: "S78-E02: Filter by git branch. Returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)."
       responses:
         "200":
           description: Search results
@@ -1816,6 +1819,9 @@ paths:
                   type: string
                 session_id:
                   type: string
+                branch:
+                  type: string
+                  description: "S78-E02: Git branch to scope this observation to. Omit for no branch scope (visible from all branches)."
       responses:
         "200":
           description: Ingest result

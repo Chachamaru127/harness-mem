@@ -305,6 +305,7 @@ export const memoryTools: Tool[] = [
           },
         },
         include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
+        branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
       },
       required: ["query"],
     },
@@ -682,6 +683,7 @@ export const memoryTools: Tool[] = [
         platform: { type: "string" },
         session_id: { type: "string" },
         expires_at: { type: "string", description: "S78-D01: TTL for this observation as ISO-8601 string or Unix seconds. Null/omitted = no expiration. Past values accepted (observation stored as already-expired)." },
+        branch: { type: "string", description: "S78-E02: Git branch to scope this observation to. When set, observation is tagged with this branch name. Omit for no branch scope (visible from all branches)." },
       },
       required: ["file_path", "content"],
     },
@@ -863,6 +865,8 @@ async function handleMemoryToolInner(
           scope,
           // S78-D01: 期限切れ観察を含むか
           include_expired: toBoolean(input.include_expired, false),
+          // S78-E02: Branch-scoped memory フィルタ
+          branch: toStringOrUndefined(input.branch),
         });
         const result = successResult(response, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
@@ -1148,6 +1152,7 @@ async function handleMemoryToolInner(
           return errorResult("file_path and content are required");
         }
         const expiresAt = toStringOrUndefined(input.expires_at);
+        const branch = toStringOrUndefined(input.branch);
         const response = await callMemoryApi("/v1/ingest/document", {
           file_path: filePath,
           content,
@@ -1157,6 +1162,8 @@ async function handleMemoryToolInner(
           session_id: toStringOrUndefined(input.session_id),
           // S78-D01: TTL パススルー
           ...(expiresAt !== undefined && { expires_at: expiresAt }),
+          // S78-E02: Branch パススルー
+          ...(branch !== undefined && { branch }),
         });
         return successResult(response);
       }

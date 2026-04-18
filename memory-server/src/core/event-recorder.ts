@@ -824,6 +824,11 @@ export class EventRecorder {
         // S78-D01: expires_at 正規化（ISO-8601 または Unix 秒 → ISO-8601、不正値 → null）
         const expiresAt = normalizeExpiresAt(event.expires_at);
 
+        // S78-E02: branch — 呼び出し元が明示的に渡した値のみ採用（自動検出なし）
+        const branch = typeof event.branch === "string" && event.branch.trim()
+          ? event.branch.trim()
+          : null;
+
         this.deps.db
           .query(`
             INSERT INTO mem_observations(
@@ -831,9 +836,9 @@ export class EventRecorder {
               title, content, content_redacted, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
-              thread_id, topic, expires_at,
+              thread_id, topic, expires_at, branch,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -846,6 +851,7 @@ export class EventRecorder {
               thread_id = excluded.thread_id,
               topic = excluded.topic,
               expires_at = excluded.expires_at,
+              branch = excluded.branch,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -867,6 +873,7 @@ export class EventRecorder {
             threadId,
             topic,
             expiresAt,
+            branch,
             timestamp,
             current
           );

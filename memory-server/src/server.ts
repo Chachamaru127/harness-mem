@@ -625,6 +625,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             scope: parsedScope,
             // S78-D01: Temporal forgetting — 期限切れ観察を含むか（デフォルト: 除外）
             include_expired: parseBooleanLike(body.include_expired, false),
+            // S78-E02: Branch-scoped memory フィルタ（呼び出し元が明示的に渡す）
+            branch: typeof body.branch === "string" ? body.branch : undefined,
           };
           return jsonResponse(await core.searchPrepared(req));
         }
@@ -1453,6 +1455,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             project: typeof body.project === "string" ? body.project : undefined,
             platform: typeof body.platform === "string" ? body.platform : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+            // S78-E02: Branch-scoped memory パススルー
+            ...(typeof body.branch === "string" && { branch: body.branch }),
           })
         );
       }

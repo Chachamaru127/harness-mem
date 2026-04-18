@@ -37,6 +37,11 @@ export interface EventEnvelope {
    * 不正な値（パース不能）は null として扱う。
    */
   expires_at?: string | number | null;
+  /**
+   * S78-E02: Branch-scoped memory — git ブランチ名。
+   * null / 未指定 = ブランチスコープなし。カラーは常に呼び出し元が明示的に渡す（自動検出なし）。
+   */
+  branch?: string | null;
 }
 
 export interface SearchRequest {
@@ -83,6 +88,13 @@ export interface SearchRequest {
    * デフォルト false = 期限切れは除外。管理・監査用途向け。
    */
   include_expired?: boolean;
+  /**
+   * S78-E02: Branch-scoped memory フィルタ。
+   * - 未指定: 全観察を返す（後方互換）
+   * - 任意のブランチ名: そのブランチ OR branch=NULL（レガシー行）を返す。
+   *   branch=NULL の既存観察は全ブランチから参照可能（後方互換デフォルト）。
+   */
+  branch?: string;
 }
 
 export interface FeedRequest {

@@ -1297,6 +1297,11 @@ export class ObservationStore {
       };
       /** S78-D01: true のとき期限切れ観察も含む（デフォルト false = 除外）*/
       include_expired?: boolean;
+      /**
+       * S78-E02: Branch-scoped memory フィルタ。
+       * 指定時: そのブランチ OR branch IS NULL を返す（後方互換デフォルト）。
+       */
+      branch?: string;
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
@@ -1366,6 +1371,13 @@ export class ObservationStore {
         nextSql += ` AND ${alias}.user_id = ?`;
         params.push(filters.user_id);
       }
+    }
+
+    // S78-E02: Branch-scoped memory フィルタ
+    // branch が指定された場合: そのブランチ OR branch IS NULL（レガシー行）を返す。
+    if (filters.branch !== undefined) {
+      nextSql += ` AND (${alias}.branch = ? OR ${alias}.branch IS NULL)`;
+      params.push(filters.branch);
     }
 
     // S78-D01: 期限切れフィルタ（デフォルト: 除外）

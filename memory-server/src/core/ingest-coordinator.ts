@@ -2784,6 +2784,8 @@ export class IngestCoordinator {
     session_id?: string;
     /** S78-D01: Temporal forgetting — ISO-8601 または Unix 秒。null = 無期限 */
     expires_at?: string | number | null;
+    /** S78-E02: Branch-scoped memory — git ブランチ名（呼び出し元が明示的に渡す） */
+    branch?: string | null;
   }): ApiResponse {
     const startedAt = performance.now();
     if (!request.file_path || !request.content) {
@@ -2839,6 +2841,8 @@ export class IngestCoordinator {
           dedupe_hash: obs.dedupeHash,
           // S78-D01: TTL パススルー
           ...(request.expires_at != null && { expires_at: request.expires_at }),
+          // S78-E02: Branch パススルー
+          ...(request.branch != null && { branch: request.branch }),
         },
         { allowQueue: false }
       );
