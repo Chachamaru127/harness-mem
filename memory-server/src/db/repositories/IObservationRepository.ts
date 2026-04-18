@@ -34,6 +34,8 @@ export interface ObservationRow {
   /** S78-B02: 階層メタデータ */
   thread_id: string | null;
   topic: string | null;
+  /** S78-D01: Temporal forgetting — TTL。null = 無期限 */
+  expires_at: string | null;
 }
 
 export interface InsertObservationInput {
@@ -57,6 +59,8 @@ export interface InsertObservationInput {
   /** S78-B02: 階層メタデータ */
   thread_id?: string | null;
   topic?: string | null;
+  /** S78-D01: Temporal forgetting — ISO-8601 または Unix 秒。null = 無期限 */
+  expires_at?: string | null;
 }
 
 export interface FindObservationsFilter {
@@ -71,6 +75,8 @@ export interface FindObservationsFilter {
   /** S78-B02: 階層メタデータフィルタ */
   thread_id?: string;
   topic?: string;
+  /** S78-D01: true のとき期限切れ観察も含む（デフォルト false = 除外）*/
+  include_expired?: boolean;
 }
 
 // ---------------------------------------------------------------------------

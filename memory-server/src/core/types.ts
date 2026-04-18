@@ -72,6 +72,11 @@ export interface SearchRequest {
     thread_id?: string;
     topic?: string;
   };
+  /**
+   * S78-D01: Temporal forgetting — true のとき期限切れ観察も検索結果に含む。
+   * デフォルト false = 期限切れは除外。管理・監査用途向け。
+   */
+  include_expired?: boolean;
 }
 
 export interface FeedRequest {

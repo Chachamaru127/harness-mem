@@ -740,6 +740,18 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S78-D01: Temporal forgetting — expires_at カラム追加（nullable TEXT, ISO-8601）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN expires_at TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_expires_at ON mem_observations(expires_at) WHERE expires_at IS NOT NULL`);
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {

@@ -24,11 +24,12 @@ const DEFAULT_FIND_MANY_SQL = `
     last_accessed_at,
     COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
     COALESCE(user_id, 'default') AS user_id, team_id,
-    thread_id, topic,
+    thread_id, topic, expires_at,
     created_at, updated_at
   FROM mem_observations
   WHERE project = ?
     AND (privacy_tags_json IS NULL OR privacy_tags_json = '[]' OR privacy_tags_json NOT LIKE '%private%')
+    AND (expires_at IS NULL OR expires_at > ?)
   ORDER BY created_at DESC, id DESC
   LIMIT ?
 `;
@@ -40,7 +41,7 @@ const DEFAULT_COUNT_SQL = `
 `;
 
 export class SqliteObservationRepository implements IObservationRepository {
-  private defaultFindManyStmt: Statement<ObservationRow, [string, number]> | null = null;
+  private defaultFindManyStmt: Statement<ObservationRow, [string, string, number]> | null = null;
   private defaultCountStmt: Statement<{ cnt: number }, [string]> | null = null;
 
   constructor(private readonly db: Database) {}
@@ -57,10 +58,10 @@ export class SqliteObservationRepository implements IObservationRepository {
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
           signal_score, user_id, team_id,
-          thread_id, topic,
+          thread_id, topic, expires_at,
           created_at, updated_at,
           title_fts, content_fts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.id,
@@ -80,6 +81,7 @@ export class SqliteObservationRepository implements IObservationRepository {
         input.team_id ?? null,
         input.thread_id ?? null,
         input.topic ?? null,
+        input.expires_at ?? null,
         input.created_at,
         input.updated_at,
         titleFts,
@@ -89,6 +91,7 @@ export class SqliteObservationRepository implements IObservationRepository {
   }
 
   async findById(id: string): Promise<ObservationRow | null> {
+    // S78-D01: findById は期限切れフィルタを適用しない（直接 ID アクセスは監査用途を含む）
     const row = this.db
       .query<ObservationRow, [string]>(`
         SELECT
@@ -100,7 +103,7 @@ export class SqliteObservationRepository implements IObservationRepository {
           last_accessed_at,
           COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
           COALESCE(user_id, 'default') AS user_id, team_id,
-          thread_id, topic,
+          thread_id, topic, expires_at,
           created_at, updated_at
         FROM mem_observations
         WHERE id = ?
@@ -118,6 +121,7 @@ export class SqliteObservationRepository implements IObservationRepository {
     for (let offset = 0; offset < ids.length; offset += MAX_BATCH) {
       const batch = ids.slice(offset, offset + MAX_BATCH);
       const placeholders = batch.map(() => "?").join(", ");
+      // S78-D01: findByIds は期限切れフィルタを適用しない（直接 ID アクセスは監査用途を含む）
       const rows = this.db
         .query<ObservationRow, string[]>(`
           SELECT
@@ -129,7 +133,7 @@ export class SqliteObservationRepository implements IObservationRepository {
             last_accessed_at,
             COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
             COALESCE(user_id, 'default') AS user_id, team_id,
-            thread_id, topic,
+            thread_id, topic, expires_at,
             created_at, updated_at
           FROM mem_observations
           WHERE id IN (${placeholders})
@@ -143,7 +147,7 @@ export class SqliteObservationRepository implements IObservationRepository {
 
   async findMany(filter: FindObservationsFilter): Promise<ObservationRow[]> {
     if (this.isDefaultFindManyFilter(filter)) {
-      return this.getDefaultFindManyStmt().all(filter.project, filter.limit);
+      return this.getDefaultFindManyStmt().all(filter.project, new Date().toISOString(), filter.limit);
     }
 
     const params: unknown[] = [];
@@ -157,7 +161,7 @@ export class SqliteObservationRepository implements IObservationRepository {
         last_accessed_at,
         COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
         COALESCE(user_id, 'default') AS user_id, team_id,
-        thread_id, topic,
+        thread_id, topic, expires_at,
         created_at, updated_at
       FROM mem_observations
       WHERE 1 = 1
@@ -208,6 +212,12 @@ export class SqliteObservationRepository implements IObservationRepository {
     if (filter.topic) {
       sql += " AND topic = ?";
       params.push(filter.topic);
+    }
+
+    // S78-D01: 期限切れフィルタ（デフォルト: 除外）
+    if (!filter.include_expired) {
+      sql += " AND (expires_at IS NULL OR expires_at > ?)";
+      params.push(new Date().toISOString());
     }
 
     if (filter.cursor) {
@@ -269,6 +279,7 @@ export class SqliteObservationRepository implements IObservationRepository {
       typeof filter.limit === "number" &&
       filter.limit > 0 &&
       filter.include_private !== true &&
+      filter.include_expired !== true &&
       !filter.session_id &&
       !filter.since &&
       !filter.until &&
@@ -279,9 +290,9 @@ export class SqliteObservationRepository implements IObservationRepository {
     );
   }
 
-  private getDefaultFindManyStmt(): Statement<ObservationRow, [string, number]> {
+  private getDefaultFindManyStmt(): Statement<ObservationRow, [string, string, number]> {
     if (!this.defaultFindManyStmt) {
-      this.defaultFindManyStmt = this.db.query<ObservationRow, [string, number]>(DEFAULT_FIND_MANY_SQL);
+      this.defaultFindManyStmt = this.db.query<ObservationRow, [string, string, number]>(DEFAULT_FIND_MANY_SQL);
     }
     return this.defaultFindManyStmt;
   }
