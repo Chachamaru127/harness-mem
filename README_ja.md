@@ -270,17 +270,21 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 
 | | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
+| **ドメイン** | developer-workflow | generic-agent | generic-agent | general-lifelog |
 | **Claude Code + Codex の両方で使える** | ✓ | — | — | アプリごとに手動配線 |
 | **ローカル完結、クラウド不要** | ✓ | — | ✓ | クラウド / 有料セルフホスト |
 | **セットアップ** | 1コマンド（`setup`） | 組み込み | npm install + 設定編集 | SDK 統合が必要 |
 | **MCP コールドスタート** | **~5ms**（Go バイナリ） | — | — | — |
 | **費用** | 無料 | Claude プランに含まれる | 無料 | 99ドル/月〜（クラウド） |
 
+> **ドメインについて:** `developer-workflow` = コーディングセッションの記憶（harness-mem のターゲット）。`general-lifelog` = 架空の日常会話の記憶（LoCoMo / LongMemEval の領域）。`generic-agent` = 特定ドメインに特化しない汎用エージェントメモリ。LoCoMo スコアは `general-lifelog` の性能を示しており、developer-workflow ツールとの直接比較にはなりません。
+
 <details>
 <summary>全項目の比較表</summary>
 
 | | harness-mem | Claude 組み込みメモリ | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
+| **ドメイン** | developer-workflow | generic-agent | generic-agent | general-lifelog |
 | **対応ツール** | Claude Code, Codex（Tier 1）· Cursor（Tier 2）· Gemini CLI, OpenCode（実験的） | Claude のみ | Claude のみ | API経由でカスタム統合 |
 | **データ保管** | ローカル SQLite | Anthropic クラウド | ローカル SQLite + Chroma | クラウド（セルフホスト有料） |
 | **クロスツール記憶共有** | プロジェクト分離された共有ローカルランタイム + 対応 hook path 上の first-turn continuity | 不可 | 不可 | アプリごとに手動接続 |
@@ -290,6 +294,8 @@ Claude 組み込みメモリは Claude の中でしか使えません。[claude-
 | **外部依存** | Node.js + Bun（Go バイナリは自動ダウンロード） | なし | Node.js + Python + uv + Chroma | Python + APIキー |
 | **移行パス** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **ワークスペース分離** | 厳格（symlink 解決済みパス） | グローバル | basename のみ | ユーザー / エージェント単位 |
+
+> **ドメインについて:** `developer-workflow` = コーディングセッションの記憶（harness-mem のターゲット）。`general-lifelog` = 架空の日常会話の記憶（LoCoMo / LongMemEval の領域）。`generic-agent` = 特定ドメインに特化しない汎用エージェントメモリ。LoCoMo スコアは `general-lifelog` の性能を示しており、developer-workflow ツールとの直接比較にはなりません。
 
 </details>
 

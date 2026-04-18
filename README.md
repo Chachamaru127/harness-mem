@@ -269,17 +269,21 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 | | harness-mem | Claude built-in | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
+| **Domain** | developer-workflow | generic-agent | generic-agent | general-lifelog |
 | **Works across Claude Code + Codex** | ✓ | — | — | Manual per-app wiring |
 | **Local-only, no cloud** | ✓ | — | ✓ | Cloud / paid self-host |
 | **Setup** | 1 command (`setup`) | Built-in | npm install + config | SDK integration required |
 | **MCP cold start** | **~5ms** (Go binary) | — | — | — |
 | **Cost** | Free | Included in plan | Free | $99+/mo (cloud) |
 
+> **Domain note:** `developer-workflow` = coding-session memory (harness-mem's target). `general-lifelog` = fictional daily-life conversation memory (LoCoMo / LongMemEval territory). `generic-agent` = general agent memory without strong domain focus. LoCoMo scores reflect `general-lifelog` performance and are not a direct comparison for developer-workflow tools.
+
 <details>
 <summary>Full comparison (all dimensions)</summary>
 
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
+| **Domain** | developer-workflow | generic-agent | generic-agent | general-lifelog |
 | **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Gemini CLI, OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
 | **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
@@ -289,9 +293,11 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
-| **Benchmark (F1)** | 0.5917 (LoCoMo 120Q, 3-run PASS, p95 13.28ms) | — | — | — |
+| **Benchmark (F1)** | 0.5917 (LoCoMo 120Q, 3-run PASS, p95 13.28ms) *(general-lifelog reference, not target)* | — | — | — |
 | **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
 | **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
+
+> **Domain note:** `developer-workflow` = coding-session memory (harness-mem's target). `general-lifelog` = fictional daily-life conversation memory (LoCoMo / LongMemEval territory). `generic-agent` = general agent memory without strong domain focus. LoCoMo scores reflect `general-lifelog` performance and are not a direct comparison for developer-workflow tools.
 
 </details>
 
