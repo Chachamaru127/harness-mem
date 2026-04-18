@@ -1289,6 +1289,8 @@ export class ObservationStore {
       include_archived?: boolean;
       strict_project?: boolean;
       memory_type?: import("./types.js").MemoryType | import("./types.js").MemoryType[];
+      /** §89-001 (XR-002 P0): observation_type フィルタ */
+      observation_type?: string | string[];
       /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
       user_id?: string;
       /** TEAM-005: member ロール適用 — アクセス制御用チームID */
@@ -1363,6 +1365,25 @@ export class ObservationStore {
         const placeholders = types.map(() => "?").join(", ");
         nextSql += ` AND ${alias}.memory_type IN (${placeholders})`;
         params.push(...types);
+      }
+    }
+
+    // §89-001 (XR-002 P0): observation_type フィルタ
+    // decision / summary / context / document など、スキーマ上の free-form 文字列で絞り込む。
+    // memory_type とは直交軸 (episodic/semantic/procedural ≠ decision/summary/...) で、AND 結合される。
+    if (filters.observation_type !== undefined) {
+      const obsTypes = Array.isArray(filters.observation_type)
+        ? filters.observation_type.filter((t) => typeof t === "string" && t.length > 0)
+        : (typeof filters.observation_type === "string" && filters.observation_type.length > 0
+            ? [filters.observation_type]
+            : []);
+      if (obsTypes.length === 1) {
+        nextSql += ` AND ${alias}.observation_type = ?`;
+        params.push(obsTypes[0]);
+      } else if (obsTypes.length > 1) {
+        const placeholders = obsTypes.map(() => "?").join(", ");
+        nextSql += ` AND ${alias}.observation_type IN (${placeholders})`;
+        params.push(...obsTypes);
       }
     }
 
