@@ -125,6 +125,16 @@ export interface SearchRequest {
    * - 環境変数 HARNESS_MEM_GRAPH_OFF=1 でも強制 0 に設定される
    */
   graph_weight?: number;
+  /**
+   * §89-001 (XR-002 P0): observation_type フィルタ。
+   * 単一値（"decision"）または配列（["decision", "summary"]）で指定。
+   * 指定された type のみが検索結果に含まれる（AND で他のフィルタと結合）。
+   * 未指定の場合は全 type が対象（後方互換）。
+   *
+   * Note: Step 1 は直接パラメータのみ。`type:xxx` という query 文字列 prefix
+   * の pre-parse は Step 2 (MCP + OpenAPI + prefix parser PR) で追加する。
+   */
+  observation_type?: string | string[];
 }
 
 export interface FeedRequest {
