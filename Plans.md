@@ -618,6 +618,37 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 ---
 
+## §87 Recall Injection Regression Bisect — cc:WIP
+
+策定日: 2026-04-18
+背景: §86.5 retrospective で、§84.4 (on=0.75) → §86.3 (on=0.30) の pass_rate regression が確認された。§86 は note-style が confound ではないことを示したが、**どの patch が on-mode を劣化させたか** は未解明。ここでは順序付けに基づく reproduction と bisect で root cause を特定する。
+
+### Scope 判定
+
+- 判定: **Local**
+- 理由: benchmark runner / fixture / harness-mem injection path の bisect であり、harness-mem 本体の責務変更を伴わない
+
+### Global DoD
+
+1. §84.4 config を現行 runner で再現実行し、`on` pass_rate が当時水準（≥ 0.60）に戻るか、退化したままかを確定
+2. 退化したままなら、`2c32780 → ad8cb35 → 6584b4d → 73cf71c → 9d87c83 → b141684` の各 commit で paired smoke (2 tasks × 2 trials) を回し、退化 commit を特定
+3. 特定した confound の修正方針を Plans.md § 87 に記録し、必要なら §87 follow-up task を切る
+
+### Loop Task Queue
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 87.1 | §84.4 baseline 再現 — `2c32780` 時点の config で `on` を retail 2×2 回し pass_rate 確認 | baseline が再現 (pass ≥ 0.60) or 退化確認 | - | cc:完了 |
+| 87.2 | Bisect smoke — 各候補 commit で 2×2 smoke を回し、pass_rate 低下 commit を特定 | 退化 commit が特定 | 87.1 | cc:完了 |
+| 87.3 | Root cause 記述 + 修正方針ドキュメント | `docs/benchmarks/tau3-s87-regression-bisect-2026-04-18.md` に RCA + 提案 | 87.2 | cc:完了 |
+| 87.4 | Plans.md 更新 + §87 retrospective or next-step 切り出し | §87 が cc:完了 or follow-up §88 が切れる | 87.3 | cc:TODO |
+
+### §87 が終わると起きる変化
+
+1. `on > off` を再び成立させる修正ポイントが明確になる
+2. §86 で失った benchmark comparability (on の meaning) が回復する
+3. §78-A05 の dev-workflow recall 改善で、同じ confound を踏まずに済む
+
 ---
 
 ## アーカイブ (完了 / 休止セクション)
