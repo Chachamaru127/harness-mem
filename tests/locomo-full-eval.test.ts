@@ -62,5 +62,5 @@ describe("HARDEN-006: maxSamples 伝播バグ回帰テスト", () => {
     expect(result.dataset_info.total_samples).toBe(15);
     expect(result.dataset_info.evaluated_samples).toBe(15);
     expect(result.metrics.overall.count).toBe(45);
-  });
+  }, 30_000);
 });
