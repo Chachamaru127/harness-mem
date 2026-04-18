@@ -12,6 +12,7 @@ import { promisify } from "util";
 import { getProjectRoot } from "../utils.js";
 import { applyPiiFilter, getActivePiiRules } from "../pii/pii-filter.js";
 import { createJsonToolResult, type ToolResult } from "../tool-result.js";
+import { applyDetailLevel, type SearchDetailLevel } from "../search-detail-level.js";
 
 interface MemoryApiResponse {
   ok: boolean;
@@ -312,6 +313,11 @@ export const memoryTools: Tool[] = [
         include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
         branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
         graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
+        detail_level: {
+          type: "string",
+          enum: ["index", "context", "full"],
+          description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default, preserves existing behavior). full=+complete content+raw_text+score breakdown. meta.token_estimate shows approximate token cost.",
+        },
       },
       required: ["query"],
     },
@@ -866,6 +872,14 @@ async function handleMemoryToolInner(
               topic: toStringOrUndefined((rawScope as Record<string, unknown>).topic),
             }
           : undefined;
+        // §78-E03: detail_level — consumed by MCP layer, not forwarded to API
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["index", "context", "full"];
+        const detailLevel: SearchDetailLevel =
+          rawDetailLevel && validDetailLevels.includes(rawDetailLevel)
+            ? (rawDetailLevel as SearchDetailLevel)
+            : "context";
+
         const response = await callMemoryApi("/v1/search", {
           query,
           project: toStringOrUndefined(input.project),
@@ -883,10 +897,19 @@ async function handleMemoryToolInner(
           // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
           graph_depth: toNumberOrUndefined(input.graph_depth),
         });
-        const result = successResult(response, { citations: true });
+
+        // §78-E03: apply progressive disclosure + inject token_estimate into meta
+        const { items: disclosedItems, meta: disclosedMeta } = applyDetailLevel(
+          Array.isArray(response.items) ? response.items : [],
+          response.meta as Record<string, unknown>,
+          detailLevel
+        );
+        const disclosedResponse = { ...response, items: disclosedItems, meta: disclosedMeta };
+
+        const result = successResult(disclosedResponse as MemoryApiResponse, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
-        if (response.meta?.count > 0) {
-          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${response.meta.count} results for "${query}"`)).catch(() => {});
+        if (disclosedMeta?.count > 0) {
+          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${disclosedMeta.count} results for "${query}"`)).catch(() => {});
         }
         return result;
       }
