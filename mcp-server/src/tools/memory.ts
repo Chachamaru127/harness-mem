@@ -912,8 +912,9 @@ async function handleMemoryToolInner(
 
         const result = successResult(disclosedResponse as MemoryApiResponse, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
-        if (disclosedMeta?.count > 0) {
-          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${disclosedMeta.count} results for "${query}"`)).catch(() => {});
+        const disclosedCount = typeof disclosedMeta?.count === "number" ? disclosedMeta.count : 0;
+        if (disclosedCount > 0) {
+          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${disclosedCount} results for "${query}"`)).catch(() => {});
         }
         return result;
       }
