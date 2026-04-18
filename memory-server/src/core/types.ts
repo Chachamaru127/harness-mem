@@ -32,9 +32,10 @@ export interface EventEnvelope {
   /** S78-B02: 階層メタデータ — トピックラベル */
   topic?: string;
   /**
-   * S78-D01: Temporal forgetting — TTL。ISO-8601 文字列または Unix 秒の数値。
+   * S78-D01 / §81-B02 temporal-forgetting: TTL。ISO-8601 文字列または Unix 秒の数値。
    * null / 未指定 = 無期限。過去の値を渡してもエラーにしない（既に期限切れとして記録される）。
-   * 不正な値（パース不能）は null として扱う。
+   * 不正な値（パース不能）は null として扱う。read path は expires_at <= now で除外、
+   * forget-policy の force-eviction path は score 軸を無視して強制 archive する。
    */
   expires_at?: string | number | null;
   /**
@@ -53,6 +54,13 @@ export interface SearchRequest {
   until?: string;
   limit?: number;
   include_private?: boolean;
+  /**
+   * S81-B02 (Codex round 9 P2): admin-only override to include
+   * soft-archived observations in the result set. Orthogonal to
+   * `include_private` — a caller who only wants their private notes
+   * should NOT also see rows that `forget_policy` has pruned.
+   */
+  include_archived?: boolean;
   expand_links?: boolean;
   strict_project?: boolean;
   debug?: boolean;
@@ -189,6 +197,21 @@ export interface ConsolidationRunRequest {
   project?: string;
   session_id?: string;
   limit?: number;
+  /** S81-B02: opt-in low-value eviction policy. See consolidation/forget-policy.ts. */
+  forget_policy?: {
+    /** Default true — wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1. */
+    dry_run?: boolean;
+    score_threshold?: number;
+    weights?: { access?: number; signal?: number; age?: number };
+    limit?: number;
+    protect_accessed?: boolean;
+  };
+  /** S81-B03: opt-in contradiction detection. See consolidation/contradiction-detector.ts. */
+  contradiction_scan?: {
+    jaccard_threshold?: number;
+    min_confidence?: number;
+    max_pairs_per_group?: number;
+  };
 }
 
 export interface AuditLogRequest {

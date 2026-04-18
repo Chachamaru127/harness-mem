@@ -529,6 +529,47 @@ export function buildFtsQuery(query: string): string {
  * alias: SQL テーブルエイリアス ("o" 等)
  * includePrivate: true の場合は空文字列を返す（フィルタなし）
  */
+/**
+ * S81-B02 round 15 P1 helper: emits `AND <alias>.archived_at IS NULL` unless
+ * the caller explicitly asked for archived rows. Separated from
+ * visibilityFilterSql on purpose — private/sensitive and archived are
+ * orthogonal concepts (Codex round 9 P2). Every SQL query that reads
+ * mem_observations directly should append this clause after
+ * visibilityFilterSql to keep the forget_policy contract consistent.
+ */
+export function archivedFilterSql(alias: string, includeArchived: boolean): string {
+  if (includeArchived) return "";
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
+    throw new Error(`Invalid SQL alias: ${alias}`);
+  }
+  // §78-D01: archived (score-based soft-delete) and expired (TTL-based
+  // soft-delete) are both gated on the same admin flag — asking to see
+  // soft-deleted rows implies the caller wants *all* soft-deleted rows,
+  // and mixing the two would force every read path to thread a second
+  // flag just to stay consistent.
+  return ` AND ${alias}.archived_at IS NULL${expiredFilterSql(alias)}`;
+}
+
+/**
+ * §78-D01 / S81-B02 helper: emits
+ * `AND (<alias>.expires_at IS NULL OR <alias>.expires_at > <nowIso>)`
+ * so expired rows are filtered at read time even before the forget policy
+ * sweeps them into archived_at. The timestamp is inlined (single-quoted)
+ * so callers don't have to thread a bind parameter through every query;
+ * `nowIso` must be an ISO 8601 string with no embedded single quotes
+ * (it's validated below to keep this SQL-injection-safe).
+ */
+export function expiredFilterSql(alias: string, nowIso?: string): string {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
+    throw new Error(`Invalid SQL alias: ${alias}`);
+  }
+  const iso = nowIso ?? new Date().toISOString();
+  if (!/^[0-9T:.\-Z+]+$/.test(iso)) {
+    throw new Error(`Invalid ISO timestamp for expiredFilterSql: ${iso}`);
+  }
+  return ` AND (${alias}.expires_at IS NULL OR ${alias}.expires_at > '${iso}')`;
+}
+
 export function visibilityFilterSql(alias: string, includePrivate: boolean): string {
   if (includePrivate) {
     return "";
@@ -888,7 +929,11 @@ export function ensureSession(
  * 観察 ID の配列から観察データを一括ロードする。
  * db を引数で受け取ることで pure function に近い形で使える。
  */
-export function loadObservations(db: Database, ids: string[]): Map<string, Record<string, unknown>> {
+export function loadObservations(
+  db: Database,
+  ids: string[],
+  options: { includeArchived?: boolean } = {}
+): Map<string, Record<string, unknown>> {
   if (ids.length === 0) {
     return new Map<string, Record<string, unknown>>();
   }
@@ -896,6 +941,19 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
   // SQLite のバインド変数上限を考慮し、バッチ処理で安全に取得
   const MAX_BATCH = 500;
   const mapped = new Map<string, Record<string, unknown>>();
+
+  // S81-B02 (Codex round 15 P1): exclude soft-archived rows by default
+  // so the forget_policy contract holds on every read path — including
+  // feed / timeline / resume_pack / searchFacets / getObservations that
+  // bypass applyCommonFilters(). Admin / audit callers pass
+  // includeArchived=true explicitly.
+  //
+  // §78-D01: expired rows are hidden on the same admin flag. The forget
+  // policy eventually flips archived_at for expired rows, but we don't
+  // want readers to see stale TTL'd data in the meantime.
+  const archivedClause = options.includeArchived
+    ? ""
+    : ` AND o.archived_at IS NULL${expiredFilterSql("o")}`;
 
   for (let offset = 0; offset < ids.length; offset += MAX_BATCH) {
     const batch = ids.slice(offset, offset + MAX_BATCH);
@@ -927,6 +985,7 @@ export function loadObservations(db: Database, ids: string[]): Map<string, Recor
           FROM mem_observations o
           LEFT JOIN mem_events e ON e.event_id = o.event_id
           WHERE o.id IN (${placeholders})
+          ${archivedClause}
         `
       )
       .all(...batch) as Array<Record<string, unknown>>;

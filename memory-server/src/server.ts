@@ -14,6 +14,8 @@ import type { ConnectorConfig } from "./sync/types";
 import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
+import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
+import { createSignalStore, type SignalStore } from "./lease/signal-store";
 import type {
   FeedRequest,
   ImportJobStatusRequest,
@@ -404,6 +406,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   // TEAM-003: Team CRUD リポジトリ
   const teamRepo: ITeamRepository = new SqliteTeamRepository(core.getRawDb());
 
+  // S81-A02/A03: Lease + Signal primitives for dual-agent coordination.
+  const leaseStore: LeaseStore = createLeaseStore(core.getRawDb());
+  const signalStore: SignalStore = createSignalStore(core.getRawDb());
+
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
@@ -463,11 +469,43 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
           const body = await parseRequestJson(request);
+          // S81-B02: accept forget_policy as a sub-object on the run request.
+          let forgetPolicy: ConsolidationRunRequest["forget_policy"];
+          if (body.forget_policy && typeof body.forget_policy === "object") {
+            const fp = body.forget_policy as Record<string, unknown>;
+            forgetPolicy = {
+              dry_run: typeof fp.dry_run === "boolean" ? fp.dry_run : undefined,
+              score_threshold:
+                typeof fp.score_threshold === "number" ? fp.score_threshold : undefined,
+              limit: typeof fp.limit === "number" ? fp.limit : undefined,
+              protect_accessed:
+                typeof fp.protect_accessed === "boolean" ? fp.protect_accessed : undefined,
+              weights:
+                fp.weights && typeof fp.weights === "object"
+                  ? (fp.weights as { access?: number; signal?: number; age?: number })
+                  : undefined,
+            };
+          }
+          // S81-B03: accept contradiction_scan sub-object.
+          let contradictionScan: ConsolidationRunRequest["contradiction_scan"];
+          if (body.contradiction_scan && typeof body.contradiction_scan === "object") {
+            const cs = body.contradiction_scan as Record<string, unknown>;
+            contradictionScan = {
+              jaccard_threshold:
+                typeof cs.jaccard_threshold === "number" ? cs.jaccard_threshold : undefined,
+              min_confidence:
+                typeof cs.min_confidence === "number" ? cs.min_confidence : undefined,
+              max_pairs_per_group:
+                typeof cs.max_pairs_per_group === "number" ? cs.max_pairs_per_group : undefined,
+            };
+          }
           const req: ConsolidationRunRequest = {
             reason: typeof body.reason === "string" ? body.reason : undefined,
             project: typeof body.project === "string" ? body.project : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
             limit: parseIntegerLike(body.limit),
+            forget_policy: forgetPolicy,
+            contradiction_scan: contradictionScan,
           };
           return jsonResponse(await core.runConsolidation(req));
         }
@@ -759,6 +797,42 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           team_id: getObsAccess.team_id,
         };
         return jsonResponse(core.getObservations(req));
+      }
+
+      // S81-C03: citation trace / provenance verify.
+      // TEAM-005 / Codex round 3 P1: verify must also enforce tenant
+      // access filtering — without `resolveAccess()` any caller who knows
+      // another tenant's observation_id could read its provenance tree.
+      if (request.method === "POST" && url.pathname === "/v1/observations/verify") {
+        const verifyAccess = resolveAccess(request);
+        if (verifyAccess instanceof Response) return verifyAccess;
+        const body = await parseRequestJson(request);
+        const observationId =
+          typeof body.observation_id === "string" ? body.observation_id : "";
+        if (!observationId) {
+          return badRequest("observation_id is required");
+        }
+        // Codex round 14 P2: `include_archived` is an admin-only
+        // diagnostic flag (same visibility contract as projectsStats
+        // and search). In auth-enabled deployments, only admin
+        // identities may pass it. Silently downgrade to false for
+        // member tokens so auto-forget cannot be bypassed.
+        let includeArchived = parseBooleanLike(body.include_archived, false);
+        if (includeArchived && getAuthConfig() !== null) {
+          const identity = resolveRequestIdentity(request);
+          if (identity === null || identity.role !== "admin") {
+            includeArchived = false;
+          }
+        }
+        return jsonResponse(
+          core.verifyObservation({
+            observation_id: observationId,
+            include_private: parseBooleanLike(body.include_private, false),
+            include_archived: includeArchived,
+            user_id: verifyAccess.user_id,
+            team_id: verifyAccess.team_id,
+          })
+        );
       }
 
       if (request.method === "POST" && url.pathname === "/v1/checkpoints/record") {
@@ -1543,6 +1617,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
             // S78-E02: Branch-scoped memory パススルー
             ...(typeof body.branch === "string" && { branch: body.branch }),
+            // S78-D01 / §81-B02: optional ISO timestamp for temporal forgetting.
+            expires_at:
+              typeof body.expires_at === "string" && body.expires_at.length > 0
+                ? body.expires_at
+                : undefined,
           })
         );
       }
@@ -1814,6 +1893,129 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           source: "mem_status",
           project_profile: profile,
         });
+      }
+
+      // S81-A02/A03 (Codex round 5 P1): enforce the same authentication
+      // gate as all other user-scoped APIs. `resolveAccess` returns 401
+      // when AuthConfig is configured but the request carries no valid
+      // token, so a plain guess of lease_id / signal_id is no longer
+      // enough to manipulate or read another tenant's coordination state
+      // on auth-enabled deployments.
+      if (request.method === "POST" && url.pathname === "/v1/lease/acquire") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const res = leaseStore.acquire({
+          target: typeof body.target === "string" ? body.target : "",
+          agentId: typeof body.agent_id === "string" ? body.agent_id : "",
+          project: typeof body.project === "string" ? body.project : undefined,
+          ttlMs: typeof body.ttl_ms === "number" ? body.ttl_ms : undefined,
+          metadata:
+            body.metadata && typeof body.metadata === "object"
+              ? (body.metadata as Record<string, unknown>)
+              : undefined,
+          userId: acc.user_id,
+          teamId: acc.team_id,
+        });
+        return jsonResponse(res);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/lease/release") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!leaseId || !agentId) {
+          return badRequest("lease_id and agent_id are required");
+        }
+        return jsonResponse(
+          leaseStore.release(leaseId, agentId, { userId: acc.user_id, teamId: acc.team_id })
+        );
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/lease/renew") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const leaseId = typeof body.lease_id === "string" ? body.lease_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!leaseId || !agentId) {
+          return badRequest("lease_id and agent_id are required");
+        }
+        const ttlMs = typeof body.ttl_ms === "number" ? body.ttl_ms : undefined;
+        return jsonResponse(
+          leaseStore.renew(leaseId, agentId, ttlMs, { userId: acc.user_id, teamId: acc.team_id })
+        );
+      }
+
+      // S81-A03: Signal primitives.
+      if (request.method === "POST" && url.pathname === "/v1/signal/send") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const res = signalStore.send({
+          from: typeof body.from === "string" ? body.from : "",
+          to: typeof body.to === "string" ? body.to : null,
+          threadId: typeof body.thread_id === "string" ? body.thread_id : null,
+          replyTo: typeof body.reply_to === "string" ? body.reply_to : null,
+          content: typeof body.content === "string" ? body.content : "",
+          project: typeof body.project === "string" ? body.project : undefined,
+          expiresInMs: typeof body.expires_in_ms === "number" ? body.expires_in_ms : undefined,
+          userId: acc.user_id,
+          teamId: acc.team_id,
+        });
+        return jsonResponse(res);
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/signal/read") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!agentId) return badRequest("agent_id is required");
+        // Codex round 12 P1: `all_projects` is the documented "audit /
+        // admin cross-project" escape hatch. In auth-enabled
+        // deployments a plain member token must NOT be able to read
+        // same-tenant signals across every repo by opting into it.
+        // Allow only when either (a) no auth is configured (local /
+        // single-tenant) or (b) the identity has role=admin.
+        let allProjects = body.all_projects === true;
+        if (allProjects && getAuthConfig() !== null) {
+          const identity = resolveRequestIdentity(request);
+          if (identity === null || identity.role !== "admin") {
+            return jsonResponse({
+              ok: false,
+              error: "admin_only",
+              details: "all_projects requires an admin token in auth-enabled deployments",
+            }, 403);
+          }
+        }
+        const signals = signalStore.read({
+          agentId,
+          threadId: typeof body.thread_id === "string" ? body.thread_id : undefined,
+          includeBroadcast: body.include_broadcast !== false,
+          project: typeof body.project === "string" ? body.project : undefined,
+          all_projects: allProjects,
+          userId: acc.user_id,
+          teamId: acc.team_id,
+          limit: typeof body.limit === "number" ? body.limit : undefined,
+        });
+        return jsonResponse({ ok: true, signals });
+      }
+
+      if (request.method === "POST" && url.pathname === "/v1/signal/ack") {
+        const acc = resolveAccess(request);
+        if (acc instanceof Response) return acc;
+        const body = await parseRequestJson(request);
+        const signalId = typeof body.signal_id === "string" ? body.signal_id : "";
+        const agentId = typeof body.agent_id === "string" ? body.agent_id : "";
+        if (!signalId || !agentId) {
+          return badRequest("signal_id and agent_id are required");
+        }
+        return jsonResponse(
+          signalStore.ack({ signalId, agentId, userId: acc.user_id, teamId: acc.team_id })
+        );
       }
 
         return new Response("Not Found", { status: 404 });

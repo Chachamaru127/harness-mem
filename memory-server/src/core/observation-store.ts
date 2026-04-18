@@ -66,6 +66,7 @@ import {
   generateSearchReason,
   recencyScore,
   visibilityFilterSql,
+  archivedFilterSql,
   type RankingWeights,
   type SearchCandidate,
   type VectorSearchResult,
@@ -1284,6 +1285,8 @@ export class ObservationStore {
       until?: string;
       as_of?: string;
       include_private?: boolean;
+      /** S81-B02 round 9 P2: admin-only archived visibility override. */
+      include_archived?: boolean;
       strict_project?: boolean;
       memory_type?: import("./types.js").MemoryType | import("./types.js").MemoryType[];
       /** TEAM-005: member ロール適用 — アクセス制御用ユーザーID */
@@ -1392,6 +1395,13 @@ export class ObservationStore {
     if (!options.skipPrivacy) {
       nextSql += visibilityFilterSql(alias, Boolean(filters.include_private));
     }
+    // S81-B02 (Codex round 9 P2 / 15 P1): archived visibility is gated
+    // by its own dedicated `include_archived` flag via archivedFilterSql
+    // so every direct-SQL reader in observation-store uses the same
+    // predicate as the shared helper. include_private stays focused on
+    // private / secret / sensitive tag visibility.
+    const extraFilters = filters as { include_archived?: boolean };
+    nextSql += archivedFilterSql(alias, Boolean(extraFilters.include_archived));
     return nextSql;
   }
 
@@ -1869,7 +1879,10 @@ export class ObservationStore {
       // backward: to_observation_id がフロンティア → from 方向へ辿る
       // applyCommonFilters は SQL 末尾に AND 句を追記するため、
       // 各 SELECT ブランチに個別適用してから UNION ALL で結合する
-      const RELATIONS = "'shared_entity', 'follows', 'extends', 'derives', 'contradicts', 'causes', 'part_of', 'updates'";
+      // S81-B03: `superseded` をグラフ伝播対象に含める (contradiction detector
+      // が古い観察を新しい観察に「superseded」で繋ぐため、近傍探索でも
+      // 辿れるようにする)。
+      const RELATIONS = "'shared_entity', 'follows', 'extends', 'derives', 'contradicts', 'causes', 'part_of', 'updates', 'superseded'";
 
       const forwardParams: unknown[] = [...params];
       let forwardSql = `
@@ -3155,7 +3168,10 @@ export class ObservationStore {
       }
     }
 
-    // IMP-002: exclude_updated=true の場合、updatesリンクで上書きされた旧観察を除外
+    // IMP-002 + S81-B03: exclude_updated=true の場合、旧観察を除外する。
+    // `updates` は手動で張られる上書き関係、`superseded` は contradiction
+    // detector (S81-B03) が貼る自動格下げ関係。両方とも「新しい方が正」の
+    // セマンティクスなので除外対象に含める。
     const updatedObsIds = new Set<string>();
     if (excludeUpdated && candidateIds.size > 0) {
       try {
@@ -3167,7 +3183,7 @@ export class ObservationStore {
           const updatedRows = this.deps.db
             .query(
               `SELECT to_observation_id FROM mem_links
-               WHERE relation = 'updates' AND to_observation_id IN (${placeholders})`
+               WHERE relation IN ('updates', 'superseded') AND to_observation_id IN (${placeholders})`
             )
             .all(...batch) as Array<{ to_observation_id: string }>;
           for (const row of updatedRows) {
@@ -3830,6 +3846,8 @@ export class ObservationStore {
 
     sql += this.deps.platformVisibilityFilterSql("o");
     sql += visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: archived rows stay hidden from feed too.
+    sql += archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
 
     if (this.deps.accessFilter?.sql) {
       sql += " " + this.deps.accessFilter.sql;
@@ -3951,6 +3969,7 @@ export class ObservationStore {
       whereClauses = this.appendProjectFilter(whereClauses, baseParams, "o", projectMembers);
       whereClauses += this.deps.platformVisibilityFilterSql("o");
       whereClauses += visibilityFilterSql("o", includePrivate);
+      whereClauses += archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
       if (this.deps.accessFilter?.sql) {
         whereClauses += " " + this.deps.accessFilter.sql;
         baseParams.push(...this.deps.accessFilter.params);
@@ -4146,6 +4165,10 @@ export class ObservationStore {
     const centerCreatedAt =
       typeof center.created_at === "string" ? center.created_at : nowIso();
     const visibility = visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: timeline before/after should not surface
+    // archived rows either. include_archived is forwarded from the
+    // caller exactly like the other admin-only flags.
+    const archived = archivedFilterSql("o", Boolean((request as { include_archived?: boolean }).include_archived));
 
     // TEAM-005: テナント分離 — before/after クエリにもテナントフィルタ適用
     const tenantFilterSql = request.user_id
@@ -4165,6 +4188,7 @@ export class ObservationStore {
           WHERE o.project = ? AND o.session_id = ? AND o.created_at < ?
           ${tenantFilterSql}
           ${visibility}
+          ${archived}
           ORDER BY o.created_at DESC
           LIMIT ?
         `
@@ -4181,6 +4205,7 @@ export class ObservationStore {
           WHERE o.project = ? AND o.session_id = ? AND o.created_at > ?
           ${tenantFilterSql}
           ${visibility}
+          ${archived}
           ORDER BY o.created_at ASC
           LIMIT ?
         `
@@ -4350,6 +4375,12 @@ export class ObservationStore {
     const limit = clampLimit(request.limit, 5, 1, 20);
     const includePrivate = Boolean(request.include_private);
     const visibility = visibilityFilterSql("o", includePrivate);
+    // S81-B02 round 15 P1: resume_pack reads mem_observations directly
+    // through several ad-hoc queries. Add the archive filter uniformly.
+    const archived = archivedFilterSql(
+      "o",
+      Boolean((request as { include_archived?: boolean }).include_archived)
+    );
 
     // max_tokens: request > config > env > default (2000)
     const requestedBudget = request.resume_pack_max_tokens;
@@ -4422,7 +4453,7 @@ export class ObservationStore {
       pinnedContinuitySql += " AND o.session_id <> ?";
       pinnedContinuityParams.push(request.session_id);
     }
-    pinnedContinuitySql += `${visibility} ORDER BY o.created_at DESC LIMIT 1`;
+    pinnedContinuitySql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT 1`;
     const pinnedContinuity = this.deps.db
       .query(pinnedContinuitySql)
       .get(...(pinnedContinuityParams as any[])) as {
@@ -4462,7 +4493,7 @@ export class ObservationStore {
         rowsSql += " AND o.session_id <> ?";
         rowParams.push(request.session_id);
       }
-      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowsSql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT ?`;
       rowParams.push(limit);
       rows = this.deps.db
         .query(rowsSql)
@@ -4493,7 +4524,7 @@ export class ObservationStore {
         rowsSql += " AND o.session_id <> ?";
         rowParams.push(request.session_id);
       }
-      rowsSql += `${visibility} ORDER BY o.created_at DESC LIMIT ?`;
+      rowsSql += `${visibility}${archived} ORDER BY o.created_at DESC LIMIT ?`;
       rowParams.push(limit);
       rows = this.deps.db
         .query(rowsSql)

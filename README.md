@@ -40,6 +40,7 @@
 - [Measured Proof](#measured-proof) — full benchmark gate
 - [Core Commands](#core-commands)
 - [Supported Tools](#supported-tools)
+- [Dual-Agent Coordination](#dual-agent-coordination)
 - [Troubleshooting](#troubleshooting)
 - [Release Reproducibility](#release-reproducibility)
 - [Documentation](#documentation)
@@ -489,6 +490,43 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
 | **Tier 3** | Gemini CLI | Latest | Experimental. Community-contributed |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
+
+---
+
+## Dual-Agent Coordination
+
+Running Claude Code and Codex CLI side-by-side on the same repo works out of
+the box: both agents see the same memory via `harness-mem`, and two coordination
+primitives keep them from stepping on each other.
+
+**Lease** — claim a file, an action, or any key for a bounded TTL. A second
+agent attempting to claim the same target gets `already_leased` with the
+current holder and expiry.
+
+**Signal** — point-to-point or broadcast messaging. Unacked signals come back
+from `_read`; `reply_to` threads a conversation; TTL auto-expires stale
+messages.
+
+```jsonc
+// Claude grabs a lease before refactoring auth.ts
+{ "tool": "harness_mem_lease_acquire",
+  "args": { "target": "file:/src/auth.ts", "agent_id": "claude-1", "ttl_ms": 600000 } }
+// Codex sees the busy lease and redirects
+{ "tool": "harness_mem_lease_acquire",
+  "args": { "target": "file:/src/auth.ts", "agent_id": "codex-1" } }
+// → { "ok": false, "error": "already_leased", "heldBy": "claude-1", "expiresAt": "..." }
+
+// Claude pings Codex when the refactor is done
+{ "tool": "harness_mem_signal_send",
+  "args": { "from": "claude-1", "to": "codex-1", "content": "auth.ts refactor ready for review" } }
+// Codex pulls pending signals on next turn
+{ "tool": "harness_mem_signal_read",  "args": { "agent_id": "codex-1" } }
+// → [{ signal_id, from: "claude-1", content: "auth.ts refactor ready for review", ... }]
+{ "tool": "harness_mem_signal_ack",  "args": { "signal_id": "...", "agent_id": "codex-1" } }
+```
+
+`harness-mem doctor` probes both `/v1/lease/acquire` and `/v1/signal/read` so
+mis-configured daemons surface early.
 
 ---
 

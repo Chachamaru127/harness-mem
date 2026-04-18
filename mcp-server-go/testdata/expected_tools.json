@@ -339,7 +339,8 @@
             "extends",
             "derives",
             "follows",
-            "shared_entity"
+            "shared_entity",
+            "superseded"
           ],
           "type": "string"
         },
@@ -393,7 +394,7 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Run consolidation worker (extract + dedupe) immediately.",
+    "description": "Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S81-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S81-B03) to detect and mark superseded observations via Jaccard + LLM adjudication.",
     "inputSchema": {
       "properties": {
         "limit": {
@@ -407,6 +408,16 @@
         },
         "session_id": {
           "type": "string"
+        },
+        "forget_policy": {
+          "description": "Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.",
+          "type": "object",
+          "properties": {}
+        },
+        "contradiction_scan": {
+          "description": "Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.",
+          "type": "object",
+          "properties": {}
         }
       },
       "required": [],
@@ -753,7 +764,8 @@
             "shared_entity",
             "contradicts",
             "causes",
-            "part_of"
+            "part_of",
+            "superseded"
           ],
           "type": "string"
         }
@@ -787,11 +799,15 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
-    "description": "Ingest a document (knowledge file, ADR, decisions.md) into memory.",
+    "description": "Ingest a document (knowledge file, ADR, decisions.md) into memory. Supports §78-D01 temporal forgetting via optional expires_at.",
     "inputSchema": {
       "properties": {
         "content": {
           "description": "Text content of the document",
+          "type": "string"
+        },
+        "expires_at": {
+          "description": "§78-D01 temporal forgetting: ISO 8601 timestamp after which the observation is treated as expired (excluded from reads and archived by the forget policy). Omit for \"never expires\".",
           "type": "string"
         },
         "file_path": {
@@ -823,6 +839,104 @@
       "type": "object"
     },
     "name": "harness_mem_ingest"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Acquire an exclusive, time-bounded lease on a target (file path, action id, or arbitrary key) so dual agents (Claude + Codex) can coordinate without stepping on each other.",
+    "inputSchema": {
+      "properties": {
+        "agent_id": {
+          "description": "Requesting agent id",
+          "type": "string"
+        },
+        "cwd": {
+          "description": "REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key. Without project or cwd, lease_acquire returns scope_required to avoid cross-repo collisions on shared targets like `file:README.md`.",
+          "type": "string"
+        },
+        "metadata": {
+          "description": "Optional JSON metadata attached to the lease",
+          "properties": {},
+          "type": "object"
+        },
+        "project": {
+          "description": "REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution. Pass project=\"__global__\" to deliberately acquire a daemon-wide lease.",
+          "type": "string"
+        },
+        "target": {
+          "description": "Lease target (file path, action id, etc.)",
+          "type": "string"
+        },
+        "ttl_ms": {
+          "description": "TTL in milliseconds (default 600000, max 3600000)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "target",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_lease_acquire"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Release a previously acquired lease. Only the owning agent_id may release.",
+    "inputSchema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "lease_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "lease_id",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_lease_release"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Renew an active lease, extending expires_at by the provided (or original) ttl_ms.",
+    "inputSchema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "lease_id": {
+          "type": "string"
+        },
+        "ttl_ms": {
+          "description": "Optional new TTL; defaults to the original TTL",
+          "type": "number"
+        }
+      },
+      "required": [
+        "lease_id",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_lease_renew"
   },
   {
     "annotations": {
@@ -1088,6 +1202,122 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
+    "description": "Acknowledge a signal so it is no longer returned by signal_read.",
+    "inputSchema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "signal_id": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "signal_id",
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_signal_ack"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Read unacked signals addressed to agent_id (plus broadcasts unless include_broadcast=false). REQUIRED: pass project or cwd — the tool is repo-scoped by design. For the cross-project (admin) view, call the HTTP /v1/signal/read endpoint directly with an admin credential.",
+    "inputSchema": {
+      "properties": {
+        "agent_id": {
+          "type": "string"
+        },
+        "cwd": {
+          "description": "REQUIRED (unless `project` is supplied): caller's current working directory. The project is derived via worktree-aware resolution so linked worktrees of the same repo collapse onto one key.",
+          "type": "string"
+        },
+        "include_broadcast": {
+          "description": "Include broadcast signals (default true)",
+          "type": "boolean"
+        },
+        "limit": {
+          "description": "Max signals returned (default 100)",
+          "type": "number"
+        },
+        "project": {
+          "description": "REQUIRED (unless `cwd` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.",
+          "type": "string"
+        },
+        "thread_id": {
+          "description": "Filter to a specific thread",
+          "type": "string"
+        }
+      },
+      "required": [
+        "agent_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_signal_read"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Send an inter-agent signal. to=null means broadcast. reply_to threads signals under the same thread_id.",
+    "inputSchema": {
+      "properties": {
+        "content": {
+          "type": "string"
+        },
+        "cwd": {
+          "description": "REQUIRED (unless `project` or `reply_to` is supplied): caller's current working directory. The project is derived via worktree-aware resolution. When `reply_to` is set the scope is inherited from the parent signal instead.",
+          "type": "string"
+        },
+        "expires_in_ms": {
+          "description": "Auto-hide the signal after this many ms",
+          "type": "number"
+        },
+        "from": {
+          "description": "Sending agent id",
+          "type": "string"
+        },
+        "project": {
+          "description": "REQUIRED (unless `cwd` or `reply_to` is supplied): explicit project scope. Path-like values are canonicalised via worktree-aware resolution.",
+          "type": "string"
+        },
+        "reply_to": {
+          "description": "Signal id this message replies to",
+          "type": "string"
+        },
+        "thread_id": {
+          "description": "Optional thread id; server-assigned if omitted",
+          "type": "string"
+        },
+        "to": {
+          "description": "Recipient agent id (omit for broadcast)",
+          "type": "string"
+        }
+      },
+      "required": [
+        "from",
+        "content"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_signal_send"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
     "description": "Get per-project memory statistics including observation counts and session summaries.",
     "inputSchema": {
       "properties": {
@@ -1129,6 +1359,36 @@
       "type": "object"
     },
     "name": "harness_mem_timeline"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
+    "description": "Trace an observation back to its source session/event and (when possible) the file path + action recorded by the originating tool_use. Combine with harness_mem_graph for multi-hop provenance audit.",
+    "inputSchema": {
+      "properties": {
+        "include_archived": {
+          "description": "Inspect rows that forget_policy soft-archived. Admin-only diagnostic flag (default false).",
+          "type": "boolean"
+        },
+        "include_private": {
+          "description": "Surface provenance even for private observations (default false)",
+          "type": "boolean"
+        },
+        "observation_id": {
+          "description": "Observation id returned by search / timeline / resume_pack",
+          "type": "string"
+        }
+      },
+      "required": [
+        "observation_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_verify"
   },
   {
     "annotations": {
