@@ -13,6 +13,21 @@
         "model": "multilingual-e5",
         "vectorDimension": 384
       }
+    },
+    {
+      "timestamp": "2026-04-18T00:00:00.000Z",
+      "note": "§77/§78-A03 baseline: bilingual_recall working target is 0.88 (v0.9.0 target 0.90 deferred pending M1/Linux determinism check via embedding-determinism-matrix CI job). @huggingface/transformers exact-pinned to 3.8.1.",
+      "f1": null,
+      "freshness": null,
+      "temporal": null,
+      "bilingual": 0.88,
+      "cat1": null,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
     }
   ]
 }
