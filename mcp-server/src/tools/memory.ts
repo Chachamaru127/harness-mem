@@ -318,6 +318,13 @@ export const memoryTools: Tool[] = [
           enum: ["index", "context", "full"],
           description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default, preserves existing behavior). full=+complete content+raw_text+score breakdown. meta.token_estimate shows approximate token cost.",
         },
+        observation_type: {
+          oneOf: [
+            { type: "string" },
+            { type: "array", items: { type: "string" } },
+          ],
+          description: "§89-001 (XR-002 P0): Filter by observation_type (e.g. \"decision\", \"summary\", \"context\", \"document\"). Single value or array. Also honors the `type:xxx` query-prefix convention — `query=\"type:decision …\"` is rewritten to `observation_type=\"decision\"` + the remaining query.",
+        },
       },
       required: ["query"],
     },
@@ -859,9 +866,43 @@ async function handleMemoryToolInner(
       }
 
       case "harness_mem_search": {
-        const query = toStringOrUndefined(input.query);
-        if (!query) {
+        const rawQuery = toStringOrUndefined(input.query);
+        if (!rawQuery) {
           return errorResult("query is required");
+        }
+
+        // §89-001 (XR-002 P0): observation_type direct parameter + `type:xxx` query prefix.
+        // Accepts a single string, a string[], or falls through to prefix parsing
+        // (e.g. `query="type:decision fix release gate"` → observation_type="decision",
+        //  query="fix release gate"). Direct parameter always wins over prefix.
+        const rawObservationType = input.observation_type;
+        let observationType: string | string[] | undefined;
+        if (typeof rawObservationType === "string" && rawObservationType.trim().length > 0) {
+          observationType = rawObservationType.trim();
+        } else if (Array.isArray(rawObservationType)) {
+          const cleaned = rawObservationType
+            .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+            .map((t) => t.trim());
+          observationType = cleaned.length > 0 ? cleaned : undefined;
+        }
+
+        let query = rawQuery;
+        if (observationType === undefined) {
+          // Prefix parser: only the very first token is treated as a type filter.
+          // Anchored match so ordinary text like `"type:safety" is our convention`
+          // does not get stripped.
+          const prefixMatch = query.match(/^\s*type:([A-Za-z0-9_.-]+)\s*/);
+          if (prefixMatch) {
+            observationType = prefixMatch[1];
+            query = query.slice(prefixMatch[0].length).trim();
+            if (!query) {
+              // `type:decision` with no remaining query text. Preserve the raw query
+              // so downstream validation still accepts it, but the filter takes
+              // effect by way of observation_type. The core search treats this as
+              // "match anything of this type".
+              query = rawQuery.trim();
+            }
+          }
         }
 
         const sortBy = toStringOrUndefined(input.sort_by);
@@ -900,6 +941,8 @@ async function handleMemoryToolInner(
           branch: toStringOrUndefined(input.branch),
           // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
           graph_depth: toNumberOrUndefined(input.graph_depth),
+          // §89-001 (XR-002 P0): observation_type filter (direct + prefix parsed)
+          observation_type: observationType,
         });
 
         // §78-E03: apply progressive disclosure + inject token_estimate into meta

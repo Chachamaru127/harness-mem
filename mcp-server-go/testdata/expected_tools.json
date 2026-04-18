@@ -1056,6 +1056,10 @@
         "limit": {
           "type": "number"
         },
+        "observation_type": {
+          "description": "§89-001 (XR-002 P0): Filter by observation_type (e.g. \"decision\", \"summary\", \"context\", \"document\"). REST and TS MCP also accept a string[] and the `type:xxx` query-prefix form.",
+          "type": "string"
+        },
         "project": {
           "type": "string"
         },
