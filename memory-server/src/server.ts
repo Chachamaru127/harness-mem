@@ -582,6 +582,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             ? buildAccessFilter("o", searchIdentity)
             : null;
 
+          // S78-B02: scope パラメータの解析
+          const rawScope = body.scope;
+          const parsedScope: SearchRequest["scope"] =
+            rawScope && typeof rawScope === "object" && !Array.isArray(rawScope)
+              ? (() => {
+                  const s = rawScope as Record<string, unknown>;
+                  return {
+                    project: typeof s.project === "string" ? s.project : undefined,
+                    session_id: typeof s.session_id === "string" ? s.session_id : undefined,
+                    thread_id: typeof s.thread_id === "string" ? s.thread_id : undefined,
+                    topic: typeof s.topic === "string" ? s.topic : undefined,
+                  };
+                })()
+              : undefined;
+
           const req: SearchRequest = {
             query,
             project: typeof body.project === "string" ? body.project : undefined,
@@ -606,6 +621,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             sort_by: typeof body.sort_by === "string" && ["relevance", "date_desc", "date_asc"].includes(body.sort_by)
               ? body.sort_by as SearchRequest["sort_by"]
               : undefined,
+            // S78-B02: 階層メタデータスコープ
+            scope: parsedScope,
           };
           return jsonResponse(await core.searchPrepared(req));
         }

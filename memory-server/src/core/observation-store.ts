@@ -1288,19 +1288,41 @@ export class ObservationStore {
       user_id?: string;
       /** TEAM-005: member ロール適用 — アクセス制御用チームID */
       team_id?: string;
+      /** S78-B02: 階層メタデータスコープ */
+      scope?: {
+        project?: string;
+        session_id?: string;
+        thread_id?: string;
+        topic?: string;
+      };
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
     let nextSql = sql;
     const strictProject = filters.strict_project !== false;
 
-    if (filters.project && strictProject) {
-      nextSql = this.appendProjectFilter(nextSql, params, alias, filters.project_members || [filters.project]);
+    // S78-B02: scope が指定された場合は top-level を上書き (explicit > implicit)
+    const effectiveProject = filters.scope?.project ?? filters.project;
+    const effectiveSessionId = filters.scope?.session_id ?? filters.session_id;
+
+    if (effectiveProject && strictProject) {
+      nextSql = this.appendProjectFilter(nextSql, params, alias, filters.project_members || [effectiveProject]);
     }
 
-    if (filters.session_id) {
+    if (effectiveSessionId) {
       nextSql += ` AND ${alias}.session_id = ?`;
-      params.push(filters.session_id);
+      params.push(effectiveSessionId);
+    }
+
+    // S78-B02: thread_id / topic スコープフィルタ
+    if (filters.scope?.thread_id) {
+      nextSql += ` AND ${alias}.thread_id = ?`;
+      params.push(filters.scope.thread_id);
+    }
+
+    if (filters.scope?.topic) {
+      nextSql += ` AND ${alias}.topic = ?`;
+      params.push(filters.scope.topic);
     }
 
     if (filters.since) {
@@ -2993,6 +3015,10 @@ export class ObservationStore {
     const excludeUpdated = Boolean(request.exclude_updated);
     // S74-005: file: フィルターをクエリから除去して検索エンジンに渡す（lexical/vector には不要なトークン）
     const cleanedQuery = request.query.replace(/\bfile:\S+/g, "").replace(/\s+/g, " ").trim();
+    // S78-B02: scope.project を正規化
+    const normalizedScopeProject = request.scope?.project
+      ? this.deps.normalizeProject(request.scope.project)
+      : undefined;
     const normalizedRequest: SearchRequest = {
       ...request,
       query: cleanedQuery || request.query,
@@ -3002,6 +3028,9 @@ export class ObservationStore {
       strict_project: strictProject,
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
+      scope: request.scope
+        ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
+        : undefined,
     };
     const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
     // COMP-003: as_of が指定されている場合、latest interaction は時点外の結果を混入させるためスキップ

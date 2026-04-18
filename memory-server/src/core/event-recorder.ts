@@ -812,6 +812,14 @@ export class EventRecorder {
           return { duplicated: true };
         }
 
+        // S78-B02: thread_id / topic はイベントエンベロープから取得
+        const threadId = typeof event.thread_id === "string" && event.thread_id.trim()
+          ? event.thread_id.trim()
+          : null;
+        const topic = typeof event.topic === "string" && event.topic.trim()
+          ? event.topic.trim()
+          : null;
+
         this.deps.db
           .query(`
             INSERT INTO mem_observations(
@@ -819,8 +827,9 @@ export class EventRecorder {
               title, content, content_redacted, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
+              thread_id, topic,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -830,6 +839,8 @@ export class EventRecorder {
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
+              thread_id = excluded.thread_id,
+              topic = excluded.topic,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -848,6 +859,8 @@ export class EventRecorder {
             signalScore,
             userId,
             teamId,
+            threadId,
+            topic,
             timestamp,
             current
           );
