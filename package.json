@@ -69,7 +69,9 @@
     "benchmark:pilot30": "bash scripts/bench-pilot-30usd.sh",
     "benchmark:pilot30:dry-run": "bash scripts/bench-pilot-30usd.sh --dry-run",
     "test:ui": "cd harness-mem-ui && bunx vitest",
-    "test:e2e": "cd harness-mem-ui && bunx playwright test"
+    "test:e2e": "cd harness-mem-ui && bunx playwright test",
+    "poc:graph-sqlite": "bun run scripts/graph-store-poc-sqlite-cte.ts",
+    "poc:graph-kuzu": "npx tsx scripts/graph-store-poc-kuzu.ts"
   },
   "engines": {
     "node": ">=18.0.0"
