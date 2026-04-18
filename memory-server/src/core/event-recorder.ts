@@ -38,6 +38,7 @@ import {
 import type { StoredEvent } from "../projector/types";
 import { runAutoLinker } from "./auto-linker.js";
 import { extractCodeProvenance } from "./provenance-extractor.js";
+import { stripPrivateBlocks } from "./privacy-tags.js";
 
 // ---------------------------------------------------------------------------
 // ローカルユーティリティ（recordEvent ロジックで使用する純粋関数）
@@ -757,6 +758,8 @@ export class EventRecorder {
     const eventId = (event.event_id || generateEventId()).trim();
 
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
+    // S78-E01: Strip <private>...</private> blocks before embedding and storage.
+    observationBase.content = stripPrivateBlocks(observationBase.content) ?? observationBase.content;
     const redactedContent = redactContent(observationBase.content, privacyTags);
     const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
     const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
