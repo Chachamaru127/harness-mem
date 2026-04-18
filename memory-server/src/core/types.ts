@@ -27,13 +27,22 @@ export interface EventEnvelope {
   user_id?: string;
   /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
   team_id?: string;
+  /** S78-B02: 階層メタデータ — session 内のスレッド識別子 */
+  thread_id?: string;
+  /** S78-B02: 階層メタデータ — トピックラベル */
+  topic?: string;
   /**
-   * §78-D01 / S81-B02 temporal-forgetting: optional ISO 8601 timestamp
-   * after which the resulting observation must be treated as expired
-   * (excluded from reads and archived by the forget policy). NULL =
-   * never expires.
+   * S78-D01 / §81-B02 temporal-forgetting: TTL。ISO-8601 文字列または Unix 秒の数値。
+   * null / 未指定 = 無期限。過去の値を渡してもエラーにしない（既に期限切れとして記録される）。
+   * 不正な値（パース不能）は null として扱う。read path は expires_at <= now で除外、
+   * forget-policy の force-eviction path は score 軸を無視して強制 archive する。
    */
-  expires_at?: string;
+  expires_at?: string | number | null;
+  /**
+   * S78-E02: Branch-scoped memory — git ブランチ名。
+   * null / 未指定 = ブランチスコープなし。カラーは常に呼び出し元が明示的に渡す（自動検出なし）。
+   */
+  branch?: string | null;
 }
 
 export interface SearchRequest {
@@ -71,6 +80,51 @@ export interface SearchRequest {
   team_id?: string;
   /** S43-SEARCH: ソート順 — relevance(デフォルト) / date_desc / date_asc */
   sort_by?: "relevance" | "date_desc" | "date_asc";
+  /**
+   * S78-B02: 階層メタデータスコープ — project > session > thread > topic の順で絞り込む。
+   * 後方互換: トップレベルの project / session_id も引き続き有効。
+   * scope と top-level が両方指定された場合、scope を優先する。
+   */
+  scope?: {
+    project?: string;
+    session_id?: string;
+    thread_id?: string;
+    topic?: string;
+  };
+  /**
+   * S78-D01: Temporal forgetting — true のとき期限切れ観察も検索結果に含む。
+   * デフォルト false = 期限切れは除外。管理・監査用途向け。
+   */
+  include_expired?: boolean;
+  /**
+   * S78-E02: Branch-scoped memory フィルタ。
+   * - 未指定: 全観察を返す（後方互換）
+   * - 任意のブランチ名: そのブランチ OR branch=NULL（レガシー行）を返す。
+   *   branch=NULL の既存観察は全ブランチから参照可能（後方互換デフォルト）。
+   */
+  branch?: string;
+  /**
+   * S78-D02: Contradiction resolution — superseded 観察の扱い。
+   * - true（デフォルト）: superseded 観察も含むが rank を 0.5 倍に下げる。
+   * - false: superseded 観察を結果から除外する。
+   * superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
+   */
+  include_superseded?: boolean;
+  /**
+   * S78-C03: Multi-hop reasoning — entity graph を辿って関連観察を追加取得。
+   * - 0（デフォルト）: グラフ展開なし（後方互換）
+   * - 1..3: 指定ホップ数だけ mem_relations エンティティグラフを BFS 探索
+   * - グラフ経由で到達した観察にスコアボーナス +0.1 を付与
+   * - 展開上限: 最大 20 観察（result explosion を防ぐ）
+   */
+  graph_depth?: number;
+  /**
+   * S78-C04: Graph-augmented hybrid search — graph proximity signal の重み。
+   * - デフォルト 0.15 (moderate influence)
+   * - 0 でグラフ近傍信号を無効化（A/B テスト用）
+   * - 環境変数 HARNESS_MEM_GRAPH_OFF=1 でも強制 0 に設定される
+   */
+  graph_weight?: number;
 }
 
 export interface FeedRequest {
@@ -200,6 +254,13 @@ export interface ResumePackRequest {
   user_id?: string;
   /** TEAM-005: member ロール適用 — アクセス制御用チームID */
   team_id?: string;
+  /**
+   * §78-B03: Token-budget-aware wake-up context detail level.
+   * - "L0"  : critical facts only (~170 tokens, ≥ 50% token reduction)
+   * - "L1"  : L0 + recent context (~500-1000 tokens) [default]
+   * - "full": backward-compat shape (same richness as pre-B03)
+   */
+  detail_level?: "L0" | "L1" | "full";
 }
 
 export interface GetObservationsRequest {
@@ -221,7 +282,9 @@ export type RelationType =
   | "derives"
   | "contradicts"
   | "causes"
-  | "part_of";
+  | "part_of"
+  /** S78-D02: (A, B, 'supersedes') = "A supersedes B" — B は A によって古くなった */
+  | "supersedes";
 
 /** IMP-002: メモリリンク作成リクエスト */
 export interface CreateLinkRequest {
@@ -254,12 +317,34 @@ export interface RecordCheckpointRequest {
   privacy_tags?: string[];
 }
 
+/** §78-E04: Procedural skill synthesis — skill step */
+export interface SkillStep {
+  order: number;
+  summary: string;
+  obs_id: string;
+}
+
+/** §78-E04: Procedural skill synthesis — skill suggestion produced by finalize_session */
+export interface SkillSuggestion {
+  title: string;
+  steps: SkillStep[];
+  tools_used: string[];
+  estimated_duration_min: number;
+  source_session_id: string;
+  created_at: string;
+}
+
 export interface FinalizeSessionRequest {
   platform?: Platform | string;
   project?: string;
   session_id: string;
   correlation_id?: string;
   summary_mode?: "standard" | "short" | "detailed";
+  /**
+   * §78-E04: If true, persist the detected skill as an observation with
+   * tags ["skill", "procedural"]. Defaults to false (suggestion only).
+   */
+  persist_skill?: boolean;
 }
 
 export interface ApiMeta {

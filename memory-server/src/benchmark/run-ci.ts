@@ -254,6 +254,7 @@ interface CIRunManifest {
     cat1_f1: number;
     cat2_f1: number;
     cat3_f1: number;
+    dev_workflow_recall: number | null;
   };
   paired_improvement: {
     label: string;
@@ -1644,10 +1645,12 @@ async function main(): Promise<void> {
   }
 
   // --- dev-workflow-20 ベンチマーク（§34 FD-015: 実使用パターン、WARNING のみ）---
+  let devWorkflowRecall: number | null = null;
   if (existsSync(DEV_WORKFLOW_20_PATH)) {
     console.log(`\n[CI] Running dev-workflow-20 benchmark`);
     try {
       const { recall, perSampleScores: dwScores, cacheStats } = await runDevWorkflowBenchmark(DEV_WORKFLOW_20_PATH);
+      devWorkflowRecall = recall;
       const dwCI = ciRunner.bootstrapCI(dwScores);
       console.log(`[CI] dev-workflow-20 recall@10: ${recall.toFixed(4)}`);
       console.log(`[CI] dev-workflow-20 95% Bootstrap CI: [${dwCI.lower.toFixed(4)}, ${dwCI.upper.toFixed(4)}] (method: ${dwCI.method})`);
@@ -1660,6 +1663,7 @@ async function main(): Promise<void> {
       }
     } catch (err) {
       console.warn(`[CI] dev-workflow-20 WARNING: ${err instanceof Error ? err.message : String(err)}`);
+      // devWorkflowRecall remains null — gate script handles null sentinel
     }
   } else {
     console.log("[CI] dev-workflow-20 fixture not found, skipping");
@@ -1748,6 +1752,7 @@ async function main(): Promise<void> {
       cat1_f1: cat1F1,
       cat2_f1: cat2F1,
       cat3_f1: cat3F1,
+      dev_workflow_recall: devWorkflowRecall,
     },
     paired_improvement: {
       label: pairedVectors?.label ?? "cat-2/cat-3",

@@ -18,6 +18,7 @@ import { computeJapaneseEnsembleWeight } from "../embedding/adaptive-config";
 import { expandQuery } from "../embedding/query-expander";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
+import { expandObservationsViaGraph, computeQueryEntityProximity } from "./graph-reasoner.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
@@ -27,6 +28,7 @@ import {
   isIgnoredVisiblePromptText,
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
+import { buildProjectProfile, buildWakeUpContext } from "./project-profile";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import {
   getSqliteVecMapTableName,
@@ -1291,19 +1293,48 @@ export class ObservationStore {
       user_id?: string;
       /** TEAM-005: member ロール適用 — アクセス制御用チームID */
       team_id?: string;
+      /** S78-B02: 階層メタデータスコープ */
+      scope?: {
+        project?: string;
+        session_id?: string;
+        thread_id?: string;
+        topic?: string;
+      };
+      /** S78-D01: true のとき期限切れ観察も含む（デフォルト false = 除外）*/
+      include_expired?: boolean;
+      /**
+       * S78-E02: Branch-scoped memory フィルタ。
+       * 指定時: そのブランチ OR branch IS NULL を返す（後方互換デフォルト）。
+       */
+      branch?: string;
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
     let nextSql = sql;
     const strictProject = filters.strict_project !== false;
 
-    if (filters.project && strictProject) {
-      nextSql = this.appendProjectFilter(nextSql, params, alias, filters.project_members || [filters.project]);
+    // S78-B02: scope が指定された場合は top-level を上書き (explicit > implicit)
+    const effectiveProject = filters.scope?.project ?? filters.project;
+    const effectiveSessionId = filters.scope?.session_id ?? filters.session_id;
+
+    if (effectiveProject && strictProject) {
+      nextSql = this.appendProjectFilter(nextSql, params, alias, filters.project_members || [effectiveProject]);
     }
 
-    if (filters.session_id) {
+    if (effectiveSessionId) {
       nextSql += ` AND ${alias}.session_id = ?`;
-      params.push(filters.session_id);
+      params.push(effectiveSessionId);
+    }
+
+    // S78-B02: thread_id / topic スコープフィルタ
+    if (filters.scope?.thread_id) {
+      nextSql += ` AND ${alias}.thread_id = ?`;
+      params.push(filters.scope.thread_id);
+    }
+
+    if (filters.scope?.topic) {
+      nextSql += ` AND ${alias}.topic = ?`;
+      params.push(filters.scope.topic);
     }
 
     if (filters.since) {
@@ -1345,6 +1376,19 @@ export class ObservationStore {
         nextSql += ` AND ${alias}.user_id = ?`;
         params.push(filters.user_id);
       }
+    }
+
+    // S78-E02: Branch-scoped memory フィルタ
+    // branch が指定された場合: そのブランチ OR branch IS NULL（レガシー行）を返す。
+    if (filters.branch !== undefined) {
+      nextSql += ` AND (${alias}.branch = ? OR ${alias}.branch IS NULL)`;
+      params.push(filters.branch);
+    }
+
+    // S78-D01: 期限切れフィルタ（デフォルト: 除外）
+    if (!filters.include_expired) {
+      nextSql += ` AND (${alias}.expires_at IS NULL OR ${alias}.expires_at > ?)`;
+      params.push(new Date().toISOString());
     }
 
     nextSql += this.deps.platformVisibilityFilterSql(alias);
@@ -3006,6 +3050,10 @@ export class ObservationStore {
     const excludeUpdated = Boolean(request.exclude_updated);
     // S74-005: file: フィルターをクエリから除去して検索エンジンに渡す（lexical/vector には不要なトークン）
     const cleanedQuery = request.query.replace(/\bfile:\S+/g, "").replace(/\s+/g, " ").trim();
+    // S78-B02: scope.project を正規化
+    const normalizedScopeProject = request.scope?.project
+      ? this.deps.normalizeProject(request.scope.project)
+      : undefined;
     const normalizedRequest: SearchRequest = {
       ...request,
       query: cleanedQuery || request.query,
@@ -3015,6 +3063,9 @@ export class ObservationStore {
       strict_project: strictProject,
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
+      scope: request.scope
+        ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
+        : undefined,
     };
     const hasLatestInteractionIntent = isLatestInteractionIntent(request.query);
     // COMP-003: as_of が指定されている場合、latest interaction は時点外の結果を混入させるためスキップ
@@ -3055,6 +3106,48 @@ export class ObservationStore {
           candidateIds.add(id);
         }
         graph.set(id, score);
+      }
+    }
+
+    // S78-C03: Multi-hop graph expansion via mem_relations entity graph
+    const graphDepth = typeof request.graph_depth === "number" ? request.graph_depth : 0;
+    if (graphDepth > 0 && candidateIds.size > 0) {
+      const seedIds = [...candidateIds];
+      const expanded = expandObservationsViaGraph(this.deps.db, seedIds, graphDepth);
+      const GRAPH_DEPTH_BOOST = 0.1;
+      for (const id of expanded) {
+        if (!candidateIds.has(id)) {
+          candidateIds.add(id);
+          // New observations reachable via entity graph get a score boost
+          graph.set(id, (graph.get(id) ?? 0) + GRAPH_DEPTH_BOOST);
+        }
+        // Boost score for graph-reachable observations (including seeds)
+        // only when they were found via graph traversal (not already in seeds)
+      }
+    }
+
+    // S78-C04: Graph-augmented hybrid search — blend graph proximity signal
+    // graph_proximity(obs_X) = 1 / (1 + hop_distance(obs_X, any_query_entity))
+    // Capped at 3 hops. HARNESS_MEM_GRAPH_OFF=1 disables entirely (A/B testing).
+    // Proximity is stored in a separate map and applied as a direct additive term
+    // in the final scorer (not blended into the RRF graph list) so that it has a
+    // measurable and predictable effect on ranking independent of other graph signals.
+    const DEFAULT_GRAPH_WEIGHT = 0.15;
+    const graphWeightDisabled = process.env.HARNESS_MEM_GRAPH_OFF === "1";
+    const graphWeight = graphWeightDisabled
+      ? 0
+      : typeof request.graph_weight === "number"
+        ? request.graph_weight
+        : DEFAULT_GRAPH_WEIGHT;
+    const queryProximityScores = new Map<string, number>();
+    if (graphWeight > 0 && candidateIds.size > 0) {
+      const rawProximity = computeQueryEntityProximity(
+        this.deps.db,
+        normalizedRequest.query,
+        [...candidateIds],
+      );
+      for (const [id, proximity] of rawProximity) {
+        queryProximityScores.set(id, proximity);
       }
     }
 
@@ -3303,12 +3396,17 @@ export class ObservationStore {
             : routeDecision.answerHints?.intent === "count"
               ? 0.12
               : 0.08;
+      // S78-C04: graph proximity signal as direct additive term (linear blend)
+      // w_graph * proximity is applied here, not via RRF, so it has a
+      // predictable effect independent of RRF rank normalization.
+      const proximityAdj = graphWeight * (queryProximityScores.get(item.id) ?? 0);
       const postAdjustment =
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
         weights.importance * item.importance +
         factBoostWeight * (item.fact_boost ?? 0) +
-        precisionBoostWeight * (item.precision_boost ?? 0);
+        precisionBoostWeight * (item.precision_boost ?? 0) +
+        proximityAdj;
       const rawScore = rrfScore + postAdjustment;
       // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
       const obs = observations.get(item.id);
@@ -3374,7 +3472,58 @@ export class ObservationStore {
       });
     }
 
-    const items = rankedAfterRerank.slice(0, limit).map((entry) => {
+    // S78-D02: Contradiction resolution — superseded 観察の post-filter
+    // superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
+    // include_superseded=false → 除外。デフォルト(true) → rank を 0.5 倍に下げ、後方に沈める。
+    const includeSuperseeded = request.include_superseded !== false; // default: true
+    const supersededObsIds = new Set<string>();
+    if (rankedAfterRerank.length > 0) {
+      try {
+        const allRankedIds = rankedAfterRerank.map((r) => r.id);
+        const MAX_BATCH = 500;
+        for (let i = 0; i < allRankedIds.length; i += MAX_BATCH) {
+          const batch = allRankedIds.slice(i, i + MAX_BATCH);
+          const placeholders = batch.map(() => "?").join(", ");
+          const supersededRows = this.deps.db
+            .query(
+              `SELECT to_observation_id FROM mem_links
+               WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
+            )
+            .all(...batch) as Array<{ to_observation_id: string }>;
+          for (const row of supersededRows) {
+            supersededObsIds.add(row.to_observation_id);
+          }
+        }
+      } catch {
+        // best effort: supersedes rank 調整失敗時は通常のランキングで継続
+      }
+    }
+
+    // superseded 観察を除外 or rank 下げ
+    let finalRanked = rankedAfterRerank;
+    if (supersededObsIds.size > 0) {
+      if (!includeSuperseeded) {
+        // include_superseded=false: 完全除外
+        finalRanked = rankedAfterRerank.filter((r) => !supersededObsIds.has(r.id));
+      } else {
+        // include_superseded=true (default): final score を 0.5 倍にして後方に沈める
+        for (const r of rankedAfterRerank) {
+          if (supersededObsIds.has(r.id)) {
+            r.final = r.final * 0.5;
+          }
+        }
+        // score 変更後に再ソート
+        finalRanked = [...rankedAfterRerank].sort((lhs, rhs) => {
+          if (rhs.final !== lhs.final) return rhs.final - lhs.final;
+          if (rhs.created_at !== lhs.created_at) {
+            return String(rhs.created_at).localeCompare(String(lhs.created_at));
+          }
+          return lhs.id.localeCompare(rhs.id);
+        });
+      }
+    }
+
+    const items = finalRanked.slice(0, limit).map((entry) => {
       const observation = observations.get(entry.id) ?? {};
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
@@ -3456,7 +3605,7 @@ export class ObservationStore {
         lexical: lexical.size,
         vector: vector.size,
         graph: graph.size,
-        final: rankedAfterRerank.length,
+        final: finalRanked.length,
       },
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };
@@ -4167,6 +4316,9 @@ export class ObservationStore {
         session_id: row.session_id,
         title: row.title,
         content: compact ? content.slice(0, 800) : content,
+        // S78-B01: Include raw_text when present (null for legacy rows / RAW=0 mode).
+        // Consumers can choose which field to display; content is always the structured summary.
+        raw_text: typeof row.raw_text === "string" ? row.raw_text : null,
         created_at: row.created_at,
         updated_at: row.updated_at,
         tags: parseArrayJson(row.tags_json),
@@ -4560,6 +4712,17 @@ export class ObservationStore {
       continuityBriefing,
     });
 
+    // §78-B03: Build token-budget-aware wake-up context (L0 / L1 / full split)
+    const detailLevel = request.detail_level ?? "L1";
+    const profileDb = {
+      query: (sql: string) => ({
+        all: (...params: unknown[]) =>
+          this.deps.db.query(sql).all(...(params as import("bun:sqlite").SQLQueryBindings[])),
+      }),
+    };
+    const projectProfile = buildProjectProfile(profileDb, normalizedProject);
+    const wakeUpContext = buildWakeUpContext(normalizedProject, projectProfile, detailLevel);
+
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
       correlation_id: request.correlation_id ?? null,
@@ -4572,6 +4735,7 @@ export class ObservationStore {
       ...(recentProjectContext !== null ? { recent_project_context: recentProjectContext } : {}),
       ...(static_section !== undefined ? { static_section } : {}),
       ...(dynamic_section !== undefined ? { dynamic_section } : {}),
+      wake_up_context: wakeUpContext,
     });
   }
 

@@ -22,6 +22,7 @@ import type {
   RecordCheckpointRequest,
   SessionsListRequest,
   SessionThreadRequest,
+  SkillSuggestion,
   StreamEvent,
 } from "./types.js";
 import {
@@ -699,6 +700,84 @@ export class SessionManager {
     return this.deps.recordEvent(event);
   }
 
+  // ---------------------------------------------------------------------------
+  // §78-E04: Procedural skill synthesis
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Detect whether a session qualifies as a reusable procedural skill.
+   *
+   * Heuristics (rule-based, no LLM):
+   *  1. Length   — session has ≥ 5 observations
+   *  2. Sequential flow — observations are ordered in time (implicit, guaranteed by ORDER BY)
+   *  3. Completion signal — last observation's title/content/tags contain a done-keyword
+   *
+   * Returns a SkillSuggestion when all three pass, or null otherwise.
+   */
+  private detectSkillFromSession(sessionId: string): SkillSuggestion | null {
+    const COMPLETION_PATTERN = /\b(completed|done|shipped|merged|deployed)\b/i;
+    const MIN_STEPS = 5;
+
+    interface SkillRow {
+      id: string;
+      title: string | null;
+      content_redacted: string | null;
+      tags_json: string | null;
+      created_at: string;
+    }
+
+    const rows = this.deps.db
+      .query(
+        `SELECT o.id, o.title, o.content_redacted, o.tags_json, o.created_at
+           FROM mem_observations o
+           LEFT JOIN mem_events e ON e.event_id = o.event_id
+          WHERE o.session_id = ?
+            AND (o.tags_json NOT LIKE '%"skill"%' OR o.tags_json IS NULL)
+            AND (o.tags_json NOT LIKE '%"finalized"%' OR o.tags_json IS NULL)
+            AND (e.event_type IS NULL OR e.event_type NOT IN ('session_start', 'session_end'))
+          ORDER BY o.created_at ASC, o.id ASC`
+      )
+      .all(sessionId) as SkillRow[];
+
+    // 1. Length check
+    if (rows.length < MIN_STEPS) return null;
+
+    // 3. Completion signal: check last observation
+    const last = rows[rows.length - 1];
+    const lastTags = parseArrayJson(last.tags_json);
+    const lastTagMatch = lastTags.some((t) =>
+      COMPLETION_PATTERN.test(t)
+    );
+    const lastTitleMatch = COMPLETION_PATTERN.test(last.title ?? "");
+    const lastContentMatch = COMPLETION_PATTERN.test(last.content_redacted ?? "");
+
+    if (!lastTagMatch && !lastTitleMatch && !lastContentMatch) return null;
+
+    // Build skill suggestion
+    const first = rows[0];
+    const firstTitle = (first.title ?? "").slice(0, 60) || "start";
+    const lastTitle = (last.title ?? "").slice(0, 60) || "end";
+
+    const steps = rows.map((r, i) => ({
+      order: i + 1,
+      summary: (r.title ?? "").slice(0, 120) || `step ${i + 1}`,
+      obs_id: r.id,
+    }));
+
+    const firstTs = new Date(first.created_at).getTime();
+    const lastTs = new Date(last.created_at).getTime();
+    const estimatedDurationMin = Math.round((lastTs - firstTs) / 60000);
+
+    return {
+      title: `${firstTitle} → ${lastTitle}`,
+      steps,
+      tools_used: [],
+      estimated_duration_min: Math.max(0, estimatedDurationMin),
+      source_session_id: sessionId,
+      created_at: nowIso(),
+    };
+  }
+
   finalizeSession(request: FinalizeSessionRequest): ApiResponse {
     const startedAt = performance.now();
 
@@ -755,6 +834,25 @@ export class SessionManager {
       "finalize"
     );
 
+    // §78-E04: Procedural skill synthesis — detect and optionally persist
+    const skillSuggestion = this.detectSkillFromSession(request.session_id);
+    if (skillSuggestion && request.persist_skill) {
+      this.deps.recordEvent({
+        platform: request.platform || "claude",
+        project: request.project || basename(process.cwd()),
+        session_id: request.session_id,
+        correlation_id: request.correlation_id,
+        event_type: "checkpoint",
+        ts: current,
+        payload: {
+          title: skillSuggestion.title,
+          content: JSON.stringify(skillSuggestion),
+        },
+        tags: ["skill", "procedural", `skill-from:${request.session_id}`],
+        privacy_tags: [],
+      });
+    }
+
     return makeResponse(
       startedAt,
       [
@@ -764,6 +862,7 @@ export class SessionManager {
           summary,
           handoff,
           finalized_at: current,
+          ...(skillSuggestion ? { skill_suggestion: skillSuggestion } : {}),
         },
       ],
       request as unknown as Record<string, unknown>

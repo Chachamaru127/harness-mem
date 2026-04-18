@@ -69,6 +69,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 
 - **Local-first**: the database lives on your machine at `~/.harness-mem/harness-mem.db`.
 - **Privacy**: there is no cloud memory service, no API keys, and no off-machine upload just to remember context.
+- **Private tags**: wrap any text in `<private>...</private>` and it is automatically stripped before storage — use this to keep secrets out of memory without disabling memory entirely.
 - **Project isolation**: each project keeps its own memory lane, so one repo does not bleed into another.
 
 ### Support tiers
@@ -613,6 +614,12 @@ Update the marker from `cc:TODO` to `cc:WIP` in Plans.md before beginning implem
 ### When complete
 
 Update the marker to `cc:完了` and note any unresolved issues.
+
+---
+
+## Phase B Capabilities (April 2026)
+
+Phase B (April 2026) added verbatim raw storage (`HARNESS_MEM_RAW_MODE=1`), hierarchical metadata scoping for multi-session projects, and token-budgeted L0/L1 wake-up context that cuts SessionStart token cost while preserving first-turn continuity. All three features are opt-in or backward-compatible — existing deployments need no configuration changes. See [Phase B capabilities](docs/benchmarks/phase-b-capabilities-2026-04-18.md) for landed commits, baseline measurements, and deferred items.
 
 ---
 

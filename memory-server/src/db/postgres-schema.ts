@@ -85,6 +85,10 @@ export const POSTGRES_INIT_SQL = `
     cognitive_sector TEXT NOT NULL DEFAULT 'meta',
     user_id TEXT NOT NULL DEFAULT 'default',
     team_id TEXT DEFAULT NULL,
+    thread_id TEXT,
+    topic TEXT,
+    expires_at TIMESTAMPTZ,
+    branch TEXT,
     search_vector tsvector GENERATED ALWAYS AS (
       setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
       setweight(to_tsvector('simple', content_redacted), 'B')
@@ -312,4 +316,56 @@ export const POSTGRES_VECTOR_INDEX_SQL = `
     ON mem_vectors
     USING hnsw (embedding vector_cosine_ops)
     WITH (m = 16, ef_construction = 64);
+`;
+
+/**
+ * S78-D01: Temporal forgetting — 既存 PG DB への ALTER TABLE マイグレーション。
+ * POSTGRES_INIT_SQL で新規作成した DB には thread_id / topic / expires_at が含まれるが、
+ * 既存 DB にはないため、idempotent な ALTER TABLE で追加する。
+ * managed-backend.ts の initialize() で POSTGRES_INIT_SQL の後に実行すること。
+ */
+export const POSTGRES_MIGRATE_SQL = `
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_observations' AND column_name = 'thread_id'
+    ) THEN
+      ALTER TABLE mem_observations ADD COLUMN thread_id TEXT;
+    END IF;
+  END $$;
+
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_observations' AND column_name = 'topic'
+    ) THEN
+      ALTER TABLE mem_observations ADD COLUMN topic TEXT;
+    END IF;
+  END $$;
+
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_observations' AND column_name = 'expires_at'
+    ) THEN
+      ALTER TABLE mem_observations ADD COLUMN expires_at TIMESTAMPTZ;
+    END IF;
+  END $$;
+
+  CREATE INDEX IF NOT EXISTS idx_pg_obs_expires_at
+    ON mem_observations(expires_at) WHERE expires_at IS NOT NULL;
+
+  -- S78-E02: Branch-scoped memory — branch カラム追加（nullable TEXT）
+  -- null = ブランチスコープなし（レガシー行と同等）
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_observations' AND column_name = 'branch'
+    ) THEN
+      ALTER TABLE mem_observations ADD COLUMN branch TEXT;
+    END IF;
+  END $$;
+
+  CREATE INDEX IF NOT EXISTS idx_pg_obs_branch
+    ON mem_observations(branch) WHERE branch IS NOT NULL;
 `;

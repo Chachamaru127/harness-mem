@@ -81,6 +81,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     "meta": {
       "count": "number",
       "filters": {
+        "persist_skill": "boolean",
         "platform": "string",
         "project": "string",
         "session_id": "string",
@@ -131,6 +132,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
           "empty",
         ],
         "project": "string",
+        "raw_text": "null",
         "session_id": "string",
         "tags": [
           "string",
@@ -235,6 +237,27 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "ranking": "string",
       "resume_pack_max_tokens": "number",
       "sla_latency_ms": "number",
+      "wake_up_context": {
+        "conventions": [
+          "empty",
+        ],
+        "detail_level": "string",
+        "expiring_soon": [
+          "empty",
+        ],
+        "pending_count": "number",
+        "project": "string",
+        "recent_decisions": [
+          "empty",
+        ],
+        "recent_observations": [
+          "string",
+        ],
+        "tech_stack": [
+          "empty",
+        ],
+        "token_estimate": "number",
+      },
     },
     "ok": "boolean",
     "source": "string",
@@ -302,6 +325,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "filters": {
         "debug": "boolean",
         "expand_links": "boolean",
+        "include_expired": "boolean",
         "include_private": "boolean",
         "limit": "number",
         "project": "string",

@@ -698,6 +698,35 @@ paths:
                   enum: [relevance, date_desc, date_asc]
                   default: relevance
                   description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)"
+                scope:
+                  type: object
+                  description: "S78-B02: Hierarchical metadata scope. Narrows search: project > session > thread > topic. scope fields override top-level project/session_id when both are provided."
+                  properties:
+                    project:
+                      type: string
+                    session_id:
+                      type: string
+                    thread_id:
+                      type: string
+                    topic:
+                      type: string
+                branch:
+                  type: string
+                  description: "S78-E02: Filter by git branch. Returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)."
+                include_expired:
+                  type: boolean
+                  default: false
+                  description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access."
+                graph_depth:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+                  description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar to the query."
+                detail_level:
+                  type: string
+                  enum: [index, context, full]
+                  default: context
+                  description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default). full=+complete content+raw_text+score breakdown. meta.token_estimate indicates approximate token cost."
       responses:
         "200":
           description: Search results
@@ -1804,6 +1833,9 @@ paths:
                   type: string
                 session_id:
                   type: string
+                branch:
+                  type: string
+                  description: "S78-E02: Git branch to scope this observation to. Omit for no branch scope (visible from all branches)."
       responses:
         "200":
           description: Ingest result

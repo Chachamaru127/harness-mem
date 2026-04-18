@@ -20,6 +20,27 @@ export function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * S78-D01: expires_at 正規化。
+ * - ISO-8601 文字列: そのまま検証して返す
+ * - Unix 秒 (number): ISO-8601 に変換
+ * - null / undefined / 空文字: null を返す（無期限）
+ * - パース不能な文字列: null を返す（エラーにしない）
+ */
+export function normalizeExpiresAt(value: unknown): string | null {
+  if (value == null || value === "") return null;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return null;
+    return new Date(value * 1000).toISOString();
+  }
+  if (typeof value === "string") {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return null;
+    return d.toISOString();
+  }
+  return null;
+}
+
 export function resolveHomePath(inputPath: string): string {
   if (inputPath.startsWith("~")) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
@@ -948,6 +969,7 @@ export function loadObservations(
             o.session_id,
             o.title,
             o.content_redacted,
+            o.raw_text,
             o.observation_type,
             o.memory_type,
             o.tags_json,

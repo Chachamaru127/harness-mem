@@ -2523,6 +2523,10 @@ export class HarnessMemCore {
       });
     }
 
+    // S78-D02: "supersedes" — (A, B, 'supersedes') means A supersedes B (B is made stale by A).
+    // S81-B03: "superseded" — contradiction-detection output, newer → older, flagging older as demoted.
+    // Both relation types coexist for the dual-ship of §78-D02 (independent supersedes API) and
+    // §81-B03 (Jaccard+LLM detection writes). Downstream consumers must handle either.
     const validRelations: string[] = [
       "updates",
       "extends",
@@ -2532,8 +2536,7 @@ export class HarnessMemCore {
       "contradicts",
       "causes",
       "part_of",
-      // S81-B03: contradiction-detection output relation. Points newer → older,
-      // explicitly flagging the older observation as demoted by a newer one.
+      "supersedes",
       "superseded",
     ];
     if (!validRelations.includes(relation)) {

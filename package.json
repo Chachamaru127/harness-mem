@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -69,7 +69,9 @@
     "benchmark:pilot30": "bash scripts/bench-pilot-30usd.sh",
     "benchmark:pilot30:dry-run": "bash scripts/bench-pilot-30usd.sh --dry-run",
     "test:ui": "cd harness-mem-ui && bunx vitest",
-    "test:e2e": "cd harness-mem-ui && bunx playwright test"
+    "test:e2e": "cd harness-mem-ui && bunx playwright test",
+    "poc:graph-sqlite": "bun run scripts/graph-store-poc-sqlite-cte.ts",
+    "poc:graph-kuzu": "npx tsx scripts/graph-store-poc-kuzu.ts"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -58,6 +58,7 @@ export function initSchema(db: Database): void {
       title TEXT,
       content TEXT NOT NULL,
       content_redacted TEXT NOT NULL,
+      raw_text TEXT,
       observation_type TEXT NOT NULL DEFAULT 'context',
       memory_type TEXT NOT NULL DEFAULT 'semantic',
       tags_json TEXT NOT NULL,
@@ -802,38 +803,103 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
+  // S78-B01: Verbatim raw storage — raw_text カラムを追加（nullable, 後方互換）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN raw_text TEXT`);
+  } catch {
+    // already exists
+  }
+
+  // S78-B02: Hierarchical metadata — thread_id + topic カラム追加
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN thread_id TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN topic TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_thread_id ON mem_observations(thread_id) WHERE thread_id IS NOT NULL`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_topic ON mem_observations(topic) WHERE topic IS NOT NULL`);
+  } catch {
+    // already exists
+  }
+
+  // S78-D01: Temporal forgetting — expires_at カラム追加（nullable TEXT, ISO-8601）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN expires_at TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_expires_at ON mem_observations(expires_at) WHERE expires_at IS NOT NULL`);
+  } catch {
+    // already exists
+  }
+
+  // S78-E02: Branch-scoped memory — branch カラム追加（nullable TEXT）
+  // null = ブランチスコープなし（レガシー行と同等）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN branch TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_branch ON mem_observations(branch) WHERE branch IS NOT NULL`);
+  } catch {
+    // already exists
+  }
+
+  // S78-C02: Entity-relation graph — co-occurrence relations between extracted entities
+  // mem_entities already exists (id INTEGER PK, name, entity_type, created_at).
+  // mem_relations is new: src/dst reference entity name+kind via mem_entities.name.
+  // (PG upgrade path: out of scope for §78-C02; see §78-C02b spike for partitioned PG table.)
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS mem_relations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        src TEXT NOT NULL,
+        dst TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        strength REAL NOT NULL DEFAULT 1.0,
+        observation_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+      )
+    `);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_relations_src ON mem_relations(src, kind)`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_relations_obs ON mem_relations(observation_id)`);
+  } catch {
+    // already exists
+  }
+
   // S81-B02: Low-value eviction — soft-delete marker for archived observations.
   // `archived_at` is NULL for active rows; ISO timestamp for rows the forget
-  // policy has demoted. Always coexists with the `archived_by_score` field in
-  // audit-log payloads so analysts can reverse specific runs.
+  // policy has demoted. Coexists with `archived_by_score` in audit-log payloads.
   try {
     db.exec(`ALTER TABLE mem_observations ADD COLUMN archived_at TEXT`);
   } catch {
     // already exists
   }
-
   try {
-    db.exec(
-      `CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`
-    );
-  } catch {
-    // already exists
-  }
-
-  // §78-D01 / S81-B02 temporal-forgetting specialisation: TTL column on
-  // observations. NULL = never expires. Rows whose expires_at <= now are
-  // excluded from reads (see expiredFilterSql in core-utils.ts) and are
-  // archived by the forget policy regardless of score.
-  try {
-    db.exec(`ALTER TABLE mem_observations ADD COLUMN expires_at TEXT DEFAULT NULL`);
-  } catch {
-    // already exists
-  }
-
-  try {
-    db.exec(
-      `CREATE INDEX IF NOT EXISTS idx_mem_obs_expires_at ON mem_observations(expires_at)`
-    );
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`);
   } catch {
     // already exists
   }

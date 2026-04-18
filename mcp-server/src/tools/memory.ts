@@ -12,6 +12,7 @@ import { promisify } from "util";
 import { getProjectRoot } from "../utils.js";
 import { applyPiiFilter, getActivePiiRules } from "../pii/pii-filter.js";
 import { createJsonToolResult, type ToolResult } from "../tool-result.js";
+import { applyDetailLevel, type SearchDetailLevel } from "../search-detail-level.js";
 
 interface MemoryApiResponse {
   ok: boolean;
@@ -265,7 +266,7 @@ export const memoryTools: Tool[] = [
   {
     name: "harness_mem_resume_pack",
     description:
-      "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions.",
+      "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions. Use detail_level='L0' for minimal token usage (~170 tokens), 'L1' (default) for recent context (~500-1000 tokens), or 'full' for complete backward-compat output.",
     inputSchema: {
       type: "object",
       properties: {
@@ -274,6 +275,11 @@ export const memoryTools: Tool[] = [
         correlation_id: { type: "string" },
         limit: { type: "number" },
         include_private: { type: "boolean" },
+        detail_level: {
+          type: "string",
+          enum: ["L0", "L1", "full"],
+          description: "§78-B03: Wake-up context detail level. L0=critical facts only (~170 tokens), L1=L0+recent context (default), full=backward-compat complete output.",
+        },
       },
       required: ["project"],
     },
@@ -294,6 +300,24 @@ export const memoryTools: Tool[] = [
         limit: { type: "number" },
         include_private: { type: "boolean" },
         sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" },
+        scope: {
+          type: "object",
+          description: "Hierarchical metadata scope (S78-B02). Narrows search progressively: project > session > thread > topic. When provided, scope fields override the top-level project/session_id.",
+          properties: {
+            project: { type: "string" },
+            session_id: { type: "string" },
+            thread_id: { type: "string" },
+            topic: { type: "string" },
+          },
+        },
+        include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
+        branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
+        graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
+        detail_level: {
+          type: "string",
+          enum: ["index", "context", "full"],
+          description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default, preserves existing behavior). full=+complete content+raw_text+score breakdown. meta.token_estimate shows approximate token cost.",
+        },
       },
       required: ["query"],
     },
@@ -393,7 +417,7 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_finalize_session",
-    description: "Finalize session and generate summary.",
+    description: "Finalize session and generate summary. When the session has 5+ steps and ends with a completion signal, a skill_suggestion is returned. Pass persist_skill: true to also save it as a reusable procedural skill observation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -404,6 +428,10 @@ export const memoryTools: Tool[] = [
         summary_mode: {
           type: "string",
           enum: ["standard", "short", "detailed"],
+        },
+        persist_skill: {
+          type: "boolean",
+          description: "If true, persist detected skill as an observation with tags [skill, procedural]. Defaults to false.",
         },
       },
       required: ["session_id"],
@@ -570,7 +598,8 @@ export const memoryTools: Tool[] = [
       properties: {
         from_observation_id: { type: "string", description: "Source observation ID" },
         to_observation_id: { type: "string", description: "Target observation ID" },
-        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Relation type" },
+        // S78-D02: "supersedes" added — (A, B, 'supersedes') = "A supersedes B" (B is made stale)
+        relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "supersedes"], description: "Relation type" },
         weight: { type: "number", description: "Link weight (default: 1.0)" },
       },
       required: ["from_observation_id", "to_observation_id", "relation"],
@@ -670,6 +699,8 @@ export const memoryTools: Tool[] = [
         project: { type: "string" },
         platform: { type: "string" },
         session_id: { type: "string" },
+        expires_at: { type: "string", description: "S78-D01: TTL for this observation as ISO-8601 string or Unix seconds. Null/omitted = no expiration. Past values accepted (observation stored as already-expired)." },
+        branch: { type: "string", description: "S78-E02: Git branch to scope this observation to. When set, observation is tagged with this branch name. Omit for no branch scope (visible from all branches)." },
       },
       required: ["file_path", "content"],
     },
@@ -811,12 +842,18 @@ async function handleMemoryToolInner(
           return errorResult("project is required");
         }
 
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["L0", "L1", "full"];
+        const detailLevel = rawDetailLevel && validDetailLevels.includes(rawDetailLevel)
+          ? (rawDetailLevel as "L0" | "L1" | "full")
+          : undefined;
         const response = await callMemoryApi("/v1/resume-pack", {
           project,
           session_id: toStringOrUndefined(input.session_id),
           correlation_id: toStringOrUndefined(input.correlation_id),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
+          ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
         });
         return successResult(response);
       }
@@ -829,6 +866,24 @@ async function handleMemoryToolInner(
 
         const sortBy = toStringOrUndefined(input.sort_by);
         const validSortValues = ["relevance", "date_desc", "date_asc"];
+        // S78-B02: scope パラメータの処理
+        const rawScope = input.scope;
+        const scope = rawScope && typeof rawScope === "object" && !Array.isArray(rawScope)
+          ? {
+              project: toStringOrUndefined((rawScope as Record<string, unknown>).project),
+              session_id: toStringOrUndefined((rawScope as Record<string, unknown>).session_id),
+              thread_id: toStringOrUndefined((rawScope as Record<string, unknown>).thread_id),
+              topic: toStringOrUndefined((rawScope as Record<string, unknown>).topic),
+            }
+          : undefined;
+        // §78-E03: detail_level — consumed by MCP layer, not forwarded to API
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["index", "context", "full"];
+        const detailLevel: SearchDetailLevel =
+          rawDetailLevel && validDetailLevels.includes(rawDetailLevel)
+            ? (rawDetailLevel as SearchDetailLevel)
+            : "context";
+
         const response = await callMemoryApi("/v1/search", {
           query,
           project: toStringOrUndefined(input.project),
@@ -838,11 +893,27 @@ async function handleMemoryToolInner(
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
           sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
+          scope,
+          // S78-D01: 期限切れ観察を含むか
+          include_expired: toBoolean(input.include_expired, false),
+          // S78-E02: Branch-scoped memory フィルタ
+          branch: toStringOrUndefined(input.branch),
+          // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
+          graph_depth: toNumberOrUndefined(input.graph_depth),
         });
-        const result = successResult(response, { citations: true });
+
+        // §78-E03: apply progressive disclosure + inject token_estimate into meta
+        const { items: disclosedItems, meta: disclosedMeta } = applyDetailLevel(
+          Array.isArray(response.items) ? response.items : [],
+          response.meta as Record<string, unknown>,
+          detailLevel
+        );
+        const disclosedResponse = { ...response, items: disclosedItems, meta: disclosedMeta };
+
+        const result = successResult(disclosedResponse as MemoryApiResponse, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
-        if (response.meta?.count > 0) {
-          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${response.meta.count} results for "${query}"`)).catch(() => {});
+        if (disclosedMeta?.count > 0) {
+          import("../index.js").then(m => m.pushMemoryNotification(`Memory search: ${disclosedMeta.count} results for "${query}"`)).catch(() => {});
         }
         return result;
       }
@@ -954,6 +1025,7 @@ async function handleMemoryToolInner(
           session_id: sessionId,
           correlation_id: toStringOrUndefined(input.correlation_id),
           summary_mode: toStringOrUndefined(input.summary_mode),
+          persist_skill: input.persist_skill === true,
         });
         return successResult(response);
       }
@@ -1122,6 +1194,8 @@ async function handleMemoryToolInner(
         if (!filePath || !content) {
           return errorResult("file_path and content are required");
         }
+        const expiresAt = toStringOrUndefined(input.expires_at);
+        const branch = toStringOrUndefined(input.branch);
         const response = await callMemoryApi("/v1/ingest/document", {
           file_path: filePath,
           content,
@@ -1129,6 +1203,10 @@ async function handleMemoryToolInner(
           project: toStringOrUndefined(input.project),
           platform: toStringOrUndefined(input.platform),
           session_id: toStringOrUndefined(input.session_id),
+          // S78-D01: TTL パススルー
+          ...(expiresAt !== undefined && { expires_at: expiresAt }),
+          // S78-E02: Branch パススルー
+          ...(branch !== undefined && { branch }),
         });
         return successResult(response);
       }

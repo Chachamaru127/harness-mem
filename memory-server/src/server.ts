@@ -38,6 +38,7 @@ import type {
   TimelineRequest,
   VerifyImportRequest,
 } from "./core/types.js";
+import { buildProjectProfile } from "./core/project-profile.js";
 
 function jsonResponse(body: ApiResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -124,7 +125,7 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   }
   // GET エンドポイントで admin 認証が必要なもの
   if (method === "GET") {
-    if (["/v1/export", "/v1/graph/neighbors"].includes(pathname)) {
+    if (["/v1/export", "/v1/graph/neighbors", "/v1/graph/entities"].includes(pathname)) {
       return true;
     }
     // S74-004: fact history contains potentially sensitive data
@@ -620,6 +621,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             ? buildAccessFilter("o", searchIdentity)
             : null;
 
+          // S78-B02: scope パラメータの解析
+          const rawScope = body.scope;
+          const parsedScope: SearchRequest["scope"] =
+            rawScope && typeof rawScope === "object" && !Array.isArray(rawScope)
+              ? (() => {
+                  const s = rawScope as Record<string, unknown>;
+                  return {
+                    project: typeof s.project === "string" ? s.project : undefined,
+                    session_id: typeof s.session_id === "string" ? s.session_id : undefined,
+                    thread_id: typeof s.thread_id === "string" ? s.thread_id : undefined,
+                    topic: typeof s.topic === "string" ? s.topic : undefined,
+                  };
+                })()
+              : undefined;
+
           const req: SearchRequest = {
             query,
             project: typeof body.project === "string" ? body.project : undefined,
@@ -644,6 +660,16 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             sort_by: typeof body.sort_by === "string" && ["relevance", "date_desc", "date_asc"].includes(body.sort_by)
               ? body.sort_by as SearchRequest["sort_by"]
               : undefined,
+            // S78-B02: 階層メタデータスコープ
+            scope: parsedScope,
+            // S78-D01: Temporal forgetting — 期限切れ観察を含むか（デフォルト: 除外）
+            include_expired: parseBooleanLike(body.include_expired, false),
+            // S78-E02: Branch-scoped memory フィルタ（呼び出し元が明示的に渡す）
+            branch: typeof body.branch === "string" ? body.branch : undefined,
+            // S78-D02: Contradiction resolution — superseded 観察を含むか（デフォルト: 含む・rank 下げ）
+            include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
+            // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
+            graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
           };
           return jsonResponse(await core.searchPrepared(req));
         }
@@ -852,6 +878,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           summary_mode: typeof body.summary_mode === "string"
             ? (body.summary_mode as FinalizeSessionRequest["summary_mode"])
             : undefined,
+          persist_skill: body.persist_skill === true,
         };
         return jsonResponse(core.finalizeSession(req));
       }
@@ -867,6 +894,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const resumeAccess = resolveAccess(request);
         if (resumeAccess instanceof Response) return resumeAccess;
 
+        const validDetailLevels = ["L0", "L1", "full"] as const;
+        type DetailLevelType = (typeof validDetailLevels)[number];
+        const rawDetailLevel = body.detail_level;
+        const detailLevel: DetailLevelType | undefined =
+          typeof rawDetailLevel === "string" &&
+          validDetailLevels.includes(rawDetailLevel as DetailLevelType)
+            ? (rawDetailLevel as DetailLevelType)
+            : undefined;
         const req: ResumePackRequest = {
           project,
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
@@ -876,6 +911,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           resume_pack_max_tokens: typeof body.resume_pack_max_tokens === "number" ? body.resume_pack_max_tokens : undefined,
           user_id: resumeAccess.user_id,
           team_id: resumeAccess.team_id,
+          ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
         };
         return jsonResponse(core.resumePack(req));
       }
@@ -1336,7 +1372,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return badRequest("from_observation_id, to_observation_id, relation are required");
         }
         const weight = typeof body.weight === "number" ? body.weight : 1.0;
-        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity", weight }));
+        // S78-D02: "supersedes" added to valid cast list
+        return jsonResponse(core.createLink({ from_observation_id: fromId, to_observation_id: toId, relation: relation as "updates" | "extends" | "derives" | "follows" | "shared_entity" | "contradicts" | "causes" | "part_of" | "supersedes", weight }));
       }
 
       if (request.method === "POST" && url.pathname === "/v1/observations/bulk-delete") {
@@ -1497,6 +1534,76 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth, user_id: neighborsAccess.user_id, team_id: neighborsAccess.team_id }));
       }
 
+      // S78-C02: GET /v1/graph/entities — return extracted entities + co-occurrence relations
+      // filtered by project and/or session_id via observation join.
+      if (request.method === "GET" && url.pathname === "/v1/graph/entities") {
+        const db = core.getRawDb();
+        const project = url.searchParams.get("project") || undefined;
+        const sessionId = url.searchParams.get("session_id") || undefined;
+        const limitRaw = url.searchParams.get("limit");
+        const limit = Math.min(Math.max(parseInt(limitRaw || "50", 10) || 50, 1), 200);
+
+        // Fetch entities (from existing mem_entities table)
+        let entityRows: Array<{ name: string; entity_type: string; created_at: string }>;
+        if (project || sessionId) {
+          // Join through mem_observation_entities + mem_observations to filter by project/session
+          const conditions: string[] = [];
+          const params: string[] = [];
+          if (project) { conditions.push("o.project = ?"); params.push(project); }
+          if (sessionId) { conditions.push("o.session_id = ?"); params.push(sessionId); }
+          entityRows = db
+            .query<{ name: string; entity_type: string; created_at: string }, string[]>(`
+              SELECT DISTINCT e.name, e.entity_type, e.created_at
+              FROM mem_entities e
+              JOIN mem_observation_entities oe ON oe.entity_id = e.id
+              JOIN mem_observations o ON o.id = oe.observation_id
+              WHERE ${conditions.join(" AND ")}
+              ORDER BY e.created_at DESC
+              LIMIT ?
+            `)
+            .all(...params, String(limit));
+        } else {
+          entityRows = db
+            .query<{ name: string; entity_type: string; created_at: string }, [string]>(`
+              SELECT name, entity_type, created_at FROM mem_entities
+              ORDER BY created_at DESC LIMIT ?
+            `)
+            .all(String(limit));
+        }
+
+        // Fetch relations
+        let relationRows: Array<{ src: string; dst: string; kind: string; strength: number; observation_id: string }>;
+        if (project || sessionId) {
+          const conditions: string[] = [];
+          const params: string[] = [];
+          if (project) { conditions.push("o.project = ?"); params.push(project); }
+          if (sessionId) { conditions.push("o.session_id = ?"); params.push(sessionId); }
+          relationRows = db
+            .query<{ src: string; dst: string; kind: string; strength: number; observation_id: string }, string[]>(`
+              SELECT r.src, r.dst, r.kind, r.strength, r.observation_id
+              FROM mem_relations r
+              JOIN mem_observations o ON o.id = r.observation_id
+              WHERE ${conditions.join(" AND ")}
+              ORDER BY r.id DESC
+              LIMIT ?
+            `)
+            .all(...params, String(limit));
+        } else {
+          relationRows = db
+            .query<{ src: string; dst: string; kind: string; strength: number; observation_id: string }, [string]>(`
+              SELECT src, dst, kind, strength, observation_id
+              FROM mem_relations ORDER BY id DESC LIMIT ?
+            `)
+            .all(String(limit));
+        }
+
+        return rawJsonResponse({
+          ok: true,
+          entities: entityRows.map((r) => ({ id: r.name.toLowerCase(), label: r.name, kind: r.entity_type })),
+          relations: relationRows,
+        });
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/ingest/document") {
         const body = await parseRequestJson(request);
         return jsonResponse(
@@ -1508,7 +1615,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             project: typeof body.project === "string" ? body.project : undefined,
             platform: typeof body.platform === "string" ? body.platform : undefined,
             session_id: typeof body.session_id === "string" ? body.session_id : undefined,
-            // §78-D01: optional ISO timestamp for temporal forgetting.
+            // S78-E02: Branch-scoped memory パススルー
+            ...(typeof body.branch === "string" && { branch: body.branch }),
+            // S78-D01 / §81-B02: optional ISO timestamp for temporal forgetting.
             expires_at:
               typeof body.expires_at === "string" && body.expires_at.length > 0
                 ? body.expires_at
@@ -1769,6 +1878,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           source: "sync",
           items: [syncResult],
           meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        });
+      }
+
+      // S78-D03: harness_mem_status — project profile (static/dynamic fact separation)
+      if (request.method === "GET" && url.pathname === "/v1/mem/status") {
+        const statusAccess = resolveAccess(request);
+        if (statusAccess instanceof Response) return statusAccess;
+        const project = url.searchParams.get("project") || "";
+        const db = (core as unknown as { db: { query: (sql: string) => { all(...params: unknown[]): unknown[] } } }).db;
+        const profile = buildProjectProfile(db, project);
+        return rawJsonResponse({
+          ok: true,
+          source: "mem_status",
+          project_profile: profile,
         });
       }
 

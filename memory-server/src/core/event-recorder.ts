@@ -26,6 +26,7 @@ import {
   isPrivateTag,
   makeResponse,
   makeErrorResponse,
+  normalizeExpiresAt,
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
@@ -38,6 +39,8 @@ import {
 import type { StoredEvent } from "../projector/types";
 import { runAutoLinker } from "./auto-linker.js";
 import { extractCodeProvenance } from "./provenance-extractor.js";
+import { stripPrivateBlocks } from "./privacy-tags.js";
+import { extractEntitiesAndRelations } from "./entity-extractor.js";
 
 // ---------------------------------------------------------------------------
 // ローカルユーティリティ（recordEvent ロジックで使用する純粋関数）
@@ -475,6 +478,34 @@ export class EventRecorder {
   }
 
   /**
+   * S78-C02: Regex-based entity/relation extraction → mem_relations.
+   * best-effort; failures do not interrupt observation recording.
+   */
+  private extractAndStoreGraphRelations(
+    observationId: string,
+    content: string,
+    tags: string[],
+    createdAt: string,
+  ): void {
+    try {
+      const { entities, relations } = extractEntitiesAndRelations(content, tags);
+      if (relations.length === 0) return;
+
+      const strength = entities.length > 1 ? 1 / entities.length : 1.0;
+
+      const insertRelStmt = this.deps.db.query(`
+        INSERT INTO mem_relations(src, dst, kind, strength, observation_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const rel of relations) {
+        insertRelStmt.run(rel.src, rel.dst, rel.kind, strength, observationId, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+  }
+
+  /**
    * FQ-013: Auto-supersedes リンク生成（Jaccard ベース）
    *
    * 同一 project + 同一 observation_type の既存エントリに対して Jaccard similarity を計算し、
@@ -757,11 +788,29 @@ export class EventRecorder {
     const eventId = (event.event_id || generateEventId()).trim();
 
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
+    // S78-E01: Strip <private>...</private> blocks before embedding and storage.
+    observationBase.content = stripPrivateBlocks(observationBase.content) ?? observationBase.content;
     const redactedContent = redactContent(observationBase.content, privacyTags);
     const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
     const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
+
+    // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
+    // raw_text は payload の verbatim content（stripPrivateBlocks 適用済み）。
+    // embedding は raw_text が存在する場合は raw_text から生成する（より高信号）。
+    const rawModeEnabled = process.env["HARNESS_MEM_RAW_MODE"] === "1";
+    const rawText: string | null = rawModeEnabled
+      ? (stripPrivateBlocks(
+          (() => {
+            const p = parseJsonSafe(event.payload);
+            return typeof p.content === "string" ? p.content.trim() :
+                   typeof p.prompt === "string" ? p.prompt.trim() :
+                   typeof p.command === "string" ? p.command.trim() :
+                   null;
+          })()
+        ) ?? null)
+      : null;
 
     // IMP-009: Signal Extraction
     const signalScore = extractSignalScore(observationBase.content);
@@ -809,26 +858,46 @@ export class EventRecorder {
           return { duplicated: true };
         }
 
+        // S78-B02: thread_id / topic はイベントエンベロープから取得
+        const threadId = typeof event.thread_id === "string" && event.thread_id.trim()
+          ? event.thread_id.trim()
+          : null;
+        const topic = typeof event.topic === "string" && event.topic.trim()
+          ? event.topic.trim()
+          : null;
+
+        // S78-D01: expires_at 正規化（ISO-8601 または Unix 秒 → ISO-8601、不正値 → null）
+        const expiresAt = normalizeExpiresAt(event.expires_at);
+
+        // S78-E02: branch — 呼び出し元が明示的に渡した値のみ採用（自動検出なし）
+        const branch = typeof event.branch === "string" && event.branch.trim()
+          ? event.branch.trim()
+          : null;
+
         this.deps.db
           .query(`
             INSERT INTO mem_observations(
               id, event_id, platform, project, session_id,
-              title, content, content_redacted, observation_type, memory_type,
+              title, content, content_redacted, raw_text, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
-              expires_at,
+              thread_id, topic, expires_at, branch,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              raw_text = excluded.raw_text,
               observation_type = excluded.observation_type,
               memory_type = excluded.memory_type,
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
+              thread_id = excluded.thread_id,
+              topic = excluded.topic,
               expires_at = excluded.expires_at,
+              branch = excluded.branch,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -840,6 +909,7 @@ export class EventRecorder {
             observationBase.title,
             observationBase.content,
             redactedContent,
+            rawText,
             observationType,
             memoryType,
             JSON.stringify(tags),
@@ -847,8 +917,10 @@ export class EventRecorder {
             signalScore,
             userId,
             teamId,
-            // §78-D01: optional TTL. Empty string → NULL (never expires).
-            event.expires_at && event.expires_at.length > 0 ? event.expires_at : null,
+            threadId,
+            topic,
+            expiresAt,
+            branch,
             timestamp,
             current
           );
@@ -902,8 +974,13 @@ export class EventRecorder {
           }
         }
 
-        this.upsertVector(observationId, redactedContent, timestamp);
+        // S78-B01: RAW mode — embedding は raw_text から生成（より高信号）。
+        // raw_text が null の場合は従来通り redactedContent を使用。
+        const embeddingSource = rawText ?? redactedContent;
+        this.upsertVector(observationId, embeddingSource, timestamp);
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+        // S78-C02: Populate co-occurrence relations for graph memory
+        this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
         this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
 

@@ -9,6 +9,69 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 _No unreleased changes yet. New user-visible work lands here before the next version bump._
 
+## [0.13.0] - 2026-04-18
+
+### Theme: Verbatim storage, hierarchical scope, graph memory, branch-scoped recall, and procedural skills — §78 Phase B/C/D/E
+
+**v0.12.0 closed the 12-point `agentmemory` gap via Phase A cross-pollination. v0.13.0 lands the remaining §78 World-class Retrieval & Memory Architecture phases: verbatim raw-text dual-storage, hierarchical thread/topic scope, multi-hop graph memory, branch-scoped recall, progressive disclosure, and procedural skill synthesis on session finalize. This is where `harness-mem` takes the "local-first world-class retrieval" position from MemPalace and adds the session-lifecycle work no competitor has.**
+
+---
+
+#### 1. Verbatim raw storage (§78-B01)
+
+**Before**: Only the structured summary of each observation was stored. Long-form content was lossy.
+
+**After**: `mem_observations.raw_text TEXT` column added. When `HARNESS_MEM_RAW_MODE=1`, the full verbatim text is stored alongside the structured summary and both are embedded. Backward-compatible: existing rows remain NULL, readers return structured summary when `raw_text IS NULL`.
+
+#### 2. Hierarchical scope: thread_id + topic (§78-B02)
+
+**Before**: Retrieval was flat — `project + session_id` was the finest granularity.
+
+**After**: `mem_observations.thread_id` and `mem_observations.topic` columns + partial indexes (`WHERE thread_id IS NOT NULL`, `WHERE topic IS NOT NULL`). `harness_mem_search` accepts a `scope` parameter (`project` / `session` / `thread` / `topic`). OpenAPI + MCP tool schema updated to expose it.
+
+#### 3. L0 / L1 wake-up context (§78-B03)
+
+**Before**: Resume pack returned a single level of detail — either full or nothing.
+
+**After**: `detail_level` split into `L0` (≤ 180 tokens, minimal continuity) and `L1` (full continuity preserved). Tests lock the token budget and confirm L1 ≥ L0 continuity across session boundaries.
+
+#### 4. Entity-relation graph memory (§78-C01 / C02 / C03 / C04)
+
+**Before**: The only link layer was `mem_links` (observation → observation). No per-entity graph, no multi-hop expansion, no graph-proximity signal in search.
+
+**After**:
+- **C01 (Kuzu vs SQLite spike)**: verdict committed — stay on SQLite with recursive CTE; Kuzu's ~40MB binary and external-process overhead don't beat the SQLite helper at `harness-mem`'s scale.
+- **C02**: `mem_relations` table added. Regex-based entity + relation extractor runs on ingest. `harness_mem_graph` now exposes an `entities` endpoint.
+- **C03**: Recursive CTE helper for `graph_depth` multi-hop observation expansion.
+- **C04**: Graph proximity signal blended into the hybrid scorer. A/B test confirms delta over vector-only search.
+
+#### 5. Temporal forgetting + contradiction resolution + auto project profile (§78-D01 / D02 / D03)
+
+**Before**: No time-to-live on facts; contradicting facts piled up; no project-level summary.
+
+**After**:
+- **D01 (`expires_at`)**: TTL column + `harness_mem_ingest` expires_at parameter + read-path filter (`search` / `timeline` / `resume_pack` / `verify` / `contradiction` all exclude expired) + `include_expired` override. Breezing session's impl runs alongside the parallel session's §81-B02 force-eviction path (v0.12.0).
+- **D02 (`supersedes`)**: `harness_mem_add_relation` accepts `supersedes` relation kind. Superseded observations are downranked in search; `include_superseded` overrides. Coexists with §81-B03's `superseded` (past-tense, detection-output) relation — both are valid relation types, downstream consumers must handle either.
+- **D03 (`project_profile`)**: Static/dynamic fact classifier + `GET /v1/mem/status` returns token-compact profile of the project.
+
+#### 6. Privacy, branch, progressive disclosure, procedural skills (§78-E01 / E02 / E03 / E04)
+
+- **E01 — Privacy tags in content**: `<private>...</private>` blocks are stripped from indexed text but preserved in raw observation. `include_private` opt-in for full recall.
+- **E02 — Branch-scoped memory**: `mem_observations.branch` column (nullable; null = no branch scope). Search filter with null-inclusive semantics (`branch IS NULL OR branch = ?`). Core path complete; branch-merge workflow deferred to §78-E02b follow-up.
+- **E03 — Progressive disclosure**: `harness_mem_search` accepts `detail_level` (`index` / `context` / `full`). `token_estimate` returned so callers can budget.
+- **E04 — Procedural skill synthesis**: `finalize_session` detects repeated action sequences and synthesizes optional skills. Opt-in persistence keeps the skill surface small by default.
+
+#### 7. API contract snapshot updated
+
+The API response shape gained new fields (`raw_text`, `wake_up_context`, `include_expired`, `persist_skill`, etc.) documented in `tests/integration/__snapshots__/api-contract.test.ts.snap`. No breaking changes to existing fields — all additions are optional / null-default.
+
+#### 8. Test coverage
+
+- 81 new unit tests across `privacy-tags-handler`, `event-tracking-env`, `thread-scoped-memory`, `topic-scoped-memory`, `branch-scoped-memory`, `raw-text-storage`, `hierarchical-scope`, `entity-extraction`, `graph-multi-hop`, `graph-augmented-search`, `contradiction-resolution`, `project-profile`, `wake-up-l0-l1`, `progressive-disclosure`, `procedural-skill-synthesis`.
+- Overall unit suite: 1155 pass / 1 skip / 0 fail across 103 files.
+- Integration suite: 182 pass / 8 skip / 0 fail across 32 files (api-contract snapshot refreshed).
+- Go suite: all 6 packages ok (auth, pii, proxy, tools, types, util).
+
 ## [0.12.0] - 2026-04-18
 
 ### Theme: Dual-agent coordination, lifecycle hygiene, and user-facing onboarding polish
