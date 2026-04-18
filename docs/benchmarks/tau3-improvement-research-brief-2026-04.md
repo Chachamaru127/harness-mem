@@ -177,3 +177,23 @@ memory を見せるかの調整です。
 ### §85.3 で確認できた事実
 
 §85.3 の 10-run sample では、recall 14 items が確かに注入されており、memory injection は動いていた。しかし pass_rate (0.70) も avg_turns (on: 10.0 / off: 9.6) も off との差は統計的に無視できる水準だった。これは、**何を注入するかではなく、どう書かれているかが agent 挙動を左右する** という次の仮説を強く示唆する。
+
+---
+
+## §86 で実測してわかったこと
+
+### §86 Hypothesis B (note-style ablation) — **not supported** (2026-04-18)
+
+**Setup**: 5 tasks × 2 trials × 3 styles (active/passive/label), retail domain, `gpt-4o-mini` both sides, seed 300, commit `b141684`.
+
+**Finding**: confirm_pressure spread across styles ≤ 0.025 (noise). Pass rates: active 0.30, passive 0.10, label 0.10. None reached off baseline of 0.70.
+
+**Adopted style**: `active` (current default). Rationale: it has the best pass_rate of the three. No change to runner default required.
+
+**Next lever (priority A)**: the recall injection **gate/timing** itself — not the note format. §86.3 also surfaced a regression from §84.4's on=0.75 vs off=0.50 to §86.3's on∈{0.10, 0.30} vs off=0.70 despite same fixture and harness, suggesting the recall payload is actively harmful in the current state. Candidate investigations:
+
+1. Whether recall injection is firing **too early** (first turn instead of mid-task).
+2. Whether `--scrub-recall-identity` (§85.1) interacted with §86.1's note-style path in an unexpected way.
+3. Whether the `audioop` stub added during §86.3 preflight changed any tau2-bench behavior subtly.
+
+§87 should investigate the recall gate (timing + content), not the note format.
