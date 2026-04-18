@@ -294,6 +294,16 @@ export const memoryTools: Tool[] = [
         limit: { type: "number" },
         include_private: { type: "boolean" },
         sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" },
+        scope: {
+          type: "object",
+          description: "Hierarchical metadata scope (S78-B02). Narrows search progressively: project > session > thread > topic. When provided, scope fields override the top-level project/session_id.",
+          properties: {
+            project: { type: "string" },
+            session_id: { type: "string" },
+            thread_id: { type: "string" },
+            topic: { type: "string" },
+          },
+        },
       },
       required: ["query"],
     },
@@ -829,6 +839,16 @@ async function handleMemoryToolInner(
 
         const sortBy = toStringOrUndefined(input.sort_by);
         const validSortValues = ["relevance", "date_desc", "date_asc"];
+        // S78-B02: scope パラメータの処理
+        const rawScope = input.scope;
+        const scope = rawScope && typeof rawScope === "object" && !Array.isArray(rawScope)
+          ? {
+              project: toStringOrUndefined((rawScope as Record<string, unknown>).project),
+              session_id: toStringOrUndefined((rawScope as Record<string, unknown>).session_id),
+              thread_id: toStringOrUndefined((rawScope as Record<string, unknown>).thread_id),
+              topic: toStringOrUndefined((rawScope as Record<string, unknown>).topic),
+            }
+          : undefined;
         const response = await callMemoryApi("/v1/search", {
           query,
           project: toStringOrUndefined(input.project),
@@ -838,6 +858,7 @@ async function handleMemoryToolInner(
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
           sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
+          scope,
         });
         const result = successResult(response, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)
