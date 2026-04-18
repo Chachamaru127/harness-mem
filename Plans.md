@@ -577,7 +577,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 
 ---
 
-## §86 τ³ Recall Note Style Ablation — cc:TODO
+## §86 τ³ Recall Note Style Ablation — cc:完了
 
 策定日: 2026-04-17
 背景: §85 で仮説 A (identity scrub) が no-op と判明。recall payload の identity フィールドは最初から存在せず、recall content の実体は `make_checkpoint_content` が生成する compact summary (`Task ID / Customer scenario / Agent note`) だった。`Agent note` の文体 (active voice / passive voice / label-only) が confirmation pressure に影響するかを ablation で検証する。
@@ -600,8 +600,15 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 | 86.1 | **recall note 文体パターンを実装** — `make_checkpoint_content` の `Agent note:` 部分を `active` / `passive` / `label` の 3 パターンに切り替えられる option を bench-tau3-runner に追加 | 各パターンが runner 出力の recall content に反映されている | - | cc:完了 [9d87c83] |
 | 86.2 | **bench-tau3-runner に `--note-style` オプションを追加** — `{active\|passive\|label}` を指定すると recall content が対応 style になる | option ON 時、recall content が指定 style のフォーマットになる | 86.1 | cc:完了 [9d87c83] |
 | 86.3 | **5 tasks × 2 trials × 3 styles = 30 runs を実行し avg confirm/turn 比較** | 各 style の avg confirm turns / avg total turns が記録され、style 間の比較が可能になる | 86.2 | cc:完了 [b141684] |
-| 86.4 | **best style を採用、§85 brief に追記** — 最も confirm pressure が低い style を採用し、`tau3-improvement-research-brief-2026-04.md` を更新 | brief に採用 style と根拠が追記される | 86.3 | cc:TODO |
-| 86.5 | **§86 retrospective** — 86.3 artifact を整理して §86 を閉じる or 次仮説を §87 として切る | retrospective doc が追加され Plans.md が同期 | 86.4 | cc:TODO |
+| 86.4 | **best style を採用、§85 brief に追記** — 最も confirm pressure が低い style を採用し、`tau3-improvement-research-brief-2026-04.md` を更新 | brief に採用 style と根拠が追記される | 86.3 | cc:完了 [a7b66c0] |
+| 86.5 | **§86 retrospective** — 86.3 artifact を整理して §86 を閉じる or 次仮説を §87 として切る | retrospective doc が追加され Plans.md が同期 | 86.4 | cc:完了 [fe0c5e2] |
+
+### §86 振り返り (2026-04-18)
+
+仮説 B（note style が confirmation pressure を左右する）は不支持。style 間の confirm_pressure 差は ≤ 0.025（ノイズ）。
+`active` style を default として維持（pass_rate 最高 0.30）。§84.4 比の pass_rate 退行（on: 0.75→0.30）が顕在化し、recall 注入タイミング / ゲート設計が次の最優先調査対象に。
+詳細は `docs/benchmarks/tau3-s86-retrospective-2026-04-18.md`。
+次の改善（recall 注入ゲートの timing ablation）は §87 として継続する。
 
 ### §86 が終わると起きる変化
 
