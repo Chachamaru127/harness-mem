@@ -599,7 +599,7 @@ S80-B01 + S80-B02 → S80-C01 → S80-C02
 |------|------|-----|---------|--------|
 | 86.1 | **recall note 文体パターンを実装** — `make_checkpoint_content` の `Agent note:` 部分を `active` / `passive` / `label` の 3 パターンに切り替えられる option を bench-tau3-runner に追加 | 各パターンが runner 出力の recall content に反映されている | - | cc:完了 [9d87c83] |
 | 86.2 | **bench-tau3-runner に `--note-style` オプションを追加** — `{active\|passive\|label}` を指定すると recall content が対応 style になる | option ON 時、recall content が指定 style のフォーマットになる | 86.1 | cc:完了 [9d87c83] |
-| 86.3 | **5 tasks × 2 trials × 3 styles = 30 runs を実行し avg confirm/turn 比較** | 各 style の avg confirm turns / avg total turns が記録され、style 間の比較が可能になる | 86.2 | cc:TODO |
+| 86.3 | **5 tasks × 2 trials × 3 styles = 30 runs を実行し avg confirm/turn 比較** | 各 style の avg confirm turns / avg total turns が記録され、style 間の比較が可能になる | 86.2 | cc:完了 [b141684] |
 | 86.4 | **best style を採用、§85 brief に追記** — 最も confirm pressure が低い style を採用し、`tau3-improvement-research-brief-2026-04.md` を更新 | brief に採用 style と根拠が追記される | 86.3 | cc:TODO |
 | 86.5 | **§86 retrospective** — 86.3 artifact を整理して §86 を閉じる or 次仮説を §87 として切る | retrospective doc が追加され Plans.md が同期 | 86.4 | cc:TODO |
 
