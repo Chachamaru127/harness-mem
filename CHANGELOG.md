@@ -72,7 +72,16 @@ The API response shape gained new fields (`raw_text`, `wake_up_context`, `includ
 - Integration suite: 182 pass / 8 skip / 0 fail across 32 files (api-contract snapshot refreshed).
 - Go suite: all 6 packages ok (auth, pii, proxy, tools, types, util).
 
-## [0.12.0] - 2026-04-18
+## [0.12.0] — consolidated into [0.13.0]
+
+> **Note**: v0.12.0 was tagged and the release workflow was attempted on 2026-04-18, but
+> the repository-behavior / typecheck / dev-domain gates surfaced multiple latent issues
+> that required 9 hotfix PRs (#53–#61) before `release.yml` could complete end-to-end.
+> Rather than skip versions on npm, the v0.12.0 tag was **deleted** and its content was
+> **consolidated into v0.13.0**. The v0.12.0 section below is retained as the historical
+> record of what the consolidation covers (Phase A + parallel-session §81 cross-pollination);
+> v0.13.0 adds Phase B–E (§78-B/C/D/E verbatim storage, graph memory, procedural skills,
+> etc.) on top of that same content. **Users should install v0.13.0 to get everything.**
 
 ### Theme: Dual-agent coordination, lifecycle hygiene, and user-facing onboarding polish
 
