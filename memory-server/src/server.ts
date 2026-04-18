@@ -122,7 +122,7 @@ function requiresAdminToken(method: string, pathname: string): boolean {
   }
   // GET エンドポイントで admin 認証が必要なもの
   if (method === "GET") {
-    if (["/v1/export", "/v1/graph/neighbors"].includes(pathname)) {
+    if (["/v1/export", "/v1/graph/neighbors", "/v1/graph/entities"].includes(pathname)) {
       return true;
     }
     // S74-004: fact history contains potentially sensitive data
@@ -1442,6 +1442,76 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const depthRaw = url.searchParams.get("depth");
         const depth = depthRaw ? Math.min(Math.max(parseInt(depthRaw, 10) || 1, 1), 5) : 1;
         return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth, user_id: neighborsAccess.user_id, team_id: neighborsAccess.team_id }));
+      }
+
+      // S78-C02: GET /v1/graph/entities — return extracted entities + co-occurrence relations
+      // filtered by project and/or session_id via observation join.
+      if (request.method === "GET" && url.pathname === "/v1/graph/entities") {
+        const db = core.getRawDb();
+        const project = url.searchParams.get("project") || undefined;
+        const sessionId = url.searchParams.get("session_id") || undefined;
+        const limitRaw = url.searchParams.get("limit");
+        const limit = Math.min(Math.max(parseInt(limitRaw || "50", 10) || 50, 1), 200);
+
+        // Fetch entities (from existing mem_entities table)
+        let entityRows: Array<{ name: string; entity_type: string; created_at: string }>;
+        if (project || sessionId) {
+          // Join through mem_observation_entities + mem_observations to filter by project/session
+          const conditions: string[] = [];
+          const params: string[] = [];
+          if (project) { conditions.push("o.project = ?"); params.push(project); }
+          if (sessionId) { conditions.push("o.session_id = ?"); params.push(sessionId); }
+          entityRows = db
+            .query<{ name: string; entity_type: string; created_at: string }, string[]>(`
+              SELECT DISTINCT e.name, e.entity_type, e.created_at
+              FROM mem_entities e
+              JOIN mem_observation_entities oe ON oe.entity_id = e.id
+              JOIN mem_observations o ON o.id = oe.observation_id
+              WHERE ${conditions.join(" AND ")}
+              ORDER BY e.created_at DESC
+              LIMIT ?
+            `)
+            .all(...params, String(limit));
+        } else {
+          entityRows = db
+            .query<{ name: string; entity_type: string; created_at: string }, [string]>(`
+              SELECT name, entity_type, created_at FROM mem_entities
+              ORDER BY created_at DESC LIMIT ?
+            `)
+            .all(String(limit));
+        }
+
+        // Fetch relations
+        let relationRows: Array<{ src: string; dst: string; kind: string; strength: number; observation_id: string }>;
+        if (project || sessionId) {
+          const conditions: string[] = [];
+          const params: string[] = [];
+          if (project) { conditions.push("o.project = ?"); params.push(project); }
+          if (sessionId) { conditions.push("o.session_id = ?"); params.push(sessionId); }
+          relationRows = db
+            .query<{ src: string; dst: string; kind: string; strength: number; observation_id: string }, string[]>(`
+              SELECT r.src, r.dst, r.kind, r.strength, r.observation_id
+              FROM mem_relations r
+              JOIN mem_observations o ON o.id = r.observation_id
+              WHERE ${conditions.join(" AND ")}
+              ORDER BY r.id DESC
+              LIMIT ?
+            `)
+            .all(...params, String(limit));
+        } else {
+          relationRows = db
+            .query<{ src: string; dst: string; kind: string; strength: number; observation_id: string }, [string]>(`
+              SELECT src, dst, kind, strength, observation_id
+              FROM mem_relations ORDER BY id DESC LIMIT ?
+            `)
+            .all(String(limit));
+        }
+
+        return rawJsonResponse({
+          ok: true,
+          entities: entityRows.map((r) => ({ id: r.name.toLowerCase(), label: r.name, kind: r.entity_type })),
+          relations: relationRows,
+        });
       }
 
       if (request.method === "POST" && url.pathname === "/v1/ingest/document") {

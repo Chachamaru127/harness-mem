@@ -40,6 +40,7 @@ import type { StoredEvent } from "../projector/types";
 import { runAutoLinker } from "./auto-linker.js";
 import { extractCodeProvenance } from "./provenance-extractor.js";
 import { stripPrivateBlocks } from "./privacy-tags.js";
+import { extractEntitiesAndRelations } from "./entity-extractor.js";
 
 // ---------------------------------------------------------------------------
 // ローカルユーティリティ（recordEvent ロジックで使用する純粋関数）
@@ -470,6 +471,34 @@ export class EventRecorder {
       }
       for (const stored of storedEntities) {
         this.linkEntityStmt.run(observationId, stored.id, createdAt);
+      }
+    } catch {
+      // best effort
+    }
+  }
+
+  /**
+   * S78-C02: Regex-based entity/relation extraction → mem_relations.
+   * best-effort; failures do not interrupt observation recording.
+   */
+  private extractAndStoreGraphRelations(
+    observationId: string,
+    content: string,
+    tags: string[],
+    createdAt: string,
+  ): void {
+    try {
+      const { entities, relations } = extractEntitiesAndRelations(content, tags);
+      if (relations.length === 0) return;
+
+      const strength = entities.length > 1 ? 1 / entities.length : 1.0;
+
+      const insertRelStmt = this.deps.db.query(`
+        INSERT INTO mem_relations(src, dst, kind, strength, observation_id, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `);
+      for (const rel of relations) {
+        insertRelStmt.run(rel.src, rel.dst, rel.kind, strength, observationId, createdAt);
       }
     } catch {
       // best effort
@@ -929,6 +958,8 @@ export class EventRecorder {
 
         this.upsertVector(observationId, redactedContent, timestamp);
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+        // S78-C02: Populate co-occurrence relations for graph memory
+        this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
         this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
 
