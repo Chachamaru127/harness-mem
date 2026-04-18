@@ -1,0 +1,8 @@
+{
+  "dev_workflow_recall_10": 0.70,
+  "bilingual_recall_10": 0.90,
+  "knowledge_update_freshness": 0.95,
+  "temporal_ordering": 0.70,
+  "mode": "warn",
+  "_comment": "Layer 1 absolute floor for developer-domain metrics. mode=warn until §78-A03 and §78-A05 land. Flip to enforce once both prerequisites are merged."
+}
