@@ -417,7 +417,7 @@ export const memoryTools: Tool[] = [
   },
   {
     name: "harness_mem_finalize_session",
-    description: "Finalize session and generate summary.",
+    description: "Finalize session and generate summary. When the session has 5+ steps and ends with a completion signal, a skill_suggestion is returned. Pass persist_skill: true to also save it as a reusable procedural skill observation.",
     inputSchema: {
       type: "object",
       properties: {
@@ -428,6 +428,10 @@ export const memoryTools: Tool[] = [
         summary_mode: {
           type: "string",
           enum: ["standard", "short", "detailed"],
+        },
+        persist_skill: {
+          type: "boolean",
+          description: "If true, persist detected skill as an observation with tags [skill, procedural]. Defaults to false.",
         },
       },
       required: ["session_id"],
@@ -1021,6 +1025,7 @@ async function handleMemoryToolInner(
           session_id: sessionId,
           correlation_id: toStringOrUndefined(input.correlation_id),
           summary_mode: toStringOrUndefined(input.summary_mode),
+          persist_skill: input.persist_skill === true,
         });
         return successResult(response);
       }

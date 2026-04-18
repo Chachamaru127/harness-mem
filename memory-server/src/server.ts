@@ -804,6 +804,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           summary_mode: typeof body.summary_mode === "string"
             ? (body.summary_mode as FinalizeSessionRequest["summary_mode"])
             : undefined,
+          persist_skill: body.persist_skill === true,
         };
         return jsonResponse(core.finalizeSession(req));
       }

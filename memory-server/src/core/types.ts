@@ -294,12 +294,34 @@ export interface RecordCheckpointRequest {
   privacy_tags?: string[];
 }
 
+/** §78-E04: Procedural skill synthesis — skill step */
+export interface SkillStep {
+  order: number;
+  summary: string;
+  obs_id: string;
+}
+
+/** §78-E04: Procedural skill synthesis — skill suggestion produced by finalize_session */
+export interface SkillSuggestion {
+  title: string;
+  steps: SkillStep[];
+  tools_used: string[];
+  estimated_duration_min: number;
+  source_session_id: string;
+  created_at: string;
+}
+
 export interface FinalizeSessionRequest {
   platform?: Platform | string;
   project?: string;
   session_id: string;
   correlation_id?: string;
   summary_mode?: "standard" | "short" | "detailed";
+  /**
+   * §78-E04: If true, persist the detected skill as an observation with
+   * tags ["skill", "procedural"]. Defaults to false (suggestion only).
+   */
+  persist_skill?: boolean;
 }
 
 export interface ApiMeta {
