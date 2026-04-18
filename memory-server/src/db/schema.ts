@@ -752,6 +752,19 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S78-E02: Branch-scoped memory — branch カラム追加（nullable TEXT）
+  // null = ブランチスコープなし（レガシー行と同等）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN branch TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_branch ON mem_observations(branch) WHERE branch IS NOT NULL`);
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {

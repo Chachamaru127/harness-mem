@@ -24,7 +24,7 @@ const DEFAULT_FIND_MANY_SQL = `
     last_accessed_at,
     COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
     COALESCE(user_id, 'default') AS user_id, team_id,
-    thread_id, topic, expires_at,
+    thread_id, topic, expires_at, branch,
     created_at, updated_at
   FROM mem_observations
   WHERE project = ?
@@ -58,10 +58,10 @@ export class SqliteObservationRepository implements IObservationRepository {
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
           signal_score, user_id, team_id,
-          thread_id, topic, expires_at,
+          thread_id, topic, expires_at, branch,
           created_at, updated_at,
           title_fts, content_fts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.id,
@@ -82,6 +82,7 @@ export class SqliteObservationRepository implements IObservationRepository {
         input.thread_id ?? null,
         input.topic ?? null,
         input.expires_at ?? null,
+        input.branch ?? null,
         input.created_at,
         input.updated_at,
         titleFts,
@@ -103,7 +104,7 @@ export class SqliteObservationRepository implements IObservationRepository {
           last_accessed_at,
           COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
           COALESCE(user_id, 'default') AS user_id, team_id,
-          thread_id, topic, expires_at,
+          thread_id, topic, expires_at, branch,
           created_at, updated_at
         FROM mem_observations
         WHERE id = ?
@@ -133,7 +134,7 @@ export class SqliteObservationRepository implements IObservationRepository {
             last_accessed_at,
             COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
             COALESCE(user_id, 'default') AS user_id, team_id,
-            thread_id, topic, expires_at,
+            thread_id, topic, expires_at, branch,
             created_at, updated_at
           FROM mem_observations
           WHERE id IN (${placeholders})
@@ -161,7 +162,7 @@ export class SqliteObservationRepository implements IObservationRepository {
         last_accessed_at,
         COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
         COALESCE(user_id, 'default') AS user_id, team_id,
-        thread_id, topic, expires_at,
+        thread_id, topic, expires_at, branch,
         created_at, updated_at
       FROM mem_observations
       WHERE 1 = 1
@@ -212,6 +213,15 @@ export class SqliteObservationRepository implements IObservationRepository {
     if (filter.topic) {
       sql += " AND topic = ?";
       params.push(filter.topic);
+    }
+
+    // S78-E02: Branch-scoped memory フィルタ
+    // branch が指定された場合: そのブランチ OR branch IS NULL（レガシー行）を返す。
+    // これにより branch=NULL の既存観察は全ブランチから参照可能（後方互換）。
+    // branch が未指定の場合: 全観察を返す（後方互換）。
+    if (filter.branch !== undefined) {
+      sql += " AND (branch = ? OR branch IS NULL)";
+      params.push(filter.branch);
     }
 
     // S78-D01: 期限切れフィルタ（デフォルト: 除外）
@@ -286,6 +296,7 @@ export class SqliteObservationRepository implements IObservationRepository {
       filter.memory_type === undefined &&
       !filter.thread_id &&
       !filter.topic &&
+      filter.branch === undefined &&
       !filter.cursor
     );
   }

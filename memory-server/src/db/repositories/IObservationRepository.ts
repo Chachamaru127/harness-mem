@@ -36,6 +36,8 @@ export interface ObservationRow {
   topic: string | null;
   /** S78-D01: Temporal forgetting — TTL。null = 無期限 */
   expires_at: string | null;
+  /** S78-E02: Branch-scoped memory — git ブランチ名。null = スコープなし */
+  branch: string | null;
 }
 
 export interface InsertObservationInput {
@@ -61,6 +63,8 @@ export interface InsertObservationInput {
   topic?: string | null;
   /** S78-D01: Temporal forgetting — ISO-8601 または Unix 秒。null = 無期限 */
   expires_at?: string | null;
+  /** S78-E02: Branch-scoped memory — git ブランチ名。null = スコープなし */
+  branch?: string | null;
 }
 
 export interface FindObservationsFilter {
@@ -77,6 +81,13 @@ export interface FindObservationsFilter {
   topic?: string;
   /** S78-D01: true のとき期限切れ観察も含む（デフォルト false = 除外）*/
   include_expired?: boolean;
+  /**
+   * S78-E02: Branch-scoped memory フィルタ。
+   * - 未指定: 全観察を返す（後方互換）
+   * - "main" または任意のブランチ名: そのブランチの観察 + branch IS NULL（レガシー行）を返す。
+   *   これにより main スコープのコンテキストは常に全ブランチから参照可能。
+   */
+  branch?: string;
 }
 
 // ---------------------------------------------------------------------------

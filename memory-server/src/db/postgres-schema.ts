@@ -88,6 +88,7 @@ export const POSTGRES_INIT_SQL = `
     thread_id TEXT,
     topic TEXT,
     expires_at TIMESTAMPTZ,
+    branch TEXT,
     search_vector tsvector GENERATED ALWAYS AS (
       setweight(to_tsvector('simple', coalesce(title, '')), 'A') ||
       setweight(to_tsvector('simple', content_redacted), 'B')
@@ -353,4 +354,18 @@ export const POSTGRES_MIGRATE_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_obs_expires_at
     ON mem_observations(expires_at) WHERE expires_at IS NOT NULL;
+
+  -- S78-E02: Branch-scoped memory — branch カラム追加（nullable TEXT）
+  -- null = ブランチスコープなし（レガシー行と同等）
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_observations' AND column_name = 'branch'
+    ) THEN
+      ALTER TABLE mem_observations ADD COLUMN branch TEXT;
+    END IF;
+  END $$;
+
+  CREATE INDEX IF NOT EXISTS idx_pg_obs_branch
+    ON mem_observations(branch) WHERE branch IS NOT NULL;
 `;

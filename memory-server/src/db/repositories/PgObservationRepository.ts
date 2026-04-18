@@ -64,6 +64,8 @@ function normalizeRow(row: Record<string, unknown>): ObservationRow {
     topic: row.topic != null ? String(row.topic) : null,
     // S78-D01: Temporal forgetting
     expires_at: row.expires_at != null ? toIsoString(row.expires_at) : null,
+    // S78-E02: Branch-scoped memory
+    branch: row.branch != null ? String(row.branch) : null,
     created_at: toIsoString(row.created_at),
     updated_at: toIsoString(row.updated_at),
   };
@@ -79,7 +81,7 @@ const SELECT_COLS = `
   last_accessed_at,
   COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
   COALESCE(user_id, 'default') AS user_id, team_id,
-  thread_id, topic, expires_at,
+  thread_id, topic, expires_at, branch,
   created_at, updated_at
 `.trim();
 
@@ -97,9 +99,9 @@ export class PgObservationRepository implements IObservationRepository {
         title, content, content_redacted, observation_type, memory_type,
         tags_json, privacy_tags_json,
         signal_score, user_id, team_id,
-        thread_id, topic, expires_at,
+        thread_id, topic, expires_at, branch,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO NOTHING`,
       [
         input.id,
@@ -123,6 +125,8 @@ export class PgObservationRepository implements IObservationRepository {
         input.topic ?? null,
         // S78-D01: Temporal forgetting
         input.expires_at ?? null,
+        // S78-E02: Branch-scoped memory
+        input.branch ?? null,
         input.created_at,
         input.updated_at,
       ]
@@ -197,6 +201,15 @@ export class PgObservationRepository implements IObservationRepository {
         sql += ` AND memory_type IN (${placeholders})`;
         params.push(...types);
       }
+    }
+
+    // S78-E02: Branch-scoped memory フィルタ
+    // branch が指定された場合: そのブランチ OR branch IS NULL（レガシー行）を返す。
+    // これにより branch=NULL の既存観察は全ブランチから参照可能（後方互換）。
+    // branch が未指定の場合: 全観察を返す（後方互換）。
+    if (filter.branch !== undefined) {
+      sql += " AND (branch = ? OR branch IS NULL)";
+      params.push(filter.branch);
     }
 
     // S78-D01: 期限切れフィルタ（デフォルト: 除外）
