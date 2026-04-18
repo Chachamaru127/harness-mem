@@ -57,11 +57,13 @@ describe("mcp memory result shape", () => {
         "anthropic/maxResultSizeChars": 500000,
       })
     );
+    // Citation shape updated post-§81 cross-pollination + §78-E04:
+    // `source` is now always "harness-mem" (was platform string), and the mock
+    // fetch above doesn't populate session_id/timestamp, so they are null.
     expect((result as Record<string, unknown>)._citations).toEqual([
       expect.objectContaining({
         id: "obs-1",
-        source: "codex",
-        session_id: "sess-1",
+        source: "harness-mem",
       }),
     ]);
   });
