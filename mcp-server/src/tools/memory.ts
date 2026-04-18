@@ -265,7 +265,7 @@ export const memoryTools: Tool[] = [
   {
     name: "harness_mem_resume_pack",
     description:
-      "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions.",
+      "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions. Use detail_level='L0' for minimal token usage (~170 tokens), 'L1' (default) for recent context (~500-1000 tokens), or 'full' for complete backward-compat output.",
     inputSchema: {
       type: "object",
       properties: {
@@ -274,6 +274,11 @@ export const memoryTools: Tool[] = [
         correlation_id: { type: "string" },
         limit: { type: "number" },
         include_private: { type: "boolean" },
+        detail_level: {
+          type: "string",
+          enum: ["L0", "L1", "full"],
+          description: "§78-B03: Wake-up context detail level. L0=critical facts only (~170 tokens), L1=L0+recent context (default), full=backward-compat complete output.",
+        },
       },
       required: ["project"],
     },
@@ -827,12 +832,18 @@ async function handleMemoryToolInner(
           return errorResult("project is required");
         }
 
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["L0", "L1", "full"];
+        const detailLevel = rawDetailLevel && validDetailLevels.includes(rawDetailLevel)
+          ? (rawDetailLevel as "L0" | "L1" | "full")
+          : undefined;
         const response = await callMemoryApi("/v1/resume-pack", {
           project,
           session_id: toStringOrUndefined(input.session_id),
           correlation_id: toStringOrUndefined(input.correlation_id),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
+          ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
         });
         return successResult(response);
       }

@@ -819,6 +819,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const resumeAccess = resolveAccess(request);
         if (resumeAccess instanceof Response) return resumeAccess;
 
+        const validDetailLevels = ["L0", "L1", "full"] as const;
+        type DetailLevelType = (typeof validDetailLevels)[number];
+        const rawDetailLevel = body.detail_level;
+        const detailLevel: DetailLevelType | undefined =
+          typeof rawDetailLevel === "string" &&
+          validDetailLevels.includes(rawDetailLevel as DetailLevelType)
+            ? (rawDetailLevel as DetailLevelType)
+            : undefined;
         const req: ResumePackRequest = {
           project,
           session_id: typeof body.session_id === "string" ? body.session_id : undefined,
@@ -828,6 +836,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           resume_pack_max_tokens: typeof body.resume_pack_max_tokens === "number" ? body.resume_pack_max_tokens : undefined,
           user_id: resumeAccess.user_id,
           team_id: resumeAccess.team_id,
+          ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
         };
         return jsonResponse(core.resumePack(req));
       }

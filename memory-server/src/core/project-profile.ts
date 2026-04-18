@@ -326,3 +326,130 @@ export function buildProjectProfile(
 
   return profile;
 }
+
+// ---------------------------------------------------------------------------
+// §78-B03: L0 / L1 wake-up context
+// ---------------------------------------------------------------------------
+
+/**
+ * Detail level for wake-up context.
+ *
+ * - L0  : critical facts only (~170 tokens). Always emitted.
+ * - L1  : L0 + recent context (~300–1000 tokens). Default.
+ * - full : L0 + L1 + all profile data (backward compat).
+ */
+export type DetailLevel = "L0" | "L1" | "full";
+
+/** L0 — critical facts only. Suitable for token-constrained sessions. */
+export interface WakeUpL0 {
+  project: string;
+  tech_stack: string[];
+  conventions: string[];
+  pending_count: number;
+  token_estimate: number;
+}
+
+/** L1 — L0 + recent context. */
+export interface WakeUpL1 extends WakeUpL0 {
+  recent_observations: string[];
+  recent_decisions: string[];
+  expiring_soon: string[];
+}
+
+/** full — backward-compat shape (entire profile + L1 fields). */
+export interface WakeUpFull extends WakeUpL1 {
+  top_facts: string[];
+  current_sprint: string[];
+}
+
+export type WakeUpContext =
+  | ({ detail_level: "L0" } & WakeUpL0)
+  | ({ detail_level: "L1" } & WakeUpL1)
+  | ({ detail_level: "full" } & WakeUpFull);
+
+/**
+ * Build a token-budget-aware wake-up context from a ProjectProfile.
+ *
+ * @param project  Project name (injected for L0 convenience)
+ * @param profile  Built by buildProjectProfile()
+ * @param level    "L0" | "L1" | "full" (default "L1")
+ */
+export function buildWakeUpContext(
+  project: string,
+  profile: ProjectProfile,
+  level: DetailLevel = "L1"
+): WakeUpContext {
+  // --- L0 base ---
+  const techStack = profile.static.tech_stack.slice(0, 3);
+  const conventions = profile.static.conventions.slice(0, 3);
+  const pendingCount =
+    profile.dynamic.current_sprint.length +
+    profile.dynamic.recent_decisions.length +
+    profile.dynamic.expiring_soon.length;
+
+  function tokenCount(strs: string[]): number {
+    return strs.reduce((acc, s) => acc + estimateTokens(s) + 1, 0);
+  }
+
+  const l0TokenEstimate =
+    estimateTokens(project) +
+    tokenCount(techStack) +
+    tokenCount(conventions) +
+    estimateTokens(String(pendingCount)) +
+    20; // structural overhead
+
+  const l0Base: WakeUpL0 = {
+    project,
+    tech_stack: techStack,
+    conventions,
+    pending_count: pendingCount,
+    token_estimate: l0TokenEstimate,
+  };
+
+  if (level === "L0") {
+    return { detail_level: "L0", ...l0Base };
+  }
+
+  // --- L1: add recent context ---
+  const recentObs = profile.dynamic.current_sprint.slice(0, 5);
+  const recentDecisions = profile.dynamic.recent_decisions.slice(0, 5);
+  const expiringSoon = profile.dynamic.expiring_soon.slice(0, 3);
+
+  const l1TokenEstimate =
+    l0TokenEstimate +
+    tokenCount(recentObs) +
+    tokenCount(recentDecisions) +
+    tokenCount(expiringSoon) +
+    10; // section headers overhead
+
+  const l1Base: WakeUpL1 = {
+    ...l0Base,
+    recent_observations: recentObs,
+    recent_decisions: recentDecisions,
+    expiring_soon: expiringSoon,
+    token_estimate: l1TokenEstimate,
+  };
+
+  if (level === "L1") {
+    return { detail_level: "L1", ...l1Base };
+  }
+
+  // --- full: backward-compat, adds top_facts + full sprint ---
+  const topFacts = profile.static.top_facts;
+  const currentSprint = profile.dynamic.current_sprint;
+
+  const fullTokenEstimate =
+    l1TokenEstimate +
+    tokenCount(topFacts) +
+    tokenCount(currentSprint) +
+    5;
+
+  const fullCtx: WakeUpFull = {
+    ...l1Base,
+    top_facts: topFacts,
+    current_sprint: currentSprint,
+    token_estimate: fullTokenEstimate,
+  };
+
+  return { detail_level: "full", ...fullCtx };
+}

@@ -28,6 +28,7 @@ import {
   isIgnoredVisiblePromptText,
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
+import { buildProjectProfile, buildWakeUpContext } from "./project-profile";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import {
   getSqliteVecMapTableName,
@@ -4677,6 +4678,17 @@ export class ObservationStore {
       continuityBriefing,
     });
 
+    // §78-B03: Build token-budget-aware wake-up context (L0 / L1 / full split)
+    const detailLevel = request.detail_level ?? "L1";
+    const profileDb = {
+      query: (sql: string) => ({
+        all: (...params: unknown[]) =>
+          this.deps.db.query(sql).all(...(params as import("bun:sqlite").SQLQueryBindings[])),
+      }),
+    };
+    const projectProfile = buildProjectProfile(profileDb, normalizedProject);
+    const wakeUpContext = buildWakeUpContext(normalizedProject, projectProfile, detailLevel);
+
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),
       correlation_id: request.correlation_id ?? null,
@@ -4689,6 +4701,7 @@ export class ObservationStore {
       ...(recentProjectContext !== null ? { recent_project_context: recentProjectContext } : {}),
       ...(static_section !== undefined ? { static_section } : {}),
       ...(dynamic_section !== undefined ? { dynamic_section } : {}),
+      wake_up_context: wakeUpContext,
     });
   }
 

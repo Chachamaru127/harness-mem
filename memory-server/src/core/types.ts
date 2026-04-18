@@ -231,6 +231,13 @@ export interface ResumePackRequest {
   user_id?: string;
   /** TEAM-005: member ロール適用 — アクセス制御用チームID */
   team_id?: string;
+  /**
+   * §78-B03: Token-budget-aware wake-up context detail level.
+   * - "L0"  : critical facts only (~170 tokens, ≥ 50% token reduction)
+   * - "L1"  : L0 + recent context (~500-1000 tokens) [default]
+   * - "full": backward-compat shape (same richness as pre-B03)
+   */
+  detail_level?: "L0" | "L1" | "full";
 }
 
 export interface GetObservationsRequest {
