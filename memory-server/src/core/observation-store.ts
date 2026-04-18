@@ -4291,6 +4291,9 @@ export class ObservationStore {
         session_id: row.session_id,
         title: row.title,
         content: compact ? content.slice(0, 800) : content,
+        // S78-B01: Include raw_text when present (null for legacy rows / RAW=0 mode).
+        // Consumers can choose which field to display; content is always the structured summary.
+        raw_text: typeof row.raw_text === "string" ? row.raw_text : null,
         created_at: row.created_at,
         updated_at: row.updated_at,
         tags: parseArrayJson(row.tags_json),

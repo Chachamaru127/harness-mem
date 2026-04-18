@@ -796,6 +796,22 @@ export class EventRecorder {
     const observationId = `obs_${eventId}`;
     const current = nowIso();
 
+    // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
+    // raw_text は payload の verbatim content（stripPrivateBlocks 適用済み）。
+    // embedding は raw_text が存在する場合は raw_text から生成する（より高信号）。
+    const rawModeEnabled = process.env["HARNESS_MEM_RAW_MODE"] === "1";
+    const rawText: string | null = rawModeEnabled
+      ? (stripPrivateBlocks(
+          (() => {
+            const p = parseJsonSafe(event.payload);
+            return typeof p.content === "string" ? p.content.trim() :
+                   typeof p.prompt === "string" ? p.prompt.trim() :
+                   typeof p.command === "string" ? p.command.trim() :
+                   null;
+          })()
+        ) ?? null)
+      : null;
+
     // IMP-009: Signal Extraction
     const signalScore = extractSignalScore(observationBase.content);
 
@@ -862,7 +878,7 @@ export class EventRecorder {
           .query(`
             INSERT INTO mem_observations(
               id, event_id, platform, project, session_id,
-              title, content, content_redacted, observation_type, memory_type,
+              title, content, content_redacted, raw_text, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
               thread_id, topic, expires_at, branch,
@@ -872,6 +888,7 @@ export class EventRecorder {
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              raw_text = excluded.raw_text,
               observation_type = excluded.observation_type,
               memory_type = excluded.memory_type,
               tags_json = excluded.tags_json,
@@ -892,6 +909,7 @@ export class EventRecorder {
             observationBase.title,
             observationBase.content,
             redactedContent,
+            rawText,
             observationType,
             memoryType,
             JSON.stringify(tags),
@@ -956,7 +974,10 @@ export class EventRecorder {
           }
         }
 
-        this.upsertVector(observationId, redactedContent, timestamp);
+        // S78-B01: RAW mode — embedding は raw_text から生成（より高信号）。
+        // raw_text が null の場合は従来通り redactedContent を使用。
+        const embeddingSource = rawText ?? redactedContent;
+        this.upsertVector(observationId, embeddingSource, timestamp);
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         // S78-C02: Populate co-occurrence relations for graph memory
         this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp);
