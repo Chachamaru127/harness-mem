@@ -49,6 +49,10 @@ function readCommands(data: Record<string, unknown>, event: string): string[] {
   );
 }
 
+// Per-test timeout raised to 30s globally: all tests in this suite spawn the
+// harness-mem CLI subprocess. On GitHub Actions ubuntu-latest the cold boot
+// routinely exceeds bun's 5s default (observed 5001ms timeout during v0.13.0
+// release attempt). Local M1 runs the same test in < 1.5s.
 describe("codex hooks merge contract", () => {
   test("setup merges required harness hooks into an existing ~/.codex/hooks.json", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-hooks-merge-"));
@@ -118,7 +122,7 @@ describe("codex hooks merge contract", () => {
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 30_000);
 
   test("doctor --json marks codex_wiring missing when harness hooks are absent", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-doctor-"));
