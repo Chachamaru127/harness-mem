@@ -181,6 +181,17 @@ def parse_args() -> argparse.Namespace:
             "Default: 3.0. Override with env HARNESS_MEM_PRIME_RETRY_SLEEP_SEC."
         ),
     )
+    parser.add_argument(
+        "--note-style",
+        choices=("active", "passive", "label"),
+        default="active",
+        help=(
+            "Recall note style for the Agent note section of checkpoint content. "
+            "active (default): action-voice 'Agent note: ...' — current behavior. "
+            "passive: observation-framed 'Prior context (observation): ...' with same content. "
+            "label: structured key/value 'Prior task labels: tools=..., outcome=..., topic=...' — no natural-language sentence."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -316,7 +327,7 @@ def write_checkpoint_with_prime_retry(
     return True, last_error, prime_retry_count
 
 
-def extract_assistant_brief(sim_run: Any) -> str:
+def extract_assistant_brief(sim_run: Any, note_style: str = "active") -> str:
     messages = list(getattr(sim_run, "messages", None) or [])
     final_text = ""
     tool_names: list[str] = []
@@ -345,25 +356,41 @@ def extract_assistant_brief(sim_run: Any) -> str:
             elif "action_details" in parsed:
                 brief_text = "Prepared a confirmation-ready action summary."
 
-    summary_lines = []
-    if brief_text:
-        summary_lines.append(f"Agent note: {compact_text(brief_text, limit=220)}")
-    if tool_names:
-        summary_lines.append(f"Tools used: {', '.join(tool_names[:8])}")
     reward_info = getattr(sim_run, "reward_info", None)
     reward_value = getattr(reward_info, "reward", None) if reward_info is not None else None
+
+    if note_style == "label":
+        # Structured key/value only — no natural-language agent-written content.
+        tools_str = "+".join(tool_names[:8]) if tool_names else "n/a"
+        outcome_str = f"{reward_value:.3f}" if isinstance(reward_value, (int, float)) else "n/a"
+        return f"Prior task labels: tools={tools_str}, outcome={outcome_str}"
+
+    summary_lines = []
+    if note_style == "passive":
+        # Observation-framed: same content but labelled as reference context.
+        if brief_text:
+            summary_lines.append(
+                f"Prior context (observation): (observation, reference only) {compact_text(brief_text, limit=220)}"
+            )
+    else:
+        # active (default) — current behavior.
+        if brief_text:
+            summary_lines.append(f"Agent note: {compact_text(brief_text, limit=220)}")
+
+    if tool_names:
+        summary_lines.append(f"Tools used: {', '.join(tool_names[:8])}")
     if isinstance(reward_value, (int, float)):
         summary_lines.append(f"Reward: {reward_value:.3f}")
     return "\n".join(summary_lines).strip()
 
 
-def make_checkpoint_content(task: Any, sim_run: Any) -> str:
+def make_checkpoint_content(task: Any, sim_run: Any, note_style: str = "active") -> str:
     task_scenario = " ".join(str(getattr(task, "user_scenario", "")).split())
     task_preview = compact_text(task_scenario, limit=220)
     summary_lines = [
         f"Task ID: {getattr(task, 'id', 'unknown')}",
         f"Customer scenario: {task_preview}" if task_preview else "",
-        extract_assistant_brief(sim_run),
+        extract_assistant_brief(sim_run, note_style=note_style),
     ]
     return "\n".join(line for line in summary_lines if line).strip()
 
@@ -895,7 +922,7 @@ def main() -> int:
 
                 prime_retry_count = 0
                 if args.mode == "on":
-                    summary_content = make_checkpoint_content(task, sim_run)
+                    summary_content = make_checkpoint_content(task, sim_run, note_style=args.note_style)
                     checkpoint_payload = {
                         "platform": "codex",
                         "project": benchmark_project_name,
@@ -951,7 +978,7 @@ def main() -> int:
                     "contextual_recall_used": contextual_recall_used,
                     "recall_item_count": recall_item_count,
                     "conversation_metrics": conversation_metrics,
-                    "summary": make_checkpoint_content(task, sim_run),
+                    "summary": make_checkpoint_content(task, sim_run, note_style=args.note_style),
                 }
                 write_json(task_output_dir / "summary.json", task_payload)
 
