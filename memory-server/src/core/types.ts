@@ -110,6 +110,13 @@ export interface SearchRequest {
    * - 展開上限: 最大 20 観察（result explosion を防ぐ）
    */
   graph_depth?: number;
+  /**
+   * S78-C04: Graph-augmented hybrid search — graph proximity signal の重み。
+   * - デフォルト 0.15 (moderate influence)
+   * - 0 でグラフ近傍信号を無効化（A/B テスト用）
+   * - 環境変数 HARNESS_MEM_GRAPH_OFF=1 でも強制 0 に設定される
+   */
+  graph_weight?: number;
 }
 
 export interface FeedRequest {

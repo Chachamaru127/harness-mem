@@ -18,7 +18,7 @@ import { computeJapaneseEnsembleWeight } from "../embedding/adaptive-config";
 import { expandQuery } from "../embedding/query-expander";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
-import { expandObservationsViaGraph } from "./graph-reasoner.js";
+import { expandObservationsViaGraph, computeQueryEntityProximity } from "./graph-reasoner.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
@@ -3112,6 +3112,31 @@ export class ObservationStore {
       }
     }
 
+    // S78-C04: Graph-augmented hybrid search — blend graph proximity signal
+    // graph_proximity(obs_X) = 1 / (1 + hop_distance(obs_X, any_query_entity))
+    // Capped at 3 hops. HARNESS_MEM_GRAPH_OFF=1 disables entirely (A/B testing).
+    // Proximity is stored in a separate map and applied as a direct additive term
+    // in the final scorer (not blended into the RRF graph list) so that it has a
+    // measurable and predictable effect on ranking independent of other graph signals.
+    const DEFAULT_GRAPH_WEIGHT = 0.15;
+    const graphWeightDisabled = process.env.HARNESS_MEM_GRAPH_OFF === "1";
+    const graphWeight = graphWeightDisabled
+      ? 0
+      : typeof request.graph_weight === "number"
+        ? request.graph_weight
+        : DEFAULT_GRAPH_WEIGHT;
+    const queryProximityScores = new Map<string, number>();
+    if (graphWeight > 0 && candidateIds.size > 0) {
+      const rawProximity = computeQueryEntityProximity(
+        this.deps.db,
+        normalizedRequest.query,
+        [...candidateIds],
+      );
+      for (const [id, proximity] of rawProximity) {
+        queryProximityScores.set(id, proximity);
+      }
+    }
+
     // S74-005: file: フィルター — クエリに "file:xxx" が含まれる場合、候補を絞り込む
     const fileFilterIds = this.extractFileFilterIds(request.query);
     if (fileFilterIds !== null) {
@@ -3354,12 +3379,17 @@ export class ObservationStore {
             : routeDecision.answerHints?.intent === "count"
               ? 0.12
               : 0.08;
+      // S78-C04: graph proximity signal as direct additive term (linear blend)
+      // w_graph * proximity is applied here, not via RRF, so it has a
+      // predictable effect independent of RRF rank normalization.
+      const proximityAdj = graphWeight * (queryProximityScores.get(item.id) ?? 0);
       const postAdjustment =
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
         weights.importance * item.importance +
         factBoostWeight * (item.fact_boost ?? 0) +
-        precisionBoostWeight * (item.precision_boost ?? 0);
+        precisionBoostWeight * (item.precision_boost ?? 0) +
+        proximityAdj;
       const rawScore = rrfScore + postAdjustment;
       // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
       const obs = observations.get(item.id);
