@@ -58,6 +58,7 @@ export function initSchema(db: Database): void {
       title TEXT,
       content TEXT NOT NULL,
       content_redacted TEXT NOT NULL,
+      raw_text TEXT,
       observation_type TEXT NOT NULL DEFAULT 'context',
       memory_type TEXT NOT NULL DEFAULT 'semantic',
       tags_json TEXT NOT NULL,
@@ -715,6 +716,13 @@ export function migrateSchema(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_mem_facts_key_project
         ON mem_facts(fact_key, project, created_at ASC)
     `);
+  } catch {
+    // already exists
+  }
+
+  // S78-B01: Verbatim raw storage — raw_text カラムを追加（nullable, 後方互換）
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN raw_text TEXT`);
   } catch {
     // already exists
   }
