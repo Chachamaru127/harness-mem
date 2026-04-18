@@ -2782,6 +2782,8 @@ export class IngestCoordinator {
     project?: string;
     platform?: string;
     session_id?: string;
+    /** S78-D01: Temporal forgetting — ISO-8601 または Unix 秒。null = 無期限 */
+    expires_at?: string | number | null;
   }): ApiResponse {
     const startedAt = performance.now();
     if (!request.file_path || !request.content) {
@@ -2835,6 +2837,8 @@ export class IngestCoordinator {
           tags: obs.tags,
           privacy_tags: [],
           dedupe_hash: obs.dedupeHash,
+          // S78-D01: TTL パススルー
+          ...(request.expires_at != null && { expires_at: request.expires_at }),
         },
         { allowQueue: false }
       );

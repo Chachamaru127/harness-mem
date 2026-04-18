@@ -31,6 +31,12 @@ export interface EventEnvelope {
   thread_id?: string;
   /** S78-B02: 階層メタデータ — トピックラベル */
   topic?: string;
+  /**
+   * S78-D01: Temporal forgetting — TTL。ISO-8601 文字列または Unix 秒の数値。
+   * null / 未指定 = 無期限。過去の値を渡してもエラーにしない（既に期限切れとして記録される）。
+   * 不正な値（パース不能）は null として扱う。
+   */
+  expires_at?: string | number | null;
 }
 
 export interface SearchRequest {

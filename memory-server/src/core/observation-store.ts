@@ -1295,6 +1295,8 @@ export class ObservationStore {
         thread_id?: string;
         topic?: string;
       };
+      /** S78-D01: true のとき期限切れ観察も含む（デフォルト false = 除外）*/
+      include_expired?: boolean;
     },
     options: { skipPrivacy?: boolean } = {}
   ): string {
@@ -1364,6 +1366,12 @@ export class ObservationStore {
         nextSql += ` AND ${alias}.user_id = ?`;
         params.push(filters.user_id);
       }
+    }
+
+    // S78-D01: 期限切れフィルタ（デフォルト: 除外）
+    if (!filters.include_expired) {
+      nextSql += ` AND (${alias}.expires_at IS NULL OR ${alias}.expires_at > ?)`;
+      params.push(new Date().toISOString());
     }
 
     nextSql += this.deps.platformVisibilityFilterSql(alias);

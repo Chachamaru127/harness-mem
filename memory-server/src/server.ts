@@ -623,6 +623,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               : undefined,
             // S78-B02: 階層メタデータスコープ
             scope: parsedScope,
+            // S78-D01: Temporal forgetting — 期限切れ観察を含むか（デフォルト: 除外）
+            include_expired: parseBooleanLike(body.include_expired, false),
           };
           return jsonResponse(await core.searchPrepared(req));
         }

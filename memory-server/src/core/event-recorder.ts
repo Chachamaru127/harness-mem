@@ -26,6 +26,7 @@ import {
   isPrivateTag,
   makeResponse,
   makeErrorResponse,
+  normalizeExpiresAt,
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
@@ -820,6 +821,9 @@ export class EventRecorder {
           ? event.topic.trim()
           : null;
 
+        // S78-D01: expires_at 正規化（ISO-8601 または Unix 秒 → ISO-8601、不正値 → null）
+        const expiresAt = normalizeExpiresAt(event.expires_at);
+
         this.deps.db
           .query(`
             INSERT INTO mem_observations(
@@ -827,9 +831,9 @@ export class EventRecorder {
               title, content, content_redacted, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
-              thread_id, topic,
+              thread_id, topic, expires_at,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -841,6 +845,7 @@ export class EventRecorder {
               signal_score = excluded.signal_score,
               thread_id = excluded.thread_id,
               topic = excluded.topic,
+              expires_at = excluded.expires_at,
               updated_at = excluded.updated_at
           `)
           .run(
@@ -861,6 +866,7 @@ export class EventRecorder {
             teamId,
             threadId,
             topic,
+            expiresAt,
             timestamp,
             current
           );
