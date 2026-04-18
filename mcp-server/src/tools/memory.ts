@@ -306,6 +306,7 @@ export const memoryTools: Tool[] = [
         },
         include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
         branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
+        graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
       },
       required: ["query"],
     },
@@ -868,6 +869,8 @@ async function handleMemoryToolInner(
           include_expired: toBoolean(input.include_expired, false),
           // S78-E02: Branch-scoped memory フィルタ
           branch: toStringOrUndefined(input.branch),
+          // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
+          graph_depth: toNumberOrUndefined(input.graph_depth),
         });
         const result = successResult(response, { citations: true });
         // Proactively notify via channels when search returns results (lazy import to avoid circular dep)

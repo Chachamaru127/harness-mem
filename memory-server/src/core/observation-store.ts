@@ -18,6 +18,7 @@ import { computeJapaneseEnsembleWeight } from "../embedding/adaptive-config";
 import { expandQuery } from "../embedding/query-expander";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
+import { expandObservationsViaGraph } from "./graph-reasoner.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
@@ -3091,6 +3092,23 @@ export class ObservationStore {
           candidateIds.add(id);
         }
         graph.set(id, score);
+      }
+    }
+
+    // S78-C03: Multi-hop graph expansion via mem_relations entity graph
+    const graphDepth = typeof request.graph_depth === "number" ? request.graph_depth : 0;
+    if (graphDepth > 0 && candidateIds.size > 0) {
+      const seedIds = [...candidateIds];
+      const expanded = expandObservationsViaGraph(this.deps.db, seedIds, graphDepth);
+      const GRAPH_DEPTH_BOOST = 0.1;
+      for (const id of expanded) {
+        if (!candidateIds.has(id)) {
+          candidateIds.add(id);
+          // New observations reachable via entity graph get a score boost
+          graph.set(id, (graph.get(id) ?? 0) + GRAPH_DEPTH_BOOST);
+        }
+        // Boost score for graph-reachable observations (including seeds)
+        // only when they were found via graph traversal (not already in seeds)
       }
     }
 

@@ -102,6 +102,14 @@ export interface SearchRequest {
    * superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
    */
   include_superseded?: boolean;
+  /**
+   * S78-C03: Multi-hop reasoning — entity graph を辿って関連観察を追加取得。
+   * - 0（デフォルト）: グラフ展開なし（後方互換）
+   * - 1..3: 指定ホップ数だけ mem_relations エンティティグラフを BFS 探索
+   * - グラフ経由で到達した観察にスコアボーナス +0.1 を付与
+   * - 展開上限: 最大 20 観察（result explosion を防ぐ）
+   */
+  graph_depth?: number;
 }
 
 export interface FeedRequest {

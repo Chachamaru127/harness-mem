@@ -629,6 +629,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             branch: typeof body.branch === "string" ? body.branch : undefined,
             // S78-D02: Contradiction resolution — superseded 観察を含むか（デフォルト: 含む・rank 下げ）
             include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
+            // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
+            graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
           };
           return jsonResponse(await core.searchPrepared(req));
         }
