@@ -579,6 +579,12 @@ Update the marker to `cc:完了` and note any unresolved issues.
 
 ---
 
+## Phase B Capabilities (April 2026)
+
+Phase B (April 2026) added verbatim raw storage (`HARNESS_MEM_RAW_MODE=1`), hierarchical metadata scoping for multi-session projects, and token-budgeted L0/L1 wake-up context that cuts SessionStart token cost while preserving first-turn continuity. All three features are opt-in or backward-compatible — existing deployments need no configuration changes. See [Phase B capabilities](docs/benchmarks/phase-b-capabilities-2026-04-18.md) for landed commits, baseline measurements, and deferred items.
+
+---
+
 ## Documentation
 
 - Setup reference: [`docs/harness-mem-setup.md`](docs/harness-mem-setup.md)

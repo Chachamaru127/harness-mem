@@ -576,6 +576,12 @@ harness-mem ではタスク管理の single source of truth として `Plans.md`
 
 ---
 
+## Phase B 機能追加（2026年4月）
+
+Phase B（2026年4月）では、verbatim raw ストレージ（`HARNESS_MEM_RAW_MODE=1`）、マルチセッション向け階層メタデータスコープ、および SessionStart のトークンコストを削減しつつ first-turn continuity を維持する L0/L1 ウェイクアップコンテキストの 3 機能を追加しました。いずれも opt-in または後方互換の変更で、既存の導入環境に設定変更は不要です。ランディングしたコミット、ベースライン測定値、および延期された項目については [Phase B capabilities](docs/benchmarks/phase-b-capabilities-2026-04-18.md)（英語）を参照してください。
+
+---
+
 ## ドキュメント
 
 - セットアップリファレンス: [`docs/harness-mem-setup-ja.md`](docs/harness-mem-setup-ja.md)
