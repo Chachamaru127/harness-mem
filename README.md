@@ -68,6 +68,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 
 - **Local-first**: the database lives on your machine at `~/.harness-mem/harness-mem.db`.
 - **Privacy**: there is no cloud memory service, no API keys, and no off-machine upload just to remember context.
+- **Private tags**: wrap any text in `<private>...</private>` and it is automatically stripped before storage — use this to keep secrets out of memory without disabling memory entirely.
 - **Project isolation**: each project keeps its own memory lane, so one repo does not bleed into another.
 
 ### Support tiers
