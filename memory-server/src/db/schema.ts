@@ -718,6 +718,28 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S78-B02: Hierarchical metadata — thread_id + topic カラム追加
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN thread_id TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`ALTER TABLE mem_observations ADD COLUMN topic TEXT`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_thread_id ON mem_observations(thread_id) WHERE thread_id IS NOT NULL`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_topic ON mem_observations(topic) WHERE topic IS NOT NULL`);
+  } catch {
+    // already exists
+  }
 }
 
 export function initFtsIndex(db: Database): boolean {

@@ -31,6 +31,9 @@ export interface ObservationRow {
   team_id: string | null;
   created_at: string;
   updated_at: string;
+  /** S78-B02: 階層メタデータ */
+  thread_id: string | null;
+  topic: string | null;
 }
 
 export interface InsertObservationInput {
@@ -51,6 +54,9 @@ export interface InsertObservationInput {
   team_id?: string | null;
   created_at: string;
   updated_at: string;
+  /** S78-B02: 階層メタデータ */
+  thread_id?: string | null;
+  topic?: string | null;
 }
 
 export interface FindObservationsFilter {
@@ -62,6 +68,9 @@ export interface FindObservationsFilter {
   limit?: number;
   cursor?: string;
   memory_type?: string | string[];
+  /** S78-B02: 階層メタデータフィルタ */
+  thread_id?: string;
+  topic?: string;
 }
 
 // ---------------------------------------------------------------------------

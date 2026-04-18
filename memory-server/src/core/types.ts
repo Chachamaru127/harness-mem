@@ -27,6 +27,10 @@ export interface EventEnvelope {
   user_id?: string;
   /** TEAM-009: イベント送信者のチームID（config の teamId より優先） */
   team_id?: string;
+  /** S78-B02: 階層メタデータ — session 内のスレッド識別子 */
+  thread_id?: string;
+  /** S78-B02: 階層メタデータ — トピックラベル */
+  topic?: string;
 }
 
 export interface SearchRequest {
@@ -57,6 +61,17 @@ export interface SearchRequest {
   team_id?: string;
   /** S43-SEARCH: ソート順 — relevance(デフォルト) / date_desc / date_asc */
   sort_by?: "relevance" | "date_desc" | "date_asc";
+  /**
+   * S78-B02: 階層メタデータスコープ — project > session > thread > topic の順で絞り込む。
+   * 後方互換: トップレベルの project / session_id も引き続き有効。
+   * scope と top-level が両方指定された場合、scope を優先する。
+   */
+  scope?: {
+    project?: string;
+    session_id?: string;
+    thread_id?: string;
+    topic?: string;
+  };
 }
 
 export interface FeedRequest {
