@@ -727,6 +727,19 @@ paths:
                   enum: [index, context, full]
                   default: context
                   description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default). full=+complete content+raw_text+score breakdown. meta.token_estimate indicates approximate token cost."
+                observation_type:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                  description: |
+                    §89-001 (XR-002 P0): Filter by observation_type. Accepts a single string
+                    (e.g. "decision") or an array (e.g. ["decision", "summary"]) and AND-combines
+                    with every other filter (project, scope, memory_type, branch, etc.).
+                    The historical query-prefix convention is also honored — `query="type:decision fix"`
+                    is rewritten to `query="fix"` + `observation_type="decision"` before the
+                    search runs. Direct parameter wins over the prefix.
       responses:
         "200":
           description: Search results
