@@ -23,6 +23,10 @@
   English | <a href="README_ja.md">日本語</a>
 </p>
 
+<p align="center">
+  <img src="docs/assets/readme/continuity-briefing-flow.svg" alt="Continuity briefing flow — local project memory feeds the first turn of the next session" width="820" />
+</p>
+
 ---
 
 ## Table of Contents
@@ -49,23 +53,34 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/before-after.png" alt="Before and after harness-mem — Monday's Claude Code context becomes Tuesday's Codex context automatically" width="820" />
 </p>
 
-**Before harness-mem**
+### 30-second version
 
-- Monday: you debug a race condition in `worker.ts` with Claude Code.
-- Tuesday: you open Codex. It has no idea what Monday was about. You re-explain the bug, the hypothesis, the half-fix.
-- Wednesday: Claude Code session restarts. The context you built up this morning is gone.
+Harness-mem gives Claude Code and Codex the same local project memory, so the next session can open on the thread you were already working on instead of a blank slate. It is built for people who switch tools inside the same project and do not want to re-explain the same decisions twice.
 
-**With harness-mem**
+### 3-minute setup path
 
-- Tuesday's Codex opens and the very first turn already knows about the `worker.ts` race fix.
-- Wednesday's fresh Claude Code pulls back today's decisions on the first prompt.
-- One local SQLite file is the memory surface. No cloud. No API keys. No Python stack to install.
+1. Run `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude`.
+2. Run `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude`.
+3. Confirm both clients are green and point at the current checkout or install path.
+4. Start a fresh Claude Code or Codex session and check that the first turn already knows the current thread.
+
+### Trust block
+
+- **Local-first**: the database lives on your machine at `~/.harness-mem/harness-mem.db`.
+- **Privacy**: there is no cloud memory service, no API keys, and no off-machine upload just to remember context.
+- **Project isolation**: each project keeps its own memory lane, so one repo does not bleed into another.
+
+### Support tiers
+
+- **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
+- **Supported path: Cursor**: hooks and MCP work out of the box, but the continuity story is not as central as Claude Code + Codex.
+- **Experimental path: Gemini CLI, OpenCode**: usable, but not the same parity promise.
 
 ### What this means in practice
 
-- **You use Claude Code and Codex** → harness-mem gives both tools the same local memory runtime. With supported hook paths enabled, the first turn stays chain-first (`what we were just doing`) and can also show a small `Also Recently in This Project` teaser for nearby project context.
-- **You care about privacy** → Everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
-- **You also use Cursor** → Tier 2 support: hooks and MCP work out of the box. Gemini CLI and OpenCode are experimental.
+- **You use Claude Code and Codex** → harness-mem gives both tools the same local project runtime. On supported hook paths, the first turn stays chain-first (`what we were just doing`) and can also surface a short `Also Recently in This Project` teaser for nearby context.
+- **You care about privacy** → everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
+- **You also use Cursor** → hooks and MCP work out of the box, but it is tier 2 rather than the main continuity path.
 
 ---
 
@@ -84,12 +99,21 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 
 The Go MCP server is the layer Claude Code and Codex actually talk to. If the Go binary is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
 
+### What these numbers mean for you
+
+- **~5ms cold start** means the memory layer should feel instant when you open or resume work.
+- **Bilingual recall@10** means mixed Japanese, English, and code notes are still findable instead of splitting into separate piles.
+- **Freshness@K = 1.00** means updated facts should replace stale ones instead of competing with them.
+- **Developer-workflow recall** is the real user value: yesterday's migration, bug fix, or deployment decision should be recoverable when you need it again.
+
 ### harness-mem's target domain is developer workflow memory
 
 Memory benchmarks cluster into two domains:
 
 - **General lifelog** — remembering a fictional person's everyday life ("when did Caroline go to the support group?"). This is what **LoCoMo**, LongMemEval, and most of Mem0/MemPalace/SuperMemory evaluate.
 - **Developer workflow** — remembering yesterday's race fix, the tech-stack decisions, the half-done migration, the deploy recipe. This is what harness-mem actually serves.
+
+For commercial-safe external benchmarking, we keep `τ³-bench` and `SWE-bench Pro` in the first-line portfolio and keep `NoLiMa` in a separate research-only lane because its evaluation code and needle set are not licensed for commercial use.
 
 **Where harness-mem actually competes**
 
@@ -117,8 +141,8 @@ Pick the path that matches your stack. That's the whole decision.
 | You use... | Run this |
 |---|---|
 | **Only Claude Code** | `/plugin marketplace add Chachamaru127/harness-mem` → `/plugin install harness-mem@chachamaru127` |
-| **Claude Code + Codex** _(recommended)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup` |
-| **`npm install -g` blocked (sudo)** | `npx -y --package @chachamaru127/harness-mem harness-mem setup` |
+| **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
+| **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
 
 ### About `harness-mem setup`
 
@@ -241,7 +265,7 @@ Large MCP search responses now also return `structuredContent`, so newer Claude 
 
 ## Compare with alternatives
 
-Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration. harness-mem takes a different path: one local daemon, one SQLite database, shared Claude Code ↔ Codex runtime, zero cloud.
+Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration. harness-mem takes a different path: one local project-scoped runtime, one SQLite database, and first-turn continuity across Claude Code and Codex with no cloud dependency.
 
 | | harness-mem | Claude built-in | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
@@ -258,7 +282,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 |---|:---:|:---:|:---:|:---:|
 | **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Gemini CLI, OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
-| **Cross-tool memory** | Shared local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
+| **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **MCP server cold start** | ~5ms median (Go binary, measured) | — | — | — |
@@ -551,6 +575,14 @@ Update the marker to `cc:完了` and note any unresolved issues.
 ## Documentation
 
 - Setup reference: [`docs/harness-mem-setup.md`](docs/harness-mem-setup.md)
+- Onboarding checklist: [`docs/onboarding-checklist.md`](docs/onboarding-checklist.md)
+- README claim map: [`docs/readme-claims.md`](docs/readme-claims.md)
+- Onboarding dry-run notes: [`docs/onboarding-dry-run.md`](docs/onboarding-dry-run.md)
+- Doctor UX follow-up scope: [`docs/doctor-ux-scope.md`](docs/doctor-ux-scope.md)
+- Commercial-safe benchmark portfolio: [`docs/benchmarks/commercial-benchmark-portfolio.md`](docs/benchmarks/commercial-benchmark-portfolio.md)
+- 30 USD direct-API pilot runbook: [`docs/benchmarks/pilot-30usd-direct-api.md`](docs/benchmarks/pilot-30usd-direct-api.md)
+- τ³-bench runbook: [`docs/benchmarks/tau3-runbook.md`](docs/benchmarks/tau3-runbook.md)
+- SWE-bench Pro memory ablation: [`docs/benchmarks/swebench-pro-memory-ablation.md`](docs/benchmarks/swebench-pro-memory-ablation.md)
 - Environment API contract: [`docs/plans/environment-tab-v1-contract.md`](docs/plans/environment-tab-v1-contract.md)
 - Changelog (source of truth): [`CHANGELOG.md`](CHANGELOG.md)
 - Japanese changelog summary: [`CHANGELOG_ja.md`](CHANGELOG_ja.md)
