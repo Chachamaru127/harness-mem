@@ -36,6 +36,7 @@ import type {
   TimelineRequest,
   VerifyImportRequest,
 } from "./core/types.js";
+import { buildProjectProfile } from "./core/project-profile.js";
 
 function jsonResponse(body: ApiResponse, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -1788,6 +1789,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           source: "sync",
           items: [syncResult],
           meta: { count: 1, latency_ms: 0, sla_latency_ms: 0, filters: {}, ranking: "sync_v1" },
+        });
+      }
+
+      // S78-D03: harness_mem_status — project profile (static/dynamic fact separation)
+      if (request.method === "GET" && url.pathname === "/v1/mem/status") {
+        const statusAccess = resolveAccess(request);
+        if (statusAccess instanceof Response) return statusAccess;
+        const project = url.searchParams.get("project") || "";
+        const db = (core as unknown as { db: { query: (sql: string) => { all(...params: unknown[]): unknown[] } } }).db;
+        const profile = buildProjectProfile(db, project);
+        return rawJsonResponse({
+          ok: true,
+          source: "mem_status",
+          project_profile: profile,
         });
       }
 
