@@ -9,6 +9,84 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 _No unreleased changes yet. New user-visible work lands here before the next version bump._
 
+## [0.12.0] - 2026-04-18
+
+### Theme: Dual-agent coordination, lifecycle hygiene, and user-facing onboarding polish
+
+**This release closes the 12-point gap to `agentmemory` v0.8.6 via Phase A–D cross-pollination (multi-agent lease/signal primitives, low-value eviction, contradiction detection, circuit-breaker), refreshes the README and setup docs into a 30-sec → 3-min → deep-dive structure, and lands the developer-domain benchmark gate (τ³-bench ablation series §82–§87, recall regression bisect) required before v0.12.0 can ship.**
+
+---
+
+#### 1. Multi-agent coordination primitives (§81 Phase A)
+
+**Before**: When Claude Code and Codex worked on the same repo, there was no server-side way to prevent one agent from clobbering the other's in-progress edits.
+
+**After**:
+- `harness_mem_lease_acquire` / `_release` / `_renew` — time-bounded exclusive claims on arbitrary targets (file paths, action IDs). Second agent gets `{error:"already_leased", heldBy, expiresAt}`.
+- `harness_mem_signal_send` / `_read` / `_ack` — append-only messages between agents, `reply_to` threads supported, unacked-only read default.
+- `worktree / repo-root unifier` — 3 worktrees of the same repo collapse to a single `project_key` in `harness_mem_stats`.
+- `harness-mem doctor` now probes lease/signal availability; README gains a "dual-agent coordination" section with 10-line examples.
+
+#### 2. Memory lifecycle hygiene (§81 Phase B + §78-D)
+
+**Before**: The DB grew forever. No automated archival, no contradiction resolution.
+
+**After**:
+- **Low-value eviction**: `harness_mem_admin_consolidation_run` takes a `forget_policy` object. Soft-delete only (`archived_at` timestamp). Default dry-run; enable via `HARNESS_MEM_AUTO_FORGET=1`.
+- **Temporal forgetting (§78-D01)**: `expires_at` column on `mem_observations` + read-path filter + forget-policy TTL force-eviction path. `protect_accessed` is ignored by the TTL path; only `legal_hold` can trump it. Both the breezing session's impl (`edfed2b`/`9de3d15`/`cc23bb8`) and the parallel session's §81-B02 integration are shipped together.
+- **Contradiction detection (§78-D02 / §81-B03)**: Jaccard similarity + LLM adjudication on same-`concept` pairs. Older side demoted via `superseded` relation. Both `supersedes` (§78-D02 API write) and `superseded` (§81-B03 detection output) are valid relation types — downstream consumers must handle either.
+- **Auto project profile (§78-D03)**: `harness_mem_status` returns a `project_profile` field separating static (tech stack, team convention) from dynamic (current sprint, recent decisions) facts.
+
+#### 3. UX friction reduction (§81 Phase C)
+
+**Before**: Codex CLI's tool column was crowded. API-key-free operation was not possible.
+
+**After**:
+- **Tool visibility tiering**: `HARNESS_MEM_TOOLS=core|all`. Core surface is 7 tools (`search` / `timeline` / `get_observations` / `sessions_list` / `record_checkpoint` / `resume_pack` / `health`); default remains `all` for backward compatibility.
+- **Claude Agent SDK provider**: consolidation/rerank LLM calls try `@anthropic-ai/claude-agent-sdk` (subscription-first) before falling back to `openai-provider` / `ollama-provider`. Works with `ANTHROPIC_API_KEY` unset if a Claude subscription is present.
+- **`harness_mem_verify` (citation trace)**: pass an `observation_id`, get back `(session_id, event_id, file_path, action)` tree. Combined with `harness_mem_graph` for 2-hop provenance.
+
+#### 4. Provider resilience (§81 Phase D)
+
+**Before**: `embedding/fallback.ts` switched providers on first failure — ollama ↔ local ONNX ↔ pro-api could flap.
+
+**After**: Per-provider circuit breaker with `consecutive_failures` + `last_failure_at`. Default threshold 3, cooldown 60s. Half-open probe on recovery.
+
+#### 5. User-facing onboarding (§79)
+
+**Before**: README was accurate but dense; first-time readers needed minutes to understand the value proposition.
+
+**After**:
+- README / README_ja now use a **3-layer structure**: 30-sec value summary → 3-min install → detailed deep-dive. Existing deep sections remain linked, no broken internal anchors.
+- **Claude Code + Codex shortest install route** is the single recommended path; alternate routes and Windows-specific notes live below.
+- **Initial success flow**: `setup` → `doctor` → minimum verification is documented with "what does green mean" / "what does red mean" callouts in both languages.
+- **Continuity briefing visual demo**: static SVG under `docs/assets/readme/` shows the before/after of first-turn context injection.
+- **Trust surface**: `docs/readme-claims.md` / `readme-claims-ja.md` became the claim-source-of-truth, Support-tier matrix (Tier 1 / Tier 2 / Tier 3) added, `docs/benchmarks/agentmemory-rescore-2026-04-14.md` documents post-§81 rescore outcome.
+
+#### 6. Commercial-safe benchmark portfolio + 30 USD direct-API pilot (§80 + §88)
+
+- `docs/benchmarks/commercial-benchmark-portfolio.md` — licensing-safe external benchmark list with rationale.
+- `docs/benchmarks/pilot-30usd-direct-api.md` — 30 USD single-shot pilot runbook covering τ³-bench + SWE-bench Pro with phase budgets, models (`gpt-5-mini` / `gemini/gemini-2.5-flash-lite`), and stop conditions. Direct-API only (no OpenRouter / OpenCode).
+- `scripts/bench-pilot-30usd.sh` + `benchmark:pilot30:dry-run` package script: 1-command dry-run showing per-phase budget before any paid call.
+- **Note**: this section was originally drafted as §81 in the breezing branch but was renumbered to §88 to accept the parallel-session §81 "agentmemory Cross-Pollination".
+
+#### 7. τ³-bench recall ablation series and regression bisect (§82–§87)
+
+- `§82`: local custom τ³-bench runner with a minimum memory-injection agent, because the upstream CLI has no memory on/off flag.
+- `§83`/`§84`: recall injection tuning — retail multi-task retrospectives under `docs/benchmarks/tau3-s8[45]-retrospective-*.md`.
+- `§85`/`§86`: recall payload compression + note-style ablation with the `active` style kept as default.
+- `§87`: **root cause of the §84.4 → §86.3 on-mode pass_rate regression (0.75 → 0.30) identified** via static bisect — the primary driver was the agent model swap from `gpt-5-mini` to `gpt-4o-mini`, not the runner-side recall-injection changes.
+
+#### 8. Release gate hardening (§78-A01/A03/A04)
+
+- `release.yml` now enforces the 4-metric developer-domain gate: `dev-workflow recall@10 ≥ 0.70`, `bilingual recall@10 ≥ 0.90`, `knowledge-update freshness@K ≥ 0.95`, `temporal ordering ≥ 0.70`. Currently in warn mode while recall work continues.
+- `@huggingface/transformers` pinned to 3.8.1; `tests/benchmarks/multi-project-isolation.test.ts` re-enabled with §77-justified thresholds (Alpha ≥ 0.35 / Beta ≥ 0.55).
+- `docs/benchmarks/embedding-determinism-plan-2026-04-18.md` — M1 vs Linux x64 determinism plan landed (CI matrix dry-run validated).
+
+#### 9. Parallel-session integration (31 commits)
+
+The breezing session and a parallel session (`Chachamaru127/feat/s80-xpollination`, merged as PR #50) landed in origin/main in parallel. The parallel side contributed the lease-store, signal-store, circuit-breaker, claude-agent-sdk-provider, contradiction-detector, forget-policy, projectkey unifier, visibility tiering, and verify tool. Both session outputs are merged via `c1bb212` — neither side's work was dropped. The 15 rounds of Codex review commits on the parallel side are all preserved.
+
 ## [0.11.0] - 2026-04-10
 
 ### Theme: Go MCP Server — 30x faster cold start, single-binary distribution

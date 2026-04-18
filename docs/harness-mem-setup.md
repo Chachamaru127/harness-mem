@@ -3,20 +3,47 @@
 This guide is the detailed reference for setup, diagnostics, migration, and environment tuning.
 If you only need a quick start, read `README.md` first.
 
+For a first-time Claude Code + Codex setup, use this path first:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
+```
+
+Success means:
+
+- `doctor` is green for both clients
+- `~/.codex/hooks.json` and `~/.claude.json` point at the current harness-mem checkout
+- the first prompt in each supported client can recover recent project context
+
+Related onboarding docs:
+
+- [`onboarding-checklist.md`](./onboarding-checklist.md)
+- [`onboarding-dry-run.md`](./onboarding-dry-run.md)
+- [`readme-claims.md`](./readme-claims.md)
+- [`doctor-ux-scope.md`](./doctor-ux-scope.md)
+
 ## 1. Installation Paths
 
-### Recommended clean install flow
+### Recommended clean install flow for Claude Code + Codex
 
 Think of setup in three separate stages:
 
 1. Package delivery
-   Install or invoke the `harness-mem` command itself via `npx`, global `npm install -g`, or the Claude plugin marketplace.
+   Use the `npx` command above first. If you need a persistent shell command, `npm install -g` is the alternative.
 2. Client wiring
    Run `harness-mem setup` so harness-mem can write the required hooks and MCP wiring into each client config under your home directory.
 3. Verification
    Run `harness-mem doctor` to confirm the daemon, hooks, and MCP wiring are actually healthy.
 
 `npm install` alone is not the full setup. It only makes the CLI available. The Claude/Codex/Cursor connection work happens in `harness-mem setup`.
+
+The default recommendation for this guide is:
+
+- `npx` for the first run
+- `npm install -g` only when you want a persistent command and your normal user can install globally without `sudo`
+- repo checkout scripts only for contributors
+- Windows Git Bash or WSL2 only when you cannot use the standard Unix-like path
 
 ### Important: do not run setup with sudo
 
@@ -393,7 +420,7 @@ Mem UI now includes an `Environment` tab for non-specialists.
   - V1 is read-only
   - API masks sensitive values (`token`, `api_key`, `secret`, etc.)
 
-Contract details: `docs/plans/environment-tab-v1-contract.md`
+Contract details: `plans/environment-tab-v1-contract.md`
 
 ## 7. Troubleshooting
 
@@ -466,7 +493,7 @@ Adjust the group name if your machine does not use `staff`.
 - `README.md`
 - `README_ja.md`
 - `docs/release-process.md`
-- `docs/plans/environment-tab-v1-contract.md`
+- `plans/environment-tab-v1-contract.md`
 - `CHANGELOG.md`
 - `CHANGELOG_ja.md`
 - `docs/benchmarks/`

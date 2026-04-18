@@ -2,6 +2,11 @@
   "schema": "harness-mem.competitor-benchmarks/v1",
   "snapshot_date": "2026-04-11",
   "benchmark": "LoCoMo",
+  "domain_taxonomy": {
+    "developer-workflow": "Tools designed for coding-session memory: storing and retrieving past decisions, bug fixes, migrations, and deploy recipes across developer tools (Claude Code, Codex, Cursor, etc.).",
+    "general-lifelog": "Tools primarily evaluated on fictional daily-life conversation memory (LoCoMo, LongMemEval territory). Not the target use-case for developer tools.",
+    "generic-agent": "General-purpose agent memory without strong domain specialization."
+  },
   "benchmark_reference": "https://snap-research.github.io/locomo/",
   "metric_default": "token-level F1 (harmonic mean of precision and recall over response tokens), unless noted",
   "we_did_not_rerun": true,
@@ -24,6 +29,7 @@
       "score": 0.581,
       "metric": "token-level F1",
       "scope": "LoCoMo",
+      "domain": "generic-agent",
       "source": "https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3",
       "source_type": "third_party_article",
       "self_reported": false,
@@ -35,6 +41,7 @@
       "score": 0.565,
       "metric": "token-level F1",
       "scope": "LoCoMo full (1,986 Q across 10 conversations)",
+      "domain": "general-lifelog",
       "source": "https://github.com/kumihoclouds/kumiho-benchmarks",
       "source_type": "repo",
       "self_reported": true,
@@ -46,6 +53,7 @@
       "score": 0.432,
       "metric": "token-level F1 (average)",
       "scope": "LoCoMo",
+      "domain": "general-lifelog",
       "source": "https://www.alphaxiv.org/overview/2601.02553v1",
       "source_type": "paper",
       "self_reported": true,
@@ -57,6 +65,7 @@
       "score": 0.387,
       "metric": "single-hop token-F1",
       "scope": "LoCoMo single-hop subset",
+      "domain": "general-lifelog",
       "source": "https://arxiv.org/abs/2504.19413",
       "source_type": "paper",
       "self_reported": true,
@@ -69,6 +78,7 @@
       "tool": "Letta",
       "score": 0.832,
       "metric": "LongMemEval (different benchmark)",
+      "domain": "generic-agent",
       "source": "https://www.letta.com/blog/benchmarking-ai-agent-memory",
       "reason": "Letta's 0.832 is on LongMemEval, which is a different benchmark with a different evaluation protocol. Placing it in the LoCoMo table above would be misleading, so it is intentionally kept out of the comparison."
     },
@@ -76,6 +86,7 @@
       "tool": "Zep",
       "score": null,
       "metric": "LongMemEval temporal reasoning (Graphiti)",
+      "domain": "generic-agent",
       "source": "https://dev.to/varun_pratapbhardwaj_b13/5-ai-agent-memory-systems-compared-mem0-zep-letta-supermemory-superlocalmemory-2026-benchmark-59p3",
       "reason": "Zep's headline number is a +15 point delta on LongMemEval temporal reasoning, not an absolute LoCoMo F1. Also: Zep Community Edition is deprecated as of 2026, so the local-first story does not apply."
     }
@@ -83,14 +94,17 @@
   "not_published": [
     {
       "tool": "claude-mem",
+      "domain": "generic-agent",
       "reason": "No official benchmark in the thedotmack/claude-mem repository or documentation site as of the snapshot date."
     },
     {
       "tool": "Claude built-in memory",
+      "domain": "generic-agent",
       "reason": "Anthropic does not publish F1 or recall numbers for the Claude Code built-in memory feature."
     },
     {
       "tool": "ChatGPT memory",
+      "domain": "generic-agent",
       "reason": "OpenAI does not publish F1 or recall numbers for the ChatGPT memory feature. The 0.529 figure cited in the table context was measured by Mem0, not by OpenAI."
     }
   ],

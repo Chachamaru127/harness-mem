@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -45,7 +45,7 @@
     "gemini/"
   ],
   "dependencies": {
-    "@huggingface/transformers": "^3.8.1",
+    "@huggingface/transformers": "3.8.1",
     "sharp": "0.34.5"
   },
   "optionalDependencies": {
@@ -60,6 +60,14 @@
     "test": "(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests",
     "benchmark": "cd memory-server && bun run src/benchmark/run-ci.ts",
     "benchmark:tune-adaptive": "cd memory-server && bun run src/benchmark/adaptive-tuning.ts",
+    "benchmark:tau3": "bash scripts/bench-tau3.sh",
+    "benchmark:tau3:dry-run": "bash scripts/bench-tau3.sh --dry-run",
+    "benchmark:tau3:smoke": "bash scripts/bench-tau3.sh --repo-path ../tau2-bench --domain retail --task-split-name base --num-tasks 1 --num-trials 1 --mode on-off --dry-run",
+    "benchmark:swebench-pro": "bash scripts/bench-swebench-pro.sh",
+    "benchmark:swebench-pro:dry-run": "bash scripts/bench-swebench-pro.sh --dry-run",
+    "benchmark:swebench-pro:smoke": "bash scripts/bench-swebench-pro.sh --repo-path ../SWE-bench_Pro-os --subset-manifest smoke --runner local-docker --model gpt-5-mini --mode on-off --dry-run",
+    "benchmark:pilot30": "bash scripts/bench-pilot-30usd.sh",
+    "benchmark:pilot30:dry-run": "bash scripts/bench-pilot-30usd.sh --dry-run",
     "test:ui": "cd harness-mem-ui && bunx vitest",
     "test:e2e": "cd harness-mem-ui && bunx playwright test"
   },

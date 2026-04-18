@@ -142,6 +142,21 @@ jobs:
           cd memory-server
           bun run typecheck
 
+      - name: Developer-domain gate
+        shell: bash
+        env:
+          MANIFEST_PATH: memory-server/src/benchmark/results/ci-run-manifest-latest.json
+          THRESHOLDS_PATH: docs/benchmarks/developer-domain-thresholds.json
+        run: |
+          set -euo pipefail
+          # Run the full benchmark to produce a fresh manifest, then evaluate the
+          # 4 developer-domain metrics against Layer 1 absolute floor thresholds.
+          # mode=warn (default) means failures emit ::warning:: but do not block
+          # the release. Flip mode to "enforce" in developer-domain-thresholds.json
+          # once §78-A03 (bilingual) and §78-A05 (dev-workflow) both land.
+          npm run benchmark
+          bash scripts/check-developer-domain-gate.sh
+
       - name: Dry-run package check
         run: npm pack --dry-run
 
