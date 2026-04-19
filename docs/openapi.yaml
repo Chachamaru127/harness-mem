@@ -727,6 +727,26 @@ paths:
                   enum: [index, context, full]
                   default: context
                   description: "§78-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default). full=+complete content+raw_text+score breakdown. meta.token_estimate indicates approximate token cost."
+                observation_type:
+                  oneOf:
+                    - type: string
+                      maxLength: 100
+                    - type: array
+                      maxItems: 32
+                      items:
+                        type: string
+                        maxLength: 100
+                  description: |
+                    §89-001 (XR-002 P0): Filter by observation_type. Accepts a single string
+                    (e.g. "decision") or an array (e.g. ["decision", "summary"]) and AND-combines
+                    with every other filter (project, scope, memory_type, branch, etc.).
+                    The historical query-prefix convention is also honored — `query="type:decision fix"`
+                    is rewritten to `query="fix"` + `observation_type="decision"` before the
+                    search runs. Direct parameter wins over the prefix.
+                    Input is defensively clamped to the documented limits (maxItems=32,
+                    maxLength=100) to keep the generated SQL predicate within SQLite's
+                    variable-count ceiling. Callers who exceed the limit will see the
+                    excess silently dropped; prefer sending multiple requests instead.
       responses:
         "200":
           description: Search results

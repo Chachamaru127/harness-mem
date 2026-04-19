@@ -602,9 +602,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           if (!searchValidation.valid) {
             return badRequest(searchValidation.errors.join("; "));
           }
-          const query = typeof body.query === "string" ? body.query : "";
-          if (!query) {
+          const rawQueryInput = typeof body.query === "string" ? body.query : "";
+          if (!rawQueryInput) {
             return badRequest("query is required");
+          }
+
+          // §89-001 (XR-002 P0): `type:xxx` query-prefix pre-parser.
+          // Rewrite `query="type:decision remaining text"` into
+          // `query="remaining text"` + `observation_type="decision"` so REST
+          // callers who use the historical prefix convention get the same
+          // filtering semantics as the explicit `observation_type` parameter.
+          // The direct `observation_type` body field, if present, always wins.
+          let query = rawQueryInput;
+          let parsedObservationTypeFromPrefix: string | undefined;
+          if (body.observation_type === undefined || body.observation_type === null) {
+            const prefixMatch = query.match(/^\s*type:([A-Za-z0-9_.-]+)\s*/);
+            if (prefixMatch) {
+              parsedObservationTypeFromPrefix = prefixMatch[1];
+              const remainder = query.slice(prefixMatch[0].length).trim();
+              query = remainder.length > 0 ? remainder : rawQueryInput.trim();
+            }
           }
 
           const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
@@ -670,16 +687,29 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
             // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
             graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
-            // §89-001 (XR-002 P0): observation_type フィルタ
-            // string または string[] を受け付け、空配列・非文字列要素は無視する。
+            // §89-001 (XR-002 P0): observation_type フィルタ。
+            // 優先順位:
+            //   1. body.observation_type 直接指定（string または string[]）
+            //   2. body.query の先頭に `type:xxx ` prefix がある場合（Step 2 で pre-parse 済み）
+            //   3. どちらも無ければ undefined（後方互換）
             observation_type: (() => {
+              // §89-001 hardening: clamp to defensive bounds so oversized
+              // arrays can never blow up SQLite's variable limit or explode
+              // the generated `IN (?, ?, …)` placeholder count.
+              const MAX_OBS_TYPES = 32;
+              const MAX_OBS_TYPE_LEN = 100;
               const raw = body.observation_type;
-              if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
-              if (Array.isArray(raw)) {
-                const cleaned = raw.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
-                return cleaned.length > 0 ? cleaned : undefined;
+              if (typeof raw === "string") {
+                const trimmed = raw.trim().slice(0, MAX_OBS_TYPE_LEN);
+                if (trimmed.length > 0) return trimmed;
+              } else if (Array.isArray(raw)) {
+                const cleaned = raw
+                  .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+                  .map((t) => t.trim().slice(0, MAX_OBS_TYPE_LEN))
+                  .slice(0, MAX_OBS_TYPES);
+                if (cleaned.length > 0) return cleaned;
               }
-              return undefined;
+              return parsedObservationTypeFromPrefix;
             })(),
           };
           return jsonResponse(await core.searchPrepared(req));

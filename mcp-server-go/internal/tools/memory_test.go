@@ -195,6 +195,79 @@ func TestHandleMemSearch(t *testing.T) {
 	}
 }
 
+// TestHandleMemSearchObservationType verifies that §89-001 Step 2's
+// `observation_type` parameter actually reaches the REST payload when a
+// Go MCP caller sets it. Guards against the regression flagged by the
+// independent Codex review: schema was exposed but the handler was not
+// forwarding the value, so Go MCP silently ignored the filter.
+func TestHandleMemSearchObservationType(t *testing.T) {
+	var receivedObsType any
+	var mu sync.Mutex
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		receivedObsType = req["observation_type"]
+		mu.Unlock()
+		writeJSON(w, map[string]any{
+			"ok":    true,
+			"items": []any{},
+			"meta":  map[string]any{"count": float64(0)},
+		})
+	}))
+
+	result := handleMemoryToolInner(context.Background(), "harness_mem_search", map[string]any{
+		"query":            "release gate",
+		"observation_type": "decision",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %+v", result)
+	}
+	mu.Lock()
+	got := receivedObsType
+	mu.Unlock()
+	if got != "decision" {
+		t.Fatalf("REST payload observation_type = %v, want \"decision\"", got)
+	}
+}
+
+// TestHandleMemSearchObservationTypeOmitted verifies that callers who
+// don't set observation_type still reach the REST layer in a
+// pre-§89-001-compatible shape (the field is present as nil, which the
+// server normalizes to undefined — the REST handler already has
+// coverage for the nil branch via fallback to the query-prefix parser).
+func TestHandleMemSearchObservationTypeOmitted(t *testing.T) {
+	var receivedObsType any
+	var sawField bool
+	var mu sync.Mutex
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		receivedObsType, sawField = req["observation_type"], func() bool { _, ok := req["observation_type"]; return ok }()
+		mu.Unlock()
+		writeJSON(w, map[string]any{"ok": true, "items": []any{}, "meta": map[string]any{"count": float64(0)}})
+	}))
+
+	result := handleMemoryToolInner(context.Background(), "harness_mem_search", map[string]any{
+		"query": "release gate",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %+v", result)
+	}
+	mu.Lock()
+	got, present := receivedObsType, sawField
+	mu.Unlock()
+	// Field presence with nil value is acceptable — the REST normalizer
+	// treats both missing and null as "no filter". What matters is that
+	// an unintended string (e.g. "") is NOT sent.
+	if present && got != nil {
+		t.Fatalf("observation_type forwarded unexpectedly: got %v (type %T)", got, got)
+	}
+}
+
 // TestHandleMemHealth verifies harness_mem_health returns a success result.
 func TestHandleMemHealth(t *testing.T) {
 	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {

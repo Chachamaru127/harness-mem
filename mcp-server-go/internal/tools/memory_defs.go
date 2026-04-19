@@ -22,6 +22,11 @@ var memToolSearch = mcp.NewTool("harness_mem_search",
 	mcp.WithNumber("limit"),
 	mcp.WithBoolean("include_private"),
 	mcp.WithString("sort_by", mcp.Description("Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)"), mcp.Enum("relevance", "date_desc", "date_asc")),
+	// §89-001 (XR-002 P0): observation_type filter.
+	// Go MCP accepts a single string here; TS MCP additionally accepts string[].
+	// The `type:xxx` query-prefix convention (query="type:decision …") is also honored
+	// by the REST handler and the TS MCP pre-parser, so single-value parity is enough.
+	mcp.WithString("observation_type", mcp.Description("§89-001 (XR-002 P0): Filter by observation_type (e.g. \"decision\", \"summary\", \"context\", \"document\"). REST and TS MCP also accept a string[] and the `type:xxx` query-prefix form.")),
 )
 
 var memToolTimeline = mcp.NewTool("harness_mem_timeline",
