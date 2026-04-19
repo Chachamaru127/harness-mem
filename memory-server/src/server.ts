@@ -693,11 +693,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             //   2. body.query の先頭に `type:xxx ` prefix がある場合（Step 2 で pre-parse 済み）
             //   3. どちらも無ければ undefined（後方互換）
             observation_type: (() => {
+              // §89-001 hardening: clamp to defensive bounds so oversized
+              // arrays can never blow up SQLite's variable limit or explode
+              // the generated `IN (?, ?, …)` placeholder count.
+              const MAX_OBS_TYPES = 32;
+              const MAX_OBS_TYPE_LEN = 100;
               const raw = body.observation_type;
-              if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
-              if (Array.isArray(raw)) {
-                const cleaned = raw.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
-                return cleaned.length > 0 ? cleaned : undefined;
+              if (typeof raw === "string") {
+                const trimmed = raw.trim().slice(0, MAX_OBS_TYPE_LEN);
+                if (trimmed.length > 0) return trimmed;
+              } else if (Array.isArray(raw)) {
+                const cleaned = raw
+                  .filter((t): t is string => typeof t === "string" && t.trim().length > 0)
+                  .map((t) => t.trim().slice(0, MAX_OBS_TYPE_LEN))
+                  .slice(0, MAX_OBS_TYPES);
+                if (cleaned.length > 0) return cleaned;
               }
               return parsedObservationTypeFromPrefix;
             })(),

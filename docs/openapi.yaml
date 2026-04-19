@@ -730,9 +730,12 @@ paths:
                 observation_type:
                   oneOf:
                     - type: string
+                      maxLength: 100
                     - type: array
+                      maxItems: 32
                       items:
                         type: string
+                        maxLength: 100
                   description: |
                     §89-001 (XR-002 P0): Filter by observation_type. Accepts a single string
                     (e.g. "decision") or an array (e.g. ["decision", "summary"]) and AND-combines
@@ -740,6 +743,10 @@ paths:
                     The historical query-prefix convention is also honored — `query="type:decision fix"`
                     is rewritten to `query="fix"` + `observation_type="decision"` before the
                     search runs. Direct parameter wins over the prefix.
+                    Input is defensively clamped to the documented limits (maxItems=32,
+                    maxLength=100) to keep the generated SQL predicate within SQLite's
+                    variable-count ceiling. Callers who exceed the limit will see the
+                    excess silently dropped; prefer sending multiple requests instead.
       responses:
         "200":
           description: Search results

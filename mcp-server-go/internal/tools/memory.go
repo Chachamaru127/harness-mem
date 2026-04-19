@@ -342,6 +342,11 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"limit":           optNum(args, "limit"),
 			"include_private": argBool(args, "include_private", false),
 			"sort_by":         sortByVal,
+			// §89-001 (XR-002 P0): Forward observation_type to the REST layer.
+			// Go MCP schema exposes this as a single string (mcp-go has no oneOf
+			// helper); the REST handler also accepts string[] and the `type:xxx`
+			// query-prefix form, both of which Go callers can reach indirectly.
+			"observation_type": optStr(args, "observation_type"),
 		})
 		if err != nil {
 			return classifyError(err)

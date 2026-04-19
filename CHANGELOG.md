@@ -7,7 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
-_No unreleased changes yet. New user-visible work lands here before the next version bump._
+### Added
+
+- **Search filter: `observation_type`** (§89-001, XR-002 P0). `/v1/search` and the `harness_mem_search` MCP tool now accept an `observation_type` parameter that filters results to one or more of the structured types stored on `mem_observations` (e.g. `decision`, `summary`, `context`, `document`). The REST endpoint and the TypeScript MCP tool accept a single string or a string array; the Go MCP tool accepts a single string only (mcp-go has no `oneOf` helper). Input is defensively clamped to at most 32 values of 100 characters each to keep the generated `IN (?, …)` predicate within SQLite's variable limit.
+- **Query-prefix `type:xxx` convention** (§89-001 Step 2). Callers who set `query` to `"type:decision <remaining text>"` get the same filtering as passing `observation_type: "decision"` explicitly — the REST handler and the TypeScript MCP tool rewrite the query before the search runs. Only a leading `type:<token>` (regex `^\s*type:([A-Za-z0-9_.-]+)\s*`) is stripped; inline phrases such as `"our \"type:safety\" policy"` are left intact. An explicit `observation_type` parameter always wins over the prefix form.
+
+### Fixed
+
+- **`observation_type` silently ignored on Go MCP** (§89-001 Step 2 hotfix, caught by independent Codex review of §89-001). The Go MCP schema exposed `observation_type` but the `harness_mem_search` handler was not forwarding it to the REST payload, so Go callers who set the field saw no behavior change. The handler now forwards the value; Go-side coverage added via `TestHandleMemSearchObservationType` and `TestHandleMemSearchObservationTypeOmitted`.
 
 ## [0.13.0] - 2026-04-18
 
