@@ -7,7 +7,14 @@
 
 ## [Unreleased]
 
-_未リリースの変更はまだありません。新しいユーザー向け変更は次のバージョンバンプ前にここへ積みます。_
+### 追加
+
+- **検索フィルタ `observation_type`** (§89-001, XR-002 P0). `/v1/search` と `harness_mem_search` MCP ツールに `observation_type` パラメータを追加。`mem_observations` に保存される構造化タイプ（`decision` / `summary` / `context` / `document` など）で結果を絞り込めます。REST エンドポイントと TypeScript MCP は string / string[] を受け、Go MCP は単一 string のみ（mcp-go に `oneOf` ヘルパーが無いため）。入力は SQLite の変数上限に達しないよう最大 32 件 × 各 100 文字に防御的にクランプされます。
+- **`type:xxx` クエリプレフィクス**（§89-001 Step 2）。`query="type:decision 残りの文"` のように書くと、`observation_type="decision"` を明示的に渡したのと同じフィルタが効きます。REST ハンドラと TypeScript MCP が検索実行前に query を書き換えます。先頭の `type:<トークン>`（正規表現 `^\s*type:([A-Za-z0-9_.-]+)\s*`）だけが対象で、`"our \"type:safety\" policy"` のような本文中の引用語は影響を受けません。直接の `observation_type` パラメータは常にプレフィクス形式より優先します。
+
+### 修正
+
+- **Go MCP で `observation_type` が無視されていた問題**（§89-001 Step 2 ホットフィックス、独立 Codex レビューで検出）。Go MCP の schema には `observation_type` が公開されていたものの、`harness_mem_search` ハンドラが REST ペイロードへ転送していなかったため、Go クライアントからの指定が機能していませんでした。ハンドラで転送するよう修正し、`TestHandleMemSearchObservationType` / `TestHandleMemSearchObservationTypeOmitted` でカバレッジを追加しました。
 
 ## [0.11.0] - 2026-04-10
 

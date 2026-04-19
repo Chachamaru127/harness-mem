@@ -1371,12 +1371,23 @@ export class ObservationStore {
     // §89-001 (XR-002 P0): observation_type フィルタ
     // decision / summary / context / document など、スキーマ上の free-form 文字列で絞り込む。
     // memory_type とは直交軸 (episodic/semantic/procedural ≠ decision/summary/...) で、AND 結合される。
+    //
+    // Defensive clamp: even though the REST handler already bounds the input,
+    // applyCommonFilters is callable from other code paths (e.g. ingest-side
+    // dedup lookups in future work), so we re-enforce the same ceiling here
+    // to keep the generated SQL predictable under any caller.
     if (filters.observation_type !== undefined) {
-      const obsTypes = Array.isArray(filters.observation_type)
-        ? filters.observation_type.filter((t) => typeof t === "string" && t.length > 0)
-        : (typeof filters.observation_type === "string" && filters.observation_type.length > 0
-            ? [filters.observation_type]
-            : []);
+      const MAX_OBS_TYPES = 32;
+      const MAX_OBS_TYPE_LEN = 100;
+      const obsTypes = (
+        Array.isArray(filters.observation_type)
+          ? filters.observation_type.filter((t) => typeof t === "string" && t.length > 0)
+          : (typeof filters.observation_type === "string" && filters.observation_type.length > 0
+              ? [filters.observation_type]
+              : [])
+      )
+        .map((t) => t.slice(0, MAX_OBS_TYPE_LEN))
+        .slice(0, MAX_OBS_TYPES);
       if (obsTypes.length === 1) {
         nextSql += ` AND ${alias}.observation_type = ?`;
         params.push(obsTypes[0]);
