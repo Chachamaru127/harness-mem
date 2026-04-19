@@ -320,10 +320,10 @@ export const memoryTools: Tool[] = [
         },
         observation_type: {
           oneOf: [
-            { type: "string" },
-            { type: "array", items: { type: "string" } },
+            { type: "string", maxLength: 100 },
+            { type: "array", maxItems: 32, items: { type: "string", maxLength: 100 } },
           ],
-          description: "§89-001 (XR-002 P0): Filter by observation_type (e.g. \"decision\", \"summary\", \"context\", \"document\"). Single value or array. Also honors the `type:xxx` query-prefix convention — `query=\"type:decision …\"` is rewritten to `observation_type=\"decision\"` + the remaining query.",
+          description: "§89-001 (XR-002 P0): Filter by observation_type (e.g. \"decision\", \"summary\", \"context\", \"document\"). Single value or array (maxItems=32, each maxLength=100). Input exceeding the limit is silently clamped server-side to stay within SQLite's variable ceiling; send multiple requests if you need more. Also honors the `type:xxx` query-prefix convention — `query=\"type:decision …\"` is rewritten to `observation_type=\"decision\"` + the remaining query.",
         },
       },
       required: ["query"],
