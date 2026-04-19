@@ -670,6 +670,17 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
             // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
             graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
+            // §89-001 (XR-002 P0): observation_type フィルタ
+            // string または string[] を受け付け、空配列・非文字列要素は無視する。
+            observation_type: (() => {
+              const raw = body.observation_type;
+              if (typeof raw === "string" && raw.trim().length > 0) return raw.trim();
+              if (Array.isArray(raw)) {
+                const cleaned = raw.filter((t): t is string => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
+                return cleaned.length > 0 ? cleaned : undefined;
+              }
+              return undefined;
+            })(),
           };
           return jsonResponse(await core.searchPrepared(req));
         }
