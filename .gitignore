@@ -23,6 +23,9 @@ tests/benchmarks/output/
 !mcp-server/dist/
 !mcp-server/dist/**
 
+# Local Go build output (release binaries are built in CI; committed copies live in /bin)
+mcp-server-go/bin/
+
 # Local Codex runtime files
 .codex/config.toml
 .codex/history.jsonl
