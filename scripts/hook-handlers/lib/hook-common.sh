@@ -548,6 +548,90 @@ hook_resolve_correlation_id() {
   hook_upsert_continuity_session "$session_id" "$platform" "$CORRELATION_ID" "$CORRELATION_ID_SOURCE"
 }
 
+# ---------- hook_extract_meta_summary <response_json> ----------
+# §90-002 follow-up (harness-mem #70): extract .meta.summary from a
+# /v1/resume-pack response. Tries jq first; falls back to python3 so
+# that jq-absent environments (minimal docker images, CI scratch, etc.)
+# still work when summary_only=true is in use.
+# Returns the summary string on stdout, or empty string if not present.
+hook_extract_meta_summary() {
+  local response="${1:-}"
+  [ -n "$response" ] || { printf '%s' ""; return 0; }
+
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s' "$response" | jq -r '.meta.summary // empty' 2>/dev/null
+    return 0
+  fi
+
+  if command -v python3 >/dev/null 2>&1; then
+    printf '%s' "$response" | python3 -c '
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    meta = data.get("meta") if isinstance(data, dict) else None
+    if isinstance(meta, dict):
+        summary = meta.get("summary")
+        if isinstance(summary, str):
+            sys.stdout.write(summary)
+except Exception:
+    pass
+' 2>/dev/null
+    return 0
+  fi
+
+  # neither jq nor python3 available — silent skip
+  printf '%s' ""
+}
+
+# ---------- hook_fetch_resume_pack_summary_only <project> [session_id] [correlation_id] ----------
+# §90-002 follow-up (harness-mem #70): end-to-end lightweight helper.
+# Calls /v1/resume-pack with summary_only=true, extracts .meta.summary,
+# and prints the summary string on stdout. jq-absent environments fall
+# back to python3 for both payload construction and summary extraction.
+# Returns empty string (and exit 0) if the call fails or no summary found.
+# Requires $CLIENT_SCRIPT to be set (via hook_init_paths).
+hook_fetch_resume_pack_summary_only() {
+  local project="${1:-}"
+  local session_id="${2:-}"
+  local correlation_id="${3:-}"
+  [ -n "$project" ] || { printf '%s' ""; return 0; }
+  [ -n "${CLIENT_SCRIPT:-}" ] || { printf '%s' ""; return 0; }
+
+  local payload=""
+  if command -v jq >/dev/null 2>&1; then
+    if [ -n "$correlation_id" ]; then
+      payload="$(jq -nc \
+        --arg project "$project" \
+        --arg session_id "$session_id" \
+        --arg correlation_id "$correlation_id" \
+        '{project:$project,session_id:$session_id,correlation_id:$correlation_id,summary_only:true}' 2>/dev/null)"
+    else
+      payload="$(jq -nc \
+        --arg project "$project" \
+        --arg session_id "$session_id" \
+        '{project:$project,session_id:$session_id,summary_only:true}' 2>/dev/null)"
+    fi
+  elif command -v python3 >/dev/null 2>&1; then
+    payload="$(HMEM_PROJECT="$project" HMEM_SESSION_ID="$session_id" HMEM_CORRELATION_ID="$correlation_id" python3 -c '
+import json, os
+body = {"project": os.environ.get("HMEM_PROJECT",""), "summary_only": True}
+sid = os.environ.get("HMEM_SESSION_ID","")
+if sid: body["session_id"] = sid
+cid = os.environ.get("HMEM_CORRELATION_ID","")
+if cid: body["correlation_id"] = cid
+print(json.dumps(body))
+' 2>/dev/null)"
+  fi
+
+  [ -n "$payload" ] || { printf '%s' ""; return 0; }
+
+  local response
+  response="$(printf '%s' "$payload" | "$CLIENT_SCRIPT" resume-pack 2>/dev/null || true)"
+  [ -n "$response" ] || { printf '%s' ""; return 0; }
+
+  hook_extract_meta_summary "$response"
+}
+
 hook_render_resume_pack_markdown() {
   local resume_response="${1:-}"
   [ -n "$resume_response" ] || return 0
