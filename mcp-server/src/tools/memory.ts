@@ -280,6 +280,10 @@ export const memoryTools: Tool[] = [
           enum: ["L0", "L1", "full"],
           description: "§78-B03: Wake-up context detail level. L0=critical facts only (~170 tokens), L1=L0+recent context (default), full=backward-compat complete output.",
         },
+        include_partial: {
+          type: "boolean",
+          description: "§91-003: When true, include partial session summaries (metadata.is_partial=true) in the resume pack. Defaults to true.",
+        },
       },
       required: ["project"],
     },
@@ -865,6 +869,8 @@ async function handleMemoryToolInner(
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
           ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
+          // §91-003: include partial session summaries (defaults to true)
+          include_partial: toBoolean(input.include_partial, true),
         });
         return successResult(response);
       }

@@ -10,6 +10,7 @@ var memToolResumePack = mcp.NewTool("harness_mem_resume_pack",
 	mcp.WithString("correlation_id"),
 	mcp.WithNumber("limit"),
 	mcp.WithBoolean("include_private"),
+	mcp.WithBoolean("include_partial", mcp.Description("§91-003: When true, include partial session summaries (metadata.is_partial=true) in the resume pack. Defaults to true.")),
 )
 
 var memToolSearch = mcp.NewTool("harness_mem_search",
@@ -78,12 +79,14 @@ var memToolRecordCheckpoint = mcp.NewTool("harness_mem_record_checkpoint",
 )
 
 var memToolFinalizeSession = mcp.NewTool("harness_mem_finalize_session",
-	mcp.WithDescription("Finalize session and generate summary."),
+	mcp.WithDescription("Finalize session and generate summary. When the session has 5+ steps and ends with a completion signal, a skill_suggestion is returned. Pass persist_skill: true to also save it as a reusable procedural skill observation."),
 	mcp.WithString("platform"),
 	mcp.WithString("project"),
 	mcp.WithString("session_id", mcp.Required()),
 	mcp.WithString("correlation_id"),
 	mcp.WithString("summary_mode", mcp.Enum("standard", "short", "detailed")),
+	mcp.WithBoolean("persist_skill", mcp.Description("If true, persist detected skill as an observation with tags [skill, procedural]. Defaults to false.")),
+	mcp.WithBoolean("partial", mcp.Description("§91-001: If true, generate a session_summary observation (metadata.is_partial=true) without closing the session. No-op if session is already closed. Defaults to false (full finalize).")),
 )
 
 var memToolRecordEvent = mcp.NewTool("harness_mem_record_event",

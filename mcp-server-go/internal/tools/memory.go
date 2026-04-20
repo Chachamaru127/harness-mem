@@ -310,13 +310,18 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if project == "" {
 			return errorResult("project is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/resume-pack", map[string]any{
+		// §91-003: include_partial defaults to true (omit key when true to keep
+		// backward-compat with older daemon versions that ignore unknown fields).
+		includePartial := argBool(args, "include_partial", true)
+		resumePayload := map[string]any{
 			"project":         project,
 			"session_id":      optStr(args, "session_id"),
 			"correlation_id":  optStr(args, "correlation_id"),
 			"limit":           optNum(args, "limit"),
 			"include_private": argBool(args, "include_private", false),
-		})
+			"include_partial": includePartial,
+		}
+		resp, err := proxy.CallMemoryAPI("POST", "/v1/resume-pack", resumePayload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -489,6 +494,10 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"session_id":     sessionID,
 			"correlation_id": optStr(args, "correlation_id"),
 			"summary_mode":   optStr(args, "summary_mode"),
+			// §91-001: partial finalize — generate summary without closing session
+			"partial": argBool(args, "partial", false),
+			// persist detected skill as a reusable observation
+			"persist_skill": argBool(args, "persist_skill", false),
 		})
 		if err != nil {
 			return classifyError(err)
