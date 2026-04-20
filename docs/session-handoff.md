@@ -24,12 +24,31 @@ session が正常終了 (Stop / TaskCompleted / 明示 finalize) すると、`se
 
 ## 設定
 
-環境変数で scheduler を opt-in する (既定 OFF)。
+scheduler は既定 OFF。opt-in は **環境変数** と **config.json** の 2 経路、優先順は
+`env var > ~/.harness-mem/config.json > default`。
+
+### 1. config.json (永続化、配布向け推奨)
+
+`~/.harness-mem/config.json` に 2 キーを追記:
+
+```json
+{
+  "partialFinalizeEnabled": true,
+  "partialFinalizeIntervalMs": 300000
+}
+```
+
+daemon 再起動後に反映。どの経路で restart (shell / harness-mem-ui 経由 / crash
+recovery 等) しても設定が落ちない。
+
+### 2. 環境変数 (一時的 override / shell rc 固定向け)
 
 | Env var | 既定 | 意味 |
 |---|---|---|
-| `HARNESS_MEM_PARTIAL_FINALIZE_ENABLED` | `""` (OFF) | `true` or `1` で scheduler を有効化 |
-| `HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS` | `300000` (5 分) | tick 間隔 (最小 5000ms、下回ると既定に丸め) |
+| `HARNESS_MEM_PARTIAL_FINALIZE_ENABLED` | `""` | `true` or `1` で scheduler を有効化。未指定時は config.json を参照 |
+| `HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS` | `""` | tick 間隔 (最小 5000ms、下回ると既定に丸め)。未指定時は config.json を参照 |
+
+env var が空でない限り常に env が優先され、config.json の値は無視される。
 
 有効化例:
 
