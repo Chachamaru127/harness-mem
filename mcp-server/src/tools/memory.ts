@@ -440,6 +440,10 @@ export const memoryTools: Tool[] = [
           type: "boolean",
           description: "If true, persist detected skill as an observation with tags [skill, procedural]. Defaults to false.",
         },
+        partial: {
+          type: "boolean",
+          description: "§91-001: If true, generate a session_summary observation (metadata.is_partial=true) without closing the session. No-op if session is already closed. Defaults to false (full finalize).",
+        },
       },
       required: ["session_id"],
     },
@@ -1070,6 +1074,7 @@ async function handleMemoryToolInner(
           correlation_id: toStringOrUndefined(input.correlation_id),
           summary_mode: toStringOrUndefined(input.summary_mode),
           persist_skill: input.persist_skill === true,
+          partial: input.partial === true,
         });
         return successResult(response);
       }

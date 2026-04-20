@@ -920,6 +920,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             ? (body.summary_mode as FinalizeSessionRequest["summary_mode"])
             : undefined,
           persist_skill: body.persist_skill === true,
+          partial: body.partial === true,
         };
         return jsonResponse(core.finalizeSession(req));
       }

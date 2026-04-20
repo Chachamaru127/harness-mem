@@ -1004,6 +1004,9 @@ paths:
                 summary_mode:
                   type: string
                   enum: [standard, short, detailed]
+                partial:
+                  type: boolean
+                  description: "§91-001: If true, generate a session_summary observation (metadata.is_partial=true) without closing the session. No-op if session is already closed. Defaults to false (full finalize)."
       responses:
         "200":
           description: Session finalized

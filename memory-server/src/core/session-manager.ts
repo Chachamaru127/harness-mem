@@ -789,6 +789,12 @@ export class SessionManager {
       );
     }
 
+    // §91-001: partial=true — generate summary observation but keep session active.
+    // Already-closed sessions are no-op (idempotent).
+    if (request.partial === true) {
+      return this.partialFinalizeSession(request, startedAt);
+    }
+
     const summaryMode = request.summary_mode || "standard";
     const maxRows = summaryMode === "detailed" ? 48 : summaryMode === "short" ? 20 : 32;
     const rows = this.loadSessionSummaryRows(request.session_id, maxRows);
@@ -863,6 +869,85 @@ export class SessionManager {
           handoff,
           finalized_at: current,
           ...(skillSuggestion ? { skill_suggestion: skillSuggestion } : {}),
+        },
+      ],
+      request as unknown as Record<string, unknown>
+    );
+  }
+
+  /**
+   * §91-001: Partial finalize — generate a session_summary observation with
+   * metadata.is_partial=true, but keep the session active (no ended_at update).
+   * If the session is already closed (ended_at IS NOT NULL), returns a no-op 200.
+   */
+  private partialFinalizeSession(request: FinalizeSessionRequest, startedAt: number): ApiResponse {
+    // Check if the session is already closed
+    const sessionRow = this.deps.db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get(request.session_id) as { ended_at: string | null } | null;
+
+    if (sessionRow?.ended_at) {
+      // Already closed — no-op, idempotent
+      return makeResponse(
+        startedAt,
+        [
+          {
+            session_id: request.session_id,
+            partial: true,
+            no_op: true,
+            reason: "session already closed",
+          },
+        ],
+        request as unknown as Record<string, unknown>
+      );
+    }
+
+    const summaryMode = request.summary_mode || "standard";
+    const maxRows = summaryMode === "detailed" ? 48 : summaryMode === "short" ? 20 : 32;
+    const rows = this.loadSessionSummaryRows(request.session_id, maxRows);
+    const handoff = this.buildStructuredHandoff(request.session_id, rows, summaryMode);
+    const summary = this.renderHandoffSummary(request.session_id, summaryMode, handoff);
+
+    const current = nowIso();
+
+    // Record session_end event with is_partial=true in metadata.
+    // The event-recorder maps session_end → session_summary card_type.
+    this.deps.recordEvent({
+      platform: request.platform || "claude",
+      project: request.project || basename(process.cwd()),
+      session_id: request.session_id,
+      correlation_id: request.correlation_id,
+      event_type: "session_end",
+      ts: current,
+      payload: {
+        summary,
+        summary_mode: summaryMode,
+        handoff,
+      },
+      metadata: {
+        is_partial: true,
+      },
+      tags: ["finalized", "partial"],
+      privacy_tags: [],
+    });
+
+    this.deps.appendStreamEvent("session.partial_finalized", {
+      session_id: request.session_id,
+      project: request.project || basename(process.cwd()),
+      summary_mode: summaryMode,
+      partial_finalized_at: current,
+    });
+
+    return makeResponse(
+      startedAt,
+      [
+        {
+          session_id: request.session_id,
+          summary_mode: summaryMode,
+          summary,
+          handoff,
+          partial: true,
+          partial_finalized_at: current,
         },
       ],
       request as unknown as Record<string, unknown>

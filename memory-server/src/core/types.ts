@@ -236,7 +236,7 @@ export interface BackupRequest {
 
 export interface StreamEvent {
   id: number;
-  type: "observation.created" | "session.finalized" | "health.changed";
+  type: "observation.created" | "session.finalized" | "session.partial_finalized" | "health.changed";
   ts: string;
   data: Record<string, unknown>;
 }
@@ -355,6 +355,14 @@ export interface FinalizeSessionRequest {
    * tags ["skill", "procedural"]. Defaults to false (suggestion only).
    */
   persist_skill?: boolean;
+  /**
+   * §91-001 (XR-004): If true, perform a partial finalize — generate a
+   * session_summary observation with metadata.is_partial=true but keep
+   * the session status active (do not set ended_at). Idempotent when
+   * called on an already-closed session (no-op, 200 response).
+   * Defaults to false (full finalize, existing behavior).
+   */
+  partial?: boolean;
 }
 
 export interface ApiMeta {
