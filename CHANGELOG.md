@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.14.0] - 2026-04-20
+
 ### Added
 
 - **Live session handoff via periodic partial finalize** (§91, XR-004). 現 session を閉じずに別 session を開いた場合でも、直前会話の要約が新 session の resume-pack に載るようになった。
