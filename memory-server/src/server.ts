@@ -920,6 +920,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             ? (body.summary_mode as FinalizeSessionRequest["summary_mode"])
             : undefined,
           persist_skill: body.persist_skill === true,
+          partial: body.partial === true,
         };
         return jsonResponse(core.finalizeSession(req));
       }
@@ -953,6 +954,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           user_id: resumeAccess.user_id,
           team_id: resumeAccess.team_id,
           ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
+          // §91-003: pass include_partial explicitly so false is honoured (undefined → defaults to true in core)
+          ...(typeof body.include_partial === "boolean" ? { include_partial: body.include_partial } : {}),
         };
         return jsonResponse(core.resumePack(req));
       }

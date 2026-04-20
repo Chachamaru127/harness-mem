@@ -1,0 +1,75 @@
+# Session Handoff
+
+harness-mem が同一プロジェクト内の複数 session 間で会話文脈を引き継ぐ仕組み。
+
+## 2 系統の handoff
+
+### 1. Session-close handoff (既存)
+
+session が正常終了 (Stop / TaskCompleted / 明示 finalize) すると、`session_summary` observation が生成される。新 session 起動時の `/v1/resume-pack` がこの summary を `additionalContext` に注入する。
+
+- 契機: Stop hook → `finalize_session`
+- 対象 session 状態: `active` → `closed`
+- 生成される observation: `session_summary` (metadata.is_partial は付かない)
+- 新 session での露出: resume-pack の `items[].type === "session_summary"`
+
+### 2. Live handoff via periodic partial finalize (§91, XR-004)
+
+現 session を閉じずに並行して別 session を開いた場合でも直前会話が引き継がれるよう、daemon が定期的に partial summary を生成する。
+
+- 契機: daemon 内 scheduler loop (opt-in、既定は無効)
+- 対象 session 状態: `active` のまま維持
+- 生成される observation: `session_summary` with `metadata.is_partial=true`
+- 新 session での露出: resume-pack の `items[].type === "session_summary"` かつ `items[].is_partial === true`
+
+## 設定
+
+`features.partial_finalize_enabled` を `true` に設定すると scheduler が起動する (既定 `false`)。
+
+| Config key | 既定 | 意味 |
+|---|---|---|
+| `partialFinalizeEnabled` | `false` | scheduler ON/OFF |
+| `partialFinalizeIntervalMs` | `300000` (5 分) | tick 間隔 (最小 5000ms) |
+
+`harness_mem_health.features` で現在値が確認できる:
+
+```json
+{
+  "features": {
+    "partial_finalize_enabled": false,
+    "partial_finalize_interval_ms": 300000
+  }
+}
+```
+
+## API
+
+### `POST /v1/sessions/finalize` with `partial=true`
+
+partial finalize を明示的に 1 回だけ実行する。scheduler を opt-out したまま、特定の瞬間に「ここまでの要約を保存して現 session は継続」したい場合に使う。
+
+```json
+{ "session_id": "sess-abc", "partial": true }
+```
+
+- session の `status` は `active` のまま
+- `session_summary` observation が 1 件追加される (`metadata.is_partial=true`)
+- 既に `status=closed` の session に対しては 200 応答で no-op (idempotent)
+- 既存の `partial=false` (default) の挙動は変更なし
+
+### `POST /v1/resume-pack` with `include_partial`
+
+partial summary を含めるかを制御する (既定 `true`)。
+
+```json
+{ "session_id": "sess-new", "include_partial": true }
+```
+
+- `true` (default): partial / full 両方を採用。同一 session 内では `created_at` が新しい方が優先される
+- `false`: 既存挙動 (partial を除外して full のみ採用)
+
+## 運用
+
+1. scheduler を有効化するまでは §90 (SessionStart hook) の挙動のみ: **前回 close した session** の summary が新 session に渡る
+2. scheduler を有効化すると: **今も active な他 session** の最新 partial summary も新 session に渡る
+3. DB 行数増加懸念がある場合は §89-002 (semantic dedup) の landed 後に opt-in する

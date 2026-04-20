@@ -59,6 +59,7 @@ import { SqliteObservationRepository } from "../db/repositories/SqliteObservatio
 import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
 import { AnalyticsService } from "./analytics";
+import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
 import type { UsageParams, UsageStats, EntityParams, EntityStats, TimelineParams, TimelineStats, OverviewParams, OverviewStats } from "./analytics";
 import {
   clampLimit,
@@ -529,6 +530,8 @@ export class HarnessMemCore {
   private ingestCoord!: IngestCoordinator;
   private cfgMgr!: ConfigManager;
   private analyticsSvc!: AnalyticsService;
+  /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
+  private partialFinalizeScheduler!: PartialFinalizeScheduler;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -673,6 +676,20 @@ export class HarnessMemCore {
         }),
       },
     });
+
+    // §91-002: partial-finalize scheduler
+    this.partialFinalizeScheduler = createPartialFinalizeScheduler(
+      {
+        db: this.db,
+        finalizeSession: (req) => this.sessionMgr.finalizeSession(req),
+      },
+      {
+        enabled: this.config.partialFinalizeEnabled === true,
+        intervalMs: this.config.partialFinalizeIntervalMs
+          ? Math.max(5000, Number(this.config.partialFinalizeIntervalMs))
+          : 300_000,
+      }
+    );
   }
 
   private configureDatabase(): void {
@@ -1470,6 +1487,8 @@ export class HarnessMemCore {
 
   private startBackgroundWorkers(): void {
     this.ingestCoord.startTimers();
+    // §91-002: start partial-finalize scheduler (no-op when enabled=false)
+    this.partialFinalizeScheduler.start();
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
@@ -2064,6 +2083,10 @@ export class HarnessMemCore {
             claude_code_backfill_hours: clampLimit(Number(this.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS), DEFAULT_CLAUDE_CODE_BACKFILL_HOURS, 1, 24 * 365),
             search_ranking: this.config.searchRanking || DEFAULT_SEARCH_RANKING,
             search_expand_links: this.config.searchExpandLinks !== false,
+            partial_finalize_enabled: this.config.partialFinalizeEnabled === true,
+            partial_finalize_interval_ms: this.config.partialFinalizeIntervalMs
+              ? Math.max(5000, Number(this.config.partialFinalizeIntervalMs))
+              : 300_000,
           },
           managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
           warnings: [
@@ -2762,6 +2785,8 @@ export class HarnessMemCore {
     }
     this.shuttingDown = true;
 
+    // §91-002: stop partial-finalize scheduler before stopping ingest timers
+    this.partialFinalizeScheduler.stop();
     this.ingestCoord.stopTimers();
 
     this.processRetryQueue(true);

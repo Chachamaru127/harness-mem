@@ -81,6 +81,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     "meta": {
       "count": "number",
       "filters": {
+        "partial": "boolean",
         "persist_skill": "boolean",
         "platform": "string",
         "project": "string",

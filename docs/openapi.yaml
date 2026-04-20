@@ -1004,6 +1004,9 @@ paths:
                 summary_mode:
                   type: string
                   enum: [standard, short, detailed]
+                partial:
+                  type: boolean
+                  description: "§91-001: If true, generate a session_summary observation (metadata.is_partial=true) without closing the session. No-op if session is already closed. Defaults to false (full finalize)."
       responses:
         "200":
           description: Session finalized
@@ -1214,6 +1217,12 @@ paths:
                   default: false
                 resume_pack_max_tokens:
                   type: integer
+                include_partial:
+                  type: boolean
+                  default: true
+                  description: >
+                    §91-003: Whether to include partial session summaries (is_partial=true).
+                    Defaults to true. Set to false to return only full-finalize summaries.
       responses:
         "200":
           description: Resume pack

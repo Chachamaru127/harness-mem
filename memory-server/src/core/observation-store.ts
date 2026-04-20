@@ -4448,24 +4448,131 @@ export class ObservationStore {
 
     const useCorrelationId = Boolean(request.correlation_id);
     const correlationId = request.correlation_id ?? null;
+    // §91-003: include_partial defaults to true — partial session summaries
+    // (stored as session_end observations tagged "partial") are considered by default.
+    // Set include_partial=false to restore the pre-§91 full-finalize-only behaviour.
+    const includePartial = request.include_partial !== false;
 
-    const summaryParams: unknown[] = [];
-    let latestSummarySql = `
-      SELECT s.session_id, s.summary, s.ended_at
-      FROM mem_sessions s
-      WHERE 1 = 1
-    `;
-    latestSummarySql = this.appendProjectFilter(latestSummarySql, summaryParams, "s", projectMembers);
-    // TEAM-005: テナント分離 — session テーブルの user_id でフィルタ
-    latestSummarySql = this.appendTenantFilter(latestSummarySql, summaryParams, "s", request.user_id, request.team_id);
-    latestSummarySql += useCorrelationId ? " AND s.correlation_id = ?" : " AND s.summary IS NOT NULL";
-    if (useCorrelationId) {
-      summaryParams.push(correlationId as string);
+    // §91-003: Build the latest summary candidate by querying mem_observations for
+    // session_end events. This covers both full-finalize observations (tag "finalized",
+    // no "partial") and partial-finalize observations (tags ["finalized","partial"]).
+    // Within the same session the highest created_at wins, then we pick the single
+    // most-recent across all qualifying sessions.
+    //
+    // Fallback path (include_partial=false OR no obs-based summary found): keep the
+    // old mem_sessions.summary query so existing callers that explicitly opt out get
+    // the pre-§91 behaviour, and sessions that were finalized before §91-001 still
+    // appear (their session_end obs predates the partial-tag convention).
+    let latestSummary: { session_id: string; summary: string; ended_at: string; is_partial?: boolean } | null = null;
+
+    if (includePartial) {
+      // Query mem_observations for session_end events (joined to mem_events for event_type).
+      // json_extract pulls the summary text from the JSON payload stored in content_redacted
+      // (payload shape: {summary: "...", summary_mode: "...", handoff: {...}}).
+      // Per-session: highest created_at wins (partial or full).
+      // Outer query: pick the single most-recent session.
+      const obsParams: unknown[] = [];
+      // §91-003: Per-session pick the observation with the highest created_at
+      // (which is the most recent session_end obs — either full or partial).
+      // Then across all qualifying sessions pick the single most-recent one.
+      //
+      // SQLite does not guarantee which row GROUP BY selects when no aggregate
+      // function is used, so we use a correlated subquery to reliably fetch
+      // the most-recent observation per session, then rank across sessions.
+      const innerSql = (() => {
+        const tmpParams: unknown[] = [];
+        // Base WHERE clause conditions (project + tenant + optional correlation_id).
+        // §91-003 hotfix: Guard json_extract against legacy rows whose content_redacted
+        // is not valid JSON (pre-structured-content session_end observations exist in
+        // long-lived databases and would otherwise crash the whole query).
+        let whereClause = "e.event_type = 'session_end' AND json_valid(o.content_redacted)";
+        const whereParams: unknown[] = [];
+
+        // Build project filter inline (appendProjectFilter mutates a SQL string
+        // with a leading WHERE, so we use a dummy query and extract the fragment)
+        const dummySql = this.appendProjectFilter("SELECT 1 FROM mem_observations o WHERE 1=1", whereParams, "o", projectMembers);
+        const projectFragment = dummySql.replace("SELECT 1 FROM mem_observations o WHERE 1=1", "").trim();
+        if (projectFragment) whereClause += ` ${projectFragment}`;
+
+        // Tenant filter
+        const dummySql2 = this.appendTenantFilter("SELECT 1 FROM mem_observations o WHERE 1=1", whereParams, "o", request.user_id, request.team_id);
+        const tenantFragment = dummySql2.replace("SELECT 1 FROM mem_observations o WHERE 1=1", "").trim();
+        if (tenantFragment) whereClause += ` ${tenantFragment}`;
+
+        for (const p of whereParams) obsParams.push(p);
+
+        let correlationJoin = "";
+        if (useCorrelationId) {
+          correlationJoin = "JOIN mem_sessions ss ON ss.session_id = o.session_id";
+          whereClause += " AND ss.correlation_id = ?";
+          obsParams.push(correlationId as string);
+        }
+
+        // Use ROW_NUMBER() window function (supported in SQLite 3.25+) to select
+        // the most-recent session_end obs per session, then pick the newest across sessions.
+        const sql = `
+          SELECT session_id, summary, ended_at, is_partial
+          FROM (
+            SELECT
+              o.session_id,
+              json_extract(o.content_redacted, '$.summary') AS summary,
+              o.created_at AS ended_at,
+              CASE WHEN o.tags_json LIKE '%"partial"%' THEN 1 ELSE 0 END AS is_partial,
+              ROW_NUMBER() OVER (PARTITION BY o.session_id ORDER BY o.created_at DESC) AS rn
+            FROM mem_observations o
+            JOIN mem_events e ON e.event_id = o.event_id
+            ${correlationJoin}
+            WHERE ${whereClause}
+          )
+          WHERE rn = 1
+        `;
+        for (const p of tmpParams) obsParams.push(p);
+        return sql;
+      })();
+
+      const obsSql = `
+        SELECT session_id, summary, ended_at, is_partial
+        FROM (${innerSql})
+        ORDER BY ended_at DESC
+        LIMIT 1
+      `;
+      const obsRow = this.deps.db
+        .query(obsSql)
+        .get(...(obsParams as any[])) as { session_id: string; summary: string | null; ended_at: string; is_partial: number } | null;
+
+      if (obsRow && typeof obsRow.summary === "string" && obsRow.summary.trim().length > 0) {
+        latestSummary = {
+          session_id: obsRow.session_id,
+          summary: obsRow.summary,
+          ended_at: obsRow.ended_at,
+          is_partial: obsRow.is_partial === 1,
+        };
+      }
     }
-    latestSummarySql += " ORDER BY s.ended_at DESC LIMIT 1";
-    const latestSummary = this.deps.db
-      .query(latestSummarySql)
-      .get(...(summaryParams as any[])) as { session_id: string; summary: string; ended_at: string } | null;
+
+    if (!latestSummary) {
+      // Fallback: original mem_sessions.summary path (full-finalize only).
+      const summaryParams: unknown[] = [];
+      let latestSummarySql = `
+        SELECT s.session_id, s.summary, s.ended_at
+        FROM mem_sessions s
+        WHERE 1 = 1
+      `;
+      latestSummarySql = this.appendProjectFilter(latestSummarySql, summaryParams, "s", projectMembers);
+      // TEAM-005: テナント分離 — session テーブルの user_id でフィルタ
+      latestSummarySql = this.appendTenantFilter(latestSummarySql, summaryParams, "s", request.user_id, request.team_id);
+      latestSummarySql += useCorrelationId ? " AND s.correlation_id = ?" : " AND s.summary IS NOT NULL";
+      if (useCorrelationId) {
+        summaryParams.push(correlationId as string);
+      }
+      latestSummarySql += " ORDER BY s.ended_at DESC LIMIT 1";
+      const sessRow = this.deps.db
+        .query(latestSummarySql)
+        .get(...(summaryParams as any[])) as { session_id: string; summary: string; ended_at: string } | null;
+      if (sessRow) {
+        latestSummary = sessRow;
+      }
+    }
 
     const pinnedContinuityParams: unknown[] = [];
     let pinnedContinuitySql = `
@@ -4639,6 +4746,8 @@ export class ObservationStore {
         session_id: latestSummary.session_id,
         summary: latestSummary.summary,
         ended_at: latestSummary.ended_at,
+        // §91-003: expose is_partial at top-level so callers can detect partial summaries
+        ...(latestSummary.is_partial === true ? { is_partial: true } : {}),
       });
     }
     for (const item of detailedItems) items.push(item);

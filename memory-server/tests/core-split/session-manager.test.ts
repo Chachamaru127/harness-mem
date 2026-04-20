@@ -110,7 +110,7 @@ function createRecordEventMock(db: Database) {
 let streamEventCounter = 0;
 function appendStreamEventMock(type: string, data: Record<string, unknown>): StreamEvent {
   streamEventCounter++;
-  return { id: streamEventCounter, type: type as StreamEvent["type"], data, ts: Date.now() };
+  return { id: streamEventCounter, type: type as StreamEvent["type"], data, ts: new Date().toISOString() };
 }
 
 function enqueueConsolidationMock(_project: string, _sessionId: string, _reason: string): void {
@@ -124,10 +124,6 @@ function createDeps(db: Database, config: Config): SessionManagerDeps {
     normalizeProject: (project: string) => project,
     canonicalizeProject: (project: string) => project,
     expandProjectSelection: (project: string) => [project],
-    visibilityFilterSql: (alias: string, includePrivate: boolean) => {
-      if (includePrivate) return " AND 1=1";
-      return ` AND ${alias}.privacy_tags_json = '[]'`;
-    },
     platformVisibilityFilterSql: (_alias: string) => " AND 1=1",
     recordEvent: createRecordEventMock(db),
     appendStreamEvent: appendStreamEventMock,
@@ -666,5 +662,156 @@ describe("session-manager: finalizeSession", () => {
     expect(handoff.decisions as string[]).toContain("continuity briefing を最初のターンで必ず見せる");
     expect(handoff.next_actions as string[]).toContain("adapter delivery を両方で揃える");
     expect(handoff.key_points as string[]).toContain("OpenAPI や DB index の話は今回の本筋ではない");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// §91-001: finalizeSession partial=true
+// ---------------------------------------------------------------------------
+
+describe("session-manager: finalizeSession partial=true", () => {
+  test("partial=true で session.status が active のまま session_summary observation が 1 件増える", () => {
+    const { sm, db } = createSessionManager("partial-finalize-active");
+    insertTestObservation(db, {
+      project: "proj-partial",
+      session_id: "sess-partial-001",
+      content: "partial finalize test content",
+    });
+
+    // Verify session exists and has no ended_at before partial finalize
+    const before = db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get("sess-partial-001") as { ended_at: string | null } | null;
+    expect(before).toBeTruthy();
+    expect(before?.ended_at).toBeNull();
+
+    // Count session_end events before
+    const eventsBefore = db
+      .query(
+        `SELECT COUNT(*) AS cnt FROM mem_events WHERE session_id = ? AND event_type = 'session_end'`
+      )
+      .get("sess-partial-001") as { cnt: number };
+
+    const res = sm.finalizeSession({
+      session_id: "sess-partial-001",
+      project: "proj-partial",
+      partial: true,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    expect(item.partial).toBe(true);
+    expect(item.no_op).toBeUndefined();
+    expect(item.partial_finalized_at).toBeTruthy();
+
+    // Session must still be active (ended_at IS NULL)
+    const after = db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get("sess-partial-001") as { ended_at: string | null } | null;
+    expect(after?.ended_at).toBeNull();
+
+    // One new session_end event must have been added (→ session_summary)
+    const eventsAfter = db
+      .query(
+        `SELECT COUNT(*) AS cnt FROM mem_events WHERE session_id = ? AND event_type = 'session_end'`
+      )
+      .get("sess-partial-001") as { cnt: number };
+    expect(eventsAfter.cnt).toBe(eventsBefore.cnt + 1);
+  });
+
+  test("既に closed の session に partial=true を投げると no-op (行数不変・200 応答)", () => {
+    const { sm, db } = createSessionManager("partial-finalize-closed-noop");
+    insertTestObservation(db, {
+      project: "proj-partial",
+      session_id: "sess-closed-001",
+      content: "closed session content",
+    });
+
+    // Full finalize first (closes the session)
+    const fullRes = sm.finalizeSession({
+      session_id: "sess-closed-001",
+      project: "proj-partial",
+    });
+    expect(fullRes.ok).toBe(true);
+
+    // Count events after full finalize
+    const eventsBefore = db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_events WHERE session_id = ?`)
+      .get("sess-closed-001") as { cnt: number };
+    const obsBefore = db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_observations WHERE session_id = ?`)
+      .get("sess-closed-001") as { cnt: number };
+
+    // Partial finalize on already-closed session → no-op
+    const partialRes = sm.finalizeSession({
+      session_id: "sess-closed-001",
+      project: "proj-partial",
+      partial: true,
+    });
+    expect(partialRes.ok).toBe(true);
+    const item = partialRes.items[0] as Record<string, unknown>;
+    expect(item.no_op).toBe(true);
+    expect(item.partial).toBe(true);
+
+    // Row counts must be unchanged
+    const eventsAfter = db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_events WHERE session_id = ?`)
+      .get("sess-closed-001") as { cnt: number };
+    const obsAfter = db
+      .query(`SELECT COUNT(*) AS cnt FROM mem_observations WHERE session_id = ?`)
+      .get("sess-closed-001") as { cnt: number };
+    expect(eventsAfter.cnt).toBe(eventsBefore.cnt);
+    expect(obsAfter.cnt).toBe(obsBefore.cnt);
+  });
+
+  test("full finalize と partial finalize が同 session で並存可能: partial 数回 → full で正しく closed", () => {
+    const { sm, db } = createSessionManager("partial-full-coexistence");
+    insertTestObservation(db, {
+      project: "proj-partial",
+      session_id: "sess-coexist-001",
+      content: "coexistence test",
+    });
+
+    // First partial finalize
+    const partial1 = sm.finalizeSession({
+      session_id: "sess-coexist-001",
+      project: "proj-partial",
+      partial: true,
+    });
+    expect(partial1.ok).toBe(true);
+    expect((partial1.items[0] as Record<string, unknown>).partial).toBe(true);
+
+    // Session still active after first partial
+    const afterPartial1 = db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get("sess-coexist-001") as { ended_at: string | null };
+    expect(afterPartial1.ended_at).toBeNull();
+
+    // Second partial finalize
+    const partial2 = sm.finalizeSession({
+      session_id: "sess-coexist-001",
+      project: "proj-partial",
+      partial: true,
+    });
+    expect(partial2.ok).toBe(true);
+
+    // Session still active after second partial
+    const afterPartial2 = db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get("sess-coexist-001") as { ended_at: string | null };
+    expect(afterPartial2.ended_at).toBeNull();
+
+    // Full finalize — must close the session
+    const fullRes = sm.finalizeSession({
+      session_id: "sess-coexist-001",
+      project: "proj-partial",
+    });
+    expect(fullRes.ok).toBe(true);
+
+    // Session must now be closed
+    const afterFull = db
+      .query(`SELECT ended_at FROM mem_sessions WHERE session_id = ?`)
+      .get("sess-coexist-001") as { ended_at: string | null };
+    expect(afterFull.ended_at).toBeTruthy();
   });
 });

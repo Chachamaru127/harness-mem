@@ -236,7 +236,7 @@ export interface BackupRequest {
 
 export interface StreamEvent {
   id: number;
-  type: "observation.created" | "session.finalized" | "health.changed";
+  type: "observation.created" | "session.finalized" | "session.partial_finalized" | "health.changed";
   ts: string;
   data: Record<string, unknown>;
 }
@@ -271,6 +271,14 @@ export interface ResumePackRequest {
    * - "full": backward-compat shape (same richness as pre-B03)
    */
   detail_level?: "L0" | "L1" | "full";
+  /**
+   * §91-003: When true (default), partial session summaries
+   * (metadata.is_partial=true, stored as session_end observations with
+   * tag "partial") are considered alongside full summaries.
+   * Within the same session_id, the most recent created_at wins.
+   * Set to false to restore pre-§91 behaviour (full finalize only).
+   */
+  include_partial?: boolean;
 }
 
 export interface GetObservationsRequest {
@@ -355,6 +363,14 @@ export interface FinalizeSessionRequest {
    * tags ["skill", "procedural"]. Defaults to false (suggestion only).
    */
   persist_skill?: boolean;
+  /**
+   * §91-001 (XR-004): If true, perform a partial finalize — generate a
+   * session_summary observation with metadata.is_partial=true but keep
+   * the session status active (do not set ended_at). Idempotent when
+   * called on an already-closed session (no-op, 200 response).
+   * Defaults to false (full finalize, existing behavior).
+   */
+  partial?: boolean;
 }
 
 export interface ApiMeta {
@@ -474,4 +490,8 @@ export interface Config {
   backgroundWorkersEnabled?: boolean;
   /** GRAPH-003: グラフ探索の最大ホップ数（環境変数 HARNESS_MEM_GRAPH_MAX_HOPS、デフォルト3、上限5） */
   graphMaxHops?: number;
+  /** §91-002 (XR-004): 定期 partial finalize scheduler を有効にするか (既定 false = opt-in) */
+  partialFinalizeEnabled?: boolean;
+  /** §91-002 (XR-004): scheduler の tick 間隔 ms (既定 300000 = 5 分) */
+  partialFinalizeIntervalMs?: number;
 }
