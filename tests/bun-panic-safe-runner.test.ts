@@ -48,6 +48,59 @@ exit 133
     }
   });
 
+  test("stops a hung crash reporter after a known post-pass panic", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "harness-mem-bun-safe-"));
+
+    try {
+      const fakeBun = join(tmp, "bun");
+      writeFileSync(
+        fakeBun,
+        `#!/usr/bin/env bash
+echo "bun test v1.3.10 (30e609e0)"
+echo ""
+echo "tests/example.test.ts:"
+echo "(pass) example > works"
+echo ""
+echo " 1 pass"
+echo " 0 fail"
+echo "panic(main thread): A C++ exception occurred"
+echo "oh no: Bun has crashed. This indicates a bug in Bun, not your code."
+sleep 60
+exit 133
+`
+      );
+      chmodSync(fakeBun, 0o755);
+
+      const proc = Bun.spawn(["bash", SAFE_RUNNER, "tests/example.test.ts"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          PATH: `${tmp}:${process.env.PATH ?? ""}`,
+        },
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+
+      let exitCode: number;
+      try {
+        exitCode = await Promise.race([
+          proc.exited,
+          new Promise<number>((_, reject) => setTimeout(() => reject(new Error("safe runner timed out")), 3000)),
+        ]);
+      } catch (error) {
+        proc.kill();
+        throw error;
+      }
+
+      const stderr = await new Response(proc.stderr).text();
+
+      expect(exitCode).toBe(0);
+      expect(stderr).toContain("known Bun runtime noise");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("does not hide a real failing summary even if panic text is present", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "harness-mem-bun-safe-"));
 

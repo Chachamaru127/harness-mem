@@ -3500,7 +3500,7 @@ doctor_impl() {
     lease_probe_payload='{"target":"__doctor_probe__","agent_id":"__doctor__","ttl_ms":1000}'
     if lease_probe_status="$(curl --silent --show-error --max-time 2 -o /tmp/harness-lease-probe.json -w '%{http_code}' \
         -H 'Content-Type: application/json' \
-        "${_auth_hdr[@]}" \
+        ${_auth_hdr[@]+"${_auth_hdr[@]}"} \
         -X POST "${health_url%/health}/v1/lease/acquire" \
         -d "$lease_probe_payload" 2>/dev/null)" && [ "$lease_probe_status" = "200" ]; then
       _doctor_record "lease_primitive" "ok" ""
@@ -3509,7 +3509,7 @@ doctor_impl() {
       if [ -n "$lease_probe_id" ]; then
         curl --silent --show-error --max-time 2 -o /dev/null \
           -H 'Content-Type: application/json' \
-          "${_auth_hdr[@]}" \
+          ${_auth_hdr[@]+"${_auth_hdr[@]}"} \
           -X POST "${health_url%/health}/v1/lease/release" \
           -d "{\"lease_id\":\"$lease_probe_id\",\"agent_id\":\"__doctor__\"}" 2>/dev/null || true
       fi
@@ -3522,7 +3522,7 @@ doctor_impl() {
     local signal_probe_status
     if signal_probe_status="$(curl --silent --show-error --max-time 2 -o /dev/null -w '%{http_code}' \
         -H 'Content-Type: application/json' \
-        "${_auth_hdr[@]}" \
+        ${_auth_hdr[@]+"${_auth_hdr[@]}"} \
         -X POST "${health_url%/health}/v1/signal/read" \
         -d '{"agent_id":"__doctor__","limit":1}' 2>/dev/null)" && [ "$signal_probe_status" = "200" ]; then
       _doctor_record "signal_primitive" "ok" ""
