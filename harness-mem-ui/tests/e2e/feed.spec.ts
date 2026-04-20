@@ -110,6 +110,7 @@ test("renders simplified feed", async ({ page }) => {
   await expect(page.getByText("Harness Memory Viewer")).toBeVisible();
   await expect(page.getByText("Project memory feed")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Feed" })).toBeVisible();
+  await page.getByRole("button", { name: /Claude session sess-1/ }).click();
   await expect(page.getByText("PROMPT", { exact: true })).toBeVisible();
   await expect(page.locator(".platform-chip.claude")).toContainText("Claude Code");
   await expect(page.getByText("Initial prompt")).toBeVisible();
@@ -120,6 +121,7 @@ test("supports clean project switching", async ({ page }) => {
 
   await page.getByRole("button", { name: "beta" }).click();
   await expect(page.getByRole("button", { name: "beta" })).toHaveClass(/active/);
+  await page.getByRole("button", { name: /Claude session sess-1/ }).click();
   await expect(page.getByText("Initial prompt")).toBeVisible();
 });
 
