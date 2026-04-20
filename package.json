@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.14.0-rc.1",
+  "version": "0.14.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
