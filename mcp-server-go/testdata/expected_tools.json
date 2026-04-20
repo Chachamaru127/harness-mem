@@ -1043,6 +1043,10 @@
         },
         "session_id": {
           "type": "string"
+        },
+        "summary_only": {
+          "description": "§90-002: Lightweight mode. When true, skips ranking/facts/continuity and exposes the latest session summary at meta.summary for single-jq-path shell consumers. Defaults to false.",
+          "type": "boolean"
         }
       },
       "required": [

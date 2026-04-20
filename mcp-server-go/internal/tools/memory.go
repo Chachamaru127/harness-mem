@@ -313,6 +313,8 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		// §91-003: include_partial defaults to true (omit key when true to keep
 		// backward-compat with older daemon versions that ignore unknown fields).
 		includePartial := argBool(args, "include_partial", true)
+		// §90-002: summary_only defaults to false for backward-compat.
+		summaryOnly := argBool(args, "summary_only", false)
 		resumePayload := map[string]any{
 			"project":         project,
 			"session_id":      optStr(args, "session_id"),
@@ -320,6 +322,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"limit":           optNum(args, "limit"),
 			"include_private": argBool(args, "include_private", false),
 			"include_partial": includePartial,
+			"summary_only":    summaryOnly,
 		}
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/resume-pack", resumePayload)
 		if err != nil {

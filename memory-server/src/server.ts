@@ -956,6 +956,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
           // §91-003: pass include_partial explicitly so false is honoured (undefined → defaults to true in core)
           ...(typeof body.include_partial === "boolean" ? { include_partial: body.include_partial } : {}),
+          // §90-002: lightweight mode — skips ranking/facts/continuity, exposes summary at meta.summary
+          ...(typeof body.summary_only === "boolean" ? { summary_only: body.summary_only } : {}),
         };
         return jsonResponse(core.resumePack(req));
       }

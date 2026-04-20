@@ -284,6 +284,10 @@ export const memoryTools: Tool[] = [
           type: "boolean",
           description: "§91-003: When true, include partial session summaries (metadata.is_partial=true) in the resume pack. Defaults to true.",
         },
+        summary_only: {
+          type: "boolean",
+          description: "§90-002: Lightweight mode. When true, skips ranking/facts/continuity and exposes the latest session summary at meta.summary for single-jq-path shell consumers. Defaults to false.",
+        },
       },
       required: ["project"],
     },
@@ -871,6 +875,8 @@ async function handleMemoryToolInner(
           ...(detailLevel !== undefined ? { detail_level: detailLevel } : {}),
           // §91-003: include partial session summaries (defaults to true)
           include_partial: toBoolean(input.include_partial, true),
+          // §90-002: lightweight mode (defaults to false for backward-compat)
+          summary_only: toBoolean(input.summary_only, false),
         });
         return successResult(response);
       }

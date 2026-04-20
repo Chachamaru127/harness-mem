@@ -279,6 +279,16 @@ export interface ResumePackRequest {
    * Set to false to restore pre-§91 behaviour (full finalize only).
    */
   include_partial?: boolean;
+  /**
+   * §90-002: Lightweight response mode. When true, skips heavy ranking,
+   * fact-section building, continuity briefing, etc. and exposes the
+   * latest session summary string directly at `meta.summary` so shell
+   * consumers can extract it with a single jq path (`.meta.summary`)
+   * instead of piping through `.items[] | select(...)`.
+   * Items list still contains at most one session_summary row for
+   * backward-compat with JSON clients.
+   */
+  summary_only?: boolean;
 }
 
 export interface GetObservationsRequest {

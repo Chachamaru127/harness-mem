@@ -74,6 +74,34 @@ partial summary を含めるかを制御する (既定 `true`)。
 - `true` (default): partial / full 両方を採用。同一 session 内では `created_at` が新しい方が優先される
 - `false`: 既存挙動 (partial を除外して full のみ採用)
 
+### `POST /v1/resume-pack` with `summary_only` (§90-002)
+
+shell hook 用軽量 mode (既定 `false`)。`true` 指定時は ranking / facts / continuity briefing などをスキップし、最新 summary 文字列を `meta.summary` に直載せする。
+
+```json
+{ "project": "example", "summary_only": true }
+```
+
+response:
+
+```json
+{
+  "ok": true,
+  "items": [{ "type": "session_summary", "session_id": "sess-abc", "summary": "…" }],
+  "meta": {
+    "summary_only": true,
+    "summary": "…",
+    "session_id": "sess-abc",
+    "ended_at": "2026-04-20T00:00:00.000Z",
+    "is_partial": false
+  }
+}
+```
+
+- shell 側は `jq -r '.meta.summary // empty'` 1 行で取り出せる (jq pipeline 不要)
+- `include_partial` と併用可能
+- JSON client は `items[]` の既存 shape から引き続き読める (後方互換)
+
 ## 運用
 
 1. scheduler を有効化するまでは §90 (SessionStart hook) の挙動のみ: **前回 close した session** の summary が新 session に渡る
