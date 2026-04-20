@@ -11,6 +11,7 @@ var memToolResumePack = mcp.NewTool("harness_mem_resume_pack",
 	mcp.WithNumber("limit"),
 	mcp.WithBoolean("include_private"),
 	mcp.WithBoolean("include_partial", mcp.Description("§91-003: When true, include partial session summaries (metadata.is_partial=true) in the resume pack. Defaults to true.")),
+	mcp.WithBoolean("summary_only", mcp.Description("§90-002: Lightweight mode. When true, skips ranking/facts/continuity and exposes the latest session summary at meta.summary for single-jq-path shell consumers. Defaults to false.")),
 )
 
 var memToolSearch = mcp.NewTool("harness_mem_search",

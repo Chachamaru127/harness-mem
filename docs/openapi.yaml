@@ -1223,6 +1223,14 @@ paths:
                   description: >
                     §91-003: Whether to include partial session summaries (is_partial=true).
                     Defaults to true. Set to false to return only full-finalize summaries.
+                summary_only:
+                  type: boolean
+                  default: false
+                  description: >
+                    §90-002: Lightweight mode. When true, skips ranking/facts/continuity
+                    and exposes the latest session summary string at meta.summary so shell
+                    consumers can read it with a single jq path (.meta.summary).
+                    Items[] still contains at most one session_summary for JSON clients.
       responses:
         "200":
           description: Resume pack

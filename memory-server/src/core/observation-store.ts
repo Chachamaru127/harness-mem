@@ -4574,6 +4574,31 @@ export class ObservationStore {
       }
     }
 
+    // §90-002: summary_only short-circuit — skip ranking / facts /
+    // continuity briefing and return only the latest summary string.
+    // Shell consumers can read it via `.meta.summary` (single jq path).
+    if (request.summary_only === true) {
+      const summaryItems: Array<Record<string, unknown>> = [];
+      if (latestSummary) {
+        summaryItems.push({
+          id: `session:${latestSummary.session_id}`,
+          type: "session_summary",
+          session_id: latestSummary.session_id,
+          summary: latestSummary.summary,
+          ended_at: latestSummary.ended_at,
+          ...(latestSummary.is_partial === true ? { is_partial: true } : {}),
+        });
+      }
+      return makeResponse(startedAt, summaryItems, request as unknown as Record<string, unknown>, {
+        summary_only: true,
+        summary: latestSummary?.summary ?? "",
+        session_id: latestSummary?.session_id ?? null,
+        ended_at: latestSummary?.ended_at ?? null,
+        is_partial: latestSummary?.is_partial === true,
+        correlation_id: correlationId,
+      });
+    }
+
     const pinnedContinuityParams: unknown[] = [];
     let pinnedContinuitySql = `
       SELECT o.session_id, o.content_redacted AS content, o.created_at
