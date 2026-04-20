@@ -1006,9 +1006,45 @@ export function loadObservations(
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
+export const DEFAULT_CONFIG_PATH = "~/.harness-mem/config.json";
 export const DEFAULT_BIND_HOST = "127.0.0.1";
 export const DEFAULT_BIND_PORT = 37888;
 export const DEFAULT_VECTOR_DIM = 384;
+
+/**
+ * §91-006: Read user config from ~/.harness-mem/config.json if it exists.
+ * Used as a fallback for env vars so that GUI-unfriendly opt-ins (e.g.
+ * partialFinalizeEnabled) can persist across daemon restarts without
+ * requiring users to set shell env vars.
+ * Returns an empty object on any read/parse error (silent fallback).
+ */
+let cachedUserConfig: Record<string, unknown> | null = null;
+export function loadUserConfig(): Record<string, unknown> {
+  const cached = cachedUserConfig;
+  if (cached !== null) return cached;
+  const configPath = resolveHomePath(
+    process.env.HARNESS_MEM_CONFIG_PATH || DEFAULT_CONFIG_PATH
+  );
+  let loaded: Record<string, unknown> = {};
+  try {
+    if (existsSync(configPath)) {
+      const raw = readFileSync(configPath, "utf8");
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        loaded = parsed as Record<string, unknown>;
+      }
+    }
+  } catch {
+    // silent fallback
+  }
+  cachedUserConfig = loaded;
+  return loaded;
+}
+
+/** Test-only: clear loadUserConfig cache so subsequent calls re-read the file. */
+export function __resetUserConfigCache(): void {
+  cachedUserConfig = null;
+}
 export const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
 export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
 export const DEFAULT_CODEX_BACKFILL_HOURS = 24;
@@ -1098,13 +1134,27 @@ export function getConfig(): Config {
     process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || adaptiveDefaults.codeThreshold
   );
   const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
-  // §91-002: partial-finalize scheduler opt-in (default OFF)
+  // §91-002 / §91-006: partial-finalize scheduler opt-in (default OFF).
+  // Precedence: env var > ~/.harness-mem/config.json > default.
+  // config.json path allows distribution users to persist opt-in across daemon
+  // restarts without requiring shell rc changes (harness-mem-ui / external
+  // `harness-memd restart` calls no longer drop the flag).
+  const userConfig = loadUserConfig();
   const partialFinalizeEnabledRaw = (process.env.HARNESS_MEM_PARTIAL_FINALIZE_ENABLED || "").trim().toLowerCase();
-  const partialFinalizeEnabled = partialFinalizeEnabledRaw === "true" || partialFinalizeEnabledRaw === "1";
-  const partialFinalizeIntervalRaw = Number(process.env.HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS || 300000);
-  const partialFinalizeIntervalMs = Number.isFinite(partialFinalizeIntervalRaw) && partialFinalizeIntervalRaw >= 5000
-    ? partialFinalizeIntervalRaw
-    : 300000;
+  const partialFinalizeEnabled = partialFinalizeEnabledRaw !== ""
+    ? (partialFinalizeEnabledRaw === "true" || partialFinalizeEnabledRaw === "1")
+    : userConfig.partialFinalizeEnabled === true;
+  const envIntervalRaw = process.env.HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS;
+  const partialFinalizeIntervalCandidate =
+    envIntervalRaw !== undefined && envIntervalRaw !== ""
+      ? Number(envIntervalRaw)
+      : typeof userConfig.partialFinalizeIntervalMs === "number"
+        ? userConfig.partialFinalizeIntervalMs
+        : 300000;
+  const partialFinalizeIntervalMs =
+    Number.isFinite(partialFinalizeIntervalCandidate) && partialFinalizeIntervalCandidate >= 5000
+      ? partialFinalizeIntervalCandidate
+      : 300000;
 
   return {
     partialFinalizeEnabled,
