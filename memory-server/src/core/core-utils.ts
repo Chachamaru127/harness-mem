@@ -1098,8 +1098,17 @@ export function getConfig(): Config {
     process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD || adaptiveDefaults.codeThreshold
   );
   const consolidationIntervalRaw = Number(process.env.HARNESS_MEM_CONSOLIDATION_INTERVAL_MS || 60000);
+  // §91-002: partial-finalize scheduler opt-in (default OFF)
+  const partialFinalizeEnabledRaw = (process.env.HARNESS_MEM_PARTIAL_FINALIZE_ENABLED || "").trim().toLowerCase();
+  const partialFinalizeEnabled = partialFinalizeEnabledRaw === "true" || partialFinalizeEnabledRaw === "1";
+  const partialFinalizeIntervalRaw = Number(process.env.HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS || 300000);
+  const partialFinalizeIntervalMs = Number.isFinite(partialFinalizeIntervalRaw) && partialFinalizeIntervalRaw >= 5000
+    ? partialFinalizeIntervalRaw
+    : 300000;
 
   return {
+    partialFinalizeEnabled,
+    partialFinalizeIntervalMs,
     dbPath,
     bindHost,
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,
