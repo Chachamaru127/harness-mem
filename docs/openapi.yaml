@@ -1217,6 +1217,12 @@ paths:
                   default: false
                 resume_pack_max_tokens:
                   type: integer
+                include_partial:
+                  type: boolean
+                  default: true
+                  description: >
+                    §91-003: Whether to include partial session summaries (is_partial=true).
+                    Defaults to true. Set to false to return only full-finalize summaries.
       responses:
         "200":
           description: Resume pack
