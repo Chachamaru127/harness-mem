@@ -4481,8 +4481,11 @@ export class ObservationStore {
       // the most-recent observation per session, then rank across sessions.
       const innerSql = (() => {
         const tmpParams: unknown[] = [];
-        // Base WHERE clause conditions (project + tenant + optional correlation_id)
-        let whereClause = "e.event_type = 'session_end'";
+        // Base WHERE clause conditions (project + tenant + optional correlation_id).
+        // §91-003 hotfix: Guard json_extract against legacy rows whose content_redacted
+        // is not valid JSON (pre-structured-content session_end observations exist in
+        // long-lived databases and would otherwise crash the whole query).
+        let whereClause = "e.event_type = 'session_end' AND json_valid(o.content_redacted)";
         const whereParams: unknown[] = [];
 
         // Build project filter inline (appendProjectFilter mutates a SQL string
