@@ -24,12 +24,18 @@ session が正常終了 (Stop / TaskCompleted / 明示 finalize) すると、`se
 
 ## 設定
 
-`features.partial_finalize_enabled` を `true` に設定すると scheduler が起動する (既定 `false`)。
+環境変数で scheduler を opt-in する (既定 OFF)。
 
-| Config key | 既定 | 意味 |
+| Env var | 既定 | 意味 |
 |---|---|---|
-| `partialFinalizeEnabled` | `false` | scheduler ON/OFF |
-| `partialFinalizeIntervalMs` | `300000` (5 分) | tick 間隔 (最小 5000ms) |
+| `HARNESS_MEM_PARTIAL_FINALIZE_ENABLED` | `""` (OFF) | `true` or `1` で scheduler を有効化 |
+| `HARNESS_MEM_PARTIAL_FINALIZE_INTERVAL_MS` | `300000` (5 分) | tick 間隔 (最小 5000ms、下回ると既定に丸め) |
+
+有効化例:
+
+```bash
+HARNESS_MEM_PARTIAL_FINALIZE_ENABLED=true ./scripts/harness-memd restart
+```
 
 `harness_mem_health.features` で現在値が確認できる:
 
