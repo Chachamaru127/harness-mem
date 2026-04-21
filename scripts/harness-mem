@@ -3327,6 +3327,126 @@ run_setup_claude_mem_import_if_requested() {
   fi
 }
 
+# §93 — Detect additional harness-mem.db files the running daemon is NOT using.
+#
+# Background: HARNESS_MEM_DB_PATH can be overridden via env var, and older
+# releases used different defaults (plugin-scoped paths, XDG_STATE_HOME).
+# Operators have been bitten by silently running against a stale DB because
+# an old daemon held a different DB path. This helper inspects known
+# candidate locations and prints a WARN if any candidate other than the
+# current daemon DB exists with size > 0.
+#
+# Outputs only a warning — never changes exit code / doctor result.
+# Candidate paths (in priority order):
+#   1. $HARNESS_MEM_DB_PATH (if set)
+#   2. $HOME/.harness-mem/harness-mem.db                    (default)
+#   3. $HOME/.claude/plugins/data/*/harness-mem.db          (legacy glob)
+#   4. ${XDG_STATE_HOME:-$HOME/.local/state}/harness-mem/harness-mem.db (legacy)
+check_multiple_db_candidates() {
+  local current_db_path="${1:-}"
+
+  # Build de-duplicated candidate list.
+  local -a candidates=()
+  local _c
+
+  _add_candidate() {
+    local p="$1"
+    [ -z "$p" ] && return
+    [ ! -f "$p" ] && return
+    # Dedup.
+    local existing
+    for existing in "${candidates[@]:-}"; do
+      [ "$existing" = "$p" ] && return
+    done
+    candidates+=("$p")
+  }
+
+  # 1. env var path.
+  _add_candidate "${HARNESS_MEM_DB_PATH:-}"
+  # 2. default.
+  _add_candidate "${HOME}/.harness-mem/harness-mem.db"
+  # 3. legacy plugin-scoped (glob).
+  if [ -d "${HOME}/.claude/plugins/data" ]; then
+    local plugin_db
+    # shellcheck disable=SC2044
+    for plugin_db in "${HOME}"/.claude/plugins/data/*/harness-mem.db; do
+      [ -f "$plugin_db" ] || continue
+      _add_candidate "$plugin_db"
+    done
+  fi
+  # 4. legacy XDG_STATE_HOME.
+  _add_candidate "${XDG_STATE_HOME:-$HOME/.local/state}/harness-mem/harness-mem.db"
+
+  # Helper: size in bytes (GNU/BSD compatible).
+  _db_size_bytes() {
+    local f="$1"
+    if [ ! -f "$f" ]; then
+      echo "0"
+      return
+    fi
+    if stat -f%z "$f" >/dev/null 2>&1; then
+      stat -f%z "$f" 2>/dev/null || echo "0"
+    else
+      stat -c%s "$f" 2>/dev/null || echo "0"
+    fi
+  }
+
+  # Helper: pretty size (4.2G / 40M / 128K / 512B).
+  _db_size_pretty() {
+    local bytes="$1"
+    if [ "$bytes" -ge 1073741824 ] 2>/dev/null; then
+      awk -v b="$bytes" 'BEGIN { printf "%.1fG", b/1073741824 }'
+    elif [ "$bytes" -ge 1048576 ] 2>/dev/null; then
+      awk -v b="$bytes" 'BEGIN { printf "%.1fM", b/1048576 }'
+    elif [ "$bytes" -ge 1024 ] 2>/dev/null; then
+      awk -v b="$bytes" 'BEGIN { printf "%.1fK", b/1024 }'
+    else
+      printf "%sB" "$bytes"
+    fi
+  }
+
+  # Collect "other" candidates (not current, > 0 byte).
+  local -a others=()
+  for _c in "${candidates[@]:-}"; do
+    [ -z "$_c" ] && continue
+    [ "$_c" = "$current_db_path" ] && continue
+    local bytes
+    bytes="$(_db_size_bytes "$_c")"
+    [ "$bytes" -gt 0 ] 2>/dev/null || continue
+    others+=("${_c}|${bytes}")
+  done
+
+  # Nothing extra — silent OK.
+  if [ "${#others[@]}" -eq 0 ]; then
+    return 0
+  fi
+
+  # WARN output.
+  local current_bytes current_pretty
+  current_bytes="$(_db_size_bytes "${current_db_path}")"
+  current_pretty="$(_db_size_pretty "$current_bytes")"
+
+  warn "additional harness-mem.db detected"
+  if [ -n "$current_db_path" ]; then
+    echo "  current: ${current_db_path} (${current_pretty})" >&2
+  fi
+  local entry other_path other_bytes other_pretty
+  for entry in "${others[@]}"; do
+    other_path="${entry%|*}"
+    other_bytes="${entry##*|}"
+    other_pretty="$(_db_size_pretty "$other_bytes")"
+    echo "  other:   ${other_path} (${other_pretty})" >&2
+  done
+  if ui_is_en 2>/dev/null; then
+    echo "  This may be leftover from an older install. If unused:" >&2
+    echo "    mv <other> <other>.bak   # or: rm <other>" >&2
+  else
+    echo "  これは古いバージョンの運用で作成された可能性があります。" >&2
+    echo "  不要なら: mv <other> <other>.bak または rm <other>" >&2
+  fi
+  return 0
+}
+
 doctor_impl() {
   local failed=0
   # JSON出力用チェック結果配列
@@ -3481,6 +3601,20 @@ doctor_impl() {
         failed=1
       fi
     fi
+
+    # §93 — Detect additional harness-mem.db candidates the running daemon
+    # is NOT using. Pulls db_path from the daemon's /health response and
+    # compares against a fixed set of known candidate locations. Emits WARN
+    # only; never affects failed / exit code.
+    local _doctor_current_db=""
+    if _doctor_health_json="$(curl --silent --show-error --fail --max-time 2 "$health_url" 2>/dev/null)"; then
+      _doctor_current_db="$(echo "$_doctor_health_json" | jq -r '.items[0].db_path // ""' 2>/dev/null || echo "")"
+    fi
+    # Fall back to configured DB_PATH if /health lookup failed.
+    if [ -z "$_doctor_current_db" ]; then
+      _doctor_current_db="${HARNESS_MEM_DB_PATH:-${DB_PATH:-}}"
+    fi
+    check_multiple_db_candidates "$_doctor_current_db" || true
 
     # S81-A04: Lease + Signal availability probe.
     # Drives the daemon's /v1/lease/acquire and /v1/signal/send endpoints with

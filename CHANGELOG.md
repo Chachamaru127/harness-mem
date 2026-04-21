@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **`harness-mem doctor`: multiple `harness-mem.db` detection** (§93). `doctor` now cross-checks four known DB candidate locations — `$HARNESS_MEM_DB_PATH`, `$HOME/.harness-mem/harness-mem.db` (default), `$HOME/.claude/plugins/data/*/harness-mem.db` (legacy plugin-scoped glob), and `${XDG_STATE_HOME:-$HOME/.local/state}/harness-mem/harness-mem.db` (legacy XDG) — and emits a WARN when any candidate other than the currently running daemon's DB exists with size > 0. Background: HARNESS_MEM_DB_PATH is env-overridable and older releases used different defaults, so operators have been bitten by silently running a stale daemon against an old DB. The check is advisory only — it never changes `doctor` exit code or the `all_green` contract. New bash test: `tests/doctor-multiple-db-detection.test.sh` (10 assertions, fixture-based).
+
 ## [0.14.0] - 2026-04-20
 
 ### Added
