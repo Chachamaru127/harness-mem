@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.14.1] - 2026-04-21
+
 ### Fixed
 
 - **Unified DB path — remove implicit `CLAUDE_PLUGIN_DATA` → `HARNESS_MEM_DB_PATH` promotion** (§94). `scripts/hook-handlers/lib/hook-common.sh` previously set `export HARNESS_MEM_DB_PATH="${CLAUDE_PLUGIN_DATA}/harness-mem.db"` whenever `CLAUDE_PLUGIN_DATA` was set and `HARNESS_MEM_DB_PATH` was unset. Because Claude Code injects a *different* `CLAUDE_PLUGIN_DATA` per plugin slot (`claude-code-harness-inline` / `codex-openai-codex` / marketplace variants), every installed plugin slot ended up with its own `harness-mem.db`, fragmenting observation history across 4 databases in affected environments (root-cause discovery driven by the §93 doctor WARN). The promotion is now removed; `HARNESS_MEM_DB_PATH` precedence is strictly: (1) explicit env (respected verbatim — backward-compatible), (2) `HARNESS_MEM_HOME/harness-mem.db`, (3) default `~/.harness-mem/harness-mem.db`. `PLUGIN_DATA_DIR` is still exported for non-DB plugin-slot state, but it no longer participates in DB path resolution. A one-shot stderr warning fires when `CLAUDE_PLUGIN_DATA` is set without an explicit `HARNESS_MEM_DB_PATH`, so operators coming from ≤ v0.14.0 see that their data is now consolidated (suppressible via `HARNESS_MEM_SUPPRESS_PLUGIN_DATA_WARN=1`). Users who set `HARNESS_MEM_DB_PATH` explicitly are not affected. Data still living in previously-created plugin-scoped DBs is not auto-merged — the §93 doctor WARN surfaces them and operators merge manually. New test: `tests/hook-common-db-path-unification.test.sh` (8 assertions, fixture-based).
