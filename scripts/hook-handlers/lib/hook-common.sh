@@ -27,15 +27,37 @@ hook_init_paths() {
     PROJECT_CONTEXT_LIB="${SCRIPT_DIR}/lib/project-context.sh"
   fi
 
-  # CLAUDE_PLUGIN_DATA (CC v2.1.78+): persistent plugin data directory that
-  # survives plugin updates. Falls back to HARNESS_MEM_HOME or ~/.harness-mem.
+  # CLAUDE_PLUGIN_DATA (CC v2.1.78+): per-plugin-slot persistent data directory
+  # that Claude Code injects into MCP server / hook child processes. Historically
+  # we auto-promoted this to HARNESS_MEM_DB_PATH so the daemon could store its
+  # DB under the plugin-scoped directory, but that caused DB fragmentation
+  # across plugin slots (claude-code-harness-inline / codex-openai-codex /
+  # marketplace variants each got their own harness-mem.db) because Claude Code
+  # sets CLAUDE_PLUGIN_DATA to a different path per installed plugin entry.
+  #
+  # §94 (v0.14.1): single-DB policy. HARNESS_MEM_DB_PATH is NEVER set implicitly
+  # from CLAUDE_PLUGIN_DATA anymore. Precedence is strictly:
+  #   1. HARNESS_MEM_DB_PATH (explicit env, respected as-is — backward compat)
+  #   2. HARNESS_MEM_HOME/harness-mem.db (when HARNESS_MEM_HOME is set)
+  #   3. $HOME/.harness-mem/harness-mem.db (default, single unified DB)
+  # PLUGIN_DATA_DIR is still exported for non-DB plugin state (e.g. callers that
+  # want to write non-canonical scratch under the plugin slot), but it no longer
+  # participates in DB path resolution.
   PLUGIN_DATA_DIR="${CLAUDE_PLUGIN_DATA:-${HARNESS_MEM_HOME:-$HOME/.harness-mem}}"
   export PLUGIN_DATA_DIR
 
-  # Wire PLUGIN_DATA_DIR into DB path fallback chain so that when
-  # CLAUDE_PLUGIN_DATA is set, the daemon uses it for state/DB storage.
-  if [ -z "${HARNESS_MEM_DB_PATH:-}" ] && [ -n "${CLAUDE_PLUGIN_DATA:-}" ]; then
-    export HARNESS_MEM_DB_PATH="${CLAUDE_PLUGIN_DATA}/harness-mem.db"
+  # Defensive warning (stderr only, never blocks): if CLAUDE_PLUGIN_DATA is set
+  # but no explicit HARNESS_MEM_DB_PATH was provided, the daemon will fall back
+  # to ~/.harness-mem/harness-mem.db (the single unified DB) regardless of the
+  # plugin slot. Emit a one-time hint so operators coming from <= v0.14.0 know
+  # their data is now consolidated.
+  if [ -z "${HARNESS_MEM_DB_PATH:-}" ] \
+     && [ -n "${CLAUDE_PLUGIN_DATA:-}" ] \
+     && [ -z "${HARNESS_MEM_PLUGIN_DATA_WARNED:-}" ] \
+     && [ -z "${HARNESS_MEM_SUPPRESS_PLUGIN_DATA_WARN:-}" ]; then
+    printf '[harness-mem] note: CLAUDE_PLUGIN_DATA=%s detected; using unified DB at ~/.harness-mem/harness-mem.db (§94).\n' \
+      "${CLAUDE_PLUGIN_DATA}" >&2
+    export HARNESS_MEM_PLUGIN_DATA_WARNED=1
   fi
 
   if [ "$has_daemon" = "true" ]; then
