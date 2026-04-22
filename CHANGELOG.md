@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Tools
+
+- **Plugin-scoped DB merge tool (dry-run)** (§95). Added `scripts/migrations/merge-plugin-scoped-dbs.sh` to merge observations (and related `mem_sessions`, `mem_tags`, `mem_entities`, `mem_observation_entities`, `mem_vectors`, `mem_facts`, `mem_links`, `mem_relations` rows) from the three historical plugin-scoped DBs created by the pre-§94 auto-promotion bug (`~/.claude/plugins/data/{claude-code-harness-inline,codex-openai-codex,claude-code-harness-claude-code-harness-marketplace}/harness-mem.db`) into the default `~/.harness-mem/harness-mem.db`. Default mode is **dry-run** (target is opened read-only via `ATTACH ... ?mode=ro` into a `:memory:` main; nothing is written), pass `--execute` to apply. Dedupe is conservative: `mem_observations.id` (ULID-ish TEXT PK) is the primary key; sessions/facts dedupe by their own TEXT PKs; `mem_entities` is deduped by `(name, entity_type)` and `entity_id` is re-mapped in the target (INTEGER AUTOINCREMENT); `mem_observation_entities`, `mem_vectors`, `mem_tags`, `mem_links`, `mem_relations` are keyed by observation_id + their compound PK. Same-session content divergence is flagged as "diff" (still skipped — merge is append-only). Each source is wrapped in its own `BEGIN IMMEDIATE` / `COMMIT` transaction under `--execute`. Audit log is written as JSONL to `~/.harness-mem/migrations/merge-<timestamp>.log`. Source DBs are never modified. Initial dry-run against the three real DBs estimates **40,010 new observations** recoverable (inline: 31,825 / codex: 7,498 / marketplace: 687) plus 293 new sessions and 40,010 vectors. Running the live merge (`--execute`) is intentionally left as a separate operator task; the §93 doctor warning continues to surface the split until done. New bash test: `tests/merge-plugin-scoped-dbs-dryrun.test.sh` (29 assertions, fixture-based; covers dry-run non-mutation, count accuracy, audit log, execute correctness, idempotency, missing-source soft-skip).
+
 ## [0.14.1] - 2026-04-21
 
 ### Fixed
