@@ -148,6 +148,70 @@ sqlite_q_ro() {
 }
 
 # --------------------------------------------------------------------------
+# Schema introspection helpers
+#
+# Column-order between the plugin-scoped DBs and the default DB diverges
+# for several tables (mem_observations, mem_sessions, mem_facts) because
+# historical migrations applied columns in a different order. That means
+# `INSERT OR IGNORE INTO tgt.X SELECT * FROM src.X` maps src positions
+# to tgt positions, jamming wrong values into NOT-NULL columns and
+# triggering silent OR-IGNORE drops for 95%+ of rows (the original §95
+# bug this file was renamed to fix).
+#
+# The helpers below extract table column names and compute the common
+# subset, which lets us emit explicit `(col1, col2, ...) SELECT col1,
+# col2, ... FROM src.X` that is order-independent.
+# --------------------------------------------------------------------------
+
+# table_cols <db_path> <table>   → newline-separated column names
+table_cols() {
+  local db="$1" table="$2"
+  sqlite3 "file:${db}?mode=ro" "SELECT name FROM pragma_table_info('${table}');" 2>/dev/null || \
+    sqlite3 "${db}" "SELECT name FROM pragma_table_info('${table}');"
+}
+
+# common_cols <src_db> <tgt_db> <table>   → comma-separated intersection
+#   of column names that exist in BOTH src and tgt, preserving tgt order.
+#   Returns empty string if either table is missing.
+common_cols() {
+  local src_db="$1" tgt_db="$2" table="$3"
+  local tgt_list src_list
+  tgt_list="$(table_cols "${tgt_db}" "${table}")"
+  src_list="$(table_cols "${src_db}" "${table}")"
+  if [[ -z "${tgt_list}" || -z "${src_list}" ]]; then
+    return 0
+  fi
+  local out=""
+  while IFS= read -r col; do
+    [[ -z "${col}" ]] && continue
+    if printf '%s\n' "${src_list}" | grep -qx -- "${col}"; then
+      if [[ -z "${out}" ]]; then
+        out="${col}"
+      else
+        out="${out},${col}"
+      fi
+    fi
+  done <<< "${tgt_list}"
+  printf '%s' "${out}"
+}
+
+# qualified_cols <prefix> <comma_list>  → "p.c1, p.c2, ..." for JOIN sql.
+qualified_cols() {
+  local prefix="$1"
+  local csv="$2"
+  local out=""
+  IFS=',' read -ra arr <<< "${csv}"
+  for c in "${arr[@]}"; do
+    if [[ -z "${out}" ]]; then
+      out="${prefix}.${c}"
+    else
+      out="${out}, ${prefix}.${c}"
+    fi
+  done
+  printf '%s' "${out}"
+}
+
+# --------------------------------------------------------------------------
 # Per-source dry-run computation
 #
 # Strategy: ATTACH source as 'src' onto a tiny in-memory main DB, then
@@ -348,27 +412,69 @@ run_execute_source() {
 
   echo_info "--- EXECUTE source=${label}"
 
+  # Compute the column intersection between source and target for each
+  # table we merge by bulk copy. This is the fix for the original §95
+  # execute-path bug: the previous implementation used `INSERT OR IGNORE
+  # INTO tgt.X SELECT * FROM src.X`, which maps positionally. The real
+  # plugin-scoped DBs have different column orders than the default DB
+  # for mem_observations / mem_sessions / mem_facts (columns added in
+  # different migration order), so values ended up in the wrong target
+  # columns, triggered NOT-NULL constraint violations, and got silently
+  # dropped by OR IGNORE — about 95% of rows. Listing columns by name
+  # makes the INSERT order-independent.
+  local cols_sessions cols_observations cols_tags cols_vectors cols_facts
+  cols_sessions="$(common_cols "${src}" "${TARGET}" mem_sessions)"
+  cols_observations="$(common_cols "${src}" "${TARGET}" mem_observations)"
+  cols_tags="$(common_cols "${src}" "${TARGET}" mem_tags)"
+  cols_vectors="$(common_cols "${src}" "${TARGET}" mem_vectors)"
+  cols_facts="$(common_cols "${src}" "${TARGET}" mem_facts)"
+
+  local sel_sessions sel_observations sel_tags sel_vectors sel_facts
+  sel_sessions="$(qualified_cols s "${cols_sessions}")"
+  sel_observations="$(qualified_cols s "${cols_observations}")"
+  sel_tags="$(qualified_cols s "${cols_tags}")"
+  sel_vectors="$(qualified_cols v "${cols_vectors}")"
+  sel_facts="$(qualified_cols s "${cols_facts}")"
+
+  # Snapshot counts before merge, for audit reporting.
+  local pre_obs pre_sess pre_vec pre_tag pre_ent pre_obsent pre_rel pre_fact pre_link
+  pre_obs=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_observations;")
+  pre_sess=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_sessions;")
+  pre_vec=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_vectors;")
+  pre_tag=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_tags;")
+  pre_ent=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_entities;")
+  pre_obsent=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_observation_entities;")
+  pre_rel=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_relations;")
+  pre_fact=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_facts;")
+  pre_link=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_links;")
+
   # Wrap the whole per-source merge in one transaction. We ATTACH the
-  # source read-only. INSERT OR IGNORE lets us re-map dedupe silently.
-  # mem_entities needs special handling because its PK is INTEGER
-  # AUTOINCREMENT — we can't rely on src ids matching. We materialize a
-  # temp map.
+  # source read-only. INSERT OR IGNORE preserves target on PK / UNIQUE
+  # collisions; order-independent column lists ensure no constraint
+  # violations are caused by positional mismatch.
   sqlite3 "${TARGET}" <<SQL
 ATTACH DATABASE 'file:${src}?mode=ro' AS src;
 BEGIN IMMEDIATE;
 
--- 1. sessions
-INSERT OR IGNORE INTO main.mem_sessions
-  SELECT * FROM src.mem_sessions;
+-- 1. sessions (column-order-safe; dedupe by session_id PK via OR IGNORE).
+INSERT OR IGNORE INTO main.mem_sessions(${cols_sessions})
+  SELECT ${sel_sessions} FROM src.mem_sessions s;
 
--- 2. observations
-INSERT OR IGNORE INTO main.mem_observations
-  SELECT * FROM src.mem_observations s
-  WHERE NOT EXISTS (SELECT 1 FROM main.mem_observations t WHERE t.id = s.id);
+-- 2. observations (column-order-safe; dedupe by id PK via OR IGNORE,
+--    additionally skip if an identical event_id already exists in tgt
+--    even when the src has a different id — event_id is a stable
+--    cross-DB correlation key when present).
+INSERT OR IGNORE INTO main.mem_observations(${cols_observations})
+  SELECT ${sel_observations} FROM src.mem_observations s
+  WHERE NOT EXISTS (SELECT 1 FROM main.mem_observations t WHERE t.id = s.id)
+    AND (s.event_id IS NULL OR NOT EXISTS (
+      SELECT 1 FROM main.mem_observations t2
+      WHERE t2.event_id IS NOT NULL AND t2.event_id = s.event_id
+    ));
 
--- 3. tags (for obs that survived step 2)
-INSERT OR IGNORE INTO main.mem_tags
-  SELECT s.* FROM src.mem_tags s
+-- 3. tags (for obs that now exist in tgt).
+INSERT OR IGNORE INTO main.mem_tags(${cols_tags})
+  SELECT ${sel_tags} FROM src.mem_tags s
   WHERE EXISTS (SELECT 1 FROM main.mem_observations t WHERE t.id = s.observation_id);
 
 -- 4. entities: dedupe by (name, entity_type). mem_entities id is INTEGER
@@ -394,14 +500,14 @@ INSERT OR IGNORE INTO main.mem_relations(src, dst, kind, strength, observation_i
   FROM src.mem_relations r
   WHERE EXISTS (SELECT 1 FROM main.mem_observations t WHERE t.id = r.observation_id);
 
--- 7. vectors
-INSERT OR IGNORE INTO main.mem_vectors
-  SELECT v.* FROM src.mem_vectors v
+-- 7. vectors (column-order-safe; also dedupe on (observation_id, model) PK).
+INSERT OR IGNORE INTO main.mem_vectors(${cols_vectors})
+  SELECT ${sel_vectors} FROM src.mem_vectors v
   WHERE EXISTS (SELECT 1 FROM main.mem_observations t WHERE t.id = v.observation_id);
 
--- 8. facts
-INSERT OR IGNORE INTO main.mem_facts
-  SELECT * FROM src.mem_facts;
+-- 8. facts (column-order-safe; dedupe by fact_id PK via OR IGNORE).
+INSERT OR IGNORE INTO main.mem_facts(${cols_facts})
+  SELECT ${sel_facts} FROM src.mem_facts s;
 
 -- 9. links: dedupe by (from_observation_id, to_observation_id, relation).
 INSERT OR IGNORE INTO main.mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
@@ -417,8 +523,36 @@ INSERT OR IGNORE INTO main.mem_links(from_observation_id, to_observation_id, rel
 COMMIT;
 SQL
 
-  log_event "source_merged" "\"source\":\"${src}\",\"target\":\"${TARGET}\",\"mode\":\"execute\""
-  echo_info "    OK (see ${LOG_FILE} for audit trail)"
+  # Snapshot counts after merge and compute deltas for the audit log.
+  local post_obs post_sess post_vec post_tag post_ent post_obsent post_rel post_fact post_link
+  post_obs=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_observations;")
+  post_sess=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_sessions;")
+  post_vec=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_vectors;")
+  post_tag=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_tags;")
+  post_ent=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_entities;")
+  post_obsent=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_observation_entities;")
+  post_rel=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_relations;")
+  post_fact=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_facts;")
+  post_link=$(sqlite3 "${TARGET}" "SELECT COUNT(*) FROM mem_links;")
+
+  local d_obs=$(( post_obs - pre_obs ))
+  local d_sess=$(( post_sess - pre_sess ))
+  local d_vec=$(( post_vec - pre_vec ))
+  local d_tag=$(( post_tag - pre_tag ))
+  local d_ent=$(( post_ent - pre_ent ))
+  local d_obsent=$(( post_obsent - pre_obsent ))
+  local d_rel=$(( post_rel - pre_rel ))
+  local d_fact=$(( post_fact - pre_fact ))
+  local d_link=$(( post_link - pre_link ))
+
+  # Export totals for aggregation in main loop.
+  LAST_OBS_NEW=${d_obs}
+  LAST_SESS_NEW=${d_sess}
+  LAST_VEC_NEW=${d_vec}
+
+  log_event "source_merged" "\"source\":\"${src}\",\"target\":\"${TARGET}\",\"mode\":\"execute\",\"obs_new\":${d_obs},\"sess_new\":${d_sess},\"vec_new\":${d_vec},\"tag_new\":${d_tag},\"entity_new\":${d_ent},\"obs_ent_new\":${d_obsent},\"rel_new\":${d_rel},\"fact_new\":${d_fact},\"link_new\":${d_link}"
+  echo_info "    OK: obs=+${d_obs} sess=+${d_sess} vec=+${d_vec} tag=+${d_tag} ent=+${d_ent} obs_ent=+${d_obsent} rel=+${d_rel} fact=+${d_fact} link=+${d_link}"
+  echo_info "    (audit trail: ${LOG_FILE})"
 }
 
 # --------------------------------------------------------------------------
@@ -452,6 +586,9 @@ LAST_VEC_NEW=0
 for src in "${SOURCES[@]}"; do
   if [[ ${EXECUTE} -eq 1 ]]; then
     run_execute_source "${src}"
+    TOTAL_OBS_NEW=$(( TOTAL_OBS_NEW + LAST_OBS_NEW ))
+    TOTAL_VEC_NEW=$(( TOTAL_VEC_NEW + LAST_VEC_NEW ))
+    TOTAL_SESS_NEW=$(( TOTAL_SESS_NEW + LAST_SESS_NEW ))
   else
     run_dry_source "${src}"
     TOTAL_OBS_NEW=$(( TOTAL_OBS_NEW + LAST_OBS_NEW ))
@@ -466,6 +603,7 @@ if [[ ${EXECUTE} -eq 0 ]]; then
   echo_info "Re-run with --execute to apply. Target was NOT modified."
 else
   echo_info "==="
+  echo_info "AGGREGATE (execute): obs_new=${TOTAL_OBS_NEW}, sess_new=${TOTAL_SESS_NEW}, vec_new=${TOTAL_VEC_NEW}"
   echo_info "Merge complete. Target: ${TARGET}"
 fi
 
