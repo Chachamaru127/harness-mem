@@ -7,14 +7,81 @@
 
 ## [Unreleased]
 
-### 追加
+（現在リリース予定の項目はありません）
 
-- **検索フィルタ `observation_type`** (§89-001, XR-002 P0). `/v1/search` と `harness_mem_search` MCP ツールに `observation_type` パラメータを追加。`mem_observations` に保存される構造化タイプ（`decision` / `summary` / `context` / `document` など）で結果を絞り込めます。REST エンドポイントと TypeScript MCP は string / string[] を受け、Go MCP は単一 string のみ（mcp-go に `oneOf` ヘルパーが無いため）。入力は SQLite の変数上限に達しないよう最大 32 件 × 各 100 文字に防御的にクランプされます。
-- **`type:xxx` クエリプレフィクス**（§89-001 Step 2）。`query="type:decision 残りの文"` のように書くと、`observation_type="decision"` を明示的に渡したのと同じフィルタが効きます。REST ハンドラと TypeScript MCP が検索実行前に query を書き換えます。先頭の `type:<トークン>`（正規表現 `^\s*type:([A-Za-z0-9_.-]+)\s*`）だけが対象で、`"our \"type:safety\" policy"` のような本文中の引用語は影響を受けません。直接の `observation_type` パラメータは常にプレフィクス形式より優先します。
+## [0.15.0] - 2026-04-23
 
-### 修正
+### ユーザー向け要約
 
-- **Go MCP で `observation_type` が無視されていた問題**（§89-001 Step 2 ホットフィックス、独立 Codex レビューで検出）。Go MCP の schema には `observation_type` が公開されていたものの、`harness_mem_search` ハンドラが REST ペイロードへ転送していなかったため、Go クライアントからの指定が機能していませんでした。ハンドラで転送するよう修正し、`TestHandleMemSearchObservationType` / `TestHandleMemSearchObservationTypeOmitted` でカバレッジを追加しました。
+- **`/harness-recall` Skill を追加**（§96）。「思い出して」「覚えてる」「前回」「続き」「直近」「最後に」「先ほど」「さっき」「resume」「recall」等のユーザー発話を検知して、5 つの正しい recall 経路に自動 routing する Claude Code Skill。配布ユーザー側の CLAUDE.md 編集は不要（Skill description + `userprompt-inject-policy.sh` の auto-fire trigger が plugin に同梱）。
+  - 経路: (a) 続き / resume → `harness_mem_resume_pack`、(b) 決定 / 方針 → `.claude/memory/decisions.md` / `patterns.md` (SSOT)、(c) 前に踏んだ同じ問題 → `harness_cb_recall`、(d) 直近 session 一覧 → `harness_mem_sessions_list`、(e) 特定キーワード → `harness_mem_search`。
+  - 出力は必ず `source:` 明示。auto-memory (MEMORY.md) は point-in-time と明記、現役の決定は SSOT を優先。
+  - 発火は Skill description と hook 注入の二重化で片側失敗に耐性あり。recall 以外の発話では注入ブロックは出ない（surface lean）。
+- **Plugin-scoped DB 救済マージツールの silent-skip bug を修正**（§95 S95-006）。`scripts/migrations/merge-plugin-scoped-dbs.sh --execute` が dry-run 見積もりの ~95% を silent skip していた不具合（column 順ずれ + `INSERT OR IGNORE` 組合せが原因）を修正。column 名 intersection 方式に書き直し、`event_id` ベースの cross-DB dedupe skip も追加。per-source audit log に実 delta を記録。新規回帰テスト `tests/merge-plugin-scoped-dbs-execute.test.sh` (24 assertions)。
+
+### 追加（ツール）
+
+- **Plugin-scoped DB 救済マージツール (dry-run)**（§95）。§94 以前の CLAUDE_PLUGIN_DATA 自動昇格 bug で生成された 3 つの plugin-scoped DB を default DB へ統合する offline ツール。既定は dry-run (source/target ともに read-only ATTACH)、`--execute` で書込み適用。保守的な dedupe (TEXT PK 主、entity は `(name, entity_type)` で lookup-remap)。source DB は一切書き換えない。JSONL audit log を `~/.harness-mem/migrations/` に記録。実データで **40,010 observation + 293 session + 40,010 vector** の救済が可能と確認。
+
+詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0150---2026-04-23) を参照。
+
+## [0.14.1] - 2026-04-21
+
+### ユーザー向け要約
+
+- **DB path 統一: 暗黙の `CLAUDE_PLUGIN_DATA` → `HARNESS_MEM_DB_PATH` 昇格を削除**（§94）。旧: `CLAUDE_PLUGIN_DATA` が設定されていて `HARNESS_MEM_DB_PATH` 未設定のとき自動で前者を promote していたが、Claude Code は plugin slot ごとに異なる `CLAUDE_PLUGIN_DATA` を注入するため、1 ユーザー環境に最大 4 つの `harness-mem.db` が並走する事故が発生していた（§93 の doctor WARN で顕在化）。
+  - 新しい precedence: (1) 明示的な `HARNESS_MEM_DB_PATH` を尊重（後方互換）、(2) `HARNESS_MEM_HOME/harness-mem.db`、(3) default `~/.harness-mem/harness-mem.db`。
+  - `CLAUDE_PLUGIN_DATA` 設定ありで `HARNESS_MEM_DB_PATH` 未設定の場合、stderr に 1 回だけ WARN を出力（`HARNESS_MEM_SUPPRESS_PLUGIN_DATA_WARN=1` で抑止可能）。
+  - 既に `HARNESS_MEM_DB_PATH` を明示設定しているユーザーには影響なし。
+- **`harness-mem doctor` に複数 DB 検出 WARN を追加**（§93）。現 daemon の DB path 以外に `> 0 byte` の `harness-mem.db` が 4 候補 path のどこかにあれば WARN 表示。exit code と `all_green` contract は変更しない（advisory only）。
+
+詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0141---2026-04-21) を参照。
+
+## [0.14.0] - 2026-04-20
+
+### ユーザー向け要約
+
+- **現 session を閉じずに別 session を開いても要約が渡る** — 定期 partial finalize による live session handoff（§91, XR-004）。
+  - `/v1/sessions/finalize` に optional `partial: boolean` を追加。`partial=true` は session の status を active のまま維持し、`is_partial=true` の `session_summary` を 1 件追記する（§91-001）。
+  - daemon 内 scheduler loop を追加。`partialFinalizeIntervalMs` (既定 5 分) ごとに「最新 event が最新 summary より新しい active session」を検出して partial finalize を投げる。既定 OFF (opt-in)、同時実行 1 / tick あたり最大 5 session / 1 session 30 秒 timeout で CPU 負荷を抑制（§91-002）。
+  - `/v1/resume-pack` が `is_partial=true` の summary も最優先で拾うよう修正。opt-out 用 `include_partial: boolean` 追加（§91-003）。
+  - `~/.harness-mem/config.json` に `partialFinalizeEnabled: true` を書けば env var 無しで永続 ON（§91-006）。env var > config.json > default の 3 段 fallback。
+- **`/v1/resume-pack` 軽量モード `summary_only`**（§90-002）。`true` 指定で ranking / facts / continuity briefing などを省略し、最新 session summary を `meta.summary` に直載せ。shell hook (`memory-session-start.sh` / `userprompt-inject-policy.sh`) の jq 依存を縮小し、jq 非搭載環境でも resume injection を動かすため。`hook-common.sh` にも `hook_extract_meta_summary` (jq / python3 fallback) と `hook_fetch_resume_pack_summary_only` を追加（§90-002 follow-up）。
+- **検索フィルタ `observation_type`** (§89-001, XR-002 P0)。`/v1/search` と `harness_mem_search` に `observation_type` パラメータを追加。`decision` / `summary` / `context` / `document` 等で結果を絞り込める。REST + TypeScript MCP は string / string[]、Go MCP は単一 string。最大 32 件 × 各 100 文字で clamp。
+- **`type:xxx` クエリプレフィクス**（§89-001 Step 2）。`query="type:decision 残りの文"` 形式で `observation_type="decision"` と等価に扱う。REST ハンドラと TypeScript MCP が検索前に query を書き換える。
+- **修正**: Go MCP で `observation_type` が schema には見えるのに実際の検索に反映されていなかった hotfix（§89-001 Step 2、独立 Codex レビューで検出）。
+
+詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0140---2026-04-20) を参照。
+
+## [0.13.0] - 2026-04-18
+
+### テーマ: Verbatim storage, hierarchical scope, graph memory, branch-scoped recall, procedural skills（§78 Phase B/C/D/E）
+
+v0.12.0 で agentmemory の 12 点 gap を Phase A の cross-pollination で閉じた上で、v0.13.0 は §78 の残る Phase B/C/D/E を landing。harness-mem が MemPalace 等に対する "local-first world-class retrieval" ポジションを取り、どの競合もやっていない session lifecycle を積み増す release。
+
+### ユーザー向け要約
+
+1. **Verbatim raw storage**（§78-B01）— `mem_observations.raw_text` 列を追加。`HARNESS_MEM_RAW_MODE=1` で構造化 summary と verbatim raw text の両方を保存・embed。既存行は NULL のまま後方互換。
+2. **Hierarchical scope: thread_id + topic**（§78-B02）— `thread_id` / `topic` 列と部分 index を追加。`harness_mem_search` の `scope` パラメータ（`project` / `session` / `thread` / `topic`）で段階的に絞り込み可能。OpenAPI + MCP schema 更新。
+3. **L0 / L1 wake-up context**（§78-B03）— Resume pack の `detail_level` を L0 (≤ 180 tokens) と L1 (full continuity) に分離。token 予算テストで両方の挙動を固定。
+4. **Entity-relation graph memory**（§78-C01 〜 C04）— C01 で Kuzu vs SQLite の spike を実施、SQLite recursive CTE を採用（Kuzu の 40MB binary と外部プロセス overhead が harness-mem スケールでは割に合わない）。C02 で `mem_relations` + regex ベース抽出 + `harness_mem_graph` の `entities` endpoint。C03 で `graph_depth` multi-hop 展開の再帰 CTE ヘルパー。C04 で graph proximity signal を hybrid scorer に合成（A/B で vector-only 比のスコア向上を確認）。
+5. **Temporal forgetting + contradiction resolution + auto project profile**（§78-D01 / D02 / D03）— D01: `expires_at` TTL 列 + `harness_mem_ingest` expires_at param + 全 read path で expired 除外 + `include_expired` override。D02: `harness_mem_add_relation` に `supersedes` kind。superseded observation は検索 rank を下げる。D03: static/dynamic fact 分類と `GET /v1/mem/status` の token-compact project profile。
+6. **Privacy, branch, progressive disclosure, procedural skills**（§78-E01 〜 E04）— E01: `<private>...</private>` を index から strip (raw には残存、`include_private` opt-in)。E02: `mem_observations.branch` 列（null 許容、null-inclusive 検索）。E03: `detail_level` (`index` / `context` / `full`) + `token_estimate` 返却。E04: `finalize_session` が繰り返しパターンを検出して procedural skill を合成（opt-in 永続化）。
+
+### テスト
+
+- 新規 unit 81 テスト（privacy-tags / thread-scope / topic-scope / branch-scope / raw-text-storage / entity-extraction / graph-multi-hop / graph-augmented-search / contradiction-resolution / project-profile / wake-up-l0-l1 / progressive-disclosure / procedural-skill-synthesis ほか）。
+- Unit 全体: 1155 pass / 1 skip / 0 fail（103 files）。
+- Integration: 182 pass / 8 skip / 0 fail（32 files、api-contract snapshot 更新済）。
+- Go: 6 package 全て ok（auth / pii / proxy / tools / types / util）。
+
+詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0130---2026-04-18) を参照。
+
+## [0.12.0] — v0.13.0 に統合
+
+v0.12.0 tag は 2026-04-18 に一度打たれ release workflow が走ったものの、repository-behavior / typecheck / dev-domain gate で 9 件の hotfix PR (#53–#61) が必要になり end-to-end 完走できなかった。npm で version を飛ばしたくなかったため **v0.12.0 tag は削除**、その内容を **v0.13.0 に合流** させた。従って v0.12.0 の独立 release artifact は存在しない。
+
+v0.12.0 に入っていたスコープ（Phase A + 並走 session §81 の cross-pollination）は v0.13.0 の Phase B-E と同じ release で配布される。**ユーザーは v0.13.0 (以降) を入れれば全て揃う**。詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0120--consolidated-into-0130) を参照。
 
 ## [0.11.0] - 2026-04-10
 

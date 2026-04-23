@@ -468,6 +468,22 @@ harness-mem recall off
 - `off` は contextual recall だけを無効化します。通常の検索と SessionStart continuity は動いたままです。
 - 1 prompt あたりの recall 予算は `HARNESS_MEM_WHISPER_MAX_TOKENS` で制御できます。詳細は [`docs/environment-variables.md`](docs/environment-variables.md)。
 
+### `/harness-recall` Skill（Claude Code 向け、v0.15.0 以降）
+
+Claude Code ユーザー向けに、「思い出して」「覚えてる」「前回」「続き」「直近」「最後に」「先ほど」「さっき」「resume」「recall」等の自然な発話で自動発火する Skill を同梱しました。ユーザー側の設定は不要です（`scripts/userprompt-inject-policy.sh` が `RECALL_KEYWORDS` を検知して毎 `UserPromptSubmit` で Skill invoke を促します）。
+
+意図ごとに適切な記憶経路へ自動 routing します:
+
+- 続き / resume → `harness_mem_resume_pack`
+- 決定 / 方針 → `.claude/memory/decisions.md` + `patterns.md`（SSOT）
+- 前に踏んだ同じ問題 → `harness_cb_recall`
+- 直近 session 一覧 → `harness_mem_sessions_list`
+- 特定キーワード → `harness_mem_search`
+
+出力は必ず `source:` 行から始まるため、情報の鮮度を判断できます（auto-memory は point-in-time と明記、現役の決定は SSOT 優先）。
+
+上の "Banto モード" とは直交します: Banto は毎プロンプトで短い "耳打ち" を出す advisory、`/harness-recall` は recall 意図が明確なときだけ動く directed query です。
+
 ### Mem UI
 
 ```bash
