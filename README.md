@@ -471,6 +471,22 @@ harness-mem recall off
 - `off` disables contextual recall while keeping normal search and SessionStart continuity intact.
 - `HARNESS_MEM_WHISPER_MAX_TOKENS` controls the per-prompt recall budget. See [`docs/environment-variables.md`](docs/environment-variables.md).
 
+### `/harness-recall` Skill (Claude Code, since v0.15.0)
+
+Claude Code users get a Skill that auto-fires when you naturally ask to recall something. Trigger phrases include `思い出して` / `覚えてる` / `前回` / `続き` / `直近` / `最後に` / `先ほど` / `さっき` / `resume` / `recall`.
+
+The Skill routes your intent to the right memory source so you don't have to pick:
+
+- continuation / resume → `harness_mem_resume_pack`
+- decisions / methodology → `.claude/memory/decisions.md` + `patterns.md` (SSOT)
+- same problem seen before → `harness_cb_recall`
+- recent session list → `harness_mem_sessions_list`
+- specific keyword → `harness_mem_search`
+
+Output always starts with a `source:` line so you can judge freshness (auto-memory is marked point-in-time; live decisions come from SSOT). No user-side configuration required — `scripts/userprompt-inject-policy.sh` detects `RECALL_KEYWORDS` and promotes Skill invocation on every matching `UserPromptSubmit`.
+
+This is orthogonal to "Banto mode" above: Banto runs on every prompt (advisory whisper), `/harness-recall` only runs on explicit recall intent (directed query).
+
 ### Mem UI
 
 ```bash
