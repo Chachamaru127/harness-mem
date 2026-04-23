@@ -164,6 +164,16 @@ if printf '%s' "$PROMPT_TEXT" | grep -qiE "$SEMANTIC_KEYWORDS"; then
   INTENT="semantic"
 fi
 
+# §96: recall intent detection. Fires the /harness-recall Skill trigger when the
+# user prompt contains recall-oriented phrases. Keywords include Japanese casual
+# forms (思い出して / 覚えてる / 前回 / 続き / 直近 / 最後に / 先ほど / さっき)
+# and their English counterparts (resume / recall).
+RECALL_KEYWORDS="思い出して|思い出し|覚えてる|覚えている|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
+RECALL_INTENT=false
+if printf '%s' "$PROMPT_TEXT" | grep -qiE "$RECALL_KEYWORDS"; then
+  RECALL_INTENT=true
+fi
+
 LSP_AVAILABLE="$(json_file_get "$TOOLING_POLICY_FILE" ".lsp.available" "false")"
 if command -v jq >/dev/null 2>&1; then
   json_file_update "$SESSION_FILE" \
@@ -207,6 +217,22 @@ Recommendation:
 - Evaluate available Skills if the task is domain-specific
 - You can proceed without LSP, but accuracy may be lower")"
   fi
+fi
+
+if [ "$RECALL_INTENT" = "true" ]; then
+  INJECTION="$(append_injection_block "$INJECTION" "## Recall Intent Detected
+
+User prompt に recall 意図 (思い出して / 覚えてる / 前回 / 続き / resume / recall 等) が含まれます。
+
+**\`/harness-recall\` Skill を invoke して応答してください。** Skill は以下の 5 分岐で routing します:
+
+- resume / 続き → \`harness_mem_resume_pack\`
+- 何を決めた / 方針 → \`.claude/memory/decisions.md\` / \`patterns.md\`
+- 前に踏んだ同じ問題 → \`harness_cb_recall\`
+- 直近 session 一覧 → \`harness_mem_sessions_list\`
+- 特定キーワード → \`harness_mem_search\`
+
+出力は必ず \`source:\` を先頭に明示してください。auto-memory (MEMORY.md) は point-in-time なので現役の決定は SSOT (\`decisions.md\`) を優先。")"
 fi
 
 RESUME_CONSUMED=0
