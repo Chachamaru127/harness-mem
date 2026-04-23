@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 const SKILL_PATH = resolve(import.meta.dir, "../skills/harness-recall/SKILL.md");
+const HOOK_PATH = resolve(import.meta.dir, "../scripts/userprompt-inject-policy.sh");
 
 const TRIGGER_PHRASES = [
   "思い出して",
@@ -69,5 +70,38 @@ describe("§96 /harness-recall skill contract", () => {
   test("output format guideline requires a source: line", () => {
     const body = readFileSync(SKILL_PATH, "utf8");
     expect(body).toMatch(/source:/i);
+  });
+
+  test("SKILL.md trigger_phrases must match the RECALL_KEYWORDS regex in userprompt-inject-policy.sh (guard against silent divergence)", () => {
+    const skillBody = readFileSync(SKILL_PATH, "utf8");
+    const frontmatter = skillBody.match(/^---\s*\n([\s\S]*?)\n---/);
+    expect(frontmatter).not.toBeNull();
+
+    const triggerBlock = frontmatter![1].match(/trigger_phrases:\s*\n((?:\s+-\s+.+\n?)+)/);
+    expect(triggerBlock).not.toBeNull();
+    const skillPhrases = triggerBlock![1]
+      .split("\n")
+      .map((line) => line.replace(/^\s*-\s+/, "").trim())
+      .filter((line) => line.length > 0);
+    expect(skillPhrases.length).toBeGreaterThan(0);
+
+    const hookBody = readFileSync(HOOK_PATH, "utf8");
+    const kwMatch = hookBody.match(/RECALL_KEYWORDS="([^"]+)"/);
+    expect(kwMatch).not.toBeNull();
+    const hookKeywords = kwMatch![1].split("|").map((s) => s.trim());
+    expect(hookKeywords.length).toBeGreaterThan(0);
+
+    for (const phrase of skillPhrases) {
+      const hit = hookKeywords.some(
+        (kw) => phrase.toLowerCase().includes(kw.toLowerCase()) || kw.toLowerCase().includes(phrase.toLowerCase())
+      );
+      expect(hit, `SKILL.md trigger_phrases "${phrase}" is not covered by RECALL_KEYWORDS in userprompt-inject-policy.sh`).toBe(true);
+    }
+    for (const kw of hookKeywords) {
+      const hit = skillPhrases.some(
+        (phrase) => phrase.toLowerCase().includes(kw.toLowerCase()) || kw.toLowerCase().includes(phrase.toLowerCase())
+      );
+      expect(hit, `RECALL_KEYWORDS entry "${kw}" has no corresponding SKILL.md trigger_phrases entry`).toBe(true);
+    }
   });
 });

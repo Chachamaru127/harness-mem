@@ -168,7 +168,7 @@ fi
 # user prompt contains recall-oriented phrases. Keywords include Japanese casual
 # forms (思い出して / 覚えてる / 前回 / 続き / 直近 / 最後に / 先ほど / さっき)
 # and their English counterparts (resume / recall).
-RECALL_KEYWORDS="思い出して|思い出し|覚えてる|覚えている|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
+RECALL_KEYWORDS="思い出して|覚えてる|覚えている|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
 RECALL_INTENT=false
 if printf '%s' "$PROMPT_TEXT" | grep -qiE "$RECALL_KEYWORDS"; then
   RECALL_INTENT=true
