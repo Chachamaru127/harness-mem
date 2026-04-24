@@ -1,8 +1,10 @@
 [test]
-# harness-mem-ui/tests/ は vitest (ui/) と Playwright (e2e/) を使用
-# bun test では実行不可のため、以下のスクリプトで実行:
-#   bun run test:ui   → cd harness-mem-ui && bunx vitest
-#   bun run test:e2e  → cd harness-mem-ui && bunx playwright test
+# harness-mem-ui/tests/ は Vitest / Playwright 専用 naming に分離する。
+# Bun の [test].exclude は安定しないため、file pattern で boundary を作る。
+# official stable path は引き続き:
+#   npm test
+#   bun run test:ui
+#   bun run test:e2e
 #
-# bun test の [test].exclude はバグで無視される (oven-sh/bun#17028)
-# 代わりに package.json scripts.test でディレクトリを明示指定
+# harness-mem-ui/tests/ui   → *.vitest.ts(x)
+# harness-mem-ui/tests/e2e  → *.e2e.ts

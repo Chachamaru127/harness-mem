@@ -3,7 +3,7 @@
  *
  * jsdom を使って document / localStorage / window などの
  * ブラウザ API を globalThis に注入する。
- * bunfig.toml の [test] preload で読み込まれる。
+ * `harness-mem-ui/bunfig.toml` の [test] preload で読み込まれる。
  *
  * 注意: globalThis.navigator は上書きしない。
  * jsdom の navigator.hardwareConcurrency が os.cpus() を呼び、

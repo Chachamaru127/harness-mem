@@ -6,6 +6,7 @@ const cwd = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  testMatch: "**/*.e2e.ts",
   timeout: 30_000,
   use: {
     baseURL: "http://127.0.0.1:37911",

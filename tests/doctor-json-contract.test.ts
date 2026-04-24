@@ -10,20 +10,29 @@ import { resolve } from "node:path";
 
 const SCRIPT = resolve(import.meta.dir, "../scripts/harness-mem");
 
+async function runDoctorJson(): Promise<{ stdout: string; stderr: string; code: number }> {
+  const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
+    stdout: "pipe",
+    stderr: "pipe",
+    env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
+  });
+
+  const [stdout, stderr, code] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ]);
+
+  return { stdout, stderr, code };
+}
+
 describe("doctor --json contract", () => {
   test("stdout is pure JSON with no extra text", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
-    await proc.exited;
+    const { stdout, stderr, code } = await runDoctorJson();
 
     // stdout が空でないこと
     expect(stdout.trim().length).toBeGreaterThan(0);
+    expect(code).toBe(0);
 
     // JSON として parse できること（余計なテキストが混入していない）
     let parsed: Record<string, unknown>;
@@ -41,29 +50,15 @@ describe("doctor --json contract", () => {
   });
 
   test("all_green field is boolean", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    await proc.exited;
-
+    const { stdout, code } = await runDoctorJson();
+    expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(typeof parsed.all_green).toBe("boolean");
   });
 
   test("required fields have correct types", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    await proc.exited;
-
+    const { stdout, code } = await runDoctorJson();
+    expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
 
     // status: string ("healthy" | "unhealthy")
@@ -97,15 +92,8 @@ describe("doctor --json contract", () => {
   });
 
   test("all_green matches failed_count == 0", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    await proc.exited;
-
+    const { stdout, code } = await runDoctorJson();
+    expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
 
     // all_green は failed_count == 0 と一致すること
@@ -113,15 +101,8 @@ describe("doctor --json contract", () => {
   });
 
   test("checks array items have name and status fields", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-    });
-
-    const stdout = await new Response(proc.stdout).text();
-    await proc.exited;
-
+    const { stdout, code } = await runDoctorJson();
+    expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
 
     for (const check of parsed.checks) {
