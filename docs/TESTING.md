@@ -1,18 +1,20 @@
 # TESTING.md — テストカタログと実行ガイド
 
-> 更新日: 2026-03-30
+> 更新日: 2026-04-25
 
 ## フレームワーク使い分け
 
 | フレームワーク | 用途 | ファイル数 | 実行コマンド |
 |---|---|---|---|
 | `bun:test` | memory-server / SDK / MCP / 契約テスト / ベンチマーク | 87 | `bun test` |
-| `vitest` | harness-mem-ui コンポーネントテスト + 一部契約テスト | 8 | `cd harness-mem-ui && npx vitest run` |
-| `@playwright/test` | harness-mem-ui E2E テスト | 2 | `cd harness-mem-ui && npx playwright test` |
+| `vitest` | harness-mem-ui コンポーネントテスト + 一部契約テスト | 9 | `cd harness-mem-ui && npx vitest run` |
+| `@playwright/test` | harness-mem-ui E2E テスト | 3 | `cd harness-mem-ui && npx playwright test` |
 
 ### 使い分けルール
 
 - **`bun:test`**: デフォルト。memory-server, SDK, MCP サーバー, CLI 契約テスト, ベンチマークすべてに使用
+- repo root の `bun test` からは UI tests を file pattern で切り離す。`harness-mem-ui/tests/ui` は `*.vitest.ts(x)`、`harness-mem-ui/tests/e2e` は `*.e2e.ts`
+- ただし stable な full run の入口は `npm test`。UI は引き続き `vitest` / `@playwright/test` を正本 runner とする
 - **`vitest`**: harness-mem-ui（React/Vite プロジェクト）のコンポーネントテストに使用。React Testing Library / jsdom 環境が必要なため
 - **`@playwright/test`**: harness-mem-ui の E2E テスト。ブラウザ上の実動作を検証
 
@@ -52,8 +54,8 @@
 
 | ディレクトリ | フレームワーク | 説明 |
 |---|---|---|
-| `ui/` | vitest | React コンポーネントテスト（merge, project-label, feed-panel, etc.） |
-| `e2e/` | Playwright | ブラウザ E2E テスト（feed, environment） |
+| `ui/` | vitest | React コンポーネントテスト（`*.vitest.ts(x)` naming。Bun discovery から分離） |
+| `e2e/` | Playwright | ブラウザ E2E テスト（`*.e2e.ts` naming。Bun discovery から分離） |
 
 ---
 
