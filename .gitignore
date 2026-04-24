@@ -72,3 +72,9 @@ memory-server/src/benchmark/results/freeze-run-*.tsv
 memory-server/src/benchmark/results/ci-run-manifest-history.jsonl
 memory-server/src/benchmark/results/retrospective-*.json
 memory-server/src/benchmark/results/retrospective-*.jsonl
+
+# mcp-server-go cross-build artifacts (tracked `bin/harness-mcp-server` is preserved)
+bin/harness-mcp-darwin-*
+bin/harness-mcp-linux-*
+bin/harness-mcp-windows-*
+mcp-server-go/bin/
