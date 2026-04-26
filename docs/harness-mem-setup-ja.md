@@ -333,6 +333,8 @@ Options:
 - `harness-mem setup --platform claude` でも、同じ Claude-side runtime path を marketplace を使わずに設定できる
 - `mcpServers.harness` を `~/.claude.json` に設定する
 - `~/.claude/settings.json` に MCP block がある場合はそれも更新する
+- Claude Code `v2.1.119` では `/config` の変更が `~/.claude/settings.json` に永続化されるので、実運用では `~/.claude.json` と `~/.claude/settings.json` の両方で project/local/policy precedence を意識する
+- 2 つのファイルが併存していると、高い precedence 側の設定が古い MCP wiring を上書きすることがある。`/config` を触った後は `harness-mem doctor` で、active path が current harness-mem checkout を向いているか確認する
 - Claude の first-turn continuity は、`SessionStart` / `UserPromptSubmit` / `Stop` の hook path と healthy な daemon/runtime に依存する
 - Codex や Cursor も使うなら、`harness-mem setup --platform codex,cursor` でそれぞれ別に wiring する
 - import / verify / cutover migration flow もサポートする

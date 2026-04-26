@@ -504,4 +504,80 @@ codex_hooks = true
       rmSync(tmpHome, { recursive: true, force: true });
     }
   });
+
+  test("doctor --json marks codex_requirements_precedence drift when requirements.toml keeps stale harness paths", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-requirements-drift-"));
+
+    try {
+      writeCodexConfig(tmpHome);
+      writeFileSync(
+        join(tmpHome, ".codex", "hooks.json"),
+        JSON.stringify(
+          {
+            hooks: {
+              SessionStart: [
+                {
+                  hooks: [
+                    {
+                      type: "command",
+                      command: `bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh`,
+                    },
+                  ],
+                },
+              ],
+              UserPromptSubmit: [
+                {
+                  hooks: [
+                    {
+                      type: "command",
+                      command: `bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh`,
+                    },
+                  ],
+                },
+              ],
+              Stop: [
+                {
+                  hooks: [
+                    {
+                      type: "command",
+                      command: `bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh`,
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+          null,
+          2
+        )
+      );
+      writeFileSync(
+        join(tmpHome, ".codex", "requirements.toml"),
+        `
+[managed.harness]
+notify = "/tmp/old-harness/scripts/hook-handlers/memory-codex-notify.sh"
+entry = "/tmp/old-harness/bin/harness-mcp-server"
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "39999"
+`.trimStart()
+      );
+
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+      });
+
+      const parsed = JSON.parse(result.stdout) as {
+        checks: Array<{ name: string; status: string }>;
+      };
+      const precedenceCheck = parsed.checks.find((check) => check.name === "codex_requirements_precedence");
+
+      expect(precedenceCheck).toBeDefined();
+      expect(precedenceCheck?.status).toBe("drift");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
 });

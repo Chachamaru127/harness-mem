@@ -22,7 +22,7 @@ HOOK_META_JSON="{}"
 if command -v jq >/dev/null 2>&1; then
   PROMPT_TEXT="$(printf '%s' "$INPUT" | jq -r '.prompt // empty' 2>/dev/null)"
   PRIVACY_TAGS_JSON="$(printf '%s' "$INPUT" | jq -c '.privacy_tags // []' 2>/dev/null)"
-  HOOK_META_JSON="$(printf '%s' "$INPUT" | jq -c '{hook_event:(.hook_event_name // "UserPromptSubmit"), source:(.source // "hook"), ts:(.ts // now | tostring)}' 2>/dev/null)"
+  HOOK_META_JSON="$(hook_extract_codex_hook_meta "$INPUT" "UserPromptSubmit")"
 fi
 
 hook_check_deps

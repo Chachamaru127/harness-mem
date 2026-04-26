@@ -419,6 +419,66 @@ hook_extract_correlation_id_from_json() {
   printf '%s' "$input_json" | jq -r '.correlation_id // .meta.correlation_id // empty' 2>/dev/null
 }
 
+hook_extract_codex_hook_meta() {
+  local input_json="${1:-}"
+  local default_event="${2:-hook}"
+  [ -n "$input_json" ] || { printf '{}'; return 0; }
+  command -v jq >/dev/null 2>&1 || { printf '{}'; return 0; }
+
+  printf '%s' "$input_json" | jq -c --arg default_event "$default_event" '
+    (
+      {
+        hook_event:(.hook_event_name // $default_event),
+        source:(.source // "hook"),
+        ts:(.ts // now | tostring)
+      }
+      + (
+        if (.thread_id? != null and (.thread_id | tostring | length) > 0) then
+          {thread_id:(.thread_id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if (.turn_id? != null and (.turn_id | tostring | length) > 0) then
+          {turn_id:(.turn_id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.environment_id // .environment.id // .active_environment.id // "") | tostring | length) > 0 then
+          {environment_id:(.environment_id // .environment.id // .active_environment.id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.environment.name // .active_environment.name // "") | tostring | length) > 0 then
+          {environment_name:(.environment.name // .active_environment.name | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.permission_mode // "") | tostring | length) > 0 then
+          {permission_mode:(.permission_mode | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.sandbox_profile // .sandbox.profile // "") | tostring | length) > 0 then
+          {sandbox_profile:(.sandbox_profile // .sandbox.profile | tostring)}
+        else
+          {}
+        end
+      )
+    )
+    | with_entries(select(.value != null))
+  ' 2>/dev/null
+}
+
 hook_lookup_session_correlation_id() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 0
