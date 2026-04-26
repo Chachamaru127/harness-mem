@@ -9,6 +9,20 @@
 
 （現在リリース予定の項目はありません）
 
+## [0.16.0] - 2026-04-26
+
+### ユーザー向け要約
+
+- **Codex 向け `/harness-recall` skill を追加**。Claude 側だけ先に入っていた recall の明示入口を Codex 側にも揃え、思い出し・続き再開・直近判断の呼び出し面を parity 化。
+- **Claude / Codex の upstream 追従を、実装まで含めて先回り hardening**。単なる changelog 要約ではなく、「上流がこう変わったので mem 側はこう受ける」を snapshot / doctor / hook / contract test まで反映。
+- **Codex session hook が将来の additive field に強くなった**。`thread_id`、environment、permission、sandbox などの追加 field が来ても、session attribution と finalize が崩れないよう contract で固定。
+- **doctor の false-green を削減**。Claude の `~/.claude.json` と `~/.claude/settings.json` の precedence drift、Codex の `requirements.toml` stale path を検知できるようになり、first-turn continuity や recall/resume の静かな配線ずれを早めに見つけられる。
+- **Claude `PostToolUse duration_ms` を安全に保持**。上流が数値を渡した時だけ保持し、壊れた値は無視する。
+- **UI test runner 境界の回帰を固定**。root の `bun test` と Playwright UI E2E の探索境界を守り、テスト実行面の混線を防止。
+- **Embedding catalog の Ruri metadata を修正**。`ruri-v3-310m` の dimension 修正と `ruri-v3-130m` 登録を反映。
+
+詳細は英語版 [CHANGELOG.md](./CHANGELOG.md#0160---2026-04-26) を参照。
+
 ## [0.15.0] - 2026-04-23
 
 ### ユーザー向け要約

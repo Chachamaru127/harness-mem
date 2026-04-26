@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-04-25（v0.15.0 リリース後のメンテナンスで §91〜§96 をアーカイブに退避、§97 の観測事実を current repo に同期し、§98 UI test runner hygiene を完了、§99 upstream follow-up hardening を完了）
+最終更新: 2026-04-26（v0.16.0 リリース準備として §99 upstream follow-up hardening と Codex recall parity の反映を release state に同期）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後）
@@ -21,7 +21,7 @@
 |------|--------|
 | gate artifacts / README / proof bar | onnx manifest (2026-04-10) / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ、Go MCP server (~5ms cold start) |
-| 最新リリース | **v0.15.0**（2026-04-23、§95 merge tool fixes + §96 recall skill + v0.15.0 follow-up 反映済み） |
+| 最新リリース | **v0.16.0**（2026-04-26、Codex recall parity + upstream hook/doctor hardening + release-state sync） |
 | 次フェーズの焦点 | **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§97 Codex Recall Skill Parity** / **§78 Phase A-E follow-up** |
 | CI Gate | **Layer 1+2 PASS**（onnx `run-ci`、bilingual=0.8800、p95 13.28ms、history reset at v0.11.0） |
 

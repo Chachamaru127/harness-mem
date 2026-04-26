@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-04-26
+
+### Added
+
+- **Codex `/harness-recall` skill parity**. `codex/skills/harness-recall/SKILL.md` now ships alongside the generic `harness-mem` Codex skill, so recall-oriented Codex sessions have an explicit, named entrypoint instead of relying only on generic memory routing. This closes the most visible user-facing gap left after the Claude-side `/harness-recall` release in `v0.15.0`, and gives Codex users the same "ask naturally, route consistently" surface for recall/resume flows. Contract coverage was added in `tests/codex-harness-recall-skill-contract.test.ts`.
+- **Proactive Claude/Codex upstream hardening snapshot**. Added `docs/upstream-update-snapshot-2026-04-25.md` as a version-backed follow-up record tying upstream Claude Code / Codex release changes to concrete `harness-mem` responses. This is intentionally not just a changelog digest: it records "upstream changed X, so harness-mem responds with Y" and serves as the restart point for the next upstream review.
+- **Codex future-session additive-field hardening**. Codex session hooks now tolerate future `thread` / `environment` / `permission` / `sandbox`-style additive fields without losing attribution. `SessionStart` and `UserPromptSubmit` persist the extra metadata into `payload.meta`, while `Stop` is contract-tested to keep `thread_id` / `meta.correlation_id` based finalization stable even when future fields are present. New coverage: `tests/codex-future-session-contract.test.ts`.
+
+### Changed
+
+- **Doctor now catches more false-green config drift before users hit broken recall/resume paths**. `harness-mem doctor --platform claude --json` adds `claude_precedence` to detect split authority between `~/.claude.json` and `~/.claude/settings.json`, and `doctor --platform codex --json` adds `codex_requirements_precedence` to catch stale `~/.codex/requirements.toml` entries that disagree with active `config.toml` / `hooks.json`. This turns previously silent miswiring into actionable drift reports instead of letting old paths linger until a first-turn continuity failure.
+- **Claude/Codex setup and planning docs are synchronized to the implemented upstream-follow-up state**. Setup docs now explain the practical precedence implications of Claude Code `v2.1.119` persisting `/config` changes to `~/.claude/settings.json`, and `Plans.md` now reflects the completed `§99` upstream hardening work instead of leaving it as a stale or speculative plan.
+
+### Fixed
+
+- **Claude `PostToolUse` now safely records `duration_ms` when upstream provides it**. `memory-post-tool-use.sh` preserves `payload.meta.duration_ms` for future latency-aware analysis, while safely omitting the field if an invalid non-numeric value arrives. Regression coverage was added in `tests/memory-post-tool-use-contract.test.ts`.
+- **UI runner boundary regressions are prevented from leaking Playwright files into root Bun test discovery**. The test runner split introduced after `v0.15.0` is now locked down so root `bun test` stays on Vitest/unit surfaces while Playwright remains explicitly scoped to UI E2E entrypoints. This avoids accidental CI/runtime confusion when UI test file naming changes.
+- **Embedding model catalog metadata is corrected for current Ruri variants**. The `ruri-v3-310m` dimension metadata was fixed and `ruri-v3-130m` was registered so embedding-provider selection stays aligned with the actual model surfaces under test.
+
 ## [0.15.0] - 2026-04-23
 
 ### Added
