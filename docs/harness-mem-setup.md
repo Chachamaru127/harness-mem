@@ -370,6 +370,8 @@ Options:
 - `harness-mem setup --platform claude` configures the same Claude-side runtime path without the marketplace flow
 - Configures `mcpServers.harness` in `~/.claude.json`
 - Updates `~/.claude/settings.json` if an MCP block already exists
+- Claude Code `v2.1.119` persists `/config` changes to `~/.claude/settings.json`, so practical precedence is now `project/local/policy` across both `~/.claude.json` and `~/.claude/settings.json`
+- If both files exist, higher-precedence Claude settings can override older MCP wiring; use `harness-mem doctor` after `/config` changes to confirm the active path still points at the current harness-mem checkout
 - First-turn continuity on Claude depends on the `SessionStart` / `UserPromptSubmit` / `Stop` hook path and a healthy daemon/runtime
 - If you also use Codex or Cursor, run `harness-mem setup --platform codex,cursor` so those clients are wired separately
 - Supports import/verify/cutover migration flow

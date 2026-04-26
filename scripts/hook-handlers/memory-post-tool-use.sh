@@ -23,7 +23,25 @@ if command -v jq >/dev/null 2>&1; then
   TOOL_NAME="$(printf '%s' "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null)"
   TOOL_INPUT_JSON="$(printf '%s' "$INPUT" | jq -c '.tool_input // {}' 2>/dev/null)"
   PRIVACY_TAGS_JSON="$(printf '%s' "$INPUT" | jq -c '.privacy_tags // []' 2>/dev/null)"
-  HOOK_META_JSON="$(printf '%s' "$INPUT" | jq -c '{hook_event:(.hook_event_name // "PostToolUse"), source:(.source // "hook"), ts:(.ts // now | tostring)}' 2>/dev/null)"
+  HOOK_META_JSON="$(
+    printf '%s' "$INPUT" | jq -c '
+      (
+        {
+          hook_event:(.hook_event_name // "PostToolUse"),
+          source:(.source // "hook"),
+          ts:(.ts // now | tostring)
+        }
+        + (
+          if (.duration_ms? != null and (.duration_ms | tostring | length) > 0) then
+            {duration_ms:(try (.duration_ms | tonumber) catch null)}
+          else
+            {}
+          end
+        )
+      )
+      | with_entries(select(.value != null))
+    ' 2>/dev/null
+  )"
 fi
 
 hook_check_deps

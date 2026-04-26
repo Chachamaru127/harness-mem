@@ -2182,6 +2182,69 @@ check_codex_wiring() {
   return "$failed"
 }
 
+check_codex_requirements_alignment() {
+  local req="${HOME}/.codex/requirements.toml"
+  local stale=0
+  local harness_mentions=0
+  local extracted_any=0
+  local req_host req_port path
+
+  if [ ! -f "$req" ]; then
+    log "Codex requirements precedence: no requirements.toml detected"
+    return 0
+  fi
+
+  if rg -qi 'harness|HARNESS_MEM_|memory-codex-notify|hook-handlers|bin/harness-mcp-server|mcp-server/dist/index\.js' "$req" 2>/dev/null; then
+    harness_mentions=1
+  fi
+
+  if [ "$harness_mentions" -eq 0 ]; then
+    log "Codex requirements precedence: requirements.toml has no harness-managed entries"
+    return 0
+  fi
+
+  while IFS= read -r path; do
+    [ -n "$path" ] || continue
+    case "$path" in
+      *memory-codex-notify.sh|*codex-session-start.sh|*codex-user-prompt.sh|*codex-session-stop.sh|*bin/harness-mcp-server|*mcp-server/dist/index.js|*"/.codex/skills/harness-mem/"*)
+        extracted_any=1
+        case "$path" in
+          "$HARNESS_ROOT"/*|"$HOME/.codex/"*)
+            :
+            ;;
+          *)
+            warn "Codex requirements.toml points to a stale harness path: $path"
+            stale=1
+            ;;
+        esac
+        ;;
+    esac
+  done < <(grep -oE '"/[^"]+"' "$req" 2>/dev/null | tr -d '"')
+
+  req_host="$(sed -nE 's/^[[:space:]]*HARNESS_MEM_HOST[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$req" | head -n1)"
+  req_port="$(sed -nE 's/^[[:space:]]*HARNESS_MEM_PORT[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' "$req" | head -n1)"
+
+  if [ -n "$req_host" ] && [ "$req_host" != "$MEM_HOST" ]; then
+    warn "Codex requirements.toml has stale HARNESS_MEM_HOST: expected ${MEM_HOST}, got ${req_host}"
+    stale=1
+  fi
+  if [ -n "$req_port" ] && [ "$req_port" != "$MEM_PORT" ]; then
+    warn "Codex requirements.toml has stale HARNESS_MEM_PORT: expected ${MEM_PORT}, got ${req_port}"
+    stale=1
+  fi
+
+  if [ "$stale" -eq 0 ]; then
+    if [ "$extracted_any" -eq 1 ] || [ -n "$req_host" ] || [ -n "$req_port" ]; then
+      log "Codex requirements precedence alignment: OK"
+    else
+      log "Codex requirements precedence: harness hints detected but no stale managed paths found"
+    fi
+    return 0
+  fi
+
+  return 1
+}
+
 get_claude_config_targets() {
   local primary="${HOME}/.claude.json"
   local secondary="${HOME}/.claude/settings.json"
@@ -2930,6 +2993,75 @@ check_claude_wiring() {
   fi
 
   return "$failed"
+}
+
+get_claude_harness_signature() {
+  local file="$1"
+  [ -f "$file" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  jq -c '
+    def harness_server:
+      if (.plugins.harness.source? == "settings") and (.plugins.harness.mcpServers.harness? != null) then
+        (.plugins.harness.mcpServers.harness + {plugin_root:(.plugins.harness.root // "")})
+      elif .mcpServers.harness? != null then
+        .mcpServers.harness
+      else
+        empty
+      end;
+    def entry_path($server):
+      if (($server.command // "") | startswith("/")) then
+        $server.command
+      elif ((($server.args // [])[0] // "") | startswith("/")) then
+        ($server.args[0])
+      elif (($server.cwd // "") != "" and (($server.args // [])[0] // "") != "") then
+        ($server.cwd + "/" + $server.args[0])
+      else
+        ""
+      end;
+
+    harness_server as $server
+    | if $server == null then
+        empty
+      else
+        {
+          entry_path: entry_path($server),
+          cwd: ($server.cwd // ""),
+          enabled: ($server.enabled // true),
+          plugin_root: ($server.plugin_root // ""),
+          host: ($server.env.HARNESS_MEM_HOST // ""),
+          port: ($server.env.HARNESS_MEM_PORT // ""),
+          db_path: ($server.env.HARNESS_MEM_DB_PATH // "")
+        }
+      end
+  ' "$file" 2>/dev/null
+}
+
+check_claude_precedence_alignment() {
+  local primary="${HOME}/.claude.json"
+  local secondary="${HOME}/.claude/settings.json"
+  local primary_sig secondary_sig
+
+  if [ ! -f "$primary" ] || [ ! -f "$secondary" ]; then
+    log "Claude precedence alignment: single config source detected"
+    return 0
+  fi
+
+  primary_sig="$(get_claude_harness_signature "$primary")"
+  secondary_sig="$(get_claude_harness_signature "$secondary")"
+
+  if [ -z "$primary_sig" ] || [ -z "$secondary_sig" ]; then
+    log "Claude precedence alignment: single active harness source detected"
+    return 0
+  fi
+
+  if [ "$primary_sig" = "$secondary_sig" ]; then
+    log "Claude precedence alignment: OK"
+    return 0
+  fi
+
+  warn "Claude harness wiring differs between ~/.claude.json and ~/.claude/settings.json"
+  return 1
 }
 
 start_daemon() {
@@ -3696,6 +3828,12 @@ doctor_impl() {
       _doctor_record "codex_wiring" "missing" "harness-mem setup --platform codex"
       failed=1
     fi
+    if check_codex_requirements_alignment; then
+      _doctor_record "codex_requirements_precedence" "ok" ""
+    else
+      _doctor_record "codex_requirements_precedence" "drift" "align ~/.codex/requirements.toml with ~/.codex/config.toml and ~/.codex/hooks.json, or rerun harness-mem setup --platform codex"
+      failed=1
+    fi
   fi
   if _should_check_platform opencode; then
     if check_opencode_wiring; then
@@ -3710,6 +3848,12 @@ doctor_impl() {
       _doctor_record "claude_wiring" "ok" ""
     else
       _doctor_record "claude_wiring" "missing" "harness-mem setup --platform claude"
+      failed=1
+    fi
+    if check_claude_precedence_alignment; then
+      _doctor_record "claude_precedence" "ok" ""
+    else
+      _doctor_record "claude_precedence" "drift" "align ~/.claude.json and ~/.claude/settings.json, then rerun harness-mem setup --platform claude"
       failed=1
     fi
   fi

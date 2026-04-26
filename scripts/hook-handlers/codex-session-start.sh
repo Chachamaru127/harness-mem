@@ -16,6 +16,11 @@ hook_init_whisper_state
 hook_resolve_correlation_id "$SESSION_ID" "codex" "$INPUT"
 hook_check_deps
 
+HOOK_META_JSON="{}"
+if command -v jq >/dev/null 2>&1; then
+  HOOK_META_JSON="$(hook_extract_codex_hook_meta "$INPUT" "SessionStart")"
+fi
+
 RESUME_CORRELATION_ID=""
 case "${CORRELATION_ID_SOURCE:-generated}" in
   input|session_state|latest_handoff)
@@ -39,7 +44,8 @@ EVENT_PAYLOAD=$(jq -nc \
   --arg project "$PROJECT_NAME" \
   --arg session_id "$SESSION_ID" \
   --arg correlation_id "$CORRELATION_ID" \
-  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:"session_start",correlation_id:$correlation_id,payload:{source:"codex_hooks_engine"},tags:["codex_hook","session_start"]}}' 2>/dev/null)
+  --argjson hook_meta "$HOOK_META_JSON" \
+  '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:"session_start",correlation_id:$correlation_id,payload:{source:"codex_hooks_engine",meta:$hook_meta},tags:["codex_hook","session_start"]}}' 2>/dev/null)
 
 if [ -n "$EVENT_PAYLOAD" ]; then
   printf '%s' "$EVENT_PAYLOAD" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
