@@ -7,6 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Claude/Codex upstream follow-up snapshot for 2026-05-03**. Added `docs/upstream-update-snapshot-2026-05-03.md` after checking official Claude Code and Codex stable releases. The new baseline is Claude Code `2.1.126` and Codex `0.128.0`; Codex `0.129.0-alpha.*` exists but is intentionally out of scope because this follow-up only tracks stable releases.
+- **Codex 0.125+ / 0.128 hook metadata hardening**. Codex hook events now preserve permission profile, active profile, cwd, goal, external-agent session, model provider, thread-store, and app-server transport metadata when those additive fields are present. This keeps session attribution usable as Codex app-server, `/goal`, permission-profile, and external-session features evolve. Coverage was expanded in `tests/codex-future-session-contract.test.ts`.
+- **Recall trigger coverage for casual "what was I doing?" prompts**. `/harness-recall` now treats `今何してた` / `今なにしてた` as first-class recall phrases across the Claude and Codex Skill definitions plus both UserPrompt hook injection paths, alongside the existing `覚えてる` coverage that already catches `覚えてる?` / `覚えてる？` prompts.
+
+### Changed
+
+- **Claude hook runner now degrades safely on Windows without Bash**. `scripts/run-script.js` now uses the shared Windows Git Bash detector and exits non-blockingly with an actionable message when Bash is unavailable. This matches the Claude Code `2.1.120` reality that Claude itself can run PowerShell-first on Windows even though harness-mem hook scripts still require Bash.
+
+### Fixed
+
+- **Claude `PostToolUse` metadata capture now keeps stable trace fields without rewriting tool output**. `memory-post-tool-use.sh` preserves `tool_use_id`, cwd, permission profile, and transcript path metadata when provided, while keeping stdout empty so it does not participate in Claude Code's newer `updatedToolOutput` replacement path. Coverage was expanded in `tests/memory-post-tool-use-contract.test.ts`.
+
 ## [0.16.0] - 2026-04-26
 
 ### Added

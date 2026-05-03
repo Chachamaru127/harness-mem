@@ -88,7 +88,13 @@ describe("codex future-session contract", () => {
         environment: { id: "env-prod-1", name: "prod" },
         active_environment: { id: "env-prod-1", name: "prod" },
         permission_mode: "on-request",
+        permissionProfile: { id: "profile-trusted-write", name: "trusted-write" },
+        activeProfile: { id: "profile-trusted-write", name: "trusted-write" },
         sandbox_profile: "workspace-write",
+        cwd: sandbox.projectDir,
+        modelProvider: "openai",
+        threadStore: { provider: "remote-sqlite" },
+        appServer: { transport: "unix-socket" },
         remote_thread_store: { provider: "example" },
       };
 
@@ -127,7 +133,15 @@ describe("codex future-session contract", () => {
       expect(recordEvent.event?.payload?.meta?.environment_id).toBe("env-prod-1");
       expect(recordEvent.event?.payload?.meta?.environment_name).toBe("prod");
       expect(recordEvent.event?.payload?.meta?.permission_mode).toBe("on-request");
+      expect(recordEvent.event?.payload?.meta?.permission_profile).toBe("trusted-write");
+      expect(recordEvent.event?.payload?.meta?.permission_profile_id).toBe("profile-trusted-write");
+      expect(recordEvent.event?.payload?.meta?.active_profile).toBe("trusted-write");
+      expect(recordEvent.event?.payload?.meta?.active_profile_id).toBe("profile-trusted-write");
       expect(recordEvent.event?.payload?.meta?.sandbox_profile).toBe("workspace-write");
+      expect(recordEvent.event?.payload?.meta?.cwd).toBe(sandbox.projectDir);
+      expect(recordEvent.event?.payload?.meta?.model_provider).toBe("openai");
+      expect(recordEvent.event?.payload?.meta?.thread_store).toBe("remote-sqlite");
+      expect(recordEvent.event?.payload?.meta?.app_server_transport).toBe("unix-socket");
       expect(resumePack.session_id).toBe("thread-start-1");
       expect(resumePack.correlation_id).toBe("corr-start-1");
     } finally {
@@ -155,7 +169,11 @@ describe("codex future-session contract", () => {
         environment_id: "env-stage-1",
         active_environment: { name: "staging" },
         permission_mode: "never",
+        permission_profile: { id: "profile-read-only", name: "read-only" },
         sandbox: { profile: "danger-full-access" },
+        goal: { id: "goal-continue-release", status: "paused" },
+        externalAgent: { name: "claude-code" },
+        importedSession: { id: "external-session-42" },
       };
 
       const proc = Bun.spawn(["bash", join(sandbox.hookDir, "codex-user-prompt.sh")], {
@@ -189,7 +207,13 @@ describe("codex future-session contract", () => {
       expect(recordEvent.event?.payload?.meta?.environment_id).toBe("env-stage-1");
       expect(recordEvent.event?.payload?.meta?.environment_name).toBe("staging");
       expect(recordEvent.event?.payload?.meta?.permission_mode).toBe("never");
+      expect(recordEvent.event?.payload?.meta?.permission_profile).toBe("read-only");
+      expect(recordEvent.event?.payload?.meta?.permission_profile_id).toBe("profile-read-only");
       expect(recordEvent.event?.payload?.meta?.sandbox_profile).toBe("danger-full-access");
+      expect(recordEvent.event?.payload?.meta?.goal_id).toBe("goal-continue-release");
+      expect(recordEvent.event?.payload?.meta?.goal_status).toBe("paused");
+      expect(recordEvent.event?.payload?.meta?.external_agent).toBe("claude-code");
+      expect(recordEvent.event?.payload?.meta?.external_session_id).toBe("external-session-42");
     } finally {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }
@@ -212,6 +236,8 @@ describe("codex future-session contract", () => {
         environment: { id: "env-dev-1", name: "dev" },
         active_environment: { name: "dev" },
         permission_mode: "on-request",
+        externalAgent: { name: "claude-code" },
+        importedSession: { id: "external-session-42" },
         remote_thread_store: { provider: "example" },
       };
 

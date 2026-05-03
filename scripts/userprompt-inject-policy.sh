@@ -166,9 +166,9 @@ fi
 
 # §96: recall intent detection. Fires the /harness-recall Skill trigger when the
 # user prompt contains recall-oriented phrases. Keywords include Japanese casual
-# forms (思い出して / 覚えてる / 前回 / 続き / 直近 / 最後に / 先ほど / さっき)
+# forms (思い出して / 覚えてる / 今何してた / 前回 / 続き / 直近 / 最後に / 先ほど / さっき)
 # and their English counterparts (resume / recall).
-RECALL_KEYWORDS="思い出して|覚えてる|覚えている|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
+RECALL_KEYWORDS="思い出して|覚えてる|覚えている|今何してた|今なにしてた|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
 RECALL_INTENT=false
 if printf '%s' "$PROMPT_TEXT" | grep -qiE "$RECALL_KEYWORDS"; then
   RECALL_INTENT=true
@@ -222,7 +222,7 @@ fi
 if [ "$RECALL_INTENT" = "true" ]; then
   INJECTION="$(append_injection_block "$INJECTION" "## Recall Intent Detected
 
-User prompt に recall 意図 (思い出して / 覚えてる / 前回 / 続き / resume / recall 等) が含まれます。
+User prompt に recall 意図 (思い出して / 覚えてる / 今何してた / 前回 / 続き / resume / recall 等) が含まれます。
 
 **\`/harness-recall\` Skill を invoke して応答してください。** Skill は以下の 5 分岐で routing します:
 

@@ -4,7 +4,7 @@
  * §96 S96-003: contract test for userprompt-inject-policy.sh recall trigger.
  *
  * - when the user's prompt contains a recall keyword (思い出して / 覚えてる /
- *   前回 / 続き / resume / recall / 直近 / 最後に / 先ほど / さっき),
+ *   今何してた / 前回 / 続き / resume / recall / 直近 / 最後に / 先ほど / さっき),
  *   the hook must emit an additionalContext block that promotes the
  *   /harness-recall Skill invocation and lists the Skill name explicitly
  * - when the prompt does NOT contain recall keywords, the hook must NOT
@@ -141,6 +141,9 @@ async function runHookWithPrompt(
 const RECALL_PROMPTS = [
   "思い出して、前やってた retrieval の話",
   "覚えてる? XR-003 の経緯",
+  "覚えてる？ 今の続き",
+  "今何してた?",
+  "今なにしてたっけ",
   "前回どこまで進めた?",
   "続きからお願い",
   "resume session please",

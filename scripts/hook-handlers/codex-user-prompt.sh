@@ -60,11 +60,48 @@ hook_record_explicit_continuity_handoff \
   "$HOOK_META_JSON" \
   "$BASE_TAGS_JSON"
 
+append_codex_context_block() {
+  local base="${1:-}"
+  local block="${2:-}"
+  [ -n "$block" ] || {
+    printf '%s' "$base"
+    return 0
+  }
+  if [ -z "$base" ]; then
+    printf '%s' "$block"
+  else
+    printf '%s\n\n%s' "$base" "$block"
+  fi
+}
+
+ADDITIONAL_CONTEXT=""
+CODEX_RECALL_KEYWORDS="思い出して|覚えてる|覚えている|今何してた|今なにしてた|前回|続き|直近|最後に|先ほど|さっき|resume|recall"
+if printf '%s' "$PROMPT_TEXT" | grep -qiE "$CODEX_RECALL_KEYWORDS"; then
+  RECALL_SKILL_CONTEXT="## Recall Intent Detected
+
+User prompt に recall 意図 (思い出して / 覚えてる / 今何してた / 前回 / 続き / resume / recall 等) が含まれます。
+
+**\`harness-recall\` Skill を invoke して応答してください。** Skill は以下の 5 分岐で routing します:
+
+- resume / 続き → \`harness_mem_resume_pack\`
+- 何を決めた / 方針 → \`.claude/memory/decisions.md\` / \`patterns.md\`
+- 前に踏んだ同じ問題 → \`harness_cb_recall\`
+- 直近 session → \`harness_mem_sessions_list\`
+- 特定キーワード → \`harness_mem_search\`
+
+応答では \`source:\` を先頭に置き、参照した memory 経路を明示してください。"
+  ADDITIONAL_CONTEXT="$(append_codex_context_block "$ADDITIONAL_CONTEXT" "$RECALL_SKILL_CONTEXT")"
+fi
+
 RECALL_MODE="$(hook_read_recall_mode)"
 RECALL_RESULT="$(hook_run_contextual_recall "codex" "$SESSION_ID" "$PROMPT_TEXT" "$RECALL_MODE")"
 RECALL_CONTEXT="$(printf '%s' "$RECALL_RESULT" | jq -r '.content // empty' 2>/dev/null)"
 if [ -n "$RECALL_CONTEXT" ]; then
-  hook_emit_codex_additional_context "UserPromptSubmit" "$RECALL_CONTEXT"
+  ADDITIONAL_CONTEXT="$(append_codex_context_block "$ADDITIONAL_CONTEXT" "$RECALL_CONTEXT")"
+fi
+
+if [ -n "$ADDITIONAL_CONTEXT" ]; then
+  hook_emit_codex_additional_context "UserPromptSubmit" "$ADDITIONAL_CONTEXT"
 fi
 
 exit 0

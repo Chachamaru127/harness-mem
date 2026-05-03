@@ -7,7 +7,13 @@
 
 ## [Unreleased]
 
-（現在リリース予定の項目はありません）
+### ユーザー向け要約
+
+- **Claude Code `2.1.126` / Codex `0.128.0` までの stable upstream を再確認**。結果を `docs/upstream-update-snapshot-2026-05-03.md` に固定。Codex `0.129.0-alpha.*` はプレリリースなので今回対象外。
+- **Codex 0.125+ / 0.128 の追加 metadata に対応**。permission profile、active profile、cwd、goal、external agent session、thread store、app-server transport などが hook payload に来ても、session attribution から落ちにくくなった。
+- **「今何してた？」系でも recall が発火するように拡張**。`/harness-recall` の Claude / Codex Skill 定義と、Claude / Codex 両方の UserPrompt hook に `今何してた` / `今なにしてた` を追加。既存の `覚えてる` 判定はそのままなので、`覚えてる?` / `覚えてる？` も引き続き拾える。
+- **Claude PostToolUse の trace metadata を追加保持**。`tool_use_id`、cwd、permission profile、transcript path を安全に保持しつつ、Claude Code の `updatedToolOutput` 書き換え経路には乗らないよう stdout empty を contract 化。
+- **Windows で Bash が無い Claude hook 環境を安全スキップ**。Claude Code 2.1.120 以降は PowerShell-first で動く環境が増えるため、harness-mem 側は Bash 不在時にセッションを壊さず、行動可能なメッセージを出して hook を non-blocking にする。
 
 ## [0.16.0] - 2026-04-26
 

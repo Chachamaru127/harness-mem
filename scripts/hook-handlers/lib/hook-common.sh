@@ -474,6 +474,90 @@ hook_extract_codex_hook_meta() {
           {}
         end
       )
+      + (
+        if ((.permission_profile.name // .permissionProfile.name // .permission_profile.id // .permissionProfile.id // "") | tostring | length) > 0 then
+          {permission_profile:(.permission_profile.name // .permissionProfile.name // .permission_profile.id // .permissionProfile.id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.permission_profile.id // .permissionProfile.id // "") | tostring | length) > 0 then
+          {permission_profile_id:(.permission_profile.id // .permissionProfile.id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.active_profile.name // .activeProfile.name // .active_permission_profile.name // .activePermissionProfile.name // "") | tostring | length) > 0 then
+          {active_profile:(.active_profile.name // .activeProfile.name // .active_permission_profile.name // .activePermissionProfile.name | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.active_profile.id // .activeProfile.id // .active_permission_profile.id // .activePermissionProfile.id // "") | tostring | length) > 0 then
+          {active_profile_id:(.active_profile.id // .activeProfile.id // .active_permission_profile.id // .activePermissionProfile.id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.cwd // .working_directory // .workingDirectory // "") | tostring | length) > 0 then
+          {cwd:(.cwd // .working_directory // .workingDirectory | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.goal.id // .goal_id // .goalId // "") | tostring | length) > 0 then
+          {goal_id:(.goal.id // .goal_id // .goalId | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.goal.status // .goal_status // .goalStatus // "") | tostring | length) > 0 then
+          {goal_status:(.goal.status // .goal_status // .goalStatus | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.external_session.id // .externalSession.id // .external_agent_session.id // .externalAgentSession.id // .imported_session.id // .importedSession.id // "") | tostring | length) > 0 then
+          {external_session_id:(.external_session.id // .externalSession.id // .external_agent_session.id // .externalAgentSession.id // .imported_session.id // .importedSession.id | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.external_agent.name // .externalAgent.name // .agent.name // "") | tostring | length) > 0 then
+          {external_agent:(.external_agent.name // .externalAgent.name // .agent.name | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.model_provider // .modelProvider // .provider.id // .provider.name // "") | tostring | length) > 0 then
+          {model_provider:(.model_provider // .modelProvider // .provider.id // .provider.name | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.thread_store.provider // .threadStore.provider // .remote_thread_store.provider // "") | tostring | length) > 0 then
+          {thread_store:(.thread_store.provider // .threadStore.provider // .remote_thread_store.provider | tostring)}
+        else
+          {}
+        end
+      )
+      + (
+        if ((.app_server.transport // .appServer.transport // .transport.type // "") | tostring | length) > 0 then
+          {app_server_transport:(.app_server.transport // .appServer.transport // .transport.type | tostring)}
+        else
+          {}
+        end
+      )
     )
     | with_entries(select(.value != null))
   ' 2>/dev/null

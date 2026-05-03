@@ -38,6 +38,48 @@ if command -v jq >/dev/null 2>&1; then
             {}
           end
         )
+        + (
+          if (.tool_use_id? != null and (.tool_use_id | tostring | length) > 0) then
+            {tool_use_id:(.tool_use_id | tostring)}
+          else
+            {}
+          end
+        )
+        + (
+          if ((.cwd // .working_directory // .workingDirectory // "") | tostring | length) > 0 then
+            {cwd:(.cwd // .working_directory // .workingDirectory | tostring)}
+          else
+            {}
+          end
+        )
+        + (
+          if ((.permission_mode // .permissionMode // "") | tostring | length) > 0 then
+            {permission_mode:(.permission_mode // .permissionMode | tostring)}
+          else
+            {}
+          end
+        )
+        + (
+          if ((.permission_profile.name // .permissionProfile.name // .permission_profile.id // .permissionProfile.id // "") | tostring | length) > 0 then
+            {permission_profile:(.permission_profile.name // .permissionProfile.name // .permission_profile.id // .permissionProfile.id | tostring)}
+          else
+            {}
+          end
+        )
+        + (
+          if ((.permission_profile.id // .permissionProfile.id // "") | tostring | length) > 0 then
+            {permission_profile_id:(.permission_profile.id // .permissionProfile.id | tostring)}
+          else
+            {}
+          end
+        )
+        + (
+          if ((.transcript_path // .transcriptPath // "") | tostring | length) > 0 then
+            {transcript_path:(.transcript_path // .transcriptPath | tostring)}
+          else
+            {}
+          end
+        )
       )
       | with_entries(select(.value != null))
     ' 2>/dev/null

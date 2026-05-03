@@ -14,6 +14,7 @@ import { resolve } from "node:path";
 
 const CLAUDE_SKILL_PATH = resolve(import.meta.dir, "../skills/harness-recall/SKILL.md");
 const CODEX_SKILL_PATH = resolve(import.meta.dir, "../codex/skills/harness-recall/SKILL.md");
+const CODEX_USER_PROMPT_HOOK = resolve(import.meta.dir, "../scripts/hook-handlers/codex-user-prompt.sh");
 
 const RECIPE_ROUTES: Array<{ label: string; tool: string }> = [
   { label: "resume / 続き", tool: "harness_mem_resume_pack" },
@@ -80,6 +81,22 @@ describe("§97 Codex harness-recall skill contract", () => {
 
     for (const phrase of claudeTriggers) {
       expect(codexBody).toContain(phrase);
+    }
+  });
+
+  test("Codex UserPrompt hook recall keyword regex covers every skill trigger phrase", () => {
+    const codexBody = readRequiredFile(CODEX_SKILL_PATH);
+    const hookBody = readRequiredFile(CODEX_USER_PROMPT_HOOK);
+    const codexTriggers = readTriggerPhrases(readFrontmatter(codexBody));
+    const kwMatch = hookBody.match(/CODEX_RECALL_KEYWORDS="([^"]+)"/);
+    expect(kwMatch).not.toBeNull();
+    const hookKeywords = kwMatch![1].split("|").map((s) => s.trim());
+
+    for (const phrase of codexTriggers) {
+      const hit = hookKeywords.some(
+        (kw) => phrase.toLowerCase().includes(kw.toLowerCase()) || kw.toLowerCase().includes(phrase.toLowerCase())
+      );
+      expect(hit, `Codex trigger phrase "${phrase}" is not covered by CODEX_RECALL_KEYWORDS`).toBe(true);
     }
   });
 

@@ -9,38 +9,69 @@ const { spawn } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const isWindows = process.platform === "win32";
-
-function toMsysPath(input) {
-  if (!input) return input;
-  let converted = input.replace(/\\/g, "/");
-  const driveMatch = converted.match(/^([A-Za-z]):\//);
-  if (driveMatch) {
-    converted = `/${driveMatch[1].toLowerCase()}${converted.slice(2)}`;
-  }
-  return converted;
+function isWindowsAbsolutePath(value) {
+  return typeof value === "string" && /^[A-Za-z]:[\\/]/.test(value);
 }
+
+function fallbackToPosixWindowsPath(value) {
+  if (!isWindowsAbsolutePath(value)) {
+    return value;
+  }
+
+  const driveLetter = value[0].toLowerCase();
+  const remainder = value.slice(2).replace(/\\/g, "/");
+  return `/${driveLetter}${remainder.startsWith("/") ? remainder : `/${remainder}`}`;
+}
+
+function fallbackWindowsUnsupportedMessage(commandName) {
+  return [
+    `[harness-mem][error] \`${commandName}\` requires bash, which was not found on this system.`,
+    "Reason: the current setup and hook wiring depend on POSIX shell scripts.",
+    "",
+    "Recommended solutions:",
+    "  1. Install Git for Windows (https://gitforwindows.org/) — it includes Git Bash",
+    "  2. Run harness-mem from Git Bash terminal",
+    "  3. Use WSL2 (e.g. Ubuntu) and run the same command there",
+    "",
+    "If Git Bash is already installed, ensure 'bash' is available in your PATH.",
+  ].join("\n");
+}
+
+let bashEntry = {
+  findWindowsBash: () => {
+    const candidates = [
+      "C:\\Program Files\\Git\\bin\\bash.exe",
+      "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
+      `${process.env.PROGRAMFILES || ""}\\Git\\bin\\bash.exe`,
+      `${process.env["PROGRAMFILES(X86)"] || ""}\\Git\\bin\\bash.exe`,
+      "C:\\msys64\\usr\\bin\\bash.exe",
+      "C:\\msys32\\usr\\bin\\bash.exe",
+    ];
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return null;
+  },
+  toPosixWindowsPath: fallbackToPosixWindowsPath,
+  windowsUnsupportedMessage: fallbackWindowsUnsupportedMessage,
+};
+
+try {
+  bashEntry = require("./lib/bash-entry.js");
+} catch {
+  // Keep the hook runner usable in tests or older plugin copies that only place
+  // run-script.js next to the shell scripts. Packaged installs include lib/.
+}
+
+const isWindows = process.platform === "win32";
 
 function findBash() {
   if (!isWindows) {
     return "bash";
   }
-
-  const candidates = [
-    "C:\\Program Files\\Git\\bin\\bash.exe",
-    "C:\\Program Files (x86)\\Git\\bin\\bash.exe",
-    `${process.env.PROGRAMFILES || ""}\\Git\\bin\\bash.exe`,
-    `${process.env["PROGRAMFILES(X86)"] || ""}\\Git\\bin\\bash.exe`,
-    "C:\\msys64\\usr\\bin\\bash.exe",
-    "C:\\msys32\\usr\\bin\\bash.exe",
-  ];
-
-  for (const candidate of candidates) {
-    if (candidate && fs.existsSync(candidate)) {
-      return candidate;
-    }
-  }
-  return "bash";
+  return bashEntry.findWindowsBash();
 }
 
 function main() {
@@ -63,14 +94,19 @@ function main() {
   }
 
   const bashPath = findBash();
+  if (isWindows && !bashPath) {
+    console.error(bashEntry.windowsUnsupportedMessage(`harness-mem hook ${scriptName}`));
+    process.exit(0);
+  }
+
   const env = { ...process.env };
   let bashScriptPath = scriptPath;
   if (isWindows) {
-    bashScriptPath = toMsysPath(scriptPath);
+    bashScriptPath = bashEntry.toPosixWindowsPath(scriptPath);
     env.MSYS_NO_PATHCONV = "1";
     env.MSYS2_ARG_CONV_EXCL = "*";
     if (env.CLAUDE_PLUGIN_ROOT) {
-      env.CLAUDE_PLUGIN_ROOT = toMsysPath(env.CLAUDE_PLUGIN_ROOT);
+      env.CLAUDE_PLUGIN_ROOT = bashEntry.toPosixWindowsPath(env.CLAUDE_PLUGIN_ROOT);
     }
   }
 

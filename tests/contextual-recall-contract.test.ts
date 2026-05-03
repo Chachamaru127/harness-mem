@@ -318,6 +318,45 @@ describe("contextual recall contract", () => {
     }
   });
 
+  test("Codex recall prompt emits harness-recall skill guidance even when contextual recall mode is off", async () => {
+    const sandbox = setupHookSandbox(makeSearchResponse([]));
+
+    try {
+      writeFileSync(
+        join(sandbox.harnessHome, "config.json"),
+        JSON.stringify({ backend_mode: "local", recall: { mode: "off" } }, null, 2)
+      );
+
+      const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
+      writeFileSync(
+        promptInput,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "codex-session",
+          prompt: "今何してた?",
+        })
+      );
+
+      const promptProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-user-prompt.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(promptInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(promptProc.stdout).text();
+      await promptProc.exited;
+      expect(promptProc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).toContain("Recall Intent Detected");
+      expect(context).toContain("harness-recall");
+      expect(context).toContain("harness_mem_resume_pack");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
   test("Claude policy stops recall after the per-session injection limit", async () => {
     const sandbox = setupHookSandbox(
       makeSearchResponse([

@@ -57,23 +57,31 @@ printf '%s\\n' '{"ok":true}'
       });
       const input = {
         session_id: "claude-session-1",
+        tool_use_id: "toolu_123456",
         tool_name: "Edit",
         tool_input: { file_path: "/tmp/example.txt" },
         hook_event_name: "PostToolUse",
         source: "hook",
         duration_ms: 1234,
+        cwd: tmp,
+        permissionMode: "default",
+        permissionProfile: { id: "profile-safe", name: "safe-default" },
+        transcriptPath: join(tmp, "transcript.jsonl"),
+        hookSpecificOutput: { updatedToolOutput: "ignored by harness-mem" },
       };
       proc.stdin.write(`${JSON.stringify(input)}\n`);
       proc.stdin.end();
 
+      const stdout = await new Response(proc.stdout).text();
       expect(await proc.exited).toBe(0);
+      expect(stdout.trim()).toBe("");
 
       const recordEventPayload = parsePayloadLog(payloadLog).find((entry) => entry.command === "record-event")
         ?.payload as {
         event?: {
           payload?: {
             tool_name?: string;
-            meta?: { duration_ms?: number; hook_event?: string };
+            meta?: Record<string, unknown>;
           };
         };
       };
@@ -81,6 +89,13 @@ printf '%s\\n' '{"ok":true}'
       expect(recordEventPayload.event?.payload?.tool_name).toBe("Edit");
       expect(recordEventPayload.event?.payload?.meta?.hook_event).toBe("PostToolUse");
       expect(recordEventPayload.event?.payload?.meta?.duration_ms).toBe(1234);
+      expect(recordEventPayload.event?.payload?.meta?.tool_use_id).toBe("toolu_123456");
+      expect(recordEventPayload.event?.payload?.meta?.cwd).toBe(tmp);
+      expect(recordEventPayload.event?.payload?.meta?.permission_mode).toBe("default");
+      expect(recordEventPayload.event?.payload?.meta?.permission_profile).toBe("safe-default");
+      expect(recordEventPayload.event?.payload?.meta?.permission_profile_id).toBe("profile-safe");
+      expect(recordEventPayload.event?.payload?.meta?.transcript_path).toBe(join(tmp, "transcript.jsonl"));
+      expect(recordEventPayload.event?.payload?.meta?.updatedToolOutput).toBeUndefined();
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

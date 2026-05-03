@@ -20,6 +20,8 @@ const HOOK_PATH = resolve(import.meta.dir, "../scripts/userprompt-inject-policy.
 const TRIGGER_PHRASES = [
   "思い出して",
   "覚えてる",
+  "今何してた",
+  "今なにしてた",
   "前回",
   "続き",
   "resume",

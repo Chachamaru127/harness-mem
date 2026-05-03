@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dir, "..");
 const PACKAGE_JSON = resolve(ROOT, "package.json");
+const RUN_SCRIPT = resolve(ROOT, "scripts/run-script.js");
 const require = createRequire(import.meta.url);
 const bashEntry = require(resolve(ROOT, "scripts/lib/bash-entry.js")) as {
   findWindowsBash: (options?: {
@@ -115,5 +116,13 @@ describe("windows CLI entry contract", () => {
     expect(stderr).toContain("Install Git for Windows");
     expect(stderr).toContain("Run harness-mem from Git Bash terminal");
     expect(stderr).toContain("Use WSL2");
+  });
+
+  test("Claude hook runner uses the shared Windows Bash detector and skips missing Bash non-blockingly", () => {
+    const runner = readFileSync(RUN_SCRIPT, "utf8");
+
+    expect(runner).toContain("findWindowsBash");
+    expect(runner).toContain("windowsUnsupportedMessage");
+    expect(runner).toContain("process.exit(0)");
   });
 });
