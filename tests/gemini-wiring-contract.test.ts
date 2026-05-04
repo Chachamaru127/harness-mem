@@ -1,77 +1,32 @@
 /**
- * gemini-wiring-contract.test.ts
+ * Gemini setup retirement contract.
  *
- * GT-001: Gemini CLI wiring contract tests.
- * Verifies that harness-mem script, collector, core, and package.json
- * all satisfy the Gemini integration contract.
+ * Gemini ingest/history code may remain as legacy data plumbing, but the CLI
+ * setup surface no longer advertises or installs Gemini wiring.
  */
-import { describe, expect, test } from "vitest";
-import { readFileSync } from "node:fs";
+import { describe, expect, test } from "bun:test";
+import { existsSync, readFileSync } from "node:fs";
 
-describe("Gemini CLI wiring contract", () => {
+describe("Gemini setup retirement contract", () => {
   const harnessMemScript = readFileSync("scripts/harness-mem", "utf8");
+  const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as {
+    files: string[];
+    keywords: string[];
+  };
 
-  test("setup_gemini_wiring function exists", () => {
-    expect(harnessMemScript).toContain("setup_gemini_wiring()");
+  test("Gemini is not accepted as a setup platform", () => {
+    expect(harnessMemScript).not.toMatch(/codex\|opencode\|claude\|cursor\|antigravity\|gemini/);
+    expect(harnessMemScript).not.toContain("setup_gemini_wiring");
+    expect(harnessMemScript).not.toContain("check_gemini_wiring");
+    expect(harnessMemScript).not.toContain("uninstall_gemini_wiring");
+    expect(harnessMemScript).not.toContain(".gemini/settings.json");
   });
 
-  test("check_gemini_wiring function exists", () => {
-    expect(harnessMemScript).toContain("check_gemini_wiring()");
-  });
-
-  test("uninstall_gemini_wiring function exists", () => {
-    expect(harnessMemScript).toContain("uninstall_gemini_wiring()");
-  });
-
-  test("gemini is in platform validation", () => {
-    expect(harnessMemScript).toMatch(/all\|codex\|opencode\|claude\|cursor\|antigravity\|gemini/);
-  });
-
-  test("gemini settings.json path is referenced", () => {
-    expect(harnessMemScript).toContain(".gemini/settings.json");
-  });
-
-  test("gemini MCP wiring uses correct JSON structure", () => {
-    expect(harnessMemScript).toContain("mcpServers.harness");
-    expect(harnessMemScript).toContain("upsert_gemini_json");
-  });
-
-  test("gemini hooks include all 6 event types", () => {
-    for (const event of ["SessionStart", "SessionEnd", "BeforeAgent", "AfterAgent", "AfterTool", "PreCompress"]) {
-      expect(harnessMemScript).toContain(`.hooks.${event}`);
-    }
-  });
-
-  const collectorTs = readFileSync("memory-server/src/system-environment/collector.ts", "utf8");
-
-  test("collector includes gemini in ai_tools", () => {
-    expect(collectorTs).toContain("gemini_cli");
-    expect(collectorTs).toContain("Gemini CLI");
-  });
-
-  test("collector includes gemini_wiring in doctor checks", () => {
-    expect(collectorTs).toContain("gemini_wiring");
-  });
-
-  const typesTs = readFileSync("memory-server/src/core/types.ts", "utf8");
-
-  test("Platform type includes gemini", () => {
-    expect(typesTs).toMatch(/"gemini"/);
-  });
-
-  test("Config includes gemini ingest fields", () => {
-    expect(typesTs).toContain("geminiIngestEnabled");
-    expect(typesTs).toContain("geminiEventsPath");
-  });
-
-  const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
-
-  test("package.json keywords include gemini", () => {
-    expect(packageJson.keywords).toContain("gemini");
-    expect(packageJson.keywords).toContain("gemini-cli");
-  });
-
-  test("package.json files include gemini/", () => {
-    expect(packageJson.files).toContain("gemini/");
+  test("Gemini is not shipped as an npm setup surface", () => {
+    expect(packageJson.files).not.toContain("gemini/");
+    expect(packageJson.keywords).not.toContain("gemini");
+    expect(packageJson.keywords).not.toContain("gemini-cli");
+    expect(existsSync("scripts/hook-handlers/memory-gemini-event.sh")).toBe(false);
+    expect(existsSync("gemini/GEMINI.md")).toBe(false);
   });
 });

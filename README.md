@@ -76,7 +76,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 
 - **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
 - **Supported path: Cursor**: hooks and MCP work out of the box, but the continuity story is not as central as Claude Code + Codex.
-- **Experimental path: Gemini CLI, OpenCode**: usable, but not the same parity promise.
+- **Experimental path: OpenCode**: usable, but not the same parity promise.
 
 ### What this means in practice
 
@@ -157,7 +157,6 @@ Pick the path that matches your stack. That's the whole decision.
   3) opencode     (global: ~/.config/opencode/opencode.json)
   4) claude       (global: ~/.claude.json mcpServers)
   5) antigravity  (experimental workspace scanning)
-  6) gemini       (global: ~/.gemini/settings.json)
   a) all
 Example: 1,2   (Enter=1,2)
 ```
@@ -286,7 +285,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **Domain** | developer-workflow | generic-agent | generic-agent | general-lifelog |
-| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Gemini CLI, OpenCode (experimental) | Claude only | Claude only | Custom API integration |
+| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
 | **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
@@ -504,7 +503,6 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
 | **Tier 1** | Codex CLI | v0.116.0+ | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules |
 | **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
-| **Tier 3** | Gemini CLI | Latest | Experimental. Community-contributed |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 
 ---

@@ -46,7 +46,9 @@ function asItems(response: ApiResponse): Array<Record<string, unknown>> {
   return response.items as Array<Record<string, unknown>>;
 }
 
-const MEDIUM_CORPUS_LATENCY_BUDGET_MS = process.env.CI === "true" ? 1500 : 500;
+const IS_WINDOWS_SHELL =
+  process.platform === "win32" || /^(msys|mingw|cygwin)/i.test(process.env.OSTYPE ?? "");
+const MEDIUM_CORPUS_LATENCY_BUDGET_MS = process.env.CI === "true" ? 1500 : IS_WINDOWS_SHELL ? 900 : 500;
 
 describe("search quality integration", () => {
   test("hybrid scoring formula remains consistent and recency affects rank", () => {

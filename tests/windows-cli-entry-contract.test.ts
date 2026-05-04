@@ -35,6 +35,14 @@ describe("windows CLI entry contract", () => {
     expect(pkg.bin["harness-mem-client"]).toBe("scripts/harness-mem-client.js");
   });
 
+  test("npm package includes the MCP launcher bin directory", () => {
+    const pkg = JSON.parse(readFileSync(PACKAGE_JSON, "utf8")) as {
+      files: string[];
+    };
+
+    expect(pkg.files).toContain("bin/");
+  });
+
   test("Windows script paths are normalized to Git Bash POSIX paths", () => {
     expect(bashEntry.toPosixWindowsPath("C:\\Users\\shuta\\repo\\scripts\\harness-mem")).toBe(
       "/c/Users/shuta/repo/scripts/harness-mem"

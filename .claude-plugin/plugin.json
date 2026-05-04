@@ -1,6 +1,6 @@
 {
   "name": "harness-mem",
-  "version": "0.15.0",
+  "version": "0.17.0",
   "description": "Persistent memory system for AI coding sessions — cross-tool memory sharing with 6-dimensional hybrid search",
   "author": {
     "name": "Chachamaru",
@@ -20,8 +20,7 @@
     "hybrid-search",
     "codex",
     "cursor",
-    "opencode",
-    "gemini-cli"
+    "opencode"
   ],
   "mcpServers": {
     "harness": {

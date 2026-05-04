@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-04
+
 ### ユーザー向け要約
 
 - **Claude Code `2.1.126` / Codex `0.128.0` までの stable upstream を再確認**。結果を `docs/upstream-update-snapshot-2026-05-03.md` に固定。Codex `0.129.0-alpha.*` はプレリリースなので今回対象外。
@@ -14,6 +16,9 @@
 - **「今何してた？」系でも recall が発火するように拡張**。`/harness-recall` の Claude / Codex Skill 定義と、Claude / Codex 両方の UserPrompt hook に `今何してた` / `今なにしてた` を追加。既存の `覚えてる` 判定はそのままなので、`覚えてる?` / `覚えてる？` も引き続き拾える。
 - **Claude PostToolUse の trace metadata を追加保持**。`tool_use_id`、cwd、permission profile、transcript path を安全に保持しつつ、Claude Code の `updatedToolOutput` 書き換え経路には乗らないよう stdout empty を contract 化。
 - **Windows で Bash が無い Claude hook 環境を安全スキップ**。Claude Code 2.1.120 以降は PowerShell-first で動く環境が増えるため、harness-mem 側は Bash 不在時にセッションを壊さず、行動可能なメッセージを出して hook を non-blocking にする。
+- **Gemini setup 対応を今回から外した**。`harness-mem setup` / `doctor` / `uninstall` の platform 対象、対話式初期セットアップ、npm package metadata から Gemini を除外。今後の主対象は Claude Code / Codex / Cursor / OpenCode / Antigravity。
+- **Claude hook manifest の missing script 問題を修正**。harness-mem package に入っていない sibling repo 側の開発ガード script を `hooks/hooks.json` から外し、manifest 内の全 command target が実在することをテストで固定。
+- **fresh install と setup の詰まりを改善**。npm package に MCP launcher の `bin/` を含め、Codex の古い絶対パス配線は setup で current checkout へ張り替え。Windows ローカルの search-quality 時間ぶれは setup warning に留め、任意の Claude-mem import は source DB 不在なら skip する。
 
 ## [0.16.0] - 2026-04-26
 

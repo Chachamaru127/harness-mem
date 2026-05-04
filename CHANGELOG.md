@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-05-04
+
 ### Added
 
 - **Claude/Codex upstream follow-up snapshot for 2026-05-03**. Added `docs/upstream-update-snapshot-2026-05-03.md` after checking official Claude Code and Codex stable releases. The new baseline is Claude Code `2.1.126` and Codex `0.128.0`; Codex `0.129.0-alpha.*` exists but is intentionally out of scope because this follow-up only tracks stable releases.
@@ -16,10 +18,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Changed
 
 - **Claude hook runner now degrades safely on Windows without Bash**. `scripts/run-script.js` now uses the shared Windows Git Bash detector and exits non-blockingly with an actionable message when Bash is unavailable. This matches the Claude Code `2.1.120` reality that Claude itself can run PowerShell-first on Windows even though harness-mem hook scripts still require Bash.
+- **Gemini setup wiring is retired from the active setup surface**. `harness-mem setup` / `doctor` / `uninstall` no longer accept Gemini as a managed platform, interactive setup no longer lists it, and npm package metadata no longer ships the Gemini setup bundle. Claude Code, Codex, Cursor, OpenCode, and Antigravity remain the active platform surface.
 
 ### Fixed
 
 - **Claude `PostToolUse` metadata capture now keeps stable trace fields without rewriting tool output**. `memory-post-tool-use.sh` preserves `tool_use_id`, cwd, permission profile, and transcript path metadata when provided, while keeping stdout empty so it does not participate in Claude Code's newer `updatedToolOutput` replacement path. Coverage was expanded in `tests/memory-post-tool-use-contract.test.ts`.
+- **Claude hook manifest no longer points at sibling-owned scripts that are not packaged with harness-mem**. `hooks/hooks.json` now references only memory-owned hook handlers that exist in this repo, and a static contract test checks every manifest command target so missing `pretooluse-*`, auto-test, cleanup, or session-summary scripts cannot silently return.
+- **Fresh package installs now include the MCP launcher and repair stale Codex wiring more reliably**. The npm package file list includes `bin/`, and setup rewrites stale managed Codex notify/MCP blocks to the current checkout instead of leaving old absolute paths behind.
+- **Setup is less brittle on Windows and optional imports**. Local Windows shell search-quality timing is treated as a setup warning instead of a hard failure, while explicit quality tests remain available. Optional Claude-mem setup import now skips cleanly when `~/.claude-mem/claude-mem.db` is absent; explicit `import-claude-mem --source` remains strict.
 
 ## [0.16.0] - 2026-04-26
 

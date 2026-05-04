@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -25,6 +25,7 @@
     "docs/harness-mem-setup.md",
     "docs/pro-api-data-policy.md",
     "docs/release-process.md",
+    "bin/",
     "scripts/",
     "tests/test-memory-search-quality.sh",
     "memory-server/src/",
@@ -41,8 +42,7 @@
     "harness-mem-ui/src/",
     "harness-mem-ui/package.json",
     ".cursor/hooks.json.example",
-    ".cursor/hooks/",
-    "gemini/"
+    ".cursor/hooks/"
   ],
   "dependencies": {
     "@huggingface/transformers": "3.8.1",
@@ -87,8 +87,6 @@
     "local-first",
     "mcp",
     "cursor",
-    "gemini-cli",
-    "gemini",
     "opencode"
   ],
   "trustedDependencies": [

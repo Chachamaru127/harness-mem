@@ -15,9 +15,10 @@ async function runHarnessMem(
     stderr: "pipe",
     env,
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  const stdoutPromise = new Response(proc.stdout).text();
+  const stderrPromise = new Response(proc.stderr).text();
   const code = await proc.exited;
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
   return { code, stdout, stderr };
 }
 
@@ -42,6 +43,28 @@ HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
   );
 }
 
+function writeStaleCodexConfig(tmpHome: string): void {
+  const codexDir = join(tmpHome, ".codex");
+  mkdirSync(codexDir, { recursive: true });
+  writeFileSync(
+    join(codexDir, "config.toml"),
+    `
+notify = ["bash", "/tmp/missing-harness/scripts/hook-handlers/memory-codex-notify.sh"]
+
+[mcp_servers.harness]
+command = "/tmp/missing-harness/bin/harness-mcp-server"
+args = []
+cwd = "/tmp/missing-harness"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
+`.trimStart()
+  );
+}
+
 function readCommands(data: Record<string, unknown>, event: string): string[] {
   const hooks = ((data.hooks as Record<string, unknown>)[event] as Array<Record<string, unknown>>) ?? [];
   return hooks.flatMap((entry) =>
@@ -49,10 +72,11 @@ function readCommands(data: Record<string, unknown>, event: string): string[] {
   );
 }
 
-// Per-test timeout raised to 30s globally: all tests in this suite spawn the
+// Per-test timeout raised to 60s globally: all tests in this suite spawn the
 // harness-mem CLI subprocess. On GitHub Actions ubuntu-latest the cold boot
 // routinely exceeds bun's 5s default (observed 5001ms timeout during v0.13.0
-// release attempt). Local M1 runs the same test in < 1.5s.
+// release attempt), and full-suite local release gates can slow doctor
+// subprocesses enough to exceed 30s under load.
 describe("codex hooks merge contract", () => {
   test("setup merges required harness hooks into an existing ~/.codex/hooks.json", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-hooks-merge-"));
@@ -122,7 +146,7 @@ describe("codex hooks merge contract", () => {
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 60_000);
 
   test("doctor --json marks codex_wiring missing when harness hooks are absent", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-doctor-"));
@@ -170,7 +194,35 @@ describe("codex hooks merge contract", () => {
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
+
+  test("setup rewrites stale managed Codex config paths to the current checkout", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-stale-config-"));
+
+    try {
+      writeStaleCodexConfig(tmpHome);
+
+      const result = await runHarnessMem(
+        ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+        }
+      );
+
+      expect(result.code).toBe(0);
+
+      const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      expect(configText).toContain(`notify = ["bash", "${ROOT}/scripts/hook-handlers/memory-codex-notify.sh"]`);
+      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
+      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expect(configText).not.toContain("/tmp/missing-harness");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
 
   test("doctor --json marks codex_wiring missing when codex hooks feature is disabled", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-feature-doctor-"));
@@ -237,7 +289,7 @@ describe("codex hooks merge contract", () => {
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("doctor --json marks codex_wiring missing when config.toml points to a stale harness root", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-stale-root-"));
@@ -328,7 +380,7 @@ codex_hooks = true
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   // 5b: Section-scoped extraction — other MCP server before harness should not affect checks
   test("doctor checks only [mcp_servers.harness] section, ignoring other MCP servers", async () => {
@@ -401,7 +453,7 @@ codex_hooks = true
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   // 5d: Missing [mcp_servers.harness] section entirely
   test("doctor --json marks codex_wiring missing when [mcp_servers.harness] section is absent", async () => {
@@ -447,7 +499,7 @@ codex_hooks = true
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   // 5e: [mcp_servers.harness] present but no args key
   test("doctor --json marks codex_wiring missing when harness section has no args key", async () => {
@@ -503,7 +555,7 @@ codex_hooks = true
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 
   test("doctor --json marks codex_requirements_precedence drift when requirements.toml keeps stale harness paths", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-requirements-drift-"));
@@ -579,5 +631,5 @@ HARNESS_MEM_PORT = "39999"
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 60_000);
 });

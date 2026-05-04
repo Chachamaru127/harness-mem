@@ -15,13 +15,16 @@ async function runHarnessMem(
     stderr: "pipe",
     env,
   });
-  const stdout = await new Response(proc.stdout).text();
-  const stderr = await new Response(proc.stderr).text();
+  const stdoutPromise = new Response(proc.stdout).text();
+  const stderrPromise = new Response(proc.stderr).text();
   const code = await proc.exited;
+  const [stdout, stderr] = await Promise.all([stdoutPromise, stderrPromise]);
   return { code, stdout, stderr };
 }
 
 describe("claude precedence contract", () => {
+  // Full release gates can slow doctor startup after the benchmark-heavy suite.
+  // Keep this above Bun's default while preserving a bounded contract.
   test("doctor --json marks claude_precedence drift when ~/.claude.json and settings.json disagree", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-claude-precedence-"));
 
@@ -85,5 +88,5 @@ describe("claude precedence contract", () => {
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
-  });
+  }, 120_000);
 });

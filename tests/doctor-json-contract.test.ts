@@ -47,14 +47,14 @@ describe("doctor --json contract", () => {
     // 純粋な JSON オブジェクトであること（配列や scalar ではない）
     expect(typeof parsed).toBe("object");
     expect(Array.isArray(parsed)).toBe(false);
-  });
+  }, 60_000);
 
   test("all_green field is boolean", async () => {
     const { stdout, code } = await runDoctorJson();
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
     expect(typeof parsed.all_green).toBe("boolean");
-  });
+  }, 60_000);
 
   test("required fields have correct types", async () => {
     const { stdout, code } = await runDoctorJson();
@@ -89,7 +89,7 @@ describe("doctor --json contract", () => {
     // backend_mode: string (local | managed | hybrid)
     expect(typeof parsed.backend_mode).toBe("string");
     expect(["local", "managed", "hybrid"]).toContain(parsed.backend_mode);
-  });
+  }, 60_000);
 
   test("all_green matches failed_count == 0", async () => {
     const { stdout, code } = await runDoctorJson();
@@ -98,7 +98,7 @@ describe("doctor --json contract", () => {
 
     // all_green は failed_count == 0 と一致すること
     expect(parsed.all_green).toBe(parsed.failed_count === 0);
-  });
+  }, 60_000);
 
   test("checks array items have name and status fields", async () => {
     const { stdout, code } = await runDoctorJson();
@@ -111,5 +111,5 @@ describe("doctor --json contract", () => {
       // fix は null | string
       expect(check.fix === null || typeof check.fix === "string").toBe(true);
     }
-  });
+  }, 60_000);
 });

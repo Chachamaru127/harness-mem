@@ -26,7 +26,7 @@ describe("Tier 1: Claude Code integration", () => {
     const data = JSON.parse(readFileSync(resolve(ROOT, "hooks/hooks.json"), "utf8"));
     const hooksMap: Record<string, unknown> = data.hooks ?? data;
     const registeredEvents = Object.keys(hooksMap);
-    const requiredEvents = ["PreToolUse", "PostToolUse", "Stop"];
+    const requiredEvents = ["SessionStart", "UserPromptSubmit", "PostToolUse", "Stop", "StopFailure"];
     for (const event of requiredEvents) {
       expect(registeredEvents).toContain(event);
     }

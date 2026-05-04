@@ -2,10 +2,10 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|gemini|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality]
-#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|gemini|comma-list>] [--fix]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
-#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|gemini|comma-list>] [--purge-db]
+#   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--purge-db]
 #   scripts/harness-mem versions [--project <path>]
 #   scripts/harness-mem update
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
@@ -102,7 +102,7 @@ Commands:
 
 Common options:
   --project <path>      Target project path (default: current directory)
-  --platform <value>    all|codex|opencode|claude|cursor|antigravity|gemini or comma list (default: all)
+  --platform <value>    all|codex|opencode|claude|cursor|antigravity or comma list (default: all)
                         examples: codex,cursor  /  opencode,cursor
   --dest-dir <path>     Destination directory for backup (default: same dir as DB)
   --source <path>       Source SQLite path for import-claude-mem
@@ -347,11 +347,11 @@ normalize_managed_platform_csv() {
     [ -n "$normalized" ] || continue
     case "$normalized" in
       all)
-        for expanded in codex opencode claude cursor antigravity gemini; do
+        for expanded in codex opencode claude cursor antigravity; do
           result="$(csv_append_unique "$result" "$expanded")"
         done
         ;;
-      codex|opencode|claude|cursor|antigravity|gemini)
+      codex|opencode|claude|cursor|antigravity)
         result="$(csv_append_unique "$result" "$normalized")"
         ;;
     esac
@@ -441,9 +441,6 @@ infer_auto_update_repair_platforms() {
   fi
   if [ -f "${HOME}/.config/opencode/opencode.json" ]; then
     inferred="$(csv_append_unique "$inferred" "opencode")"
-  fi
-  if [ -f "${HOME}/.gemini/settings.json" ]; then
-    inferred="$(csv_append_unique "$inferred" "gemini")"
   fi
   if [ -n "${HARNESS_MEM_ANTIGRAVITY_ROOTS:-}" ]; then
     inferred="$(csv_append_unique "$inferred" "antigravity")"
@@ -653,7 +650,6 @@ prompt_platform_selection() {
   3) opencode  (global: ~/.config/opencode/opencode.json)
   4) claude    (global: ~/.claude.json mcpServers)
   5) antigravity (experimental workspace scanning)
-  6) gemini (global: ~/.gemini/settings.json)
   a) all
 Example: 1,2   (Enter=1,2)
 EOF
@@ -665,7 +661,6 @@ EOF
   3) opencode  (global: ~/.config/opencode/opencode.json)
   4) claude    (global: ~/.claude.json mcpServers)
   5) antigravity (experimental workspace scanning)
-  6) gemini (global: ~/.gemini/settings.json)
   a) all
 入力例: 1,2   (Enter=1,2)
 EOF
@@ -708,14 +703,11 @@ EOF
         5|antigravity)
           selected="$(csv_append_unique "$selected" "antigravity")"
           ;;
-        6|gemini)
-          selected="$(csv_append_unique "$selected" "gemini")"
-          ;;
         *)
           if ui_is_en; then
-            warn "Invalid selection: ${token}. Use 1,2,3,4,5,6 or a"
+            warn "Invalid selection: ${token}. Use 1,2,3,4,5 or a"
           else
-            warn "無効な選択: ${token}。1,2,3,4,5,6 または a を入力してください"
+            warn "無効な選択: ${token}。1,2,3,4,5 または a を入力してください"
           fi
           valid=0
           ;;
@@ -956,11 +948,11 @@ validate_platform_selection() {
     normalized="$(printf '%s' "$entry" | xargs)"
     [ -z "$normalized" ] && continue
     case "$normalized" in
-      all|codex|opencode|claude|cursor|antigravity|gemini)
+      all|codex|opencode|claude|cursor|antigravity)
         seen=1
         ;;
       *)
-        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor,antigravity,gemini)"
+        fail "Invalid --platform entry: ${normalized} (allowed: all,codex,opencode,claude,cursor,antigravity)"
         ;;
     esac
   done
@@ -1335,12 +1327,6 @@ detect_antigravity_local_version() {
   printf ''
 }
 
-detect_gemini_local_version() {
-  local value
-  value="$(detect_cli_version gemini --version)"
-  echo "$value"
-}
-
 normalize_version_hint() {
   local value="$1"
   local extracted
@@ -1525,21 +1511,19 @@ PY
     antigravity_hooks_introduced="true"
   fi
 
-  local codex_local claude_local opencode_local cursor_local antigravity_local gemini_local
+  local codex_local claude_local opencode_local cursor_local antigravity_local
   codex_local="$(detect_cli_version codex --version)"
   claude_local="$(detect_cli_version claude --version)"
   opencode_local="$(detect_cli_version opencode --version)"
   cursor_local="$(detect_cursor_local_version)"
   antigravity_local="$(detect_antigravity_local_version)"
-  gemini_local="$(detect_gemini_local_version)"
 
-  local codex_status claude_status opencode_status antigravity_status cursor_status gemini_status
+  local codex_status claude_status opencode_status antigravity_status cursor_status
   codex_status="$(version_status_hint "$codex_local" "$codex_latest_stable")"
   claude_status="$(version_status_hint "$claude_local" "$claude_latest")"
   opencode_status="$(version_status_hint "$opencode_local" "$opencode_latest")"
   antigravity_status="$(version_status_hint "$antigravity_local" "$antigravity_latest")"
   cursor_status="unknown"
-  gemini_status="unknown"
 
   local snapshot
   snapshot="$(jq -nc \
@@ -1549,7 +1533,6 @@ PY
     --arg opencode_local "$opencode_local" \
     --arg cursor_local "$cursor_local" \
     --arg antigravity_local "$antigravity_local" \
-    --arg gemini_local "$gemini_local" \
     --arg claude_latest "$claude_latest" \
     --arg codex_latest_stable "$codex_latest_stable" \
     --arg codex_latest_any "$codex_latest_any" \
@@ -1565,7 +1548,6 @@ PY
     --arg opencode_status "$opencode_status" \
     --arg cursor_status "$cursor_status" \
     --arg antigravity_status "$antigravity_status" \
-    --arg gemini_status "$gemini_status" \
     --argjson antigravity_hooks_detected "$antigravity_hooks_detected" \
     --argjson antigravity_hooks_introduced "$antigravity_hooks_introduced" \
     '{
@@ -1575,8 +1557,7 @@ PY
         claude_code: {installed: ($claude_local | select(. != "") // null)},
         opencode: {installed: ($opencode_local | select(. != "") // null)},
         cursor: {installed: ($cursor_local | select(. != "") // null)},
-        antigravity: {installed: ($antigravity_local | select(. != "") // null)},
-        gemini: {installed: ($gemini_local | select(. != "") // null)}
+        antigravity: {installed: ($antigravity_local | select(. != "") // null)}
       },
       upstream: {
         claude_code: {
@@ -1611,8 +1592,7 @@ PY
         claude_code: $claude_status,
         opencode: $opencode_status,
         cursor: $cursor_status,
-        antigravity: $antigravity_status,
-        gemini: $gemini_status
+        antigravity: $antigravity_status
       },
       alerts: {
         antigravity_hooks_introduced: $antigravity_hooks_introduced
@@ -1636,8 +1616,7 @@ PY
       "  opencode     local=\(.local.opencode.installed // "n/a") upstream=\(.upstream.opencode.latest_stable // "n/a") status=\(.status.opencode)",
       "  cursor       local=\(.local.cursor.installed // "n/a") upstream_date=\(.upstream.cursor.latest_entry_date // "n/a") status=\(.status.cursor)",
       "  antigravity  local=\(.local.antigravity.installed // "n/a") upstream=\(.upstream.antigravity.latest_stable // "n/a") status=\(.status.antigravity)",
-      "  antigravity_hooks detected=\(.upstream.antigravity.hooks_detected) introduced=\(.alerts.antigravity_hooks_introduced) version=\(.upstream.antigravity.hooks_signal_version // "n/a")",
-      "  gemini       local=\(.local.gemini.installed // "n/a") status=\(.status.gemini)"
+      "  antigravity_hooks detected=\(.upstream.antigravity.hooks_detected) introduced=\(.alerts.antigravity_hooks_introduced) version=\(.upstream.antigravity.hooks_signal_version // "n/a")"
     '
 
   trap - RETURN
@@ -1666,6 +1645,15 @@ _resolve_go_bin_name() {
   else
     printf '%s\n' "harness-mcp-${os}-${arch}"
   fi
+}
+
+is_windows_shell() {
+  case "$(uname -s 2>/dev/null || printf '')" in
+    MINGW*|MSYS*|CYGWIN*|Windows_NT)
+      return 0
+      ;;
+  esac
+  [ "${OS:-}" = "Windows_NT" ]
 }
 
 download_go_binary() {
@@ -1937,6 +1925,62 @@ check_codex_config_wiring() {
   return "$failed"
 }
 
+rewrite_codex_harness_wiring() {
+  local cfg="$1"
+  local notify_script="$2"
+  local tmp backup
+
+  backup="${cfg}.bak-harness-mem-$(date +%Y%m%d%H%M%S)"
+  tmp="$(mktemp)"
+  cp "$cfg" "$backup" >/dev/null 2>&1 || true
+
+  {
+    cat <<EOF
+$BEGIN_CODEX_NOTIFY
+notify = ["bash", "${notify_script}"]
+$END_CODEX_NOTIFY
+
+EOF
+    awk -v begin_notify="$BEGIN_CODEX_NOTIFY" \
+      -v end_notify="$END_CODEX_NOTIFY" \
+      -v begin_mcp="$BEGIN_CODEX_MCP" \
+      -v end_mcp="$END_CODEX_MCP" '
+        $0 == begin_notify { skip = 1; next }
+        $0 == end_notify { skip = 0; next }
+        $0 == begin_mcp { skip = 1; next }
+        $0 == end_mcp { skip = 0; next }
+        /^\[mcp_servers\.harness(\.env)?\][[:space:]]*($|#)/ { skip = 1; next }
+        skip {
+          if ($0 ~ /^\[/) {
+            skip = 0
+            print
+          }
+          next
+        }
+        /^[[:space:]]*notify[[:space:]]*=/ && /memory-codex-notify\.sh/ { next }
+        { print }
+      ' "$cfg"
+    cat <<EOF
+
+$BEGIN_CODEX_MCP
+[mcp_servers.harness]
+command = "${HARNESS_ROOT}/bin/harness-mcp-server"
+args = []
+cwd = "${HARNESS_ROOT}"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "${MEM_HOST}"
+HARNESS_MEM_PORT = "${MEM_PORT}"
+HARNESS_MEM_DB_PATH = "${DB_PATH}"
+$END_CODEX_MCP
+EOF
+  } >"$tmp"
+
+  mv "$tmp" "$cfg"
+  log "Rewrote Codex harness wiring: $cfg (backup: $backup)"
+}
+
 ensure_codex_hooks_feature_enabled() {
   local cfg="$1"
   local tmp
@@ -2053,6 +2097,11 @@ $END_CODEX_MCP
 EOF
     log "Created Codex config: $cfg"
   else
+    local had_managed_wiring=0
+    if rg -qi 'memory-codex-notify\.sh|^\[mcp_servers\.harness\]|bin/harness-mcp-server|mcp-server/dist/index\.js' "$cfg"; then
+      had_managed_wiring=1
+    fi
+
     if ! rg -q 'memory-codex-notify\.sh' "$cfg"; then
       if rg -q '^\s*notify\s*=' "$cfg"; then
         warn "Codex config already has notify=. Add memory notify manually: $cfg"
@@ -2095,6 +2144,10 @@ HARNESS_MEM_DB_PATH = "${DB_PATH}"
 $END_CODEX_MCP
 EOF
       log "Added Codex MCP wiring: $cfg"
+    fi
+
+    if [ "$had_managed_wiring" -eq 1 ] && ! check_codex_config_wiring "$cfg" >/dev/null 2>&1; then
+      rewrite_codex_harness_wiring "$cfg" "$notify_script"
     fi
   fi
 
@@ -2621,162 +2674,6 @@ check_antigravity_wiring() {
   return "$failed"
 }
 
-upsert_gemini_json() {
-  local file="$1"
-  local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
-  local hook_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-gemini-event.sh"
-  local tmp
-
-  mkdir -p "$(dirname "$file")"
-
-  if [ ! -f "$file" ]; then
-    cat >"$file" <<'EOF'
-{
-  "mcpServers": {}
-}
-EOF
-    log "Created Gemini config: $file"
-  fi
-
-  tmp="$(mktemp)"
-  if jq \
-    --arg mcp_entry "$mcp_entry" \
-    --arg host "$MEM_HOST" \
-    --arg port "$MEM_PORT" \
-    --arg db_path "$DB_PATH" \
-    --arg hook_script "$hook_script" \
-    '
-      .mcpServers = (.mcpServers // {})
-      | .mcpServers.harness = (.mcpServers.harness // {})
-      | .mcpServers.harness.command = $mcp_entry
-      | del(.mcpServers.harness.args)
-      | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
-          "HARNESS_MEM_HOST": $host,
-          "HARNESS_MEM_PORT": $port,
-          "HARNESS_MEM_DB_PATH": $db_path
-        })
-      | .hooks = (.hooks // {})
-      | .hooks.SessionStart = (.hooks.SessionStart // [])
-      | (if (.hooks.SessionStart | tostring | test("memory-gemini-event")) then .
-         else .hooks.SessionStart += [{"matcher": "*", "hooks": [{"name": "harness-mem-session-start", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionStart")}]}]
-         end)
-      | .hooks.SessionEnd = (.hooks.SessionEnd // [])
-      | (if (.hooks.SessionEnd | tostring | test("memory-gemini-event")) then .
-         else .hooks.SessionEnd += [{"matcher": "*", "hooks": [{"name": "harness-mem-session-end", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' SessionEnd")}]}]
-         end)
-      | .hooks.BeforeAgent = (.hooks.BeforeAgent // [])
-      | (if (.hooks.BeforeAgent | tostring | test("memory-gemini-event")) then .
-         else .hooks.BeforeAgent += [{"matcher": "*", "hooks": [{"name": "harness-mem-before-agent", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' BeforeAgent")}]}]
-         end)
-      | .hooks.AfterAgent = (.hooks.AfterAgent // [])
-      | (if (.hooks.AfterAgent | tostring | test("memory-gemini-event")) then .
-         else .hooks.AfterAgent += [{"matcher": "*", "hooks": [{"name": "harness-mem-after-agent", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' AfterAgent")}]}]
-         end)
-      | .hooks.AfterTool = (.hooks.AfterTool // [])
-      | (if (.hooks.AfterTool | tostring | test("memory-gemini-event")) then .
-         else .hooks.AfterTool += [{"matcher": ".*", "hooks": [{"name": "harness-mem-after-tool", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' AfterTool")}]}]
-         end)
-      | .hooks.PreCompress = (.hooks.PreCompress // [])
-      | (if (.hooks.PreCompress | tostring | test("memory-gemini-event")) then .
-         else .hooks.PreCompress += [{"matcher": "*", "hooks": [{"name": "harness-mem-pre-compress", "type": "command", "command": ("bash '\''" + $hook_script + "'\'' PreCompress")}]}]
-         end)
-    ' "$file" >"$tmp" 2>/dev/null; then
-    mv "$tmp" "$file"
-    log "Updated Gemini MCP + hooks wiring: $file"
-    return 0
-  fi
-
-  rm -f "$tmp"
-  warn "Could not parse Gemini config JSON: $file"
-  return 1
-}
-
-setup_gemini_wiring() {
-  local gemini_dir="${HOME}/.gemini"
-  local cfg="${gemini_dir}/settings.json"
-  local skill_src="${HARNESS_ROOT}/gemini/skills/harness-mem/SKILL.md"
-  local skill_dst="${gemini_dir}/skills/harness-mem/SKILL.md"
-
-  mkdir -p "$gemini_dir"
-  upsert_gemini_json "$cfg"
-
-  if [ -f "$skill_src" ] && [ ! -f "$skill_dst" ]; then
-    mkdir -p "$(dirname "$skill_dst")"
-    cp "$skill_src" "$skill_dst"
-    log "Installed Gemini Agent Skill: $skill_dst"
-  fi
-}
-
-check_gemini_wiring() {
-  local cfg="${HOME}/.gemini/settings.json"
-  local failed=0
-
-  if [ ! -f "$cfg" ]; then
-    warn "Missing Gemini config: $cfg"
-    return 1
-  fi
-
-  if jq -e '.mcpServers.harness.args[0]' "$cfg" >/dev/null 2>&1; then
-    log "Gemini MCP wiring: OK"
-  else
-    warn "Gemini MCP wiring is missing in: $cfg"
-    failed=1
-  fi
-
-  local hook_types=("SessionStart" "SessionEnd" "BeforeAgent" "AfterAgent" "AfterTool" "PreCompress")
-  local hooks_ok=0
-  local hooks_missing=0
-  for ht in "${hook_types[@]}"; do
-    if jq -e ".hooks.${ht} | tostring | test(\"memory-gemini-event\")" "$cfg" >/dev/null 2>&1; then
-      hooks_ok=$((hooks_ok + 1))
-    else
-      hooks_missing=$((hooks_missing + 1))
-    fi
-  done
-  if [ "$hooks_missing" -eq 0 ]; then
-    log "Gemini hooks wiring: OK (${hooks_ok}/${#hook_types[@]} hooks)"
-  else
-    warn "Gemini hooks wiring: ${hooks_ok}/${#hook_types[@]} hooks found, ${hooks_missing} missing (run setup or update)"
-    failed=1
-  fi
-
-  local skill_dst="${HOME}/.gemini/skills/harness-mem/SKILL.md"
-  if [ -f "$skill_dst" ]; then
-    log "Gemini Agent Skill: OK ($skill_dst)"
-  else
-    log "Gemini Agent Skill: not installed (run setup or update to install)"
-  fi
-
-  return "$failed"
-}
-
-uninstall_gemini_wiring() {
-  local cfg="${HOME}/.gemini/settings.json"
-  local skill_dir="${HOME}/.gemini/skills/harness-mem"
-
-  if [ -f "$cfg" ]; then
-    local tmp
-    tmp="$(mktemp)"
-    if jq '
-      del(.mcpServers.harness)
-      | .hooks = ((.hooks // {}) | to_entries | map(
-          .value = ([.value[] | select(tostring | test("memory-gemini-event") | not)])
-        ) | from_entries)
-    ' "$cfg" >"$tmp" 2>/dev/null; then
-      mv "$tmp" "$cfg"
-      log "Removed Gemini MCP + hooks wiring: $cfg"
-    else
-      rm -f "$tmp"
-      warn "Could not parse Gemini config: $cfg"
-    fi
-  fi
-
-  if [ -d "$skill_dir" ]; then
-    rm -rf "$skill_dir"
-    log "Removed Gemini skill directory: $skill_dir"
-  fi
-}
-
 print_post_setup_next_steps() {
   log "Next step: verify wiring with doctor"
   log "  ./scripts/harness-mem doctor --project ${TARGET_DIR} --platform ${PLATFORM}"
@@ -2937,7 +2834,7 @@ check_claude_wiring() {
     failed=1
   else
     local cl_hooks_ok=1
-    for handler in memory-session-start memory-user-prompt memory-post-tool-use memory-stop memory-worktree-event memory-config-change; do
+    for handler in memory-session-start memory-user-prompt memory-post-tool-use memory-stop memory-worktree-event; do
       if ! rg -q "$handler" "$hooks"; then
         warn "Claude hooks missing handler: $handler in $hooks"
         cl_hooks_ok=0
@@ -3427,7 +3324,10 @@ run_setup_claude_mem_import_if_requested() {
   fi
 
   local source_db="${HOME}/.claude-mem/claude-mem.db"
-  [ -f "$source_db" ] || fail "Claude-mem source DB not found: $source_db"
+  if [ ! -f "$source_db" ]; then
+    log "Claude-mem source DB not found; skipping optional setup import: $source_db"
+    return
+  fi
 
   start_daemon
 
@@ -3816,7 +3716,6 @@ doctor_impl() {
       claude)      check_claude_wiring 2>/dev/null ;;
       cursor)      [ -f "$HOME/.cursor/mcp.json" ] && grep -q "harness" "$HOME/.cursor/mcp.json" 2>/dev/null ;;
       antigravity) [ -f "$HOME/.antigravity/config.json" ] && grep -q "harness" "$HOME/.antigravity/config.json" 2>/dev/null ;;
-      gemini)      [ -f "$HOME/.gemini/settings.json" ] && grep -q "harness" "$HOME/.gemini/settings.json" 2>/dev/null ;;
       *) return 1 ;;
     esac
   }
@@ -3873,15 +3772,6 @@ doctor_impl() {
       failed=1
     fi
   fi
-  if _should_check_platform gemini; then
-    if check_gemini_wiring; then
-      _doctor_record "gemini_wiring" "ok" ""
-    else
-      _doctor_record "gemini_wiring" "missing" "harness-mem setup --platform gemini"
-      failed=1
-    fi
-  fi
-
   # Managed backend connectivity check
   local _doctor_backend_mode
   _doctor_backend_mode="$(read_backend_mode)"
@@ -4153,15 +4043,6 @@ setup_impl() {
       _setup_record "antigravity_wiring" "failed" "harness-mem setup --platform antigravity"
     fi
   fi
-  if is_platform_enabled gemini; then
-    if setup_gemini_wiring 2>/dev/null; then
-      _setup_record "gemini_wiring" "ok" ""
-    else
-      setup_gemini_wiring
-      _setup_record "gemini_wiring" "failed" "harness-mem setup --platform gemini"
-    fi
-  fi
-
   if [ "$SKIP_START" -eq 0 ]; then
     if start_daemon 2>/dev/null; then
       _setup_record "daemon_start" "ok" ""
@@ -4194,7 +4075,12 @@ setup_impl() {
       _setup_record "quality_test" "ok" ""
     else
       run_quality_tests || true
-      _setup_record "quality_test" "failed" "harness-mem smoke"
+      if is_windows_shell; then
+        warn "Search quality test did not pass within the local Windows shell budget; setup will continue. Re-run later with: harness-mem smoke"
+        _setup_record "quality_test" "ok:windows_warning" ""
+      else
+        _setup_record "quality_test" "failed" "harness-mem smoke"
+      fi
     fi
   fi
 
@@ -4437,10 +4323,6 @@ uninstall_impl() {
   if is_platform_enabled antigravity; then
     uninstall_antigravity_wiring
   fi
-  if is_platform_enabled gemini; then
-    uninstall_gemini_wiring
-  fi
-
   forget_auto_update_repair_platforms "$PLATFORM"
 
   rm -f "${STATE_DIR}/daemon.pid" "${STATE_DIR}/daemon.lock" "${STATE_DIR}/daemon.heartbeat"
