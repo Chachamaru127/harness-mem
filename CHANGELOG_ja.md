@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-05
+
 ### ユーザー向け要約
 
 - **§105 のリリース前 hardening を追加**。同じ session summary や同じ PR URL checkpoint が observation として増え続けないよう dedupe し、重複 cleanup API、vector coverage 付き reindex、`doctor.v2`、Codex Skill drift 検知、post-doctor liveness、proof bundle を追加。

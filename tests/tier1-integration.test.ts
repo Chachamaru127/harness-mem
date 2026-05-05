@@ -179,9 +179,11 @@ describe("§57: CC v2.1.80 + Codex v0.116.0 compatibility", () => {
     expect(toolResult).toContain("result._citations = options.citations");
   });
 
-  test("plugin.json に effort フィールドがあること", () => {
+  test("plugin.json は Claude plugin validator が受け付ける manifest 形状であること", () => {
     const data = JSON.parse(readFileSync(resolve(ROOT, ".claude-plugin/plugin.json"), "utf8"));
-    expect(data.effort).toBeDefined();
+    expect(data.name).toBe("harness-mem");
+    expect(data.mcpServers?.harness?.command).toContain("harness-mcp-server");
+    expect(data.effort).toBeUndefined();
   });
 
   test("memory-worktree-event.sh が sparse checkout を検出できること", () => {
