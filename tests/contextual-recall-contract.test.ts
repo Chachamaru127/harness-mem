@@ -64,7 +64,7 @@ function resumePackWithIdentity(identity: {
   });
 }
 
-function setupHookSandbox(searchResponse: string) {
+function setupHookSandbox(searchResponse: string, resumeResponse?: string) {
   const tmp = mkdtempSync(join(tmpdir(), "hmem-contextual-recall-"));
   const projectDir = join(tmp, "project");
   const scriptsDir = join(projectDir, "scripts");
@@ -74,6 +74,9 @@ function setupHookSandbox(searchResponse: string) {
   const harnessHome = join(homeDir, ".harness-mem");
   const payloadLog = join(projectDir, "payloads.jsonl");
   const clientScript = join(scriptsDir, "harness-mem-client.sh");
+  const resolvedResumeResponse =
+    resumeResponse ??
+    '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n- resume context"}},"items":[]}';
 
   mkdirSync(libDir, { recursive: true });
   mkdirSync(join(homeDir, ".harness-mem"), { recursive: true });
@@ -95,7 +98,7 @@ case "$command" in
     printf '%s\\n' '${searchResponse.replace(/'/g, `'\\''`)}'
     ;;
   resume-pack)
-    printf '%s\\n' '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n- resume context"}},"items":[]}'
+    printf '%s\\n' '${resolvedResumeResponse.replace(/'/g, `'\\''`)}'
     ;;
   *)
     printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
@@ -422,6 +425,87 @@ describe("contextual recall contract", () => {
       await promptProc.exited;
       expect(promptProc.exitCode).toBe(0);
       expect(extractAdditionalContext(stdout)).toBe("");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Codex SessionStart skips mismatched upstream resume identity without suppressing recall", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "codex session-start fallback",
+          content: "Contextual recall should still run after mismatched SessionStart identity.",
+          scores: { final: 0.02, rerank: 0.91 },
+        },
+      ]),
+      JSON.stringify({
+        ok: true,
+        meta: {
+          count: 1,
+          artifact_identity: {
+            source: "harness_mem_resume_pack",
+            project_key: "other-project",
+            session_id: "codex-session",
+            generated_at: isoNow(),
+            correlation_id: "corr-current",
+          },
+          continuity_briefing: {
+            content: "# Continuity Briefing\n- mismatched upstream identity must not inject",
+          },
+        },
+        items: [],
+      })
+    );
+
+    try {
+      const startInput = join(sandbox.projectDir, "codex-session-start-input.json");
+      writeFileSync(
+        startInput,
+        JSON.stringify({
+          hook_event_name: "SessionStart",
+          session_id: "codex-session",
+          correlation_id: "corr-current",
+        })
+      );
+      const startProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-session-start.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(startInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const startStdout = await new Response(startProc.stdout).text();
+      await startProc.exited;
+      expect(startProc.exitCode).toBe(0);
+      expect(extractAdditionalContext(startStdout)).toBe("");
+
+      const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
+      writeFileSync(
+        promptInput,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "codex-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+      const promptProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-user-prompt.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(promptInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const promptStdout = await new Response(promptProc.stdout).text();
+      await promptProc.exited;
+      expect(promptProc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(promptStdout);
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("codex session-start fallback");
+      expect(context).not.toContain("mismatched upstream identity must not inject");
     } finally {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }

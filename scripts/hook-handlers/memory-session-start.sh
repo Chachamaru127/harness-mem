@@ -185,9 +185,9 @@ if [ -x "$CLIENT_SCRIPT" ]; then
       RESUME_IDENTITY_JSON="$(hook_current_resume_artifact_identity_json "harness_mem_resume_pack")"
       RESUME_RESPONSE_WITH_IDENTITY="$(hook_attach_resume_pack_identity "$RESUME_RESPONSE" "$RESUME_IDENTITY_JSON")"
       [ -n "$RESUME_RESPONSE_WITH_IDENTITY" ] && RESUME_RESPONSE="$RESUME_RESPONSE_WITH_IDENTITY"
-      printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
 
-      if command -v jq >/dev/null 2>&1; then
+      if hook_resume_artifact_json_matches_current "$RESUME_RESPONSE" "harness_mem_resume_pack"; then
+        printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
         RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
         if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
           printf '%s\n' "$RENDERED_RESUME_CONTEXT" > "$RESUME_FILE"
@@ -195,6 +195,8 @@ if [ -x "$CLIENT_SCRIPT" ]; then
         else
           rm -f "$RESUME_FILE" "$RESUME_PENDING_FLAG" 2>/dev/null || true
         fi
+      else
+        cleanup_resume_stale_context
       fi
     fi
   fi

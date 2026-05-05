@@ -834,7 +834,9 @@ hook_attach_resume_pack_identity() {
 
   printf '%s' "$resume_response" | jq -c --argjson identity "$identity_json" '
     .meta = (.meta // {})
-    | .meta.artifact_identity = $identity
+    | if (.meta.artifact_identity | type) == "object" then .
+      else .meta.artifact_identity = $identity
+      end
   ' 2>/dev/null || printf '%s' "$resume_response"
 }
 
@@ -879,12 +881,24 @@ hook_resume_artifact_json_matches_current() {
     --argjson max_age_sec "$max_age_sec" \
     '
       (.meta.artifact_identity // empty) as $identity
+      | ($identity.project_key // "") as $artifact_project_key
+      | ($identity.session_id // "") as $artifact_session_id
+      | ($identity.correlation_id // "") as $artifact_correlation_id
+      | ($identity.source // "") as $artifact_source
       | (try (($identity.generated_at // "") | fromdateiso8601) catch null) as $generated_at_epoch
       | ($identity | type) == "object"
-      and (($identity.project_key // "") == $project_key)
-      and (($identity.session_id // "") == $session_id)
-      and (($identity.correlation_id // "") == $correlation_id)
-      and (($identity.source // "") == $source)
+      and ($project_key != "")
+      and ($session_id != "")
+      and ($correlation_id != "")
+      and ($source != "")
+      and ($artifact_project_key != "")
+      and ($artifact_session_id != "")
+      and ($artifact_correlation_id != "")
+      and ($artifact_source != "")
+      and ($artifact_project_key == $project_key)
+      and ($artifact_session_id == $session_id)
+      and ($artifact_correlation_id == $correlation_id)
+      and ($artifact_source == $source)
       and ($generated_at_epoch != null)
       and ($generated_at_epoch <= (now + 300))
       and ($generated_at_epoch >= (now - $max_age_sec))
@@ -1252,12 +1266,24 @@ hook_consume_whisper_resume_skip() {
     --argjson max_age_sec "$max_age_sec" \
     '
       .sessions[$sid].pending_resume_skip_identity as $identity
+      | ($identity.project_key // "") as $artifact_project_key
+      | ($identity.session_id // "") as $artifact_session_id
+      | ($identity.correlation_id // "") as $artifact_correlation_id
+      | ($identity.source // "") as $artifact_source
       | (try (($identity.generated_at // "") | fromdateiso8601) catch null) as $generated_at_epoch
       | ($identity | type) == "object"
-      and (($identity.project_key // "") == $project_key)
-      and (($identity.session_id // "") == $sid)
-      and (($identity.correlation_id // "") == $correlation_id)
-      and (($identity.source // "") == $source)
+      and ($project_key != "")
+      and ($sid != "")
+      and ($correlation_id != "")
+      and ($source != "")
+      and ($artifact_project_key != "")
+      and ($artifact_session_id != "")
+      and ($artifact_correlation_id != "")
+      and ($artifact_source != "")
+      and ($artifact_project_key == $project_key)
+      and ($artifact_session_id == $sid)
+      and ($artifact_correlation_id == $correlation_id)
+      and ($artifact_source == $source)
       and ($generated_at_epoch != null)
       and ($generated_at_epoch <= (now + 300))
       and ($generated_at_epoch >= (now - $max_age_sec))

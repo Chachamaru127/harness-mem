@@ -160,6 +160,56 @@ printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
     }
   });
 
+  test("resume-pack with mismatched upstream identity does not create injection artifacts", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "harness-mem-session-start-stale-identity-"));
+    const stateDir = join(tmp, ".claude", "state");
+    const scriptRoot = join(tmp, "scripts");
+    const hookDir = join(scriptRoot, "hook-handlers");
+    const libDir = join(hookDir, "lib");
+    const copiedSessionStart = join(hookDir, "memory-session-start.sh");
+    const mockClient = join(scriptRoot, "harness-mem-client.sh");
+    const generatedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+
+    try {
+      mkdirSync(libDir, { recursive: true });
+      writeFileSync(copiedSessionStart, readFileSync(SESSION_START_SCRIPT, "utf8"));
+      writeFileSync(join(libDir, "hook-common.sh"), readFileSync(HOOK_COMMON_LIB, "utf8"));
+      writeFileSync(
+        mockClient,
+        `#!/bin/bash
+set -euo pipefail
+command="\${1:-health}"
+if [ "$command" = "resume-pack" ]; then
+  printf '%s\n' '{"ok":true,"meta":{"count":1,"artifact_identity":{"project_key":"other-project","session_id":"session-stale","generated_at":"${generatedAt}","correlation_id":"corr-stale","source":"harness_mem_resume_pack"},"continuity_briefing":{"content":"# Continuity Briefing\\n- stale upstream identity must not inject"}},"items":[]}'
+  exit 0
+fi
+printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
+`
+      );
+      chmodSync(mockClient, 0o755);
+
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "old stale resume context");
+      writeFileSync(join(stateDir, "memory-resume-pack.json"), '{"ok":true}');
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const proc = Bun.spawn(["bash", copiedSessionStart], {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        cwd: tmp,
+      });
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      expect(existsSync(join(stateDir, "memory-resume-context.md"))).toBe(false);
+      expect(existsSync(join(stateDir, "memory-resume-pack.json"))).toBe(false);
+      expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(false);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("latest handoff correlation_id is forwarded to session_start and resume-pack", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "harness-mem-session-start-chain-"));
     const stateDir = join(tmp, ".claude", "state");
