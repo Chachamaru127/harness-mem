@@ -37,7 +37,38 @@ function makeSearchResponse(items: Array<Record<string, unknown>>): string {
   });
 }
 
-function setupHookSandbox(searchResponse: string) {
+function isoNow(): string {
+  return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function isoOffsetSeconds(seconds: number): string {
+  return new Date(Date.now() + seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
+function resumePackWithIdentity(identity: {
+  project_key: string;
+  session_id: string;
+  correlation_id: string;
+  source?: string;
+  generated_at?: string;
+}): string {
+  return JSON.stringify({
+    ok: true,
+    meta: {
+      count: 1,
+      artifact_identity: {
+        source: identity.source ?? "harness_mem_resume_pack",
+        project_key: identity.project_key,
+        session_id: identity.session_id,
+        generated_at: identity.generated_at ?? isoNow(),
+        correlation_id: identity.correlation_id,
+      },
+    },
+    items: [],
+  });
+}
+
+function setupHookSandbox(searchResponse: string, resumeResponse?: string) {
   const tmp = mkdtempSync(join(tmpdir(), "hmem-contextual-recall-"));
   const projectDir = join(tmp, "project");
   const scriptsDir = join(projectDir, "scripts");
@@ -47,6 +78,9 @@ function setupHookSandbox(searchResponse: string) {
   const harnessHome = join(homeDir, ".harness-mem");
   const payloadLog = join(projectDir, "payloads.jsonl");
   const clientScript = join(scriptsDir, "harness-mem-client.sh");
+  const resolvedResumeResponse =
+    resumeResponse ??
+    '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n- resume context"}},"items":[]}';
 
   mkdirSync(libDir, { recursive: true });
   mkdirSync(join(homeDir, ".harness-mem"), { recursive: true });
@@ -68,7 +102,7 @@ case "$command" in
     printf '%s\\n' '${searchResponse.replace(/'/g, `'\\''`)}'
     ;;
   resume-pack)
-    printf '%s\\n' '{"ok":true,"meta":{"count":1,"continuity_briefing":{"content":"# Continuity Briefing\\n- resume context"}},"items":[]}'
+    printf '%s\\n' '${resolvedResumeResponse.replace(/'/g, `'\\''`)}'
     ;;
   *)
     printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
@@ -119,6 +153,14 @@ describe("contextual recall contract", () => {
       mkdirSync(stateDir, { recursive: true });
       writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
       writeFileSync(join(stateDir, "memory-resume-context.md"), "Carry forward the benchmark cleanup.");
+      writeFileSync(
+        join(stateDir, "memory-resume-pack.json"),
+        resumePackWithIdentity({
+          project_key: "project",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+        })
+      );
       writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
 
       const inputPath = join(sandbox.projectDir, "input.json");
@@ -127,6 +169,7 @@ describe("contextual recall contract", () => {
         JSON.stringify({
           hook_event_name: "UserPromptSubmit",
           session_id: "claude-session",
+          correlation_id: "corr-current",
           prompt: "src/app.ts error を直したい",
         })
       );
@@ -154,6 +197,194 @@ describe("contextual recall contract", () => {
       expect(session.resume_injected).toBe(true);
       expect(session.resume_injected_prompt_seq).toBe(1);
       expect(session.prompt_seq).toBe(1);
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Claude policy skips stale resume artifact and still allows contextual recall", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "fresh fallback",
+          content: "Use contextual recall after skipping stale resume.",
+          scores: { final: 0.02, rerank: 0.92 },
+        },
+      ])
+    );
+
+    try {
+      const stateDir = join(sandbox.projectDir, ".claude", "state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "This stale resume must not be injected.");
+      writeFileSync(
+        join(stateDir, "memory-resume-pack.json"),
+        resumePackWithIdentity({
+          project_key: "other-project",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+        })
+      );
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const inputPath = join(sandbox.projectDir, "input.json");
+      writeFileSync(
+        inputPath,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+
+      const proc = Bun.spawn(["node", join(sandbox.projectDir, "scripts", "run-script.js"), "userprompt-inject-policy"], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(inputPath),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).not.toContain("Memory Resume Context");
+      expect(context).not.toContain("This stale resume must not be injected.");
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("source: harness_mem_search (project=project, strict_project=true)");
+      expect(context).toContain("fresh fallback");
+      expect(existsSync(join(stateDir, "memory-resume-context.md"))).toBe(false);
+      expect(existsSync(join(stateDir, "memory-resume-pack.json"))).toBe(false);
+      expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(false);
+
+      const session = JSON.parse(readFileSync(join(stateDir, "session.json"), "utf8")) as {
+        resume_injected?: boolean;
+      };
+      expect(session.resume_injected).toBe(false);
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Claude policy skips resume artifact when generated_at is outside freshness bound", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "freshness fallback",
+          content: "Old resume artifacts should fall back to contextual recall.",
+          scores: { final: 0.02, rerank: 0.92 },
+        },
+      ])
+    );
+
+    try {
+      const stateDir = join(sandbox.projectDir, ".claude", "state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "This old resume must not be injected.");
+      writeFileSync(
+        join(stateDir, "memory-resume-pack.json"),
+        resumePackWithIdentity({
+          project_key: "project",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          generated_at: "2000-01-01T00:00:00Z",
+        })
+      );
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const inputPath = join(sandbox.projectDir, "input.json");
+      writeFileSync(
+        inputPath,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+
+      const proc = Bun.spawn(["node", join(sandbox.projectDir, "scripts", "run-script.js"), "userprompt-inject-policy"], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(inputPath),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).not.toContain("Memory Resume Context");
+      expect(context).not.toContain("This old resume must not be injected.");
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("freshness fallback");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Claude policy skips resume artifact when generated_at is beyond future skew", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "future freshness fallback",
+          content: "Future-dated resume artifacts should fall back to contextual recall.",
+          scores: { final: 0.02, rerank: 0.92 },
+        },
+      ])
+    );
+
+    try {
+      const stateDir = join(sandbox.projectDir, ".claude", "state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "This future resume must not be injected.");
+      writeFileSync(
+        join(stateDir, "memory-resume-pack.json"),
+        resumePackWithIdentity({
+          project_key: "project",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          generated_at: isoOffsetSeconds(360),
+        })
+      );
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const inputPath = join(sandbox.projectDir, "input.json");
+      writeFileSync(
+        inputPath,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+
+      const proc = Bun.spawn(["node", join(sandbox.projectDir, "scripts", "run-script.js"), "userprompt-inject-policy"], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(inputPath),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).not.toContain("Memory Resume Context");
+      expect(context).not.toContain("This future resume must not be injected.");
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("future freshness fallback");
     } finally {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }
@@ -236,8 +467,12 @@ describe("contextual recall contract", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
+      const startStdout = await new Response(startProc.stdout).text();
       await startProc.exited;
       expect(startProc.exitCode).toBe(0);
+      const startContext = extractAdditionalContext(startStdout);
+      expect(startContext).toContain("source: harness_mem_resume_pack");
+      expect(startContext).toContain("resume context");
 
       const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
       writeFileSync(
@@ -259,6 +494,171 @@ describe("contextual recall contract", () => {
       await promptProc.exited;
       expect(promptProc.exitCode).toBe(0);
       expect(extractAdditionalContext(stdout)).toBe("");
+
+      const whisperState = JSON.parse(
+        readFileSync(join(sandbox.projectDir, ".harness-mem", "state", "whisper-budget.json"), "utf8")
+      ) as { sessions?: Record<string, { pending_resume_skip?: boolean; pending_resume_skip_identity?: unknown }> };
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip).toBe(false);
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip_identity).toBeUndefined();
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Codex SessionStart skips mismatched upstream resume identity without suppressing recall", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "codex session-start fallback",
+          content: "Contextual recall should still run after mismatched SessionStart identity.",
+          scores: { final: 0.02, rerank: 0.91 },
+        },
+      ]),
+      JSON.stringify({
+        ok: true,
+        meta: {
+          count: 1,
+          artifact_identity: {
+            source: "harness_mem_resume_pack",
+            project_key: "other-project",
+            session_id: "codex-session",
+            generated_at: isoNow(),
+            correlation_id: "corr-current",
+          },
+          continuity_briefing: {
+            content: "# Continuity Briefing\n- mismatched upstream identity must not inject",
+          },
+        },
+        items: [],
+      })
+    );
+
+    try {
+      const startInput = join(sandbox.projectDir, "codex-session-start-input.json");
+      writeFileSync(
+        startInput,
+        JSON.stringify({
+          hook_event_name: "SessionStart",
+          session_id: "codex-session",
+          correlation_id: "corr-current",
+        })
+      );
+      const startProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-session-start.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(startInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const startStdout = await new Response(startProc.stdout).text();
+      await startProc.exited;
+      expect(startProc.exitCode).toBe(0);
+      expect(extractAdditionalContext(startStdout)).toBe("");
+
+      const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
+      writeFileSync(
+        promptInput,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "codex-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+      const promptProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-user-prompt.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(promptInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const promptStdout = await new Response(promptProc.stdout).text();
+      await promptProc.exited;
+      expect(promptProc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(promptStdout);
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("codex session-start fallback");
+      expect(context).not.toContain("mismatched upstream identity must not inject");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("Codex stale pending_resume_skip does not suppress contextual recall", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "codex fresh recall",
+          content: "The stale resume skip belongs to a different session identity.",
+          scores: { final: 0.02, rerank: 0.91 },
+        },
+      ])
+    );
+
+    try {
+      const whisperDir = join(sandbox.projectDir, ".harness-mem", "state");
+      mkdirSync(whisperDir, { recursive: true });
+      writeFileSync(
+        join(whisperDir, "whisper-budget.json"),
+        JSON.stringify(
+          {
+            version: 1,
+            project: "project",
+            sessions: {
+              "codex-session": {
+                seen_ids: [],
+                accumulated_tokens: 0,
+                prompt_count_since_last_inject: 99,
+                inject_count: 0,
+                pending_resume_skip: true,
+                pending_resume_skip_identity: {
+                  project_key: "other-project",
+                  session_id: "codex-session",
+                  generated_at: isoNow(),
+                  correlation_id: "corr-current",
+                  source: "harness_mem_resume_pack",
+                },
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
+      writeFileSync(
+        promptInput,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "codex-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+      const promptProc = Bun.spawn(["bash", join(sandbox.projectDir, "scripts", "hook-handlers", "codex-user-prompt.sh")], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(promptInput),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(promptProc.stdout).text();
+      await promptProc.exited;
+      expect(promptProc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("codex fresh recall");
+
+      const whisperState = JSON.parse(readFileSync(join(whisperDir, "whisper-budget.json"), "utf8")) as {
+        sessions?: Record<string, { pending_resume_skip?: boolean; pending_resume_skip_identity?: unknown }>;
+      };
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip).toBe(false);
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip_identity).toBeUndefined();
     } finally {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }

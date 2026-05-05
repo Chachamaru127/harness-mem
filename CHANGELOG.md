@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **§105 release-readiness hardening**. Added content-level observation dedupe, checkpoint URL dedupe, duplicate cleanup admin API, vector coverage-aware reindex progress, `doctor.v2` JSON output, Codex skill bundle drift detection, post-doctor liveness checks, and two proof commands: `scripts/s105-retrieval-ab-gate.sh` and `scripts/s105-proof-bundle.sh`.
+
+### Changed
+
+- **First-turn continuity now requests bounded L0 resume packs**. Claude and Codex SessionStart hooks request `detail_level=L0`, `resume_pack_max_tokens=1200`, and `include_private=false`, while contextual recall now discloses `source: harness_mem_search` for injected search context.
+- **Codex setup/update now treats `harness-mem` and `harness-recall` as one skill bundle**. Non-interactive Codex setup installs both skills, and doctor reports `codex_skill_drift` when either skill is missing or stale.
+
+### Fixed
+
+- **Vector reindex now prioritizes uncovered observations before legacy-only rows**. `reindexVectors()` reports current-model coverage, missing vectors, legacy rows remaining, and the 95% target so operators can see migration progress instead of reprocessing already-covered rows.
+
 ## [0.17.0] - 2026-05-04
 
 ### Added

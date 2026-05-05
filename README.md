@@ -228,7 +228,17 @@ npm run codex:doctor
 
 `setup` writes into user config locations like `~/.harness-mem`, `~/.codex`, `~/.claude*`, and `~/.cursor`. Running it as root can create the wrong ownership and wire the wrong home directory — do not use `sudo`.
 
-For Codex specifically, the critical user-scoped files are `~/.codex/config.toml` and `~/.codex/hooks.json`. `doctor` now checks that those files still point at the current harness-mem checkout instead of an older absolute path.
+For Codex specifically, the critical user-scoped files are `~/.codex/config.toml`, `~/.codex/hooks.json`, and the two skills under `~/.codex/skills/` (`harness-mem` and `harness-recall`). `doctor` now checks that those files still point at the current harness-mem checkout instead of an older absolute path or stale skill bundle.
+
+Manual MCP sanity check:
+
+Run from the harness-mem repo root when using the local checkout binary. For a global install, use `harness-mcp-server` instead of `./bin/harness-mcp-server`.
+
+```bash
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+codex mcp list
+codex mcp get harness
+```
 
 </details>
 
@@ -453,6 +463,21 @@ What this does **not** claim:
 | `smoke` | Run isolated privacy/search sanity checks |
 | `uninstall` | Remove wiring and optional local DB (`--purge-db`) |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | Safe migration from Claude-mem |
+
+`doctor --json` emits the `doctor.v2` schema. It keeps the old top-level fields while adding `overall_status`, per-check `result` (`pass`, `warn`, `fail`, `skip`), and a repair plan. Useful modes:
+
+```bash
+harness-mem doctor --json --read-only
+harness-mem doctor --json --strict-exit
+harness-mem doctor --fix --plan
+```
+
+Release-readiness helpers:
+
+```bash
+scripts/s105-retrieval-ab-gate.sh
+scripts/s105-proof-bundle.sh --isolated-home --out-dir artifacts/s105-proof-bundle
+```
 
 ### Contextual recall ("Banto mode")
 

@@ -96,10 +96,11 @@ import {
 } from "./core-utils.js";
 import type {
   ApiMeta,
-  ApiResponse,
-  AuditLogRequest,
-  BackupRequest,
-  Config,
+    ApiResponse,
+    AuditLogRequest,
+    BackupRequest,
+    CleanupDuplicatesRequest,
+    Config,
   ConsolidationRunRequest,
   CreateLinkRequest,
   EventEnvelope,
@@ -123,10 +124,11 @@ import type {
 
 export type {
   ApiMeta,
-  ApiResponse,
-  AuditLogRequest,
-  BackupRequest,
-  Config,
+    ApiResponse,
+    AuditLogRequest,
+    BackupRequest,
+    CleanupDuplicatesRequest,
+    Config,
   ConsolidationRunRequest,
   CreateLinkRequest,
   EventEnvelope,
@@ -2149,13 +2151,27 @@ export class HarnessMemCore {
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
 
-    const vectorCoverage = this.db
-      .query(`
-        SELECT
-          (SELECT COUNT(*) FROM mem_vectors) AS mem_vectors_count,
-          (SELECT COUNT(*) FROM mem_observations) AS observations_count
-      `)
-      .get() as { mem_vectors_count: number; observations_count: number } | null;
+      const vectorCoverage = this.db
+        .query(`
+          SELECT
+            (SELECT COUNT(*) FROM mem_vectors) AS mem_vectors_count,
+            (SELECT COUNT(*) FROM mem_observations WHERE archived_at IS NULL) AS observations_count,
+            (
+              SELECT COUNT(DISTINCT o.id)
+              FROM mem_observations o
+              JOIN mem_vectors v ON v.observation_id = o.id
+              WHERE o.archived_at IS NULL
+                AND v.model = ?
+            ) AS current_model_observations
+        `)
+        .get(this.vectorModelVersion) as {
+          mem_vectors_count: number;
+          observations_count: number;
+          current_model_observations: number;
+        } | null;
+      const observationsCount = Number(vectorCoverage?.observations_count ?? 0);
+      const currentModelObservations = Number(vectorCoverage?.current_model_observations ?? 0);
+      const currentModelCoverage = observationsCount === 0 ? 1 : currentModelObservations / observationsCount;
 
     const vecMapTables = this.db
       .query<{ name: string }, []>(
@@ -2222,11 +2238,15 @@ export class HarnessMemCore {
           embedding_readiness_retryable: embeddingReadiness.retryable,
           reranker_enabled: this.rerankerEnabled,
           reranker_name: this.reranker?.name || null,
-          coverage: {
-            observations: Number(vectorCoverage?.observations_count ?? 0),
-            mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
-            mem_vectors_vec_map: vecMapCount,
-          },
+            coverage: {
+              observations: observationsCount,
+              mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
+              current_model_observations: currentModelObservations,
+              vector_coverage: currentModelCoverage,
+              target_coverage: 0.95,
+              missing_current_model_vectors: Math.max(0, observationsCount - currentModelObservations),
+              mem_vectors_vec_map: vecMapCount,
+            },
           retry_queue: {
             count: Number(queueStats?.count ?? 0),
             max_retry_count: Number(queueStats?.max_retry_count ?? 0),
@@ -2526,9 +2546,13 @@ export class HarnessMemCore {
     return this.cfgMgr.backup(options);
   }
 
-  reindexVectors(limitInput?: number): ApiResponse {
-    return this.cfgMgr.reindexVectors(limitInput);
-  }
+    reindexVectors(limitInput?: number): ApiResponse {
+      return this.cfgMgr.reindexVectors(limitInput);
+    }
+
+    cleanupDuplicateObservations(request: CleanupDuplicatesRequest = {}): ApiResponse {
+      return this.cfgMgr.cleanupDuplicateObservations(request);
+    }
 
   createLink(request: CreateLinkRequest): ApiResponse {
     const startedAt = performance.now();

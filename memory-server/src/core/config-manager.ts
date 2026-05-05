@@ -187,52 +187,81 @@ export class ConfigManager {
   // reindexVectors
   // ---------------------------------------------------------------------------
 
-  reindexVectors(limitInput?: number): ApiResponse {
-    const startedAt = performance.now();
-    if (this.deps.getVectorEngine() === "disabled") {
-      return makeResponse(startedAt, [], {}, { reindexed: 0, skipped: "vector_disabled" });
-    }
+    reindexVectors(limitInput?: number): ApiResponse {
+      const startedAt = performance.now();
+      if (this.deps.getVectorEngine() === "disabled") {
+        return makeResponse(startedAt, [], {}, { reindexed: 0, skipped: "vector_disabled" });
+      }
 
-    const limit = clampLimit(limitInput, 100, 1, 10000);
+      const limit = clampLimit(limitInput, 100, 1, 10000);
+      const model = this.deps.getVectorModelVersion();
+      const now = nowIso();
+      const activeFilter = `o.archived_at IS NULL${expiredFilterSql("o", now)}`;
 
-    // Prioritize observations whose vectors are on a legacy model (not the current one).
-    // This enables incremental, no-downtime migration: each call processes a batch of
-    // stale vectors first, then falls back to all observations if none are stale.
-    // Searches continue to serve results from the legacy model during migration.
-    const legacyRows = this.deps.db
-      .query(`
-        SELECT o.id, o.content_redacted, o.created_at
-        FROM mem_observations o
-        JOIN mem_vectors v ON v.observation_id = o.id
-        GROUP BY o.id
-        HAVING SUM(CASE WHEN v.model = ? THEN 1 ELSE 0 END) = 0
-        ORDER BY o.created_at DESC
-        LIMIT ?
-      `)
-      .all(this.deps.getVectorModelVersion(), limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
+      // Priority order:
+      // 1. live observations with no vector for the current model,
+      // 2. legacy-vector-only observations,
+      // 3. a bounded refresh pass over live observations.
+      // This makes coverage monotonically improve instead of reprocessing rows that
+      // already have current vectors while old rows remain uncovered.
+      const missingRows = this.deps.db
+        .query(`
+          SELECT o.id, o.content_redacted, o.created_at
+          FROM mem_observations o
+          LEFT JOIN mem_vectors v
+            ON v.observation_id = o.id
+          WHERE v.observation_id IS NULL
+            AND ${activeFilter}
+          ORDER BY o.created_at DESC
+          LIMIT ?
+        `)
+        .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
 
-    const rows: Array<{ id: string; content_redacted: string; created_at: string }> = legacyRows.length > 0
-      ? legacyRows
-      : (this.deps.db
-          .query(`
-            SELECT id, content_redacted, created_at
-            FROM mem_observations
-            ORDER BY created_at DESC
-            LIMIT ?
-          `)
-          .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>);
+      const legacyRows = this.deps.db
+        .query(`
+          SELECT o.id, o.content_redacted, o.created_at
+          FROM mem_observations o
+          WHERE ${activeFilter}
+            AND EXISTS (
+              SELECT 1 FROM mem_vectors v_any
+              WHERE v_any.observation_id = o.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM mem_vectors v_current
+              WHERE v_current.observation_id = o.id
+                AND v_current.model = ?
+            )
+          ORDER BY o.created_at DESC
+          LIMIT ?
+        `)
+        .all(model, limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
 
-    // Count total legacy vectors before reindexing for progress reporting
-    const beforeCounts = this.deps.db
-      .query(
-        `SELECT
-           COUNT(DISTINCT observation_id) AS total,
-           COUNT(DISTINCT CASE WHEN model = ? THEN observation_id END) AS current_count
-         FROM mem_vectors`
-      )
-      .get(this.deps.getVectorModelVersion()) as { total: number; current_count: number } | null;
-    const totalBefore = Number(beforeCounts?.total ?? 0);
-    const currentBefore = Number(beforeCounts?.current_count ?? 0);
+      const rows: Array<{ id: string; content_redacted: string; created_at: string }> = missingRows.length > 0
+        ? missingRows
+        : legacyRows.length > 0
+        ? legacyRows
+        : (this.deps.db
+            .query(`
+              SELECT o.id, o.content_redacted, o.created_at
+              FROM mem_observations o
+              WHERE ${activeFilter}
+              ORDER BY created_at DESC
+              LIMIT ?
+            `)
+            .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>);
+
+      const beforeCounts = this.deps.db
+        .query(
+          `SELECT
+             COUNT(DISTINCT o.id) AS total_observations,
+             COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
+           FROM mem_observations o
+           LEFT JOIN mem_vectors v ON v.observation_id = o.id
+           WHERE ${activeFilter}`
+        )
+        .get(model) as { total_observations: number; current_count: number } | null;
+      const totalBefore = Number(beforeCounts?.total_observations ?? 0);
+      const currentBefore = Number(beforeCounts?.current_count ?? 0);
 
     let reindexed = 0;
     for (const row of rows) {
@@ -240,32 +269,159 @@ export class ConfigManager {
       reindexed += 1;
     }
 
-    const currentAfter = currentBefore + reindexed;
-    const remaining = Math.max(0, totalBefore - currentAfter);
-    const pct = totalBefore === 0 ? 100 : Math.round((currentAfter / totalBefore) * 100);
+      const afterCounts = this.deps.db
+        .query(
+          `SELECT
+             COUNT(DISTINCT o.id) AS total_observations,
+             COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
+           FROM mem_observations o
+           LEFT JOIN mem_vectors v ON v.observation_id = o.id
+           WHERE ${activeFilter}`
+        )
+        .get(model) as { total_observations: number; current_count: number } | null;
+      const totalAfter = Number(afterCounts?.total_observations ?? totalBefore);
+      const currentAfter = Number(afterCounts?.current_count ?? (currentBefore + reindexed));
+      const missingRemaining = Math.max(0, totalAfter - currentAfter);
+      const legacyRemainingRow = this.deps.db
+        .query(`
+          SELECT COUNT(*) AS count
+          FROM mem_observations o
+          WHERE ${activeFilter}
+            AND EXISTS (SELECT 1 FROM mem_vectors v_any WHERE v_any.observation_id = o.id)
+            AND NOT EXISTS (
+              SELECT 1 FROM mem_vectors v_current
+              WHERE v_current.observation_id = o.id
+                AND v_current.model = ?
+            )
+        `)
+        .get(model) as { count: number } | null;
+      const legacyRemaining = Number(legacyRemainingRow?.count ?? 0);
+      const coverage = totalAfter === 0 ? 1 : currentAfter / totalAfter;
+      const pct = Math.round(coverage * 100);
 
-    return makeResponse(
-      startedAt,
-      [
-        {
-          reindexed,
-          limit,
-          total_vectors: totalBefore,
-          current_model_vectors: currentAfter,
-          legacy_vectors_remaining: remaining,
-          progress_pct: pct,
-        },
-      ],
+      return makeResponse(
+        startedAt,
+        [
+          {
+            reindexed,
+            limit,
+            total_observations: totalAfter,
+            current_model_vectors: currentAfter,
+            missing_vectors_remaining: missingRemaining,
+            legacy_vectors_remaining: legacyRemaining,
+            vector_coverage: coverage,
+            target_coverage: 0.95,
+            progress_pct: pct,
+          },
+        ],
       { limit },
       {
         vector_engine: this.deps.getVectorEngine(),
-        embedding_provider: this.deps.embeddingProviderName,
-        embedding_provider_model: this.deps.getVectorModelVersion(),
-        embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
-        migration_complete: remaining === 0,
+          embedding_provider: this.deps.embeddingProviderName,
+          embedding_provider_model: model,
+          embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
+          migration_complete: missingRemaining === 0 && legacyRemaining === 0,
+          vector_coverage: coverage,
+          target_coverage: 0.95,
+        }
+      );
+    }
+
+    cleanupDuplicateObservations(options: { execute?: boolean; limit?: number } = {}): ApiResponse {
+      const startedAt = performance.now();
+      const execute = options.execute === true;
+      const limit = clampLimit(options.limit, 100, 1, 10000);
+      const scanLimit = Math.min(limit * 10, 10000);
+      const now = nowIso();
+      const rows = this.deps.db
+        .query(`
+          SELECT id, session_id, observation_type, content_redacted, content_dedupe_hash, created_at
+          FROM mem_observations
+          WHERE archived_at IS NULL
+            AND (expires_at IS NULL OR expires_at > ?)
+          ORDER BY created_at DESC
+          LIMIT ?
+        `)
+        .all(now, scanLimit) as Array<{
+          id: string;
+          session_id: string;
+          observation_type: string;
+          content_redacted: string;
+          content_dedupe_hash: string | null;
+          created_at: string;
+        }>;
+
+      const groups = new Map<string, typeof rows>();
+      for (const row of rows) {
+        const normalized = (row.content_redacted || "").replace(/\s+/g, " ").trim().toLowerCase();
+        if (!normalized) {
+          continue;
+        }
+        const key = row.content_dedupe_hash
+          ? `hash:${row.content_dedupe_hash}`
+          : `legacy:${row.session_id}:${row.observation_type}:${normalized}`;
+        const bucket = groups.get(key) ?? [];
+        bucket.push(row);
+        groups.set(key, bucket);
       }
-    );
-  }
+
+      const items: Array<Record<string, unknown>> = [];
+      let candidateRows = 0;
+      let archivedRows = 0;
+      for (const [groupKey, groupRows] of groups) {
+        if (groupRows.length < 2) {
+          continue;
+        }
+        const sorted = [...groupRows].sort((a, b) => {
+          const byDate = b.created_at.localeCompare(a.created_at);
+          return byDate !== 0 ? byDate : b.id.localeCompare(a.id);
+        });
+        const keep = sorted[0];
+        const archivedIds = sorted.slice(1).map((row) => row.id);
+        if (archivedIds.length === 0) {
+          continue;
+        }
+        candidateRows += archivedIds.length;
+        if (execute) {
+          const placeholders = archivedIds.map(() => "?").join(", ");
+          this.deps.db
+            .query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`)
+            .run(now, now, ...archivedIds);
+          archivedRows += archivedIds.length;
+        }
+        this.deps.writeAuditLog(
+          execute ? "admin.cleanup_duplicates" : "admin.cleanup_duplicates.plan",
+          "observation_group",
+          groupKey.slice(0, 255),
+          { dry_run: !execute, kept_id: keep.id, archived_ids: archivedIds }
+        );
+        items.push({
+          group_key: groupKey,
+          kept_id: keep.id,
+          archived_ids: archivedIds,
+          duplicate_count: archivedIds.length,
+          dry_run: !execute,
+        });
+        if (items.length >= limit) {
+          break;
+        }
+      }
+
+      return makeResponse(
+        startedAt,
+        items,
+        { execute, limit, scan_limit: scanLimit },
+        {
+          scan_limit: scanLimit,
+          scanned_rows: rows.length,
+          duplicate_groups: items.length,
+          candidate_rows: candidateRows,
+          archived_rows: archivedRows,
+          dry_run: !execute,
+          audit_logged: true,
+        }
+      );
+    }
 
   // ---------------------------------------------------------------------------
   // getConsolidationStatus

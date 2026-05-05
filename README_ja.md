@@ -229,7 +229,17 @@ npm run codex:doctor
 
 `setup` は `~/.harness-mem`, `~/.codex`, `~/.claude*`, `~/.cursor` などユーザー領域の設定を書き換えます。root で実行すると所有権が壊れてしまうので `sudo` はつけないでください。
 
-Codex については `~/.codex/config.toml` と `~/.codex/hooks.json` が鍵になります。`doctor` はこれらが「現在の harness-mem checkout」をちゃんと指しているかを確認します。昔の絶対パスに取り残されている状態も検知します。
+Codex については `~/.codex/config.toml`、`~/.codex/hooks.json`、そして `~/.codex/skills/` 配下の 2 つの Skill（`harness-mem` と `harness-recall`）が鍵になります。`doctor` はこれらが「現在の harness-mem checkout」をちゃんと指しているか、古い絶対パスや古い Skill に取り残されていないかを確認します。
+
+手動 MCP 確認:
+
+ローカル checkout の binary を使う場合は、harness-mem repo root で実行してください。global install 済みなら `./bin/harness-mcp-server` の代わりに `harness-mcp-server` を使えます。
+
+```bash
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+codex mcp list
+codex mcp get harness
+```
 
 </details>
 
@@ -450,6 +460,21 @@ main の release gate、現行の日本語 companion、歴史 baseline を明確
 | `smoke` | 独立したプライバシー / 検索の sanity check |
 | `uninstall` | 配線削除。オプションで `--purge-db` |
 | `import-claude-mem` + `verify-import` + `cutover-claude-mem` | claude-mem からの安全な移行 |
+
+`doctor --json` は `doctor.v2` schema を返します。既存の top-level field は残したまま、`overall_status`、各 check の `result`（`pass`, `warn`, `fail`, `skip`）、repair plan を追加しています。
+
+```bash
+harness-mem doctor --json --read-only
+harness-mem doctor --json --strict-exit
+harness-mem doctor --fix --plan
+```
+
+リリース準備確認:
+
+```bash
+scripts/s105-retrieval-ab-gate.sh
+scripts/s105-proof-bundle.sh --isolated-home --out-dir artifacts/s105-proof-bundle
+```
 
 ### Contextual recall（"Banto モード"）
 

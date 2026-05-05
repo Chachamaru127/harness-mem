@@ -127,6 +127,27 @@ printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
       expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(true);
 
       const resumeText = readFileSync(resumePath, "utf8");
+      const resumeJson = JSON.parse(readFileSync(join(stateDir, "memory-resume-pack.json"), "utf8")) as {
+        meta?: {
+          artifact_identity?: {
+            project_key?: string;
+            session_id?: string;
+            generated_at?: string;
+            correlation_id?: string;
+            source?: string;
+          };
+        };
+      };
+      expect(resumeJson.meta?.artifact_identity?.project_key).toBeTruthy();
+      expect(resumeJson.meta?.artifact_identity?.session_id).toMatch(/^session-/);
+      expect(resumeJson.meta?.artifact_identity?.generated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(resumeJson.meta?.artifact_identity?.correlation_id).toMatch(/^corr-/);
+      expect(resumeJson.meta?.artifact_identity?.source).toBe("harness_mem_resume_pack");
+      expect(resumeText).toContain("source: harness_mem_resume_pack");
+      expect(resumeText).toContain("project_key:");
+      expect(resumeText).toContain("session_id:");
+      expect(resumeText).toContain("generated_at:");
+      expect(resumeText).toContain("correlation_id:");
       expect(resumeText).toContain("# Continuity Briefing");
       expect(resumeText).toContain("Continue from the previous adapter fix");
       expect(resumeText).toContain("## Also Recently in This Project");
@@ -134,6 +155,56 @@ printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
         resumeText.indexOf("## Also Recently in This Project")
       );
       expect(resumeText).not.toContain("## Memory Resume Pack");
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("resume-pack with mismatched upstream identity does not create injection artifacts", async () => {
+    const tmp = mkdtempSync(join(tmpdir(), "harness-mem-session-start-stale-identity-"));
+    const stateDir = join(tmp, ".claude", "state");
+    const scriptRoot = join(tmp, "scripts");
+    const hookDir = join(scriptRoot, "hook-handlers");
+    const libDir = join(hookDir, "lib");
+    const copiedSessionStart = join(hookDir, "memory-session-start.sh");
+    const mockClient = join(scriptRoot, "harness-mem-client.sh");
+    const generatedAt = new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
+
+    try {
+      mkdirSync(libDir, { recursive: true });
+      writeFileSync(copiedSessionStart, readFileSync(SESSION_START_SCRIPT, "utf8"));
+      writeFileSync(join(libDir, "hook-common.sh"), readFileSync(HOOK_COMMON_LIB, "utf8"));
+      writeFileSync(
+        mockClient,
+        `#!/bin/bash
+set -euo pipefail
+command="\${1:-health}"
+if [ "$command" = "resume-pack" ]; then
+  printf '%s\n' '{"ok":true,"meta":{"count":1,"artifact_identity":{"project_key":"other-project","session_id":"session-stale","generated_at":"${generatedAt}","correlation_id":"corr-stale","source":"harness_mem_resume_pack"},"continuity_briefing":{"content":"# Continuity Briefing\\n- stale upstream identity must not inject"}},"items":[]}'
+  exit 0
+fi
+printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
+`
+      );
+      chmodSync(mockClient, 0o755);
+
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "old stale resume context");
+      writeFileSync(join(stateDir, "memory-resume-pack.json"), '{"ok":true}');
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const proc = Bun.spawn(["bash", copiedSessionStart], {
+        stdin: "ignore",
+        stdout: "pipe",
+        stderr: "pipe",
+        cwd: tmp,
+      });
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      expect(existsSync(join(stateDir, "memory-resume-context.md"))).toBe(false);
+      expect(existsSync(join(stateDir, "memory-resume-pack.json"))).toBe(false);
+      expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(false);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
@@ -210,8 +281,14 @@ printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
 
       const resumePayload = payloads.find((entry) => entry.command === "resume-pack")?.payload as {
         correlation_id?: string;
+        include_private?: boolean;
+        detail_level?: string;
+        resume_pack_max_tokens?: number;
       };
       expect(resumePayload.correlation_id).toBe("corr-handoff");
+      expect(resumePayload.include_private).toBe(false);
+      expect(resumePayload.detail_level).toBe("L0");
+      expect(resumePayload.resume_pack_max_tokens).toBeLessThanOrEqual(1200);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

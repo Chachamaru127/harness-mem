@@ -372,7 +372,70 @@ hook_record_explicit_continuity_handoff() {
 hook_init_continuity_state() {
   SHARED_STATE_DIR="${PROJECT_ROOT}/.harness-mem/state"
   CONTINUITY_STATE_FILE="${SHARED_STATE_DIR}/continuity.json"
+  CONTINUITY_LOCK_DIR="${CONTINUITY_STATE_FILE}.lock"
   mkdir -p "$SHARED_STATE_DIR" 2>/dev/null || true
+}
+
+hook_acquire_continuity_lock() {
+  hook_init_continuity_state
+
+  local depth="${CONTINUITY_LOCK_DEPTH:-0}"
+  depth="$(hook_clamp_integer "$depth" "0" "0" "99")"
+  if [ "$depth" -gt 0 ]; then
+    CONTINUITY_LOCK_DEPTH=$((depth + 1))
+    return 0
+  fi
+
+  local attempts=50
+  local attempt=0
+  local owner_pid=""
+  local lock_mtime=""
+  local lock_age=""
+  while [ "$attempt" -lt "$attempts" ]; do
+    if mkdir "$CONTINUITY_LOCK_DIR" 2>/dev/null; then
+      printf '%s\n' "$$" > "${CONTINUITY_LOCK_DIR}/pid" 2>/dev/null || true
+      CONTINUITY_LOCK_DEPTH=1
+      return 0
+    fi
+
+    owner_pid="$(cat "${CONTINUITY_LOCK_DIR}/pid" 2>/dev/null | tr -dc '0-9')"
+    if [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; then
+      rm -rf "$CONTINUITY_LOCK_DIR" 2>/dev/null || true
+      continue
+    fi
+
+    if [ -z "$owner_pid" ]; then
+      lock_mtime="$(stat -f %m "$CONTINUITY_LOCK_DIR" 2>/dev/null || stat -c %Y "$CONTINUITY_LOCK_DIR" 2>/dev/null || printf '0')"
+      if [ "$lock_mtime" != "0" ]; then
+        lock_age=$(($(date +%s) - lock_mtime))
+        if [ "$lock_age" -ge 2 ]; then
+          rm -rf "$CONTINUITY_LOCK_DIR" 2>/dev/null || true
+          continue
+        fi
+      fi
+    fi
+
+    sleep 0.1
+    attempt=$((attempt + 1))
+  done
+
+  return 1
+}
+
+hook_release_continuity_lock() {
+  local depth="${CONTINUITY_LOCK_DEPTH:-0}"
+  depth="$(hook_clamp_integer "$depth" "0" "0" "99")"
+
+  if [ "$depth" -gt 1 ]; then
+    CONTINUITY_LOCK_DEPTH=$((depth - 1))
+    return 0
+  fi
+
+  if [ "$depth" -eq 1 ]; then
+    rm -rf "${CONTINUITY_LOCK_DIR:-${CONTINUITY_STATE_FILE}.lock}" 2>/dev/null || true
+  fi
+
+  CONTINUITY_LOCK_DEPTH=0
 }
 
 hook_default_continuity_state() {
@@ -401,7 +464,9 @@ hook_write_continuity_state() {
   [ -n "$state_json" ] || return 0
   [ -n "${CONTINUITY_STATE_FILE:-}" ] || return 0
   mkdir -p "$(dirname "$CONTINUITY_STATE_FILE")" 2>/dev/null || true
-  printf '%s\n' "$state_json" > "$CONTINUITY_STATE_FILE"
+  local tmp_file="${CONTINUITY_STATE_FILE}.$$-${RANDOM:-0}.tmp"
+  printf '%s\n' "$state_json" > "$tmp_file" && mv "$tmp_file" "$CONTINUITY_STATE_FILE"
+  rm -f "$tmp_file" 2>/dev/null || true
 }
 
 hook_generate_correlation_id() {
@@ -579,6 +644,10 @@ hook_upsert_continuity_session() {
   [ -n "$session_id" ] || return 0
   [ -n "$correlation_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${CONTINUITY_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_continuity_lock; then
+    return 0
+  fi
 
   local current_ts
   current_ts="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
@@ -607,6 +676,9 @@ hook_upsert_continuity_session() {
   )"
 
   [ -n "$state_json" ] && hook_write_continuity_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_continuity_lock
+  fi
 }
 
 hook_mark_continuity_handoff() {
@@ -618,6 +690,10 @@ hook_mark_continuity_handoff() {
   [ -n "$session_id" ] || return 0
   [ -n "$correlation_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
+  local lock_depth_before="${CONTINUITY_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_continuity_lock; then
+    return 0
+  fi
 
   local handoff_ts="${finalized_at:-$(date -u +"%Y-%m-%dT%H:%M:%SZ")}"
   local state_json
@@ -651,6 +727,9 @@ hook_mark_continuity_handoff() {
   )"
 
   [ -n "$state_json" ] && hook_write_continuity_state "$state_json"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_continuity_lock
+  fi
 }
 
 hook_resolve_correlation_id() {
@@ -666,6 +745,15 @@ hook_resolve_correlation_id() {
   if [ -n "$input_correlation_id" ]; then
     CORRELATION_ID="$input_correlation_id"
     CORRELATION_ID_SOURCE="input"
+  fi
+
+  local lock_depth_before="${CONTINUITY_LOCK_DEPTH:-0}"
+  if [ "$lock_depth_before" -eq 0 ] && ! hook_acquire_continuity_lock; then
+    if [ -z "$CORRELATION_ID" ]; then
+      CORRELATION_ID="$(hook_generate_correlation_id)"
+      CORRELATION_ID_SOURCE="generated"
+    fi
+    return
   fi
 
   if [ -z "$CORRELATION_ID" ]; then
@@ -712,6 +800,9 @@ hook_resolve_correlation_id() {
   fi
 
   hook_upsert_continuity_session "$session_id" "$platform" "$CORRELATION_ID" "$CORRELATION_ID_SOURCE"
+  if [ "$lock_depth_before" -eq 0 ]; then
+    hook_release_continuity_lock
+  fi
 }
 
 # ---------- hook_extract_meta_summary <response_json> ----------
@@ -798,25 +889,156 @@ print(json.dumps(body))
   hook_extract_meta_summary "$response"
 }
 
+hook_current_resume_artifact_identity_json() {
+  local source="${1:-harness_mem_resume_pack}"
+  local generated_at="${2:-}"
+  [ -n "$generated_at" ] || generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  command -v jq >/dev/null 2>&1 || return 0
+
+  jq -nc \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg session_id "${SESSION_ID:-${HARNESS_SESSION_ID:-}}" \
+    --arg generated_at "$generated_at" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "$source" \
+    '{
+      project_key: $project_key,
+      session_id: $session_id,
+      generated_at: $generated_at,
+      correlation_id: $correlation_id,
+      source: $source
+    }'
+}
+
+hook_attach_resume_pack_identity() {
+  local resume_response="${1:-}"
+  local identity_json="${2:-}"
+  [ -n "$resume_response" ] || return 0
+  [ -n "$identity_json" ] || {
+    printf '%s' "$resume_response"
+    return 0
+  }
+  command -v jq >/dev/null 2>&1 || {
+    printf '%s' "$resume_response"
+    return 0
+  }
+
+  # Preserve upstream identity so stale or mismatched artifacts remain detectable.
+  printf '%s' "$resume_response" | jq -c --argjson identity "$identity_json" '
+    .meta = (.meta // {})
+    | if (.meta.artifact_identity | type) == "object" then .
+      else .meta.artifact_identity = $identity
+      end
+  ' 2>/dev/null || printf '%s' "$resume_response"
+}
+
+hook_render_resume_artifact_identity_header() {
+  local resume_response="${1:-}"
+  [ -n "$resume_response" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  printf '%s' "$resume_response" | jq -r '
+    .meta.artifact_identity // empty
+    | select(type == "object")
+    | [
+        (if ((.source // "") != "") then "source: " + .source else empty end),
+        (if ((.project_key // "") != "") then "project_key: " + .project_key else empty end),
+        (if ((.session_id // "") != "") then "session_id: " + .session_id else empty end),
+        (if ((.generated_at // "") != "") then "generated_at: " + .generated_at else empty end),
+        (if ((.correlation_id // "") != "") then "correlation_id: " + .correlation_id else empty end)
+      ]
+      | join("\n")
+  ' 2>/dev/null
+}
+
+hook_resume_artifact_max_age_sec() {
+  hook_clamp_integer "${HARNESS_MEM_RESUME_ARTIFACT_MAX_AGE_SEC:-86400}" "86400" "300" "604800"
+}
+
+hook_resume_artifact_identity_match_filter() {
+  cat <<'JQ'
+def hook_identity_matches($identity):
+  ($identity | if type == "object" then . else {} end) as $safe_identity
+  | ($safe_identity.project_key // "") as $artifact_project_key
+  | ($safe_identity.session_id // "") as $artifact_session_id
+  | ($safe_identity.correlation_id // "") as $artifact_correlation_id
+  | ($safe_identity.source // "") as $artifact_source
+  | (try (($safe_identity.generated_at // "") | fromdateiso8601) catch null) as $generated_at_epoch
+  | ($identity | type) == "object"
+  and ($project_key != "")
+  and ($identity_session_id != "")
+  and ($correlation_id != "")
+  and ($source != "")
+  and ($artifact_project_key != "")
+  and ($artifact_session_id != "")
+  and ($artifact_correlation_id != "")
+  and ($artifact_source != "")
+  and ($artifact_project_key == $project_key)
+  and ($artifact_session_id == $identity_session_id)
+  and ($artifact_correlation_id == $correlation_id)
+  and ($artifact_source == $source)
+  and ($generated_at_epoch != null)
+  and ($generated_at_epoch <= (now + 300))
+  and ($generated_at_epoch >= (now - $max_age_sec));
+JQ
+}
+
+hook_resume_artifact_json_matches_current() {
+  local artifact_json="${1:-}"
+  local expected_source="${2:-harness_mem_resume_pack}"
+  [ -n "$artifact_json" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local max_age_sec
+  max_age_sec="$(hook_resume_artifact_max_age_sec)"
+
+  printf '%s' "$artifact_json" | jq -e \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg identity_session_id "${SESSION_ID:-${HARNESS_SESSION_ID:-}}" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "$expected_source" \
+    --argjson max_age_sec "$max_age_sec" \
+    "$(hook_resume_artifact_identity_match_filter)
+      hook_identity_matches(.meta.artifact_identity // {})
+    " >/dev/null 2>&1
+}
+
+hook_resume_artifact_matches_current() {
+  local artifact_file="${1:-}"
+  local expected_source="${2:-harness_mem_resume_pack}"
+  [ -n "$artifact_file" ] || return 1
+  [ -f "$artifact_file" ] || return 1
+
+  hook_resume_artifact_json_matches_current "$(cat "$artifact_file" 2>/dev/null)" "$expected_source"
+}
+
 hook_render_resume_pack_markdown() {
   local resume_response="${1:-}"
   [ -n "$resume_response" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
+  local identity_header=""
   local continuity_briefing=""
   local recent_project_context=""
+  identity_header="$(hook_render_resume_artifact_identity_header "$resume_response")"
   continuity_briefing="$(printf '%s' "$resume_response" | jq -r '.meta.continuity_briefing.content // empty' 2>/dev/null)"
   recent_project_context="$(printf '%s' "$resume_response" | jq -r '.meta.recent_project_context.content // empty' 2>/dev/null)"
   if [ -n "$continuity_briefing" ]; then
-    if [ -n "$recent_project_context" ] && [ "$recent_project_context" != "$continuity_briefing" ]; then
-      printf '%s\n\n%s\n' "$continuity_briefing" "$recent_project_context"
-    else
-      printf '%s\n' "$continuity_briefing"
-    fi
+    {
+      [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
+      if [ -n "$recent_project_context" ] && [ "$recent_project_context" != "$continuity_briefing" ]; then
+        printf '%s\n\n%s\n' "$continuity_briefing" "$recent_project_context"
+      else
+        printf '%s\n' "$continuity_briefing"
+      fi
+    }
     return 0
   fi
   if [ -n "$recent_project_context" ]; then
-    printf '%s\n' "$recent_project_context"
+    {
+      [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
+      printf '%s\n' "$recent_project_context"
+    }
     return 0
   fi
 
@@ -827,6 +1049,7 @@ hook_render_resume_pack_markdown() {
   fi
 
   {
+    [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
     echo "## Memory Resume Pack"
     echo ""
     echo "直近セッションから再利用可能な文脈です。"
@@ -1082,6 +1305,7 @@ hook_mark_whisper_prompt() {
 
 hook_mark_whisper_resume_skip() {
   local session_id="${1:-}"
+  local source="${2:-harness_mem_resume_pack}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
@@ -1090,11 +1314,16 @@ hook_mark_whisper_resume_skip() {
   fi
   hook_upsert_whisper_session_defaults "$session_id"
 
+  local identity_json
+  identity_json="$(hook_current_resume_artifact_identity_json "$source")"
+  [ -n "$identity_json" ] || identity_json='{}'
+
   local state_json
   state_json="$(hook_read_whisper_state)"
   state_json="$(
-    printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
+    printf '%s' "$state_json" | jq -c --arg sid "$session_id" --argjson identity "$identity_json" '
       .sessions[$sid].pending_resume_skip = true
+      | .sessions[$sid].pending_resume_skip_identity = $identity
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
@@ -1125,11 +1354,40 @@ hook_consume_whisper_resume_skip() {
     return 1
   fi
 
+  local max_age_sec
+  max_age_sec="$(hook_resume_artifact_max_age_sec)"
+  if ! jq -e \
+    --arg sid "$session_id" \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg identity_session_id "$session_id" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "harness_mem_resume_pack" \
+    --argjson max_age_sec "$max_age_sec" \
+    "$(hook_resume_artifact_identity_match_filter)
+      (.sessions[$sid].pending_resume_skip == true)
+      and hook_identity_matches(.sessions[$sid].pending_resume_skip_identity // {})
+    " "$WHISPER_STATE_FILE" >/dev/null 2>&1; then
+    local mismatch_state_json
+    mismatch_state_json="$(hook_read_whisper_state)"
+    mismatch_state_json="$(
+      printf '%s' "$mismatch_state_json" | jq -c --arg sid "$session_id" '
+        .sessions[$sid].pending_resume_skip = false
+        | del(.sessions[$sid].pending_resume_skip_identity)
+      ' 2>/dev/null
+    )"
+    [ -n "$mismatch_state_json" ] && hook_write_whisper_state "$mismatch_state_json"
+    if [ "$lock_depth_before" -eq 0 ]; then
+      hook_release_whisper_lock
+    fi
+    return 1
+  fi
+
   local state_json
   state_json="$(hook_read_whisper_state)"
   state_json="$(
     printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
       .sessions[$sid].pending_resume_skip = false
+      | del(.sessions[$sid].pending_resume_skip_identity)
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
@@ -1184,6 +1442,7 @@ hook_whisper_prompt_has_trigger() {
 
 hook_render_contextual_recall_lines() {
   local selected_json="${1:-[]}"
+  local project_scope="${2:-${PROJECT_NAME:-unknown}}"
   [ -n "$selected_json" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
@@ -1202,7 +1461,7 @@ hook_render_contextual_recall_lines() {
   ' 2>/dev/null)"
   [ -n "$body" ] || return 0
 
-  printf '## Contextual Recall\n%s\n' "$body"
+  printf '## Contextual Recall\nsource: harness_mem_search (project=%s, strict_project=true)\n%s\n' "$project_scope" "$body"
 }
 
 hook_run_contextual_recall() {
@@ -1360,7 +1619,7 @@ hook_run_contextual_recall() {
     fi
 
     local rendered tokens accumulated tokens_limit ids_json
-    rendered="$(hook_render_contextual_recall_lines "$selected_json")"
+    rendered="$(hook_render_contextual_recall_lines "$selected_json" "$PROJECT_NAME")"
     [ -n "$rendered" ] || {
       printf '%s' '{"ok":true,"injected":false,"reason":"render_empty"}'
       exit 0

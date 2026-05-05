@@ -234,6 +234,11 @@ export interface BackupRequest {
   dest_dir?: string;
 }
 
+export interface CleanupDuplicatesRequest {
+  execute?: boolean;
+  limit?: number;
+}
+
 export interface StreamEvent {
   id: number;
   type: "observation.created" | "session.finalized" | "session.partial_finalized" | "health.changed";

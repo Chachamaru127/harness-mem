@@ -35,6 +35,15 @@ function normalize(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function stripArtifactIdentityHeader(value: string): string {
+  return value
+    .replace(
+      /^source: harness_mem_resume_pack\nproject_key: [^\n]*\nsession_id: [^\n]*\ngenerated_at: [^\n]*\ncorrelation_id: [^\n]*\n\n/,
+      ""
+    )
+    .trimStart();
+}
+
 function extractCodexAdditionalContext(stdout: string): string {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -169,8 +178,19 @@ describe("session-start parity contract", () => {
 
     const claude = await runSessionStart("claude", resumeResponse);
     const codex = await runSessionStart("codex", resumeResponse);
+    const strippedClaude = stripArtifactIdentityHeader(claude.content);
+    const strippedCodex = stripArtifactIdentityHeader(codex.content);
 
-    expect(normalize(claude.content)).toBe(normalize(codex.content));
+    expect(strippedClaude).not.toContain("source: harness_mem_resume_pack");
+    expect(strippedCodex).not.toContain("source: harness_mem_resume_pack");
+    expect(normalize(strippedClaude)).toBe(normalize(strippedCodex));
+    for (const run of [claude, codex]) {
+      expect(run.content).toContain("source: harness_mem_resume_pack");
+      expect(run.content).toContain("project_key: session-start-parity-project");
+      expect(run.content).toContain("session_id:");
+      expect(run.content).toContain("generated_at:");
+      expect(run.content).toContain("correlation_id:");
+    }
     expect(claude.content).toContain("Continuity Briefing");
     expect(claude.content).toContain("## Also Recently in This Project");
     expect(codex.content).toContain("Keep Claude and Codex in parity");
@@ -181,7 +201,7 @@ describe("session-start parity contract", () => {
     expect(codex.rawStderr.trim()).toBe("");
   });
 
-  test("fallback resume-pack list is rendered identically for Claude and Codex", async () => {
+    test("fallback resume-pack list is rendered identically for Claude and Codex", async () => {
     const resumeResponse = JSON.stringify({
       ok: true,
       meta: { count: 2 },
@@ -200,13 +220,42 @@ describe("session-start parity contract", () => {
       ],
     });
 
-    const claude = await runSessionStart("claude", resumeResponse);
-    const codex = await runSessionStart("codex", resumeResponse);
+      const claude = await runSessionStart("claude", resumeResponse);
+      const codex = await runSessionStart("codex", resumeResponse);
 
-    expect(normalize(claude.content)).toBe(normalize(codex.content));
+    const strippedClaude = stripArtifactIdentityHeader(claude.content);
+    const strippedCodex = stripArtifactIdentityHeader(codex.content);
+    expect(strippedClaude).not.toContain("source: harness_mem_resume_pack");
+    expect(strippedCodex).not.toContain("source: harness_mem_resume_pack");
+    expect(normalize(strippedClaude)).toBe(normalize(strippedCodex));
+    expect(claude.content).toContain("source: harness_mem_resume_pack");
+    expect(codex.content).toContain("source: harness_mem_resume_pack");
     expect(claude.content).toContain("Memory Resume Pack");
-    expect(codex.content).toContain("SessionStart rendering");
-  });
+      expect(codex.content).toContain("SessionStart rendering");
+    });
+
+    test("Claude and Codex request L0 resume-pack with a bounded first-turn budget", async () => {
+      const resumeResponse = JSON.stringify({
+        ok: true,
+        meta: { count: 0 },
+        items: [],
+      });
+
+      const claude = await runSessionStart("claude", resumeResponse);
+      const codex = await runSessionStart("codex", resumeResponse);
+
+      for (const run of [claude, codex]) {
+        const resumePayload = run.payloads.find((entry) => entry.command === "resume-pack")?.payload as {
+          include_private?: boolean;
+          detail_level?: string;
+          resume_pack_max_tokens?: number;
+        };
+        expect(resumePayload).toBeDefined();
+        expect(resumePayload.include_private).toBe(false);
+        expect(resumePayload.detail_level).toBe("L0");
+        expect(resumePayload.resume_pack_max_tokens).toBeLessThanOrEqual(1200);
+      }
+    });
 
   test("latest handoff correlation_id is forwarded consistently for Claude and Codex", async () => {
     const continuityState = {
@@ -233,10 +282,12 @@ describe("session-start parity contract", () => {
       };
       const resumePack = run.payloads.find((entry) => entry.command === "resume-pack")?.payload as {
         correlation_id?: string;
+        include_private?: boolean;
       };
 
       expect(recordEvent.event?.correlation_id).toBe("corr-handoff");
       expect(resumePack.correlation_id).toBe("corr-handoff");
+      expect(resumePack.include_private).toBe(false);
     }
   });
 });

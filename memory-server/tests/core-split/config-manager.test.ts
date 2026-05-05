@@ -325,12 +325,99 @@ describe("config-manager: reindexVectors", () => {
     expect((res.meta as Record<string, unknown>).skipped).toBe("vector_disabled");
   });
 
-  test("reindexVectors() レスポンスに meta が含まれる", () => {
-    const { manager } = createManager({ getVectorEngine: () => "disabled" });
-    const res = manager.reindexVectors();
-    expect(res.meta).toBeTruthy();
+    test("reindexVectors() レスポンスに meta が含まれる", () => {
+      const { manager } = createManager({ getVectorEngine: () => "disabled" });
+      const res = manager.reindexVectors();
+      expect(res.meta).toBeTruthy();
+    });
+
+    test("current model の vector が無い observation を legacy vector より先に reindex する", () => {
+      const db = createTestDb();
+      dbs.push(db);
+      const config = createTestConfig();
+      const missingId = insertTestObservation(db, {
+        id: "obs-missing-vector",
+        content: "older row without any current vector",
+        created_at: "2026-02-20T00:00:00.000Z",
+      });
+      const legacyId = insertTestObservation(db, {
+        id: "obs-legacy-vector",
+        content: "newer row with legacy vector only",
+        created_at: "2026-02-21T00:00:00.000Z",
+      });
+      db.query(
+        `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      ).run(legacyId, "legacy:model", 2, JSON.stringify([0.1, 0.2]), "2026-02-21T00:00:00.000Z", "2026-02-21T00:00:00.000Z");
+
+      const reindexed: string[] = [];
+      const manager = new ConfigManager(createDeps(db, config, {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => "current:model",
+        reindexObservationVector: (id, _content, createdAt) => {
+          reindexed.push(id);
+          db.query(
+            `INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          ).run(id, "current:model", 2, JSON.stringify([1, 0]), createdAt, createdAt);
+        },
+      }));
+
+      const res = manager.reindexVectors(1);
+      expect(res.ok).toBe(true);
+      expect(reindexed).toEqual([missingId]);
+      expect((res.meta as Record<string, unknown>).vector_coverage).toBeGreaterThan(0);
+      expect((res.items[0] as Record<string, unknown>).missing_vectors_remaining).toBe(1);
+    });
   });
-});
+
+  describe("config-manager: cleanupDuplicateObservations", () => {
+    test("dry-run duplicate cleanup reports candidates and writes an audit plan", () => {
+      const audits: Array<{ action: string; targetId: string }> = [];
+      const { manager } = createManager({
+        writeAuditLog: (action, _targetType, targetId) => {
+          audits.push({ action, targetId });
+        },
+      });
+      const db = (manager as unknown as { deps: ConfigManagerDeps }).deps.db;
+      insertTestObservation(db, { id: "obs-dupe-a", session_id: "sess-dupe", content: "same searchable memory" });
+      insertTestObservation(db, { id: "obs-dupe-b", session_id: "sess-dupe", content: "same searchable memory" });
+
+      const res = manager.cleanupDuplicateObservations({ execute: false, limit: 10 });
+      expect(res.ok).toBe(true);
+      expect((res.meta as Record<string, unknown>).scan_limit).toBe(100);
+      expect((res.meta as Record<string, unknown>).duplicate_groups).toBe(1);
+      expect((res.meta as Record<string, unknown>).archived_rows).toBe(0);
+      expect(audits.some((entry) => entry.action === "admin.cleanup_duplicates.plan")).toBe(true);
+    });
+
+    test("execute duplicate cleanup soft-archives duplicate rows", () => {
+      const audits: string[] = [];
+      const { manager } = createManager({
+        writeAuditLog: (action) => {
+          audits.push(action);
+        },
+      });
+      const db = (manager as unknown as { deps: ConfigManagerDeps }).deps.db;
+      insertTestObservation(db, { id: "obs-dupe-exec-a", session_id: "sess-dupe-exec", content: "same cleanup target", created_at: "2026-02-20T00:00:00.000Z" });
+      insertTestObservation(db, { id: "obs-dupe-exec-b", session_id: "sess-dupe-exec", content: "same cleanup target", created_at: "2026-02-21T00:00:00.000Z" });
+
+      const res = manager.cleanupDuplicateObservations({ execute: true, limit: 10 });
+      expect(res.ok).toBe(true);
+      expect((res.meta as Record<string, unknown>).archived_rows).toBe(1);
+
+      const active = db
+        .query<{ count: number }, []>(
+          `SELECT COUNT(*) AS count
+           FROM mem_observations
+           WHERE session_id = 'sess-dupe-exec'
+             AND archived_at IS NULL`,
+        )
+        .get();
+      expect(active?.count).toBe(1);
+      expect(audits).toContain("admin.cleanup_duplicates");
+    });
+  });
 
 // ---------------------------------------------------------------------------
 // getManagedStatus テスト

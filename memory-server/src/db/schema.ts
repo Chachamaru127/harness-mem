@@ -56,9 +56,10 @@ export function initSchema(db: Database): void {
       project TEXT NOT NULL,
       session_id TEXT NOT NULL,
       title TEXT,
-      content TEXT NOT NULL,
-      content_redacted TEXT NOT NULL,
-      raw_text TEXT,
+        content TEXT NOT NULL,
+        content_redacted TEXT NOT NULL,
+        content_dedupe_hash TEXT DEFAULT NULL,
+        raw_text TEXT,
       observation_type TEXT NOT NULL DEFAULT 'context',
       memory_type TEXT NOT NULL DEFAULT 'semantic',
       tags_json TEXT NOT NULL,
@@ -84,8 +85,12 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_observations_lookup
       ON mem_observations(platform, project, session_id, created_at);
 
-    CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
-      ON mem_observations(project, session_id, created_at, id);
+      CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
+        ON mem_observations(project, session_id, created_at, id);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_obs_content_dedupe_hash
+        ON mem_observations(content_dedupe_hash)
+        WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL;
 
     CREATE TABLE IF NOT EXISTS mem_tags (
       observation_id TEXT NOT NULL,
@@ -803,9 +808,26 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
-  // S78-B01: Verbatim raw storage — raw_text カラムを追加（nullable, 後方互換）
-  try {
-    db.exec(`ALTER TABLE mem_observations ADD COLUMN raw_text TEXT`);
+    // S105: content-level dedupe — hash column + live-row partial unique index
+    try {
+      db.exec(`ALTER TABLE mem_observations ADD COLUMN content_dedupe_hash TEXT`);
+    } catch {
+      // already exists
+    }
+    try {
+      db.exec(`DROP INDEX IF EXISTS idx_mem_obs_content_dedupe_hash`);
+      db.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_obs_content_dedupe_hash
+          ON mem_observations(content_dedupe_hash)
+          WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL
+      `);
+    } catch {
+      // already exists
+    }
+
+    // S78-B01: Verbatim raw storage — raw_text カラムを追加（nullable, 後方互換）
+    try {
+      db.exec(`ALTER TABLE mem_observations ADD COLUMN raw_text TEXT`);
   } catch {
     // already exists
   }

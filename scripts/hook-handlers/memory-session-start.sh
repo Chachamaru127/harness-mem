@@ -115,16 +115,16 @@ if [ -x "$CLIENT_SCRIPT" ]; then
 
   if [ -n "$RESUME_CORRELATION_ID" ]; then
     RESUME_PAYLOAD=$(jq -nc \
-      --arg project "$PROJECT_NAME" \
-      --arg session_id "$HARNESS_SESSION_ID" \
-      --arg correlation_id "$RESUME_CORRELATION_ID" \
-      '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false}' 2>/dev/null)
-  else
-    RESUME_PAYLOAD=$(jq -nc \
-      --arg project "$PROJECT_NAME" \
-      --arg session_id "$HARNESS_SESSION_ID" \
-      '{project:$project,session_id:$session_id,limit:5,include_private:false}' 2>/dev/null)
-  fi
+        --arg project "$PROJECT_NAME" \
+        --arg session_id "$HARNESS_SESSION_ID" \
+        --arg correlation_id "$RESUME_CORRELATION_ID" \
+        '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
+    else
+      RESUME_PAYLOAD=$(jq -nc \
+        --arg project "$PROJECT_NAME" \
+        --arg session_id "$HARNESS_SESSION_ID" \
+        '{project:$project,session_id:$session_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
+    fi
 
   if [ -z "$RESUME_PAYLOAD" ]; then
     cleanup_resume_stale_context
@@ -182,9 +182,12 @@ if [ -x "$CLIENT_SCRIPT" ]; then
       write_resume_error_file "$RESUME_ERROR_CODE" "$RESUME_ERROR_MESSAGE" "harness-mem doctor --fix"
     else
       rm -f "$RESUME_ERROR_FILE" 2>/dev/null || true
-      printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
+      RESUME_IDENTITY_JSON="$(hook_current_resume_artifact_identity_json "harness_mem_resume_pack")"
+      RESUME_RESPONSE_WITH_IDENTITY="$(hook_attach_resume_pack_identity "$RESUME_RESPONSE" "$RESUME_IDENTITY_JSON")"
+      [ -n "$RESUME_RESPONSE_WITH_IDENTITY" ] && RESUME_RESPONSE="$RESUME_RESPONSE_WITH_IDENTITY"
 
-      if command -v jq >/dev/null 2>&1; then
+      if hook_resume_artifact_json_matches_current "$RESUME_RESPONSE" "harness_mem_resume_pack"; then
+        printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
         RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
         if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
           printf '%s\n' "$RENDERED_RESUME_CONTEXT" > "$RESUME_FILE"
@@ -192,6 +195,8 @@ if [ -x "$CLIENT_SCRIPT" ]; then
         else
           rm -f "$RESUME_FILE" "$RESUME_PENDING_FLAG" 2>/dev/null || true
         fi
+      else
+        cleanup_resume_stale_context
       fi
     fi
   fi

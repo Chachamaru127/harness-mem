@@ -127,11 +127,11 @@ describe("codex hooks merge contract", () => {
 
       expect(result.code).toBe(0);
 
-      const hooks = JSON.parse(readFileSync(join(tmpHome, ".codex", "hooks.json"), "utf8")) as Record<
-        string,
-        unknown
-      >;
-      const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+        const hooks = JSON.parse(readFileSync(join(tmpHome, ".codex", "hooks.json"), "utf8")) as Record<
+          string,
+          unknown
+        >;
+        const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
       const sessionStartCommands = readCommands(hooks, "SessionStart");
       const promptCommands = readCommands(hooks, "UserPromptSubmit");
       const stopCommands = readCommands(hooks, "Stop");
@@ -140,10 +140,12 @@ describe("codex hooks merge contract", () => {
       expect(sessionStartCommands).toContain(`bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh`);
       expect(promptCommands).toContain(`bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh`);
       expect(stopCommands).toContain("/Users/tachibanashuuta/.superset/hooks/notify.sh");
-      expect(stopCommands).toContain(`bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh`);
-      expect(configText).toContain("[features]");
-      expect(configText).toContain("codex_hooks = true");
-    } finally {
+        expect(stopCommands).toContain(`bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh`);
+        expect(configText).toContain("[features]");
+        expect(configText).toContain("codex_hooks = true");
+        expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-mem", "SKILL.md"), "utf8")).toContain("harness-mem");
+        expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-recall", "SKILL.md"), "utf8")).toContain("harness-recall");
+      } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
   }, 60_000);
@@ -175,7 +177,7 @@ describe("codex hooks merge contract", () => {
         )
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -271,7 +273,7 @@ describe("codex hooks merge contract", () => {
         )
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -362,7 +364,7 @@ codex_hooks = true
         )
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -433,7 +435,7 @@ codex_hooks = true
         }, null, 2)
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -481,7 +483,7 @@ codex_hooks = true
         }, null, 2)
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -537,7 +539,7 @@ codex_hooks = true
         }, null, 2)
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
@@ -614,7 +616,7 @@ HARNESS_MEM_PORT = "39999"
 `.trimStart()
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),

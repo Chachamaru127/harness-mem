@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **§105 のリリース前 hardening を追加**。同じ session summary や同じ PR URL checkpoint が observation として増え続けないよう dedupe し、重複 cleanup API、vector coverage 付き reindex、`doctor.v2`、Codex Skill drift 検知、post-doctor liveness、proof bundle を追加。
+- **first-turn continuity を軽量化**。Claude / Codex の SessionStart は `detail_level=L0`、`resume_pack_max_tokens=1200`、`include_private=false` で resume-pack を取り、contextual recall は `source: harness_mem_search` を明示する。
+- **Codex Skill 配布を 2-skill bundle 化**。`harness-mem` と `harness-recall` を setup/update/doctor の対象に揃え、片方だけ古い状態を `codex_skill_drift` で検出できる。
+- **リリース確認コマンドを追加**。`scripts/s105-retrieval-ab-gate.sh` は 3-run benchmark と CI manifest を確認し、`scripts/s105-proof-bundle.sh` は npm package inclusion、doctor、MCP smoke、post-health を JSON にまとめる。
+
 ## [0.17.0] - 2026-05-04
 
 ### ユーザー向け要約
