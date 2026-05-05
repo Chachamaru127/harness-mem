@@ -61,6 +61,7 @@ VERSION_CHECK_IN_SETUP=1
 AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
 AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
 AUTO_UPDATE_CHECK_INTERVAL_SEC="${HARNESS_MEM_AUTO_UPDATE_INTERVAL_SEC:-86400}"
+COMPANION_CONTRACT_VERSION="${HARNESS_MEM_COMPANION_CONTRACT_VERSION:-claude-harness-companion.v1}"
 
 MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
@@ -114,6 +115,8 @@ Common options:
   --dry-run             Plan import without writing events
   --stop-now            Required by cutover-claude-mem to actually stop Claude-mem
   --skip-version-check  Skip automatic version snapshot at end of setup/doctor
+  --auto-update enable|disable
+                        Non-interactively set auto-update opt-in
   --quiet               Reduce logs
 
 Command options:
@@ -547,6 +550,23 @@ parse_options() {
         ;;
       --skip-quality)
         SKIP_QUALITY=1
+        ;;
+      --auto-update)
+        shift
+        [ "$#" -gt 0 ] || fail "--auto-update requires enable or disable"
+        case "$1" in
+          enable)
+            SETUP_AUTO_UPDATE_OPT_IN=1
+            UPDATE_AUTO_UPDATE_OPT_IN=1
+            ;;
+          disable)
+            SETUP_AUTO_UPDATE_OPT_IN=0
+            UPDATE_AUTO_UPDATE_OPT_IN=0
+            ;;
+          *)
+            fail "--auto-update must be enable or disable"
+            ;;
+        esac
         ;;
       --inline-plugin)
         INLINE_PLUGIN=1
@@ -4012,11 +4032,14 @@ _doctor_emit_json() {
   local ts
   ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-  local current_backend
+  local current_backend harness_mem_version
   current_backend="$(read_backend_mode)"
+  harness_mem_version="$(read_current_harness_mem_version 2>/dev/null || true)"
 
     jq -n \
       --arg schema_version "doctor.v2" \
+      --arg contract_version "$COMPANION_CONTRACT_VERSION" \
+      --arg harness_mem_version "$harness_mem_version" \
       --arg status "$status_str" \
       --arg overall_status "$overall_status_str" \
       --argjson all_green "$all_green_str" \
@@ -4029,6 +4052,8 @@ _doctor_emit_json() {
       --argjson checks "$checks_json" \
       '{
         schema_version: $schema_version,
+        contract_version: $contract_version,
+        harness_mem_version: ($harness_mem_version | select(. != "") // "unknown"),
         status: $status,
         overall_status: $overall_status,
         all_green: $all_green,

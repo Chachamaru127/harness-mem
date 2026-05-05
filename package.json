@@ -22,6 +22,7 @@
     "CHANGELOG.md",
     "data/",
     "docs/adaptive-retrieval.md",
+    "docs/claude-harness-companion-contract.md",
     "docs/harness-mem-setup.md",
     "docs/pro-api-data-policy.md",
     "docs/release-process.md",

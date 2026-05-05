@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Claude-harness companion contract is now explicit**. Added the reciprocal companion contract doc, `setup --auto-update enable|disable` for non-interactive setup, and `doctor --json` fields for `contract_version` and `harness_mem_version`.
+
+### Fixed
+
+- **Checkpoint recording now survives local embedding cold-start**. `record_checkpoint` stores the checkpoint observation when the local ONNX embedding provider still requires async prime, and reports `embedding_write_status=degraded` instead of losing the final loop checkpoint.
+
 ## [0.18.0] - 2026-05-05
 
 ### Added

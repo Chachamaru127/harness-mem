@@ -228,6 +228,113 @@ describe("event-recorder: recordEvent", () => {
       .all("obs_ensemble-write-001");
     expect(rows.map((row) => row.model)).toEqual(["local:gte-small", "local:ruri-v3-30m"]);
   });
+
+  test("checkpoint は write embedding の async prime 待ちでも observation を保存する", () => {
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        getEmbeddingProviderName: () => "local",
+        getEmbeddingHealthStatus: () => "healthy",
+        buildPassageEmbeddings: () => {
+          const error = new Error(
+            "write embedding is unavailable: local ONNX model multilingual-e5 requires async prime before sync embed",
+          ) as Error & { readiness?: { retryable: boolean } };
+          error.name = "EmbeddingReadinessError";
+          error.readiness = { retryable: true };
+          throw error;
+        },
+      },
+    );
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "checkpoint-prime-001",
+        event_type: "checkpoint",
+        payload: {
+          title: "Loop completed",
+          content: "Claude Harness loop finished and needs a durable checkpoint.",
+        },
+      }),
+    );
+
+    expect(res.ok).toBe(true);
+    expect((res.meta as Record<string, unknown>).embedding_write_status).toBe("degraded");
+    expect(String((res.meta as Record<string, unknown>).embedding_warning)).toContain("requires async prime");
+
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const observation = db
+      .query<{ title: string; content: string }, [string]>(
+        `SELECT title, content FROM mem_observations WHERE id = ?`,
+      )
+      .get("obs_checkpoint-prime-001");
+    expect(observation?.title).toBe("Loop completed");
+    expect(observation?.content).toContain("durable checkpoint");
+
+    const vectorCount = db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id = ?`,
+      )
+      .get("obs_checkpoint-prime-001");
+    expect(vectorCount?.count).toBe(0);
+  });
+
+  test("checkpoint 以外の write embedding failure は従来通りエラーにする", () => {
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => {
+          throw new Error(
+            "write embedding is unavailable: local ONNX model multilingual-e5 requires async prime before sync embed",
+          );
+        },
+      },
+    );
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "prompt-prime-001",
+        event_type: "user_prompt",
+        payload: { prompt: "Keep normal writes strict." },
+      }),
+    );
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("requires async prime");
+  });
+
+  test("checkpoint でも permanent な write embedding failure はエラーにする", () => {
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => {
+          const error = new Error(
+            "write embedding is unavailable: local ONNX model multilingual-e5 failed to initialize",
+          ) as Error & { code?: string; readiness?: { retryable: boolean } };
+          error.name = "EmbeddingReadinessError";
+          error.code = "init_failed";
+          error.readiness = { retryable: true };
+          throw error;
+        },
+      },
+    );
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "checkpoint-init-failed-001",
+        event_type: "checkpoint",
+        payload: {
+          title: "Loop completed",
+          content: "This should not hide a permanent embedding failure.",
+        },
+      }),
+    );
+
+    expect(res.ok).toBe(false);
+    expect(res.error).toContain("failed to initialize");
+  });
 });
 
 // ---------------------------------------------------------------------------
