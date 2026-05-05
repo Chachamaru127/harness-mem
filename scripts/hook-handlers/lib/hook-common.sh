@@ -832,6 +832,7 @@ hook_attach_resume_pack_identity() {
     return 0
   }
 
+  # Preserve upstream identity so stale or mismatched artifacts remain detectable.
   printf '%s' "$resume_response" | jq -c --argjson identity "$identity_json" '
     .meta = (.meta // {})
     | if (.meta.artifact_identity | type) == "object" then .
@@ -849,13 +850,12 @@ hook_render_resume_artifact_identity_header() {
     .meta.artifact_identity // empty
     | select(type == "object")
     | [
-        "source: " + (.source // ""),
-        "project_key: " + (.project_key // ""),
-        "session_id: " + (.session_id // ""),
-        "generated_at: " + (.generated_at // ""),
-        "correlation_id: " + (.correlation_id // "")
+        (if ((.source // "") != "") then "source: " + .source else empty end),
+        (if ((.project_key // "") != "") then "project_key: " + .project_key else empty end),
+        (if ((.session_id // "") != "") then "session_id: " + .session_id else empty end),
+        (if ((.generated_at // "") != "") then "generated_at: " + .generated_at else empty end),
+        (if ((.correlation_id // "") != "") then "correlation_id: " + .correlation_id else empty end)
       ]
-      | map(select(test(": $") | not))
       | join("\n")
   ' 2>/dev/null
 }

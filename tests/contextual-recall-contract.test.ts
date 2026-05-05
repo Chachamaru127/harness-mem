@@ -41,6 +41,10 @@ function isoNow(): string {
   return new Date().toISOString().replace(/\.\d{3}Z$/, "Z");
 }
 
+function isoOffsetSeconds(seconds: number): string {
+  return new Date(Date.now() + seconds * 1000).toISOString().replace(/\.\d{3}Z$/, "Z");
+}
+
 function resumePackWithIdentity(identity: {
   project_key: string;
   session_id: string;
@@ -325,6 +329,66 @@ describe("contextual recall contract", () => {
     }
   });
 
+  test("Claude policy skips resume artifact when generated_at is beyond future skew", async () => {
+    const sandbox = setupHookSandbox(
+      makeSearchResponse([
+        {
+          id: "obs-1",
+          title: "future freshness fallback",
+          content: "Future-dated resume artifacts should fall back to contextual recall.",
+          scores: { final: 0.02, rerank: 0.92 },
+        },
+      ])
+    );
+
+    try {
+      const stateDir = join(sandbox.projectDir, ".claude", "state");
+      mkdirSync(stateDir, { recursive: true });
+      writeFileSync(join(stateDir, "session.json"), JSON.stringify({ session_id: "claude-session", prompt_seq: 0 }));
+      writeFileSync(join(stateDir, "memory-resume-context.md"), "This future resume must not be injected.");
+      writeFileSync(
+        join(stateDir, "memory-resume-pack.json"),
+        resumePackWithIdentity({
+          project_key: "project",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          generated_at: isoOffsetSeconds(600),
+        })
+      );
+      writeFileSync(join(stateDir, ".memory-resume-pending"), "1");
+
+      const inputPath = join(sandbox.projectDir, "input.json");
+      writeFileSync(
+        inputPath,
+        JSON.stringify({
+          hook_event_name: "UserPromptSubmit",
+          session_id: "claude-session",
+          correlation_id: "corr-current",
+          prompt: "src/app.ts の次アクションを決めたい",
+        })
+      );
+
+      const proc = Bun.spawn(["node", join(sandbox.projectDir, "scripts", "run-script.js"), "userprompt-inject-policy"], {
+        cwd: sandbox.projectDir,
+        env: { ...process.env, HOME: sandbox.homeDir, HARNESS_MEM_HOME: sandbox.harnessHome },
+        stdin: Bun.file(inputPath),
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      const stdout = await new Response(proc.stdout).text();
+      await proc.exited;
+      expect(proc.exitCode).toBe(0);
+
+      const context = extractAdditionalContext(stdout);
+      expect(context).not.toContain("Memory Resume Context");
+      expect(context).not.toContain("This future resume must not be injected.");
+      expect(context).toContain("Contextual Recall");
+      expect(context).toContain("future freshness fallback");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
   test("Claude policy emits contextual recall and persists budget state", async () => {
     const sandbox = setupHookSandbox(
       makeSearchResponse([
@@ -402,8 +466,12 @@ describe("contextual recall contract", () => {
         stdout: "pipe",
         stderr: "pipe",
       });
+      const startStdout = await new Response(startProc.stdout).text();
       await startProc.exited;
       expect(startProc.exitCode).toBe(0);
+      const startContext = extractAdditionalContext(startStdout);
+      expect(startContext).toContain("source: harness_mem_resume_pack");
+      expect(startContext).toContain("resume context");
 
       const promptInput = join(sandbox.projectDir, "codex-user-prompt-input.json");
       writeFileSync(
@@ -425,6 +493,12 @@ describe("contextual recall contract", () => {
       await promptProc.exited;
       expect(promptProc.exitCode).toBe(0);
       expect(extractAdditionalContext(stdout)).toBe("");
+
+      const whisperState = JSON.parse(
+        readFileSync(join(sandbox.projectDir, ".harness-mem", "state", "whisper-budget.json"), "utf8")
+      ) as { sessions?: Record<string, { pending_resume_skip?: boolean; pending_resume_skip_identity?: unknown }> };
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip).toBe(false);
+      expect(whisperState.sessions?.["codex-session"]?.pending_resume_skip_identity).toBeUndefined();
     } finally {
       rmSync(sandbox.tmp, { recursive: true, force: true });
     }

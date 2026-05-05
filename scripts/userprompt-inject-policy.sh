@@ -149,7 +149,7 @@ append_injection_block() {
 }
 
 cleanup_resume_artifacts() {
-  rm -f "$RESUME_CONTEXT_FILE" "$RESUME_JSON_FILE" "$RESUME_PENDING_FLAG" "$RESUME_PROCESSING_FLAG" 2>/dev/null || true
+  rm -f "$RESUME_CONTEXT_FILE" "$RESUME_JSON_FILE" "$RESUME_PENDING_FLAG" 2>/dev/null || true
 }
 
 [ -d "$STATE_DIR" ] || exit 0
