@@ -127,35 +127,35 @@ describe("proof-pack summary JSON contract", () => {
     expect(script).toContain('[ "${BOUNDARY_LEAK_COUNT}" -eq 0 ]');
   });
 
-	  test("no /v1/observations endpoint is referenced in scripts", () => {
+  test("no /v1/observations endpoint is referenced in scripts", () => {
     const script = readFileSync(PROOF_PACK_SCRIPT, "utf-8");
     // P0-2: 存在しない API エンドポイントを使っていないこと
     expect(script).not.toContain("/v1/observations");
-	  });
+  });
 
-	  test("S105 proof bundle captures package, doctor, MCP, and post-health gates", () => {
-	    const script = readFileSync(S105_PROOF_BUNDLE_SCRIPT, "utf-8");
-	    expect(script).toContain("s105-proof-bundle.v1");
-	    expect(script).toContain("--isolated-home");
-	    expect(script).toContain("npm pack --dry-run --json");
-	    expect(script).toContain("doctor --platform codex --json --skip-version-check");
-	    expect(script).toContain("bin/harness-mcp-server");
-	    expect(script).toContain("codex/skills/harness-mem/SKILL.md");
-	    expect(script).toContain("codex/skills/harness-recall/SKILL.md");
-	    expect(script).toContain("codex_skill_drift");
-	    expect(script).toContain("codex_post_doctor_liveness");
-	    expect(script).toContain("post_health_check");
-	  });
+  test("S105 proof bundle captures package, doctor, MCP, and post-health gates", () => {
+    const script = readFileSync(S105_PROOF_BUNDLE_SCRIPT, "utf-8");
+    expect(script).toContain("s105-proof-bundle.v1");
+    expect(script).toContain("--isolated-home");
+    expect(script).toContain("npm pack --dry-run --json");
+    expect(script).toContain("doctor --platform codex --json --skip-version-check");
+    expect(script).toContain("bin/harness-mcp-server");
+    expect(script).toContain("codex/skills/harness-mem/SKILL.md");
+    expect(script).toContain("codex/skills/harness-recall/SKILL.md");
+    expect(script).toContain("codex_skill_drift");
+    expect(script).toContain("codex_post_doctor_liveness");
+    expect(script).toContain("post_health_check");
+  });
 
-	  test("S105 retrieval A/B gate uses three-run artifacts and CI manifest thresholds", () => {
-	    const script = readFileSync(S105_RETRIEVAL_GATE_SCRIPT, "utf-8");
-	    expect(script).toContain("s105-retrieval-ab-gate.v1");
-	    expect(script).toContain("s40-ja-baseline-latest/summary.json");
-	    expect(script).toContain("ci-run-manifest-latest.json");
-	    expect(script).toContain("three_run_overall_f1_mean");
-	    expect(script).toContain("bilingual_recall");
-	    expect(script).toContain("search_latency_p95_ms_mean");
-	  });
+  test("S105 retrieval A/B gate uses three-run artifacts and CI manifest thresholds", () => {
+    const script = readFileSync(S105_RETRIEVAL_GATE_SCRIPT, "utf-8");
+    expect(script).toContain("s105-retrieval-ab-gate.v1");
+    expect(script).toContain("s40-ja-baseline-latest/summary.json");
+    expect(script).toContain("ci-run-manifest-latest.json");
+    expect(script).toContain("three_run_overall_f1_mean");
+    expect(script).toContain("bilingual_recall");
+    expect(script).toContain("search_latency_p95_ms_mean");
+  });
 
   test("leak detection uses jq .items[] instead of raw grep", () => {
     const script = readFileSync(PROOF_PACK_SCRIPT, "utf-8");

@@ -389,6 +389,8 @@ hook_acquire_continuity_lock() {
   local attempts=50
   local attempt=0
   local owner_pid=""
+  local lock_mtime=""
+  local lock_age=""
   while [ "$attempt" -lt "$attempts" ]; do
     if mkdir "$CONTINUITY_LOCK_DIR" 2>/dev/null; then
       printf '%s\n' "$$" > "${CONTINUITY_LOCK_DIR}/pid" 2>/dev/null || true
@@ -400,6 +402,17 @@ hook_acquire_continuity_lock() {
     if [ -n "$owner_pid" ] && ! kill -0 "$owner_pid" 2>/dev/null; then
       rm -rf "$CONTINUITY_LOCK_DIR" 2>/dev/null || true
       continue
+    fi
+
+    if [ -z "$owner_pid" ]; then
+      lock_mtime="$(stat -f %m "$CONTINUITY_LOCK_DIR" 2>/dev/null || stat -c %Y "$CONTINUITY_LOCK_DIR" 2>/dev/null || printf '0')"
+      if [ "$lock_mtime" != "0" ]; then
+        lock_age=$(($(date +%s) - lock_mtime))
+        if [ "$lock_age" -ge 2 ]; then
+          rm -rf "$CONTINUITY_LOCK_DIR" 2>/dev/null || true
+          continue
+        fi
+      fi
     fi
 
     sleep 0.1

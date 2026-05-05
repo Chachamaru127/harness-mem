@@ -3927,6 +3927,10 @@ doctor_impl() {
   # 失敗時のガイド出力
   _doctor_print_next_steps "${doctor_checks[@]}"
 
+  if [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -eq 1 ]; then
+    fail "Doctor found issues. Repair plan printed; no changes applied because --fix --plan was used."
+  fi
+
   fail "Doctor found issues. Run with --fix to auto-repair."
 }
 

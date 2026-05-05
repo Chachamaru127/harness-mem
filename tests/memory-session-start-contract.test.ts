@@ -279,16 +279,16 @@ printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
       };
       expect(recordEventPayload.event?.correlation_id).toBe("corr-handoff");
 
-	      const resumePayload = payloads.find((entry) => entry.command === "resume-pack")?.payload as {
-	        correlation_id?: string;
-	        include_private?: boolean;
-	        detail_level?: string;
-	        resume_pack_max_tokens?: number;
-	      };
-	      expect(resumePayload.correlation_id).toBe("corr-handoff");
-	      expect(resumePayload.include_private).toBe(false);
-	      expect(resumePayload.detail_level).toBe("L0");
-	      expect(resumePayload.resume_pack_max_tokens).toBeLessThanOrEqual(1200);
+      const resumePayload = payloads.find((entry) => entry.command === "resume-pack")?.payload as {
+        correlation_id?: string;
+        include_private?: boolean;
+        detail_level?: string;
+        resume_pack_max_tokens?: number;
+      };
+      expect(resumePayload.correlation_id).toBe("corr-handoff");
+      expect(resumePayload.include_private).toBe(false);
+      expect(resumePayload.detail_level).toBe("L0");
+      expect(resumePayload.resume_pack_max_tokens).toBeLessThanOrEqual(1200);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }
