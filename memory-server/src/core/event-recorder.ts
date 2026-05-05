@@ -121,6 +121,46 @@ function hashJsonBasis(basis: Record<string, unknown>): string {
   return hash.digest("hex");
 }
 
+function formatErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function isRetryableWriteEmbeddingFailure(error: unknown): boolean {
+  const maybe = error as {
+    name?: unknown;
+    code?: unknown;
+    readiness?: { retryable?: unknown };
+  };
+  const message = formatErrorMessage(error);
+  const lowered = message.toLowerCase();
+  const code = typeof maybe.code === "string" ? maybe.code.toLowerCase() : "";
+  const permanentFailure =
+    code === "init_failed" ||
+    code === "inference_failed" ||
+    lowered.includes("failed to initialize") ||
+    lowered.includes("failed to load") ||
+    lowered.includes("inference failed");
+  if (permanentFailure) {
+    return false;
+  }
+
+  const coldStartFailure =
+    code === "prime_required" ||
+    code === "warming" ||
+    lowered.includes("requires async prime before sync embed") ||
+    (lowered.includes("local onnx model") && lowered.includes("warming up"));
+  const looksLikeEmbeddingFailure =
+    maybe.name === "EmbeddingReadinessError" ||
+    lowered.includes("write embedding is unavailable") ||
+    lowered.includes("write embedding is not ready");
+
+  if (!looksLikeEmbeddingFailure || !coldStartFailure) {
+    return false;
+  }
+
+  return maybe.readiness?.retryable !== false;
+}
+
 function extractFirstUrl(value: string): string | null {
   const match = value.match(URL_RE);
   if (!match?.[0]) {
@@ -855,6 +895,7 @@ export class EventRecorder {
     const contentDedupeHash = buildContentDedupeHash(event, observationType, redactedContent);
     const observationId = `obs_${eventId}`;
     const current = nowIso();
+    let degradedEmbeddingWarning: string | null = null;
 
     // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
     // raw_text は payload の verbatim content（stripPrivateBlocks 適用済み）。
@@ -1062,7 +1103,14 @@ export class EventRecorder {
         // S78-B01: RAW mode — embedding は raw_text から生成（より高信号）。
         // raw_text が null の場合は従来通り redactedContent を使用。
         const embeddingSource = rawText ?? redactedContent;
-        this.upsertVector(observationId, embeddingSource, timestamp);
+        try {
+          this.upsertVector(observationId, embeddingSource, timestamp);
+        } catch (error) {
+          if (event.event_type !== "checkpoint" || !isRetryableWriteEmbeddingFailure(error)) {
+            throw error;
+          }
+          degradedEmbeddingWarning = formatErrorMessage(error);
+        }
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         // S78-C02: Populate co-occurrence relations for graph memory
         this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp);
@@ -1175,6 +1223,13 @@ export class EventRecorder {
       this.deps.replicateManagedEvent(storedEvent);
 
       const writeDurability = this.deps.getManagedRequired() ? "managed" : "local";
+      const embeddingMeta =
+        degradedEmbeddingWarning === null
+          ? {}
+          : {
+              embedding_write_status: "degraded",
+              embedding_warning: degradedEmbeddingWarning,
+            };
 
       return makeResponse(
         startedAt,
@@ -1189,6 +1244,7 @@ export class EventRecorder {
           embedding_provider: this.deps.getEmbeddingProviderName(),
           embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
           write_durability: writeDurability,
+          ...embeddingMeta,
         }
       );
     } catch (error) {
