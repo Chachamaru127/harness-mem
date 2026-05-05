@@ -88,10 +88,6 @@ export function initSchema(db: Database): void {
       CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
         ON mem_observations(project, session_id, created_at, id);
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_obs_content_dedupe_hash
-        ON mem_observations(content_dedupe_hash)
-        WHERE content_dedupe_hash IS NOT NULL AND archived_at IS NULL;
-
     CREATE TABLE IF NOT EXISTS mem_tags (
       observation_id TEXT NOT NULL,
       tag TEXT NOT NULL,

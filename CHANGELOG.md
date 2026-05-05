@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-05-05
+
 ### Added
 
 - **§105 release-readiness hardening**. Added content-level observation dedupe, checkpoint URL dedupe, duplicate cleanup admin API, vector coverage-aware reindex progress, `doctor.v2` JSON output, Codex skill bundle drift detection, post-doctor liveness checks, and two proof commands: `scripts/s105-retrieval-ab-gate.sh` and `scripts/s105-proof-bundle.sh`.

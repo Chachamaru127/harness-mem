@@ -7,6 +7,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       {
         "card_type": "string",
         "content": "string",
+        "content_dedupe_hash": "string",
         "created_at": "string",
         "dedupe_hash": "string",
         "event_id": "string",

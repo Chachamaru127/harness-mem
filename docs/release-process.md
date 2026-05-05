@@ -140,6 +140,7 @@ When you are ready to ship:
 1. move or rewrite `CHANGELOG.md [Unreleased]` into `## [X.Y.Z] - YYYY-MM-DD`
 2. add a matching summary entry to `CHANGELOG_ja.md`
 3. update `package.json` version to `X.Y.Z`
+4. update `package-lock.json` to the same version when it exists
 
 The important part is not the exact editing style.
 The important part is that all release surfaces agree on the same version and the same user-facing story.
@@ -154,7 +155,7 @@ This repository's GitHub workflow publishes on `v*.*.*` tags and checks two impo
 That means the preferred path is:
 
 ```bash
-git add CHANGELOG.md CHANGELOG_ja.md package.json
+git add CHANGELOG.md CHANGELOG_ja.md package.json package-lock.json
 git commit -m "chore: release vX.Y.Z"
 git tag -a "vX.Y.Z" -m "Release vX.Y.Z"
 git push origin main --tags

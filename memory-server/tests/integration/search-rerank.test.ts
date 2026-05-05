@@ -39,7 +39,7 @@ describe("search rerank integration", () => {
         session_id: "rerank-session",
         event_type: "user_prompt",
         ts: "2026-02-19T00:00:00.000Z",
-        payload: { title: "build note", content: "parser rollout checklist" },
+        payload: { title: "build note", content: "parser rollout checklist build note" },
         tags: ["rerank"],
         privacy_tags: [],
       });
@@ -50,7 +50,7 @@ describe("search rerank integration", () => {
         session_id: "rerank-session",
         event_type: "user_prompt",
         ts: "2026-02-20T00:00:00.000Z",
-        payload: { title: "parser decision", content: "parser rollout checklist" },
+        payload: { title: "parser decision", content: "parser decision rollout checklist" },
         tags: ["rerank"],
         privacy_tags: [],
       });

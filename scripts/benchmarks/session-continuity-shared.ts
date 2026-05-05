@@ -180,6 +180,20 @@ function normalizeText(value: string): string {
   return value.toLowerCase().replace(/\s+/g, " ").trim();
 }
 
+function stripArtifactIdentityHeader(value: string): string {
+  // Keep this aligned with the resume-pack disclosure header rendered by the session-start hooks.
+  return value
+    .replace(
+      /^source: harness_mem_resume_pack\r?\nproject_key: [^\r\n]*\r?\nsession_id: [^\r\n]*\r?\ngenerated_at: [^\r\n]*\r?\ncorrelation_id: [^\r\n]*\r?\n\r?\n/,
+      ""
+    )
+    .trimStart();
+}
+
+function normalizeArtifactForParity(value: string): string {
+  return normalizeText(stripArtifactIdentityHeader(value));
+}
+
 function extractCodexAdditionalContext(stdout: string): string {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -538,7 +552,8 @@ export async function runHarnessFirstTurnContinuityBenchmark(): Promise<HarnessC
     claude,
     codex,
     parity: {
-      normalizedEqual: normalizeText(claude.artifact) === normalizeText(codex.artifact),
+      normalizedEqual:
+        normalizeArtifactForParity(claude.artifact) === normalizeArtifactForParity(codex.artifact),
     },
   };
 }

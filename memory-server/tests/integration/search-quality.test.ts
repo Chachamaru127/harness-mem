@@ -58,14 +58,14 @@ describe("search quality integration", () => {
         makeEvent({
           event_id: "sq-old",
           ts: "2025-01-01T00:00:00.000Z",
-          payload: { content: "release checklist automation baseline" },
+          payload: { content: "release checklist automation baseline old run" },
         })
       );
       core.recordEvent(
         makeEvent({
           event_id: "sq-new",
           ts: "2026-02-14T00:00:00.000Z",
-          payload: { content: "release checklist automation baseline" },
+          payload: { content: "release checklist automation baseline new run" },
         })
       );
 
