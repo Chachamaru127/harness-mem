@@ -108,6 +108,65 @@ function buildDedupeHash(event: EventEnvelope): string {
   return hash.digest("hex");
 }
 
+function normalizeDedupeText(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function hashJsonBasis(basis: Record<string, unknown>): string {
+  const hash = createHash("sha256");
+  hash.update(JSON.stringify(basis));
+  return hash.digest("hex");
+}
+
+function extractFirstUrl(value: string): string | null {
+  const match = value.match(URL_RE);
+  if (!match?.[0]) {
+    return null;
+  }
+  return match[0].replace(/[.,;:!?]+$/, "");
+}
+
+function buildContentDedupeHash(event: EventEnvelope, observationType: string, content: string): string | null {
+  const normalizedContent = normalizeDedupeText(content);
+  if (!normalizedContent) {
+    return null;
+  }
+
+  const eventType = (event.event_type || "unknown").toString().trim().toLowerCase();
+  let basisValue = normalizedContent;
+  let basisKind = "content";
+  const payload = event.payload ?? {};
+
+  if (eventType === "checkpoint") {
+    const urlCandidate = [
+      payload["url"],
+      payload["href"],
+      payload["link"],
+      payload["pr_url"],
+      payload["pull_request_url"],
+      payload["source_url"],
+    ].find((value) => typeof value === "string" && value.trim());
+    const url = typeof urlCandidate === "string"
+      ? urlCandidate.trim().replace(/[.,;:!?]+$/, "")
+      : extractFirstUrl(`${JSON.stringify(payload)} ${content}`);
+    if (url) {
+      basisValue = normalizeDedupeText(url);
+      basisKind = "checkpoint_url";
+    }
+  }
+
+  return hashJsonBasis({
+    session_id: (event.session_id || "unknown").toString().trim(),
+    event_type: eventType,
+    observation_type: observationType,
+    basis_kind: basisKind,
+    basis_value: basisValue,
+  });
+}
+
 
 // IMP-009: Signal Extraction
 const SIGNAL_BOOST_PATTERNS: RegExp[] = [
@@ -790,10 +849,11 @@ export class EventRecorder {
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     // S78-E01: Strip <private>...</private> blocks before embedding and storage.
     observationBase.content = stripPrivateBlocks(observationBase.content) ?? observationBase.content;
-    const redactedContent = redactContent(observationBase.content, privacyTags);
-    const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
-    const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
-    const observationId = `obs_${eventId}`;
+	    const redactedContent = redactContent(observationBase.content, privacyTags);
+	    const observationType = this.classifyObservation(event.event_type, observationBase.title, observationBase.content);
+	    const memoryType = this.classifyMemoryType(event.event_type, observationBase.title, observationBase.content);
+	    const contentDedupeHash = buildContentDedupeHash(event, observationType, redactedContent);
+	    const observationId = `obs_${eventId}`;
     const current = nowIso();
 
     // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
@@ -853,10 +913,33 @@ export class EventRecorder {
             current
           );
 
-        const eventChanges = Number((eventInsert as { changes?: number }).changes ?? 0);
-        if (eventChanges === 0) {
-          return { duplicated: true };
-        }
+	        const eventChanges = Number((eventInsert as { changes?: number }).changes ?? 0);
+	        if (eventChanges === 0) {
+	          return { duplicated: true, dedupeBasis: "event" };
+	        }
+
+	        if (contentDedupeHash) {
+	          const existingObservation = this.deps.db
+	            .query(`
+	              SELECT id
+	              FROM mem_observations
+	              WHERE content_dedupe_hash = ?
+	                AND archived_at IS NULL
+	              LIMIT 1
+	            `)
+	            .get(contentDedupeHash) as { id: string } | null;
+	          if (existingObservation?.id) {
+	            this.deps.db
+	              .query(`UPDATE mem_events SET observation_id = ? WHERE event_id = ?`)
+	              .run(existingObservation.id, eventId);
+	            return {
+	              duplicated: true,
+	              observationId: existingObservation.id,
+	              dedupeBasis: "content",
+	              contentDedupeHash,
+	            };
+	          }
+	        }
 
         // S78-B02: thread_id / topic はイベントエンベロープから取得
         const threadId = typeof event.thread_id === "string" && event.thread_id.trim()
@@ -876,19 +959,20 @@ export class EventRecorder {
 
         this.deps.db
           .query(`
-            INSERT INTO mem_observations(
-              id, event_id, platform, project, session_id,
-              title, content, content_redacted, raw_text, observation_type, memory_type,
-              tags_json, privacy_tags_json,
-              signal_score, user_id, team_id,
-              thread_id, topic, expires_at, branch,
-              created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(id) DO UPDATE SET
-              title = excluded.title,
-              content = excluded.content,
-              content_redacted = excluded.content_redacted,
-              raw_text = excluded.raw_text,
+	            INSERT INTO mem_observations(
+	              id, event_id, platform, project, session_id,
+	              title, content, content_redacted, content_dedupe_hash, raw_text, observation_type, memory_type,
+	              tags_json, privacy_tags_json,
+	              signal_score, user_id, team_id,
+	              thread_id, topic, expires_at, branch,
+	              created_at, updated_at
+	            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	            ON CONFLICT(id) DO UPDATE SET
+	              title = excluded.title,
+	              content = excluded.content,
+	              content_redacted = excluded.content_redacted,
+	              content_dedupe_hash = excluded.content_dedupe_hash,
+	              raw_text = excluded.raw_text,
               observation_type = excluded.observation_type,
               memory_type = excluded.memory_type,
               tags_json = excluded.tags_json,
@@ -906,10 +990,11 @@ export class EventRecorder {
             event.platform,
             normalizedProject,
             event.session_id,
-            observationBase.title,
-            observationBase.content,
-            redactedContent,
-            rawText,
+	            observationBase.title,
+	            observationBase.content,
+	            redactedContent,
+	            contentDedupeHash,
+	            rawText,
             observationType,
             memoryType,
             JSON.stringify(tags),
@@ -1030,18 +1115,29 @@ export class EventRecorder {
           );
         }
 
-        return { duplicated: false, observationId };
-      });
+	        return { duplicated: false, observationId, contentDedupeHash };
+	      });
 
-      const result = transaction() as { duplicated: boolean; observationId?: string };
-      if (result.duplicated) {
-        return makeResponse(startedAt, [], { dedupe_hash: dedupeHash }, { deduped: true });
-      }
+	      const result = transaction() as {
+	        duplicated: boolean;
+	        observationId?: string;
+	        dedupeBasis?: string;
+	        contentDedupeHash?: string | null;
+	      };
+	      if (result.duplicated) {
+	        return makeResponse(
+	          startedAt,
+	          [],
+	          { dedupe_hash: dedupeHash, content_dedupe_hash: result.contentDedupeHash ?? contentDedupeHash ?? undefined },
+	          { deduped: true, dedupe_basis: result.dedupeBasis ?? "event" }
+	        );
+	      }
 
       const item = {
-        id: result.observationId,
-        event_id: eventId,
-        dedupe_hash: dedupeHash,
+	        id: result.observationId,
+	        event_id: eventId,
+	        dedupe_hash: dedupeHash,
+	        content_dedupe_hash: result.contentDedupeHash ?? contentDedupeHash,
         platform: event.platform,
         project: normalizedProject,
         session_id: event.session_id,

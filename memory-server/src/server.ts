@@ -1225,12 +1225,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.backup(destDir ? { destDir } : undefined));
       }
 
-      if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
-        const body = await parseRequestJson(request);
-        return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
-      }
+	      if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
+	        const body = await parseRequestJson(request);
+	        return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
+	      }
 
-      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
+	      if (request.method === "POST" && url.pathname === "/v1/admin/cleanup-duplicates") {
+	        const body = await parseRequestJson(request);
+	        return jsonResponse(core.cleanupDuplicateObservations({
+	          execute: body.execute === true,
+	          limit: typeof body.limit === "number" ? body.limit : undefined,
+	        }));
+	      }
+
+	      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
       if (request.method === "POST" && url.pathname === "/v1/admin/teams") {
         if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
         const body = await parseRequestJson(request);

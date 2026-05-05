@@ -41,6 +41,9 @@ SETUP_STOP_CLAUDE_MEM_AFTER_IMPORT=0
 SETUP_AUTO_UPDATE_OPT_IN=-1
 UPDATE_AUTO_UPDATE_OPT_IN=-1
 FIX_MODE=0
+READ_ONLY_MODE=0
+STRICT_EXIT=0
+FIX_PLAN=0
 JSON_OUTPUT=0
 PURGE_DB=0
 SKIP_START=0
@@ -124,9 +127,12 @@ Command options:
                         3) import from Claude-mem (yes/no)
                         4) stop Claude-mem after import (yes/no)
                         5) enable auto-update opt-in (yes/no)
-  doctor:
-    --fix               Attempt to repair missing wiring
-    --json              Output structured JSON result
+    doctor:
+      --fix               Attempt to repair missing wiring
+      --fix --plan        Print a repair plan without applying changes
+      --read-only         Do not create or repair local files during checks
+      --strict-exit       Return non-zero when JSON doctor reports failures
+      --json              Output structured JSON result
   uninstall:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
   versions:
@@ -218,6 +224,10 @@ CONF
 }
 
 read_backend_mode() {
+  if [ "${READ_ONLY_MODE:-0}" -eq 1 ] && [ ! -f "$CONFIG_PATH" ]; then
+    echo "local"
+    return
+  fi
   ensure_config
   local mode
   mode="$(jq -r '.backend_mode // "local"' "$CONFIG_PATH" 2>/dev/null || echo "local")"
@@ -228,6 +238,10 @@ read_backend_mode() {
 }
 
 read_recall_mode() {
+  if [ "${READ_ONLY_MODE:-0}" -eq 1 ] && [ ! -f "$CONFIG_PATH" ]; then
+    echo "quiet"
+    return
+  fi
   ensure_config
   local mode
   mode="$(jq -r '.recall.mode // "quiet"' "$CONFIG_PATH" 2>/dev/null || echo "quiet")"
@@ -504,9 +518,20 @@ parse_options() {
         PLATFORM="$1"
         PLATFORM_EXPLICIT=1
         ;;
-      --fix)
-        FIX_MODE=1
-        ;;
+        --fix)
+          FIX_MODE=1
+          ;;
+        --read-only)
+          READ_ONLY_MODE=1
+          FIX_MODE=0
+          VERSION_CHECK_IN_SETUP=0
+          ;;
+        --strict-exit)
+          STRICT_EXIT=1
+          ;;
+        --plan)
+          FIX_PLAN=1
+          ;;
       --json)
         JSON_OUTPUT=1
         QUIET=1
@@ -869,8 +894,9 @@ should_prompt_codex_skill_install() {
   if [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
     return 1
   fi
-  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
-  if [ -f "$skill_dst" ]; then
+  local skill_mem_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
+  local skill_recall_dst="${HOME}/.codex/skills/harness-recall/SKILL.md"
+  if [ -f "$skill_mem_dst" ] && [ -f "$skill_recall_dst" ]; then
     return 1
   fi
   if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_SKILL_PROMPT:-0}" = "1" ]; then
@@ -897,17 +923,23 @@ prompt_codex_skill_install() {
 }
 
 install_codex_skill() {
-  local skill_src="${HARNESS_ROOT}/codex/skills/harness-mem/SKILL.md"
-  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
+  local failed=0
+  local name skill_src skill_dst
+  for name in harness-mem harness-recall; do
+    skill_src="${HARNESS_ROOT}/codex/skills/${name}/SKILL.md"
+    skill_dst="${HOME}/.codex/skills/${name}/SKILL.md"
 
-  if [ ! -f "$skill_src" ]; then
-    warn "Codex skill source not found: $skill_src"
-    return 1
-  fi
+    if [ ! -f "$skill_src" ]; then
+      warn "Codex skill source not found: $skill_src"
+      failed=1
+      continue
+    fi
 
-  mkdir -p "$(dirname "$skill_dst")"
-  cp "$skill_src" "$skill_dst"
-  log "Installed Codex Agent Skill: $skill_dst"
+    mkdir -p "$(dirname "$skill_dst")"
+    cp "$skill_src" "$skill_dst"
+    log "Installed Codex Agent Skill: $skill_dst"
+  done
+  return "$failed"
 }
 
 prompt_update_auto_update_selection() {
@@ -2207,12 +2239,7 @@ check_codex_wiring() {
     failed=1
   fi
 
-  local skill_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
-  if [ -f "$skill_dst" ]; then
-    log "Codex Agent Skill: OK ($skill_dst)"
-  else
-    log "Codex Agent Skill: not installed (run setup or update to install)"
-  fi
+  check_codex_skill_bundle >/dev/null 2>&1 || true
 
   if check_codex_hooks_wiring; then
     :
@@ -2233,6 +2260,43 @@ check_codex_wiring() {
   fi
 
   return "$failed"
+}
+
+CODEX_SKILL_BUNDLE_STATUS="unknown"
+check_codex_skill_bundle() {
+  local missing=0
+  local drift=0
+  local name skill_src skill_dst
+  for name in harness-mem harness-recall; do
+    skill_src="${HARNESS_ROOT}/codex/skills/${name}/SKILL.md"
+    skill_dst="${HOME}/.codex/skills/${name}/SKILL.md"
+    if [ ! -f "$skill_src" ]; then
+      warn "Codex Agent Skill source missing: $skill_src"
+      missing=1
+      continue
+    fi
+    if [ ! -f "$skill_dst" ]; then
+      log "Codex Agent Skill: missing ($skill_dst)"
+      missing=1
+      continue
+    fi
+    if cmp -s "$skill_src" "$skill_dst"; then
+      log "Codex Agent Skill: OK ($skill_dst)"
+    else
+      log "Codex Agent Skill: drift ($skill_dst)"
+      drift=1
+    fi
+  done
+  if [ "$missing" -ne 0 ]; then
+    CODEX_SKILL_BUNDLE_STATUS="missing"
+    return 1
+  fi
+  if [ "$drift" -ne 0 ]; then
+    CODEX_SKILL_BUNDLE_STATUS="drift"
+    return 1
+  fi
+  CODEX_SKILL_BUNDLE_STATUS="ok"
+  return 0
 }
 
 check_codex_requirements_alignment() {
@@ -2259,7 +2323,7 @@ check_codex_requirements_alignment() {
   while IFS= read -r path; do
     [ -n "$path" ] || continue
     case "$path" in
-      *memory-codex-notify.sh|*codex-session-start.sh|*codex-user-prompt.sh|*codex-session-stop.sh|*bin/harness-mcp-server|*mcp-server/dist/index.js|*"/.codex/skills/harness-mem/"*)
+        *memory-codex-notify.sh|*codex-session-start.sh|*codex-user-prompt.sh|*codex-session-stop.sh|*bin/harness-mcp-server|*mcp-server/dist/index.js|*"/.codex/skills/harness-mem/"*|*"/.codex/skills/harness-recall/"*)
         extracted_any=1
         case "$path" in
           "$HARNESS_ROOT"/*|"$HOME/.codex/"*)
@@ -3497,13 +3561,16 @@ doctor_impl() {
   _doctor_record "backend_mode" "ok:${current_backend}" ""
   log "Backend mode: ${current_backend}"
 
-  # config.json existence
-  if [ -f "$CONFIG_PATH" ]; then
-    _doctor_record "config" "ok" ""
-  else
-    ensure_config
-    _doctor_record "config" "ok" ""
-    log "Created default config at ${CONFIG_PATH}"
+    # config.json existence
+    if [ -f "$CONFIG_PATH" ]; then
+      _doctor_record "config" "ok" ""
+    elif [ "$READ_ONLY_MODE" -eq 1 ]; then
+      _doctor_record "config" "missing" "harness-mem setup"
+      failed=1
+    else
+      ensure_config
+      _doctor_record "config" "ok" ""
+      log "Created default config at ${CONFIG_PATH}"
   fi
 
   # managed backend connectivity (only for managed/hybrid)
@@ -3597,28 +3664,36 @@ doctor_impl() {
     log "Go MCP binary: not installed (Node.js fallback active)"
   fi
 
-  if check_cmd bun && check_cmd curl && check_cmd npm; then
-    ensure_mcp_runtime || failed=1
-    local health_url="http://${MEM_HOST}:${MEM_PORT}/health"
-    if curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
-      log "Daemon endpoint already reachable: ${health_url}"
-    else
-      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-        HARNESS_MEM_HOST="$MEM_HOST" \
+    if check_cmd bun && check_cmd curl && check_cmd npm; then
+      if [ "$READ_ONLY_MODE" -ne 1 ]; then
+        ensure_mcp_runtime || failed=1
+      fi
+      local health_url="http://${MEM_HOST}:${MEM_PORT}/health"
+      if curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+        log "Daemon endpoint already reachable: ${health_url}"
+      elif [ "$READ_ONLY_MODE" -eq 1 ]; then
+        log "Daemon endpoint not reachable in read-only doctor mode: ${health_url}"
+      else
+        HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          HARNESS_MEM_HOST="$MEM_HOST" \
         HARNESS_MEM_PORT="$MEM_PORT" \
         HARNESS_MEM_DB_PATH="$DB_PATH" \
         "$HARNESS_ROOT/scripts/harness-memd" start --quiet >/dev/null 2>&1 || true
     fi
 
-    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-      HARNESS_MEM_HOST="$MEM_HOST" \
-      HARNESS_MEM_PORT="$MEM_PORT" \
-      HARNESS_MEM_DB_PATH="$DB_PATH" \
-      "$HARNESS_ROOT/scripts/harness-memd" cleanup-stale --quiet >/dev/null 2>&1 || true
+      if [ "$READ_ONLY_MODE" -ne 1 ]; then
+        HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          HARNESS_MEM_HOST="$MEM_HOST" \
+          HARNESS_MEM_PORT="$MEM_PORT" \
+          HARNESS_MEM_DB_PATH="$DB_PATH" \
+          "$HARNESS_ROOT/scripts/harness-memd" cleanup-stale --quiet >/dev/null 2>&1 || true
+      fi
 
-    if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-      HARNESS_MEM_HOST="$MEM_HOST" \
-      HARNESS_MEM_PORT="$MEM_PORT" \
+      if [ "$READ_ONLY_MODE" -eq 1 ] && ! curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+        _doctor_record "daemon" "skipped" "read-only mode did not start harness-memd"
+      elif HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+        HARNESS_MEM_HOST="$MEM_HOST" \
+        HARNESS_MEM_PORT="$MEM_PORT" \
       HARNESS_MEM_DB_PATH="$DB_PATH" \
       "$HARNESS_ROOT/scripts/harness-memd" doctor >/dev/null; then
       log "Daemon doctor: OK"
@@ -3656,7 +3731,11 @@ doctor_impl() {
     #
     # S81-A04 (Codex round 6 P2.3): forward the caller's bearer token when
     # set so the probe does not get a 401 on auth-enabled daemons.
-    local _auth_hdr=()
+      if [ "$READ_ONLY_MODE" -eq 1 ] && ! curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+        _doctor_record "lease_primitive" "skipped" "read-only mode did not start harness-memd"
+        _doctor_record "signal_primitive" "skipped" "read-only mode did not start harness-memd"
+      else
+      local _auth_hdr=()
     local _probe_token="${HARNESS_MEM_REMOTE_TOKEN:-${HARNESS_MEM_ADMIN_TOKEN:-}}"
     if [ -n "$_probe_token" ]; then
       _auth_hdr=(-H "Authorization: Bearer $_probe_token")
@@ -3692,11 +3771,12 @@ doctor_impl() {
         -X POST "${health_url%/health}/v1/signal/read" \
         -d '{"agent_id":"__doctor__","limit":1}' 2>/dev/null)" && [ "$signal_probe_status" = "200" ]; then
       _doctor_record "signal_primitive" "ok" ""
-    else
-      _doctor_record "signal_primitive" "unreachable" "S81-A03: restart daemon, set HARNESS_MEM_REMOTE_TOKEN, or run 'bun test tests/unit/signal-store.test.ts'"
-      failed=1
+      else
+        _doctor_record "signal_primitive" "unreachable" "S81-A03: restart daemon, set HARNESS_MEM_REMOTE_TOKEN, or run 'bun test tests/unit/signal-store.test.ts'"
+        failed=1
+      fi
+      fi
     fi
-  fi
 
   # Platform wiring checks — when --platform is not explicitly set,
   # only check platforms that are actually installed on this machine.
@@ -3720,20 +3800,35 @@ doctor_impl() {
     esac
   }
 
-  if _should_check_platform codex; then
-    if check_codex_wiring; then
-      _doctor_record "codex_wiring" "ok" ""
+    if _should_check_platform codex; then
+      if check_codex_wiring; then
+        _doctor_record "codex_wiring" "ok" ""
     else
       _doctor_record "codex_wiring" "missing" "harness-mem setup --platform codex"
-      failed=1
+        failed=1
+      fi
+      if check_codex_skill_bundle; then
+        _doctor_record "codex_skill_drift" "ok" ""
+      else
+        _doctor_record "codex_skill_drift" "${CODEX_SKILL_BUNDLE_STATUS:-missing}" "harness-mem setup --platform codex"
+        failed=1
+      fi
+      if check_codex_requirements_alignment; then
+        _doctor_record "codex_requirements_precedence" "ok" ""
+      else
+        _doctor_record "codex_requirements_precedence" "drift" "align ~/.codex/requirements.toml with ~/.codex/config.toml and ~/.codex/hooks.json, or rerun harness-mem setup --platform codex"
+        failed=1
+      fi
+      local codex_post_health_url="http://${MEM_HOST}:${MEM_PORT}/health"
+      if curl --silent --show-error --fail --max-time 1 "$codex_post_health_url" >/dev/null 2>&1; then
+        _doctor_record "codex_post_doctor_liveness" "ok" ""
+      elif [ "$READ_ONLY_MODE" -eq 1 ]; then
+        _doctor_record "codex_post_doctor_liveness" "skipped" "read-only mode did not start harness-memd"
+      else
+        _doctor_record "codex_post_doctor_liveness" "unhealthy" "harness-memd start && harness-mem doctor --platform codex"
+        failed=1
+      fi
     fi
-    if check_codex_requirements_alignment; then
-      _doctor_record "codex_requirements_precedence" "ok" ""
-    else
-      _doctor_record "codex_requirements_precedence" "drift" "align ~/.codex/requirements.toml with ~/.codex/config.toml and ~/.codex/hooks.json, or rerun harness-mem setup --platform codex"
-      failed=1
-    fi
-  fi
   if _should_check_platform opencode; then
     if check_opencode_wiring; then
       _doctor_record "opencode_wiring" "ok" ""
@@ -3810,25 +3905,28 @@ doctor_impl() {
   fi
 
   # JSON出力モード
-  if [ "$JSON_OUTPUT" -eq 1 ]; then
-    _doctor_emit_json "$failed" "${doctor_checks[@]}"
-    if [ "$failed" -ne 0 ] && [ "$FIX_MODE" -eq 1 ]; then
-      warn "Doctor found issues. Running auto-fix."
-      setup_impl
+    if [ "$JSON_OUTPUT" -eq 1 ]; then
+      _doctor_emit_json "$failed" "${doctor_checks[@]}"
+      if [ "$failed" -ne 0 ] && [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
+        warn "Doctor found issues. Running auto-fix."
+        setup_impl
+      fi
+      if [ "$failed" -ne 0 ] && [ "$STRICT_EXIT" -eq 1 ]; then
+        return 1
+      fi
+      return 0
     fi
-    return 0
-  fi
 
   if [ "$failed" -eq 0 ]; then
     log "Doctor result: healthy"
     return 0
   fi
 
-  if [ "$FIX_MODE" -eq 1 ]; then
-    warn "Doctor found issues. Running auto-fix."
-    setup_impl
-    return
-  fi
+    if [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
+      warn "Doctor found issues. Running auto-fix."
+      setup_impl
+      return
+    fi
 
   # 失敗時のガイド出力
   _doctor_print_next_steps "${doctor_checks[@]}"
@@ -3836,38 +3934,77 @@ doctor_impl() {
   fail "Doctor found issues. Run with --fix to auto-repair."
 }
 
+_doctor_status_result() {
+  local status="${1:-}"
+  case "$status" in
+    ok:reachable_with_warnings|degraded|warn|warning) printf 'warn' ;;
+    ok|ok:*) printf 'pass' ;;
+    skipped|skip|not_installed) printf 'skip' ;;
+    *) printf 'fail' ;;
+  esac
+}
+
 # doctor JSON出力
 _doctor_emit_json() {
   local failed="$1"
   shift
   local -a checks=("$@")
-  local status_str all_green_str
-  local checked_count="${#checks[@]}"
-  local failed_count=0
-  if [ "$failed" -eq 0 ]; then
-    status_str="healthy"
-    all_green_str="true"
-  else
-    status_str="unhealthy"
-    all_green_str="false"
-  fi
+    local status_str overall_status_str all_green_str
+    local checked_count="${#checks[@]}"
+    local failed_count=0 warn_count=0 skip_count=0
+    if [ "$failed" -eq 0 ]; then
+      status_str="healthy"
+      overall_status_str="healthy"
+      all_green_str="true"
+    else
+      status_str="unhealthy"
+      overall_status_str="broken"
+      all_green_str="false"
+    fi
 
   local checks_json="["
   local first=1
-  local entry name status fix
-  for entry in "${checks[@]}"; do
-    IFS=$'\t' read -r name status fix <<<"$entry"
-    if [ "$status" != "ok" ] && [[ "$status" != ok:* ]]; then
-      failed_count=$((failed_count + 1))
-    fi
-    if [ "$first" -eq 0 ]; then
-      checks_json+=","
-    fi
-    checks_json+="$(jq -nc \
-      --arg name "$name" \
-      --arg status "$status" \
-      --arg fix "$fix" \
-      '{name: $name, status: $status, fix: (if $fix == "" then null else $fix end)}')"
+    local entry name status fix result severity reason_code
+    for entry in "${checks[@]}"; do
+      IFS=$'\t' read -r name status fix <<<"$entry"
+      result="$(_doctor_status_result "$status")"
+      if [ "$status" != "ok" ] && [[ "$status" != ok:* ]]; then
+        failed_count=$((failed_count + 1))
+      fi
+      case "$result" in
+        warn) warn_count=$((warn_count + 1)) ;;
+        skip) skip_count=$((skip_count + 1)) ;;
+      esac
+      if [ "$result" = "warn" ] && [ "$overall_status_str" = "healthy" ]; then
+        overall_status_str="degraded"
+        all_green_str="false"
+      fi
+      case "$result" in
+        pass) severity="info" ;;
+        warn) severity="warning" ;;
+        skip) severity="info" ;;
+        *) severity="error" ;;
+      esac
+      reason_code="${name}_${status%%:*}"
+      if [ "$first" -eq 0 ]; then
+        checks_json+=","
+      fi
+      checks_json+="$(jq -nc \
+        --arg name "$name" \
+        --arg status "$status" \
+        --arg result "$result" \
+        --arg severity "$severity" \
+        --arg reason_code "$reason_code" \
+        --arg fix "$fix" \
+        '{
+          name: $name,
+          status: $status,
+          result: $result,
+          severity: $severity,
+          reason_code: $reason_code,
+          fix: (if $fix == "" then null else $fix end),
+          repair: (if $fix == "" then null else {command: $fix, risk: "low"} end)
+        }')"
     first=0
   done
   checks_json+="]"
@@ -3878,25 +4015,39 @@ _doctor_emit_json() {
   local current_backend
   current_backend="$(read_backend_mode)"
 
-  jq -n \
-    --arg status "$status_str" \
-    --argjson all_green "$all_green_str" \
-    --argjson failed_count "$failed_count" \
-    --argjson checked_count "$checked_count" \
-    --arg timestamp "$ts" \
-    --arg backend_mode "$current_backend" \
-    --argjson checks "$checks_json" \
-    '{
-      status: $status,
-      all_green: $all_green,
-      backend_mode: $backend_mode,
-      failed_count: $failed_count,
-      checked_count: $checked_count,
-      timestamp: $timestamp,
-      checks: $checks,
-      fix_command: "harness-mem doctor --fix"
-    }'
-}
+    jq -n \
+      --arg schema_version "doctor.v2" \
+      --arg status "$status_str" \
+      --arg overall_status "$overall_status_str" \
+      --argjson all_green "$all_green_str" \
+      --argjson failed_count "$failed_count" \
+      --argjson warn_count "$warn_count" \
+      --argjson skip_count "$skip_count" \
+      --argjson checked_count "$checked_count" \
+      --arg timestamp "$ts" \
+      --arg backend_mode "$current_backend" \
+      --argjson checks "$checks_json" \
+      '{
+        schema_version: $schema_version,
+        status: $status,
+        overall_status: $overall_status,
+        all_green: $all_green,
+        backend_mode: $backend_mode,
+        failed_count: $failed_count,
+        warn_count: $warn_count,
+        skip_count: $skip_count,
+        checked_count: $checked_count,
+        timestamp: $timestamp,
+        checks: $checks,
+        fix_command: "harness-mem doctor --fix",
+        repair_plan: {
+          command: "harness-mem doctor --fix",
+          plan_command: "harness-mem doctor --fix --plan",
+          read_only_command: "harness-mem doctor --read-only --json",
+          strict_ci_command: "harness-mem doctor --json --strict-exit"
+        }
+      }'
+  }
 
 # doctor失敗時のガイド表示
 _doctor_print_next_steps() {
@@ -4093,11 +4244,15 @@ setup_impl() {
   # Doctor JSON 診断を保存（セットアップ時チェック標準化）
   local doctor_artifact="${STATE_DIR}/runtime/doctor-last.json"
   mkdir -p "$(dirname "$doctor_artifact")"
+  local -a doctor_post_args=(doctor --json --skip-version-check --platform "$PLATFORM")
+  if [ "$SKIP_START" -ne 0 ]; then
+    doctor_post_args+=(--read-only)
+  fi
   if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
      HARNESS_MEM_HOST="$MEM_HOST" \
      HARNESS_MEM_PORT="$MEM_PORT" \
      HARNESS_MEM_DB_PATH="$DB_PATH" \
-     "$HARNESS_ROOT/scripts/harness-mem" doctor --json --skip-version-check --platform "$PLATFORM" > "$doctor_artifact" 2>/dev/null; then
+     "$HARNESS_ROOT/scripts/harness-mem" "${doctor_post_args[@]}" > "$doctor_artifact" 2>/dev/null; then
     if jq -e '.all_green == true' "$doctor_artifact" >/dev/null 2>&1; then
       _setup_record "doctor_post_check" "ok" ""
       log "Doctor artifact saved: $doctor_artifact"
@@ -4791,6 +4946,12 @@ main() {
   fi
   if should_prompt_codex_skill_install "$command"; then
     prompt_codex_skill_install
+  elif { [ "$command" = "setup" ] || [ "$command" = "update" ]; } \
+    && is_platform_enabled "codex" \
+    && [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
+    if ! check_codex_skill_bundle >/dev/null 2>&1; then
+      SETUP_INSTALL_CODEX_SKILL=1
+    fi
   fi
 
   TARGET_DIR="$(abs_dir "$TARGET_DIR")"

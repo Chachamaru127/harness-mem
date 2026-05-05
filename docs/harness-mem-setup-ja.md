@@ -203,11 +203,18 @@ Options:
 harness-mem doctor
 harness-mem doctor --platform codex,cursor
 harness-mem doctor --fix --platform opencode
+harness-mem doctor --json --read-only
+harness-mem doctor --json --strict-exit
+harness-mem doctor --fix --plan
 ```
 
 Options:
 
 - `--fix`
+- `--json`
+- `--read-only`
+- `--strict-exit`
+- `--plan`（`--fix` と組み合わせると、変更せず修復予定だけ確認する）
 - `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
 - `--skip-version-check`
 - `--project <path>`
@@ -312,8 +319,18 @@ Options:
 - `~/.codex/config.toml` で experimental hooks engine (`features.codex_hooks = true` または `[features] codex_hooks = true`) を有効にする
 - `~/.codex/config.toml` の memory bridge entry を確認する
 - `~/.codex/config.toml` と `~/.codex/hooks.json` が古い absolute path ではなく、現在の harness-mem checkout を指しているか確認する
+- `~/.codex/skills/harness-mem/SKILL.md` と `~/.codex/skills/harness-recall/SKILL.md` の 2 skill を install / check する
+- `doctor.v2` JSON では `codex_skill_drift` と `codex_post_doctor_liveness` を報告する
 - Codex session logs から ingest path を確認する
 - Codex の first-turn continuity は、上の hook path と healthy な daemon/runtime の両方に依存する
+
+手動 MCP 確認:
+
+```bash
+bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+codex mcp list
+codex mcp get harness
+```
 
 ### OpenCode
 

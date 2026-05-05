@@ -240,11 +240,18 @@ Validate wiring and daemon/UI health.
 harness-mem doctor
 harness-mem doctor --platform codex,cursor
 harness-mem doctor --fix --platform opencode
+harness-mem doctor --json --read-only
+harness-mem doctor --json --strict-exit
+harness-mem doctor --fix --plan
 ```
 
 Options:
 
 - `--fix`
+- `--json`
+- `--read-only`
+- `--strict-exit`
+- `--plan` (with `--fix`, prints repair intent without applying changes)
 - `--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>`
 - `--skip-version-check`
 - `--project <path>`
@@ -349,8 +356,18 @@ Options:
 - Ensures `~/.codex/config.toml` enables the experimental hooks engine (`features.codex_hooks = true` or `[features] codex_hooks = true`)
 - Verifies memory bridge entries in `~/.codex/config.toml`
 - Verifies that `~/.codex/config.toml` and `~/.codex/hooks.json` still point at the current harness-mem checkout instead of a stale absolute path
+- Installs and checks both Codex skills: `~/.codex/skills/harness-mem/SKILL.md` and `~/.codex/skills/harness-recall/SKILL.md`
+- Reports `codex_skill_drift` and `codex_post_doctor_liveness` in `doctor.v2` JSON output
 - Checks ingest path from Codex session logs
 - First-turn continuity on Codex depends on the hook path above plus a healthy daemon/runtime
+
+Manual MCP check:
+
+```bash
+bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+codex mcp list
+codex mcp get harness
+```
 
 ### OpenCode
 

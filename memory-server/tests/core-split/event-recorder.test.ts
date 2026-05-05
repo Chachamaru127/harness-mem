@@ -114,8 +114,8 @@ describe("event-recorder: recordEvent", () => {
     }
   });
 
-  test("custom dedupe_hash が利用される", () => {
-    const recorder = makeRecorder();
+	  test("custom dedupe_hash が利用される", () => {
+	    const recorder = makeRecorder();
 
     const first = recorder.recordEvent(makeEvent({ dedupe_hash: "custom-hash-abc", ts: "2026-02-20T00:00:00.000Z" }));
     const second = recorder.recordEvent(
@@ -123,10 +123,69 @@ describe("event-recorder: recordEvent", () => {
     );
     expect(first.ok).toBe(true);
     expect(second.ok).toBe(true);
-    expect((second.meta as Record<string, unknown>).deduped).toBe(true);
-  });
+	    expect((second.meta as Record<string, unknown>).deduped).toBe(true);
+	  });
 
-  test("必須フィールド欠落時はエラーを返す", () => {
+	  test("同一 session_end summary は timestamp が違っても 1 observation に dedupe される", () => {
+	    const recorder = makeRecorder();
+	    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+
+	    for (let i = 0; i < 10; i++) {
+	      const res = recorder.recordEvent(makeEvent({
+	        event_id: `summary-dedupe-${i}`,
+	        event_type: "session_end",
+	        ts: `2026-02-20T00:00:0${i}.000Z`,
+	        payload: { content: "Finished §105 and keep Codex parity checks green." },
+	      }));
+	      expect(res.ok).toBe(true);
+	    }
+
+	    const count = db
+	      .query<{ count: number }, []>(
+	        `SELECT COUNT(*) AS count
+	         FROM mem_observations
+	         WHERE session_id = 'test-session-001'
+	           AND observation_type = 'summary'
+	           AND archived_at IS NULL`,
+	      )
+	      .get();
+	    expect(count?.count).toBe(1);
+	  });
+
+	  test("checkpoint URL は本文が違っても同一URLなら 1 observation に dedupe される", () => {
+	    const recorder = makeRecorder();
+	    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+	    const first = recorder.recordEvent(makeEvent({
+	      event_id: "checkpoint-url-1",
+	      event_type: "checkpoint",
+	      ts: "2026-02-20T00:00:00.000Z",
+	      payload: { content: "Opened release PR https://github.com/example/repo/pull/105", url: "https://github.com/example/repo/pull/105" },
+	    }));
+	    const second = recorder.recordEvent(makeEvent({
+	      event_id: "checkpoint-url-2",
+	      event_type: "checkpoint",
+	      ts: "2026-02-20T00:05:00.000Z",
+	      payload: { content: "Reviewed same PR and left a note", url: "https://github.com/example/repo/pull/105" },
+	    }));
+
+	    expect(first.ok).toBe(true);
+	    expect(second.ok).toBe(true);
+	    expect((second.meta as Record<string, unknown>).deduped).toBe(true);
+	    expect((second.meta as Record<string, unknown>).dedupe_basis).toBe("content");
+
+	    const count = db
+	      .query<{ count: number }, []>(
+	        `SELECT COUNT(*) AS count
+	         FROM mem_observations
+	         WHERE session_id = 'test-session-001'
+	           AND event_id LIKE 'checkpoint-url-%'
+	           AND archived_at IS NULL`,
+	      )
+	      .get();
+	    expect(count?.count).toBe(1);
+	  });
+
+	  test("必須フィールド欠落時はエラーを返す", () => {
     const recorder = makeRecorder();
 
     const res = recorder.recordEvent({

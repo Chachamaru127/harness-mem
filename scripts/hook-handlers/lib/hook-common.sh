@@ -1363,6 +1363,7 @@ hook_whisper_prompt_has_trigger() {
 
 hook_render_contextual_recall_lines() {
   local selected_json="${1:-[]}"
+  local project_scope="${2:-${PROJECT_NAME:-unknown}}"
   [ -n "$selected_json" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
@@ -1381,7 +1382,7 @@ hook_render_contextual_recall_lines() {
   ' 2>/dev/null)"
   [ -n "$body" ] || return 0
 
-  printf '## Contextual Recall\n%s\n' "$body"
+  printf '## Contextual Recall\nsource: harness_mem_search (project=%s, strict_project=true)\n%s\n' "$project_scope" "$body"
 }
 
 hook_run_contextual_recall() {
@@ -1539,7 +1540,7 @@ hook_run_contextual_recall() {
     fi
 
     local rendered tokens accumulated tokens_limit ids_json
-    rendered="$(hook_render_contextual_recall_lines "$selected_json")"
+    rendered="$(hook_render_contextual_recall_lines "$selected_json" "$PROJECT_NAME")"
     [ -n "$rendered" ] || {
       printf '%s' '{"ok":true,"injected":false,"reason":"render_empty"}'
       exit 0

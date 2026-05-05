@@ -253,9 +253,10 @@ describe("contextual recall contract", () => {
 
       const context = extractAdditionalContext(stdout);
       expect(context).not.toContain("Memory Resume Context");
-      expect(context).not.toContain("This stale resume must not be injected.");
-      expect(context).toContain("Contextual Recall");
-      expect(context).toContain("fresh fallback");
+	      expect(context).not.toContain("This stale resume must not be injected.");
+	      expect(context).toContain("Contextual Recall");
+	      expect(context).toContain("source: harness_mem_search (project=project, strict_project=true)");
+	      expect(context).toContain("fresh fallback");
       expect(existsSync(join(stateDir, "memory-resume-context.md"))).toBe(false);
       expect(existsSync(join(stateDir, "memory-resume-pack.json"))).toBe(false);
       expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(false);
