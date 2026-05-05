@@ -146,6 +146,19 @@ Pick the path that matches your stack. That's the whole decision.
 | **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
 | **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
 
+### Claude-harness companion mode
+
+Claude-harness can manage harness-mem as an external companion instead of embedding memory internals. In that mode Claude-harness may call:
+
+```bash
+harness-mem setup --platform codex,claude --skip-quality --auto-update enable
+harness-mem doctor --json --platform codex,claude
+harness-mem recall off
+harness-mem uninstall --platform codex,claude --purge-db
+```
+
+Local data stays in `~/.harness-mem/harness-mem.db`, and the runtime copy lives at `~/.harness-mem/runtime/harness-mem`. Purge is always explicit; automatic setup must never delete the DB. See [`docs/claude-harness-companion-contract.md`](docs/claude-harness-companion-contract.md).
+
 ### About `harness-mem setup`
 
 `harness-mem setup` is **interactive**. It asks which tools to wire up:

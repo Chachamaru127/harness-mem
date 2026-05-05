@@ -9,6 +9,8 @@ describe("update command contract", () => {
     expect(script).toContain("update     Update global harness-mem package");
     expect(script).toContain("should_prompt_update_auto_update_selection()");
     expect(script).toContain("prompt_update_auto_update_selection()");
+    expect(script).toContain("--auto-update enable|disable");
+    expect(script).toContain("--auto-update must be enable or disable");
     expect(script).toContain("if [ \"$(read_auto_update_enabled)\" -eq 1 ]; then");
     expect(script).toContain("update_impl()");
     expect(script).toContain("npm install -g \"${AUTO_UPDATE_PACKAGE}@${AUTO_UPDATE_CHANNEL}\"");

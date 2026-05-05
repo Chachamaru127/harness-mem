@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **Claude-harness companion contract を明文化**。Claude-harness から自動セットアップされる時の責務分担、保存場所、`setup --auto-update enable|disable`、`doctor --json` の `contract_version` / `harness_mem_version` を固定。
+
 ## [0.18.0] - 2026-05-05
 
 ### ユーザー向け要約

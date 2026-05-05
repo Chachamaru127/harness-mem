@@ -4,6 +4,7 @@
  * T-1: `doctor --json` の出力が JSON schema contract を満たすことを検証する。
  * - stdout が純粋な JSON 1 オブジェクトのみであること（余計なテキスト混入なし）
  * - 必須フィールド: status, all_green, failed_count, checked_count, timestamp, checks, fix_command
+ * - Claude-harness companion fields: contract_version, harness_mem_version
  */
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -95,6 +96,12 @@ describe("doctor --json contract", () => {
     // backend_mode: string (local | managed | hybrid)
     expect(typeof parsed.backend_mode).toBe("string");
     expect(["local", "managed", "hybrid"]).toContain(parsed.backend_mode);
+
+    // Claude-harness managed companion contract fields
+    expect(typeof parsed.contract_version).toBe("string");
+    expect(parsed.contract_version.length).toBeGreaterThan(0);
+    expect(typeof parsed.harness_mem_version).toBe("string");
+    expect(parsed.harness_mem_version.length).toBeGreaterThan(0);
   }, 60_000);
 
   test("all_green matches failed_count == 0", async () => {
