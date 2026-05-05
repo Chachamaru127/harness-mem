@@ -391,6 +391,33 @@ describe("config-manager: reindexVectors", () => {
       expect(audits.some((entry) => entry.action === "admin.cleanup_duplicates.plan")).toBe(true);
     });
 
+    test("duplicate cleanup ignores expired rows before grouping candidates", () => {
+      const { manager } = createManager();
+      const db = (manager as unknown as { deps: ConfigManagerDeps }).deps.db;
+      insertTestObservation(db, {
+        id: "obs-dupe-expired-a",
+        session_id: "sess-dupe-expired",
+        content: "same expired cleanup target",
+        created_at: "2026-02-20T00:00:00.000Z",
+      });
+      insertTestObservation(db, {
+        id: "obs-dupe-expired-b",
+        session_id: "sess-dupe-expired",
+        content: "same expired cleanup target",
+        created_at: "2026-02-21T00:00:00.000Z",
+      });
+      db.query(`UPDATE mem_observations SET expires_at = ? WHERE session_id = ?`).run(
+        "2000-01-01T00:00:00.000Z",
+        "sess-dupe-expired",
+      );
+
+      const res = manager.cleanupDuplicateObservations({ execute: true, limit: 10 });
+      expect(res.ok).toBe(true);
+      expect((res.meta as Record<string, unknown>).duplicate_groups).toBe(0);
+      expect((res.meta as Record<string, unknown>).candidate_rows).toBe(0);
+      expect((res.meta as Record<string, unknown>).archived_rows).toBe(0);
+    });
+
     test("execute duplicate cleanup soft-archives duplicate rows", () => {
       const audits: string[] = [];
       const { manager } = createManager({
