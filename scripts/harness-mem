@@ -3905,28 +3905,24 @@ doctor_impl() {
   fi
 
   # JSON出力モード
-    if [ "$JSON_OUTPUT" -eq 1 ]; then
-      _doctor_emit_json "$failed" "${doctor_checks[@]}"
-      if [ "$failed" -ne 0 ] && [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
-        warn "Doctor found issues. Running auto-fix."
-        setup_impl
-      fi
-      if [ "$failed" -ne 0 ] && [ "$STRICT_EXIT" -eq 1 ]; then
-        return 1
-      fi
-      return 0
+  if [ "$JSON_OUTPUT" -eq 1 ]; then
+    _doctor_emit_json "$failed" "${doctor_checks[@]}"
+    if [ "$failed" -ne 0 ] && [ "$STRICT_EXIT" -eq 1 ]; then
+      return 1
     fi
+    return 0
+  fi
 
   if [ "$failed" -eq 0 ]; then
     log "Doctor result: healthy"
     return 0
   fi
 
-    if [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
-      warn "Doctor found issues. Running auto-fix."
-      setup_impl
-      return
-    fi
+  if [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
+    warn "Doctor found issues. Running auto-fix."
+    setup_impl
+    return
+  fi
 
   # 失敗時のガイド出力
   _doctor_print_next_steps "${doctor_checks[@]}"
@@ -3949,62 +3945,62 @@ _doctor_emit_json() {
   local failed="$1"
   shift
   local -a checks=("$@")
-    local status_str overall_status_str all_green_str
-    local checked_count="${#checks[@]}"
-    local failed_count=0 warn_count=0 skip_count=0
-    if [ "$failed" -eq 0 ]; then
-      status_str="healthy"
-      overall_status_str="healthy"
-      all_green_str="true"
-    else
-      status_str="unhealthy"
-      overall_status_str="broken"
-      all_green_str="false"
-    fi
+  local status_str overall_status_str all_green_str
+  local checked_count="${#checks[@]}"
+  local failed_count=0 warn_count=0 skip_count=0
+  if [ "$failed" -eq 0 ]; then
+    status_str="healthy"
+    overall_status_str="healthy"
+    all_green_str="true"
+  else
+    status_str="unhealthy"
+    overall_status_str="broken"
+    all_green_str="false"
+  fi
 
   local checks_json="["
   local first=1
-    local entry name status fix result severity reason_code
-    for entry in "${checks[@]}"; do
-      IFS=$'\t' read -r name status fix <<<"$entry"
-      result="$(_doctor_status_result "$status")"
-      if [ "$status" != "ok" ] && [[ "$status" != ok:* ]]; then
-        failed_count=$((failed_count + 1))
-      fi
-      case "$result" in
-        warn) warn_count=$((warn_count + 1)) ;;
-        skip) skip_count=$((skip_count + 1)) ;;
-      esac
-      if [ "$result" = "warn" ] && [ "$overall_status_str" = "healthy" ]; then
-        overall_status_str="degraded"
-        all_green_str="false"
-      fi
-      case "$result" in
-        pass) severity="info" ;;
-        warn) severity="warning" ;;
-        skip) severity="info" ;;
-        *) severity="error" ;;
-      esac
-      reason_code="${name}_${status%%:*}"
-      if [ "$first" -eq 0 ]; then
-        checks_json+=","
-      fi
-      checks_json+="$(jq -nc \
-        --arg name "$name" \
-        --arg status "$status" \
-        --arg result "$result" \
-        --arg severity "$severity" \
-        --arg reason_code "$reason_code" \
-        --arg fix "$fix" \
-        '{
-          name: $name,
-          status: $status,
-          result: $result,
-          severity: $severity,
-          reason_code: $reason_code,
-          fix: (if $fix == "" then null else $fix end),
-          repair: (if $fix == "" then null else {command: $fix, risk: "low"} end)
-        }')"
+  local entry name status fix result severity reason_code
+  for entry in "${checks[@]}"; do
+    IFS=$'\t' read -r name status fix <<<"$entry"
+    result="$(_doctor_status_result "$status")"
+    if [ "$result" = "fail" ]; then
+      failed_count=$((failed_count + 1))
+    fi
+    case "$result" in
+      warn) warn_count=$((warn_count + 1)) ;;
+      skip) skip_count=$((skip_count + 1)) ;;
+    esac
+    if [ "$result" = "warn" ] && [ "$overall_status_str" = "healthy" ]; then
+      overall_status_str="degraded"
+      all_green_str="false"
+    fi
+    case "$result" in
+      pass) severity="info" ;;
+      warn) severity="warning" ;;
+      skip) severity="info" ;;
+      *) severity="error" ;;
+    esac
+    reason_code="${name}_${status%%:*}"
+    if [ "$first" -eq 0 ]; then
+      checks_json+=","
+    fi
+    checks_json+="$(jq -nc \
+      --arg name "$name" \
+      --arg status "$status" \
+      --arg result "$result" \
+      --arg severity "$severity" \
+      --arg reason_code "$reason_code" \
+      --arg fix "$fix" \
+      '{
+        name: $name,
+        status: $status,
+        result: $result,
+        severity: $severity,
+        reason_code: $reason_code,
+        fix: (if $fix == "" then null else $fix end),
+        repair: (if $fix == "" then null else {command: $fix, risk: "low"} end)
+      }')"
     first=0
   done
   checks_json+="]"

@@ -353,7 +353,7 @@ describe("contextual recall contract", () => {
           project_key: "project",
           session_id: "claude-session",
           correlation_id: "corr-current",
-          generated_at: isoOffsetSeconds(600),
+          generated_at: isoOffsetSeconds(360),
         })
       );
       writeFileSync(join(stateDir, ".memory-resume-pending"), "1");

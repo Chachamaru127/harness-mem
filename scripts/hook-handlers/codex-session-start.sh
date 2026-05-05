@@ -54,16 +54,16 @@ fi
 # Retrieve resume pack
 if [ -n "$RESUME_CORRELATION_ID" ]; then
   RESUME_PAYLOAD=$(jq -nc \
-	    --arg project "$PROJECT_NAME" \
-	    --arg session_id "$SESSION_ID" \
-	    --arg correlation_id "$RESUME_CORRELATION_ID" \
-	    '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
-	else
-	  RESUME_PAYLOAD=$(jq -nc \
-	    --arg project "$PROJECT_NAME" \
-	    --arg session_id "$SESSION_ID" \
-	    '{project:$project,session_id:$session_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
-	fi
+      --arg project "$PROJECT_NAME" \
+      --arg session_id "$SESSION_ID" \
+      --arg correlation_id "$RESUME_CORRELATION_ID" \
+      '{project:$project,session_id:$session_id,correlation_id:$correlation_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
+  else
+    RESUME_PAYLOAD=$(jq -nc \
+      --arg project "$PROJECT_NAME" \
+      --arg session_id "$SESSION_ID" \
+      '{project:$project,session_id:$session_id,limit:5,include_private:false,detail_level:"L0",resume_pack_max_tokens:1200}' 2>/dev/null)
+  fi
 
 if [ -n "$RESUME_PAYLOAD" ]; then
   RESUME_RESPONSE="$(printf '%s' "$RESUME_PAYLOAD" | "$CLIENT_SCRIPT" resume-pack 2>/dev/null || true)"

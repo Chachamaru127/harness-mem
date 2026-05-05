@@ -232,8 +232,10 @@ For Codex specifically, the critical user-scoped files are `~/.codex/config.toml
 
 Manual MCP sanity check:
 
+Run from the harness-mem repo root when using the local checkout binary. For a global install, use `harness-mcp-server` instead of `./bin/harness-mcp-server`.
+
 ```bash
-bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
 codex mcp list
 codex mcp get harness
 ```

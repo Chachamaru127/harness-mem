@@ -363,8 +363,10 @@ Options:
 
 Manual MCP check:
 
+Run from the harness-mem repo root when using the local checkout binary. For a global install, use `harness-mcp-server`; for one-off package verification, use `npx -y --package @chachamaru127/harness-mem harness-mcp-server`.
+
 ```bash
-bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
 codex mcp list
 codex mcp get harness
 ```

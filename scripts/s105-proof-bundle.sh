@@ -52,6 +52,7 @@ MCP_JSON="${OUT_DIR}/mcp-smoke.json"
 HEALTH_JSON="${OUT_DIR}/post-health.json"
 SUMMARY_JSON="${OUT_DIR}/summary.json"
 SETUP_JSON="${OUT_DIR}/setup-codex.json"
+SETUP_STDOUT="${OUT_DIR}/setup.stdout"
 
 (cd "$ROOT" && npm pack --dry-run --json > "$PACK_JSON" 2>"${OUT_DIR}/npm-pack.stderr")
 PACK_CODE=$?
@@ -67,8 +68,17 @@ if [ "$ISOLATED_HOME" -eq 1 ]; then
     HARNESS_MEM_HOME="$PROOF_HMEM_HOME" \
     HARNESS_MEM_NON_INTERACTIVE=1 \
     bash "${ROOT}/scripts/harness-mem" setup --platform codex --skip-start --skip-smoke --skip-quality --skip-version-check --quiet \
-    > "$SETUP_JSON" 2>"${OUT_DIR}/setup.stderr"
+    > "$SETUP_STDOUT" 2>"${OUT_DIR}/setup.stderr"
   SETUP_CODE=$?
+  if [ -s "$SETUP_STDOUT" ] && jq -e . "$SETUP_STDOUT" >/dev/null 2>&1; then
+    jq -c . "$SETUP_STDOUT" > "$SETUP_JSON"
+  else
+    jq -n \
+      --argjson exit_code "$SETUP_CODE" \
+      --arg stdout_artifact "$SETUP_STDOUT" \
+      '{ok: ($exit_code == 0), exit_code: $exit_code, stdout_artifact: $stdout_artifact}' \
+      > "$SETUP_JSON"
+  fi
 else
   jq -n '{skipped:true, reason:"using caller HOME"}' > "$SETUP_JSON"
 fi
@@ -161,6 +171,7 @@ jq -n \
     artifacts: {
       npm_pack: "'"$PACK_JSON"'",
       setup: "'"$SETUP_JSON"'",
+      setup_stdout: "'"$SETUP_STDOUT"'",
       doctor: "'"$DOCTOR_JSON"'",
       mcp_smoke: "'"$MCP_JSON"'",
       post_health: "'"$HEALTH_JSON"'"

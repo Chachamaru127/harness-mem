@@ -233,8 +233,10 @@ Codex については `~/.codex/config.toml`、`~/.codex/hooks.json`、そして
 
 手動 MCP 確認:
 
+ローカル checkout の binary を使う場合は、harness-mem repo root で実行してください。global install 済みなら `./bin/harness-mcp-server` の代わりに `harness-mcp-server` を使えます。
+
 ```bash
-bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
 codex mcp list
 codex mcp get harness
 ```

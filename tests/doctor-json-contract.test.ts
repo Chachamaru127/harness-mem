@@ -6,8 +6,9 @@
  * - 必須フィールド: status, all_green, failed_count, checked_count, timestamp, checks, fix_command
  */
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 
 const SCRIPT = resolve(import.meta.dir, "../scripts/harness-mem");
 
@@ -62,13 +63,13 @@ describe("doctor --json contract", () => {
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
 
-      expect(parsed.schema_version).toBe("doctor.v2");
+    expect(parsed.schema_version).toBe("doctor.v2");
 
-      // status: string ("healthy" | "unhealthy")
-      expect(typeof parsed.status).toBe("string");
-      expect(["healthy", "unhealthy"]).toContain(parsed.status);
-      expect(typeof parsed.overall_status).toBe("string");
-      expect(["healthy", "degraded", "broken"]).toContain(parsed.overall_status);
+    // status: string ("healthy" | "unhealthy")
+    expect(typeof parsed.status).toBe("string");
+    expect(["healthy", "unhealthy"]).toContain(parsed.status);
+    expect(typeof parsed.overall_status).toBe("string");
+    expect(["healthy", "degraded", "broken"]).toContain(parsed.overall_status);
 
     // all_green: boolean
     expect(typeof parsed.all_green).toBe("boolean");
@@ -110,12 +111,12 @@ describe("doctor --json contract", () => {
     expect(code).toBe(0);
     const parsed = JSON.parse(stdout);
 
-      for (const check of parsed.checks) {
-        expect(typeof check.name).toBe("string");
-        expect(typeof check.status).toBe("string");
-        expect(["pass", "warn", "fail", "skip"]).toContain(check.result);
-        expect(typeof check.reason_code).toBe("string");
-        // fix は null | string
+    for (const check of parsed.checks) {
+      expect(typeof check.name).toBe("string");
+      expect(typeof check.status).toBe("string");
+      expect(["pass", "warn", "fail", "skip"]).toContain(check.result);
+      expect(typeof check.reason_code).toBe("string");
+      // fix は null | string
       expect(check.fix === null || typeof check.fix === "string").toBe(true);
     }
   }, 60_000);
@@ -128,13 +129,15 @@ describe("doctor --json contract", () => {
   });
 
   test("strict-exit returns non-zero for JSON doctor failures", async () => {
-    const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json", "--read-only", "--strict-exit", "--platform", "codex", "--skip-version-check"], {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-doctor-strict-"));
+    try {
+      const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json", "--read-only", "--strict-exit", "--platform", "codex", "--skip-version-check"], {
         stdout: "pipe",
         stderr: "pipe",
         env: {
           ...process.env,
-          HOME: "/tmp/harness-mem-doctor-strict-missing-home",
-          HARNESS_MEM_HOME: "/tmp/harness-mem-doctor-strict-missing-home/.harness-mem",
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
           HARNESS_MEM_NON_INTERACTIVE: "1",
         },
       });
@@ -144,5 +147,8 @@ describe("doctor --json contract", () => {
       const parsed = JSON.parse(stdout);
       expect(parsed.schema_version).toBe("doctor.v2");
       expect(parsed.all_green).toBe(false);
-    }, 60_000);
-  });
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+});

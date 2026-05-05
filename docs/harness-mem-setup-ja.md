@@ -321,13 +321,16 @@ Options:
 - `~/.codex/config.toml` と `~/.codex/hooks.json` が古い absolute path ではなく、現在の harness-mem checkout を指しているか確認する
 - `~/.codex/skills/harness-mem/SKILL.md` と `~/.codex/skills/harness-recall/SKILL.md` の 2 skill を install / check する
 - `doctor.v2` JSON では `codex_skill_drift` と `codex_post_doctor_liveness` を報告する
+- 代表例: `codex_skill_drift.status="ok"` は 2 skill が同期済み、`codex_post_doctor_liveness.status="ok"` は doctor 後も runtime health が取れている状態を示す
 - Codex session logs から ingest path を確認する
 - Codex の first-turn continuity は、上の hook path と healthy な daemon/runtime の両方に依存する
 
 手動 MCP 確認:
 
+ローカル checkout の binary を使う場合は、harness-mem repo root で実行してください。global install 済みなら `harness-mcp-server`、一回だけ package から確認するなら `npx -y --package @chachamaru127/harness-mem harness-mcp-server` を使えます。
+
 ```bash
-bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
+./bin/harness-mcp-server <<< '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"manual-check","version":"1"}}}'
 codex mcp list
 codex mcp get harness
 ```

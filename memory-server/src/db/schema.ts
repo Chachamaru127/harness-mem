@@ -808,7 +808,7 @@ export function migrateSchema(db: Database): void {
     // already exists
   }
 
-    // S78-B01: Verbatim raw storage — raw_text カラムを追加（nullable, 後方互換）
+    // S105: content-level dedupe — hash column + live-row partial unique index
     try {
       db.exec(`ALTER TABLE mem_observations ADD COLUMN content_dedupe_hash TEXT`);
     } catch {
