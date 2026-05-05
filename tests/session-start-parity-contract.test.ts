@@ -35,6 +35,15 @@ function normalize(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function stripArtifactIdentityHeader(value: string): string {
+  return value
+    .replace(
+      /^source: harness_mem_resume_pack\nproject_key: [^\n]*\nsession_id: [^\n]*\ngenerated_at: [^\n]*\ncorrelation_id: [^\n]*\n\n/,
+      ""
+    )
+    .trimStart();
+}
+
 function extractCodexAdditionalContext(stdout: string): string {
   const trimmed = stdout.trim();
   if (!trimmed) {
@@ -170,7 +179,16 @@ describe("session-start parity contract", () => {
     const claude = await runSessionStart("claude", resumeResponse);
     const codex = await runSessionStart("codex", resumeResponse);
 
-    expect(normalize(claude.content)).toBe(normalize(codex.content));
+    expect(normalize(stripArtifactIdentityHeader(claude.content))).toBe(
+      normalize(stripArtifactIdentityHeader(codex.content))
+    );
+    for (const run of [claude, codex]) {
+      expect(run.content).toContain("source: harness_mem_resume_pack");
+      expect(run.content).toContain("project_key: session-start-parity-project");
+      expect(run.content).toContain("session_id:");
+      expect(run.content).toContain("generated_at:");
+      expect(run.content).toContain("correlation_id:");
+    }
     expect(claude.content).toContain("Continuity Briefing");
     expect(claude.content).toContain("## Also Recently in This Project");
     expect(codex.content).toContain("Keep Claude and Codex in parity");
@@ -203,7 +221,11 @@ describe("session-start parity contract", () => {
     const claude = await runSessionStart("claude", resumeResponse);
     const codex = await runSessionStart("codex", resumeResponse);
 
-    expect(normalize(claude.content)).toBe(normalize(codex.content));
+    expect(normalize(stripArtifactIdentityHeader(claude.content))).toBe(
+      normalize(stripArtifactIdentityHeader(codex.content))
+    );
+    expect(claude.content).toContain("source: harness_mem_resume_pack");
+    expect(codex.content).toContain("source: harness_mem_resume_pack");
     expect(claude.content).toContain("Memory Resume Pack");
     expect(codex.content).toContain("SessionStart rendering");
   });
@@ -233,10 +255,12 @@ describe("session-start parity contract", () => {
       };
       const resumePack = run.payloads.find((entry) => entry.command === "resume-pack")?.payload as {
         correlation_id?: string;
+        include_private?: boolean;
       };
 
       expect(recordEvent.event?.correlation_id).toBe("corr-handoff");
       expect(resumePack.correlation_id).toBe("corr-handoff");
+      expect(resumePack.include_private).toBe(false);
     }
   });
 });

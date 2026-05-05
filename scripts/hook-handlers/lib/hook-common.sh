@@ -798,25 +798,135 @@ print(json.dumps(body))
   hook_extract_meta_summary "$response"
 }
 
+hook_current_resume_artifact_identity_json() {
+  local source="${1:-harness_mem_resume_pack}"
+  local generated_at="${2:-}"
+  [ -n "$generated_at" ] || generated_at="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+  command -v jq >/dev/null 2>&1 || return 0
+
+  jq -nc \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg session_id "${SESSION_ID:-${HARNESS_SESSION_ID:-}}" \
+    --arg generated_at "$generated_at" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "$source" \
+    '{
+      project_key: $project_key,
+      session_id: $session_id,
+      generated_at: $generated_at,
+      correlation_id: $correlation_id,
+      source: $source
+    }'
+}
+
+hook_attach_resume_pack_identity() {
+  local resume_response="${1:-}"
+  local identity_json="${2:-}"
+  [ -n "$resume_response" ] || return 0
+  [ -n "$identity_json" ] || {
+    printf '%s' "$resume_response"
+    return 0
+  }
+  command -v jq >/dev/null 2>&1 || {
+    printf '%s' "$resume_response"
+    return 0
+  }
+
+  printf '%s' "$resume_response" | jq -c --argjson identity "$identity_json" '
+    .meta = (.meta // {})
+    | .meta.artifact_identity = $identity
+  ' 2>/dev/null || printf '%s' "$resume_response"
+}
+
+hook_render_resume_artifact_identity_header() {
+  local resume_response="${1:-}"
+  [ -n "$resume_response" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  printf '%s' "$resume_response" | jq -r '
+    .meta.artifact_identity // empty
+    | select(type == "object")
+    | [
+        "source: " + (.source // ""),
+        "project_key: " + (.project_key // ""),
+        "session_id: " + (.session_id // ""),
+        "generated_at: " + (.generated_at // ""),
+        "correlation_id: " + (.correlation_id // "")
+      ]
+      | map(select(test(": $") | not))
+      | join("\n")
+  ' 2>/dev/null
+}
+
+hook_resume_artifact_max_age_sec() {
+  hook_clamp_integer "${HARNESS_MEM_RESUME_ARTIFACT_MAX_AGE_SEC:-86400}" "86400" "60" "604800"
+}
+
+hook_resume_artifact_json_matches_current() {
+  local artifact_json="${1:-}"
+  local expected_source="${2:-harness_mem_resume_pack}"
+  [ -n "$artifact_json" ] || return 1
+  command -v jq >/dev/null 2>&1 || return 1
+
+  local max_age_sec
+  max_age_sec="$(hook_resume_artifact_max_age_sec)"
+
+  printf '%s' "$artifact_json" | jq -e \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg session_id "${SESSION_ID:-${HARNESS_SESSION_ID:-}}" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "$expected_source" \
+    --argjson max_age_sec "$max_age_sec" \
+    '
+      (.meta.artifact_identity // empty) as $identity
+      | (try (($identity.generated_at // "") | fromdateiso8601) catch null) as $generated_at_epoch
+      | ($identity | type) == "object"
+      and (($identity.project_key // "") == $project_key)
+      and (($identity.session_id // "") == $session_id)
+      and (($identity.correlation_id // "") == $correlation_id)
+      and (($identity.source // "") == $source)
+      and ($generated_at_epoch != null)
+      and ($generated_at_epoch <= (now + 300))
+      and ($generated_at_epoch >= (now - $max_age_sec))
+    ' >/dev/null 2>&1
+}
+
+hook_resume_artifact_matches_current() {
+  local artifact_file="${1:-}"
+  local expected_source="${2:-harness_mem_resume_pack}"
+  [ -n "$artifact_file" ] || return 1
+  [ -f "$artifact_file" ] || return 1
+
+  hook_resume_artifact_json_matches_current "$(cat "$artifact_file" 2>/dev/null)" "$expected_source"
+}
+
 hook_render_resume_pack_markdown() {
   local resume_response="${1:-}"
   [ -n "$resume_response" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
 
+  local identity_header=""
   local continuity_briefing=""
   local recent_project_context=""
+  identity_header="$(hook_render_resume_artifact_identity_header "$resume_response")"
   continuity_briefing="$(printf '%s' "$resume_response" | jq -r '.meta.continuity_briefing.content // empty' 2>/dev/null)"
   recent_project_context="$(printf '%s' "$resume_response" | jq -r '.meta.recent_project_context.content // empty' 2>/dev/null)"
   if [ -n "$continuity_briefing" ]; then
-    if [ -n "$recent_project_context" ] && [ "$recent_project_context" != "$continuity_briefing" ]; then
-      printf '%s\n\n%s\n' "$continuity_briefing" "$recent_project_context"
-    else
-      printf '%s\n' "$continuity_briefing"
-    fi
+    {
+      [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
+      if [ -n "$recent_project_context" ] && [ "$recent_project_context" != "$continuity_briefing" ]; then
+        printf '%s\n\n%s\n' "$continuity_briefing" "$recent_project_context"
+      else
+        printf '%s\n' "$continuity_briefing"
+      fi
+    }
     return 0
   fi
   if [ -n "$recent_project_context" ]; then
-    printf '%s\n' "$recent_project_context"
+    {
+      [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
+      printf '%s\n' "$recent_project_context"
+    }
     return 0
   fi
 
@@ -827,6 +937,7 @@ hook_render_resume_pack_markdown() {
   fi
 
   {
+    [ -n "$identity_header" ] && printf '%s\n\n' "$identity_header"
     echo "## Memory Resume Pack"
     echo ""
     echo "直近セッションから再利用可能な文脈です。"
@@ -1082,6 +1193,7 @@ hook_mark_whisper_prompt() {
 
 hook_mark_whisper_resume_skip() {
   local session_id="${1:-}"
+  local source="${2:-harness_mem_resume_pack}"
   [ -n "$session_id" ] || return 0
   command -v jq >/dev/null 2>&1 || return 0
   local lock_depth_before="${WHISPER_LOCK_DEPTH:-0}"
@@ -1090,11 +1202,16 @@ hook_mark_whisper_resume_skip() {
   fi
   hook_upsert_whisper_session_defaults "$session_id"
 
+  local identity_json
+  identity_json="$(hook_current_resume_artifact_identity_json "$source")"
+  [ -n "$identity_json" ] || identity_json='{}'
+
   local state_json
   state_json="$(hook_read_whisper_state)"
   state_json="$(
-    printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
+    printf '%s' "$state_json" | jq -c --arg sid "$session_id" --argjson identity "$identity_json" '
       .sessions[$sid].pending_resume_skip = true
+      | .sessions[$sid].pending_resume_skip_identity = $identity
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"
@@ -1125,11 +1242,47 @@ hook_consume_whisper_resume_skip() {
     return 1
   fi
 
+  local max_age_sec
+  max_age_sec="$(hook_resume_artifact_max_age_sec)"
+  if ! jq -e \
+    --arg sid "$session_id" \
+    --arg project_key "${PROJECT_NAME:-}" \
+    --arg correlation_id "${CORRELATION_ID:-}" \
+    --arg source "harness_mem_resume_pack" \
+    --argjson max_age_sec "$max_age_sec" \
+    '
+      .sessions[$sid].pending_resume_skip_identity as $identity
+      | (try (($identity.generated_at // "") | fromdateiso8601) catch null) as $generated_at_epoch
+      | ($identity | type) == "object"
+      and (($identity.project_key // "") == $project_key)
+      and (($identity.session_id // "") == $sid)
+      and (($identity.correlation_id // "") == $correlation_id)
+      and (($identity.source // "") == $source)
+      and ($generated_at_epoch != null)
+      and ($generated_at_epoch <= (now + 300))
+      and ($generated_at_epoch >= (now - $max_age_sec))
+    ' "$WHISPER_STATE_FILE" >/dev/null 2>&1; then
+    local mismatch_state_json
+    mismatch_state_json="$(hook_read_whisper_state)"
+    mismatch_state_json="$(
+      printf '%s' "$mismatch_state_json" | jq -c --arg sid "$session_id" '
+        .sessions[$sid].pending_resume_skip = false
+        | del(.sessions[$sid].pending_resume_skip_identity)
+      ' 2>/dev/null
+    )"
+    [ -n "$mismatch_state_json" ] && hook_write_whisper_state "$mismatch_state_json"
+    if [ "$lock_depth_before" -eq 0 ]; then
+      hook_release_whisper_lock
+    fi
+    return 1
+  fi
+
   local state_json
   state_json="$(hook_read_whisper_state)"
   state_json="$(
     printf '%s' "$state_json" | jq -c --arg sid "$session_id" '
       .sessions[$sid].pending_resume_skip = false
+      | del(.sessions[$sid].pending_resume_skip_identity)
     ' 2>/dev/null
   )"
   [ -n "$state_json" ] && hook_write_whisper_state "$state_json"

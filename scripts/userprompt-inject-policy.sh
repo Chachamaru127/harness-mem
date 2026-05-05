@@ -10,6 +10,7 @@ STATE_DIR=".claude/state"
 SESSION_FILE="${STATE_DIR}/session.json"
 TOOLING_POLICY_FILE="${STATE_DIR}/tooling-policy.json"
 RESUME_CONTEXT_FILE="${STATE_DIR}/memory-resume-context.md"
+RESUME_JSON_FILE="${STATE_DIR}/memory-resume-pack.json"
 RESUME_PENDING_FLAG="${STATE_DIR}/.memory-resume-pending"
 RESUME_PROCESSING_FLAG="${STATE_DIR}/.memory-resume-processing"
 RESUME_MAX_BYTES="${HARNESS_MEM_RESUME_MAX_BYTES:-32768}"
@@ -147,11 +148,17 @@ append_injection_block() {
   fi
 }
 
+cleanup_resume_artifacts() {
+  rm -f "$RESUME_CONTEXT_FILE" "$RESUME_JSON_FILE" "$RESUME_PENDING_FLAG" "$RESUME_PROCESSING_FLAG" 2>/dev/null || true
+}
+
 [ -d "$STATE_DIR" ] || exit 0
 [ -f "$SESSION_FILE" ] || printf '{ "session_id": "" }\n' > "$SESSION_FILE"
 [ -n "$INPUT" ] || exit 0
 
 hook_resolve_session_id "claude" "$SESSION_FILE" "generate"
+hook_init_continuity_state
+hook_resolve_correlation_id "$SESSION_ID" "claude" "$INPUT"
 
 PROMPT_TEXT="$(json_get "$INPUT" ".prompt" "")"
 CURRENT_PROMPT_SEQ="$(json_file_get "$SESSION_FILE" ".prompt_seq" "0")"
@@ -249,7 +256,14 @@ fi
 if [ "$RESUME_BUSY" = "0" ] && mv "$RESUME_PENDING_FLAG" "$RESUME_PROCESSING_FLAG" 2>/dev/null; then
   printf '%s\n' "$$" > "$RESUME_PROCESSING_FLAG" 2>/dev/null || true
   MEMORY_CONTEXT=""
-  if [ -f "$RESUME_CONTEXT_FILE" ]; then
+  RESUME_ARTIFACT_VALID=0
+  if hook_resume_artifact_matches_current "$RESUME_JSON_FILE" "harness_mem_resume_pack"; then
+    RESUME_ARTIFACT_VALID=1
+  else
+    cleanup_resume_artifacts
+  fi
+
+  if [ "$RESUME_ARTIFACT_VALID" -eq 1 ] && [ -f "$RESUME_CONTEXT_FILE" ]; then
     if command -v iconv >/dev/null 2>&1; then
       MEMORY_CONTEXT="$(read_limited_text_file "$RESUME_CONTEXT_FILE" "$RESUME_MAX_BYTES" | iconv -f UTF-8 -t UTF-8 -c 2>/dev/null || true)"
     else

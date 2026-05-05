@@ -127,6 +127,27 @@ printf '%s\n' '{"ok":true,"meta":{"count":0},"items":[]}'
       expect(existsSync(join(stateDir, ".memory-resume-pending"))).toBe(true);
 
       const resumeText = readFileSync(resumePath, "utf8");
+      const resumeJson = JSON.parse(readFileSync(join(stateDir, "memory-resume-pack.json"), "utf8")) as {
+        meta?: {
+          artifact_identity?: {
+            project_key?: string;
+            session_id?: string;
+            generated_at?: string;
+            correlation_id?: string;
+            source?: string;
+          };
+        };
+      };
+      expect(resumeJson.meta?.artifact_identity?.project_key).toBeTruthy();
+      expect(resumeJson.meta?.artifact_identity?.session_id).toMatch(/^session-/);
+      expect(resumeJson.meta?.artifact_identity?.generated_at).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(resumeJson.meta?.artifact_identity?.correlation_id).toMatch(/^corr-/);
+      expect(resumeJson.meta?.artifact_identity?.source).toBe("harness_mem_resume_pack");
+      expect(resumeText).toContain("source: harness_mem_resume_pack");
+      expect(resumeText).toContain("project_key:");
+      expect(resumeText).toContain("session_id:");
+      expect(resumeText).toContain("generated_at:");
+      expect(resumeText).toContain("correlation_id:");
       expect(resumeText).toContain("# Continuity Briefing");
       expect(resumeText).toContain("Continue from the previous adapter fix");
       expect(resumeText).toContain("## Also Recently in This Project");
@@ -210,8 +231,10 @@ printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
 
       const resumePayload = payloads.find((entry) => entry.command === "resume-pack")?.payload as {
         correlation_id?: string;
+        include_private?: boolean;
       };
       expect(resumePayload.correlation_id).toBe("corr-handoff");
+      expect(resumePayload.include_private).toBe(false);
     } finally {
       rmSync(tmp, { recursive: true, force: true });
     }

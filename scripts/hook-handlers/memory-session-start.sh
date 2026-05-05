@@ -182,6 +182,9 @@ if [ -x "$CLIENT_SCRIPT" ]; then
       write_resume_error_file "$RESUME_ERROR_CODE" "$RESUME_ERROR_MESSAGE" "harness-mem doctor --fix"
     else
       rm -f "$RESUME_ERROR_FILE" 2>/dev/null || true
+      RESUME_IDENTITY_JSON="$(hook_current_resume_artifact_identity_json "harness_mem_resume_pack")"
+      RESUME_RESPONSE_WITH_IDENTITY="$(hook_attach_resume_pack_identity "$RESUME_RESPONSE" "$RESUME_IDENTITY_JSON")"
+      [ -n "$RESUME_RESPONSE_WITH_IDENTITY" ] && RESUME_RESPONSE="$RESUME_RESPONSE_WITH_IDENTITY"
       printf '%s' "$RESUME_RESPONSE" > "$RESUME_JSON_FILE" 2>/dev/null || true
 
       if command -v jq >/dev/null 2>&1; then

@@ -68,9 +68,15 @@ fi
 if [ -n "$RESUME_PAYLOAD" ]; then
   RESUME_RESPONSE="$(printf '%s' "$RESUME_PAYLOAD" | "$CLIENT_SCRIPT" resume-pack 2>/dev/null || true)"
   if [ -n "$RESUME_RESPONSE" ] && printf '%s' "$RESUME_RESPONSE" | jq -e '.ok != false' >/dev/null 2>&1; then
-    RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
+    RESUME_IDENTITY_JSON="$(hook_current_resume_artifact_identity_json "harness_mem_resume_pack")"
+    RESUME_RESPONSE_WITH_IDENTITY="$(hook_attach_resume_pack_identity "$RESUME_RESPONSE" "$RESUME_IDENTITY_JSON")"
+    [ -n "$RESUME_RESPONSE_WITH_IDENTITY" ] && RESUME_RESPONSE="$RESUME_RESPONSE_WITH_IDENTITY"
+    RENDERED_RESUME_CONTEXT=""
+    if hook_resume_artifact_json_matches_current "$RESUME_RESPONSE" "harness_mem_resume_pack"; then
+      RENDERED_RESUME_CONTEXT="$(hook_render_resume_pack_markdown "$RESUME_RESPONSE")"
+    fi
     if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
-      hook_mark_whisper_resume_skip "$SESSION_ID"
+      hook_mark_whisper_resume_skip "$SESSION_ID" "harness_mem_resume_pack"
       hook_emit_codex_additional_context "SessionStart" "$RENDERED_RESUME_CONTEXT"
     fi
   fi
