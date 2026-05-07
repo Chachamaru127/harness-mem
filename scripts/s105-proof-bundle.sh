@@ -175,6 +175,13 @@ jq -n \
       doctor: "'"$DOCTOR_JSON"'",
       mcp_smoke: "'"$MCP_JSON"'",
       post_health: "'"$HEALTH_JSON"'"
+    },
+    s108_release_surface: {
+      retrieval_ablation: "docs/benchmarks/artifacts/s108-retrieval-ablation-2026-05-07/",
+      competitive_audit: "docs/benchmarks/competitive-audit-2026-05-07.md",
+      temporal_graph_design: "docs/benchmarks/temporal-graph-selective-import-2026-05-07.md",
+      readme_claim_ceiling_test: "tests/readme-claim-ceiling.test.ts",
+      developer_domain_thresholds: "docs/benchmarks/developer-domain-thresholds.json"
     }
   }' > "$SUMMARY_JSON"
 

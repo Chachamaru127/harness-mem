@@ -147,6 +147,19 @@ describe("proof-pack summary JSON contract", () => {
     expect(script).toContain("post_health_check");
   });
 
+  test("S105 proof bundle records the §108 release surface artifact paths", () => {
+    const script = readFileSync(S105_PROOF_BUNDLE_SCRIPT, "utf-8");
+    // S108-016: the bundle's summary JSON exposes the §108 artifacts so
+    // release reviewers can locate the retrieval ablation, competitive
+    // audit, temporal-graph design note, claim ceiling test, and the
+    // developer-domain thresholds without reading the script.
+    expect(script).toContain("s108_release_surface");
+    expect(script).toContain("docs/benchmarks/competitive-audit-2026-05-07.md");
+    expect(script).toContain("docs/benchmarks/temporal-graph-selective-import-2026-05-07.md");
+    expect(script).toContain("tests/readme-claim-ceiling.test.ts");
+    expect(script).toContain("docs/benchmarks/developer-domain-thresholds.json");
+  });
+
   test("S105 retrieval A/B gate uses three-run artifacts and CI manifest thresholds", () => {
     const script = readFileSync(S105_RETRIEVAL_GATE_SCRIPT, "utf-8");
     expect(script).toContain("s105-retrieval-ab-gate.v1");

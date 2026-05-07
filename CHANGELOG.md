@@ -7,9 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-05-07
+
 ### Added
 
 - **Claude-harness companion contract is now explicit**. Added the reciprocal companion contract doc, `setup --auto-update enable|disable` for non-interactive setup, and `doctor --json` fields for `contract_version` and `harness_mem_version`.
+- **§108-009 point-in-time answer contract**. Search / timeline / resume-pack now expose `temporal_state` (`current` | `historical` | `superseded` | `unknown`), short `evidence_id` (`E1`, `E2`, …), and `temporal_anchor` per item, plus `temporal_state_counts` in `meta.compiled`. Classification is conservative: `observed_at` alone (auto-filled metadata) does not mark evidence as historical — only an explicit `event_time` / `valid_from` anchor or an unambiguous textual cue does.
 - **§108 release surface — README claim ceiling guard and selective temporal-graph design note**. Added `tests/readme-claim-ceiling.test.ts` to fail CI when public README copy adds banned superlatives (`unique`, `best-in-class`, `state-of-the-art`, generic "Every AI agent" claims) or drifts from the SSOT lead tagline, and shipped `docs/benchmarks/temporal-graph-selective-import-2026-05-07.md` documenting which Graphiti / Zep signals harness-mem will adopt, defer, or reject. External graph DB adoption is explicitly rejected to preserve the local-first claim.
 
 ### Changed
