@@ -3002,8 +3002,13 @@ export class ObservationStore {
       prefersDescendingTemporalOrder(request.query);
     const candidateK = Math.min(ranked.length, Math.max(90, limit * 8));
     const temporalCandidates = ranked.slice(0, candidateK);
+    // S108-009 follow-up (S56-002 regression fix): when no candidate has any
+    // temporal cue match (all temporalStateScore === 0), the planner has no
+    // signal to reorder by — fall back to the relevance-based ranking that
+    // produced this slice. Previously this guard only protected `chronology`
+    // mode, so e.g. `previous` queries with no cue match were re-sorted by
+    // anchor time alone, pushing the actually-relevant obs out of the top-K.
     if (
-      mode === "chronology" &&
       temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id)) === 0)
     ) {
       return;
