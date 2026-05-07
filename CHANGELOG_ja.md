@@ -10,6 +10,8 @@
 ### ユーザー向け要約
 
 - **Claude-harness companion contract を明文化**。Claude-harness から自動セットアップされる時の責務分担、保存場所、`setup --auto-update enable|disable`、`doctor --json` の `contract_version` / `harness_mem_version` を固定。
+- **§108 release surface を整理**。README の lead tagline を「AI コーディングセッション向けのローカルなプロジェクトメモリ — 汎用 memory API ではなく continuity runtime」に揃え、`unique` / `best-in-class` / `Every AI agent` などの過剰主張を CI で落とす `tests/readme-claim-ceiling.test.ts` を追加。Graphiti / Zep の temporal-graph 採否を `docs/benchmarks/temporal-graph-selective-import-2026-05-07.md` に固定し、外部 graph DB は local-first の維持のため reject。
+- **§108-005 ranking policy を確定**。S108-004 の winner（code_token tokenizer）を default として `docs/release-process.md` に明記。developer-domain gate は `ci-run-manifest-latest.json` が `dev_workflow_recall` を出すまで `mode: warn` のまま。`HARNESS_MEM_DEVDOMAIN_GATE=enforce|warn` で per-run 上書き可能。bilingual recall@10 floor は 0.90 → 0.88 に整合。
 - **checkpoint 記録が local embedding の cold-start で失われないように修正**。local ONNX provider が async prime 前でも、checkpoint observation は保存し、検索ベクトルだけ `embedding_write_status=degraded` として扱う。
 
 ## [0.18.0] - 2026-05-05

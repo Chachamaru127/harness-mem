@@ -15,7 +15,7 @@ Use it before changing public copy. The companion SSOT matrix is
 
 | README claim | Source of truth | Status | Notes |
 |---|---|---|---|
-| One project. One memory. Every AI coding agent. | `README.md`, architecture docs, supported tools list | bounded | True for the supported local runtime surface, not a promise about every possible future client. |
+| Local project memory for AI coding sessions — a continuity runtime, not a generic memory API. | `README.md`, architecture docs, supported tools list | bounded | Scope = supported local runtime (Claude Code + Codex Tier 1, Cursor Tier 2). Avoid widening into "every agent". S108-011. |
 | Stop re-explaining yesterday's work. | session continuity docs and hook behavior in `docs/harness-mem-setup.md` | bounded | Supported when the hook path is healthy and the daemon is running. |
 | ~5ms cold start. | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` and Go MCP bench artifacts | measured | Scope is the Go MCP layer cold start, not the whole app stack. |
 | Zero cloud, zero API keys. | local SQLite architecture and setup guide | stable | Core runtime stays local; do not widen this into a claim about optional external integrations. |

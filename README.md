@@ -4,10 +4,10 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/hero.png" alt="Harness-mem — one local memory shared between Claude Code and Codex" width="820" />
 </p>
 
-<p align="center"><strong>One project. One memory. Every AI coding agent.</strong></p>
+<p align="center"><strong>Local project memory for AI coding sessions — a continuity runtime, not a generic memory API.</strong></p>
 
 <p align="center">
-  Stop re-explaining yesterday's work to Claude Code, Codex, or Cursor. Harness-mem keeps a single local SQLite memory <em>per project</em> and shares it across every AI coding agent you use. ~5ms cold start. Zero cloud, zero API keys.
+  Harness-mem keeps a single local SQLite memory <em>per project</em> so the next Claude Code or Codex session opens on the thread you were already working on, instead of a blank slate. ~5ms cold start. Zero cloud, zero API keys.
 </p>
 
 <p align="center">
