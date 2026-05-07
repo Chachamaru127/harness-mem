@@ -46,6 +46,16 @@ function extractMeta(item: Record<string, unknown>): Record<string, unknown> {
     "observation_type",
     "branch",
     "expires_at",
+    "event_time",
+    "observed_at",
+    "valid_from",
+    "valid_to",
+    "supersedes",
+    "invalidated_at",
+    "temporal_state",
+    "temporal_anchor",
+    "temporal_anchor_kind",
+    "evidence_id",
     "source",
   ] as const) {
     if (key in item && item[key] !== undefined && item[key] !== null) {

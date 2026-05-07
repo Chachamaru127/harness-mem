@@ -625,7 +625,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }
 
           const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
-          const validKinds = ["profile", "timeline", "graph", "vector", "hybrid"];
+          const validKinds = ["profile", "timeline", "graph", "vector", "hybrid", "freshness"];
           const validMemoryTypes: MemoryType[] = ["episodic", "semantic", "procedural"];
           const rawMemoryType = body.memory_type;
           const parsedMemoryType = Array.isArray(rawMemoryType)
@@ -687,6 +687,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
             // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
             graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
+            graph_weight: typeof body.graph_weight === "number" ? body.graph_weight : undefined,
             // §89-001 (XR-002 P0): observation_type フィルタ。
             // 優先順位:
             //   1. body.observation_type 直接指定（string または string[]）

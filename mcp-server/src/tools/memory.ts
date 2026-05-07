@@ -305,8 +305,10 @@ export const memoryTools: Tool[] = [
         session_id: { type: "string" },
         since: { type: "string" },
         until: { type: "string" },
+        as_of: { type: "string", description: "Point-in-time filter. Returns observations visible at or before this ISO timestamp." },
         limit: { type: "number" },
         include_private: { type: "boolean" },
+        include_superseded: { type: "boolean", description: "When false, exclude superseded observations. Default true keeps them visible but lower ranked." },
         sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" },
         scope: {
           type: "object",
@@ -321,6 +323,7 @@ export const memoryTools: Tool[] = [
         include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
         branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
         graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
+        graph_weight: { type: "number", description: "S78-C04: graph proximity weight. 0 disables graph proximity for this query; default is server-side." },
         detail_level: {
           type: "string",
           enum: ["index", "context", "full"],
@@ -947,8 +950,10 @@ async function handleMemoryToolInner(
           session_id: toStringOrUndefined(input.session_id),
           since: toStringOrUndefined(input.since),
           until: toStringOrUndefined(input.until),
+          as_of: toStringOrUndefined(input.as_of),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
+          include_superseded: typeof input.include_superseded === "boolean" ? input.include_superseded : undefined,
           sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : undefined,
           scope,
           // S78-D01: 期限切れ観察を含むか
@@ -957,6 +962,7 @@ async function handleMemoryToolInner(
           branch: toStringOrUndefined(input.branch),
           // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
           graph_depth: toNumberOrUndefined(input.graph_depth),
+          graph_weight: toNumberOrUndefined(input.graph_weight),
           // §89-001 (XR-002 P0): observation_type filter (direct + prefix parsed)
           observation_type: observationType,
         });

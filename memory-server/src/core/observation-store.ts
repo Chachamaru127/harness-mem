@@ -715,6 +715,92 @@ function observationTemporalText(observation: Record<string, unknown> | undefine
 }
 
 type TemporalPlannerMode = "current" | "previous" | "previous_current" | "no_longer" | "after" | "before" | "first" | "latest" | "chronology";
+type TemporalEvidenceState = "current" | "historical" | "superseded" | "unknown";
+
+interface TemporalEvidenceContract {
+  state: TemporalEvidenceState;
+  anchor: string | null;
+  anchor_kind: "event_time" | "valid_from" | "observed_at" | "created_at" | "unknown";
+}
+
+function temporalContractForObservation(
+  observation: Record<string, unknown> | undefined,
+  options: { asOf?: string; supersededIds?: Set<string> } = {}
+): TemporalEvidenceContract {
+  if (!observation) {
+    return { state: "unknown", anchor: null, anchor_kind: "unknown" };
+  }
+
+  const anchorKeys = ["event_time", "valid_from", "observed_at", "created_at"] as const;
+  let anchor: string | null = null;
+  let anchorKind: TemporalEvidenceContract["anchor_kind"] = "unknown";
+  for (const key of anchorKeys) {
+    const value = observation[key];
+    if (typeof value === "string" && value.trim()) {
+      anchor = value;
+      anchorKind = key;
+      break;
+    }
+  }
+
+  const text = observationTemporalText(observation);
+  const id = typeof observation.id === "string" ? observation.id : "";
+  const explicitlySuperseded =
+    Boolean(id && options.supersededIds?.has(id)) ||
+    Boolean(observation.invalidated_at) ||
+    NO_LONGER_CUE_PATTERN.test(text) ||
+    JAPANESE_NO_LONGER_PATTERN.test(text);
+  if (explicitlySuperseded) {
+    return { state: "superseded", anchor, anchor_kind: anchorKind };
+  }
+
+  const asOfMs = options.asOf ? Date.parse(options.asOf) : Date.now();
+  const validToMs = typeof observation.valid_to === "string" && observation.valid_to.trim()
+    ? Date.parse(observation.valid_to)
+    : NaN;
+  if (Number.isFinite(asOfMs) && Number.isFinite(validToMs) && validToMs <= asOfMs) {
+    return { state: "historical", anchor, anchor_kind: anchorKind };
+  }
+
+  const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) ||
+    JAPANESE_CURRENT_PATTERN.test(text) ||
+    STILL_CUE_PATTERN.test(text) ||
+    JAPANESE_STILL_PATTERN.test(text);
+  if (hasCurrentCue) {
+    return { state: "current", anchor, anchor_kind: anchorKind };
+  }
+
+  const hasHistoricalCue = PREVIOUS_CUE_PATTERN.test(text) ||
+    JAPANESE_PREVIOUS_PATTERN.test(text) ||
+    FIRST_CUE_PATTERN.test(text) ||
+    BEFORE_CUE_PATTERN.test(text) ||
+    AFTER_CUE_PATTERN.test(text);
+  // S108-009: anchor_kind=observed_at alone is insufficient — observed_at is
+  // metadata about when the memory observed the event, not when the event
+  // happened. Without an explicit historical cue or a true event-time anchor
+  // (event_time / valid_from), treat as unknown.
+  if (hasHistoricalCue || anchorKind === "event_time" || anchorKind === "valid_from") {
+    return { state: "historical", anchor, anchor_kind: anchorKind };
+  }
+
+  return { state: "unknown", anchor, anchor_kind: anchorKind };
+}
+
+function countTemporalStates(items: Array<Record<string, unknown>>): Record<TemporalEvidenceState, number> {
+  const counts: Record<TemporalEvidenceState, number> = {
+    current: 0,
+    historical: 0,
+    superseded: 0,
+    unknown: 0,
+  };
+  for (const item of items) {
+    const state = item.temporal_state;
+    if (state === "current" || state === "historical" || state === "superseded" || state === "unknown") {
+      counts[state] += 1;
+    }
+  }
+  return counts;
+}
 
 function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   const normalized = query.toLowerCase();
@@ -1529,6 +1615,34 @@ export class ObservationStore {
     const extraFilters = filters as { include_archived?: boolean };
     nextSql += archivedFilterSql(alias, Boolean(extraFilters.include_archived));
     return nextSql;
+  }
+
+  private loadSupersededObservationIds(ids: string[]): Set<string> {
+    const superseded = new Set<string>();
+    if (ids.length === 0) return superseded;
+
+    try {
+      const MAX_BATCH = 500;
+      for (let i = 0; i < ids.length; i += MAX_BATCH) {
+        const batch = ids.slice(i, i + MAX_BATCH);
+        const placeholders = batch.map(() => "?").join(", ");
+        const rows = this.deps.db
+          .query(
+            `SELECT to_observation_id FROM mem_links
+             WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
+          )
+          .all(...batch) as Array<{ to_observation_id: string }>;
+        for (const row of rows) {
+          if (typeof row.to_observation_id === "string" && row.to_observation_id) {
+            superseded.add(row.to_observation_id);
+          }
+        }
+      }
+    } catch {
+      // best effort: temporal state falls back to row-level anchors.
+    }
+
+    return superseded;
   }
 
   // ---------------------------------------------------------------------------
@@ -3678,28 +3792,7 @@ export class ObservationStore {
     // superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
     // include_superseded=false → 除外。デフォルト(true) → rank を 0.5 倍に下げ、後方に沈める。
     const includeSuperseeded = request.include_superseded !== false; // default: true
-    const supersededObsIds = new Set<string>();
-    if (rankedAfterRerank.length > 0) {
-      try {
-        const allRankedIds = rankedAfterRerank.map((r) => r.id);
-        const MAX_BATCH = 500;
-        for (let i = 0; i < allRankedIds.length; i += MAX_BATCH) {
-          const batch = allRankedIds.slice(i, i + MAX_BATCH);
-          const placeholders = batch.map(() => "?").join(", ");
-          const supersededRows = this.deps.db
-            .query(
-              `SELECT to_observation_id FROM mem_links
-               WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
-            )
-            .all(...batch) as Array<{ to_observation_id: string }>;
-          for (const row of supersededRows) {
-            supersededObsIds.add(row.to_observation_id);
-          }
-        }
-      } catch {
-        // best effort: supersedes rank 調整失敗時は通常のランキングで継続
-      }
-    }
+    const supersededObsIds = this.loadSupersededObservationIds(rankedAfterRerank.map((r) => r.id));
 
     // superseded 観察を除外 or rank 下げ
     let finalRanked = rankedAfterRerank;
@@ -3725,16 +3818,21 @@ export class ObservationStore {
       }
     }
 
-    const items = finalRanked.slice(0, limit).map((entry) => {
+    const items = finalRanked.slice(0, limit).map((entry, index) => {
       const observation = observations.get(entry.id) ?? {};
       const tags = parseArrayJson(observation.tags_json);
       const privacyTags = parseArrayJson(observation.privacy_tags_json);
+      const temporalContract = temporalContractForObservation(observation, {
+        asOf: request.as_of,
+        supersededIds: supersededObsIds,
+      });
 
       // COMP-002: decay tier を算出して返却アイテムに含める
       const lastAccessedAt = (observation.last_accessed_at as string | null | undefined) ?? null;
       const decayTier = getDecayTier(lastAccessedAt, nowMs);
       const item: Record<string, unknown> = {
         id: entry.id,
+        evidence_id: `E${index + 1}`,
         event_id: observation.event_id,
         platform: observation.platform,
         project: observation.project,
@@ -3747,6 +3845,15 @@ export class ObservationStore {
         observation_type: observation.observation_type || "context",
         memory_type: observation.memory_type || "semantic",
         created_at: observation.created_at,
+        event_time: observation.event_time ?? null,
+        observed_at: observation.observed_at ?? null,
+        valid_from: observation.valid_from ?? null,
+        valid_to: observation.valid_to ?? null,
+        supersedes: observation.supersedes ?? null,
+        invalidated_at: observation.invalidated_at ?? null,
+        temporal_state: temporalContract.state,
+        temporal_anchor: temporalContract.anchor,
+        temporal_anchor_kind: temporalContract.anchor_kind,
         tags,
         privacy_tags: privacyTags,
         decay_tier: decayTier,
@@ -3953,6 +4060,9 @@ export class ObservationStore {
         tags_json: JSON.stringify(item.tags),
         session_id: item.session_id as string,
         final_score: (item.scores as { final: number }).final,
+        evidence_id: item.evidence_id as string | undefined,
+        temporal_state: item.temporal_state as "current" | "historical" | "superseded" | "unknown" | undefined,
+        temporal_anchor: item.temporal_anchor as string | null | undefined,
       })),
       privacy_excluded_count: privacyExcludedCount,
     });
@@ -3964,6 +4074,7 @@ export class ObservationStore {
       time_span: compiled.meta.time_span,
       cross_session: compiled.meta.cross_session,
       privacy_excluded: compiled.meta.privacy_excluded,
+      temporal_state_counts: compiled.meta.temporal_state_counts,
     };
 
     const response = makeResponse(startedAt, items, request as unknown as Record<string, unknown>, meta);
@@ -4386,6 +4497,7 @@ export class ObservationStore {
       .query(
         `
           SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
+               , o.event_time, o.observed_at, o.valid_from, o.valid_to, o.supersedes, o.invalidated_at
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at < ?
           ${tenantFilterSql}
@@ -4403,6 +4515,7 @@ export class ObservationStore {
       .query(
         `
           SELECT o.id, o.created_at, o.title, o.content_redacted, o.tags_json, o.privacy_tags_json
+               , o.event_time, o.observed_at, o.valid_from, o.valid_to, o.supersedes, o.invalidated_at
           FROM mem_observations o
           WHERE o.project = ? AND o.session_id = ? AND o.created_at > ?
           ${tenantFilterSql}
@@ -4416,19 +4529,35 @@ export class ObservationStore {
       Record<string, unknown>
     >;
 
+    const timelineRows = [...beforeRows, center, ...afterRows];
+    const supersededIds = this.loadSupersededObservationIds(
+      timelineRows.map((row) => (typeof row.id === "string" ? row.id : "")).filter(Boolean)
+    );
     const normalizeItem = (
       row: Record<string, unknown>,
       position: "before" | "center" | "after"
-    ) => ({
-      id: row.id,
-      position,
-      created_at: row.created_at,
-      title: row.title,
-      content:
-        typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 1200) : "",
-      tags: parseArrayJson(row.tags_json),
-      privacy_tags: parseArrayJson(row.privacy_tags_json),
-    });
+    ) => {
+      const temporalContract = temporalContractForObservation(row, { supersededIds });
+      return {
+        id: row.id,
+        position,
+        created_at: row.created_at,
+        event_time: row.event_time ?? null,
+        observed_at: row.observed_at ?? null,
+        valid_from: row.valid_from ?? null,
+        valid_to: row.valid_to ?? null,
+        supersedes: row.supersedes ?? null,
+        invalidated_at: row.invalidated_at ?? null,
+        temporal_state: temporalContract.state,
+        temporal_anchor: temporalContract.anchor,
+        temporal_anchor_kind: temporalContract.anchor_kind,
+        title: row.title,
+        content:
+          typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 1200) : "",
+        tags: parseArrayJson(row.tags_json),
+        privacy_tags: parseArrayJson(row.privacy_tags_json),
+      };
+    };
 
     const items = [
       ...beforeRows.reverse().map((row) => normalizeItem(row, "before")),
@@ -4449,6 +4578,7 @@ export class ObservationStore {
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       center_id: request.id,
+      temporal_state_counts: countTemporalStates(items as Array<Record<string, unknown>>),
       token_estimate: buildTokenEstimateMeta({
         input: {
           id: request.id,
@@ -4509,6 +4639,7 @@ export class ObservationStore {
       if (!includePrivate && isPrivateTag(privacyTags)) continue;
 
       const content = typeof row.content_redacted === "string" ? row.content_redacted : "";
+      const temporalContract = temporalContractForObservation(row);
 
       items.push({
         id,
@@ -4523,6 +4654,15 @@ export class ObservationStore {
         raw_text: typeof row.raw_text === "string" ? row.raw_text : null,
         created_at: row.created_at,
         updated_at: row.updated_at,
+        event_time: row.event_time ?? null,
+        observed_at: row.observed_at ?? null,
+        valid_from: row.valid_from ?? null,
+        valid_to: row.valid_to ?? null,
+        supersedes: row.supersedes ?? null,
+        invalidated_at: row.invalidated_at ?? null,
+        temporal_state: temporalContract.state,
+        temporal_anchor: temporalContract.anchor,
+        temporal_anchor_kind: temporalContract.anchor_kind,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: privacyTags,
       });
@@ -4553,6 +4693,7 @@ export class ObservationStore {
         output: items,
         strategy: "details",
       }),
+      temporal_state_counts: countTemporalStates(items),
       warnings,
     });
   }
@@ -4811,6 +4952,12 @@ export class ObservationStore {
           o.content_redacted,
           o.tags_json,
           o.privacy_tags_json,
+          o.event_time,
+          o.observed_at,
+          o.valid_from,
+          o.valid_to,
+          o.supersedes,
+          o.invalidated_at,
           o.created_at,
           e.event_type
         FROM mem_observations o
@@ -4845,6 +4992,12 @@ export class ObservationStore {
           o.content_redacted,
           o.tags_json,
           o.privacy_tags_json,
+          o.event_time,
+          o.observed_at,
+          o.valid_from,
+          o.valid_to,
+          o.supersedes,
+          o.invalidated_at,
           o.created_at,
           e.event_type
         FROM mem_observations o
@@ -4884,9 +5037,15 @@ export class ObservationStore {
     const compactItems: Array<Record<string, unknown>> = [];
     let usedTokens = 0;
     let originalTokens = 0;
+    const resumeSupersededIds = this.loadSupersededObservationIds(
+      rows.map((row) => (typeof row.id === "string" ? row.id : "")).filter(Boolean)
+    );
 
     for (const { row } of rankedRows) {
       const content = typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 800) : "";
+      const temporalContract = temporalContractForObservation(row, {
+        supersededIds: resumeSupersededIds,
+      });
       const fullItem = {
         id: row.id,
         type: "observation",
@@ -4898,6 +5057,15 @@ export class ObservationStore {
         title: row.title,
         content,
         created_at: row.created_at,
+        event_time: row.event_time ?? null,
+        observed_at: row.observed_at ?? null,
+        valid_from: row.valid_from ?? null,
+        valid_to: row.valid_to ?? null,
+        supersedes: row.supersedes ?? null,
+        invalidated_at: row.invalidated_at ?? null,
+        temporal_state: temporalContract.state,
+        temporal_anchor: temporalContract.anchor,
+        temporal_anchor_kind: temporalContract.anchor_kind,
         tags: parseArrayJson(row.tags_json),
         privacy_tags: parseArrayJson(row.privacy_tags_json),
       };
@@ -4916,6 +5084,13 @@ export class ObservationStore {
           type: "observation_summary",
           title,
           created_at: row.created_at,
+          event_time: row.event_time ?? null,
+          observed_at: row.observed_at ?? null,
+          valid_from: row.valid_from ?? null,
+          valid_to: row.valid_to ?? null,
+          temporal_state: temporalContract.state,
+          temporal_anchor: temporalContract.anchor,
+          temporal_anchor_kind: temporalContract.anchor_kind,
           summary: summaryLine,
         });
         usedTokens += estimateTokenCount(summaryLine);
@@ -5066,6 +5241,7 @@ export class ObservationStore {
       resume_pack_max_tokens: maxTokens,
       detailed_count: detailedItems.length,
       compacted_count: compactItems.length,
+      temporal_state_counts: countTemporalStates([...detailedItems, ...compactItems]),
       ...(latestInteractionMeta !== null ? { latest_interaction: latestInteractionMeta } : {}),
       ...(continuityBriefing !== null ? { continuity_briefing: continuityBriefing } : {}),
       ...(recentProjectContext !== null ? { recent_project_context: recentProjectContext } : {}),

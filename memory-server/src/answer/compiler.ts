@@ -29,6 +29,12 @@ export interface Evidence {
   relevance_score: number;
   /** When the observation was created. */
   created_at: string;
+  /** Short evidence label returned by search, for example E1. */
+  evidence_id?: string;
+  /** Temporal state assigned before answer generation. */
+  temporal_state?: "current" | "historical" | "superseded" | "unknown";
+  /** Best temporal anchor used for ordering / point-in-time reasoning. */
+  temporal_anchor?: string | null;
   /** Tags associated with this observation. */
   tags: string[];
 }
@@ -53,6 +59,8 @@ export interface CompiledAnswer {
     cross_session: boolean;
     /** Number of evidence items excluded by privacy filters. */
     privacy_excluded: number;
+    /** Evidence count per temporal state. */
+    temporal_state_counts: Record<"current" | "historical" | "superseded" | "unknown", number>;
   };
 }
 
@@ -68,6 +76,9 @@ export interface CompilerInput {
     tags_json: string;
     session_id: string;
     final_score: number;
+    evidence_id?: string;
+    temporal_state?: "current" | "historical" | "superseded" | "unknown";
+    temporal_anchor?: string | null;
   }>;
   privacy_excluded_count: number;
 }
@@ -98,6 +109,9 @@ export function compileAnswer(input: CompilerInput): CompiledAnswer {
       content: obs.content_redacted,
       relevance_score: obs.final_score,
       created_at: obs.created_at,
+      evidence_id: obs.evidence_id,
+      temporal_state: obs.temporal_state,
+      temporal_anchor: obs.temporal_anchor ?? null,
       tags,
     };
   });
@@ -118,6 +132,15 @@ export function compileAnswer(input: CompilerInput): CompiledAnswer {
       newest: sorted[sorted.length - 1]!.created_at,
     };
   }
+  const temporalStateCounts: Record<"current" | "historical" | "superseded" | "unknown", number> = {
+    current: 0,
+    historical: 0,
+    superseded: 0,
+    unknown: 0,
+  };
+  for (const item of evidence) {
+    temporalStateCounts[item.temporal_state ?? "unknown"] += 1;
+  }
 
   return {
     question_kind: input.question_kind,
@@ -129,6 +152,7 @@ export function compileAnswer(input: CompilerInput): CompiledAnswer {
       time_span: timeSpan,
       cross_session: crossSession,
       privacy_excluded: input.privacy_excluded_count,
+      temporal_state_counts: temporalStateCounts,
     },
   };
 }

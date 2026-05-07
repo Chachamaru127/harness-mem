@@ -305,6 +305,63 @@ describe("observation-store: search", () => {
     expect((noLonger.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-migration");
   });
 
+  test("point-in-time evidence contract labels current, historical, superseded, and unknown rows", async () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-package-old",
+      title: "previous package manager",
+      content: "Previous package manager was npm before the migration.",
+      project: "proj-temporal-contract",
+      event_time: "2024-01-01T00:00:00.000Z",
+      valid_to: "2024-03-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-package-current",
+      title: "current package manager",
+      content: "Current package manager is bun and it is still active.",
+      project: "proj-temporal-contract",
+      event_time: "2024-03-01T00:00:00.000Z",
+      valid_from: "2024-03-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-package-unknown",
+      title: "package manager note",
+      content: "Package manager note without a temporal anchor.",
+      project: "proj-temporal-contract",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+    db.query(
+      `INSERT INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+       VALUES (?, ?, 'supersedes', 1.0, ?)`
+    ).run("obs-temporal-package-current", "obs-temporal-package-old", "2026-05-02T00:00:00.000Z");
+
+    const search = store.search({
+      query: "package manager",
+      project: "proj-temporal-contract",
+      strict_project: true,
+      include_private: true,
+      limit: 10,
+    });
+    expect(search.ok).toBe(true);
+    const byId = new Map((search.items as Array<Record<string, unknown>>).map((item) => [item.id, item]));
+    expect(byId.get("obs-temporal-package-current")?.temporal_state).toBe("current");
+    expect(byId.get("obs-temporal-package-old")?.temporal_state).toBe("superseded");
+    expect(byId.get("obs-temporal-package-unknown")?.temporal_state).toBe("unknown");
+    expect((search.items[0] as Record<string, unknown>).evidence_id).toBe("E1");
+    const compiled = search.meta.compiled as Record<string, unknown>;
+    expect((compiled.temporal_state_counts as Record<string, number>).current).toBeGreaterThanOrEqual(1);
+    expect((compiled.temporal_state_counts as Record<string, number>).superseded).toBeGreaterThanOrEqual(1);
+
+    const timeline = await store.timeline({ id: "obs-temporal-package-current", include_private: true, before: 2, after: 2 });
+    expect(timeline.ok).toBe(true);
+    const timelineById = new Map((timeline.items as Array<Record<string, unknown>>).map((item) => [item.id, item]));
+    expect(timelineById.get("obs-temporal-package-current")?.temporal_state).toBe("current");
+    expect(timelineById.get("obs-temporal-package-old")?.temporal_state).toBe("superseded");
+    expect((timeline.meta.temporal_state_counts as Record<string, number>).current).toBeGreaterThanOrEqual(1);
+  });
+
   test("空クエリでもエラーにならない（ok=false）", () => {
     const { store } = makeStore();
     const res = store.search({ query: "", project: "proj-obs" });
