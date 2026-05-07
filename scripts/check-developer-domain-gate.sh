@@ -37,7 +37,11 @@ if [ ! -f "${THRESHOLDS_PATH}" ]; then
 fi
 
 # Read mode (warn | enforce)
+# S108-005: HARNESS_MEM_DEVDOMAIN_GATE env override (warn|enforce) takes precedence over JSON.
 MODE="$(jq -r '.mode // "warn"' "${THRESHOLDS_PATH}")"
+if [ -n "${HARNESS_MEM_DEVDOMAIN_GATE:-}" ]; then
+  MODE="${HARNESS_MEM_DEVDOMAIN_GATE}"
+fi
 
 # Read thresholds
 T_DEV_WORKFLOW="$(jq -r '.dev_workflow_recall_10' "${THRESHOLDS_PATH}")"

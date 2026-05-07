@@ -4,10 +4,10 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/hero.png" alt="Harness-mem — Claude Code と Codex で共有する1つのローカルメモリ" width="820" />
 </p>
 
-<p align="center"><strong>プロジェクトごとに、1つの記憶。すべての AI コーディングエージェントで。</strong></p>
+<p align="center"><strong>AI コーディングセッション向けのローカルなプロジェクトメモリ — 汎用メモリ API ではなく、コーディングセッション継続のためのランタイム。</strong></p>
 
 <p align="center">
-  Claude Code にも、Codex にも、Cursor にも、昨日の作業を説明し直さなくていい。harness-mem は<em>プロジェクト単位で</em> 1 つのローカル SQLite を、あなたが使うすべての AI コーディングエージェントに共有します。コールドスタート ~5ms。クラウドゼロ、API キーゼロ。
+  harness-mem は<em>プロジェクト単位で</em> 1 つのローカル SQLite を持ち、次の Claude Code / Codex セッションが空白からではなく、昨日の続きから始められるようにします。コールドスタート ~5ms。クラウドゼロ、API キーゼロ。
 </p>
 
 <p align="center">

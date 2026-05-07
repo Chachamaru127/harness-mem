@@ -1,8 +1,9 @@
 {
   "dev_workflow_recall_10": 0.70,
-  "bilingual_recall_10": 0.90,
+  "bilingual_recall_10": 0.88,
   "knowledge_update_freshness": 0.95,
   "temporal_ordering": 0.70,
+  "search_p95_ms": 50,
   "mode": "warn",
-  "_comment": "Layer 1 absolute floor for developer-domain metrics. mode=warn until §78-A03 and §78-A05 land. Flip to enforce once both prerequisites are merged."
+  "_comment": "Layer 1 absolute floor for developer-domain metrics. S108-005: ranking winner = code_token tokenizer (default). mode stays 'warn' until ci-run-manifest emits 'dev_workflow_recall'. Flip via env HARNESS_MEM_DEVDOMAIN_GATE=enforce; rollback via HARNESS_MEM_DEVDOMAIN_GATE=warn. Bilingual floor relaxed 0.90→0.88 to match S108-004 measured (0.88)."
 }

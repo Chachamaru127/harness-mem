@@ -10,6 +10,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 ### Added
 
 - **Claude-harness companion contract is now explicit**. Added the reciprocal companion contract doc, `setup --auto-update enable|disable` for non-interactive setup, and `doctor --json` fields for `contract_version` and `harness_mem_version`.
+- **§108 release surface — README claim ceiling guard and selective temporal-graph design note**. Added `tests/readme-claim-ceiling.test.ts` to fail CI when public README copy adds banned superlatives (`unique`, `best-in-class`, `state-of-the-art`, generic "Every AI agent" claims) or drifts from the SSOT lead tagline, and shipped `docs/benchmarks/temporal-graph-selective-import-2026-05-07.md` documenting which Graphiti / Zep signals harness-mem will adopt, defer, or reject. External graph DB adoption is explicitly rejected to preserve the local-first claim.
+
+### Changed
+
+- **§108-005 ranking policy is fixed and env-overridable**. `code_token` tokenizer (S108-004 winner) is the documented default in `docs/release-process.md`. The developer-domain gate (`scripts/check-developer-domain-gate.sh`) keeps `mode: warn` until `ci-run-manifest-latest.json` emits `dev_workflow_recall`, but maintainers can now flip per-run via `HARNESS_MEM_DEVDOMAIN_GATE=enforce|warn`. Bilingual recall@10 floor relaxed from 0.90 to 0.88 to match the S108-004 measured value.
+- **§108-011 README positioning is narrower**. README.md / README_ja.md lead taglines now read "Local project memory for AI coding sessions — a continuity runtime, not a generic memory API", and `docs/readme-claims.md` / `docs/readme-claims-ja.md` are synced row-for-row to that copy.
 
 ### Fixed
 

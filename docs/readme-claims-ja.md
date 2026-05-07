@@ -15,7 +15,7 @@
 
 | README の主張 | 正本 | 状態 | 注記 |
 |---|---|---|---|
-| One project. One memory. Every AI coding agent. | `README.md`、architecture docs、supported tools 一覧 | bounded | 対応している local runtime surface については正しいが、将来の全クライアントを保証するものではない。 |
+| Local project memory for AI coding sessions — a continuity runtime, not a generic memory API. | `README.md`、architecture docs、supported tools 一覧 | bounded | スコープは Claude Code + Codex (Tier 1) / Cursor (Tier 2) の local runtime に限定。Every agent 表現には拡げない。S108-011。 |
 | Stop re-explaining yesterday's work. | session continuity docs と `docs/harness-mem-setup.md` の hook 挙動 | bounded | hook path が健全で daemon が動作している場合に成立する。 |
 | ~5ms cold start. | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` と Go MCP の bench artifact | measured | スコープは Go MCP 層の cold start であり、アプリ全体ではない。 |
 | Zero cloud, zero API keys. | local SQLite の architecture と setup guide | stable | core runtime は local のまま。任意の外部連携まで含めて拡張しない。 |
