@@ -111,6 +111,12 @@ export function insertTestObservation(
     observation_type?: string;
     tags?: string[];
     privacy_tags?: string[];
+    event_time?: string | null;
+    observed_at?: string | null;
+    valid_from?: string | null;
+    valid_to?: string | null;
+    supersedes?: string | null;
+    invalidated_at?: string | null;
     created_at?: string;
   } = {}
 ): string {
@@ -142,9 +148,34 @@ export function insertTestObservation(
 
   // Insert observation
   db.query(
-    `INSERT OR IGNORE INTO mem_observations (id, event_id, platform, project, session_id, title, content, content_redacted, observation_type, tags_json, privacy_tags_json, signal_score, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
-  ).run(id, eventId, platform, project, sessionId, title, content, content, observationType, JSON.stringify(tags), JSON.stringify(privacyTags), createdAt, createdAt);
+    `INSERT OR IGNORE INTO mem_observations (
+       id, event_id, platform, project, session_id, title, content, content_redacted,
+       observation_type, tags_json, privacy_tags_json, signal_score,
+       event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+       created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?)`
+  ).run(
+    id,
+    eventId,
+    platform,
+    project,
+    sessionId,
+    title,
+    content,
+    content,
+    observationType,
+    JSON.stringify(tags),
+    JSON.stringify(privacyTags),
+    opts.event_time ?? null,
+    opts.observed_at ?? createdAt,
+    opts.valid_from ?? null,
+    opts.valid_to ?? null,
+    opts.supersedes ?? null,
+    opts.invalidated_at ?? null,
+    createdAt,
+    createdAt
+  );
 
   return id;
 }

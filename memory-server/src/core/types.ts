@@ -39,6 +39,21 @@ export interface EventEnvelope {
    */
   expires_at?: string | number | null;
   /**
+   * S108-007: Time the observed content refers to. null / missing means
+   * explicit unknown; callers must not silently fall back to observed_at.
+   */
+  event_time?: string | number | null;
+  /** S108-007: Time this record was observed/ingested by the source tool. */
+  observed_at?: string | number | null;
+  /** S108-007: Start of the value/relation validity window. */
+  valid_from?: string | number | null;
+  /** S108-007: End of the value/relation validity window. */
+  valid_to?: string | number | null;
+  /** S108-007: ID this observation/fact/relation supersedes, if known. */
+  supersedes?: string | null;
+  /** S108-007: Time this observation/fact/relation became invalid. */
+  invalidated_at?: string | number | null;
+  /**
    * S78-E02: Branch-scoped memory — git ブランチ名。
    * null / 未指定 = ブランチスコープなし。カラーは常に呼び出し元が明示的に渡す（自動検出なし）。
    */
@@ -326,6 +341,18 @@ export interface CreateLinkRequest {
   /** 関係性タイプ: updates(上書き) / extends(補足) / derives(推論) / follows / shared_entity / contradicts / causes / part_of */
   relation: RelationType;
   weight?: number;
+  /** S108-007: event/relation time; null means explicit unknown. */
+  event_time?: string | number | null;
+  /** S108-007: observed/ingested time for this relation. Defaults to creation time. */
+  observed_at?: string | number | null;
+  /** S108-007: relation validity start. */
+  valid_from?: string | number | null;
+  /** S108-007: relation validity end. */
+  valid_to?: string | number | null;
+  /** S108-007: relation/link ID or observation ID this relation supersedes. */
+  supersedes?: string | null;
+  /** S108-007: relation invalidation time. */
+  invalidated_at?: string | number | null;
 }
 
 /** IMP-002: メモリリンク取得リクエスト */
@@ -414,8 +441,12 @@ export interface FactHistoryEntry {
   fact_key: string;
   fact_value: string;
   confidence: number;
+  event_time: string | null;
+  observed_at: string | null;
   valid_from: string | null;
   valid_to: string | null;
+  supersedes: string | null;
+  invalidated_at: string | null;
   superseded_by: string | null;
   is_active: boolean;
   created_at: string;

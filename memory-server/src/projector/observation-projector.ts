@@ -44,11 +44,18 @@ export class ObservationProjector implements Projector {
             `INSERT INTO mem_observations (
               id, event_id, platform, project, workspace_uid, session_id,
               title, content, content_redacted, observation_type,
+              event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
               tags_json, privacy_tags_json, created_at, updated_at
-            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW(), NOW())
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
             ON CONFLICT (id) DO UPDATE SET
               content = EXCLUDED.content,
               content_redacted = EXCLUDED.content_redacted,
+              event_time = EXCLUDED.event_time,
+              observed_at = EXCLUDED.observed_at,
+              valid_from = EXCLUDED.valid_from,
+              valid_to = EXCLUDED.valid_to,
+              supersedes = EXCLUDED.supersedes,
+              invalidated_at = EXCLUDED.invalidated_at,
               updated_at = NOW()`,
             [
               event.observation_id,
@@ -61,6 +68,12 @@ export class ObservationProjector implements Projector {
               content,
               contentRedacted,
               event.event_type === "checkpoint" ? "checkpoint" : "context",
+              event.event_time ?? null,
+              event.observed_at ?? event.ts,
+              event.valid_from ?? null,
+              event.valid_to ?? null,
+              event.supersedes ?? null,
+              event.invalidated_at ?? null,
               event.tags_json,
               event.privacy_tags_json,
             ]

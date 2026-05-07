@@ -1,0 +1,37 @@
+{
+  "schema_version": "s108-temporal-planner.v1",
+  "generated_at": "2026-05-07T02:34:22.949Z",
+  "task_id": "S108-008",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
+    "total_cases": 66,
+    "evaluated_cases": 66
+  },
+  "metrics": {
+    "temporal_order_score": 0.7525,
+    "answer_top1_rate": 0.7121,
+    "answer_hit_at_10": 0.8333,
+    "japanese_temporal_slice": 0.7778,
+    "current_stale_answer_regressions": 0
+  },
+  "gates": {
+    "temporal_order_score": {
+      "threshold": 0.7,
+      "passed": true
+    },
+    "japanese_temporal_slice": {
+      "threshold": 0.72,
+      "passed": true
+    },
+    "current_stale_answer_regressions": {
+      "threshold": 0,
+      "passed": true
+    }
+  },
+  "overall_passed": true,
+  "artifacts": {
+    "summary_json": "docs/benchmarks/artifacts/s108-temporal-planner-2026-05-07/summary.json",
+    "case_results_json": "docs/benchmarks/artifacts/s108-temporal-planner-2026-05-07/case-results.json",
+    "summary_md": "docs/benchmarks/artifacts/s108-temporal-planner-2026-05-07/summary.md"
+  }
+}

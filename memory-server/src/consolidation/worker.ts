@@ -115,7 +115,8 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
   const observations = db
     .query(
       `
-        SELECT id, title, content_redacted, observation_type
+        SELECT id, title, content_redacted, observation_type,
+               event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at
         FROM mem_observations
         WHERE project = ? AND session_id = ?
         ORDER BY created_at ASC
@@ -126,6 +127,12 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
     title: string;
     content_redacted: string;
     observation_type: string;
+    event_time: string | null;
+    observed_at: string | null;
+    valid_from: string | null;
+    valid_to: string | null;
+    supersedes: string | null;
+    invalidated_at: string | null;
   }>;
 
   let inserted = 0;
@@ -152,6 +159,12 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         const fact = diffResult.new_facts[i];
         const factId = createFactId(project, sessionId, fact.fact_key, observation.id);
         const validFrom = nowIso();
+        const factEventTime = observation.event_time ?? null;
+        const factObservedAt = observation.observed_at ?? validFrom;
+        const factValidFrom = observation.valid_from ?? factEventTime ?? validFrom;
+        const factValidTo = observation.valid_to ?? null;
+        const factSupersedes = diffResult.supersedes[i] ?? observation.supersedes ?? null;
+        const factInvalidatedAt = observation.invalidated_at ?? null;
         const row = db
           .query(
             `
@@ -164,10 +177,15 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
                 fact_key,
                 fact_value,
                 confidence,
+                event_time,
+                observed_at,
                 valid_from,
+                valid_to,
+                supersedes,
+                invalidated_at,
                 created_at,
                 updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `
           )
           .run(
@@ -179,7 +197,12 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
             fact.fact_key,
             fact.fact_value,
             fact.confidence,
-            validFrom,
+            factEventTime,
+            factObservedAt,
+            factValidFrom,
+            factValidTo,
+            factSupersedes,
+            factInvalidatedAt,
             validFrom,
             validFrom
           );
@@ -203,8 +226,10 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
           const expiredAt = nowIso();
           for (const decision of decisions) {
             db.query(
-              `UPDATE mem_facts SET superseded_by = ?, valid_to = ?, updated_at = ? WHERE fact_id = ? AND superseded_by IS NULL`
-            ).run(decision.superseded_by, expiredAt, expiredAt, decision.fact_id);
+              `UPDATE mem_facts
+               SET superseded_by = ?, valid_to = ?, invalidated_at = ?, updated_at = ?
+               WHERE fact_id = ? AND superseded_by IS NULL`
+            ).run(decision.superseded_by, expiredAt, expiredAt, expiredAt, decision.fact_id);
           }
           // 既存ファクトリストからも除外（後続ループで重複処理しないよう）
           const idx = existingFacts.findIndex((ef) => ef.fact_id === supersededOldId);
@@ -222,8 +247,10 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         const expiredAt = nowIso();
         for (const decision of decisions) {
           db.query(
-            `UPDATE mem_facts SET superseded_by = ?, valid_to = ?, updated_at = ? WHERE fact_id = ? AND superseded_by IS NULL`
-          ).run(decision.superseded_by, expiredAt, expiredAt, decision.fact_id);
+            `UPDATE mem_facts
+             SET superseded_by = ?, valid_to = ?, invalidated_at = ?, updated_at = ?
+             WHERE fact_id = ? AND superseded_by IS NULL`
+          ).run(decision.superseded_by, expiredAt, expiredAt, expiredAt, decision.fact_id);
           // 既存ファクトリストからも除外
           const idx = existingFacts.findIndex((ef) => ef.fact_id === decision.fact_id);
           if (idx >= 0) {
@@ -255,6 +282,12 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
       for (const fact of facts) {
         const factId = createFactId(project, sessionId, fact.fact_key, observation.id);
         const validFrom = nowIso();
+        const factEventTime = observation.event_time ?? null;
+        const factObservedAt = observation.observed_at ?? validFrom;
+        const factValidFrom = observation.valid_from ?? factEventTime ?? validFrom;
+        const factValidTo = observation.valid_to ?? null;
+        const factSupersedes = observation.supersedes ?? null;
+        const factInvalidatedAt = observation.invalidated_at ?? null;
         const row = db
           .query(
             `
@@ -267,10 +300,15 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
                 fact_key,
                 fact_value,
                 confidence,
+                event_time,
+                observed_at,
                 valid_from,
+                valid_to,
+                supersedes,
+                invalidated_at,
                 created_at,
                 updated_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `
           )
           .run(
@@ -282,7 +320,12 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
             fact.fact_key,
             fact.fact_value,
             fact.confidence,
-            validFrom,
+            factEventTime,
+            factObservedAt,
+            factValidFrom,
+            factValidTo,
+            factSupersedes,
+            factInvalidatedAt,
             validFrom,
             validFrom
           );

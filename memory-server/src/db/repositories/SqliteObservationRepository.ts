@@ -24,6 +24,7 @@ const DEFAULT_FIND_MANY_SQL = `
     last_accessed_at,
     COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
     COALESCE(user_id, 'default') AS user_id, team_id,
+    event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
     thread_id, topic, expires_at, branch,
     created_at, updated_at
   FROM mem_observations
@@ -58,10 +59,11 @@ export class SqliteObservationRepository implements IObservationRepository {
           title, content, content_redacted, observation_type, memory_type,
           tags_json, privacy_tags_json,
           signal_score, user_id, team_id,
+          event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
           thread_id, topic, expires_at, branch,
           created_at, updated_at,
           title_fts, content_fts
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `)
       .run(
         input.id,
@@ -79,6 +81,12 @@ export class SqliteObservationRepository implements IObservationRepository {
         input.signal_score ?? 0,
         input.user_id ?? "default",
         input.team_id ?? null,
+        input.event_time ?? null,
+        input.observed_at ?? input.created_at,
+        input.valid_from ?? null,
+        input.valid_to ?? null,
+        input.supersedes ?? null,
+        input.invalidated_at ?? null,
         input.thread_id ?? null,
         input.topic ?? null,
         input.expires_at ?? null,
@@ -104,6 +112,7 @@ export class SqliteObservationRepository implements IObservationRepository {
           last_accessed_at,
           COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
           COALESCE(user_id, 'default') AS user_id, team_id,
+          event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
           thread_id, topic, expires_at, branch,
           created_at, updated_at
         FROM mem_observations
@@ -134,6 +143,7 @@ export class SqliteObservationRepository implements IObservationRepository {
             last_accessed_at,
             COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
             COALESCE(user_id, 'default') AS user_id, team_id,
+            event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
             thread_id, topic, expires_at, branch,
             created_at, updated_at
           FROM mem_observations
@@ -162,6 +172,7 @@ export class SqliteObservationRepository implements IObservationRepository {
         last_accessed_at,
         COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
         COALESCE(user_id, 'default') AS user_id, team_id,
+        event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
         thread_id, topic, expires_at, branch,
         created_at, updated_at
       FROM mem_observations

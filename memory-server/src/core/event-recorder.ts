@@ -27,6 +27,7 @@ import {
   makeResponse,
   makeErrorResponse,
   normalizeExpiresAt,
+  normalizeTemporalTimestamp,
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
@@ -207,6 +208,30 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   });
 }
 
+function firstTemporalValue(
+  event: EventEnvelope,
+  payload: Record<string, unknown>,
+  key: "event_time" | "observed_at" | "valid_from" | "valid_to" | "invalidated_at",
+): unknown {
+  const direct = event[key];
+  if (direct !== undefined) return direct;
+  const payloadValue = payload[key];
+  if (payloadValue !== undefined) return payloadValue;
+  const metadata = parseJsonSafe(event.metadata);
+  return metadata[key];
+}
+
+function firstTemporalId(
+  event: EventEnvelope,
+  payload: Record<string, unknown>,
+  key: "supersedes",
+): string | null {
+  const direct = event[key];
+  const candidate = direct !== undefined ? direct : payload[key] ?? parseJsonSafe(event.metadata)[key];
+  if (typeof candidate !== "string") return null;
+  const normalized = candidate.trim();
+  return normalized ? normalized : null;
+}
 
 // IMP-009: Signal Extraction
 const SIGNAL_BOOST_PATTERNS: RegExp[] = [
@@ -585,6 +610,14 @@ export class EventRecorder {
     content: string,
     tags: string[],
     createdAt: string,
+    temporal: {
+      event_time: string | null;
+      observed_at: string;
+      valid_from: string | null;
+      valid_to: string | null;
+      supersedes: string | null;
+      invalidated_at: string | null;
+    },
   ): void {
     try {
       const { entities, relations } = extractEntitiesAndRelations(content, tags);
@@ -593,11 +626,28 @@ export class EventRecorder {
       const strength = entities.length > 1 ? 1 / entities.length : 1.0;
 
       const insertRelStmt = this.deps.db.query(`
-        INSERT INTO mem_relations(src, dst, kind, strength, observation_id, created_at)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO mem_relations(
+          src, dst, kind, strength, observation_id,
+          event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+          created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const rel of relations) {
-        insertRelStmt.run(rel.src, rel.dst, rel.kind, strength, observationId, createdAt);
+        insertRelStmt.run(
+          rel.src,
+          rel.dst,
+          rel.kind,
+          strength,
+          observationId,
+          temporal.event_time,
+          temporal.observed_at,
+          temporal.valid_from,
+          temporal.valid_to,
+          temporal.supersedes,
+          temporal.invalidated_at,
+          createdAt,
+        );
       }
     } catch {
       // best effort
@@ -923,6 +973,14 @@ export class EventRecorder {
     const teamId = (typeof event.team_id === "string" && event.team_id.trim() ? event.team_id.trim() : null)
       ?? this.deps.config.teamId
       ?? null;
+    const temporalAnchors = {
+      event_time: normalizeTemporalTimestamp(firstTemporalValue(event, payload, "event_time")),
+      observed_at: normalizeTemporalTimestamp(firstTemporalValue(event, payload, "observed_at")) ?? timestamp,
+      valid_from: normalizeTemporalTimestamp(firstTemporalValue(event, payload, "valid_from")),
+      valid_to: normalizeTemporalTimestamp(firstTemporalValue(event, payload, "valid_to")),
+      supersedes: firstTemporalId(event, payload, "supersedes"),
+      invalidated_at: normalizeTemporalTimestamp(firstTemporalValue(event, payload, "invalidated_at")),
+    };
 
     try {
       const transaction = this.deps.db.transaction(() => {
@@ -1005,9 +1063,10 @@ export class EventRecorder {
               title, content, content_redacted, content_dedupe_hash, raw_text, observation_type, memory_type,
               tags_json, privacy_tags_json,
               signal_score, user_id, team_id,
+              event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
               thread_id, topic, expires_at, branch,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
@@ -1019,6 +1078,12 @@ export class EventRecorder {
               tags_json = excluded.tags_json,
               privacy_tags_json = excluded.privacy_tags_json,
               signal_score = excluded.signal_score,
+              event_time = excluded.event_time,
+              observed_at = excluded.observed_at,
+              valid_from = excluded.valid_from,
+              valid_to = excluded.valid_to,
+              supersedes = excluded.supersedes,
+              invalidated_at = excluded.invalidated_at,
               thread_id = excluded.thread_id,
               topic = excluded.topic,
               expires_at = excluded.expires_at,
@@ -1043,6 +1108,12 @@ export class EventRecorder {
             signalScore,
             userId,
             teamId,
+            temporalAnchors.event_time,
+            temporalAnchors.observed_at,
+            temporalAnchors.valid_from,
+            temporalAnchors.valid_to,
+            temporalAnchors.supersedes,
+            temporalAnchors.invalidated_at,
             threadId,
             topic,
             expiresAt,
@@ -1113,7 +1184,7 @@ export class EventRecorder {
         }
         this.extractAndStoreEntities(observationId, redactedContent, timestamp);
         // S78-C02: Populate co-occurrence relations for graph memory
-        this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp);
+        this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp, temporalAnchors);
         this.autoLinkObservation(observationId, event.session_id, timestamp);
         this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
 
@@ -1197,6 +1268,12 @@ export class EventRecorder {
         content: redactedContent.slice(0, 1200),
         observation_type: observationType,
         memory_type: memoryType,
+        event_time: temporalAnchors.event_time,
+        observed_at: temporalAnchors.observed_at,
+        valid_from: temporalAnchors.valid_from,
+        valid_to: temporalAnchors.valid_to,
+        supersedes: temporalAnchors.supersedes,
+        invalidated_at: temporalAnchors.invalidated_at,
         tags,
         privacy_tags: privacyTags,
       };
@@ -1218,6 +1295,12 @@ export class EventRecorder {
         dedupe_hash: dedupeHash,
         observation_id: observationId,
         correlation_id: event.correlation_id || undefined,
+        event_time: temporalAnchors.event_time,
+        observed_at: temporalAnchors.observed_at,
+        valid_from: temporalAnchors.valid_from,
+        valid_to: temporalAnchors.valid_to,
+        supersedes: temporalAnchors.supersedes,
+        invalidated_at: temporalAnchors.invalidated_at,
         created_at: current,
       };
       this.deps.replicateManagedEvent(storedEvent);

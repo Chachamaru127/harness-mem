@@ -113,6 +113,38 @@ describe("SqliteObservationRepository: insert", () => {
     const row = await repo.findById(rest.id);
     expect(row?.memory_type).toBe("semantic");
   });
+
+  test("S108-007 temporal anchors are persisted and unknown event_time stays null", async () => {
+    const db = createDb();
+    openDbs.push(db);
+    ensureSession(db, "session-001");
+    const repo = new SqliteObservationRepository(db);
+
+    const input = makeInput({
+      id: "obs_temporal_repo",
+      event_time: "2026-05-01T10:00:00.000Z",
+      observed_at: "2026-05-02T10:00:00.000Z",
+      valid_from: "2026-05-01T00:00:00.000Z",
+      valid_to: "2026-05-03T00:00:00.000Z",
+      supersedes: "obs_previous",
+      invalidated_at: "2026-05-04T00:00:00.000Z",
+    });
+
+    await repo.insert(input);
+    const row = await repo.findById(input.id);
+    expect(row?.event_time).toBe("2026-05-01T10:00:00.000Z");
+    expect(row?.observed_at).toBe("2026-05-02T10:00:00.000Z");
+    expect(row?.valid_from).toBe("2026-05-01T00:00:00.000Z");
+    expect(row?.valid_to).toBe("2026-05-03T00:00:00.000Z");
+    expect(row?.supersedes).toBe("obs_previous");
+    expect(row?.invalidated_at).toBe("2026-05-04T00:00:00.000Z");
+
+    const unknown = makeInput({ id: "obs_temporal_unknown" });
+    await repo.insert(unknown);
+    const unknownRow = await repo.findById(unknown.id);
+    expect(unknownRow?.event_time).toBeNull();
+    expect(unknownRow?.observed_at).toBe(unknown.created_at);
+  });
 });
 
 // ---------------------------------------------------------------------------

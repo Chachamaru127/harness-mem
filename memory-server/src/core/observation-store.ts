@@ -637,10 +637,18 @@ const TEMPORAL_INTENT_PATTERN =
   /\b(when|before|after|since|until|during|between|timeline|history|chronolog|first|last|earliest|latest|how long|what year|what month|what date)\b|(の前|の後|以前|以降|最初|最後|直近|最近)/i;
 const JAPANESE_CURRENT_PATTERN = /(今|現在|今の|現行|最新|使っている)/;
 const JAPANESE_PREVIOUS_PATTERN = /(以前|前の|前回|前は|もともと|元は|最初は|当初|当時|直後|初期|変える前|見直す前|移す前|切り替える前|変更前)/;
+const JAPANESE_STILL_PATTERN = /(今も|現在も|まだ|引き続き|継続|使い続け|残っている)/;
+const JAPANESE_NO_LONGER_PATTERN = /(今は使っていない|使っていない|もう.*ない|廃止|終了|無効|不要|やめた|なくなった)/;
 const JAPANESE_REASON_PATTERN = /(なぜ|理由|きっかけ|どうして|背景|原因)/;
 const JAPANESE_LIST_PATTERN = /(一覧|すべて|全て|挙げて|列挙)/;
 const JAPANESE_TEMPORAL_ORDER_PATTERN = /(どちらが先|先に|最後|最初|以前|前回|次に|その後|いつ|何時|変える前|見直す前|移す前|切り替える前|変更前)/;
 const CURRENT_CUE_PATTERN = /\b(current|currently|now|latest|active|in use|used now)\b/i;
+const STILL_CUE_PATTERN = /\b(still|continues?|remaining|active|in use|used now)\b/i;
+const NO_LONGER_CUE_PATTERN = /\b(no longer|not used|not in use|deprecated|removed|inactive|disabled|superseded)\b/i;
+const FIRST_CUE_PATTERN = /\b(first|earliest|initial|initially|at launch|launch)\b/i;
+const LATEST_CUE_PATTERN = /\b(last|latest|newest|most recent|recent status)\b/i;
+const AFTER_CUE_PATTERN = /\b(after|right after|following|since)\b/i;
+const BEFORE_CUE_PATTERN = /\b(before|prior to|until)\b/i;
 const CURRENT_SLOT_ONLY_PATTERN = /\b(default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
 const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
@@ -659,6 +667,14 @@ function hasTemporalIntent(query: string): boolean {
 
 function hasPreviousValueIntent(query: string): boolean {
   return PREVIOUS_CUE_PATTERN.test(query) || JAPANESE_PREVIOUS_PATTERN.test(query);
+}
+
+function hasCurrentValueIntent(query: string): boolean {
+  return CURRENT_CUE_PATTERN.test(query) || JAPANESE_CURRENT_PATTERN.test(query) || STILL_CUE_PATTERN.test(query) || JAPANESE_STILL_PATTERN.test(query);
+}
+
+function hasNoLongerIntent(query: string): boolean {
+  return NO_LONGER_CUE_PATTERN.test(query) || JAPANESE_NO_LONGER_PATTERN.test(query);
 }
 
 function hasSpecificTemporalAnswerCue(query: string): boolean {
@@ -682,6 +698,80 @@ function prefersDescendingTemporalOrder(query: string): boolean {
 
 function compareCreatedAt(lhs: string | null | undefined, rhs: string | null | undefined): number {
   return String(lhs || "").localeCompare(String(rhs || ""));
+}
+
+function temporalAnchorForObservation(observation: Record<string, unknown> | undefined): string {
+  if (!observation) return "";
+  for (const key of ["event_time", "valid_from", "observed_at", "created_at"]) {
+    const value = observation[key];
+    if (typeof value === "string" && value.trim()) return value;
+  }
+  return "";
+}
+
+function observationTemporalText(observation: Record<string, unknown> | undefined): string {
+  if (!observation) return "";
+  return `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`.toLowerCase();
+}
+
+type TemporalPlannerMode = "current" | "previous" | "previous_current" | "no_longer" | "after" | "before" | "first" | "latest" | "chronology";
+
+function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
+  const normalized = query.toLowerCase();
+  if (hasNoLongerIntent(query)) return "no_longer";
+  if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\b(now|before)\b/i.test(query) || /(現在|今)/.test(query))) {
+    return "previous_current";
+  }
+  if (hasPreviousValueIntent(query)) return "previous";
+  if (AFTER_CUE_PATTERN.test(query) || /(直後|その後|以降|の後|後で|あとで)/.test(query)) return "after";
+  if (BEFORE_CUE_PATTERN.test(query) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(query)) return "before";
+  if (FIRST_CUE_PATTERN.test(query) || /(最初|初回|当初)/.test(query)) return "first";
+  if (LATEST_CUE_PATTERN.test(query) || /(最後|最新|直近|最近)/.test(query)) return "latest";
+  if (hasCurrentValueIntent(query)) return "current";
+  if (/\bcurrent\b/.test(normalized)) return "current";
+  return "chronology";
+}
+
+function temporalStateScore(
+  query: string,
+  mode: TemporalPlannerMode,
+  observation: Record<string, unknown> | undefined
+): number {
+  const text = observationTemporalText(observation);
+  const invalidated = Boolean(observation?.invalidated_at || observation?.valid_to);
+  const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text) || STILL_CUE_PATTERN.test(text) || JAPANESE_STILL_PATTERN.test(text);
+  const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
+  const hasNoLongerCue = NO_LONGER_CUE_PATTERN.test(text) || JAPANESE_NO_LONGER_PATTERN.test(text);
+  const hasFirstCue = FIRST_CUE_PATTERN.test(text) || /(最初|初回|当初)/.test(text);
+  const hasLatestCue = LATEST_CUE_PATTERN.test(text) || /(最後|最新|直近|最近)/.test(text);
+  const hasAfterCue = AFTER_CUE_PATTERN.test(text) || /(直後|その後|以降|の後|後で|あとで)/.test(text);
+  const hasBeforeCue = BEFORE_CUE_PATTERN.test(text) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(text);
+
+  if (mode === "current") {
+    return (invalidated ? -2 : 2) + (hasCurrentCue ? 3 : 0);
+  }
+  if (mode === "previous") {
+    return (hasPreviousCue ? 3 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
+  }
+  if (mode === "previous_current") {
+    return (hasPreviousCue ? 3 : 0) + (hasCurrentCue || hasLatestCue ? 2 : 0) + (invalidated ? -1 : 0);
+  }
+  if (mode === "no_longer") {
+    return (hasNoLongerCue ? 4 : 0) + (invalidated ? 2 : 0) + (hasCurrentCue ? -1 : 0);
+  }
+  if (mode === "after") {
+    return hasAfterCue ? 5 : 0;
+  }
+  if (mode === "before") {
+    return hasBeforeCue ? 5 : 0;
+  }
+  if (mode === "first") {
+    return (hasFirstCue ? 5 : 0) + (hasPreviousCue ? 1 : 0);
+  }
+  if (mode === "latest") {
+    return (hasLatestCue ? 5 : 0) + (hasCurrentCue ? 2 : 0);
+  }
+  return hasSpecificTemporalAnswerCue(query) ? (hasCurrentCue || hasPreviousCue || hasNoLongerCue ? 1 : 0) : 0;
 }
 
 function isLatestInteractionIntent(query: string): boolean {
@@ -2759,6 +2849,61 @@ export class ObservationStore {
     return hasTemporalIntent(request.query);
   }
 
+  private shouldApplyTemporalQueryPlanner(request: SearchRequest, routeDecision: RouteDecision): boolean {
+    if (request.sort_by === "date_asc" || request.sort_by === "date_desc") return false;
+    if (request.question_kind === "timeline" || request.question_kind === "freshness") return true;
+    if (routeDecision.kind === "timeline" || routeDecision.kind === "freshness") return true;
+    return hasCurrentValueIntent(request.query) || hasPreviousValueIntent(request.query) || hasNoLongerIntent(request.query);
+  }
+
+  private applyTemporalQueryPlannerRerank(
+    request: SearchRequest,
+    routeDecision: RouteDecision,
+    ranked: SearchCandidate[],
+    observations: Map<string, Record<string, unknown>>,
+    limit: number
+  ): void {
+    if (!this.shouldApplyTemporalQueryPlanner(request, routeDecision)) return;
+    if (ranked.length < 2) return;
+
+    const mode = resolveTemporalPlannerMode(request.query);
+    const descending =
+      mode === "current" ||
+      mode === "latest" ||
+      mode === "no_longer" ||
+      mode === "previous_current" ||
+      mode === "before" ||
+      prefersDescendingTemporalOrder(request.query);
+    const candidateK = Math.min(ranked.length, Math.max(90, limit * 8));
+    const temporalCandidates = ranked.slice(0, candidateK);
+    if (
+      mode === "chronology" &&
+      temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id)) === 0)
+    ) {
+      return;
+    }
+
+    temporalCandidates.sort((lhs, rhs) => {
+      const lhsObs = observations.get(lhs.id);
+      const rhsObs = observations.get(rhs.id);
+      const lhsState = temporalStateScore(request.query, mode, lhsObs);
+      const rhsState = temporalStateScore(request.query, mode, rhsObs);
+      if (rhsState !== lhsState) return rhsState - lhsState;
+
+      const lhsAnchor = temporalAnchorForObservation(lhsObs) || lhs.created_at;
+      const rhsAnchor = temporalAnchorForObservation(rhsObs) || rhs.created_at;
+      const timeCmp = descending
+        ? String(rhsAnchor).localeCompare(String(lhsAnchor))
+        : String(lhsAnchor).localeCompare(String(rhsAnchor));
+      if (timeCmp !== 0) return timeCmp;
+
+      if (rhs.final !== lhs.final) return rhs.final - lhs.final;
+      return lhs.id.localeCompare(rhs.id);
+    });
+
+    ranked.splice(0, candidateK, ...temporalCandidates);
+  }
+
   // ---------------------------------------------------------------------------
   // §34 FD-006: temporalAnchorSearch — Anchor-Pivoted 時系列検索
   // ---------------------------------------------------------------------------
@@ -2821,7 +2966,9 @@ export class ObservationStore {
           SELECT
             o.id, o.event_id, o.platform, o.project, o.session_id,
             o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
-            o.memory_type, o.created_at, o.access_count,
+            o.memory_type, o.event_time, o.observed_at, o.valid_from, o.valid_to,
+            o.supersedes, o.invalidated_at, o.created_at, o.access_count,
+            COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) AS temporal_anchor,
             e.event_type AS event_type
           FROM mem_observations o
           LEFT JOIN mem_events e ON e.event_id = o.event_id
@@ -2832,10 +2979,10 @@ export class ObservationStore {
           fallbackSql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
         }
         if (anchor.direction === "desc") {
-          fallbackSql += " ORDER BY o.created_at DESC";
+          fallbackSql += " ORDER BY temporal_anchor DESC";
         } else {
           // "asc", "around" — デフォルトは ASC
-          fallbackSql += " ORDER BY o.created_at ASC";
+          fallbackSql += " ORDER BY temporal_anchor ASC";
         }
         fallbackSql += " LIMIT ?";
         fallbackParams.push(limit);
@@ -2859,6 +3006,12 @@ export class ObservationStore {
               : "",
             observation_type: "context",
             memory_type: row.memory_type || "semantic",
+            event_time: row.event_time,
+            observed_at: row.observed_at,
+            valid_from: row.valid_from,
+            valid_to: row.valid_to,
+            supersedes: row.supersedes,
+            invalidated_at: row.invalidated_at,
             created_at: row.created_at,
             tags,
             privacy_tags: privacyTags,
@@ -2878,12 +3031,12 @@ export class ObservationStore {
         });
       }
 
-      // アンカーエントリの created_at を取得
+      // アンカーエントリの persisted temporal anchor を取得
       const anchorObs = this.deps.db
-        .query("SELECT created_at FROM mem_observations WHERE id = ?")
-        .get(anchorId) as { created_at: string } | null;
+        .query("SELECT COALESCE(event_time, valid_from, observed_at, created_at) AS temporal_anchor FROM mem_observations WHERE id = ?")
+        .get(anchorId) as { temporal_anchor: string } | null;
       if (!anchorObs) return null;
-      const anchorTs = anchorObs.created_at;
+      const anchorTs = anchorObs.temporal_anchor;
 
       // Phase 2: anchorTs を基点に時間フィルタ SQL で検索
       const params: SQLQueryBindings[] = [];
@@ -2891,7 +3044,9 @@ export class ObservationStore {
         SELECT
           o.id, o.event_id, o.platform, o.project, o.session_id,
           o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
-          o.memory_type, o.created_at, o.access_count,
+          o.memory_type, o.event_time, o.observed_at, o.valid_from, o.valid_to,
+          o.supersedes, o.invalidated_at, o.created_at, o.access_count,
+          COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) AS temporal_anchor,
           e.event_type AS event_type
         FROM mem_observations o
         LEFT JOIN mem_events e ON e.event_id = o.event_id
@@ -2905,18 +3060,18 @@ export class ObservationStore {
       }
 
       if (anchor.direction === "asc") {
-        sql += " AND o.created_at > ?";
+        sql += " AND COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) > ?";
         params.push(anchorTs);
-        sql += " ORDER BY o.created_at ASC";
+        sql += " ORDER BY temporal_anchor ASC";
       } else if (anchor.direction === "desc") {
-        sql += " AND o.created_at < ?";
+        sql += " AND COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) < ?";
         params.push(anchorTs);
-        sql += " ORDER BY o.created_at DESC";
+        sql += " ORDER BY temporal_anchor DESC";
       } else {
         // around: 前後を取得
-        sql += " AND ABS(julianday(o.created_at) - julianday(?)) <= 7";
+        sql += " AND ABS(julianday(COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at)) - julianday(?)) <= 7";
         params.push(anchorTs);
-        sql += " ORDER BY ABS(julianday(o.created_at) - julianday(?)) ASC";
+        sql += " ORDER BY ABS(julianday(COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at)) - julianday(?)) ASC";
         params.push(anchorTs);
       }
 
@@ -2938,7 +3093,7 @@ export class ObservationStore {
         for (const token of queryTokens) {
           if (combined.includes(token.toLowerCase())) relevanceScore += 1;
         }
-        return { row, relevanceScore, created_at: String(row.created_at ?? "") };
+        return { row, relevanceScore, created_at: String(row.temporal_anchor ?? row.created_at ?? "") };
       });
 
       const withRelevance = scored.filter((s) => s.relevanceScore > 0);
@@ -2970,6 +3125,12 @@ export class ObservationStore {
             typeof row.content_redacted === "string" ? row.content_redacted.slice(0, 2000) : "",
           observation_type: "context",
           memory_type: row.memory_type || "semantic",
+          event_time: row.event_time,
+          observed_at: row.observed_at,
+          valid_from: row.valid_from,
+          valid_to: row.valid_to,
+          supersedes: row.supersedes,
+          invalidated_at: row.invalidated_at,
           created_at: row.created_at,
           tags,
           privacy_tags: privacyTags,
@@ -3345,7 +3506,9 @@ export class ObservationStore {
       routeDecision.temporalAnchors.length > 0
     ) {
       const primaryAnchor = routeDecision.temporalAnchors![0];
-      const anchorItems = this.temporalAnchorSearch(normalizedRequest, primaryAnchor, limit);
+      const anchorItems = primaryAnchor.type === "sequence"
+        ? null
+        : this.temporalAnchorSearch(normalizedRequest, primaryAnchor, limit);
       if (anchorItems && anchorItems.length > 0) {
         const anchorMeta: Record<string, unknown> = {
           ranking: routeDecision.kind,
@@ -3489,6 +3652,8 @@ export class ObservationStore {
       ranked.push(...temporalCandidates, ...remaining);
     }
 
+    this.applyTemporalQueryPlannerRerank(request, routeDecision, ranked, observations, limit);
+
     const rerankResult = this.applyRerank(request.query, ranked, observations, {
       // Timeline / freshness questions are order-sensitive, so preserve the
       // chronology decided by temporal anchor search or two-stage time rerank.
@@ -3497,6 +3662,7 @@ export class ObservationStore {
     const rankedAfterRerank = rerankResult.ranked;
     this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
     this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
+    this.applyTemporalQueryPlannerRerank(request, routeDecision, rankedAfterRerank, observations, limit);
 
     // S43-SEARCH: sort_by override — date_desc / date_asc は created_at でソート
     if (request.sort_by === "date_desc" || request.sort_by === "date_asc") {

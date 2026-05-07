@@ -87,6 +87,7 @@ import {
   fileUriToPath,
   makeErrorResponse,
   makeResponse,
+  normalizeTemporalTimestamp,
   normalizeVectorDimension,
   nowIso,
   parseBackendMode,
@@ -1949,7 +1950,8 @@ export class HarnessMemCore {
     try {
       let sql = `
         SELECT fact_id, fact_type, fact_key, fact_value, confidence,
-               valid_from, valid_to, superseded_by, created_at
+               event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+               superseded_by, created_at
         FROM mem_facts
         WHERE fact_key = ?
           AND merged_into_fact_id IS NULL
@@ -1970,15 +1972,22 @@ export class HarnessMemCore {
         fact_key: string;
         fact_value: string;
         confidence: number;
+        event_time: string | null;
+        observed_at: string | null;
         valid_from: string | null;
         valid_to: string | null;
+        supersedes: string | null;
+        invalidated_at: string | null;
         superseded_by: string | null;
         created_at: string;
       }>;
 
       const entries = rows.map((row) => ({
         ...row,
-        is_active: (row.superseded_by === null || row.superseded_by === undefined) && row.valid_to === null,
+        is_active:
+          (row.superseded_by === null || row.superseded_by === undefined) &&
+          row.valid_to === null &&
+          row.invalidated_at === null,
       }));
 
       return makeResponse(
@@ -2592,16 +2601,56 @@ export class HarnessMemCore {
 
     try {
       const current = nowIso();
+      const eventTime = normalizeTemporalTimestamp(request.event_time);
+      const observedAt = normalizeTemporalTimestamp(request.observed_at) ?? current;
+      const validFrom = normalizeTemporalTimestamp(request.valid_from);
+      const validTo = normalizeTemporalTimestamp(request.valid_to);
+      const supersedes =
+        typeof request.supersedes === "string" && request.supersedes.trim()
+          ? request.supersedes.trim()
+          : relation === "supersedes"
+            ? to_observation_id
+            : null;
+      const invalidatedAt = normalizeTemporalTimestamp(request.invalidated_at);
+
       this.db
         .query(`
-          INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
-          VALUES (?, ?, ?, ?, ?)
+          INSERT OR IGNORE INTO mem_links(
+            from_observation_id, to_observation_id, relation, weight,
+            event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+            created_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `)
-        .run(from_observation_id, to_observation_id, relation, weight, current);
+        .run(
+          from_observation_id,
+          to_observation_id,
+          relation,
+          weight,
+          eventTime,
+          observedAt,
+          validFrom,
+          validTo,
+          supersedes,
+          invalidatedAt,
+          current,
+        );
 
       return makeResponse(
         startedAt,
-        [{ from_observation_id, to_observation_id, relation, weight, created_at: current }],
+        [{
+          from_observation_id,
+          to_observation_id,
+          relation,
+          weight,
+          event_time: eventTime,
+          observed_at: observedAt,
+          valid_from: validFrom,
+          valid_to: validTo,
+          supersedes,
+          invalidated_at: invalidatedAt,
+          created_at: current,
+        }],
         { from_observation_id, to_observation_id, relation }
       );
     } catch (err) {
@@ -2624,6 +2673,12 @@ export class HarnessMemCore {
         to_observation_id: string;
         relation: string;
         weight: number;
+        event_time: string | null;
+        observed_at: string | null;
+        valid_from: string | null;
+        valid_to: string | null;
+        supersedes: string | null;
+        invalidated_at: string | null;
         created_at: string;
       };
 
@@ -2635,7 +2690,9 @@ export class HarnessMemCore {
       for (let d = 0; d < depth && frontier.length > 0; d++) {
         const placeholders = frontier.map(() => "?").join(", ");
         let sql = `
-          SELECT from_observation_id, to_observation_id, relation, weight, created_at
+          SELECT from_observation_id, to_observation_id, relation, weight,
+                 event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+                 created_at
           FROM mem_links
           WHERE from_observation_id IN (${placeholders})
         `;
@@ -2897,11 +2954,11 @@ export class HarnessMemCore {
     if (strategy === "prune") {
       // prune: confidence < 0.5 のアクティブなファクトを valid_to で soft-delete
       const projectClause = project ? `AND project = ?` : "";
-      const pruneParams: unknown[] = project ? [now, now, project] : [now, now];
+      const pruneParams: unknown[] = project ? [now, now, now, project] : [now, now, now];
 
       const result = this.db.query(
         `UPDATE mem_facts
-         SET valid_to = ?, updated_at = ?
+         SET valid_to = ?, invalidated_at = ?, updated_at = ?
          WHERE confidence < 0.5
            AND merged_into_fact_id IS NULL
            AND superseded_by IS NULL

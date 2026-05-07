@@ -24,6 +24,12 @@ export interface StoredEvent {
   dedupe_hash: string;
   observation_id?: string;
   correlation_id?: string;
+  event_time?: string | null;
+  observed_at?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  supersedes?: string | null;
+  invalidated_at?: string | null;
   created_at: string;
 }
 

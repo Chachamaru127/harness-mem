@@ -59,6 +59,12 @@ function normalizeRow(row: Record<string, unknown>): ObservationRow {
     cognitive_sector: String(row.cognitive_sector ?? "meta"),
     user_id: String(row.user_id ?? "default"),
     team_id: row.team_id != null ? String(row.team_id) : null,
+    event_time: row.event_time != null ? toIsoString(row.event_time) : null,
+    observed_at: row.observed_at != null ? toIsoString(row.observed_at) : null,
+    valid_from: row.valid_from != null ? toIsoString(row.valid_from) : null,
+    valid_to: row.valid_to != null ? toIsoString(row.valid_to) : null,
+    supersedes: row.supersedes != null ? String(row.supersedes) : null,
+    invalidated_at: row.invalidated_at != null ? toIsoString(row.invalidated_at) : null,
     // S78-B02: 階層メタデータ
     thread_id: row.thread_id != null ? String(row.thread_id) : null,
     topic: row.topic != null ? String(row.topic) : null,
@@ -81,6 +87,7 @@ const SELECT_COLS = `
   last_accessed_at,
   COALESCE(cognitive_sector, 'meta') AS cognitive_sector,
   COALESCE(user_id, 'default') AS user_id, team_id,
+  event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
   thread_id, topic, expires_at, branch,
   created_at, updated_at
 `.trim();
@@ -99,9 +106,10 @@ export class PgObservationRepository implements IObservationRepository {
         title, content, content_redacted, observation_type, memory_type,
         tags_json, privacy_tags_json,
         signal_score, user_id, team_id,
+        event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
         thread_id, topic, expires_at, branch,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO NOTHING`,
       [
         input.id,
@@ -120,6 +128,12 @@ export class PgObservationRepository implements IObservationRepository {
         input.signal_score ?? 0,
         input.user_id ?? "default",
         input.team_id ?? null,
+        input.event_time ?? null,
+        input.observed_at ?? input.created_at,
+        input.valid_from ?? null,
+        input.valid_to ?? null,
+        input.supersedes ?? null,
+        input.invalidated_at ?? null,
         // S78-B02: 階層メタデータ
         input.thread_id ?? null,
         input.topic ?? null,

@@ -29,6 +29,18 @@ export interface ObservationRow {
   cognitive_sector: string;
   user_id: string;
   team_id: string | null;
+  /** S108-007: content event time. null = explicit unknown */
+  event_time: string | null;
+  /** S108-007: observed/ingested time */
+  observed_at: string | null;
+  /** S108-007: validity window start */
+  valid_from: string | null;
+  /** S108-007: validity window end */
+  valid_to: string | null;
+  /** S108-007: ID this observation supersedes */
+  supersedes: string | null;
+  /** S108-007: invalidation time */
+  invalidated_at: string | null;
   created_at: string;
   updated_at: string;
   /** S78-B02: 階層メタデータ */
@@ -56,6 +68,18 @@ export interface InsertObservationInput {
   signal_score?: number;
   user_id?: string;
   team_id?: string | null;
+  /** S108-007: content event time. null = explicit unknown */
+  event_time?: string | null;
+  /** S108-007: observed/ingested time */
+  observed_at?: string | null;
+  /** S108-007: validity window start */
+  valid_from?: string | null;
+  /** S108-007: validity window end */
+  valid_to?: string | null;
+  /** S108-007: ID this observation supersedes */
+  supersedes?: string | null;
+  /** S108-007: invalidation time */
+  invalidated_at?: string | null;
   created_at: string;
   updated_at: string;
   /** S78-B02: 階層メタデータ */

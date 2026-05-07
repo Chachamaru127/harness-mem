@@ -244,6 +244,67 @@ describe("observation-store: search", () => {
     expect(res.items.length).toBeLessThanOrEqual(2);
   });
 
+  test("temporal planner separates current, previous, and no-longer answers", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-ci-old",
+      title: "previous CI runner",
+      content: "Previous CI runner was CircleCI during the beta release.",
+      project: "proj-temporal",
+      event_time: "2024-01-10T09:00:00.000Z",
+      observed_at: "2024-01-10T09:00:00.000Z",
+      created_at: "2026-05-04T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-ci-migration",
+      title: "CI migration",
+      content: "CI migration completed. CircleCI is no longer used for merges.",
+      project: "proj-temporal",
+      event_time: "2024-03-15T11:00:00.000Z",
+      observed_at: "2024-03-15T11:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-ci-current",
+      title: "current CI runner",
+      content: "Latest CI status: GitHub Actions is still the active runner.",
+      project: "proj-temporal",
+      event_time: "2024-05-02T10:00:00.000Z",
+      observed_at: "2024-05-02T10:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+
+    const current = store.search({
+      query: "What is the current CI runner?",
+      project: "proj-temporal",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 3,
+    });
+    expect(current.ok).toBe(true);
+    expect((current.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-current");
+
+    const previous = store.search({
+      query: "What CI runner was used previously?",
+      project: "proj-temporal",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 3,
+    });
+    expect(previous.ok).toBe(true);
+    expect((previous.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-old");
+
+    const noLonger = store.search({
+      query: "What is no longer used for merges?",
+      project: "proj-temporal",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 3,
+    });
+    expect(noLonger.ok).toBe(true);
+    expect((noLonger.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-migration");
+  });
+
   test("空クエリでもエラーにならない（ok=false）", () => {
     const { store } = makeStore();
     const res = store.search({ query: "", project: "proj-obs" });

@@ -85,6 +85,12 @@ export const POSTGRES_INIT_SQL = `
     cognitive_sector TEXT NOT NULL DEFAULT 'meta',
     user_id TEXT NOT NULL DEFAULT 'default',
     team_id TEXT DEFAULT NULL,
+    event_time TIMESTAMPTZ,
+    observed_at TIMESTAMPTZ,
+    valid_from TIMESTAMPTZ,
+    valid_to TIMESTAMPTZ,
+    supersedes TEXT,
+    invalidated_at TIMESTAMPTZ,
     thread_id TEXT,
     topic TEXT,
     expires_at TIMESTAMPTZ,
@@ -138,6 +144,12 @@ export const POSTGRES_INIT_SQL = `
     to_observation_id TEXT NOT NULL REFERENCES mem_observations(id) ON DELETE CASCADE,
     relation TEXT NOT NULL,
     weight DOUBLE PRECISION NOT NULL DEFAULT 1.0,
+    event_time TIMESTAMPTZ,
+    observed_at TIMESTAMPTZ,
+    valid_from TIMESTAMPTZ,
+    valid_to TIMESTAMPTZ,
+    supersedes TEXT,
+    invalidated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -176,8 +188,12 @@ export const POSTGRES_INIT_SQL = `
     confidence DOUBLE PRECISION NOT NULL DEFAULT 0.5,
     merged_into_fact_id TEXT REFERENCES mem_facts(fact_id) ON DELETE SET NULL,
     superseded_by TEXT REFERENCES mem_facts(fact_id) ON DELETE SET NULL,
+    event_time TIMESTAMPTZ,
+    observed_at TIMESTAMPTZ,
     valid_from TIMESTAMPTZ,
     valid_to TIMESTAMPTZ,
+    supersedes TEXT,
+    invalidated_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );

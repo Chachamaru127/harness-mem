@@ -66,6 +66,12 @@ export function initSchema(db: Database): void {
       privacy_tags_json TEXT NOT NULL,
       user_id TEXT NOT NULL DEFAULT 'default',
       team_id TEXT DEFAULT NULL,
+      event_time TEXT DEFAULT NULL,
+      observed_at TEXT DEFAULT NULL,
+      valid_from TEXT DEFAULT NULL,
+      valid_to TEXT DEFAULT NULL,
+      supersedes TEXT DEFAULT NULL,
+      invalidated_at TEXT DEFAULT NULL,
       -- S81-B02: soft-archive marker written by the forget policy. NULL
       -- for live rows, ISO timestamp once wet-mode eviction runs. Kept
       -- in the base CREATE TABLE so fresh test DBs that call initSchema()
@@ -123,6 +129,12 @@ export function initSchema(db: Database): void {
       to_observation_id TEXT NOT NULL,
       relation TEXT NOT NULL,
       weight REAL NOT NULL DEFAULT 1.0,
+      event_time TEXT DEFAULT NULL,
+      observed_at TEXT DEFAULT NULL,
+      valid_from TEXT DEFAULT NULL,
+      valid_to TEXT DEFAULT NULL,
+      supersedes TEXT DEFAULT NULL,
+      invalidated_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
       FOREIGN KEY(from_observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE,
       FOREIGN KEY(to_observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
@@ -161,8 +173,12 @@ export function initSchema(db: Database): void {
       fact_value TEXT NOT NULL,
       confidence REAL NOT NULL DEFAULT 0.5,
       superseded_by TEXT,
+      event_time TEXT,
+      observed_at TEXT,
       valid_from TEXT,
       valid_to TEXT,
+      supersedes TEXT,
+      invalidated_at TEXT,
       merged_into_fact_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL,
@@ -178,6 +194,27 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_facts_key_project
       ON mem_facts(fact_key, project, created_at ASC);
+
+    CREATE TABLE IF NOT EXISTS mem_relations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      src TEXT NOT NULL,
+      dst TEXT NOT NULL,
+      kind TEXT NOT NULL,
+      strength REAL NOT NULL DEFAULT 1.0,
+      observation_id TEXT NOT NULL,
+      event_time TEXT DEFAULT NULL,
+      observed_at TEXT DEFAULT NULL,
+      valid_from TEXT DEFAULT NULL,
+      valid_to TEXT DEFAULT NULL,
+      supersedes TEXT DEFAULT NULL,
+      invalidated_at TEXT DEFAULT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_relations_src ON mem_relations(src, kind);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_relations_obs ON mem_relations(observation_id);
 
     CREATE TABLE IF NOT EXISTS mem_audit_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -389,6 +426,128 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_signals_broadcast
       ON mem_signals(to_agent, sent_at) WHERE to_agent IS NULL;
+  `);
+}
+
+function addColumnIfMissing(db: Database, tableName: string, columnName: string, definition: string): void {
+  try {
+    db.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+  } catch {
+    // already exists
+  }
+}
+
+function migrateTemporalAnchorColumns(db: Database): void {
+  for (const [tableName, columns] of [
+    [
+      "mem_observations",
+      [
+        ["event_time", "TEXT DEFAULT NULL"],
+        ["observed_at", "TEXT DEFAULT NULL"],
+        ["valid_from", "TEXT DEFAULT NULL"],
+        ["valid_to", "TEXT DEFAULT NULL"],
+        ["supersedes", "TEXT DEFAULT NULL"],
+        ["invalidated_at", "TEXT DEFAULT NULL"],
+      ],
+    ],
+    [
+      "mem_facts",
+      [
+        ["event_time", "TEXT"],
+        ["observed_at", "TEXT"],
+        ["supersedes", "TEXT"],
+        ["invalidated_at", "TEXT"],
+      ],
+    ],
+    [
+      "mem_links",
+      [
+        ["event_time", "TEXT DEFAULT NULL"],
+        ["observed_at", "TEXT DEFAULT NULL"],
+        ["valid_from", "TEXT DEFAULT NULL"],
+        ["valid_to", "TEXT DEFAULT NULL"],
+        ["supersedes", "TEXT DEFAULT NULL"],
+        ["invalidated_at", "TEXT DEFAULT NULL"],
+      ],
+    ],
+    [
+      "mem_relations",
+      [
+        ["event_time", "TEXT DEFAULT NULL"],
+        ["observed_at", "TEXT DEFAULT NULL"],
+        ["valid_from", "TEXT DEFAULT NULL"],
+        ["valid_to", "TEXT DEFAULT NULL"],
+        ["supersedes", "TEXT DEFAULT NULL"],
+        ["invalidated_at", "TEXT DEFAULT NULL"],
+      ],
+    ],
+  ] as const) {
+    for (const [columnName, definition] of columns) {
+      addColumnIfMissing(db, tableName, columnName, definition);
+    }
+  }
+
+  db.exec(`
+    UPDATE mem_observations SET observed_at = created_at WHERE observed_at IS NULL;
+    UPDATE mem_facts SET observed_at = COALESCE(valid_from, created_at) WHERE observed_at IS NULL;
+    UPDATE mem_links SET observed_at = created_at WHERE observed_at IS NULL;
+    UPDATE mem_relations SET observed_at = created_at WHERE observed_at IS NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_event_time
+      ON mem_observations(event_time) WHERE event_time IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_observed_at
+      ON mem_observations(observed_at);
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_valid_to
+      ON mem_observations(valid_to) WHERE valid_to IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_event_time
+      ON mem_facts(event_time) WHERE event_time IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_observed_at
+      ON mem_facts(observed_at);
+    CREATE INDEX IF NOT EXISTS idx_mem_facts_invalidated_at
+      ON mem_facts(invalidated_at) WHERE invalidated_at IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_mem_links_observed_at
+      ON mem_links(observed_at);
+    CREATE INDEX IF NOT EXISTS idx_mem_links_valid_to
+      ON mem_links(valid_to) WHERE valid_to IS NOT NULL;
+
+    CREATE INDEX IF NOT EXISTS idx_mem_relations_observed_at
+      ON mem_relations(observed_at);
+    CREATE INDEX IF NOT EXISTS idx_mem_relations_valid_to
+      ON mem_relations(valid_to) WHERE valid_to IS NOT NULL;
+
+    CREATE TRIGGER IF NOT EXISTS mem_observations_s108_observed_at_ai
+    AFTER INSERT ON mem_observations
+    FOR EACH ROW
+    WHEN NEW.observed_at IS NULL
+    BEGIN
+      UPDATE mem_observations SET observed_at = NEW.created_at WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS mem_facts_s108_observed_at_ai
+    AFTER INSERT ON mem_facts
+    FOR EACH ROW
+    WHEN NEW.observed_at IS NULL
+    BEGIN
+      UPDATE mem_facts SET observed_at = COALESCE(NEW.valid_from, NEW.created_at) WHERE fact_id = NEW.fact_id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS mem_links_s108_observed_at_ai
+    AFTER INSERT ON mem_links
+    FOR EACH ROW
+    WHEN NEW.observed_at IS NULL
+    BEGIN
+      UPDATE mem_links SET observed_at = NEW.created_at WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS mem_relations_s108_observed_at_ai
+    AFTER INSERT ON mem_relations
+    FOR EACH ROW
+    WHEN NEW.observed_at IS NULL
+    BEGIN
+      UPDATE mem_relations SET observed_at = NEW.created_at WHERE id = NEW.id;
+    END;
   `);
 }
 
@@ -907,6 +1066,10 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  // S108-007: Temporal anchor persistence contract across observations,
+  // facts, observation links, and entity relations.
+  migrateTemporalAnchorColumns(db);
 
   // S81-B02: Low-value eviction — soft-delete marker for archived observations.
   // `archived_at` is NULL for active rows; ISO timestamp for rows the forget

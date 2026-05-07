@@ -1,0 +1,1080 @@
+{
+  "schema_version": "s108-temporal-planner-cases.v1",
+  "cases": [
+    {
+      "case_id": "s108-temp-001",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-001-s108-ci-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-001-s108-ci-e4",
+        "obs_s108-temp-001-s108-ci-e2",
+        "obs_s108-temp-001-s108-ci-e3",
+        "obs_s108-temp-001-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 9.5203
+    },
+    {
+      "case_id": "s108-temp-002",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-002-s108-ci-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-002-s108-ci-e1",
+        "obs_s108-temp-002-s108-ci-e3",
+        "obs_s108-temp-002-s108-ci-e2",
+        "obs_s108-temp-002-s108-ci-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 5.4644
+    },
+    {
+      "case_id": "s108-temp-003",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-003-s108-ci-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-003-s108-ci-e3",
+        "obs_s108-temp-003-s108-ci-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 6.0889
+    },
+    {
+      "case_id": "s108-temp-004",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-004-s108-ci-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-004-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 6.5946
+    },
+    {
+      "case_id": "s108-temp-005",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-005-s108-ci-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-005-s108-ci-e1",
+        "obs_s108-temp-005-s108-ci-e2",
+        "obs_s108-temp-005-s108-ci-e3",
+        "obs_s108-temp-005-s108-ci-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.027
+    },
+    {
+      "case_id": "s108-temp-006",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-006-s108-ci-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-006-s108-ci-e4",
+        "obs_s108-temp-006-s108-ci-e2",
+        "obs_s108-temp-006-s108-ci-e3",
+        "obs_s108-temp-006-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 2.9446
+    },
+    {
+      "case_id": "s108-temp-007",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-007-s108-ci-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-007-s108-ci-e4",
+        "obs_s108-temp-007-s108-ci-e2",
+        "obs_s108-temp-007-s108-ci-e3",
+        "obs_s108-temp-007-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 6.894
+    },
+    {
+      "case_id": "s108-temp-008",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-008-s108-ci-e2",
+      "retrieved_ids": [
+        "obs_s108-temp-008-s108-ci-e2",
+        "obs_s108-temp-008-s108-ci-e3",
+        "obs_s108-temp-008-s108-ci-e1",
+        "obs_s108-temp-008-s108-ci-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 2.9667
+    },
+    {
+      "case_id": "s108-temp-009",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-009-s108-ci-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-009-s108-ci-e1",
+        "obs_s108-temp-009-s108-ci-e3",
+        "obs_s108-temp-009-s108-ci-e2",
+        "obs_s108-temp-009-s108-ci-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 7.2836
+    },
+    {
+      "case_id": "s108-temp-010",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-010-s108-ci-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-010-s108-ci-e4",
+        "obs_s108-temp-010-s108-ci-e2",
+        "obs_s108-temp-010-s108-ci-e3",
+        "obs_s108-temp-010-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.1887
+    },
+    {
+      "case_id": "s108-temp-011",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-011-s108-ci-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-011-s108-ci-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 2.4524
+    },
+    {
+      "case_id": "s108-temp-012",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-012-s108-db-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-012-s108-db-e4",
+        "obs_s108-temp-012-s108-db-e3",
+        "obs_s108-temp-012-s108-db-e2",
+        "obs_s108-temp-012-s108-db-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 2.1955
+    },
+    {
+      "case_id": "s108-temp-013",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-013-s108-db-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-013-s108-db-e2",
+        "obs_s108-temp-013-s108-db-e1",
+        "obs_s108-temp-013-s108-db-e3",
+        "obs_s108-temp-013-s108-db-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 6.9456
+    },
+    {
+      "case_id": "s108-temp-014",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-014-s108-db-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-014-s108-db-e3",
+        "obs_s108-temp-014-s108-db-e1",
+        "obs_s108-temp-014-s108-db-e2",
+        "obs_s108-temp-014-s108-db-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.6929
+    },
+    {
+      "case_id": "s108-temp-015",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-015-s108-db-e2",
+      "retrieved_ids": [
+        "obs_s108-temp-015-s108-db-e1"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 3.549
+    },
+    {
+      "case_id": "s108-temp-016",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-016-s108-db-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-016-s108-db-e1",
+        "obs_s108-temp-016-s108-db-e2",
+        "obs_s108-temp-016-s108-db-e3",
+        "obs_s108-temp-016-s108-db-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 3.5413
+    },
+    {
+      "case_id": "s108-temp-017",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-017-s108-db-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-017-s108-db-e4",
+        "obs_s108-temp-017-s108-db-e3",
+        "obs_s108-temp-017-s108-db-e2",
+        "obs_s108-temp-017-s108-db-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 3.1165
+    },
+    {
+      "case_id": "s108-temp-018",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-018-s108-db-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-018-s108-db-e4",
+        "obs_s108-temp-018-s108-db-e3",
+        "obs_s108-temp-018-s108-db-e2",
+        "obs_s108-temp-018-s108-db-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.5749
+    },
+    {
+      "case_id": "s108-temp-019",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-019-s108-db-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-019-s108-db-e4",
+        "obs_s108-temp-019-s108-db-e3",
+        "obs_s108-temp-019-s108-db-e2",
+        "obs_s108-temp-019-s108-db-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.3405
+    },
+    {
+      "case_id": "s108-temp-020",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-020-s108-db-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-020-s108-db-e2",
+        "obs_s108-temp-020-s108-db-e3",
+        "obs_s108-temp-020-s108-db-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 4.7602
+    },
+    {
+      "case_id": "s108-temp-021",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-021-s108-db-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-021-s108-db-e4",
+        "obs_s108-temp-021-s108-db-e3",
+        "obs_s108-temp-021-s108-db-e2",
+        "obs_s108-temp-021-s108-db-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 3.4037
+    },
+    {
+      "case_id": "s108-temp-022",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-022-s108-db-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-022-s108-db-e2",
+        "obs_s108-temp-022-s108-db-e1",
+        "obs_s108-temp-022-s108-db-e3",
+        "obs_s108-temp-022-s108-db-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 5.5268
+    },
+    {
+      "case_id": "s108-temp-023",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-023-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-023-s108-api-e4",
+        "obs_s108-temp-023-s108-api-e2",
+        "obs_s108-temp-023-s108-api-e1",
+        "obs_s108-temp-023-s108-api-e3"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 3.6505
+    },
+    {
+      "case_id": "s108-temp-024",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-024-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-024-s108-api-e4",
+        "obs_s108-temp-024-s108-api-e2",
+        "obs_s108-temp-024-s108-api-e1",
+        "obs_s108-temp-024-s108-api-e3"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.6756
+    },
+    {
+      "case_id": "s108-temp-025",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-025-s108-api-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-025-s108-api-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 5.2602
+    },
+    {
+      "case_id": "s108-temp-026",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-026-s108-api-e2",
+      "retrieved_ids": [
+        "obs_s108-temp-026-s108-api-e3",
+        "obs_s108-temp-026-s108-api-e2",
+        "obs_s108-temp-026-s108-api-e1"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.33333333333333337,
+      "latency_ms": 5.446
+    },
+    {
+      "case_id": "s108-temp-027",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-027-s108-api-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-027-s108-api-e1",
+        "obs_s108-temp-027-s108-api-e2",
+        "obs_s108-temp-027-s108-api-e3",
+        "obs_s108-temp-027-s108-api-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 5.0287
+    },
+    {
+      "case_id": "s108-temp-028",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-028-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-028-s108-api-e4",
+        "obs_s108-temp-028-s108-api-e2",
+        "obs_s108-temp-028-s108-api-e1",
+        "obs_s108-temp-028-s108-api-e3"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 3.083
+    },
+    {
+      "case_id": "s108-temp-029",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-029-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-029-s108-api-e4",
+        "obs_s108-temp-029-s108-api-e2",
+        "obs_s108-temp-029-s108-api-e1",
+        "obs_s108-temp-029-s108-api-e3"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 2.2266
+    },
+    {
+      "case_id": "s108-temp-030",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-030-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-030-s108-api-e4",
+        "obs_s108-temp-030-s108-api-e3",
+        "obs_s108-temp-030-s108-api-e2",
+        "obs_s108-temp-030-s108-api-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 3.0278
+    },
+    {
+      "case_id": "s108-temp-031",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-031-s108-api-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-031-s108-api-e3",
+        "obs_s108-temp-031-s108-api-e1",
+        "obs_s108-temp-031-s108-api-e2",
+        "obs_s108-temp-031-s108-api-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.8492
+    },
+    {
+      "case_id": "s108-temp-032",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-032-s108-api-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-032-s108-api-e4",
+        "obs_s108-temp-032-s108-api-e2",
+        "obs_s108-temp-032-s108-api-e1",
+        "obs_s108-temp-032-s108-api-e3"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 2.869
+    },
+    {
+      "case_id": "s108-temp-033",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-033-s108-api-e2",
+      "retrieved_ids": [
+        "obs_s108-temp-033-s108-api-e4",
+        "obs_s108-temp-033-s108-api-e2",
+        "obs_s108-temp-033-s108-api-e1",
+        "obs_s108-temp-033-s108-api-e3"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 6.8966
+    },
+    {
+      "case_id": "s108-temp-034",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-034-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-034-s108-auth-e4",
+        "obs_s108-temp-034-s108-auth-e2",
+        "obs_s108-temp-034-s108-auth-e3",
+        "obs_s108-temp-034-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 5.0283
+    },
+    {
+      "case_id": "s108-temp-035",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-035-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-035-s108-auth-e4",
+        "obs_s108-temp-035-s108-auth-e2",
+        "obs_s108-temp-035-s108-auth-e3",
+        "obs_s108-temp-035-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 9.1433
+    },
+    {
+      "case_id": "s108-temp-036",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-036-s108-auth-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-036-s108-auth-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 5.2293
+    },
+    {
+      "case_id": "s108-temp-037",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-037-s108-auth-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-037-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 6.6815
+    },
+    {
+      "case_id": "s108-temp-038",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-038-s108-auth-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-038-s108-auth-e1",
+        "obs_s108-temp-038-s108-auth-e2",
+        "obs_s108-temp-038-s108-auth-e3",
+        "obs_s108-temp-038-s108-auth-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 2.5416
+    },
+    {
+      "case_id": "s108-temp-039",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-039-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-039-s108-auth-e4",
+        "obs_s108-temp-039-s108-auth-e2",
+        "obs_s108-temp-039-s108-auth-e3",
+        "obs_s108-temp-039-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 2.9473
+    },
+    {
+      "case_id": "s108-temp-040",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-040-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-040-s108-auth-e4",
+        "obs_s108-temp-040-s108-auth-e2",
+        "obs_s108-temp-040-s108-auth-e3",
+        "obs_s108-temp-040-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.8342
+    },
+    {
+      "case_id": "s108-temp-041",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-041-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-041-s108-auth-e4",
+        "obs_s108-temp-041-s108-auth-e3",
+        "obs_s108-temp-041-s108-auth-e1",
+        "obs_s108-temp-041-s108-auth-e2"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.5895
+    },
+    {
+      "case_id": "s108-temp-042",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-042-s108-auth-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-042-s108-auth-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 2.3297
+    },
+    {
+      "case_id": "s108-temp-043",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-043-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-043-s108-auth-e4",
+        "obs_s108-temp-043-s108-auth-e2",
+        "obs_s108-temp-043-s108-auth-e3",
+        "obs_s108-temp-043-s108-auth-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 1.8705
+    },
+    {
+      "case_id": "s108-temp-044",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-044-s108-auth-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-044-s108-auth-e1",
+        "obs_s108-temp-044-s108-auth-e3",
+        "obs_s108-temp-044-s108-auth-e2",
+        "obs_s108-temp-044-s108-auth-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.33333333333333337,
+      "latency_ms": 5.6872
+    },
+    {
+      "case_id": "s108-temp-045",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-045-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-045-s108-obs-e4",
+        "obs_s108-temp-045-s108-obs-e2",
+        "obs_s108-temp-045-s108-obs-e3",
+        "obs_s108-temp-045-s108-obs-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.1393
+    },
+    {
+      "case_id": "s108-temp-046",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-046-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-046-s108-obs-e1",
+        "obs_s108-temp-046-s108-obs-e2"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 1,
+      "latency_ms": 3.9154
+    },
+    {
+      "case_id": "s108-temp-047",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-047-s108-obs-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-047-s108-obs-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 3.784
+    },
+    {
+      "case_id": "s108-temp-048",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-048-s108-obs-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-048-s108-obs-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 4.8509
+    },
+    {
+      "case_id": "s108-temp-049",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-049-s108-obs-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-049-s108-obs-e1",
+        "obs_s108-temp-049-s108-obs-e2",
+        "obs_s108-temp-049-s108-obs-e3",
+        "obs_s108-temp-049-s108-obs-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 4.9566
+    },
+    {
+      "case_id": "s108-temp-050",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-050-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-050-s108-obs-e4",
+        "obs_s108-temp-050-s108-obs-e2",
+        "obs_s108-temp-050-s108-obs-e3",
+        "obs_s108-temp-050-s108-obs-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.457
+    },
+    {
+      "case_id": "s108-temp-051",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-051-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-051-s108-obs-e4",
+        "obs_s108-temp-051-s108-obs-e2",
+        "obs_s108-temp-051-s108-obs-e3",
+        "obs_s108-temp-051-s108-obs-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.3618
+    },
+    {
+      "case_id": "s108-temp-052",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-052-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-052-s108-obs-e4",
+        "obs_s108-temp-052-s108-obs-e3",
+        "obs_s108-temp-052-s108-obs-e1",
+        "obs_s108-temp-052-s108-obs-e2"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.2908
+    },
+    {
+      "case_id": "s108-temp-053",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-053-s108-obs-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-053-s108-obs-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 4.0807
+    },
+    {
+      "case_id": "s108-temp-054",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-054-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-054-s108-obs-e4",
+        "obs_s108-temp-054-s108-obs-e2",
+        "obs_s108-temp-054-s108-obs-e3",
+        "obs_s108-temp-054-s108-obs-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.6805
+    },
+    {
+      "case_id": "s108-temp-055",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-055-s108-obs-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-055-s108-obs-e1",
+        "obs_s108-temp-055-s108-obs-e3",
+        "obs_s108-temp-055-s108-obs-e2",
+        "obs_s108-temp-055-s108-obs-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": true,
+      "order_score": 0.33333333333333337,
+      "latency_ms": 7.282
+    },
+    {
+      "case_id": "s108-temp-056",
+      "focus": "current",
+      "slice": "current",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-056-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-056-s108-search-e4",
+        "obs_s108-temp-056-s108-search-e2",
+        "obs_s108-temp-056-s108-search-e3",
+        "obs_s108-temp-056-s108-search-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.2086
+    },
+    {
+      "case_id": "s108-temp-057",
+      "focus": "previous",
+      "slice": "previous",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-057-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-057-s108-search-e3",
+        "obs_s108-temp-057-s108-search-e1",
+        "obs_s108-temp-057-s108-search-e2"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.33333333333333337,
+      "latency_ms": 4.4255
+    },
+    {
+      "case_id": "s108-temp-058",
+      "focus": "after",
+      "slice": "relative_after",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-058-s108-search-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-058-s108-search-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 3.4366
+    },
+    {
+      "case_id": "s108-temp-059",
+      "focus": "before",
+      "slice": "relative_before",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-059-s108-search-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-059-s108-search-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.5,
+      "latency_ms": 4.0575
+    },
+    {
+      "case_id": "s108-temp-060",
+      "focus": "first",
+      "slice": "ordinal_first",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-060-s108-search-e1",
+      "retrieved_ids": [
+        "obs_s108-temp-060-s108-search-e1",
+        "obs_s108-temp-060-s108-search-e2",
+        "obs_s108-temp-060-s108-search-e3",
+        "obs_s108-temp-060-s108-search-e4"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 1,
+      "latency_ms": 5.3033
+    },
+    {
+      "case_id": "s108-temp-061",
+      "focus": "latest",
+      "slice": "latest",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-061-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-061-s108-search-e4",
+        "obs_s108-temp-061-s108-search-e2",
+        "obs_s108-temp-061-s108-search-e3",
+        "obs_s108-temp-061-s108-search-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.1351
+    },
+    {
+      "case_id": "s108-temp-062",
+      "focus": "still",
+      "slice": "yes_no_still",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-062-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-062-s108-search-e4",
+        "obs_s108-temp-062-s108-search-e2",
+        "obs_s108-temp-062-s108-search-e3",
+        "obs_s108-temp-062-s108-search-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 4.2013
+    },
+    {
+      "case_id": "s108-temp-063",
+      "focus": "no_longer",
+      "slice": "yes_no_no_longer",
+      "query_language": "en",
+      "expected_answer_id": "obs_s108-temp-063-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-063-s108-search-e4",
+        "obs_s108-temp-063-s108-search-e3",
+        "obs_s108-temp-063-s108-search-e1",
+        "obs_s108-temp-063-s108-search-e2"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 4.0881
+    },
+    {
+      "case_id": "s108-temp-064",
+      "focus": "直後",
+      "slice": "relative_after_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-064-s108-search-e3",
+      "retrieved_ids": [
+        "obs_s108-temp-064-s108-search-e4"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.5,
+      "latency_ms": 3.3698
+    },
+    {
+      "case_id": "s108-temp-065",
+      "focus": "今も",
+      "slice": "yes_no_current_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-065-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-065-s108-search-e4",
+        "obs_s108-temp-065-s108-search-e2",
+        "obs_s108-temp-065-s108-search-e3",
+        "obs_s108-temp-065-s108-search-e1"
+      ],
+      "answer_top1": true,
+      "answer_hit_at_10": true,
+      "order_score": 0.8333333333333333,
+      "latency_ms": 3.6603
+    },
+    {
+      "case_id": "s108-temp-066",
+      "focus": "以前",
+      "slice": "previous_ja",
+      "query_language": "ja",
+      "expected_answer_id": "obs_s108-temp-066-s108-search-e4",
+      "retrieved_ids": [
+        "obs_s108-temp-066-s108-search-e1",
+        "obs_s108-temp-066-s108-search-e3",
+        "obs_s108-temp-066-s108-search-e2"
+      ],
+      "answer_top1": false,
+      "answer_hit_at_10": false,
+      "order_score": 0.6666666666666666,
+      "latency_ms": 2.8927
+    }
+  ]
+}

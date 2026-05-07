@@ -41,6 +41,17 @@ export function normalizeExpiresAt(value: unknown): string | null {
   return null;
 }
 
+/**
+ * S108-007: Temporal anchor timestamp normalizer.
+ *
+ * Same accepted input forms as expires_at, but semantically separate:
+ * null means the event/fact/relation time is explicitly unknown, not
+ * "fall back to observed_at".
+ */
+export function normalizeTemporalTimestamp(value: unknown): string | null {
+  return normalizeExpiresAt(value);
+}
+
 export function resolveHomePath(inputPath: string): string {
   if (inputPath.startsWith("~")) {
     const homeDir = process.env.HOME || process.env.USERPROFILE || ".";
@@ -432,6 +443,7 @@ function expandCjkBigrams(tokens: string[]): string[] {
 }
 
 export function tokenize(text: string): string[] {
+  const codeTokens = buildCodeAwareTokens(text);
   // §45: Intl.Segmenter で日本語部分を単語分割してからトークン化
   // segmentJapaneseForFts はスペースで分割するので、元の英数字トークンも保持される
   // ただし Segmenter が英数字を食う場合があるため、元テキストのスペース分割結果も合流させる
@@ -442,7 +454,7 @@ export function tokenize(text: string): string[] {
     .filter((token) => token.length > 1);
 
   if (!jaSegmenter || !HAS_CJK.test(text)) {
-    return expandCjkBigrams(rawTokens).slice(0, 4096);
+    return dedupePreserveOrder(expandCjkBigrams([...rawTokens, ...codeTokens])).slice(0, 4096);
   }
 
   // CJK 部分だけ Segmenter で分割し、英数字トークンは元のまま保持
@@ -453,7 +465,7 @@ export function tokenize(text: string): string[] {
     .filter((token) => token.length > 1);
 
   // 両方を合流させて重複排除
-  const merged = new Set([...segmentedTokens, ...rawTokens]);
+  const merged = new Set([...segmentedTokens, ...rawTokens, ...codeTokens]);
   return expandCjkBigrams([...merged]).slice(0, 4096);
 }
 
@@ -467,6 +479,107 @@ function dedupePreserveOrder(tokens: string[]): string[] {
     }
   }
   return deduped;
+}
+
+const CODE_TOKEN_STOPWORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "are",
+  "as",
+  "at",
+  "be",
+  "by",
+  "for",
+  "from",
+  "in",
+  "is",
+  "it",
+  "of",
+  "on",
+  "or",
+  "the",
+  "to",
+  "was",
+  "what",
+  "which",
+  "with",
+]);
+
+function pushAsciiToken(tokens: string[], token: string | undefined): void {
+  if (!token) return;
+  const normalized = token.toLowerCase().replace(/^--?/, "").trim();
+  if (!normalized) return;
+  if (/^[a-z0-9][a-z0-9_./:-]{0,120}$/.test(normalized)) {
+    tokens.push(normalized);
+  }
+  const parts = normalized.split(/[^a-z0-9]+/).filter(Boolean);
+  for (const part of parts) {
+    if (part.length > 1 || /^\d$/.test(part)) {
+      tokens.push(part);
+    }
+  }
+  const stemParts = normalized.replace(/\.[a-z0-9]+$/, "").split(/[^a-z0-9]+/).filter(Boolean);
+  if (stemParts.length > 1) {
+    tokens.push(stemParts.join(""));
+  }
+}
+
+function buildCodeAwareTokens(text: string): string[] {
+  if (!/[A-Za-z0-9_./:#-]/.test(text)) return [];
+
+  const tokens: string[] = [];
+  const identifierExpanded = text
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_./:@#-]+/g, " ");
+
+  for (const token of identifierExpanded.toLowerCase().split(/\s+/)) {
+    pushAsciiToken(tokens, token);
+  }
+
+  const lower = text.toLowerCase();
+  for (const match of lower.matchAll(/\b(?:pr|pull\s+request)\s*#?\s*(\d+)\b/g)) {
+    pushAsciiToken(tokens, "pr");
+    pushAsciiToken(tokens, match[1]);
+    pushAsciiToken(tokens, `pr${match[1]}`);
+  }
+  for (const match of lower.matchAll(/\bissue\s*#?\s*(\d+)\b/g)) {
+    pushAsciiToken(tokens, "issue");
+    pushAsciiToken(tokens, match[1]);
+    pushAsciiToken(tokens, `issue${match[1]}`);
+  }
+  for (const match of text.matchAll(/`([^`\n]{1,120})`/g)) {
+    pushAsciiToken(tokens, match[1]);
+  }
+  for (const match of lower.matchAll(/\B--[a-z0-9][a-z0-9-]{1,80}\b/g)) {
+    pushAsciiToken(tokens, match[0]);
+  }
+  for (const match of lower.matchAll(/\b(?:[a-z0-9_.-]+\/)+[a-z0-9_.-]+\b/g)) {
+    pushAsciiToken(tokens, match[0]);
+    for (const segment of match[0].split("/")) {
+      pushAsciiToken(tokens, segment);
+    }
+  }
+  for (const match of lower.matchAll(/\b(?:codex|claude|feature|fix|hotfix|release)\/[a-z0-9_.-]+\b/g)) {
+    pushAsciiToken(tokens, match[0]);
+  }
+
+  const base = dedupePreserveOrder(tokens)
+    .filter((token) => /^[a-z0-9]+$/.test(token))
+    .filter((token) => token.length > 1 || /^\d$/.test(token))
+    .filter((token) => !CODE_TOKEN_STOPWORDS.has(token));
+  const compact: string[] = [];
+  for (let i = 0; i < base.length; i += 1) {
+    for (let width = 2; width <= 4 && i + width <= base.length; width += 1) {
+      const joined = base.slice(i, i + width).join("");
+      if (joined.length >= 6 && joined.length <= 48) {
+        compact.push(joined);
+      }
+    }
+  }
+
+  return dedupePreserveOrder([...tokens, ...compact]);
 }
 
 export function expandSearchQuery(query: string): string {
@@ -977,6 +1090,12 @@ export function loadObservations(
             o.signal_score,
             o.access_count,
             o.last_accessed_at,
+            o.event_time,
+            o.observed_at,
+            o.valid_from,
+            o.valid_to,
+            o.supersedes,
+            o.invalidated_at,
             o.created_at,
             o.updated_at,
             o.user_id,
