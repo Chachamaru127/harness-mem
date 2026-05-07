@@ -640,6 +640,13 @@ function extractEvidenceBoundedSpan(question: string, text: string, hints = buil
   if (hints.wantsLanguage) {
     const language = findLanguageValue(text, hints.wantsProgrammingLanguage);
     if (language) return language;
+    // S108-009 follow-up: when the question explicitly asks for a programming
+    // language, do NOT fall through to wantsOrganization / entity fallbacks
+    // for this source — otherwise a team-name mention ("Project Phoenix")
+    // can shadow the actual language ("Go") on a different evidence row.
+    // The caller (normalizeFactual) iterates all evidence rows, so returning
+    // null here lets it move to the next row that may contain the language.
+    if (hints.wantsProgrammingLanguage) return null;
   }
 
   if (hints.wantsName) {

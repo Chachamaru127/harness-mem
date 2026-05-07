@@ -687,13 +687,20 @@ function hasSpecificTemporalAnswerCue(query: string): boolean {
 
 function prefersDescendingTemporalOrder(query: string): boolean {
   const normalized = query.toLowerCase();
+  // Duration questions like "how long did X last?" / "how long does Y last?"
+  // use "last" as a verb (= 持続する), not as "latest". Do not flip the order
+  // to descending in that case — fixes a regression where SD-010 picked the
+  // newest unrelated obs over the meeting-specific one.
+  if (/\bhow long\b[\s\S]*\blast(ed|s|ing)?\b/.test(normalized)) return false;
   if (/\b(first|earliest|before|prior to|until|initial|initially|start|starting|beginning)\b/.test(normalized)) {
     return false;
   }
   if (/(最初|以前|の前|開始|初回)/.test(query)) {
     return false;
   }
-  return /\b(last|latest|newest|most recent|recent|current|currently)\b/.test(normalized) || /(最後|最新|直近|最近)/.test(query);
+  return /\b(latest|newest|most recent|recent|current|currently)\b/.test(normalized) ||
+    /\blast\b(?!\s*(ed|ing|s)\b)/.test(normalized) ||
+    /(最後|最新|直近|最近)/.test(query);
 }
 
 function compareCreatedAt(lhs: string | null | undefined, rhs: string | null | undefined): number {
@@ -775,10 +782,10 @@ function temporalContractForObservation(
     FIRST_CUE_PATTERN.test(text) ||
     BEFORE_CUE_PATTERN.test(text) ||
     AFTER_CUE_PATTERN.test(text);
-  // S108-009: anchor_kind=observed_at alone is insufficient — observed_at is
-  // metadata about when the memory observed the event, not when the event
-  // happened. Without an explicit historical cue or a true event-time anchor
-  // (event_time / valid_from), treat as unknown.
+  // S108-009: anchor_kind=observed_at は S108-007 migration の trigger で
+  // 自動補完される列のため、historical のシグナルとしては弱すぎる。
+  // 明示的な event_time / valid_from / textual cue がある場合だけ historical
+  // と判定し、それ以外は unknown に倒す（point-in-time contract の厳格化）。
   if (hasHistoricalCue || anchorKind === "event_time" || anchorKind === "valid_from") {
     return { state: "historical", anchor, anchor_kind: anchorKind };
   }
@@ -804,6 +811,11 @@ function countTemporalStates(items: Array<Record<string, unknown>>): Record<Temp
 
 function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   const normalized = query.toLowerCase();
+  // "how long did X last?" / "how long does Y last?" の "last" は動詞（持続する）。
+  // LATEST_CUE_PATTERN の \blast\b に拾われると mode=latest になり、最新順
+  // ソートが効いて "meeting" 質問に "project" 答えが返る regression が出る。
+  // duration 系は chronology にフォールバックさせる。
+  const isDurationQuestion = /\bhow long\b[\s\S]*\blast(ed|s|ing)?\b/.test(normalized);
   if (hasNoLongerIntent(query)) return "no_longer";
   if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\b(now|before)\b/i.test(query) || /(現在|今)/.test(query))) {
     return "previous_current";
@@ -812,7 +824,7 @@ function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   if (AFTER_CUE_PATTERN.test(query) || /(直後|その後|以降|の後|後で|あとで)/.test(query)) return "after";
   if (BEFORE_CUE_PATTERN.test(query) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(query)) return "before";
   if (FIRST_CUE_PATTERN.test(query) || /(最初|初回|当初)/.test(query)) return "first";
-  if (LATEST_CUE_PATTERN.test(query) || /(最後|最新|直近|最近)/.test(query)) return "latest";
+  if (!isDurationQuestion && (LATEST_CUE_PATTERN.test(query) || /(最後|最新|直近|最近)/.test(query))) return "latest";
   if (hasCurrentValueIntent(query)) return "current";
   if (/\bcurrent\b/.test(normalized)) return "current";
   return "chronology";

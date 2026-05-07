@@ -168,7 +168,9 @@ export function insertTestObservation(
     JSON.stringify(tags),
     JSON.stringify(privacyTags),
     opts.event_time ?? null,
-    opts.observed_at ?? createdAt,
+    // S108-009: 明示的に observed_at: null を渡せるように nullish coalescing を
+    // 使わず undefined チェック。null は「temporal anchor 無し」を意味する。
+    opts.observed_at !== undefined ? opts.observed_at : createdAt,
     opts.valid_from ?? null,
     opts.valid_to ?? null,
     opts.supersedes ?? null,

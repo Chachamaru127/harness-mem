@@ -330,6 +330,10 @@ describe("observation-store: search", () => {
       title: "package manager note",
       content: "Package manager note without a temporal anchor.",
       project: "proj-temporal-contract",
+      // S108-009: observed_at is auto-filled from created_at by the helper.
+      // Pass null explicitly so this row truly has no temporal anchor and
+      // the contract returns state="unknown".
+      observed_at: null,
       created_at: "2026-05-03T00:00:00.000Z",
     });
     db.query(

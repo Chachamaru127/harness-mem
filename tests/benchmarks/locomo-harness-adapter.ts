@@ -1192,6 +1192,15 @@ function selectBestFactualSpan(question: string, candidates: CandidateSnippet[])
     .filter((entry): entry is { slot: ExtractedSlot; score: number } => Boolean(entry))
     .sort((lhs, rhs) => rhs.score - lhs.score);
 
+  // S108-009 follow-up: when the question explicitly asks for a programming
+  // language, do not let a higher-scoring proper-noun match (e.g. team name
+  // "Project Phoenix") shadow the actual language ("Go"). Prefer the
+  // language-slot candidate if any exists; otherwise fall back to ranking.
+  if (hints.wantsProgrammingLanguage) {
+    const languageHit = ranked.find((entry) => entry.slot.strategy === "language-slot");
+    if (languageHit) return languageHit.slot;
+  }
+
   return ranked[0]?.slot || null;
 }
 
