@@ -1,0 +1,46 @@
+{
+  "task_id": "S108-002",
+  "generated_at": "2026-05-07T01:48:13.247Z",
+  "required_families": [
+    "file",
+    "branch",
+    "pr",
+    "issue",
+    "migration",
+    "deploy",
+    "failing_test",
+    "release",
+    "setup",
+    "doctor",
+    "companion"
+  ],
+  "total_cases": 64,
+  "base_cases": 20,
+  "new_cases": 44,
+  "distribution": {
+    "file": 6,
+    "branch": 4,
+    "pr": 6,
+    "issue": 7,
+    "migration": 6,
+    "deploy": 4,
+    "failing_test": 9,
+    "release": 6,
+    "setup": 8,
+    "doctor": 4,
+    "companion": 4
+  },
+  "additions_by_family": {
+    "file": 4,
+    "branch": 4,
+    "pr": 4,
+    "issue": 4,
+    "migration": 4,
+    "deploy": 4,
+    "failing_test": 4,
+    "release": 4,
+    "setup": 4,
+    "doctor": 4,
+    "companion": 4
+  }
+}

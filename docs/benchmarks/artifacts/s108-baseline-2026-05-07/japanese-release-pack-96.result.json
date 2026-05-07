@@ -1,6 +1,6 @@
 {
   "schema_version": "locomo-benchmark-v2",
-  "generated_at": "2026-05-07T00:27:49.599Z",
+  "generated_at": "2026-05-07T01:42:27.699Z",
   "system": "harness-mem",
   "pipeline": {
     "embedding": {
@@ -21,7 +21,7 @@
     "prime_embedding_enabled": true
   },
   "dataset": {
-    "path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json",
+    "path": "tests/benchmarks/fixtures/japanese-release-pack-96.json",
     "sample_count": 16,
     "qa_count": 96
   },
@@ -69,11 +69,11 @@
   "performance": {
     "search_latency_ms": {
       "count": 96,
-      "min": 5.03,
-      "max": 41.12,
-      "avg": 9.88914411458342,
-      "p50": 8.31,
-      "p95": 19.614916999998094
+      "min": 5.12,
+      "max": 24.48,
+      "avg": 9.522304260416727,
+      "p50": 8.3,
+      "p95": 18.430917000003536
     },
     "cache_stats": {
       "available": true,
@@ -168,7 +168,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 7.58,
+      "search_latency_ms": 6.569999999999999,
       "token_estimate_input_tokens": 62,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 314,
@@ -228,7 +228,7 @@
         },
         "final_short_answer": "CircleCI の parallel build costs が上がり続けたから"
       },
-      "search_latency_ms": 5.67,
+      "search_latency_ms": 5.79,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -288,7 +288,7 @@
         },
         "final_short_answer": "CircleCI"
       },
-      "search_latency_ms": 6.61,
+      "search_latency_ms": 5.78,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -348,7 +348,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 5.2,
+      "search_latency_ms": 7.359999999999999,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -408,7 +408,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 5.8100000000000005,
+      "search_latency_ms": 6.75,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -468,7 +468,7 @@
         },
         "final_short_answer": "GitHub Actions"
       },
-      "search_latency_ms": 5.03,
+      "search_latency_ms": 6.01,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -528,7 +528,7 @@
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 12.6,
+      "search_latency_ms": 11.45,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -588,7 +588,7 @@
         },
         "final_short_answer": "ticket heatmap"
       },
-      "search_latency_ms": 5.6899999999999995,
+      "search_latency_ms": 8.67,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -648,7 +648,7 @@
         },
         "final_short_answer": "24 時間体制"
       },
-      "search_latency_ms": 7.95,
+      "search_latency_ms": 7.16,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -708,7 +708,7 @@
         },
         "final_short_answer": "平日の 9:00〜18:00 JST"
       },
-      "search_latency_ms": 5.83,
+      "search_latency_ms": 10.2,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -768,7 +768,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 5.32,
+      "search_latency_ms": 9,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -828,7 +828,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 8.760166999999564,
+      "search_latency_ms": 9.613125000000437,
       "token_estimate_input_tokens": 53,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 221,
@@ -888,7 +888,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 5.99,
+      "search_latency_ms": 7.1,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -948,7 +948,7 @@
         },
         "final_short_answer": "audit logs"
       },
-      "search_latency_ms": 5.13,
+      "search_latency_ms": 5.12,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -1008,7 +1008,7 @@
         },
         "final_short_answer": "29 dollars a month"
       },
-      "search_latency_ms": 5.6,
+      "search_latency_ms": 7.109999999999999,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -1068,7 +1068,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 5.61,
+      "search_latency_ms": 10.11,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -1128,7 +1128,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 6.299999999999999,
+      "search_latency_ms": 9.22,
       "token_estimate_input_tokens": 78,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 330,
@@ -1188,7 +1188,7 @@
         },
         "final_short_answer": "39 dollars a month"
       },
-      "search_latency_ms": 7.2299999999999995,
+      "search_latency_ms": 7.5200000000000005,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -1262,7 +1262,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 8.73,
+      "search_latency_ms": 7.07,
       "token_estimate_input_tokens": 76,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 451,
@@ -1336,7 +1336,7 @@
         },
         "final_short_answer": "quarterly audit exports の要望"
       },
-      "search_latency_ms": 8.73,
+      "search_latency_ms": 9.39,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 445,
@@ -1410,7 +1410,7 @@
         },
         "final_short_answer": "30 days"
       },
-      "search_latency_ms": 9.61,
+      "search_latency_ms": 6.76,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 441,
@@ -1484,7 +1484,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 8.71,
+      "search_latency_ms": 7.819999999999999,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 446,
@@ -1558,7 +1558,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 6.51,
+      "search_latency_ms": 6.45,
       "token_estimate_input_tokens": 90,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 465,
@@ -1632,7 +1632,7 @@
         },
         "final_short_answer": "Enterprise retention は 90 days"
       },
-      "search_latency_ms": 9.56,
+      "search_latency_ms": 8.399999999999999,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 462,
@@ -1692,7 +1692,7 @@
         },
         "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 12.203500000001295,
+      "search_latency_ms": 14.216166999999842,
       "token_estimate_input_tokens": 111,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 447,
@@ -1752,7 +1752,7 @@
         },
         "final_short_answer": "SSO の SCIM provider contract がまだ交渉中だったから"
       },
-      "search_latency_ms": 12.41,
+      "search_latency_ms": 24.48,
       "token_estimate_input_tokens": 61,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 313,
@@ -1813,7 +1813,7 @@
         },
         "final_short_answer": "SSO と team workspaces を同じ四半期に出す予定でした。"
       },
-      "search_latency_ms": 7.86,
+      "search_latency_ms": 7,
       "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 431,
@@ -1873,7 +1873,7 @@
         },
         "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 9.183208000000523,
+      "search_latency_ms": 12.172583000002923,
       "token_estimate_input_tokens": 46,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 214,
@@ -1933,7 +1933,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 6.1864990000022955,
+      "search_latency_ms": 7.468458999998984,
       "token_estimate_input_tokens": 21,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 105,
@@ -1993,7 +1993,7 @@
         },
         "final_short_answer": "team workspaces"
       },
-      "search_latency_ms": 12.664460000001418,
+      "search_latency_ms": 12.170250999998679,
       "token_estimate_input_tokens": 22,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 106,
@@ -2067,7 +2067,7 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 6.82,
+      "search_latency_ms": 8.3,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 449,
@@ -2148,7 +2148,7 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 20.49,
+      "search_latency_ms": 21.63,
       "token_estimate_input_tokens": 120,
       "token_estimate_output_tokens": 625,
       "token_estimate_total_tokens": 745,
@@ -2222,7 +2222,7 @@
         },
         "final_short_answer": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。"
       },
-      "search_latency_ms": 7.140000000000001,
+      "search_latency_ms": 6.61,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 449,
@@ -2303,7 +2303,7 @@
         },
         "final_short_answer": "ingestion と reporting の両方に影響しましたね。"
       },
-      "search_latency_ms": 12.557084000001632,
+      "search_latency_ms": 12.747540000000008,
       "token_estimate_input_tokens": 21,
       "token_estimate_output_tokens": 125,
       "token_estimate_total_tokens": 146,
@@ -2377,7 +2377,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 7.71,
+      "search_latency_ms": 8.27,
       "token_estimate_input_tokens": 85,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 460,
@@ -2451,7 +2451,7 @@
         },
         "final_short_answer": "alert の直後に read traffic を新しい replica に逃がしました。"
       },
-      "search_latency_ms": 11.05,
+      "search_latency_ms": 13.72,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 375,
       "token_estimate_total_tokens": 445,
@@ -2511,7 +2511,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 6.260000000000001,
+      "search_latency_ms": 5.6,
       "token_estimate_input_tokens": 77,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 329,
@@ -2571,7 +2571,7 @@
         },
         "final_short_answer": "recency"
       },
-      "search_latency_ms": 6.33,
+      "search_latency_ms": 7.0600000000000005,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 321,
@@ -2631,7 +2631,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 5.819999999999999,
+      "search_latency_ms": 7.88,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -2691,7 +2691,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 5.15,
+      "search_latency_ms": 8.129999999999999,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -2751,7 +2751,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 5.2299999999999995,
+      "search_latency_ms": 5.71,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -2811,7 +2811,7 @@
         },
         "final_short_answer": "Reciprocal Rank Fusion"
       },
-      "search_latency_ms": 5.55,
+      "search_latency_ms": 7.72,
       "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 347,
@@ -2878,7 +2878,7 @@
         },
         "final_short_answer": "Japanese"
       },
-      "search_latency_ms": 5.16,
+      "search_latency_ms": 7.88,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -2945,7 +2945,7 @@
         },
         "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。"
       },
-      "search_latency_ms": 12.65,
+      "search_latency_ms": 20.340000000000003,
       "token_estimate_input_tokens": 151,
       "token_estimate_output_tokens": 420,
       "token_estimate_total_tokens": 571,
@@ -3012,7 +3012,7 @@
         },
         "final_short_answer": "English only"
       },
-      "search_latency_ms": 5.76,
+      "search_latency_ms": 7.04,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3079,7 +3079,7 @@
         },
         "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。"
       },
-      "search_latency_ms": 14.264414999999426,
+      "search_latency_ms": 16.513124000000825,
       "token_estimate_input_tokens": 21,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 105,
@@ -3146,7 +3146,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 8.24,
+      "search_latency_ms": 9.190000000000001,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 324,
@@ -3213,7 +3213,7 @@
         },
         "final_short_answer": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。"
       },
-      "search_latency_ms": 11.403292000000075,
+      "search_latency_ms": 12.125499999999446,
       "token_estimate_input_tokens": 87,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 339,
@@ -3280,7 +3280,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 7.56,
+      "search_latency_ms": 5.859999999999999,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -3347,7 +3347,7 @@
         },
         "final_short_answer": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。"
       },
-      "search_latency_ms": 6.51,
+      "search_latency_ms": 5.66,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -3414,7 +3414,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 7.640000000000001,
+      "search_latency_ms": 8.14,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -3481,7 +3481,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 5.81,
+      "search_latency_ms": 5.33,
       "token_estimate_input_tokens": 60,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 312,
@@ -3548,7 +3548,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 6.029999999999999,
+      "search_latency_ms": 6.109999999999999,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 333,
@@ -3615,7 +3615,7 @@
         },
         "final_short_answer": "Redis backed session cookies"
       },
-      "search_latency_ms": 9.96,
+      "search_latency_ms": 13.69,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -3675,7 +3675,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 5.21,
+      "search_latency_ms": 7.26,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -3735,7 +3735,7 @@
         },
         "final_short_answer": "Singapore"
       },
-      "search_latency_ms": 11.178333000000421,
+      "search_latency_ms": 11.316208000001206,
       "token_estimate_input_tokens": 54,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 222,
@@ -3795,7 +3795,7 @@
         },
         "final_short_answer": "headquarters は San Francisco"
       },
-      "search_latency_ms": 6,
+      "search_latency_ms": 6.52,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -3855,7 +3855,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 5.15,
+      "search_latency_ms": 10.969999999999999,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -3915,7 +3915,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 6.91041700000067,
+      "search_latency_ms": 8.364290999998193,
       "token_estimate_input_tokens": 57,
       "token_estimate_output_tokens": 168,
       "token_estimate_total_tokens": 225,
@@ -3975,7 +3975,7 @@
         },
         "final_short_answer": "headquarters は Singapore"
       },
-      "search_latency_ms": 9.34,
+      "search_latency_ms": 8.29,
       "token_estimate_input_tokens": 74,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 326,
@@ -4042,7 +4042,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 7.32,
+      "search_latency_ms": 9.25,
       "token_estimate_input_tokens": 83,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 335,
@@ -4109,7 +4109,7 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 8.93,
+      "search_latency_ms": 9.41,
       "token_estimate_input_tokens": 75,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 327,
@@ -4176,7 +4176,7 @@
         },
         "final_short_answer": "nightly refresh"
       },
-      "search_latency_ms": 41.12,
+      "search_latency_ms": 14.290000000000001,
       "token_estimate_input_tokens": 84,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 336,
@@ -4243,7 +4243,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 13.59,
+      "search_latency_ms": 9.33,
       "token_estimate_input_tokens": 72,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 324,
@@ -4310,7 +4310,7 @@
         },
         "final_short_answer": "customers が same-day funnel drops を見逃していたから"
       },
-      "search_latency_ms": 11.91,
+      "search_latency_ms": 7.7,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 333,
@@ -4377,7 +4377,7 @@
         },
         "final_short_answer": "every five minutes"
       },
-      "search_latency_ms": 8.600000000000001,
+      "search_latency_ms": 11.739999999999998,
       "token_estimate_input_tokens": 99,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 351,
@@ -4445,7 +4445,7 @@
         },
         "final_short_answer": "export to CSV, audit logs, SAML, CSV"
       },
-      "search_latency_ms": 14.309999999999999,
+      "search_latency_ms": 11.37,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4512,7 +4512,7 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 12.361999999997716,
+      "search_latency_ms": 12.560333999998985,
       "token_estimate_input_tokens": 24,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 108,
@@ -4579,7 +4579,7 @@
         },
         "final_short_answer": "Q2 には export to CSV, audit logs, SAML for admins を出しました。"
       },
-      "search_latency_ms": 19.39591799999951,
+      "search_latency_ms": 18.964417000003305,
       "token_estimate_input_tokens": 22,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 106,
@@ -4646,7 +4646,7 @@
         },
         "final_short_answer": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。"
       },
-      "search_latency_ms": 17.13349999999955,
+      "search_latency_ms": 13.15112499999872,
       "token_estimate_input_tokens": 96,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 432,
@@ -4713,7 +4713,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 12.18,
+      "search_latency_ms": 12.36,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -4780,7 +4780,7 @@
         },
         "final_short_answer": "SAML"
       },
-      "search_latency_ms": 14.320334000004806,
+      "search_latency_ms": 12.69608399999808,
       "token_estimate_input_tokens": 26,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 110,
@@ -4840,7 +4840,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 7.83,
+      "search_latency_ms": 6.88,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -4900,7 +4900,7 @@
         },
         "final_short_answer": "us-west-2"
       },
-      "search_latency_ms": 7.91,
+      "search_latency_ms": 8.84,
       "token_estimate_input_tokens": 64,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 316,
@@ -4960,7 +4960,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 12.16,
+      "search_latency_ms": 7.93,
       "token_estimate_input_tokens": 71,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 323,
@@ -5020,7 +5020,7 @@
         },
         "final_short_answer": "default region は ap-northeast-1"
       },
-      "search_latency_ms": 5.9799999999999995,
+      "search_latency_ms": 5.57,
       "token_estimate_input_tokens": 70,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 322,
@@ -5080,7 +5080,7 @@
         },
         "final_short_answer": "Yes"
       },
-      "search_latency_ms": 15.86,
+      "search_latency_ms": 6.15,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5140,7 +5140,7 @@
         },
         "final_short_answer": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。"
       },
-      "search_latency_ms": 24.04358300000051,
+      "search_latency_ms": 18.430917000003536,
       "token_estimate_input_tokens": 115,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 451,
@@ -5200,7 +5200,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 27.75,
+      "search_latency_ms": 8.42,
       "token_estimate_input_tokens": 81,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 333,
@@ -5260,7 +5260,7 @@
         },
         "final_short_answer": "ack が早く、mobile notification も確実だったから"
       },
-      "search_latency_ms": 8.020000000000001,
+      "search_latency_ms": 8.32,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -5320,7 +5320,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 16.94,
+      "search_latency_ms": 7.66,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 331,
@@ -5380,7 +5380,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 16.47,
+      "search_latency_ms": 11.65,
       "token_estimate_input_tokens": 80,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 332,
@@ -5440,7 +5440,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 10.64,
+      "search_latency_ms": 9.280000000000001,
       "token_estimate_input_tokens": 79,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 331,
@@ -5500,7 +5500,7 @@
         },
         "final_short_answer": "primary incident channel は Slack"
       },
-      "search_latency_ms": 8.399999999999999,
+      "search_latency_ms": 6.1,
       "token_estimate_input_tokens": 65,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 317,
@@ -5561,7 +5561,7 @@
         },
         "final_short_answer": "codex, cursor, claude"
       },
-      "search_latency_ms": 14.99,
+      "search_latency_ms": 11.06,
       "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 431,
@@ -5621,7 +5621,7 @@
         },
         "final_short_answer": "codex"
       },
-      "search_latency_ms": 9.066208000001062,
+      "search_latency_ms": 7.567209000001458,
       "token_estimate_input_tokens": 21,
       "token_estimate_output_tokens": 84,
       "token_estimate_total_tokens": 105,
@@ -5681,7 +5681,7 @@
         },
         "final_short_answer": "最初の setup コマンドは codex だけを対象にしていました。"
       },
-      "search_latency_ms": 19.614916999998094,
+      "search_latency_ms": 17.18387500000128,
       "token_estimate_input_tokens": 105,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 441,
@@ -5742,7 +5742,7 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 10.9,
+      "search_latency_ms": 8.34,
       "token_estimate_input_tokens": 95,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 431,
@@ -5802,7 +5802,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 13.07,
+      "search_latency_ms": 8.59,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 320,
@@ -5863,7 +5863,7 @@
         },
         "final_short_answer": "今の推奨 setup は codex, cursor, claude をまとめて指定します。"
       },
-      "search_latency_ms": 10.48,
+      "search_latency_ms": 17.37,
       "token_estimate_input_tokens": 98,
       "token_estimate_output_tokens": 336,
       "token_estimate_total_tokens": 434,
@@ -5923,7 +5923,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 8.31,
+      "search_latency_ms": 7.84,
       "token_estimate_input_tokens": 66,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 318,
@@ -5983,7 +5983,7 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 6.6899999999999995,
+      "search_latency_ms": 6.16,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -6043,7 +6043,7 @@
         },
         "final_short_answer": "01:00 JST"
       },
-      "search_latency_ms": 9.969999999999999,
+      "search_latency_ms": 7.029999999999999,
       "token_estimate_input_tokens": 67,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 319,
@@ -6103,7 +6103,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 5.7299999999999995,
+      "search_latency_ms": 7.3100000000000005,
       "token_estimate_input_tokens": 63,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 315,
@@ -6163,7 +6163,7 @@
         },
         "final_short_answer": "No"
       },
-      "search_latency_ms": 9.69,
+      "search_latency_ms": 10.7,
       "token_estimate_input_tokens": 68,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 320,
@@ -6223,7 +6223,7 @@
         },
         "final_short_answer": "03:30 JST"
       },
-      "search_latency_ms": 12.52,
+      "search_latency_ms": 9.03,
       "token_estimate_input_tokens": 69,
       "token_estimate_output_tokens": 252,
       "token_estimate_total_tokens": 321,

@@ -1,8 +1,8 @@
 {
   "schema_version": "japanese-release-report-v1",
-  "generated_at": "2026-05-07T00:27:49.613Z",
-  "dataset_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json",
-  "result_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.result.json",
+  "generated_at": "2026-05-07T01:42:27.710Z",
+  "dataset_path": "tests/benchmarks/fixtures/japanese-release-pack-96.json",
+  "result_path": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.result.json",
   "summary": {
     "overall": {
       "count": 96,

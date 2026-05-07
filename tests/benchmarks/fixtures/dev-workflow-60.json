@@ -1,0 +1,1849 @@
+[
+  {
+    "id": "dw-001",
+    "description": "先週の変更ファイル問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-001-e1",
+        "content": "Refactored authentication middleware in auth/middleware.ts. Replaced JWT validation with session-based check. Added rate limiting per user.",
+        "timestamp": "2026-02-16T10:00:00.000Z"
+      },
+      {
+        "id": "dw-001-e2",
+        "content": "Updated database schema: added users.last_login column and session_tokens table. Ran migration successfully.",
+        "timestamp": "2026-02-17T14:30:00.000Z"
+      },
+      {
+        "id": "dw-001-e3",
+        "content": "Fixed bug in payment processing where duplicate charges occurred on retry. Added idempotency key to Stripe API calls.",
+        "timestamp": "2026-02-18T09:15:00.000Z"
+      }
+    ],
+    "query": "What files did I change last week?",
+    "expected_answer": "auth/middleware.ts",
+    "relevant_ids": [
+      "dw-001-e1",
+      "dw-001-e2",
+      "dw-001-e3"
+    ]
+  },
+  {
+    "id": "dw-002",
+    "description": "バグ修正時期の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-002-e1",
+        "content": "Investigated memory leak in observation-store.ts. SQLite WAL mode causing unbounded growth on high write load.",
+        "timestamp": "2026-02-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-002-e2",
+        "content": "Fixed memory leak: added checkpoint interval every 1000 writes. WAL file now stays under 50MB. Deployed to staging.",
+        "timestamp": "2026-02-11T16:45:00.000Z"
+      },
+      {
+        "id": "dw-002-e3",
+        "content": "Memory leak fix deployed to production. Monitoring shows WAL size stable at 30-40MB under normal load.",
+        "timestamp": "2026-02-12T10:00:00.000Z"
+      }
+    ],
+    "query": "When was the memory leak bug fixed?",
+    "expected_answer": "February 11",
+    "relevant_ids": [
+      "dw-002-e2",
+      "dw-002-e3"
+    ]
+  },
+  {
+    "id": "dw-003",
+    "description": "CI失敗原因の問い合わせ",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-003-e1",
+        "content": "CI pipeline passing on main branch. All 1278 tests green. Build time: 2m 34s.",
+        "timestamp": "2026-02-20T09:00:00.000Z"
+      },
+      {
+        "id": "dw-003-e2",
+        "content": "CI failed on PR #142. Error: Cannot find module 'bun:sqlite' in test environment. Node.js runner used instead of Bun.",
+        "timestamp": "2026-02-21T14:20:00.000Z"
+      },
+      {
+        "id": "dw-003-e3",
+        "content": "Fixed CI: switched test runner back to Bun in .github/workflows/test.yml. PR #142 now passing.",
+        "timestamp": "2026-02-21T16:00:00.000Z"
+      }
+    ],
+    "query": "Why did CI fail recently?",
+    "expected_answer": "Cannot find module bun:sqlite",
+    "relevant_ids": [
+      "dw-003-e2",
+      "dw-003-e3"
+    ]
+  },
+  {
+    "id": "dw-004",
+    "description": "設計判断の問い合わせ",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-004-e1",
+        "content": "Considered using PostgreSQL for better full-text search. Decided against it: SQLite sufficient for single-user local deployment. Avoid operational complexity.",
+        "timestamp": "2026-01-15T10:00:00.000Z"
+      },
+      {
+        "id": "dw-004-e2",
+        "content": "Implemented vector embeddings using 64-dimensional space instead of 384-dim. Trade-off: lower quality vs 6x faster indexing. Acceptable for MVP.",
+        "timestamp": "2026-01-20T14:00:00.000Z"
+      },
+      {
+        "id": "dw-004-e3",
+        "content": "Architecture decision: keep all storage in SQLite with FTS5 + vector extension. No external dependencies for core functionality.",
+        "timestamp": "2026-01-25T11:00:00.000Z"
+      }
+    ],
+    "query": "Why did we choose SQLite over PostgreSQL?",
+    "expected_answer": "single-user local deployment",
+    "relevant_ids": [
+      "dw-004-e1",
+      "dw-004-e3"
+    ]
+  },
+  {
+    "id": "dw-005",
+    "description": "最新設定値の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-005-e1",
+        "content": "Default embedding dimension set to 128. Performance tests show 128-dim gives good recall@10 for typical query lengths.",
+        "timestamp": "2026-01-10T09:00:00.000Z"
+      },
+      {
+        "id": "dw-005-e2",
+        "content": "Reduced embedding dimension to 64 after benchmarks. 64-dim achieves 94% of 128-dim recall at 40% lower latency. Updated config default.",
+        "timestamp": "2026-01-18T15:00:00.000Z"
+      }
+    ],
+    "query": "What is the current embedding dimension?",
+    "expected_answer": "64",
+    "relevant_ids": [
+      "dw-005-e2"
+    ]
+  },
+  {
+    "id": "dw-006",
+    "description": "パフォーマンス問題の調査",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-006-e1",
+        "content": "Profiled search latency. p50=45ms, p95=320ms, p99=890ms. High variance on queries with many results.",
+        "timestamp": "2026-02-05T10:00:00.000Z"
+      },
+      {
+        "id": "dw-006-e2",
+        "content": "Root cause: reranker BM25 calculation running O(n^2) for large result sets. Implemented batch scoring to reduce to O(n log n).",
+        "timestamp": "2026-02-06T14:00:00.000Z"
+      },
+      {
+        "id": "dw-006-e3",
+        "content": "After optimization: p50=22ms, p95=85ms, p99=210ms. 4x improvement at p95. Deployed to production.",
+        "timestamp": "2026-02-07T11:00:00.000Z"
+      }
+    ],
+    "query": "What was causing the high search latency?",
+    "expected_answer": "BM25",
+    "relevant_ids": [
+      "dw-006-e2"
+    ]
+  },
+  {
+    "id": "dw-007",
+    "description": "依存関係バージョンの問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-007-e1",
+        "content": "Using Bun 1.2.0 as runtime. Upgraded from 1.1.38. New features: improved SQLite performance, better TypeScript support.",
+        "timestamp": "2026-02-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-007-e2",
+        "content": "Upgraded Bun to 1.3.6 to fix crash in test runner on macOS Silicon. No breaking changes in our usage.",
+        "timestamp": "2026-02-19T14:00:00.000Z"
+      }
+    ],
+    "query": "What version of Bun are we using?",
+    "expected_answer": "1.3.6",
+    "relevant_ids": [
+      "dw-007-e2"
+    ]
+  },
+  {
+    "id": "dw-008",
+    "description": "未解決のTODO追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-008-e1",
+        "content": "TODO: implement query result caching to reduce repeated embedding computations. Estimated 30% latency improvement.",
+        "timestamp": "2026-01-28T10:00:00.000Z"
+      },
+      {
+        "id": "dw-008-e2",
+        "content": "TODO: add streaming response support for MCP server. Currently buffers all results before sending.",
+        "timestamp": "2026-02-03T15:00:00.000Z"
+      },
+      {
+        "id": "dw-008-e3",
+        "content": "TODO caching: deprioritized. Cache invalidation complexity too high given frequent writes. Will revisit in §35.",
+        "timestamp": "2026-02-10T11:00:00.000Z"
+      }
+    ],
+    "query": "What TODOs are still open?",
+    "expected_answer": "streaming",
+    "relevant_ids": [
+      "dw-008-e2"
+    ]
+  },
+  {
+    "id": "dw-009",
+    "description": "デプロイ時刻の問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-009-e1",
+        "content": "Released v0.2.0. Changes: bilingual search, freshness routing, 50-case knowledge-update benchmark.",
+        "timestamp": "2026-01-20T12:00:00.000Z"
+      },
+      {
+        "id": "dw-009-e2",
+        "content": "Released v0.3.0. Major changes: §32 benchmark CI, temporal ordering, Bootstrap CI implementation.",
+        "timestamp": "2026-02-15T10:00:00.000Z"
+      }
+    ],
+    "query": "When was v0.3.0 released?",
+    "expected_answer": "February 15",
+    "relevant_ids": [
+      "dw-009-e2"
+    ]
+  },
+  {
+    "id": "dw-010",
+    "description": "テスト失敗の原因追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-010-e1",
+        "content": "Test suite: reranker quality gate failing. Expected recall >= 0.85, actual 0.72. Regression from PR #138.",
+        "timestamp": "2026-02-22T09:00:00.000Z"
+      },
+      {
+        "id": "dw-010-e2",
+        "content": "Root cause of recall regression: PR #138 changed BM25 title weight from 5.0 to 2.0 without updating test baseline. Baseline updated.",
+        "timestamp": "2026-02-22T11:30:00.000Z"
+      },
+      {
+        "id": "dw-010-e3",
+        "content": "Reranker quality gate passing after baseline update. recall=0.91, mrr=0.88. PR #138 approved.",
+        "timestamp": "2026-02-22T14:00:00.000Z"
+      }
+    ],
+    "query": "Why was the reranker quality gate failing?",
+    "expected_answer": "BM25 title weight",
+    "relevant_ids": [
+      "dw-010-e2"
+    ]
+  },
+  {
+    "id": "dw-011",
+    "description": "担当者の変更",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-011-e1",
+        "content": "Search module owned by Alice. She implemented the original vector retrieval pipeline in §28.",
+        "timestamp": "2026-01-05T10:00:00.000Z"
+      },
+      {
+        "id": "dw-011-e2",
+        "content": "Alice on leave. Bob taking over search module ownership. Onboarding session completed.",
+        "timestamp": "2026-02-10T09:00:00.000Z"
+      }
+    ],
+    "query": "Who owns the search module now?",
+    "expected_answer": "Bob",
+    "relevant_ids": [
+      "dw-011-e2"
+    ]
+  },
+  {
+    "id": "dw-012",
+    "description": "APIエンドポイントの仕様変更",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-012-e1",
+        "content": "Search API: POST /search accepts {query, limit, project}. Returns up to 10 results by default.",
+        "timestamp": "2026-01-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-012-e2",
+        "content": "Updated search API: added include_private and sector parameters. Default limit increased to 20. Breaking change: old clients may receive more results.",
+        "timestamp": "2026-02-08T14:00:00.000Z"
+      }
+    ],
+    "query": "What parameters does the search API accept?",
+    "expected_answer": "include_private",
+    "relevant_ids": [
+      "dw-012-e2"
+    ]
+  },
+  {
+    "id": "dw-013",
+    "description": "直近のスプリント目標",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-013-e1",
+        "content": "Sprint §33 goal: improve search quality. F1 target: 0.27. Freshness target: 0.80.",
+        "timestamp": "2026-02-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-013-e2",
+        "content": "Sprint §33 completed. F1=0.287 (target met). Freshness=0.88 (target met, but train=test bias suspected).",
+        "timestamp": "2026-02-20T17:00:00.000Z"
+      },
+      {
+        "id": "dw-013-e3",
+        "content": "Sprint §34 goal: fix measurement reliability. Fix temporal fixture (ASC-only score < 0.7). Fix freshness CV bias.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      }
+    ],
+    "query": "What is the current sprint goal?",
+    "expected_answer": "measurement reliability",
+    "relevant_ids": [
+      "dw-013-e3"
+    ]
+  },
+  {
+    "id": "dw-014",
+    "description": "コードレビューコメントの追跡",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-014-e1",
+        "content": "PR #145 review: suggestion to add error handling in appendQueryLog. Currently silently ignores write errors.",
+        "timestamp": "2026-02-23T10:00:00.000Z"
+      },
+      {
+        "id": "dw-014-e2",
+        "content": "PR #145 review: alternative suggestion - use structured logging instead of raw JSONL. Easier to query.",
+        "timestamp": "2026-02-23T10:30:00.000Z"
+      },
+      {
+        "id": "dw-014-e3",
+        "content": "PR #145 merged. Kept JSONL format (simpler, no deps). Error handling: catch and ignore (log failures must not impact search).",
+        "timestamp": "2026-02-23T16:00:00.000Z"
+      }
+    ],
+    "query": "What was decided about error handling in the query log?",
+    "expected_answer": "catch and ignore",
+    "relevant_ids": [
+      "dw-014-e3"
+    ]
+  },
+  {
+    "id": "dw-015",
+    "description": "環境変数の仕様問い合わせ",
+    "difficulty": "easy",
+    "entries": [
+      {
+        "id": "dw-015-e1",
+        "content": "Environment variables: HARNESS_MEM_DECAY_DISABLED=1 disables time-based score decay. HARNESS_MEM_RERANKER_ENABLED=1 enables BM25 reranking.",
+        "timestamp": "2026-01-20T09:00:00.000Z"
+      },
+      {
+        "id": "dw-015-e2",
+        "content": "Added new env vars: HARNESS_BENCH_FRESHNESS_GATE (default 0.30), HARNESS_BENCH_TEMPORAL_GATE (default 0.50). Override CI thresholds.",
+        "timestamp": "2026-02-14T14:00:00.000Z"
+      },
+      {
+        "id": "dw-015-e3",
+        "content": "Added HARNESS_MEM_QUERY_LOG env var. Set to file path to enable JSONL query logging. Privacy: only category/length recorded, not full query text.",
+        "timestamp": "2026-02-28T10:00:00.000Z"
+      }
+    ],
+    "query": "How do I enable query logging?",
+    "expected_answer": "HARNESS_MEM_QUERY_LOG",
+    "relevant_ids": [
+      "dw-015-e3"
+    ]
+  },
+  {
+    "id": "dw-016",
+    "description": "実装方針の変更追跡",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-016-e1",
+        "content": "Initial plan: implement Graph traversal for multi-hop reasoning. Estimated 2 sprint effort.",
+        "timestamp": "2026-01-15T10:00:00.000Z"
+      },
+      {
+        "id": "dw-016-e2",
+        "content": "Graph traversal de-prioritized. F1 improvement from vector search alone sufficient for §33 goals. Revisit in §35.",
+        "timestamp": "2026-02-01T11:00:00.000Z"
+      },
+      {
+        "id": "dw-016-e3",
+        "content": "§34 scope confirmed: no graph traversal. Focus on measurement reliability only. Graph traversal remains §35+ scope.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      }
+    ],
+    "query": "Why was Graph traversal de-prioritized?",
+    "expected_answer": "vector search alone sufficient",
+    "relevant_ids": [
+      "dw-016-e2"
+    ]
+  },
+  {
+    "id": "dw-017",
+    "description": "スコア改善の定量追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-017-e1",
+        "content": "§31 F1 score: 0.179. Baseline established with locomo-120 dataset.",
+        "timestamp": "2026-01-10T10:00:00.000Z"
+      },
+      {
+        "id": "dw-017-e2",
+        "content": "§32 F1 score: 0.212. Improvement: +0.033 from BM25 reranking and freshness routing.",
+        "timestamp": "2026-02-01T10:00:00.000Z"
+      },
+      {
+        "id": "dw-017-e3",
+        "content": "§33 F1 score: 0.287. Improvement: +0.075 from temporal ordering and improved answer normalization.",
+        "timestamp": "2026-02-20T10:00:00.000Z"
+      }
+    ],
+    "query": "What is the latest F1 score?",
+    "expected_answer": "0.287",
+    "relevant_ids": [
+      "dw-017-e3"
+    ]
+  },
+  {
+    "id": "dw-018",
+    "description": "ミーティング決定事項の追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-018-e1",
+        "content": "Team meeting 2026-02-20: discussed LLM judge evaluation. Cost: ~$50/run. Reproducibility concerns due to model updates.",
+        "timestamp": "2026-02-20T15:00:00.000Z"
+      },
+      {
+        "id": "dw-018-e2",
+        "content": "Decision from meeting: skip LLM judge for now. Use automated metrics (F1, Recall, Temporal Order Score) only. Revisit if automated metrics plateau.",
+        "timestamp": "2026-02-20T16:00:00.000Z"
+      }
+    ],
+    "query": "Why did we decide not to use LLM judge evaluation?",
+    "expected_answer": "reproducibility",
+    "relevant_ids": [
+      "dw-018-e2"
+    ]
+  },
+  {
+    "id": "dw-019",
+    "description": "テストカバレッジ変化の追跡",
+    "difficulty": "medium",
+    "entries": [
+      {
+        "id": "dw-019-e1",
+        "content": "Test count: 956 tests across 142 files after §32. Coverage added for temporal ordering and Bootstrap CI.",
+        "timestamp": "2026-02-10T10:00:00.000Z"
+      },
+      {
+        "id": "dw-019-e2",
+        "content": "Test count: 1278 tests across 167 files after §33. New tests: bilingual recall, freshness CV, Holm-Bonferroni correction.",
+        "timestamp": "2026-02-20T10:00:00.000Z"
+      },
+      {
+        "id": "dw-019-e3",
+        "content": "Test count: 1343 tests across 172 files after §34 Phase A-B. New tests: temporal-100, knowledge-update-100, 3-layer CI gate.",
+        "timestamp": "2026-03-05T10:00:00.000Z"
+      }
+    ],
+    "query": "How many tests are there currently?",
+    "expected_answer": "1343",
+    "relevant_ids": [
+      "dw-019-e3"
+    ]
+  },
+  {
+    "id": "dw-020",
+    "description": "次のマイルストーンの確認",
+    "difficulty": "hard",
+    "entries": [
+      {
+        "id": "dw-020-e1",
+        "content": "§34 milestone: fix measurement reliability. 4 metrics must have Bootstrap CI. Temporal fixture must have reverse-order cases.",
+        "timestamp": "2026-02-25T09:00:00.000Z"
+      },
+      {
+        "id": "dw-020-e2",
+        "content": "§34 completion criteria: Temporal Weighted Kendall tau >= 0.70 (CI lower bound). Freshness@K >= 0.70 (post-CV). bilingual recall >= 0.85 (N=50).",
+        "timestamp": "2026-02-25T10:00:00.000Z"
+      },
+      {
+        "id": "dw-020-e3",
+        "content": "§35 scope preview: multi-hop reasoning (Graph traversal), 384-dim embeddings, LoCoMo 200-sample expansion. Start after §34 completion.",
+        "timestamp": "2026-02-25T11:00:00.000Z"
+      }
+    ],
+    "query": "What comes after §34 is complete?",
+    "expected_answer": "multi-hop reasoning",
+    "relevant_ids": [
+      "dw-020-e3"
+    ]
+  },
+  {
+    "id": "dw-021",
+    "description": "changed file for failure notifications",
+    "difficulty": "easy",
+    "query_family": "file",
+    "category": "file",
+    "entries": [
+      {
+        "id": "dw-021-e1",
+        "content": "Updated scripts/notify-on-failure.ts to include the failed job name and retry URL in Slack messages.",
+        "timestamp": "2026-03-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-021-e2",
+        "content": "Kept .github/workflows/ci.yml unchanged after confirming the notification script already receives GITHUB_RUN_ID.",
+        "timestamp": "2026-03-01T11:00:00.000Z"
+      },
+      {
+        "id": "dw-021-e3",
+        "content": "Verified the failure notification payload locally with HARNESS_MEM_NOTIFY_DRY_RUN=1.",
+        "timestamp": "2026-03-01T13:00:00.000Z"
+      }
+    ],
+    "query": "Which file did we edit for failure notifications?",
+    "expected_answer": "scripts/notify-on-failure.ts",
+    "relevant_ids": [
+      "dw-021-e1"
+    ]
+  },
+  {
+    "id": "dw-022",
+    "description": "feature flag cleanup file",
+    "difficulty": "easy",
+    "query_family": "file",
+    "category": "file",
+    "entries": [
+      {
+        "id": "dw-022-e1",
+        "content": "Created src/flags/cleanup.ts to remove expired feature flags after release promotion.",
+        "timestamp": "2026-03-02T09:00:00.000Z"
+      },
+      {
+        "id": "dw-022-e2",
+        "content": "Left src/flags/index.ts as a thin export surface for cleanupFeatureFlags and readFeatureFlagState.",
+        "timestamp": "2026-03-02T11:00:00.000Z"
+      },
+      {
+        "id": "dw-022-e3",
+        "content": "Added a note that cleanup runs only in maintenance mode, not during user prompt handling.",
+        "timestamp": "2026-03-02T13:00:00.000Z"
+      }
+    ],
+    "query": "Where did we put the feature flag cleanup logic?",
+    "expected_answer": "src/flags/cleanup.ts",
+    "relevant_ids": [
+      "dw-022-e1",
+      "dw-022-e2"
+    ]
+  },
+  {
+    "id": "dw-023",
+    "description": "webhook signature verification file",
+    "difficulty": "medium",
+    "query_family": "file",
+    "category": "file",
+    "entries": [
+      {
+        "id": "dw-023-e1",
+        "content": "Added Stripe signature verification in api/webhooks/stripe.ts before JSON parsing.",
+        "timestamp": "2026-03-03T09:00:00.000Z"
+      },
+      {
+        "id": "dw-023-e2",
+        "content": "Rejected a helper in api/webhooks/shared.ts because raw body access is route-specific.",
+        "timestamp": "2026-03-03T11:00:00.000Z"
+      },
+      {
+        "id": "dw-023-e3",
+        "content": "Regression test posts a bad stripe-signature header and expects HTTP 400.",
+        "timestamp": "2026-03-03T13:00:00.000Z"
+      }
+    ],
+    "query": "Which file has the new Stripe webhook signature verification?",
+    "expected_answer": "api/webhooks/stripe.ts",
+    "relevant_ids": [
+      "dw-023-e1",
+      "dw-023-e3"
+    ]
+  },
+  {
+    "id": "dw-024",
+    "description": "workspace isolation fix file",
+    "difficulty": "medium",
+    "query_family": "file",
+    "category": "file",
+    "entries": [
+      {
+        "id": "dw-024-e1",
+        "content": "Fixed strict project filtering in memory-server/src/core/project-scope.ts by canonicalizing worktree paths.",
+        "timestamp": "2026-03-04T09:00:00.000Z"
+      },
+      {
+        "id": "dw-024-e2",
+        "content": "Did not touch memory-server/src/core/privacy-filter.ts; privacy behavior stayed unchanged.",
+        "timestamp": "2026-03-04T11:00:00.000Z"
+      },
+      {
+        "id": "dw-024-e3",
+        "content": "Added a regression note: sibling worktrees must not share observations when strict_project=true.",
+        "timestamp": "2026-03-04T13:00:00.000Z"
+      }
+    ],
+    "query": "What file should I inspect for the workspace isolation fix?",
+    "expected_answer": "memory-server/src/core/project-scope.ts",
+    "relevant_ids": [
+      "dw-024-e1",
+      "dw-024-e3"
+    ]
+  },
+  {
+    "id": "dw-025",
+    "description": "current S108 dev workflow branch",
+    "difficulty": "easy",
+    "query_family": "branch",
+    "category": "branch",
+    "entries": [
+      {
+        "id": "dw-025-e1",
+        "content": "Started branch codex/s108-dev-workflow-fixture for S108-002 fixture expansion.",
+        "timestamp": "2026-03-05T09:00:00.000Z"
+      },
+      {
+        "id": "dw-025-e2",
+        "content": "Kept Plans.md untouched because the parent integrator owns final S108 status updates.",
+        "timestamp": "2026-03-05T11:00:00.000Z"
+      },
+      {
+        "id": "dw-025-e3",
+        "content": "Scoped writes to dev-workflow fixtures, S108 dev-workflow artifacts, and validation tests.",
+        "timestamp": "2026-03-05T13:00:00.000Z"
+      }
+    ],
+    "query": "What branch was used for the S108 developer-workflow fixture work?",
+    "expected_answer": "codex/s108-dev-workflow-fixture",
+    "relevant_ids": [
+      "dw-025-e1",
+      "dw-025-e3"
+    ]
+  },
+  {
+    "id": "dw-026",
+    "description": "Windows doctor path branch",
+    "difficulty": "easy",
+    "query_family": "branch",
+    "category": "branch",
+    "entries": [
+      {
+        "id": "dw-026-e1",
+        "content": "Opened codex/windows-doctor-paths to fix stale absolute path detection on Git Bash.",
+        "timestamp": "2026-03-06T09:00:00.000Z"
+      },
+      {
+        "id": "dw-026-e2",
+        "content": "The branch adds checks for ~/.codex/config.toml and ~/.codex/hooks.json path drift.",
+        "timestamp": "2026-03-06T11:00:00.000Z"
+      },
+      {
+        "id": "dw-026-e3",
+        "content": "Follow-up branch codex/windows-doctor-docs is only for README wording.",
+        "timestamp": "2026-03-06T13:00:00.000Z"
+      }
+    ],
+    "query": "Which branch contains the Windows doctor path fix?",
+    "expected_answer": "codex/windows-doctor-paths",
+    "relevant_ids": [
+      "dw-026-e1",
+      "dw-026-e2"
+    ]
+  },
+  {
+    "id": "dw-027",
+    "description": "abandoned graph spike branch",
+    "difficulty": "medium",
+    "query_family": "branch",
+    "category": "branch",
+    "entries": [
+      {
+        "id": "dw-027-e1",
+        "content": "Paused codex/graph-signal-spike after the prototype required a second graph database.",
+        "timestamp": "2026-03-07T09:00:00.000Z"
+      },
+      {
+        "id": "dw-027-e2",
+        "content": "Decision: keep graph signal work behind HARNESS_MEM_TEMPORAL_GRAPH=1 until SQLite-only design is clear.",
+        "timestamp": "2026-03-07T11:00:00.000Z"
+      },
+      {
+        "id": "dw-027-e3",
+        "content": "New branch codex/local-graph-signal should start from the design note, not the abandoned spike.",
+        "timestamp": "2026-03-07T13:00:00.000Z"
+      }
+    ],
+    "query": "Which branch did we abandon for the graph signal spike?",
+    "expected_answer": "codex/graph-signal-spike",
+    "relevant_ids": [
+      "dw-027-e1",
+      "dw-027-e2"
+    ]
+  },
+  {
+    "id": "dw-028",
+    "description": "companion contract branch",
+    "difficulty": "medium",
+    "query_family": "branch",
+    "category": "branch",
+    "entries": [
+      {
+        "id": "dw-028-e1",
+        "content": "Implemented doctor JSON fields on codex/companion-doctor-json.",
+        "timestamp": "2026-03-08T09:00:00.000Z"
+      },
+      {
+        "id": "dw-028-e2",
+        "content": "The branch exposes contract_version and harness_mem_version for the managed companion.",
+        "timestamp": "2026-03-08T11:00:00.000Z"
+      },
+      {
+        "id": "dw-028-e3",
+        "content": "Merged after claude-code-harness verified it did not depend on internal DB paths.",
+        "timestamp": "2026-03-08T13:00:00.000Z"
+      }
+    ],
+    "query": "What branch carried the companion doctor JSON contract?",
+    "expected_answer": "codex/companion-doctor-json",
+    "relevant_ids": [
+      "dw-028-e1",
+      "dw-028-e2"
+    ]
+  },
+  {
+    "id": "dw-029",
+    "description": "PR number for Bun runner fix",
+    "difficulty": "easy",
+    "query_family": "pr",
+    "category": "pr",
+    "entries": [
+      {
+        "id": "dw-029-e1",
+        "content": "PR #214 added a safe Bun runner wrapper around benchmark smoke tests.",
+        "timestamp": "2026-03-09T09:00:00.000Z"
+      },
+      {
+        "id": "dw-029-e2",
+        "content": "The fix catches Bun panic output and exits with a clear diagnostic instead of hanging.",
+        "timestamp": "2026-03-09T11:00:00.000Z"
+      },
+      {
+        "id": "dw-029-e3",
+        "content": "PR #214 was merged after rerank-quality-gate.test.ts passed locally.",
+        "timestamp": "2026-03-09T13:00:00.000Z"
+      }
+    ],
+    "query": "Which PR fixed the Bun runner panic wrapper?",
+    "expected_answer": "PR #214",
+    "relevant_ids": [
+      "dw-029-e1",
+      "dw-029-e3"
+    ]
+  },
+  {
+    "id": "dw-030",
+    "description": "PR for cache invalidation",
+    "difficulty": "medium",
+    "query_family": "pr",
+    "category": "pr",
+    "entries": [
+      {
+        "id": "dw-030-e1",
+        "content": "PR #218 changed the search cache key to include the latest observation sequence.",
+        "timestamp": "2026-03-10T09:00:00.000Z"
+      },
+      {
+        "id": "dw-030-e2",
+        "content": "Before PR #218, repeated queries could return stale results after recordEvent.",
+        "timestamp": "2026-03-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-030-e3",
+        "content": "The PR added a focused test in memory-server/tests/core-split/search-cache.test.ts.",
+        "timestamp": "2026-03-10T13:00:00.000Z"
+      }
+    ],
+    "query": "Which PR fixed cache invalidation after observation writes?",
+    "expected_answer": "PR #218",
+    "relevant_ids": [
+      "dw-030-e1",
+      "dw-030-e2",
+      "dw-030-e3"
+    ]
+  },
+  {
+    "id": "dw-031",
+    "description": "review request for contract tests",
+    "difficulty": "medium",
+    "query_family": "pr",
+    "category": "pr",
+    "entries": [
+      {
+        "id": "dw-031-e1",
+        "content": "Opened PR #221 for privacy filter cleanup in the MCP search path.",
+        "timestamp": "2026-03-11T09:00:00.000Z"
+      },
+      {
+        "id": "dw-031-e2",
+        "content": "Reviewer requested contract tests for include_private=false before approval.",
+        "timestamp": "2026-03-11T11:00:00.000Z"
+      },
+      {
+        "id": "dw-031-e3",
+        "content": "Added tests proving private observations are excluded from MCP and HTTP search responses.",
+        "timestamp": "2026-03-11T13:00:00.000Z"
+      }
+    ],
+    "query": "What did the reviewer request on PR #221?",
+    "expected_answer": "contract tests for include_private=false",
+    "relevant_ids": [
+      "dw-031-e2",
+      "dw-031-e3"
+    ]
+  },
+  {
+    "id": "dw-032",
+    "description": "docs blocker PR",
+    "difficulty": "medium",
+    "query_family": "pr",
+    "category": "pr",
+    "entries": [
+      {
+        "id": "dw-032-e1",
+        "content": "PR #223 changed setup flags for --skip-smoke and --skip-quality.",
+        "timestamp": "2026-03-12T09:00:00.000Z"
+      },
+      {
+        "id": "dw-032-e2",
+        "content": "CI passed on PR #223, but review blocked merge because README_ja.md was not updated.",
+        "timestamp": "2026-03-12T11:00:00.000Z"
+      },
+      {
+        "id": "dw-032-e3",
+        "content": "Follow-up commit synchronized README.md, README_ja.md, and docs/harness-mem-setup.md.",
+        "timestamp": "2026-03-12T13:00:00.000Z"
+      }
+    ],
+    "query": "Why was PR #223 blocked?",
+    "expected_answer": "README_ja.md was not updated",
+    "relevant_ids": [
+      "dw-032-e2",
+      "dw-032-e3"
+    ]
+  },
+  {
+    "id": "dw-033",
+    "description": "duplicate session_end issue",
+    "difficulty": "easy",
+    "query_family": "issue",
+    "category": "issue",
+    "entries": [
+      {
+        "id": "dw-033-e1",
+        "content": "Opened issue #71 for duplicate Codex session_end observations from repeated finalize calls.",
+        "timestamp": "2026-03-13T09:00:00.000Z"
+      },
+      {
+        "id": "dw-033-e2",
+        "content": "The issue labels are bug, ingest, and codex-parity.",
+        "timestamp": "2026-03-13T11:00:00.000Z"
+      },
+      {
+        "id": "dw-033-e3",
+        "content": "Proposed fix is semantic dedup by session_id, observation_type, and content_hash.",
+        "timestamp": "2026-03-13T13:00:00.000Z"
+      }
+    ],
+    "query": "Which issue tracks duplicate session_end observations?",
+    "expected_answer": "issue #71",
+    "relevant_ids": [
+      "dw-033-e1",
+      "dw-033-e3"
+    ]
+  },
+  {
+    "id": "dw-034",
+    "description": "privacy leak issue",
+    "difficulty": "medium",
+    "query_family": "issue",
+    "category": "issue",
+    "entries": [
+      {
+        "id": "dw-034-e1",
+        "content": "Issue #75 reports private observations appearing when include_private=false.",
+        "timestamp": "2026-03-14T09:00:00.000Z"
+      },
+      {
+        "id": "dw-034-e2",
+        "content": "Reproduction uses one public note and one privacy_tags=['private'] note in the same project.",
+        "timestamp": "2026-03-14T11:00:00.000Z"
+      },
+      {
+        "id": "dw-034-e3",
+        "content": "Root cause is an HTTP search path bypassing applyPrivacyFilter after rerank.",
+        "timestamp": "2026-03-14T13:00:00.000Z"
+      }
+    ],
+    "query": "What is issue #75 about?",
+    "expected_answer": "private observations appearing when include_private=false",
+    "relevant_ids": [
+      "dw-034-e1",
+      "dw-034-e2",
+      "dw-034-e3"
+    ]
+  },
+  {
+    "id": "dw-035",
+    "description": "stale resume pack issue",
+    "difficulty": "medium",
+    "query_family": "issue",
+    "category": "issue",
+    "entries": [
+      {
+        "id": "dw-035-e1",
+        "content": "Issue #82 covers stale resume packs being injected after a new session starts.",
+        "timestamp": "2026-03-15T09:00:00.000Z"
+      },
+      {
+        "id": "dw-035-e2",
+        "content": "The stale artifact was .claude/state/memory-resume-pack.json from 12 days earlier.",
+        "timestamp": "2026-03-15T11:00:00.000Z"
+      },
+      {
+        "id": "dw-035-e3",
+        "content": "Fix direction: validate generated_at and upstream session identity before suppressing recall.",
+        "timestamp": "2026-03-15T13:00:00.000Z"
+      }
+    ],
+    "query": "Which issue covers stale resume packs on new sessions?",
+    "expected_answer": "issue #82",
+    "relevant_ids": [
+      "dw-035-e1",
+      "dw-035-e2"
+    ]
+  },
+  {
+    "id": "dw-036",
+    "description": "package manifest issue",
+    "difficulty": "medium",
+    "query_family": "issue",
+    "category": "issue",
+    "entries": [
+      {
+        "id": "dw-036-e1",
+        "content": "Issue #88 tracks npm package payload drift after mcp-server/dist was omitted.",
+        "timestamp": "2026-03-16T09:00:00.000Z"
+      },
+      {
+        "id": "dw-036-e2",
+        "content": "The issue requires npm pack --dry-run --json evidence before release promotion.",
+        "timestamp": "2026-03-16T11:00:00.000Z"
+      },
+      {
+        "id": "dw-036-e3",
+        "content": "Resolution criterion: package includes scripts, mcp-server/dist, sdk, and docs.",
+        "timestamp": "2026-03-16T13:00:00.000Z"
+      }
+    ],
+    "query": "What was the package manifest issue number?",
+    "expected_answer": "issue #88",
+    "relevant_ids": [
+      "dw-036-e1",
+      "dw-036-e2"
+    ]
+  },
+  {
+    "id": "dw-037",
+    "description": "content hash migration",
+    "difficulty": "easy",
+    "query_family": "migration",
+    "category": "migration",
+    "entries": [
+      {
+        "id": "dw-037-e1",
+        "content": "Created migration 20260501_add_content_hash.sql to add observations.content_hash.",
+        "timestamp": "2026-03-17T09:00:00.000Z"
+      },
+      {
+        "id": "dw-037-e2",
+        "content": "Backfill computes sha256 of normalized observation content for semantic dedup.",
+        "timestamp": "2026-03-17T11:00:00.000Z"
+      },
+      {
+        "id": "dw-037-e3",
+        "content": "Rollback drops the content_hash index before dropping the column.",
+        "timestamp": "2026-03-17T13:00:00.000Z"
+      }
+    ],
+    "query": "Which migration added observations.content_hash?",
+    "expected_answer": "20260501_add_content_hash.sql",
+    "relevant_ids": [
+      "dw-037-e1",
+      "dw-037-e2"
+    ]
+  },
+  {
+    "id": "dw-038",
+    "description": "vector status backfill migration",
+    "difficulty": "medium",
+    "query_family": "migration",
+    "category": "migration",
+    "entries": [
+      {
+        "id": "dw-038-e1",
+        "content": "Prepared 20260502_backfill_vector_status.sql for rows missing vector_status.",
+        "timestamp": "2026-03-18T09:00:00.000Z"
+      },
+      {
+        "id": "dw-038-e2",
+        "content": "Dry-run found 418 observations with embeddings but null vector_status.",
+        "timestamp": "2026-03-18T11:00:00.000Z"
+      },
+      {
+        "id": "dw-038-e3",
+        "content": "The migration is idempotent and updates only rows where vector_status is null.",
+        "timestamp": "2026-03-18T13:00:00.000Z"
+      }
+    ],
+    "query": "Which migration backfills vector_status?",
+    "expected_answer": "20260502_backfill_vector_status.sql",
+    "relevant_ids": [
+      "dw-038-e1",
+      "dw-038-e2",
+      "dw-038-e3"
+    ]
+  },
+  {
+    "id": "dw-039",
+    "description": "semantic dedup migration command",
+    "difficulty": "medium",
+    "query_family": "migration",
+    "category": "migration",
+    "entries": [
+      {
+        "id": "dw-039-e1",
+        "content": "Documented semantic dedup dry-run command: bun run scripts/migrate-db.ts --plan semantic-dedup --dry-run.",
+        "timestamp": "2026-03-19T09:00:00.000Z"
+      },
+      {
+        "id": "dw-039-e2",
+        "content": "Execute mode removes --dry-run after the duplicate count matches the migration preflight.",
+        "timestamp": "2026-03-19T11:00:00.000Z"
+      },
+      {
+        "id": "dw-039-e3",
+        "content": "The plan writes a backup under .harness-mem/backups before mutating the database.",
+        "timestamp": "2026-03-19T13:00:00.000Z"
+      }
+    ],
+    "query": "What command runs the semantic dedup migration plan?",
+    "expected_answer": "bun run scripts/migrate-db.ts --plan semantic-dedup",
+    "relevant_ids": [
+      "dw-039-e1",
+      "dw-039-e2"
+    ]
+  },
+  {
+    "id": "dw-040",
+    "description": "fact edge temporal migration",
+    "difficulty": "hard",
+    "query_family": "migration",
+    "category": "migration",
+    "entries": [
+      {
+        "id": "dw-040-e1",
+        "content": "Deferred migration adding fact_edges.valid_from and fact_edges.valid_to until temporal contract review.",
+        "timestamp": "2026-03-20T09:00:00.000Z"
+      },
+      {
+        "id": "dw-040-e2",
+        "content": "Do not add temporal graph columns before S108-007 defines event_time and valid_from semantics.",
+        "timestamp": "2026-03-20T11:00:00.000Z"
+      },
+      {
+        "id": "dw-040-e3",
+        "content": "Current S108-002 fixture work must not touch temporal migration files.",
+        "timestamp": "2026-03-20T13:00:00.000Z"
+      }
+    ],
+    "query": "Which temporal graph migration is still pending?",
+    "expected_answer": "fact_edges.valid_from",
+    "relevant_ids": [
+      "dw-040-e1",
+      "dw-040-e2",
+      "dw-040-e3"
+    ]
+  },
+  {
+    "id": "dw-041",
+    "description": "staging deploy target",
+    "difficulty": "easy",
+    "query_family": "deploy",
+    "category": "deploy",
+    "entries": [
+      {
+        "id": "dw-041-e1",
+        "content": "Staging deploy target is harness-mem-staging for smoke testing daemon API changes.",
+        "timestamp": "2026-03-21T09:00:00.000Z"
+      },
+      {
+        "id": "dw-041-e2",
+        "content": "Production deploy is intentionally skipped for fixture-only benchmark work.",
+        "timestamp": "2026-03-21T11:00:00.000Z"
+      },
+      {
+        "id": "dw-041-e3",
+        "content": "Health check path remains /health after staging deploy.",
+        "timestamp": "2026-03-21T13:00:00.000Z"
+      }
+    ],
+    "query": "What is the staging deploy target for harness-mem?",
+    "expected_answer": "harness-mem-staging",
+    "relevant_ids": [
+      "dw-041-e1",
+      "dw-041-e3"
+    ]
+  },
+  {
+    "id": "dw-042",
+    "description": "local runtime deploy command",
+    "difficulty": "medium",
+    "query_family": "deploy",
+    "category": "deploy",
+    "entries": [
+      {
+        "id": "dw-042-e1",
+        "content": "Recommended local runtime update command: node scripts/harness-mem.js update --restart.",
+        "timestamp": "2026-03-22T09:00:00.000Z"
+      },
+      {
+        "id": "dw-042-e2",
+        "content": "The command syncs the stable runtime copy and restarts harness-memd if it is running.",
+        "timestamp": "2026-03-22T11:00:00.000Z"
+      },
+      {
+        "id": "dw-042-e3",
+        "content": "After update, run node scripts/harness-mem.js doctor --json --platform codex --skip-version-check.",
+        "timestamp": "2026-03-22T13:00:00.000Z"
+      }
+    ],
+    "query": "What command updates the local runtime and restarts it?",
+    "expected_answer": "node scripts/harness-mem.js update --restart",
+    "relevant_ids": [
+      "dw-042-e1",
+      "dw-042-e2"
+    ]
+  },
+  {
+    "id": "dw-043",
+    "description": "deploy asset failure",
+    "difficulty": "medium",
+    "query_family": "deploy",
+    "category": "deploy",
+    "entries": [
+      {
+        "id": "dw-043-e1",
+        "content": "Release deploy failed because the darwin-arm64 asset was missing from the upload set.",
+        "timestamp": "2026-03-23T09:00:00.000Z"
+      },
+      {
+        "id": "dw-043-e2",
+        "content": "The linux-x64 and darwin-x64 assets uploaded successfully.",
+        "timestamp": "2026-03-23T11:00:00.000Z"
+      },
+      {
+        "id": "dw-043-e3",
+        "content": "Re-ran the build matrix and verified all four platform assets before publishing.",
+        "timestamp": "2026-03-23T13:00:00.000Z"
+      }
+    ],
+    "query": "Why did the release deploy fail?",
+    "expected_answer": "darwin-arm64 asset was missing",
+    "relevant_ids": [
+      "dw-043-e1",
+      "dw-043-e3"
+    ]
+  },
+  {
+    "id": "dw-044",
+    "description": "deployed commit tracking",
+    "difficulty": "medium",
+    "query_family": "deploy",
+    "category": "deploy",
+    "entries": [
+      {
+        "id": "dw-044-e1",
+        "content": "Staging deploy completed for commit a1b2c3d with health status healthy.",
+        "timestamp": "2026-03-24T09:00:00.000Z"
+      },
+      {
+        "id": "dw-044-e2",
+        "content": "The deploy included doctor JSON contract changes but no database migration.",
+        "timestamp": "2026-03-24T11:00:00.000Z"
+      },
+      {
+        "id": "dw-044-e3",
+        "content": "Post-deploy smoke checked /health, /stats, and /v1/sessions.",
+        "timestamp": "2026-03-24T13:00:00.000Z"
+      }
+    ],
+    "query": "Which commit was deployed to staging?",
+    "expected_answer": "a1b2c3d",
+    "relevant_ids": [
+      "dw-044-e1",
+      "dw-044-e3"
+    ]
+  },
+  {
+    "id": "dw-045",
+    "description": "doctor JSON contract failure",
+    "difficulty": "easy",
+    "query_family": "failing_test",
+    "category": "failing_test",
+    "entries": [
+      {
+        "id": "dw-045-e1",
+        "content": "doctor-json-contract.test.ts failed because doctor --json did not include contract_version.",
+        "timestamp": "2026-03-25T09:00:00.000Z"
+      },
+      {
+        "id": "dw-045-e2",
+        "content": "Added contract_version to the JSON payload with value claude-harness-companion.v1.",
+        "timestamp": "2026-03-25T11:00:00.000Z"
+      },
+      {
+        "id": "dw-045-e3",
+        "content": "The focused test passed after adding harness_mem_version and contract_version.",
+        "timestamp": "2026-03-25T13:00:00.000Z"
+      }
+    ],
+    "query": "Which test failed because contract_version was missing?",
+    "expected_answer": "doctor-json-contract.test.ts",
+    "relevant_ids": [
+      "dw-045-e1",
+      "dw-045-e2",
+      "dw-045-e3"
+    ]
+  },
+  {
+    "id": "dw-046",
+    "description": "dev workflow recall regression",
+    "difficulty": "medium",
+    "query_family": "failing_test",
+    "category": "failing_test",
+    "entries": [
+      {
+        "id": "dw-046-e1",
+        "content": "dev-workflow recall stayed around 0.54 after manifest emission work.",
+        "timestamp": "2026-03-26T09:00:00.000Z"
+      },
+      {
+        "id": "dw-046-e2",
+        "content": "Failure taxonomy points to BM25 tokenization missing camelCase, kebab-case, path, and PR tokens.",
+        "timestamp": "2026-03-26T11:00:00.000Z"
+      },
+      {
+        "id": "dw-046-e3",
+        "content": "S108-004 should tune code-aware lexical normalization after S108-003 ablation.",
+        "timestamp": "2026-03-26T13:00:00.000Z"
+      }
+    ],
+    "query": "Why was dev-workflow recall stuck around 0.54?",
+    "expected_answer": "BM25 tokenization",
+    "relevant_ids": [
+      "dw-046-e2",
+      "dw-046-e3"
+    ]
+  },
+  {
+    "id": "dw-047",
+    "description": "UI memory list failure",
+    "difficulty": "medium",
+    "query_family": "failing_test",
+    "category": "failing_test",
+    "entries": [
+      {
+        "id": "dw-047-e1",
+        "content": "Playwright memory list test failed because the stale fixture seed still expected 6 rows.",
+        "timestamp": "2026-03-27T09:00:00.000Z"
+      },
+      {
+        "id": "dw-047-e2",
+        "content": "The UI correctly rendered 7 rows after adding the new resume-pack observation.",
+        "timestamp": "2026-03-27T11:00:00.000Z"
+      },
+      {
+        "id": "dw-047-e3",
+        "content": "Fixed by updating the fixture seed and keeping the selector unchanged.",
+        "timestamp": "2026-03-27T13:00:00.000Z"
+      }
+    ],
+    "query": "Why did the UI memory list Playwright test fail?",
+    "expected_answer": "stale fixture seed",
+    "relevant_ids": [
+      "dw-047-e1",
+      "dw-047-e2"
+    ]
+  },
+  {
+    "id": "dw-048",
+    "description": "contextual recall pending skip failure",
+    "difficulty": "hard",
+    "query_family": "failing_test",
+    "category": "failing_test",
+    "entries": [
+      {
+        "id": "dw-048-e1",
+        "content": "tests/contextual-recall-contract.test.ts failed when stale pending_resume_skip suppressed a fresh recall.",
+        "timestamp": "2026-03-28T09:00:00.000Z"
+      },
+      {
+        "id": "dw-048-e2",
+        "content": "Fix clears pending_resume_skip after the upstream resume identity no longer matches.",
+        "timestamp": "2026-03-28T11:00:00.000Z"
+      },
+      {
+        "id": "dw-048-e3",
+        "content": "Regression proves the next Codex prompt still emits harness-recall guidance.",
+        "timestamp": "2026-03-28T13:00:00.000Z"
+      }
+    ],
+    "query": "Which test covered stale pending_resume_skip behavior?",
+    "expected_answer": "tests/contextual-recall-contract.test.ts",
+    "relevant_ids": [
+      "dw-048-e1",
+      "dw-048-e2",
+      "dw-048-e3"
+    ]
+  },
+  {
+    "id": "dw-049",
+    "description": "latest release tag",
+    "difficulty": "easy",
+    "query_family": "release",
+    "category": "release",
+    "entries": [
+      {
+        "id": "dw-049-e1",
+        "content": "Prepared release note for v0.18.0 after doctor and setup contracts turned green.",
+        "timestamp": "2026-03-29T09:00:00.000Z"
+      },
+      {
+        "id": "dw-049-e2",
+        "content": "v0.18.0 includes Codex wiring repair, companion doctor JSON, and package payload checks.",
+        "timestamp": "2026-03-29T11:00:00.000Z"
+      },
+      {
+        "id": "dw-049-e3",
+        "content": "No README claim changes were included in the release tag.",
+        "timestamp": "2026-03-29T13:00:00.000Z"
+      }
+    ],
+    "query": "What was the latest release tag in the release note?",
+    "expected_answer": "v0.18.0",
+    "relevant_ids": [
+      "dw-049-e1",
+      "dw-049-e2"
+    ]
+  },
+  {
+    "id": "dw-050",
+    "description": "npm pack blocker",
+    "difficulty": "medium",
+    "query_family": "release",
+    "category": "release",
+    "entries": [
+      {
+        "id": "dw-050-e1",
+        "content": "npm release blocked because npm pack --dry-run showed mcp-server/dist was missing.",
+        "timestamp": "2026-03-30T09:00:00.000Z"
+      },
+      {
+        "id": "dw-050-e2",
+        "content": "package.json files list was corrected to include the built MCP server output.",
+        "timestamp": "2026-03-30T11:00:00.000Z"
+      },
+      {
+        "id": "dw-050-e3",
+        "content": "Release resumed only after npm pack --dry-run --json showed the expected payload.",
+        "timestamp": "2026-03-30T13:00:00.000Z"
+      }
+    ],
+    "query": "What blocked the npm release?",
+    "expected_answer": "mcp-server/dist was missing",
+    "relevant_ids": [
+      "dw-050-e1",
+      "dw-050-e2",
+      "dw-050-e3"
+    ]
+  },
+  {
+    "id": "dw-051",
+    "description": "Japanese changelog requirement",
+    "difficulty": "medium",
+    "query_family": "release",
+    "category": "release",
+    "entries": [
+      {
+        "id": "dw-051-e1",
+        "content": "Added the companion doctor JSON contract note to CHANGELOG.md.",
+        "timestamp": "2026-03-31T09:00:00.000Z"
+      },
+      {
+        "id": "dw-051-e2",
+        "content": "Release review required the same note in CHANGELOG_ja.md before tagging.",
+        "timestamp": "2026-03-31T11:00:00.000Z"
+      },
+      {
+        "id": "dw-051-e3",
+        "content": "Both changelogs mention contract_version and harness_mem_version fields.",
+        "timestamp": "2026-03-31T13:00:00.000Z"
+      }
+    ],
+    "query": "Which changelog needed the companion doctor note?",
+    "expected_answer": "CHANGELOG_ja.md",
+    "relevant_ids": [
+      "dw-051-e2",
+      "dw-051-e3"
+    ]
+  },
+  {
+    "id": "dw-052",
+    "description": "RC promotion source",
+    "difficulty": "medium",
+    "query_family": "release",
+    "category": "release",
+    "entries": [
+      {
+        "id": "dw-052-e1",
+        "content": "v0.18.0-rc.1 failed package payload verification.",
+        "timestamp": "2026-04-01T09:00:00.000Z"
+      },
+      {
+        "id": "dw-052-e2",
+        "content": "v0.18.0-rc.2 passed npm pack, doctor, and focused Codex wiring tests.",
+        "timestamp": "2026-04-01T11:00:00.000Z"
+      },
+      {
+        "id": "dw-052-e3",
+        "content": "Stable v0.18.0 was promoted from v0.18.0-rc.2 without retagging history.",
+        "timestamp": "2026-04-01T13:00:00.000Z"
+      }
+    ],
+    "query": "Which RC was promoted to the stable release?",
+    "expected_answer": "v0.18.0-rc.2",
+    "relevant_ids": [
+      "dw-052-e2",
+      "dw-052-e3"
+    ]
+  },
+  {
+    "id": "dw-053",
+    "description": "Codex setup command",
+    "difficulty": "easy",
+    "query_family": "setup",
+    "category": "setup",
+    "entries": [
+      {
+        "id": "dw-053-e1",
+        "content": "For Codex wiring, run node scripts/harness-mem.js setup --platform codex --skip-version-check.",
+        "timestamp": "2026-04-02T09:00:00.000Z"
+      },
+      {
+        "id": "dw-053-e2",
+        "content": "The command updates ~/.codex/config.toml and installs the harness-mem skills.",
+        "timestamp": "2026-04-02T11:00:00.000Z"
+      },
+      {
+        "id": "dw-053-e3",
+        "content": "Use --skip-smoke only when daemon startup is intentionally out of scope.",
+        "timestamp": "2026-04-02T13:00:00.000Z"
+      }
+    ],
+    "query": "What setup command should I run for Codex wiring?",
+    "expected_answer": "harness-mem setup --platform codex --skip-version-check",
+    "relevant_ids": [
+      "dw-053-e1",
+      "dw-053-e2"
+    ]
+  },
+  {
+    "id": "dw-054",
+    "description": "Codex config destinations",
+    "difficulty": "medium",
+    "query_family": "setup",
+    "category": "setup",
+    "entries": [
+      {
+        "id": "dw-054-e1",
+        "content": "Codex setup updates ~/.codex/config.toml with the harness MCP server entry.",
+        "timestamp": "2026-04-03T09:00:00.000Z"
+      },
+      {
+        "id": "dw-054-e2",
+        "content": "Codex setup also merges ~/.codex/hooks.json for notification and prompt hooks.",
+        "timestamp": "2026-04-03T11:00:00.000Z"
+      },
+      {
+        "id": "dw-054-e3",
+        "content": "The setup command must preserve unrelated user-defined Codex MCP entries.",
+        "timestamp": "2026-04-03T13:00:00.000Z"
+      }
+    ],
+    "query": "Which Codex files does setup update?",
+    "expected_answer": "~/.codex/config.toml and ~/.codex/hooks.json",
+    "relevant_ids": [
+      "dw-054-e1",
+      "dw-054-e2",
+      "dw-054-e3"
+    ]
+  },
+  {
+    "id": "dw-055",
+    "description": "Windows setup shell requirement",
+    "difficulty": "medium",
+    "query_family": "setup",
+    "category": "setup",
+    "entries": [
+      {
+        "id": "dw-055-e1",
+        "content": "Windows setup requires Git Bash path normalization before writing hook command paths.",
+        "timestamp": "2026-04-04T09:00:00.000Z"
+      },
+      {
+        "id": "dw-055-e2",
+        "content": "Without normalization, doctor reports stale absolute paths after moving the repo.",
+        "timestamp": "2026-04-04T11:00:00.000Z"
+      },
+      {
+        "id": "dw-055-e3",
+        "content": "The setup test runs under a simulated Git Bash home directory.",
+        "timestamp": "2026-04-04T13:00:00.000Z"
+      }
+    ],
+    "query": "What does Windows setup require?",
+    "expected_answer": "Git Bash path normalization",
+    "relevant_ids": [
+      "dw-055-e1",
+      "dw-055-e2"
+    ]
+  },
+  {
+    "id": "dw-056",
+    "description": "setup smoke skip flag",
+    "difficulty": "easy",
+    "query_family": "setup",
+    "category": "setup",
+    "entries": [
+      {
+        "id": "dw-056-e1",
+        "content": "Added --skip-smoke for setup runs where daemon health checks are intentionally skipped.",
+        "timestamp": "2026-04-05T09:00:00.000Z"
+      },
+      {
+        "id": "dw-056-e2",
+        "content": "--skip-quality skips benchmark quality checks but still allows daemon smoke checks.",
+        "timestamp": "2026-04-05T11:00:00.000Z"
+      },
+      {
+        "id": "dw-056-e3",
+        "content": "Docs warn that release verification should not use --skip-smoke.",
+        "timestamp": "2026-04-05T13:00:00.000Z"
+      }
+    ],
+    "query": "Which flag skips setup smoke checks?",
+    "expected_answer": "--skip-smoke",
+    "relevant_ids": [
+      "dw-056-e1",
+      "dw-056-e3"
+    ]
+  },
+  {
+    "id": "dw-057",
+    "description": "multi DB doctor warning",
+    "difficulty": "easy",
+    "query_family": "doctor",
+    "category": "doctor",
+    "entries": [
+      {
+        "id": "dw-057-e1",
+        "content": "doctor --json reports multi_db_warning when plugin-scoped and stable DB files both exist.",
+        "timestamp": "2026-04-06T09:00:00.000Z"
+      },
+      {
+        "id": "dw-057-e2",
+        "content": "The warning does not fail doctor because migration may be pending.",
+        "timestamp": "2026-04-06T11:00:00.000Z"
+      },
+      {
+        "id": "dw-057-e3",
+        "content": "The suggested fix is scripts/migrations/merge-plugin-scoped-dbs.sh --dry-run first.",
+        "timestamp": "2026-04-06T13:00:00.000Z"
+      }
+    ],
+    "query": "What doctor warning appears for multiple databases?",
+    "expected_answer": "multi_db_warning",
+    "relevant_ids": [
+      "dw-057-e1",
+      "dw-057-e2",
+      "dw-057-e3"
+    ]
+  },
+  {
+    "id": "dw-058",
+    "description": "healthy Codex doctor status",
+    "difficulty": "easy",
+    "query_family": "doctor",
+    "category": "doctor",
+    "entries": [
+      {
+        "id": "dw-058-e1",
+        "content": "Healthy Codex doctor output has status=healthy and all_green=true.",
+        "timestamp": "2026-04-07T09:00:00.000Z"
+      },
+      {
+        "id": "dw-058-e2",
+        "content": "The codex_wiring check reports ok when config.toml, hooks.json, and notify script paths are valid.",
+        "timestamp": "2026-04-07T11:00:00.000Z"
+      },
+      {
+        "id": "dw-058-e3",
+        "content": "failed_count should be 0 in the same JSON response.",
+        "timestamp": "2026-04-07T13:00:00.000Z"
+      }
+    ],
+    "query": "What should Codex doctor report when wiring is healthy?",
+    "expected_answer": "codex_wiring: ok",
+    "relevant_ids": [
+      "dw-058-e1",
+      "dw-058-e2",
+      "dw-058-e3"
+    ]
+  },
+  {
+    "id": "dw-059",
+    "description": "stale path doctor fix",
+    "difficulty": "medium",
+    "query_family": "doctor",
+    "category": "doctor",
+    "entries": [
+      {
+        "id": "dw-059-e1",
+        "content": "Doctor found stale Codex hook paths pointing at an archived worktree.",
+        "timestamp": "2026-04-08T09:00:00.000Z"
+      },
+      {
+        "id": "dw-059-e2",
+        "content": "Fix was to remove old repo paths from ~/.codex/hooks.json and rerun setup.",
+        "timestamp": "2026-04-08T11:00:00.000Z"
+      },
+      {
+        "id": "dw-059-e3",
+        "content": "After setup, doctor confirmed notify script and MCP entrypoint paths point at the current repo.",
+        "timestamp": "2026-04-08T13:00:00.000Z"
+      }
+    ],
+    "query": "How did we fix stale Codex hook paths?",
+    "expected_answer": "remove old repo paths from ~/.codex/hooks.json",
+    "relevant_ids": [
+      "dw-059-e1",
+      "dw-059-e2",
+      "dw-059-e3"
+    ]
+  },
+  {
+    "id": "dw-060",
+    "description": "doctor failed count field",
+    "difficulty": "medium",
+    "query_family": "doctor",
+    "category": "doctor",
+    "entries": [
+      {
+        "id": "dw-060-e1",
+        "content": "Added failed_count to doctor --json so automation can decide whether to block setup.",
+        "timestamp": "2026-04-09T09:00:00.000Z"
+      },
+      {
+        "id": "dw-060-e2",
+        "content": "The field is numeric and counts only failed checks, not warnings.",
+        "timestamp": "2026-04-09T11:00:00.000Z"
+      },
+      {
+        "id": "dw-060-e3",
+        "content": "Warnings remain available under warnings[] for human-readable diagnostics.",
+        "timestamp": "2026-04-09T13:00:00.000Z"
+      }
+    ],
+    "query": "Which doctor JSON field counts failed checks?",
+    "expected_answer": "failed_count",
+    "relevant_ids": [
+      "dw-060-e1",
+      "dw-060-e2"
+    ]
+  },
+  {
+    "id": "dw-061",
+    "description": "companion contract version",
+    "difficulty": "easy",
+    "query_family": "companion",
+    "category": "companion",
+    "entries": [
+      {
+        "id": "dw-061-e1",
+        "content": "The managed companion contract version is claude-harness-companion.v1.",
+        "timestamp": "2026-04-10T09:00:00.000Z"
+      },
+      {
+        "id": "dw-061-e2",
+        "content": "harness-mem doctor --json exposes the contract_version field for Claude-harness.",
+        "timestamp": "2026-04-10T11:00:00.000Z"
+      },
+      {
+        "id": "dw-061-e3",
+        "content": "Claude-harness must not inspect harness-mem internal database paths.",
+        "timestamp": "2026-04-10T13:00:00.000Z"
+      }
+    ],
+    "query": "What is the managed companion contract version?",
+    "expected_answer": "claude-harness-companion.v1",
+    "relevant_ids": [
+      "dw-061-e1",
+      "dw-061-e2",
+      "dw-061-e3"
+    ]
+  },
+  {
+    "id": "dw-062",
+    "description": "companion auto setup state",
+    "difficulty": "medium",
+    "query_family": "companion",
+    "category": "companion",
+    "entries": [
+      {
+        "id": "dw-062-e1",
+        "content": "Companion auto-setup state is stored in .claude/state/harness-mem-companion-setup.json.",
+        "timestamp": "2026-04-11T09:00:00.000Z"
+      },
+      {
+        "id": "dw-062-e2",
+        "content": "The state file prevents repeating setup on every Setup:init run.",
+        "timestamp": "2026-04-11T11:00:00.000Z"
+      },
+      {
+        "id": "dw-062-e3",
+        "content": "Deleting the state file forces Claude-harness to evaluate companion setup again.",
+        "timestamp": "2026-04-11T13:00:00.000Z"
+      }
+    ],
+    "query": "Where is companion auto-setup state stored?",
+    "expected_answer": ".claude/state/harness-mem-companion-setup.json",
+    "relevant_ids": [
+      "dw-062-e1",
+      "dw-062-e2"
+    ]
+  },
+  {
+    "id": "dw-063",
+    "description": "turning companion off",
+    "difficulty": "medium",
+    "query_family": "companion",
+    "category": "companion",
+    "entries": [
+      {
+        "id": "dw-063-e1",
+        "content": "Claude-harness exposes harness mem off to disable the managed companion path.",
+        "timestamp": "2026-04-12T09:00:00.000Z"
+      },
+      {
+        "id": "dw-063-e2",
+        "content": "The command should not delete the harness-mem database.",
+        "timestamp": "2026-04-12T11:00:00.000Z"
+      },
+      {
+        "id": "dw-063-e3",
+        "content": "Users can re-enable the path with harness mem setup after confirming doctor output.",
+        "timestamp": "2026-04-12T13:00:00.000Z"
+      }
+    ],
+    "query": "What command turns the managed companion off?",
+    "expected_answer": "harness mem off",
+    "relevant_ids": [
+      "dw-063-e1",
+      "dw-063-e2"
+    ]
+  },
+  {
+    "id": "dw-064",
+    "description": "companion runtime owner",
+    "difficulty": "hard",
+    "query_family": "companion",
+    "category": "companion",
+    "entries": [
+      {
+        "id": "dw-064-e1",
+        "content": "harness-mem owns the companion runtime implementation, including setup, doctor, update, and uninstall.",
+        "timestamp": "2026-04-13T09:00:00.000Z"
+      },
+      {
+        "id": "dw-064-e2",
+        "content": "claude-code-harness owns the developer UX wrapper and calls only stable companion commands.",
+        "timestamp": "2026-04-13T11:00:00.000Z"
+      },
+      {
+        "id": "dw-064-e3",
+        "content": "Do not reimplement memory storage or search inside claude-code-harness.",
+        "timestamp": "2026-04-13T13:00:00.000Z"
+      }
+    ],
+    "query": "Who owns the companion runtime implementation?",
+    "expected_answer": "harness-mem",
+    "relevant_ids": [
+      "dw-064-e1",
+      "dw-064-e2",
+      "dw-064-e3"
+    ]
+  }
+]

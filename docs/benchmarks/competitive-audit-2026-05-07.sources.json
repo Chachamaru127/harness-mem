@@ -1,0 +1,135 @@
+{
+  "schema": "harness-mem.competitive-audit-sources/v1",
+  "task": "S108-010",
+  "snapshot_date": "2026-05-07",
+  "checked_at": "2026-05-07T01:41:15Z",
+  "method": {
+    "github_api": "gh api repos/<owner>/<repo> --jq '{full_name,html_url,stargazers_count,license:(.license.spdx_id // null),description,pushed_at,updated_at,default_branch,archived,private}'",
+    "official_sources": "Official GitHub README, docs, or product pages only. No third-party benchmark claims were used for positioning."
+  },
+  "entries": [
+    {
+      "project": "mem0",
+      "github_repo": "mem0ai/mem0",
+      "github_api_url": "https://api.github.com/repos/mem0ai/mem0",
+      "official_sources": [
+        "https://github.com/mem0ai/mem0"
+      ],
+      "stars": 54944,
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-06T18:04:14Z",
+      "updated_at": "2026-05-07T01:35:08Z",
+      "positioning": "Universal memory layer for AI agents with user/session/agent memory, library, self-hosted server, cloud platform, CLI, skills, and multi-signal retrieval claims.",
+      "claim_risk": "high"
+    },
+    {
+      "project": "supermemory",
+      "github_repo": "supermemoryai/supermemory",
+      "github_api_url": "https://api.github.com/repos/supermemoryai/supermemory",
+      "official_sources": [
+        "https://github.com/supermemoryai/supermemory"
+      ],
+      "stars": 22425,
+      "license": "MIT",
+      "pushed_at": "2026-05-06T22:30:33Z",
+      "updated_at": "2026-05-07T00:35:47Z",
+      "positioning": "Memory and context layer with app, plugins, MCP, API, user profiles, connectors, file processing, project/container tag scoping, and Claude Code/OpenCode plugin claims.",
+      "claim_risk": "high"
+    },
+    {
+      "project": "claude-mem",
+      "github_repo": "thedotmack/claude-mem",
+      "github_api_url": "https://api.github.com/repos/thedotmack/claude-mem",
+      "official_sources": [
+        "https://github.com/thedotmack/claude-mem"
+      ],
+      "stars": 72972,
+      "license": "NOASSERTION",
+      "pushed_at": "2026-05-07T01:32:45Z",
+      "updated_at": "2026-05-07T01:39:10Z",
+      "positioning": "Persistent memory compression for Claude Code with auto-capture, summaries, future-session injection, worker service, SQLite, Chroma, MCP search tools, and documented Gemini CLI/OpenCode install paths.",
+      "claim_risk": "high"
+    },
+    {
+      "project": "Basic Memory",
+      "github_repo": "basicmachines-co/basic-memory",
+      "github_api_url": "https://api.github.com/repos/basicmachines-co/basic-memory",
+      "official_sources": [
+        "https://github.com/basicmachines-co/basic-memory",
+        "https://docs.basicmemory.com/"
+      ],
+      "stars": 2982,
+      "license": "AGPL-3.0",
+      "pushed_at": "2026-05-06T17:21:37Z",
+      "updated_at": "2026-05-07T00:34:53Z",
+      "positioning": "Local-first Markdown knowledge system built on MCP with local notes, assistant context loading, VS Code and Claude Desktop setup, and local/cloud project routing.",
+      "claim_risk": "high"
+    },
+    {
+      "project": "mcp-memory-service",
+      "github_repo": "doobidoo/mcp-memory-service",
+      "github_api_url": "https://api.github.com/repos/doobidoo/mcp-memory-service",
+      "official_sources": [
+        "https://github.com/doobidoo/mcp-memory-service"
+      ],
+      "stars": 1794,
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-06T12:21:09Z",
+      "updated_at": "2026-05-07T00:38:45Z",
+      "positioning": "Self-hosted shared memory backend for AI agent pipelines with REST API, MCP, OAuth, CLI, dashboard, knowledge graph, autonomous consolidation, and multiple agent framework integrations.",
+      "claim_risk": "medium-high"
+    },
+    {
+      "project": "Graphiti / Zep",
+      "github_repo": "getzep/graphiti",
+      "github_api_url": "https://api.github.com/repos/getzep/graphiti",
+      "official_sources": [
+        "https://github.com/getzep/graphiti",
+        "https://help.getzep.com/graphiti/getting-started/welcome"
+      ],
+      "stars": 25766,
+      "license": "Apache-2.0",
+      "pushed_at": "2026-05-06T16:24:40Z",
+      "updated_at": "2026-05-06T22:32:47Z",
+      "positioning": "Open-source temporal context graph engine and Zep context infrastructure with validity windows, hybrid semantic/keyword/graph retrieval, and MCP server.",
+      "claim_risk": "high"
+    },
+    {
+      "project": "Letta",
+      "github_repo": "letta-ai/letta",
+      "github_api_url": "https://api.github.com/repos/letta-ai/letta",
+      "official_sources": [
+        "https://github.com/letta-ai/letta",
+        "https://docs.letta.com/letta-code/memory/"
+      ],
+      "stars": 22477,
+      "license": "Apache-2.0",
+      "pushed_at": "2026-04-12T20:54:54Z",
+      "updated_at": "2026-05-06T22:07:19Z",
+      "positioning": "Stateful agent platform and Letta Code local terminal agent with advanced memory, local agent execution, and git-backed MemFS/context repositories.",
+      "claim_risk": "medium-high"
+    },
+    {
+      "project": "Pieces",
+      "github_repo": "pieces-app/documentation",
+      "github_api_url": "https://api.github.com/repos/pieces-app/documentation",
+      "official_sources": [
+        "https://pieces.app/features/mcp",
+        "https://github.com/pieces-app",
+        "https://api.github.com/orgs/pieces-app"
+      ],
+      "stars": 646,
+      "license": null,
+      "pushed_at": "2025-03-18T18:55:47Z",
+      "updated_at": "2026-04-23T02:35:47Z",
+      "positioning": "OS-level/local developer workflow memory product with LTM-2, MCP access, GitHub Copilot/Cursor/Goose integrations, source/time-based recall, and local privacy claims. Stars/license are for the official docs repo, not the closed product core.",
+      "claim_risk": "high"
+    }
+  ],
+  "caveats": [
+    "This snapshot does not install or benchmark any competitor.",
+    "Stars and license values are point-in-time GitHub API metadata.",
+    "For Pieces, no core product repository/license was identified in the official GitHub organization during this pass; the audited GitHub repo is the official documentation repository.",
+    "Claims in README should remain narrower than this market landscape: local coding-session continuity for supported Claude Code and Codex paths, not general memory superiority."
+  ]
+}

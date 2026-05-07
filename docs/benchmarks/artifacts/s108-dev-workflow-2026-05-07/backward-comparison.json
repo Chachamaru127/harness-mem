@@ -1,0 +1,204 @@
+{
+  "task_id": "S108-002",
+  "generated_at": "2026-05-07T01:48:13.247Z",
+  "base_fixture": {
+    "path": "tests/benchmarks/fixtures/dev-workflow-20.json",
+    "sha256": "e9f78b0df7fe8b30b856f156f03bd8e62c51e26de200fd45630ef4147db2f628",
+    "cases": 20
+  },
+  "expanded_fixture": {
+    "path": "tests/benchmarks/fixtures/dev-workflow-60.json",
+    "sha256": "12d2009057fb1c3e55364eb7c072e5041705ef9db456d6da372b6cc53ea196a1",
+    "cases": 64
+  },
+  "exact_prefix_match": true,
+  "matched_cases": 20,
+  "compared_cases": 20,
+  "cases": [
+    {
+      "id": "dw-001",
+      "matched": true,
+      "query": "What files did I change last week?",
+      "expected_answer": "auth/middleware.ts",
+      "relevant_ids": [
+        "dw-001-e1",
+        "dw-001-e2",
+        "dw-001-e3"
+      ]
+    },
+    {
+      "id": "dw-002",
+      "matched": true,
+      "query": "When was the memory leak bug fixed?",
+      "expected_answer": "February 11",
+      "relevant_ids": [
+        "dw-002-e2",
+        "dw-002-e3"
+      ]
+    },
+    {
+      "id": "dw-003",
+      "matched": true,
+      "query": "Why did CI fail recently?",
+      "expected_answer": "Cannot find module bun:sqlite",
+      "relevant_ids": [
+        "dw-003-e2",
+        "dw-003-e3"
+      ]
+    },
+    {
+      "id": "dw-004",
+      "matched": true,
+      "query": "Why did we choose SQLite over PostgreSQL?",
+      "expected_answer": "single-user local deployment",
+      "relevant_ids": [
+        "dw-004-e1",
+        "dw-004-e3"
+      ]
+    },
+    {
+      "id": "dw-005",
+      "matched": true,
+      "query": "What is the current embedding dimension?",
+      "expected_answer": "64",
+      "relevant_ids": [
+        "dw-005-e2"
+      ]
+    },
+    {
+      "id": "dw-006",
+      "matched": true,
+      "query": "What was causing the high search latency?",
+      "expected_answer": "BM25",
+      "relevant_ids": [
+        "dw-006-e2"
+      ]
+    },
+    {
+      "id": "dw-007",
+      "matched": true,
+      "query": "What version of Bun are we using?",
+      "expected_answer": "1.3.6",
+      "relevant_ids": [
+        "dw-007-e2"
+      ]
+    },
+    {
+      "id": "dw-008",
+      "matched": true,
+      "query": "What TODOs are still open?",
+      "expected_answer": "streaming",
+      "relevant_ids": [
+        "dw-008-e2"
+      ]
+    },
+    {
+      "id": "dw-009",
+      "matched": true,
+      "query": "When was v0.3.0 released?",
+      "expected_answer": "February 15",
+      "relevant_ids": [
+        "dw-009-e2"
+      ]
+    },
+    {
+      "id": "dw-010",
+      "matched": true,
+      "query": "Why was the reranker quality gate failing?",
+      "expected_answer": "BM25 title weight",
+      "relevant_ids": [
+        "dw-010-e2"
+      ]
+    },
+    {
+      "id": "dw-011",
+      "matched": true,
+      "query": "Who owns the search module now?",
+      "expected_answer": "Bob",
+      "relevant_ids": [
+        "dw-011-e2"
+      ]
+    },
+    {
+      "id": "dw-012",
+      "matched": true,
+      "query": "What parameters does the search API accept?",
+      "expected_answer": "include_private",
+      "relevant_ids": [
+        "dw-012-e2"
+      ]
+    },
+    {
+      "id": "dw-013",
+      "matched": true,
+      "query": "What is the current sprint goal?",
+      "expected_answer": "measurement reliability",
+      "relevant_ids": [
+        "dw-013-e3"
+      ]
+    },
+    {
+      "id": "dw-014",
+      "matched": true,
+      "query": "What was decided about error handling in the query log?",
+      "expected_answer": "catch and ignore",
+      "relevant_ids": [
+        "dw-014-e3"
+      ]
+    },
+    {
+      "id": "dw-015",
+      "matched": true,
+      "query": "How do I enable query logging?",
+      "expected_answer": "HARNESS_MEM_QUERY_LOG",
+      "relevant_ids": [
+        "dw-015-e3"
+      ]
+    },
+    {
+      "id": "dw-016",
+      "matched": true,
+      "query": "Why was Graph traversal de-prioritized?",
+      "expected_answer": "vector search alone sufficient",
+      "relevant_ids": [
+        "dw-016-e2"
+      ]
+    },
+    {
+      "id": "dw-017",
+      "matched": true,
+      "query": "What is the latest F1 score?",
+      "expected_answer": "0.287",
+      "relevant_ids": [
+        "dw-017-e3"
+      ]
+    },
+    {
+      "id": "dw-018",
+      "matched": true,
+      "query": "Why did we decide not to use LLM judge evaluation?",
+      "expected_answer": "reproducibility",
+      "relevant_ids": [
+        "dw-018-e2"
+      ]
+    },
+    {
+      "id": "dw-019",
+      "matched": true,
+      "query": "How many tests are there currently?",
+      "expected_answer": "1343",
+      "relevant_ids": [
+        "dw-019-e3"
+      ]
+    },
+    {
+      "id": "dw-020",
+      "matched": true,
+      "query": "What comes after §34 is complete?",
+      "expected_answer": "multi-hop reasoning",
+      "relevant_ids": [
+        "dw-020-e3"
+      ]
+    }
+  ]
+}

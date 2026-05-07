@@ -1,0 +1,1021 @@
+{
+  "schema_version": "s108-temporal-expansion-v1",
+  "generated_at": "2026-05-07T00:00:00.000Z",
+  "task_id": "S108-006",
+  "scope": {
+    "classification": "Local task / Cross-Read",
+    "owner_repo": "harness-mem",
+    "impacted_repos": [
+      "harness-mem"
+    ],
+    "plans_md_edited": false
+  },
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
+    "sha256": "0157de215035ffe9800934336c3ff92a2b0d9dabf7f182c76d0319fc913671bb",
+    "case_count": 66,
+    "scenario_count": 6
+  },
+  "required_focus_counts": {
+    "current": 6,
+    "previous": 6,
+    "after": 6,
+    "before": 6,
+    "first": 6,
+    "latest": 6,
+    "still": 6,
+    "no_longer": 6,
+    "直後": 6,
+    "今も": 6,
+    "以前": 6
+  },
+  "slice_counts": {
+    "current": 6,
+    "previous": 6,
+    "relative_after": 6,
+    "relative_before": 6,
+    "ordinal_first": 6,
+    "latest": 6,
+    "yes_no_still": 6,
+    "yes_no_no_longer": 6,
+    "relative_after_ja": 6,
+    "yes_no_current_ja": 6,
+    "previous_ja": 6
+  },
+  "rollup_slice_counts": {
+    "current": 12,
+    "previous": 12,
+    "relative": 18,
+    "ordinal": 6,
+    "yes_no": 18
+  },
+  "initial_probe": {
+    "metric_kind": "deterministic temporal-anchor probe over selected entry id; not a release gate",
+    "by_slice": {
+      "current": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "latest": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "ordinal_first": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "previous": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "previous_ja": {
+        "count": 6,
+        "f1_avg": 0.8667,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 5,
+        "anchor_hit_rate": 0.8333
+      },
+      "relative_after": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "relative_after_ja": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "relative_before": {
+        "count": 6,
+        "f1_avg": 0.714,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 4,
+        "anchor_hit_rate": 0.6667
+      },
+      "yes_no_current_ja": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "yes_no_no_longer": {
+        "count": 6,
+        "f1_avg": 0.8333,
+        "zero_f1_count": 1,
+        "anchor_hit_count": 5,
+        "anchor_hit_rate": 0.8333
+      },
+      "yes_no_still": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      }
+    },
+    "by_rollup_slice": {
+      "current": {
+        "count": 12,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 12,
+        "anchor_hit_rate": 1
+      },
+      "ordinal": {
+        "count": 6,
+        "f1_avg": 1,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 6,
+        "anchor_hit_rate": 1
+      },
+      "previous": {
+        "count": 12,
+        "f1_avg": 0.9333,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 11,
+        "anchor_hit_rate": 0.9167
+      },
+      "relative": {
+        "count": 18,
+        "f1_avg": 0.9047,
+        "zero_f1_count": 0,
+        "anchor_hit_count": 16,
+        "anchor_hit_rate": 0.8889
+      },
+      "yes_no": {
+        "count": 18,
+        "f1_avg": 0.9444,
+        "zero_f1_count": 1,
+        "anchor_hit_count": 17,
+        "anchor_hit_rate": 0.9444
+      }
+    },
+    "records": [
+      {
+        "case_id": "s108-temp-001",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current CI runner?",
+        "expected_answer": "GitHub Actions",
+        "expected_answer_entry_id": "s108-ci-e4",
+        "selected_entry_id": "s108-ci-e4",
+        "prediction": "GitHub Actions",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-002",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What CI runner was used previously?",
+        "expected_answer": "CircleCI",
+        "expected_answer_entry_id": "s108-ci-e1",
+        "selected_entry_id": "s108-ci-e1",
+        "prediction": "CircleCI",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-003",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after the CI moved to GitHub Actions?",
+        "expected_answer": "release smoke tests and branch protection checks were confirmed",
+        "expected_answer_entry_id": "s108-ci-e3",
+        "selected_entry_id": "s108-ci-e3",
+        "prediction": "release smoke tests and branch protection checks were confirmed",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-004",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What was used before GitHub Actions became the CI runner?",
+        "expected_answer": "CircleCI",
+        "expected_answer_entry_id": "s108-ci-e1",
+        "selected_entry_id": "s108-ci-e1",
+        "prediction": "CircleCI",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-005",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first CI setup?",
+        "expected_answer": "CircleCI parallel jobs",
+        "expected_answer_entry_id": "s108-ci-e1",
+        "selected_entry_id": "s108-ci-e1",
+        "prediction": "CircleCI parallel jobs",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-006",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest CI status?",
+        "expected_answer": "GitHub Actions is still the active runner",
+        "expected_answer_entry_id": "s108-ci-e4",
+        "selected_entry_id": "s108-ci-e4",
+        "prediction": "GitHub Actions is still the active runner",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-007",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Is GitHub Actions still the active CI runner?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-ci-e4",
+        "selected_entry_id": "s108-ci-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-008",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "Which CI runner is no longer used?",
+        "expected_answer": "CircleCI",
+        "expected_answer_entry_id": "s108-ci-e2",
+        "selected_entry_id": "s108-ci-e4",
+        "prediction": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main.",
+        "f1": 0
+      },
+      {
+        "case_id": "s108-temp-009",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "GitHub Actions へ移行した直後に何を確認しましたか？",
+        "expected_answer": "release smoke tests and branch protection checks",
+        "expected_answer_entry_id": "s108-ci-e3",
+        "selected_entry_id": "s108-ci-e3",
+        "prediction": "release smoke tests and branch protection checks",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-010",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も GitHub Actions を使っていますか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-ci-e4",
+        "selected_entry_id": "s108-ci-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-011",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の CI ランナーは何でしたか？",
+        "expected_answer": "CircleCI",
+        "expected_answer_entry_id": "s108-ci-e1",
+        "selected_entry_id": "s108-ci-e1",
+        "prediction": "CircleCI",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-012",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current primary database?",
+        "expected_answer": "PostgreSQL",
+        "expected_answer_entry_id": "s108-db-e4",
+        "selected_entry_id": "s108-db-e4",
+        "prediction": "PostgreSQL",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-013",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What database engine was used previously?",
+        "expected_answer": "MySQL",
+        "expected_answer_entry_id": "s108-db-e1",
+        "selected_entry_id": "s108-db-e1",
+        "prediction": "MySQL",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-014",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after the database migration?",
+        "expected_answer": "row-count checks and checksum validation passed",
+        "expected_answer_entry_id": "s108-db-e3",
+        "selected_entry_id": "s108-db-e3",
+        "prediction": "row-count checks and checksum validation passed",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-015",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What happened before the PostgreSQL cutover?",
+        "expected_answer": "writes were frozen and a full MySQL backup was verified",
+        "expected_answer_entry_id": "s108-db-e2",
+        "selected_entry_id": "s108-db-e1",
+        "prediction": "Previous database engine was MySQL. The first production database used MySQL with nightly backups.",
+        "f1": 0.1667
+      },
+      {
+        "case_id": "s108-temp-016",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first production database?",
+        "expected_answer": "MySQL",
+        "expected_answer_entry_id": "s108-db-e1",
+        "selected_entry_id": "s108-db-e1",
+        "prediction": "MySQL",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-017",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest database status?",
+        "expected_answer": "PostgreSQL is the current primary database",
+        "expected_answer_entry_id": "s108-db-e4",
+        "selected_entry_id": "s108-db-e4",
+        "prediction": "PostgreSQL is the current primary database",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-018",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Is PostgreSQL still the current primary database?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-db-e4",
+        "selected_entry_id": "s108-db-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-019",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "What database fallback is no longer retained?",
+        "expected_answer": "MySQL fallback",
+        "expected_answer_entry_id": "s108-db-e4",
+        "selected_entry_id": "s108-db-e4",
+        "prediction": "MySQL fallback",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-020",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "データベース移行の直後に何が通りましたか？",
+        "expected_answer": "row-count checks and checksum validation",
+        "expected_answer_entry_id": "s108-db-e3",
+        "selected_entry_id": "s108-db-e3",
+        "prediction": "row-count checks and checksum validation",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-021",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も PostgreSQL が primary database ですか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-db-e4",
+        "selected_entry_id": "s108-db-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-022",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の database engine は何でしたか？",
+        "expected_answer": "MySQL",
+        "expected_answer_entry_id": "s108-db-e1",
+        "selected_entry_id": "s108-db-e1",
+        "prediction": "MySQL",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-023",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current public API version?",
+        "expected_answer": "API v3",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "API v3",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-024",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What API version is previous now?",
+        "expected_answer": "API v2",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "API v2",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-025",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after API v3 beta opened?",
+        "expected_answer": "partners validated webhook signatures and retry headers",
+        "expected_answer_entry_id": "s108-api-e3",
+        "selected_entry_id": "s108-api-e3",
+        "prediction": "partners validated webhook signatures and retry headers",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-026",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What was current before API v3 became current?",
+        "expected_answer": "API v2",
+        "expected_answer_entry_id": "s108-api-e2",
+        "selected_entry_id": "s108-api-e1",
+        "prediction": "The first public API version was API v1. Previous clients still used v1 at launch.",
+        "f1": 0.1176
+      },
+      {
+        "case_id": "s108-temp-027",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first public API version?",
+        "expected_answer": "API v1",
+        "expected_answer_entry_id": "s108-api-e1",
+        "selected_entry_id": "s108-api-e1",
+        "prediction": "API v1",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-028",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest API status?",
+        "expected_answer": "API v3 is current",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "API v3 is current",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-029",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Is API v3 still current?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-030",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "Which API version is no longer supported?",
+        "expected_answer": "API v1",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "API v1",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-031",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "API v3 beta の直後に何を検証しましたか？",
+        "expected_answer": "webhook signatures and retry headers",
+        "expected_answer_entry_id": "s108-api-e3",
+        "selected_entry_id": "s108-api-e3",
+        "prediction": "webhook signatures and retry headers",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-032",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も API v3 が current ですか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-api-e4",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-033",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の current API version は何でしたか？",
+        "expected_answer": "API v2",
+        "expected_answer_entry_id": "s108-api-e2",
+        "selected_entry_id": "s108-api-e4",
+        "prediction": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported.",
+        "f1": 0.2
+      },
+      {
+        "case_id": "s108-temp-034",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current admin authentication method?",
+        "expected_answer": "passkeys",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "passkeys",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-035",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What authentication method was previous before passkeys?",
+        "expected_answer": "magic links",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "magic links",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-036",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after passkey beta started?",
+        "expected_answer": "device-bound recovery and audit logging were verified",
+        "expected_answer_entry_id": "s108-auth-e3",
+        "selected_entry_id": "s108-auth-e3",
+        "prediction": "device-bound recovery and audit logging were verified",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-037",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What was the default before magic links became current?",
+        "expected_answer": "password login with email OTP",
+        "expected_answer_entry_id": "s108-auth-e1",
+        "selected_entry_id": "s108-auth-e1",
+        "prediction": "password login with email OTP",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-038",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first authentication method?",
+        "expected_answer": "password login with email OTP",
+        "expected_answer_entry_id": "s108-auth-e1",
+        "selected_entry_id": "s108-auth-e1",
+        "prediction": "password login with email OTP",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-039",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest auth status?",
+        "expected_answer": "passkeys are current for admins",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "passkeys are current for admins",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-040",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Are passkeys still current for admins?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-041",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "Which authentication method is no longer accepted?",
+        "expected_answer": "password login",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "password login",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-042",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "passkey beta の直後に何を検証しましたか？",
+        "expected_answer": "device-bound recovery and audit logging",
+        "expected_answer_entry_id": "s108-auth-e3",
+        "selected_entry_id": "s108-auth-e3",
+        "prediction": "device-bound recovery and audit logging",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-043",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も admins は passkeys を使っていますか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-044",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の admin authentication は何でしたか？",
+        "expected_answer": "magic links",
+        "expected_answer_entry_id": "s108-auth-e4",
+        "selected_entry_id": "s108-auth-e4",
+        "prediction": "magic links",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-045",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current observability stack?",
+        "expected_answer": "Grafana Cloud",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Grafana Cloud",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-046",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What observability stack was previous before Grafana Cloud?",
+        "expected_answer": "Prometheus",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Prometheus",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-047",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after Grafana Cloud onboarding?",
+        "expected_answer": "burn-rate alerts and dashboard folders were validated",
+        "expected_answer_entry_id": "s108-obs-e3",
+        "selected_entry_id": "s108-obs-e3",
+        "prediction": "burn-rate alerts and dashboard folders were validated",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-048",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What monitoring stack was used before Prometheus became current?",
+        "expected_answer": "Nagios",
+        "expected_answer_entry_id": "s108-obs-e1",
+        "selected_entry_id": "s108-obs-e1",
+        "prediction": "Nagios",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-049",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first monitoring stack?",
+        "expected_answer": "Nagios",
+        "expected_answer_entry_id": "s108-obs-e1",
+        "selected_entry_id": "s108-obs-e1",
+        "prediction": "Nagios",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-050",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest observability status?",
+        "expected_answer": "Grafana Cloud is current",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Grafana Cloud is current",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-051",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Is Grafana Cloud still current?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-052",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "Which monitoring stack is no longer paging engineers?",
+        "expected_answer": "Nagios",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Nagios",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-053",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "Grafana Cloud onboarding の直後に何を検証しましたか？",
+        "expected_answer": "burn-rate alerts and dashboard folders",
+        "expected_answer_entry_id": "s108-obs-e3",
+        "selected_entry_id": "s108-obs-e3",
+        "prediction": "burn-rate alerts and dashboard folders",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-054",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も Grafana Cloud が current ですか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-055",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の observability stack は何でしたか？",
+        "expected_answer": "Prometheus",
+        "expected_answer_entry_id": "s108-obs-e4",
+        "selected_entry_id": "s108-obs-e4",
+        "prediction": "Prometheus",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-056",
+        "slice": "current",
+        "rollup_slice": "current",
+        "temporal_focus": "current",
+        "query": "What is the current search retrieval mode?",
+        "expected_answer": "hybrid BM25 plus vector retrieval",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "hybrid BM25 plus vector retrieval",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-057",
+        "slice": "previous",
+        "rollup_slice": "previous",
+        "temporal_focus": "previous",
+        "query": "What search mode was previous before hybrid retrieval?",
+        "expected_answer": "BM25-only",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "BM25-only",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-058",
+        "slice": "relative_after",
+        "rollup_slice": "relative",
+        "temporal_focus": "after",
+        "query": "What happened after vector retrieval was added?",
+        "expected_answer": "bilingual recall and developer-workflow queries were validated",
+        "expected_answer_entry_id": "s108-search-e3",
+        "selected_entry_id": "s108-search-e3",
+        "prediction": "bilingual recall and developer-workflow queries were validated",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-059",
+        "slice": "relative_before",
+        "rollup_slice": "relative",
+        "temporal_focus": "before",
+        "query": "What search index existed before BM25 became current?",
+        "expected_answer": "SQLite FTS-only",
+        "expected_answer_entry_id": "s108-search-e1",
+        "selected_entry_id": "s108-search-e1",
+        "prediction": "SQLite FTS-only",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-060",
+        "slice": "ordinal_first",
+        "rollup_slice": "ordinal",
+        "temporal_focus": "first",
+        "query": "What was the first search index?",
+        "expected_answer": "SQLite FTS-only",
+        "expected_answer_entry_id": "s108-search-e1",
+        "selected_entry_id": "s108-search-e1",
+        "prediction": "SQLite FTS-only",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-061",
+        "slice": "latest",
+        "rollup_slice": "current",
+        "temporal_focus": "latest",
+        "query": "What is the latest search status?",
+        "expected_answer": "hybrid BM25 plus vector retrieval is current",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "hybrid BM25 plus vector retrieval is current",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-062",
+        "slice": "yes_no_still",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "still",
+        "query": "Is hybrid BM25 plus vector retrieval still current?",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-063",
+        "slice": "yes_no_no_longer",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "no_longer",
+        "query": "Which search mode is no longer sufficient?",
+        "expected_answer": "FTS-only",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "FTS-only",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-064",
+        "slice": "relative_after_ja",
+        "rollup_slice": "relative",
+        "temporal_focus": "直後",
+        "query": "vector retrieval 追加の直後に何を検証しましたか？",
+        "expected_answer": "bilingual recall and developer-workflow queries",
+        "expected_answer_entry_id": "s108-search-e3",
+        "selected_entry_id": "s108-search-e3",
+        "prediction": "bilingual recall and developer-workflow queries",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-065",
+        "slice": "yes_no_current_ja",
+        "rollup_slice": "yes_no",
+        "temporal_focus": "今も",
+        "query": "今も hybrid BM25 plus vector retrieval が current ですか？",
+        "expected_answer": "Yes",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "Yes",
+        "f1": 1
+      },
+      {
+        "case_id": "s108-temp-066",
+        "slice": "previous_ja",
+        "rollup_slice": "previous",
+        "temporal_focus": "以前",
+        "query": "以前の search mode は何でしたか？",
+        "expected_answer": "BM25-only",
+        "expected_answer_entry_id": "s108-search-e4",
+        "selected_entry_id": "s108-search-e4",
+        "prediction": "BM25-only",
+        "f1": 1
+      }
+    ]
+  },
+  "baseline_reference": {
+    "available": true,
+    "source_artifacts": {
+      "baseline_json": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/baseline.json",
+      "japanese_slice_report_json": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.slice-report.json"
+    },
+    "temporal_order_score": 0.6458333333333334,
+    "japanese_temporal": {
+      "dataset_qa_count": 96,
+      "overall_f1": 0.6615760260980851,
+      "temporal_f1": 0.7083333333333333,
+      "relative_temporal_f1": 0,
+      "current_vs_previous_f1": 0.5555555555555555,
+      "yes_no_f1": 0.5,
+      "zero_f1_count": 20
+    },
+    "japanese_slices": {
+      "current": {
+        "count": 12,
+        "em_avg": 0.6666666666666666,
+        "f1_avg": 0.8170634920634922,
+        "zero_f1_count": 0
+      },
+      "current_vs_previous": {
+        "count": 12,
+        "em_avg": 0.4166666666666667,
+        "f1_avg": 0.5555555555555555,
+        "zero_f1_count": 4
+      },
+      "relative_temporal": {
+        "count": 3,
+        "em_avg": 0,
+        "f1_avg": 0,
+        "zero_f1_count": 3
+      },
+      "temporal": {
+        "count": 8,
+        "em_avg": 0.625,
+        "f1_avg": 0.7083333333333333,
+        "zero_f1_count": 2
+      },
+      "yes_no": {
+        "count": 16,
+        "em_avg": 0.5,
+        "f1_avg": 0.5,
+        "zero_f1_count": 8
+      }
+    }
+  },
+  "follow_up_gaps_for_s108_007": [
+    "Persist event_time / observed_at on observations so current and latest do not depend on query-time recency heuristics.",
+    "Add valid_from / valid_to or invalidated_at for no_longer and still so retired facts can be answered without mixing stale and current evidence.",
+    "Represent supersedes links between previous and current values; previous should mean immediate predecessor, while first should stay earliest.",
+    "Store a right_after anchor relation for adjacent events so after and Japanese 直後 do not collapse into generic latest status.",
+    "Keep unknown temporal anchors explicit; S108-007 should avoid silently treating missing timestamps as current."
+  ]
+}

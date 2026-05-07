@@ -1,0 +1,34 @@
+{
+  "task_id": "S108-002",
+  "generated_at": "2026-05-07T01:48:13.247Z",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/dev-workflow-60.json",
+    "sha256": "12d2009057fb1c3e55364eb7c072e5041705ef9db456d6da372b6cc53ea196a1",
+    "qa_count": 64
+  },
+  "source_subset": {
+    "path": "tests/benchmarks/fixtures/dev-workflow-20.json",
+    "sha256": "e9f78b0df7fe8b30b856f156f03bd8e62c51e26de200fd45630ef4147db2f628",
+    "qa_count": 20,
+    "exact_prefix_match": true
+  },
+  "required_families_present": true,
+  "category_distribution": {
+    "file": 6,
+    "branch": 4,
+    "pr": 6,
+    "issue": 7,
+    "migration": 6,
+    "deploy": 4,
+    "failing_test": 9,
+    "release": 6,
+    "setup": 8,
+    "doctor": 4,
+    "companion": 4
+  },
+  "artifacts": {
+    "category_distribution": "category-distribution.json",
+    "backward_comparison": "backward-comparison.json",
+    "summary_markdown": "summary.md"
+  }
+}

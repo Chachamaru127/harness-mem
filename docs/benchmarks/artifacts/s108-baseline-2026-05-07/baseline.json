@@ -1,8 +1,8 @@
 {
   "schema_version": "s108-baseline-snapshot-v1",
-  "generated_at": "2026-05-07T00:27:49.618Z",
+  "generated_at": "2026-05-07T01:42:27.716Z",
   "task_id": "S108-001",
-  "artifact_dir": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s108-baseline-2026-05-07",
+  "artifact_dir": "docs/benchmarks/artifacts/s108-baseline-2026-05-07",
   "scope": {
     "classification": "Local task / Cross-Read",
     "owner_repo": "harness-mem",
@@ -47,7 +47,7 @@
         "lower": 0.3833,
         "upper": 0.7917,
         "mean": 0.5917,
-        "se": 0.1049,
+        "se": 0.1053,
         "method": "bootstrap"
       },
       "expected_anchor": 0.59,
@@ -59,10 +59,10 @@
       "ndcg_at_5": 0.6823557869824461,
       "cases": 120,
       "bootstrap_ci_95": {
-        "lower": 0.576,
-        "upper": 0.7165,
+        "lower": 0.5766,
+        "upper": 0.7193,
         "mean": 0.6482,
-        "se": 0.0362,
+        "se": 0.0364,
         "method": "bootstrap"
       },
       "expected_anchor": 0.65,

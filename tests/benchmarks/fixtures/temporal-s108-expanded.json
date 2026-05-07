@@ -1,0 +1,3378 @@
+[
+  {
+    "id": "s108-temp-001",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (current)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current CI runner?",
+    "expected_answer": "GitHub Actions",
+    "expected_answer_entry_id": "s108-ci-e4",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "GitHub Actions"
+      ],
+      "forbidden_answers": [
+        "CircleCI"
+      ],
+      "anchor_hint": "current status must prefer the May status over the January beta entry"
+    }
+  },
+  {
+    "id": "s108-temp-002",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (previous)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What CI runner was used previously?",
+    "expected_answer": "CircleCI",
+    "expected_answer_entry_id": "s108-ci-e1",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "CircleCI"
+      ],
+      "forbidden_answers": [
+        "GitHub Actions"
+      ],
+      "anchor_hint": "previous status points to the beta-era runner"
+    }
+  },
+  {
+    "id": "s108-temp-003",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (after)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after the CI moved to GitHub Actions?",
+    "expected_answer": "release smoke tests and branch protection checks were confirmed",
+    "expected_answer_entry_id": "s108-ci-e3",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "release smoke tests",
+        "branch protection"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should land on the immediately following verification event"
+    }
+  },
+  {
+    "id": "s108-temp-004",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (before)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What was used before GitHub Actions became the CI runner?",
+    "expected_answer": "CircleCI",
+    "expected_answer_entry_id": "s108-ci-e1",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "CircleCI"
+      ],
+      "forbidden_answers": [
+        "GitHub Actions"
+      ],
+      "anchor_hint": "before should not return the current runner"
+    }
+  },
+  {
+    "id": "s108-temp-005",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (first)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first CI setup?",
+    "expected_answer": "CircleCI parallel jobs",
+    "expected_answer_entry_id": "s108-ci-e1",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "CircleCI",
+        "parallel jobs"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "first is the earliest setup, not the latest stable state"
+    }
+  },
+  {
+    "id": "s108-temp-006",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (latest)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest CI status?",
+    "expected_answer": "GitHub Actions is still the active runner",
+    "expected_answer_entry_id": "s108-ci-e4",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "GitHub Actions",
+        "still"
+      ],
+      "forbidden_answers": [
+        "CircleCI"
+      ],
+      "anchor_hint": "latest should prefer the newest CI status entry"
+    }
+  },
+  {
+    "id": "s108-temp-007",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (still)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Is GitHub Actions still the active CI runner?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-ci-e4",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "CircleCI"
+      ],
+      "anchor_hint": "still asks whether the current value remains valid"
+    }
+  },
+  {
+    "id": "s108-temp-008",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (no_longer)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "Which CI runner is no longer used?",
+    "expected_answer": "CircleCI",
+    "expected_answer_entry_id": "s108-ci-e2",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "CircleCI"
+      ],
+      "forbidden_answers": [
+        "GitHub Actions"
+      ],
+      "anchor_hint": "no longer should return the invalidated runner"
+    }
+  },
+  {
+    "id": "s108-temp-009",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (直後)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "GitHub Actions へ移行した直後に何を確認しましたか？",
+    "expected_answer": "release smoke tests and branch protection checks",
+    "expected_answer_entry_id": "s108-ci-e3",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "release smoke tests",
+        "branch protection"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should anchor to the post-migration event"
+    }
+  },
+  {
+    "id": "s108-temp-010",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (今も)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も GitHub Actions を使っていますか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-ci-e4",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "CircleCI"
+      ],
+      "anchor_hint": "Japanese current yes/no should use the latest status"
+    }
+  },
+  {
+    "id": "s108-temp-011",
+    "description": "CI runner moved from CircleCI to GitHub Actions while release gates stayed active. (以前)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "ci-runner",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の CI ランナーは何でしたか？",
+    "expected_answer": "CircleCI",
+    "expected_answer_entry_id": "s108-ci-e1",
+    "expected_order": [
+      "s108-ci-e1",
+      "s108-ci-e2",
+      "s108-ci-e3",
+      "s108-ci-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-ci-e1",
+        "timestamp": "2024-01-10T09:00:00.000Z",
+        "content": "Previous CI runner was CircleCI during the beta release. The first CI setup used CircleCI parallel jobs."
+      },
+      {
+        "id": "s108-ci-e2",
+        "timestamp": "2024-03-15T11:00:00.000Z",
+        "content": "CI migration completed. Current CI runner changed to GitHub Actions and CircleCI is no longer used for merges."
+      },
+      {
+        "id": "s108-ci-e3",
+        "timestamp": "2024-03-15T12:30:00.000Z",
+        "content": "Right after the GitHub Actions migration, the team confirmed release smoke tests and branch protection checks."
+      },
+      {
+        "id": "s108-ci-e4",
+        "timestamp": "2024-05-02T10:00:00.000Z",
+        "content": "Latest CI status: GitHub Actions is still the active runner, with required release gates on main."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "CircleCI"
+      ],
+      "forbidden_answers": [
+        "GitHub Actions"
+      ],
+      "anchor_hint": "Japanese previous query should preserve the superseded value"
+    }
+  },
+  {
+    "id": "s108-temp-012",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (current)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current primary database?",
+    "expected_answer": "PostgreSQL",
+    "expected_answer_entry_id": "s108-db-e4",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "PostgreSQL"
+      ],
+      "forbidden_answers": [
+        "MySQL"
+      ],
+      "anchor_hint": "current database is in the latest status entry"
+    }
+  },
+  {
+    "id": "s108-temp-013",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (previous)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What database engine was used previously?",
+    "expected_answer": "MySQL",
+    "expected_answer_entry_id": "s108-db-e1",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "MySQL"
+      ],
+      "forbidden_answers": [
+        "PostgreSQL"
+      ],
+      "anchor_hint": "previous database should use the earliest production state"
+    }
+  },
+  {
+    "id": "s108-temp-014",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (after)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after the database migration?",
+    "expected_answer": "row-count checks and checksum validation passed",
+    "expected_answer_entry_id": "s108-db-e3",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "row-count checks",
+        "checksum validation"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should point at post-migration validation"
+    }
+  },
+  {
+    "id": "s108-temp-015",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (before)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What happened before the PostgreSQL cutover?",
+    "expected_answer": "writes were frozen and a full MySQL backup was verified",
+    "expected_answer_entry_id": "s108-db-e2",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "frozen writes",
+        "MySQL backup"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "before should point at the pre-cutover safety step"
+    }
+  },
+  {
+    "id": "s108-temp-016",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (first)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first production database?",
+    "expected_answer": "MySQL",
+    "expected_answer_entry_id": "s108-db-e1",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "MySQL"
+      ],
+      "forbidden_answers": [
+        "PostgreSQL"
+      ],
+      "anchor_hint": "first database is earlier than the migration"
+    }
+  },
+  {
+    "id": "s108-temp-017",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (latest)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest database status?",
+    "expected_answer": "PostgreSQL is the current primary database",
+    "expected_answer_entry_id": "s108-db-e4",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "PostgreSQL",
+        "current primary"
+      ],
+      "forbidden_answers": [
+        "MySQL fallback retained"
+      ],
+      "anchor_hint": "latest should prefer the April status"
+    }
+  },
+  {
+    "id": "s108-temp-018",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (still)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Is PostgreSQL still the current primary database?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-db-e4",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "MySQL"
+      ],
+      "anchor_hint": "still asks whether the latest database value remains active"
+    }
+  },
+  {
+    "id": "s108-temp-019",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (no_longer)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "What database fallback is no longer retained?",
+    "expected_answer": "MySQL fallback",
+    "expected_answer_entry_id": "s108-db-e4",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "MySQL fallback"
+      ],
+      "forbidden_answers": [
+        "PostgreSQL"
+      ],
+      "anchor_hint": "no longer should identify the retired fallback"
+    }
+  },
+  {
+    "id": "s108-temp-020",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (直後)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "データベース移行の直後に何が通りましたか？",
+    "expected_answer": "row-count checks and checksum validation",
+    "expected_answer_entry_id": "s108-db-e3",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "row-count checks",
+        "checksum validation"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should not skip to the latest status"
+    }
+  },
+  {
+    "id": "s108-temp-021",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (今も)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も PostgreSQL が primary database ですか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-db-e4",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "MySQL"
+      ],
+      "anchor_hint": "Japanese current yes/no should use latest status"
+    }
+  },
+  {
+    "id": "s108-temp-022",
+    "description": "Primary database migrated from MySQL to PostgreSQL and the fallback was later retired. (以前)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "database-engine",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の database engine は何でしたか？",
+    "expected_answer": "MySQL",
+    "expected_answer_entry_id": "s108-db-e1",
+    "expected_order": [
+      "s108-db-e1",
+      "s108-db-e2",
+      "s108-db-e3",
+      "s108-db-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-db-e1",
+        "timestamp": "2024-02-01T08:00:00.000Z",
+        "content": "Previous database engine was MySQL. The first production database used MySQL with nightly backups."
+      },
+      {
+        "id": "s108-db-e2",
+        "timestamp": "2024-02-12T10:00:00.000Z",
+        "content": "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup."
+      },
+      {
+        "id": "s108-db-e3",
+        "timestamp": "2024-02-12T15:00:00.000Z",
+        "content": "Right after the migration, row-count checks and checksum validation passed on PostgreSQL."
+      },
+      {
+        "id": "s108-db-e4",
+        "timestamp": "2024-04-01T09:00:00.000Z",
+        "content": "Latest database status: PostgreSQL is the current primary database, and the MySQL fallback is no longer retained."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "MySQL"
+      ],
+      "forbidden_answers": [
+        "PostgreSQL"
+      ],
+      "anchor_hint": "Japanese previous query should preserve the old engine"
+    }
+  },
+  {
+    "id": "s108-temp-023",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (current)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current public API version?",
+    "expected_answer": "API v3",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v3"
+      ],
+      "forbidden_answers": [
+        "API v1",
+        "API v2"
+      ],
+      "anchor_hint": "current version should prefer latest status"
+    }
+  },
+  {
+    "id": "s108-temp-024",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (previous)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What API version is previous now?",
+    "expected_answer": "API v2",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v2"
+      ],
+      "forbidden_answers": [
+        "API v3"
+      ],
+      "anchor_hint": "previous is the version immediately before v3, not the first v1"
+    }
+  },
+  {
+    "id": "s108-temp-025",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (after)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after API v3 beta opened?",
+    "expected_answer": "partners validated webhook signatures and retry headers",
+    "expected_answer_entry_id": "s108-api-e3",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "webhook signatures",
+        "retry headers"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should anchor to the post-beta validation event"
+    }
+  },
+  {
+    "id": "s108-temp-026",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (before)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What was current before API v3 became current?",
+    "expected_answer": "API v2",
+    "expected_answer_entry_id": "s108-api-e2",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v2"
+      ],
+      "forbidden_answers": [
+        "API v3"
+      ],
+      "anchor_hint": "before should answer with the v2 period"
+    }
+  },
+  {
+    "id": "s108-temp-027",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (first)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first public API version?",
+    "expected_answer": "API v1",
+    "expected_answer_entry_id": "s108-api-e1",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v1"
+      ],
+      "forbidden_answers": [
+        "API v3"
+      ],
+      "anchor_hint": "first should use the launch entry"
+    }
+  },
+  {
+    "id": "s108-temp-028",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (latest)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest API status?",
+    "expected_answer": "API v3 is current",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v3",
+        "current"
+      ],
+      "forbidden_answers": [
+        "API v1 current"
+      ],
+      "anchor_hint": "latest should use the current status entry"
+    }
+  },
+  {
+    "id": "s108-temp-029",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (still)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Is API v3 still current?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "API v2"
+      ],
+      "anchor_hint": "still asks if v3 remains active"
+    }
+  },
+  {
+    "id": "s108-temp-030",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (no_longer)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "Which API version is no longer supported?",
+    "expected_answer": "API v1",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v1"
+      ],
+      "forbidden_answers": [
+        "API v3"
+      ],
+      "anchor_hint": "no longer should return the unsupported version"
+    }
+  },
+  {
+    "id": "s108-temp-031",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (直後)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "API v3 beta の直後に何を検証しましたか？",
+    "expected_answer": "webhook signatures and retry headers",
+    "expected_answer_entry_id": "s108-api-e3",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "webhook signatures",
+        "retry headers"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should use the beta validation event"
+    }
+  },
+  {
+    "id": "s108-temp-032",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (今も)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も API v3 が current ですか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-api-e4",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "API v2"
+      ],
+      "anchor_hint": "Japanese current yes/no should prefer latest API status"
+    }
+  },
+  {
+    "id": "s108-temp-033",
+    "description": "Public API moved through v1, v2, and v3 while older versions were invalidated. (以前)",
+    "difficulty": "medium",
+    "domain": "release",
+    "source_scenario": "api-version",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の current API version は何でしたか？",
+    "expected_answer": "API v2",
+    "expected_answer_entry_id": "s108-api-e2",
+    "expected_order": [
+      "s108-api-e1",
+      "s108-api-e2",
+      "s108-api-e3",
+      "s108-api-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-api-e1",
+        "timestamp": "2023-11-20T09:00:00.000Z",
+        "content": "The first public API version was API v1. Previous clients still used v1 at launch."
+      },
+      {
+        "id": "s108-api-e2",
+        "timestamp": "2024-01-22T13:00:00.000Z",
+        "content": "API v2 became current after adding pagination and idempotency keys."
+      },
+      {
+        "id": "s108-api-e3",
+        "timestamp": "2024-03-18T16:00:00.000Z",
+        "content": "Right after API v3 beta opened, partners validated webhook signatures and retry headers."
+      },
+      {
+        "id": "s108-api-e4",
+        "timestamp": "2024-04-30T18:00:00.000Z",
+        "content": "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "API v2"
+      ],
+      "forbidden_answers": [
+        "API v3"
+      ],
+      "anchor_hint": "Japanese previous query should find the immediately previous API"
+    }
+  },
+  {
+    "id": "s108-temp-034",
+    "description": "Authentication moved from password login to magic links and then passkeys. (current)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current admin authentication method?",
+    "expected_answer": "passkeys",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "passkeys"
+      ],
+      "forbidden_answers": [
+        "password login",
+        "magic links"
+      ],
+      "anchor_hint": "current admin auth should use the latest status"
+    }
+  },
+  {
+    "id": "s108-temp-035",
+    "description": "Authentication moved from password login to magic links and then passkeys. (previous)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What authentication method was previous before passkeys?",
+    "expected_answer": "magic links",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "magic links"
+      ],
+      "forbidden_answers": [
+        "passkeys"
+      ],
+      "anchor_hint": "previous should return the immediate predecessor"
+    }
+  },
+  {
+    "id": "s108-temp-036",
+    "description": "Authentication moved from password login to magic links and then passkeys. (after)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after passkey beta started?",
+    "expected_answer": "device-bound recovery and audit logging were verified",
+    "expected_answer_entry_id": "s108-auth-e3",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "device-bound recovery",
+        "audit logging"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should point at beta verification"
+    }
+  },
+  {
+    "id": "s108-temp-037",
+    "description": "Authentication moved from password login to magic links and then passkeys. (before)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What was the default before magic links became current?",
+    "expected_answer": "password login with email OTP",
+    "expected_answer_entry_id": "s108-auth-e1",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "password login",
+        "email OTP"
+      ],
+      "forbidden_answers": [
+        "passkeys"
+      ],
+      "anchor_hint": "before should use the first default auth method"
+    }
+  },
+  {
+    "id": "s108-temp-038",
+    "description": "Authentication moved from password login to magic links and then passkeys. (first)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first authentication method?",
+    "expected_answer": "password login with email OTP",
+    "expected_answer_entry_id": "s108-auth-e1",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "password login",
+        "email OTP"
+      ],
+      "forbidden_answers": [
+        "passkeys"
+      ],
+      "anchor_hint": "first should stay on the earliest auth entry"
+    }
+  },
+  {
+    "id": "s108-temp-039",
+    "description": "Authentication moved from password login to magic links and then passkeys. (latest)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest auth status?",
+    "expected_answer": "passkeys are current for admins",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "passkeys",
+        "current"
+      ],
+      "forbidden_answers": [
+        "password login current"
+      ],
+      "anchor_hint": "latest should use the May auth status"
+    }
+  },
+  {
+    "id": "s108-temp-040",
+    "description": "Authentication moved from password login to magic links and then passkeys. (still)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Are passkeys still current for admins?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "password"
+      ],
+      "anchor_hint": "still asks whether passkeys remain active"
+    }
+  },
+  {
+    "id": "s108-temp-041",
+    "description": "Authentication moved from password login to magic links and then passkeys. (no_longer)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "Which authentication method is no longer accepted?",
+    "expected_answer": "password login",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "password login"
+      ],
+      "forbidden_answers": [
+        "passkeys"
+      ],
+      "anchor_hint": "no longer should return the rejected method"
+    }
+  },
+  {
+    "id": "s108-temp-042",
+    "description": "Authentication moved from password login to magic links and then passkeys. (直後)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "passkey beta の直後に何を検証しましたか？",
+    "expected_answer": "device-bound recovery and audit logging",
+    "expected_answer_entry_id": "s108-auth-e3",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "device-bound recovery",
+        "audit logging"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should anchor to beta checks"
+    }
+  },
+  {
+    "id": "s108-temp-043",
+    "description": "Authentication moved from password login to magic links and then passkeys. (今も)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も admins は passkeys を使っていますか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "magic links"
+      ],
+      "anchor_hint": "Japanese current yes/no should use latest admin auth"
+    }
+  },
+  {
+    "id": "s108-temp-044",
+    "description": "Authentication moved from password login to magic links and then passkeys. (以前)",
+    "difficulty": "medium",
+    "domain": "security",
+    "source_scenario": "auth-method",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の admin authentication は何でしたか？",
+    "expected_answer": "magic links",
+    "expected_answer_entry_id": "s108-auth-e4",
+    "expected_order": [
+      "s108-auth-e1",
+      "s108-auth-e2",
+      "s108-auth-e3",
+      "s108-auth-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-auth-e1",
+        "timestamp": "2024-01-05T09:30:00.000Z",
+        "content": "The first authentication method was password login with email OTP. Password login was the previous default."
+      },
+      {
+        "id": "s108-auth-e2",
+        "timestamp": "2024-02-14T10:00:00.000Z",
+        "content": "Magic links became the current default after support tickets showed password resets were too frequent."
+      },
+      {
+        "id": "s108-auth-e3",
+        "timestamp": "2024-03-25T15:00:00.000Z",
+        "content": "Right after passkey beta started, the security team verified device-bound recovery and audit logging."
+      },
+      {
+        "id": "s108-auth-e4",
+        "timestamp": "2024-05-06T12:00:00.000Z",
+        "content": "Latest auth status: passkeys are current for admins, magic links are previous, and password login is no longer accepted."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "magic links"
+      ],
+      "forbidden_answers": [
+        "passkeys"
+      ],
+      "anchor_hint": "Japanese previous query should return immediate predecessor"
+    }
+  },
+  {
+    "id": "s108-temp-045",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (current)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current observability stack?",
+    "expected_answer": "Grafana Cloud",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Grafana Cloud"
+      ],
+      "forbidden_answers": [
+        "Nagios",
+        "Prometheus"
+      ],
+      "anchor_hint": "current observability should use latest status"
+    }
+  },
+  {
+    "id": "s108-temp-046",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (previous)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What observability stack was previous before Grafana Cloud?",
+    "expected_answer": "Prometheus",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Prometheus"
+      ],
+      "forbidden_answers": [
+        "Grafana Cloud"
+      ],
+      "anchor_hint": "previous should return the immediate predecessor"
+    }
+  },
+  {
+    "id": "s108-temp-047",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (after)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after Grafana Cloud onboarding?",
+    "expected_answer": "burn-rate alerts and dashboard folders were validated",
+    "expected_answer_entry_id": "s108-obs-e3",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "burn-rate alerts",
+        "dashboard folders"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should use the onboarding validation entry"
+    }
+  },
+  {
+    "id": "s108-temp-048",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (before)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What monitoring stack was used before Prometheus became current?",
+    "expected_answer": "Nagios",
+    "expected_answer_entry_id": "s108-obs-e1",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Nagios"
+      ],
+      "forbidden_answers": [
+        "Grafana Cloud"
+      ],
+      "anchor_hint": "before should point to the pre-Prometheus stack"
+    }
+  },
+  {
+    "id": "s108-temp-049",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (first)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first monitoring stack?",
+    "expected_answer": "Nagios",
+    "expected_answer_entry_id": "s108-obs-e1",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Nagios"
+      ],
+      "forbidden_answers": [
+        "Grafana Cloud"
+      ],
+      "anchor_hint": "first stack is the earliest monitoring entry"
+    }
+  },
+  {
+    "id": "s108-temp-050",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (latest)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest observability status?",
+    "expected_answer": "Grafana Cloud is current",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Grafana Cloud",
+        "current"
+      ],
+      "forbidden_answers": [
+        "Nagios current"
+      ],
+      "anchor_hint": "latest should use the May observability status"
+    }
+  },
+  {
+    "id": "s108-temp-051",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (still)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Is Grafana Cloud still current?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "Nagios"
+      ],
+      "anchor_hint": "still asks whether the newest stack remains active"
+    }
+  },
+  {
+    "id": "s108-temp-052",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (no_longer)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "Which monitoring stack is no longer paging engineers?",
+    "expected_answer": "Nagios",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Nagios"
+      ],
+      "forbidden_answers": [
+        "Grafana Cloud"
+      ],
+      "anchor_hint": "no longer should return the invalidated stack"
+    }
+  },
+  {
+    "id": "s108-temp-053",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (直後)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "Grafana Cloud onboarding の直後に何を検証しましたか？",
+    "expected_answer": "burn-rate alerts and dashboard folders",
+    "expected_answer_entry_id": "s108-obs-e3",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "burn-rate alerts",
+        "dashboard folders"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should land on onboarding validation"
+    }
+  },
+  {
+    "id": "s108-temp-054",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (今も)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も Grafana Cloud が current ですか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "Prometheus"
+      ],
+      "anchor_hint": "Japanese current yes/no should use latest status"
+    }
+  },
+  {
+    "id": "s108-temp-055",
+    "description": "Monitoring moved from Nagios to Prometheus and then Grafana Cloud. (以前)",
+    "difficulty": "medium",
+    "domain": "ops",
+    "source_scenario": "observability-stack",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の observability stack は何でしたか？",
+    "expected_answer": "Prometheus",
+    "expected_answer_entry_id": "s108-obs-e4",
+    "expected_order": [
+      "s108-obs-e1",
+      "s108-obs-e2",
+      "s108-obs-e3",
+      "s108-obs-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-obs-e1",
+        "timestamp": "2024-01-18T07:00:00.000Z",
+        "content": "The first monitoring stack was Nagios. Nagios was the previous alert source for uptime checks."
+      },
+      {
+        "id": "s108-obs-e2",
+        "timestamp": "2024-02-20T14:00:00.000Z",
+        "content": "Prometheus became current after service metrics were instrumented and alert rules were migrated."
+      },
+      {
+        "id": "s108-obs-e3",
+        "timestamp": "2024-04-05T11:00:00.000Z",
+        "content": "Right after Grafana Cloud onboarding, the ops team validated burn-rate alerts and dashboard folders."
+      },
+      {
+        "id": "s108-obs-e4",
+        "timestamp": "2024-05-01T08:45:00.000Z",
+        "content": "Latest observability status: Grafana Cloud is current, Prometheus is previous, and Nagios is no longer paging engineers."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Prometheus"
+      ],
+      "forbidden_answers": [
+        "Grafana Cloud"
+      ],
+      "anchor_hint": "Japanese previous query should identify immediate predecessor"
+    }
+  },
+  {
+    "id": "s108-temp-056",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (current)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "current",
+    "slice": "current",
+    "query_language": "en",
+    "query": "What is the current search retrieval mode?",
+    "expected_answer": "hybrid BM25 plus vector retrieval",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "hybrid BM25",
+        "vector retrieval"
+      ],
+      "forbidden_answers": [
+        "FTS-only"
+      ],
+      "anchor_hint": "current retrieval should prefer the latest hybrid status"
+    }
+  },
+  {
+    "id": "s108-temp-057",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (previous)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "previous",
+    "slice": "previous",
+    "query_language": "en",
+    "query": "What search mode was previous before hybrid retrieval?",
+    "expected_answer": "BM25-only",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "BM25-only"
+      ],
+      "forbidden_answers": [
+        "hybrid BM25"
+      ],
+      "anchor_hint": "previous should identify the immediate pre-hybrid mode"
+    }
+  },
+  {
+    "id": "s108-temp-058",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (after)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "after",
+    "slice": "relative_after",
+    "query_language": "en",
+    "query": "What happened after vector retrieval was added?",
+    "expected_answer": "bilingual recall and developer-workflow queries were validated",
+    "expected_answer_entry_id": "s108-search-e3",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "bilingual recall",
+        "developer-workflow queries"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "after should use the post-vector validation entry"
+    }
+  },
+  {
+    "id": "s108-temp-059",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (before)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "before",
+    "slice": "relative_before",
+    "query_language": "en",
+    "query": "What search index existed before BM25 became current?",
+    "expected_answer": "SQLite FTS-only",
+    "expected_answer_entry_id": "s108-search-e1",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "SQLite FTS-only"
+      ],
+      "forbidden_answers": [
+        "hybrid BM25"
+      ],
+      "anchor_hint": "before should point to the first index"
+    }
+  },
+  {
+    "id": "s108-temp-060",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (first)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "first",
+    "slice": "ordinal_first",
+    "query_language": "en",
+    "query": "What was the first search index?",
+    "expected_answer": "SQLite FTS-only",
+    "expected_answer_entry_id": "s108-search-e1",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "SQLite FTS-only"
+      ],
+      "forbidden_answers": [
+        "hybrid BM25"
+      ],
+      "anchor_hint": "first should use the earliest search index entry"
+    }
+  },
+  {
+    "id": "s108-temp-061",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (latest)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "latest",
+    "slice": "latest",
+    "query_language": "en",
+    "query": "What is the latest search status?",
+    "expected_answer": "hybrid BM25 plus vector retrieval is current",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "hybrid BM25",
+        "current"
+      ],
+      "forbidden_answers": [
+        "FTS-only current"
+      ],
+      "anchor_hint": "latest should use the May search status"
+    }
+  },
+  {
+    "id": "s108-temp-062",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (still)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "still",
+    "slice": "yes_no_still",
+    "query_language": "en",
+    "query": "Is hybrid BM25 plus vector retrieval still current?",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "FTS-only"
+      ],
+      "anchor_hint": "still asks if hybrid retrieval remains current"
+    }
+  },
+  {
+    "id": "s108-temp-063",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (no_longer)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "no_longer",
+    "slice": "yes_no_no_longer",
+    "query_language": "en",
+    "query": "Which search mode is no longer sufficient?",
+    "expected_answer": "FTS-only",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "FTS-only"
+      ],
+      "forbidden_answers": [
+        "hybrid BM25"
+      ],
+      "anchor_hint": "no longer should identify the insufficient old mode"
+    }
+  },
+  {
+    "id": "s108-temp-064",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (直後)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "直後",
+    "slice": "relative_after_ja",
+    "query_language": "ja",
+    "query": "vector retrieval 追加の直後に何を検証しましたか？",
+    "expected_answer": "bilingual recall and developer-workflow queries",
+    "expected_answer_entry_id": "s108-search-e3",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "event",
+      "must_contain": [
+        "bilingual recall",
+        "developer-workflow queries"
+      ],
+      "forbidden_answers": [],
+      "anchor_hint": "Japanese right-after query should use post-vector validation"
+    }
+  },
+  {
+    "id": "s108-temp-065",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (今も)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "今も",
+    "slice": "yes_no_current_ja",
+    "query_language": "ja",
+    "query": "今も hybrid BM25 plus vector retrieval が current ですか？",
+    "expected_answer": "Yes",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "boolean",
+      "must_contain": [
+        "Yes"
+      ],
+      "forbidden_answers": [
+        "No",
+        "FTS-only"
+      ],
+      "anchor_hint": "Japanese current yes/no should use latest search status"
+    }
+  },
+  {
+    "id": "s108-temp-066",
+    "description": "Search moved from SQLite FTS-only to hybrid BM25 plus vector retrieval. (以前)",
+    "difficulty": "medium",
+    "domain": "dev-workflow",
+    "source_scenario": "search-index",
+    "temporal_focus": "以前",
+    "slice": "previous_ja",
+    "query_language": "ja",
+    "query": "以前の search mode は何でしたか？",
+    "expected_answer": "BM25-only",
+    "expected_answer_entry_id": "s108-search-e4",
+    "expected_order": [
+      "s108-search-e1",
+      "s108-search-e2",
+      "s108-search-e3",
+      "s108-search-e4"
+    ],
+    "entries": [
+      {
+        "id": "s108-search-e1",
+        "timestamp": "2024-01-12T10:30:00.000Z",
+        "content": "The first search index was SQLite FTS-only. Previous recall tests relied only on lexical matching."
+      },
+      {
+        "id": "s108-search-e2",
+        "timestamp": "2024-02-28T09:15:00.000Z",
+        "content": "BM25 became current after token normalization fixed kebab-case and path segment queries."
+      },
+      {
+        "id": "s108-search-e3",
+        "timestamp": "2024-04-10T17:20:00.000Z",
+        "content": "Right after vector retrieval was added, the team validated bilingual recall and developer-workflow queries."
+      },
+      {
+        "id": "s108-search-e4",
+        "timestamp": "2024-05-07T08:00:00.000Z",
+        "content": "Latest search status: hybrid BM25 plus vector retrieval is current, BM25-only is previous, and FTS-only is no longer sufficient."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "BM25-only"
+      ],
+      "forbidden_answers": [
+        "hybrid BM25"
+      ],
+      "anchor_hint": "Japanese previous query should return immediate predecessor"
+    }
+  }
+]

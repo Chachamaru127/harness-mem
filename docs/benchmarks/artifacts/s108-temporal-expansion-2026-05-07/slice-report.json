@@ -1,0 +1,159 @@
+{
+  "schema_version": "s108-temporal-slice-report-v1",
+  "generated_at": "2026-05-07T00:00:00.000Z",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
+    "sha256": "0157de215035ffe9800934336c3ff92a2b0d9dabf7f182c76d0319fc913671bb",
+    "case_count": 66,
+    "scenario_count": 6
+  },
+  "required_focus_counts": {
+    "current": 6,
+    "previous": 6,
+    "after": 6,
+    "before": 6,
+    "first": 6,
+    "latest": 6,
+    "still": 6,
+    "no_longer": 6,
+    "直後": 6,
+    "今も": 6,
+    "以前": 6
+  },
+  "slice_counts": {
+    "current": 6,
+    "previous": 6,
+    "relative_after": 6,
+    "relative_before": 6,
+    "ordinal_first": 6,
+    "latest": 6,
+    "yes_no_still": 6,
+    "yes_no_no_longer": 6,
+    "relative_after_ja": 6,
+    "yes_no_current_ja": 6,
+    "previous_ja": 6
+  },
+  "rollup_slice_counts": {
+    "current": 12,
+    "previous": 12,
+    "relative": 18,
+    "ordinal": 6,
+    "yes_no": 18
+  },
+  "by_slice": {
+    "current": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "latest": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "ordinal_first": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "previous": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "previous_ja": {
+      "count": 6,
+      "f1_avg": 0.8667,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 5,
+      "anchor_hit_rate": 0.8333
+    },
+    "relative_after": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "relative_after_ja": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "relative_before": {
+      "count": 6,
+      "f1_avg": 0.714,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 4,
+      "anchor_hit_rate": 0.6667
+    },
+    "yes_no_current_ja": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "yes_no_no_longer": {
+      "count": 6,
+      "f1_avg": 0.8333,
+      "zero_f1_count": 1,
+      "anchor_hit_count": 5,
+      "anchor_hit_rate": 0.8333
+    },
+    "yes_no_still": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    }
+  },
+  "by_rollup_slice": {
+    "current": {
+      "count": 12,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 12,
+      "anchor_hit_rate": 1
+    },
+    "ordinal": {
+      "count": 6,
+      "f1_avg": 1,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 6,
+      "anchor_hit_rate": 1
+    },
+    "previous": {
+      "count": 12,
+      "f1_avg": 0.9333,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 11,
+      "anchor_hit_rate": 0.9167
+    },
+    "relative": {
+      "count": 18,
+      "f1_avg": 0.9047,
+      "zero_f1_count": 0,
+      "anchor_hit_count": 16,
+      "anchor_hit_rate": 0.8889
+    },
+    "yes_no": {
+      "count": 18,
+      "f1_avg": 0.9444,
+      "zero_f1_count": 1,
+      "anchor_hit_count": 17,
+      "anchor_hit_rate": 0.9444
+    }
+  }
+}

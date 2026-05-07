@@ -195,8 +195,27 @@ function sha256File(path: string): string {
   return createHash("sha256").update(raw).digest("hex");
 }
 
-function rel(path: string): string {
-  return path.startsWith(ROOT_DIR) ? path.slice(ROOT_DIR.length + 1) : path;
+export function rel(path: string): string {
+  if (path === ROOT_DIR) return ".";
+  return path.startsWith(`${ROOT_DIR}/`) ? path.slice(ROOT_DIR.length + 1) : path;
+}
+
+export function relativizeArtifactValue<T>(value: T): T {
+  if (typeof value === "string") {
+    return rel(value) as T;
+  }
+  if (Array.isArray(value)) {
+    return value.map((entry) => relativizeArtifactValue(entry)) as T;
+  }
+  if (typeof value === "object" && value !== null) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+        key,
+        relativizeArtifactValue(entry),
+      ])
+    ) as T;
+  }
+  return value;
 }
 
 function round(value: number, digits = 4): number {
@@ -765,12 +784,17 @@ async function runJapaneseDetailed(profile: BenchEmbeddingProfile, artifactDir: 
     onnxGate: profile.gateEnabled,
     primeEmbedding: profile.primeEnabled,
   });
+  writeFileSync(resultPath, `${JSON.stringify(relativizeArtifactValue(result), null, 2)}\n`, "utf8");
 
   const sliceReport = buildJapaneseReleaseReport(JAPANESE_FIXTURE, resultPath);
-  writeFileSync(slicePath, `${JSON.stringify(sliceReport, null, 2)}\n`, "utf8");
+  writeFileSync(slicePath, `${JSON.stringify(relativizeArtifactValue(sliceReport), null, 2)}\n`, "utf8");
 
   const rawFailureBacklog = buildLocomoFailureBacklog({ resultPath, limit: 100 });
-  writeFileSync(rawBacklogPath, `${JSON.stringify(rawFailureBacklog, null, 2)}\n`, "utf8");
+  writeFileSync(
+    rawBacklogPath,
+    `${JSON.stringify(relativizeArtifactValue(rawFailureBacklog), null, 2)}\n`,
+    "utf8"
+  );
 
   const meta = buildJapaneseMeta(JAPANESE_FIXTURE);
   const failures = result.records
@@ -944,7 +968,7 @@ async function main(): Promise<void> {
     schema_version: "s108-baseline-snapshot-v1",
     generated_at: new Date().toISOString(),
     task_id: "S108-001",
-    artifact_dir: options.artifactDir,
+    artifact_dir: rel(options.artifactDir),
     scope: {
       classification: "Local task / Cross-Read",
       owner_repo: "harness-mem",
