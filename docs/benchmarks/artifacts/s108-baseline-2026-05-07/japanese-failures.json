@@ -1,0 +1,877 @@
+[
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-001::why-001",
+    "sample_id": "ja-rel-001",
+    "question_id": "why-001",
+    "slice": "why",
+    "question": "CircleCI から移行した理由は何ですか？",
+    "answer": "parallel build costs が上がり続けたから",
+    "prediction": "CircleCI の parallel build costs が上がり続けたから",
+    "f1": 0.8,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
+      "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-002::yesno-002",
+    "sample_id": "ja-rel-002",
+    "question_id": "yesno-002",
+    "slice": "yes_no",
+    "question": "今もサポートは 24 時間体制ですか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+      "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-002::long-002",
+    "sample_id": "ja-rel-002",
+    "question_id": "long-002",
+    "slice": "long_turn",
+    "question": "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
+    "answer": "平日の 9:00〜18:00 JST",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
+      "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-003::yesno-003",
+    "sample_id": "ja-rel-003",
+    "question_id": "yesno-003",
+    "slice": "yes_no",
+    "question": "Starter は今も 29 dollars a month ですか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-3",
+      "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-004::current-004",
+    "sample_id": "ja-rel-004",
+    "question_id": "current-004",
+    "slice": "current",
+    "question": "Enterprise の今の retention はどれくらいですか？",
+    "answer": "90 days",
+    "prediction": "Enterprise retention は 90 days",
+    "f1": 0.5714285714285715,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-004::noisy-004",
+    "sample_id": "ja-rel-004",
+    "question_id": "noisy-004",
+    "slice": "noisy",
+    "question": "Enterprise の retention いま何日？",
+    "answer": "90 days",
+    "prediction": "Enterprise retention は 90 days",
+    "f1": 0.5714285714285715,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-004::long-004",
+    "sample_id": "ja-rel-004",
+    "question_id": "long-004",
+    "slice": "long_turn",
+    "question": "Free の話はいったん置いて、Enterprise retention の今の値だけ短く答えると何日ですか？",
+    "answer": "90 days",
+    "prediction": "Enterprise retention は 90 days",
+    "f1": 0.5714285714285715,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+      "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-005::why-005",
+    "sample_id": "ja-rel-005",
+    "question_id": "why-005",
+    "slice": "why",
+    "question": "SSO が遅れた理由は何ですか？",
+    "answer": "SCIM provider contract がまだ交渉中だったから",
+    "prediction": "SSO の SCIM provider contract がまだ交渉中だったから",
+    "f1": 0.8,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-005::list-005b",
+    "sample_id": "ja-rel-005",
+    "question_id": "list-005b",
+    "slice": "list",
+    "question": "同じ四半期に出す予定だった 2 つは何でしたか？",
+    "answer": "SSO, team workspaces",
+    "prediction": "SSO と team workspaces を同じ四半期に出す予定でした。",
+    "f1": 0.5,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1",
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-005::yesno-005",
+    "sample_id": "ja-rel-005",
+    "question_id": "yesno-005",
+    "slice": "yes_no",
+    "question": "SSO のほうが先に出ましたか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-005::relative-005",
+    "sample_id": "ja-rel-005",
+    "question_id": "relative-005",
+    "slice": "relative_temporal",
+    "question": "先に出たあと、遅れたのはどれですか？",
+    "answer": "SSO",
+    "prediction": "team workspaces",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+      "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-006::why-006",
+    "sample_id": "ja-rel-006",
+    "question_id": "why-006",
+    "slice": "why",
+    "question": "write latency を恒久的に下げたものは何ですか？",
+    "answer": "workspace_id と created_at の composite index",
+    "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
+    "f1": 0.7058823529411764,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-006::temporal-006",
+    "sample_id": "ja-rel-006",
+    "question_id": "temporal-006",
+    "slice": "temporal",
+    "question": "alert の直後に最初にやったことは何ですか？",
+    "answer": "read traffic を新しい replica に逃がした",
+    "prediction": "alert の直後に read traffic を新しい replica に逃がしました。",
+    "f1": 0.6666666666666666,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-006::exact-006",
+    "sample_id": "ja-rel-006",
+    "question_id": "exact-006",
+    "slice": "exact",
+    "question": "write latency を恒久的に下げたのは何ですか？",
+    "answer": "workspace_id と created_at の composite index",
+    "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
+    "f1": 0.7058823529411764,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-006::noisy-006",
+    "sample_id": "ja-rel-006",
+    "question_id": "noisy-006",
+    "slice": "noisy",
+    "question": "アラートのあと最初にやったこと何？",
+    "answer": "read traffic を新しい replica に逃がした",
+    "prediction": "ingestion と reporting の両方に影響しましたね。",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-006::long-006",
+    "sample_id": "ja-rel-006",
+    "question_id": "long-006",
+    "slice": "long_turn",
+    "question": "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
+    "answer": "read traffic を新しい replica に逃がした",
+    "prediction": "alert の直後に read traffic を新しい replica に逃がしました。",
+    "f1": 0.6666666666666666,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+      "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-007::prev-007",
+    "sample_id": "ja-rel-007",
+    "question_id": "prev-007",
+    "slice": "current_vs_previous",
+    "question": "RRF に変える前はどんな混ぜ方でしたか？",
+    "answer": "weighted sum",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
+      "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-007::yesno-007",
+    "sample_id": "ja-rel-007",
+    "question_id": "yesno-007",
+    "slice": "yes_no",
+    "question": "recency は fusion の前にかけていますか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
+      "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-008::temporal-008",
+    "sample_id": "ja-rel-008",
+    "question_id": "temporal-008",
+    "slice": "temporal",
+    "question": "launch playbook の次に localize したものは何ですか？",
+    "answer": "invoice emails",
+    "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-008::prev-008",
+    "sample_id": "ja-rel-008",
+    "question_id": "prev-008",
+    "slice": "current_vs_previous",
+    "question": "以前の docs は何語だけでしたか？",
+    "answer": "English",
+    "prediction": "English only",
+    "f1": 0.6666666666666666,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-008::exact-008",
+    "sample_id": "ja-rel-008",
+    "question_id": "exact-008",
+    "slice": "exact",
+    "question": "最初に翻訳した docs は何ですか？",
+    "answer": "launch playbook",
+    "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+    "f1": 0.5,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-008::noisy-008",
+    "sample_id": "ja-rel-008",
+    "question_id": "noisy-008",
+    "slice": "relative_temporal",
+    "question": "launch playbook の次に何を localize した？",
+    "answer": "invoice emails",
+    "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+      "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-009::exact-009",
+    "sample_id": "ja-rel-009",
+    "question_id": "exact-009",
+    "slice": "exact",
+    "question": "認証方式の変更時に削除したものは何ですか？",
+    "answer": "refresh token",
+    "prediction": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
+    "f1": 0.3636363636363636,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-009::prev-009",
+    "sample_id": "ja-rel-009",
+    "question_id": "prev-009",
+    "slice": "current_vs_previous",
+    "question": "今の方式に変える前の認証フローは何でしたか？",
+    "answer": "JWT 方式",
+    "prediction": "Redis backed session cookies",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
+      "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::current-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "current-010",
+    "slice": "current",
+    "question": "今の headquarters はどこですか？",
+    "answer": "Singapore",
+    "prediction": "headquarters は Singapore",
+    "f1": 0.5,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::temporal-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "temporal-010",
+    "slice": "temporal",
+    "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
+    "answer": "engineering",
+    "prediction": "Singapore",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::prev-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "prev-010",
+    "slice": "current_vs_previous",
+    "question": "headquarters を移す前はどこでしたか？",
+    "answer": "San Francisco",
+    "prediction": "headquarters は San Francisco",
+    "f1": 0.6666666666666666,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::noisy-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "noisy-010",
+    "slice": "location",
+    "question": "今の headquarters どこ？",
+    "answer": "Singapore",
+    "prediction": "headquarters は Singapore",
+    "f1": 0.5,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::yesno-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "yesno-010",
+    "slice": "yes_no",
+    "question": "engineering も headquarters 移転後に remote-first をやめましたか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-010::long-010",
+    "sample_id": "ja-rel-010",
+    "question_id": "long-010",
+    "slice": "long_turn",
+    "question": "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
+    "answer": "Singapore",
+    "prediction": "headquarters は Singapore",
+    "f1": 0.5,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+      "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-011::yesno-011",
+    "sample_id": "ja-rel-011",
+    "question_id": "yesno-011",
+    "slice": "yes_no",
+    "question": "same-day funnel drops を見逃していたことが変更理由でしたか？",
+    "answer": "Yes",
+    "prediction": "customers が same-day funnel drops を見逃していたから",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-3",
+      "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-1",
+      "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-4"
+    ],
+    "taxonomy_reason": "temporal_anchor_miss",
+    "note": "the failure sits in a temporal/current-vs-previous slice and the selected candidates do not clearly contain the target answer"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-012::list-012",
+    "sample_id": "ja-rel-012",
+    "question_id": "list-012",
+    "slice": "list",
+    "question": "Q2 に出した admin 向け機能をすべて挙げてください。",
+    "answer": "export to CSV, audit logs, SAML",
+    "prediction": "export to CSV, audit logs, SAML, CSV",
+    "f1": 0.7692307692307692,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-012::exact-012",
+    "sample_id": "ja-rel-012",
+    "question_id": "exact-012",
+    "slice": "exact",
+    "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
+    "answer": "export to CSV",
+    "prediction": "Q2 には export to CSV, audit logs, SAML for admins を出しました。",
+    "f1": 0.28571428571428575,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-012::relative-012",
+    "sample_id": "ja-rel-012",
+    "question_id": "relative-012",
+    "slice": "relative_temporal",
+    "question": "audit logs の次に出たものは何ですか？",
+    "answer": "SAML",
+    "prediction": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-012::yesno-012",
+    "sample_id": "ja-rel-012",
+    "question_id": "yesno-012",
+    "slice": "yes_no",
+    "question": "SAML が最初に出た機能ですか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+      "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-013::current-013",
+    "sample_id": "ja-rel-013",
+    "question_id": "current-013",
+    "slice": "current",
+    "question": "今の default region はどこですか？",
+    "answer": "ap-northeast-1",
+    "prediction": "default region は ap-northeast-1",
+    "f1": 0.4,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-013::prev-013",
+    "sample_id": "ja-rel-013",
+    "question_id": "prev-013",
+    "slice": "current_vs_previous",
+    "question": "以前の default region は何でしたか？",
+    "answer": "us-west-2",
+    "prediction": "default region は ap-northeast-1",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-013::noisy-013",
+    "sample_id": "ja-rel-013",
+    "question_id": "noisy-013",
+    "slice": "noisy",
+    "question": "いまの default region どこ？",
+    "answer": "ap-northeast-1",
+    "prediction": "default region は ap-northeast-1",
+    "f1": 0.4,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-013::yesno-013",
+    "sample_id": "ja-rel-013",
+    "question_id": "yesno-013",
+    "slice": "yes_no",
+    "question": "default region は今も us-west-2 ですか？",
+    "answer": "No",
+    "prediction": "Yes",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+    ],
+    "taxonomy_reason": "stale_fact_win",
+    "note": "a current or yes/no question appears to prefer a superseded value"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-013::long-013",
+    "sample_id": "ja-rel-013",
+    "question_id": "long-013",
+    "slice": "long_turn",
+    "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
+    "answer": "ap-northeast-1",
+    "prediction": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
+    "f1": 0.19999999999999998,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+      "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-014::current-014",
+    "sample_id": "ja-rel-014",
+    "question_id": "current-014",
+    "slice": "current",
+    "question": "今の primary incident channel は何ですか？",
+    "answer": "Slack",
+    "prediction": "primary incident channel は Slack",
+    "f1": 0.33333333333333337,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-014::prev-014",
+    "sample_id": "ja-rel-014",
+    "question_id": "prev-014",
+    "slice": "current_vs_previous",
+    "question": "primary channel を見直す前は何だけで送っていましたか？",
+    "answer": "email",
+    "prediction": "primary incident channel は Slack",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-014::noisy-014",
+    "sample_id": "ja-rel-014",
+    "question_id": "noisy-014",
+    "slice": "entity",
+    "question": "今の primary incident channel は？",
+    "answer": "Slack",
+    "prediction": "primary incident channel は Slack",
+    "f1": 0.33333333333333337,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-014::exact-014",
+    "sample_id": "ja-rel-014",
+    "question_id": "exact-014",
+    "slice": "exact",
+    "question": "今も補助通知として残しているものは何ですか？",
+    "answer": "email",
+    "prediction": "primary incident channel は Slack",
+    "f1": 0,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+      "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-015::prev-015",
+    "sample_id": "ja-rel-015",
+    "question_id": "prev-015",
+    "slice": "current_vs_previous",
+    "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
+    "answer": "codex",
+    "prediction": "最初の setup コマンドは codex だけを対象にしていました。",
+    "f1": 0.33333333333333337,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-015::noisy-015",
+    "sample_id": "ja-rel-015",
+    "question_id": "noisy-015",
+    "slice": "noisy",
+    "question": "今の推奨 setup の組み合わせは？",
+    "answer": "codex, cursor, claude",
+    "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+    "f1": 0.6,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  },
+  {
+    "benchmark": "japanese_temporal",
+    "case_id": "ja-rel-015::long-015",
+    "sample_id": "ja-rel-015",
+    "question_id": "long-015",
+    "slice": "long_turn",
+    "question": "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
+    "answer": "codex, cursor, claude",
+    "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+    "f1": 0.6,
+    "em": 0,
+    "selected_evidence_ids": [
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+      "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1"
+    ],
+    "taxonomy_reason": "answer_synthesis_miss",
+    "note": "evidence appears available, but answer normalization or compression remained imperfect"
+  }
+]

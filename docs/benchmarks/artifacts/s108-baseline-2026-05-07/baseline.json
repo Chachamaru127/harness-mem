@@ -1,0 +1,157 @@
+{
+  "schema_version": "s108-baseline-snapshot-v1",
+  "generated_at": "2026-05-07T00:27:49.618Z",
+  "task_id": "S108-001",
+  "artifact_dir": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s108-baseline-2026-05-07",
+  "scope": {
+    "classification": "Local task / Cross-Read",
+    "owner_repo": "harness-mem",
+    "mutates_state_contract": false,
+    "mutates_runtime_state": false,
+    "impacted_repos": [
+      "harness-mem"
+    ]
+  },
+  "runner_contract": {
+    "dev_workflow": "Same fixture and search request shape as memory-server/src/benchmark/run-ci.ts dev-workflow-20.",
+    "temporal": "Same temporal-100-v2 fixture, search request shape, and BenchmarkRunner temporal metrics as run-ci.ts.",
+    "japanese_temporal": "tests/benchmarks/run-locomo-benchmark.ts plus japanese-release-report and locomo-failure-backlog."
+  },
+  "fixtures": {
+    "dev_workflow_20": {
+      "path": "tests/benchmarks/fixtures/dev-workflow-20.json",
+      "sha256": "e9f78b0df7fe8b30b856f156f03bd8e62c51e26de200fd45630ef4147db2f628"
+    },
+    "temporal_100_v2": {
+      "path": "tests/benchmarks/fixtures/temporal-100-v2.json",
+      "sha256": "38c19bc05291b88d8ed028e48b5de400322cf65bb8b110214406e1029feea504"
+    },
+    "japanese_release_pack_96": {
+      "path": "tests/benchmarks/fixtures/japanese-release-pack-96.json",
+      "sha256": "313f54f384de434e32adfed473893bde9f8b75f6d0186a4bf15fb77e101ce4c9"
+    }
+  },
+  "embedding": {
+    "mode": "onnx",
+    "provider": "local",
+    "model": "multilingual-e5",
+    "vector_dimension": 384,
+    "onnx_gate": true,
+    "prime_enabled": true
+  },
+  "metrics": {
+    "dev_workflow": {
+      "recall_at_10": 0.5916666666666666,
+      "cases": 20,
+      "bootstrap_ci_95": {
+        "lower": 0.3833,
+        "upper": 0.7917,
+        "mean": 0.5917,
+        "se": 0.1049,
+        "method": "bootstrap"
+      },
+      "expected_anchor": 0.59,
+      "within_known_drift": true
+    },
+    "temporal": {
+      "order_score": 0.6458333333333334,
+      "weighted_tau": 0.6482441181825945,
+      "ndcg_at_5": 0.6823557869824461,
+      "cases": 120,
+      "bootstrap_ci_95": {
+        "lower": 0.576,
+        "upper": 0.7165,
+        "mean": 0.6482,
+        "se": 0.0362,
+        "method": "bootstrap"
+      },
+      "expected_anchor": 0.65,
+      "within_known_drift": true,
+      "domain_breakdown": {
+        "dev-workflow": {
+          "tau": 0.5690153791908904,
+          "n": 53
+        },
+        "project-mgmt": {
+          "tau": 0.4878969937435247,
+          "n": 22
+        },
+        "personal": {
+          "tau": 0.8535860614282054,
+          "n": 22
+        },
+        "bilingual": {
+          "tau": 0.787776168305048,
+          "n": 23
+        }
+      }
+    },
+    "japanese_temporal": {
+      "dataset_qa_count": 96,
+      "overall_f1": 0.6615760260980851,
+      "temporal_f1": 0.7083333333333333,
+      "relative_temporal_f1": 0,
+      "current_vs_previous_f1": 0.5555555555555555,
+      "yes_no_f1": 0.5,
+      "zero_f1_count": 20
+    }
+  },
+  "taxonomy_summary": {
+    "by_reason": {
+      "retrieval_miss": 7,
+      "ranking_miss": 0,
+      "temporal_anchor_miss": 68,
+      "stale_fact_win": 7,
+      "answer_synthesis_miss": 39
+    },
+    "by_benchmark": {
+      "dev_workflow": {
+        "retrieval_miss": 7,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 2,
+        "stale_fact_win": 0,
+        "answer_synthesis_miss": 0
+      },
+      "temporal": {
+        "retrieval_miss": 0,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 65,
+        "stale_fact_win": 0,
+        "answer_synthesis_miss": 0
+      },
+      "japanese_temporal": {
+        "retrieval_miss": 0,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 1,
+        "stale_fact_win": 7,
+        "answer_synthesis_miss": 39
+      }
+    }
+  },
+  "source_files": {
+    "dev_workflow_cases": "dev-workflow-cases.json",
+    "temporal_cases": "temporal-cases.json",
+    "japanese_failures": "japanese-failures.json",
+    "japanese_result": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.result.json",
+    "japanese_slice_report": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.slice-report.json",
+    "japanese_raw_failure_backlog": "docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.raw-failure-backlog.json"
+  },
+  "state_migration_preflight": {
+    "applicable": false,
+    "reason": "S108-001 only writes benchmark artifacts under docs/benchmarks/artifacts and does not change state schema, session resume format, search index format, or runner startup state.",
+    "invariants_not_touched": [
+      "session resume read/write contract",
+      "search index schema and stored vectors",
+      "runner startup and background loop state",
+      "cross-repo sibling state ownership"
+    ],
+    "rollback": "Delete this artifact directory and revert the Plans.md S108-001 status hunk.",
+    "observation_points": [
+      "benchmark start",
+      "fixture hashes",
+      "per-benchmark metric counts",
+      "taxonomy counts",
+      "post-run artifact paths"
+    ]
+  }
+}

@@ -1,0 +1,2673 @@
+{
+  "schema_version": "s108-failure-backlog-v1",
+  "generated_at": "2026-05-07T00:27:49.618Z",
+  "taxonomy_summary": {
+    "by_reason": {
+      "retrieval_miss": 7,
+      "ranking_miss": 0,
+      "temporal_anchor_miss": 68,
+      "stale_fact_win": 7,
+      "answer_synthesis_miss": 39
+    },
+    "by_benchmark": {
+      "dev_workflow": {
+        "retrieval_miss": 7,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 2,
+        "stale_fact_win": 0,
+        "answer_synthesis_miss": 0
+      },
+      "temporal": {
+        "retrieval_miss": 0,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 65,
+        "stale_fact_win": 0,
+        "answer_synthesis_miss": 0
+      },
+      "japanese_temporal": {
+        "retrieval_miss": 0,
+        "ranking_miss": 0,
+        "temporal_anchor_miss": 1,
+        "stale_fact_win": 7,
+        "answer_synthesis_miss": 39
+      }
+    }
+  },
+  "failures": {
+    "dev_workflow": [
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-001",
+        "description": "先週の変更ファイル問い合わせ",
+        "query": "What files did I change last week?",
+        "expected_ids": [
+          "obs_dw-001-e1",
+          "obs_dw-001-e2",
+          "obs_dw-001-e3"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-019-e3",
+          "obs_dw-019-e2",
+          "obs_dw-019-e1",
+          "obs_dw-020-e3",
+          "obs_dw-008-e2",
+          "obs_dw-006-e3",
+          "obs_dw-005-e2",
+          "obs_dw-007-e2",
+          "obs_dw-001-e2"
+        ],
+        "score": 0.3333333333333333,
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-002",
+        "description": "バグ修正時期の問い合わせ",
+        "query": "When was the memory leak bug fixed?",
+        "expected_ids": [
+          "obs_dw-002-e2",
+          "obs_dw-002-e3"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-019-e3",
+          "obs_dw-019-e2",
+          "obs_dw-020-e3",
+          "obs_dw-019-e1",
+          "obs_dw-008-e2",
+          "obs_dw-010-e3",
+          "obs_dw-006-e3",
+          "obs_dw-005-e2",
+          "obs_dw-002-e2"
+        ],
+        "score": 0.5,
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-006",
+        "description": "パフォーマンス問題の調査",
+        "query": "What was causing the high search latency?",
+        "expected_ids": [
+          "obs_dw-006-e2"
+        ],
+        "retrieved_ids": [
+          "obs_dw-016-e2",
+          "obs_dw-013-e1",
+          "obs_dw-009-e1",
+          "obs_dw-006-e1",
+          "obs_dw-002-e1",
+          "obs_dw-014-e3",
+          "obs_dw-008-e3",
+          "obs_dw-012-e2",
+          "obs_dw-011-e1",
+          "obs_dw-012-e1"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-007",
+        "description": "依存関係バージョンの問い合わせ",
+        "query": "What version of Bun are we using?",
+        "expected_ids": [
+          "obs_dw-007-e2"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-003-e3",
+          "obs_dw-005-e2",
+          "obs_dw-015-e2",
+          "obs_dw-014-e1",
+          "obs_dw-005-e1",
+          "obs_dw-012-e1",
+          "obs_dw-002-e2",
+          "obs_dw-012-e2",
+          "obs_dw-008-e2"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-008",
+        "description": "未解決のTODO追跡",
+        "query": "What TODOs are still open?",
+        "expected_ids": [
+          "obs_dw-008-e2"
+        ],
+        "retrieved_ids": [
+          "obs_dw-001-e1",
+          "obs_dw-013-e3",
+          "obs_dw-020-e1",
+          "obs_dw-019-e3",
+          "obs_dw-007-e2",
+          "obs_dw-018-e2",
+          "obs_dw-002-e3",
+          "obs_dw-001-e3",
+          "obs_dw-015-e3",
+          "obs_dw-020-e2"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-010",
+        "description": "テスト失敗の原因追跡",
+        "query": "Why was the reranker quality gate failing?",
+        "expected_ids": [
+          "obs_dw-010-e2"
+        ],
+        "retrieved_ids": [
+          "obs_dw-010-e1",
+          "obs_dw-010-e3",
+          "obs_dw-015-e1",
+          "obs_dw-006-e2",
+          "obs_dw-013-e1",
+          "obs_dw-004-e2",
+          "obs_dw-016-e1",
+          "obs_dw-001-e3",
+          "obs_dw-019-e3",
+          "obs_dw-002-e3"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-011",
+        "description": "担当者の変更",
+        "query": "Who owns the search module now?",
+        "expected_ids": [
+          "obs_dw-011-e2"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-012-e1",
+          "obs_dw-012-e2",
+          "obs_dw-003-e3",
+          "obs_dw-014-e1",
+          "obs_dw-015-e2",
+          "obs_dw-005-e1",
+          "obs_dw-018-e2",
+          "obs_dw-002-e2",
+          "obs_dw-005-e2"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-013",
+        "description": "直近のスプリント目標",
+        "query": "What is the current sprint goal?",
+        "expected_ids": [
+          "obs_dw-013-e3"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-015-e2",
+          "obs_dw-014-e1",
+          "obs_dw-003-e3",
+          "obs_dw-012-e1",
+          "obs_dw-005-e1",
+          "obs_dw-018-e2",
+          "obs_dw-012-e2",
+          "obs_dw-002-e2",
+          "obs_dw-005-e2"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      },
+      {
+        "benchmark": "dev_workflow",
+        "case_id": "dw-019",
+        "description": "テストカバレッジ変化の追跡",
+        "query": "How many tests are there currently?",
+        "expected_ids": [
+          "obs_dw-019-e3"
+        ],
+        "retrieved_ids": [
+          "obs_dw-007-e1",
+          "obs_dw-005-e1",
+          "obs_dw-014-e1",
+          "obs_dw-003-e3",
+          "obs_dw-015-e2",
+          "obs_dw-012-e1",
+          "obs_dw-018-e2",
+          "obs_dw-002-e2",
+          "obs_dw-012-e2",
+          "obs_dw-005-e2"
+        ],
+        "score": 0,
+        "taxonomy_reason": "retrieval_miss",
+        "note": "no expected observation appeared in the top 10 result set"
+      }
+    ],
+    "temporal": [
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-001",
+        "description": "デプロイ前の確認手順（テスト→ステージング→本番の順序）",
+        "query": "What was the first step before deploying to production?",
+        "expected_ids": [
+          "obs_temp-001-e1",
+          "obs_temp-001-e2",
+          "obs_temp-001-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-001-e2",
+          "obs_temp-001-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.38268031849431083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-002",
+        "description": "マイグレーション後の検証手順",
+        "query": "What happened right after the migration completed?",
+        "expected_ids": [
+          "obs_temp-002-e1",
+          "obs_temp-002-e2",
+          "obs_temp-002-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-002-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.15642624200758548
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-004",
+        "description": "スプリント内のタスク進行順序",
+        "query": "After sprint 12 kickoff. team commit, what happened next?",
+        "expected_ids": [
+          "obs_temp-004-e1",
+          "obs_temp-004-e2",
+          "obs_temp-004-e3",
+          "obs_temp-004-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-004-e3",
+          "obs_temp-004-e4",
+          "obs_temp-004-e2"
+        ],
+        "score": 0.33333333333333337,
+        "secondary_scores": {
+          "weighted_tau": 0.34969519732213633,
+          "ndcg_at_5": 0.309822492075636
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-005",
+        "description": "リリースサイクル（計画→開発→テスト→リリース）",
+        "query": "When was v2.0 released and what happened just before the release?",
+        "expected_ids": [
+          "obs_temp-005-e1",
+          "obs_temp-005-e2",
+          "obs_temp-005-e3",
+          "obs_temp-005-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-005-e3",
+          "obs_temp-005-e2",
+          "obs_temp-005-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-010",
+        "description": "パフォーマンス改善の段階的実施",
+        "query": "What was the first performance improvement implemented after profiling?",
+        "expected_ids": [
+          "obs_temp-010-e1",
+          "obs_temp-010-e2",
+          "obs_temp-010-e3",
+          "obs_temp-010-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-010-e3",
+          "obs_temp-010-e2",
+          "obs_temp-010-e4"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6503048026778637,
+          "ndcg_at_5": 0.47402408456945594
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-011",
+        "description": "機能フラグ導入→段階的ロールアウト→全体公開",
+        "query": "What percentage of users got the recommendation engine first, before full rollout?",
+        "expected_ids": [
+          "obs_temp-011-e1",
+          "obs_temp-011-e2",
+          "obs_temp-011-e3",
+          "obs_temp-011-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-011-e3",
+          "obs_temp-011-e2",
+          "obs_temp-011-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-013",
+        "description": "チームオンボーディングの段階（アクセス→研修→実装→承認）",
+        "query": "What happened before Sarah submitted her first pull request?",
+        "expected_ids": [
+          "obs_temp-013-e1",
+          "obs_temp-013-e2",
+          "obs_temp-013-e3",
+          "obs_temp-013-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-013-e2",
+          "obs_temp-013-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.31834121936641585
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-014",
+        "description": "APIバージョニング廃止の段階的プロセス",
+        "query": "When was API v1 finally shut down and how many clients remained before shutdown?",
+        "expected_ids": [
+          "obs_temp-014-e1",
+          "obs_temp-014-e2",
+          "obs_temp-014-e3",
+          "obs_temp-014-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-014-e3",
+          "obs_temp-014-e2",
+          "obs_temp-014-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-015",
+        "description": "モノリスからマイクロサービスへの段階的移行",
+        "query": "After architecture decision: extract, what happened next?",
+        "expected_ids": [
+          "obs_temp-015-e1",
+          "obs_temp-015-e2",
+          "obs_temp-015-e3",
+          "obs_temp-015-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-015-e2",
+          "obs_temp-015-e4",
+          "obs_temp-015-e3"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6835827005554627,
+          "ndcg_at_5": 0.4724808462390117
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-016",
+        "description": "データパイプラインの障害と復旧",
+        "query": "After etl pipeline failed silently. , what happened next?",
+        "expected_ids": [
+          "obs_temp-016-e1",
+          "obs_temp-016-e2",
+          "obs_temp-016-e3",
+          "obs_temp-016-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-016-e3",
+          "obs_temp-016-e4",
+          "obs_temp-016-e2"
+        ],
+        "score": 0.33333333333333337,
+        "secondary_scores": {
+          "weighted_tau": 0.34969519732213633,
+          "ndcg_at_5": 0.309822492075636
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-018",
+        "description": "ユーザー調査→設計→プロトタイプ→ユーザーテストの順序",
+        "query": "How many users were interviewed before the new onboarding was designed?",
+        "expected_ids": [
+          "obs_temp-018-e1",
+          "obs_temp-018-e2",
+          "obs_temp-018-e3",
+          "obs_temp-018-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-018-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.3903800499921017
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-021",
+        "description": "新しいチームメンバーのロールアップ（確認→作業開始→独立）",
+        "query": "How long did Alex spend reviewing existing models before proposing improvements?",
+        "expected_ids": [
+          "obs_temp-021-e1",
+          "obs_temp-021-e2",
+          "obs_temp-021-e3",
+          "obs_temp-021-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-021-e2",
+          "obs_temp-021-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.31834121936641585
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-022",
+        "description": "コンプライアンス対応（監査→対策→検証）",
+        "query": "How many control gaps were identified in the initial audit before remediation?",
+        "expected_ids": [
+          "obs_temp-022-e1",
+          "obs_temp-022-e2",
+          "obs_temp-022-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-022-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.46927872602275644
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-024",
+        "description": "ドキュメント整備プロジェクトの進捗",
+        "query": "What percentage of API endpoints were undocumented before the documentation project started?",
+        "expected_ids": [
+          "obs_temp-024-e1",
+          "obs_temp-024-e2",
+          "obs_temp-024-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-024-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.46927872602275644
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-027",
+        "description": "コードレビュープロセス改善",
+        "query": "What was the average PR review wait time before the code review improvements?",
+        "expected_ids": [
+          "obs_temp-027-e1",
+          "obs_temp-027-e2",
+          "obs_temp-027-e3",
+          "obs_temp-027-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-027-e2",
+          "obs_temp-027-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.31834121936641585
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-028",
+        "description": "A/Bテスト→分析→機能確定",
+        "query": "How long did the A/B test run before a decision was made on the checkout flow?",
+        "expected_ids": [
+          "obs_temp-028-e1",
+          "obs_temp-028-e2",
+          "obs_temp-028-e3",
+          "obs_temp-028-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-028-e2",
+          "obs_temp-028-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.31834121936641585
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-030",
+        "description": "製品発表から出荷までのマーケティングタイムライン",
+        "query": "How many enterprise customers participated in the beta program before the general launch?",
+        "expected_ids": [
+          "obs_temp-030-e1",
+          "obs_temp-030-e2",
+          "obs_temp-030-e3",
+          "obs_temp-030-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-030-e3",
+          "obs_temp-030-e2",
+          "obs_temp-030-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-031",
+        "description": "本番障害のロールバック（最新状態が最も重要）",
+        "query": "What is the current production version and latest status after the incident?",
+        "expected_ids": [
+          "obs_temp-031-e4",
+          "obs_temp-031-e3",
+          "obs_temp-031-e2",
+          "obs_temp-031-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-031-e3",
+          "obs_temp-031-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.31834121936641585
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-032",
+        "description": "ライブラリの最新バージョン情報（降順クエリ）",
+        "query": "After upgraded react from 17.0.2 to , what happened next?",
+        "expected_ids": [
+          "obs_temp-032-e4",
+          "obs_temp-032-e3",
+          "obs_temp-032-e2",
+          "obs_temp-032-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-032-e2",
+          "obs_temp-032-e3",
+          "obs_temp-032-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-033",
+        "description": "チームメンバーの最新担当プロジェクト（降順クエリ）",
+        "query": "After david assigned to the payment , what happened next?",
+        "expected_ids": [
+          "obs_temp-033-e4",
+          "obs_temp-033-e3",
+          "obs_temp-033-e2",
+          "obs_temp-033-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-033-e2",
+          "obs_temp-033-e3",
+          "obs_temp-033-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-034",
+        "description": "設定値の最新状態（上書き履歴、降順クエリ）",
+        "query": "After set max_connections=100 in pro, what happened next?",
+        "expected_ids": [
+          "obs_temp-034-e4",
+          "obs_temp-034-e3",
+          "obs_temp-034-e2",
+          "obs_temp-034-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-034-e2",
+          "obs_temp-034-e3",
+          "obs_temp-034-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-035",
+        "description": "価格設定の改訂履歴（最新が重要）",
+        "query": "After launched pro plan at $29/month, what happened next?",
+        "expected_ids": [
+          "obs_temp-035-e4",
+          "obs_temp-035-e3",
+          "obs_temp-035-e2",
+          "obs_temp-035-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-035-e2",
+          "obs_temp-035-e3",
+          "obs_temp-035-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-036",
+        "description": "API エンドポイントの変更履歴（最新仕様が重要）",
+        "query": "After initial api: post /api/v1/user, what happened next?",
+        "expected_ids": [
+          "obs_temp-036-e4",
+          "obs_temp-036-e3",
+          "obs_temp-036-e2",
+          "obs_temp-036-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-036-e2",
+          "obs_temp-036-e3",
+          "obs_temp-036-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-037",
+        "description": "インフラコストの変動（最新値が重要）",
+        "query": "After monthly aws cost: $4,200. brea, what happened next?",
+        "expected_ids": [
+          "obs_temp-037-e4",
+          "obs_temp-037-e3",
+          "obs_temp-037-e2",
+          "obs_temp-037-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-037-e2",
+          "obs_temp-037-e3",
+          "obs_temp-037-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-038",
+        "description": "チームリーダーの交代履歴（最新が重要）",
+        "query": "After maria appointed as engineering, what happened next?",
+        "expected_ids": [
+          "obs_temp-038-e4",
+          "obs_temp-038-e3",
+          "obs_temp-038-e2",
+          "obs_temp-038-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-038-e2",
+          "obs_temp-038-e3",
+          "obs_temp-038-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-039",
+        "description": "セキュリティポリシーの改訂（最新版が適用）",
+        "query": "After password policy v1: minimum 8 , what happened next?",
+        "expected_ids": [
+          "obs_temp-039-e4",
+          "obs_temp-039-e3",
+          "obs_temp-039-e2",
+          "obs_temp-039-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-039-e2",
+          "obs_temp-039-e3",
+          "obs_temp-039-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-040",
+        "description": "データ保持ポリシーの変更（最新版が有効）",
+        "query": "After data retention policy: all use, what happened next?",
+        "expected_ids": [
+          "obs_temp-040-e4",
+          "obs_temp-040-e3",
+          "obs_temp-040-e2",
+          "obs_temp-040-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-040-e2",
+          "obs_temp-040-e3",
+          "obs_temp-040-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-041",
+        "description": "DB接続文字列の更新（最新設定が有効）",
+        "query": "What is the current database connection configuration?",
+        "expected_ids": [
+          "obs_temp-041-e4",
+          "obs_temp-041-e3",
+          "obs_temp-041-e2",
+          "obs_temp-041-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-041-e3",
+          "obs_temp-041-e4",
+          "obs_temp-041-e1",
+          "obs_temp-041-e2"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6666666666666667,
+          "ndcg_at_5": 0.5
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-042",
+        "description": "製品バージョンの更新履歴（最新リリースが重要）",
+        "query": "What is the latest version of harness-mem and what features were added?",
+        "expected_ids": [
+          "obs_temp-042-e4",
+          "obs_temp-042-e3",
+          "obs_temp-042-e2",
+          "obs_temp-042-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-042-e2",
+          "obs_temp-042-e4",
+          "obs_temp-042-e3",
+          "obs_temp-042-e1"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6417289384028607,
+          "ndcg_at_5": 0.5190004264702085
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-043",
+        "description": "採用方針の変更（最新ポリシーが有効）",
+        "query": "What is the current engineering hiring process?",
+        "expected_ids": [
+          "obs_temp-043-e4",
+          "obs_temp-043-e3",
+          "obs_temp-043-e2",
+          "obs_temp-043-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-043-e4",
+          "obs_temp-043-e1",
+          "obs_temp-043-e3",
+          "obs_temp-043-e2"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6758229376674423,
+          "ndcg_at_5": 0.6541396268725959
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-044",
+        "description": "同日に複数更新があったプロジェクト状態（同日シナリオ）",
+        "query": "What decision was made when the breaking tests were found during the authentication refactor?",
+        "expected_ids": [
+          "obs_temp-044-e1",
+          "obs_temp-044-e2",
+          "obs_temp-044-e3",
+          "obs_temp-044-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-044-e2",
+          "obs_temp-044-e3",
+          "obs_temp-044-e4",
+          "obs_temp-044-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5241078530893437,
+          "ndcg_at_5": 0.45796811593222064
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-048",
+        "description": "同日に複数ミーティングがあった意思決定（降順クエリ + 同日エントリ）",
+        "query": "What is the final API technology decision for the mobile app and what was the rationale?",
+        "expected_ids": [
+          "obs_temp-048-e4",
+          "obs_temp-048-e3",
+          "obs_temp-048-e2",
+          "obs_temp-048-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-048-e1",
+          "obs_temp-048-e2",
+          "obs_temp-048-e3",
+          "obs_temp-048-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.3603731034341952
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-049",
+        "description": "ホットフィックスの複数フェーズ（降順クエリ + 同日エントリ混在）",
+        "query": "What is the current security status and latest patch applied?",
+        "expected_ids": [
+          "obs_temp-049-e4",
+          "obs_temp-049-e3",
+          "obs_temp-049-e2",
+          "obs_temp-049-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-049-e2",
+          "obs_temp-049-e4",
+          "obs_temp-049-e3",
+          "obs_temp-049-e1"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6417289384028607,
+          "ndcg_at_5": 0.5190004264702085
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-050",
+        "description": "KPIトラッキングの最新値（降順クエリ）",
+        "query": "What are the latest KPI metrics and how has the business grown?",
+        "expected_ids": [
+          "obs_temp-050-e4",
+          "obs_temp-050-e3",
+          "obs_temp-050-e2",
+          "obs_temp-050-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-050-e2",
+          "obs_temp-050-e1",
+          "obs_temp-050-e3",
+          "obs_temp-050-e4"
+        ],
+        "score": 0.16666666666666669,
+        "secondary_scores": {
+          "weighted_tau": 0.18327799910415926,
+          "ndcg_at_5": 0.3518543761434153
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-051",
+        "description": "プロジェクト計画から完了までの追跡（順方向）",
+        "query": "How long did the customer portal v2 project take and what caused the delay?",
+        "expected_ids": [
+          "obs_temp-051-e1",
+          "obs_temp-051-e2",
+          "obs_temp-051-e3",
+          "obs_temp-051-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-051-e3",
+          "obs_temp-051-e1",
+          "obs_temp-051-e4",
+          "obs_temp-051-e2"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.49917012482553774,
+          "ndcg_at_5": 0.4069154022894635
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-052",
+        "description": "プロジェクト優先順位の逆転（最新が重要）",
+        "query": "What is the current top priority project?",
+        "expected_ids": [
+          "obs_temp-052-e4",
+          "obs_temp-052-e3",
+          "obs_temp-052-e2",
+          "obs_temp-052-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-052-e4",
+          "obs_temp-052-e1",
+          "obs_temp-052-e2",
+          "obs_temp-052-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5257676034382682,
+          "ndcg_at_5": 0.7237133833254351
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-058",
+        "description": "健康・習慣トラッキング（最新状態が重要）",
+        "query": "What is the current running routine and training goal?",
+        "expected_ids": [
+          "obs_temp-058-e4",
+          "obs_temp-058-e3",
+          "obs_temp-058-e2",
+          "obs_temp-058-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-058-e4",
+          "obs_temp-058-e1",
+          "obs_temp-058-e2",
+          "obs_temp-058-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5257676034382682,
+          "ndcg_at_5": 0.7237133833254351
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-060",
+        "description": "副業プロジェクトの最新進捗（降順クエリ）",
+        "query": "What is the current freelance situation and monthly income?",
+        "expected_ids": [
+          "obs_temp-060-e4",
+          "obs_temp-060-e3",
+          "obs_temp-060-e2",
+          "obs_temp-060-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-060-e4",
+          "obs_temp-060-e1",
+          "obs_temp-060-e3",
+          "obs_temp-060-e2"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6758229376674423,
+          "ndcg_at_5": 0.6541396268725959
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-063",
+        "description": "個人ブログの成長記録（降順クエリ）",
+        "query": "What are the current blog metrics and monetization status?",
+        "expected_ids": [
+          "obs_temp-063-e4",
+          "obs_temp-063-e3",
+          "obs_temp-063-e2",
+          "obs_temp-063-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-063-e4",
+          "obs_temp-063-e3",
+          "obs_temp-063-e1",
+          "obs_temp-063-e2"
+        ],
+        "score": 0.8333333333333333,
+        "secondary_scores": {
+          "weighted_tau": 0.849944665770826,
+          "ndcg_at_5": 0.8183412193664159
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-065",
+        "description": "住居移転と生活変化（最新状態が重要）",
+        "query": "What is the current living situation and how has it changed?",
+        "expected_ids": [
+          "obs_temp-065-e4",
+          "obs_temp-065-e3",
+          "obs_temp-065-e2",
+          "obs_temp-065-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-065-e4",
+          "obs_temp-065-e1",
+          "obs_temp-065-e3",
+          "obs_temp-065-e2"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6758229376674423,
+          "ndcg_at_5": 0.6541396268725959
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-068",
+        "description": "副業から独立への意思決定（最新が重要）",
+        "query": "What is the current employment status and monthly income?",
+        "expected_ids": [
+          "obs_temp-068-e4",
+          "obs_temp-068-e3",
+          "obs_temp-068-e2",
+          "obs_temp-068-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-068-e4",
+          "obs_temp-068-e2",
+          "obs_temp-068-e3",
+          "obs_temp-068-e1"
+        ],
+        "score": 0.8333333333333333,
+        "secondary_scores": {
+          "weighted_tau": 0.8341632085077957,
+          "ndcg_at_5": 0.7792537931316096
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-070",
+        "description": "投資・財務目標のトラッキング（降順クエリ）",
+        "query": "What is the current investment portfolio and FIRE timeline?",
+        "expected_ids": [
+          "obs_temp-070-e4",
+          "obs_temp-070-e3",
+          "obs_temp-070-e2",
+          "obs_temp-070-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-070-e4",
+          "obs_temp-070-e2",
+          "obs_temp-070-e1",
+          "obs_temp-070-e3"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6916043949304725,
+          "ndcg_at_5": 0.6671687689508646
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-072",
+        "description": "スキル評価の変化（降順クエリ）",
+        "query": "What is the current skill level across programming languages?",
+        "expected_ids": [
+          "obs_temp-072-e4",
+          "obs_temp-072-e3",
+          "obs_temp-072-e2",
+          "obs_temp-072-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-072-e4",
+          "obs_temp-072-e1",
+          "obs_temp-072-e3",
+          "obs_temp-072-e2"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6758229376674423,
+          "ndcg_at_5": 0.6541396268725959
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-075",
+        "description": "語学学習の記録（降順クエリ）",
+        "query": "What is the current Spanish proficiency level and next goal?",
+        "expected_ids": [
+          "obs_temp-075-e4",
+          "obs_temp-075-e3",
+          "obs_temp-075-e2",
+          "obs_temp-075-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-075-e4",
+          "obs_temp-075-e3",
+          "obs_temp-075-e1",
+          "obs_temp-075-e2"
+        ],
+        "score": 0.8333333333333333,
+        "secondary_scores": {
+          "weighted_tau": 0.849944665770826,
+          "ndcg_at_5": 0.8183412193664159
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-077",
+        "description": "個人ブランド構築の最新状態（降順クエリ）",
+        "query": "What is the current social media following and brand reach?",
+        "expected_ids": [
+          "obs_temp-077-e4",
+          "obs_temp-077-e3",
+          "obs_temp-077-e2",
+          "obs_temp-077-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-077-e2",
+          "obs_temp-077-e3",
+          "obs_temp-077-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.44149241373678083
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-078",
+        "description": "英語学習の進歩（順方向）",
+        "query": "What was the TOEIC score achieved and when?",
+        "expected_ids": [
+          "obs_temp-078-e1",
+          "obs_temp-078-e2",
+          "obs_temp-078-e3",
+          "obs_temp-078-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-078-e3",
+          "obs_temp-078-e1",
+          "obs_temp-078-e2",
+          "obs_temp-078-e4"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6417289384028607,
+          "ndcg_at_5": 0.5190004264702085
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-079",
+        "description": "バイリンガル技術ドキュメントの作成経緯（降順クエリ）",
+        "query": "現在のAPIドキュメントの状態は？",
+        "expected_ids": [
+          "obs_temp-079-e4",
+          "obs_temp-079-e3",
+          "obs_temp-079-e2",
+          "obs_temp-079-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-079-e4",
+          "obs_temp-079-e1",
+          "obs_temp-079-e2",
+          "obs_temp-079-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5257676034382682,
+          "ndcg_at_5": 0.7237133833254351
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-081",
+        "description": "海外カンファレンス参加の記録（降順クエリ）",
+        "query": "What was the outcome of attending KubeCon EU and what are the future plans?",
+        "expected_ids": [
+          "obs_temp-081-e4",
+          "obs_temp-081-e3",
+          "obs_temp-081-e2",
+          "obs_temp-081-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-081-e1",
+          "obs_temp-081-e2",
+          "obs_temp-081-e3",
+          "obs_temp-081-e4"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.3603731034341952
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-086",
+        "description": "グローバルチームでの役割変化（降順クエリ）",
+        "query": "現在のグローバルチームでの役割は？",
+        "expected_ids": [
+          "obs_temp-086-e4",
+          "obs_temp-086-e3",
+          "obs_temp-086-e2",
+          "obs_temp-086-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-086-e4",
+          "obs_temp-086-e1",
+          "obs_temp-086-e2",
+          "obs_temp-086-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5257676034382682,
+          "ndcg_at_5": 0.7237133833254351
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-089",
+        "description": "英語技術仕様書のレビューサイクル（降順クエリ）",
+        "query": "What is the current status of the technical specification?",
+        "expected_ids": [
+          "obs_temp-089-e4",
+          "obs_temp-089-e3",
+          "obs_temp-089-e2",
+          "obs_temp-089-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-089-e1",
+          "obs_temp-089-e2",
+          "obs_temp-089-e4",
+          "obs_temp-089-e3"
+        ],
+        "score": 0.16666666666666669,
+        "secondary_scores": {
+          "weighted_tau": 0.15005533422917405,
+          "ndcg_at_5": 0.34185206062411316
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-091",
+        "description": "英語コードコメントの標準化（順方向）",
+        "query": "Why was the code comment language standardized and what was the outcome?",
+        "expected_ids": [
+          "obs_temp-091-e1",
+          "obs_temp-091-e2",
+          "obs_temp-091-e3",
+          "obs_temp-091-e4"
+        ],
+        "retrieved_ids": [
+          "obs_temp-091-e2",
+          "obs_temp-091-e4",
+          "obs_temp-091-e3",
+          "obs_temp-091-e1"
+        ],
+        "score": 0.33333333333333337,
+        "secondary_scores": {
+          "weighted_tau": 0.3582710615971393,
+          "ndcg_at_5": 0.514512730306791
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-092",
+        "description": "英語技術ブログの成長（降順クエリ）",
+        "query": "What are the current blog metrics and latest monetization activity?",
+        "expected_ids": [
+          "obs_temp-092-e4",
+          "obs_temp-092-e3",
+          "obs_temp-092-e2",
+          "obs_temp-092-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-092-e4",
+          "obs_temp-092-e3",
+          "obs_temp-092-e1",
+          "obs_temp-092-e2"
+        ],
+        "score": 0.8333333333333333,
+        "secondary_scores": {
+          "weighted_tau": 0.849944665770826,
+          "ndcg_at_5": 0.8183412193664159
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-095",
+        "description": "英語ライティングコーチングの効果（降順クエリ）",
+        "query": "What is the current English writing capability?",
+        "expected_ids": [
+          "obs_temp-095-e4",
+          "obs_temp-095-e3",
+          "obs_temp-095-e2",
+          "obs_temp-095-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-095-e4",
+          "obs_temp-095-e2",
+          "obs_temp-095-e1",
+          "obs_temp-095-e3"
+        ],
+        "score": 0.6666666666666666,
+        "secondary_scores": {
+          "weighted_tau": 0.6916043949304725,
+          "ndcg_at_5": 0.6671687689508646
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-097",
+        "description": "グローバルOSS貢献の拡大（降順クエリ）",
+        "query": "What is the current OSS contribution role?",
+        "expected_ids": [
+          "obs_temp-097-e4",
+          "obs_temp-097-e3",
+          "obs_temp-097-e2",
+          "obs_temp-097-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-097-e4",
+          "obs_temp-097-e1",
+          "obs_temp-097-e2",
+          "obs_temp-097-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5257676034382682,
+          "ndcg_at_5": 0.7237133833254351
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-100",
+        "description": "英語メタデータを持つ日本語検索（最新状態が重要）",
+        "query": "現在のバイリンガル検索システムの状態は？",
+        "expected_ids": [
+          "obs_temp-100-e4",
+          "obs_temp-100-e3",
+          "obs_temp-100-e2",
+          "obs_temp-100-e1"
+        ],
+        "retrieved_ids": [
+          "obs_temp-100-e4",
+          "obs_temp-100-e3",
+          "obs_temp-100-e1",
+          "obs_temp-100-e2"
+        ],
+        "score": 0.8333333333333333,
+        "secondary_scores": {
+          "weighted_tau": 0.849944665770826,
+          "ndcg_at_5": 0.8183412193664159
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a002",
+        "description": "コードレビュー前の準備",
+        "query": "What was done before the code review?",
+        "expected_ids": [
+          "obs_temp-a002-e1",
+          "obs_temp-a002-e2",
+          "obs_temp-a002-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a002-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.46927872602275644
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a003",
+        "description": "リリース後のモニタリング",
+        "query": "What happened after the v3.2.0 release?",
+        "expected_ids": [
+          "obs_temp-a003-e2",
+          "obs_temp-a003-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a003-e3",
+          "obs_temp-a003-e2",
+          "obs_temp-a003-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.5
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a004",
+        "description": "バグ修正の前後",
+        "query": "What happened after fixing the memory leak?",
+        "expected_ids": [
+          "obs_temp-a004-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a004-e2",
+          "obs_temp-a004-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.31546487678572877
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a010",
+        "description": "パフォーマンステスト後の最適化",
+        "query": "What optimization was done after the performance test?",
+        "expected_ids": [
+          "obs_temp-a010-e2",
+          "obs_temp-a010-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a010-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.3065735963827292
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a011",
+        "description": "インシデント解決後のレトロ",
+        "query": "What was done after the incident was resolved?",
+        "expected_ids": [
+          "obs_temp-a011-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a011-e3",
+          "obs_temp-a011-e2",
+          "obs_temp-a011-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 1
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a013",
+        "description": "コンテナ移行前後",
+        "query": "What happened before the Kubernetes migration?",
+        "expected_ids": [
+          "obs_temp-a013-e1",
+          "obs_temp-a013-e2"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a013-e2",
+          "obs_temp-a013-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.5
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a016",
+        "description": "A/Bテスト開始後の計測",
+        "query": "What was measured after launching the A/B test?",
+        "expected_ids": [
+          "obs_temp-a016-e2",
+          "obs_temp-a016-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a016-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 0.3065735963827292
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a017",
+        "description": "ホットフィックス後のデプロイ",
+        "query": "What was done after applying the hotfix?",
+        "expected_ids": [
+          "obs_temp-a017-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a017-e3",
+          "obs_temp-a017-e2",
+          "obs_temp-a017-e1"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 1
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a018",
+        "description": "モニタリング設定前の準備",
+        "query": "What was set up before the service launch?",
+        "expected_ids": [
+          "obs_temp-a018-e1",
+          "obs_temp-a018-e2"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a018-e2",
+          "obs_temp-a018-e1"
+        ],
+        "score": 0,
+        "secondary_scores": {
+          "weighted_tau": 0,
+          "ndcg_at_5": 0.5
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      },
+      {
+        "benchmark": "temporal",
+        "case_id": "temp-a020",
+        "description": "セキュリティパッチ適用前後",
+        "query": "What verification was done after applying the security patch?",
+        "expected_ids": [
+          "obs_temp-a020-e3"
+        ],
+        "retrieved_ids": [
+          "obs_temp-a020-e3"
+        ],
+        "score": 0.5,
+        "secondary_scores": {
+          "weighted_tau": 0.5,
+          "ndcg_at_5": 1
+        },
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+      }
+    ],
+    "japanese_temporal": [
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-001::why-001",
+        "sample_id": "ja-rel-001",
+        "question_id": "why-001",
+        "slice": "why",
+        "question": "CircleCI から移行した理由は何ですか？",
+        "answer": "parallel build costs が上がり続けたから",
+        "prediction": "CircleCI の parallel build costs が上がり続けたから",
+        "f1": 0.8,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-3",
+          "obs_locomo-locomo-benchmark-ja-rel-001-ja-rel-001-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-002::yesno-002",
+        "sample_id": "ja-rel-002",
+        "question_id": "yesno-002",
+        "slice": "yes_no",
+        "question": "今もサポートは 24 時間体制ですか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1",
+          "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-002::long-002",
+        "sample_id": "ja-rel-002",
+        "question_id": "long-002",
+        "slice": "long_turn",
+        "question": "ticket heatmap を見たあと、最終的に今のサポート時間はどうなりましたか？",
+        "answer": "平日の 9:00〜18:00 JST",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-3",
+          "obs_locomo-locomo-benchmark-ja-rel-002-ja-rel-002-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-003::yesno-003",
+        "sample_id": "ja-rel-003",
+        "question_id": "yesno-003",
+        "slice": "yes_no",
+        "question": "Starter は今も 29 dollars a month ですか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-3",
+          "obs_locomo-locomo-benchmark-ja-rel-003-ja-rel-003-1"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-004::current-004",
+        "sample_id": "ja-rel-004",
+        "question_id": "current-004",
+        "slice": "current",
+        "question": "Enterprise の今の retention はどれくらいですか？",
+        "answer": "90 days",
+        "prediction": "Enterprise retention は 90 days",
+        "f1": 0.5714285714285715,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-004::noisy-004",
+        "sample_id": "ja-rel-004",
+        "question_id": "noisy-004",
+        "slice": "noisy",
+        "question": "Enterprise の retention いま何日？",
+        "answer": "90 days",
+        "prediction": "Enterprise retention は 90 days",
+        "f1": 0.5714285714285715,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-004::long-004",
+        "sample_id": "ja-rel-004",
+        "question_id": "long-004",
+        "slice": "long_turn",
+        "question": "Free の話はいったん置いて、Enterprise retention の今の値だけ短く答えると何日ですか？",
+        "answer": "90 days",
+        "prediction": "Enterprise retention は 90 days",
+        "f1": 0.5714285714285715,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-5",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-1",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-4",
+          "obs_locomo-locomo-benchmark-ja-rel-004-ja-rel-004-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-005::why-005",
+        "sample_id": "ja-rel-005",
+        "question_id": "why-005",
+        "slice": "why",
+        "question": "SSO が遅れた理由は何ですか？",
+        "answer": "SCIM provider contract がまだ交渉中だったから",
+        "prediction": "SSO の SCIM provider contract がまだ交渉中だったから",
+        "f1": 0.8,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-005::list-005b",
+        "sample_id": "ja-rel-005",
+        "question_id": "list-005b",
+        "slice": "list",
+        "question": "同じ四半期に出す予定だった 2 つは何でしたか？",
+        "answer": "SSO, team workspaces",
+        "prediction": "SSO と team workspaces を同じ四半期に出す予定でした。",
+        "f1": 0.5,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1",
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-005::yesno-005",
+        "sample_id": "ja-rel-005",
+        "question_id": "yesno-005",
+        "slice": "yes_no",
+        "question": "SSO のほうが先に出ましたか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-005::relative-005",
+        "sample_id": "ja-rel-005",
+        "question_id": "relative-005",
+        "slice": "relative_temporal",
+        "question": "先に出たあと、遅れたのはどれですか？",
+        "answer": "SSO",
+        "prediction": "team workspaces",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-3",
+          "obs_locomo-locomo-benchmark-ja-rel-005-ja-rel-005-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-006::why-006",
+        "sample_id": "ja-rel-006",
+        "question_id": "why-006",
+        "slice": "why",
+        "question": "write latency を恒久的に下げたものは何ですか？",
+        "answer": "workspace_id と created_at の composite index",
+        "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
+        "f1": 0.7058823529411764,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-006::temporal-006",
+        "sample_id": "ja-rel-006",
+        "question_id": "temporal-006",
+        "slice": "temporal",
+        "question": "alert の直後に最初にやったことは何ですか？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "prediction": "alert の直後に read traffic を新しい replica に逃がしました。",
+        "f1": 0.6666666666666666,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-006::exact-006",
+        "sample_id": "ja-rel-006",
+        "question_id": "exact-006",
+        "slice": "exact",
+        "question": "write latency を恒久的に下げたのは何ですか？",
+        "answer": "workspace_id と created_at の composite index",
+        "prediction": "最終的には workspace_id と created_at の composite index が write latency を恒久的に下げました。",
+        "f1": 0.7058823529411764,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-006::noisy-006",
+        "sample_id": "ja-rel-006",
+        "question_id": "noisy-006",
+        "slice": "noisy",
+        "question": "アラートのあと最初にやったこと何？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "prediction": "ingestion と reporting の両方に影響しましたね。",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-6",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-006::long-006",
+        "sample_id": "ja-rel-006",
+        "question_id": "long-006",
+        "slice": "long_turn",
+        "question": "原因調査を進める前に、alert 直後にまずやったことを一文で言うと何ですか？",
+        "answer": "read traffic を新しい replica に逃がした",
+        "prediction": "alert の直後に read traffic を新しい replica に逃がしました。",
+        "f1": 0.6666666666666666,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-3",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-5",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-2",
+          "obs_locomo-locomo-benchmark-ja-rel-006-ja-rel-006-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-007::prev-007",
+        "sample_id": "ja-rel-007",
+        "question_id": "prev-007",
+        "slice": "current_vs_previous",
+        "question": "RRF に変える前はどんな混ぜ方でしたか？",
+        "answer": "weighted sum",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1",
+          "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-007::yesno-007",
+        "sample_id": "ja-rel-007",
+        "question_id": "yesno-007",
+        "slice": "yes_no",
+        "question": "recency は fusion の前にかけていますか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-3",
+          "obs_locomo-locomo-benchmark-ja-rel-007-ja-rel-007-1"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-008::temporal-008",
+        "sample_id": "ja-rel-008",
+        "question_id": "temporal-008",
+        "slice": "temporal",
+        "question": "launch playbook の次に localize したものは何ですか？",
+        "answer": "invoice emails",
+        "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-008::prev-008",
+        "sample_id": "ja-rel-008",
+        "question_id": "prev-008",
+        "slice": "current_vs_previous",
+        "question": "以前の docs は何語だけでしたか？",
+        "answer": "English",
+        "prediction": "English only",
+        "f1": 0.6666666666666666,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-008::exact-008",
+        "sample_id": "ja-rel-008",
+        "question_id": "exact-008",
+        "slice": "exact",
+        "question": "最初に翻訳した docs は何ですか？",
+        "answer": "launch playbook",
+        "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+        "f1": 0.5,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-008::noisy-008",
+        "sample_id": "ja-rel-008",
+        "question_id": "noisy-008",
+        "slice": "relative_temporal",
+        "question": "launch playbook の次に何を localize した？",
+        "answer": "invoice emails",
+        "prediction": "今は Japanese もサポートしています。最初に翻訳したのは launch playbook です。",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-3",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-4",
+          "obs_locomo-locomo-benchmark-ja-rel-008-ja-rel-008-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-009::exact-009",
+        "sample_id": "ja-rel-009",
+        "question_id": "exact-009",
+        "slice": "exact",
+        "question": "認証方式の変更時に削除したものは何ですか？",
+        "answer": "refresh token",
+        "prediction": "prototype の頃は localStorage に refresh token を置く JWT 方式でした。",
+        "f1": 0.3636363636363636,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4",
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-009::prev-009",
+        "sample_id": "ja-rel-009",
+        "question_id": "prev-009",
+        "slice": "current_vs_previous",
+        "question": "今の方式に変える前の認証フローは何でしたか？",
+        "answer": "JWT 方式",
+        "prediction": "Redis backed session cookies",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-1",
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-3",
+          "obs_locomo-locomo-benchmark-ja-rel-009-ja-rel-009-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::current-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "current-010",
+        "slice": "current",
+        "question": "今の headquarters はどこですか？",
+        "answer": "Singapore",
+        "prediction": "headquarters は Singapore",
+        "f1": 0.5,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::temporal-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "temporal-010",
+        "slice": "temporal",
+        "question": "headquarters を移した後も remote-first のままだったのはどのチームですか？",
+        "answer": "engineering",
+        "prediction": "Singapore",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::prev-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "prev-010",
+        "slice": "current_vs_previous",
+        "question": "headquarters を移す前はどこでしたか？",
+        "answer": "San Francisco",
+        "prediction": "headquarters は San Francisco",
+        "f1": 0.6666666666666666,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::noisy-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "noisy-010",
+        "slice": "location",
+        "question": "今の headquarters どこ？",
+        "answer": "Singapore",
+        "prediction": "headquarters は Singapore",
+        "f1": 0.5,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::yesno-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "yesno-010",
+        "slice": "yes_no",
+        "question": "engineering も headquarters 移転後に remote-first をやめましたか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-010::long-010",
+        "sample_id": "ja-rel-010",
+        "question_id": "long-010",
+        "slice": "long_turn",
+        "question": "昔の所在地の話は置いて、今の headquarters だけ短く答えるとどこですか？",
+        "answer": "Singapore",
+        "prediction": "headquarters は Singapore",
+        "f1": 0.5,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-3",
+          "obs_locomo-locomo-benchmark-ja-rel-010-ja-rel-010-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-011::yesno-011",
+        "sample_id": "ja-rel-011",
+        "question_id": "yesno-011",
+        "slice": "yes_no",
+        "question": "same-day funnel drops を見逃していたことが変更理由でしたか？",
+        "answer": "Yes",
+        "prediction": "customers が same-day funnel drops を見逃していたから",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-3",
+          "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-1",
+          "obs_locomo-locomo-benchmark-ja-rel-011-ja-rel-011-4"
+        ],
+        "taxonomy_reason": "temporal_anchor_miss",
+        "note": "the failure sits in a temporal/current-vs-previous slice and the selected candidates do not clearly contain the target answer"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-012::list-012",
+        "sample_id": "ja-rel-012",
+        "question_id": "list-012",
+        "slice": "list",
+        "question": "Q2 に出した admin 向け機能をすべて挙げてください。",
+        "answer": "export to CSV, audit logs, SAML",
+        "prediction": "export to CSV, audit logs, SAML, CSV",
+        "f1": 0.7692307692307692,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-012::exact-012",
+        "sample_id": "ja-rel-012",
+        "question_id": "exact-012",
+        "slice": "exact",
+        "question": "Q2 の admin 向け機能で最初に出たのは何ですか？",
+        "answer": "export to CSV",
+        "prediction": "Q2 には export to CSV, audit logs, SAML for admins を出しました。",
+        "f1": 0.28571428571428575,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-012::relative-012",
+        "sample_id": "ja-rel-012",
+        "question_id": "relative-012",
+        "slice": "relative_temporal",
+        "question": "audit logs の次に出たものは何ですか？",
+        "answer": "SAML",
+        "prediction": "順番は export to CSV が最初、audit logs が次、SAML が最後でした。",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-012::yesno-012",
+        "sample_id": "ja-rel-012",
+        "question_id": "yesno-012",
+        "slice": "yes_no",
+        "question": "SAML が最初に出た機能ですか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-1",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-3",
+          "obs_locomo-locomo-benchmark-ja-rel-012-ja-rel-012-4"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-013::current-013",
+        "sample_id": "ja-rel-013",
+        "question_id": "current-013",
+        "slice": "current",
+        "question": "今の default region はどこですか？",
+        "answer": "ap-northeast-1",
+        "prediction": "default region は ap-northeast-1",
+        "f1": 0.4,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-013::prev-013",
+        "sample_id": "ja-rel-013",
+        "question_id": "prev-013",
+        "slice": "current_vs_previous",
+        "question": "以前の default region は何でしたか？",
+        "answer": "us-west-2",
+        "prediction": "default region は ap-northeast-1",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-013::noisy-013",
+        "sample_id": "ja-rel-013",
+        "question_id": "noisy-013",
+        "slice": "noisy",
+        "question": "いまの default region どこ？",
+        "answer": "ap-northeast-1",
+        "prediction": "default region は ap-northeast-1",
+        "f1": 0.4,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-013::yesno-013",
+        "sample_id": "ja-rel-013",
+        "question_id": "yesno-013",
+        "slice": "yes_no",
+        "question": "default region は今も us-west-2 ですか？",
+        "answer": "No",
+        "prediction": "Yes",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        ],
+        "taxonomy_reason": "stale_fact_win",
+        "note": "a current or yes/no question appears to prefer a superseded value"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-013::long-013",
+        "sample_id": "ja-rel-013",
+        "question_id": "long-013",
+        "slice": "long_turn",
+        "question": "最初のリージョンの話は置いて、今の default region だけ短く答えると何ですか？",
+        "answer": "ap-northeast-1",
+        "prediction": "今の default region は ap-northeast-1 です。Japan の顧客向け latency を優先しました。",
+        "f1": 0.19999999999999998,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-3",
+          "obs_locomo-locomo-benchmark-ja-rel-013-ja-rel-013-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-014::current-014",
+        "sample_id": "ja-rel-014",
+        "question_id": "current-014",
+        "slice": "current",
+        "question": "今の primary incident channel は何ですか？",
+        "answer": "Slack",
+        "prediction": "primary incident channel は Slack",
+        "f1": 0.33333333333333337,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-014::prev-014",
+        "sample_id": "ja-rel-014",
+        "question_id": "prev-014",
+        "slice": "current_vs_previous",
+        "question": "primary channel を見直す前は何だけで送っていましたか？",
+        "answer": "email",
+        "prediction": "primary incident channel は Slack",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1",
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-014::noisy-014",
+        "sample_id": "ja-rel-014",
+        "question_id": "noisy-014",
+        "slice": "entity",
+        "question": "今の primary incident channel は？",
+        "answer": "Slack",
+        "prediction": "primary incident channel は Slack",
+        "f1": 0.33333333333333337,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-014::exact-014",
+        "sample_id": "ja-rel-014",
+        "question_id": "exact-014",
+        "slice": "exact",
+        "question": "今も補助通知として残しているものは何ですか？",
+        "answer": "email",
+        "prediction": "primary incident channel は Slack",
+        "f1": 0,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-3",
+          "obs_locomo-locomo-benchmark-ja-rel-014-ja-rel-014-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "the target answer appears in selected candidates, but the final answer did not preserve it"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-015::prev-015",
+        "sample_id": "ja-rel-015",
+        "question_id": "prev-015",
+        "slice": "current_vs_previous",
+        "question": "最初の setup コマンドが対象にしていたのは何だけでしたか？",
+        "answer": "codex",
+        "prediction": "最初の setup コマンドは codex だけを対象にしていました。",
+        "f1": 0.33333333333333337,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1",
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-015::noisy-015",
+        "sample_id": "ja-rel-015",
+        "question_id": "noisy-015",
+        "slice": "noisy",
+        "question": "今の推奨 setup の組み合わせは？",
+        "answer": "codex, cursor, claude",
+        "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+        "f1": 0.6,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      },
+      {
+        "benchmark": "japanese_temporal",
+        "case_id": "ja-rel-015::long-015",
+        "sample_id": "ja-rel-015",
+        "question_id": "long-015",
+        "slice": "long_turn",
+        "question": "最小検証の話は置いて、今まとめて指定する推奨 setup だけ答えると何ですか？",
+        "answer": "codex, cursor, claude",
+        "prediction": "今の推奨 setup は codex, cursor, claude をまとめて指定します。",
+        "f1": 0.6,
+        "em": 0,
+        "selected_evidence_ids": [
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-3",
+          "obs_locomo-locomo-benchmark-ja-rel-015-ja-rel-015-1"
+        ],
+        "taxonomy_reason": "answer_synthesis_miss",
+        "note": "evidence appears available, but answer normalization or compression remained imperfect"
+      }
+    ]
+  }
+}

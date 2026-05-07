@@ -1,0 +1,101 @@
+{
+  "schema_version": "japanese-release-report-v1",
+  "generated_at": "2026-05-07T00:27:49.613Z",
+  "dataset_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/tests/benchmarks/fixtures/japanese-release-pack-96.json",
+  "result_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s108-baseline-2026-05-07/japanese-release-pack-96.result.json",
+  "summary": {
+    "overall": {
+      "count": 96,
+      "em_avg": 0.5104166666666666,
+      "f1_avg": 0.6615760260980851,
+      "zero_f1_count": 20
+    },
+    "by_slice": {
+      "current": {
+        "count": 12,
+        "em_avg": 0.6666666666666666,
+        "f1_avg": 0.8170634920634922,
+        "zero_f1_count": 0
+      },
+      "current_vs_previous": {
+        "count": 12,
+        "em_avg": 0.4166666666666667,
+        "f1_avg": 0.5555555555555555,
+        "zero_f1_count": 4
+      },
+      "entity": {
+        "count": 1,
+        "em_avg": 0,
+        "f1_avg": 0.33333333333333337,
+        "zero_f1_count": 0
+      },
+      "exact": {
+        "count": 8,
+        "em_avg": 0.375,
+        "f1_avg": 0.6069041252864782,
+        "zero_f1_count": 1
+      },
+      "list": {
+        "count": 3,
+        "em_avg": 0.3333333333333333,
+        "f1_avg": 0.7564102564102564,
+        "zero_f1_count": 0
+      },
+      "location": {
+        "count": 1,
+        "em_avg": 0,
+        "f1_avg": 0.5,
+        "zero_f1_count": 0
+      },
+      "long_turn": {
+        "count": 12,
+        "em_avg": 0.5,
+        "f1_avg": 0.7115079365079365,
+        "zero_f1_count": 1
+      },
+      "noisy": {
+        "count": 13,
+        "em_avg": 0.6923076923076923,
+        "f1_avg": 0.8131868131868132,
+        "zero_f1_count": 1
+      },
+      "relative_temporal": {
+        "count": 3,
+        "em_avg": 0,
+        "f1_avg": 0,
+        "zero_f1_count": 3
+      },
+      "temporal": {
+        "count": 8,
+        "em_avg": 0.625,
+        "f1_avg": 0.7083333333333333,
+        "zero_f1_count": 2
+      },
+      "why": {
+        "count": 7,
+        "em_avg": 0.5714285714285714,
+        "f1_avg": 0.9008403361344538,
+        "zero_f1_count": 0
+      },
+      "yes_no": {
+        "count": 16,
+        "em_avg": 0.5,
+        "f1_avg": 0.5,
+        "zero_f1_count": 8
+      }
+    },
+    "cross_lingual": {
+      "count": 58,
+      "em_avg": 0.5344827586206896,
+      "f1_avg": 0.6914726922840514,
+      "zero_f1_count": 10
+    },
+    "non_cross_lingual": {
+      "count": 38,
+      "em_avg": 0.47368421052631576,
+      "f1_avg": 0.6159442724458204,
+      "zero_f1_count": 10
+    },
+    "missing_metadata": []
+  }
+}

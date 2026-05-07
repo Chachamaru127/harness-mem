@@ -1,0 +1,476 @@
+[
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-001",
+    "description": "先週の変更ファイル問い合わせ",
+    "query": "What files did I change last week?",
+    "expected_ids": [
+      "obs_dw-001-e1",
+      "obs_dw-001-e2",
+      "obs_dw-001-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-019-e3",
+      "obs_dw-019-e2",
+      "obs_dw-019-e1",
+      "obs_dw-020-e3",
+      "obs_dw-008-e2",
+      "obs_dw-006-e3",
+      "obs_dw-005-e2",
+      "obs_dw-007-e2",
+      "obs_dw-001-e2"
+    ],
+    "score": 0.3333333333333333,
+    "taxonomy_reason": "temporal_anchor_miss",
+    "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-002",
+    "description": "バグ修正時期の問い合わせ",
+    "query": "When was the memory leak bug fixed?",
+    "expected_ids": [
+      "obs_dw-002-e2",
+      "obs_dw-002-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-019-e3",
+      "obs_dw-019-e2",
+      "obs_dw-020-e3",
+      "obs_dw-019-e1",
+      "obs_dw-008-e2",
+      "obs_dw-010-e3",
+      "obs_dw-006-e3",
+      "obs_dw-005-e2",
+      "obs_dw-002-e2"
+    ],
+    "score": 0.5,
+    "taxonomy_reason": "temporal_anchor_miss",
+    "note": "expected evidence was present, but ordering or temporal anchoring did not match the fixture"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-003",
+    "description": "CI失敗原因の問い合わせ",
+    "query": "Why did CI fail recently?",
+    "expected_ids": [
+      "obs_dw-003-e2",
+      "obs_dw-003-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-003-e2",
+      "obs_dw-019-e3",
+      "obs_dw-003-e3",
+      "obs_dw-009-e2",
+      "obs_dw-015-e2",
+      "obs_dw-019-e1",
+      "obs_dw-004-e3",
+      "obs_dw-020-e1",
+      "obs_dw-003-e1",
+      "obs_dw-018-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-004",
+    "description": "設計判断の問い合わせ",
+    "query": "Why did we choose SQLite over PostgreSQL?",
+    "expected_ids": [
+      "obs_dw-004-e1",
+      "obs_dw-004-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-004-e1",
+      "obs_dw-004-e3",
+      "obs_dw-002-e1",
+      "obs_dw-010-e2",
+      "obs_dw-017-e3",
+      "obs_dw-015-e2",
+      "obs_dw-019-e1",
+      "obs_dw-007-e1",
+      "obs_dw-011-e2",
+      "obs_dw-003-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-005",
+    "description": "最新設定値の問い合わせ",
+    "query": "What is the current embedding dimension?",
+    "expected_ids": [
+      "obs_dw-005-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-005-e1",
+      "obs_dw-005-e2",
+      "obs_dw-014-e1",
+      "obs_dw-015-e2",
+      "obs_dw-003-e3",
+      "obs_dw-012-e1",
+      "obs_dw-018-e2",
+      "obs_dw-002-e2",
+      "obs_dw-012-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-006",
+    "description": "パフォーマンス問題の調査",
+    "query": "What was causing the high search latency?",
+    "expected_ids": [
+      "obs_dw-006-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-016-e2",
+      "obs_dw-013-e1",
+      "obs_dw-009-e1",
+      "obs_dw-006-e1",
+      "obs_dw-002-e1",
+      "obs_dw-014-e3",
+      "obs_dw-008-e3",
+      "obs_dw-012-e2",
+      "obs_dw-011-e1",
+      "obs_dw-012-e1"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-007",
+    "description": "依存関係バージョンの問い合わせ",
+    "query": "What version of Bun are we using?",
+    "expected_ids": [
+      "obs_dw-007-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-003-e3",
+      "obs_dw-005-e2",
+      "obs_dw-015-e2",
+      "obs_dw-014-e1",
+      "obs_dw-005-e1",
+      "obs_dw-012-e1",
+      "obs_dw-002-e2",
+      "obs_dw-012-e2",
+      "obs_dw-008-e2"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-008",
+    "description": "未解決のTODO追跡",
+    "query": "What TODOs are still open?",
+    "expected_ids": [
+      "obs_dw-008-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-001-e1",
+      "obs_dw-013-e3",
+      "obs_dw-020-e1",
+      "obs_dw-019-e3",
+      "obs_dw-007-e2",
+      "obs_dw-018-e2",
+      "obs_dw-002-e3",
+      "obs_dw-001-e3",
+      "obs_dw-015-e3",
+      "obs_dw-020-e2"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-009",
+    "description": "デプロイ時刻の問い合わせ",
+    "query": "When was v0.3.0 released?",
+    "expected_ids": [
+      "obs_dw-009-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-019-e3",
+      "obs_dw-019-e2",
+      "obs_dw-020-e3",
+      "obs_dw-019-e1",
+      "obs_dw-008-e2",
+      "obs_dw-006-e3",
+      "obs_dw-005-e2",
+      "obs_dw-009-e1",
+      "obs_dw-009-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-010",
+    "description": "テスト失敗の原因追跡",
+    "query": "Why was the reranker quality gate failing?",
+    "expected_ids": [
+      "obs_dw-010-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-010-e1",
+      "obs_dw-010-e3",
+      "obs_dw-015-e1",
+      "obs_dw-006-e2",
+      "obs_dw-013-e1",
+      "obs_dw-004-e2",
+      "obs_dw-016-e1",
+      "obs_dw-001-e3",
+      "obs_dw-019-e3",
+      "obs_dw-002-e3"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-011",
+    "description": "担当者の変更",
+    "query": "Who owns the search module now?",
+    "expected_ids": [
+      "obs_dw-011-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-012-e1",
+      "obs_dw-012-e2",
+      "obs_dw-003-e3",
+      "obs_dw-014-e1",
+      "obs_dw-015-e2",
+      "obs_dw-005-e1",
+      "obs_dw-018-e2",
+      "obs_dw-002-e2",
+      "obs_dw-005-e2"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-012",
+    "description": "APIエンドポイントの仕様変更",
+    "query": "What parameters does the search API accept?",
+    "expected_ids": [
+      "obs_dw-012-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-012-e2",
+      "obs_dw-012-e1",
+      "obs_dw-011-e1",
+      "obs_dw-001-e3",
+      "obs_dw-014-e3",
+      "obs_dw-011-e2",
+      "obs_dw-006-e1",
+      "obs_dw-013-e1",
+      "obs_dw-016-e2",
+      "obs_dw-009-e1"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-013",
+    "description": "直近のスプリント目標",
+    "query": "What is the current sprint goal?",
+    "expected_ids": [
+      "obs_dw-013-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-015-e2",
+      "obs_dw-014-e1",
+      "obs_dw-003-e3",
+      "obs_dw-012-e1",
+      "obs_dw-005-e1",
+      "obs_dw-018-e2",
+      "obs_dw-012-e2",
+      "obs_dw-002-e2",
+      "obs_dw-005-e2"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-014",
+    "description": "コードレビューコメントの追跡",
+    "query": "What was decided about error handling in the query log?",
+    "expected_ids": [
+      "obs_dw-014-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-014-e1",
+      "obs_dw-014-e3",
+      "obs_dw-015-e3",
+      "obs_dw-014-e2",
+      "obs_dw-003-e2",
+      "obs_dw-006-e2",
+      "obs_dw-011-e1",
+      "obs_dw-008-e1",
+      "obs_dw-001-e1",
+      "obs_dw-004-e1"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-015",
+    "description": "環境変数の仕様問い合わせ",
+    "query": "How do I enable query logging?",
+    "expected_ids": [
+      "obs_dw-015-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-015-e3",
+      "obs_dw-014-e2",
+      "obs_dw-008-e1",
+      "obs_dw-005-e1",
+      "obs_dw-014-e1",
+      "obs_dw-012-e1",
+      "obs_dw-002-e3",
+      "obs_dw-008-e3",
+      "obs_dw-008-e2",
+      "obs_dw-015-e1"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-016",
+    "description": "実装方針の変更追跡",
+    "query": "Why was Graph traversal de-prioritized?",
+    "expected_ids": [
+      "obs_dw-016-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-016-e2",
+      "obs_dw-020-e3",
+      "obs_dw-016-e1",
+      "obs_dw-016-e3",
+      "obs_dw-008-e1",
+      "obs_dw-008-e2",
+      "obs_dw-001-e3",
+      "obs_dw-019-e3",
+      "obs_dw-002-e3",
+      "obs_dw-003-e3"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-017",
+    "description": "スコア改善の定量追跡",
+    "query": "What is the latest F1 score?",
+    "expected_ids": [
+      "obs_dw-017-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-018-e2",
+      "obs_dw-013-e3",
+      "obs_dw-017-e3",
+      "obs_dw-017-e2",
+      "obs_dw-013-e2",
+      "obs_dw-013-e1",
+      "obs_dw-010-e1",
+      "obs_dw-019-e2",
+      "obs_dw-016-e2",
+      "obs_dw-015-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-018",
+    "description": "ミーティング決定事項の追跡",
+    "query": "Why did we decide not to use LLM judge evaluation?",
+    "expected_ids": [
+      "obs_dw-018-e2"
+    ],
+    "retrieved_ids": [
+      "obs_dw-018-e1",
+      "obs_dw-018-e2",
+      "obs_dw-010-e2",
+      "obs_dw-017-e3",
+      "obs_dw-015-e3",
+      "obs_dw-014-e3",
+      "obs_dw-003-e2",
+      "obs_dw-020-e2",
+      "obs_dw-005-e2",
+      "obs_dw-004-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-019",
+    "description": "テストカバレッジ変化の追跡",
+    "query": "How many tests are there currently?",
+    "expected_ids": [
+      "obs_dw-019-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-005-e1",
+      "obs_dw-014-e1",
+      "obs_dw-003-e3",
+      "obs_dw-015-e2",
+      "obs_dw-012-e1",
+      "obs_dw-018-e2",
+      "obs_dw-002-e2",
+      "obs_dw-012-e2",
+      "obs_dw-005-e2"
+    ],
+    "score": 0,
+    "taxonomy_reason": "retrieval_miss",
+    "note": "no expected observation appeared in the top 10 result set"
+  },
+  {
+    "benchmark": "dev_workflow",
+    "case_id": "dw-020",
+    "description": "次のマイルストーンの確認",
+    "query": "What comes after §34 is complete?",
+    "expected_ids": [
+      "obs_dw-020-e3"
+    ],
+    "retrieved_ids": [
+      "obs_dw-007-e1",
+      "obs_dw-019-e3",
+      "obs_dw-019-e2",
+      "obs_dw-020-e3",
+      "obs_dw-019-e1",
+      "obs_dw-006-e3",
+      "obs_dw-010-e3",
+      "obs_dw-005-e2",
+      "obs_dw-008-e2",
+      "obs_dw-013-e2"
+    ],
+    "score": 1,
+    "note": "all expected evidence was retrieved in the expected condition"
+  }
+]
