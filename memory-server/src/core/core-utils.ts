@@ -1304,12 +1304,21 @@ export function getConfig(): Config {
       ? reindexBatchCandidate
       : 100;
 
+  // S108-014: temporal graph signal PoC opt-in (default OFF).
+  // Resolved once at startup so the search hot path reads from Config
+  // (consistent with partialFinalizeEnabled / reindexVectorsEnabled).
+  const temporalGraphRaw = (process.env.HARNESS_MEM_TEMPORAL_GRAPH || "").trim().toLowerCase();
+  const temporalGraphEnabled = temporalGraphRaw !== ""
+    ? (temporalGraphRaw === "true" || temporalGraphRaw === "1")
+    : userConfig.temporalGraphEnabled === true;
+
   return {
     partialFinalizeEnabled,
     partialFinalizeIntervalMs,
     reindexVectorsEnabled,
     reindexVectorsIntervalMs,
     reindexVectorsBatchSize,
+    temporalGraphEnabled,
     dbPath,
     bindHost,
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,

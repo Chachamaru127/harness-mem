@@ -546,4 +546,8 @@ export interface Config {
   reindexVectorsIntervalMs?: number;
   /** S89-003: 1 tick あたりの reindex 件数上限 (既定 100) */
   reindexVectorsBatchSize?: number;
+  /** S108-014: temporal graph signal PoC を有効にするか (既定 false = opt-in)。
+   *  daemon 起動時に env / userConfig から一度だけ解決し、search hot path では
+   *  config 経由で読む（per-search の process.env 読み取りを廃止）。 */
+  temporalGraphEnabled?: boolean;
 }
