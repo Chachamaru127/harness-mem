@@ -1275,9 +1275,41 @@ export function getConfig(): Config {
       ? partialFinalizeIntervalCandidate
       : 300000;
 
+  // S89-003: vector reindex backfill scheduler opt-in (default OFF).
+  // Precedence: env var > ~/.harness-mem/config.json > default.
+  const reindexVectorsEnabledRaw = (process.env.HARNESS_MEM_REINDEX_VECTORS_ENABLED || "").trim().toLowerCase();
+  const reindexVectorsEnabled = reindexVectorsEnabledRaw !== ""
+    ? (reindexVectorsEnabledRaw === "true" || reindexVectorsEnabledRaw === "1")
+    : userConfig.reindexVectorsEnabled === true;
+  const reindexIntervalRaw = process.env.HARNESS_MEM_REINDEX_VECTORS_INTERVAL_MS;
+  const reindexIntervalCandidate =
+    reindexIntervalRaw !== undefined && reindexIntervalRaw !== ""
+      ? Number(reindexIntervalRaw)
+      : typeof userConfig.reindexVectorsIntervalMs === "number"
+        ? userConfig.reindexVectorsIntervalMs
+        : 600000;
+  const reindexVectorsIntervalMs =
+    Number.isFinite(reindexIntervalCandidate) && reindexIntervalCandidate >= 5000
+      ? reindexIntervalCandidate
+      : 600000;
+  const reindexBatchRaw = process.env.HARNESS_MEM_REINDEX_VECTORS_BATCH_SIZE;
+  const reindexBatchCandidate =
+    reindexBatchRaw !== undefined && reindexBatchRaw !== ""
+      ? Number(reindexBatchRaw)
+      : typeof userConfig.reindexVectorsBatchSize === "number"
+        ? userConfig.reindexVectorsBatchSize
+        : 100;
+  const reindexVectorsBatchSize =
+    Number.isFinite(reindexBatchCandidate) && reindexBatchCandidate >= 1 && reindexBatchCandidate <= 10000
+      ? reindexBatchCandidate
+      : 100;
+
   return {
     partialFinalizeEnabled,
     partialFinalizeIntervalMs,
+    reindexVectorsEnabled,
+    reindexVectorsIntervalMs,
+    reindexVectorsBatchSize,
     dbPath,
     bindHost,
     bindPort: Number.isFinite(bindPort) ? bindPort : DEFAULT_BIND_PORT,

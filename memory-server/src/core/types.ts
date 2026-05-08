@@ -540,4 +540,10 @@ export interface Config {
   partialFinalizeEnabled?: boolean;
   /** §91-002 (XR-004): scheduler の tick 間隔 ms (既定 300000 = 5 分) */
   partialFinalizeIntervalMs?: number;
+  /** S89-003: vector reindex backfill scheduler を有効にするか (既定 false = opt-in) */
+  reindexVectorsEnabled?: boolean;
+  /** S89-003: scheduler の tick 間隔 ms (既定 600000 = 10 分) */
+  reindexVectorsIntervalMs?: number;
+  /** S89-003: 1 tick あたりの reindex 件数上限 (既定 100) */
+  reindexVectorsBatchSize?: number;
 }
