@@ -680,6 +680,13 @@ paths:
                 strict_project:
                   type: boolean
                   default: true
+                include_superseded:
+                  type: boolean
+                  default: true
+                  description: When false, exclude superseded observations. Default true keeps them visible but lower ranked.
+                graph_weight:
+                  type: number
+                  description: "S78-C04: graph proximity weight. 0 disables graph proximity for this query; default is server-side."
                 debug:
                   type: boolean
                   default: false
