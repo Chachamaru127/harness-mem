@@ -21,7 +21,6 @@ import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 import { expandObservationsViaGraph, computeQueryEntityProximity } from "./graph-reasoner.js";
 import {
   computeTemporalGraphSignal,
-  temporalGraphEnabled,
   DEFAULT_TEMPORAL_GRAPH_WEIGHT,
 } from "./temporal-graph-signal.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
@@ -3485,11 +3484,11 @@ export class ObservationStore {
     }
 
     // S108-014: temporal-graph signal (default-off PoC)
-    // Enabled with HARNESS_MEM_TEMPORAL_GRAPH=1. Computes a small additive
-    // bonus from mem_relations.kind / strength / valid_from-to / invalidated_at
-    // / supersedes. When the env flag is off, the map stays empty and the
-    // blender path is a no-op (existing default ranking is preserved bit-for-bit).
-    const temporalGraphOn = temporalGraphEnabled();
+    // Resolved at daemon startup (core-utils.ts) and exposed via Config —
+    // matches the partialFinalizeEnabled / reindexVectorsEnabled pattern,
+    // and avoids reading process.env on the search hot path. When the flag
+    // is off, the map stays empty and the blender path is a bit-exact no-op.
+    const temporalGraphOn = this.deps.config.temporalGraphEnabled === true;
     const temporalGraphScores = new Map<string, number>();
     if (temporalGraphOn && candidateIds.size > 0) {
       const rawSignal = computeTemporalGraphSignal(this.deps.db, [...candidateIds]);

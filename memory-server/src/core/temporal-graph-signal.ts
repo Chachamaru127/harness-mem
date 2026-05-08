@@ -125,9 +125,15 @@ export function computeTemporalGraphSignal(
            WHERE observation_id IN (${placeholders})`,
         )
         .all(...batch) as typeof rows;
-    } catch {
-      // Best-effort signal: if the table is missing or the query fails for
-      // any reason, return a no-op map — never break the search path.
+    } catch (err) {
+      // Best-effort signal: never break the search path. We log a single
+      // WARN per failing batch so an operator can spot a misconfigured
+      // env-gate or a missing table — and so a partial map (some batches
+      // populated, some skipped) is not silently invisible.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.warn(
+        `[temporal-graph-signal] WARN: relation lookup failed for batch (${batch.length} candidates) — skipping: ${msg}`,
+      );
       continue;
     }
 
