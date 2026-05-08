@@ -19,6 +19,11 @@ import { expandQuery } from "../embedding/query-expander";
 import { buildTokenEstimateMeta, estimateTokenCount } from "../utils/token-estimate";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 import { expandObservationsViaGraph, computeQueryEntityProximity } from "./graph-reasoner.js";
+import {
+  computeTemporalGraphSignal,
+  temporalGraphEnabled,
+  DEFAULT_TEMPORAL_GRAPH_WEIGHT,
+} from "./temporal-graph-signal.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
 import { extractCurrentValueSpan } from "./current-value-compression";
@@ -3479,6 +3484,20 @@ export class ObservationStore {
       }
     }
 
+    // S108-014: temporal-graph signal (default-off PoC)
+    // Enabled with HARNESS_MEM_TEMPORAL_GRAPH=1. Computes a small additive
+    // bonus from mem_relations.kind / strength / valid_from-to / invalidated_at
+    // / supersedes. When the env flag is off, the map stays empty and the
+    // blender path is a no-op (existing default ranking is preserved bit-for-bit).
+    const temporalGraphOn = temporalGraphEnabled();
+    const temporalGraphScores = new Map<string, number>();
+    if (temporalGraphOn && candidateIds.size > 0) {
+      const rawSignal = computeTemporalGraphSignal(this.deps.db, [...candidateIds]);
+      for (const [id, bonus] of rawSignal) {
+        temporalGraphScores.set(id, bonus);
+      }
+    }
+
     // S74-005: file: フィルター — クエリに "file:xxx" が含まれる場合、候補を絞り込む
     const fileFilterIds = this.extractFileFilterIds(request.query);
     if (fileFilterIds !== null) {
@@ -3730,13 +3749,19 @@ export class ObservationStore {
       // w_graph * proximity is applied here, not via RRF, so it has a
       // predictable effect independent of RRF rank normalization.
       const proximityAdj = graphWeight * (queryProximityScores.get(item.id) ?? 0);
+      // S108-014: temporal-graph bonus (env-gated; map stays empty when off
+      // so this term is exactly zero and ranking is unchanged).
+      const temporalGraphAdj = temporalGraphOn
+        ? DEFAULT_TEMPORAL_GRAPH_WEIGHT * (temporalGraphScores.get(item.id) ?? 0)
+        : 0;
       const postAdjustment =
         weights.recency * item.recency +
         weights.tag_boost * item.tag_boost +
         weights.importance * item.importance +
         factBoostWeight * (item.fact_boost ?? 0) +
         precisionBoostWeight * (item.precision_boost ?? 0) +
-        proximityAdj;
+        proximityAdj +
+        temporalGraphAdj;
       const rawScore = rrfScore + postAdjustment;
       // COMP-002: 適応的メモリ減衰 - アクセス時刻に応じて decay 乗数を適用
       const obs = observations.get(item.id);

@@ -60,6 +60,7 @@ import { IngestCoordinator } from "./ingest-coordinator";
 import { ConfigManager } from "./config-manager";
 import { AnalyticsService } from "./analytics";
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
+import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
 import type { UsageParams, UsageStats, EntityParams, EntityStats, TimelineParams, TimelineStats, OverviewParams, OverviewStats } from "./analytics";
 import {
   clampLimit,
@@ -535,6 +536,8 @@ export class HarnessMemCore {
   private analyticsSvc!: AnalyticsService;
   /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
+  /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
+  private reindexVectorsScheduler!: ReindexVectorsScheduler;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -691,6 +694,23 @@ export class HarnessMemCore {
         intervalMs: this.config.partialFinalizeIntervalMs
           ? Math.max(5000, Number(this.config.partialFinalizeIntervalMs))
           : 300_000,
+      }
+    );
+
+    // S89-003: vector reindex backfill scheduler
+    this.reindexVectorsScheduler = createReindexVectorsScheduler(
+      {
+        db: this.db,
+        reindexVectors: (limit) => this.reindexVectors(limit),
+      },
+      {
+        enabled: this.config.reindexVectorsEnabled === true,
+        intervalMs: this.config.reindexVectorsIntervalMs
+          ? Math.max(5000, Number(this.config.reindexVectorsIntervalMs))
+          : 600_000,
+        batchSize: this.config.reindexVectorsBatchSize
+          ? Math.max(1, Math.min(10000, Number(this.config.reindexVectorsBatchSize)))
+          : 100,
       }
     );
   }
@@ -1492,6 +1512,8 @@ export class HarnessMemCore {
     this.ingestCoord.startTimers();
     // §91-002: start partial-finalize scheduler (no-op when enabled=false)
     this.partialFinalizeScheduler.start();
+    // S89-003: start reindex backfill scheduler (no-op when enabled=false)
+    this.reindexVectorsScheduler.start();
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
@@ -2868,6 +2890,8 @@ export class HarnessMemCore {
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
     this.partialFinalizeScheduler.stop();
+    // S89-003: stop reindex backfill scheduler
+    this.reindexVectorsScheduler.stop();
     this.ingestCoord.stopTimers();
 
     this.processRetryQueue(true);
