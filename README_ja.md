@@ -286,6 +286,10 @@ codex mcp get harness
 - 長期運用で複数スレッドが混ざった project すべてでの perfect な chain selection。
 - 毎回フルな project ダイジェストを出すこと。recent-project 部分はノイズを抑えるため数 bullet に制限します。
 
+### Inject actionability（記憶が次の一手を本当に変えたか）
+
+「記憶が出てきた」ことではなく「その記憶を AI エージェントが次のターンで実際に使ったか」を計測対象にしています。harness-mem は recall chain / contradiction warning / risk warning / skill suggestion の各 inject を `signals[]` 付きの `InjectEnvelope` として包み、ローカルの `inject_traces` テーブルに永続化します。`harness_mem_observability` MCP ツールが session 単位で `delivered_rate` と `consumed_rate` を返し、CI tier gate は `delivered_rate < 95%` または `consumed_rate < 30%` で release を block、30〜60% で warn、`consumed_rate ≥ 60%` で green を維持します。envelope の契約、4 経路の対応、既知の限界（substring grep / synonym 非対応 / 1 ターン span）は [`docs/inject-envelope.md`](docs/inject-envelope.md) を参照してください。
+
 ---
 
 ## 他ツールとの比較

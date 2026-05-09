@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **§S109 inject actionability foundation**. Wraps every inject (recall chain, contradiction warning, risk warning, skill suggestion) in a small `InjectEnvelope` that carries `kind` / `signals[]` / `action_hint` / `confidence` / `trace_id` alongside a prose directive (case C: structured + prose, structured side authoritative). Four pre-existing inject paths — `runConsolidation` contradiction_scan, `finalize_session` skill suggestion, `SessionStart` artifact, `UserPromptSubmit` recall — now persist their firings into a new local `inject_traces` SQLite table as a side effect; client-visible response shapes are unchanged. New `harness_mem_observability` MCP tool (and `GET /v1/admin/inject-observability` REST surface) reports per-session `delivered_count`, `consumed_count`, `consumed_rate`, `hooks_health` (alive / `stale_<N>d` / unwired), pending contradictions, and a `suggested_action` of `harness-mem doctor --fix` when any tracked hook is stale or unwired. CI tier gate (`scripts/check-inject-actionability.sh` + `release.yml`) blocks release when `delivered_rate < 95%` or `consumed_rate < 30%`, warns in the 30–60% band, and stays green at `consumed_rate ≥ 60%`. `effective_rate` is intentionally separated into a weekly counterfactual batch (S109-005). Contract and rationale: [`docs/inject-envelope.md`](docs/inject-envelope.md). SSOT: [`.claude/memory/decisions.md`](.claude/memory/decisions.md) D8.
+
 ## [0.19.0] - 2026-05-07
 
 ### Added

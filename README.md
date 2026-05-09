@@ -285,6 +285,10 @@ Large MCP search responses now also return `structuredContent`, so newer Claude 
 - Perfect chain selection in every long-lived project with multiple mixed threads.
 - A full project digest on every fresh session. The recent-project portion is intentionally capped to a few low-noise bullets.
 
+### Inject actionability
+
+A memory hint that the agent never acts on is just noise. harness-mem packages every inject (recall chain, contradiction warning, risk warning, skill suggestion) as a small `InjectEnvelope` with a `signals[]` list, persists each firing into a local `inject_traces` table, and reports `delivered_rate` and `consumed_rate` per session via the `harness_mem_observability` MCP tool. The CI tier gate blocks release when `delivered_rate < 95%` or `consumed_rate < 30%`, warns in the 30–60% band, and stays green at `consumed_rate ≥ 60%`. See [`docs/inject-envelope.md`](docs/inject-envelope.md) for the contract, the four inject paths, and known limits (substring grep, no synonym resolution, single-turn span).
+
 ---
 
 ## Compare with alternatives
