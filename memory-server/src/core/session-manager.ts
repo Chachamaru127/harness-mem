@@ -41,6 +41,7 @@ import {
   isIgnoredVisibleResponseText,
 } from "./interaction-visibility";
 import type { AccessFilter } from "../auth/access-control.js";
+import { recordSkillSuggestionEnvelope } from "../inject/skill-suggestion-envelope.js";
 
 // ---------------------------------------------------------------------------
 // CoreDependencies: HarnessMemCore から渡される内部依存
@@ -857,6 +858,17 @@ export class SessionManager {
         tags: ["skill", "procedural", `skill-from:${request.session_id}`],
         privacy_tags: [],
       });
+    }
+
+    // §S109-002 (c): persist a skill_suggestion InjectEnvelope as a side
+    // effect (kind="suggest", action_hint="consider_before_decide"). Mirrors
+    // sub-cycle (b)'s contradiction-envelope hook: response shape is
+    // unchanged, persistence is best-effort so a write failure cannot break
+    // finalize_session.
+    try {
+      recordSkillSuggestionEnvelope(this.deps.db, skillSuggestion, request.session_id);
+    } catch {
+      /* best effort — see comment above */
     }
 
     return makeResponse(

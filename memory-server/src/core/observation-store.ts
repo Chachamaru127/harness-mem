@@ -40,6 +40,8 @@ import {
   type VectorEngine,
 } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
+import { recordSessionStartEnvelope } from "../inject/session-start-envelope";
+import { recordUserPromptRecallEnvelope } from "../inject/user-prompt-recall-envelope";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
 import type {
   ApiResponse,
@@ -4144,6 +4146,31 @@ export class ObservationStore {
       }
     }
 
+    // §S109-002 (d): persist a UserPromptSubmit-recall InjectEnvelope as a
+    // side effect (kind="recall_chain", action_hint="read_before_edit").
+    // Mirrors sub-cycles (b) contradiction-envelope and (c)
+    // skill-suggestion-envelope: the search response shape is unchanged,
+    // persistence is best-effort so a write failure cannot break search,
+    // and we only fire when search returned actual hits in a known
+    // session context. UserPromptSubmit fires once per turn so no
+    // idempotency guard is needed (unlike SessionStart).
+    try {
+      const sid =
+        typeof request.session_id === "string" && request.session_id.trim()
+          ? request.session_id
+          : "";
+      if (sid && response.no_memory !== true && Array.isArray(items) && items.length > 0) {
+        const recalled = (items as Array<Record<string, unknown>>).map((it) => ({
+          id: typeof it.id === "string" ? it.id : null,
+          title: typeof it.title === "string" ? it.title : null,
+          content: typeof it.content === "string" ? it.content : null,
+        }));
+        recordUserPromptRecallEnvelope(this.deps.db, recalled, sid);
+      }
+    } catch {
+      /* best effort — see comment above */
+    }
+
     return response;
   }
 
@@ -5274,6 +5301,31 @@ export class ObservationStore {
     };
     const projectProfile = buildProjectProfile(profileDb, normalizedProject);
     const wakeUpContext = buildWakeUpContext(normalizedProject, projectProfile, detailLevel);
+
+    // §S109-002 (d): persist a SessionStart InjectEnvelope as a side
+    // effect (kind="recall_chain", action_hint="read_before_edit"). Mirrors
+    // sub-cycles (b) contradiction-envelope and (c) skill-suggestion-envelope:
+    // the resume_pack response shape is unchanged, persistence is best-effort
+    // so a write failure cannot break resume_pack itself, and idempotency
+    // (5-minute window per session+chain_top) is enforced inside the bridge.
+    try {
+      const sid =
+        (request as { session_id?: string }).session_id ??
+        (typeof request.correlation_id === "string"
+          ? request.correlation_id
+          : "");
+      if (sid && continuityBriefing !== null) {
+        recordSessionStartEnvelope(
+          this.deps.db,
+          continuityBriefing as unknown as Parameters<
+            typeof recordSessionStartEnvelope
+          >[1],
+          sid,
+        );
+      }
+    } catch {
+      /* best effort — see comment above */
+    }
 
     return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
       include_summary: Boolean(latestSummary),

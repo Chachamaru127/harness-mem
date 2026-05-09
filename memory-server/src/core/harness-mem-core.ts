@@ -47,6 +47,7 @@ import {
   type ContradictionAdjudicator,
   type ContradictionDetectorResult,
 } from "../consolidation/contradiction-detector";
+import { recordContradictionEnvelopes } from "../inject/contradiction-envelope";
 import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
@@ -2402,6 +2403,20 @@ export class HarnessMemCore {
         });
       } catch {
         // best effort
+      }
+      // §S109-002 (b): persist one InjectEnvelope (kind=contradiction,
+      // action_hint=warn_user_before_act) per confirmed pair into
+      // inject_traces. Side-effect only — the consolidation_run response
+      // shape is unchanged. Downstream surfaces (S109-003) read traces
+      // back to compute consumed_rate.
+      try {
+        recordContradictionEnvelopes(
+          this.db,
+          contradiction,
+          request.session_id,
+        );
+      } catch {
+        // best effort: never let envelope persistence break consolidation.
       }
     }
 
