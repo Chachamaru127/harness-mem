@@ -54,6 +54,7 @@ scripts/codex-loop-validate-noop.sh
 # Local secrets / MCP config
 .env
 .env.*
+env.local
 .mcp.json
 
 # Python cache artifacts

@@ -7,9 +7,19 @@
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-05-09
+
 ### ユーザー向け要約
 
-- **§S109 inject actionability の土台を追加**。recall chain / contradiction / risk_warn / skill suggestion の各 inject を `kind` / `signals[]` / `action_hint` / `confidence` / `trace_id` を持つ小さな `InjectEnvelope`（案 C: structured + prose 並記、正本は structured 側）で包み、4 つの既存 inject 経路（contradiction_scan / `finalize_session` skill_suggestion / `SessionStart` artifact / `UserPromptSubmit` recall）から発火を新しいローカル `inject_traces` SQLite テーブルへ副作用として永続化する。クライアントから見える各レスポンス形は変更なし。新 MCP ツール `harness_mem_observability`（および REST `GET /v1/admin/inject-observability`）が session 単位で `delivered_count` / `consumed_count` / `consumed_rate` / `hooks_health`（alive / `stale_<N>d` / unwired）/ pending contradictions / `suggested_action`（hook が stale または unwired のとき `harness-mem doctor --fix`）を返す。CI tier gate（`scripts/check-inject-actionability.sh` + `release.yml`）は `delivered_rate < 95%` または `consumed_rate < 30%` で release を block、30〜60% で warn、`consumed_rate ≥ 60%` で green を維持する。`effective_rate` は週次の counterfactual バッチ（S109-005）に分離。counterfactual harness（`inject-counterfactual-eval.ts`）が同 fixture を inject あり/なしの 2 経路で流し、`effective_rate` 週次 counterfactual アーティファクトを生成する。契約と背景は [`docs/inject-envelope.md`](docs/inject-envelope.md)、SSOT は [`.claude/memory/decisions.md`](.claude/memory/decisions.md) D8。
+- **§S109 inject actionability の土台を追加**。recall chain / contradiction / risk_warn / skill suggestion の各 inject を `InjectEnvelope`（案 C: structured + prose 並記、正本は structured 側）で包み、4 つの既存 inject 経路を新しい `inject_traces` SQLite テーブルへ永続化。新 MCP ツール `harness_mem_observability`（および REST `GET /v1/admin/inject-observability`）が `delivered_count` / `consumed_count` / `consumed_rate` / `hooks_health` / pending contradictions / `suggested_action` を返す。CI tier gate は `delivered_rate < 95%` / `consumed_rate < 30%` で block、30〜60% warn、`≥60%` green。`effective_rate` は週次 counterfactual バッチ（`inject-counterfactual-eval.ts`、S109-005）に分離し、初回 baseline は `effective_rate=0.6` / tier=green を観測（2026-05-09）。詳細: [`docs/inject-envelope.md`](docs/inject-envelope.md)、SSOT: [`.claude/memory/decisions.md`](.claude/memory/decisions.md) D8。
+- **§S89-003 ベクトル再インデックス バックフィル スケジューラを追加**（opt-in、`HARNESS_MEM_REINDEX_VECTORS_ENABLED=1` で有効）。10 分間隔 × 100 行バッチで大容量ローカルコーパスを `vector_coverage ≥ 0.95` に向けて少しずつ収束させ、収束後は自動停止、coverage が落ちたら再起動。既定オフ。既存の手動 `reindex-vectors` 管理 API は変更なし。
+- **§S108-014 ローカル temporal graph signal PoC**（opt-in、`HARNESS_MEM_TEMPORAL_GRAPH=1` で有効、既定オフは bit-exact no-op）。`temporal-graph-signal.ts` が relation kind × strength × freshness シグナルを検索スコアにブレンドする：`updates` / `supersedes` は正方向、`contradicts` は負方向、`invalidated_at` は寄与をゼロ化、`valid_to` 失効は freshness を半減、調整値は `[-0.5, +1.0]` にクランプ。`observation-store.ts` の既存 `proximityAdj` ブロックの隣に配線。
+- **§S108-015 temporal graph A/B 採用判定ハーネスを追加**。`scripts/s108-temporal-graph-ab-gate.ts` が baseline vs candidate を固定 query セットで比較し、`ab-report.json` を出力。採用閾値は `hit@10 ±2pt` / `p95 +5ms`（ハードフェイル）に固定。既定方針とロールバック env は `docs/benchmarks/temporal-graph-promotion-gate-2026-05-09.md`。
+
+### 設定変更
+
+- **§S108-014 follow-up**（[#97](https://github.com/Chachamaru127/harness-mem/pull/97)）。`HARNESS_MEM_TEMPORAL_GRAPH` を daemon 起動時に 1 回解決して `Config.temporalGraphEnabled` に保持（`partialFinalizeEnabled` / `reindexVectorsEnabled` と同じパターン）。検索ホットパスから env 再解析を除去。relation-lookup の batch 失敗時に `console.warn` で 1 行出力するようにし、運用者がスコア非対称化を見落とさないようにする。
+- **OpenAPI sync**（ARC-014 release-gate drift クローズ）。`docs/openapi.yaml` の `harness_mem_search` に `include_superseded` / `graph_weight` パラメータを追記し、MCP ツール定義との差分を解消。
 
 ## [0.19.0] - 2026-05-07
 
@@ -839,3 +849,6 @@ v0.11.0 での対応:
 ### 補足
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
+
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.20.0...HEAD
+[0.20.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.19.0...v0.20.0
