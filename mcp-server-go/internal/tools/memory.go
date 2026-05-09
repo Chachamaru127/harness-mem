@@ -65,6 +65,8 @@ func MemoryToolDefs() []ToolDef {
 		{memToolAdminConsolidationRun, handleMemTool("harness_mem_admin_consolidation_run")},
 		{memToolAdminConsolidationStatus, handleMemTool("harness_mem_admin_consolidation_status")},
 		{memToolAdminAuditLog, handleMemTool("harness_mem_admin_audit_log")},
+		// §S109-003: inject observability.
+		{memToolObservability, handleMemTool("harness_mem_observability")},
 		{memToolAddRelation, handleMemTool("harness_mem_add_relation")},
 		{memToolBulkAdd, handleMemTool("harness_mem_bulk_add")},
 		{memToolBulkDelete, handleMemTool("harness_mem_bulk_delete")},
@@ -615,6 +617,29 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			q.Set("target_type", t)
 		}
 		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/audit-log?"+q.Encode(), nil)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_mem_observability":
+		// §S109-003: passthrough to /v1/admin/inject-observability.
+		// The TS endpoint returns the raw aggregator JSON shape (not the
+		// usual ApiResponse envelope), so we use successResult-with-raw
+		// here to avoid wrapping it twice.
+		sessionID := argString(args, "session_id")
+		if sessionID == "" {
+			return errorResult("session_id is required")
+		}
+		q := url.Values{}
+		q.Set("session_id", sessionID)
+		if n, ok := argInt(args, "since_ms"); ok {
+			q.Set("since_ms", strconv.Itoa(n))
+		}
+		if n, ok := argInt(args, "until_ms"); ok {
+			q.Set("until_ms", strconv.Itoa(n))
+		}
+		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/inject-observability?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}

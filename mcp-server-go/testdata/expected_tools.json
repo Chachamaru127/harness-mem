@@ -953,6 +953,36 @@
       "idempotentHint": false,
       "openWorldHint": true
     },
+    "description": "Inspect inject envelope observability for the current session — delivered/consumed/hooks_health/pending_contradictions. Use to verify whether memory injects are actually influencing the AI agent's next-turn behavior.",
+    "inputSchema": {
+      "properties": {
+        "session_id": {
+          "description": "Session id to inspect",
+          "type": "string"
+        },
+        "since_ms": {
+          "description": "Inclusive lower bound on fired_at (unix ms)",
+          "type": "number"
+        },
+        "until_ms": {
+          "description": "Inclusive upper bound on fired_at (unix ms)",
+          "type": "number"
+        }
+      },
+      "required": [
+        "session_id"
+      ],
+      "type": "object"
+    },
+    "name": "harness_mem_observability"
+  },
+  {
+    "annotations": {
+      "readOnlyHint": false,
+      "destructiveHint": true,
+      "idempotentHint": false,
+      "openWorldHint": true
+    },
     "description": "Record a checkpoint observation for a session.",
     "inputSchema": {
       "properties": {

@@ -151,6 +151,17 @@ var memToolAdminAuditLog = mcp.NewTool("harness_mem_admin_audit_log",
 	mcp.WithString("target_type"),
 )
 
+// §S109-003: inject envelope observability surface.
+// Reads inject_traces and reports delivered/consumed/hooks_health for the
+// current session — the "did memory injects actually move the agent's
+// next-turn behaviour?" lens defined in decisions.md D8.
+var memToolObservability = mcp.NewTool("harness_mem_observability",
+	mcp.WithDescription("Inspect inject envelope observability for the current session — delivered/consumed/hooks_health/pending_contradictions. Use to verify whether memory injects are actually influencing the AI agent's next-turn behavior."),
+	mcp.WithString("session_id", mcp.Required(), mcp.Description("Session id to inspect")),
+	mcp.WithNumber("since_ms", mcp.Description("Inclusive lower bound on fired_at (unix ms)")),
+	mcp.WithNumber("until_ms", mcp.Description("Inclusive upper bound on fired_at (unix ms)")),
+)
+
 var memToolAddRelation = mcp.NewTool("harness_mem_add_relation",
 	mcp.WithDescription("Add a directed relation (link) between two observations."),
 	mcp.WithString("from_observation_id", mcp.Required(), mcp.Description("Source observation ID")),

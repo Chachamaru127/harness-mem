@@ -42,6 +42,9 @@ import {
 import { type AccessFilter } from "../auth/access-control";
 import { recordSessionStartEnvelope } from "../inject/session-start-envelope";
 import { recordUserPromptRecallEnvelope } from "../inject/user-prompt-recall-envelope";
+import { InjectTraceStore } from "../inject/trace-store";
+import { detectConsumed } from "../inject/consume-detector";
+import type { InjectEnvelope } from "../inject/envelope";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
 import type {
   ApiResponse,
@@ -4171,7 +4174,57 @@ export class ObservationStore {
       /* best effort — see comment above */
     }
 
+    // §S109-003: probe the *current* user prompt against any unconsumed
+    // inject_traces for this session. If the prompt text echoes signals
+    // we shipped on a prior turn, mark those traces consumed so the
+    // observability surface can compute a non-trivial consumed_rate.
+    // Best-effort, response shape unchanged.
+    try {
+      const sid =
+        typeof request.session_id === "string" && request.session_id.trim()
+          ? request.session_id
+          : "";
+      const probe =
+        typeof request.query === "string" && request.query.trim() ? request.query : "";
+      if (sid && probe) {
+        this.probeAndMarkConsumed(sid, probe);
+      }
+    } catch {
+      /* best effort — must never break search */
+    }
+
     return response;
+  }
+
+  /**
+   * §S109-003 helper: scan unconsumed inject_traces for `sessionId` and,
+   * for each whose signal[] appears in `userText`, mark consumed.
+   *
+   * This is the cheapest possible "did the inject move the next turn"
+   * detector — substring grep, one-shot per search call. NLP / fuzzy
+   * matching is explicitly out of scope.
+   */
+  private probeAndMarkConsumed(sessionId: string, userText: string): void {
+    const store = new InjectTraceStore(this.deps.db);
+    const traces = store.getTracesBySession(sessionId);
+    for (const t of traces) {
+      if (t.consumed === 1) continue;
+      // Reconstruct the minimum envelope shape detectConsumed needs.
+      const env: InjectEnvelope = {
+        structured: {
+          kind: t.kind,
+          signals: t.signals,
+          action_hint: t.action_hint,
+          confidence: t.confidence,
+          trace_id: t.trace_id,
+        },
+        prose: t.prose,
+      };
+      const result = detectConsumed(env, { user_text: userText });
+      if (result.consumed && result.evidence) {
+        store.markConsumed(t.trace_id, result.evidence);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------

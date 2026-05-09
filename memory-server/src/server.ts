@@ -523,6 +523,24 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return jsonResponse(core.getAuditLog(req));
         }
 
+        // §S109-003: inject envelope observability surface.
+        // Returns the raw aggregator shape (not ApiResponse-wrapped) — see
+        // .claude/memory/decisions.md D8 for the schema.
+        if (request.method === "GET" && url.pathname === "/v1/admin/inject-observability") {
+          const sessionId = url.searchParams.get("session_id") || "";
+          if (!sessionId) {
+            return badRequest("session_id is required");
+          }
+          const sinceMs = parseIntegerLike(url.searchParams.get("since_ms"));
+          const untilMs = parseIntegerLike(url.searchParams.get("until_ms"));
+          const { aggregateInjectObservability } = await import("./inject/observability");
+          const observability = aggregateInjectObservability(core.getRawDb(), sessionId, {
+            sinceMs: sinceMs ?? undefined,
+            untilMs: untilMs ?? undefined,
+          });
+          return rawJsonResponse(observability);
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/imports/claude-mem") {
           const body = await parseRequestJson(request);
           const sourceDbPath = typeof body.source_db_path === "string" ? body.source_db_path : "";
