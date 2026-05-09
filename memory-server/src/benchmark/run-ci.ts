@@ -23,6 +23,7 @@ import { findModelById } from "../embedding/model-catalog";
 import { extractTemporalAnchors } from "../retrieval/router";
 import { nowIso } from "../core/core-utils";
 import { BenchmarkRunner } from "./runner";
+import { runInjectActionabilitySmoke } from "./inject-actionability-smoke";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
 // Default to the committed 120 Q subset. Override with
@@ -270,6 +271,23 @@ interface CIRunManifest {
     bilingual_baseline_mode: string | null;
     bilingual_baseline_recall: number | null;
     bilingual_delta: number | null;
+  };
+  /**
+   * §S109-004 — inject envelope actionability smoke.
+   * Populated by `runInjectActionabilitySmoke()` (in-memory SQLite, additive).
+   * `tier` follows decisions.md D8:
+   *   delivered_rate < 0.95 ⇒ red
+   *   consumed_rate  < 0.30 ⇒ red
+   *   0.30 ≤ consumed_rate < 0.60 ⇒ yellow
+   *   delivered_rate ≥ 0.95 AND consumed_rate ≥ 0.60 ⇒ green
+   */
+  inject_actionability?: {
+    delivered_rate: number;
+    consumed_rate: number;
+    fixture_size: number;
+    consumed_count: number;
+    hooks_health_summary: string;
+    tier: "green" | "yellow" | "red";
   };
 }
 
@@ -1731,6 +1749,41 @@ async function main(): Promise<void> {
     console.log(`[CI] Score appended to history: f1=${ciScores.f1.toFixed(4)}, freshness=${ciScores.freshness.toFixed(4)}, temporal=${ciScores.temporal.toFixed(4)}, bilingual=${ciScores.bilingual.toFixed(4)}`);
   }
 
+  // §S109-004: Inject envelope actionability smoke. Runs in-memory SQLite
+  // (additive, no disk side-effects) and produces delivered_rate /
+  // consumed_rate / tier for the release gate at scripts/check-inject-actionability.sh.
+  let injectActionability:
+    | {
+        delivered_rate: number;
+        consumed_rate: number;
+        fixture_size: number;
+        consumed_count: number;
+        hooks_health_summary: string;
+        tier: "green" | "yellow" | "red";
+      }
+    | undefined;
+  try {
+    injectActionability = runInjectActionabilitySmoke();
+    console.log(
+      `[CI] inject_actionability: delivered=${injectActionability.delivered_rate} consumed=${injectActionability.consumed_rate} tier=${injectActionability.tier}`,
+    );
+  } catch (err) {
+    console.error(
+      `[CI] inject_actionability smoke failed: ${(err as Error).message}`,
+    );
+    // Smoke harness failure is itself a "delivered_rate < 1" signal — emit a
+    // synthetic red entry so the release gate blocks. We do not re-throw
+    // here so the rest of the manifest still lands for diagnostics.
+    injectActionability = {
+      delivered_rate: 0,
+      consumed_rate: 0,
+      fixture_size: 0,
+      consumed_count: 0,
+      hooks_health_summary: "smoke_error",
+      tier: "red",
+    };
+  }
+
   const manifest: CIRunManifest = {
     generated_at: new Date().toISOString(),
     git_sha: readGitSha(),
@@ -1776,6 +1829,7 @@ async function main(): Promise<void> {
       bilingual_baseline_recall: bilingualBaselineRecall,
       bilingual_delta: bilingualDelta,
     },
+    inject_actionability: injectActionability,
   };
   writeRunManifest(manifest);
   console.log(`[CI] run manifest written: ${CI_MANIFEST_LATEST}`);

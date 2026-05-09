@@ -157,6 +157,18 @@ jobs:
           npm run benchmark
           bash scripts/check-developer-domain-gate.sh
 
+      - name: Inject actionability gate (§S109-004)
+        shell: bash
+        env:
+          MANIFEST_PATH: memory-server/src/benchmark/results/ci-run-manifest-latest.json
+        run: |
+          set -euo pipefail
+          # decisions.md D8: delivered_rate < 95% block / consumed_rate < 30% block
+          # / 30–60% warn / >= 60% green. Tier is computed by run-ci.ts and emitted
+          # into the manifest under inject_actionability.tier; this script only
+          # reads the tier and exits 0/1 accordingly.
+          bash scripts/check-inject-actionability.sh
+
       - name: Dry-run package check
         run: npm pack --dry-run
 
