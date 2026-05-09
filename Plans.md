@@ -11,6 +11,8 @@
 
 `[P]` = 並列可 / `cc:TODO` / `cc:WIP` / `cc:完了` / `blocked`
 
+**`cc:完了` 書式**: `cc:完了 [<sha-7>]` または `cc:完了 (<sha-7> - <注釈>)` の形で対応する main 上の commit hash を必ず併記する（複数 commit は `(<sha>, <sha>, ...)` で束ねる）。Worker 自己更新も Lead cherry-pick 後の更新も同形式。Reviewer は review チェックリストの一項目として確認する。詳細・運用ルール: [`patterns.md` P8](.claude/memory/patterns.md)。
+
 ---
 
 ## 現在のステータス
