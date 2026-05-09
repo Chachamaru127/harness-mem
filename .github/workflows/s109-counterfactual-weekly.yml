@@ -1,0 +1,41 @@
+name: S109 Counterfactual Weekly
+
+on:
+  schedule:
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+
+jobs:
+  counterfactual-eval:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install memory-server dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun install --frozen-lockfile
+
+      - name: Run counterfactual eval
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd memory-server
+          bun run src/benchmark/inject-counterfactual-eval.ts
+          echo "Counterfactual eval complete"
+
+      - name: Upload effective-rate artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s109-counterfactual-effective-rate
+          path: docs/benchmarks/artifacts/s109-actionability-*/effective-rate.json
+          if-no-files-found: warn

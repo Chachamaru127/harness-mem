@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "run_id": "s109_counterfactual_2026-05-09T05:10:47.730Z",
+  "fixture_size": 10,
+  "with_inject": {
+    "consumed_count": 6,
+    "consumed_rate": 0.6
+  },
+  "without_inject": {
+    "consumed_count": 0,
+    "consumed_rate": 0
+  },
+  "effective_count": 6,
+  "effective_rate": 0.6,
+  "tier": "green",
+  "fired_at_ms": 1778303447730,
+  "decisions_md_d8_thresholds": {
+    "green_min": 0.5,
+    "red_max": 0.2
+  }
+}
