@@ -219,6 +219,97 @@ describe("codex future-session contract", () => {
     }
   });
 
+  test("SessionStart preserves Codex 0.130.0 safe additive metadata without credential fields", async () => {
+    const sandbox = setupCodexSandbox("hmem-codex-0130-start-");
+
+    try {
+      writeFileSync(join(sandbox.hookDir, "codex-session-start.sh"), readFileSync(CODEX_SESSION_START, "utf8"));
+      writeFileSync(join(sandbox.libDir, "hook-common.sh"), readFileSync(HOOK_COMMON_LIB, "utf8"));
+      writeMockClient(sandbox.mockClient, sandbox.payloadLog);
+
+      const input = {
+        hook_event_name: "SessionStart",
+        source: "codex-future-contract",
+        ts: "2026-05-10T09:00:00Z",
+        thread_id: "thread-0130-1",
+        correlation_id: "corr-0130-1",
+        sessionSource: "remote-control",
+        remote_control: false,
+        remoteControl: { token: "REMOTE_CONTROL_TOKEN_SHOULD_NOT_PERSIST" },
+        items_view: { token: "ITEMS_VIEW_TOKEN_SHOULD_NOT_PERSIST" },
+        itemsView: "summary",
+        selected_environment_id: "env-selected-0130",
+        bedrockAuth: {
+          method: "aws-login-profile",
+          accessKeyId: "AKIA0123456789SECRET",
+          secretAccessKey: "BEDROCK_SECRET_SHOULD_NOT_PERSIST",
+        },
+        applyPatch: {
+          status: "applied",
+          patch: "PATCH_BODY_SHOULD_NOT_PERSIST",
+        },
+        turn_diff_status: "accurate",
+        turnDiff: {
+          status: "stale",
+          raw: "TURN_DIFF_RAW_SHOULD_NOT_PERSIST",
+        },
+      };
+
+      const proc = Bun.spawn(["bash", join(sandbox.hookDir, "codex-session-start.sh")], {
+        cwd: sandbox.projectDir,
+        stdin: "pipe",
+        stdout: "pipe",
+        stderr: "pipe",
+      });
+      proc.stdin.write(`${JSON.stringify(input)}\n`);
+      proc.stdin.end();
+
+      expect(await proc.exited).toBe(0);
+
+      const payloads = parsePayloadLog(sandbox.payloadLog);
+      const recordEvent = payloads.find((entry) => entry.command === "record-event")?.payload as {
+        event?: {
+          session_id?: string;
+          payload?: {
+            meta?: Record<string, unknown>;
+          };
+        };
+      };
+      const meta = recordEvent.event?.payload?.meta ?? {};
+
+      expect(recordEvent.event?.session_id).toBe("thread-0130-1");
+      expect(meta.session_source).toBe("remote-control");
+      expect(meta.remote_control).toBe("false");
+      expect(meta.items_view).toBe("summary");
+      expect(meta.selected_environment_id).toBe("env-selected-0130");
+      expect(meta.bedrock_auth_method).toBe("aws-login-profile");
+      expect(meta.apply_patch_status).toBe("applied");
+      expect(meta.turn_diff_status).toBe("accurate");
+
+      for (const key of [
+        "session_source",
+        "remote_control",
+        "items_view",
+        "selected_environment_id",
+        "bedrock_auth_method",
+        "apply_patch_status",
+        "turn_diff_status",
+      ]) {
+        expect(typeof meta[key]).toBe("string");
+      }
+
+      const serializedMeta = JSON.stringify(meta);
+      expect(serializedMeta).not.toContain("REMOTE_CONTROL_TOKEN_SHOULD_NOT_PERSIST");
+      expect(serializedMeta).not.toContain("ITEMS_VIEW_TOKEN_SHOULD_NOT_PERSIST");
+      expect(serializedMeta).not.toContain("AKIA0123456789SECRET");
+      expect(serializedMeta).not.toContain("BEDROCK_SECRET_SHOULD_NOT_PERSIST");
+      expect(serializedMeta).not.toContain("PATCH_BODY_SHOULD_NOT_PERSIST");
+      expect(serializedMeta).not.toContain("TURN_DIFF_RAW_SHOULD_NOT_PERSIST");
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
   test("Stop finalizes from thread_id and meta correlation_id even with additive future fields present", async () => {
     const sandbox = setupCodexSandbox("hmem-codex-future-stop-");
 
