@@ -543,7 +543,7 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | Tier | Tool | Tested With | Notes |
 |---|---|---|---|
 | **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
-| **Tier 1** | Codex CLI | v0.116.0+ | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules |
+| **Tier 1** | Codex CLI | v0.116.0+; verified through v0.130.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules. v0.130.0 additive metadata and paged thread summary ingest are tolerated; remote-control and plugin sharing remain Codex-owned |
 | **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 

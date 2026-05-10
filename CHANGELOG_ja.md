@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **Codex 0.130.0 upstream follow-up snapshot を追加**。`docs/upstream-update-snapshot-2026-05-10.md` に、公式 release / PR を根拠として remote-control、plugin share metadata、paged thread view、selected-environment image、Bedrock auth label、`apply_patch` diff 精度を分類。harness-mem が実装するのは受け口の互換性であり、Codex 側の remote-control / sharing UX を肩代わりするとは書かない。
+- **Codex 0.130.0 の追加 metadata と paged summary ingest に耐性を追加**。hook payload に safe なラベルが来た時だけ `session_source`、`remote_control`、`items_view`、selected environment id、Bedrock auth method、`apply_patch` / turn diff status を保持。credential 風のネスト値は保存しない。Codex rollout ingest は空の `notLoaded` page を skip し、`summary` / `full` thread item view を user prompt + assistant checkpoint として扱える。
+
 ## [0.20.0] - 2026-05-09
 
 ### ユーザー向け要約
