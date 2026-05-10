@@ -204,6 +204,68 @@ describe("codex sessions ingest parser", () => {
     expect(parsed.events[0]?.project).toBe("project-from-config");
   });
 
+  test("ingests thread summary items and skips empty notLoaded pages", () => {
+    const chunk = [
+      JSON.stringify({
+        timestamp: "2026-05-10T09:00:00.000Z",
+        type: "thread/turns/list",
+        payload: {
+          itemsView: "notLoaded",
+          thread_id: "thread-large-1",
+          project: "harness-mem",
+          items: [],
+        },
+      }),
+      JSON.stringify({
+        timestamp: "2026-05-10T09:00:01.000Z",
+        type: "thread/turns/list",
+        payload: {
+          items_view: "summary",
+          thread_id: "thread-large-1",
+          project: "harness-mem",
+          items: [
+            {
+              type: "message",
+              role: "user",
+              content: [{ type: "input_text", text: "巨大スレッドの続きだけ要約から拾って" }],
+            },
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text: "要約ビューからチェックポイント化します。" }],
+              turn_id: "turn-summary-1",
+            },
+          ],
+        },
+      }),
+    ].join("\n") + "\n";
+
+    const parsed = parseCodexSessionsChunk({
+      sourceKey: "codex_rollout:/tmp/thread-summary.jsonl",
+      baseOffset: 0,
+      chunk,
+      fallbackNowIso: () => "2026-05-10T09:00:59.000Z",
+    });
+
+    expect(parsed.events.length).toBe(2);
+    expect(parsed.events[0]?.eventType).toBe("user_prompt");
+    expect(parsed.events[0]?.sessionId).toBe("thread-large-1");
+    expect(parsed.events[0]?.project).toBe("harness-mem");
+    expect(parsed.events[0]?.payload.source_type).toBe("thread_turns_list");
+    expect(parsed.events[0]?.payload.items_view).toBe("summary");
+    expect(parsed.events[0]?.payload.prompt).toBe("巨大スレッドの続きだけ要約から拾って");
+
+    expect(parsed.events[1]?.eventType).toBe("checkpoint");
+    expect(parsed.events[1]?.sessionId).toBe("thread-large-1");
+    expect(parsed.events[1]?.payload.source_type).toBe("thread_turns_list");
+    expect(parsed.events[1]?.payload.items_view).toBe("summary");
+    expect(parsed.events[1]?.payload.content).toBe("要約ビューからチェックポイント化します。");
+    expect(parsed.events[1]?.payload.prompt).toBe("巨大スレッドの続きだけ要約から拾って");
+    expect(parsed.events[1]?.payload.turn_id).toBe("turn-summary-1");
+    expect(parsed.context.lastUserPrompt).toBe("巨大スレッドの続きだけ要約から拾って");
+    expect(parsed.context.lastAssistantContent).toBe("要約ビューからチェックポイント化します。");
+  });
+
   test("recovers unseen tail messages from compacted replacement history", () => {
     const chunk = [
       JSON.stringify({
