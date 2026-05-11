@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-05-11
+
+### Fixed
+
+- **Codex skill drift repair now works in non-interactive setup and doctor auto-fix paths**. `harness-mem setup --platform codex` now reinstalls the bundled `harness-mem` / `harness-recall` Codex skills when a stale skill file already exists in a non-TTY run, instead of leaving `codex_skill_drift` for the next doctor pass. Interactive setup now prompts when the existing skill bundle is missing or drifted, and `harness-mem doctor --fix --platform codex` forwards the same repair intent into setup.
+
 ## [0.21.0] - 2026-05-11
 
 ### Added

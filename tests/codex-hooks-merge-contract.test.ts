@@ -150,6 +150,37 @@ describe("codex hooks merge contract", () => {
     }
   }, 60_000);
 
+  test("non-tty setup repairs existing Codex skill drift without explicit non-interactive env", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-skill-drift-"));
+
+    try {
+      writeCodexConfig(tmpHome);
+      mkdirSync(join(tmpHome, ".codex", "skills", "harness-mem"), { recursive: true });
+      mkdirSync(join(tmpHome, ".codex", "skills", "harness-recall"), { recursive: true });
+      writeFileSync(join(tmpHome, ".codex", "skills", "harness-mem", "SKILL.md"), "stale harness-mem skill\n");
+      writeFileSync(join(tmpHome, ".codex", "skills", "harness-recall", "SKILL.md"), "stale harness-recall skill\n");
+
+      const result = await runHarnessMem(
+        ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        }
+      );
+
+      expect(result.code).toBe(0);
+      expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-mem", "SKILL.md"), "utf8")).toBe(
+        readFileSync(join(ROOT, "codex", "skills", "harness-mem", "SKILL.md"), "utf8")
+      );
+      expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-recall", "SKILL.md"), "utf8")).toBe(
+        readFileSync(join(ROOT, "codex", "skills", "harness-recall", "SKILL.md"), "utf8")
+      );
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("doctor --json marks codex_wiring missing when harness hooks are absent", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-doctor-"));
 

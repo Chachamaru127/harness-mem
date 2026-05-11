@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.21.1] - 2026-05-11
+
+### ユーザー向け要約
+
+- **Codex skill drift の修復ループを解消**。`harness-mem setup --platform codex` を非対話で実行したとき、既存の `harness-mem` / `harness-recall` Codex skill が古くても repo 同梱版へ再インストールするようにした。対話端末では missing / drift の両方を prompt 対象にし、`harness-mem doctor --fix --platform codex` からも同じ修復が走る。
+
 ## [0.21.0] - 2026-05-11
 
 ### ユーザー向け要約

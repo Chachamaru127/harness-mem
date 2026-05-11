@@ -916,7 +916,7 @@ should_prompt_codex_skill_install() {
   fi
   local skill_mem_dst="${HOME}/.codex/skills/harness-mem/SKILL.md"
   local skill_recall_dst="${HOME}/.codex/skills/harness-recall/SKILL.md"
-  if [ -f "$skill_mem_dst" ] && [ -f "$skill_recall_dst" ]; then
+  if [ -f "$skill_mem_dst" ] && [ -f "$skill_recall_dst" ] && check_codex_skill_bundle >/dev/null 2>&1; then
     return 1
   fi
   if [ -t 0 ] || [ "${HARNESS_MEM_FORCE_SKILL_PROMPT:-0}" = "1" ]; then
@@ -3940,6 +3940,9 @@ doctor_impl() {
 
   if [ "$FIX_MODE" -eq 1 ] && [ "$FIX_PLAN" -ne 1 ] && [ "$READ_ONLY_MODE" -ne 1 ]; then
     warn "Doctor found issues. Running auto-fix."
+    if _should_check_platform codex && ! check_codex_skill_bundle >/dev/null 2>&1; then
+      SETUP_INSTALL_CODEX_SKILL=1
+    fi
     setup_impl
     return
   fi
@@ -4972,9 +4975,9 @@ main() {
   if should_prompt_codex_skill_install "$command"; then
     prompt_codex_skill_install
   elif { [ "$command" = "setup" ] || [ "$command" = "update" ]; } \
-    && is_platform_enabled "codex" \
-    && [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; then
-    if ! check_codex_skill_bundle >/dev/null 2>&1; then
+    && is_platform_enabled "codex"; then
+    if { [ ! -t 0 ] || [ "${HARNESS_MEM_NON_INTERACTIVE:-0}" = "1" ]; } \
+      && ! check_codex_skill_bundle >/dev/null 2>&1; then
       SETUP_INSTALL_CODEX_SKILL=1
     fi
   fi
