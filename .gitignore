@@ -5,6 +5,7 @@
 .external_refs/
 .firecrawl/
 .harness-mem/
+.playwright-mcp/
 .opencode/
 .tmp/
 .claude/
@@ -37,6 +38,7 @@ mcp-server-go/bin/
 AGENTS.override.md
 
 # Local launch marketing drafts
+Plans.md.bak.*
 Plans-launch.md
 launch/
 
