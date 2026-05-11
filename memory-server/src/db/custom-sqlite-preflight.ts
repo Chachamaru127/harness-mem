@@ -1,7 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 
 export const DEFAULT_HOMEBREW_SQLITE_LIB_PATH = "/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib";
+export const DARWIN_SQLITE_VEC_PACKAGE = "sqlite-vec-darwin-arm64";
+export const SQLITE_VEC_EXTENSION_FILENAME = "vec0.dylib";
 
 export type CustomSqlitePreflightReason =
   | "not-required"
@@ -30,6 +33,10 @@ interface CustomSqlitePreflightOptions {
   platform?: NodeJS.Platform | string;
   exists?: (path: string) => boolean;
   database?: BunSqliteDatabaseConstructor;
+  cwd?: string;
+  moduleDir?: string;
+  home?: string;
+  readDir?: (path: string) => string[];
 }
 
 let configuredPath: string | null = null;
@@ -66,27 +73,110 @@ export function resetCustomSqlitePreflightForTests(): void {
   };
 }
 
+function dedupe(values: string[]): string[] {
+  return [...new Set(values.filter((value) => value.trim().length > 0))];
+}
+
+function defaultRepoRoots(options: CustomSqlitePreflightOptions): string[] {
+  const moduleDir = options.moduleDir ?? import.meta.dir;
+  const cwd = options.cwd ?? process.cwd();
+  return dedupe([
+    cwd,
+    resolve(moduleDir, "../../.."),
+  ]);
+}
+
+function defaultBunCacheCandidates(
+  options: CustomSqlitePreflightOptions,
+  exists: (path: string) => boolean,
+): string[] {
+  const home = options.home ?? process.env.HOME ?? "";
+  if (!home) {
+    return [];
+  }
+
+  const cacheDir = join(home, ".bun", "install", "cache");
+  if (!exists(cacheDir)) {
+    return [];
+  }
+
+  const readDir = options.readDir ?? readdirSync;
+  try {
+    return readDir(cacheDir)
+      .filter((entry) => entry.startsWith(`${DARWIN_SQLITE_VEC_PACKAGE}@`))
+      .sort()
+      .reverse()
+      .map((entry) => join(cacheDir, entry, SQLITE_VEC_EXTENSION_FILENAME));
+  } catch {
+    return [];
+  }
+}
+
+export function getDefaultSqliteVecExtensionCandidates(
+  options: CustomSqlitePreflightOptions = {},
+): string[] {
+  const exists = options.exists ?? existsSync;
+  const repoCandidates = defaultRepoRoots(options).map((root) =>
+    join(root, "node_modules", DARWIN_SQLITE_VEC_PACKAGE, SQLITE_VEC_EXTENSION_FILENAME),
+  );
+
+  return dedupe([
+    ...repoCandidates,
+    ...defaultBunCacheCandidates(options, exists),
+  ]);
+}
+
+export function resolveSqliteVecExtensionPath(
+  options: CustomSqlitePreflightOptions = {},
+): string | null {
+  const env = options.env ?? process.env;
+  const explicit = (env.HARNESS_MEM_SQLITE_VEC_PATH ?? "").trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  const platform = options.platform ?? process.platform;
+  if (platform !== "darwin") {
+    return null;
+  }
+
+  const exists = options.exists ?? existsSync;
+  for (const candidate of getDefaultSqliteVecExtensionCandidates(options)) {
+    if (exists(candidate)) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Bun on macOS uses Apple's SQLite by default, which can reject dynamic
- * extension loading.  When sqlite-vec is explicitly enabled, switch Bun to a
- * custom SQLite library before any Database instance is created.
+ * extension loading.  When sqlite-vec is enabled explicitly or discovered from
+ * the macOS package default, switch Bun to a custom SQLite library before any
+ * Database instance is created.
  */
 export function configureBunCustomSqliteForSqliteVec(
   options: CustomSqlitePreflightOptions = {},
 ): CustomSqlitePreflightState {
   const env = options.env ?? process.env;
-  const vectorExtensionPath = (env.HARNESS_MEM_SQLITE_VEC_PATH ?? "").trim();
+  const platform = options.platform ?? process.platform;
+  const exists = options.exists ?? existsSync;
+  const vectorExtensionPath = resolveSqliteVecExtensionPath({
+    ...options,
+    env,
+    platform,
+    exists,
+  });
   if (!vectorExtensionPath) {
     return state({
       attempted: false,
       configured: configuredPath !== null,
       path: configuredPath,
-      reason: "not-required",
+      reason: platform === "darwin" ? "sqlite-vec-extension-not-found" : "not-required",
     });
   }
 
-  const platform = options.platform ?? process.platform;
-  const exists = options.exists ?? existsSync;
   if (platform !== "darwin") {
     return state({
       attempted: false,

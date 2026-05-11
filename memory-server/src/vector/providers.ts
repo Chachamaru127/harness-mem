@@ -1,4 +1,5 @@
 import { type Database } from "bun:sqlite";
+import { resolveSqliteVecExtensionPath } from "../db/custom-sqlite-preflight";
 
 export type VectorEngine = "js-fallback" | "sqlite-vec" | "disabled";
 const LEGACY_SQLITE_VEC_TABLE = "mem_vectors_vec";
@@ -111,7 +112,7 @@ export function resolveVectorEngine(
     return { engine: "disabled", vecTableReady: false };
   }
 
-  const extensionPath = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+  const extensionPath = resolveSqliteVecExtensionPath();
   if (!extensionPath) {
     return { engine: "js-fallback", vecTableReady: false };
   }

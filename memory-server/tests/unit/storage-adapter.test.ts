@@ -7,6 +7,7 @@ import { SqliteStorageAdapter } from "../../src/db/sqlite-adapter";
 import { createStorageAdapter } from "../../src/db/adapter-factory";
 import {
   configureBunCustomSqliteForSqliteVec,
+  resolveSqliteVecExtensionPath,
   resetCustomSqlitePreflightForTests,
 } from "../../src/db/custom-sqlite-preflight";
 import type { StorageAdapter } from "../../src/db/storage-adapter";
@@ -219,6 +220,50 @@ describe("configureBunCustomSqliteForSqliteVec", () => {
 
     expect(result.reason).toBe("configured");
     expect(calls).toEqual(["/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib"]);
+  });
+
+  test("discovers the packaged sqlite-vec extension by default on macOS", () => {
+    const result = resolveSqliteVecExtensionPath({
+      platform: "darwin",
+      env: {} as NodeJS.ProcessEnv,
+      cwd: "/repo",
+      moduleDir: "/repo/memory-server/src/db",
+      home: "/home/tester",
+      exists: (path: string) => path === "/repo/node_modules/sqlite-vec-darwin-arm64/vec0.dylib",
+      readDir: () => [],
+    });
+
+    expect(result).toBe("/repo/node_modules/sqlite-vec-darwin-arm64/vec0.dylib");
+  });
+
+  test("keeps explicit HARNESS_MEM_SQLITE_VEC_PATH ahead of macOS defaults", () => {
+    const result = resolveSqliteVecExtensionPath({
+      platform: "darwin",
+      env: {
+        HARNESS_MEM_SQLITE_VEC_PATH: "/custom/vec0.dylib",
+      } as NodeJS.ProcessEnv,
+      cwd: "/repo",
+      moduleDir: "/repo/memory-server/src/db",
+      exists: () => true,
+    });
+
+    expect(result).toBe("/custom/vec0.dylib");
+  });
+
+  test("falls back to the Bun install cache when node_modules package is absent", () => {
+    const result = resolveSqliteVecExtensionPath({
+      platform: "darwin",
+      env: {} as NodeJS.ProcessEnv,
+      cwd: "/repo",
+      moduleDir: "/repo/memory-server/src/db",
+      home: "/home/tester",
+      exists: (path: string) =>
+        path === "/home/tester/.bun/install/cache" ||
+        path === "/home/tester/.bun/install/cache/sqlite-vec-darwin-arm64@0.1.9/vec0.dylib",
+      readDir: () => ["sqlite-vec-darwin-arm64@0.1.7", "sqlite-vec-darwin-arm64@0.1.9"],
+    });
+
+    expect(result).toBe("/home/tester/.bun/install/cache/sqlite-vec-darwin-arm64@0.1.9/vec0.dylib");
   });
 
   test("skips preflight outside macOS", () => {

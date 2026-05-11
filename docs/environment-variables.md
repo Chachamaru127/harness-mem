@@ -51,7 +51,8 @@ SQLite データベースの設定です。
 | 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
 |--------|-------------|------|------|----------|
 | `HARNESS_MEM_DB_PATH` | `~/.harness-mem/harness-mem.db` | No | SQLite データベースファイルのパス | `core/core-utils.ts` |
-| `HARNESS_MEM_SQLITE_VEC_PATH` | `""` (空文字) | No | sqlite-vec 拡張ライブラリ (.so/.dylib) のパス。設定するとベクター検索が有効化される（未設定時は JS フォールバック） | `vector/providers.ts` |
+| `HARNESS_MEM_SQLITE_VEC_PATH` | macOS: `node_modules/sqlite-vec-darwin-arm64/vec0.dylib` auto-discovery / その他: `""` | No | sqlite-vec 拡張ライブラリ (.so/.dylib) のパス。明示値が最優先。macOS では同梱 optional dependency を自動検出し、見つからない場合だけ JS フォールバック | `vector/providers.ts`, `db/custom-sqlite-preflight.ts` |
+| `HARNESS_MEM_SQLITE_LIB_PATH` | macOS: `/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib` | No | Bun の SQLite を差し替える custom SQLite ライブラリのパス。macOS で sqlite-vec を使う場合、DB 作成前に `Database.setCustomSQLite()` へ渡す | `db/custom-sqlite-preflight.ts` |
 | `HARNESS_MEM_VECTOR_DIM` | `256` | No | ベクターのディメンション数。範囲: 32〜4096 | `core/core-utils.ts` |
 
 ---
