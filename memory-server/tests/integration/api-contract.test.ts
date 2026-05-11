@@ -196,4 +196,20 @@ describe("API contract snapshot", () => {
       runtime.stop();
     }
   });
+
+  test("GET /v1/health is a compatibility alias for GET /health", async () => {
+    const runtime = createRuntime("v1-health-alias");
+
+    try {
+      const canonical = (await getJson(runtime.baseUrl, "/health")) as Record<string, unknown>;
+      const alias = (await getJson(runtime.baseUrl, "/v1/health")) as Record<string, unknown>;
+
+      expect(alias.ok).toBe(canonical.ok);
+      expect(alias.source).toBe(canonical.source);
+      expect(Array.isArray(alias.items)).toBe(true);
+      expect((alias.items as unknown[]).length).toBeGreaterThan(0);
+    } finally {
+      runtime.stop();
+    }
+  });
 });
