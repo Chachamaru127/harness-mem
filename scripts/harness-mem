@@ -1895,8 +1895,13 @@ check_codex_config_wiring() {
   # Supports both array format (Codex 0.118.0+) and legacy string format:
   #   Array:  notify = ["bash", "/path/to/memory-codex-notify.sh"]
   #   Legacy: notify = "bash /path/to/memory-codex-notify.sh"
-  local notify_script=""
-  if grep -qE 'notify[[:space:]]*=[[:space:]]*\[' "$cfg"; then
+  local expected_notify_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
+  local normalized_cfg=""
+  notify_script=""
+  normalized_cfg="$(sed 's#\\/#/#g' "$cfg")"
+  if printf '%s\n' "$normalized_cfg" | grep -Fq "$expected_notify_script"; then
+    notify_script="$expected_notify_script"
+  elif grep -qE 'notify[[:space:]]*=[[:space:]]*\[' "$cfg"; then
     notify_script="$(grep -oE '"([^"]*memory-codex-notify\.sh)"' "$cfg" | head -1 | tr -d '"')"
   elif grep -qE 'notify[[:space:]]*=[[:space:]]*"' "$cfg"; then
     notify_script="$(sed -nE 's/^[[:space:]]*notify[[:space:]]*=[[:space:]]*"bash[[:space:]]+([^"]+)".*/\1/p' "$cfg" | head -n1)"
@@ -1981,22 +1986,62 @@ rewrite_codex_harness_wiring() {
   local cfg="$1"
   local notify_script="$2"
   local tmp backup
+  local normalized_cfg has_expected_notify has_any_notify has_memory_notify emit_notify
+  local notify_count has_managed_notify remove_memory_notify
 
   backup="${cfg}.bak-harness-mem-$(date +%Y%m%d%H%M%S)"
   tmp="$(mktemp)"
   cp "$cfg" "$backup" >/dev/null 2>&1 || true
 
+  normalized_cfg="$(sed 's#\\/#/#g' "$cfg")"
+  has_expected_notify=0
+  has_any_notify=0
+  has_memory_notify=0
+  notify_count=0
+  has_managed_notify=0
+  emit_notify=1
+  remove_memory_notify=1
+
+  if printf '%s\n' "$normalized_cfg" | grep -Fq "$notify_script"; then
+    has_expected_notify=1
+  fi
+  if grep -qE '^[[:space:]]*notify[[:space:]]*=' "$cfg"; then
+    has_any_notify=1
+  fi
+  if grep -q 'memory-codex-notify\.sh' "$cfg"; then
+    has_memory_notify=1
+  fi
+  notify_count="$(grep -cE '^[[:space:]]*notify[[:space:]]*=' "$cfg" 2>/dev/null || true)"
+  if grep -Fq "$BEGIN_CODEX_NOTIFY" "$cfg"; then
+    has_managed_notify=1
+  fi
+
+  if [ "$has_expected_notify" -eq 1 ]; then
+    if [ "$has_managed_notify" -eq 1 ] && [ "${notify_count:-0}" -le 1 ]; then
+      emit_notify=1
+    else
+      emit_notify=0
+    fi
+  elif [ "$has_any_notify" -eq 1 ] && [ "$has_memory_notify" -eq 0 ]; then
+    emit_notify=0
+    remove_memory_notify=0
+    warn "Codex config already has notify=. Preserving existing notify and skipping harness-mem notify injection: $cfg"
+  fi
+
   {
-    cat <<EOF
+    if [ "$emit_notify" -eq 1 ]; then
+      cat <<EOF
 $BEGIN_CODEX_NOTIFY
 notify = ["bash", "${notify_script}"]
 $END_CODEX_NOTIFY
 
 EOF
+    fi
     awk -v begin_notify="$BEGIN_CODEX_NOTIFY" \
       -v end_notify="$END_CODEX_NOTIFY" \
       -v begin_mcp="$BEGIN_CODEX_MCP" \
-      -v end_mcp="$END_CODEX_MCP" '
+      -v end_mcp="$END_CODEX_MCP" \
+      -v remove_memory_notify="$remove_memory_notify" '
         $0 == begin_notify { skip = 1; next }
         $0 == end_notify { skip = 0; next }
         $0 == begin_mcp { skip = 1; next }
@@ -2009,7 +2054,7 @@ EOF
           }
           next
         }
-        /^[[:space:]]*notify[[:space:]]*=/ && /memory-codex-notify\.sh/ { next }
+        remove_memory_notify && /^[[:space:]]*notify[[:space:]]*=/ && /memory-codex-notify\.sh/ { next }
         { print }
       ' "$cfg"
     cat <<EOF
@@ -2039,13 +2084,20 @@ ensure_codex_hooks_feature_enabled() {
 
   [ -f "$cfg" ] || return 1
 
-  if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+  if rg -q '^[[:space:]]*features\.(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+    return 0
+  fi
+
+  if rg -q '^[[:space:]]*features\.hooks[[:space:]]*=' "$cfg"; then
+    tmp="$(mktemp)"
+    sed -E 's/^[[:space:]]*features\.hooks[[:space:]]*=.*/features.hooks = true/' "$cfg" >"$tmp"
+    mv "$tmp" "$cfg"
     return 0
   fi
 
   if rg -q '^[[:space:]]*features\.codex_hooks[[:space:]]*=' "$cfg"; then
     tmp="$(mktemp)"
-    sed -E 's/^[[:space:]]*features\.codex_hooks[[:space:]]*=.*/features.codex_hooks = true/' "$cfg" >"$tmp"
+    sed -E 's/^[[:space:]]*features\.codex_hooks[[:space:]]*=.*/features.hooks = true/' "$cfg" >"$tmp"
     mv "$tmp" "$cfg"
     return 0
   fi
@@ -2066,9 +2118,9 @@ ensure_codex_hooks_feature_enabled() {
         }
         in_features = 0
       }
-      in_features && /^[[:space:]]*codex_hooks[[:space:]]*=/ {
+      in_features && /^[[:space:]]*(codex_hooks|hooks)[[:space:]]*=/ {
         if (!done) {
-          print "codex_hooks = true"
+          print "hooks = true"
           done = 1
         }
         next
@@ -2076,7 +2128,7 @@ ensure_codex_hooks_feature_enabled() {
       { print }
       END {
         if (in_features && !done) {
-          print "codex_hooks = true"
+          print "hooks = true"
         }
       }
     ' "$cfg" >"$tmp"
@@ -2088,7 +2140,7 @@ ensure_codex_hooks_feature_enabled() {
 
 $BEGIN_CODEX_FEATURES
 [features]
-codex_hooks = true
+hooks = true
 $END_CODEX_FEATURES
 EOF
 }
@@ -2096,7 +2148,7 @@ EOF
 check_codex_hooks_feature_enabled() {
   local cfg="$1"
 
-  if grep -qE '^[[:space:]]*features\.codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
+  if grep -qE '^[[:space:]]*features\.(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)' "$cfg"; then
     log "Codex hooks feature flag: OK"
     return 0
   fi
@@ -2105,7 +2157,7 @@ check_codex_hooks_feature_enabled() {
     BEGIN { in_features = 0; enabled = 0 }
     /^[[:space:]]*\[features\][[:space:]]*$/ { in_features = 1; next }
     in_features && /^[[:space:]]*\[/ { in_features = 0 }
-    in_features && /^[[:space:]]*codex_hooks[[:space:]]*=[[:space:]]*true([[:space:]]|$)/ { enabled = 1 }
+    in_features && /^[[:space:]]*(codex_hooks|hooks)[[:space:]]*=[[:space:]]*true([[:space:]]|$)/ { enabled = 1 }
     END { exit enabled ? 0 : 1 }
   ' "$cfg"; then
     log "Codex hooks feature flag: OK"

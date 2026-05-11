@@ -7,6 +7,14 @@
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-05-11
+
+### ユーザー向け要約
+
+- **Computer Use plugin と harness-mem の `notify` 連鎖がある環境で、Codex 設定に `notify` が重複する問題を修正**。`harness-mem setup --platform codex` が stale な harness MCP 配線を直すとき、既存の Computer Use `notify --previous-notify harness-mem` を保持し、`notify` キーを二重に作らないようにした。これにより Codex 起動時の `duplicate key notify` エラーを防ぐ。
+- **Codex doctor が現在の `features.hooks = true` を正常な hooks 設定として扱うように修正**。Codex 側が古い `codex_hooks` キーを保持しない構成でも、`codex_wiring` を誤って missing にしない。
+- **`GET /v1/health` を `GET /health` の互換エイリアスとして追加**。versioned API 側のパスを叩いた場合も、404 ではなく同じ health payload を返すようにした。
+
 ## [0.21.1] - 2026-05-11
 
 ### ユーザー向け要約

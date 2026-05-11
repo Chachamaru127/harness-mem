@@ -431,7 +431,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return unauthorized("missing or invalid admin token");
         }
 
-        if (request.method === "GET" && url.pathname === "/health") {
+        if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/v1/health")) {
           return jsonResponse(core.health());
         }
 

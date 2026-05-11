@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.21.2] - 2026-05-11
+
+### Fixed
+
+- **Codex setup no longer creates duplicate `notify` keys when Computer Use already chains harness-mem through `--previous-notify`**. Stale harness MCP wiring repair now preserves an existing Computer Use notify chain and only rewrites the harness MCP block, preventing Codex startup failures from invalid duplicate TOML keys.
+- **Codex doctor now accepts the modern `features.hooks = true` flag as valid hook wiring**. This avoids false `codex_wiring` failures when Codex normalizes config away from the older `codex_hooks` key.
+- **`GET /v1/health` now works as a compatibility alias for `GET /health`**. Users who probe the versioned API path now get the same health payload instead of a 404.
+
 ## [0.21.1] - 2026-05-11
 
 ### Fixed

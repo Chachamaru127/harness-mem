@@ -65,6 +65,41 @@ HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
   );
 }
 
+function writeComputerUseChainedNotifyConfig(tmpHome: string, includeManagedHarnessNotify = false): void {
+  const codexDir = join(tmpHome, ".codex");
+  const notifyScript = `${ROOT}/scripts/hook-handlers/memory-codex-notify.sh`;
+  const escapedNotifyScript = notifyScript.split("/").join("\\/");
+  mkdirSync(codexDir, { recursive: true });
+  writeFileSync(
+    join(codexDir, "config.toml"),
+    `
+${includeManagedHarnessNotify ? `# >>> harness-mem codex notify
+notify = ["bash", "${notifyScript}"]
+# <<< harness-mem codex notify
+
+` : ""}
+approval_policy = "on-request"
+notify = [
+    "/Users/example/.codex/plugins/cache/openai-bundled/computer-use/Codex Computer Use.app/Contents/MacOS/SkyComputerUseClient",
+    "turn-ended",
+    "--previous-notify",
+    '["bash","${escapedNotifyScript}"]',
+]
+
+[mcp_servers.harness]
+command = "/tmp/missing-harness/bin/harness-mcp-server"
+args = []
+cwd = "/tmp/missing-harness"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
+`.trimStart()
+  );
+}
+
 function readCommands(data: Record<string, unknown>, event: string): string[] {
   const hooks = ((data.hooks as Record<string, unknown>)[event] as Array<Record<string, unknown>>) ?? [];
   return hooks.flatMap((entry) =>
@@ -142,7 +177,7 @@ describe("codex hooks merge contract", () => {
       expect(stopCommands).toContain("/Users/tachibanashuuta/.superset/hooks/notify.sh");
         expect(stopCommands).toContain(`bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh`);
         expect(configText).toContain("[features]");
-        expect(configText).toContain("codex_hooks = true");
+        expect(configText).toMatch(/(^|\n)hooks = true(\n|$)/);
         expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-mem", "SKILL.md"), "utf8")).toContain("harness-mem");
         expect(readFileSync(join(tmpHome, ".codex", "skills", "harness-recall", "SKILL.md"), "utf8")).toContain("harness-recall");
       } finally {
@@ -257,6 +292,70 @@ describe("codex hooks merge contract", () => {
     }
   }, 60_000);
 
+  test("setup preserves Computer Use notify chain while repairing stale harness MCP wiring", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-computer-use-notify-"));
+
+    try {
+      writeComputerUseChainedNotifyConfig(tmpHome);
+
+      const result = await runHarnessMem(
+        ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+        }
+      );
+
+      expect(result.code).toBe(0);
+
+      const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      const notifyMatches = configText.match(/^notify\s*=/gm) ?? [];
+      expect(notifyMatches).toHaveLength(1);
+      expect(configText).toContain("--previous-notify");
+      expect(configText).toContain("memory-codex-notify.sh");
+      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
+      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expect(configText).not.toContain("# >>> harness-mem codex notify");
+      expect(configText).not.toContain("/tmp/missing-harness");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("setup removes duplicate managed harness notify when Computer Use already chains it", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-duplicate-notify-repair-"));
+
+    try {
+      writeComputerUseChainedNotifyConfig(tmpHome, true);
+
+      const result = await runHarnessMem(
+        ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+        }
+      );
+
+      expect(result.code).toBe(0);
+
+      const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      const notifyMatches = configText.match(/^notify\s*=/gm) ?? [];
+      expect(notifyMatches).toHaveLength(1);
+      expect(configText).toContain("--previous-notify");
+      expect(configText).toContain("memory-codex-notify.sh");
+      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
+      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expect(configText).not.toContain("# >>> harness-mem codex notify");
+      expect(configText).not.toContain("/tmp/missing-harness");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("doctor --json marks codex_wiring missing when codex hooks feature is disabled", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-feature-doctor-"));
 
@@ -319,6 +418,48 @@ describe("codex hooks merge contract", () => {
 
       expect(parsed.all_green).toBe(false);
       expect(codexCheck?.status).toBe("missing");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("doctor accepts modern Codex hooks feature flag", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-hooks-feature-modern-"));
+
+    try {
+      writeCodexConfig(tmpHome);
+      mkdirSync(join(tmpHome, ".harness-mem"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".codex", "config.toml"),
+        `${readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8")}
+[features]
+hooks = true
+`
+      );
+      writeFileSync(
+        join(tmpHome, ".codex", "hooks.json"),
+        JSON.stringify({
+          hooks: {
+            SessionStart: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-start.sh` }] }],
+            UserPromptSubmit: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-user-prompt.sh` }] }],
+            Stop: [{ hooks: [{ type: "command", command: `bash ${ROOT}/scripts/hook-handlers/codex-session-stop.sh` }] }],
+          },
+        }, null, 2)
+      );
+
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "codex", "--skip-version-check", "--read-only"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+      });
+
+      const parsed = JSON.parse(result.stdout) as {
+        checks: Array<{ name: string; status: string }>;
+      };
+      const codexCheck = parsed.checks.find((check) => check.name === "codex_wiring");
+
+      expect(codexCheck?.status).toBe("ok");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
