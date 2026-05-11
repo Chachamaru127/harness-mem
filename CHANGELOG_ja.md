@@ -7,10 +7,14 @@
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-05-11
+
 ### ユーザー向け要約
 
 - **Codex 0.130.0 upstream follow-up snapshot を追加**。`docs/upstream-update-snapshot-2026-05-10.md` に、公式 release / PR を根拠として remote-control、plugin share metadata、paged thread view、selected-environment image、Bedrock auth label、`apply_patch` diff 精度を分類。harness-mem が実装するのは受け口の互換性であり、Codex 側の remote-control / sharing UX を肩代わりするとは書かない。
 - **Codex 0.130.0 の追加 metadata と paged summary ingest に耐性を追加**。hook payload に safe なラベルが来た時だけ `session_source`、`remote_control`、`items_view`、selected environment id、Bedrock auth method、`apply_patch` / turn diff status を保持。credential 風のネスト値は保存しない。Codex rollout ingest は空の `notLoaded` page を skip し、`summary` / `full` thread item view を user prompt + assistant checkpoint として扱える。
+- **§112 Hermes Agent 統合（tier 3、experimental）を追加** ([#99](https://github.com/Chachamaru127/harness-mem/pull/99))。Nous Research Hermes Agent から harness-mem を共有メモリ窓口として呼べる integration を整備。`integrations/hermes/` 配下に positioning README + 設定 yaml サンプル 2 種 (minimal/full) + セットアップ/トラブルシューティング doc + 新 Python plugin `harness_mem_hermes_bridge`。plugin は Hermes v0.13.0+ (2026-05-07 安定化) の `on_session_start` / `on_session_end` hook を経由して python SDK `HarnessMemClient` 経由で session lifecycle event を harness-mem に転送（`completed && !interrupted` のときだけ `finalize_session` を呼ぶ）。loopback default base URL、env のみで token 受領 (`HARNESS_MEM_URL` / `HARNESS_MEM_TOKEN` / `HARNESS_MEM_PROJECT_KEY`)、forward-compat `**kwargs` で Hermes 将来引数に追従。Hermes 組み込みの `MEMORY.md` / `USER.md` / `skills/` を**置き換えるものではない**ことを明記。TDD: 15 pytest ケース全 pass（client モック、実 daemon 不要）。
+- **§110 cross-repo handoff workflow を文書化**。`docs/claude-harness-companion-contract.md` に、`claude-code-harness` と `harness-mem` 間の二段ハンドオフ規則を記載: Cross-Contract（責務境界 / contract surface / owner 側 spec 実装）は owner repo の `Plans.md §NNN` を SSOT とし、Cross-Runtime（兄弟 repo に挙動変更を依頼する場合）は sibling repo に GitHub Issue を起票する。`claude-code-harness` 側 shareable rule doc (`8fd8c0e8`) とローカル `patterns.md` P7 の owner 側 Cross-Contract 例外への相互参照を追加。Plans.md §110 で追跡（S110-001 / S110-002 / S110-003 cc:完了、本 entry で S110-004 release proof クローズ）。
 
 ## [0.20.0] - 2026-05-09
 

@@ -7,13 +7,20 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-05-11
+
 ### Added
 
 - **Codex 0.130.0 upstream follow-up snapshot**. Added `docs/upstream-update-snapshot-2026-05-10.md` after checking the official Codex 0.130.0 release and related PRs. The snapshot classifies remote-control, plugin share metadata, paged thread views, selected-environment image resolution, Bedrock auth labels, and `apply_patch` diff accuracy into harness-mem action / inherit / future-candidate buckets without claiming harness-mem implements Codex-owned remote-control or sharing UX.
+- **§112 Hermes Agent integration (tier 3, experimental)** ([#99](https://github.com/Chachamaru127/harness-mem/pull/99)). New `integrations/hermes/` directory ships an MCP-based bridge for Nous Research Hermes Agent: positioning README + minimal/full yaml config samples + setup/troubleshooting docs. New Python plugin `integrations/hermes/plugin/harness_mem_hermes_bridge` registers `on_session_start` / `on_session_end` Hermes hooks (Hermes v0.13.0+, 2026-05-07) and forwards session lifecycle events through the existing `HarnessMemClient` python SDK (`record_event` + `finalize_session` only when `completed && !interrupted`). Loopback default base URL, env-only token (`HARNESS_MEM_URL` / `HARNESS_MEM_TOKEN` / `HARNESS_MEM_PROJECT_KEY`), forward-compat `**kwargs` for future Hermes versions; Hermes built-in `MEMORY.md` / `USER.md` / `skills/` are explicitly **not** replaced. TDD coverage: 15 pytest cases pass with mocked client (no live daemon required).
 
 ### Changed
 
 - **Codex 0.130.0 additive metadata and paged summary tolerance**. Codex hooks now preserve safe scalar labels such as `session_source`, `remote_control`, `items_view`, selected environment id, Bedrock auth method, and `apply_patch` / turn diff status when present, while ignoring nested credential-like data. Codex rollout ingest now skips empty `notLoaded` thread pages and can turn `summary` / `full` thread item views into the same user-prompt + assistant-checkpoint observations used by existing transcript ingest.
+
+### Documentation
+
+- **§110 cross-repo handoff workflow codified**. `docs/claude-harness-companion-contract.md` now documents the two-tier handoff rule between `claude-code-harness` and `harness-mem`: Cross-Contract changes (role boundary, contract surface, owner-side spec implementation) live in the owner repo's `Plans.md §NNN`; Cross-Runtime changes (asking the sibling repo to change behavior) go through a GitHub Issue on the sibling repo. Cross-references the reciprocal `claude-code-harness` shareable rule doc (`8fd8c0e8`) and the local `patterns.md` P7 exemption for owner-side Cross-Contract specs. Tracked in Plans.md §110 (S110-001 / S110-002 / S110-003 cc:完了; S110-004 release proof closed by this entry).
 
 ## [0.20.0] - 2026-05-09
 
