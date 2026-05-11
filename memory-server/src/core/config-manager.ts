@@ -104,6 +104,42 @@ function shouldExposeProjectInStats(project: string): boolean {
   return true;
 }
 
+function currentVectorModelPredicate(alias: string, model: string): { sql: string; params: string[] } {
+  const column = `${alias}.model`;
+  if (model.startsWith("adaptive:")) {
+    return { sql: `${column} LIKE 'adaptive:%'`, params: [] };
+  }
+  return { sql: `${column} = ?`, params: [model] };
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function isRetryableEmbeddingWarmup(error: unknown): boolean {
+  const maybe = error as { code?: unknown; retryable?: unknown; readiness?: { retryable?: unknown } };
+  const code = typeof maybe.code === "string" ? maybe.code.toLowerCase() : "";
+  const lowered = errorMessage(error).toLowerCase();
+  const retryable = maybe.retryable !== false && maybe.readiness?.retryable !== false;
+
+  return retryable && (
+    code === "prime_required" ||
+    code === "warming" ||
+    lowered.includes("requires async prime before sync embed") ||
+    (lowered.includes("local onnx model") && lowered.includes("warming up"))
+  );
+}
+
+function summarizeRetryableEmbeddingWarmup(error: unknown): string {
+  const maybe = error as { code?: unknown; modelId?: unknown };
+  const code = typeof maybe.code === "string" ? maybe.code : "warmup";
+  const modelId = typeof maybe.modelId === "string" ? maybe.modelId : "local ONNX";
+  return `${modelId}: retryable embedding ${code}`;
+}
+
 // ---------------------------------------------------------------------------
 // ConfigManager クラス
 // ---------------------------------------------------------------------------
@@ -195,6 +231,8 @@ export class ConfigManager {
 
       const limit = clampLimit(limitInput, 100, 1, 10000);
       const model = this.deps.getVectorModelVersion();
+      const currentVector = currentVectorModelPredicate("v", model);
+      const currentVectorForLegacy = currentVectorModelPredicate("v_current", model);
       const now = nowIso();
       const activeFilter = `o.archived_at IS NULL${expiredFilterSql("o", now)}`;
 
@@ -229,12 +267,12 @@ export class ConfigManager {
             AND NOT EXISTS (
               SELECT 1 FROM mem_vectors v_current
               WHERE v_current.observation_id = o.id
-                AND v_current.model = ?
+                AND ${currentVectorForLegacy.sql}
             )
           ORDER BY o.created_at DESC
           LIMIT ?
         `)
-        .all(model, limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
+        .all(...currentVectorForLegacy.params, limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
 
       const rows: Array<{ id: string; content_redacted: string; created_at: string }> = missingRows.length > 0
         ? missingRows
@@ -254,31 +292,41 @@ export class ConfigManager {
         .query(
           `SELECT
              COUNT(DISTINCT o.id) AS total_observations,
-             COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
+             COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
            FROM mem_observations o
            LEFT JOIN mem_vectors v ON v.observation_id = o.id
            WHERE ${activeFilter}`
         )
-        .get(model) as { total_observations: number; current_count: number } | null;
+        .get(...currentVector.params) as { total_observations: number; current_count: number } | null;
       const totalBefore = Number(beforeCounts?.total_observations ?? 0);
       const currentBefore = Number(beforeCounts?.current_count ?? 0);
 
     let reindexed = 0;
+    let skippedRetryable = 0;
+    const retryableEmbeddingErrors = new Set<string>();
     for (const row of rows) {
-      this.deps.reindexObservationVector(row.id, row.content_redacted || "", row.created_at || nowIso());
-      reindexed += 1;
+      try {
+        this.deps.reindexObservationVector(row.id, row.content_redacted || "", row.created_at || nowIso());
+        reindexed += 1;
+      } catch (error) {
+        if (!isRetryableEmbeddingWarmup(error)) {
+          throw error;
+        }
+        skippedRetryable += 1;
+        retryableEmbeddingErrors.add(summarizeRetryableEmbeddingWarmup(error));
+      }
     }
 
       const afterCounts = this.deps.db
         .query(
           `SELECT
              COUNT(DISTINCT o.id) AS total_observations,
-             COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
+             COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
            FROM mem_observations o
            LEFT JOIN mem_vectors v ON v.observation_id = o.id
            WHERE ${activeFilter}`
         )
-        .get(model) as { total_observations: number; current_count: number } | null;
+        .get(...currentVector.params) as { total_observations: number; current_count: number } | null;
       const totalAfter = Number(afterCounts?.total_observations ?? totalBefore);
       const currentAfter = Number(afterCounts?.current_count ?? (currentBefore + reindexed));
       const missingRemaining = Math.max(0, totalAfter - currentAfter);
@@ -291,10 +339,10 @@ export class ConfigManager {
             AND NOT EXISTS (
               SELECT 1 FROM mem_vectors v_current
               WHERE v_current.observation_id = o.id
-                AND v_current.model = ?
+                AND ${currentVectorForLegacy.sql}
             )
         `)
-        .get(model) as { count: number } | null;
+        .get(...currentVectorForLegacy.params) as { count: number } | null;
       const legacyRemaining = Number(legacyRemainingRow?.count ?? 0);
       const coverage = totalAfter === 0 ? 1 : currentAfter / totalAfter;
       const pct = Math.round(coverage * 100);
@@ -304,6 +352,7 @@ export class ConfigManager {
         [
           {
             reindexed,
+            skipped_retryable: skippedRetryable,
             limit,
             total_observations: totalAfter,
             current_model_vectors: currentAfter,
@@ -323,6 +372,8 @@ export class ConfigManager {
           migration_complete: missingRemaining === 0 && legacyRemaining === 0,
           vector_coverage: coverage,
           target_coverage: 0.95,
+          skipped_retryable: skippedRetryable,
+          retryable_embedding_errors: [...retryableEmbeddingErrors],
         }
       );
     }

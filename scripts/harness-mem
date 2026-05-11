@@ -11,6 +11,7 @@
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
+#   scripts/harness-mem model use-adaptive
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -102,6 +103,7 @@ Commands:
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
+  model use-adaptive         Set adaptive local routing (ruri-v3-30m + multilingual-e5).
   model status [<id>]        Show install status of a model (or all installed).
 
 Common options:
@@ -4814,6 +4816,43 @@ model_is_installed() {
   [ -f "${dir}/tokenizer.json" ] && [ -f "${dir}/onnx/model.onnx" ]
 }
 
+sync_launchagent_embedding_env() {
+  local provider="$1"
+  local model="$2"
+  local plist="${HOME}/Library/LaunchAgents/com.harness-mem.daemon.plist"
+
+  [ -f "$plist" ] || return 0
+  if ! command -v plutil >/dev/null 2>&1; then
+    warn "LaunchAgent plist exists but plutil is unavailable; skipped env sync: ${plist}"
+    return 0
+  fi
+
+  local ok=1
+  for key in HARNESS_MEM_EMBEDDING_PROVIDER HARNESS_MEM_EMBEDDING_MODEL; do
+    local value="$provider"
+    if [ "$key" = "HARNESS_MEM_EMBEDDING_MODEL" ]; then
+      value="$model"
+    fi
+
+    if plutil -replace "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
+      continue
+    fi
+
+    plutil -insert EnvironmentVariables -xml '<dict/>' "$plist" >/dev/null 2>&1 || true
+    if plutil -insert "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
+      continue
+    fi
+
+    ok=0
+  done
+
+  if [ "$ok" -eq 1 ]; then
+    log "LaunchAgent embedding env synced: ${plist}"
+  else
+    warn "Could not sync LaunchAgent embedding env; config was updated: ${plist}"
+  fi
+}
+
 model_impl() {
   local subcmd="${1:-list}"
   shift || true
@@ -4838,6 +4877,7 @@ model_impl() {
       echo ""
       echo "To download a model: harness-mem model pull <id>"
       echo "To activate:         harness-mem model use <id>"
+      echo "To enable adaptive:  harness-mem model use-adaptive"
       ;;
 
     pull)
@@ -4928,6 +4968,37 @@ model_impl() {
       echo "  Config updated: ${CONFIG_PATH}"
       echo "  embedding_provider=local"
       echo "  embedding_model=${model_id}"
+      echo "  Restart daemon to apply: scripts/harness-memd restart"
+      ;;
+
+    use-adaptive)
+      local japanese_model="ruri-v3-30m"
+      local general_model="multilingual-e5"
+      local missing_models=()
+
+      if ! model_is_installed "$japanese_model"; then
+        missing_models+=("$japanese_model")
+      fi
+      if ! model_is_installed "$general_model"; then
+        missing_models+=("$general_model")
+      fi
+      if [ "${#missing_models[@]}" -gt 0 ]; then
+        warn "Adaptive embedding requires installed models: ${japanese_model}, ${general_model}"
+        warn "Missing: ${missing_models[*]}"
+        warn "Install missing models with: harness-mem model pull <id> --yes"
+        return 1
+      fi
+
+      write_embedding_provider "adaptive"
+      write_embedding_model "adaptive"
+      sync_launchagent_embedding_env "adaptive" "adaptive"
+      log "Active embedding config set to adaptive (${japanese_model} + ${general_model})"
+      echo ""
+      echo "  Config updated: ${CONFIG_PATH}"
+      echo "  embedding_provider=adaptive"
+      echo "  embedding_model=adaptive"
+      echo "  Japanese route=${japanese_model}"
+      echo "  General route=${general_model}"
       echo "  Restart daemon to apply: scripts/harness-memd restart"
       ;;
 

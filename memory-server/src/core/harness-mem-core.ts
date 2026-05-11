@@ -2182,6 +2182,12 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
+    const currentVectorPredicate = this.vectorModelVersion.startsWith("adaptive:")
+      ? "v.model LIKE 'adaptive:%'"
+      : "v.model = ?";
+    const currentVectorParams = this.vectorModelVersion.startsWith("adaptive:")
+      ? []
+      : [this.vectorModelVersion];
 
       const vectorCoverage = this.db
         .query(`
@@ -2193,10 +2199,10 @@ export class HarnessMemCore {
               FROM mem_observations o
               JOIN mem_vectors v ON v.observation_id = o.id
               WHERE o.archived_at IS NULL
-                AND v.model = ?
+                AND ${currentVectorPredicate}
             ) AS current_model_observations
         `)
-        .get(this.vectorModelVersion) as {
+        .get(...currentVectorParams) as {
           mem_vectors_count: number;
           observations_count: number;
           current_model_observations: number;
