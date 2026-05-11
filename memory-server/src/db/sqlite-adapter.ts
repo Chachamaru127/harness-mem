@@ -7,12 +7,14 @@
  */
 import { Database } from "bun:sqlite";
 import type { StorageAdapter, PreparedLike } from "./storage-adapter";
+import { configureBunCustomSqliteForSqliteVec } from "./custom-sqlite-preflight";
 
 export class SqliteStorageAdapter implements StorageAdapter {
   readonly backend = "sqlite" as const;
   private readonly db: Database;
 
   constructor(dbPath: string) {
+    configureBunCustomSqliteForSqliteVec();
     this.db = new Database(dbPath, { create: true, strict: false });
   }
 

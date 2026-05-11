@@ -1,7 +1,54 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { Database } from "bun:sqlite";
 import { SqliteStorageAdapter } from "../../src/db/sqlite-adapter";
 import { createStorageAdapter } from "../../src/db/adapter-factory";
+import {
+  configureBunCustomSqliteForSqliteVec,
+  resetCustomSqlitePreflightForTests,
+} from "../../src/db/custom-sqlite-preflight";
 import type { StorageAdapter } from "../../src/db/storage-adapter";
+
+const originalEnv = { ...process.env };
+const originalSetCustomSQLite = (Database as unknown as { setCustomSQLite?: (path: string) => void }).setCustomSQLite;
+const tempDirs: string[] = [];
+
+function restoreEnv(): void {
+  for (const key of Object.keys(process.env)) {
+    if (!(key in originalEnv)) {
+      delete process.env[key];
+    }
+  }
+  for (const [key, value] of Object.entries(originalEnv)) {
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+}
+
+function createFakeFile(name: string): string {
+  const dir = mkdtempSync(join(tmpdir(), "harness-mem-sqlite-preflight-"));
+  tempDirs.push(dir);
+  const filePath = join(dir, name);
+  writeFileSync(filePath, "");
+  return filePath;
+}
+
+afterEach(() => {
+  restoreEnv();
+  (Database as unknown as { setCustomSQLite?: (path: string) => void }).setCustomSQLite = originalSetCustomSQLite;
+  resetCustomSqlitePreflightForTests();
+  while (tempDirs.length > 0) {
+    const dir = tempDirs.pop();
+    if (dir) {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+});
 
 describe("SqliteStorageAdapter", () => {
   test("implements StorageAdapter interface", () => {
@@ -57,6 +104,55 @@ describe("SqliteStorageAdapter", () => {
     expect(typeof adapter.raw.exec).toBe("function");
     adapter.close();
   });
+
+  test("runs Bun custom SQLite preflight before opening the database when sqlite-vec is configured", () => {
+    const vecPath = createFakeFile("vec0.dylib");
+    const sqliteLibPath = createFakeFile("libsqlite3.dylib");
+    const calls: string[] = [];
+    process.env.HARNESS_MEM_SQLITE_VEC_PATH = vecPath;
+    process.env.HARNESS_MEM_SQLITE_LIB_PATH = sqliteLibPath;
+    (Database as unknown as { setCustomSQLite?: (path: string) => void }).setCustomSQLite = (path: string) => {
+      calls.push(path);
+    };
+
+    const adapter = new SqliteStorageAdapter(":memory:");
+    adapter.close();
+
+    expect(calls).toEqual([sqliteLibPath]);
+  });
+
+  test("does not repeat setCustomSQLite for the same library path in one process", () => {
+    const vecPath = createFakeFile("vec0.dylib");
+    const sqliteLibPath = createFakeFile("libsqlite3.dylib");
+    const calls: string[] = [];
+    process.env.HARNESS_MEM_SQLITE_VEC_PATH = vecPath;
+    process.env.HARNESS_MEM_SQLITE_LIB_PATH = sqliteLibPath;
+    (Database as unknown as { setCustomSQLite?: (path: string) => void }).setCustomSQLite = (path: string) => {
+      calls.push(path);
+    };
+
+    const first = new SqliteStorageAdapter(":memory:");
+    const second = new SqliteStorageAdapter(":memory:");
+    first.close();
+    second.close();
+
+    expect(calls).toEqual([sqliteLibPath]);
+  });
+
+  test("skips custom SQLite preflight without throwing when the sqlite library path is missing", () => {
+    const vecPath = createFakeFile("vec0.dylib");
+    const calls: string[] = [];
+    process.env.HARNESS_MEM_SQLITE_VEC_PATH = vecPath;
+    process.env.HARNESS_MEM_SQLITE_LIB_PATH = "/non/existent/libsqlite3.dylib";
+    (Database as unknown as { setCustomSQLite?: (path: string) => void }).setCustomSQLite = (path: string) => {
+      calls.push(path);
+    };
+
+    const adapter = new SqliteStorageAdapter(":memory:");
+    adapter.close();
+
+    expect(calls).toEqual([]);
+  });
 });
 
 describe("createStorageAdapter", () => {
@@ -106,5 +202,53 @@ describe("createStorageAdapter", () => {
         backendMode: "local",
       })
     ).toThrow("dbPath is required");
+  });
+});
+
+describe("configureBunCustomSqliteForSqliteVec", () => {
+  test("uses the Homebrew SQLite default path on macOS when no custom library env is set", () => {
+    const calls: string[] = [];
+    const result = configureBunCustomSqliteForSqliteVec({
+      platform: "darwin",
+      env: {
+        HARNESS_MEM_SQLITE_VEC_PATH: "/tmp/vec0.dylib",
+      } as NodeJS.ProcessEnv,
+      exists: () => true,
+      database: { setCustomSQLite: (path: string) => calls.push(path) },
+    });
+
+    expect(result.reason).toBe("configured");
+    expect(calls).toEqual(["/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib"]);
+  });
+
+  test("skips preflight outside macOS", () => {
+    const calls: string[] = [];
+    const result = configureBunCustomSqliteForSqliteVec({
+      platform: "linux",
+      env: {
+        HARNESS_MEM_SQLITE_VEC_PATH: "/tmp/vec0.dylib",
+        HARNESS_MEM_SQLITE_LIB_PATH: "/tmp/libsqlite3.dylib",
+      } as NodeJS.ProcessEnv,
+      exists: () => true,
+      database: { setCustomSQLite: (path: string) => calls.push(path) },
+    });
+
+    expect(result.reason).toBe("unsupported-platform");
+    expect(calls).toEqual([]);
+  });
+
+  test("skips preflight when Bun does not expose setCustomSQLite", () => {
+    const result = configureBunCustomSqliteForSqliteVec({
+      platform: "darwin",
+      env: {
+        HARNESS_MEM_SQLITE_VEC_PATH: "/tmp/vec0.dylib",
+        HARNESS_MEM_SQLITE_LIB_PATH: "/tmp/libsqlite3.dylib",
+      } as NodeJS.ProcessEnv,
+      exists: () => true,
+      database: {},
+    });
+
+    expect(result.reason).toBe("set-custom-sqlite-unavailable");
+    expect(result.configured).toBe(false);
   });
 });
