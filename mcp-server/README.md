@@ -64,6 +64,29 @@ npm run build
 }
 ```
 
+### With Hermes Agent
+
+```yaml
+# ~/.hermes/config.yaml
+mcp_servers:
+  harness_mem:
+    command: "/Users/<you>/.harness-mem/runtime/harness-mem"
+    args: ["mcp"]
+    env:
+      HARNESS_MEM_PROJECT_KEY: "your-project-key"
+    tools:
+      include:
+        - harness_mem_search
+        - harness_mem_timeline
+        - harness_mem_get_observations
+        - harness_mem_resume_pack
+        - harness_mem_record_checkpoint
+      prompts: false
+      resources: false
+```
+
+See [`integrations/hermes/`](../integrations/hermes/) for the full allowlist, on-demand spawn alternative (`bunx`), and the troubleshooting guide.
+
 ## Available Tools
 
 ### Session Communication

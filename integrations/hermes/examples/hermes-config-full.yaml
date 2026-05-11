@@ -1,0 +1,65 @@
+# Hermes Agent ↔ harness-mem フル設定例
+#
+# 28 ツール全公開。on-demand spawn 方式で Hermes 起動時に
+# harness-mem MCP プロセスを自動起動する構成。
+#
+# 注意:
+#   - admin 系ツール（harness_mem_admin_*）と削除系ツール
+#     （harness_mem_bulk_delete 等）も含むため、運用前提でのみ推奨。
+#   - context 量が増えるため、LLM の reasoning 性能と相談。
+#
+# 配置先: ~/.hermes/config.yaml （または Hermes が読む config）
+
+mcp_servers:
+  harness_mem:
+    # on-demand spawn 方式: bunx 経由で MCP プロセスを起動
+    command: "bunx"
+    args:
+      - "-y"
+      - "@chachamaru127/harness-mem"
+      - "mcp"
+
+    env:
+      HARNESS_MEM_PROJECT_KEY: "your-project-key"
+
+    tools:
+      include:
+        # === 読み取り系 ===
+        - harness_mem_search
+        - harness_mem_timeline
+        - harness_mem_get_observations
+        - harness_mem_sessions_list
+        - harness_mem_session_thread
+        - harness_mem_search_facets
+        - harness_mem_resume_pack
+        - harness_mem_health
+        - harness_mem_stats
+        - harness_mem_export
+        - harness_mem_graph
+
+        # === 書き込み系 ===
+        - harness_mem_record_checkpoint
+        - harness_mem_record_event
+        - harness_mem_finalize_session
+        - harness_mem_add_relation
+        - harness_mem_bulk_add
+        - harness_mem_compress
+        - harness_mem_ingest
+        - harness_mem_share_to_team
+
+        # === 削除系（注意: LLM が誤って呼ぶリスクあり） ===
+        - harness_mem_delete_observation
+        - harness_mem_bulk_delete
+
+        # === admin 系（運用ツールとして使う場合のみ） ===
+        - harness_mem_admin_import_claude_mem
+        - harness_mem_admin_import_status
+        - harness_mem_admin_verify_import
+        - harness_mem_admin_reindex_vectors
+        - harness_mem_admin_metrics
+        - harness_mem_admin_consolidation_run
+        - harness_mem_admin_consolidation_status
+        - harness_mem_admin_audit_log
+
+      prompts: false
+      resources: false

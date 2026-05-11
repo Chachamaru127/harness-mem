@@ -1,0 +1,40 @@
+# Hermes Agent ↔ harness-mem 最小設定例
+#
+# 5 ツールのみ allowlist に登録。検索・読み取り中心、書き込みは
+# checkpoint のみ。context 膨張を避けつつ、Claude Code / Codex と
+# 同じメモリ空間にアクセスできる構成。
+#
+# 配置先: ~/.hermes/config.yaml （または Hermes が読む config）
+# パスの <you> は実際のホームディレクトリ名に置換すること。
+
+mcp_servers:
+  harness_mem:
+    # 別プロセス常駐方式（推奨）
+    # 事前に `~/.harness-mem/runtime/harness-mem daemon start` で daemon を起動済みにする
+    command: "/Users/<you>/.harness-mem/runtime/harness-mem"
+    args:
+      - "mcp"
+
+    env:
+      # 同じ project_key を Claude Code / Codex でも指定すればメモリ共有される
+      HARNESS_MEM_PROJECT_KEY: "your-project-key"
+      # 任意: daemon の host/port を変更している場合のみ
+      # HARNESS_MEM_HOST: "127.0.0.1"
+      # HARNESS_MEM_PORT: "37888"
+
+    tools:
+      include:
+        # 3-layer 検索パイプライン (Step1 → Step2 → Step3)
+        - harness_mem_search
+        - harness_mem_timeline
+        - harness_mem_get_observations
+
+        # セッション継続性
+        - harness_mem_resume_pack
+
+        # チェックポイント記録（Hermes が長期セッション時に学びを保存）
+        - harness_mem_record_checkpoint
+
+      # prompts / resources は無効化（Hermes context をスリムに保つ）
+      prompts: false
+      resources: false
