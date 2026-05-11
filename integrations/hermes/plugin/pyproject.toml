@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "harness-mem-hermes-bridge"
+version = "0.1.0"
+description = "Hermes Agent plugin that forwards session lifecycle events to harness-mem."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "harness-mem maintainers" }]
+keywords = ["hermes", "harness-mem", "memory", "mcp", "agent"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+]
+dependencies = [
+    "harness-mem>=0.20.0",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/Chachamaru127/harness-mem"
+Documentation = "https://github.com/Chachamaru127/harness-mem/tree/main/integrations/hermes"
+Issues = "https://github.com/Chachamaru127/harness-mem/issues"
+
+[project.entry-points."hermes_agent.plugins"]
+harness-mem-bridge = "harness_mem_hermes_bridge.plugin"
+
+[tool.setuptools.packages.find]
+include = ["harness_mem_hermes_bridge*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

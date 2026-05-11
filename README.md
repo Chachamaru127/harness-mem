@@ -159,6 +159,19 @@ harness-mem uninstall --platform codex,claude --purge-db
 
 Local data stays in `~/.harness-mem/harness-mem.db`, and the runtime copy lives at `~/.harness-mem/runtime/harness-mem`. Purge is always explicit; automatic setup must never delete the DB. See [`docs/claude-harness-companion-contract.md`](docs/claude-harness-companion-contract.md).
 
+### Other Agent Integrations
+
+Beyond Claude Code / Codex / Cursor, harness-mem ships ready-to-use integrations for other agent frameworks:
+
+| Integration | Type | Path |
+|---|---|---|
+| LangChain | Python adapter | [`integrations/langchain/`](integrations/langchain/) |
+| CrewAI | Python adapter | [`python-sdk/harness_mem/crewai_memory.py`](python-sdk/harness_mem/crewai_memory.py) |
+| Vercel AI SDK | TypeScript adapter | [`sdk/src/vercel-ai.ts`](sdk/src/vercel-ai.ts) |
+| **Hermes Agent** (Nous Research) | MCP integration _(experimental, tier 3)_ | [`integrations/hermes/`](integrations/hermes/) |
+
+The Hermes integration reuses the existing stdio MCP server — no extra binary or wrapper code. **Important**: This is a *cross-tool continuity bridge*, not a replacement for Hermes' built-in `MEMORY.md` / `USER.md` / `skills/` memory layer (Hermes does not expose a memory-backend swap API). See [`docs/integrations/hermes.md`](docs/integrations/hermes.md) for the full positioning explanation, setup, and troubleshooting.
+
 ### About `harness-mem setup`
 
 `harness-mem setup` is **interactive**. It asks which tools to wire up:
