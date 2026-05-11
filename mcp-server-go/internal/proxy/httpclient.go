@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -19,14 +20,17 @@ import (
 // ---- Configuration ----
 
 const (
-	defaultHost         = "127.0.0.1"
-	defaultPort         = "37888"
-	healthTimeout       = 800 * time.Millisecond
-	healthRetries       = 10
-	healthRetryDelay    = 150 * time.Millisecond
-	healthCacheDuration = 5 * time.Second
-	apiTimeout          = 30 * time.Second
+	defaultHost          = "127.0.0.1"
+	defaultPort          = "37888"
+	healthTimeout        = 2500 * time.Millisecond
+	startupHealthTimeout = 5 * time.Second
+	healthRetries        = 10
+	healthRetryDelay     = 150 * time.Millisecond
+	healthCacheDuration  = 5 * time.Second
+	apiTimeout           = 30 * time.Second
 )
+
+var healthProbePaths = []string{"/health/ready", "/health", "/v1/health"}
 
 // ---- Singleton client ----
 
@@ -37,9 +41,10 @@ var client = &http.Client{
 // ---- Health cache ----
 
 var (
-	healthMu      sync.Mutex
-	healthOK      bool
-	healthChecked time.Time
+	healthMu        sync.Mutex
+	healthOK        bool
+	healthChecked   time.Time
+	startDaemonFunc = startDaemon
 )
 
 // ---- URL resolution ----
@@ -95,20 +100,45 @@ func CheckHealth() bool {
 }
 
 func probeHealth() bool {
-	url := GetBaseURL() + "/health"
-	ctx, cancel := context.WithTimeout(context.Background(), healthTimeout)
-	defer cancel()
+	return probeHealthWithTimeout(getDurationEnv("HARNESS_MEM_HEALTH_TIMEOUT_MS", healthTimeout))
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return false
+func probeHealthWithTimeout(timeout time.Duration) bool {
+	for _, path := range healthProbePaths {
+		url := GetBaseURL() + path
+		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			cancel()
+			continue
+		}
+		resp, err := client.Do(req)
+		cancel()
+		if err != nil {
+			continue
+		}
+		_ = resp.Body.Close()
+		if resp.StatusCode == http.StatusOK {
+			return true
+		}
 	}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
+	return false
+}
+
+func getDurationEnv(name string, fallback time.Duration) time.Duration {
+	raw := strings.TrimSpace(os.Getenv(name))
+	if raw == "" {
+		return fallback
 	}
-	defer resp.Body.Close()
-	return resp.StatusCode == http.StatusOK
+	value, err := time.ParseDuration(raw)
+	if err == nil && value > 0 {
+		return value
+	}
+	ms, err := strconv.Atoi(raw)
+	if err == nil && ms > 0 {
+		return time.Duration(ms) * time.Millisecond
+	}
+	return fallback
 }
 
 // EnsureDaemon checks health and starts the daemon if not running (local mode only).
@@ -125,9 +155,24 @@ func EnsureDaemon() error {
 		return nil
 	}
 
+	if probeHealthWithTimeout(getDurationEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", startupHealthTimeout)) {
+		healthMu.Lock()
+		healthOK = true
+		healthChecked = time.Now()
+		healthMu.Unlock()
+		return nil
+	}
+
 	// Try starting the daemon
-	if err := startDaemon(); err != nil {
-		return fmt.Errorf("failed to start daemon: %w", err)
+	if err := startDaemonFunc(); err != nil {
+		if probeHealthWithTimeout(getDurationEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", startupHealthTimeout)) {
+			healthMu.Lock()
+			healthOK = true
+			healthChecked = time.Now()
+			healthMu.Unlock()
+			return nil
+		}
+		return fmt.Errorf("failed to start daemon and existing daemon health is unreachable at %s: %w", GetBaseURL(), err)
 	}
 
 	// Wait for health with retries

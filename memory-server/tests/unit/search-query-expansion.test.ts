@@ -22,6 +22,12 @@ describe("search query expansion", () => {
     expect(fts).toContain("f1");
   });
 
+  test("buildFtsQuery supports AND-only latency guard queries", () => {
+    const fts = buildFtsQuery("harness mem", "and");
+    expect(fts).toContain('"harness" AND "mem"');
+    expect(fts).not.toContain(" OR ");
+  });
+
   test("buildSearchTokens normalizes code identifiers without losing their compact form", () => {
     const tokens = buildSearchTokens("cleanupFeatureFlags in src/core/cleanup-runner.ts");
 

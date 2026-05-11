@@ -414,7 +414,7 @@ codex mcp get harness
 ### Codex ingest
 
 - `HARNESS_MEM_CODEX_SESSIONS_ROOT` (default: `~/.codex/sessions`)
-- `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` (default: `60000`)
 - `HARNESS_MEM_CODEX_BACKFILL_HOURS` (default: `24`)
 
 ### OpenCode ingest
@@ -422,7 +422,7 @@ codex mcp get harness
 - `HARNESS_MEM_ENABLE_OPENCODE_INGEST` (default: `true`)
 - `HARNESS_MEM_OPENCODE_DB_PATH` (default: `~/.local/share/opencode/opencode.db`)
 - `HARNESS_MEM_OPENCODE_STORAGE_ROOT` (default: `~/.local/share/opencode/storage`)
-- `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `5000`)
+- `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` (default: `60000`)
 - `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` (default: `24`)
 
 ## 6. Environment Tab (read-only)

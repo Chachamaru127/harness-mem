@@ -141,6 +141,16 @@ export interface SearchRequest {
    */
   graph_weight?: number;
   /**
+   * S115-002: When false, skip vector and nugget search for latency-sensitive
+   * MCP callers. Lexical FTS, recency, tags, and lightweight ranking remain.
+   */
+  vector_search?: boolean;
+  /**
+   * S115-002/S115-005: Latency-sensitive search profile for MCP callers.
+   * Keeps the response contract but uses narrower candidate windows.
+   */
+  safe_mode?: boolean;
+  /**
    * §89-001 (XR-002 P0): observation_type フィルタ。
    * 単一値（"decision"）または配列（["decision", "summary"]）で指定。
    * 指定された type のみが検索結果に含まれる（AND で他のフィルタと結合）。

@@ -299,6 +299,15 @@ func optStr(args map[string]any, key string) any {
 	return nil
 }
 
+func envFlag(name string, fallback bool) bool {
+	raw, ok := os.LookupEnv(name)
+	if !ok {
+		return fallback
+	}
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	return !(normalized == "" || normalized == "0" || normalized == "false" || normalized == "off" || normalized == "no")
+}
+
 // ---- Main dispatcher ----
 
 func handleMemoryToolInner(_ context.Context, name string, args map[string]any) types.ToolResult {
@@ -343,6 +352,13 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if validSorts[sortBy] {
 			sortByVal = sortBy
 		}
+		safeMode := argBool(args, "safe_mode", envFlag("HARNESS_MEM_MCP_SEARCH_SAFE_MODE", false))
+		vectorSearch := true
+		if safeMode {
+			vectorSearch = false
+		} else if rawVectorSearch, ok := args["vector_search"].(bool); ok {
+			vectorSearch = rawVectorSearch
+		}
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/search", map[string]any{
 			"query":           query,
 			"project":         optStr(args, "project"),
@@ -352,6 +368,21 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"limit":           optNum(args, "limit"),
 			"include_private": argBool(args, "include_private", false),
 			"sort_by":         sortByVal,
+			"expand_links":    !safeMode && argBool(args, "expand_links", true),
+			"graph_depth": func() any {
+				if safeMode {
+					return 0
+				}
+				return optNum(args, "graph_depth")
+			}(),
+			"graph_weight": func() any {
+				if safeMode {
+					return 0
+				}
+				return optNum(args, "graph_weight")
+			}(),
+			"vector_search": vectorSearch,
+			"safe_mode":     safeMode,
 			// §89-001 (XR-002 P0): Forward observation_type to the REST layer.
 			// Go MCP schema exposes this as a single string (mcp-go has no oneOf
 			// helper); the REST handler also accepts string[] and the `type:xxx`
@@ -404,9 +435,9 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		// can inspect rows archived by forget_policy without having to
 		// call the HTTP endpoint directly.
 		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/verify", map[string]any{
-			"observation_id":    observationID,
-			"include_private":   argBool(args, "include_private", false),
-			"include_archived":  argBool(args, "include_archived", false),
+			"observation_id":   observationID,
+			"include_private":  argBool(args, "include_private", false),
+			"include_archived": argBool(args, "include_archived", false),
 		})
 		if err != nil {
 			return classifyError(err)

@@ -2,8 +2,11 @@ package proxy
 
 import (
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -100,6 +103,30 @@ func TestCheckHealth_Returns200(t *testing.T) {
 	}
 }
 
+func TestCheckHealth_UsesReadyBeforeFullHealth(t *testing.T) {
+	resetHealthCache(t)
+
+	var paths []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path == "/health/ready" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HARNESS_MEM_REMOTE_URL", srv.URL)
+
+	if !CheckHealth() {
+		t.Error("CheckHealth() = false, want true when /health/ready is healthy")
+	}
+	if len(paths) != 1 || paths[0] != "/health/ready" {
+		t.Fatalf("probed paths = %v, want only /health/ready", paths)
+	}
+}
+
 func TestCheckHealth_Returns500(t *testing.T) {
 	resetHealthCache(t)
 
@@ -112,6 +139,73 @@ func TestCheckHealth_Returns500(t *testing.T) {
 
 	if CheckHealth() {
 		t.Error("CheckHealth() = true, want false for 500 response")
+	}
+}
+
+func TestCheckHealth_FallsBackToV1HealthAlias(t *testing.T) {
+	resetHealthCache(t)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1/health" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer srv.Close()
+
+	t.Setenv("HARNESS_MEM_REMOTE_URL", srv.URL)
+
+	if !CheckHealth() {
+		t.Error("CheckHealth() = false, want true when /v1/health is healthy")
+	}
+}
+
+func TestEnsureDaemon_ReusesExistingDaemonWhenStartFailsButHealthRecovers(t *testing.T) {
+	resetHealthCache(t)
+
+	var probes int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health/ready" && r.URL.Path != "/health" && r.URL.Path != "/v1/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		probes++
+		if probes <= 6 {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+
+	t.Setenv("HARNESS_MEM_REMOTE_URL", "")
+	t.Setenv("HARNESS_MEM_HOST", host)
+	t.Setenv("HARNESS_MEM_PORT", port)
+	t.Setenv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", "200")
+
+	started := false
+	originalStart := startDaemonFunc
+	startDaemonFunc = func() error {
+		started = true
+		return errors.New("port already in use")
+	}
+	t.Cleanup(func() { startDaemonFunc = originalStart })
+
+	if err := EnsureDaemon(); err != nil {
+		t.Fatalf("EnsureDaemon() returned error: %v", err)
+	}
+	if !started {
+		t.Fatal("expected startDaemonFunc to be called")
 	}
 }
 

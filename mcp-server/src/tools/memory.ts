@@ -30,6 +30,9 @@ interface MemoryApiResponse {
 
 const execFileAsync = promisify(execFile);
 const HEALTH_CACHE_MS = 5000;
+const DEFAULT_HEALTH_TIMEOUT_MS = 2500;
+const DEFAULT_STARTUP_HEALTH_TIMEOUT_MS = 5000;
+const HEALTH_ENDPOINTS = ["/health/ready", "/health", "/v1/health"] as const;
 let lastHealthyAt = 0;
 
 export function isRemoteMode(): boolean {
@@ -46,21 +49,42 @@ export function getBaseUrl(): string {
   return `http://${host}:${port}`;
 }
 
-async function tryHealthCheck(baseUrl: string): Promise<boolean> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 800);
-  try {
-    const response = await fetch(`${baseUrl}/health`, {
-      method: "GET",
-      headers: { "content-type": "application/json" },
-      signal: controller.signal,
-    });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
+function parsePositiveIntEnv(name: string, fallback: number): number {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return fallback;
   }
+  return Math.max(100, Math.trunc(raw));
+}
+
+function healthTimeoutMs(): number {
+  return parsePositiveIntEnv("HARNESS_MEM_HEALTH_TIMEOUT_MS", DEFAULT_HEALTH_TIMEOUT_MS);
+}
+
+function startupHealthTimeoutMs(): number {
+  return parsePositiveIntEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", DEFAULT_STARTUP_HEALTH_TIMEOUT_MS);
+}
+
+async function tryHealthCheck(baseUrl: string, timeoutMs = healthTimeoutMs()): Promise<boolean> {
+  for (const pathName of HEALTH_ENDPOINTS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${baseUrl}${pathName}`, {
+        method: "GET",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal,
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+      // Try the next health alias before declaring the daemon unreachable.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return false;
 }
 
 function isWithinPath(root: string, target: string): boolean {
@@ -98,18 +122,18 @@ function validateImportSourcePath(sourceDbPath: string): { ok: true; resolvedPat
   return { ok: true, resolvedPath };
 }
 
-async function tryStartDaemon(): Promise<void> {
+async function tryStartDaemon(): Promise<Error | null> {
   const projectRoot = getProjectRoot();
   const scriptPath = path.join(projectRoot, "scripts", "harness-memd");
   if (!fs.existsSync(scriptPath)) {
-    return;
+    return null;
   }
 
   try {
     const resolvedProjectRoot = fs.realpathSync(projectRoot);
     const resolvedScriptPath = fs.realpathSync(scriptPath);
     if (!isWithinPath(resolvedProjectRoot, resolvedScriptPath)) {
-      return;
+      return null;
     }
     await execFileAsync(resolvedScriptPath, ["start", "--quiet"], {
       cwd: projectRoot,
@@ -119,8 +143,9 @@ async function tryStartDaemon(): Promise<void> {
           process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || projectRoot,
       },
     });
-  } catch {
-    // best effort start only
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error : new Error(String(error));
   }
 }
 
@@ -129,7 +154,7 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
     return;
   }
 
-  // リモートモードではローカルデーモン起動をスキップし、リモートの /v1/health を確認する
+  // リモートモードではローカルデーモン起動をスキップし、リモートの readiness/health を確認する
   if (isRemoteMode()) {
     const healthy = await tryHealthCheck(baseUrl);
     if (healthy) {
@@ -145,7 +170,13 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
     return;
   }
 
-  await tryStartDaemon();
+  const lateHealthy = await tryHealthCheck(baseUrl, startupHealthTimeoutMs());
+  if (lateHealthy) {
+    lastHealthyAt = Date.now();
+    return;
+  }
+
+  const startError = await tryStartDaemon();
 
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const started = await tryHealthCheck(baseUrl);
@@ -156,6 +187,15 @@ async function ensureDaemon(baseUrl: string): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
 
+  const alreadyRunning = await tryHealthCheck(baseUrl, startupHealthTimeoutMs());
+  if (alreadyRunning) {
+    lastHealthyAt = Date.now();
+    return;
+  }
+
+  if (startError) {
+    throw new Error(`harness-memd health check failed after start attempt: ${startError.message}`);
+  }
   throw new Error("harness-memd health check failed after 10 retries");
 }
 
@@ -255,6 +295,15 @@ function toBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function envFlag(name: string, fallback = false): boolean {
+  const raw = process.env[name];
+  if (raw === undefined) {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  return !(normalized === "" || normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
+}
+
 function toStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
@@ -322,8 +371,11 @@ export const memoryTools: Tool[] = [
         },
         include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
         branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
+        expand_links: { type: "boolean", description: "When false, skip link-based candidate expansion for this search." },
         graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
         graph_weight: { type: "number", description: "S78-C04: graph proximity weight. 0 disables graph proximity for this query; default is server-side." },
+        safe_mode: { type: "boolean", description: "S115-002: Latency-safe search for MCP clients. When true, disables link expansion, graph expansion/proximity, and vector/nugget search for this call." },
+        vector_search: { type: "boolean", description: "S115-002: Set false to skip vector/nugget search while preserving lexical FTS ranking. Default true unless safe_mode or HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1 is active." },
         detail_level: {
           type: "string",
           enum: ["index", "context", "full"],
@@ -943,6 +995,12 @@ async function handleMemoryToolInner(
           rawDetailLevel && validDetailLevels.includes(rawDetailLevel)
             ? (rawDetailLevel as SearchDetailLevel)
             : "context";
+        const safeMode = toBoolean(input.safe_mode, envFlag("HARNESS_MEM_MCP_SEARCH_SAFE_MODE", false));
+        const vectorSearch = safeMode
+          ? false
+          : typeof input.vector_search === "boolean"
+            ? input.vector_search
+            : true;
 
         const response = await callMemoryApi("/v1/search", {
           query,
@@ -961,8 +1019,11 @@ async function handleMemoryToolInner(
           // S78-E02: Branch-scoped memory フィルタ
           branch: toStringOrUndefined(input.branch),
           // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
-          graph_depth: toNumberOrUndefined(input.graph_depth),
-          graph_weight: toNumberOrUndefined(input.graph_weight),
+          graph_depth: safeMode ? 0 : toNumberOrUndefined(input.graph_depth),
+          graph_weight: safeMode ? 0 : toNumberOrUndefined(input.graph_weight),
+          expand_links: safeMode ? false : toBoolean(input.expand_links, true),
+          vector_search: vectorSearch,
+          safe_mode: safeMode,
           // §89-001 (XR-002 P0): observation_type filter (direct + prefix parsed)
           observation_type: observationType,
         });

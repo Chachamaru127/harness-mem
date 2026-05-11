@@ -645,6 +645,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           const questionKind = typeof body.question_kind === "string" ? body.question_kind : undefined;
           const validKinds = ["profile", "timeline", "graph", "vector", "hybrid", "freshness"];
           const validMemoryTypes: MemoryType[] = ["episodic", "semantic", "procedural"];
+          const safeMode = parseBooleanLike(body.safe_mode, false);
           const rawMemoryType = body.memory_type;
           const parsedMemoryType = Array.isArray(rawMemoryType)
             ? (rawMemoryType.filter((t): t is MemoryType => typeof t === "string" && validMemoryTypes.includes(t as MemoryType)) as MemoryType[])
@@ -680,7 +681,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             as_of: typeof body.as_of === "string" ? body.as_of : undefined,
             limit: parseIntegerLike(body.limit),
             include_private: parseBooleanLike(body.include_private, false),
-            expand_links: parseBooleanLike(body.expand_links, true),
+            expand_links: safeMode ? false : parseBooleanLike(body.expand_links, true),
             strict_project: parseBooleanLike(body.strict_project, true),
             debug: parseBooleanLike(body.debug, false),
             question_kind: questionKind && validKinds.includes(questionKind)
@@ -704,8 +705,12 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             // S78-D02: Contradiction resolution — superseded 観察を含むか（デフォルト: 含む・rank 下げ）
             include_superseded: typeof body.include_superseded === "boolean" ? body.include_superseded : undefined,
             // S78-C03: Multi-hop reasoning — entity graph 経由の関連観察追加取得
-            graph_depth: typeof body.graph_depth === "number" ? body.graph_depth : undefined,
-            graph_weight: typeof body.graph_weight === "number" ? body.graph_weight : undefined,
+            graph_depth: safeMode ? 0 : typeof body.graph_depth === "number" ? body.graph_depth : undefined,
+            graph_weight: safeMode ? 0 : typeof body.graph_weight === "number" ? body.graph_weight : undefined,
+            // S115-002: latency-sensitive MCP callers can request lexical-only
+            // candidate search while preserving the same response contract.
+            vector_search: safeMode ? false : parseBooleanLike(body.vector_search, true),
+            safe_mode: safeMode,
             // §89-001 (XR-002 P0): observation_type フィルタ。
             // 優先順位:
             //   1. body.observation_type 直接指定（string または string[]）
