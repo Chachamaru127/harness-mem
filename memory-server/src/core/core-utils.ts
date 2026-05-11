@@ -600,7 +600,7 @@ export function buildSearchTokens(query: string): string[] {
   return dedupePreserveOrder(tokenize(expandSearchQuery(query)));
 }
 
-export function buildFtsQuery(query: string): string {
+export function buildFtsQuery(query: string, mode: "hybrid" | "and" = "hybrid"): string {
   const tokens = buildSearchTokens(query);
   if (tokens.length === 0) {
     return '""';
@@ -613,7 +613,23 @@ export function buildFtsQuery(query: string): string {
   }
 
   // AND-first: 全トークン一致を最優先、個別トークン+同義語でフォールバック
-  const andClause = escaped.map((t) => `"${t}"`).join(" AND ");
+  const compactDerived = new Set<string>();
+  for (const lhs of escaped) {
+    for (const rhs of escaped) {
+      if (lhs !== rhs) {
+        compactDerived.add(`${lhs}${rhs}`);
+      }
+    }
+  }
+  const andTokens =
+    mode === "and"
+      ? escaped.filter((token) => !compactDerived.has(token))
+      : escaped;
+  const andClause = (andTokens.length > 0 ? andTokens : escaped).map((t) => `"${t}"`).join(" AND ");
+  if (mode === "and") {
+    return andClause;
+  }
+
   const orTokens = escaped.map((t) => `"${t}"`);
 
   // 同義語・バイグラムで候補拡張
@@ -903,17 +919,17 @@ export function isPrivateTag(tags: string[]): boolean {
 
 export const DEFAULT_OPENCODE_STORAGE_ROOT = "~/.local/share/opencode/storage";
 export const DEFAULT_OPENCODE_DB_PATH = "~/.local/share/opencode/opencode.db";
-export const DEFAULT_OPENCODE_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_OPENCODE_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_OPENCODE_BACKFILL_HOURS = 24;
 export const DEFAULT_CURSOR_EVENTS_PATH = "~/.harness-mem/adapters/cursor/events.jsonl";
-export const DEFAULT_CURSOR_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_CURSOR_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_CURSOR_BACKFILL_HOURS = 24;
 export const DEFAULT_ANTIGRAVITY_LOGS_ROOT = "~/Library/Application Support/Antigravity/logs";
 export const DEFAULT_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT = "~/Library/Application Support/Antigravity/User/workspaceStorage";
-export const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_ANTIGRAVITY_BACKFILL_HOURS = 24;
 export const DEFAULT_GEMINI_EVENTS_PATH = "~/.harness-mem/adapters/gemini/events.jsonl";
-export const DEFAULT_GEMINI_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_GEMINI_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_GEMINI_BACKFILL_HOURS = 24;
 
 // ---------------------------------------------------------------------------
@@ -1165,10 +1181,10 @@ export function __resetUserConfigCache(): void {
   cachedUserConfig = null;
 }
 export const DEFAULT_CODEX_SESSIONS_ROOT = "~/.codex/sessions";
-export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_CODEX_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_CODEX_BACKFILL_HOURS = 24;
 export const DEFAULT_CLAUDE_CODE_PROJECTS_ROOT = "~/.claude/projects";
-export const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 5000;
+export const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_CLAUDE_CODE_BACKFILL_HOURS = 24;
 export const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 export const DEFAULT_SEARCH_EXPAND_LINKS = true;

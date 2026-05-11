@@ -153,6 +153,14 @@ describe("schema migration", () => {
           expect(existing.has(columnName)).toBe(true);
         }
       }
+      const reverseLinkIndex = db
+        .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_links_to_relation'`)
+        .get() as { name: string } | null;
+      expect(reverseLinkIndex?.name).toBe("idx_mem_links_to_relation");
+      const activeFactIndex = db
+        .query(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'idx_mem_facts_observation_active'`)
+        .get() as { name: string } | null;
+      expect(activeFactIndex?.name).toBe("idx_mem_facts_observation_active");
 
       const now = "2026-05-07T00:00:00.000Z";
       db.query(

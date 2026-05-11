@@ -68,6 +68,9 @@ Hermes config の `env:` ブロックで指定する変数:
 | `HARNESS_MEM_HOST` | 任意 | `127.0.0.1` | daemon ホスト |
 | `HARNESS_MEM_PORT` | 任意 | `37888` | daemon ポート |
 | `HARNESS_MEM_REMOTE_URL` | 任意 | (空) | リモート daemon を使う場合のフル URL |
+| `HARNESS_MEM_MCP_SEARCH_SAFE_MODE` | 推奨 | `0` | `1` にすると MCP search が link / graph / vector を切った軽量候補検索になる。大規模 DB + `js-fallback` vector 環境では Hermes の tool timeout 回避に有効 |
+| `HARNESS_MEM_HEALTH_TIMEOUT_MS` | 任意 | `2500` | MCP proxy の health check 待ち時間。軽量な `/health/ready` を先に確認し、full health へ fallback する |
+| `HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS` | 任意 | `5000` | MCP proxy が daemon 起動前後に既存 daemon を再確認する待ち時間 |
 
 完全なリストは [`docs/environment-variables.md`](../environment-variables.md) を参照。
 
@@ -163,6 +166,36 @@ tools:
 ```
 
 `HARNESS_MEM_REMOTE_URL` を使ってリモート daemon に繋いでいる場合は、URL の到達性とトークン認証を確認。
+
+### 2-b. `daemon_unavailable: failed to start daemon` だが daemon は動いている
+
+症状: `curl http://127.0.0.1:37888/health/ready` は返るのに、Hermes MCP の `harness_mem_search` が `daemon_unavailable` を返す。
+
+原因: MCP proxy の短い health check が一時的に失敗し、既存 daemon を再利用する前に二重起動を試みている可能性がある。大きい DB で検索中の Bun daemon は health 応答も詰まることがある。
+
+対処:
+
+```yaml
+env:
+  HARNESS_MEM_MCP_SEARCH_SAFE_MODE: "1"
+  HARNESS_MEM_HEALTH_TIMEOUT_MS: "5000"
+  HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS: "8000"
+  # v0.21.3 以前や大規模な履歴ディレクトリでは、履歴取り込みを粗くして API starvation を避ける
+  HARNESS_MEM_CODEX_INGEST_INTERVAL_MS: "60000"
+  HARNESS_MEM_CLAUDE_CODE_INGEST_INTERVAL_MS: "60000"
+  HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS: "60000"
+  HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS: "60000"
+  HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS: "60000"
+```
+
+それでも遅い場合は、Step 1 は `harness_mem_search(safe_mode=true, limit=1)` で候補 ID だけ取り、必要な ID を `harness_mem_get_observations` で読む。
+
+`safe_mode=true` は次をまとめて行う:
+
+- `expand_links=false`
+- `graph_depth=0`
+- `graph_weight=0`
+- `vector_search=false`
 
 ### 3. メモリが Claude Code と分離している
 

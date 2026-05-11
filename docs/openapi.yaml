@@ -687,6 +687,14 @@ paths:
                 graph_weight:
                   type: number
                   description: "S78-C04: graph proximity weight. 0 disables graph proximity for this query; default is server-side."
+                safe_mode:
+                  type: boolean
+                  default: false
+                  description: "S115-002: Latency-safe search for MCP clients. When true in the MCP layer, clients should disable link expansion, graph expansion/proximity, and vector/nugget search for this call."
+                vector_search:
+                  type: boolean
+                  default: true
+                  description: "S115-002: Set false to skip vector/nugget search while preserving lexical FTS ranking."
                 debug:
                   type: boolean
                   default: false

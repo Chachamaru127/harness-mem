@@ -31,6 +31,14 @@ describe("COMP-010: MCP ツール一覧", () => {
     expect(tool?.description).toBeTruthy();
   });
 
+  test("正常: search ツールに MCP safe mode オプションが含まれる", () => {
+    const tool = memoryTools.find((t) => t.name === "harness_mem_search");
+    const properties = tool?.inputSchema.properties as Record<string, unknown>;
+    expect(properties.safe_mode).toBeDefined();
+    expect(properties.vector_search).toBeDefined();
+    expect(properties.expand_links).toBeDefined();
+  });
+
   test("正常: memoryTools に add (record_event) ツールが含まれる", () => {
     const tool = memoryTools.find((t) => t.name === "harness_mem_record_event");
     expect(tool).toBeDefined();

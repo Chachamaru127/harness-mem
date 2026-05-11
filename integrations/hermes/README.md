@@ -49,6 +49,12 @@ mcp_servers:
     args: ["mcp"]
     env:
       HARNESS_MEM_PROJECT_KEY: "your-project-key"
+      HARNESS_MEM_MCP_SEARCH_SAFE_MODE: "1"
+      HARNESS_MEM_CODEX_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_CLAUDE_CODE_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS: "60000"
     tools:
       include:
         - harness_mem_search
@@ -60,6 +66,8 @@ mcp_servers:
 
 `<you>` は実際のホームディレクトリ名に置き換え。`HARNESS_MEM_PROJECT_KEY` は Claude Code / Codex で使っているものと **同じ値** にすると、メモリ空間が共有される。
 
+`HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1` は Hermes 向けの軽量検索モード。大きいローカル DB で `vector_engine=js-fallback` の場合、`harness_mem_search` が tool deadline を超えやすいため、Step 1 では link / graph / vector を切って FTS-first の候補検索に寄せる。必要な詳細は `harness_mem_timeline` / `harness_mem_get_observations` で段階的に読む。
+
 ## 設定例の選び方
 
 | シナリオ | 推奨 config |
@@ -68,6 +76,7 @@ mcp_servers:
 | 全機能を有効化 / admin 操作も使う | [examples/hermes-config-full.yaml](examples/hermes-config-full.yaml) — 28ツール |
 
 最小設定では検索・読み取り・チェックポイント記録のみを許可し、context 膨張を避ける。
+大規模 DB では最小設定のまま `HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1` を維持するのが推奨。検索精度を上げたい場合だけ、個別 tool call で `safe_mode=false` または `vector_search=true` に戻す。
 
 ## ツール一覧（プレフィックス: `harness_mem_*`）
 

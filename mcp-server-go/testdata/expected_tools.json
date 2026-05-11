@@ -1096,6 +1096,18 @@
     "description": "Step 1 of 3-layer workflow (search -> timeline -> get_observations). Returns candidate IDs with meta.token_estimate.",
     "inputSchema": {
       "properties": {
+        "expand_links": {
+          "description": "When false, skip link-based candidate expansion for this search.",
+          "type": "boolean"
+        },
+        "graph_depth": {
+          "description": "S78-C03: Multi-hop reasoning depth. 0 (default) disables graph expansion.",
+          "type": "number"
+        },
+        "graph_weight": {
+          "description": "S78-C04: Graph proximity weight. 0 disables graph proximity for this query.",
+          "type": "number"
+        },
         "include_private": {
           "type": "boolean"
         },
@@ -1111,6 +1123,10 @@
         },
         "query": {
           "type": "string"
+        },
+        "safe_mode": {
+          "description": "S115-002: Latency-safe search for MCP clients. When true, disables link expansion, graph expansion/proximity, and vector/nugget search for this call.",
+          "type": "boolean"
         },
         "session_id": {
           "type": "string"
@@ -1129,6 +1145,10 @@
         },
         "until": {
           "type": "string"
+        },
+        "vector_search": {
+          "description": "S115-002: Set false to skip vector/nugget search while preserving lexical FTS ranking. Default true unless safe_mode or HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1 is active.",
+          "type": "boolean"
         }
       },
       "required": [

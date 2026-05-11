@@ -500,13 +500,14 @@ export class IngestCoordinator {
         if (this.deps.isShuttingDown()) return;
         try { this.ingestClaudeCodeSessions(); } catch { /* ignore post-shutdown DB errors */ }
       };
-      // 起動完了直後の次ティックで一度取り込み、その後 interval に移る。
+      // S115-003: 大規模履歴では起動直後の同期 scan が readiness/search を塞ぐため、
+      // 最初の取り込みも通常 interval まで遅らせる。
       this.claudeCodeIngestStartTimer = setTimeout(() => {
         this.claudeCodeIngestStartTimer = null;
         if (this.deps.isShuttingDown()) return;
         runClaudeCodeIngest();
         this.claudeCodeIngestTimer = setInterval(runClaudeCodeIngest, ccInterval);
-      }, 0);
+      }, ccInterval);
     }
 
     if (config.consolidationEnabled !== false) {

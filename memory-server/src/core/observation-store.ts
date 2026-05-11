@@ -1708,24 +1708,33 @@ export class ObservationStore {
       return normalizeScoreMap(raw);
     }
 
-    const params: unknown[] = [];
-    let sql = `
-      SELECT
-        o.id AS id,
-        bm25(mem_observations_fts, 0, 3.0, 1.0) AS bm25
-      FROM mem_observations_fts
-      JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
-      WHERE mem_observations_fts MATCH ?
-    `;
+    const runFtsQuery = (ftsQuery: string): Array<{ id: string; bm25: number }> => {
+      const params: unknown[] = [];
+      const latencySafeMode = request.safe_mode === true;
+      let sql = `
+        SELECT
+          o.id AS id,
+          ${latencySafeMode ? "1.0" : "bm25(mem_observations_fts, 0, 3.0, 1.0)"} AS bm25
+        FROM mem_observations_fts
+        JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
+        WHERE mem_observations_fts MATCH ?
+      `;
 
-    params.push(buildFtsQuery(request.query));
-    sql = this.applyCommonFilters(sql, params, "o", request);
-    sql += " ORDER BY bm25 ASC LIMIT ?";
-    params.push(internalLimit);
+      params.push(ftsQuery);
+      sql = this.applyCommonFilters(sql, params, "o", request);
+      sql += latencySafeMode ? " ORDER BY mem_observations_fts.rowid DESC LIMIT ?" : " ORDER BY bm25 ASC LIMIT ?";
+      params.push(internalLimit);
 
-    const rows = this.deps.db
-      .query(sql)
-      .all(...(params as any[])) as Array<{ id: string; bm25: number }>;
+      return this.deps.db
+        .query(sql)
+        .all(...(params as any[])) as Array<{ id: string; bm25: number }>;
+    };
+
+    let rows = runFtsQuery(buildFtsQuery(request.query, "and"));
+    if (rows.length === 0) {
+      rows = runFtsQuery(buildFtsQuery(request.query));
+    }
+
     const raw = new Map<string, number>();
     for (const row of rows) {
       raw.set(row.id, -Number(row.bm25));
@@ -3369,9 +3378,13 @@ export class ObservationStore {
     const limit = clampLimit(request.limit, 20, 1, 100);
     // S43-005: temporal クエリは candidate depth を拡張して取りこぼしを防ぐ
     const isTemporalQuery = request.question_kind === "timeline" || request.question_kind === "freshness";
-    const internalLimit = isTemporalQuery
-      ? Math.min(500, Math.max(400, limit * 8))
-      : Math.min(500, limit * 5);
+    const latencySafeMode = request.safe_mode === true;
+    let internalLimit = Math.min(500, limit * 5);
+    if (isTemporalQuery) {
+      internalLimit = Math.min(500, Math.max(400, limit * 8));
+    } else if (latencySafeMode) {
+      internalLimit = Math.min(25, Math.max(5, limit));
+    }
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks =
@@ -3400,6 +3413,7 @@ export class ObservationStore {
       strict_project: strictProject,
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
+      vector_search: request.vector_search !== false,
       scope: request.scope
         ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
         : undefined,
@@ -3415,7 +3429,10 @@ export class ObservationStore {
     const prioritizeLatestInteraction = Boolean(latestInteraction) && hasLatestInteractionIntent;
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
-    const vectorResult = this.vectorSearch(normalizedRequest, internalLimit);
+    const vectorSearchEnabled = normalizedRequest.vector_search !== false;
+    const vectorResult = vectorSearchEnabled
+      ? this.vectorSearch(normalizedRequest, internalLimit)
+      : { scores: new Map<string, number>(), coverage: 0 };
     const vector = vectorResult.scores;
     const graph = new Map<string, number>();
 
@@ -3423,7 +3440,9 @@ export class ObservationStore {
 
     // S74-001: nugget-level vector search — lexical/vector で見つかった候補の nugget のみ検索
     // 全件スキャンを回避し、候補数に比例する高速検索を実現
-    const nuggetScores = this.nuggetSearch(normalizedRequest.query, candidateIds);
+    const nuggetScores = vectorSearchEnabled
+      ? this.nuggetSearch(normalizedRequest.query, candidateIds)
+      : new Map<string, number>();
     if (prioritizeLatestInteraction) {
       if (latestInteraction?.prompt?.id) candidateIds.add(latestInteraction.prompt.id);
       if (latestInteraction?.response?.id) candidateIds.add(latestInteraction.response.id);
@@ -3953,6 +3972,7 @@ export class ObservationStore {
       fts_enabled: this.deps.ftsEnabled,
       embedding_provider: this.deps.getEmbeddingProviderName(),
       embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
+      vector_search_enabled: vectorSearchEnabled,
       lexical_candidates: lexical.size,
       vector_candidates: vector.size,
       graph_candidates: graph.size,
@@ -3993,6 +4013,7 @@ export class ObservationStore {
         expand_links: expandLinks,
         weights,
         vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
+        vector_search_enabled: vectorSearchEnabled,
         embedding_provider: this.deps.getEmbeddingProviderName(),
         embedding_model: this.deps.embeddingProviderModel,
         reranker: {

@@ -36,6 +36,7 @@ HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 PORT="${HARNESS_MEM_PORT:-37888}"
 UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
+READY_URL="http://${HOST}:${PORT}/health/ready"
 UI_CONTEXT_URL="http://${HOST}:${UI_PORT}/api/context"
 START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
 STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
@@ -376,7 +377,10 @@ wait_for_ui() {
 
 is_health_reachable() {
   local response
-  response="$(curl --silent --show-error --max-time 1 "$HEALTH_URL" 2>/dev/null || true)"
+  response="$(curl --silent --show-error --max-time 1 "$READY_URL" 2>/dev/null || true)"
+  if [ -z "$response" ]; then
+    response="$(curl --silent --show-error --max-time 1 "$HEALTH_URL" 2>/dev/null || true)"
+  fi
   if [ -z "$response" ]; then
     return 1
   fi
@@ -917,6 +921,7 @@ doctor_daemon() {
   echo "== harness-memd doctor =="
   echo "state_dir: $STATE_DIR"
   echo "db_path: $DB_PATH"
+  echo "ready_url: $READY_URL"
   echo "health_url: $HEALTH_URL"
 
   if command -v bun >/dev/null 2>&1; then

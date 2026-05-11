@@ -18,6 +18,15 @@ mcp_servers:
     env:
       # 同じ project_key を Claude Code / Codex でも指定すればメモリ共有される
       HARNESS_MEM_PROJECT_KEY: "your-project-key"
+      # 大きいDB / js-fallback vector 環境では Step1 search を軽量化する
+      # （link / graph / vector を切り、FTS-first の候補検索にする）
+      HARNESS_MEM_MCP_SEARCH_SAFE_MODE: "1"
+      # 旧バージョン互換: 大きい履歴ディレクトリで daemon がAPI応答を塞がないようにする
+      HARNESS_MEM_CODEX_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_CLAUDE_CODE_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS: "60000"
+      HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS: "60000"
       # 任意: daemon の host/port を変更している場合のみ
       # HARNESS_MEM_HOST: "127.0.0.1"
       # HARNESS_MEM_PORT: "37888"

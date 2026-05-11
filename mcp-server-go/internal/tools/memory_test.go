@@ -232,6 +232,51 @@ func TestHandleMemSearchObservationType(t *testing.T) {
 	}
 }
 
+func TestHandleMemSearchSafeModeForwardsLatencyGuards(t *testing.T) {
+	var received map[string]any
+	var mu sync.Mutex
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		received = req
+		mu.Unlock()
+		writeJSON(w, map[string]any{
+			"ok":    true,
+			"items": []any{},
+			"meta":  map[string]any{"count": float64(0)},
+		})
+	}))
+
+	result := handleMemoryToolInner(context.Background(), "harness_mem_search", map[string]any{
+		"query":       "hermes safe mode",
+		"safe_mode":   true,
+		"graph_depth": float64(3),
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %+v", result)
+	}
+	mu.Lock()
+	got := received
+	mu.Unlock()
+	if got["expand_links"] != false {
+		t.Fatalf("expand_links = %v, want false", got["expand_links"])
+	}
+	if got["vector_search"] != false {
+		t.Fatalf("vector_search = %v, want false", got["vector_search"])
+	}
+	if got["safe_mode"] != true {
+		t.Fatalf("safe_mode = %v, want true", got["safe_mode"])
+	}
+	if got["graph_depth"] != float64(0) {
+		t.Fatalf("graph_depth = %v, want 0", got["graph_depth"])
+	}
+	if got["graph_weight"] != float64(0) {
+		t.Fatalf("graph_weight = %v, want 0", got["graph_weight"])
+	}
+}
+
 // TestHandleMemSearchObservationTypeOmitted verifies that callers who
 // don't set observation_type still reach the REST layer in a
 // pre-§89-001-compatible shape (the field is present as nil, which the

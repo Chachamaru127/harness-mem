@@ -157,6 +157,8 @@ export const POSTGRES_INIT_SQL = `
     ON mem_links(from_observation_id, to_observation_id);
   CREATE INDEX IF NOT EXISTS idx_pg_links_from_relation
     ON mem_links(from_observation_id, relation, to_observation_id);
+  CREATE INDEX IF NOT EXISTS idx_pg_links_to_relation
+    ON mem_links(to_observation_id, relation, from_observation_id);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_pg_links_unique_relation
     ON mem_links(from_observation_id, to_observation_id, relation);
 
@@ -200,6 +202,8 @@ export const POSTGRES_INIT_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_facts_project_session_type
     ON mem_facts(project, session_id, fact_type, created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_pg_facts_observation_active
+    ON mem_facts(observation_id, project, merged_into_fact_id);
   CREATE INDEX IF NOT EXISTS idx_pg_facts_workspace_uid
     ON mem_facts(workspace_uid);
   CREATE INDEX IF NOT EXISTS idx_pg_facts_merged_into

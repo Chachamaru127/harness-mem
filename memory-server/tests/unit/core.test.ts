@@ -78,6 +78,40 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
+  test("search can skip vector and nugget paths for MCP safe mode", () => {
+    const core = new HarnessMemCore(createConfig("search-vector-off"));
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "vector-off-1",
+          payload: { content: "hermes safe mode unique latency guard" },
+        })
+      );
+      core.recordEvent(
+        baseEvent({
+          event_id: "vector-off-2",
+          payload: { content: "hermes safe mode secondary memory" },
+        })
+      );
+
+      const result = core.search({
+        query: "hermes safe mode",
+        limit: 2,
+        include_private: true,
+        vector_search: false,
+      });
+      expect(result.ok).toBe(true);
+      expect(result.items.length).toBeGreaterThan(0);
+      const meta = result.meta as Record<string, unknown>;
+      expect(meta.vector_search_enabled).toBe(false);
+      const candidateCounts = meta.candidate_counts as Record<string, unknown>;
+      expect(Number(candidateCounts.lexical || 0)).toBeGreaterThan(0);
+      expect(Number(candidateCounts.vector || 0)).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("dedupe hash uniqueness is enforced", () => {
     const core = new HarnessMemCore(createConfig("dedupe"));
     try {

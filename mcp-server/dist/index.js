@@ -15961,6 +15961,100 @@ var init_tool_result = __esm({
   }
 });
 
+// src/search-detail-level.ts
+function estimateTokens(items) {
+  return Math.ceil(JSON.stringify(items).length / 4);
+}
+function extractScore(item) {
+  if (typeof item.score === "number") return item.score;
+  const scores = item.scores;
+  if (scores && typeof scores === "object" && !Array.isArray(scores)) {
+    const final = scores.final;
+    if (typeof final === "number") return final;
+  }
+  return 0;
+}
+function extractMeta(item) {
+  const meta = {};
+  for (const key of [
+    "session_id",
+    "project",
+    "platform",
+    "created_at",
+    "updated_at",
+    "tags",
+    "memory_type",
+    "observation_type",
+    "branch",
+    "expires_at",
+    "event_time",
+    "observed_at",
+    "valid_from",
+    "valid_to",
+    "supersedes",
+    "invalidated_at",
+    "temporal_state",
+    "temporal_anchor",
+    "temporal_anchor_kind",
+    "evidence_id",
+    "source"
+  ]) {
+    if (key in item && item[key] !== void 0 && item[key] !== null) {
+      meta[key] = item[key];
+    }
+  }
+  return meta;
+}
+function transformSearchItem(item, level) {
+  const id = item.id ?? null;
+  const title = typeof item.title === "string" ? item.title : "";
+  const score = extractScore(item);
+  if (level === "index") {
+    return { id, title, score };
+  }
+  const content = typeof item.content === "string" ? item.content : "";
+  if (level === "context") {
+    const snippet = content.slice(0, SNIPPET_MAX_CHARS);
+    return {
+      id,
+      title,
+      snippet,
+      score,
+      meta: extractMeta(item)
+    };
+  }
+  return {
+    id,
+    title,
+    content,
+    raw_text: item.raw_text ?? null,
+    score,
+    scores: item.scores ?? {},
+    meta: extractMeta(item)
+  };
+}
+function applyDetailLevel(items, meta, level = "context") {
+  const transformed = items.map(
+    (item) => transformSearchItem(item, level)
+  );
+  const tokenEstimate = estimateTokens(transformed);
+  return {
+    items: transformed,
+    meta: {
+      ...meta,
+      token_estimate: tokenEstimate,
+      detail_level: level
+    }
+  };
+}
+var SNIPPET_MAX_CHARS;
+var init_search_detail_level = __esm({
+  "src/search-detail-level.ts"() {
+    "use strict";
+    SNIPPET_MAX_CHARS = 120;
+  }
+});
+
 // src/tools/memory.ts
 import * as fs6 from "fs";
 import * as path5 from "path";
@@ -15978,21 +16072,38 @@ function getBaseUrl() {
   const port = process.env.HARNESS_MEM_PORT || "37888";
   return `http://${host}:${port}`;
 }
-async function tryHealthCheck(baseUrl) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 800);
-  try {
-    const response = await fetch(`${baseUrl}/health`, {
-      method: "GET",
-      headers: { "content-type": "application/json" },
-      signal: controller.signal
-    });
-    return response.ok;
-  } catch {
-    return false;
-  } finally {
-    clearTimeout(timeout);
+function parsePositiveIntEnv(name, fallback) {
+  const raw = Number(process.env[name]);
+  if (!Number.isFinite(raw) || raw <= 0) {
+    return fallback;
   }
+  return Math.max(100, Math.trunc(raw));
+}
+function healthTimeoutMs() {
+  return parsePositiveIntEnv("HARNESS_MEM_HEALTH_TIMEOUT_MS", DEFAULT_HEALTH_TIMEOUT_MS);
+}
+function startupHealthTimeoutMs() {
+  return parsePositiveIntEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", DEFAULT_STARTUP_HEALTH_TIMEOUT_MS);
+}
+async function tryHealthCheck(baseUrl, timeoutMs = healthTimeoutMs()) {
+  for (const pathName of HEALTH_ENDPOINTS) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(`${baseUrl}${pathName}`, {
+        method: "GET",
+        headers: { "content-type": "application/json" },
+        signal: controller.signal
+      });
+      if (response.ok) {
+        return true;
+      }
+    } catch {
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return false;
 }
 function isWithinPath(root, target) {
   const relative3 = path5.relative(root, target);
@@ -16026,13 +16137,13 @@ async function tryStartDaemon() {
   const projectRoot = getProjectRoot();
   const scriptPath = path5.join(projectRoot, "scripts", "harness-memd");
   if (!fs6.existsSync(scriptPath)) {
-    return;
+    return null;
   }
   try {
     const resolvedProjectRoot = fs6.realpathSync(projectRoot);
     const resolvedScriptPath = fs6.realpathSync(scriptPath);
     if (!isWithinPath(resolvedProjectRoot, resolvedScriptPath)) {
-      return;
+      return null;
     }
     await execFileAsync2(resolvedScriptPath, ["start", "--quiet"], {
       cwd: projectRoot,
@@ -16041,7 +16152,9 @@ async function tryStartDaemon() {
         HARNESS_MEM_CODEX_PROJECT_ROOT: process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || projectRoot
       }
     });
-  } catch {
+    return null;
+  } catch (error2) {
+    return error2 instanceof Error ? error2 : new Error(String(error2));
   }
 }
 async function ensureDaemon(baseUrl) {
@@ -16061,7 +16174,12 @@ async function ensureDaemon(baseUrl) {
     lastHealthyAt = Date.now();
     return;
   }
-  await tryStartDaemon();
+  const lateHealthy = await tryHealthCheck(baseUrl, startupHealthTimeoutMs());
+  if (lateHealthy) {
+    lastHealthyAt = Date.now();
+    return;
+  }
+  const startError = await tryStartDaemon();
   for (let attempt = 0; attempt < 10; attempt += 1) {
     const started = await tryHealthCheck(baseUrl);
     if (started) {
@@ -16069,6 +16187,14 @@ async function ensureDaemon(baseUrl) {
       return;
     }
     await new Promise((resolve3) => setTimeout(resolve3, 150));
+  }
+  const alreadyRunning = await tryHealthCheck(baseUrl, startupHealthTimeoutMs());
+  if (alreadyRunning) {
+    lastHealthyAt = Date.now();
+    return;
+  }
+  if (startError) {
+    throw new Error(`harness-memd health check failed after start attempt: ${startError.message}`);
   }
   throw new Error("harness-memd health check failed after 10 retries");
 }
@@ -16144,6 +16270,14 @@ function toNumberOrUndefined(value) {
 function toBoolean(value, fallback = false) {
   return typeof value === "boolean" ? value : fallback;
 }
+function envFlag(name, fallback = false) {
+  const raw = process.env[name];
+  if (raw === void 0) {
+    return fallback;
+  }
+  const normalized = raw.trim().toLowerCase();
+  return !(normalized === "" || normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no");
+}
 function toStringArray(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -16215,35 +16349,96 @@ async function handleMemoryToolInner(name, args) {
         if (!project) {
           return errorResult("project is required");
         }
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["L0", "L1", "full"];
+        const detailLevel = rawDetailLevel && validDetailLevels.includes(rawDetailLevel) ? rawDetailLevel : void 0;
         const response = await callMemoryApi("/v1/resume-pack", {
           project,
           session_id: toStringOrUndefined(input.session_id),
           correlation_id: toStringOrUndefined(input.correlation_id),
           limit: toNumberOrUndefined(input.limit),
-          include_private: toBoolean(input.include_private, false)
+          include_private: toBoolean(input.include_private, false),
+          ...detailLevel !== void 0 ? { detail_level: detailLevel } : {},
+          // §91-003: include partial session summaries (defaults to true)
+          include_partial: toBoolean(input.include_partial, true),
+          // §90-002: lightweight mode (defaults to false for backward-compat)
+          summary_only: toBoolean(input.summary_only, false)
         });
         return successResult(response);
       }
       case "harness_mem_search": {
-        const query = toStringOrUndefined(input.query);
-        if (!query) {
+        const rawQuery = toStringOrUndefined(input.query);
+        if (!rawQuery) {
           return errorResult("query is required");
+        }
+        const rawObservationType = input.observation_type;
+        let observationType;
+        if (typeof rawObservationType === "string" && rawObservationType.trim().length > 0) {
+          observationType = rawObservationType.trim();
+        } else if (Array.isArray(rawObservationType)) {
+          const cleaned = rawObservationType.filter((t) => typeof t === "string" && t.trim().length > 0).map((t) => t.trim());
+          observationType = cleaned.length > 0 ? cleaned : void 0;
+        }
+        let query = rawQuery;
+        if (observationType === void 0) {
+          const prefixMatch = query.match(/^\s*type:([A-Za-z0-9_.-]+)\s*/);
+          if (prefixMatch) {
+            observationType = prefixMatch[1];
+            query = query.slice(prefixMatch[0].length).trim();
+            if (!query) {
+              query = rawQuery.trim();
+            }
+          }
         }
         const sortBy = toStringOrUndefined(input.sort_by);
         const validSortValues = ["relevance", "date_desc", "date_asc"];
+        const rawScope = input.scope;
+        const scope = rawScope && typeof rawScope === "object" && !Array.isArray(rawScope) ? {
+          project: toStringOrUndefined(rawScope.project),
+          session_id: toStringOrUndefined(rawScope.session_id),
+          thread_id: toStringOrUndefined(rawScope.thread_id),
+          topic: toStringOrUndefined(rawScope.topic)
+        } : void 0;
+        const rawDetailLevel = toStringOrUndefined(input.detail_level);
+        const validDetailLevels = ["index", "context", "full"];
+        const detailLevel = rawDetailLevel && validDetailLevels.includes(rawDetailLevel) ? rawDetailLevel : "context";
+        const safeMode = toBoolean(input.safe_mode, envFlag("HARNESS_MEM_MCP_SEARCH_SAFE_MODE", false));
+        const vectorSearch = safeMode ? false : typeof input.vector_search === "boolean" ? input.vector_search : true;
         const response = await callMemoryApi("/v1/search", {
           query,
           project: toStringOrUndefined(input.project),
           session_id: toStringOrUndefined(input.session_id),
           since: toStringOrUndefined(input.since),
           until: toStringOrUndefined(input.until),
+          as_of: toStringOrUndefined(input.as_of),
           limit: toNumberOrUndefined(input.limit),
           include_private: toBoolean(input.include_private, false),
-          sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : void 0
+          include_superseded: typeof input.include_superseded === "boolean" ? input.include_superseded : void 0,
+          sort_by: sortBy && validSortValues.includes(sortBy) ? sortBy : void 0,
+          scope,
+          // S78-D01: 期限切れ観察を含むか
+          include_expired: toBoolean(input.include_expired, false),
+          // S78-E02: Branch-scoped memory フィルタ
+          branch: toStringOrUndefined(input.branch),
+          // S78-C03: Multi-hop reasoning depth (0 = disabled, backward compatible)
+          graph_depth: safeMode ? 0 : toNumberOrUndefined(input.graph_depth),
+          graph_weight: safeMode ? 0 : toNumberOrUndefined(input.graph_weight),
+          expand_links: safeMode ? false : toBoolean(input.expand_links, true),
+          vector_search: vectorSearch,
+          safe_mode: safeMode,
+          // §89-001 (XR-002 P0): observation_type filter (direct + prefix parsed)
+          observation_type: observationType
         });
-        const result = successResult(response, { citations: true });
-        if (response.meta?.count > 0) {
-          Promise.resolve().then(() => (init_index(), index_exports)).then((m) => m.pushMemoryNotification(`Memory search: ${response.meta.count} results for "${query}"`)).catch(() => {
+        const { items: disclosedItems, meta: disclosedMeta } = applyDetailLevel(
+          Array.isArray(response.items) ? response.items : [],
+          response.meta,
+          detailLevel
+        );
+        const disclosedResponse = { ...response, items: disclosedItems, meta: disclosedMeta };
+        const result = successResult(disclosedResponse, { citations: true });
+        const disclosedCount = typeof disclosedMeta?.count === "number" ? disclosedMeta.count : 0;
+        if (disclosedCount > 0) {
+          Promise.resolve().then(() => (init_index(), index_exports)).then((m) => m.pushMemoryNotification(`Memory search: ${disclosedCount} results for "${query}"`)).catch(() => {
           });
         }
         return result;
@@ -16338,7 +16533,9 @@ async function handleMemoryToolInner(name, args) {
           project: toStringOrUndefined(input.project),
           session_id: sessionId,
           correlation_id: toStringOrUndefined(input.correlation_id),
-          summary_mode: toStringOrUndefined(input.summary_mode)
+          summary_mode: toStringOrUndefined(input.summary_mode),
+          persist_skill: input.persist_skill === true,
+          partial: input.partial === true
         });
         return successResult(response);
       }
@@ -16488,13 +16685,19 @@ async function handleMemoryToolInner(name, args) {
         if (!filePath || !content) {
           return errorResult("file_path and content are required");
         }
+        const expiresAt = toStringOrUndefined(input.expires_at);
+        const branch = toStringOrUndefined(input.branch);
         const response = await callMemoryApi("/v1/ingest/document", {
           file_path: filePath,
           content,
           kind: toStringOrUndefined(input.kind),
           project: toStringOrUndefined(input.project),
           platform: toStringOrUndefined(input.platform),
-          session_id: toStringOrUndefined(input.session_id)
+          session_id: toStringOrUndefined(input.session_id),
+          // S78-D01: TTL パススルー
+          ...expiresAt !== void 0 && { expires_at: expiresAt },
+          // S78-E02: Branch パススルー
+          ...branch !== void 0 && { branch }
         });
         return successResult(response);
       }
@@ -16536,20 +16739,24 @@ async function handleMemoryToolInner(name, args) {
     return errorResult(`Memory tool failed [${kind}]: ${message}`);
   }
 }
-var execFileAsync2, HEALTH_CACHE_MS, lastHealthyAt, memoryTools, SELF_TRACK_SKIP;
+var execFileAsync2, HEALTH_CACHE_MS, DEFAULT_HEALTH_TIMEOUT_MS, DEFAULT_STARTUP_HEALTH_TIMEOUT_MS, HEALTH_ENDPOINTS, lastHealthyAt, memoryTools, SELF_TRACK_SKIP;
 var init_memory = __esm({
   "src/tools/memory.ts"() {
     "use strict";
     init_utils();
     init_pii_filter();
     init_tool_result();
+    init_search_detail_level();
     execFileAsync2 = promisify3(execFile2);
     HEALTH_CACHE_MS = 5e3;
+    DEFAULT_HEALTH_TIMEOUT_MS = 2500;
+    DEFAULT_STARTUP_HEALTH_TIMEOUT_MS = 5e3;
+    HEALTH_ENDPOINTS = ["/health/ready", "/health", "/v1/health"];
     lastHealthyAt = 0;
     memoryTools = [
       {
         name: "harness_mem_resume_pack",
-        description: "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions.",
+        description: "Get cross-platform resume context pack for a project/session. Supports correlation_id to fetch context across all related sessions. Use detail_level='L0' for minimal token usage (~170 tokens), 'L1' (default) for recent context (~500-1000 tokens), or 'full' for complete backward-compat output.",
         inputSchema: {
           type: "object",
           properties: {
@@ -16557,7 +16764,20 @@ var init_memory = __esm({
             session_id: { type: "string" },
             correlation_id: { type: "string" },
             limit: { type: "number" },
-            include_private: { type: "boolean" }
+            include_private: { type: "boolean" },
+            detail_level: {
+              type: "string",
+              enum: ["L0", "L1", "full"],
+              description: "\xA778-B03: Wake-up context detail level. L0=critical facts only (~170 tokens), L1=L0+recent context (default), full=backward-compat complete output."
+            },
+            include_partial: {
+              type: "boolean",
+              description: "\xA791-003: When true, include partial session summaries (metadata.is_partial=true) in the resume pack. Defaults to true."
+            },
+            summary_only: {
+              type: "boolean",
+              description: "\xA790-002: Lightweight mode. When true, skips ranking/facts/continuity and exposes the latest session summary at meta.summary for single-jq-path shell consumers. Defaults to false."
+            }
           },
           required: ["project"]
         },
@@ -16574,9 +16794,40 @@ var init_memory = __esm({
             session_id: { type: "string" },
             since: { type: "string" },
             until: { type: "string" },
+            as_of: { type: "string", description: "Point-in-time filter. Returns observations visible at or before this ISO timestamp." },
             limit: { type: "number" },
             include_private: { type: "boolean" },
-            sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" }
+            include_superseded: { type: "boolean", description: "When false, exclude superseded observations. Default true keeps them visible but lower ranked." },
+            sort_by: { type: "string", enum: ["relevance", "date_desc", "date_asc"], description: "Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)" },
+            scope: {
+              type: "object",
+              description: "Hierarchical metadata scope (S78-B02). Narrows search progressively: project > session > thread > topic. When provided, scope fields override the top-level project/session_id.",
+              properties: {
+                project: { type: "string" },
+                session_id: { type: "string" },
+                thread_id: { type: "string" },
+                topic: { type: "string" }
+              }
+            },
+            include_expired: { type: "boolean", description: "S78-D01: When true, include expired observations (TTL past). Default false. Use for admin/audit access." },
+            branch: { type: "string", description: "S78-E02: Filter by git branch. When provided, returns observations with matching branch OR branch=null (legacy rows). Omit to return all observations regardless of branch (backward compatible)." },
+            expand_links: { type: "boolean", description: "When false, skip link-based candidate expansion for this search." },
+            graph_depth: { type: "number", description: "S78-C03: Multi-hop reasoning depth. 0 (default) = disabled (backward compatible). 1-3 = traverse entity graph via mem_relations to surface observations reachable within N hops. Useful for temporal queries where the answer is entity-linked but not lexically similar." },
+            graph_weight: { type: "number", description: "S78-C04: graph proximity weight. 0 disables graph proximity for this query; default is server-side." },
+            safe_mode: { type: "boolean", description: "S115-002: Latency-safe search for MCP clients. When true, disables link expansion, graph expansion/proximity, and vector/nugget search for this call." },
+            vector_search: { type: "boolean", description: "S115-002: Set false to skip vector/nugget search while preserving lexical FTS ranking. Default true unless safe_mode or HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1 is active." },
+            detail_level: {
+              type: "string",
+              enum: ["index", "context", "full"],
+              description: "\xA778-E03: Progressive disclosure level. index=id+title+score only (lightest). context=+snippet(120 chars)+meta (default, preserves existing behavior). full=+complete content+raw_text+score breakdown. meta.token_estimate shows approximate token cost."
+            },
+            observation_type: {
+              oneOf: [
+                { type: "string", maxLength: 100 },
+                { type: "array", maxItems: 32, items: { type: "string", maxLength: 100 } }
+              ],
+              description: '\xA789-001 (XR-002 P0): Filter by observation_type (e.g. "decision", "summary", "context", "document"). Single value or array (maxItems=32, each maxLength=100). Input exceeding the limit is silently clamped server-side to stay within SQLite\'s variable ceiling; send multiple requests if you need more. Also honors the `type:xxx` query-prefix convention \u2014 `query="type:decision \u2026"` is rewritten to `observation_type="decision"` + the remaining query.'
+            }
           },
           required: ["query"]
         },
@@ -16674,7 +16925,7 @@ var init_memory = __esm({
       },
       {
         name: "harness_mem_finalize_session",
-        description: "Finalize session and generate summary.",
+        description: "Finalize session and generate summary. When the session has 5+ steps and ends with a completion signal, a skill_suggestion is returned. Pass persist_skill: true to also save it as a reusable procedural skill observation.",
         inputSchema: {
           type: "object",
           properties: {
@@ -16685,6 +16936,14 @@ var init_memory = __esm({
             summary_mode: {
               type: "string",
               enum: ["standard", "short", "detailed"]
+            },
+            persist_skill: {
+              type: "boolean",
+              description: "If true, persist detected skill as an observation with tags [skill, procedural]. Defaults to false."
+            },
+            partial: {
+              type: "boolean",
+              description: "\xA791-001: If true, generate a session_summary observation (metadata.is_partial=true) without closing the session. No-op if session is already closed. Defaults to false (full finalize)."
             }
           },
           required: ["session_id"]
@@ -16851,7 +17110,8 @@ var init_memory = __esm({
           properties: {
             from_observation_id: { type: "string", description: "Source observation ID" },
             to_observation_id: { type: "string", description: "Target observation ID" },
-            relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity"], description: "Relation type" },
+            // S78-D02: "supersedes" added — (A, B, 'supersedes') = "A supersedes B" (B is made stale)
+            relation: { type: "string", enum: ["updates", "extends", "derives", "follows", "shared_entity", "contradicts", "causes", "part_of", "supersedes"], description: "Relation type" },
             weight: { type: "number", description: "Link weight (default: 1.0)" }
           },
           required: ["from_observation_id", "to_observation_id", "relation"]
@@ -16950,7 +17210,9 @@ var init_memory = __esm({
             kind: { type: "string", enum: ["decisions_md", "adr"], description: "Document kind (auto-detected if omitted)" },
             project: { type: "string" },
             platform: { type: "string" },
-            session_id: { type: "string" }
+            session_id: { type: "string" },
+            expires_at: { type: "string", description: "S78-D01: TTL for this observation as ISO-8601 string or Unix seconds. Null/omitted = no expiration. Past values accepted (observation stored as already-expired)." },
+            branch: { type: "string", description: "S78-E02: Git branch to scope this observation to. When set, observation is tagged with this branch name. Omit for no branch scope (visible from all branches)." }
           },
           required: ["file_path", "content"]
         },

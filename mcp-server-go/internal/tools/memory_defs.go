@@ -24,6 +24,11 @@ var memToolSearch = mcp.NewTool("harness_mem_search",
 	mcp.WithNumber("limit"),
 	mcp.WithBoolean("include_private"),
 	mcp.WithString("sort_by", mcp.Description("Sort order: relevance (default), date_desc (newest first), date_asc (oldest first)"), mcp.Enum("relevance", "date_desc", "date_asc")),
+	mcp.WithBoolean("expand_links", mcp.Description("When false, skip link-based candidate expansion for this search.")),
+	mcp.WithNumber("graph_depth", mcp.Description("S78-C03: Multi-hop reasoning depth. 0 (default) disables graph expansion.")),
+	mcp.WithNumber("graph_weight", mcp.Description("S78-C04: Graph proximity weight. 0 disables graph proximity for this query.")),
+	mcp.WithBoolean("safe_mode", mcp.Description("S115-002: Latency-safe search for MCP clients. When true, disables link expansion, graph expansion/proximity, and vector/nugget search for this call.")),
+	mcp.WithBoolean("vector_search", mcp.Description("S115-002: Set false to skip vector/nugget search while preserving lexical FTS ranking. Default true unless safe_mode or HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1 is active.")),
 	// §89-001 (XR-002 P0): observation_type filter.
 	// Go MCP accepts a single string here; TS MCP additionally accepts string[].
 	// The `type:xxx` query-prefix convention (query="type:decision …") is also honored
@@ -276,7 +281,6 @@ var memToolSignalAck = mcp.NewTool("harness_mem_signal_ack",
 	mcp.WithString("signal_id", mcp.Required()),
 	mcp.WithString("agent_id", mcp.Required()),
 )
-
 
 // S81-C03: citation trace — walks observation -> event -> code provenance.
 var memToolVerify = mcp.NewTool("harness_mem_verify",

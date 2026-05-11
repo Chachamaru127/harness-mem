@@ -33,6 +33,8 @@ harness-mem で使用する全環境変数の一覧です。
 | `HARNESS_MEM_HOME` | `~/.harness-mem` | No | harness-mem のデータディレクトリルート。state_dir の基準パスとして使用される | `core/harness-mem-core.ts`, `system-environment/collector.ts` |
 | `HARNESS_MEM_CONFIG_PATH` | `~/.harness-mem/config.json` | No | 設定 JSON ファイルのパス | `server.ts` |
 | `HARNESS_MEM_REMOTE_URL` | `""` (空文字) | No | リモートモードで使用する memory-server の URL（設定すると MCP はリモート接続する） | `mcp-server/src/tools/memory.ts` |
+| `HARNESS_MEM_HEALTH_TIMEOUT_MS` | `2500` | No | MCP proxy が daemon の `/health/ready` / `/health` / `/v1/health` を待つ時間（ミリ秒）。大規模 DB で full health 応答が詰まる場合も、軽量 ready probe を先に使う | `mcp-server/src/tools/memory.ts`, `mcp-server-go/internal/proxy/httpclient.go` |
+| `HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS` | `5000` | No | MCP proxy が daemon 起動前後に既存 daemon を再確認する待ち時間（ミリ秒） | `mcp-server/src/tools/memory.ts`, `mcp-server-go/internal/proxy/httpclient.go` |
 | `HARNESS_MEM_ENABLE_CAPTURE` | `true` | No | 観察情報のキャプチャ（記録）を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_ENABLE_RETRIEVAL` | `true` | No | 検索・取得機能を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_ENABLE_INJECTION` | `true` | No | システムプロンプトへの自動インジェクションを有効にするか | `core/core-utils.ts` |
@@ -124,7 +126,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_ENABLE_CODEX_INGEST` | `true` | No | Codex セッション履歴の取り込みを有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_CODEX_PROJECT_ROOT` | `process.cwd()` | No | Codex プロジェクトルートディレクトリ | `core/core-utils.ts`, `mcp-server/src/tools/memory.ts` |
 | `HARNESS_MEM_CODEX_SESSIONS_ROOT` | `~/.codex/sessions` | No | Codex セッションファイルが保存されるディレクトリ | `core/core-utils.ts` |
-| `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` | `5000` | No | Codex 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
+| `HARNESS_MEM_CODEX_INGEST_INTERVAL_MS` | `60000` | No | Codex 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
 | `HARNESS_MEM_CODEX_BACKFILL_HOURS` | `24` | No | 起動時に遡って取り込む Codex 履歴の時間数。範囲: 1〜8760 | `core/core-utils.ts` |
 
 ### OpenCode
@@ -134,7 +136,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_ENABLE_OPENCODE_INGEST` | `true` | No | OpenCode セッション履歴の取り込みを有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_OPENCODE_DB_PATH` | `~/.local/share/opencode/opencode.db` | No | OpenCode の SQLite データベースパス | `core/core-utils.ts` |
 | `HARNESS_MEM_OPENCODE_STORAGE_ROOT` | `~/.local/share/opencode/storage` | No | OpenCode ストレージルートディレクトリ | `core/core-utils.ts` |
-| `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` | `5000` | No | OpenCode 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
+| `HARNESS_MEM_OPENCODE_INGEST_INTERVAL_MS` | `60000` | No | OpenCode 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
 | `HARNESS_MEM_OPENCODE_BACKFILL_HOURS` | `24` | No | 起動時に遡って取り込む OpenCode 履歴の時間数。範囲: 1〜8760 | `core/core-utils.ts` |
 
 ### Cursor
@@ -143,7 +145,7 @@ SQLite データベースの設定です。
 |--------|-------------|------|------|----------|
 | `HARNESS_MEM_ENABLE_CURSOR_INGEST` | `true` | No | Cursor セッション履歴の取り込みを有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_CURSOR_EVENTS_PATH` | `~/.harness-mem/adapters/cursor/events.jsonl` | No | Cursor イベントログファイルのパス | `core/core-utils.ts` |
-| `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` | `5000` | No | Cursor 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
+| `HARNESS_MEM_CURSOR_INGEST_INTERVAL_MS` | `60000` | No | Cursor 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
 | `HARNESS_MEM_CURSOR_BACKFILL_HOURS` | `24` | No | 起動時に遡って取り込む Cursor 履歴の時間数。範囲: 1〜8760 | `core/core-utils.ts` |
 
 ### Antigravity
@@ -154,7 +156,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_ANTIGRAVITY_ROOTS` | `""` (空文字) | No | Antigravity ワークスペースルートのパスリスト（カンマまたは改行区切り） | `core/core-utils.ts` |
 | `HARNESS_MEM_ANTIGRAVITY_LOGS_ROOT` | `~/Library/Application Support/Antigravity/logs` | No | Antigravity ログディレクトリ（macOS デフォルト） | `core/core-utils.ts` |
 | `HARNESS_MEM_ANTIGRAVITY_WORKSPACE_STORAGE_ROOT` | `~/Library/Application Support/Antigravity/User/workspaceStorage` | No | Antigravity ワークスペースストレージルート（macOS デフォルト） | `core/core-utils.ts` |
-| `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` | `5000` | No | Antigravity 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
+| `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` | `60000` | No | Antigravity 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
 | `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` | `24` | No | 起動時に遡って取り込む Antigravity 履歴の時間数。範囲: 1〜8760 | `core/core-utils.ts` |
 
 ### Gemini CLI
@@ -163,7 +165,7 @@ SQLite データベースの設定です。
 |--------|-------------|------|------|----------|
 | `HARNESS_MEM_ENABLE_GEMINI_INGEST` | `true` | No | Gemini CLI 履歴の取り込みを有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_GEMINI_EVENTS_PATH` | `~/.harness-mem/adapters/gemini/events.jsonl` | No | Gemini CLI イベントログファイルのパス | `core/core-utils.ts` |
-| `HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS` | `5000` | No | Gemini CLI 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
+| `HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS` | `60000` | No | Gemini CLI 取り込みのポーリング間隔（ミリ秒）。範囲: 1000〜300000 | `core/core-utils.ts` |
 | `HARNESS_MEM_GEMINI_BACKFILL_HOURS` | `24` | No | 起動時に遡って取り込む Gemini CLI 履歴の時間数。範囲: 1〜8760 | `core/core-utils.ts` |
 
 ### Audio（Whisper）
@@ -199,6 +201,7 @@ SQLite データベースの設定です。
 |--------|-------------|------|------|----------|
 | `HARNESS_MEM_SEARCH_RANKING` | `hybrid_v3` | No | 検索スコアリングアルゴリズム。`hybrid_v3` / `bm25` / `vector` 等から選択 | `core/core-utils.ts` |
 | `HARNESS_MEM_SEARCH_EXPAND_LINKS` | `true` | No | 検索結果のリンク展開を有効にするか | `core/core-utils.ts` |
+| `HARNESS_MEM_MCP_SEARCH_SAFE_MODE` | `false` | No | MCP 経由の `harness_mem_search` を軽量化する。`1` にすると link / graph / vector を切り、FTS-first の候補検索にする | `mcp-server/src/tools/memory.ts`, `mcp-server-go/internal/tools/memory.go` |
 | `HARNESS_MEM_RECENCY_HALF_LIFE_DAYS` | `14`（推定） | No | 再新性スコアの半減期（日数）。小さいほど新しい記憶を重視する | `core/core-utils.ts`, `rerank/simple-reranker.ts` |
 | `HARNESS_MEM_RERANKER_ENABLED` | `false` | No | リランク（再スコアリング）機能を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_RERANKER_PROVIDER` | `simple` | No | リランクプロバイダー。`simple` / `cohere` / `huggingface` / `sentence-transformers` から選択 | `rerank/registry.ts` |
@@ -285,11 +288,13 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_GEMINI_BACKFILL_HOURS` | Ingestion |
 | `HARNESS_MEM_GEMINI_EVENTS_PATH` | Ingestion |
 | `HARNESS_MEM_GEMINI_INGEST_INTERVAL_MS` | Ingestion |
+| `HARNESS_MEM_HEALTH_TIMEOUT_MS` | Core |
 | `HARNESS_MEM_HOME` | Core |
 | `HARNESS_MEM_HOST` | Core |
 | `HARNESS_MEM_LLM_PROVIDER` | LLM |
 | `HARNESS_MEM_MANAGED_API_KEY` | Managed Backend |
 | `HARNESS_MEM_MANAGED_ENDPOINT` | Managed Backend |
+| `HARNESS_MEM_MCP_SEARCH_SAFE_MODE` | Performance |
 | `HARNESS_MEM_OLLAMA_BASE_URL` | Embedding |
 | `HARNESS_MEM_OLLAMA_EMBED_MODEL` | Embedding |
 | `HARNESS_MEM_OLLAMA_HOST` | LLM |
@@ -316,6 +321,7 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_SEARCH_EXPAND_LINKS` | Performance |
 | `HARNESS_MEM_SEARCH_RANKING` | Performance |
 | `HARNESS_MEM_SQLITE_VEC_PATH` | Database |
+| `HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS` | Core |
 | `HARNESS_MEM_TEAM_ID` | Session |
 | `HARNESS_MEM_UI_PORT` | Core |
 | `HARNESS_MEM_USER_ID` | Session |
