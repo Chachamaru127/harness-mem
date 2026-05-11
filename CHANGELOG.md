@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Codex 0.130.0 upstream follow-up snapshot**. Added `docs/upstream-update-snapshot-2026-05-10.md` after checking the official Codex 0.130.0 release and related PRs. The snapshot classifies remote-control, plugin share metadata, paged thread views, selected-environment image resolution, Bedrock auth labels, and `apply_patch` diff accuracy into harness-mem action / inherit / future-candidate buckets without claiming harness-mem implements Codex-owned remote-control or sharing UX.
+
+### Changed
+
+- **Codex 0.130.0 additive metadata and paged summary tolerance**. Codex hooks now preserve safe scalar labels such as `session_source`, `remote_control`, `items_view`, selected environment id, Bedrock auth method, and `apply_patch` / turn diff status when present, while ignoring nested credential-like data. Codex rollout ingest now skips empty `notLoaded` thread pages and can turn `summary` / `full` thread item views into the same user-prompt + assistant-checkpoint observations used by existing transcript ingest.
+
 ## [0.20.0] - 2026-05-09
 
 ### Added

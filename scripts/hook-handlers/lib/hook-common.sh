@@ -491,6 +491,23 @@ hook_extract_codex_hook_meta() {
   command -v jq >/dev/null 2>&1 || { printf '{}'; return 0; }
 
   printf '%s' "$input_json" | jq -c --arg default_event "$default_event" '
+    def hmem_safe_meta_string:
+      if . == null then
+        empty
+      elif ((type == "string") or (type == "number") or (type == "boolean")) then
+        tostring
+      else
+        empty
+      end;
+    def hmem_first_safe_meta_string($values):
+      ($values | map(hmem_safe_meta_string) | map(select(length > 0)) | .[0] // "");
+    def hmem_string_meta($key; $values):
+      hmem_first_safe_meta_string($values) as $value
+      | if ($value | length) > 0 then
+          {($key): $value}
+        else
+          {}
+        end;
     (
       {
         hook_event:(.hook_event_name // $default_event),
@@ -623,6 +640,13 @@ hook_extract_codex_hook_meta() {
           {}
         end
       )
+      + hmem_string_meta("session_source"; [.session_source?, .sessionSource?])
+      + hmem_string_meta("remote_control"; [.remote_control?, .remoteControl?])
+      + hmem_string_meta("items_view"; [.items_view?, .itemsView?])
+      + hmem_string_meta("selected_environment_id"; [.selected_environment_id?, .selectedEnvironmentId?])
+      + hmem_string_meta("bedrock_auth_method"; [.bedrock_auth_method?, .bedrockAuth.method?])
+      + hmem_string_meta("apply_patch_status"; [.apply_patch_status?, .applyPatch.status?])
+      + hmem_string_meta("turn_diff_status"; [.turn_diff_status?, .turnDiff.status?])
     )
     | with_entries(select(.value != null))
   ' 2>/dev/null

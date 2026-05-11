@@ -160,6 +160,10 @@ function normalizeEvents(params: {
     return normalizeCompactedEvents(params);
   }
 
+  if (type === "thread/turns/list") {
+    return normalizeThreadTurnsListEvents(params);
+  }
+
   const normalized = normalizeEvent(params);
   return normalized ? [normalized] : [];
 }
@@ -384,6 +388,144 @@ function normalizeCompactedEvents(params: {
   return recovered.slice(startIndex);
 }
 
+function normalizeThreadTurnsListEvents(params: {
+  parsed: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  context: CodexSessionsContext;
+  fallbackNowIso: () => string;
+  defaultSessionId?: string;
+  defaultProject?: string;
+}): NormalizedCodexEvent[] {
+  const itemsView = normalizeItemsView(params.payload.itemsView) || normalizeItemsView(params.payload.items_view);
+  const items = toArray(params.payload.items);
+
+  if (itemsView === "not_loaded" || items.length === 0) {
+    return [];
+  }
+
+  if (itemsView !== "summary" && itemsView !== "full") {
+    return [];
+  }
+
+  const recovered: NormalizedCodexEvent[] = [];
+  const localContext: CodexSessionsContext = {
+    sessionId: normalizeString(params.context.sessionId),
+    project: normalizeString(params.context.project),
+    lastUserPrompt: normalizeString(params.context.lastUserPrompt),
+    lastAssistantContent: normalizeString(params.context.lastAssistantContent),
+  };
+
+  for (let index = 0; index < items.length; index += 1) {
+    const item = unwrapThreadTurnItem(items[index]);
+    if (normalizeString(item.type) !== "message") {
+      continue;
+    }
+
+    const role = normalizeString(item.role);
+    if (role === "user") {
+      const prompt = extractMessageText(item.content, ["input_text", "text"]);
+      if (!prompt) {
+        continue;
+      }
+
+      recovered.push({
+        eventType: "user_prompt",
+        sessionId: resolveSessionId({
+          parsed: params.parsed,
+          payload: params.payload,
+          context: localContext,
+          defaultSessionId: params.defaultSessionId,
+        }),
+        project: resolveProject({
+          parsed: params.parsed,
+          payload: params.payload,
+          context: localContext,
+          defaultProject: params.defaultProject,
+        }),
+        timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+        payload: {
+          source_type: "thread_turns_list",
+          items_view: itemsView,
+          role: "user",
+          prompt,
+          content: prompt,
+        },
+        dedupeSuffix: `thread-${itemsView}-user-${index}`,
+      });
+      localContext.lastUserPrompt = prompt;
+      continue;
+    }
+
+    if (role !== "assistant") {
+      continue;
+    }
+
+    const assistantContent = extractMessageText(item.content, ["output_text", "text", "input_text"]);
+    if (!assistantContent || assistantContent === normalizeString(localContext.lastAssistantContent)) {
+      continue;
+    }
+
+    recovered.push({
+      eventType: "checkpoint",
+      sessionId: resolveSessionId({
+        parsed: params.parsed,
+        payload: params.payload,
+        context: localContext,
+        defaultSessionId: params.defaultSessionId,
+      }),
+      project: resolveProject({
+        parsed: params.parsed,
+        payload: params.payload,
+        context: localContext,
+        defaultProject: params.defaultProject,
+      }),
+      timestamp: resolveTimestamp(params.parsed, params.fallbackNowIso),
+      payload: {
+        source_type: "thread_turns_list",
+        items_view: itemsView,
+        role: "assistant",
+        type: "assistant_message",
+        title: "assistant_response",
+        content: assistantContent,
+        last_agent_message: assistantContent,
+        prompt: normalizeString(localContext.lastUserPrompt),
+        turn_id: normalizeString(item.turn_id) || normalizeString(params.payload.turn_id),
+      },
+      dedupeSuffix: `thread-${itemsView}-assistant-${index}`,
+    });
+    localContext.lastAssistantContent = assistantContent;
+  }
+
+  return recovered;
+}
+
+function unwrapThreadTurnItem(value: unknown): Record<string, unknown> {
+  const item = toRecord(value);
+  if (normalizeString(item.type) === "message") {
+    return item;
+  }
+
+  const nestedItem = toRecord(item.item);
+  if (normalizeString(nestedItem.type) === "message") {
+    return nestedItem;
+  }
+
+  const nestedMessage = toRecord(item.message);
+  if (normalizeString(nestedMessage.type) === "message") {
+    return nestedMessage;
+  }
+
+  return item;
+}
+
+function normalizeItemsView(value: unknown): string {
+  const normalized = normalizeString(value);
+  if (normalized === "notLoaded" || normalized === "not-loaded") {
+    return "not_loaded";
+  }
+  return normalized;
+}
+
 function resolveSessionId(params: {
   parsed: Record<string, unknown>;
   payload: Record<string, unknown>;
@@ -432,7 +574,7 @@ function createAssistantCheckpoint(
     defaultProject?: string;
   },
   options: {
-    sourceType: "event_msg" | "response_item";
+    sourceType: "event_msg" | "response_item" | "thread_turns_list";
     assistantContent: string;
     title: string;
     eventSubtype?: string;
