@@ -4,8 +4,9 @@
 // Communicates with the TypeScript memory server via HTTP proxy.
 //
 // Usage:
-//   ./harness-mcp-server
-//   (launched by Claude Code as MCP subprocess via stdio)
+//
+//	./harness-mcp-server
+//	(launched by Claude Code as MCP subprocess via stdio)
 package main
 
 import (
@@ -22,8 +23,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "Harness MCP Server started (user_id=%s, team_id=%s)\n",
 		identity.UserID, identity.TeamID)
 
-	// Create and run MCP server over stdio
-	if err := server.Run(); err != nil {
+	if err := server.RunFromEnv(os.Stderr); err != nil {
 		fmt.Fprintf(os.Stderr, "Fatal error: %v\n", err)
 		os.Exit(1)
 	}
