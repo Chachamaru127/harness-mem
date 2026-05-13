@@ -97,14 +97,16 @@ func handleMemTool(name string) HandlerFunc {
 		start := time.Now()
 
 		if shouldTrack {
-			go recordToolUseEvent(name, "before", platform, nil)
+			eventCtx := toolUseEventContext(ctx)
+			go recordToolUseEvent(eventCtx, name, "before", platform, nil)
 		}
 
 		result := handleMemoryToolInner(ctx, name, args)
 
 		if shouldTrack {
 			dur := time.Since(start).Milliseconds()
-			go recordToolUseEvent(name, "after", platform, map[string]any{
+			eventCtx := toolUseEventContext(ctx)
+			go recordToolUseEvent(eventCtx, name, "after", platform, map[string]any{
 				"success":     !result.IsError,
 				"duration_ms": dur,
 			})
@@ -118,8 +120,12 @@ func getMCPPlatform() string {
 	return strings.TrimSpace(os.Getenv("HARNESS_MEM_MCP_PLATFORM"))
 }
 
+func toolUseEventContext(ctx context.Context) context.Context {
+	return proxy.ContextWithProjectKey(context.Background(), proxy.ProjectKeyFromContext(ctx))
+}
+
 // recordToolUseEvent fires a best-effort event to the memory server.
-func recordToolUseEvent(toolName, phase, platform string, extra map[string]any) {
+func recordToolUseEvent(ctx context.Context, toolName, phase, platform string, extra map[string]any) {
 	payload := map[string]any{
 		"tool_name": toolName,
 		"phase":     phase,
@@ -130,7 +136,10 @@ func recordToolUseEvent(toolName, phase, platform string, extra map[string]any) 
 	}
 
 	cwd, _ := os.Getwd()
-	project := os.Getenv("HARNESS_MEM_OPENCODE_PROJECT_ROOT")
+	project := strings.TrimSpace(proxy.ProjectKeyFromContext(ctx))
+	if project == "" {
+		project = os.Getenv("HARNESS_MEM_OPENCODE_PROJECT_ROOT")
+	}
 	if project == "" {
 		project = cwd
 	}
@@ -148,7 +157,7 @@ func recordToolUseEvent(toolName, phase, platform string, extra map[string]any) 
 	}
 
 	// Fire and forget
-	_, _ = proxy.CallMemoryAPI("POST", "/v1/events/record", body)
+	_, _ = proxy.CallMemoryAPIWithContext(ctx, "POST", "/v1/events/record", body)
 }
 
 // ---- Success / Error result helpers ----
@@ -198,9 +207,13 @@ func firstNonNil(vals ...any) any {
 	return nil
 }
 
+func callMemoryAPI(ctx context.Context, method, path string, body any) (*proxy.APIResponse, error) {
+	return proxy.CallMemoryAPIWithContext(ctx, method, path, body)
+}
+
 // ---- Consolidation shared handler ----
 
-func runConsolidation(args map[string]any) types.ToolResult {
+func runConsolidation(ctx context.Context, args map[string]any) types.ToolResult {
 	payload := map[string]any{
 		"reason":     argString(args, "reason"),
 		"project":    argString(args, "project"),
@@ -215,7 +228,7 @@ func runConsolidation(args map[string]any) types.ToolResult {
 	if cs, ok := args["contradiction_scan"].(map[string]any); ok {
 		payload["contradiction_scan"] = cs
 	}
-	resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/consolidation/run", payload)
+	resp, err := callMemoryAPI(ctx, "POST", "/v1/admin/consolidation/run", payload)
 	if err != nil {
 		return classifyError(err)
 	}
@@ -310,7 +323,7 @@ func envFlag(name string, fallback bool) bool {
 
 // ---- Main dispatcher ----
 
-func handleMemoryToolInner(_ context.Context, name string, args map[string]any) types.ToolResult {
+func handleMemoryToolInner(ctx context.Context, name string, args map[string]any) types.ToolResult {
 	if err := proxy.EnsureDaemon(); err != nil {
 		return classifyError(err)
 	}
@@ -335,7 +348,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			"include_partial": includePartial,
 			"summary_only":    summaryOnly,
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/resume-pack", resumePayload)
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/resume-pack", resumePayload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -359,7 +372,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		} else if rawVectorSearch, ok := args["vector_search"].(bool); ok {
 			vectorSearch = rawVectorSearch
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/search", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/search", map[string]any{
 			"query":           query,
 			"project":         optStr(args, "project"),
 			"session_id":      optStr(args, "session_id"),
@@ -399,7 +412,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if id == "" {
 			return errorResult("id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/timeline", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/timeline", map[string]any{
 			"id":              id,
 			"before":          optNum(args, "before"),
 			"after":           optNum(args, "after"),
@@ -415,7 +428,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if len(ids) == 0 {
 			return errorResult("ids is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/get", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/observations/get", map[string]any{
 			"ids":             ids,
 			"include_private": argBool(args, "include_private", false),
 			"compact":         argBool(args, "compact", true),
@@ -434,7 +447,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		// Codex round 13 P2: forward `include_archived` so operators
 		// can inspect rows archived by forget_policy without having to
 		// call the HTTP endpoint directly.
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/verify", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/observations/verify", map[string]any{
 			"observation_id":   observationID,
 			"include_private":  argBool(args, "include_private", false),
 			"include_archived": argBool(args, "include_archived", false),
@@ -453,7 +466,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			q.Set("limit", strconv.Itoa(n))
 		}
 		q.Set("include_private", strconv.FormatBool(argBool(args, "include_private", false)))
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/sessions/list?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/sessions/list?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -473,7 +486,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			q.Set("limit", strconv.Itoa(n))
 		}
 		q.Set("include_private", strconv.FormatBool(argBool(args, "include_private", false)))
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/sessions/thread?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/sessions/thread?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -488,7 +501,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			q.Set("project", p)
 		}
 		q.Set("include_private", strconv.FormatBool(argBool(args, "include_private", false)))
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/search/facets?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/search/facets?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -505,7 +518,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if rules := pii.GetActiveRules(); rules != nil {
 			content = pii.ApplyFilter(rawContent, rules)
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/checkpoints/record", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/checkpoints/record", map[string]any{
 			"platform":     optStr(args, "platform"),
 			"project":      optStr(args, "project"),
 			"session_id":   sessionID,
@@ -524,7 +537,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if sessionID == "" {
 			return errorResult("session_id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/sessions/finalize", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/sessions/finalize", map[string]any{
 			"platform":       optStr(args, "platform"),
 			"project":        optStr(args, "project"),
 			"session_id":     sessionID,
@@ -545,14 +558,14 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if len(event) == 0 {
 			return errorResult("event is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/events/record", map[string]any{"event": event})
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/events/record", map[string]any{"event": event})
 		if err != nil {
 			return classifyError(err)
 		}
 		return successResult(resp, false)
 
 	case "harness_mem_health":
-		resp, err := proxy.CallMemoryAPI("GET", "/health", nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/health", nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -563,7 +576,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if obsID == "" {
 			return errorResult("observation_id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("DELETE", "/v1/observations/"+url.PathEscape(obsID), nil)
+		resp, err := callMemoryAPI(ctx, "DELETE", "/v1/observations/"+url.PathEscape(obsID), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -578,7 +591,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if reason != "" {
 			return errorResult(reason)
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/imports/claude-mem", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/admin/imports/claude-mem", map[string]any{
 			"source_db_path": resolved,
 			"project":        optStr(args, "project"),
 			"dry_run":        argBool(args, "dry_run", false),
@@ -593,7 +606,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if jobID == "" {
 			return errorResult("job_id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/imports/"+url.PathEscape(jobID), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/admin/imports/"+url.PathEscape(jobID), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -604,14 +617,14 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if jobID == "" {
 			return errorResult("job_id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/imports/"+url.PathEscape(jobID)+"/verify", map[string]any{})
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/admin/imports/"+url.PathEscape(jobID)+"/verify", map[string]any{})
 		if err != nil {
 			return classifyError(err)
 		}
 		return successResult(resp, false)
 
 	case "harness_mem_admin_reindex_vectors":
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/admin/reindex-vectors", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/admin/reindex-vectors", map[string]any{
 			"limit": optNum(args, "limit"),
 		})
 		if err != nil {
@@ -620,17 +633,17 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		return successResult(resp, false)
 
 	case "harness_mem_admin_metrics":
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/metrics", nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/admin/metrics", nil)
 		if err != nil {
 			return classifyError(err)
 		}
 		return successResult(resp, false)
 
 	case "harness_mem_admin_consolidation_run":
-		return runConsolidation(args)
+		return runConsolidation(ctx, args)
 
 	case "harness_mem_admin_consolidation_status":
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/consolidation/status", nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/admin/consolidation/status", nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -647,7 +660,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if t := argString(args, "target_type"); t != "" {
 			q.Set("target_type", t)
 		}
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/audit-log?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/admin/audit-log?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -670,7 +683,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if n, ok := argInt(args, "until_ms"); ok {
 			q.Set("until_ms", strconv.Itoa(n))
 		}
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/admin/inject-observability?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/admin/inject-observability?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -683,7 +696,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if fromID == "" || toID == "" || relation == "" {
 			return errorResult("from_observation_id, to_observation_id, relation are required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/links/create", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/links/create", map[string]any{
 			"from_observation_id": fromID,
 			"to_observation_id":   toID,
 			"relation":            relation,
@@ -705,7 +718,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			if !ok {
 				continue
 			}
-			resp, err := proxy.CallMemoryAPI("POST", "/v1/events/record", map[string]any{"event": evMap})
+			resp, err := callMemoryAPI(ctx, "POST", "/v1/events/record", map[string]any{"event": evMap})
 			if err != nil {
 				results = append(results, map[string]any{"ok": false, "error": err.Error()})
 			} else {
@@ -725,7 +738,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if len(ids) == 0 {
 			return errorResult("ids is required and must not be empty")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/bulk-delete", map[string]any{"ids": ids})
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/observations/bulk-delete", map[string]any{"ids": ids})
 		if err != nil {
 			return classifyError(err)
 		}
@@ -740,19 +753,19 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			q.Set("limit", strconv.Itoa(n))
 		}
 		q.Set("include_private", strconv.FormatBool(argBool(args, "include_private", false)))
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/export?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/export?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
 		return successResult(resp, false)
 
 	case "harness_mem_compress":
-		return runConsolidation(args)
+		return runConsolidation(ctx, args)
 
 	case "harness_mem_stats":
 		q := url.Values{}
 		q.Set("include_private", strconv.FormatBool(argBool(args, "include_private", false)))
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/projects/stats?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/projects/stats?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -764,7 +777,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if filePath == "" || content == "" {
 			return errorResult("file_path and content are required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/ingest/document", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/ingest/document", map[string]any{
 			"file_path":  filePath,
 			"content":    content,
 			"kind":       optStr(args, "kind"),
@@ -793,7 +806,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 			clamped := int(math.Min(math.Max(float64(d), 1), 5))
 			q.Set("depth", strconv.Itoa(clamped))
 		}
-		resp, err := proxy.CallMemoryAPI("GET", "/v1/graph/neighbors?"+q.Encode(), nil)
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/graph/neighbors?"+q.Encode(), nil)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -808,7 +821,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if teamID == "" {
 			return errorResult("team_id is required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/observations/share", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/observations/share", map[string]any{
 			"observation_id": obsID,
 			"team_id":        teamID,
 		})
@@ -841,7 +854,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if md, ok := args["metadata"].(map[string]any); ok {
 			payload["metadata"] = md
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/acquire", payload)
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/lease/acquire", payload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -853,7 +866,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if leaseID == "" || agentID == "" {
 			return errorResult("lease_id and agent_id are required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/release", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/lease/release", map[string]any{
 			"lease_id": leaseID,
 			"agent_id": agentID,
 		})
@@ -872,7 +885,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if n, ok := argNumber(args, "ttl_ms"); ok {
 			payload["ttl_ms"] = n
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/lease/renew", payload)
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/lease/renew", payload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -911,7 +924,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if n, ok := argNumber(args, "expires_in_ms"); ok {
 			payload["expires_in_ms"] = n
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/send", payload)
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/signal/send", payload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -945,7 +958,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if n, ok := argNumber(args, "limit"); ok {
 			payload["limit"] = n
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/read", payload)
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/signal/read", payload)
 		if err != nil {
 			return classifyError(err)
 		}
@@ -957,7 +970,7 @@ func handleMemoryToolInner(_ context.Context, name string, args map[string]any) 
 		if signalID == "" || agentID == "" {
 			return errorResult("signal_id and agent_id are required")
 		}
-		resp, err := proxy.CallMemoryAPI("POST", "/v1/signal/ack", map[string]any{
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/signal/ack", map[string]any{
 			"signal_id": signalID,
 			"agent_id":  agentID,
 		})

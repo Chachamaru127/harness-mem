@@ -82,7 +82,18 @@ func RunStreamableHTTP(addr string) error {
 	if strings.TrimSpace(addr) == "" {
 		addr = defaultStreamableHTTPAddr
 	}
-	if err := NewStreamableHTTPServer().Start(addr); err != nil {
+
+	handler, err := newSecureStreamableHTTPHandler(addr)
+	if err != nil {
+		return err
+	}
+	mux := http.NewServeMux()
+	mux.Handle(defaultStreamableHTTPEndpoint, handler)
+	srv := &http.Server{
+		Addr:    addr,
+		Handler: mux,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}
@@ -108,6 +119,11 @@ func ResolveTransportConfigFromEnv() (TransportConfig, error) {
 	addr := strings.TrimSpace(os.Getenv("HARNESS_MEM_MCP_ADDR"))
 	if addr == "" {
 		addr = defaultStreamableHTTPAddr
+	}
+	if transport == transportStreamableHTTP {
+		if _, err := gatewaySecurityConfigFromEnv(addr); err != nil {
+			return TransportConfig{}, err
+		}
 	}
 
 	return TransportConfig{

@@ -74,6 +74,10 @@ func TestTransportMCPServerFactoriesShareConfiguredToolSource(t *testing.T) {
 }
 
 func TestResolveTransportConfigFromEnvDefaultsToStdio(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_TRANSPORT", "")
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "")
+	t.Setenv("HARNESS_MEM_REMOTE_TOKEN", "")
+
 	cfg, err := ResolveTransportConfigFromEnv()
 	if err != nil {
 		t.Fatalf("ResolveTransportConfigFromEnv returned error: %v", err)
@@ -93,6 +97,7 @@ func TestResolveTransportConfigFromEnvDefaultsToStdio(t *testing.T) {
 func TestResolveTransportConfigFromEnvHTTPAndAddrOverride(t *testing.T) {
 	t.Setenv("HARNESS_MEM_MCP_TRANSPORT", "http")
 	t.Setenv("HARNESS_MEM_MCP_ADDR", "127.0.0.1:45678")
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "gateway-secret")
 
 	cfg, err := ResolveTransportConfigFromEnv()
 	if err != nil {
@@ -112,6 +117,7 @@ func TestResolveTransportConfigFromEnvHTTPAndAddrOverride(t *testing.T) {
 
 func TestResolveTransportConfigFromEnvAcceptsStreamableHTTPAlias(t *testing.T) {
 	t.Setenv("HARNESS_MEM_MCP_TRANSPORT", "streamable_http")
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "gateway-secret")
 
 	cfg, err := ResolveTransportConfigFromEnv()
 	if err != nil {
@@ -119,6 +125,20 @@ func TestResolveTransportConfigFromEnvAcceptsStreamableHTTPAlias(t *testing.T) {
 	}
 	if cfg.Transport != transportStreamableHTTP {
 		t.Fatalf("transport = %q, want %q", cfg.Transport, transportStreamableHTTP)
+	}
+}
+
+func TestResolveTransportConfigFromEnvHTTPRequiresToken(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_TRANSPORT", "http")
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "")
+	t.Setenv("HARNESS_MEM_REMOTE_TOKEN", "")
+
+	_, err := ResolveTransportConfigFromEnv()
+	if err == nil {
+		t.Fatal("expected missing token error")
+	}
+	if !strings.Contains(err.Error(), "HARNESS_MEM_MCP_TOKEN") {
+		t.Fatalf("missing token error = %q", err.Error())
 	}
 }
 
@@ -226,6 +246,8 @@ func TestStreamableHTTPMCPIntegrationInitializeToolsListAndHealth(t *testing.T) 
 }
 
 func TestRunStreamableHTTPPortConflictReturnsClearError(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "gateway-secret")
+
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("listen: %v", err)
@@ -240,6 +262,19 @@ func TestRunStreamableHTTPPortConflictReturnsClearError(t *testing.T) {
 	msg := err.Error()
 	if !strings.Contains(msg, addr) || !strings.Contains(msg, "already in use or cannot bind") || !strings.Contains(msg, "bind") {
 		t.Fatalf("port conflict error = %q", msg)
+	}
+}
+
+func TestRunStreamableHTTPRequiresTokenBeforeListen(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_TOKEN", "")
+	t.Setenv("HARNESS_MEM_REMOTE_TOKEN", "")
+
+	err := RunStreamableHTTP(defaultStreamableHTTPAddr)
+	if err == nil {
+		t.Fatal("expected missing token error")
+	}
+	if !strings.Contains(err.Error(), "HARNESS_MEM_MCP_TOKEN") {
+		t.Fatalf("missing token error = %q", err.Error())
 	}
 }
 

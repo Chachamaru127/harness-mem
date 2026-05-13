@@ -2,11 +2,21 @@
 // to the memory server and Context Box.
 package proxy
 
-import "os"
+import (
+	"context"
+	"os"
+	"strings"
+)
 
 // BuildAPIHeaders returns the standard headers for memory server API calls.
 // Mirrors the header construction in memory.ts.
 func BuildAPIHeaders() map[string]string {
+	return BuildAPIHeadersWithContext(context.Background())
+}
+
+// BuildAPIHeadersWithContext returns the standard headers for memory server API
+// calls and includes request-scoped gateway metadata when present.
+func BuildAPIHeadersWithContext(ctx context.Context) map[string]string {
 	headers := map[string]string{
 		"Content-Type": "application/json",
 	}
@@ -27,6 +37,14 @@ func BuildAPIHeaders() map[string]string {
 	}
 	if tid := os.Getenv("HARNESS_MEM_TEAM_ID"); tid != "" {
 		headers["x-harness-mem-team-id"] = tid
+	}
+
+	projectKey := strings.TrimSpace(ProjectKeyFromContext(ctx))
+	if projectKey == "" {
+		projectKey = strings.TrimSpace(os.Getenv("HARNESS_MEM_PROJECT_KEY"))
+	}
+	if projectKey != "" {
+		headers["X-Harness-Project-Key"] = projectKey
 	}
 
 	return headers

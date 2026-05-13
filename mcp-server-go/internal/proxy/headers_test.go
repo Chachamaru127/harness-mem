@@ -1,6 +1,9 @@
 package proxy
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestBuildAPIHeaders_RemoteToken(t *testing.T) {
 	t.Setenv("HARNESS_MEM_REMOTE_TOKEN", "remote-secret")
@@ -59,6 +62,27 @@ func TestBuildAPIHeaders_TeamID(t *testing.T) {
 
 	if got := headers["x-harness-mem-team-id"]; got != "team-99" {
 		t.Errorf("x-harness-mem-team-id = %q, want %q", got, "team-99")
+	}
+}
+
+func TestBuildAPIHeadersWithContext_ProjectKeyFromContextBeatsEnv(t *testing.T) {
+	t.Setenv("HARNESS_MEM_PROJECT_KEY", "env-project")
+
+	ctx := ContextWithProjectKey(context.Background(), "ctx-project")
+	headers := BuildAPIHeadersWithContext(ctx)
+
+	if got := headers["X-Harness-Project-Key"]; got != "ctx-project" {
+		t.Errorf("X-Harness-Project-Key = %q, want ctx-project", got)
+	}
+}
+
+func TestBuildAPIHeadersWithContext_ProjectKeyEnvFallback(t *testing.T) {
+	t.Setenv("HARNESS_MEM_PROJECT_KEY", "env-project")
+
+	headers := BuildAPIHeadersWithContext(context.Background())
+
+	if got := headers["X-Harness-Project-Key"]; got != "env-project" {
+		t.Errorf("X-Harness-Project-Key = %q, want env-project", got)
 	}
 }
 

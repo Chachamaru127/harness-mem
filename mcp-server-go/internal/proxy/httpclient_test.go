@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net"
@@ -266,6 +267,34 @@ func TestCallMemoryAPI_Returns500(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusInternalServerError {
 		t.Errorf("StatusCode = %d, want 500", resp.StatusCode)
+	}
+}
+
+func TestCallMemoryAPIWithContext_ForwardsProjectKeyHeader(t *testing.T) {
+	resetHealthCache(t)
+
+	var gotProjectKey string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotProjectKey = r.Header.Get("X-Harness-Project-Key")
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"ok": true})
+	}))
+	defer srv.Close()
+
+	t.Setenv("HARNESS_MEM_REMOTE_URL", srv.URL)
+	t.Setenv("HARNESS_MEM_PROJECT_KEY", "env-project")
+
+	ctx := ContextWithProjectKey(context.Background(), "ctx-project")
+	resp, err := CallMemoryAPIWithContext(ctx, http.MethodGet, "/v1/search", nil)
+	if err != nil {
+		t.Fatalf("CallMemoryAPIWithContext returned error: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("StatusCode = %d, want 200", resp.StatusCode)
+	}
+	if gotProjectKey != "ctx-project" {
+		t.Fatalf("X-Harness-Project-Key = %q, want ctx-project", gotProjectKey)
 	}
 }
 

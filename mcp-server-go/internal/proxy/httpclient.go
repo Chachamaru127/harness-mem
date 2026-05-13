@@ -251,7 +251,13 @@ type APIResponse struct {
 // path: e.g. "/v1/search"
 // body: request body (nil for GET)
 func CallMemoryAPI(method, path string, body any) (*APIResponse, error) {
-	return callAPI(GetBaseURL(), BuildAPIHeaders(), method, path, body)
+	return CallMemoryAPIWithContext(context.Background(), method, path, body)
+}
+
+// CallMemoryAPIWithContext makes an HTTP request to the memory server and
+// carries request-scoped metadata from the context into outbound headers.
+func CallMemoryAPIWithContext(ctx context.Context, method, path string, body any) (*APIResponse, error) {
+	return callAPI(ctx, GetBaseURL(), BuildAPIHeadersWithContext(ctx), method, path, body)
 }
 
 // CallCBAPI makes an HTTP request to the Context Box API.
@@ -260,10 +266,10 @@ func CallCBAPI(method, path string, body any) (*APIResponse, error) {
 	if baseURL == "" {
 		return nil, fmt.Errorf("CONTEXT_BOX_URL is not configured")
 	}
-	return callAPI(baseURL, BuildCBHeaders(), method, path, body)
+	return callAPI(context.Background(), baseURL, BuildCBHeaders(), method, path, body)
 }
 
-func callAPI(baseURL string, headers map[string]string, method, path string, body any) (*APIResponse, error) {
+func callAPI(ctx context.Context, baseURL string, headers map[string]string, method, path string, body any) (*APIResponse, error) {
 	url := baseURL + path
 
 	var bodyReader io.Reader
@@ -275,7 +281,10 @@ func callAPI(baseURL string, headers map[string]string, method, path string, bod
 		bodyReader = bytes.NewReader(b)
 	}
 
-	req, err := http.NewRequest(method, url, bodyReader)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

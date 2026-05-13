@@ -277,6 +277,115 @@ func TestHandleMemSearchSafeModeForwardsLatencyGuards(t *testing.T) {
 	}
 }
 
+type observedEvent struct {
+	headerProjectKey string
+	bodyProject      string
+	toolName         string
+	phase            string
+}
+
+func TestHandleMemToolSelfTrackingCarriesRequestProjectKey(t *testing.T) {
+	t.Setenv("HARNESS_MEM_MCP_PLATFORM", "codex")
+	t.Setenv("HARNESS_MEM_PROJECT_KEY", "env-project")
+	t.Setenv("HARNESS_MEM_OPENCODE_PROJECT_ROOT", "fallback-project")
+
+	var (
+		mu     sync.Mutex
+		events []observedEvent
+	)
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1/search":
+			writeJSON(w, map[string]any{
+				"ok":    true,
+				"items": []any{},
+				"meta":  map[string]any{"count": float64(0)},
+			})
+		case "/v1/events/record":
+			var req map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&req)
+			event, _ := req["event"].(map[string]any)
+			payload, _ := event["payload"].(map[string]any)
+			mu.Lock()
+			events = append(events, observedEvent{
+				headerProjectKey: r.Header.Get("X-Harness-Project-Key"),
+				bodyProject:      stringValue(event["project"]),
+				toolName:         stringValue(payload["tool_name"]),
+				phase:            stringValue(payload["phase"]),
+			})
+			mu.Unlock()
+			writeJSON(w, map[string]any{"ok": true})
+		default:
+			http.Error(w, "unexpected path: "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+
+	handler := handleMemTool("harness_mem_search")
+	for _, projectKey := range []string{"header-project-a", "header-project-b"} {
+		ctx := proxy.ContextWithProjectKey(context.Background(), projectKey)
+		result := handler(ctx, map[string]any{"query": "project " + projectKey})
+		if result.IsError {
+			t.Fatalf("search with project %q failed: %+v", projectKey, result)
+		}
+	}
+
+	got := waitForObservedToolUseEvents(t, &mu, &events, 4)
+	counts := map[string]int{}
+	for _, event := range got {
+		if event.toolName != "harness_mem_search" {
+			continue
+		}
+		if event.headerProjectKey == "env-project" || event.headerProjectKey == "fallback-project" || event.headerProjectKey == "" {
+			t.Fatalf("self-tracking event used leaked/default header project key: %+v", event)
+		}
+		if event.bodyProject != event.headerProjectKey {
+			t.Fatalf("self-tracking event project mismatch: body project = %q, header project = %q; event = %+v", event.bodyProject, event.headerProjectKey, event)
+		}
+		counts[event.bodyProject+"/"+event.phase]++
+	}
+
+	want := map[string]int{
+		"header-project-a/before": 1,
+		"header-project-a/after":  1,
+		"header-project-b/before": 1,
+		"header-project-b/after":  1,
+	}
+	for key, wantCount := range want {
+		if counts[key] != wantCount {
+			t.Fatalf("self-tracking event count for %s = %d, want %d; events = %+v", key, counts[key], wantCount, got)
+		}
+	}
+}
+
+func waitForObservedToolUseEvents(t *testing.T, mu *sync.Mutex, events *[]observedEvent, want int) []observedEvent {
+	t.Helper()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		if len(*events) >= want {
+			got := append([]observedEvent(nil), (*events)...)
+			mu.Unlock()
+			return got
+		}
+		mu.Unlock()
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	mu.Lock()
+	got := append([]observedEvent(nil), (*events)...)
+	mu.Unlock()
+	t.Fatalf("timed out waiting for %d self-tracking events; got %+v", want, got)
+	return nil
+}
+
+func stringValue(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return ""
+}
+
 // TestHandleMemSearchObservationTypeOmitted verifies that callers who
 // don't set observation_type still reach the REST layer in a
 // pre-§89-001-compatible shape (the field is present as nil, which the
