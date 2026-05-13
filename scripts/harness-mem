@@ -44,6 +44,7 @@ UPDATE_AUTO_UPDATE_OPT_IN=-1
 FIX_MODE=0
 READ_ONLY_MODE=0
 STRICT_EXIT=0
+DOCTOR_PROCESSES=0
 FIX_PLAN=0
 JSON_OUTPUT=0
 PURGE_DB=0
@@ -137,6 +138,7 @@ Command options:
       --fix --plan        Print a repair plan without applying changes
       --read-only         Do not create or repair local files during checks
       --strict-exit       Return non-zero when JSON doctor reports failures
+      --processes         Include a non-fatal local harness-mcp-* process inventory
       --json              Output structured JSON result
   uninstall:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
@@ -533,6 +535,9 @@ parse_options() {
           ;;
         --strict-exit)
           STRICT_EXIT=1
+          ;;
+        --processes)
+          DOCTOR_PROCESSES=1
           ;;
         --plan)
           FIX_PLAN=1
@@ -3617,6 +3622,280 @@ check_multiple_db_candidates() {
   return 0
 }
 
+_doctor_trim_ws() {
+  local value="${1:-}"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  printf '%s' "$value"
+}
+
+_doctor_process_ps_lines() {
+  if [ -n "${HARNESS_MEM_PS_FIXTURE:-}" ]; then
+    if [ -f "$HARNESS_MEM_PS_FIXTURE" ]; then
+      cat "$HARNESS_MEM_PS_FIXTURE"
+    fi
+    return 0
+  fi
+  ps -axo pid=,ppid=,etime=,rss=,command= 2>/dev/null || true
+}
+
+_doctor_argv0_basename() {
+  local command="${1:-}"
+  local argv0="${command%%[[:space:]]*}"
+  argv0="${argv0#\"}"
+  argv0="${argv0%\"}"
+  argv0="${argv0#\'}"
+  argv0="${argv0%\'}"
+  printf '%s' "${argv0##*/}"
+}
+
+_doctor_transport_estimate() {
+  local executable_lc="$1"
+  local command_lc="$2"
+  case "$executable_lc" in
+    *http*|*gateway*)
+      printf 'streamable_http'
+      return
+      ;;
+  esac
+  case "$command_lc" in
+    *"--transport http"*|*"--http"*|*"streamable"*|*"/mcp"*)
+      printf 'streamable_http'
+      ;;
+    *"harness-mcp-"*)
+      printf 'stdio'
+      ;;
+    *)
+      printf 'unknown'
+      ;;
+  esac
+}
+
+_doctor_parent_kind() {
+  local parent_lc="$1"
+  case "$parent_lc" in
+    *codex*) printf 'codex' ;;
+    *hermes*) printf 'hermes' ;;
+    *claude*) printf 'claude' ;;
+    *cursor*) printf 'cursor' ;;
+    *opencode*) printf 'opencode' ;;
+    *gemini*) printf 'gemini' ;;
+    *antigravity*) printf 'antigravity' ;;
+    "") printf 'missing' ;;
+    *) printf 'other' ;;
+  esac
+}
+
+_doctor_process_advisory_json() {
+  local source="ps"
+  if [ -n "${HARNESS_MEM_PS_FIXTURE:-}" ]; then
+    source="fixture"
+  fi
+
+  if [ -n "${HARNESS_MEM_PS_FIXTURE:-}" ] && [ ! -f "$HARNESS_MEM_PS_FIXTURE" ]; then
+    jq -n \
+      --arg source "$source" \
+      --arg error "HARNESS_MEM_PS_FIXTURE not found" \
+      '{
+        enabled: true,
+        source: $source,
+        inventory_error: $error,
+        process_name_pattern: "harness-mcp-*",
+        count: 0,
+        active_count: 0,
+        stale_candidate_count: 0,
+        stdio_count: 0,
+        streamable_http_count: 0,
+        stale_candidates: [],
+        processes: [],
+        note: "Process inventory is advisory only and never changes doctor all_green by itself."
+      }'
+    return 0
+  fi
+
+  local ps_tmp items_tmp
+  ps_tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-ps.XXXXXX")"
+  items_tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-process-items.XXXXXX")"
+  _doctor_process_ps_lines > "$ps_tmp"
+  : > "$items_tmp"
+
+  local -a ps_pids=()
+  local -a ps_ppids=()
+  local -a ps_ages=()
+  local -a ps_rsses=()
+  local -a ps_commands=()
+
+  local line trimmed pid ppid age rss command old_ifs
+  while IFS= read -r line || [ -n "$line" ]; do
+    trimmed="$(_doctor_trim_ws "$line")"
+    [ -z "$trimmed" ] && continue
+    case "$trimmed" in
+      \#*|PID\ *) continue ;;
+    esac
+
+    old_ifs="$IFS"
+    IFS=' '
+    read -r pid ppid age rss command <<<"$trimmed"
+    IFS="$old_ifs"
+
+    [[ "$pid" =~ ^[0-9]+$ ]] || continue
+    [[ "$ppid" =~ ^[0-9]+$ ]] || ppid=0
+    [ -n "${command:-}" ] || command=""
+
+    ps_pids+=("$pid")
+    ps_ppids+=("$ppid")
+    ps_ages+=("${age:-}")
+    ps_rsses+=("${rss:-}")
+    ps_commands+=("$command")
+  done < "$ps_tmp"
+
+  local command_lc executable_name executable_lc parent_command parent_lc parent_kind transport parent_live stale_candidate classification
+  local rss_json reasons_json item_json
+  local idx parent_idx
+  local -a stale_reasons=()
+
+  for idx in "${!ps_pids[@]}"; do
+    pid="${ps_pids[$idx]}"
+    command="${ps_commands[$idx]}"
+    command_lc="$(printf '%s' "$command" | tr '[:upper:]' '[:lower:]')"
+    executable_name="$(_doctor_argv0_basename "$command")"
+    executable_lc="$(printf '%s' "$executable_name" | tr '[:upper:]' '[:lower:]')"
+    case "$executable_lc" in
+      harness-mcp-*) ;;
+      *) continue ;;
+    esac
+
+    ppid="${ps_ppids[$idx]:-0}"
+    age="${ps_ages[$idx]:-}"
+    rss="${ps_rsses[$idx]:-}"
+    parent_command=""
+    for parent_idx in "${!ps_pids[@]}"; do
+      if [ "${ps_pids[$parent_idx]}" = "$ppid" ]; then
+        parent_command="${ps_commands[$parent_idx]}"
+        break
+      fi
+    done
+    parent_lc="$(printf '%s' "$parent_command" | tr '[:upper:]' '[:lower:]')"
+    parent_kind="$(_doctor_parent_kind "$parent_lc")"
+    transport="$(_doctor_transport_estimate "$executable_lc" "$command_lc")"
+
+    parent_live=false
+    if [ "$ppid" -gt 1 ] 2>/dev/null && [ -n "$parent_command" ]; then
+      parent_live=true
+    fi
+
+    stale_candidate=false
+    stale_reasons=()
+    if [ "$transport" != "streamable_http" ]; then
+      if [ "$ppid" -le 1 ] 2>/dev/null; then
+        stale_candidate=true
+        stale_reasons+=("ppid_1_or_lower")
+      elif [ "$parent_live" != true ]; then
+        stale_candidate=true
+        stale_reasons+=("missing_parent_process")
+      fi
+    fi
+
+    if [ "$stale_candidate" = true ]; then
+      classification="stale_candidate"
+    elif [ "$transport" = "streamable_http" ]; then
+      if [ "$parent_live" = true ]; then
+        classification="active_http_gateway"
+      else
+        classification="unknown_parent_http_gateway"
+      fi
+    elif [ "$transport" = "stdio" ]; then
+      classification="active_stdio_child"
+    else
+      classification="active_live_parent"
+    fi
+
+    rss_json="null"
+    if [[ "$rss" =~ ^[0-9]+$ ]]; then
+      rss_json="$rss"
+    fi
+
+    reasons_json="[]"
+    if [ "${#stale_reasons[@]}" -gt 0 ]; then
+      reasons_json="$(printf '%s\n' "${stale_reasons[@]}" | jq -R . | jq -s .)"
+    fi
+
+    item_json="$(jq -nc \
+      --argjson pid "$pid" \
+      --argjson ppid "$ppid" \
+      --arg executable_name "$executable_name" \
+      --arg command "$command" \
+      --arg parent_command "$parent_command" \
+      --arg parent_kind "$parent_kind" \
+      --arg age "$age" \
+      --argjson rss_kb "$rss_json" \
+      --arg transport_estimate "$transport" \
+      --arg classification "$classification" \
+      --argjson parent_live "$parent_live" \
+      --argjson stale_candidate "$stale_candidate" \
+      --argjson stale_reasons "$reasons_json" \
+      '{
+        pid: $pid,
+        ppid: $ppid,
+        executable_name: $executable_name,
+        command: $command,
+        parent_command: (if $parent_command == "" then null else $parent_command end),
+        parent_kind: $parent_kind,
+        age: (if $age == "" then null else $age end),
+        rss_kb: $rss_kb,
+        transport_estimate: $transport_estimate,
+        classification: $classification,
+        parent_live: $parent_live,
+        stale_candidate: $stale_candidate,
+        stale_reasons: $stale_reasons
+      }')"
+    printf '%s\n' "$item_json" >> "$items_tmp"
+  done
+
+  local ts advisory_json
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  advisory_json="$(jq -s \
+    --arg source "$source" \
+    --arg timestamp "$ts" \
+    '{
+      enabled: true,
+      source: $source,
+      inspected_at: $timestamp,
+      process_name_pattern: "harness-mcp-*",
+      count: length,
+      active_count: (map(select(.stale_candidate == false)) | length),
+      stale_candidate_count: (map(select(.stale_candidate == true)) | length),
+      stdio_count: (map(select(.transport_estimate == "stdio")) | length),
+      streamable_http_count: (map(select(.transport_estimate == "streamable_http")) | length),
+      stale_candidates: map(select(.stale_candidate == true)),
+      processes: .,
+      note: "Process inventory is advisory only and never changes doctor all_green by itself."
+    }' "$items_tmp")"
+
+  rm -f "$ps_tmp" "$items_tmp"
+  printf '%s\n' "$advisory_json"
+}
+
+_doctor_print_process_advisory() {
+  local advisory_json="$1"
+  local count stale active
+  count="$(printf '%s' "$advisory_json" | jq -r '.count // 0' 2>/dev/null || echo 0)"
+  active="$(printf '%s' "$advisory_json" | jq -r '.active_count // 0' 2>/dev/null || echo 0)"
+  stale="$(printf '%s' "$advisory_json" | jq -r '.stale_candidate_count // 0' 2>/dev/null || echo 0)"
+
+  echo ""
+  echo "[harness-mem] MCP process advisory:"
+  echo "  total harness-mcp-* processes: ${count} (active/live-parent: ${active}, stale candidates: ${stale})"
+  echo "  note: process count alone is not a doctor failure."
+  if [ "$stale" -gt 0 ] 2>/dev/null; then
+    echo "  stale candidates are usually safe to inspect first, then clean up only when the parent is gone."
+  fi
+  printf '%s' "$advisory_json" | jq -r '
+    .processes[]?
+    | "  - pid=\(.pid) ppid=\(.ppid) class=\(.classification) transport=\(.transport_estimate) age=\(.age // "n/a") rss_kb=\(.rss_kb // "n/a") parent=\(.parent_command // "missing")\n    cmd=\(.command)"
+  ' 2>/dev/null || true
+}
+
 doctor_impl() {
   local failed=0
   # JSON出力用チェック結果配列
@@ -3978,9 +4257,17 @@ doctor_impl() {
     versions_impl || warn "Version snapshot failed during doctor (non-fatal)"
   fi
 
+  local process_advisory_json="null"
+  if [ "$DOCTOR_PROCESSES" -eq 1 ]; then
+    process_advisory_json="$(_doctor_process_advisory_json)"
+    if [ "$JSON_OUTPUT" -ne 1 ] && [ "$QUIET" -ne 1 ]; then
+      _doctor_print_process_advisory "$process_advisory_json"
+    fi
+  fi
+
   # JSON出力モード
   if [ "$JSON_OUTPUT" -eq 1 ]; then
-    _doctor_emit_json "$failed" "${doctor_checks[@]}"
+    _doctor_emit_json "$failed" "$process_advisory_json" "${doctor_checks[@]}"
     if [ "$failed" -ne 0 ] && [ "$STRICT_EXIT" -eq 1 ]; then
       return 1
     fi
@@ -4024,6 +4311,14 @@ _doctor_status_result() {
 # doctor JSON出力
 _doctor_emit_json() {
   local failed="$1"
+  local process_advisory_json="${2:-null}"
+  if [ -z "$process_advisory_json" ]; then
+    process_advisory_json="null"
+  fi
+  if ! printf '%s' "$process_advisory_json" | jq -e . >/dev/null 2>&1; then
+    process_advisory_json="null"
+  fi
+  shift
   shift
   local -a checks=("$@")
   local status_str overall_status_str all_green_str
@@ -4107,7 +4402,8 @@ _doctor_emit_json() {
       --arg timestamp "$ts" \
       --arg backend_mode "$current_backend" \
       --argjson checks "$checks_json" \
-      '{
+      --argjson process_advisory "$process_advisory_json" \
+      '({
         schema_version: $schema_version,
         contract_version: $contract_version,
         harness_mem_version: ($harness_mem_version | select(. != "") // "unknown"),
@@ -4128,7 +4424,7 @@ _doctor_emit_json() {
           read_only_command: "harness-mem doctor --read-only --json",
           strict_ci_command: "harness-mem doctor --json --strict-exit"
         }
-      }'
+      } + (if $process_advisory == null then {} else {process_advisory: $process_advisory} end))'
   }
 
 # doctor失敗時のガイド表示
