@@ -1,6 +1,6 @@
 # Hermes Agent ↔ harness-mem フル設定例
 #
-# 28 ツール全公開。on-demand spawn 方式で Hermes 起動時に
+# harness_mem_* ツール全公開。on-demand spawn 方式で Hermes 起動時に
 # harness-mem MCP プロセスを自動起動する構成。
 #
 # 注意:

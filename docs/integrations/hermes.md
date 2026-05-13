@@ -32,19 +32,37 @@ Plans.md §69-92 では Hermes 統合は **tier 3 (experimental)**。tier 1 (Cla
 
 ```
 ┌─────────────┐  stdio MCP   ┌──────────────────────┐  HTTP   ┌──────────────┐
-│ Hermes      │ ───────────▶ │ ~/.harness-mem/      │ ──────▶ │ harness-memd │
-│ Agent       │              │  runtime/harness-mem │  :37888 │  (daemon)    │
-└─────────────┘              │  (MCP server)        │         └──────┬───────┘
-                             └──────────────────────┘                │
+│ Hermes      │ ───────────▶ │ stdio MCP frontend   │ ──────▶ │ harness-memd │
+│ Agent       │              │ (Go or Node.js)      │  :37888 │ (memory      │
+└─────────────┘              └──────────────────────┘         │  daemon)     │
+                                                              └──────┬───────┘
+                                                                     │
                                                                      ▼
                                               ~/.harness-mem/harness-mem.db
 ```
 
 - **Hermes 側**: 標準 MCP クライアント。`~/.hermes/config.yaml` の `mcp_servers` で stdio サーバーを宣言。
-- **harness-mem stdio MCP**: 28 ツールを公開（`harness_mem_*` プレフィックス）。HTTP daemon (`localhost:37888`) へリクエストをプロキシ。
-- **harness-memd**: SQLite DB (`~/.harness-mem/harness-mem.db`) を所有する HTTP daemon。
+- **harness-mem stdio MCP frontend**: 設定済みの `harness_mem_*` ツールを公開。Hermes からは stdio server として見えるが、実体はクライアント session ごとに起動する frontend process。Go binary を優先し、必要なら Node.js MCP server に fallback する。
+- **harness-memd**: SQLite DB (`~/.harness-mem/harness-mem.db`) を所有する TypeScript/Bun の HTTP memory daemon。既定では `127.0.0.1:37888` で待受けする。
 
 複数のクライアント（Claude Code, Codex, Cursor, Hermes）が同じ daemon に接続することで、`project_key` 単位でのメモリ共有が成立する。
+
+重要: stdio MCP frontend process が複数見えること自体は、複数の Codex / Claude Code /
+Hermes セッションを開いているなら正常です。Go binary 経路では
+`harness-mcp-darwin-arm64` / `harness-mcp-*` として見えることが多いです。stdio MCP は
+クライアントが local server subprocess を起動する方式なので、frontend は session 数に
+応じて増えます。共有されるべき singleton は `:37888` の memory daemon と SQLite owner です。
+
+cleanup の対象は、親クライアントが終了した後も残った stale / orphan MCP 子プロセス、
+または同じ `:37888` / SQLite state を複数 daemon が取り合う split-brain です。
+プロセス数だけで異常判定しないでください。
+
+stdio frontend を singleton broker 化する方針は推奨しません。Hermes を含む stdio MCP
+クライアントは「自分が起動した subprocess と stdio で話す」前提で lifecycle を管理します。
+そこを共有 broker にすると、親子関係、停止、認証、project_key 分離の責任が曖昧になります。
+frontend プロセス数を減らす中期方針は、既存 stdio を互換 fallback として残し、
+local-only の Streamable HTTP MCP gateway (`http://127.0.0.1:37889/mcp`) を opt-in で
+使えるようにすることです。
 
 ## runtime バイナリパス
 
@@ -197,6 +215,20 @@ env:
 - `graph_weight=0`
 - `vector_search=false`
 
+### 2-c. `harness-mcp-darwin-arm64` が複数見える
+
+症状: `ps` や Activity Monitor で `harness-mcp-darwin-arm64` / `harness-mcp-*` が複数残っているように見える。
+
+まず見るべきポイント:
+
+- 親プロセスが生きている Codex / Claude Code / Hermes なら、通常の stdio MCP frontend です。
+- 親プロセスが消えている、または長時間孤立している子だけが cleanup 対象です。
+- `127.0.0.1:37888` の memory daemon が複数いる場合は、別問題として daemon split-brain を疑います。
+
+stdio MCP は session ごとに subprocess を持つため、frontend process 数だけを減らす目的で
+singleton 化しないでください。将来の opt-in 方向は Streamable HTTP MCP gateway
+(`127.0.0.1:37889/mcp`) であり、stdio は互換 fallback として残します。
+
 ### 3. メモリが Claude Code と分離している
 
 症状: Claude Code で記録したメモリが Hermes から見えない（`harness_mem_search` が空を返す）。
@@ -216,7 +248,7 @@ env:
 
 症状: ツール一覧の token cost が高い、Hermes が遅い。
 
-原因: 28 ツール全公開で各ツールの input schema が context を圧迫。
+原因: 多数の `harness_mem_*` ツールを公開すると、各ツールの input schema が context を圧迫。
 
 対処: minimal allowlist (5 ツール) に戻し、必要なツールだけ段階的に追加。
 
@@ -300,7 +332,7 @@ pytest
 
 - [`integrations/hermes/README.md`](../../integrations/hermes/README.md) — Quickstart
 - [`integrations/hermes/examples/hermes-config-minimal.yaml`](../../integrations/hermes/examples/hermes-config-minimal.yaml) — 最小設定
-- [`integrations/hermes/examples/hermes-config-full.yaml`](../../integrations/hermes/examples/hermes-config-full.yaml) — 全 28 ツール
+- [`integrations/hermes/examples/hermes-config-full.yaml`](../../integrations/hermes/examples/hermes-config-full.yaml) — 全 `harness_mem_*` ツールを公開する例
 - [`docs/claude-harness-companion-contract.md`](../claude-harness-companion-contract.md) — runtime 仕様
 - [`docs/environment-variables.md`](../environment-variables.md) — env 変数仕様
 - [`mcp-server/README.md`](../../mcp-server/README.md) — MCP サーバー全体仕様

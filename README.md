@@ -99,7 +99,7 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 | **Search p95** | 13.28ms | same manifest |
 | **Bilingual recall@10** | 0.8800 | same manifest |
 
-The Go MCP server is the layer Claude Code and Codex actually talk to. If the Go binary is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
+The MCP frontend is the layer Claude Code and Codex actually talk to. The Go binary is the fast preferred path; if it is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
 
 ### What these numbers mean for you
 
@@ -266,6 +266,13 @@ codex mcp list
 codex mcp get harness
 ```
 
+That command starts the stdio MCP frontend for one request. In normal client use,
+each open Claude Code, Codex, Cursor, or Hermes session may have its own stdio
+MCP frontend process. When the Go binary is available it is usually visible as
+`harness-mcp-*`; otherwise the wrapper can fall back to the Node.js MCP server.
+Those frontend processes proxy to the shared memory daemon; they are not extra
+SQLite owners.
+
 </details>
 
 ---
@@ -276,12 +283,34 @@ codex mcp get harness
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/architecture.png" alt="harness-mem architecture — one daemon, one SQLite, two AI coding tools" width="820" />
 </p>
 
-- **One daemon** (`harness-memd`) listens on `localhost:37888`. It is the Go MCP server that Claude Code and Codex speak to over stdio.
+- **One memory daemon** (`harness-memd`) listens on `127.0.0.1:37888`. It is the TypeScript/Bun HTTP memory server that owns the SQLite connection and runtime APIs.
 - **One local SQLite database** at `~/.harness-mem/harness-mem.db` stores every observation, session thread, embedding, and fact chain.
-- **Two hook paths** wire the tools in: `SessionStart` (first-turn continuity), `UserPromptSubmit` (contextual recall), and `Stop` (session finalization).
-- **The memory server** (TypeScript) does embeddings, hybrid search, rerank, and the adaptive JA/EN/code routing. It is intentionally kept in TypeScript because that's where the ML stack lives — the Go layer is only the MCP front desk.
+- **Per-client stdio MCP frontends** are launched by the MCP client. `bin/harness-mcp-server` prefers `bin/harness-mcp-{os}-{arch}` for the Go frontend, but can fall back to `mcp-server/dist/index.js`; either frontend speaks stdio to the client, then proxies requests to the daemon on `:37888`.
+- **Three hook paths** wire the tools in: `SessionStart` (first-turn continuity), `UserPromptSubmit` (contextual recall), and `Stop` (session finalization).
+- **The memory server** (TypeScript) does embeddings, hybrid search, rerank, and the adaptive JA/EN/code routing. It is intentionally kept in TypeScript because that's where the ML stack lives. The MCP frontend layer is only the front desk.
 
 Large MCP search responses now also return `structuredContent`, so newer Claude / Codex clients can consume machine-readable results instead of only long JSON text.
+
+### MCP transport and process topology
+
+`stdio` means the MCP client starts a server subprocess and talks to it over
+standard input/output. Because of that contract, multiple open Claude Code,
+Codex, Cursor, or Hermes sessions can legitimately show multiple stdio MCP
+frontend processes, often as `harness-mcp-darwin-arm64` / `harness-mcp-*` when
+the Go binary path is active. That is process fan-out at the MCP frontend layer,
+not memory daemon split-brain.
+
+What should stay singleton is the memory daemon on `127.0.0.1:37888` and the
+SQLite owner behind it. Cleanup should target stale or orphaned MCP children
+whose parent client is gone, or a true daemon split-brain where more than one
+memory daemon is fighting for the same runtime state.
+
+Do not try to solve this by turning stdio into a shared singleton broker. That
+works against the way stdio MCP clients launch and supervise local servers, and
+it creates harder lifecycle and security failure modes. The intended opt-in path
+for reducing frontend process fan-out is a local-only Streamable HTTP MCP
+gateway, planned at `http://127.0.0.1:37889/mcp`, with the existing stdio path
+kept as the compatibility fallback.
 
 ### Current behavior today
 

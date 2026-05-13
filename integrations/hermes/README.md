@@ -175,7 +175,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' \
   | ~/.harness-mem/runtime/harness-mem mcp
 ```
 
-`tools/list` の応答に `harness_mem_search` を含む 28 ツールが入っていれば OK。
+`tools/list` の応答に `harness_mem_search` を含む設定済みの `harness_mem_*` ツールが入っていれば OK。
 
 Hermes 起動後は、ツール一覧表示コマンド（Hermes CLI 依存）で `harness_mem_*` が見えることを確認。検索クエリを投げて、結果が返れば統合成功。
 

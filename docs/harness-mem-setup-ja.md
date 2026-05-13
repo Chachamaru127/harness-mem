@@ -173,6 +173,31 @@ npm run codex:doctor
 - これは runtime contract であり、全 client に対する blanket guarantee ではない
 - hook や local runtime が stale だと、search や manual recall は動いても、「新しい session を開いたら前回の続きを覚えている」体験は落ちる
 
+### runtime 構成と MCP プロセス
+
+プロセス層は 2 つに分かれます。
+
+| 層 | 既定の接続先 | 役割 | 正常な数 |
+|---|---|---|---|
+| memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server、SQLite 接続、runtime API | local runtime ごとに 1 つ |
+| stdio MCP frontend | client stdin/stdout | MCP tool を公開し、`:37888` に proxy する frontend process。Go binary を優先し、Node.js fallback も使える | 開いている MCP client session ごとに 1 つ |
+
+stdio MCP frontend process が複数見えるだけでは、すぐ障害とは判定しません。Go binary
+経路では `harness-mcp-darwin-arm64` / `harness-mcp-*` として見えることが多いです。
+Claude Code / Codex / Cursor / Hermes の session を複数開いているなら、stdio MCP frontend が
+session 数に応じて増えるのは自然です。cleanup 対象は、親 client が消えた stale / orphan な
+stdio 子プロセスです。
+
+本当に危険なのは、`127.0.0.1:37888` や同じ SQLite runtime state を複数の memory daemon が
+取り合う daemon split-brain です。これは daemon lifecycle の問題であり、通常の stdio MCP
+frontend 増加とは別物です。
+
+stdio 自体を shared singleton broker にする方針は推奨しません。stdio MCP client は、自分が
+起動した local server subprocess を監視する前提で動くため、broker 化すると停止責任、
+project 分離、認証の見通しが悪くなります。frontend プロセス数を減らす中期方針は、
+既存 stdio MCP を互換 fallback として残しつつ、`http://127.0.0.1:37889/mcp` の
+local-only Streamable HTTP MCP gateway を opt-in で導入することです。
+
 ## 3. コマンドリファレンス
 
 ### `setup`
@@ -335,6 +360,10 @@ codex mcp list
 codex mcp get harness
 ```
 
+この確認コマンドは、1 つの stdio MCP frontend process を起動します。実運用では、
+開いている MCP client session ごとに frontend process が起動することがあります。
+それらの frontend は、背後の `127.0.0.1:37888` daemon を共有します。
+
 ### OpenCode
 
 - `~/.config/opencode/opencode.json` を使う
@@ -369,7 +398,7 @@ codex mcp get harness
 ### core runtime
 
 - `HARNESS_MEM_HOST` (default: `127.0.0.1`)
-- `HARNESS_MEM_PORT` (default: `37888`)
+- `HARNESS_MEM_PORT` (default: `37888`) は memory daemon 用。shared stdio MCP frontend 用ではない
 - `HARNESS_MEM_UI_PORT` (default: `37901`)
 - `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)

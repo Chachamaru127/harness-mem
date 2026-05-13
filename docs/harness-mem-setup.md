@@ -210,6 +210,33 @@ Notes:
 - This is a runtime contract, not a blanket guarantee for every client: unsupported or experimental clients may still ingest/search without matching the Claude/Codex continuity UX.
 - If hooks or the local runtime are stale, search and manual recall can still work while the "open a new session and it already remembers" UX degrades.
 
+### Runtime topology and MCP processes
+
+There are two different process layers:
+
+| Layer | Default endpoint | Owner | Normal multiplicity |
+|---|---|---|---|
+| Memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server, SQLite connection, runtime APIs | One per local runtime |
+| stdio MCP frontend | client stdin/stdout | Frontend process that exposes MCP tools and proxies to `:37888`; Go binary preferred, Node.js fallback available | One per open MCP client session |
+
+Seeing several stdio MCP frontend processes is not automatically a failure. On
+the Go binary path they often appear as `harness-mcp-darwin-arm64` /
+`harness-mcp-*`. Multiple frontends can simply mean several Claude Code, Codex,
+Cursor, or Hermes sessions are open at the same time. Cleanup should target
+stale or orphaned stdio children whose parent client is gone, not healthy
+frontend processes.
+
+A real runtime problem is different: more than one memory daemon fighting for
+`127.0.0.1:37888` or the same SQLite runtime state is daemon split-brain. That
+is a daemon lifecycle issue, not a normal stdio MCP process fan-out issue.
+
+Do not attempt to make stdio itself a shared singleton broker. Stdio MCP clients
+launch and supervise their own local server subprocess, so a shared broker makes
+shutdown ownership, project isolation, and authentication harder to reason
+about. The intended opt-in direction for fewer frontend processes is a
+local-only Streamable HTTP MCP gateway at `http://127.0.0.1:37889/mcp`, while
+keeping the existing stdio MCP route as the compatibility fallback.
+
 ## 3. Command Reference
 
 ### `setup`
@@ -371,6 +398,10 @@ codex mcp list
 codex mcp get harness
 ```
 
+This command starts one stdio MCP frontend process for the check. In real client
+use, each open MCP client session may start its own frontend process; those
+frontends still share the daemon behind `127.0.0.1:37888`.
+
 ### OpenCode
 
 - Uses `~/.config/opencode/opencode.json`
@@ -405,7 +436,7 @@ codex mcp get harness
 ### Core runtime
 
 - `HARNESS_MEM_HOST` (default: `127.0.0.1`)
-- `HARNESS_MEM_PORT` (default: `37888`)
+- `HARNESS_MEM_PORT` (default: `37888`) for the memory daemon, not a shared stdio MCP frontend
 - `HARNESS_MEM_UI_PORT` (default: `37901`)
 - `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)
