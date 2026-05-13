@@ -11,6 +11,7 @@
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
+#   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
 #   scripts/harness-mem model use-adaptive
 
 set -euo pipefail
@@ -47,6 +48,9 @@ STRICT_EXIT=0
 DOCTOR_PROCESSES=0
 FIX_PLAN=0
 JSON_OUTPUT=0
+MCP_CLEANUP_DRY_RUN=0
+MCP_CLEANUP_EXECUTE=0
+MCP_CLEANUP_OLDER_THAN=""
 PURGE_DB=0
 SKIP_START=0
 SKIP_SMOKE=0
@@ -101,6 +105,7 @@ Commands:
   rollback-claude-mem        Rollback: restart Claude-mem and re-enable LaunchAgent.
   promote                    Promote backend mode: local → hybrid → managed.
   rollback                   Rollback backend mode to local.
+  cleanup-stale-mcp          Inspect or terminate stale stdio harness-mcp-* children.
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
@@ -140,6 +145,11 @@ Command options:
       --strict-exit       Return non-zero when JSON doctor reports failures
       --processes         Include a non-fatal local harness-mcp-* process inventory
       --json              Output structured JSON result
+  cleanup-stale-mcp:
+    --dry-run             Default. List stale stdio MCP children without killing them
+    --execute             Kill only eligible stale stdio MCP children
+    --older-than <dur>    Required with --execute. Examples: 30s, 10m, 2h, 1d
+    --json                Output structured JSON result
   uninstall:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
   versions:
@@ -546,6 +556,14 @@ parse_options() {
         JSON_OUTPUT=1
         QUIET=1
         ;;
+      --execute)
+        MCP_CLEANUP_EXECUTE=1
+        ;;
+      --older-than)
+        shift
+        [ "$#" -gt 0 ] || fail "--older-than requires a duration"
+        MCP_CLEANUP_OLDER_THAN="$1"
+        ;;
       --purge-db)
         PURGE_DB=1
         ;;
@@ -614,6 +632,7 @@ parse_options() {
         ;;
       --dry-run)
         IMPORT_DRY_RUN=1
+        MCP_CLEANUP_DRY_RUN=1
         ;;
       --stop-now)
         STOP_NOW=1
@@ -3876,6 +3895,313 @@ _doctor_process_advisory_json() {
   printf '%s\n' "$advisory_json"
 }
 
+_mcp_cleanup_parse_duration_seconds() {
+  local value="${1:-}"
+  local amount unit
+  if [[ "$value" =~ ^([0-9]+)([sSmMhHdD]?)$ ]]; then
+    amount="${BASH_REMATCH[1]}"
+    unit="${BASH_REMATCH[2]}"
+  else
+    return 1
+  fi
+
+  case "$unit" in
+    ""|s|S) printf '%s\n' "$amount" ;;
+    m|M) printf '%s\n' "$((amount * 60))" ;;
+    h|H) printf '%s\n' "$((amount * 60 * 60))" ;;
+    d|D) printf '%s\n' "$((amount * 24 * 60 * 60))" ;;
+    *) return 1 ;;
+  esac
+}
+
+_mcp_cleanup_selection_json() {
+  local advisory_json="$1"
+  local mode="$2"
+  local older_than="$3"
+  local older_than_seconds="$4"
+
+  jq -n \
+    --argjson advisory "$advisory_json" \
+    --arg mode "$mode" \
+    --arg older_than "$older_than" \
+    --argjson older_than_seconds "$older_than_seconds" \
+    '
+    def age_seconds:
+      if . == null then null
+      elif test("^[0-9]+-[0-9]+:[0-9]+:[0-9]+$") then
+        capture("^(?<d>[0-9]+)-(?<h>[0-9]+):(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.d | tonumber) * 86400) + ((.h | tonumber) * 3600) + ((.m | tonumber) * 60) + (.s | tonumber)
+      elif test("^[0-9]+:[0-9]+:[0-9]+$") then
+        capture("^(?<h>[0-9]+):(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.h | tonumber) * 3600) + ((.m | tonumber) * 60) + (.s | tonumber)
+      elif test("^[0-9]+:[0-9]+$") then
+        capture("^(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.m | tonumber) * 60) + (.s | tonumber)
+      else null
+      end;
+    def with_age_seconds:
+      . + {age_seconds: (.age | age_seconds)};
+    def base_candidate:
+      .stale_candidate == true
+      and .classification == "stale_candidate"
+      and .transport_estimate == "stdio";
+    def passes_age:
+      ($older_than_seconds < 0)
+      or ((.age_seconds // -1) >= $older_than_seconds);
+    def skip_reason:
+      if (base_candidate and (passes_age | not)) then "younger_than_threshold"
+      elif (.transport_estimate == "streamable_http") then "streamable_http_gateway_not_cleanup_target"
+      elif (.parent_live == true) then "active_parent"
+      elif (.stale_candidate == true and .transport_estimate != "stdio") then "not_stdio_candidate"
+      elif (.stale_candidate == false) then "not_stale"
+      else "not_eligible"
+      end;
+    ($advisory.processes // [] | map(with_age_seconds)) as $processes
+    | ($processes | map(select(base_candidate and passes_age))) as $candidates
+    | {
+        schema: "cleanup-stale-mcp.v1",
+        mode: $mode,
+        older_than: (if $older_than == "" then null else $older_than end),
+        older_than_seconds: (if $older_than_seconds < 0 then null else $older_than_seconds end),
+        source: ($advisory.source // "unknown"),
+        inspected_at: ($advisory.inspected_at // null),
+        candidates: $candidates,
+        skipped: ($processes | map(select((base_candidate and passes_age) | not) | . + {skip_reason: skip_reason})),
+        attempted: [],
+        killed: [],
+        safety_note: "Dry-run is the default. Execute only targets stale stdio harness-mcp-* children older than the requested threshold; live Codex/Hermes/etc. parents and streamable HTTP gateways are skipped."
+      }
+    '
+}
+
+_mcp_cleanup_revalidation_advisory_json() {
+  if [ -n "${HARNESS_MEM_MCP_CLEANUP_REVALIDATE_PS_FIXTURE:-}" ]; then
+    (
+      export HARNESS_MEM_PS_FIXTURE="$HARNESS_MEM_MCP_CLEANUP_REVALIDATE_PS_FIXTURE"
+      _doctor_process_advisory_json
+    )
+    return
+  fi
+  _doctor_process_advisory_json
+}
+
+_mcp_cleanup_revalidate_pid_json() {
+  local pid="$1"
+  local older_than_seconds="$2"
+  local advisory_json
+  advisory_json="$(_mcp_cleanup_revalidation_advisory_json)"
+
+  jq -n \
+    --argjson advisory "$advisory_json" \
+    --argjson pid "$pid" \
+    --argjson older_than_seconds "$older_than_seconds" \
+    '
+    def age_seconds:
+      if . == null then null
+      elif test("^[0-9]+-[0-9]+:[0-9]+:[0-9]+$") then
+        capture("^(?<d>[0-9]+)-(?<h>[0-9]+):(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.d | tonumber) * 86400) + ((.h | tonumber) * 3600) + ((.m | tonumber) * 60) + (.s | tonumber)
+      elif test("^[0-9]+:[0-9]+:[0-9]+$") then
+        capture("^(?<h>[0-9]+):(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.h | tonumber) * 3600) + ((.m | tonumber) * 60) + (.s | tonumber)
+      elif test("^[0-9]+:[0-9]+$") then
+        capture("^(?<m>[0-9]+):(?<s>[0-9]+)$")
+        | ((.m | tonumber) * 60) + (.s | tonumber)
+      else null
+      end;
+    def with_age_seconds:
+      . + {age_seconds: (.age | age_seconds)};
+    def base_candidate:
+      .stale_candidate == true
+      and .classification == "stale_candidate"
+      and .transport_estimate == "stdio";
+    def passes_age:
+      ($older_than_seconds < 0)
+      or ((.age_seconds // -1) >= $older_than_seconds);
+    def failure_reason:
+      if (.transport_estimate == "streamable_http") then "streamable_http_gateway_not_cleanup_target"
+      elif (.parent_live == true) then "active_parent"
+      elif (.classification != "stale_candidate") then "classification_not_stale_candidate"
+      elif (.transport_estimate != "stdio") then "transport_not_stdio"
+      elif ((passes_age | not)) then "younger_than_threshold"
+      else "not_eligible"
+      end;
+    if ($advisory.inventory_error? // "") != "" then
+      {
+        valid: false,
+        error: ("inventory_error: " + ($advisory.inventory_error | tostring)),
+        process: null
+      }
+    else
+      ($advisory.processes // [] | map(select(.pid == $pid)) | .[0] // null) as $process
+      | if $process == null then
+          {
+            valid: false,
+            error: "pid_not_found_or_argv0_not_harness_mcp",
+            process: null
+          }
+        else
+          ($process | with_age_seconds) as $p
+          | if ($p | base_candidate and passes_age) then
+              {
+                valid: true,
+                error: null,
+                process: $p
+              }
+            else
+              {
+                valid: false,
+                error: ($p | failure_reason),
+                process: $p
+              }
+            end
+        end
+    end
+    '
+}
+
+_mcp_cleanup_execute_candidates_json() {
+  local cleanup_json="$1"
+  local older_than_seconds="$2"
+  local attempts_tmp
+  attempts_tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-cleanup-attempts.XXXXXX")"
+  : > "$attempts_tmp"
+
+  local pid command reason result error_msg revalidation_json revalidation_valid revalidation_error revalidated_command
+  while IFS=$'\t' read -r pid command reason; do
+    [ -n "${pid:-}" ] || continue
+    result="failed"
+    error_msg=""
+
+    revalidation_json="$(_mcp_cleanup_revalidate_pid_json "$pid" "$older_than_seconds")"
+    revalidation_valid="$(printf '%s' "$revalidation_json" | jq -r '.valid')"
+    revalidation_error="$(printf '%s' "$revalidation_json" | jq -r '.error // ""')"
+    revalidated_command="$(printf '%s' "$revalidation_json" | jq -r '.process.command // ""')"
+
+    if [ "$revalidation_valid" != "true" ]; then
+      result="skipped_revalidation_failed"
+      error_msg="$revalidation_error"
+    else
+      if [ -n "$revalidated_command" ]; then
+        command="$revalidated_command"
+      fi
+      if [ -n "${HARNESS_MEM_MCP_CLEANUP_KILL_LOG:-}" ]; then
+        # Test-only hook: records intended terminations after the same revalidation
+        # gate used by the real signal path.
+        printf '%s\tSIGTERM\t%s\n' "$pid" "$reason" >> "$HARNESS_MEM_MCP_CLEANUP_KILL_LOG"
+        result="test_logged"
+      else
+        local kill_error_tmp
+        kill_error_tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-kill-error.XXXXXX")"
+        if kill -TERM "$pid" 2>"$kill_error_tmp"; then
+          result="killed"
+        else
+          error_msg="$(cat "$kill_error_tmp" 2>/dev/null || true)"
+        fi
+        rm -f "$kill_error_tmp"
+      fi
+    fi
+    jq -nc \
+      --argjson pid "$pid" \
+      --arg signal "TERM" \
+      --arg result "$result" \
+      --arg command "$command" \
+      --arg reason "$reason" \
+      --arg error "$error_msg" \
+      --argjson revalidation "$revalidation_json" \
+      '{
+        pid: $pid,
+        signal: $signal,
+        result: $result,
+        command: $command,
+        reason: $reason,
+        error: (if $error == "" then null else $error end),
+        revalidation: $revalidation
+      }' >> "$attempts_tmp"
+  done < <(printf '%s' "$cleanup_json" | jq -r '.candidates[]? | [.pid, .command, (.stale_reasons // [] | join(","))] | @tsv')
+
+  jq -s . "$attempts_tmp"
+  rm -f "$attempts_tmp"
+}
+
+_mcp_cleanup_print_human() {
+  local cleanup_json="$1"
+  local mode candidate_count skipped_active_count skipped_gateway_count
+  mode="$(printf '%s' "$cleanup_json" | jq -r '.mode')"
+  candidate_count="$(printf '%s' "$cleanup_json" | jq -r '.candidates | length')"
+  skipped_active_count="$(printf '%s' "$cleanup_json" | jq -r '[.skipped[]? | select(.skip_reason == "active_parent")] | length')"
+  skipped_gateway_count="$(printf '%s' "$cleanup_json" | jq -r '[.skipped[]? | select(.skip_reason == "streamable_http_gateway_not_cleanup_target")] | length')"
+
+  echo "[harness-mem] stale MCP cleanup: ${mode}"
+  echo "  candidates: ${candidate_count}"
+  echo "  skipped active/live-parent processes: ${skipped_active_count}"
+  echo "  skipped streamable HTTP gateways: ${skipped_gateway_count}"
+  echo "  note: dry-run is the default; --execute also requires --older-than <duration>."
+
+  if [ "$candidate_count" -gt 0 ] 2>/dev/null; then
+    echo ""
+    echo "Kill candidates:"
+    printf '%s' "$cleanup_json" | jq -r '
+      .candidates[]?
+      | "  - pid=\(.pid) reason=\((.stale_reasons // []) | join(",")) age=\(.age // "n/a") ppid=\(.ppid)\n    cmd=\(.command)"
+    '
+  fi
+
+  if [ "$skipped_active_count" -gt 0 ] 2>/dev/null; then
+    echo ""
+    echo "Skipped active stdio MCP children:"
+    printf '%s' "$cleanup_json" | jq -r '
+      .skipped[]?
+      | select(.skip_reason == "active_parent")
+      | "  - pid=\(.pid) parent=\(.parent_kind) ppid=\(.ppid) age=\(.age // "n/a")\n    cmd=\(.command)"
+    '
+  fi
+}
+
+cleanup_stale_mcp_impl() {
+  if [ "$MCP_CLEANUP_EXECUTE" -eq 1 ] && [ "$MCP_CLEANUP_DRY_RUN" -eq 1 ]; then
+    fail "cleanup-stale-mcp accepts either --dry-run or --execute, not both"
+  fi
+
+  local mode="dry_run"
+  if [ "$MCP_CLEANUP_EXECUTE" -eq 1 ]; then
+    mode="execute"
+    if [ -z "$MCP_CLEANUP_OLDER_THAN" ]; then
+      fail "cleanup-stale-mcp --execute requires --older-than <duration> (example: --older-than 10m)"
+    fi
+  fi
+
+  local older_than_seconds=-1
+  if [ -n "$MCP_CLEANUP_OLDER_THAN" ]; then
+    if ! older_than_seconds="$(_mcp_cleanup_parse_duration_seconds "$MCP_CLEANUP_OLDER_THAN")"; then
+      fail "--older-than must be a duration like 30s, 10m, 2h, or 1d"
+    fi
+  fi
+
+  local advisory_json cleanup_json attempts_json
+  advisory_json="$(_doctor_process_advisory_json)"
+  if printf '%s' "$advisory_json" | jq -e '.inventory_error? // empty' >/dev/null 2>&1; then
+    fail "Could not inspect harness-mcp-* processes: $(printf '%s' "$advisory_json" | jq -r '.inventory_error')"
+  fi
+
+  cleanup_json="$(_mcp_cleanup_selection_json "$advisory_json" "$mode" "$MCP_CLEANUP_OLDER_THAN" "$older_than_seconds")"
+
+  if [ "$mode" = "execute" ]; then
+    attempts_json="$(_mcp_cleanup_execute_candidates_json "$cleanup_json" "$older_than_seconds")"
+    cleanup_json="$(jq \
+      --argjson attempts "$attempts_json" \
+      '.attempted = $attempts
+       | .killed = ($attempts | map(select(.result == "killed" or .result == "test_logged")))' \
+      <<<"$cleanup_json")"
+  fi
+
+  if [ "$JSON_OUTPUT" -eq 1 ]; then
+    printf '%s\n' "$cleanup_json"
+  else
+    _mcp_cleanup_print_human "$cleanup_json"
+  fi
+}
+
 _doctor_print_process_advisory() {
   local advisory_json="$1"
   local count stale active
@@ -5416,6 +5742,9 @@ main() {
       ;;
     doctor)
       doctor_impl
+      ;;
+    cleanup-stale-mcp)
+      cleanup_stale_mcp_impl
       ;;
     recall)
       recall_impl "$@"

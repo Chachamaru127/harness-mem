@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -55,6 +55,20 @@ function writePsFixture(home: string): string {
       "404 99999 1-02:03:04 45678 /tmp/harness-mcp-darwin-arm64",
       "505 10 00:01 111 grep harness-mcp-darwin-arm64",
       "606 1 00:10 45678 /tmp/harness-mcp-http-gateway --transport http --listen 127.0.0.1:37889/mcp",
+      "",
+    ].join("\n")
+  );
+  return fixture;
+}
+
+function writeChangedRevalidationFixture(home: string): string {
+  const fixture = join(home, "ps-revalidation-fixture.txt");
+  writeFileSync(
+    fixture,
+    [
+      "10 1 01:00:00 501000 /opt/homebrew/bin/codex",
+      "303 10 00:20 34567 /tmp/harness-mcp-darwin-arm64",
+      "404 1 12:34 45678 /usr/bin/true harness-mcp-darwin-arm64",
       "",
     ].join("\n")
   );
@@ -148,6 +162,182 @@ describe("doctor --processes", () => {
       expect(result.stdout).toContain("class=active_stdio_child");
       expect(result.stdout).toContain("pid=303");
       expect(result.stdout).toContain("class=stale_candidate");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+});
+
+describe("cleanup-stale-mcp", () => {
+  test("dry-run JSON lists only stale stdio candidates and skips active parents", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-cleanup-stale-mcp-"));
+    try {
+      const harnessHome = writeHealthyReadOnlyConfig(tmpHome);
+      const fixture = writePsFixture(tmpHome);
+      const killLog = join(tmpHome, "kill.log");
+
+      const result = await runHarnessMem(["cleanup-stale-mcp", "--json", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: harnessHome,
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+        HARNESS_MEM_PS_FIXTURE: fixture,
+        HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+      });
+
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout) as {
+        schema: string;
+        mode: string;
+        older_than: string | null;
+        candidates: Array<{ pid: number; transport_estimate: string; stale_candidate: boolean }>;
+        skipped: Array<{ pid: number; skip_reason: string; parent_kind: string; transport_estimate: string }>;
+        attempted: Array<{ pid: number }>;
+        killed: Array<{ pid: number }>;
+        safety_note: string;
+      };
+
+      expect(parsed.schema).toBe("cleanup-stale-mcp.v1");
+      expect(parsed.mode).toBe("dry_run");
+      expect(parsed.older_than).toBeNull();
+      expect(parsed.candidates.map((process) => process.pid).sort()).toEqual([303, 404]);
+      expect(parsed.candidates.every((process) => process.transport_estimate === "stdio")).toBe(true);
+      expect(parsed.candidates.every((process) => process.stale_candidate)).toBe(true);
+      expect(parsed.attempted).toEqual([]);
+      expect(parsed.killed).toEqual([]);
+      expect(existsSync(killLog)).toBe(false);
+
+      const skippedByPid = new Map(parsed.skipped.map((process) => [process.pid, process]));
+      expect(skippedByPid.get(101)?.skip_reason).toBe("active_parent");
+      expect(skippedByPid.get(101)?.parent_kind).toBe("codex");
+      expect(skippedByPid.get(202)?.skip_reason).toBe("active_parent");
+      expect(skippedByPid.get(202)?.parent_kind).toBe("hermes");
+      expect(skippedByPid.get(606)?.skip_reason).toBe("streamable_http_gateway_not_cleanup_target");
+      expect(skippedByPid.get(606)?.transport_estimate).toBe("streamable_http");
+      expect(parsed.safety_note).toContain("Dry-run is the default");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("execute requires --older-than", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-cleanup-stale-mcp-requires-age-"));
+    try {
+      const harnessHome = writeHealthyReadOnlyConfig(tmpHome);
+      const fixture = writePsFixture(tmpHome);
+
+      const result = await runHarnessMem(["cleanup-stale-mcp", "--execute", "--json", "--skip-version-check"], {
+        ...process.env,
+        HOME: tmpHome,
+        HARNESS_MEM_HOME: harnessHome,
+        HARNESS_MEM_NON_INTERACTIVE: "1",
+        HARNESS_MEM_PS_FIXTURE: fixture,
+      });
+
+      expect(result.code).not.toBe(0);
+      expect(result.stderr).toContain("cleanup-stale-mcp --execute requires --older-than");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("execute with test kill log targets only eligible stale stdio candidates", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-cleanup-stale-mcp-execute-"));
+    try {
+      const harnessHome = writeHealthyReadOnlyConfig(tmpHome);
+      const fixture = writePsFixture(tmpHome);
+      const killLog = join(tmpHome, "kill.log");
+
+      const result = await runHarnessMem(
+        ["cleanup-stale-mcp", "--execute", "--older-than", "10m", "--json", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: harnessHome,
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+          HARNESS_MEM_PS_FIXTURE: fixture,
+          HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+        }
+      );
+
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout) as {
+        mode: string;
+        older_than: string | null;
+        older_than_seconds: number | null;
+        candidates: Array<{ pid: number }>;
+        skipped: Array<{ pid: number; skip_reason: string }>;
+        attempted: Array<{ pid: number; result: string }>;
+        killed: Array<{ pid: number; result: string }>;
+      };
+
+      expect(parsed.mode).toBe("execute");
+      expect(parsed.older_than).toBe("10m");
+      expect(parsed.older_than_seconds).toBe(600);
+      expect(parsed.candidates.map((process) => process.pid).sort()).toEqual([303, 404]);
+      expect(parsed.attempted.map((process) => process.pid).sort()).toEqual([303, 404]);
+      expect(parsed.attempted.every((process) => process.result === "test_logged")).toBe(true);
+      expect(parsed.killed.map((process) => process.pid).sort()).toEqual([303, 404]);
+
+      const logLines = readFileSync(killLog, "utf8").trim().split("\n");
+      expect(logLines).toEqual([
+        "303\tSIGTERM\tppid_1_or_lower",
+        "404\tSIGTERM\tmissing_parent_process",
+      ]);
+
+      const skippedPids = new Map(parsed.skipped.map((process) => [process.pid, process.skip_reason]));
+      expect(skippedPids.get(101)).toBe("active_parent");
+      expect(skippedPids.get(202)).toBe("active_parent");
+      expect(skippedPids.get(606)).toBe("streamable_http_gateway_not_cleanup_target");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("execute revalidates each candidate before logging or signaling", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-cleanup-stale-mcp-revalidate-"));
+    try {
+      const harnessHome = writeHealthyReadOnlyConfig(tmpHome);
+      const fixture = writePsFixture(tmpHome);
+      const revalidationFixture = writeChangedRevalidationFixture(tmpHome);
+      const killLog = join(tmpHome, "kill.log");
+
+      const result = await runHarnessMem(
+        ["cleanup-stale-mcp", "--execute", "--older-than", "10m", "--json", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: harnessHome,
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+          HARNESS_MEM_PS_FIXTURE: fixture,
+          HARNESS_MEM_MCP_CLEANUP_REVALIDATE_PS_FIXTURE: revalidationFixture,
+          HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+        }
+      );
+
+      expect(result.code).toBe(0);
+      const parsed = JSON.parse(result.stdout) as {
+        candidates: Array<{ pid: number }>;
+        attempted: Array<{
+          pid: number;
+          result: string;
+          error: string | null;
+          revalidation: { valid: boolean; error: string | null };
+        }>;
+        killed: Array<{ pid: number }>;
+      };
+
+      expect(parsed.candidates.map((process) => process.pid).sort()).toEqual([303, 404]);
+      expect(parsed.killed).toEqual([]);
+      expect(existsSync(killLog)).toBe(false);
+
+      const attemptsByPid = new Map(parsed.attempted.map((attempt) => [attempt.pid, attempt]));
+      expect(attemptsByPid.get(303)?.result).toBe("skipped_revalidation_failed");
+      expect(attemptsByPid.get(303)?.error).toBe("active_parent");
+      expect(attemptsByPid.get(303)?.revalidation.valid).toBe(false);
+      expect(attemptsByPid.get(404)?.result).toBe("skipped_revalidation_failed");
+      expect(attemptsByPid.get(404)?.error).toBe("pid_not_found_or_argv0_not_harness_mcp");
+      expect(attemptsByPid.get(404)?.revalidation.valid).toBe(false);
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
