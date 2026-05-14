@@ -4405,6 +4405,13 @@ _mcp_gateway_token() {
   printf '%s' "${HARNESS_MEM_REMOTE_TOKEN:-}"
 }
 
+_curl_config_escape() {
+  local value="${1:-}"
+  value="${value//\\/\\\\}"
+  value="${value//\"/\\\"}"
+  printf '%s' "$value"
+}
+
 _mcp_gateway_auth_mode() {
   if [ -n "$(_mcp_gateway_token)" ]; then
     printf 'token'
@@ -4502,7 +4509,7 @@ _mcp_gateway_memory_health_json() {
 }
 
 _mcp_gateway_probe_json() {
-  local endpoint token tmp status ok status_name error_excerpt payload
+  local endpoint token tmp status ok status_name error_excerpt payload endpoint_config token_config
   endpoint="$(_mcp_gateway_endpoint_url)"
   token="$(_mcp_gateway_token)"
   if [ -z "$token" ]; then
@@ -4520,14 +4527,18 @@ _mcp_gateway_probe_json() {
 
   payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness-mem-gateway-doctor","version":"0.1.0"}}}'
   tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-gateway-probe.XXXXXX")"
+  endpoint_config="$(_curl_config_escape "$endpoint")"
+  token_config="$(_curl_config_escape "$token")"
   status="$(
-    curl --silent --show-error --max-time 3 \
+    {
+      printf 'url = "%s"\n' "$endpoint_config"
+      printf 'request = "POST"\n'
+      printf 'header = "Content-Type: application/json"\n'
+      printf 'header = "Authorization: Bearer %s"\n' "$token_config"
+    } | curl --silent --show-error --max-time 3 \
       -o "$tmp" \
       -w '%{http_code}' \
-      -H 'Content-Type: application/json' \
-      -H "Authorization: Bearer ${token}" \
-      -H "x-harness-mem-token: ${token}" \
-      -X POST "$endpoint" \
+      --config - \
       -d "$payload" 2>/dev/null || true
   )"
 

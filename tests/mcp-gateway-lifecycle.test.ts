@@ -209,4 +209,18 @@ describe("mcp-gateway lifecycle CLI", () => {
     expect(script).toContain("nohup env");
     expect(script).toContain('disown "$gateway_pid"');
   });
+
+  test("gateway health probe does not expose the bearer token in curl argv", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+    const start = script.indexOf("_mcp_gateway_probe_json() {");
+    const end = script.indexOf("_mcp_gateway_launchd_loaded_json() {");
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const probeFunction = script.slice(start, end);
+
+    expect(probeFunction).toContain("--config -");
+    expect(probeFunction).toContain('header = "Authorization: Bearer %s"');
+    expect(probeFunction).not.toContain('-H "Authorization: Bearer ${token}"');
+    expect(probeFunction).not.toContain('-H "x-harness-mem-token: ${token}"');
+  });
 });
