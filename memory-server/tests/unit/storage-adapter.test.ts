@@ -7,6 +7,7 @@ import { SqliteStorageAdapter } from "../../src/db/sqlite-adapter";
 import { createStorageAdapter } from "../../src/db/adapter-factory";
 import {
   configureBunCustomSqliteForSqliteVec,
+  getCustomSqlitePreflightState,
   resolveSqliteVecExtensionPath,
   resetCustomSqlitePreflightForTests,
 } from "../../src/db/custom-sqlite-preflight";
@@ -106,7 +107,7 @@ describe("SqliteStorageAdapter", () => {
     adapter.close();
   });
 
-  test("runs Bun custom SQLite preflight before opening the database when sqlite-vec is configured", () => {
+  test("runs Bun custom SQLite preflight before opening the database when sqlite-vec is configured on macOS", () => {
     const vecPath = createFakeFile("vec0.dylib");
     const sqliteLibPath = createFakeFile("libsqlite3.dylib");
     const calls: string[] = [];
@@ -119,10 +120,16 @@ describe("SqliteStorageAdapter", () => {
     const adapter = new SqliteStorageAdapter(":memory:");
     adapter.close();
 
-    expect(calls).toEqual([sqliteLibPath]);
+    if (process.platform === "darwin") {
+      expect(calls).toEqual([sqliteLibPath]);
+      expect(getCustomSqlitePreflightState().reason).toBe("configured");
+    } else {
+      expect(calls).toEqual([]);
+      expect(getCustomSqlitePreflightState().reason).toBe("unsupported-platform");
+    }
   });
 
-  test("does not repeat setCustomSQLite for the same library path in one process", () => {
+  test("does not repeat setCustomSQLite for the same library path in one macOS process", () => {
     const vecPath = createFakeFile("vec0.dylib");
     const sqliteLibPath = createFakeFile("libsqlite3.dylib");
     const calls: string[] = [];
@@ -137,7 +144,13 @@ describe("SqliteStorageAdapter", () => {
     first.close();
     second.close();
 
-    expect(calls).toEqual([sqliteLibPath]);
+    if (process.platform === "darwin") {
+      expect(calls).toEqual([sqliteLibPath]);
+      expect(getCustomSqlitePreflightState().reason).toBe("already-configured");
+    } else {
+      expect(calls).toEqual([]);
+      expect(getCustomSqlitePreflightState().reason).toBe("unsupported-platform");
+    }
   });
 
   test("skips custom SQLite preflight without throwing when the sqlite library path is missing", () => {
