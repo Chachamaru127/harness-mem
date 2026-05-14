@@ -112,6 +112,82 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
+  test("searchPrepared safe mode skips query embedding preparation", async () => {
+    const core = new HarnessMemCore(createConfig("search-prepared-safe-mode"));
+    let primeQueryCalls = 0;
+    try {
+      (core as unknown as {
+        embeddingProvider: {
+          name: "fallback";
+          model: string;
+          dimension: number;
+          embed: (text: string) => number[];
+          primeQuery: (text: string) => Promise<number[]>;
+          health: () => { status: "healthy"; details: string };
+        };
+      }).embeddingProvider = {
+        name: "fallback",
+        model: "test-embedding",
+        dimension: 64,
+        embed: (text: string) => {
+          const seed = text.length || 1;
+          return Array.from({ length: 64 }, (_, index) => ((seed + index) % 17) / 17);
+        },
+        primeQuery: async () => {
+          primeQueryCalls += 1;
+          throw new Error("primeQuery should not run for safe search");
+        },
+        health: () => ({ status: "healthy", details: "test" }),
+      };
+
+      core.recordEvent(
+        baseEvent({
+          event_id: "safe-prepared-1",
+          payload: { content: "safe prepared search must remain lexical only" },
+        })
+      );
+
+      const result = await core.searchPrepared({
+        query: "safe prepared search",
+        limit: 1,
+        include_private: true,
+        safe_mode: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(primeQueryCalls).toBe(0);
+      const meta = result.meta as Record<string, unknown>;
+      expect(meta.vector_search_enabled).toBe(false);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("safe mode forces vector off for direct core search callers", () => {
+    const core = new HarnessMemCore(createConfig("safe-mode-vector-off"));
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "safe-direct-1",
+          payload: { content: "direct safe mode should not use vector search" },
+        })
+      );
+
+      const result = core.search({
+        query: "direct safe mode",
+        limit: 1,
+        include_private: true,
+        safe_mode: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const meta = result.meta as Record<string, unknown>;
+      expect(meta.vector_search_enabled).toBe(false);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("dedupe hash uniqueness is enforced", () => {
     const core = new HarnessMemCore(createConfig("dedupe"));
     try {

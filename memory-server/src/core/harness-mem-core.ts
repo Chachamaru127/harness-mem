@@ -1654,7 +1654,9 @@ export class HarnessMemCore {
   }
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
-    await this.prepareSearchEmbedding(request.query || "");
+    if (request.safe_mode !== true && request.vector_search !== false) {
+      await this.prepareSearchEmbedding(request.query || "");
+    }
     const response = this.search(request);
 
     // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）

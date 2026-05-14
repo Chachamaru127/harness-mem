@@ -3388,7 +3388,7 @@ export class ObservationStore {
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks =
-      this.deps.searchExpandLinks !== false && request.expand_links !== false;
+      !latencySafeMode && this.deps.searchExpandLinks !== false && request.expand_links !== false;
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : request.project;
@@ -3413,7 +3413,7 @@ export class ObservationStore {
       strict_project: strictProject,
       expand_links: expandLinks,
       exclude_updated: excludeUpdated,
-      vector_search: request.vector_search !== false,
+      vector_search: latencySafeMode ? false : request.vector_search !== false,
       scope: request.scope
         ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
         : undefined,
