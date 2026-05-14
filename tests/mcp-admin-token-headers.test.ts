@@ -86,7 +86,7 @@ describe("mcp memory admin token forwarding", () => {
     const get = await handleMemoryTool("harness_mem_search_facets", { query: "token header test" });
     expect(get.isError).toBeUndefined();
 
-    const apiCalls = calls.filter((call) => !call.url.endsWith("/health"));
+    const apiCalls = calls.filter((call) => !call.url.includes("/health"));
     expect(apiCalls.length).toBeGreaterThanOrEqual(2);
     for (const call of apiCalls) {
       expect(call.headers["x-harness-mem-token"]).toBe("test-admin-token");

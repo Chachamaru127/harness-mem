@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { createBaselineSnapshot } from "./baseline-runner";
 
+// The benchmark wall-clock includes dataset seeding and first-hit model/cache
+// setup. Search latency regression is asserted by the p95 gate below.
+const RERANK_GATE_TIMEOUT_MS = 120000;
+
 function computeMaxAllowedP95(beforeP95: number): number {
   const normalizedBeforeP95 = Math.max(1, beforeP95);
   return Number(
@@ -33,7 +37,7 @@ describe("reranker quality gate", () => {
       expect(beforePipeline.reranker_enabled).toBe(false);
       expect(afterPipeline.reranker_enabled).toBe(true);
     },
-    30000
+    RERANK_GATE_TIMEOUT_MS
   );
 
   test(
@@ -69,6 +73,6 @@ describe("reranker quality gate", () => {
 
       expect(finalAfterP95).toBeLessThanOrEqual(finalMaxAllowedP95);
     },
-    30000
+    RERANK_GATE_TIMEOUT_MS
   );
 });

@@ -2169,6 +2169,7 @@ export class ObservationStore {
           AND l.relation IN (${RELATIONS})
       `;
       forwardSql = this.applyCommonFilters(forwardSql, forwardParams, "o", request);
+      forwardSql += " GROUP BY o.id, l.from_observation_id, l.to_observation_id, l.relation";
 
       const backwardParams: unknown[] = [...params];
       let backwardSql = `
@@ -2185,6 +2186,7 @@ export class ObservationStore {
           AND l.relation IN (${RELATIONS})
       `;
       backwardSql = this.applyCommonFilters(backwardSql, backwardParams, "o", request);
+      backwardSql += " GROUP BY o.id, l.from_observation_id, l.to_observation_id, l.relation";
 
       const combinedSql = `${forwardSql} UNION ALL ${backwardSql} ORDER BY link_weight DESC LIMIT 400`;
       const combinedParams: unknown[] = [...forwardParams, ...backwardParams];

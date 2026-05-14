@@ -300,20 +300,26 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
   test("GRAPH-001: contradicts リンク経由で展開されるが 50% 減衰する", () => {
     const core = new HarnessMemCore(createConfig("contradicts"));
     try {
-      const resultA = core.recordEvent(baseEvent({ event_id: "contradicts-a", payload: { prompt: "Microservices architecture improves scalability and deployment independence." } }));
+      const resultA = core.recordEvent(baseEvent({ event_id: "contradicts-a", session_id: "session-contradicts-a", payload: { prompt: "GraphContradictsSeedAlpha improves scalability and deployment independence." } }));
       const obsIdA = (resultA.items[0] as { id: string }).id;
 
-      const resultB = core.recordEvent(baseEvent({ event_id: "contradicts-b", payload: { prompt: "Monolithic architecture is simpler to develop and debug than microservices." } }));
+      const resultB = core.recordEvent(baseEvent({ event_id: "contradicts-b", session_id: "session-contradicts-b", payload: { prompt: "Monolithic deployment is simpler to develop and debug." } }));
       const obsIdB = (resultB.items[0] as { id: string }).id;
+
+      const resultC = core.recordEvent(baseEvent({ event_id: "contradicts-c", session_id: "session-contradicts-c", payload: { prompt: "Service boundaries preserve deployment independence." } }));
+      const obsIdC = (resultC.items[0] as { id: string }).id;
 
       // A → B: contradicts リンク
       expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdB, relation: "contradicts", weight: 1.0 }).ok).toBe(true);
+      // A → C: 通常リンク（減衰なし）の比較対象
+      expect(core.createLink({ from_observation_id: obsIdA, to_observation_id: obsIdC, relation: "extends", weight: 1.0 }).ok).toBe(true);
 
       const result = core.search({
-        query: "Microservices architecture scalability",
+        query: "GraphContradictsSeedAlpha scalability",
         project: "multihop-test",
         include_private: true,
         expand_links: true,
+        vector_search: false,
         debug: true,
       });
 
@@ -325,15 +331,16 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
       expect(resultIds).toContain(obsIdA);
       // B は contradicts リンク経由でヒット
       expect(resultIds).toContain(obsIdB);
+      // C は通常リンク経由でヒット
+      expect(resultIds).toContain(obsIdC);
 
-      // B のスコアは A より低いはず（contradicts 50% 減衰の効果）
-      const itemA = items.find((i) => i.id === obsIdA);
+      // B のスコアは通常リンクの C より低いはず（contradicts 50% 減衰の効果）
       const itemB = items.find((i) => i.id === obsIdB);
-      if (itemA && itemB) {
+      const itemC = items.find((i) => i.id === obsIdC);
+      if (itemB && itemC) {
         const scoreB = itemB.graph_score ?? (itemB.scores?.graph ?? 0);
-        const scoreA = itemA.graph_score ?? (itemA.scores?.graph ?? 0);
-        // B の graph スコアは A の 50% 以下になるはず（weight=1.0 * 0.5 penalty）
-        expect(scoreB).toBeLessThanOrEqual(scoreA + 0.01);
+        const scoreC = itemC.graph_score ?? (itemC.scores?.graph ?? 0);
+        expect(scoreB).toBeLessThan(scoreC);
       }
     } finally {
       core.shutdown("test");
@@ -643,26 +650,29 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
   });
 
   test("GRAPH-003: graphMaxHops=1 で graph スコアが 1-hop のみに付与される", () => {
-    // C がベクトル/語彙検索でヒットする可能性があるため、
-    // 「C の graph スコアが 0（グラフ探索で到達しない）」で検証する。
+    // vector_search=false と固有語の query で、C が直接候補に混ざらないようにする。
+    // その上で「C の graph スコアが 0（グラフ探索で到達しない）」を検証する。
     const baseConf = createConfig("maxhops1");
     const core = new HarnessMemCore({ ...baseConf, graphMaxHops: 1 });
     try {
       const resultA = core.recordEvent(baseEvent({
         event_id: "1h-a",
-        payload: { prompt: "GraphMaxHopsAlpha unique term for direct hit observation." },
+        session_id: "session-1h-a",
+        payload: { prompt: "AlphaOnlySeedTerm observation." },
       }));
       const obsIdA = (resultA.items[0] as { id: string }).id;
 
       const resultB = core.recordEvent(baseEvent({
         event_id: "1h-b",
-        payload: { prompt: "GraphMaxHopsBeta linked from alpha via extends relation." },
+        session_id: "session-1h-b",
+        payload: { prompt: "Beta linked neighbor via extends relation." },
       }));
       const obsIdB = (resultB.items[0] as { id: string }).id;
 
       const resultC = core.recordEvent(baseEvent({
         event_id: "1h-c",
-        payload: { prompt: "GraphMaxHopsGamma two hops away from the search entry point." },
+        session_id: "session-1h-c",
+        payload: { prompt: "Gamma downstream target two hops away." },
       }));
       const obsIdC = (resultC.items[0] as { id: string }).id;
 
@@ -670,10 +680,11 @@ describe("COMP-001: Multi-hop グラフ探索", () => {
       core.createLink({ from_observation_id: obsIdB, to_observation_id: obsIdC, relation: "extends", weight: 0.9 });
 
       const result = core.search({
-        query: "GraphMaxHopsAlpha unique term direct hit",
+        query: "AlphaOnlySeedTerm",
         project: "multihop-test",
         include_private: true,
         expand_links: true,
+        vector_search: false,
         debug: true,
       });
 

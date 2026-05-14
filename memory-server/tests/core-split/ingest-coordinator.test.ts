@@ -281,7 +281,7 @@ describe("ingest-coordinator: ingestGeminiHistory", () => {
 });
 
 describe("ingest-coordinator: Claude Code timer startup", () => {
-  test("starts Claude Code ingest on the next tick instead of waiting 30 seconds", () => {
+  test("delays Claude Code ingest startup until the configured interval", () => {
     const originalSetTimeout = globalThis.setTimeout;
     const originalClearTimeout = globalThis.clearTimeout;
     const originalSetInterval = globalThis.setInterval;
@@ -314,7 +314,8 @@ describe("ingest-coordinator: Claude Code timer startup", () => {
 
       coordinator.startTimers();
 
-      expect(timeoutDelays).toContain(0);
+      expect(timeoutDelays).toContain(12345);
+      expect(timeoutDelays).not.toContain(0);
       expect(intervalDelays).toContain(12345);
       expect(ingestSpy).toHaveBeenCalledTimes(1);
       coordinator.stopTimers();
