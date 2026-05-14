@@ -253,8 +253,7 @@ func makeHandler(fn tools.HandlerFunc) mcpserver.ToolHandlerFunc {
 
 // PushMemoryNotification sends a proactive notification via MCP channels.
 // Only active when HARNESS_MEM_ENABLE_CHANNELS=true.
-// This is a no-op placeholder — mcp-go channel support TBD.
+// This remains a no-op until mcp-go exposes notifications/message support.
 func PushMemoryNotification(message string) {
-	// TODO: implement when mcp-go supports notifications/message
 	_ = message
 }
