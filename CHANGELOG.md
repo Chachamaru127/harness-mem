@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-05-14
+
 ### Added
 
 - **§122 MCP gateway lifecycle manager (opt-in)**. Added `harness-mem mcp-gateway start|stop|status` for the local Streamable HTTP MCP gateway at `127.0.0.1:37889/mcp`, with a separate pidfile/log, token-authenticated health probe, foreground mode, memory daemon health reporting, and `doctor --mcp-transport http` opt-in verification. The default client route remains stdio.
@@ -2707,5 +2709,6 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...HEAD
+[0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0
 [0.20.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.19.0...v0.20.0

@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-05-14
+
 ### ユーザー向け要約
 
 - **§122 MCP gateway lifecycle manager を opt-in で追加**。`harness-mem mcp-gateway start|stop|status` で `127.0.0.1:37889/mcp` の local Streamable HTTP MCP gateway を管理できる。専用 pidfile/log、token 付き health probe、foreground mode、memory daemon health 表示、`doctor --mcp-transport http` の opt-in 検証を追加した。既定の client 経路は引き続き stdio。
