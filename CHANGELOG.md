@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-05-14
+
+### Fixed
+
+- **Release gate stabilization after the §122 MCP gateway release cut**. Graph link expansion now preserves each adjacent relation row instead of collapsing multiple links through an aggregate-only SQL query, so `contradicts` and normal relation paths can be scored independently during multi-hop search.
+- **Release workflow test parity fixes**. Updated stale behavior-gate expectations for delayed Claude Code ingest startup, filtered readiness health probes out of MCP admin-token assertions, and raised the reranker quality gate wall-clock timeout so benchmark setup/runtime variance does not mask the actual p95 latency assertion.
+
 ## [0.22.0] - 2026-05-14
 
 ### Added
@@ -2709,6 +2716,7 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0
 [0.20.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.19.0...v0.20.0

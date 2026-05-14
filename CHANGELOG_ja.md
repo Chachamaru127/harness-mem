@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.22.1] - 2026-05-14
+
+### ユーザー向け要約
+
+- **§122 MCP gateway release 後の配布ゲートを安定化**。multi-hop 検索の graph link 展開で、複数 relation が SQL 集約で 1 行に潰れないようにした。これにより `contradicts` と通常 relation の経路を別々に評価できる。
+- **リリース検証テストの期待値を現行挙動に合わせた**。Claude Code ingest 起動が設定 interval 後に遅延する仕様、MCP admin token テストで readiness health probe を除外する条件、reranker quality gate の準備時間を含む wall-clock timeout を修正した。検索速度そのものは引き続き p95 latency gate で確認する。
+
 ## [0.22.0] - 2026-05-14
 
 ### ユーザー向け要約
@@ -880,5 +887,7 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.20.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...HEAD
+[0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
+[0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0
 [0.20.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.19.0...v0.20.0
