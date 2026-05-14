@@ -22,7 +22,11 @@ install: build-stripped
 	@OS=$$(uname -s | tr '[:upper:]' '[:lower:]'); \
 	ARCH=$$(uname -m); \
 	case $$ARCH in x86_64) ARCH=amd64;; aarch64) ARCH=arm64;; esac; \
-	cp $(BIN) ../bin/harness-mcp-$${OS}-$${ARCH}; \
+	TARGET="../bin/harness-mcp-$${OS}-$${ARCH}"; \
+	TMP="../bin/.harness-mcp-$${OS}-$${ARCH}.tmp"; \
+	cp $(BIN) "$$TMP"; \
+	chmod +x "$$TMP"; \
+	mv "$$TMP" "$$TARGET"; \
 	echo "Installed to ../bin/harness-mcp-$${OS}-$${ARCH}"
 
 clean:

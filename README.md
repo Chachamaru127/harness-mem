@@ -307,10 +307,20 @@ memory daemon is fighting for the same runtime state.
 
 Do not try to solve this by turning stdio into a shared singleton broker. That
 works against the way stdio MCP clients launch and supervise local servers, and
-it creates harder lifecycle and security failure modes. The intended opt-in path
-for reducing frontend process fan-out is a local-only Streamable HTTP MCP
-gateway, planned at `http://127.0.0.1:37889/mcp`, with the existing stdio path
-kept as the compatibility fallback.
+it creates harder lifecycle and security failure modes. The opt-in path for
+reducing frontend process fan-out is a local-only Streamable HTTP MCP gateway at
+`http://127.0.0.1:37889/mcp`, with the existing stdio path kept as the
+compatibility fallback.
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-config --transport http --client claude,codex --write
+```
+
+Hermes remains explicit opt-in: use
+`harness-mem mcp-config --transport http --client hermes --write` when you want
+Hermes YAML generated.
 
 ### Current behavior today
 

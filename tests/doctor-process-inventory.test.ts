@@ -55,6 +55,7 @@ function writePsFixture(home: string): string {
       "404 99999 1-02:03:04 45678 /tmp/harness-mcp-darwin-arm64",
       "505 10 00:01 111 grep harness-mcp-darwin-arm64",
       "606 1 00:10 45678 /tmp/harness-mcp-http-gateway --transport http --listen 127.0.0.1:37889/mcp",
+      "707 1 00:15 56789 /tmp/harness-mcp-darwin-arm64",
       "",
     ].join("\n")
   );
@@ -89,6 +90,7 @@ describe("doctor --processes", () => {
         HARNESS_MEM_NON_INTERACTIVE: "1",
         HARNESS_MEM_PORT: "48977",
         HARNESS_MEM_PS_FIXTURE: fixture,
+        HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
       });
 
       expect(result.code).toBe(0);
@@ -114,10 +116,10 @@ describe("doctor --processes", () => {
       };
 
       expect(parsed.all_green).toBe(true);
-      expect(parsed.process_advisory.count).toBe(5);
-      expect(parsed.process_advisory.active_count).toBe(3);
+      expect(parsed.process_advisory.count).toBe(6);
+      expect(parsed.process_advisory.active_count).toBe(4);
       expect(parsed.process_advisory.stale_candidate_count).toBe(2);
-      expect(parsed.process_advisory.streamable_http_count).toBe(1);
+      expect(parsed.process_advisory.streamable_http_count).toBe(2);
 
       const byPid = new Map(parsed.process_advisory.processes.map((process) => [process.pid, process]));
       expect(byPid.has(505)).toBe(false);
@@ -134,6 +136,9 @@ describe("doctor --processes", () => {
       expect(byPid.get(606)?.classification).toBe("unknown_parent_http_gateway");
       expect(byPid.get(606)?.transport_estimate).toBe("streamable_http");
       expect(byPid.get(606)?.stale_candidate).toBe(false);
+      expect(byPid.get(707)?.classification).toBe("unknown_parent_http_gateway");
+      expect(byPid.get(707)?.transport_estimate).toBe("streamable_http");
+      expect(byPid.get(707)?.stale_candidate).toBe(false);
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
@@ -153,6 +158,7 @@ describe("doctor --processes", () => {
         HARNESS_MEM_LANG: "en",
         HARNESS_MEM_PORT: "48978",
         HARNESS_MEM_PS_FIXTURE: fixture,
+        HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
       });
 
       expect(result.code).toBe(0);
@@ -183,6 +189,7 @@ describe("cleanup-stale-mcp", () => {
         HARNESS_MEM_NON_INTERACTIVE: "1",
         HARNESS_MEM_PS_FIXTURE: fixture,
         HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+        HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
       });
 
       expect(result.code).toBe(0);
@@ -214,6 +221,8 @@ describe("cleanup-stale-mcp", () => {
       expect(skippedByPid.get(202)?.parent_kind).toBe("hermes");
       expect(skippedByPid.get(606)?.skip_reason).toBe("streamable_http_gateway_not_cleanup_target");
       expect(skippedByPid.get(606)?.transport_estimate).toBe("streamable_http");
+      expect(skippedByPid.get(707)?.skip_reason).toBe("streamable_http_gateway_not_cleanup_target");
+      expect(skippedByPid.get(707)?.transport_estimate).toBe("streamable_http");
       expect(parsed.safety_note).toContain("Dry-run is the default");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
@@ -232,6 +241,7 @@ describe("cleanup-stale-mcp", () => {
         HARNESS_MEM_HOME: harnessHome,
         HARNESS_MEM_NON_INTERACTIVE: "1",
         HARNESS_MEM_PS_FIXTURE: fixture,
+        HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
       });
 
       expect(result.code).not.toBe(0);
@@ -257,6 +267,7 @@ describe("cleanup-stale-mcp", () => {
           HARNESS_MEM_NON_INTERACTIVE: "1",
           HARNESS_MEM_PS_FIXTURE: fixture,
           HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+          HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
         }
       );
 
@@ -289,6 +300,7 @@ describe("cleanup-stale-mcp", () => {
       expect(skippedPids.get(101)).toBe("active_parent");
       expect(skippedPids.get(202)).toBe("active_parent");
       expect(skippedPids.get(606)).toBe("streamable_http_gateway_not_cleanup_target");
+      expect(skippedPids.get(707)).toBe("streamable_http_gateway_not_cleanup_target");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }
@@ -312,6 +324,7 @@ describe("cleanup-stale-mcp", () => {
           HARNESS_MEM_PS_FIXTURE: fixture,
           HARNESS_MEM_MCP_CLEANUP_REVALIDATE_PS_FIXTURE: revalidationFixture,
           HARNESS_MEM_MCP_CLEANUP_KILL_LOG: killLog,
+          HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE: "707",
         }
       );
 

@@ -6,6 +6,29 @@
 #
 # 配置先: ~/.hermes/config.yaml （または Hermes が読む config）
 # パスの <you> は実際のホームディレクトリ名に置換すること。
+#
+# HTTP MCP gateway を opt-in で使う場合は、手書きより生成コマンドを推奨:
+#
+#   export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+#   harness-mem mcp-gateway start
+#   harness-mem mcp-config --transport http --client hermes --write
+#
+# 生成される形の要点:
+#
+# mcp_servers:
+#   harness_mem:
+#     url: "http://127.0.0.1:37889/mcp"
+#     headers:
+#       Authorization: "Bearer ${HARNESS_MEM_MCP_TOKEN}"
+#     tools:
+#       include:
+#         - harness_mem_search
+#         - harness_mem_timeline
+#         - harness_mem_get_observations
+#         - harness_mem_resume_pack
+#         - harness_mem_record_checkpoint
+#       prompts: false
+#       resources: false
 
 mcp_servers:
   harness_mem:

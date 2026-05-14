@@ -9,6 +9,10 @@
 #   - context 量が増えるため、LLM の reasoning 性能と相談。
 #
 # 配置先: ~/.hermes/config.yaml （または Hermes が読む config）
+#
+# HTTP MCP gateway を使う場合は、full allowlist を手で移植する前に
+# `harness-mem mcp-config --transport http --client hermes --write` で
+# safe 5-tool の最小 YAML を生成し、必要な tool だけ追加すること。
 
 mcp_servers:
   harness_mem:

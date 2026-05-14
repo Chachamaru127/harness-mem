@@ -64,6 +64,16 @@ frontend プロセス数を減らす中期方針は、既存 stdio を互換 fal
 local-only の Streamable HTTP MCP gateway (`http://127.0.0.1:37889/mcp`) を opt-in で
 使えるようにすることです。
 
+HTTP MCP を試す場合は、先に token 付き gateway を起動し、Hermes 用 YAML を明示生成します。
+秘密 token の値は config へ書かず、`Bearer ${HARNESS_MEM_MCP_TOKEN}` という環境変数参照だけを
+残します。
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-config --transport http --client hermes --write
+```
+
 ## runtime バイナリパス
 
 `~/.harness-mem/runtime/harness-mem` は [companion contract v1](../claude-harness-companion-contract.md) で固定パス。Hermes config から直接指定する。
@@ -325,7 +335,7 @@ pytest
 ## 既知の制約
 
 - **Hermes built-in memory との並行運用**: Hermes は組み込みメモリ層 (procedural memory) を持つ。本統合では harness-mem を **追加の MCP ツール** として並行運用する形になる。built-in memory を harness-mem で置換する Python adapter は今回スコープ外（将来検討、`integrations/hermes/README.md` "Out of Scope" 参照）。
-- **HTTP/SSE transport 未対応**: harness-mem MCP server は現状 stdio のみ。Hermes config の `url:` 指定は使えない。
+- **HTTP MCP transport は opt-in 段階**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし既定の案内はまだ stdio fallback を維持する。互換 smoke / latency benchmark を見ながら recommended/default 化を判断する。
 - **on-demand spawn と複数クライアント**: 方式 B（`bunx` で Hermes 起動時に spawn）を選ぶと、Hermes セッション間でも独立 daemon になる場合がある。複数ツールでメモリ共有する用途では方式 A（別プロセス常駐）を推奨。
 
 ## 関連リソース

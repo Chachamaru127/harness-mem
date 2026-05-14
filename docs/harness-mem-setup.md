@@ -217,6 +217,7 @@ There are two different process layers:
 | Layer | Default endpoint | Owner | Normal multiplicity |
 |---|---|---|---|
 | Memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server, SQLite connection, runtime APIs | One per local runtime |
+| Streamable HTTP MCP gateway (opt-in) | `127.0.0.1:37889/mcp` | Go MCP gateway, token-authenticated loopback HTTP transport, proxies to `:37888` | One shared local gateway |
 | stdio MCP frontend | client stdin/stdout | Frontend process that exposes MCP tools and proxies to `:37888`; Go binary preferred, Node.js fallback available | One per open MCP client session |
 
 Seeing several stdio MCP frontend processes is not automatically a failure. On
@@ -236,6 +237,35 @@ shutdown ownership, project isolation, and authentication harder to reason
 about. The intended opt-in direction for fewer frontend processes is a
 local-only Streamable HTTP MCP gateway at `http://127.0.0.1:37889/mcp`, while
 keeping the existing stdio MCP route as the compatibility fallback.
+
+Opt-in gateway lifecycle:
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-gateway status
+harness-mem doctor --mcp-transport http
+```
+
+`mcp-gateway status --json` reports the running pid, endpoint, auth mode,
+gateway probe result, and memory daemon health. The gateway has its own pidfile
+and log under `HARNESS_MEM_HOME`; it does not replace `harness-memd`.
+
+Opt-in client config generation:
+
+```bash
+# Claude / Codex HTTP MCP config. The token value itself stays in your shell env.
+harness-mem mcp-config --transport http --client claude,codex --write
+
+# Hermes is explicit opt-in because it is still tier 3 / experimental.
+harness-mem mcp-config --transport http --client hermes --write
+```
+
+The generated HTTP config points clients at `http://127.0.0.1:37889/mcp` and
+stores only the token environment variable name (`HARNESS_MEM_MCP_TOKEN`) or a
+header placeholder (`Bearer ${HARNESS_MEM_MCP_TOKEN}`). It does not write the
+secret token value into config files. `--client all` intentionally means
+Claude + Codex only; use `--client hermes` when you want Hermes YAML written.
 
 ## 3. Command Reference
 
@@ -441,6 +471,14 @@ frontends still share the daemon behind `127.0.0.1:37888`.
 - `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)
 - `HARNESS_MEM_LOG_ROTATE_KEEP` (default: `5`)
+- `HARNESS_MEM_MCP_ADDR` (default: `127.0.0.1:37889`)
+- `HARNESS_MEM_MCP_URL` (optional full HTTP MCP URL for `mcp-config --transport http`)
+- `HARNESS_MEM_MCP_PATH` (default: `/mcp`, used when `HARNESS_MEM_MCP_URL` is not set)
+- `HARNESS_MEM_MCP_TOKEN` (required for `mcp-gateway start`; `HARNESS_MEM_REMOTE_TOKEN` is accepted as a compatibility fallback)
+- `HARNESS_MEM_MCP_TOKEN_ENV_VAR` (default: `HARNESS_MEM_MCP_TOKEN`, the token env var name written by config generation)
+- `HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC` (default: `10`)
+- `HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC` (default: `5`)
+- `HARNESS_MEM_MCP_GATEWAY_LAUNCHD_LABEL` (default: `com.harness-mem.mcp-gateway`)
 
 ### Codex ingest
 

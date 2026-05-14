@@ -12,7 +12,8 @@
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
-#   scripts/harness-mem mcp-gateway start|stop|status [--json]
+#   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
+#   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
 #   scripts/harness-mem model use-adaptive
 
 set -euo pipefail
@@ -48,12 +49,13 @@ READ_ONLY_MODE=0
 STRICT_EXIT=0
 DOCTOR_PROCESSES=0
 DOCTOR_MCP_TRANSPORT=""
+MCP_CONFIG_TRANSPORT="stdio"
 FIX_PLAN=0
 JSON_OUTPUT=0
 MCP_CLEANUP_DRY_RUN=0
 MCP_CLEANUP_EXECUTE=0
 MCP_CLEANUP_OLDER_THAN=""
-MCP_GATEWAY_SUBCOMMAND=""
+MCP_GATEWAY_FOREGROUND=0
 PURGE_DB=0
 SKIP_START=0
 SKIP_SMOKE=0
@@ -76,24 +78,17 @@ MEM_HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 MEM_PORT="${HARNESS_MEM_PORT:-37888}"
 STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
-MCP_GATEWAY_ADDR="${HARNESS_MEM_MCP_ADDR:-127.0.0.1:37889}"
-MCP_GATEWAY_ENDPOINT="/mcp"
-MCP_GATEWAY_PID_FILE="${STATE_DIR}/mcp-gateway.pid"
-MCP_GATEWAY_LOG_FILE="${STATE_DIR}/mcp-gateway.log"
-MCP_GATEWAY_ENTRY_EXPLICIT=0
-if [ -n "${HARNESS_MEM_MCP_GATEWAY_ENTRY:-}" ]; then
-  MCP_GATEWAY_ENTRY="${HARNESS_MEM_MCP_GATEWAY_ENTRY}"
-  MCP_GATEWAY_ENTRY_EXPLICIT=1
-else
-  MCP_GATEWAY_ENTRY="${HARNESS_ROOT}/mcp-server-go/bin/harness-mcp-server"
-fi
-MCP_GATEWAY_FALLBACK_ENTRY="${HARNESS_ROOT}/bin/harness-mcp-server"
-MCP_GATEWAY_START_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC:-10}"
-MCP_GATEWAY_STOP_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC:-5}"
 VERSIONS_DIR="${STATE_DIR}/versions"
 VERSIONS_SNAPSHOT_PATH="${VERSIONS_DIR}/tool-versions.json"
 VERSIONS_HISTORY_PATH="${VERSIONS_DIR}/tool-versions-history.jsonl"
 AUTO_UPDATE_STATE_PATH="${STATE_DIR}/runtime/auto-update-state.json"
+MCP_GATEWAY_ADDR="${HARNESS_MEM_MCP_ADDR:-127.0.0.1:37889}"
+MCP_GATEWAY_ENDPOINT="/mcp"
+MCP_GATEWAY_PID_FILE="${STATE_DIR}/mcp-gateway.pid"
+MCP_GATEWAY_LOG_FILE="${STATE_DIR}/mcp-gateway.log"
+MCP_GATEWAY_START_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC:-10}"
+MCP_GATEWAY_STOP_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC:-5}"
+MCP_GATEWAY_LAUNCHD_LABEL="${HARNESS_MEM_MCP_GATEWAY_LAUNCHD_LABEL:-com.harness-mem.mcp-gateway}"
 
 BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
@@ -123,9 +118,9 @@ Commands:
   promote                    Promote backend mode: local → hybrid → managed.
   rollback                   Rollback backend mode to local.
   cleanup-stale-mcp          Inspect or terminate stale stdio harness-mcp-* children.
-  mcp-gateway start          Start the local-only Streamable HTTP MCP gateway.
-  mcp-gateway stop           Stop the local-only Streamable HTTP MCP gateway.
-  mcp-gateway status         Show gateway pid, endpoint, auth mode, and daemon health.
+  mcp-gateway start|stop|status
+                              Manage the opt-in local Streamable HTTP MCP gateway.
+  mcp-config                  Print or write Claude/Codex/Hermes MCP config snippets.
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
@@ -165,7 +160,7 @@ Command options:
       --strict-exit       Return non-zero when JSON doctor reports failures
       --processes         Include a non-fatal local harness-mcp-* process inventory
       --mcp-transport http
-                          Opt in to checking the local Streamable HTTP MCP gateway
+                          Opt-in check for the local Streamable HTTP MCP gateway
       --json              Output structured JSON result
   cleanup-stale-mcp:
     --dry-run             Default. List stale stdio MCP children without killing them
@@ -173,9 +168,19 @@ Command options:
     --older-than <dur>    Required with --execute. Examples: 30s, 10m, 2h, 1d
     --json                Output structured JSON result
   mcp-gateway:
-    start                 Requires HARNESS_MEM_MCP_TOKEN or HARNESS_MEM_REMOTE_TOKEN
-    stop                  Stops only the pid tracked by ~/.harness-mem/mcp-gateway.pid
-    status                Returns non-zero when stopped/degraded; supports --json
+    start                  Start the singleton local Streamable HTTP gateway
+    stop                   Stop the pidfile-managed gateway
+    status                 Show pid, endpoint, auth mode, gateway probe, and daemon health
+    --foreground           Run gateway in the foreground instead of writing a pidfile
+    --addr <host:port>     Override HARNESS_MEM_MCP_ADDR (default: 127.0.0.1:37889)
+    --json                 Output structured JSON status
+  mcp-config:
+    --client <list>         claude,codex,hermes or all. all means claude,codex; Hermes is explicit only
+    --transport stdio|http  Default: stdio. Use http for the opt-in MCP gateway
+    --url <url>             Override HTTP endpoint (default: http://127.0.0.1:37889/mcp)
+    --token-env-var <name>  HTTP bearer token env var (default: HARNESS_MEM_MCP_TOKEN)
+    --write                 Write managed snippets where safe; otherwise preview only
+    --json                  Output structured JSON
   uninstall:
     --purge-db          Remove ~/.harness-mem/harness-mem.db after stop
   versions:
@@ -577,18 +582,9 @@ parse_options() {
           ;;
         --mcp-transport)
           shift
-          [ "$#" -gt 0 ] || fail "--mcp-transport requires a value (stdio|http|streamable_http)"
-          case "$1" in
-            stdio|"")
-              DOCTOR_MCP_TRANSPORT="stdio"
-              ;;
-            http|streamable_http)
-              DOCTOR_MCP_TRANSPORT="http"
-              ;;
-            *)
-              fail "--mcp-transport must be one of: stdio, http, streamable_http"
-              ;;
-          esac
+          [ "$#" -gt 0 ] || fail "--mcp-transport requires a value"
+          DOCTOR_MCP_TRANSPORT="$1"
+          MCP_CONFIG_TRANSPORT="$1"
           ;;
         --plan)
           FIX_PLAN=1
@@ -604,6 +600,14 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--older-than requires a duration"
         MCP_CLEANUP_OLDER_THAN="$1"
+        ;;
+      --addr)
+        shift
+        [ "$#" -gt 0 ] || fail "--addr requires host:port"
+        MCP_GATEWAY_ADDR="$1"
+        ;;
+      --foreground)
+        MCP_GATEWAY_FOREGROUND=1
         ;;
       --purge-db)
         PURGE_DB=1
@@ -1956,6 +1960,7 @@ check_codex_config_wiring() {
   local cfg="$1"
   local failed=0
   local notify_value notify_script mcp_args_value mcp_cwd_value mcp_entry_path
+  local mcp_url_value mcp_bearer_token_env_var
   local harness_section harness_env_section
 
   # notify is intentionally file-global — it lives at top-level config, not under [mcp_servers.harness]
@@ -1995,6 +2000,25 @@ check_codex_config_wiring() {
   mcp_command_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*command[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
   mcp_args_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*args[[:space:]]*=[[:space:]]*\[[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
   mcp_cwd_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*cwd[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  mcp_url_value="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*url[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+  mcp_bearer_token_env_var="$(echo "$harness_section" | sed -nE 's/^[[:space:]]*bearer_token_env_var[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+
+  if [ -n "$mcp_url_value" ]; then
+    local expected_mcp_url expected_token_env_var
+    expected_mcp_url="$(_mcp_gateway_endpoint_url)"
+    expected_token_env_var="${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
+    if [ "$mcp_url_value" != "$expected_mcp_url" ]; then
+      warn "Codex MCP HTTP URL is stale in: $cfg (expected ${expected_mcp_url}, got ${mcp_url_value})"
+      failed=1
+    elif [ "$mcp_bearer_token_env_var" != "$expected_token_env_var" ]; then
+      warn "Codex MCP HTTP bearer token env var is missing or unexpected in: $cfg"
+      failed=1
+    else
+      log "Codex MCP HTTP wiring: OK"
+    fi
+    return "$failed"
+  fi
+
   # Resolve MCP entry point: prefer command (wrapper script, v0.11.0+),
   # fall back to args[0] (legacy node + dist/index.js path).
   mcp_entry_path=""
@@ -2047,6 +2071,37 @@ check_codex_config_wiring() {
   fi
 
   return "$failed"
+}
+
+print_codex_mcp_block() {
+  case "$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')" in
+    streamable_http)
+      cat <<EOF
+$BEGIN_CODEX_MCP
+[mcp_servers.harness]
+url = "$(_mcp_gateway_endpoint_url)"
+bearer_token_env_var = "${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
+enabled = true
+$END_CODEX_MCP
+EOF
+      ;;
+    *)
+      cat <<EOF
+$BEGIN_CODEX_MCP
+[mcp_servers.harness]
+command = "${HARNESS_ROOT}/bin/harness-mcp-server"
+args = []
+cwd = "${HARNESS_ROOT}"
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "${MEM_HOST}"
+HARNESS_MEM_PORT = "${MEM_PORT}"
+HARNESS_MEM_DB_PATH = "${DB_PATH}"
+$END_CODEX_MCP
+EOF
+      ;;
+  esac
 }
 
 rewrite_codex_harness_wiring() {
@@ -2124,21 +2179,8 @@ EOF
         remove_memory_notify && /^[[:space:]]*notify[[:space:]]*=/ && /memory-codex-notify\.sh/ { next }
         { print }
       ' "$cfg"
-    cat <<EOF
-
-$BEGIN_CODEX_MCP
-[mcp_servers.harness]
-command = "${HARNESS_ROOT}/bin/harness-mcp-server"
-args = []
-cwd = "${HARNESS_ROOT}"
-enabled = true
-
-[mcp_servers.harness.env]
-HARNESS_MEM_HOST = "${MEM_HOST}"
-HARNESS_MEM_PORT = "${MEM_PORT}"
-HARNESS_MEM_DB_PATH = "${DB_PATH}"
-$END_CODEX_MCP
-EOF
+    echo ""
+    print_codex_mcp_block
   } >"$tmp"
 
   mv "$tmp" "$cfg"
@@ -2246,26 +2288,17 @@ setup_codex_wiring() {
   mkdir -p "$codex_dir"
 
   if [ ! -f "$cfg" ]; then
-    cat >"$cfg" <<EOF
+    {
+      cat <<EOF
 # Codex Team Config (generated by harness-mem)
 
 $BEGIN_CODEX_NOTIFY
 notify = ["bash", "${notify_script}"]
 $END_CODEX_NOTIFY
 
-$BEGIN_CODEX_MCP
-[mcp_servers.harness]
-command = "${HARNESS_ROOT}/bin/harness-mcp-server"
-args = []
-cwd = "${HARNESS_ROOT}"
-enabled = true
-
-[mcp_servers.harness.env]
-HARNESS_MEM_HOST = "${MEM_HOST}"
-HARNESS_MEM_PORT = "${MEM_PORT}"
-HARNESS_MEM_DB_PATH = "${DB_PATH}"
-$END_CODEX_MCP
 EOF
+      print_codex_mcp_block
+    } >"$cfg"
     log "Created Codex config: $cfg"
   else
     local had_managed_wiring=0
@@ -2299,22 +2332,25 @@ EOF
     fi
 
     if ! rg -q '^\[mcp_servers\.harness\]' "$cfg"; then
-      cat >>"$cfg" <<EOF
-
-$BEGIN_CODEX_MCP
-[mcp_servers.harness]
-command = "${HARNESS_ROOT}/bin/harness-mcp-server"
-args = []
-cwd = "${HARNESS_ROOT}"
-enabled = true
-
-[mcp_servers.harness.env]
-HARNESS_MEM_HOST = "${MEM_HOST}"
-HARNESS_MEM_PORT = "${MEM_PORT}"
-HARNESS_MEM_DB_PATH = "${DB_PATH}"
-$END_CODEX_MCP
-EOF
+      {
+        echo ""
+        print_codex_mcp_block
+      } >>"$cfg"
       log "Added Codex MCP wiring: $cfg"
+    fi
+
+    if [ -n "$DOCTOR_MCP_TRANSPORT" ] && grep -Fq "$BEGIN_CODEX_MCP" "$cfg"; then
+      local desired_transport current_has_http
+      desired_transport="$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')"
+      current_has_http=0
+      if awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg" \
+        | grep -qE '^[[:space:]]*url[[:space:]]*='; then
+        current_has_http=1
+      fi
+      if { [ "$desired_transport" = "streamable_http" ] && [ "$current_has_http" -eq 0 ]; } \
+        || { [ "$desired_transport" = "stdio" ] && [ "$current_has_http" -eq 1 ]; }; then
+        rewrite_codex_harness_wiring "$cfg" "$notify_script"
+      fi
     fi
 
     if [ "$had_managed_wiring" -eq 1 ] && ! check_codex_config_wiring "$cfg" >/dev/null 2>&1; then
@@ -2528,7 +2564,7 @@ upsert_claude_json() {
   # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
   local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
-  local tmp
+  local tmp transport http_url token_env_var auth_header
 
   mkdir -p "$(dirname "$file")"
 
@@ -2541,7 +2577,39 @@ EOF
     log "Created Claude config: $file"
   fi
 
+  transport="$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')"
   tmp="$(mktemp)"
+  if [ "$transport" = "streamable_http" ]; then
+    http_url="$(_mcp_gateway_endpoint_url)"
+    token_env_var="${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
+    auth_header="Bearer \${${token_env_var}}"
+    if jq \
+      --arg http_url "$http_url" \
+      --arg auth_header "$auth_header" \
+      '
+        .mcpServers = (.mcpServers // {})
+        | .mcpServers.harness = (
+            (.mcpServers.harness // {})
+            | .type = "http"
+            | .url = $http_url
+            | .enabled = true
+            | .headers = ((.headers // {}) + {"Authorization": $auth_header})
+            | del(.command)
+            | del(.args)
+            | del(.cwd)
+            | del(.env)
+          )
+      ' "$file" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$file"
+      log "Updated Claude HTTP MCP wiring: $file"
+      return 0
+    fi
+
+    rm -f "$tmp"
+    warn "Could not parse Claude config JSON: $file"
+    return 1
+  fi
+
   if jq \
     --arg mcp_entry "$mcp_entry" \
     --arg host "$MEM_HOST" \
@@ -2554,6 +2622,9 @@ EOF
       | .mcpServers.harness.command = $mcp_entry
       | del(.mcpServers.harness.args)
       | del(.mcpServers.harness.cwd)
+      | del(.mcpServers.harness.type)
+      | del(.mcpServers.harness.url)
+      | del(.mcpServers.harness.headers)
       | .mcpServers.harness.enabled = true
       | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
           "HARNESS_MEM_HOST": $host,
@@ -2576,7 +2647,7 @@ upsert_claude_settings_plugin() {
   # Use absolute path — Claude Code CLI ignores cwd in MCP server config (v2.1.92+)
   local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local node_path="${HARNESS_ROOT}/mcp-server/node_modules"
-  local tmp
+  local tmp transport http_url token_env_var auth_header
 
   mkdir -p "$(dirname "$file")"
 
@@ -2587,7 +2658,44 @@ EOF
     log "Created Claude settings: $file"
   fi
 
+  transport="$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')"
   tmp="$(mktemp)"
+  if [ "$transport" = "streamable_http" ]; then
+    http_url="$(_mcp_gateway_endpoint_url)"
+    token_env_var="${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
+    auth_header="Bearer \${${token_env_var}}"
+    if jq \
+      --arg http_url "$http_url" \
+      --arg auth_header "$auth_header" \
+      --arg plugin_root "$HARNESS_ROOT" \
+      '
+        .plugins = (.plugins // {})
+        | .plugins.harness = {
+            "source": "settings",
+            "name": "harness-mem",
+            "root": $plugin_root,
+            "mcpServers": {
+              "harness": {
+                "type": "http",
+                "url": $http_url,
+                "enabled": true,
+                "headers": {
+                  "Authorization": $auth_header
+                }
+              }
+            }
+          }
+      ' "$file" >"$tmp" 2>/dev/null; then
+      mv "$tmp" "$file"
+      log "Updated Claude settings with HTTP inline plugin: $file"
+      return 0
+    fi
+
+    rm -f "$tmp"
+    warn "Could not write inline plugin to Claude settings: $file"
+    return 1
+  fi
+
   if jq \
     --arg mcp_entry "$mcp_entry" \
     --arg host "$MEM_HOST" \
@@ -3030,6 +3138,9 @@ check_claude_wiring() {
   local mcp_entry="${HARNESS_ROOT}/bin/harness-mcp-server"
   local mcp_relative_entry="bin/harness-mcp-server"
   local mcp_cwd="${HARNESS_ROOT}"
+  local mcp_http_url="$(_mcp_gateway_endpoint_url)"
+  local token_env_var="${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
+  local mcp_auth_header="Bearer \${${token_env_var}}"
   local found_mcp=0
 
   if [ ! -f "$hooks" ]; then
@@ -3056,10 +3167,16 @@ check_claude_wiring() {
       continue
     fi
 
-    if jq -e --arg mcp_entry "$mcp_entry" --arg mcp_relative_entry "$mcp_relative_entry" --arg mcp_cwd "$mcp_cwd" '
+    if jq -e --arg mcp_entry "$mcp_entry" --arg mcp_relative_entry "$mcp_relative_entry" --arg mcp_cwd "$mcp_cwd" --arg mcp_http_url "$mcp_http_url" --arg mcp_auth_header "$mcp_auth_header" '
       .mcpServers.harness != null
       and ((.mcpServers.harness.enabled // true) != false)
       and (
+        (
+          ((.mcpServers.harness.type // "") == "http")
+          and ((.mcpServers.harness.url // "") == $mcp_http_url)
+          and ((.mcpServers.harness.headers.Authorization // "") == $mcp_auth_header)
+        )
+        or
         (
           ((.mcpServers.harness.command // "") == $mcp_entry)
           or (
@@ -3128,6 +3245,9 @@ get_claude_harness_signature() {
           entry_path: entry_path($server),
           cwd: ($server.cwd // ""),
           enabled: ($server.enabled // true),
+          type: ($server.type // (if (($server.url // "") != "") then "http" else "stdio" end)),
+          url: ($server.url // ""),
+          auth_header: ($server.headers.Authorization // ""),
           plugin_root: ($server.plugin_root // ""),
           host: ($server.env.HARNESS_MEM_HOST // ""),
           port: ($server.env.HARNESS_MEM_PORT // ""),
@@ -3170,508 +3290,6 @@ start_daemon() {
     HARNESS_MEM_PORT="$MEM_PORT" \
     HARNESS_MEM_DB_PATH="$DB_PATH" \
     "$HARNESS_ROOT/scripts/harness-memd" start --quiet
-}
-
-_mcp_gateway_auth_token() {
-  printf '%s' "${HARNESS_MEM_MCP_TOKEN:-${HARNESS_MEM_REMOTE_TOKEN:-}}"
-}
-
-_mcp_gateway_endpoint_url() {
-  printf 'http://%s%s' "$MCP_GATEWAY_ADDR" "$MCP_GATEWAY_ENDPOINT"
-}
-
-_mcp_gateway_parse_addr() {
-  local addr="${1:-}"
-  local host="" port=""
-  if [[ "$addr" =~ ^\[([^\]]+)\]:([0-9]+)$ ]]; then
-    host="${BASH_REMATCH[1]}"
-    port="${BASH_REMATCH[2]}"
-  elif [[ "$addr" == *:* ]]; then
-    host="${addr%:*}"
-    port="${addr##*:}"
-  fi
-
-  if [ -z "$host" ] || [ -z "$port" ]; then
-    return 1
-  fi
-  printf '%s\t%s\n' "$host" "$port"
-}
-
-_mcp_gateway_validate_addr() {
-  local parsed host port
-  parsed="$(_mcp_gateway_parse_addr "$MCP_GATEWAY_ADDR")" || fail "HARNESS_MEM_MCP_ADDR must be an explicit loopback host:port, got: ${MCP_GATEWAY_ADDR}"
-  IFS=$'\t' read -r host port <<<"$parsed"
-
-  [[ "$port" =~ ^[0-9]+$ ]] || fail "HARNESS_MEM_MCP_ADDR port must be numeric: ${MCP_GATEWAY_ADDR}"
-  [ "$port" -ge 1 ] 2>/dev/null && [ "$port" -le 65535 ] 2>/dev/null \
-    || fail "HARNESS_MEM_MCP_ADDR port must be between 1 and 65535: ${MCP_GATEWAY_ADDR}"
-
-  case "$host" in
-    localhost|::1)
-      return 0
-      ;;
-  esac
-  if [[ "$host" =~ ^127\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-    return 0
-  fi
-  fail "HARNESS_MEM_MCP_ADDR must bind only to localhost or loopback IP, got host: ${host}"
-}
-
-_mcp_gateway_port() {
-  local parsed host port
-  parsed="$(_mcp_gateway_parse_addr "$MCP_GATEWAY_ADDR")" || return 1
-  IFS=$'\t' read -r host port <<<"$parsed"
-  printf '%s\n' "$port"
-}
-
-_mcp_gateway_is_pid_running() {
-  local pid="${1:-}"
-  [ -n "$pid" ] || return 1
-  kill -0 "$pid" >/dev/null 2>&1
-}
-
-_mcp_gateway_read_pid_file() {
-  if [ -f "$MCP_GATEWAY_PID_FILE" ]; then
-    local content
-    content="$(cat "$MCP_GATEWAY_PID_FILE" 2>/dev/null || true)"
-    if [[ "$content" =~ ^[[:space:]]*([0-9]+)[[:space:]]*$ ]]; then
-      printf '%s' "${BASH_REMATCH[1]}"
-    fi
-  fi
-}
-
-_mcp_gateway_process_args() {
-  local pid="${1:-}"
-  [ -n "$pid" ] || return 0
-  ps -p "$pid" -o args= 2>/dev/null || true
-}
-
-_mcp_gateway_is_expected_pid() {
-  local pid="${1:-}" args entry_base ppid parent_args port
-  _mcp_gateway_is_pid_running "$pid" || return 1
-  port="$(_mcp_gateway_port)" || return 1
-  command -v lsof >/dev/null 2>&1 || return 1
-  lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1 || return 1
-
-  args="$(_mcp_gateway_process_args "$pid")"
-  entry_base="${MCP_GATEWAY_ENTRY##*/}"
-  case "$args" in
-    *harness-mcp-*|*"${entry_base}"*)
-      return 0
-      ;;
-  esac
-
-  ppid="$(ps -p "$pid" -o ppid= 2>/dev/null | tr -d '[:space:]' || true)"
-  if [ -n "$ppid" ] && [ "$ppid" -gt 1 ] 2>/dev/null; then
-    parent_args="$(_mcp_gateway_process_args "$ppid")"
-    case "$parent_args" in
-      *harness-mcp-*|*"${entry_base}"*)
-        return 0
-        ;;
-    esac
-  fi
-
-  return 1
-}
-
-_mcp_gateway_discover_listener_pid() {
-  local port
-  port="$(_mcp_gateway_port)" || return 1
-  command -v lsof >/dev/null 2>&1 || return 1
-  lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n1 || true
-}
-
-_mcp_gateway_memory_health_json() {
-  local url="http://${MEM_HOST}:${MEM_PORT}/health"
-  if curl --silent --show-error --fail --max-time 1 "$url" >/dev/null 2>&1; then
-    jq -nc --arg url "$url" '{reachable: true, url: $url}'
-  else
-    jq -nc --arg url "$url" '{reachable: false, url: $url}'
-  fi
-}
-
-_mcp_gateway_ensure_entry() {
-  if [ "$MCP_GATEWAY_ENTRY_EXPLICIT" -eq 1 ]; then
-    [ -x "$MCP_GATEWAY_ENTRY" ] || fail "MCP gateway entry is not executable: ${MCP_GATEWAY_ENTRY}"
-    return 0
-  fi
-
-  if [ -f "${HARNESS_ROOT}/mcp-server-go/main.go" ] && command -v go >/dev/null 2>&1; then
-    mkdir -p "$(dirname "$MCP_GATEWAY_ENTRY")"
-    (
-      cd "${HARNESS_ROOT}/mcp-server-go"
-      go build -o "$MCP_GATEWAY_ENTRY" ./main.go
-    ) || fail "Failed to build MCP gateway binary from mcp-server-go/main.go"
-    return 0
-  fi
-
-  if [ -x "$MCP_GATEWAY_ENTRY" ]; then
-    return 0
-  fi
-  if [ -x "$MCP_GATEWAY_FALLBACK_ENTRY" ]; then
-    MCP_GATEWAY_ENTRY="$MCP_GATEWAY_FALLBACK_ENTRY"
-    return 0
-  fi
-
-  fail "MCP gateway entry is not executable: ${MCP_GATEWAY_ENTRY}"
-}
-
-_mcp_gateway_probe_json() {
-  local token="$(_mcp_gateway_auth_token)"
-  local endpoint http_code body_tmp curl_error status reachable
-  endpoint="$(_mcp_gateway_endpoint_url)"
-  body_tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-gateway-probe.XXXXXX")"
-
-  if [ -z "$token" ]; then
-    rm -f "$body_tmp"
-    jq -nc --arg endpoint "$endpoint" '{
-      reachable: false,
-      status: "token_not_configured",
-      http_code: null,
-      endpoint: $endpoint
-    }'
-    return 0
-  fi
-
-  curl_error=""
-  http_code="$(curl --silent --show-error --max-time 2 \
-    -o "$body_tmp" \
-    -w '%{http_code}' \
-    -H "Authorization: Bearer ${token}" \
-    -H 'Content-Type: application/json' \
-    -H 'Accept: application/json, text/event-stream' \
-    -X POST "$endpoint" \
-    -d '{"jsonrpc":"2.0","id":"harness-mem-cli-health","method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"harness-mem-cli","version":"s122"}}}' \
-    2>"${body_tmp}.err" || true)"
-  if [ -f "${body_tmp}.err" ]; then
-    curl_error="$(cat "${body_tmp}.err" 2>/dev/null || true)"
-  fi
-
-  reachable=false
-  status="unreachable"
-  case "$http_code" in
-    200|201|202)
-      reachable=true
-      status="ok"
-      ;;
-    401)
-      status="unauthorized"
-      ;;
-    403)
-      status="forbidden"
-      ;;
-    404)
-      status="not_found"
-      ;;
-    000|"")
-      status="unreachable"
-      ;;
-    *)
-      status="http_${http_code}"
-      ;;
-  esac
-
-  jq -nc \
-    --arg endpoint "$endpoint" \
-    --arg status "$status" \
-    --arg http_code "$http_code" \
-    --arg error "$curl_error" \
-    --argjson reachable "$reachable" \
-    '{
-      reachable: $reachable,
-      status: $status,
-      http_code: (if $http_code == "" or $http_code == "000" then null else ($http_code | tonumber) end),
-      endpoint: $endpoint,
-      error: (if $error == "" then null else $error end)
-    }'
-  rm -f "$body_tmp" "${body_tmp}.err"
-}
-
-_mcp_gateway_status_json() {
-  local state_write_mode="${1:-write}"
-  if [ "$state_write_mode" != "read_only" ]; then
-    mkdir -p "$STATE_DIR"
-  fi
-  local endpoint token pid file_pid listener_pid state auth_mode token_configured gateway_health memory_health args expected_pid pid_file_status pid_file_pid
-  endpoint="$(_mcp_gateway_endpoint_url)"
-  token="$(_mcp_gateway_auth_token)"
-  token_configured=false
-  auth_mode="missing_token"
-  if [ -n "$token" ]; then
-    token_configured=true
-    auth_mode="bearer_token"
-  fi
-
-  file_pid="$(_mcp_gateway_read_pid_file)"
-  pid=""
-  pid_file_pid=""
-  pid_file_status="missing"
-  expected_pid=false
-  if [ -f "$MCP_GATEWAY_PID_FILE" ]; then
-    if [ -z "$file_pid" ]; then
-      pid_file_status="malformed"
-    else
-      pid_file_pid="$file_pid"
-      if _mcp_gateway_is_pid_running "$file_pid"; then
-        if _mcp_gateway_is_expected_pid "$file_pid"; then
-          pid="$file_pid"
-          pid_file_status="expected_live_pid"
-          expected_pid=true
-        else
-          pid_file_status="unexpected_live_pid"
-        fi
-      else
-        pid_file_status="stale_dead_pid"
-      fi
-    fi
-  fi
-
-  listener_pid="$(_mcp_gateway_discover_listener_pid || true)"
-  if [ -n "$listener_pid" ]; then
-    if _mcp_gateway_is_expected_pid "$listener_pid"; then
-      pid="$listener_pid"
-      expected_pid=true
-      if [ "$state_write_mode" != "read_only" ] && [ "$pid_file_status" != "malformed" ]; then
-        echo "$listener_pid" > "$MCP_GATEWAY_PID_FILE"
-      fi
-    elif [ "$expected_pid" != true ]; then
-      pid="$listener_pid"
-      expected_pid=false
-    fi
-  fi
-
-  gateway_health="$(_mcp_gateway_probe_json)"
-  memory_health="$(_mcp_gateway_memory_health_json)"
-  args=""
-  if [ -n "$pid" ]; then
-    args="$(_mcp_gateway_process_args "$pid")"
-  fi
-
-  state="stopped"
-  if [ -n "$pid" ] && [ "$expected_pid" = true ]; then
-    if printf '%s' "$gateway_health" | jq -e '.status == "ok"' >/dev/null 2>&1; then
-      state="running"
-    else
-      state="degraded"
-    fi
-  elif [ -n "$pid" ]; then
-    state="port_conflict"
-  fi
-
-  jq -nc \
-    --arg schema "mcp-gateway-status.v1" \
-    --arg state "$state" \
-    --arg addr "$MCP_GATEWAY_ADDR" \
-    --arg endpoint "$endpoint" \
-    --arg auth_mode "$auth_mode" \
-    --arg pid "$pid" \
-    --arg pid_file_status "$pid_file_status" \
-    --arg pid_file_pid "$pid_file_pid" \
-    --arg pid_file "$MCP_GATEWAY_PID_FILE" \
-    --arg log_file "$MCP_GATEWAY_LOG_FILE" \
-    --arg process_args "$args" \
-    --argjson token_configured "$token_configured" \
-    --argjson expected_pid "$expected_pid" \
-    --argjson gateway_health "$gateway_health" \
-    --argjson memory_daemon "$memory_health" \
-    '{
-      schema: $schema,
-      state: $state,
-      running: ($state == "running"),
-      pid: (if $pid == "" then null else ($pid | tonumber) end),
-      pid_file_status: $pid_file_status,
-      pid_file_pid: (if $pid_file_pid == "" then null else ($pid_file_pid | tonumber) end),
-      expected_pid: $expected_pid,
-      endpoint: $endpoint,
-      addr: $addr,
-      auth_mode: $auth_mode,
-      token_configured: $token_configured,
-      memory_daemon: $memory_daemon,
-      gateway_health: $gateway_health,
-      pid_file: $pid_file,
-      log_file: $log_file,
-      process_args: (if $process_args == "" then null else $process_args end)
-    }'
-}
-
-_mcp_gateway_print_status_human() {
-  local status_json="$1"
-  local state pid endpoint auth daemon gateway
-  state="$(printf '%s' "$status_json" | jq -r '.state')"
-  pid="$(printf '%s' "$status_json" | jq -r '.pid // "n/a"')"
-  endpoint="$(printf '%s' "$status_json" | jq -r '.endpoint')"
-  auth="$(printf '%s' "$status_json" | jq -r '.auth_mode')"
-  daemon="$(printf '%s' "$status_json" | jq -r 'if .memory_daemon.reachable then "reachable" else "unreachable" end')"
-  gateway="$(printf '%s' "$status_json" | jq -r '.gateway_health.status')"
-  echo "mcp-gateway ${state} pid=${pid} endpoint=${endpoint} auth=${auth} gateway=${gateway} memory_daemon=${daemon}"
-}
-
-_mcp_gateway_start() {
-  mkdir -p "$STATE_DIR"
-  _mcp_gateway_validate_addr
-
-  local token status_json state listener_pid listener_args
-  token="$(_mcp_gateway_auth_token)"
-  [ -n "$token" ] || fail "mcp-gateway start requires HARNESS_MEM_MCP_TOKEN (HARNESS_MEM_REMOTE_TOKEN is accepted as fallback)"
-
-  _mcp_gateway_ensure_entry
-
-  status_json="$(_mcp_gateway_status_json)"
-  state="$(printf '%s' "$status_json" | jq -r '.state')"
-  if [ "$state" = "running" ]; then
-    [ "$JSON_OUTPUT" -eq 1 ] && printf '%s\n' "$status_json" || _mcp_gateway_print_status_human "$status_json"
-    return 0
-  fi
-  if [ "$state" = "degraded" ]; then
-    if [ "$JSON_OUTPUT" -eq 1 ]; then
-      printf '%s\n' "$status_json"
-    fi
-    warn "MCP gateway pid exists but health check is not OK; refusing to spawn a duplicate"
-    warn "Run: harness-mem mcp-gateway status --json"
-    warn "Then stop or inspect ${MCP_GATEWAY_LOG_FILE}"
-    return 1
-  fi
-  if [ "$state" = "port_conflict" ]; then
-    if [ "$JSON_OUTPUT" -eq 1 ]; then
-      printf '%s\n' "$status_json"
-    fi
-    listener_pid="$(printf '%s' "$status_json" | jq -r '.pid // ""')"
-    listener_args="$(printf '%s' "$status_json" | jq -r '.process_args // ""')"
-    warn "MCP gateway port is already in use by another process (pid=${listener_pid})"
-    [ -n "$listener_args" ] && warn "Process args: ${listener_args}"
-    return 1
-  fi
-
-  if [ "${HARNESS_MEM_MCP_GATEWAY_SKIP_DAEMON_START:-0}" != "1" ]; then
-    start_daemon
-  fi
-
-  (
-    cd "$HARNESS_ROOT"
-    HARNESS_MEM_MCP_TRANSPORT="http" \
-      HARNESS_MEM_MCP_ADDR="$MCP_GATEWAY_ADDR" \
-      HARNESS_MEM_MCP_TOKEN="$token" \
-      HARNESS_MEM_HOME="$STATE_DIR" \
-      HARNESS_MEM_DB_PATH="$DB_PATH" \
-      HARNESS_MEM_HOST="$MEM_HOST" \
-      HARNESS_MEM_PORT="$MEM_PORT" \
-      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-      "$MCP_GATEWAY_ENTRY" >> "$MCP_GATEWAY_LOG_FILE" 2>&1 &
-    echo "$!" > "$MCP_GATEWAY_PID_FILE"
-  )
-
-  local waited=0 pid
-  pid="$(_mcp_gateway_read_pid_file)"
-  while [ "$waited" -lt "$MCP_GATEWAY_START_TIMEOUT_SEC" ]; do
-    if [ -n "$pid" ] && ! _mcp_gateway_is_pid_running "$pid"; then
-      break
-    fi
-    status_json="$(_mcp_gateway_status_json)"
-    if printf '%s' "$status_json" | jq -e '.state == "running"' >/dev/null 2>&1; then
-      [ "$JSON_OUTPUT" -eq 1 ] && printf '%s\n' "$status_json" || _mcp_gateway_print_status_human "$status_json"
-      return 0
-    fi
-    sleep 1
-    waited=$((waited + 1))
-  done
-
-  warn "MCP gateway did not become healthy within ${MCP_GATEWAY_START_TIMEOUT_SEC}s"
-  if [ -n "$pid" ] && _mcp_gateway_is_pid_running "$pid"; then
-    kill -TERM "$pid" >/dev/null 2>&1 || true
-  fi
-  rm -f "$MCP_GATEWAY_PID_FILE"
-  return 1
-}
-
-_mcp_gateway_stop() {
-  mkdir -p "$STATE_DIR"
-  local pid waited status_json
-  pid="$(_mcp_gateway_read_pid_file)"
-  if [ -z "$pid" ] || ! _mcp_gateway_is_pid_running "$pid"; then
-    rm -f "$MCP_GATEWAY_PID_FILE"
-    status_json="$(_mcp_gateway_status_json)"
-    [ "$JSON_OUTPUT" -eq 1 ] && printf '%s\n' "$status_json" || _mcp_gateway_print_status_human "$status_json"
-    return 0
-  fi
-
-  if ! _mcp_gateway_is_expected_pid "$pid"; then
-    fail "Refusing to stop pid ${pid}; it does not look like a harness MCP gateway"
-  fi
-
-  kill -TERM "$pid" >/dev/null 2>&1 || true
-  waited=0
-  while _mcp_gateway_is_pid_running "$pid" && [ "$waited" -lt "$MCP_GATEWAY_STOP_TIMEOUT_SEC" ]; do
-    sleep 1
-    waited=$((waited + 1))
-  done
-  if _mcp_gateway_is_pid_running "$pid"; then
-    warn "MCP gateway did not exit in ${MCP_GATEWAY_STOP_TIMEOUT_SEC}s, sending SIGKILL"
-    kill -KILL "$pid" >/dev/null 2>&1 || true
-  fi
-  rm -f "$MCP_GATEWAY_PID_FILE"
-  status_json="$(_mcp_gateway_status_json)"
-  [ "$JSON_OUTPUT" -eq 1 ] && printf '%s\n' "$status_json" || _mcp_gateway_print_status_human "$status_json"
-}
-
-_mcp_gateway_status() {
-  local status_json
-  status_json="$(_mcp_gateway_status_json)"
-  if [ "$JSON_OUTPUT" -eq 1 ]; then
-    printf '%s\n' "$status_json"
-  else
-    _mcp_gateway_print_status_human "$status_json"
-  fi
-  printf '%s' "$status_json" | jq -e '.state == "running"' >/dev/null 2>&1
-}
-
-_mcp_gateway_parse_options() {
-  while [ "$#" -gt 0 ]; do
-    case "$1" in
-      --project)
-        shift
-        [ "$#" -gt 0 ] || fail "--project requires a path"
-        TARGET_DIR="$1"
-        ;;
-      --json)
-        JSON_OUTPUT=1
-        QUIET=1
-        ;;
-      --quiet)
-        QUIET=1
-        ;;
-      -h|--help)
-        usage
-        exit 0
-        ;;
-      *)
-        fail "Unknown mcp-gateway option: $1"
-        ;;
-    esac
-    shift
-  done
-}
-
-mcp_gateway_impl() {
-  MCP_GATEWAY_SUBCOMMAND="${1:-status}"
-  shift || true
-  _mcp_gateway_parse_options "$@"
-  normalize_ui_lang
-  TARGET_DIR="$(abs_dir "$TARGET_DIR")"
-
-  case "$MCP_GATEWAY_SUBCOMMAND" in
-    start)
-      _mcp_gateway_start
-      ;;
-    stop)
-      _mcp_gateway_stop
-      ;;
-    status)
-      _mcp_gateway_status
-      ;;
-    *)
-      fail "Unknown mcp-gateway subcommand: ${MCP_GATEWAY_SUBCOMMAND}. Use: start | stop | status"
-      ;;
-  esac
 }
 
 run_smoke() {
@@ -4248,6 +3866,14 @@ _doctor_parent_kind() {
   esac
 }
 
+_doctor_gateway_listener_pid() {
+  if [ -n "${HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE:-}" ]; then
+    printf '%s\n' "$HARNESS_MEM_MCP_GATEWAY_LISTENER_PID_FIXTURE"
+    return 0
+  fi
+  _mcp_gateway_discover_listener_pid || true
+}
+
 _doctor_process_advisory_json() {
   local source="ps"
   if [ -n "${HARNESS_MEM_PS_FIXTURE:-}" ]; then
@@ -4314,7 +3940,12 @@ _doctor_process_advisory_json() {
   local command_lc executable_name executable_lc parent_command parent_lc parent_kind transport parent_live stale_candidate classification
   local rss_json reasons_json item_json
   local idx parent_idx
+  local gateway_listener_pid
   local -a stale_reasons=()
+  gateway_listener_pid="$(_doctor_gateway_listener_pid)"
+  if ! [[ "$gateway_listener_pid" =~ ^[0-9]+$ ]]; then
+    gateway_listener_pid=""
+  fi
 
   for idx in "${!ps_pids[@]}"; do
     pid="${ps_pids[$idx]}"
@@ -4340,6 +3971,9 @@ _doctor_process_advisory_json() {
     parent_lc="$(printf '%s' "$parent_command" | tr '[:upper:]' '[:lower:]')"
     parent_kind="$(_doctor_parent_kind "$parent_lc")"
     transport="$(_doctor_transport_estimate "$executable_lc" "$command_lc")"
+    if [ -n "$gateway_listener_pid" ] && [ "$pid" = "$gateway_listener_pid" ]; then
+      transport="streamable_http"
+    fi
 
     parent_live=false
     if [ "$ppid" -gt 1 ] 2>/dev/null && [ -n "$parent_command" ]; then
@@ -4745,6 +4379,498 @@ cleanup_stale_mcp_impl() {
   fi
 }
 
+_pid_is_running() {
+  local pid="${1:-}"
+  [ -n "$pid" ] || return 1
+  kill -0 "$pid" >/dev/null 2>&1
+}
+
+_read_mcp_gateway_pid_file() {
+  if [ -f "$MCP_GATEWAY_PID_FILE" ]; then
+    tr -dc '0-9' < "$MCP_GATEWAY_PID_FILE" 2>/dev/null || true
+  fi
+}
+
+_read_process_args() {
+  local pid="${1:-}"
+  [ -n "$pid" ] || return 0
+  ps -p "$pid" -o args= 2>/dev/null || true
+}
+
+_mcp_gateway_token() {
+  if [ -n "${HARNESS_MEM_MCP_TOKEN:-}" ]; then
+    printf '%s' "$HARNESS_MEM_MCP_TOKEN"
+    return
+  fi
+  printf '%s' "${HARNESS_MEM_REMOTE_TOKEN:-}"
+}
+
+_mcp_gateway_auth_mode() {
+  if [ -n "$(_mcp_gateway_token)" ]; then
+    printf 'token'
+  else
+    printf 'missing_token'
+  fi
+}
+
+_mcp_gateway_port() {
+  local port
+  port="$(printf '%s' "$MCP_GATEWAY_ADDR" | sed -nE 's/^.*:([0-9]+)$/\1/p' | head -n1)"
+  printf '%s' "$port"
+}
+
+_mcp_gateway_endpoint_url() {
+  local addr="$MCP_GATEWAY_ADDR"
+  if [[ "$addr" == :* ]]; then
+    printf 'http://127.0.0.1%s%s' "$addr" "$MCP_GATEWAY_ENDPOINT"
+  else
+    printf 'http://%s%s' "$addr" "$MCP_GATEWAY_ENDPOINT"
+  fi
+}
+
+_mcp_gateway_go_bin_path() {
+  printf '%s/%s\n' "${HARNESS_ROOT}/bin" "$(_resolve_go_bin_name)"
+}
+
+ensure_mcp_gateway_runtime() {
+  download_go_binary 2>/dev/null || true
+  local go_bin_path
+  go_bin_path="$(_mcp_gateway_go_bin_path)"
+  if [ ! -x "$go_bin_path" ]; then
+    fail "Streamable HTTP MCP gateway requires the Go MCP binary: ${go_bin_path}. Run: harness-mem setup"
+  fi
+}
+
+_mcp_gateway_discover_listener_pid() {
+  local port
+  port="$(_mcp_gateway_port)"
+  [ -n "$port" ] || return 1
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 1
+  fi
+  lsof -nP -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null | head -n1 || true
+}
+
+_mcp_gateway_pid_listens() {
+  local pid="${1:-}"
+  local port
+  [ -n "$pid" ] || return 1
+  port="$(_mcp_gateway_port)"
+  [ -n "$port" ] || return 1
+  command -v lsof >/dev/null 2>&1 || return 1
+  lsof -nP -a -p "$pid" -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1
+}
+
+_mcp_gateway_is_expected_pid() {
+  local pid="${1:-}"
+  local args
+  [ -n "$pid" ] || return 1
+  _pid_is_running "$pid" || return 1
+  args="$(_read_process_args "$pid")"
+  case "$args" in
+    *harness-mcp-*|*bin/harness-mcp-server*)
+      _mcp_gateway_pid_listens "$pid"
+      return $?
+      ;;
+  esac
+  return 1
+}
+
+_mcp_gateway_memory_health_json() {
+  local url="http://${MEM_HOST}:${MEM_PORT}/health/ready"
+  local tmp status ok status_name
+  tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-gateway-memory-health.XXXXXX")"
+  status="$(curl --silent --show-error --max-time 2 -o "$tmp" -w '%{http_code}' "$url" 2>/dev/null || true)"
+  ok=false
+  status_name="unreachable"
+  if [ "$status" = "200" ] && jq -e '.ok == true' "$tmp" >/dev/null 2>&1; then
+    ok=true
+    status_name="healthy"
+  fi
+  jq -n \
+    --argjson ok "$ok" \
+    --arg status "$status_name" \
+    --arg url "$url" \
+    --arg http_status "$status" \
+    '{
+      ok: $ok,
+      status: $status,
+      url: $url,
+      http_status: (if $http_status == "" or $http_status == "000" then null else ($http_status | tonumber) end)
+    }'
+  rm -f "$tmp"
+}
+
+_mcp_gateway_probe_json() {
+  local endpoint token tmp status ok status_name error_excerpt payload
+  endpoint="$(_mcp_gateway_endpoint_url)"
+  token="$(_mcp_gateway_token)"
+  if [ -z "$token" ]; then
+    jq -n \
+      --arg endpoint "$endpoint" \
+      '{
+        ok: false,
+        status: "missing_token",
+        endpoint: $endpoint,
+        http_status: null,
+        error: "HARNESS_MEM_MCP_TOKEN is required for gateway health probes"
+      }'
+    return 0
+  fi
+
+  payload='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"harness-mem-gateway-doctor","version":"0.1.0"}}}'
+  tmp="$(mktemp "${TMPDIR:-/tmp}/harness-mem-mcp-gateway-probe.XXXXXX")"
+  status="$(
+    curl --silent --show-error --max-time 3 \
+      -o "$tmp" \
+      -w '%{http_code}' \
+      -H 'Content-Type: application/json' \
+      -H "Authorization: Bearer ${token}" \
+      -H "x-harness-mem-token: ${token}" \
+      -X POST "$endpoint" \
+      -d "$payload" 2>/dev/null || true
+  )"
+
+  ok=false
+  status_name="unreachable"
+  error_excerpt=""
+  if [ "$status" = "200" ] && jq -e '.result.protocolVersion? // empty' "$tmp" >/dev/null 2>&1; then
+    ok=true
+    status_name="healthy"
+  else
+    error_excerpt="$(tr '\n' ' ' < "$tmp" 2>/dev/null | cut -c1-240 || true)"
+    case "$status" in
+      401) status_name="unauthorized" ;;
+      403) status_name="forbidden" ;;
+      000|"") status_name="unreachable" ;;
+      *) status_name="bad_response" ;;
+    esac
+  fi
+
+  jq -n \
+    --argjson ok "$ok" \
+    --arg status "$status_name" \
+    --arg endpoint "$endpoint" \
+    --arg http_status "$status" \
+    --arg error "$error_excerpt" \
+    '{
+      ok: $ok,
+      status: $status,
+      endpoint: $endpoint,
+      http_status: (if $http_status == "" or $http_status == "000" then null else ($http_status | tonumber) end),
+      error: (if $error == "" then null else $error end)
+    }'
+  rm -f "$tmp"
+}
+
+_mcp_gateway_launchd_loaded_json() {
+  local loaded="null"
+  if command -v launchctl >/dev/null 2>&1; then
+    local uid target
+    uid="$(id -u 2>/dev/null || true)"
+    if [ -n "$uid" ]; then
+      target="gui/${uid}/${MCP_GATEWAY_LAUNCHD_LABEL}"
+      if launchctl print "$target" >/dev/null 2>&1; then
+        loaded="true"
+      else
+        loaded="false"
+      fi
+    fi
+  fi
+  jq -n \
+    --arg label "$MCP_GATEWAY_LAUNCHD_LABEL" \
+    --argjson loaded "$loaded" \
+    '{label: $label, loaded: $loaded}'
+}
+
+_mcp_gateway_status_json() {
+  local pid listener_pid pid_running=false listener_running=false pid_json="null" listener_pid_json="null"
+  local probe_json memory_json launchd_json status endpoint auth_mode
+  endpoint="$(_mcp_gateway_endpoint_url)"
+  auth_mode="$(_mcp_gateway_auth_mode)"
+
+  pid="$(_read_mcp_gateway_pid_file)"
+  if [ -n "$pid" ] && _pid_is_running "$pid"; then
+    pid_running=true
+    pid_json="$pid"
+  fi
+
+  listener_pid="$(_mcp_gateway_discover_listener_pid || true)"
+  if [ -n "$listener_pid" ]; then
+    listener_running=true
+    listener_pid_json="$listener_pid"
+    if [ "$pid_json" = "null" ]; then
+      pid_json="$listener_pid"
+    fi
+  fi
+
+  probe_json="$(_mcp_gateway_probe_json)"
+  memory_json="$(_mcp_gateway_memory_health_json)"
+  launchd_json="$(_mcp_gateway_launchd_loaded_json)"
+
+  if printf '%s' "$probe_json" | jq -e '.ok == true' >/dev/null 2>&1; then
+    status="running"
+  elif [ "$pid_running" = true ] || [ "$listener_running" = true ]; then
+    status="degraded"
+  else
+    status="stopped"
+  fi
+
+  jq -n \
+    --arg schema "mcp-gateway.status.v1" \
+    --arg status "$status" \
+    --arg endpoint "$endpoint" \
+    --arg addr "$MCP_GATEWAY_ADDR" \
+    --arg auth_mode "$auth_mode" \
+    --arg pid_file "$MCP_GATEWAY_PID_FILE" \
+    --arg log_file "$MCP_GATEWAY_LOG_FILE" \
+    --argjson pid "$pid_json" \
+    --argjson pid_running "$pid_running" \
+    --argjson listener_pid "$listener_pid_json" \
+    --argjson listener_running "$listener_running" \
+    --argjson gateway "$probe_json" \
+    --argjson memory_daemon "$memory_json" \
+    --argjson launchd "$launchd_json" \
+    '{
+      schema: $schema,
+      status: $status,
+      endpoint: $endpoint,
+      addr: $addr,
+      pid: $pid,
+      pid_running: $pid_running,
+      listener_pid: $listener_pid,
+      listener_running: $listener_running,
+      pid_file: $pid_file,
+      log_file: $log_file,
+      auth_mode: $auth_mode,
+      gateway: $gateway,
+      memory_daemon: $memory_daemon,
+      launchd: $launchd
+    }'
+}
+
+_mcp_gateway_print_status_human() {
+  local status_json="$1"
+  printf '%s\n' "$status_json" | jq -r '
+    "[harness-mem] MCP gateway status: \(.status)",
+    "  endpoint: \(.endpoint)",
+    "  pid: \(.pid // "n/a")",
+    "  auth: \(.auth_mode)",
+    "  gateway: \(.gateway.status) http=\(.gateway.http_status // "n/a")",
+    "  memory daemon: \(.memory_daemon.status) \(.memory_daemon.url)",
+    "  pidfile: \(.pid_file)",
+    "  log: \(.log_file)",
+    "  launchd: \(.launchd.label) loaded=\(.launchd.loaded // "unknown")"
+  '
+}
+
+_mcp_gateway_wait_healthy() {
+  local retries attempt status_json
+  retries=$((MCP_GATEWAY_START_TIMEOUT_SEC * 2))
+  attempt=0
+  while [ "$attempt" -lt "$retries" ]; do
+    status_json="$(_mcp_gateway_status_json)"
+    if printf '%s' "$status_json" | jq -e '.gateway.ok == true' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+  return 1
+}
+
+mcp_gateway_start_impl() {
+  require_cmd curl
+  require_cmd jq
+  ensure_mcp_gateway_runtime
+  mkdir -p "$STATE_DIR"
+
+  local token go_bin_path status_json pid listener_pid listener_args
+  token="$(_mcp_gateway_token)"
+  [ -n "$token" ] || fail "mcp-gateway start requires HARNESS_MEM_MCP_TOKEN (HARNESS_MEM_REMOTE_TOKEN is accepted as a compatibility fallback)"
+
+  if [ "$MCP_GATEWAY_FOREGROUND" -ne 1 ]; then
+    status_json="$(_mcp_gateway_status_json)"
+    if printf '%s' "$status_json" | jq -e '.gateway.ok == true' >/dev/null 2>&1; then
+      if [ "$JSON_OUTPUT" -eq 1 ]; then
+        printf '%s\n' "$status_json"
+      else
+        _mcp_gateway_print_status_human "$status_json"
+      fi
+      return 0
+    fi
+
+    pid="$(_read_mcp_gateway_pid_file)"
+    if [ -n "$pid" ] && _pid_is_running "$pid"; then
+      fail "mcp-gateway pid file points to a running but unhealthy process (pid=${pid}). Run: harness-mem mcp-gateway stop"
+    fi
+
+    listener_pid="$(_mcp_gateway_discover_listener_pid || true)"
+    if [ -n "$listener_pid" ]; then
+      listener_args="$(_read_process_args "$listener_pid")"
+      fail "MCP gateway port $(_mcp_gateway_port) is already in use by pid=${listener_pid}: ${listener_args}"
+    fi
+  fi
+
+  start_daemon >/dev/null 2>&1 || fail "memory daemon could not be started before mcp-gateway"
+  go_bin_path="$(_mcp_gateway_go_bin_path)"
+
+  if [ "$MCP_GATEWAY_FOREGROUND" -eq 1 ]; then
+    log "Starting MCP gateway in foreground: $(_mcp_gateway_endpoint_url)"
+    exec env \
+      HARNESS_MEM_HOST="$MEM_HOST" \
+      HARNESS_MEM_PORT="$MEM_PORT" \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      HARNESS_MEM_MCP_TRANSPORT="http" \
+      HARNESS_MEM_MCP_ADDR="$MCP_GATEWAY_ADDR" \
+      HARNESS_MEM_MCP_TOKEN="$token" \
+      "$go_bin_path"
+  fi
+
+  log "Starting MCP gateway: $(_mcp_gateway_endpoint_url)"
+  (
+    local gateway_pid
+    cd "$HARNESS_ROOT"
+    nohup env \
+      HARNESS_MEM_HOST="$MEM_HOST" \
+      HARNESS_MEM_PORT="$MEM_PORT" \
+      HARNESS_MEM_DB_PATH="$DB_PATH" \
+      HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+      HARNESS_MEM_MCP_TRANSPORT="http" \
+      HARNESS_MEM_MCP_ADDR="$MCP_GATEWAY_ADDR" \
+      HARNESS_MEM_MCP_TOKEN="$token" \
+      "$go_bin_path" >> "$MCP_GATEWAY_LOG_FILE" 2>&1 < /dev/null &
+    gateway_pid=$!
+    printf '%s\n' "$gateway_pid" > "$MCP_GATEWAY_PID_FILE"
+    disown "$gateway_pid" >/dev/null 2>&1 || true
+  )
+
+  if _mcp_gateway_wait_healthy; then
+    status_json="$(_mcp_gateway_status_json)"
+    if [ "$JSON_OUTPUT" -eq 1 ]; then
+      printf '%s\n' "$status_json"
+    else
+      _mcp_gateway_print_status_human "$status_json"
+    fi
+    return 0
+  fi
+
+  pid="$(_read_mcp_gateway_pid_file)"
+  if [ -n "$pid" ] && _pid_is_running "$pid"; then
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  fi
+  rm -f "$MCP_GATEWAY_PID_FILE"
+  fail "MCP gateway did not become healthy. See log: ${MCP_GATEWAY_LOG_FILE}"
+}
+
+mcp_gateway_stop_impl() {
+  local pid listener_pid waited
+  mkdir -p "$STATE_DIR"
+  pid="$(_read_mcp_gateway_pid_file)"
+  if [ -z "$pid" ]; then
+    listener_pid="$(_mcp_gateway_discover_listener_pid || true)"
+    if [ -n "$listener_pid" ] && _mcp_gateway_is_expected_pid "$listener_pid"; then
+      pid="$listener_pid"
+    fi
+  fi
+
+  if [ -z "$pid" ]; then
+    rm -f "$MCP_GATEWAY_PID_FILE"
+    log "mcp-gateway is not running"
+    return 0
+  fi
+
+  if ! _pid_is_running "$pid"; then
+    rm -f "$MCP_GATEWAY_PID_FILE"
+    log "mcp-gateway pid file was stale and has been cleaned"
+    return 0
+  fi
+
+  if ! _mcp_gateway_is_expected_pid "$pid"; then
+    fail "Refusing to stop pid=${pid}; it is not the expected MCP gateway listener"
+  fi
+
+  log "Stopping MCP gateway (pid=${pid})..."
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+  waited=0
+  while _pid_is_running "$pid" && [ "$waited" -lt "$MCP_GATEWAY_STOP_TIMEOUT_SEC" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if _pid_is_running "$pid"; then
+    warn "MCP gateway did not exit in ${MCP_GATEWAY_STOP_TIMEOUT_SEC}s, sending SIGKILL"
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+  fi
+  rm -f "$MCP_GATEWAY_PID_FILE"
+  log "MCP gateway stopped"
+}
+
+mcp_gateway_status_impl() {
+  require_cmd curl
+  require_cmd jq
+  local status_json status
+  status_json="$(_mcp_gateway_status_json)"
+  if [ "$JSON_OUTPUT" -eq 1 ]; then
+    printf '%s\n' "$status_json"
+  else
+    _mcp_gateway_print_status_human "$status_json"
+  fi
+  status="$(printf '%s' "$status_json" | jq -r '.status')"
+  [ "$status" = "running" ]
+}
+
+mcp_gateway_impl() {
+  local subcmd="${1:-status}"
+  case "$subcmd" in
+    start)
+      mcp_gateway_start_impl
+      ;;
+    stop)
+      mcp_gateway_stop_impl
+      ;;
+    status)
+      mcp_gateway_status_impl
+      ;;
+    *)
+      fail "Unknown mcp-gateway subcommand: ${subcmd}. Use: start | stop | status"
+      ;;
+  esac
+}
+
+_normalize_mcp_transport_option() {
+  local raw="${1:-}"
+  raw="$(printf '%s' "$raw" | tr '[:upper:]' '[:lower:]' | xargs)"
+  case "$raw" in
+    ""|stdio) printf 'stdio' ;;
+    http|streamable_http) printf 'streamable_http' ;;
+    *) return 1 ;;
+  esac
+}
+
+_doctor_check_mcp_gateway() {
+  local transport="$1"
+  local status_json gateway_status gateway_ok fix
+  if [ "$transport" != "streamable_http" ]; then
+    _doctor_record "mcp_gateway" "ok:stdio_default" ""
+    return 0
+  fi
+
+  status_json="$(_mcp_gateway_status_json)"
+  gateway_status="$(printf '%s' "$status_json" | jq -r '.gateway.status // "unknown"')"
+  gateway_ok="$(printf '%s' "$status_json" | jq -r '.gateway.ok // false')"
+  fix="HARNESS_MEM_MCP_TOKEN=<token> harness-mem mcp-gateway start"
+  if [ "$gateway_ok" = "true" ]; then
+    _doctor_record "mcp_gateway" "ok:http" ""
+    log "MCP gateway: OK ($(_mcp_gateway_endpoint_url))"
+    return 0
+  fi
+
+  _doctor_record "mcp_gateway" "$gateway_status" "$fix"
+  warn "MCP gateway check failed: ${gateway_status} ($(_mcp_gateway_endpoint_url))"
+  return 1
+}
+
 _doctor_print_process_advisory() {
   local advisory_json="$1"
   local count stale active
@@ -4884,6 +5010,18 @@ doctor_impl() {
   else
     _doctor_record "go_mcp_binary" "ok:nodejs_fallback" "harness-mem setup (optional: auto-downloads Go binary from GitHub Releases)"
     log "Go MCP binary: not installed (Node.js fallback active)"
+  fi
+
+  if [ -n "$DOCTOR_MCP_TRANSPORT" ]; then
+    local normalized_mcp_transport
+    if ! normalized_mcp_transport="$(_normalize_mcp_transport_option "$DOCTOR_MCP_TRANSPORT")"; then
+      _doctor_record "mcp_gateway" "invalid_transport" "use --mcp-transport stdio or --mcp-transport http"
+      failed=1
+    elif ! check_cmd jq || ! check_cmd curl; then
+      _doctor_record "mcp_gateway" "skipped" "install jq and curl, then rerun doctor --mcp-transport http"
+    elif ! _doctor_check_mcp_gateway "$normalized_mcp_transport"; then
+      failed=1
+    fi
   fi
 
     if check_cmd bun && check_cmd curl && check_cmd npm; then
@@ -5126,38 +5264,6 @@ doctor_impl() {
     versions_impl || warn "Version snapshot failed during doctor (non-fatal)"
   fi
 
-  local mcp_gateway_json="null"
-  if [ "$DOCTOR_MCP_TRANSPORT" = "http" ]; then
-    local _mcp_gateway_status_mode="write"
-    if [ "$READ_ONLY_MODE" -eq 1 ]; then
-      _mcp_gateway_status_mode="read_only"
-    fi
-    mcp_gateway_json="$(_mcp_gateway_status_json "$_mcp_gateway_status_mode")"
-    local _mcp_gateway_state _mcp_gateway_fix
-    _mcp_gateway_state="$(printf '%s' "$mcp_gateway_json" | jq -r '.state // "unknown"' 2>/dev/null || echo "unknown")"
-    _mcp_gateway_fix="harness-mem mcp-gateway start"
-    case "$_mcp_gateway_state" in
-      running)
-        _doctor_record "mcp_gateway" "ok:running" ""
-        ;;
-      degraded)
-        _doctor_record "mcp_gateway" "degraded" "$_mcp_gateway_fix"
-        failed=1
-        ;;
-      port_conflict)
-        _doctor_record "mcp_gateway" "port_conflict" "free ${MCP_GATEWAY_ADDR} or change HARNESS_MEM_MCP_ADDR"
-        failed=1
-        ;;
-      *)
-        _doctor_record "mcp_gateway" "stopped" "$_mcp_gateway_fix"
-        failed=1
-        ;;
-    esac
-    if [ "$JSON_OUTPUT" -ne 1 ] && [ "$QUIET" -ne 1 ]; then
-      _mcp_gateway_print_status_human "$mcp_gateway_json"
-    fi
-  fi
-
   local process_advisory_json="null"
   if [ "$DOCTOR_PROCESSES" -eq 1 ]; then
     process_advisory_json="$(_doctor_process_advisory_json)"
@@ -5168,7 +5274,7 @@ doctor_impl() {
 
   # JSON出力モード
   if [ "$JSON_OUTPUT" -eq 1 ]; then
-    _doctor_emit_json "$failed" "$process_advisory_json" "$mcp_gateway_json" "${doctor_checks[@]}"
+    _doctor_emit_json "$failed" "$process_advisory_json" "${doctor_checks[@]}"
     if [ "$failed" -ne 0 ] && [ "$STRICT_EXIT" -eq 1 ]; then
       return 1
     fi
@@ -5213,20 +5319,12 @@ _doctor_status_result() {
 _doctor_emit_json() {
   local failed="$1"
   local process_advisory_json="${2:-null}"
-  local mcp_gateway_json="${3:-null}"
   if [ -z "$process_advisory_json" ]; then
     process_advisory_json="null"
   fi
   if ! printf '%s' "$process_advisory_json" | jq -e . >/dev/null 2>&1; then
     process_advisory_json="null"
   fi
-  if [ -z "$mcp_gateway_json" ]; then
-    mcp_gateway_json="null"
-  fi
-  if ! printf '%s' "$mcp_gateway_json" | jq -e . >/dev/null 2>&1; then
-    mcp_gateway_json="null"
-  fi
-  shift
   shift
   shift
   local -a checks=("$@")
@@ -5312,7 +5410,6 @@ _doctor_emit_json() {
       --arg backend_mode "$current_backend" \
       --argjson checks "$checks_json" \
       --argjson process_advisory "$process_advisory_json" \
-      --argjson mcp_gateway "$mcp_gateway_json" \
       '({
         schema_version: $schema_version,
         contract_version: $contract_version,
@@ -5334,8 +5431,7 @@ _doctor_emit_json() {
           read_only_command: "harness-mem doctor --read-only --json",
           strict_ci_command: "harness-mem doctor --json --strict-exit"
         }
-      } + (if $process_advisory == null then {} else {process_advisory: $process_advisory} end)
-        + (if $mcp_gateway == null then {} else {mcp_gateway: $mcp_gateway} end))'
+      } + (if $process_advisory == null then {} else {process_advisory: $process_advisory} end))'
   }
 
 # doctor失敗時のガイド表示
@@ -6286,7 +6382,22 @@ main() {
     return
   fi
   if [ "$command" = "mcp-gateway" ]; then
-    mcp_gateway_impl "$@"
+    local gateway_subcmd="${1:-status}"
+    if [ "$#" -gt 0 ]; then
+      shift || true
+    fi
+    parse_options "$@"
+    normalize_ui_lang
+    TARGET_DIR="$(abs_dir "$TARGET_DIR")"
+    if should_use_stable_runtime_root; then
+      sync_to_stable_runtime_root
+    fi
+    maybe_auto_update "$command"
+    mcp_gateway_impl "$gateway_subcmd"
+    return
+  fi
+  if [ "$command" = "mcp-config" ]; then
+    node "${HARNESS_ROOT}/scripts/lib/mcp-config.js" "$@"
     return
   fi
 

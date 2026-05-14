@@ -180,6 +180,7 @@ npm run codex:doctor
 | 層 | 既定の接続先 | 役割 | 正常な数 |
 |---|---|---|---|
 | memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server、SQLite 接続、runtime API | local runtime ごとに 1 つ |
+| Streamable HTTP MCP gateway (opt-in) | `127.0.0.1:37889/mcp` | token 認証付き loopback HTTP transport の Go MCP gateway。`:37888` に proxy する | 共有 local gateway として 1 つ |
 | stdio MCP frontend | client stdin/stdout | MCP tool を公開し、`:37888` に proxy する frontend process。Go binary を優先し、Node.js fallback も使える | 開いている MCP client session ごとに 1 つ |
 
 stdio MCP frontend process が複数見えるだけでは、すぐ障害とは判定しません。Go binary
@@ -197,6 +198,34 @@ stdio 自体を shared singleton broker にする方針は推奨しません。s
 project 分離、認証の見通しが悪くなります。frontend プロセス数を減らす中期方針は、
 既存 stdio MCP を互換 fallback として残しつつ、`http://127.0.0.1:37889/mcp` の
 local-only Streamable HTTP MCP gateway を opt-in で導入することです。
+
+opt-in gateway lifecycle:
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-gateway status
+harness-mem doctor --mcp-transport http
+```
+
+`mcp-gateway status --json` は running pid、endpoint、auth mode、gateway probe、memory
+daemon health を返します。gateway は `HARNESS_MEM_HOME` 配下の独立した pidfile / log を
+使い、`harness-memd` を置き換えるものではありません。
+
+HTTP MCP の opt-in 設定生成:
+
+```bash
+# Claude / Codex の HTTP MCP 設定。token の値そのものは shell env に残す
+harness-mem mcp-config --transport http --client claude,codex --write
+
+# Hermes は tier 3 / experimental なので、明示したときだけ YAML を書く
+harness-mem mcp-config --transport http --client hermes --write
+```
+
+生成される HTTP 設定は `http://127.0.0.1:37889/mcp` を向きます。設定ファイルに書くのは
+`HARNESS_MEM_MCP_TOKEN` という環境変数名、または `Bearer ${HARNESS_MEM_MCP_TOKEN}` という
+参照文字列だけです。秘密 token の実値は書きません。`--client all` は意図的に Claude +
+Codex だけを対象にします。Hermes YAML を書く場合は `--client hermes` を明示します。
 
 ## 3. コマンドリファレンス
 
@@ -403,6 +432,14 @@ codex mcp get harness
 - `HARNESS_MEM_ENABLE_UI` (default: `true`)
 - `HARNESS_MEM_LOG_MAX_BYTES` (default: `5242880`, 5MB)
 - `HARNESS_MEM_LOG_ROTATE_KEEP` (default: `5`)
+- `HARNESS_MEM_MCP_ADDR` (default: `127.0.0.1:37889`)
+- `HARNESS_MEM_MCP_URL` (`mcp-config --transport http` で使う接続先 URL を直接指定する場合)
+- `HARNESS_MEM_MCP_PATH` (default: `/mcp`, `HARNESS_MEM_MCP_URL` 未指定時に使用)
+- `HARNESS_MEM_MCP_TOKEN` (`mcp-gateway start` では必須。互換 fallback として `HARNESS_MEM_REMOTE_TOKEN` も使用可)
+- `HARNESS_MEM_MCP_TOKEN_ENV_VAR` (default: `HARNESS_MEM_MCP_TOKEN`, 設定時に書く token 環境変数名)
+- `HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC` (default: `10`)
+- `HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC` (default: `5`)
+- `HARNESS_MEM_MCP_GATEWAY_LAUNCHD_LABEL` (default: `com.harness-mem.mcp-gateway`)
 
 ### Codex ingest
 

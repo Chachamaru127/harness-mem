@@ -68,6 +68,18 @@ mcp_servers:
 
 `HARNESS_MEM_MCP_SEARCH_SAFE_MODE=1` は Hermes 向けの軽量検索モード。大きいローカル DB で `vector_engine=js-fallback` の場合、`harness_mem_search` が tool deadline を超えやすいため、Step 1 では link / graph / vector を切って FTS-first の候補検索に寄せる。必要な詳細は `harness_mem_timeline` / `harness_mem_get_observations` で段階的に読む。
 
+HTTP MCP gateway を試す場合は、手書きではなく生成コマンドを使う:
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-config --transport http --client hermes --write
+```
+
+この方式は `url:` と `Authorization: "Bearer ${HARNESS_MEM_MCP_TOKEN}"` を書く。token の実値は
+config に保存しない。Hermes は experimental tier のため、`--client all` には含めず
+`--client hermes` を明示した場合だけ YAML を書く。
+
 ## 設定例の選び方
 
 | シナリオ | 推奨 config |
@@ -155,6 +167,20 @@ mcp_servers:
 ```
 
 Hermes セッション終了で MCP プロセスも終了。他ツールとメモリ共有はしづらい。
+
+### 方式 C: Streamable HTTP MCP gateway（opt-in）
+
+stdio frontend process 数を減らしたい場合の中期ルート。gateway は1つだけ起動し、Hermes は
+`url:` で接続する。既存 stdio config は fallback として残せる。
+
+```bash
+export HARNESS_MEM_MCP_TOKEN="<local-secret>"
+harness-mem mcp-gateway start
+harness-mem mcp-config --transport http --client hermes --write
+harness-mem doctor --mcp-transport http
+```
+
+HTTP gateway はまだ recommended/default ではない。複数セッションの process 数を抑えたい時だけ opt-in で使う。
 
 ## セッション継続性 (`session_id` / `project_key`)
 

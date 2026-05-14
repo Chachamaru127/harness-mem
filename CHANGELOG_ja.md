@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **§122 MCP gateway lifecycle manager を opt-in で追加**。`harness-mem mcp-gateway start|stop|status` で `127.0.0.1:37889/mcp` の local Streamable HTTP MCP gateway を管理できる。専用 pidfile/log、token 付き health probe、foreground mode、memory daemon health 表示、`doctor --mcp-transport http` の opt-in 検証を追加した。既定の client 経路は引き続き stdio。
+- **§122 HTTP MCP 設定生成を opt-in で追加**。`harness-mem mcp-config --transport http` が local gateway 向けの Codex / Claude / 明示指定した Hermes 設定を生成する。Codex は `bearer_token_env_var`、Claude / Hermes は `Authorization: Bearer ${HARNESS_MEM_MCP_TOKEN}` の参照文字列だけを書き、秘密 token の実値は設定ファイルに保存しない。Hermes は `--client hermes` を明示した場合だけ対象にし、`--client all` は Claude + Codex のまま。
+
 ## [0.21.2] - 2026-05-11
 
 ### ユーザー向け要約

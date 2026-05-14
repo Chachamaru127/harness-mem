@@ -6,6 +6,18 @@ const { effectivePlatform } = require("./bash-entry");
 
 const BEGIN_CODEX_MCP = "# >>> harness-mem codex mcp";
 const END_CODEX_MCP = "# <<< harness-mem codex mcp";
+const BEGIN_HERMES_MCP = "# >>> harness-mem hermes mcp";
+const END_HERMES_MCP = "# <<< harness-mem hermes mcp";
+const DEFAULT_HTTP_ADDR = "127.0.0.1:37889";
+const DEFAULT_HTTP_PATH = "/mcp";
+const DEFAULT_TOKEN_ENV_VAR = "HARNESS_MEM_MCP_TOKEN";
+const HERMES_SAFE_TOOLS = [
+  "harness_mem_search",
+  "harness_mem_timeline",
+  "harness_mem_get_observations",
+  "harness_mem_resume_pack",
+  "harness_mem_record_checkpoint",
+];
 
 function getPathModule(platform) {
   return platform === "win32" ? path.win32 : path;
@@ -19,8 +31,43 @@ function resolveHomeDir(options = {}) {
   return options.homeDir || os.homedir();
 }
 
+function normalizeTransport(value) {
+  const normalized = String(value || "stdio").trim().toLowerCase().replace(/-/g, "_");
+  if (normalized === "http" || normalized === "streamable_http") {
+    return "http";
+  }
+  if (normalized === "stdio") {
+    return "stdio";
+  }
+  throw new Error(`Unsupported MCP transport: ${value}. Use stdio or http.`);
+}
+
+function ensureHttpPath(pathname) {
+  const value = String(pathname || DEFAULT_HTTP_PATH).trim() || DEFAULT_HTTP_PATH;
+  return value.startsWith("/") ? value : `/${value}`;
+}
+
+function resolveHttpEndpoint(options = {}) {
+  const env = options.env || process.env;
+  if (options.url || env.HARNESS_MEM_MCP_URL) {
+    return options.url || env.HARNESS_MEM_MCP_URL;
+  }
+  const addr = options.addr || env.HARNESS_MEM_MCP_ADDR || DEFAULT_HTTP_ADDR;
+  return `http://${addr}${ensureHttpPath(options.path || env.HARNESS_MEM_MCP_PATH)}`;
+}
+
+function resolveTokenEnvVar(options = {}) {
+  const env = options.env || process.env;
+  return options.tokenEnvVar || env.HARNESS_MEM_MCP_TOKEN_ENV_VAR || DEFAULT_TOKEN_ENV_VAR;
+}
+
+function buildAuthorizationHeader(tokenEnvVar) {
+  return `Bearer \${${tokenEnvVar}}`;
+}
+
 function resolveServerSpec(options = {}) {
   const env = options.env || process.env;
+  const transport = normalizeTransport(options.transport || "stdio");
   const platform = options.platform || effectivePlatform(env);
   const pathApi = getPathModule(platform);
   const homeDir = resolveHomeDir(options);
@@ -28,12 +75,25 @@ function resolveServerSpec(options = {}) {
   const dbPath =
     env.HARNESS_MEM_DB_PATH || pathApi.join(homeDir, ".harness-mem", "harness-mem.db");
 
+  if (transport === "http") {
+    const tokenEnvVar = resolveTokenEnvVar(options);
+    return {
+      transport: "http",
+      url: resolveHttpEndpoint(options),
+      bearerTokenEnvVar: tokenEnvVar,
+      headers: {
+        Authorization: buildAuthorizationHeader(tokenEnvVar),
+      },
+    };
+  }
+
   // Use absolute paths — Claude Code CLI ignores `cwd` in MCP server config (v2.1.92+).
   // Relative args would resolve against the user's project directory, not harness root.
   const mcpEntry = pathApi.join(harnessRoot, "mcp-server", "dist", "index.js");
   const nodePath = pathApi.join(harnessRoot, "mcp-server", "node_modules");
 
   return {
+    transport: "stdio",
     command: "node",
     args: [mcpEntry],
     env: {
@@ -50,6 +110,18 @@ function escapeTomlString(value) {
 }
 
 function buildCodexManagedBlock(serverSpec) {
+  if (serverSpec.transport === "http") {
+    return [
+      BEGIN_CODEX_MCP,
+      "[mcp_servers.harness]",
+      `url = "${escapeTomlString(serverSpec.url)}"`,
+      `bearer_token_env_var = "${escapeTomlString(serverSpec.bearerTokenEnvVar)}"`,
+      "enabled = true",
+      END_CODEX_MCP,
+      "",
+    ].join("\n");
+  }
+
   return [
     BEGIN_CODEX_MCP,
     "[mcp_servers.harness]",
@@ -170,6 +242,26 @@ function writeClaudeConfig(options = {}) {
 
   const parsed = parseJsonFile(filePath, { mcpServers: {} });
   parsed.mcpServers = parsed.mcpServers || {};
+
+  if (serverSpec.transport === "http") {
+    parsed.mcpServers.harness = {
+      ...(parsed.mcpServers.harness || {}),
+      type: "http",
+      url: serverSpec.url,
+      enabled: true,
+      headers: {
+        ...((parsed.mcpServers.harness && parsed.mcpServers.harness.headers) || {}),
+        Authorization: serverSpec.headers.Authorization,
+      },
+    };
+    delete parsed.mcpServers.harness.command;
+    delete parsed.mcpServers.harness.args;
+    delete parsed.mcpServers.harness.cwd;
+    delete parsed.mcpServers.harness.env;
+    fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+    return { client: "claude", status: "updated", filePath };
+  }
+
   parsed.mcpServers.harness = {
     ...(parsed.mcpServers.harness || {}),
     command: serverSpec.command,
@@ -182,9 +274,91 @@ function writeClaudeConfig(options = {}) {
   };
   // Remove legacy cwd field — Claude Code CLI ignores it, causing MODULE_NOT_FOUND
   delete parsed.mcpServers.harness.cwd;
+  delete parsed.mcpServers.harness.type;
+  delete parsed.mcpServers.harness.url;
+  delete parsed.mcpServers.harness.headers;
 
   fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
   return { client: "claude", status: "updated", filePath };
+}
+
+function escapeYamlDoubleQuoted(value) {
+  return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+function buildHermesManagedBlock(serverSpec) {
+  const lines = [BEGIN_HERMES_MCP, "mcp_servers:", "  harness_mem:"];
+
+  if (serverSpec.transport === "http") {
+    lines.push(
+      `    url: "${escapeYamlDoubleQuoted(serverSpec.url)}"`,
+      "    headers:",
+      `      Authorization: "${escapeYamlDoubleQuoted(serverSpec.headers.Authorization)}"`
+    );
+  } else {
+    lines.push(
+      `    command: "${escapeYamlDoubleQuoted(serverSpec.command)}"`,
+      "    args:",
+      ...serverSpec.args.map((arg) => `      - "${escapeYamlDoubleQuoted(arg)}"`),
+      "    env:",
+      ...Object.entries(serverSpec.env).map(
+        ([key, value]) => `      ${key}: "${escapeYamlDoubleQuoted(value)}"`
+      )
+    );
+  }
+
+  lines.push("    tools:", "      include:");
+  for (const tool of HERMES_SAFE_TOOLS) {
+    lines.push(`        - ${tool}`);
+  }
+  lines.push("      prompts: false", "      resources: false", END_HERMES_MCP, "");
+  return lines.join("\n");
+}
+
+function replaceManagedBlock(content, beginMarker, endMarker, block) {
+  const start = content.indexOf(beginMarker);
+  const end = content.indexOf(endMarker);
+  if (start === -1 || end === -1 || end < start) {
+    return null;
+  }
+
+  const afterEnd = end + endMarker.length;
+  const tail =
+    content.slice(afterEnd, afterEnd + 1) === "\n"
+      ? content.slice(afterEnd + 1)
+      : content.slice(afterEnd);
+  const head = content.slice(0, start).replace(/\s*$/, "");
+  return `${head}${head ? "\n\n" : ""}${block}${tail ? tail.replace(/^\n*/, "") : ""}`.trimEnd() + "\n";
+}
+
+function writeHermesConfig(options = {}) {
+  const homeDir = resolveHomeDir(options);
+  const filePath = options.filePath || path.join(homeDir, ".hermes", "config.yaml");
+  const serverSpec = options.serverSpec || resolveServerSpec(options);
+  const block = buildHermesManagedBlock(serverSpec);
+
+  ensureFileDir(filePath);
+
+  const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+  const replaced = replaceManagedBlock(existing, BEGIN_HERMES_MCP, END_HERMES_MCP, block);
+  if (replaced !== null) {
+    fs.writeFileSync(filePath, replaced, "utf8");
+    return { client: "hermes", status: "updated", filePath };
+  }
+
+  if (/^mcp_servers:\s*$/m.test(existing)) {
+    return {
+      client: "hermes",
+      status: "skipped",
+      filePath,
+      reason:
+        "existing mcp_servers section is unmanaged. Merge the printed harness_mem snippet manually.",
+    };
+  }
+
+  const trimmed = existing.trimEnd();
+  fs.writeFileSync(filePath, `${trimmed}${trimmed ? "\n\n" : ""}${block}`, "utf8");
+  return { client: "hermes", status: "updated", filePath };
 }
 
 function parseCliArgs(argv) {
@@ -193,6 +367,10 @@ function parseCliArgs(argv) {
     clients: ["claude", "codex"],
     json: false,
     homeDir: undefined,
+    transport: "stdio",
+    url: undefined,
+    addr: undefined,
+    tokenEnvVar: undefined,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -219,6 +397,26 @@ function parseCliArgs(argv) {
       i += 1;
       continue;
     }
+    if (arg === "--transport" || arg === "--mcp-transport") {
+      parsed.transport = argv[i + 1] || "";
+      i += 1;
+      continue;
+    }
+    if (arg === "--url") {
+      parsed.url = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--addr") {
+      parsed.addr = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg === "--token-env-var" || arg === "--bearer-token-env-var") {
+      parsed.tokenEnvVar = argv[i + 1];
+      i += 1;
+      continue;
+    }
   }
 
   if (parsed.clients.includes("all")) {
@@ -230,28 +428,36 @@ function parseCliArgs(argv) {
 
 function buildPrintableSummary(results, serverSpec) {
   const codexSnippet = buildCodexManagedBlock(serverSpec).trimEnd();
-  const claudeSnippet = JSON.stringify(
-    {
-      mcpServers: {
-        harness: {
+  const claudeHarness =
+    serverSpec.transport === "http"
+      ? {
+          type: "http",
+          url: serverSpec.url,
+          headers: serverSpec.headers,
+        }
+      : {
           command: serverSpec.command,
           args: serverSpec.args,
           enabled: true,
           env: serverSpec.env,
-        },
-      },
-    },
-    null,
-    2
-  );
+        };
+  const claudeSnippet = JSON.stringify({ mcpServers: { harness: claudeHarness } }, null, 2);
+  const hermesSnippet = buildHermesManagedBlock(serverSpec).trimEnd();
 
   const lines = [
     "harness-mem MCP config summary",
     "",
-    `command: ${serverSpec.command}`,
-    `args[0]: ${serverSpec.args[0]}`,
-    "",
+    `transport: ${serverSpec.transport}`,
   ];
+  if (serverSpec.transport === "http") {
+    lines.push(
+      `url: ${serverSpec.url}`,
+      `bearer_token_env_var: ${serverSpec.bearerTokenEnvVar}`
+    );
+  } else {
+    lines.push(`command: ${serverSpec.command}`, `args[0]: ${serverSpec.args[0]}`);
+  }
+  lines.push("");
 
   for (const result of results) {
     if (result.status === "updated") {
@@ -264,7 +470,18 @@ function buildPrintableSummary(results, serverSpec) {
     }
   }
 
-  lines.push("", "Codex snippet:", codexSnippet, "", "Claude snippet:", claudeSnippet, "");
+  lines.push(
+    "",
+    "Codex snippet:",
+    codexSnippet,
+    "",
+    "Claude snippet:",
+    claudeSnippet,
+    "",
+    "Hermes snippet:",
+    hermesSnippet,
+    ""
+  );
 
   return lines.join("\n");
 }
@@ -279,6 +496,10 @@ function runMcpConfigCli(options = {}) {
   const serverSpec = resolveServerSpec({
     env,
     homeDir,
+    transport: parsed.transport,
+    url: parsed.url,
+    addr: parsed.addr,
+    tokenEnvVar: parsed.tokenEnvVar,
     platform: options.platform || effectivePlatform(env),
     harnessRoot: options.harnessRoot,
   });
@@ -310,6 +531,20 @@ function runMcpConfigCli(options = {}) {
             });
           }
         }
+        continue;
+      }
+      if (client === "hermes") {
+        const filePath = path.join(resolveHomeDir({ homeDir }), ".hermes", "config.yaml");
+        if (parsed.write) {
+          results.push(writeHermesConfig({ homeDir, filePath, serverSpec }));
+        } else {
+          results.push({
+            client: "hermes",
+            status: "preview",
+            filePath,
+          });
+        }
+        continue;
       }
     }
 
@@ -319,7 +554,7 @@ function runMcpConfigCli(options = {}) {
       stdout.write(buildPrintableSummary(results, serverSpec));
       if (!parsed.write) {
         stdout.write(
-          "Tip: rerun with --write to apply these snippets to your local Claude / Codex config files.\n"
+          "Tip: rerun with --write to apply these snippets to the selected local client config files.\n"
         );
       }
     }
@@ -334,7 +569,10 @@ function runMcpConfigCli(options = {}) {
 module.exports = {
   BEGIN_CODEX_MCP,
   END_CODEX_MCP,
+  BEGIN_HERMES_MCP,
+  END_HERMES_MCP,
   buildCodexManagedBlock,
+  buildHermesManagedBlock,
   parseCliArgs,
   resolveClaudeTargets,
   resolveServerSpec,
@@ -342,4 +580,9 @@ module.exports = {
   upsertManagedBlock,
   writeClaudeConfig,
   writeCodexConfig,
+  writeHermesConfig,
 };
+
+if (require.main === module) {
+  process.exit(runMcpConfigCli());
+}

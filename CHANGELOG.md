@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **§122 MCP gateway lifecycle manager (opt-in)**. Added `harness-mem mcp-gateway start|stop|status` for the local Streamable HTTP MCP gateway at `127.0.0.1:37889/mcp`, with a separate pidfile/log, token-authenticated health probe, foreground mode, memory daemon health reporting, and `doctor --mcp-transport http` opt-in verification. The default client route remains stdio.
+- **§122 HTTP MCP config generation (opt-in)**. `harness-mem mcp-config --transport http` now generates Codex, Claude, and explicit Hermes config snippets for the local gateway. Codex stores `bearer_token_env_var`, Claude/Hermes store an `Authorization: Bearer ${HARNESS_MEM_MCP_TOKEN}` placeholder, and the secret token value is never written to config files. Hermes remains explicit via `--client hermes`; `--client all` still covers Claude + Codex only.
+
 ## [0.21.2] - 2026-05-11
 
 ### Fixed
