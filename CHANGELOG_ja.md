@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.22.2] - 2026-05-14
+
+### ユーザー向け要約
+
+- **Linux release CI で SQLite preflight テストが macOS 前提になっていた問題を修正**。SQLite の custom library preflight は macOS 専用のままにし、Linux では `Database.setCustomSQLite` を呼ばず `unsupported-platform` として skip することをテストで確認するようにした。
+
 ## [0.22.1] - 2026-05-14
 
 ### ユーザー向け要約
@@ -887,7 +893,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...HEAD
+[0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
 [0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0
 [0.20.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.19.0...v0.20.0
