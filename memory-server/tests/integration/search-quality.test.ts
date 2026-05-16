@@ -524,8 +524,8 @@ describe("search quality integration", () => {
     }
   });
 
-  test("vector_coverage below threshold disables vector weight", () => {
-    const { core, dir } = createCore("vector-coverage-threshold");
+  test("model-specific sqlite-vec fast path does not rejoin mem_vectors for coverage", () => {
+    const { core, dir } = createCore("vector-coverage-fast-path");
     const dbPath = join(dir, "harness-mem.db");
     try {
       core.recordEvent(
@@ -556,10 +556,10 @@ describe("search quality integration", () => {
         debug: true,
       });
       expect(result.ok).toBe(true);
-      expect(Number(result.meta.vector_coverage)).toBeLessThan(0.2);
+      expect(Number(result.meta.vector_coverage)).toBeGreaterThanOrEqual(0.2);
       const debug = (result.meta.debug || {}) as Record<string, unknown>;
       const weights = (debug.weights || {}) as Record<string, unknown>;
-      expect(Number(weights.vector ?? 1)).toBe(0);
+      expect(Number(weights.vector ?? 0)).toBeGreaterThan(0);
     } finally {
       core.shutdown("test");
       removeDirWithRetry(dir);

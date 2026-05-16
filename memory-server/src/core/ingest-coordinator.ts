@@ -10,6 +10,7 @@
  *   - ingestCursorHistory
  *   - ingestAntigravityHistory
  *   - ingestGeminiHistory
+ *   - ingestHermesState
  *   - startClaudeMemImport
  *   - getImportJobStatus
  *   - verifyClaudeMemImport
@@ -61,6 +62,7 @@ import { parseAntigravityFile } from "../ingest/antigravity-files";
 import { parseAntigravityLogChunk } from "../ingest/antigravity-logs";
 import { parseGeminiEventsChunk } from "../ingest/gemini-events";
 import { parseClaudeCodeChunk, decodeClaudeProjectDir, type ClaudeCodeContext } from "../ingest/claude-code-sessions";
+import { ingestHermesStateDbQueued, type HermesStateIngestRequest } from "../ingest/hermes-state";
 import { parseGitHubIssues } from "../connectors/github-issues";
 import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
 
@@ -403,6 +405,7 @@ export interface IngestCoordinatorDeps {
   db: Database;
   config: Config;
   recordEvent: (event: EventEnvelope, options?: { allowQueue: boolean }) => ApiResponse;
+  recordEventQueued: (event: EventEnvelope, options?: { allowQueue: boolean }) => Promise<ApiResponse | "queue_full">;
   upsertSessionSummary: (
     sessionId: string,
     platform: string,
@@ -1545,6 +1548,38 @@ export class IngestCoordinator {
       {},
       { ingest_mode: "opencode_hybrid_v1" }
     );
+  }
+
+  async ingestHermesState(request: HermesStateIngestRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    try {
+      const stats = await ingestHermesStateDbQueued({
+        request,
+        recordEvent: (event, options) => this.deps.recordEventQueued(event, options),
+      });
+      return makeResponse(
+        startedAt,
+        [stats],
+        {
+          source_db_path: stats.source_db_path,
+          project: stats.project,
+          dry_run: stats.dry_run,
+          limit: stats.limit,
+          since: stats.since,
+        },
+        { ingest_mode: "hermes_state_db_v1" }
+      );
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        {
+          source_db_path: request.source_db_path || "",
+          project: request.project || "",
+          dry_run: request.dry_run !== false,
+        }
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------

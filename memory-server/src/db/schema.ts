@@ -165,6 +165,8 @@ export function initSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_updated_obs
+      ON mem_vectors(model, dimension, updated_at, observation_id);
 
     CREATE TABLE IF NOT EXISTS mem_facts (
       fact_id TEXT PRIMARY KEY,
@@ -604,6 +606,8 @@ export function migrateSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_updated_obs
+      ON mem_vectors(model, dimension, updated_at, observation_id);
   `);
 
   // MAJOR-4: user_id / team_id 複合インデックス（プロジェクト横断検索の高速化）
@@ -1249,5 +1253,7 @@ function migrateMemVectorsPrimaryKey(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_obs
       ON mem_vectors(model, dimension, observation_id);
+    CREATE INDEX IF NOT EXISTS idx_mem_vectors_model_dim_updated_obs
+      ON mem_vectors(model, dimension, updated_at, observation_id);
   `);
 }

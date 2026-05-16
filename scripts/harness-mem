@@ -9,6 +9,9 @@
 #   scripts/harness-mem versions [--project <path>]
 #   scripts/harness-mem update
 #   scripts/harness-mem import-claude-mem --source <claude_mem.db> [--dry-run] [--import-project <name>]
+#   scripts/harness-mem ingest-hermes-state [--source ~/.hermes/state.db] [--project-key <name>] [--dry-run|--execute] [--limit <n>] [--since <iso>]
+#   scripts/harness-mem admin-repair-sqlite-vec-map --model <model> [--dimension <n>] [--limit <n>] [--dry-run|--execute]
+#   scripts/harness-mem admin-vector-backfill start|status|stop [--compact-batch-size <n>] [--reindex-batch-size <n>] [--interval-ms <n>] [--target-coverage <0..1>] [--model <model>] [--dimension <n>] [--reset]
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
@@ -66,6 +69,27 @@ IMPORT_SOURCE=""
 IMPORT_JOB_ID=""
 IMPORT_PROJECT=""
 IMPORT_DRY_RUN=0
+HERMES_STATE_SOURCE="${HOME}/.hermes/state.db"
+HERMES_STATE_PROJECT=""
+HERMES_STATE_EXECUTE=0
+HERMES_STATE_LIMIT=""
+HERMES_STATE_SINCE=""
+HERMES_STATE_AFTER_MESSAGE_ID=""
+HERMES_STATE_BATCH_SIZE="${HARNESS_MEM_HERMES_BACKFILL_BATCH_SIZE:-100}"
+HERMES_STATE_MAX_CONTENT_CHARS=""
+HERMES_STATE_INCLUDE_TOOL_CONTENT=0
+REPAIR_SQLITE_VEC_MODEL=""
+REPAIR_SQLITE_VEC_DIMENSION=""
+REPAIR_SQLITE_VEC_LIMIT=""
+REPAIR_SQLITE_VEC_EXECUTE=0
+REPAIR_SQLITE_VEC_REBUILD_EXISTING=0
+VECTOR_BACKFILL_COMPACT_BATCH_SIZE=""
+VECTOR_BACKFILL_REINDEX_BATCH_SIZE=""
+VECTOR_BACKFILL_INTERVAL_MS=""
+VECTOR_BACKFILL_TARGET_COVERAGE=""
+VECTOR_BACKFILL_MODEL=""
+VECTOR_BACKFILL_DIMENSION=""
+VECTOR_BACKFILL_RESET=0
 STOP_NOW=0
 BACKUP_DEST_DIR=""
 VERSION_CHECK_IN_SETUP=1
@@ -111,6 +135,11 @@ Commands:
   uninstall  Remove memory wiring and optionally purge local memory DB.
   backup                     Create a WAL-safe snapshot of the memory DB via VACUUM INTO.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
+  ingest-hermes-state        Backfill Hermes ~/.hermes/state.db into harness-mem (dry-run by default).
+  admin-repair-sqlite-vec-map
+                             Repair sqlite-vec map/index rows from existing mem_vectors (dry-run by default).
+  admin-vector-backfill start|status|stop
+                             Manage the out-of-request vector compact/reindex backfill worker.
   verify-import              Verify imported data quality/privacy checks by job id.
   cutover-claude-mem         Stop Claude-mem only after verify passed.
   migrate-from-claude-mem    1-command migration: import -> verify -> cutover from Claude-mem.
@@ -133,9 +162,32 @@ Common options:
                         examples: codex,cursor  /  opencode,cursor
   --dest-dir <path>     Destination directory for backup (default: same dir as DB)
   --source <path>       Source SQLite path for import-claude-mem
+                        For ingest-hermes-state, defaults to ~/.hermes/state.db
   --job <job_id>        Import job id for verify/cutover
   --import-project <s>  Override project name on import
+  --project-key <s>     Override harness-mem project key for Hermes Backfill
+  --model <model>       Model for admin-repair-sqlite-vec-map or admin-vector-backfill start
+  --dimension <n>       Vector dimension for admin-repair-sqlite-vec-map or admin-vector-backfill start
   --dry-run             Plan import without writing events
+                        For admin-repair-sqlite-vec-map, this is the default.
+  --execute             Execute Hermes Backfill or sqlite-vec map repair operations that are dry-run by default
+  --rebuild-existing    Re-upsert existing sqlite-vec rows with the current compact vector payload format
+  --limit <n>           Limit Hermes messages read from state.db, or rows repaired by admin-repair-sqlite-vec-map
+  --compact-batch-size <n>
+                        Compact sqlite-vec rows per vector backfill worker tick
+  --reindex-batch-size <n>
+                        Observations reindexed per vector backfill worker tick
+  --interval-ms <n>     Delay between vector backfill worker ticks
+  --target-coverage <n> Stop vector backfill worker once coverage reaches this ratio
+  --reset               Reset vector backfill worker cursor/state before start
+  --after-message-id <n>
+                        Continue Hermes Backfill after this message id
+  --batch-size <n>      Execute full Hermes Backfill in batches (default: 100)
+  --since <iso|unix>    Import Hermes messages at or after this timestamp
+  --max-content-chars <n>
+                        Truncate each imported Hermes message content at this many chars
+  --include-tool-content
+                        Include Hermes tool result bodies. Default is metadata-only for tool results.
   --stop-now            Required by cutover-claude-mem to actually stop Claude-mem
   --skip-version-check  Skip automatic version snapshot at end of setup/doctor
   --auto-update enable|disable
@@ -216,6 +268,13 @@ warn() {
 fail() {
   echo "[harness-mem][error] $*" >&2
   exit 1
+}
+
+is_uint() {
+  case "${1:-}" in
+    ''|*[!0-9]*) return 1 ;;
+    *) return 0 ;;
+  esac
 }
 
 # --- Backend config management ---
@@ -595,6 +654,11 @@ parse_options() {
         ;;
       --execute)
         MCP_CLEANUP_EXECUTE=1
+        HERMES_STATE_EXECUTE=1
+        REPAIR_SQLITE_VEC_EXECUTE=1
+        ;;
+      --rebuild-existing)
+        REPAIR_SQLITE_VEC_REBUILD_EXISTING=1
         ;;
       --older-than)
         shift
@@ -656,6 +720,7 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--source requires a path"
         IMPORT_SOURCE="$1"
+        HERMES_STATE_SOURCE="$1"
         ;;
       --job)
         shift
@@ -666,6 +731,75 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--import-project requires a value"
         IMPORT_PROJECT="$1"
+        ;;
+      --project-key)
+        shift
+        [ "$#" -gt 0 ] || fail "--project-key requires a value"
+        HERMES_STATE_PROJECT="$1"
+        ;;
+      --model)
+        shift
+        [ "$#" -gt 0 ] || fail "--model requires a value"
+        REPAIR_SQLITE_VEC_MODEL="$1"
+        VECTOR_BACKFILL_MODEL="$1"
+        ;;
+      --dimension)
+        shift
+        [ "$#" -gt 0 ] || fail "--dimension requires a number"
+        REPAIR_SQLITE_VEC_DIMENSION="$1"
+        VECTOR_BACKFILL_DIMENSION="$1"
+        ;;
+      --limit)
+        shift
+        [ "$#" -gt 0 ] || fail "--limit requires a number"
+        HERMES_STATE_LIMIT="$1"
+        REPAIR_SQLITE_VEC_LIMIT="$1"
+        ;;
+      --after-message-id)
+        shift
+        [ "$#" -gt 0 ] || fail "--after-message-id requires a number"
+        HERMES_STATE_AFTER_MESSAGE_ID="$1"
+        ;;
+      --batch-size)
+        shift
+        [ "$#" -gt 0 ] || fail "--batch-size requires a number"
+        HERMES_STATE_BATCH_SIZE="$1"
+        ;;
+      --since)
+        shift
+        [ "$#" -gt 0 ] || fail "--since requires a timestamp"
+        HERMES_STATE_SINCE="$1"
+        ;;
+      --max-content-chars)
+        shift
+        [ "$#" -gt 0 ] || fail "--max-content-chars requires a number"
+        HERMES_STATE_MAX_CONTENT_CHARS="$1"
+        ;;
+      --include-tool-content)
+        HERMES_STATE_INCLUDE_TOOL_CONTENT=1
+        ;;
+      --compact-batch-size)
+        shift
+        [ "$#" -gt 0 ] || fail "--compact-batch-size requires a number"
+        VECTOR_BACKFILL_COMPACT_BATCH_SIZE="$1"
+        ;;
+      --reindex-batch-size)
+        shift
+        [ "$#" -gt 0 ] || fail "--reindex-batch-size requires a number"
+        VECTOR_BACKFILL_REINDEX_BATCH_SIZE="$1"
+        ;;
+      --interval-ms)
+        shift
+        [ "$#" -gt 0 ] || fail "--interval-ms requires a number"
+        VECTOR_BACKFILL_INTERVAL_MS="$1"
+        ;;
+      --target-coverage)
+        shift
+        [ "$#" -gt 0 ] || fail "--target-coverage requires a number"
+        VECTOR_BACKFILL_TARGET_COVERAGE="$1"
+        ;;
+      --reset)
+        VECTOR_BACKFILL_RESET=1
         ;;
       --backend)
         shift
@@ -678,6 +812,8 @@ parse_options() {
       --dry-run)
         IMPORT_DRY_RUN=1
         MCP_CLEANUP_DRY_RUN=1
+        HERMES_STATE_EXECUTE=0
+        REPAIR_SQLITE_VEC_EXECUTE=0
         ;;
       --stop-now)
         STOP_NOW=1
@@ -2081,7 +2217,6 @@ $BEGIN_CODEX_MCP
 [mcp_servers.harness]
 url = "$(_mcp_gateway_endpoint_url)"
 bearer_token_env_var = "${HARNESS_MEM_MCP_TOKEN_ENV_VAR:-HARNESS_MEM_MCP_TOKEN}"
-enabled = true
 $END_CODEX_MCP
 EOF
       ;;
@@ -3409,6 +3544,120 @@ run_import_request() {
     "$HARNESS_ROOT/scripts/harness-mem-client.sh" import-claude-mem "$payload"
 }
 
+run_hermes_state_ingest_request() {
+  local payload="$1"
+  HARNESS_MEM_HOME="$STATE_DIR" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" ingest-hermes-state "$payload"
+}
+
+run_repair_sqlite_vec_map_request() {
+  local payload="$1"
+  HARNESS_MEM_HOME="$STATE_DIR" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" admin-repair-sqlite-vec-map "$payload"
+}
+
+run_vector_backfill_request() {
+  local action="$1"
+  local payload="${2-}"
+  if [ -z "$payload" ]; then
+    payload="{}"
+  fi
+  HARNESS_MEM_HOME="$STATE_DIR" \
+    HARNESS_MEM_DB_PATH="$DB_PATH" \
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" "admin-vector-backfill-${action}" "$payload"
+}
+
+build_hermes_state_payload() {
+  local source="$1"
+  local project="$2"
+  local dry_run="$3"
+  local limit="$4"
+  local since="$5"
+  local after_message_id="$6"
+  local max_content_chars="$7"
+
+  jq -nc \
+    --arg source "$source" \
+    --arg project "$project" \
+    --arg limit "$limit" \
+    --arg since "$since" \
+    --arg after_message_id "$after_message_id" \
+    --arg max_content_chars "$max_content_chars" \
+    --argjson dry_run "$dry_run" \
+    --argjson include_tool_content "$([ "$HERMES_STATE_INCLUDE_TOOL_CONTENT" -eq 1 ] && echo true || echo false)" \
+    '{
+      source_db_path: $source,
+      project: $project,
+      dry_run: $dry_run,
+      include_tool_content: $include_tool_content
+    }
+    + (if $limit == "" then {} else {limit: ($limit | tonumber)} end)
+    + (if $since == "" then {} else {since: $since} end)
+    + (if $after_message_id == "" then {} else {after_message_id: ($after_message_id | tonumber)} end)
+    + (if $max_content_chars == "" then {} else {max_content_chars: ($max_content_chars | tonumber)} end)'
+}
+
+build_repair_sqlite_vec_map_payload() {
+  local model="$1"
+  local dimension="$2"
+  local limit="$3"
+  local execute="$4"
+  local rebuild_existing="$5"
+
+  jq -nc \
+    --arg model "$model" \
+    --arg dimension "$dimension" \
+    --arg limit "$limit" \
+    --argjson execute "$execute" \
+    --argjson rebuild_existing "$rebuild_existing" \
+    '{
+      model: $model,
+      execute: $execute,
+      rebuild_existing: $rebuild_existing
+    }
+    + (if $dimension == "" then {} else {dimension: ($dimension | tonumber)} end)
+    + (if $limit == "" then {} else {limit: ($limit | tonumber)} end)'
+}
+
+build_vector_backfill_start_payload() {
+  local compact_batch_size="$1"
+  local reindex_batch_size="$2"
+  local interval_ms="$3"
+  local target_coverage="$4"
+  local model="$5"
+  local dimension="$6"
+  local reset="$7"
+
+  jq -nc \
+    --arg compact_batch_size "$compact_batch_size" \
+    --arg reindex_batch_size "$reindex_batch_size" \
+    --arg interval_ms "$interval_ms" \
+    --arg target_coverage "$target_coverage" \
+    --arg model "$model" \
+    --arg dimension "$dimension" \
+    --argjson reset "$reset" \
+    '{
+    }
+    + (if $compact_batch_size == "" then {} else {compact_batch_size: ($compact_batch_size | tonumber)} end)
+    + (if $reindex_batch_size == "" then {} else {reindex_batch_size: ($reindex_batch_size | tonumber)} end)
+    + (if $interval_ms == "" then {} else {interval_ms: ($interval_ms | tonumber)} end)
+    + (if $target_coverage == "" then {} else {target_coverage: ($target_coverage | tonumber)} end)
+    + (if $model == "" then {} else {model: $model} end)
+    + (if $dimension == "" then {} else {dimension: ($dimension | tonumber)} end)
+    + (if $reset then {reset: true} else {} end)'
+}
+
 run_verify_request() {
   local payload="$1"
   HARNESS_MEM_HOME="$STATE_DIR" \
@@ -3444,6 +3693,89 @@ backup_impl() {
   fi
 }
 
+admin_repair_sqlite_vec_map_impl() {
+  ensure_dependencies
+  [ -n "$REPAIR_SQLITE_VEC_MODEL" ] || fail "admin-repair-sqlite-vec-map requires --model <model>; refusing to infer an admin repair target"
+  if [ -n "$REPAIR_SQLITE_VEC_DIMENSION" ]; then
+    is_uint "$REPAIR_SQLITE_VEC_DIMENSION" && [ "$REPAIR_SQLITE_VEC_DIMENSION" -gt 0 ] || fail "--dimension must be a positive integer"
+  fi
+  if [ -n "$REPAIR_SQLITE_VEC_LIMIT" ]; then
+    is_uint "$REPAIR_SQLITE_VEC_LIMIT" && [ "$REPAIR_SQLITE_VEC_LIMIT" -gt 0 ] || fail "--limit must be a positive integer"
+  fi
+
+  start_daemon
+
+  local payload
+  payload="$(build_repair_sqlite_vec_map_payload \
+    "$REPAIR_SQLITE_VEC_MODEL" \
+    "$REPAIR_SQLITE_VEC_DIMENSION" \
+    "$REPAIR_SQLITE_VEC_LIMIT" \
+    "$([ "$REPAIR_SQLITE_VEC_EXECUTE" -eq 1 ] && echo true || echo false)" \
+    "$([ "$REPAIR_SQLITE_VEC_REBUILD_EXISTING" -eq 1 ] && echo true || echo false)")"
+
+  local response
+  response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-60}" run_repair_sqlite_vec_map_request "$payload")"
+  printf '%s\n' "$response"
+
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "sqlite-vec map repair request failed"
+  if [ "$REPAIR_SQLITE_VEC_EXECUTE" -eq 1 ]; then
+    log "sqlite-vec map repair executed for model: ${REPAIR_SQLITE_VEC_MODEL}"
+  else
+    log "sqlite-vec map repair dry-run only. Re-run with --execute to write map/index rows."
+  fi
+}
+
+admin_vector_backfill_impl() {
+  local action="${1:-status}"
+  case "$action" in
+    start|status|stop) ;;
+    *) fail "admin-vector-backfill requires action: start, status, or stop" ;;
+  esac
+
+  ensure_dependencies
+  if [ -n "$VECTOR_BACKFILL_COMPACT_BATCH_SIZE" ]; then
+    is_uint "$VECTOR_BACKFILL_COMPACT_BATCH_SIZE" && [ "$VECTOR_BACKFILL_COMPACT_BATCH_SIZE" -gt 0 ] || fail "--compact-batch-size must be a positive integer"
+  fi
+  if [ -n "$VECTOR_BACKFILL_REINDEX_BATCH_SIZE" ]; then
+    is_uint "$VECTOR_BACKFILL_REINDEX_BATCH_SIZE" && [ "$VECTOR_BACKFILL_REINDEX_BATCH_SIZE" -gt 0 ] || fail "--reindex-batch-size must be a positive integer"
+  fi
+  if [ -n "$VECTOR_BACKFILL_INTERVAL_MS" ]; then
+    is_uint "$VECTOR_BACKFILL_INTERVAL_MS" && [ "$VECTOR_BACKFILL_INTERVAL_MS" -gt 0 ] || fail "--interval-ms must be a positive integer"
+  fi
+  if [ -n "$VECTOR_BACKFILL_DIMENSION" ]; then
+    is_uint "$VECTOR_BACKFILL_DIMENSION" && [ "$VECTOR_BACKFILL_DIMENSION" -gt 0 ] || fail "--dimension must be a positive integer"
+  fi
+  if [ -n "$VECTOR_BACKFILL_TARGET_COVERAGE" ]; then
+    jq -en --arg value "$VECTOR_BACKFILL_TARGET_COVERAGE" '($value | tonumber) as $n | $n > 0 and $n <= 1' >/dev/null || fail "--target-coverage must be a number > 0 and <= 1"
+  fi
+
+  if ! start_daemon; then
+    warn "harness-memd preflight failed before admin-vector-backfill ${action}; continuing with thin client daemon check"
+  fi
+
+  local payload="{}"
+  if [ "$action" = "start" ]; then
+    payload="$(build_vector_backfill_start_payload \
+      "$VECTOR_BACKFILL_COMPACT_BATCH_SIZE" \
+      "$VECTOR_BACKFILL_REINDEX_BATCH_SIZE" \
+      "$VECTOR_BACKFILL_INTERVAL_MS" \
+      "$VECTOR_BACKFILL_TARGET_COVERAGE" \
+      "$VECTOR_BACKFILL_MODEL" \
+      "$VECTOR_BACKFILL_DIMENSION" \
+      "$([ "$VECTOR_BACKFILL_RESET" -eq 1 ] && echo true || echo false)")"
+  fi
+
+  local response
+  if [ "$action" = "start" ]; then
+    response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-30}" run_vector_backfill_request "$action" "$payload")"
+  else
+    response="$(run_vector_backfill_request "$action" "$payload")"
+  fi
+  printf '%s\n' "$response"
+
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "vector backfill ${action} request failed"
+}
+
 import_claude_mem_impl() {
   ensure_dependencies
   [ -n "$IMPORT_SOURCE" ] || fail "import-claude-mem requires --source <sqlite path>"
@@ -3470,6 +3802,141 @@ import_claude_mem_impl() {
   job_id="$(echo "$response" | jq -r '.items[0].job_id // empty')"
   [ -n "$job_id" ] || fail "import response did not include job_id"
   log "Import job: $job_id"
+}
+
+ingest_hermes_state_impl() {
+  ensure_dependencies
+  [ -n "$HERMES_STATE_SOURCE" ] || fail "ingest-hermes-state requires --source <sqlite path>"
+  if [[ "$HERMES_STATE_SOURCE" != "~/"* ]]; then
+    [ -f "$HERMES_STATE_SOURCE" ] || fail "Hermes state db not found: $HERMES_STATE_SOURCE"
+  fi
+
+  start_daemon
+
+  local project_key
+  project_key="${HERMES_STATE_PROJECT:-${IMPORT_PROJECT:-${HARNESS_MEM_PROJECT_KEY:-default}}}"
+
+  if [ "$HERMES_STATE_EXECUTE" -eq 1 ] && [ -z "$HERMES_STATE_LIMIT" ] && [ -z "$HERMES_STATE_AFTER_MESSAGE_ID" ]; then
+    if ! is_uint "$HERMES_STATE_BATCH_SIZE" || [ "$HERMES_STATE_BATCH_SIZE" -le 0 ]; then
+      fail "--batch-size must be a positive integer"
+    fi
+
+    local after_id="0"
+    local total_messages="0"
+    local total_planned=0
+    local total_recorded=0
+    local total_deduped=0
+    local total_failed=0
+    local total_seen=0
+    local batches=0
+    local response item_seen item_planned item_recorded item_deduped item_failed item_last
+
+    while true; do
+      local payload
+      payload="$(build_hermes_state_payload \
+        "$HERMES_STATE_SOURCE" \
+        "$project_key" \
+        false \
+        "$HERMES_STATE_BATCH_SIZE" \
+        "$HERMES_STATE_SINCE" \
+        "$after_id" \
+        "$HERMES_STATE_MAX_CONTENT_CHARS")"
+
+      response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-60}" run_hermes_state_ingest_request "$payload")"
+      echo "$response" | jq -e '.ok == true' >/dev/null || {
+        printf '%s\n' "$response"
+        fail "Hermes state ingest batch failed"
+      }
+
+      item_seen="$(echo "$response" | jq -r '.items[0].messages_seen // 0')"
+      item_planned="$(echo "$response" | jq -r '.items[0].events_planned // 0')"
+      item_recorded="$(echo "$response" | jq -r '.items[0].events_recorded // 0')"
+      item_deduped="$(echo "$response" | jq -r '.items[0].events_deduped // 0')"
+      item_failed="$(echo "$response" | jq -r '.items[0].events_failed // 0')"
+      item_last="$(echo "$response" | jq -r '.items[0].last_message_id // empty')"
+      total_messages="$(echo "$response" | jq -r '.items[0].messages_total // 0')"
+
+      total_seen=$((total_seen + item_seen))
+      total_planned=$((total_planned + item_planned))
+      total_recorded=$((total_recorded + item_recorded))
+      total_deduped=$((total_deduped + item_deduped))
+      total_failed=$((total_failed + item_failed))
+      batches=$((batches + 1))
+
+      if [ "$item_failed" -gt 0 ]; then
+        printf '%s\n' "$response"
+        fail "Hermes state ingest reported failed events"
+      fi
+      if [ "$item_seen" -eq 0 ]; then
+        break
+      fi
+      if [ -z "$item_last" ] || [ "$item_last" -le "$after_id" ] 2>/dev/null; then
+        break
+      fi
+      after_id="$item_last"
+      if [ "$item_seen" -lt "$HERMES_STATE_BATCH_SIZE" ] 2>/dev/null; then
+        break
+      fi
+    done
+
+    jq -nc \
+      --arg source "$HERMES_STATE_SOURCE" \
+      --arg project "$project_key" \
+      --argjson batches "$batches" \
+      --argjson messages_seen "$total_seen" \
+      --argjson messages_total "$total_messages" \
+      --argjson events_planned "$total_planned" \
+      --argjson events_recorded "$total_recorded" \
+      --argjson events_deduped "$total_deduped" \
+      --argjson events_failed "$total_failed" \
+      --argjson last_message_id "$after_id" \
+      '{
+        ok: true,
+        source: "core",
+        items: [{
+          source_db_path: $source,
+          project: $project,
+          dry_run: false,
+          batched: true,
+          batches: $batches,
+          messages_seen: $messages_seen,
+          messages_total: $messages_total,
+          events_planned: $events_planned,
+          events_recorded: $events_recorded,
+          events_deduped: $events_deduped,
+          events_failed: $events_failed,
+          last_message_id: $last_message_id
+        }],
+        meta: {
+          count: 1,
+          ranking: "default",
+          ingest_mode: "hermes_state_db_v1_batched"
+        }
+      }'
+    return 0
+  fi
+
+  local payload
+  payload="$(build_hermes_state_payload \
+    "$HERMES_STATE_SOURCE" \
+    "$project_key" \
+    "$([ "$HERMES_STATE_EXECUTE" -eq 1 ] && echo false || echo true)" \
+    "$HERMES_STATE_LIMIT" \
+    "$HERMES_STATE_SINCE" \
+    "$HERMES_STATE_AFTER_MESSAGE_ID" \
+    "$HERMES_STATE_MAX_CONTENT_CHARS")"
+
+  local response
+  response="$(run_hermes_state_ingest_request "$payload")"
+  printf '%s\n' "$response"
+
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Hermes state ingest request failed"
+  if [ "$HERMES_STATE_EXECUTE" -eq 1 ]; then
+    echo "$response" | jq -e '.items[0].events_failed == 0' >/dev/null || fail "Hermes state ingest reported failed events"
+    log "Hermes state Backfill executed"
+  else
+    log "Hermes state Backfill dry-run only. Re-run with --execute to write events."
+  fi
 }
 
 verify_import_impl() {
@@ -6407,6 +6874,21 @@ main() {
     mcp_gateway_impl "$gateway_subcmd"
     return
   fi
+  if [ "$command" = "admin-vector-backfill" ]; then
+    local vector_backfill_action="${1:-status}"
+    if [ "$#" -gt 0 ]; then
+      shift || true
+    fi
+    parse_options "$@"
+    normalize_ui_lang
+    TARGET_DIR="$(abs_dir "$TARGET_DIR")"
+    if should_use_stable_runtime_root; then
+      sync_to_stable_runtime_root
+    fi
+    maybe_auto_update "$command"
+    admin_vector_backfill_impl "$vector_backfill_action"
+    return
+  fi
   if [ "$command" = "mcp-config" ]; then
     node "${HARNESS_ROOT}/scripts/lib/mcp-config.js" "$@"
     return
@@ -6479,6 +6961,15 @@ main() {
       ;;
     import-claude-mem)
       import_claude_mem_impl
+      ;;
+    admin-repair-sqlite-vec-map)
+      admin_repair_sqlite_vec_map_impl
+      ;;
+    admin-vector-backfill)
+      admin_vector_backfill_impl status
+      ;;
+    ingest-hermes-state)
+      ingest_hermes_state_impl
       ;;
     verify-import)
       verify_import_impl

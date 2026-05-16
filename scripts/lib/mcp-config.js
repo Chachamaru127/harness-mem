@@ -116,7 +116,6 @@ function buildCodexManagedBlock(serverSpec) {
       "[mcp_servers.harness]",
       `url = "${escapeTomlString(serverSpec.url)}"`,
       `bearer_token_env_var = "${escapeTomlString(serverSpec.bearerTokenEnvVar)}"`,
-      "enabled = true",
       END_CODEX_MCP,
       "",
     ].join("\n");

@@ -11,6 +11,7 @@ import type { StorageAdapter } from "../db/storage-adapter";
 import { SqliteStorageAdapter } from "../db/sqlite-adapter";
 import { createStorageAdapter } from "../db/adapter-factory";
 import { buildClaudeMemImportPlan, type ClaudeMemImportRequest } from "../ingest/claude-mem-import";
+import type { HermesStateIngestRequest } from "../ingest/hermes-state";
 import { parseCodexSessionsChunk } from "../ingest/codex-sessions";
 import {
   resolveVectorEngine,
@@ -58,10 +59,16 @@ import { ObservationStore } from "./observation-store";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
-import { ConfigManager } from "./config-manager";
+import { ConfigManager, type ReindexVectorsOptions, type RepairSqliteVecMapOptions } from "./config-manager";
 import { AnalyticsService } from "./analytics";
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
 import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
+import {
+  createVectorBackfillWorker,
+  type VectorBackfillOperation,
+  type VectorBackfillStartOptions,
+  type VectorBackfillWorker,
+} from "./vector-backfill-worker";
 import type { UsageParams, UsageStats, EntityParams, EntityStats, TimelineParams, TimelineStats, OverviewParams, OverviewStats } from "./analytics";
 import {
   clampLimit,
@@ -201,6 +208,27 @@ export class EmbeddingReadinessError extends Error {
 
 // getConfig は core-utils.ts から re-export
 export { getConfig } from "./core-utils.js";
+
+export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): ApiResponse {
+  const lines = stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let lastJsonError: unknown = null;
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    const line = lines[index];
+    if (!line.startsWith("{")) continue;
+    try {
+      return JSON.parse(line) as ApiResponse;
+    } catch (error) {
+      lastJsonError = error;
+    }
+  }
+  const detail = lastJsonError instanceof Error ? lastJsonError.message : "no JSON response found";
+  throw new Error(
+    `vector backfill child returned invalid JSON: ${detail}; stderr=${stderr.trim()} stdout=${stdout.trim()}`,
+  );
+}
 
 interface ProjectNormalizationOptions {
   preferredRoots?: string[];
@@ -539,6 +567,8 @@ export class HarnessMemCore {
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
   /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
   private reindexVectorsScheduler!: ReindexVectorsScheduler;
+  /** S124-007: out-of-request vector compact rebuild + reindex worker */
+  private vectorBackfillWorker!: VectorBackfillWorker;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -645,6 +675,7 @@ export class HarnessMemCore {
       db: this.db,
       config: this.config,
       recordEvent: (event, options) => this.recordEvent(event, options),
+      recordEventQueued: (event, options) => this.recordEventQueued(event, options),
       upsertSessionSummary: (sessionId, platform, project, summary, endedAt, summaryMode) =>
         this.upsertSessionSummary(sessionId, platform, project, summary, endedAt, summaryMode),
       heartbeatPath: this.heartbeatPath,
@@ -668,11 +699,21 @@ export class HarnessMemCore {
       getConsolidationIntervalMs: () => clampLimit(Number(this.config.consolidationIntervalMs || 60000), 60000, 5000, 600000),
       writeAuditLog: (action, targetType, targetId, details) => this.writeAuditLog(action, targetType, targetId, details ?? {}),
       getVectorEngine: () => this.vectorEngine,
+      getVecTableReady: () => this.vecTableReady,
+      setVecTableReady: (ready) => {
+        this.vecTableReady = ready;
+      },
       getVectorModelVersion: () => this.vectorModelVersion,
       embeddingProviderName: this.embeddingProvider.name,
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       reindexObservationVector: (id, content, createdAt) =>
         this.eventRec.reindexObservationVector(id, content, createdAt),
+      prepareReindexEmbedding: async (content) => {
+        await this.primeEmbedding(content, "passage");
+      },
+      prepareReindexEmbeddings: async (contents) => {
+        await this.primeEmbeddingsBatch(contents, "passage");
+      },
       isAntigravityIngestEnabled: () => this.config.antigravityIngestEnabled !== false,
     });
 
@@ -689,6 +730,7 @@ export class HarnessMemCore {
       {
         db: this.db,
         finalizeSession: (req) => this.sessionMgr.finalizeSession(req),
+        shouldSkipTick: () => this.vectorBackfillWorker?.isRunning() === true,
       },
       {
         enabled: this.config.partialFinalizeEnabled === true,
@@ -714,6 +756,61 @@ export class HarnessMemCore {
           : 100,
       }
     );
+
+    this.vectorBackfillWorker = createVectorBackfillWorker({
+      db: this.db,
+      getVectorModelVersion: () => this.vectorModelVersion,
+      getVectorDimension: () => this.config.vectorDimension,
+      repairSqliteVecMap: (options) => this.repairSqliteVecMap(options),
+      reindexVectors: (limit) => this.reindexVectors(limit),
+      runExternalOperation: (operation) => this.runVectorBackfillOperationOutOfProcess(operation),
+      writeAuditLog: (action, targetType, targetId, details) =>
+        this.writeAuditLog(action, targetType, targetId, details ?? {}),
+    }, {
+      autoSchedule: process.env.NODE_ENV !== "test",
+    });
+  }
+
+  private async runVectorBackfillOperationOutOfProcess(
+    operation: VectorBackfillOperation,
+  ): Promise<ApiResponse> {
+    const scriptPath = new URL("../tools/vector-backfill-tick.ts", import.meta.url).pathname;
+    const compactOnlyEnv =
+      operation.type === "compact"
+        ? {
+            HARNESS_MEM_EMBEDDING_PROVIDER: "fallback",
+            HARNESS_MEM_EMBEDDING_MODEL: VECTOR_MODEL_VERSION,
+          }
+        : {};
+    const reindexEnv =
+      operation.type === "reindex"
+        ? {
+            HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE: String(Math.min(Math.max(operation.limit, 1), 128)),
+          }
+        : {};
+    const proc = Bun.spawn({
+      cmd: ["nice", "-n", "10", process.execPath, "run", scriptPath, JSON.stringify(operation)],
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        ...compactOnlyEnv,
+        ...reindexEnv,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_VECTOR_BACKFILL_CHILD: "1",
+      },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    if (exitCode !== 0) {
+      throw new Error(`vector backfill child exited ${exitCode}: ${stderr.trim() || stdout.trim()}`);
+    }
+    return parseVectorBackfillChildResponse(stdout, stderr);
   }
 
   private configureDatabase(): void {
@@ -1317,20 +1414,25 @@ export class HarnessMemCore {
       }
       const normalized = text || "";
       if (mode === "query") {
+        const variants = this.getQueryPrimeVariants(normalized);
+        if (typeof this.embeddingProvider.primeBatch === "function") {
+          await this.embeddingProvider.primeBatch(variants, "query");
+          return;
+        }
         if (typeof this.embeddingProvider.primeQuery === "function") {
-          for (const variant of this.getQueryPrimeVariants(normalized)) {
+          for (const variant of variants) {
             await this.embeddingProvider.primeQuery(variant);
           }
           return;
         }
         if (typeof this.embeddingProvider.prime === "function") {
-          for (const variant of this.getQueryPrimeVariants(normalized)) {
+          for (const variant of variants) {
             await this.embeddingProvider.prime(variant);
           }
           return;
         }
         if (typeof this.embeddingProvider.embedQuery === "function") {
-          for (const variant of this.getQueryPrimeVariants(normalized)) {
+          for (const variant of variants) {
             this.embeddingProvider.embedQuery(variant);
           }
           return;
@@ -1468,6 +1570,19 @@ export class HarnessMemCore {
     }
 
     return Promise.resolve(this.embeddingProvider.embed(normalized));
+  }
+
+  async primeEmbeddingsBatch(texts: string[], mode: EmbeddingPrimeMode = "passage"): Promise<number[][]> {
+    const normalizedTexts = texts.map((text) => text || "");
+    if (normalizedTexts.length === 0) {
+      return [];
+    }
+
+    if (typeof this.embeddingProvider.primeBatch === "function") {
+      return this.embeddingProvider.primeBatch(normalizedTexts, mode);
+    }
+
+    return Promise.all(normalizedTexts.map((text) => this.primeEmbedding(text, mode)));
   }
 
   getEmbeddingRuntimeInfo(): {
@@ -2366,6 +2481,11 @@ export class HarnessMemCore {
         skipped: "consolidation_disabled",
       });
     }
+    if ((request.reason || "manual") === "scheduler" && this.vectorBackfillWorker?.isRunning() === true) {
+      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
+        skipped: "vector_backfill_running",
+      });
+    }
 
     const options: ConsolidationRunOptions = {
       reason: request.reason || "manual",
@@ -2600,8 +2720,24 @@ export class HarnessMemCore {
     return this.cfgMgr.backup(options);
   }
 
-    reindexVectors(limitInput?: number): ApiResponse {
-      return this.cfgMgr.reindexVectors(limitInput);
+    reindexVectors(limitInput?: number, options?: ReindexVectorsOptions): Promise<ApiResponse> {
+      return this.cfgMgr.reindexVectors(limitInput, options);
+    }
+
+    repairSqliteVecMap(options: RepairSqliteVecMapOptions = {}): ApiResponse {
+      return this.cfgMgr.repairSqliteVecMap(options);
+    }
+
+    startVectorBackfillWorker(options: VectorBackfillStartOptions = {}): ApiResponse {
+      return this.vectorBackfillWorker.start(options);
+    }
+
+    stopVectorBackfillWorker(): ApiResponse {
+      return this.vectorBackfillWorker.stop();
+    }
+
+    getVectorBackfillWorkerStatus(): ApiResponse {
+      return this.vectorBackfillWorker.status();
     }
 
     cleanupDuplicateObservations(request: CleanupDuplicatesRequest = {}): ApiResponse {
@@ -2848,6 +2984,10 @@ export class HarnessMemCore {
     return this.ingestCoord.ingestClaudeCodeHistory();
   }
 
+  ingestHermesState(request: HermesStateIngestRequest): Promise<ApiResponse> {
+    return this.ingestCoord.ingestHermesState(request);
+  }
+
   /**
    * IMP-010: GitHub Issues を harness-mem に取り込む。
    *
@@ -2915,6 +3055,9 @@ export class HarnessMemCore {
     this.partialFinalizeScheduler.stop();
     // S89-003: stop reindex backfill scheduler
     this.reindexVectorsScheduler.stop();
+    if (process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD !== "1") {
+      this.vectorBackfillWorker.stop();
+    }
     this.ingestCoord.stopTimers();
 
     this.processRetryQueue(true);

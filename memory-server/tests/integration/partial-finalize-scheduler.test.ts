@@ -157,7 +157,7 @@ interface TestRuntime {
   scheduler: PartialFinalizeScheduler;
 }
 
-function createRuntime(opts: { enabled?: boolean } = {}): TestRuntime {
+function createRuntime(opts: { enabled?: boolean; shouldSkipTick?: () => boolean } = {}): TestRuntime {
   const db = createTestDb();
   const deps = createSessionManagerDeps(db);
   const sm = new SessionManager(deps);
@@ -165,6 +165,7 @@ function createRuntime(opts: { enabled?: boolean } = {}): TestRuntime {
   const schedulerDeps: PartialFinalizeSchedulerDeps = {
     db,
     finalizeSession: (req) => sm.finalizeSession(req),
+    shouldSkipTick: opts.shouldSkipTick,
   };
 
   const scheduler = new PartialFinalizeScheduler(schedulerDeps, {
@@ -279,6 +280,20 @@ describe("partial-finalize-scheduler: enabled=true", () => {
 
     const afterCount = countSessionSummaries(db, sessionId);
     expect(afterCount).toBe(1);
+  });
+
+  test("maintenance guard が active の間は partial finalize tick をスキップする", async () => {
+    runtime.scheduler.stop();
+    try { runtime.db.close(); } catch { /* ignore */ }
+    runtime = createRuntime({ enabled: true, shouldSkipTick: () => true });
+
+    const { db, scheduler } = runtime;
+    const sessionId = "sess-sched-maintenance-guard";
+    insertUserEvent(db, sessionId);
+
+    await scheduler.tick();
+
+    expect(countSessionSummaries(db, sessionId)).toBe(0);
   });
 
   test("(b) event 無し session には partial を投げない", async () => {

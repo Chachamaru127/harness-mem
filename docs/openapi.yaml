@@ -1789,6 +1789,56 @@ paths:
               schema:
                 $ref: "#/components/schemas/ApiResponse"
 
+  /v1/ingest/hermes-state:
+    post:
+      summary: Ingest Hermes state database
+      description: Backfills Hermes Agent session history from a local ~/.hermes/state.db SQLite database. Dry-run is supported and should be used before execute.
+      operationId: ingestHermesState
+      tags: [Ingest]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                source_db_path:
+                  type: string
+                  description: Path to Hermes state.db. Defaults to ~/.hermes/state.db in CLI callers.
+                project:
+                  type: string
+                  description: harness-mem project key / namespace for imported events.
+                dry_run:
+                  type: boolean
+                  description: When true, returns planned counts without writing events.
+                limit:
+                  type: integer
+                  minimum: 1
+                  description: Maximum number of Hermes messages to read.
+                since:
+                  oneOf:
+                    - type: string
+                    - type: number
+                  description: Import only messages/sessions at or after this timestamp.
+                after_message_id:
+                  type: integer
+                  minimum: 0
+                  description: Continue after this Hermes message id.
+                max_content_chars:
+                  type: integer
+                  minimum: 1
+                  description: Truncate imported message content at this many characters.
+                include_tool_content:
+                  type: boolean
+                  description: Include Hermes tool result bodies. Defaults to metadata-only tool events.
+      responses:
+        "200":
+          description: Hermes state ingest result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+
   /v1/ingest/github-issues:
     post:
       summary: Ingest GitHub issues

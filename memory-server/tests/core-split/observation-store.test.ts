@@ -16,6 +16,10 @@ import {
   createTestConfig,
   insertTestObservation,
 } from "./test-helpers";
+import {
+  getSqliteVecMapTableName,
+  getSqliteVecTableName,
+} from "../../src/vector/providers";
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -428,6 +432,180 @@ describe("observation-store: search", () => {
     expect(ids).toContain("obs-en");
   });
 
+  test("sqlite-vec が使えない時は bounded primary fallback に縮退する", () => {
+    const { store, db } = makeStore(
+      {},
+      {
+        getVectorEngine: () => "sqlite-vec",
+        getVecTableReady: () => true,
+        getVectorModelVersion: () => "local:ruri-v3-30m",
+        vectorDimension: 2,
+        buildQueryEmbeddings: () => ({
+          route: "ensemble",
+          analysis: { jaRatio: 0.7 },
+          primary: { model: "local:ruri-v3-30m", vector: [1, 0] },
+          secondary: { model: "openai:text-embedding-3-small", vector: [0, 1] },
+        }),
+      },
+    );
+    insertTestObservation(db, {
+      id: "obs-sqlite-primary",
+      title: "alpha",
+      content: "alpha content",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-sqlite-secondary",
+      title: "beta",
+      content: "beta content",
+      project: "proj-obs",
+    });
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-sqlite-primary", "local:ruri-v3-30m", "[1,0]");
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-sqlite-secondary", "openai:text-embedding-3-small", "[0,1]");
+
+    const res = store.search({ query: "zzzzzz vector only", project: "proj-obs", limit: 5 });
+    expect(res.ok).toBe(true);
+    const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
+    expect(ids).toContain("obs-sqlite-primary");
+    expect(ids).not.toContain("obs-sqlite-secondary");
+    const warnings = res.meta.warnings as string[] | undefined;
+    expect(warnings?.some((warning) => warning.includes("bounded JS fallback"))).toBe(true);
+  });
+
+  test("sqlite-vec query が失敗した時だけ bounded fallback に縮退する", () => {
+    const model = "local:ruri-v3-30m";
+    const { store, db } = makeStore(
+      {},
+      {
+        getVectorEngine: () => "sqlite-vec",
+        getVecTableReady: () => true,
+        getVectorModelVersion: () => model,
+        vectorDimension: 2,
+        buildQueryEmbeddings: () => ({
+          route: "ruri",
+          analysis: { jaRatio: 1 },
+          primary: { model, vector: [1, 0] },
+          secondary: null,
+        }),
+      },
+    );
+    insertTestObservation(db, {
+      id: "obs-sqlite-large-primary",
+      title: "large index primary",
+      content: "large index primary",
+      project: "proj-obs",
+    });
+    insertTestObservation(db, {
+      id: "obs-sqlite-large-secondary",
+      title: "large index secondary",
+      content: "large index secondary",
+      project: "proj-obs",
+    });
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-sqlite-large-primary", model, "[1,0]");
+    db.query(
+      `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+       VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+    ).run("obs-sqlite-large-secondary", model, "[0,1]");
+
+    const tableName = getSqliteVecTableName(model);
+    const mapTableName = getSqliteVecMapTableName(model);
+    db.exec(`
+      CREATE TABLE ${tableName} (rowid INTEGER PRIMARY KEY, embedding TEXT NOT NULL);
+      CREATE TABLE ${mapTableName} (
+        rowid INTEGER PRIMARY KEY,
+        observation_id TEXT NOT NULL UNIQUE,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    db.query(`INSERT INTO ${tableName}(rowid, embedding) VALUES (?, ?)`)
+      .run(1, "[1,0]");
+    db.query(`INSERT INTO ${tableName}(rowid, embedding) VALUES (?, ?)`)
+      .run(2, "[0,1]");
+    db.query(`INSERT INTO ${mapTableName}(rowid, observation_id, updated_at) VALUES (?, ?, ?)`)
+      .run(1, "obs-sqlite-large-primary", "2026-02-20T00:00:00.000Z");
+    db.query(`INSERT INTO ${mapTableName}(rowid, observation_id, updated_at) VALUES (?, ?, ?)`)
+      .run(2, "obs-sqlite-large-secondary", "2026-02-20T00:00:00.000Z");
+
+    const res = store.search({ query: "large index vector only", project: "proj-obs", limit: 5 });
+    expect(res.ok).toBe(true);
+    const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
+    expect(ids).toContain("obs-sqlite-large-primary");
+    const warnings = res.meta.warnings as string[] | undefined;
+    expect(warnings?.some((warning) => warning.includes("sqlite-vec index too large"))).not.toBe(true);
+    expect(warnings?.some((warning) => warning.includes("sqlite-vec query failed"))).toBe(true);
+    expect(warnings?.some((warning) => warning.includes("bounded JS fallback"))).toBe(true);
+  });
+
+  test("vector migration warning は active observation の95% coverage で抑止する", () => {
+    const model = "adaptive:general:local:multilingual-e5";
+    const ruriModel = "adaptive:ruri-v3-30m";
+    const legacyModel = "fallback:local-hash-v3";
+    const { store, db } = makeStore(
+      {},
+      {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => model,
+        getEmbeddingProviderName: () => "adaptive",
+        vectorDimension: 2,
+        embedContent: () => [1, 0],
+        buildQueryEmbeddings: () => ({
+          route: "ensemble",
+          analysis: { jaRatio: 0.5 },
+          primary: { model: ruriModel, vector: [1, 0] },
+          secondary: { model, vector: [1, 0] },
+        }),
+      },
+    );
+
+    const insertVector = (observationId: string, vectorModel: string) => {
+      db.query(
+        `INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+         VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
+      ).run(observationId, vectorModel, "[1,0]");
+    };
+
+    for (let i = 0; i < 20; i += 1) {
+      const id = `obs-active-migration-${i}`;
+      insertTestObservation(db, {
+        id,
+        title: `active migration ${i}`,
+        content: `active migration ${i}`,
+        project: "proj-obs",
+      });
+      insertVector(id, i < 19 ? model : legacyModel);
+    }
+
+    insertTestObservation(db, {
+      id: "obs-archived-migration",
+      title: "archived migration",
+      content: "archived migration",
+      project: "proj-obs",
+    });
+    insertVector("obs-archived-migration", legacyModel);
+    db.query("UPDATE mem_observations SET archived_at = ? WHERE id = ?")
+      .run("2026-02-21T00:00:00.000Z", "obs-archived-migration");
+
+    const res = store.search({
+      query: "active migration",
+      project: "proj-obs",
+      limit: 5,
+      vector_search: true,
+    });
+
+    expect(res.ok).toBe(true);
+    const warnings = res.meta.warnings as string[] | undefined;
+    expect(warnings?.some((warning) => warning.includes("vector_migration"))).not.toBe(true);
+  });
+
   test("adaptive query expander は同義語 variant でも vector search を行う", () => {
     const { store, db } = makeStore(
       {},
@@ -713,6 +891,47 @@ describe("observation-store: search", () => {
     expect(res.ok).toBe(true);
     const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
     expect(ids.slice(0, 3)).toEqual(["obs-old", "obs-mid", "obs-new"]);
+  });
+
+  test("semantic rerank input is capped before invoking expensive rerankers", () => {
+    let rerankInputCount = 0;
+    const countingReranker: Reranker = {
+      name: "counting-test",
+      rerank(input) {
+        rerankInputCount = input.items.length;
+        return input.items.map((item, index) => ({
+          ...item,
+          rerank_score: 1 - index * 0.001,
+        }));
+      },
+    };
+    const { store } = makeStore({}, { rerankerEnabled: true, reranker: countingReranker });
+    const ranked = Array.from({ length: 75 }, (_, index) => ({
+      id: `obs-${index}`,
+      lexical: 1,
+      vector: 0,
+      recency: 0,
+      tag_boost: 0,
+      importance: 0.5,
+      graph: 0,
+      final: 75 - index,
+      rerank: 0,
+      created_at: "2026-05-15T00:00:00.000Z",
+    }));
+    const observations = new Map(
+      ranked.map((item) => [
+        item.id,
+        {
+          title: item.id,
+          content_redacted: "rerank cap fixture",
+        },
+      ])
+    );
+
+    const result = (store as any).applyRerank("rerank cap", ranked, observations);
+
+    expect(result.ranked.length).toBe(75);
+    expect(rerankInputCount).toBe(50);
   });
 });
 

@@ -128,6 +128,73 @@ HARNESS_MEM_PROJECT_KEY = "my-project-2026"
 
 複数の Hermes セッションが同時並行で書き込む場合も `project_key` が同じなら統合済みのタイムラインに記録される（`harness_mem_sessions_list` で個別セッションを参照可能）。
 
+## 履歴 Backfill
+
+Hermes は過去セッションを `~/.hermes/state.db` に保存する。Backfill は、この SQLite database を読み取り、Hermes の過去会話を harness-mem の event として一括登録する機能。
+
+たとえると、Hermes の日記帳をあとから harness-mem の共有台帳へ写す作業です。写したあとも Hermes の元データは消さない。再実行しても同じ event は dedupe される。
+
+### まず dry-run
+
+```bash
+harness-mem ingest-hermes-state \
+  --source ~/.hermes/state.db \
+  --project-key default \
+  --dry-run \
+  --json
+```
+
+dry-run は書き込みをしない。`sessions_seen` / `messages_seen` / `events_planned` を確認し、取り込み規模を把握する。
+
+### 実行
+
+```bash
+harness-mem ingest-hermes-state \
+  --source ~/.hermes/state.db \
+  --project-key default \
+  --execute \
+  --batch-size 100 \
+  --json
+```
+
+`--execute` を付けない限り、既定は dry-run。大きい `state.db` では batch 実行が安全。途中で止まった場合は、出力の `last_message_id` を使って続きから再開できる。
+
+```bash
+harness-mem ingest-hermes-state \
+  --source ~/.hermes/state.db \
+  --project-key default \
+  --execute \
+  --after-message-id 1200 \
+  --limit 100 \
+  --json
+```
+
+### 取り込む event
+
+| Hermes source | harness-mem event_type |
+|---|---|
+| `sessions.started_at` | `session_start` |
+| `messages.role = user` | `user_prompt` |
+| `messages.role = assistant` | `checkpoint` |
+| `messages.role = tool` | `tool_use` |
+| `sessions.ended_at` | `session_end` |
+
+### 安全設計
+
+- tool result の本文は既定では保存しない。`result_present` / `result_chars` のような metadata だけを残す。
+- tool result 本文まで必要な場合だけ `--include-tool-content` を明示する。
+- 長文を抑えたい場合は `--max-content-chars 4000` のように上限を付ける。
+- 期間を絞る場合は `--since 2026-05-01T00:00:00+09:00` を使う。
+- dedupe key は source database / project / Hermes message id から決まるため、同じ project への再実行は安全。
+
+### 動作確認
+
+Backfill 後は、軽量検索で入ったか確認する。
+
+```bash
+harness-mem search '{"query":"Hermes 作業確認","safe_mode":true,"vector_search":false,"expand_links":false,"graph_depth":0,"limit":5}'
+```
+
 ## ツール allowlist 設計指針
 
 ### ベースライン: 5 ツール（minimal）
@@ -320,7 +387,7 @@ Claude Code / Codex で使っている `HARNESS_MEM_PROJECT_KEY` と揃えて初
 - **lazy singleton**: `HarnessMemClient` はプロセス内で1回だけ初期化（複数 session で reuse）
 - **forward-compat**: hook callback は `**kwargs` を受け取り、Hermes が将来追加する引数で plugin が落ちないようにする
 - **interrupted の扱い**: 中断 (`/stop` や新メッセージで打ち切り) されたセッションは finalize しない。これは「最終応答が生成されたターン」と区別するため
-- **エラー伝播**: 現実装では `HarnessMemClient` 呼び出し失敗時に例外を raise する。Hermes 側が try/except でwrapするため agent loop は止まらないが、log は出る。将来 silent-fail/log-only モードへの切り替えは S111 follow-up で検討
+- **エラー伝播**: 現実装では `HarnessMemClient` 呼び出し失敗時に例外を raise する。Hermes 側が try/except でwrapするため agent loop は止まらないが、log は出る。将来 silent-fail/log-only モードへの切り替えは S112 follow-up で検討
 
 ### Plugin tests
 
@@ -330,11 +397,12 @@ pip install -e .[test]
 pytest
 ```
 
-`HarnessMemClient` をモックして 15 件のテストが pass する設計（実 daemon 不要）。E2E (実 Hermes での動作確認) は Plans.md §111 S111-005 で別途実施。
+`HarnessMemClient` をモックして 15 件のテストが pass する設計（実 daemon 不要）。E2E (実 Hermes での動作確認) は Plans.md §112 S112-005 で別途実施。
 
 ## 既知の制約
 
 - **Hermes built-in memory との並行運用**: Hermes は組み込みメモリ層 (procedural memory) を持つ。本統合では harness-mem を **追加の MCP ツール** として並行運用する形になる。built-in memory を harness-mem で置換する Python adapter は今回スコープ外（将来検討、`integrations/hermes/README.md` "Out of Scope" 参照）。
+- **Backfill は過去データの取り込み**: `harness-mem ingest-hermes-state` は `~/.hermes/state.db` に既にある履歴を取り込む one-shot 処理。Hermes の per-message hook を追加するものではない。
 - **HTTP MCP transport は opt-in 段階**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし既定の案内はまだ stdio fallback を維持する。互換 smoke / latency benchmark を見ながら recommended/default 化を判断する。
 - **on-demand spawn と複数クライアント**: 方式 B（`bunx` で Hermes 起動時に spawn）を選ぶと、Hermes セッション間でも独立 daemon になる場合がある。複数ツールでメモリ共有する用途では方式 A（別プロセス常駐）を推奨。
 

@@ -2,7 +2,13 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync } from "node:fs";
 import { basename, join } from "node:path";
 import { tmpdir } from "node:os";
-import { HarnessMemCore, getConfig, type Config, type EventEnvelope } from "../../src/core/harness-mem-core";
+import {
+  HarnessMemCore,
+  getConfig,
+  parseVectorBackfillChildResponse,
+  type Config,
+  type EventEnvelope,
+} from "../../src/core/harness-mem-core";
 import { removeDirWithRetry } from "../fs-cleanup";
 
 const cleanupPaths: string[] = [];
@@ -59,6 +65,38 @@ function createFakeRepo(name: string): string {
 }
 
 describe("HarnessMemCore unit", () => {
+  test("vector backfill child parser accepts startup logs before JSON", () => {
+    const result = parseVectorBackfillChildResponse(
+      [
+        "[harness-mem] normalized legacy project aliases (aliases=1, rows=1)",
+        '{"ok":true,"source":"core","items":[{"repaired":25}],"meta":{"count":1}}',
+      ].join("\n"),
+      'dtype not specified for "model"',
+    );
+
+    expect(result.ok).toBe(true);
+    expect((result.items[0] as { repaired?: number }).repaired).toBe(25);
+  });
+
+  test("scheduled consolidation is skipped while vector backfill is running", async () => {
+    const core = new HarnessMemCore(createConfig("vector-backfill-consolidation-guard"));
+    try {
+      const started = core.startVectorBackfillWorker({
+        compact_batch_size: 1,
+        reindex_batch_size: 1,
+        interval_ms: 1000,
+        target_coverage: 0.95,
+      });
+      expect(started.ok).toBe(true);
+
+      const response = await core.runConsolidation({ reason: "scheduler", limit: 1 });
+      expect(response.ok).toBe(true);
+      expect(response.meta.skipped).toBe("vector_backfill_running");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("vector provider falls back when sqlite-vec extension is unavailable", () => {
     const previous = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
     process.env.HARNESS_MEM_SQLITE_VEC_PATH = "/non/existent/sqlite-vec";
@@ -163,6 +201,75 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
+  test("searchPrepared batches query embedding prime before sync vector search", async () => {
+    const core = new HarnessMemCore(createConfig("search-prepared-prime-batch"));
+    let primeBatchCalls = 0;
+    let primeQueryCalls = 0;
+    let primeBatchMode: string | undefined;
+    let primeBatchTexts: string[] = [];
+    try {
+      (core as unknown as {
+        embeddingProvider: {
+          name: "fallback";
+          model: string;
+          dimension: number;
+          embed: (text: string) => number[];
+          embedQuery: (text: string) => number[];
+          primeBatch: (texts: string[], mode?: "passage" | "query") => Promise<number[][]>;
+          primeQuery: (text: string) => Promise<number[]>;
+          health: () => { status: "healthy"; details: string };
+        };
+      }).embeddingProvider = {
+        name: "fallback",
+        model: "test-embedding",
+        dimension: 64,
+        embed: (text: string) => {
+          const seed = text.length || 1;
+          return Array.from({ length: 64 }, (_, index) => ((seed + index) % 17) / 17);
+        },
+        embedQuery: (text: string) => {
+          const seed = text.length || 1;
+          return Array.from({ length: 64 }, (_, index) => ((seed + index + 3) % 19) / 19);
+        },
+        primeBatch: async (texts, mode) => {
+          primeBatchCalls += 1;
+          primeBatchMode = mode;
+          primeBatchTexts = [...texts];
+          return texts.map((text) =>
+            Array.from({ length: 64 }, (_, index) => (((text.length || 1) + index) % 23) / 23)
+          );
+        },
+        primeQuery: async () => {
+          primeQueryCalls += 1;
+          throw new Error("primeQuery should not run when primeBatch is available");
+        },
+        health: () => ({ status: "healthy", details: "test" }),
+      };
+
+      core.recordEvent(
+        baseEvent({
+          event_id: "prepared-prime-batch-1",
+          payload: { content: "prepared vector search should batch async prime" },
+        })
+      );
+
+      const result = await core.searchPrepared({
+        query: "prepared vector search",
+        limit: 1,
+        include_private: true,
+        vector_search: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(primeBatchCalls).toBe(1);
+      expect(primeBatchMode).toBe("query");
+      expect(primeBatchTexts).toEqual(["prepared vector search"]);
+      expect(primeQueryCalls).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("safe mode forces vector off for direct core search callers", () => {
     const core = new HarnessMemCore(createConfig("safe-mode-vector-off"));
     try {
@@ -181,6 +288,37 @@ describe("HarnessMemCore unit", () => {
       });
 
       expect(result.ok).toBe(true);
+      const meta = result.meta as Record<string, unknown>;
+      expect(meta.vector_search_enabled).toBe(false);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("safe mode stays bounded when FTS is unavailable", () => {
+    const core = new HarnessMemCore(createConfig("safe-mode-fts-unavailable"));
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "safe-bounded-1",
+          payload: { content: "bounded safe recent scan can answer without fts" },
+        })
+      );
+
+      const db = (core as unknown as {
+        db: { query: (sql: string) => { run: () => unknown } };
+      }).db;
+      db.query("DROP TABLE mem_observations_fts").run();
+
+      const result = core.search({
+        query: "bounded safe recent",
+        limit: 1,
+        include_private: true,
+        safe_mode: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect(result.items.length).toBeGreaterThan(0);
       const meta = result.meta as Record<string, unknown>;
       expect(meta.vector_search_enabled).toBe(false);
     } finally {

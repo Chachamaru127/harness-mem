@@ -810,6 +810,7 @@ export interface VectorSearchResult {
   scores: Map<string, number>;
   coverage: number;
   migrationWarning?: string;
+  degradedReasons?: string[];
 }
 
 export interface SearchCandidate {

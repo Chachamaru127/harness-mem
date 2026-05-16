@@ -14,6 +14,11 @@ import type { Database } from "bun:sqlite";
 import { ConfigManager, type ConfigManagerDeps } from "../../src/core/config-manager";
 import { getConfig, type Config, type ApiResponse } from "../../src/core/config-manager";
 import {
+  getSqliteVecMapTableName,
+  getSqliteVecTableName,
+  type SqliteVecUpsertOptions,
+} from "../../src/vector/providers";
+import {
   createTestDb,
   createTestConfig,
   okResponse,
@@ -73,6 +78,63 @@ function createManager(overrides: Partial<ConfigManagerDeps> = {}): { manager: C
   const deps = createDeps(db, config, overrides);
   const manager = new ConfigManager(deps);
   return { manager, db };
+}
+
+function insertVector(
+  db: Database,
+  observationId: string,
+  model: string,
+  dimension: number,
+  vectorJson: string,
+): void {
+  const now = new Date().toISOString();
+  db.query(`
+    INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(observationId, model, dimension, vectorJson, now, now);
+}
+
+function fakeSqliteVecUpsert(
+  db: Database,
+  observationId: string,
+  vectorJson: string,
+  updatedAt: string,
+  options: SqliteVecUpsertOptions,
+): boolean {
+  const model = options.model || "test:model";
+  const tableName = getSqliteVecTableName(model);
+  const mapTableName = getSqliteVecMapTableName(model);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${tableName} (
+      rowid INTEGER PRIMARY KEY,
+      embedding TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ${mapTableName} (
+      rowid INTEGER PRIMARY KEY,
+      observation_id TEXT NOT NULL UNIQUE,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_${mapTableName}_observation
+      ON ${mapTableName}(observation_id);
+  `);
+
+  const mapRow = db
+    .query(`SELECT rowid FROM ${mapTableName} WHERE observation_id = ?`)
+    .get(observationId) as { rowid?: number } | null;
+  if (typeof mapRow?.rowid === "number") {
+    db.query(`INSERT OR REPLACE INTO ${tableName}(rowid, embedding) VALUES (?, ?)`).run(mapRow.rowid, vectorJson);
+    db.query(`UPDATE ${mapTableName} SET updated_at = ? WHERE rowid = ?`).run(updatedAt, mapRow.rowid);
+    return true;
+  }
+
+  db.query(`INSERT INTO ${tableName}(embedding) VALUES (?)`).run(vectorJson);
+  const lastRow = db.query(`SELECT last_insert_rowid() AS rowid`).get() as { rowid?: number } | null;
+  if (typeof lastRow?.rowid !== "number") {
+    return false;
+  }
+  db.query(`INSERT INTO ${mapTableName}(rowid, observation_id, updated_at) VALUES (?, ?, ?)`)
+    .run(lastRow.rowid, observationId, updatedAt);
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,24 +376,157 @@ describe("config-manager: backup", () => {
 });
 
 // ---------------------------------------------------------------------------
+// repairSqliteVecMap テスト
+// ---------------------------------------------------------------------------
+
+describe("config-manager: repairSqliteVecMap", () => {
+  test("dry-run は map table 不在を missing all として数える", () => {
+    const model = "adaptive:general:local:multilingual-e5";
+    const { manager, db } = createManager({ getVectorModelVersion: () => model });
+    const firstId = insertTestObservation(db, { id: "obs-repair-dry-a" });
+    const secondId = insertTestObservation(db, { id: "obs-repair-dry-b" });
+    insertVector(db, firstId, model, 2, JSON.stringify([1, 0]));
+    insertVector(db, secondId, model, 2, JSON.stringify([0, 1]));
+
+    const res = manager.repairSqliteVecMap({ model, dimension: 2, limit: 1 });
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    expect(item.dry_run).toBe(true);
+    expect(item.vector_count).toBe(2);
+    expect(item.map_count).toBe(0);
+    expect(item.missing_before).toBe(2);
+    expect(item.repaired).toBe(0);
+    expect(item).not.toHaveProperty("missing_after");
+  });
+
+  test("execute は missing map/index を補修し、再実行で重複しない", () => {
+    const model = "adaptive:general:local:multilingual-e5";
+    const { manager, db } = createManager({
+      getVectorModelVersion: () => model,
+      upsertSqliteVecRow: fakeSqliteVecUpsert,
+    });
+    const existingId = insertTestObservation(db, { id: "obs-repair-existing" });
+    const missingId = insertTestObservation(db, { id: "obs-repair-missing" });
+    insertVector(db, existingId, model, 2, JSON.stringify([1, 0]));
+    insertVector(db, missingId, model, 2, JSON.stringify([0, 1]));
+    expect(fakeSqliteVecUpsert(db, existingId, JSON.stringify([1, 0]), "2026-02-24T00:00:00.000Z", {
+      model,
+      vectorDimension: 2,
+    })).toBe(true);
+
+    const first = manager.repairSqliteVecMap({ model, dimension: 2, limit: 10, execute: true });
+    expect(first.ok).toBe(true);
+    const firstItem = first.items[0] as Record<string, unknown>;
+    expect(firstItem.missing_before).toBe(1);
+    expect(firstItem.repaired).toBe(1);
+    expect(firstItem.missing_after).toBe(0);
+    expect(firstItem.map_count_after).toBe(2);
+
+    const second = manager.repairSqliteVecMap({ model, dimension: 2, limit: 10, execute: true });
+    expect(second.ok).toBe(true);
+    const secondItem = second.items[0] as Record<string, unknown>;
+    expect(secondItem.missing_before).toBe(0);
+    expect(secondItem.repaired).toBe(0);
+    expect(secondItem.missing_after).toBe(0);
+    expect(secondItem.map_count_after).toBe(2);
+
+    const mapTableName = getSqliteVecMapTableName(model);
+    const mapCount = db.query(`SELECT COUNT(*) AS count FROM ${mapTableName}`).get() as { count?: number } | null;
+    expect(mapCount?.count).toBe(2);
+  });
+
+  test("execute は壊れた vector_json を skip して missing を残す", () => {
+    const model = "adaptive:general:local:multilingual-e5";
+    const { manager, db } = createManager({
+      getVectorModelVersion: () => model,
+      upsertSqliteVecRow: fakeSqliteVecUpsert,
+    });
+    const badId = insertTestObservation(db, { id: "obs-repair-bad-json" });
+    insertVector(db, badId, model, 2, "not-json");
+
+    const res = manager.repairSqliteVecMap({ model, dimension: 2, execute: true, limit: 10 });
+    expect(res.ok).toBe(true);
+    const item = res.items[0] as Record<string, unknown>;
+    expect(item.missing_before).toBe(1);
+    expect(item.repaired).toBe(0);
+    expect(item.skipped).toBe(1);
+    expect(item.failed).toBe(0);
+    expect(item.missing_after).toBe(1);
+  });
+
+  test("rebuild_existing は map updated_at が古い row から進める", () => {
+    const model = "adaptive:general:local:multilingual-e5";
+    const touched: string[] = [];
+    const { manager, db } = createManager({
+      getVectorModelVersion: () => model,
+      upsertSqliteVecRow: (targetDb, observationId, vectorJson, updatedAt, options) => {
+        touched.push(observationId);
+        return fakeSqliteVecUpsert(targetDb, observationId, vectorJson, updatedAt, options);
+      },
+    });
+
+    const oldA = insertTestObservation(db, { id: "obs-rebuild-old-a" });
+    const oldB = insertTestObservation(db, { id: "obs-rebuild-old-b" });
+    const oldC = insertTestObservation(db, { id: "obs-rebuild-old-c" });
+    insertVector(db, oldA, model, 2, JSON.stringify([1, 0]));
+    insertVector(db, oldB, model, 2, JSON.stringify([0, 1]));
+    insertVector(db, oldC, model, 2, JSON.stringify([0.5, 0.5]));
+    expect(fakeSqliteVecUpsert(db, oldA, JSON.stringify([1, 0]), "2026-01-01T00:00:00.000Z", {
+      model,
+      vectorDimension: 2,
+    })).toBe(true);
+    expect(fakeSqliteVecUpsert(db, oldB, JSON.stringify([0, 1]), "2026-01-02T00:00:00.000Z", {
+      model,
+      vectorDimension: 2,
+    })).toBe(true);
+    expect(fakeSqliteVecUpsert(db, oldC, JSON.stringify([0.5, 0.5]), "2026-01-03T00:00:00.000Z", {
+      model,
+      vectorDimension: 2,
+    })).toBe(true);
+
+    const first = manager.repairSqliteVecMap({
+      model,
+      dimension: 2,
+      execute: true,
+      rebuild_existing: true,
+      limit: 2,
+    });
+    expect(first.ok).toBe(true);
+    expect(touched.slice(0, 2)).toEqual([oldA, oldB]);
+    expect((first.items[0] as Record<string, unknown>).rebuild_batch_updated_at).toBeTruthy();
+
+    const secondStart = touched.length;
+    const second = manager.repairSqliteVecMap({
+      model,
+      dimension: 2,
+      execute: true,
+      rebuild_existing: true,
+      limit: 2,
+    });
+    expect(second.ok).toBe(true);
+    expect(touched.slice(secondStart)[0]).toBe(oldC);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // reindexVectors テスト
 // ---------------------------------------------------------------------------
 
 describe("config-manager: reindexVectors", () => {
-  test("reindexVectors() が vectorEngine=disabled のとき skipped を返す", () => {
+  test("reindexVectors() が vectorEngine=disabled のとき skipped を返す", async () => {
     const { manager } = createManager({ getVectorEngine: () => "disabled" });
-    const res = manager.reindexVectors();
+    const res = await manager.reindexVectors();
     expect(res.ok).toBe(true);
     expect((res.meta as Record<string, unknown>).skipped).toBe("vector_disabled");
   });
 
-    test("reindexVectors() レスポンスに meta が含まれる", () => {
+    test("reindexVectors() レスポンスに meta が含まれる", async () => {
       const { manager } = createManager({ getVectorEngine: () => "disabled" });
-      const res = manager.reindexVectors();
+      const res = await manager.reindexVectors();
       expect(res.meta).toBeTruthy();
     });
 
-    test("current model の vector が無い observation を legacy vector より先に reindex する", () => {
+    test("current model の vector が無い observation を legacy vector より先に reindex する", async () => {
       const db = createTestDb();
       dbs.push(db);
       const config = createTestConfig();
@@ -363,11 +558,170 @@ describe("config-manager: reindexVectors", () => {
         },
       }));
 
-      const res = manager.reindexVectors(1);
+      const res = await manager.reindexVectors(1);
       expect(res.ok).toBe(true);
       expect(reindexed).toEqual([missingId]);
       expect((res.meta as Record<string, unknown>).vector_coverage).toBeGreaterThan(0);
       expect((res.items[0] as Record<string, unknown>).missing_vectors_remaining).toBe(1);
+    });
+
+    test("reindexVectors() can skip expensive status counts for worker ticks", async () => {
+      const db = createTestDb();
+      dbs.push(db);
+      const config = createTestConfig();
+      const id = insertTestObservation(db, {
+        id: "obs-reindex-countless",
+        content: "row reindexed without status counts",
+        created_at: "2026-02-21T00:00:00.000Z",
+      });
+      const manager = new ConfigManager(createDeps(db, config, {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => "current:model",
+        reindexObservationVector: (obsId, _content, createdAt) => {
+          db.query(
+            `INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          ).run(obsId, "current:model", 2, JSON.stringify([1, 0]), createdAt, createdAt);
+        },
+      }));
+
+      const res = await manager.reindexVectors(1, { status_counts: false });
+      expect(res.ok).toBe(true);
+      const item = res.items[0] as Record<string, unknown>;
+      expect(item.reindexed).toBe(1);
+      expect(item.status_counts).toBe(false);
+      expect(item.total_observations).toBeUndefined();
+      expect((res.meta as Record<string, unknown>).status_counts).toBe(false);
+      expect((res.meta as Record<string, unknown>).vector_coverage).toBeUndefined();
+      const row = db
+        .query(`SELECT observation_id FROM mem_vectors WHERE observation_id = ? AND model = ?`)
+        .get(id, "current:model") as { observation_id?: string } | null;
+      expect(row?.observation_id).toBe(id);
+    });
+
+    test("adaptive legacy adoption は sqlite-vec ready 時に model-specific map も upsert する", async () => {
+      const model = "adaptive:general:local:multilingual-e5";
+      const db = createTestDb();
+      dbs.push(db);
+      const config = createTestConfig({ vectorDimension: 2 });
+      const legacyId = insertTestObservation(db, {
+        id: "obs-adopt-legacy-map",
+        content: "legacy vector can be adopted without embedding recompute",
+        created_at: "2026-02-24T00:00:00.000Z",
+      });
+      insertVector(db, legacyId, "local:multilingual-e5", 2, JSON.stringify([0.25, 0.75]));
+      const reindexed: string[] = [];
+      const manager = new ConfigManager(createDeps(db, config, {
+        getVectorEngine: () => "sqlite-vec",
+        getVecTableReady: () => true,
+        getVectorModelVersion: () => "adaptive:router",
+        upsertSqliteVecRow: fakeSqliteVecUpsert,
+        reindexObservationVector: (id) => {
+          reindexed.push(id);
+        },
+      }));
+
+      const res = await manager.reindexVectors(1);
+      expect(res.ok).toBe(true);
+      expect((res.items[0] as Record<string, unknown>).adopted_legacy_vectors).toBe(1);
+      expect(reindexed).toEqual([]);
+
+      const adoptedVector = db
+        .query(`SELECT vector_json FROM mem_vectors WHERE observation_id = ? AND model = ?`)
+        .get(legacyId, model) as { vector_json?: string } | null;
+      expect(adoptedVector?.vector_json).toBe(JSON.stringify([0.25, 0.75]));
+
+      const mapTableName = getSqliteVecMapTableName(model);
+      const mapRow = db
+        .query(`SELECT observation_id FROM ${mapTableName} WHERE observation_id = ?`)
+        .get(legacyId) as { observation_id?: string } | null;
+      expect(mapRow?.observation_id).toBe(legacyId);
+    });
+
+    test("prepareReindexEmbedding があれば同期 reindex 前に待つ", async () => {
+      const db = createTestDb();
+      dbs.push(db);
+      const config = createTestConfig();
+      const id = insertTestObservation(db, {
+        id: "obs-prime-before-reindex",
+        content: "row that needs async prime before sync embed",
+        created_at: "2026-02-22T00:00:00.000Z",
+      });
+      const calls: string[] = [];
+      const manager = new ConfigManager(createDeps(db, config, {
+        getVectorEngine: () => "js-fallback",
+        getVectorModelVersion: () => "current:model",
+        prepareReindexEmbedding: async (content) => {
+          calls.push(`prepare:${content}`);
+        },
+        reindexObservationVector: (obsId, content, createdAt) => {
+          calls.push(`reindex:${obsId}:${content}`);
+          db.query(
+            `INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+          ).run(obsId, "current:model", 2, JSON.stringify([1, 0]), createdAt, createdAt);
+        },
+      }));
+
+      const res = await manager.reindexVectors(1);
+      expect(res.ok).toBe(true);
+      expect(calls).toEqual([
+        "prepare:row that needs async prime before sync embed",
+        `reindex:${id}:row that needs async prime before sync embed`,
+      ]);
+    });
+
+    test("prepareReindexEmbeddings があれば小 batch で prime してから reindex する", async () => {
+      const previousBatchSize = process.env.HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE;
+      process.env.HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE = "2";
+      try {
+        const db = createTestDb();
+        dbs.push(db);
+        const config = createTestConfig();
+        const firstId = insertTestObservation(db, {
+          id: "obs-batch-prime-a",
+          content: "first batch prime row",
+          created_at: "2026-02-23T00:00:00.000Z",
+        });
+        const secondId = insertTestObservation(db, {
+          id: "obs-batch-prime-b",
+          content: "second batch prime row",
+          created_at: "2026-02-23T00:00:01.000Z",
+        });
+        const calls: string[] = [];
+        const manager = new ConfigManager(createDeps(db, config, {
+          getVectorEngine: () => "js-fallback",
+          getVectorModelVersion: () => "current:model",
+          prepareReindexEmbeddings: async (contents) => {
+            calls.push(`prepareBatch:${contents.join("|")}`);
+          },
+          prepareReindexEmbedding: async (content) => {
+            calls.push(`prepareSingle:${content}`);
+          },
+          reindexObservationVector: (obsId, content, createdAt) => {
+            calls.push(`reindex:${obsId}:${content}`);
+            db.query(
+              `INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)`,
+            ).run(obsId, "current:model", 2, JSON.stringify([1, 0]), createdAt, createdAt);
+          },
+        }));
+
+        const res = await manager.reindexVectors(2);
+        expect(res.ok).toBe(true);
+        expect(calls).toEqual([
+          "prepareBatch:second batch prime row|first batch prime row",
+          `reindex:${secondId}:second batch prime row`,
+          `reindex:${firstId}:first batch prime row`,
+        ]);
+        expect((res.items[0] as Record<string, unknown>).prime_batch_size).toBe(2);
+      } finally {
+        if (previousBatchSize === undefined) {
+          delete process.env.HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE;
+        } else {
+          process.env.HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE = previousBatchSize;
+        }
+      }
     });
   });
 

@@ -22,6 +22,13 @@ import { dirname, join } from "node:path";
 import { statSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import type { ManagedBackendStatus } from "../projector/managed-backend";
+import {
+  ensureSqliteVecTableForModel,
+  getSqliteVecMapTableName,
+  getSqliteVecTableName,
+  upsertSqliteVecRow as defaultUpsertSqliteVecRow,
+  type SqliteVecUpsertOptions,
+} from "../vector/providers";
 import type {
   ApiResponse,
   AuditLogRequest,
@@ -42,6 +49,28 @@ import {
   resolveHomePath,
   visibilityFilterSql as visibilityFilterSqlUtil,
 } from "./core-utils.js";
+
+export interface RepairSqliteVecMapOptions {
+  model?: string;
+  dimension?: number;
+  limit?: number;
+  execute?: boolean;
+  rebuild_existing?: boolean;
+  rebuild_before?: string;
+  status_counts?: boolean;
+}
+
+export interface ReindexVectorsOptions {
+  status_counts?: boolean;
+}
+
+type SqliteVecRowUpsert = (
+  db: Database,
+  observationId: string,
+  vectorJson: string,
+  updatedAt: string,
+  options: SqliteVecUpsertOptions,
+) => boolean;
 
 // ---------------------------------------------------------------------------
 // ConfigManagerDeps: HarnessMemCore から渡される内部依存
@@ -72,6 +101,10 @@ export interface ConfigManagerDeps {
   writeAuditLog: (action: string, targetType: string, targetId: string, details?: Record<string, unknown>) => void;
   /** ベクトルエンジン ("disabled" | "sqlite-vec" など) — 呼び出し時に現在値を取得 */
   getVectorEngine: () => string;
+  /** sqlite-vec table readiness — 呼び出し時に現在値を取得 */
+  getVecTableReady?: () => boolean;
+  /** sqlite-vec table readiness を更新する */
+  setVecTableReady?: (ready: boolean) => void;
   /** 現在のベクトルモデルバージョン — 呼び出し時に現在値を取得 */
   getVectorModelVersion: () => string;
   /** 埋め込みプロバイダー名 */
@@ -80,6 +113,12 @@ export interface ConfigManagerDeps {
   getEmbeddingHealthStatus: () => string;
   /** 観察ベクトルを再インデックスするコールバック */
   reindexObservationVector: (id: string, content: string, createdAt: string) => void;
+  /** sqlite-vec model-specific row upsert。テストでは vec0 extension なしで差し替える */
+  upsertSqliteVecRow?: SqliteVecRowUpsert;
+  /** ローカル ONNX など、同期 embed 前に async prime が必要な provider 用 */
+  prepareReindexEmbedding?: (content: string) => Promise<void>;
+  /** reindex の小 batch 単位でまとめて prime できる provider 用 */
+  prepareReindexEmbeddings?: (contents: string[]) => Promise<void>;
   /** Antigravity ingest が有効か（platformVisibilityFilterSql 用） */
   isAntigravityIngestEnabled: () => boolean;
 }
@@ -110,6 +149,269 @@ function currentVectorModelPredicate(alias: string, model: string): { sql: strin
     return { sql: `${column} LIKE 'adaptive:%'`, params: [] };
   }
   return { sql: `${column} = ?`, params: [model] };
+}
+
+function compatibleLegacyAdaptiveGeneralModel(model: string): { source: string; target: string } | null {
+  if (!model.startsWith("adaptive:")) {
+    return null;
+  }
+  return {
+    source: "local:multilingual-e5",
+    target: "adaptive:general:local:multilingual-e5",
+  };
+}
+
+function resolveReindexPriorityOrder(alias: string): { priority: string; orderBy: string } {
+  const priority = (process.env.HARNESS_MEM_REINDEX_PRIORITY || "recent").trim().toLowerCase();
+  if (priority === "general-first") {
+    return {
+      priority,
+      orderBy: `CASE WHEN ${alias}.content_redacted GLOB '*[ぁ-んァ-ン一-龯]*' THEN 1 ELSE 0 END ASC, ${alias}.created_at DESC`,
+    };
+  }
+  if (priority === "shortest") {
+    return {
+      priority,
+      orderBy: `LENGTH(${alias}.content_redacted) ASC, ${alias}.created_at DESC`,
+    };
+  }
+  return {
+    priority: "recent",
+    orderBy: `${alias}.created_at DESC`,
+  };
+}
+
+function sqliteTableExists(db: Database, tableName: string): boolean {
+  const row = db
+    .query(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?`)
+    .get(tableName) as { name?: string } | null;
+  return typeof row?.name === "string";
+}
+
+function countRows(db: Database, tableName: string): number {
+  if (!sqliteTableExists(db, tableName)) {
+    return 0;
+  }
+  const row = db.query(`SELECT COUNT(*) AS count FROM ${tableName}`).get() as { count?: number } | null;
+  return Number(row?.count ?? 0);
+}
+
+function estimateSqliteVecIndexRows(db: Database, tableName: string, mapCount: number): { count: number; estimated: boolean } {
+  if (!sqliteTableExists(db, tableName)) {
+    return { count: 0, estimated: false };
+  }
+  return { count: mapCount, estimated: true };
+}
+
+function countVectorsForModel(db: Database, model: string, dimension: number): number {
+  const row = db
+    .query(`
+      SELECT COUNT(*) AS count
+      FROM mem_vectors
+      WHERE model = ?
+        AND dimension = ?
+    `)
+    .get(model, dimension) as { count?: number } | null;
+  return Number(row?.count ?? 0);
+}
+
+function countMissingSqliteVecMapRows(
+  db: Database,
+  model: string,
+  dimension: number,
+  tableName: string,
+  mapTableName: string,
+): number {
+  if (!sqliteTableExists(db, tableName) || !sqliteTableExists(db, mapTableName)) {
+    return countVectorsForModel(db, model, dimension);
+  }
+
+  const row = db
+    .query(`
+      SELECT COUNT(*) AS count
+      FROM mem_vectors v
+      WHERE v.model = ?
+        AND v.dimension = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${mapTableName} m
+          WHERE m.observation_id = v.observation_id
+        )
+    `)
+    .get(model, dimension) as { count?: number } | null;
+  return Number(row?.count ?? 0);
+}
+
+function selectSqliteVecRebuildRows(
+  db: Database,
+  model: string,
+  dimension: number,
+  mapTableName: string,
+  limit: number,
+  rebuildBefore?: string,
+): Array<{ observation_id: string; vector_json: string; updated_at: string }> {
+  const rows: Array<{ observation_id: string; vector_json: string; updated_at: string }> = [];
+  const missingRows = db
+    .query(`
+      SELECT v.observation_id, v.vector_json, v.updated_at
+      FROM mem_vectors v
+      WHERE v.model = ?
+        AND v.dimension = ?
+        AND NOT EXISTS (
+          SELECT 1
+          FROM ${mapTableName} m
+          WHERE m.observation_id = v.observation_id
+        )
+      ORDER BY v.updated_at ASC, v.observation_id ASC
+      LIMIT ?
+    `)
+    .all(model, dimension, limit) as Array<{
+      observation_id: string;
+      vector_json: string;
+      updated_at: string;
+    }>;
+  rows.push(...missingRows);
+
+  const remainingLimit = limit - rows.length;
+  if (remainingLimit <= 0) {
+    return rows;
+  }
+
+  const cutoff = typeof rebuildBefore === "string" && rebuildBefore.trim()
+    ? rebuildBefore.trim()
+    : null;
+  const staleRows = (cutoff
+    ? db
+        .query(`
+          SELECT v.observation_id, v.vector_json, v.updated_at
+          FROM ${mapTableName} m
+          JOIN mem_vectors v
+            ON v.observation_id = m.observation_id
+          WHERE v.model = ?
+            AND v.dimension = ?
+            AND m.updated_at < ?
+          ORDER BY m.updated_at ASC, m.observation_id ASC
+          LIMIT ?
+        `)
+        .all(model, dimension, cutoff, remainingLimit)
+    : db
+        .query(`
+          SELECT v.observation_id, v.vector_json, v.updated_at
+          FROM ${mapTableName} m
+          JOIN mem_vectors v
+            ON v.observation_id = m.observation_id
+          WHERE v.model = ?
+            AND v.dimension = ?
+          ORDER BY m.updated_at ASC, m.observation_id ASC
+          LIMIT ?
+        `)
+        .all(model, dimension, remainingLimit)) as Array<{
+    observation_id: string;
+    vector_json: string;
+    updated_at: string;
+  }>;
+  rows.push(...staleRows);
+  return rows;
+}
+
+function validateVectorJsonForRepair(
+  vectorJson: string,
+  dimension: number,
+): { ok: true } | { ok: false; reason: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(vectorJson);
+  } catch {
+    return { ok: false, reason: "invalid_json" };
+  }
+
+  if (!Array.isArray(parsed)) {
+    return { ok: false, reason: "not_array" };
+  }
+  if (parsed.length !== dimension) {
+    return { ok: false, reason: "dimension_mismatch" };
+  }
+  if (!parsed.every((value) => typeof value === "number" && Number.isFinite(value))) {
+    return { ok: false, reason: "non_finite_value" };
+  }
+  return { ok: true };
+}
+
+function bulkRepairSqliteVecMapRows(
+  db: Database,
+  model: string,
+  dimension: number,
+  limit: number,
+): { repaired: number; skipped: number; failed: number; errors: string[] } {
+  const { tableName, mapTableName } = ensureSqliteVecTableForModel(db, model, dimension);
+  const tempTable = "temp_sqlite_vec_map_repair_batch";
+  const errors: string[] = [];
+
+  try {
+    db.exec("BEGIN IMMEDIATE");
+    db.exec(`DROP TABLE IF EXISTS ${tempTable}`);
+    db.exec(`
+      CREATE TEMP TABLE ${tempTable} (
+        rowid INTEGER PRIMARY KEY,
+        observation_id TEXT NOT NULL UNIQUE,
+        vector_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+    db.query(`
+	      INSERT INTO ${tempTable}(rowid, observation_id, vector_json, updated_at)
+	      WITH max_row AS (
+	        SELECT COALESCE(MAX(rowid), 0) AS base_rowid FROM ${mapTableName}
+	      ),
+      missing AS (
+        SELECT
+          v.observation_id,
+          v.vector_json,
+          COALESCE(v.updated_at, ?) AS updated_at,
+          ROW_NUMBER() OVER (ORDER BY v.updated_at DESC, v.observation_id ASC) AS rn
+        FROM mem_vectors v
+        WHERE v.model = ?
+          AND v.dimension = ?
+          AND json_valid(v.vector_json)
+          AND json_array_length(v.vector_json) = ?
+	          AND NOT EXISTS (
+	            SELECT 1
+	            FROM ${mapTableName} m
+	            WHERE m.observation_id = v.observation_id
+	          )
+        ORDER BY v.updated_at DESC, v.observation_id ASC
+        LIMIT ?
+      )
+      SELECT
+        max_row.base_rowid + missing.rn AS rowid,
+        missing.observation_id,
+        missing.vector_json,
+        missing.updated_at
+      FROM missing, max_row;
+    `).run(nowIso(), model, dimension, dimension, limit);
+
+    const row = db.query(`SELECT COUNT(*) AS count FROM ${tempTable}`).get() as { count?: number } | null;
+    const repaired = Number(row?.count ?? 0);
+    if (repaired > 0) {
+      db.exec(`
+        INSERT INTO ${tableName}(rowid, embedding)
+        SELECT rowid, vector_json FROM ${tempTable};
+        INSERT OR REPLACE INTO ${mapTableName}(rowid, observation_id, updated_at)
+        SELECT rowid, observation_id, updated_at FROM ${tempTable};
+      `);
+    }
+    db.exec(`DROP TABLE IF EXISTS ${tempTable}`);
+    db.exec("COMMIT");
+    return { repaired, skipped: 0, failed: 0, errors };
+  } catch (error) {
+    try {
+      db.exec("ROLLBACK");
+    } catch {
+      // ignore rollback errors; the original error is more useful
+    }
+    errors.push(errorMessage(error));
+    return { repaired: 0, skipped: 0, failed: 1, errors };
+  }
 }
 
 function errorMessage(error: unknown): string {
@@ -223,20 +525,104 @@ export class ConfigManager {
   // reindexVectors
   // ---------------------------------------------------------------------------
 
-    reindexVectors(limitInput?: number): ApiResponse {
+    async reindexVectors(limitInput?: number, options: ReindexVectorsOptions = {}): Promise<ApiResponse> {
       const startedAt = performance.now();
       if (this.deps.getVectorEngine() === "disabled") {
         return makeResponse(startedAt, [], {}, { reindexed: 0, skipped: "vector_disabled" });
       }
 
       const limit = clampLimit(limitInput, 100, 1, 10000);
+      const includeStatusCounts = options.status_counts !== false;
       const model = this.deps.getVectorModelVersion();
       const currentVector = currentVectorModelPredicate("v", model);
       const currentVectorForLegacy = currentVectorModelPredicate("v_current", model);
       const now = nowIso();
       const activeFilter = `o.archived_at IS NULL${expiredFilterSql("o", now)}`;
+      const legacyAdoption = compatibleLegacyAdaptiveGeneralModel(model);
+      const reindexPriority = resolveReindexPriorityOrder("o");
+
+      const adoptableLegacyRows = legacyAdoption
+        ? this.deps.db
+            .query(`
+              SELECT o.id, v.vector_json, v.dimension, COALESCE(v.created_at, o.created_at) AS created_at
+              FROM mem_observations o
+              JOIN mem_vectors v
+                ON v.observation_id = o.id
+               AND v.model = ?
+              WHERE ${activeFilter}
+                AND NOT EXISTS (
+                  SELECT 1 FROM mem_vectors v_current
+                  WHERE v_current.observation_id = o.id
+                    AND ${currentVectorForLegacy.sql}
+                )
+              ORDER BY ${reindexPriority.orderBy}
+              LIMIT ?
+            `)
+            .all(legacyAdoption.source, ...currentVectorForLegacy.params, limit) as Array<{
+              id: string;
+              vector_json: string;
+              dimension: number;
+              created_at: string;
+            }>
+        : [];
+
+      let adoptedLegacy = 0;
+      if (legacyAdoption && adoptableLegacyRows.length > 0) {
+        const updatedAt = nowIso();
+        let transactionStarted = false;
+        try {
+          this.deps.db.exec("BEGIN IMMEDIATE");
+          transactionStarted = true;
+          for (const row of adoptableLegacyRows) {
+            this.deps.db
+              .query(`
+                INSERT INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(observation_id, model) DO UPDATE SET
+                  dimension = excluded.dimension,
+                  vector_json = excluded.vector_json,
+                  updated_at = excluded.updated_at
+              `)
+              .run(
+                row.id,
+                legacyAdoption.target,
+                Number(row.dimension || this.deps.config.vectorDimension),
+                row.vector_json,
+                row.created_at || updatedAt,
+                updatedAt,
+              );
+            if (
+              this.deps.getVectorEngine() === "sqlite-vec" &&
+              (this.deps.getVecTableReady?.() ?? false)
+            ) {
+              const upsertSqliteVecRow = this.deps.upsertSqliteVecRow ?? defaultUpsertSqliteVecRow;
+              const ok = upsertSqliteVecRow(this.deps.db, row.id, row.vector_json, updatedAt, {
+                model: legacyAdoption.target,
+                vectorDimension: Number(row.dimension || this.deps.config.vectorDimension),
+              });
+              if (!ok) {
+                this.deps.setVecTableReady?.(false);
+              }
+            }
+            adoptedLegacy += 1;
+          }
+          this.deps.db.exec("COMMIT");
+          transactionStarted = false;
+        } catch (error) {
+          if (transactionStarted) {
+            try {
+              this.deps.db.exec("ROLLBACK");
+            } catch {
+              // keep the original error
+            }
+          }
+          throw error;
+        }
+      }
 
       // Priority order:
+      // 0. compatible legacy vectors that can be safely adopted without
+      //    recomputing (for example local:multilingual-e5 -> adaptive general),
       // 1. live observations with no vector for the current model,
       // 2. legacy-vector-only observations,
       // 3. a bounded refresh pass over live observations.
@@ -250,7 +636,7 @@ export class ConfigManager {
             ON v.observation_id = o.id
           WHERE v.observation_id IS NULL
             AND ${activeFilter}
-          ORDER BY o.created_at DESC
+          ORDER BY ${reindexPriority.orderBy}
           LIMIT ?
         `)
         .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
@@ -269,12 +655,14 @@ export class ConfigManager {
               WHERE v_current.observation_id = o.id
                 AND ${currentVectorForLegacy.sql}
             )
-          ORDER BY o.created_at DESC
+          ORDER BY ${reindexPriority.orderBy}
           LIMIT ?
         `)
         .all(...currentVectorForLegacy.params, limit) as Array<{ id: string; content_redacted: string; created_at: string }>;
 
-      const rows: Array<{ id: string; content_redacted: string; created_at: string }> = missingRows.length > 0
+      const rows: Array<{ id: string; content_redacted: string; created_at: string }> = adoptedLegacy > 0
+        ? []
+        : missingRows.length > 0
         ? missingRows
         : legacyRows.length > 0
         ? legacyRows
@@ -283,30 +671,62 @@ export class ConfigManager {
               SELECT o.id, o.content_redacted, o.created_at
               FROM mem_observations o
               WHERE ${activeFilter}
-              ORDER BY created_at DESC
+              ORDER BY ${reindexPriority.orderBy}
               LIMIT ?
             `)
             .all(limit) as Array<{ id: string; content_redacted: string; created_at: string }>);
 
-      const beforeCounts = this.deps.db
-        .query(
-          `SELECT
-             COUNT(DISTINCT o.id) AS total_observations,
-             COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
-           FROM mem_observations o
-           LEFT JOIN mem_vectors v ON v.observation_id = o.id
-           WHERE ${activeFilter}`
-        )
-        .get(...currentVector.params) as { total_observations: number; current_count: number } | null;
+      const beforeCounts = includeStatusCounts
+        ? this.deps.db
+            .query(
+              `SELECT
+                 COUNT(DISTINCT o.id) AS total_observations,
+                 COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
+               FROM mem_observations o
+               LEFT JOIN mem_vectors v ON v.observation_id = o.id
+               WHERE ${activeFilter}`
+            )
+            .get(...currentVector.params) as { total_observations: number; current_count: number } | null
+        : null;
       const totalBefore = Number(beforeCounts?.total_observations ?? 0);
       const currentBefore = Number(beforeCounts?.current_count ?? 0);
 
     let reindexed = 0;
     let skippedRetryable = 0;
     const retryableEmbeddingErrors = new Set<string>();
-    for (const row of rows) {
+      const concurrency = clampLimit(
+        Number(process.env.HARNESS_MEM_REINDEX_VECTORS_CONCURRENCY || 4),
+        4,
+        1,
+        16,
+      );
+    const maxContentChars = clampLimit(
+      Number(process.env.HARNESS_MEM_REINDEX_VECTOR_MAX_CHARS || 2000),
+      2000,
+      256,
+      20000,
+    );
+    const primeBatchSize = clampLimit(
+      Number(process.env.HARNESS_MEM_REINDEX_PRIME_BATCH_SIZE || 32),
+      32,
+      1,
+      128,
+    );
+    const reindexEmbeddingContent = (content: string): string => {
+      const normalized = content || "";
+      return normalized.length > maxContentChars ? normalized.slice(0, maxContentChars) : normalized;
+    };
+    let nextRowIndex = 0;
+    const processRow = async (
+      row: { id: string; content_redacted: string; created_at: string },
+      shouldPrepare = true,
+    ): Promise<void> => {
+      const embeddingContent = reindexEmbeddingContent(row.content_redacted || "");
       try {
-        this.deps.reindexObservationVector(row.id, row.content_redacted || "", row.created_at || nowIso());
+        if (shouldPrepare && this.deps.prepareReindexEmbedding) {
+          await this.deps.prepareReindexEmbedding(embeddingContent);
+        }
+        this.deps.reindexObservationVector(row.id, embeddingContent, row.created_at || nowIso());
         reindexed += 1;
       } catch (error) {
         if (!isRetryableEmbeddingWarmup(error)) {
@@ -315,66 +735,347 @@ export class ConfigManager {
         skippedRetryable += 1;
         retryableEmbeddingErrors.add(summarizeRetryableEmbeddingWarmup(error));
       }
+    };
+
+    if (this.deps.prepareReindexEmbeddings && rows.length > 0) {
+      for (let offset = 0; offset < rows.length; offset += primeBatchSize) {
+        const chunk = rows.slice(offset, offset + primeBatchSize);
+        try {
+          await this.deps.prepareReindexEmbeddings(
+            chunk.map((row) => reindexEmbeddingContent(row.content_redacted || ""))
+          );
+        } catch (error) {
+          if (!isRetryableEmbeddingWarmup(error)) {
+            throw error;
+          }
+          skippedRetryable += chunk.length;
+          retryableEmbeddingErrors.add(summarizeRetryableEmbeddingWarmup(error));
+          continue;
+        }
+        for (const row of chunk) {
+          await processRow(row, false);
+        }
+      }
+    } else {
+      const workers = Array.from({ length: Math.min(concurrency, rows.length) }, async () => {
+        while (nextRowIndex < rows.length) {
+          const row = rows[nextRowIndex];
+          nextRowIndex += 1;
+          if (row) {
+            await processRow(row);
+          }
+        }
+      });
+      await Promise.all(workers);
     }
 
-      const afterCounts = this.deps.db
-        .query(
-          `SELECT
-             COUNT(DISTINCT o.id) AS total_observations,
-             COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
-           FROM mem_observations o
-           LEFT JOIN mem_vectors v ON v.observation_id = o.id
-           WHERE ${activeFilter}`
-        )
-        .get(...currentVector.params) as { total_observations: number; current_count: number } | null;
-      const totalAfter = Number(afterCounts?.total_observations ?? totalBefore);
-      const currentAfter = Number(afterCounts?.current_count ?? (currentBefore + reindexed));
-      const missingRemaining = Math.max(0, totalAfter - currentAfter);
-      const legacyRemainingRow = this.deps.db
-        .query(`
-          SELECT COUNT(*) AS count
-          FROM mem_observations o
-          WHERE ${activeFilter}
-            AND EXISTS (SELECT 1 FROM mem_vectors v_any WHERE v_any.observation_id = o.id)
-            AND NOT EXISTS (
-              SELECT 1 FROM mem_vectors v_current
-              WHERE v_current.observation_id = o.id
-                AND ${currentVectorForLegacy.sql}
+      const afterCounts = includeStatusCounts
+        ? this.deps.db
+            .query(
+              `SELECT
+                 COUNT(DISTINCT o.id) AS total_observations,
+                 COUNT(DISTINCT CASE WHEN ${currentVector.sql} THEN o.id END) AS current_count
+               FROM mem_observations o
+               LEFT JOIN mem_vectors v ON v.observation_id = o.id
+               WHERE ${activeFilter}`
             )
-        `)
-        .get(...currentVectorForLegacy.params) as { count: number } | null;
-      const legacyRemaining = Number(legacyRemainingRow?.count ?? 0);
-      const coverage = totalAfter === 0 ? 1 : currentAfter / totalAfter;
-      const pct = Math.round(coverage * 100);
+            .get(...currentVector.params) as { total_observations: number; current_count: number } | null
+        : null;
+      const totalAfter = includeStatusCounts ? Number(afterCounts?.total_observations ?? totalBefore) : undefined;
+      const currentAfter = includeStatusCounts
+        ? Number(afterCounts?.current_count ?? (currentBefore + reindexed + adoptedLegacy))
+        : undefined;
+      const missingRemaining =
+        totalAfter !== undefined && currentAfter !== undefined
+          ? Math.max(0, totalAfter - currentAfter)
+          : undefined;
+      const legacyRemainingRow = includeStatusCounts
+        ? this.deps.db
+            .query(`
+              SELECT COUNT(*) AS count
+              FROM mem_observations o
+              WHERE ${activeFilter}
+                AND EXISTS (SELECT 1 FROM mem_vectors v_any WHERE v_any.observation_id = o.id)
+                AND NOT EXISTS (
+                  SELECT 1 FROM mem_vectors v_current
+                  WHERE v_current.observation_id = o.id
+                    AND ${currentVectorForLegacy.sql}
+                )
+            `)
+            .get(...currentVectorForLegacy.params) as { count: number } | null
+        : null;
+      const legacyRemaining = includeStatusCounts ? Number(legacyRemainingRow?.count ?? 0) : undefined;
+      const coverage =
+        totalAfter !== undefined && currentAfter !== undefined
+          ? totalAfter === 0
+            ? 1
+            : currentAfter / totalAfter
+          : undefined;
+      const pct = coverage === undefined ? undefined : Math.round(coverage * 100);
+      const item: Record<string, unknown> = {
+        reindexed,
+        adopted_legacy_vectors: adoptedLegacy,
+        skipped_retryable: skippedRetryable,
+        limit,
+        max_content_chars: maxContentChars,
+        prime_batch_size: this.deps.prepareReindexEmbeddings ? primeBatchSize : 0,
+        priority: reindexPriority.priority,
+        status_counts: includeStatusCounts,
+      };
+      if (includeStatusCounts) {
+        item.total_observations = totalAfter;
+        item.current_model_vectors = currentAfter;
+        item.missing_vectors_remaining = missingRemaining;
+        item.legacy_vectors_remaining = legacyRemaining;
+        item.vector_coverage = coverage;
+        item.target_coverage = 0.95;
+        item.progress_pct = pct;
+      }
 
       return makeResponse(
         startedAt,
-        [
-          {
-            reindexed,
-            skipped_retryable: skippedRetryable,
-            limit,
-            total_observations: totalAfter,
-            current_model_vectors: currentAfter,
-            missing_vectors_remaining: missingRemaining,
-            legacy_vectors_remaining: legacyRemaining,
-            vector_coverage: coverage,
-            target_coverage: 0.95,
-            progress_pct: pct,
-          },
-        ],
+        [item],
       { limit },
       {
         vector_engine: this.deps.getVectorEngine(),
           embedding_provider: this.deps.embeddingProviderName,
           embedding_provider_model: model,
           embedding_provider_status: this.deps.getEmbeddingHealthStatus(),
-          migration_complete: missingRemaining === 0 && legacyRemaining === 0,
+          migration_complete: includeStatusCounts
+            ? missingRemaining === 0 && legacyRemaining === 0
+            : undefined,
           vector_coverage: coverage,
           target_coverage: 0.95,
+          status_counts: includeStatusCounts,
           skipped_retryable: skippedRetryable,
           retryable_embedding_errors: [...retryableEmbeddingErrors],
         }
+      );
+    }
+
+    repairSqliteVecMap(options: RepairSqliteVecMapOptions = {}): ApiResponse {
+      const startedAt = performance.now();
+      const model = typeof options.model === "string" && options.model.trim()
+        ? options.model.trim()
+        : this.deps.getVectorModelVersion();
+      const dimension = clampLimit(options.dimension, this.deps.config.vectorDimension, 1, 8192);
+      const limit = clampLimit(options.limit, 100, 1, 5000);
+      const execute = options.execute === true;
+      const dryRun = !execute;
+      const rebuildExisting = options.rebuild_existing === true;
+      const rebuildBefore = typeof options.rebuild_before === "string" && options.rebuild_before.trim()
+        ? options.rebuild_before.trim()
+        : undefined;
+      const includeStatusCounts = options.status_counts !== false;
+      const tableName = getSqliteVecTableName(model);
+      const mapTableName = getSqliteVecMapTableName(model);
+      const vectorCount = includeStatusCounts ? countVectorsForModel(this.deps.db, model, dimension) : undefined;
+      const mapCount = includeStatusCounts ? countRows(this.deps.db, mapTableName) : undefined;
+      const indexCountResult = includeStatusCounts
+        ? estimateSqliteVecIndexRows(this.deps.db, tableName, mapCount ?? 0)
+        : undefined;
+      const indexCount = indexCountResult?.count;
+      const indexCountEstimated = indexCountResult?.estimated;
+      const missingBefore =
+        includeStatusCounts || !rebuildExisting
+          ? countMissingSqliteVecMapRows(
+              this.deps.db,
+              model,
+              dimension,
+              tableName,
+              mapTableName,
+            )
+          : undefined;
+
+      let repaired = 0;
+      let skipped = 0;
+      let failed = 0;
+      const errors: string[] = [];
+      const rebuildBatchUpdatedAt = rebuildExisting && execute ? nowIso() : null;
+
+      if (execute && (rebuildExisting || Number(missingBefore ?? 0) > 0)) {
+        const hasIndexTables = sqliteTableExists(this.deps.db, tableName) && sqliteTableExists(this.deps.db, mapTableName);
+        const rows = (rebuildExisting
+          ? hasIndexTables
+            ? selectSqliteVecRebuildRows(this.deps.db, model, dimension, mapTableName, limit, rebuildBefore)
+            : this.deps.db
+                .query(`
+                  SELECT v.observation_id, v.vector_json, v.updated_at
+                  FROM mem_vectors v
+                  WHERE v.model = ?
+                    AND v.dimension = ?
+                  ORDER BY v.updated_at ASC, v.observation_id ASC
+                  LIMIT ?
+                `)
+                .all(model, dimension, limit)
+          : hasIndexTables
+          ? this.deps.db
+              .query(`
+                SELECT v.observation_id, v.vector_json, v.updated_at
+                FROM mem_vectors v
+                WHERE v.model = ?
+                  AND v.dimension = ?
+	                  AND NOT EXISTS (
+	                    SELECT 1
+	                    FROM ${mapTableName} m
+	                    WHERE m.observation_id = v.observation_id
+	                  )
+                ORDER BY v.updated_at DESC, v.observation_id ASC
+                LIMIT ?
+              `)
+              .all(model, dimension, limit)
+          : this.deps.db
+              .query(`
+                SELECT v.observation_id, v.vector_json, v.updated_at
+                FROM mem_vectors v
+                WHERE v.model = ?
+                  AND v.dimension = ?
+                ORDER BY v.updated_at DESC, v.observation_id ASC
+                LIMIT ?
+              `)
+              .all(model, dimension, limit)) as Array<{
+                observation_id: string;
+                vector_json: string;
+                updated_at: string;
+              }>;
+
+        const upsertSqliteVecRow = this.deps.upsertSqliteVecRow ?? defaultUpsertSqliteVecRow;
+        let transactionStarted = false;
+        try {
+          this.deps.db.exec("BEGIN IMMEDIATE");
+          transactionStarted = true;
+          for (const row of rows) {
+            const validation = validateVectorJsonForRepair(row.vector_json, dimension);
+            if (!validation.ok) {
+              skipped += 1;
+              if (errors.length < 5) {
+                errors.push(`${row.observation_id}: ${validation.reason}`);
+              }
+              continue;
+            }
+
+            try {
+              const ok = upsertSqliteVecRow(
+                this.deps.db,
+                row.observation_id,
+                row.vector_json,
+                rebuildBatchUpdatedAt ?? row.updated_at ?? nowIso(),
+                { model, vectorDimension: dimension },
+              );
+              if (ok) {
+                repaired += 1;
+              } else {
+                failed += 1;
+                if (errors.length < 5) {
+                  errors.push(`${row.observation_id}: sqlite_vec_upsert_failed`);
+                }
+              }
+            } catch (error) {
+              failed += 1;
+              if (errors.length < 5) {
+                errors.push(`${row.observation_id}: ${errorMessage(error)}`);
+              }
+            }
+          }
+          this.deps.db.exec("COMMIT");
+          transactionStarted = false;
+        } catch (error) {
+          if (transactionStarted) {
+            try {
+              this.deps.db.exec("ROLLBACK");
+            } catch {
+              // keep the original error
+            }
+          }
+            failed += 1;
+            if (errors.length < 5) {
+              errors.push(`transaction: ${errorMessage(error)}`);
+            }
+        }
+      }
+
+      const missingAfter = execute && includeStatusCounts
+        ? countMissingSqliteVecMapRows(this.deps.db, model, dimension, tableName, mapTableName)
+        : undefined;
+      const mapCountAfter = execute && includeStatusCounts ? countRows(this.deps.db, mapTableName) : undefined;
+      const indexCountAfterResult = execute && includeStatusCounts
+        ? estimateSqliteVecIndexRows(this.deps.db, tableName, mapCountAfter ?? 0)
+        : undefined;
+      const indexCountAfter = indexCountAfterResult?.count;
+      const indexCountAfterEstimated = indexCountAfterResult?.estimated;
+      const action = execute ? "admin.sqlite_vec_map_repair" : "admin.sqlite_vec_map_repair.plan";
+      this.deps.writeAuditLog(action, "mem_vectors", model, {
+        model,
+        dimension,
+        limit,
+        dry_run: dryRun,
+        rebuild_existing: rebuildExisting,
+        rebuild_before: rebuildBefore,
+        rebuild_batch_updated_at: rebuildBatchUpdatedAt,
+        vector_count: vectorCount,
+        map_count: mapCount,
+        index_count: indexCount,
+        index_count_estimated: indexCountEstimated,
+        missing_before: missingBefore,
+        repaired,
+        skipped,
+        failed,
+        missing_after: missingAfter,
+      });
+
+      const item: Record<string, unknown> = {
+        model,
+        dimension,
+        vector_count: vectorCount,
+        map_count: mapCount,
+        index_count: indexCount,
+        index_count_estimated: indexCountEstimated,
+        missing_before: missingBefore,
+        repaired,
+        skipped,
+        failed,
+        dry_run: dryRun,
+        rebuild_existing: rebuildExisting,
+        rebuild_before: rebuildBefore,
+        limit,
+      };
+      if (rebuildBatchUpdatedAt) {
+        item.rebuild_batch_updated_at = rebuildBatchUpdatedAt;
+      }
+      if (execute) {
+        item.missing_after = missingAfter;
+        item.map_count_after = mapCountAfter;
+        item.index_count_after = indexCountAfter;
+        item.index_count_after_estimated = indexCountAfterEstimated;
+      }
+      if (errors.length > 0) {
+        item.errors = errors;
+      }
+
+      return makeResponse(
+        startedAt,
+        [item],
+        { limit, model, dimension, rebuild_existing: rebuildExisting },
+        {
+          model,
+          dimension,
+          dry_run: dryRun,
+          rebuild_existing: rebuildExisting,
+          rebuild_before: rebuildBefore,
+          rebuild_batch_updated_at: rebuildBatchUpdatedAt,
+          vector_count: vectorCount,
+          map_count: mapCount,
+          index_count: indexCount,
+          index_count_estimated: indexCountEstimated,
+          missing_before: missingBefore,
+          repaired,
+          skipped,
+          failed,
+          missing_after: missingAfter,
+          map_count_after: mapCountAfter,
+          index_count_after: indexCountAfter,
+          index_count_after_estimated: indexCountAfterEstimated,
+        },
       );
     }
 
