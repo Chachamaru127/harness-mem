@@ -85,3 +85,22 @@ func TestCoreToolNames_ReturnsSeven(t *testing.T) {
 		t.Errorf("CoreToolNames: got %d, want 7", len(names))
 	}
 }
+
+func TestWorkGraphToolsEnabledRequiresExplicitOptIn(t *testing.T) {
+	t.Setenv("HARNESS_MEM_TOOLS", "")
+	t.Setenv("HARNESS_MEM_WORKGRAPH", "")
+	if WorkGraphToolsEnabled() {
+		t.Fatal("WorkGraphToolsEnabled true without explicit opt-in")
+	}
+
+	t.Setenv("HARNESS_MEM_TOOLS", "all")
+	if !WorkGraphToolsEnabled() {
+		t.Fatal("WorkGraphToolsEnabled false for HARNESS_MEM_TOOLS=all")
+	}
+
+	t.Setenv("HARNESS_MEM_TOOLS", "core")
+	t.Setenv("HARNESS_MEM_WORKGRAPH", "1")
+	if !WorkGraphToolsEnabled() {
+		t.Fatal("WorkGraphToolsEnabled false for HARNESS_MEM_WORKGRAPH=1")
+	}
+}

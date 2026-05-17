@@ -24,7 +24,7 @@ import {
   codeIntelligenceTools,
   handleCodeIntelligenceTool,
 } from "./tools/code-intelligence.js";
-import { memoryTools, handleMemoryTool } from "./tools/memory.js";
+import { visibleMemoryTools, handleMemoryTool } from "./tools/memory.js";
 import {
   contextBoxTools,
   handleContextBoxTool,
@@ -71,7 +71,7 @@ const allTools: Tool[] = [
   ...workflowTools,
   ...statusTools,
   ...codeIntelligenceTools,
-  ...memoryTools,
+  ...visibleMemoryTools(),
   ...contextBoxTools,
 ];
 
@@ -102,7 +102,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       return await handleCodeIntelligenceTool(name, args);
     }
 
-    if (name.startsWith("harness_mem_")) {
+    if (name.startsWith("harness_mem_") || name.startsWith("harness_work_")) {
       return await handleMemoryTool(name, args);
     }
 

@@ -199,7 +199,11 @@ func registerTools(s *mcpserver.MCPServer) {
 
 func registeredToolDefs() []tools.ToolDef {
 	vis := tools.ResolveVisibility(strings.TrimSpace(os.Getenv("HARNESS_MEM_TOOLS")))
-	return tools.FilterByVisibility(tools.AllTools(), vis)
+	defs := tools.FilterByVisibility(tools.AllTools(), vis)
+	if tools.WorkGraphToolsEnabled() {
+		defs = append(defs, tools.WorkToolDefs()...)
+	}
+	return defs
 }
 
 func registeredToolNames() []string {

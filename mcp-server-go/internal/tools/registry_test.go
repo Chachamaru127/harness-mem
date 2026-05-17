@@ -16,6 +16,25 @@ func TestAllToolsCount(t *testing.T) {
 	}
 }
 
+func TestWorkToolDefsAreSeparateOptInTools(t *testing.T) {
+	defs := WorkToolDefs()
+	if len(defs) != 2 {
+		t.Fatalf("WorkToolDefs() returned %d tools, want 2", len(defs))
+	}
+	got := []string{defs[0].Tool.Name, defs[1].Tool.Name}
+	want := []string{"harness_work_query", "harness_work_update"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("WorkToolDefs names: got %v want %v", got, want)
+		}
+	}
+	for _, def := range AllTools() {
+		if def.Tool.Name == "harness_work_query" || def.Tool.Name == "harness_work_update" {
+			t.Fatalf("WorkGraph tool %q leaked into AllTools()", def.Tool.Name)
+		}
+	}
+}
+
 // TestAllToolsNonEmptyName verifies that every tool has a non-empty Name.
 func TestAllToolsNonEmptyName(t *testing.T) {
 	for i, td := range AllTools() {

@@ -3,6 +3,8 @@ package tools
 
 import (
 	"context"
+	"os"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 
@@ -102,6 +104,14 @@ func FilterByVisibility(defs []ToolDef, vis Visibility) []ToolDef {
 		}
 	}
 	return out
+}
+
+// WorkGraphToolsEnabled reports whether S125 WorkGraph MCP tools should be
+// registered. Empty HARNESS_MEM_TOOLS keeps backward-compatible "all" for
+// existing tools, but WorkGraph itself remains explicit opt-in.
+func WorkGraphToolsEnabled() bool {
+	rawTools := strings.ToLower(strings.TrimSpace(os.Getenv("HARNESS_MEM_TOOLS")))
+	return rawTools == "all" || envFlag("HARNESS_MEM_WORKGRAPH", false)
 }
 
 // ---- Argument extraction helpers (port of toStringOrUndefined etc.) ----

@@ -51,11 +51,13 @@ describe("WorkGraph CLI contract", () => {
     }
   });
 
-  test("scripts/harness-mem exposes work commands without MCP work tools", () => {
+  test("scripts/harness-mem exposes work commands and MCP work tools are opt-in", () => {
     expect(HARNESS_MEM).toContain("work import-plans");
     expect(HARNESS_MEM).toContain("work ready");
     expect(HARNESS_MEM).toContain("work_impl()");
-    expect(MCP_MEMORY).not.toContain("harness_work_");
+    expect(MCP_MEMORY).toContain("harness_work_query");
+    expect(MCP_MEMORY).toContain("harness_work_update");
+    expect(MCP_MEMORY).toContain("workGraphToolsEnabled");
   });
 
   test("work import-plans is dry-run by default and reports zero writes", () => {

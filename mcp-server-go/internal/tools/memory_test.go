@@ -232,6 +232,77 @@ func TestHandleMemSearchObservationType(t *testing.T) {
 	}
 }
 
+func TestHandleWorkQueryProxiesProjectScopedNextQuery(t *testing.T) {
+	var gotPath string
+	var mu sync.Mutex
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		gotPath = r.URL.String()
+		mu.Unlock()
+		writeJSON(w, map[string]any{
+			"ok":     true,
+			"source": "workgraph",
+			"items":  []any{map[string]any{"work_id": "S125-012"}},
+			"meta":   map[string]any{"count": float64(1), "ranking": "work_next_v1"},
+		})
+	}))
+
+	result := handleMemoryToolInner(context.Background(), "harness_work_query", map[string]any{
+		"project":            "/repo/harness-mem",
+		"mode":               "next",
+		"current_session_id": "session-s125",
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %+v", result)
+	}
+	mu.Lock()
+	path := gotPath
+	mu.Unlock()
+	if !strings.HasPrefix(path, "/v1/work/query?") {
+		t.Fatalf("path = %q, want /v1/work/query query", path)
+	}
+	if !strings.Contains(path, "project=%2Frepo%2Fharness-mem") || !strings.Contains(path, "mode=next") {
+		t.Fatalf("query path missing scope/mode: %q", path)
+	}
+}
+
+func TestHandleWorkUpdateProxiesClaimBody(t *testing.T) {
+	var received map[string]any
+	var mu sync.Mutex
+	setupSharedMemServer(t, defaultMemHandler(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		_ = json.NewDecoder(r.Body).Decode(&req)
+		mu.Lock()
+		received = req
+		mu.Unlock()
+		writeJSON(w, map[string]any{
+			"ok":     true,
+			"source": "workgraph",
+			"items":  []any{map[string]any{"work_id": "S125-012", "status": "in_progress"}},
+			"meta":   map[string]any{"count": float64(1), "ranking": "work_update_v1"},
+		})
+	}))
+
+	result := handleMemoryToolInner(context.Background(), "harness_work_update", map[string]any{
+		"action":   "claim",
+		"project":  "/repo/harness-mem",
+		"work_id":  "S125-012",
+		"agent_id": "codex",
+		"ttl_ms":   float64(600000),
+	})
+
+	if result.IsError {
+		t.Fatalf("expected success, got error: %+v", result)
+	}
+	mu.Lock()
+	got := received
+	mu.Unlock()
+	if got["action"] != "claim" || got["work_id"] != "S125-012" || got["agent_id"] != "codex" {
+		t.Fatalf("work update body = %v", got)
+	}
+}
+
 func TestHandleMemSearchSafeModeForwardsLatencyGuards(t *testing.T) {
 	var received map[string]any
 	var mu sync.Mutex

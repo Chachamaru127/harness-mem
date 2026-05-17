@@ -35,6 +35,8 @@ var selfTrackSkip = map[string]bool{
 	"harness_mem_signal_send":   true,
 	"harness_mem_signal_read":   true,
 	"harness_mem_signal_ack":    true,
+	"harness_work_query":        true,
+	"harness_work_update":       true,
 	// S81-C03 (Codex round 10 P2): verify is a read-only audit walk.
 	// Self-tracking would emit before/after tool_use events and turn
 	// every provenance lookup into an action observation, polluting
@@ -86,6 +88,16 @@ func MemoryToolDefs() []ToolDef {
 		{memToolSignalAck, handleMemTool("harness_mem_signal_ack")},
 		// S81-C03: Citation trace.
 		{memToolVerify, handleMemTool("harness_mem_verify")},
+	}
+}
+
+// WorkToolDefs returns S125 WorkGraph tools. They are intentionally not part
+// of AllTools()/MemoryToolDefs() so HARNESS_MEM_TOOLS=core remains seven tools
+// and WorkGraph exposure stays opt-in at registration time.
+func WorkToolDefs() []ToolDef {
+	return []ToolDef{
+		{memToolWorkQuery, handleMemTool("harness_work_query")},
+		{memToolWorkUpdate, handleMemTool("harness_work_update")},
 	}
 }
 
@@ -566,6 +578,65 @@ func handleMemoryToolInner(ctx context.Context, name string, args map[string]any
 
 	case "harness_mem_health":
 		resp, err := callMemoryAPI(ctx, "GET", "/health", nil)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_work_query":
+		q := url.Values{}
+		if p := argString(args, "project"); p != "" {
+			q.Set("project", p)
+		}
+		if cwd := argString(args, "cwd"); cwd != "" {
+			q.Set("cwd", cwd)
+		}
+		if mode := argString(args, "mode"); mode != "" {
+			q.Set("mode", mode)
+		}
+		if n, ok := argInt(args, "limit"); ok {
+			q.Set("limit", strconv.Itoa(n))
+		}
+		if sessionID := argString(args, "current_session_id"); sessionID != "" {
+			q.Set("current_session_id", sessionID)
+		}
+		if sessionID := argString(args, "session_id"); sessionID != "" {
+			q.Set("session_id", sessionID)
+		}
+		if now := argString(args, "now"); now != "" {
+			q.Set("now", now)
+		}
+		resp, err := callMemoryAPI(ctx, "GET", "/v1/work/query?"+q.Encode(), nil)
+		if err != nil {
+			return classifyError(err)
+		}
+		return successResult(resp, false)
+
+	case "harness_work_update":
+		action := argString(args, "action")
+		workID := argString(args, "work_id")
+		agentID := argString(args, "agent_id")
+		if action == "" || workID == "" || agentID == "" {
+			return errorResult("action, work_id, and agent_id are required")
+		}
+		resp, err := callMemoryAPI(ctx, "POST", "/v1/work/update", map[string]any{
+			"action":         action,
+			"project":        optStr(args, "project"),
+			"cwd":            optStr(args, "cwd"),
+			"work_id":        workID,
+			"agent_id":       agentID,
+			"session_id":     optStr(args, "session_id"),
+			"ttl_ms":         optNum(args, "ttl_ms"),
+			"lease_id":       optStr(args, "lease_id"),
+			"reason":         optStr(args, "reason"),
+			"to_agent":       optStr(args, "to_agent"),
+			"content":        optStr(args, "content"),
+			"thread_id":      optStr(args, "thread_id"),
+			"reply_to":       optStr(args, "reply_to"),
+			"observation_id": optStr(args, "observation_id"),
+			"expires_in_ms":  optNum(args, "expires_in_ms"),
+			"now":            optStr(args, "now"),
+		})
 		if err != nil {
 			return classifyError(err)
 		}

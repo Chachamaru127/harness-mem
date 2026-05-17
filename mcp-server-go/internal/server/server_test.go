@@ -30,6 +30,7 @@ func TestNewServerRegistersToolNamesFromSingleSource(t *testing.T) {
 
 func TestNewServerRespectsCoreVisibility(t *testing.T) {
 	t.Setenv("HARNESS_MEM_TOOLS", "core")
+	t.Setenv("HARNESS_MEM_WORKGRAPH", "")
 
 	got := serverToolNames(NewServer())
 	want := registeredToolNames()
@@ -37,6 +38,21 @@ func TestNewServerRespectsCoreVisibility(t *testing.T) {
 	assertSameNames(t, got, want)
 	if len(got) != 7 {
 		t.Fatalf("expected core visibility to expose 7 tools, got %d (%v)", len(got), got)
+	}
+}
+
+func TestNewServerExposesWorkGraphToolsOnlyWhenOptedIn(t *testing.T) {
+	t.Setenv("HARNESS_MEM_TOOLS", "core")
+	t.Setenv("HARNESS_MEM_WORKGRAPH", "")
+	coreNames := serverToolNames(NewServer())
+	if stringSliceContains(coreNames, "harness_work_query") || stringSliceContains(coreNames, "harness_work_update") {
+		t.Fatalf("core visibility leaked WorkGraph tools: %v", coreNames)
+	}
+
+	t.Setenv("HARNESS_MEM_WORKGRAPH", "1")
+	withWorkGraph := serverToolNames(NewServer())
+	if !stringSliceContains(withWorkGraph, "harness_work_query") || !stringSliceContains(withWorkGraph, "harness_work_update") {
+		t.Fatalf("HARNESS_MEM_WORKGRAPH=1 did not expose WorkGraph tools: %v", withWorkGraph)
 	}
 }
 

@@ -13,7 +13,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { memoryTools } from "../../src/tools/memory.js";
+import { memoryTools, visibleMemoryTools, workGraphToolsEnabled, workTools } from "../../src/tools/memory.js";
 
 const REQUIRED_TOOLS = [
   "harness_mem_search",
@@ -88,6 +88,31 @@ describe("COMP-010: MCP ツール一覧", () => {
       if (tool.inputSchema.properties !== undefined) {
         expect(typeof tool.inputSchema.properties).toBe("object");
       }
+    }
+  });
+
+  test("WorkGraph tools are opt-in and do not change the base memory tool set", () => {
+    expect(memoryTools.some((tool) => tool.name.startsWith("harness_work_"))).toBe(false);
+    expect(workTools.map((tool) => tool.name).sort()).toEqual([
+      "harness_work_query",
+      "harness_work_update",
+    ]);
+  });
+
+  test("HARNESS_MEM_TOOLS=all exposes WorkGraph tools", () => {
+    const originalTools = process.env.HARNESS_MEM_TOOLS;
+    const originalWorkGraph = process.env.HARNESS_MEM_WORKGRAPH;
+    try {
+      process.env.HARNESS_MEM_TOOLS = "all";
+      delete process.env.HARNESS_MEM_WORKGRAPH;
+      expect(workGraphToolsEnabled()).toBe(true);
+      expect(visibleMemoryTools().map((tool) => tool.name)).toContain("harness_work_query");
+      expect(visibleMemoryTools().map((tool) => tool.name)).toContain("harness_work_update");
+    } finally {
+      if (originalTools === undefined) delete process.env.HARNESS_MEM_TOOLS;
+      else process.env.HARNESS_MEM_TOOLS = originalTools;
+      if (originalWorkGraph === undefined) delete process.env.HARNESS_MEM_WORKGRAPH;
+      else process.env.HARNESS_MEM_WORKGRAPH = originalWorkGraph;
     }
   });
 });

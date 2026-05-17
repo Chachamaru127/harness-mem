@@ -809,6 +809,63 @@ export const memoryTools: Tool[] = [
   },
 ];
 
+export const workTools: Tool[] = [
+  {
+    name: "harness_work_query",
+    description: "Query WorkGraph ready/next work for an explicit project or cwd scope. Opt-in only via HARNESS_MEM_TOOLS=all or HARNESS_MEM_WORKGRAPH=1.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        project: { type: "string", description: "Project scope. Required unless cwd is supplied." },
+        cwd: { type: "string", description: "Caller cwd used as project scope. Required unless project is supplied." },
+        mode: { type: "string", enum: ["next", "ready"], description: "Query mode. Default next." },
+        limit: { type: "number" },
+        current_session_id: { type: "string" },
+        session_id: { type: "string" },
+        now: { type: "string" },
+      },
+      required: [],
+    },
+    annotations: { readOnlyHint: true },
+  },
+  {
+    name: "harness_work_update",
+    description: "Update WorkGraph lifecycle using existing lease/signal primitives. Supports action=claim, close, or handoff. Opt-in only via HARNESS_MEM_TOOLS=all or HARNESS_MEM_WORKGRAPH=1.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["claim", "close", "handoff"] },
+        project: { type: "string", description: "Project scope. Required unless cwd is supplied." },
+        cwd: { type: "string", description: "Caller cwd used as project scope. Required unless project is supplied." },
+        work_id: { type: "string" },
+        agent_id: { type: "string" },
+        session_id: { type: "string" },
+        ttl_ms: { type: "number" },
+        lease_id: { type: "string" },
+        reason: { type: "string" },
+        to_agent: { type: "string" },
+        content: { type: "string" },
+        thread_id: { type: "string" },
+        reply_to: { type: "string" },
+        observation_id: { type: "string" },
+        expires_in_ms: { type: "number" },
+        now: { type: "string" },
+      },
+      required: ["action", "work_id", "agent_id"],
+    },
+    annotations: { readOnlyHint: false },
+  },
+];
+
+export function workGraphToolsEnabled(): boolean {
+  const tools = (process.env.HARNESS_MEM_TOOLS || "").trim().toLowerCase();
+  return tools === "all" || envFlag("HARNESS_MEM_WORKGRAPH", false);
+}
+
+export function visibleMemoryTools(): Tool[] {
+  return workGraphToolsEnabled() ? [...memoryTools, ...workTools] : memoryTools;
+}
+
 /**
  * Detect the calling platform from environment.
  * OpenCode sets HARNESS_MEM_MCP_PLATFORM=opencode when launching this MCP server.
@@ -861,6 +918,8 @@ const SELF_TRACK_SKIP = new Set([
   "harness_mem_record_checkpoint",
   "harness_mem_finalize_session",
   "harness_mem_bulk_add",
+  "harness_work_query",
+  "harness_work_update",
 ]);
 
 /**
@@ -1172,6 +1231,54 @@ async function handleMemoryToolInner(
 
       case "harness_mem_health": {
         const response = await callMemoryApi("/health", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_work_query": {
+        const query = new URLSearchParams();
+        const project = toStringOrUndefined(input.project);
+        const cwd = toStringOrUndefined(input.cwd);
+        if (project) query.set("project", project);
+        if (cwd) query.set("cwd", cwd);
+        const mode = toStringOrUndefined(input.mode);
+        if (mode) query.set("mode", mode);
+        const limit = toNumberOrUndefined(input.limit);
+        if (typeof limit === "number") query.set("limit", String(limit));
+        const currentSessionId = toStringOrUndefined(input.current_session_id);
+        if (currentSessionId) query.set("current_session_id", currentSessionId);
+        const sessionId = toStringOrUndefined(input.session_id);
+        if (sessionId) query.set("session_id", sessionId);
+        const now = toStringOrUndefined(input.now);
+        if (now) query.set("now", now);
+        const response = await callMemoryApi(`/v1/work/query?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_work_update": {
+        const action = toStringOrUndefined(input.action);
+        const workId = toStringOrUndefined(input.work_id);
+        const agentId = toStringOrUndefined(input.agent_id);
+        if (!action || !workId || !agentId) {
+          return errorResult("action, work_id, and agent_id are required");
+        }
+        const response = await callMemoryApi("/v1/work/update", {
+          action,
+          project: toStringOrUndefined(input.project),
+          cwd: toStringOrUndefined(input.cwd),
+          work_id: workId,
+          agent_id: agentId,
+          session_id: toStringOrUndefined(input.session_id),
+          ttl_ms: toNumberOrUndefined(input.ttl_ms),
+          lease_id: toStringOrUndefined(input.lease_id),
+          reason: toStringOrUndefined(input.reason),
+          to_agent: toStringOrUndefined(input.to_agent),
+          content: toStringOrUndefined(input.content),
+          thread_id: toStringOrUndefined(input.thread_id),
+          reply_to: toStringOrUndefined(input.reply_to),
+          observation_id: toStringOrUndefined(input.observation_id),
+          expires_in_ms: toNumberOrUndefined(input.expires_in_ms),
+          now: toStringOrUndefined(input.now),
+        });
         return successResult(response);
       }
 
