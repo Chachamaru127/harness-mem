@@ -1,6 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   configureDatabase as configureDb,
   initFtsIndex as initFtsFromDb,
@@ -167,6 +168,15 @@ const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
+
+export function buildVectorBackfillChildCommand(
+  scriptPath: string,
+  operation: VectorBackfillOperation,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath, JSON.stringify(operation)];
+  return platform === "win32" ? runCommand : ["nice", "-n", "10", ...runCommand];
+}
 
 interface ResolvedEmbeddingVariant {
   model: string;
@@ -774,7 +784,7 @@ export class HarnessMemCore {
   private async runVectorBackfillOperationOutOfProcess(
     operation: VectorBackfillOperation,
   ): Promise<ApiResponse> {
-    const scriptPath = new URL("../tools/vector-backfill-tick.ts", import.meta.url).pathname;
+    const scriptPath = fileURLToPath(new URL("../tools/vector-backfill-tick.ts", import.meta.url));
     const compactOnlyEnv =
       operation.type === "compact"
         ? {
@@ -789,7 +799,7 @@ export class HarnessMemCore {
           }
         : {};
     const proc = Bun.spawn({
-      cmd: ["nice", "-n", "10", process.execPath, "run", scriptPath, JSON.stringify(operation)],
+      cmd: buildVectorBackfillChildCommand(scriptPath, operation),
       cwd: process.cwd(),
       env: {
         ...process.env,
