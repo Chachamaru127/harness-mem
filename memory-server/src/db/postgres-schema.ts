@@ -322,6 +322,46 @@ export const POSTGRES_INIT_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_team_invitations_team_status
     ON mem_team_invitations(team_id, status);
+
+  CREATE TABLE IF NOT EXISTS mem_work_items (
+    work_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    priority INTEGER NOT NULL DEFAULT 2,
+    work_type TEXT NOT NULL DEFAULT 'task',
+    project TEXT NOT NULL,
+    branch TEXT,
+    assignee TEXT,
+    source_type TEXT NOT NULL DEFAULT 'manual',
+    source_ref TEXT,
+    parent_work_id TEXT,
+    session_id TEXT,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    closed_at TIMESTAMPTZ,
+    close_reason TEXT,
+    metadata_json JSONB NOT NULL DEFAULT '{}'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_items_project_status_updated
+    ON mem_work_items(project, status, updated_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_items_source
+    ON mem_work_items(source_type, source_ref);
+
+  CREATE TABLE IF NOT EXISTS mem_work_dependencies (
+    from_work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    to_work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    relation TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata_json JSONB NOT NULL DEFAULT '{}',
+    PRIMARY KEY(from_work_id, to_work_id, relation)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_dependencies_to
+    ON mem_work_dependencies(to_work_id, relation, from_work_id);
 `;
 
 /**
@@ -388,4 +428,44 @@ export const POSTGRES_MIGRATE_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_obs_branch
     ON mem_observations(branch) WHERE branch IS NOT NULL;
+
+  CREATE TABLE IF NOT EXISTS mem_work_items (
+    work_id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    priority INTEGER NOT NULL DEFAULT 2,
+    work_type TEXT NOT NULL DEFAULT 'task',
+    project TEXT NOT NULL,
+    branch TEXT,
+    assignee TEXT,
+    source_type TEXT NOT NULL DEFAULT 'manual',
+    source_ref TEXT,
+    parent_work_id TEXT,
+    session_id TEXT,
+    created_by TEXT NOT NULL DEFAULT 'system',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    closed_at TIMESTAMPTZ,
+    close_reason TEXT,
+    metadata_json JSONB NOT NULL DEFAULT '{}'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_items_project_status_updated
+    ON mem_work_items(project, status, updated_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_items_source
+    ON mem_work_items(source_type, source_ref);
+
+  CREATE TABLE IF NOT EXISTS mem_work_dependencies (
+    from_work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    to_work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    relation TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    metadata_json JSONB NOT NULL DEFAULT '{}',
+    PRIMARY KEY(from_work_id, to_work_id, relation)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_dependencies_to
+    ON mem_work_dependencies(to_work_id, relation, from_work_id);
 `;

@@ -7,6 +7,52 @@ export function configureDatabase(db: Database): void {
   db.exec("PRAGMA busy_timeout=5000;");
 }
 
+function initWorkGraphSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_work_items (
+      work_id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      description TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'open',
+      priority INTEGER NOT NULL DEFAULT 2,
+      work_type TEXT NOT NULL DEFAULT 'task',
+      project TEXT NOT NULL,
+      branch TEXT,
+      assignee TEXT,
+      source_type TEXT NOT NULL DEFAULT 'manual',
+      source_ref TEXT,
+      parent_work_id TEXT,
+      session_id TEXT,
+      created_by TEXT NOT NULL DEFAULT 'system',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      closed_at TEXT,
+      close_reason TEXT,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_work_items_project_status_updated
+      ON mem_work_items(project, status, updated_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_work_items_source
+      ON mem_work_items(source_type, source_ref);
+
+    CREATE TABLE IF NOT EXISTS mem_work_dependencies (
+      from_work_id TEXT NOT NULL,
+      to_work_id TEXT NOT NULL,
+      relation TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      PRIMARY KEY(from_work_id, to_work_id, relation),
+      FOREIGN KEY(from_work_id) REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+      FOREIGN KEY(to_work_id) REFERENCES mem_work_items(work_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_work_dependencies_to
+      ON mem_work_dependencies(to_work_id, relation, from_work_id);
+  `);
+}
+
 export function initSchema(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS mem_sessions (
@@ -435,6 +481,7 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_signals_broadcast
       ON mem_signals(to_agent, sent_at) WHERE to_agent IS NULL;
   `);
+  initWorkGraphSchema(db);
 }
 
 function addColumnIfMissing(db: Database, tableName: string, columnName: string, definition: string): void {
@@ -1096,6 +1143,8 @@ export function migrateSchema(db: Database): void {
   } catch {
     // already exists
   }
+
+  initWorkGraphSchema(db);
 }
 
 export function initFtsIndex(db: Database): boolean {

@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-11（v0.21.2 Codex notify chain + health alias repair patch）
+最終更新: 2026-05-17（v0.23.0 release status sync + §125 WorkGraph execution plan）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -23,8 +23,8 @@
 |------|--------|
 | gate artifacts / README / proof bar | onnx manifest (2026-04-10) / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ、Go MCP server (~5ms cold start) |
-| 最新リリース | **v0.21.2**（2026-05-11、Computer Use notify chain preservation for Codex setup repair + /v1/health compatibility alias） |
-| 次フェーズの焦点 | **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
+| 最新リリース | **v0.23.0**（2026-05-17、resumable vector compact/reindex backfill worker、Hermes state backfill、search/runtime closeout。repo package version は 0.23.0） |
+| 次フェーズの焦点 | **§125 WorkGraph Task Continuity MVP** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
 | CI Gate | **Layer 1+2 PASS**（onnx `run-ci`、bilingual=0.8800、p95 13.28ms、history reset at v0.11.0） |
 
 - benchmark SSOT: `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`
@@ -896,13 +896,80 @@ Codex / Claude Code / Hermes
 - 2026-05-16 warning closeout: search warning は active observation と operational target を基準に判定するよう変更。adaptive ensemble では Ruri primary の partial coverage ではなく、general migration model を優先して判定する。coverage 95% 以上で migration warning を抑止し、その結果を daemon 内で cache して hot search を塞がない。Targeted tests 124 pass、`cd memory-server && bun run typecheck`, `bash -n scripts/harness-mem scripts/harness-mem-client.sh scripts/harness-memd`, `git diff --check` pass。
 
 
+## §125 WorkGraph Task Continuity MVP (2026-05-17) — cc:TODO
+
+策定日: 2026-05-17
+分類: Work lifecycle / task continuity — owner は `harness-mem`。`docs/harness_mem_final_research_improvement_report.md` の WorkGraph 提案を、Product / Architecture / QA / Skeptic の subagent review で絞り込んだ実行計画。
+
+判断: 採用する。ただし初回は「新しい巨大タスク管理ツール」ではなく、**Plans.md を安全に読み、ready / next / claim の根拠を memory と接続する task continuity layer** として段階導入する。既存の `lease` / `signal` / `verify` / `inject_traces` / graph / privacy / project isolation は再実装しない。WorkGraph は additive schema と小さい CLI/API surface から始め、MCP / hooks / UI は benchmark と consumed-rate が見えてから解放する。
+
+背景:
+
+- `package.json` は `0.23.0` だが、旧レポートは `0.22.2`、Plans current status は `v0.21.2` 前提を含んでいたため、WorkGraph 前に status truth を同期する必要がある。
+- report の推奨 `§116` は既に別 section で使用済みのため、本実行計画は `§125` として追跡する。
+- `.claude/memory/decisions.md` / `.claude/memory/patterns.md` はこの worktree に存在しなかった。今後の実装判断は `docs/workgraph.md` と Plans を SSOT にし、必要なら memory へ Why 付きで記録する。
+
+### User-facing outcome
+
+WorkGraph が入ると、ユーザーは新セッションで「前回何をしていたか」だけでなく、**次に着手できる作業、ブロッカー、誰が claim 中か、なぜその作業が提案されたか**まで見えるようになる。たとえると、いまの harness-mem は「作業メモを覚えているノート」。WorkGraph 後は「ノートに付箋と順番表が付く」状態になる。
+
+### Non-goals / stop line
+
+- Dolt backend、iii engine、mesh/team sync、managed memory service、GitHub/Jira/Linear full sync は採用しない。
+- `HARNESS_MEM_TOOLS=core` の 7 tools は増やさない。
+- WorkGraph を memory search の通常結果へ暗黙混入しない。必要な時だけ明示 filter / work query で出す。
+- `Plans.md` は当面 SSOT のまま。importer は dry-run default、export は generated view であり `Plans.md` を自動改変しない。
+- 自動 close と human approval bypass は MVP では禁止。Stop hook は suggestion まで。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S125-001 | **WorkGraph spec freeze** `[tdd:skip:docs-spec]` — `docs/workgraph.md` に purpose / users / schema / API / non-goals / existing lease-signal-verify-inject との接続を固定する | `docs/workgraph.md` が存在し、Dolt/iii/mesh/full sync/core exposure/auto-close を reject と明記。`Plans.md` と `package.json` の現行 version 前提が `0.23.0` で一致 | - | cc:WIP (実装・検証済み、commit hash 待ち) |
+| S125-002 | **Active Plans parser dry-run fixture** `[tdd:required]` — free-form `Plans.md` をいきなり DB 化せず、active sections だけを parser fixture で固定する | `cc:TODO` / `cc:WIP` / `cc:完了` / `blocked` / `[P]` / `Depends` / section heading / task id mapping の fixture test が PASS。dry-run は DB 書き込み 0 | S125-001 | cc:WIP (実装・検証済み、commit hash 待ち) |
+| S125-003 | **Additive work schema + WorkStore MVP** `[tdd:required]` — `mem_work_items` と `mem_work_dependencies` を追加し、既存 `mem_*` table を破壊しない | fresh DB / migrated DB の schema tests PASS。`blocks` / `related` / `discovered_from` / `supersedes` / `duplicates` / `checkpoint` の uniqueness と cascade が PASS | S125-001 | cc:WIP (実装・検証済み、commit hash 待ち) |
+| S125-004 | **Plans dry-run import to WorkGraph model** `[tdd:required]` — parser output を WorkStore model へ変換し、write なしで diff / diagnostics を返す | `plans_import_fidelity >= 0.98` の fixture benchmark PASS。completed historical archive は default で import 対象外。`--write` なしでは DB rows が増えない | S125-002, S125-003 | cc:TODO |
+| S125-005 | **Ready algorithm MVP** `[tdd:required]` — blocker / supersedes / duplicates / status / active lease を見て着手可能 work を判定する | `ready_precision >= 0.95`、`blocker_recall >= 0.95` の fixed fixture PASS。active lease がある work は ready に出ない | S125-003, S125-004 | cc:TODO |
+| S125-006 | **CLI-only WorkGraph MVP surface** `[tdd:required]` — `harness-mem work import-plans --dry-run` と `harness-mem work ready --project .` を実装する。MCP と hooks にはまだ出さない | CLI contract tests PASS。`HARNESS_MEM_TOOLS=core` の 7 tools 不変。import は dry-run default、`Plans.md` を自動編集しない | S125-005 | cc:TODO |
+| S125-007 | **Work events / evidence links** `[tdd:required]` — `mem_work_events` と `mem_work_links` を追加し、work から observation/session/file/lease/signal へ辿れるようにする | fresh / migrate tests PASS。work -> observation -> `harness_mem_verify` 相当の provenance path が integration test で確認できる | S125-006 | cc:TODO |
+| S125-008 | **Idempotent write import + generated export** `[tdd:required]` — explicit `--write` のみ DB upsert し、export は generated Markdown view として返す | 2 回 import しても duplicate work が増えない。`duplicate_work_rate <= 0.05`。export は `Plans.generated.md` 相当の出力で、`Plans.md` 直接改変なし | S125-007 | cc:TODO |
+| S125-009 | **Next scoring + HTTP/API query surface** `[tdd:required]` — priority / recency / blocker impact / session continuity で `next` を返し、HTTP `work/query` 系を追加する | `next_action_accuracy >= 0.80` fixture PASS。HTTP contract tests PASS。work query は project/cwd scope 必須 | S125-008 | cc:TODO |
+| S125-010 | **Claim / close integration with existing lease** `[tdd:required]` — claim は既存 `/v1/lease/acquire`、close は lease release を使う | `claim_lease_success_rate >= 0.98`。二重 claim は後発が `already_leased` 相当で失敗。status update と lease 失敗時の rollback/release が test で固定 | S125-009 | cc:TODO |
+| S125-011 | **Handoff / verify integration with existing signal** `[tdd:required]` — work handoff は既存 signal を使い、work evidence は verify へ接続する | handoff が `mem_signals` に thread 化され、work link から session / observation provenance を追える integration test PASS | S125-010 | cc:TODO |
+| S125-012 | **Opt-in MCP work tools** `[tdd:required]` — value gate 通過後に Go/TS MCP へ `harness_work_*` を最大 5 tools で追加する | Go/TS schema parity、registry tests PASS。`HARNESS_MEM_TOOLS=core` は 7 tools のまま。WorkGraph tools は `all` または `HARNESS_MEM_WORKGRAPH=1` のみ | S125-011 | cc:TODO |
+| S125-013 | **Hook injection suggestions + observability** `[tdd:required]` — SessionStart/UserPromptSubmit/Stop に work hint / follow-up suggestion を追加するが、resume-pack と recall whisper を押しのけない | `work_hint_consumed_rate` yellow >= 0.30 / green >= 0.60 を manifest 化。SessionStart token budget、UserPromptSubmit recall、privacy tag、project isolation の regression tests PASS | S125-012 | cc:TODO |
+| S125-014 | **Mem UI WorkGraph explainability** `[tdd:required]` — ready / next / blocked / claimed / injection reason / provenance を UI で見える化する | Vitest + Playwright PASS。work -> reason -> evidence の導線が UI で確認できる。UI は WorkGraph disabled 状態も破綻しない | S125-013 | cc:TODO |
+| S125-015 | **WorkGraph release gate** `[tdd:required]` — WorkGraph benchmark fixture と CI gate を追加し、初回は warn、2 release 安定後に enforce へ昇格する | `plans_import_fidelity`, `ready_precision`, `blocker_recall`, `next_action_accuracy`, `duplicate_work_rate`, `claim_lease_success_rate`, `work_hint_consumed_rate` が committed manifest に出る。初回 CI は warn mode | S125-013 | cc:TODO |
+
+### Execution Waves
+
+| Wave | 対象 | 目的 | 並列性 |
+|------|------|------|--------|
+| Wave 0 | S125-001 | 仕様と非採用範囲を固定 | 直列 |
+| Wave 1 | S125-002, S125-003 | parser と schema を分離して先に赤テストを作る | 並列可 |
+| Wave 2 | S125-004, S125-005, S125-006 | dry-run import と ready CLI で MVP 価値を確認 | 依存順 |
+| Wave 3 | S125-007, S125-008, S125-009 | write import / export / next / HTTP を追加 | 依存順 |
+| Wave 4 | S125-010, S125-011 | existing lease / signal / verify に接続 | 依存順 |
+| Wave 5 | S125-012, S125-013 | MCP と hooks を opt-in で露出 | 依存順 |
+| Wave 6 | S125-014, S125-015 | UI と release gate | S125-014 と S125-015 は並列可 |
+
+推奨初回 scope:
+
+```text
+/breezing --max-workers 2
+対象: S125-001 を先に完了。その後 S125-002 と S125-003 を並列実行。
+```
+
+次に進む条件: `Plans.md` dry-run import が DB 書き込みなしで active work を正しく読め、`mem_work_items/dependencies` の fresh/migrate tests が既存 memory/search/lease/signal を壊していないこと。
+
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
 2026-04-19 のメンテナンスで §79 / §80 / §81 / §82〜§87 / §88 を `docs/archive/Plans-s79-s88-2026-04-19.md` に移動しました。
 2026-04-23 のメンテナンス（v0.15.0 リリース後）で §91〜§96 を `docs/archive/Plans-s91-s96-2026-04-23.md` に移動しました。
 2026-05-10 のメンテナンス（v0.20.0 リリース後）で §77 / §98 / §99 / §101 / §102 / §103 / §105 / §106 / §107 / §S109 を `docs/archive/Plans-s77-s109-2026-05-10.md` に移動しました（Plans.md 832 → 535 行）。
-Plans.md は working plan（§78 + §89 + §90 + §97 + §108 + §110 + §111 + §112）だけをフォアグラウンドで扱う方針です。
+Plans.md は working plan（§78 + §89 + §90 + §97 + §108 + §110 + §111 + §112 + §125）だけをフォアグラウンドで扱う方針です。
 
 参照:
 

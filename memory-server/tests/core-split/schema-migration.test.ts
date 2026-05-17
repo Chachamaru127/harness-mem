@@ -24,7 +24,127 @@ afterEach(() => {
   }
 });
 
+function sqliteObjectExists(db: Database, type: string, name: string): boolean {
+  const row = db
+    .query(`SELECT name FROM sqlite_master WHERE type = ? AND name = ?`)
+    .get(type, name) as { name: string } | null;
+  return row?.name === name;
+}
+
+function columnNames(db: Database, tableName: string): string[] {
+  return (db.query(`SELECT name FROM pragma_table_info(?)`).all(tableName) as Array<{ name: string }>).map(
+    (row) => row.name,
+  );
+}
+
+function expectWorkGraphSchema(db: Database): void {
+  expect(sqliteObjectExists(db, "table", "mem_work_items")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_work_dependencies")).toBe(true);
+
+  expect(columnNames(db, "mem_work_items").sort()).toEqual(
+    [
+      "assignee",
+      "branch",
+      "close_reason",
+      "closed_at",
+      "created_at",
+      "created_by",
+      "description",
+      "metadata_json",
+      "parent_work_id",
+      "priority",
+      "project",
+      "session_id",
+      "source_ref",
+      "source_type",
+      "status",
+      "title",
+      "updated_at",
+      "work_id",
+      "work_type",
+    ].sort(),
+  );
+  expect(columnNames(db, "mem_work_dependencies").sort()).toEqual(
+    ["created_at", "from_work_id", "metadata_json", "relation", "to_work_id"].sort(),
+  );
+
+  expect(sqliteObjectExists(db, "index", "idx_mem_work_items_project_status_updated")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_work_items_source")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_work_dependencies_to")).toBe(true);
+}
+
 describe("schema migration", () => {
+  test("fresh initSchema and migrateSchema create WorkGraph tables and indexes", () => {
+    const db = createTempDb();
+    try {
+      expect(() => initSchema(db)).not.toThrow();
+      expect(() => migrateSchema(db)).not.toThrow();
+
+      expectWorkGraphSchema(db);
+    } finally {
+      db.close();
+    }
+  });
+
+  test("legacy mem tables migrate additively to include WorkGraph tables", () => {
+    const db = createTempDb();
+    try {
+      db.exec(`
+        CREATE TABLE mem_sessions (
+          session_id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          project TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE mem_events (
+          event_id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          project TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          ts TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          tags_json TEXT NOT NULL,
+          privacy_tags_json TEXT NOT NULL,
+          dedupe_hash TEXT NOT NULL UNIQUE,
+          observation_id TEXT,
+          created_at TEXT NOT NULL
+        );
+        CREATE TABLE mem_observations (
+          id TEXT PRIMARY KEY,
+          event_id TEXT,
+          platform TEXT NOT NULL,
+          project TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          title TEXT,
+          content TEXT NOT NULL,
+          content_redacted TEXT NOT NULL,
+          observation_type TEXT NOT NULL DEFAULT 'context',
+          memory_type TEXT NOT NULL DEFAULT 'semantic',
+          tags_json TEXT NOT NULL,
+          privacy_tags_json TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at)
+          VALUES ('legacy-session', 'codex', 'legacy-project', '2026-05-17T00:00:00.000Z', '2026-05-17T00:00:00.000Z', '2026-05-17T00:00:00.000Z');
+      `);
+
+      expect(() => initSchema(db)).not.toThrow();
+      expect(() => migrateSchema(db)).not.toThrow();
+
+      expectWorkGraphSchema(db);
+      const legacySession = db
+        .query(`SELECT project FROM mem_sessions WHERE session_id = 'legacy-session'`)
+        .get() as { project: string } | null;
+      expect(legacySession?.project).toBe("legacy-project");
+    } finally {
+      db.close();
+    }
+  });
+
   test("legacy observation table without content_dedupe_hash migrates before index creation", () => {
     const db = createTempDb();
     try {
