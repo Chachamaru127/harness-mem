@@ -16,6 +16,9 @@ import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js"
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
 import { createSignalStore, type SignalStore } from "./lease/signal-store";
+import { rankNextWork } from "./workgraph/next";
+import { evaluateWorkReadiness } from "./workgraph/ready";
+import { createWorkStore } from "./workgraph/work-store";
 import type {
   FeedRequest,
   ImportJobStatusRequest,
@@ -2038,6 +2041,96 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           ok: true,
           source: "mem_status",
           project_profile: profile,
+        });
+      }
+
+      if (request.method === "GET" && url.pathname === "/v1/work/query") {
+        const startedAt = Date.now();
+        const project = (url.searchParams.get("project") || url.searchParams.get("cwd") || "").trim();
+        if (!project) {
+          return badRequest("project or cwd is required");
+        }
+
+        const mode = (url.searchParams.get("mode") || "next").trim();
+        if (mode !== "next" && mode !== "ready") {
+          return badRequest("mode must be next or ready");
+        }
+
+        const limit = parseIntegerLike(url.searchParams.get("limit"));
+        const currentSessionId = url.searchParams.get("current_session_id") || url.searchParams.get("session_id");
+        const now = url.searchParams.get("now") || new Date().toISOString();
+        const workStore = createWorkStore(core.getRawDb());
+        const workItems = workStore.listWorkItems(project);
+        const workIds = new Set(workItems.map((item) => item.workId));
+        const dependencies = workStore
+          .listDependencies()
+          .filter((dependency) => workIds.has(dependency.fromWorkId) && workIds.has(dependency.toWorkId));
+        const activeLeases = leaseStore
+          .listActive()
+          .filter((lease) => lease.target.startsWith("work:") && (lease.project === null || lease.project === project));
+        const readiness = evaluateWorkReadiness({ workItems, dependencies, activeLeases, now });
+
+        if (mode === "ready") {
+          const byWorkId = new Map(workItems.map((item) => [item.workId, item]));
+          const items = readiness.decisions
+            .filter((decision) => decision.ready)
+            .map((decision) => {
+              const item = byWorkId.get(decision.workId);
+              return {
+                work_id: decision.workId,
+                title: item?.title ?? "",
+                status: item?.status ?? "open",
+                ready: true,
+                reasons: decision.reasons,
+              };
+            });
+          return rawJsonResponse({
+            ok: true,
+            source: "workgraph",
+            items,
+            meta: {
+              count: items.length,
+              latency_ms: Date.now() - startedAt,
+              sla_latency_ms: 0,
+              filters: { project, mode, limit: limit ?? null },
+              ranking: "work_ready_v1",
+              total_work_items: workItems.length,
+              blocked_work_items: readiness.decisions.filter((decision) => !decision.ready).length,
+            },
+          });
+        }
+
+        const ranked = rankNextWork({
+          workItems,
+          dependencies,
+          activeLeases,
+          readiness,
+          now,
+          currentSessionId,
+          limit,
+        });
+        const items = ranked.candidates.map((candidate) => ({
+          rank: candidate.rank,
+          work_id: candidate.workId,
+          title: candidate.title ?? "",
+          score: candidate.score,
+          reasons: candidate.reasons,
+        }));
+        return rawJsonResponse({
+          ok: true,
+          source: "workgraph",
+          items,
+          meta: {
+            count: items.length,
+            latency_ms: Date.now() - startedAt,
+            sla_latency_ms: 0,
+            filters: { project, mode, limit: limit ?? null, current_session_id: currentSessionId ?? null },
+            ranking: "work_next_v1",
+            next_work_id: ranked.next?.workId ?? null,
+            total_work_items: workItems.length,
+            ready_work_items: readiness.readyWorkIds.length,
+            blocked_work_items: readiness.decisions.filter((decision) => !decision.ready).length,
+          },
         });
       }
 
