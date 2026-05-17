@@ -2190,6 +2190,10 @@ export class ObservationStore {
     // RQ-010: cat-3 multi-hop 強化 — デフォルトホップ数を 3 → 4 に増加
     const rawHops = this.deps.config?.graphMaxHops ?? 4;
     const MAX_DEPTH = Math.min(Math.max(rawHops, 1), 5);
+    const MAX_GRAPH_CANDIDATES = Math.min(
+      40,
+      Math.max(20, clampLimit(request.limit, 20, 1, 100) * 2),
+    );
     const DECAY = 0.5;
 
     const graphScores = new Map<string, number>();
@@ -2263,6 +2267,9 @@ export class ObservationStore {
 
       const nextFrontier = new Map<string, number>();
       for (const row of rows) {
+        if (graphScores.size >= MAX_GRAPH_CANDIDATES && !graphScores.has(row.id)) {
+          continue;
+        }
         const id = typeof row.id === "string" ? row.id : "";
         const fromId = typeof row.from_id === "string" ? row.from_id : "";
         const toId = typeof row.to_id === "string" ? row.to_id : "";
