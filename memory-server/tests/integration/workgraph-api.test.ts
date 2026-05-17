@@ -50,6 +50,22 @@ async function getJson(baseUrl: string, pathWithQuery: string): Promise<{ status
   };
 }
 
+async function postJson(
+  baseUrl: string,
+  path: string,
+  body: Record<string, unknown>
+): Promise<{ status: number; body: Record<string, unknown> }> {
+  const response = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return {
+    status: response.status,
+    body: await response.json() as Record<string, unknown>,
+  };
+}
+
 function seedWorkGraph(core: HarnessMemCore, project: string): void {
   const store = createWorkStore(core.getRawDb());
   store.upsertWorkItem({
@@ -143,6 +159,86 @@ describe("WorkGraph HTTP query API", () => {
       expect((body.meta as Record<string, unknown>).ranking).toBe("work_ready_v1");
       const items = body.items as Array<Record<string, unknown>>;
       expect(items.map((item) => item.work_id)).toEqual(["S125-009", "S125-015"]);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("POST /v1/work/update action=claim rejects double claim through existing lease", async () => {
+    const runtime = createRuntime("claim");
+    const project = "/repo/harness-mem";
+    try {
+      seedWorkGraph(runtime.core, project);
+      const first = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "claim",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-a",
+        session_id: "session-s125",
+        ttl_ms: 600_000,
+        now: "2026-05-17T10:00:00.000Z",
+      });
+      const second = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "claim",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-b",
+        now: "2026-05-17T10:01:00.000Z",
+      });
+
+      expect(first.status).toBe(200);
+      expect((first.body.items as Array<Record<string, unknown>>)[0]).toMatchObject({
+        work_id: "S125-009",
+        status: "in_progress",
+        assignee: "agent-a",
+        lease_status: "active",
+      });
+      expect(second.status).toBe(409);
+      expect(second.body).toMatchObject({ ok: false, error: "already_leased", held_by: "agent-a" });
+      expect(createWorkStore(runtime.core.getRawDb()).getWorkItem("S125-009")).toMatchObject({
+        status: "in_progress",
+        assignee: "agent-a",
+      });
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("POST /v1/work/update action=close releases lease and closes work", async () => {
+    const runtime = createRuntime("close");
+    const project = "/repo/harness-mem";
+    try {
+      seedWorkGraph(runtime.core, project);
+      const claimed = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "claim",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-a",
+        ttl_ms: 600_000,
+        now: "2026-05-17T10:00:00.000Z",
+      });
+      const leaseId = ((claimed.body.items as Array<Record<string, unknown>>)[0]?.lease_id ?? "") as string;
+      const closed = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "close",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-a",
+        lease_id: leaseId,
+        reason: "Fixed and tested",
+        now: "2026-05-17T10:05:00.000Z",
+      });
+
+      expect(claimed.status).toBe(200);
+      expect(closed.status).toBe(200);
+      expect((closed.body.items as Array<Record<string, unknown>>)[0]).toMatchObject({
+        work_id: "S125-009",
+        status: "closed",
+        lease_status: "released",
+      });
+      expect(createWorkStore(runtime.core.getRawDb()).getWorkItem("S125-009")).toMatchObject({
+        status: "closed",
+        closeReason: "Fixed and tested",
+      });
     } finally {
       runtime.stop();
     }
