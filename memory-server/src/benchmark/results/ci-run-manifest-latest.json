@@ -56,5 +56,41 @@
     "bilingual_baseline_mode": null,
     "bilingual_baseline_recall": null,
     "bilingual_delta": null
+  },
+  "work_hint_actionability": {
+    "work_hint_delivered_rate": 1,
+    "work_hint_consumed_rate": 0.6,
+    "fixture_size": 10,
+    "consumed_count": 6,
+    "tier": "green",
+    "thresholds": {
+      "yellow_min": 0.3,
+      "green_min": 0.6
+    }
+  },
+  "workgraph_release_gate": {
+    "mode": "warn",
+    "tier": "green",
+    "passed": true,
+    "failed_metrics": [],
+    "metrics": {
+      "plans_import_fidelity": 1,
+      "ready_precision": 1,
+      "blocker_recall": 1,
+      "next_action_accuracy": 1,
+      "duplicate_work_rate": 0,
+      "claim_lease_success_rate": 1,
+      "work_hint_consumed_rate": 0.6
+    },
+    "thresholds": {
+      "plans_import_fidelity_min": 0.98,
+      "ready_precision_min": 0.95,
+      "blocker_recall_min": 0.95,
+      "next_action_accuracy_min": 0.8,
+      "duplicate_work_rate_max": 0.05,
+      "claim_lease_success_rate_min": 0.98,
+      "work_hint_consumed_rate_yellow_min": 0.3,
+      "work_hint_consumed_rate_green_min": 0.6
+    }
   }
 }

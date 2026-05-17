@@ -169,6 +169,17 @@ jobs:
           # reads the tier and exits 0/1 accordingly.
           bash scripts/check-inject-actionability.sh
 
+      - name: WorkGraph release gate (§S125-015)
+        shell: bash
+        env:
+          MANIFEST_PATH: memory-server/src/benchmark/results/ci-run-manifest-latest.json
+          HARNESS_MEM_WORKGRAPH_GATE: warn
+        run: |
+          set -euo pipefail
+          # First WorkGraph release is warn-only. Flip HARNESS_MEM_WORKGRAPH_GATE
+          # to enforce after two stable releases.
+          bash scripts/check-workgraph-release-gate.sh
+
       - name: Dry-run package check
         run: npm pack --dry-run
 

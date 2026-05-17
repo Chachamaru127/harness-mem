@@ -25,6 +25,7 @@ import { nowIso } from "../core/core-utils";
 import { BenchmarkRunner } from "./runner";
 import { runInjectActionabilitySmoke } from "./inject-actionability-smoke";
 import { runWorkHintActionabilitySmoke } from "./work-hint-actionability-smoke";
+import { runWorkGraphReleaseGateSmoke, type WorkGraphReleaseGateResult } from "./workgraph-release-gate";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
 // Default to the committed 120 Q subset. Override with
@@ -306,6 +307,7 @@ interface CIRunManifest {
       green_min: 0.6;
     };
   };
+  workgraph_release_gate?: WorkGraphReleaseGateResult;
 }
 
 /** Layer 1: 絶対下限チェック */
@@ -1836,6 +1838,43 @@ async function main(): Promise<void> {
     };
   }
 
+  let workgraphReleaseGate: WorkGraphReleaseGateResult | undefined;
+  try {
+    workgraphReleaseGate = runWorkGraphReleaseGateSmoke("warn");
+    console.log(
+      `[CI] workgraph_release_gate: passed=${workgraphReleaseGate.passed} tier=${workgraphReleaseGate.tier} mode=${workgraphReleaseGate.mode}`,
+    );
+  } catch (err) {
+    console.error(
+      `[CI] workgraph_release_gate smoke failed: ${(err as Error).message}`,
+    );
+    workgraphReleaseGate = {
+      mode: "warn",
+      tier: "red",
+      passed: false,
+      failed_metrics: ["smoke_error"],
+      metrics: {
+        plans_import_fidelity: 0,
+        ready_precision: 0,
+        blocker_recall: 0,
+        next_action_accuracy: 0,
+        duplicate_work_rate: 1,
+        claim_lease_success_rate: 0,
+        work_hint_consumed_rate: 0,
+      },
+      thresholds: {
+        plans_import_fidelity_min: 0.98,
+        ready_precision_min: 0.95,
+        blocker_recall_min: 0.95,
+        next_action_accuracy_min: 0.8,
+        duplicate_work_rate_max: 0.05,
+        claim_lease_success_rate_min: 0.98,
+        work_hint_consumed_rate_yellow_min: 0.3,
+        work_hint_consumed_rate_green_min: 0.6,
+      },
+    };
+  }
+
   const manifest: CIRunManifest = {
     generated_at: new Date().toISOString(),
     git_sha: readGitSha(),
@@ -1883,6 +1922,7 @@ async function main(): Promise<void> {
     },
     inject_actionability: injectActionability,
     work_hint_actionability: workHintActionability,
+    workgraph_release_gate: workgraphReleaseGate,
   };
   writeRunManifest(manifest);
   console.log(`[CI] run manifest written: ${CI_MANIFEST_LATEST}`);
