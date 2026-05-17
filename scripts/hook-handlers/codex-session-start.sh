@@ -52,6 +52,7 @@ if [ -n "$EVENT_PAYLOAD" ]; then
 fi
 
 # Retrieve resume pack
+SESSION_START_CONTEXT=""
 if [ -n "$RESUME_CORRELATION_ID" ]; then
   RESUME_PAYLOAD=$(jq -nc \
       --arg project "$PROJECT_NAME" \
@@ -77,9 +78,15 @@ if [ -n "$RESUME_PAYLOAD" ]; then
     fi
     if [ -n "$RENDERED_RESUME_CONTEXT" ]; then
       hook_mark_whisper_resume_skip "$SESSION_ID" "harness_mem_resume_pack"
-      hook_emit_codex_additional_context "SessionStart" "$RENDERED_RESUME_CONTEXT"
+      SESSION_START_CONTEXT="$(hook_append_context_block "$SESSION_START_CONTEXT" "$RENDERED_RESUME_CONTEXT")"
     fi
   fi
+fi
+
+WORK_HINT_CONTEXT="$(hook_render_work_hint "SessionStart" "$SESSION_ID" "[]")"
+SESSION_START_CONTEXT="$(hook_append_context_block "$SESSION_START_CONTEXT" "$WORK_HINT_CONTEXT")"
+if [ -n "$SESSION_START_CONTEXT" ]; then
+  hook_emit_codex_additional_context "SessionStart" "$SESSION_START_CONTEXT"
 fi
 
 exit 0

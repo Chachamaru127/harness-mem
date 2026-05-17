@@ -161,6 +161,10 @@ hook_init_continuity_state
 hook_resolve_correlation_id "$SESSION_ID" "claude" "$INPUT"
 
 PROMPT_TEXT="$(json_get "$INPUT" ".prompt" "")"
+PRIVACY_TAGS_JSON="[]"
+if command -v jq >/dev/null 2>&1; then
+  PRIVACY_TAGS_JSON="$(printf '%s' "$INPUT" | jq -c '.privacy_tags // []' 2>/dev/null || printf '[]')"
+fi
 CURRENT_PROMPT_SEQ="$(json_file_get "$SESSION_FILE" ".prompt_seq" "0")"
 CURRENT_PROMPT_SEQ="$(hook_clamp_integer "$CURRENT_PROMPT_SEQ" "0" "0" "999999")"
 NEW_PROMPT_SEQ=$((CURRENT_PROMPT_SEQ + 1))
@@ -300,5 +304,8 @@ if [ "$RESUME_CONSUMED" -eq 0 ]; then
 elif [ "$RESUME_CONSUMED" -eq 1 ]; then
   hook_mark_whisper_prompt "$SESSION_ID" >/dev/null 2>&1 || true
 fi
+
+WORK_HINT_CONTEXT="$(hook_render_work_hint "UserPromptSubmit" "$SESSION_ID" "$PRIVACY_TAGS_JSON")"
+INJECTION="$(append_injection_block "$INJECTION" "$WORK_HINT_CONTEXT")"
 
 hook_emit_claude_additional_context "UserPromptSubmit" "$INJECTION"

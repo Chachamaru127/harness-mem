@@ -117,6 +117,7 @@ fallback_error_code() {
     resume-pack) printf 'resume_pack_failed' ;;
     record-checkpoint) printf 'record_checkpoint_failed' ;;
     finalize-session) printf 'finalize_session_failed' ;;
+    work-query) printf 'work_query_failed' ;;
     ingest-codex-history) printf 'ingest_codex_history_failed' ;;
     ingest-hermes-state) printf 'ingest_hermes_state_failed' ;;
 	    admin-backup) printf 'admin_backup_failed' ;;
@@ -162,7 +163,7 @@ fallback_error() {
 
 is_get_command() {
   case "$1" in
-    health|admin-metrics|admin-consolidation-status|admin-vector-backfill-status|admin-audit-log|sessions-list|session-thread|search-facets)
+    health|admin-metrics|admin-consolidation-status|admin-vector-backfill-status|admin-audit-log|sessions-list|session-thread|search-facets|work-query)
       return 0
       ;;
     *)
@@ -211,6 +212,11 @@ main() {
       ;;
     finalize-session)
       call_post "/v1/sessions/finalize" "$payload" || fallback_error "finalize-session" "finalize-session failed"
+      ;;
+    work-query)
+      local work_query
+      work_query="$(payload_to_query "$payload")"
+      call_get "/v1/work/query${work_query}" || fallback_error "work-query" "work-query failed"
       ;;
     ingest-codex-history)
       call_post "/v1/ingest/codex-history" "$payload" || fallback_error "ingest-codex-history" "ingest-codex-history failed"
@@ -298,7 +304,7 @@ main() {
       call_post "/v1/admin/imports/${verify_job_id}/verify" "{}" || fallback_error "verify-import" "verify-import failed"
       ;;
     *)
-	      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|ingest-codex-history|ingest-hermes-state|admin-backup|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
+	      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
       exit 1
       ;;
   esac

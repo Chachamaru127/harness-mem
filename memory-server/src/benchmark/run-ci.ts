@@ -24,6 +24,7 @@ import { extractTemporalAnchors } from "../retrieval/router";
 import { nowIso } from "../core/core-utils";
 import { BenchmarkRunner } from "./runner";
 import { runInjectActionabilitySmoke } from "./inject-actionability-smoke";
+import { runWorkHintActionabilitySmoke } from "./work-hint-actionability-smoke";
 
 const RESULTS_DIR = join(import.meta.dir, "results");
 // Default to the committed 120 Q subset. Override with
@@ -288,6 +289,22 @@ interface CIRunManifest {
     consumed_count: number;
     hooks_health_summary: string;
     tier: "green" | "yellow" | "red";
+  };
+  /**
+   * §S125-013 — WorkGraph hook hint actionability smoke.
+   * `work_hint_consumed_rate` shares the WorkGraph docs threshold:
+   *   < 0.30 ⇒ red, 0.30–0.60 ⇒ yellow, >= 0.60 ⇒ green.
+   */
+  work_hint_actionability?: {
+    work_hint_delivered_rate: number;
+    work_hint_consumed_rate: number;
+    fixture_size: number;
+    consumed_count: number;
+    tier: "green" | "yellow" | "red";
+    thresholds: {
+      yellow_min: 0.3;
+      green_min: 0.6;
+    };
   };
 }
 
@@ -1784,6 +1801,41 @@ async function main(): Promise<void> {
     };
   }
 
+  let workHintActionability:
+    | {
+        work_hint_delivered_rate: number;
+        work_hint_consumed_rate: number;
+        fixture_size: number;
+        consumed_count: number;
+        tier: "green" | "yellow" | "red";
+        thresholds: {
+          yellow_min: 0.3;
+          green_min: 0.6;
+        };
+      }
+    | undefined;
+  try {
+    workHintActionability = runWorkHintActionabilitySmoke();
+    console.log(
+      `[CI] work_hint_actionability: delivered=${workHintActionability.work_hint_delivered_rate} consumed=${workHintActionability.work_hint_consumed_rate} tier=${workHintActionability.tier}`,
+    );
+  } catch (err) {
+    console.error(
+      `[CI] work_hint_actionability smoke failed: ${(err as Error).message}`,
+    );
+    workHintActionability = {
+      work_hint_delivered_rate: 0,
+      work_hint_consumed_rate: 0,
+      fixture_size: 0,
+      consumed_count: 0,
+      tier: "red",
+      thresholds: {
+        yellow_min: 0.3,
+        green_min: 0.6,
+      },
+    };
+  }
+
   const manifest: CIRunManifest = {
     generated_at: new Date().toISOString(),
     git_sha: readGitSha(),
@@ -1830,6 +1882,7 @@ async function main(): Promise<void> {
       bilingual_delta: bilingualDelta,
     },
     inject_actionability: injectActionability,
+    work_hint_actionability: workHintActionability,
   };
   writeRunManifest(manifest);
   console.log(`[CI] run manifest written: ${CI_MANIFEST_LATEST}`);

@@ -1264,6 +1264,135 @@ hook_estimate_tokens() {
   printf '%s' $(( (chars + 3) / 4 ))
 }
 
+hook_append_context_block() {
+  local existing="${1:-}"
+  local block="${2:-}"
+  if [ -z "$block" ]; then
+    printf '%s' "$existing"
+  elif [ -z "$existing" ]; then
+    printf '%s' "$block"
+  else
+    printf '%s\n\n%s' "$existing" "$block"
+  fi
+}
+
+hook_workgraph_hints_enabled() {
+  case "${HARNESS_MEM_WORKGRAPH:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+  esac
+  case "${HARNESS_MEM_WORK_HINTS:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+  esac
+  return 1
+}
+
+hook_read_work_hint_max_tokens() {
+  hook_clamp_integer "${HARNESS_MEM_WORK_HINT_MAX_TOKENS:-160}" "160" "40" "400"
+}
+
+hook_read_work_hint_timeout_sec() {
+  hook_clamp_integer "${HARNESS_MEM_WORK_HINT_TIMEOUT_SEC:-2}" "2" "1" "10"
+}
+
+hook_work_hint_privacy_allows() {
+  local privacy_tags_json="${1:-[]}"
+  command -v jq >/dev/null 2>&1 || return 0
+  if printf '%s' "$privacy_tags_json" | jq -e '
+    if type == "array" then
+      map(tostring | ascii_downcase)
+      | any(. == "redact" or . == "private" or . == "secret" or . == "sensitive")
+    else
+      false
+    end
+  ' >/dev/null 2>&1; then
+    return 1
+  fi
+  return 0
+}
+
+hook_render_work_hint_response() {
+  local response="${1:-}"
+  local hook_event_name="${2:-unknown}"
+  [ -n "$response" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  printf '%s' "$response" | jq -r --arg hook "$hook_event_name" '
+    (.items[0] // null) as $item
+    | if $item == null then empty else
+        ([
+          ($item.reasons // [])[]?
+          | ((.code // "reason") + ": " + ((.message // "") | gsub("[\r\n]"; " ") | .[0:96]))
+        ] | .[:2] | join("; ")) as $why
+        | "## WorkGraph Hint (reference only)\n"
+          + "source: harness_work_query (cwd_scope=true, strict_project=true, hook=" + $hook + ")\n"
+          + "- next_work_id: " + (($item.work_id // "") | tostring | gsub("[\r\n]"; " ") | .[0:80]) + "\n"
+          + "- title: " + (($item.title // "") | tostring | gsub("[\r\n]"; " ") | .[0:96]) + "\n"
+          + "- score: " + (($item.score // 0) | tostring) + "\n"
+          + "- why: " + $why + "\n"
+          + "- action: explicitly claim or continue this work; hooks never auto-close work."
+      end
+  ' 2>/dev/null
+}
+
+hook_render_work_hint() {
+  local hook_event_name="${1:-unknown}"
+  local session_id="${2:-}"
+  local privacy_tags_json="${3:-[]}"
+  hook_workgraph_hints_enabled || return 0
+  hook_work_hint_privacy_allows "$privacy_tags_json" || return 0
+  [ -x "${CLIENT_SCRIPT:-}" ] || return 0
+  [ -n "${PROJECT_ROOT:-}" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local payload timeout_sec response rendered tokens tokens_limit
+  payload="$(jq -nc \
+    --arg cwd "$PROJECT_ROOT" \
+    --arg session_id "$session_id" \
+    '{cwd:$cwd,mode:"next",limit:1,current_session_id:$session_id}' 2>/dev/null)"
+  [ -n "$payload" ] || return 0
+
+  timeout_sec="$(hook_read_work_hint_timeout_sec)"
+  response="$(HARNESS_MEM_CLIENT_TIMEOUT_SEC="$timeout_sec" "$CLIENT_SCRIPT" work-query "$payload" 2>/dev/null || true)"
+  if [ -z "$response" ] || ! printf '%s' "$response" | jq -e '.ok != false and ((.items // []) | length > 0)' >/dev/null 2>&1; then
+    return 0
+  fi
+
+  rendered="$(hook_render_work_hint_response "$response" "$hook_event_name")"
+  [ -n "$rendered" ] || return 0
+  tokens="$(hook_estimate_tokens "$rendered")"
+  tokens_limit="$(hook_read_work_hint_max_tokens)"
+  if [ "$tokens" -gt "$tokens_limit" ]; then
+    return 0
+  fi
+  printf '%s' "$rendered"
+}
+
+hook_record_work_hint_followup() {
+  local platform="${1:-}"
+  local session_id="${2:-}"
+  local correlation_id="${3:-}"
+  local hook_event_name="${4:-Stop}"
+  [ -n "$platform" ] || return 0
+  [ -n "$session_id" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local hint event_payload
+  hint="$(hook_render_work_hint "$hook_event_name" "$session_id" "[]")"
+  [ -n "$hint" ] || return 0
+
+  event_payload="$(jq -nc \
+    --arg platform "$platform" \
+    --arg project "${PROJECT_NAME:-}" \
+    --arg session_id "$session_id" \
+    --arg correlation_id "$correlation_id" \
+    --arg content "$hint" \
+    '{event:{platform:$platform,project:$project,session_id:$session_id,event_type:"checkpoint",correlation_id:$correlation_id,payload:{title:"workgraph_followup_suggestion",content:$content,source:"workgraph_hook_hint"},tags:["workgraph_hint","followup_suggestion","hook","stop"],privacy_tags:[]}}' 2>/dev/null)"
+
+  if [ -n "$event_payload" ]; then
+    printf '%s' "$event_payload" | "$CLIENT_SCRIPT" record-event >/dev/null 2>&1 || true
+  fi
+}
+
 hook_upsert_whisper_session_defaults() {
   local session_id="${1:-}"
   [ -n "$session_id" ] || return 0

@@ -64,4 +64,6 @@ if [ -n "$FINALIZE_PAYLOAD" ]; then
   fi
 fi
 
+hook_record_work_hint_followup "claude" "$SESSION_ID" "$CORRELATION_ID" "Stop"
+
 exit 0

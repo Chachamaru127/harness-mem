@@ -164,6 +164,46 @@ describe("WorkGraph HTTP query API", () => {
     }
   });
 
+  test("GET /v1/work/query scopes cwd to requested project rather than daemon cwd", async () => {
+    const runtime = createRuntime("cwd-isolation");
+    const store = createWorkStore(runtime.core.getRawDb());
+    const projectA = "/repo/project-a";
+    const projectB = "/repo/project-b";
+    try {
+      store.upsertWorkItem({
+        workId: "A-001",
+        title: "Project A ready work",
+        project: projectA,
+        status: "open",
+        priority: 1,
+        createdAt: "2026-05-17T09:00:00.000Z",
+        updatedAt: "2026-05-17T09:00:00.000Z",
+      });
+      store.upsertWorkItem({
+        workId: "B-001",
+        title: "Project B ready work",
+        project: projectB,
+        status: "open",
+        priority: 1,
+        createdAt: "2026-05-17T09:00:00.000Z",
+        updatedAt: "2026-05-17T09:00:00.000Z",
+      });
+
+      const { status, body } = await getJson(
+        runtime.baseUrl,
+        `/v1/work/query?cwd=${encodeURIComponent(projectA)}&mode=next&now=${encodeURIComponent("2026-05-17T10:00:00.000Z")}`
+      );
+
+      expect(status).toBe(200);
+      const items = body.items as Array<Record<string, unknown>>;
+      expect(items.map((item) => item.work_id)).toContain("A-001");
+      expect(items.map((item) => item.work_id)).not.toContain("B-001");
+      expect((body.meta as Record<string, unknown>).filters).toMatchObject({ project: projectA });
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("POST /v1/work/update action=claim rejects double claim through existing lease", async () => {
     const runtime = createRuntime("claim");
     const project = "/repo/harness-mem";

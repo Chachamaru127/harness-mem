@@ -100,6 +100,9 @@ if [ -n "$RECALL_CONTEXT" ]; then
   ADDITIONAL_CONTEXT="$(append_codex_context_block "$ADDITIONAL_CONTEXT" "$RECALL_CONTEXT")"
 fi
 
+WORK_HINT_CONTEXT="$(hook_render_work_hint "UserPromptSubmit" "$SESSION_ID" "$PRIVACY_TAGS_JSON")"
+ADDITIONAL_CONTEXT="$(append_codex_context_block "$ADDITIONAL_CONTEXT" "$WORK_HINT_CONTEXT")"
+
 if [ -n "$ADDITIONAL_CONTEXT" ]; then
   hook_emit_codex_additional_context "UserPromptSubmit" "$ADDITIONAL_CONTEXT"
 fi
