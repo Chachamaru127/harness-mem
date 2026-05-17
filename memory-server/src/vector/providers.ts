@@ -143,7 +143,60 @@ export function getSqliteVecMapTableName(model: string): string {
   return `mem_vectors_vec_map_${normalizeSqliteIdentifierPart(model)}`;
 }
 
-function ensureSqliteVecTableForModel(
+export type SqliteVecPayload = Float32Array | string;
+
+function coerceFiniteVector(input: string | number[] | Float32Array): number[] | Float32Array | null {
+  if (input instanceof Float32Array) {
+    return input.length > 0 ? input : null;
+  }
+
+  const values = typeof input === "string" ? JSON.parse(input) : input;
+  if (!Array.isArray(values)) {
+    return null;
+  }
+
+  const vector: number[] = [];
+  for (const value of values) {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return null;
+    }
+    vector.push(value);
+  }
+  return vector.length > 0 ? vector : null;
+}
+
+export function serializeSqliteVecFloat32(input: string | number[] | Float32Array): SqliteVecPayload {
+  try {
+    const vector = coerceFiniteVector(input);
+    if (!vector) {
+      return typeof input === "string" ? input : JSON.stringify(Array.from(input));
+    }
+    return vector instanceof Float32Array ? vector : new Float32Array(vector);
+  } catch {
+    return typeof input === "string" ? input : JSON.stringify(Array.from(input));
+  }
+}
+
+export function buildSqliteVecKnnCandidateSql(tableName: string, mapTableName: string): string {
+  return `
+    SELECT
+      c.id AS id,
+      c.distance AS distance,
+      o.created_at AS created_at
+    FROM (
+      SELECT
+        m.observation_id AS id,
+        v.distance AS distance
+      FROM ${tableName} v
+      JOIN ${mapTableName} m ON m.rowid = v.rowid
+      WHERE v.embedding MATCH ? AND k = ?
+    ) c
+    JOIN mem_observations o ON o.id = c.id
+    WHERE 1 = 1
+  `;
+}
+
+export function ensureSqliteVecTableForModel(
   db: Database,
   model: string,
   vectorDimension: number,
@@ -162,6 +215,8 @@ function ensureSqliteVecTableForModel(
     );
     CREATE INDEX IF NOT EXISTS idx_${mapTableName}_observation
       ON ${mapTableName}(observation_id);
+    CREATE INDEX IF NOT EXISTS idx_${mapTableName}_updated_at_observation
+      ON ${mapTableName}(updated_at, observation_id);
   `);
 
   return { tableName, mapTableName };
@@ -202,33 +257,33 @@ export function upsertSqliteVecRow(
   updatedAt: string,
   options: SqliteVecUpsertOptions = {}
 ): boolean {
-  const hasModelSpecificTarget =
-    typeof options.model === "string" &&
-    options.model.length > 0 &&
-    typeof options.vectorDimension === "number" &&
-    Number.isFinite(options.vectorDimension);
-
-  const target = hasModelSpecificTarget
-    ? ensureSqliteVecTableForModel(db, options.model!, options.vectorDimension!)
-    : {
-        tableName: LEGACY_SQLITE_VEC_TABLE,
-        mapTableName: LEGACY_SQLITE_VEC_MAP_TABLE,
-      };
-
   try {
+    const hasModelSpecificTarget =
+      typeof options.model === "string" &&
+      options.model.length > 0 &&
+      typeof options.vectorDimension === "number" &&
+      Number.isFinite(options.vectorDimension);
+
+    const target = hasModelSpecificTarget
+      ? ensureSqliteVecTableForModel(db, options.model!, options.vectorDimension!)
+      : {
+          tableName: LEGACY_SQLITE_VEC_TABLE,
+          mapTableName: LEGACY_SQLITE_VEC_MAP_TABLE,
+        };
+
     const mapRow = db
       .query(`SELECT rowid FROM ${target.mapTableName} WHERE observation_id = ?`)
       .get(observationId) as { rowid?: number } | null;
 
     if (typeof mapRow?.rowid === "number") {
-      db.query(`INSERT OR REPLACE INTO ${target.tableName}(rowid, embedding) VALUES (?, ?)`)
-        .run(mapRow.rowid, vectorJson);
+      db.query(`UPDATE ${target.tableName} SET embedding = ? WHERE rowid = ?`)
+        .run(serializeSqliteVecFloat32(vectorJson), mapRow.rowid);
       db.query(`UPDATE ${target.mapTableName} SET updated_at = ? WHERE rowid = ?`)
         .run(updatedAt, mapRow.rowid);
       return true;
     }
 
-    db.query(`INSERT INTO ${target.tableName}(embedding) VALUES (?)`).run(vectorJson);
+    db.query(`INSERT INTO ${target.tableName}(embedding) VALUES (?)`).run(serializeSqliteVecFloat32(vectorJson));
     const lastRow = db.query(`SELECT last_insert_rowid() AS rowid`).get() as { rowid?: number } | null;
     if (typeof lastRow?.rowid !== "number") {
       return false;

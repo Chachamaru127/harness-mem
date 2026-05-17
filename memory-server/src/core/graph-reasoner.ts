@@ -156,6 +156,7 @@ export function computeQueryEntityProximity(
 ): Map<string, number> {
   const result = new Map<string, number>();
   if (candidateIds.length === 0) return result;
+  const candidateIdSet = new Set(candidateIds);
 
   // Extract entities from the query text using the same extractor as §78-C02
   const { entities: queryEntities } = extractEntitiesAndRelations(queryText);
@@ -177,6 +178,7 @@ export function computeQueryEntityProximity(
 
   for (let hop = 1; hop <= MAX_PROXIMITY_HOPS; hop++) {
     if (entityFrontier.size === 0) break;
+    if (hopDistances.size >= candidateIdSet.size) break;
 
     const entityArr = [...entityFrontier];
     const BATCH = 50;
@@ -201,7 +203,7 @@ export function computeQueryEntityProximity(
       for (const row of rows) {
         const obsId = row.observation_id;
         // Assign hop distance only if not already set (shortest path wins)
-        if (candidateIds.includes(obsId) && !hopDistances.has(obsId)) {
+        if (candidateIdSet.has(obsId) && !hopDistances.has(obsId)) {
           hopDistances.set(obsId, hop);
         }
         // Discover new entities for the next frontier

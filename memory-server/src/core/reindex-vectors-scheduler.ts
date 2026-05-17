@@ -36,7 +36,7 @@ export interface ReindexVectorsSchedulerDeps {
    * Callback that performs one bounded reindex pass.
    * Mapped to HarnessMemCore.reindexVectors(limit) in production.
    */
-  reindexVectors: (limit: number) => ApiResponse;
+  reindexVectors: (limit: number) => ApiResponse | Promise<ApiResponse>;
   /** Optional logger — defaults to console.* */
   logger?: SchedulerLogger;
 }
@@ -170,7 +170,7 @@ export class ReindexVectorsScheduler {
       // We still call reindexVectors with a tiny limit to refresh metrics in
       // case new observations were ingested since convergence.
       const limit = this.converged ? 1 : this.config.batchSize;
-      const response = this.deps.reindexVectors(limit);
+      const response = await this.deps.reindexVectors(limit);
       const item = (Array.isArray(response.items) && response.items[0]) as
         | { reindexed?: number; vector_coverage?: number; missing_vectors_remaining?: number; legacy_vectors_remaining?: number }
         | undefined;

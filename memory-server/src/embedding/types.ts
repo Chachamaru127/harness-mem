@@ -39,6 +39,7 @@ export interface EmbeddingProvider {
   secondaryModelFor?(text: string): string | null;
   prime?(text: string): Promise<number[]>;
   primeQuery?(text: string): Promise<number[]>;
+  primeBatch?(texts: string[], mode?: "passage" | "query"): Promise<number[][]>;
   cacheStats?(): EmbeddingCacheStats;
   ready?: Promise<void>;
   usesLocalModels?: boolean;

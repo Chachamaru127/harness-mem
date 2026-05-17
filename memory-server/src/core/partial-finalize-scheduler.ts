@@ -28,6 +28,8 @@ export interface PartialFinalizeSchedulerDeps {
    * Mapped to SessionManager.finalizeSession in production.
    */
   finalizeSession: (request: FinalizeSessionRequest) => unknown;
+  /** Optional guard for heavy maintenance windows such as vector backfill. */
+  shouldSkipTick?: () => boolean;
   /** Optional logger — defaults to console.error / console.warn */
   logger?: SchedulerLogger;
 }
@@ -137,6 +139,10 @@ export class PartialFinalizeScheduler {
     }
     this.running = true;
     try {
+      if (this.deps.shouldSkipTick?.() === true) {
+        this.logger.info("tick skipped because maintenance guard is active");
+        return;
+      }
       const candidates = this.queryActiveSessions();
       if (candidates.length === 0) {
         return;

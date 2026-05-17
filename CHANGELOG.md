@@ -7,6 +7,24 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-05-17
+
+### Added
+
+- **Resumable vector compact/reindex backfill worker**. Added an out-of-request admin worker that can resume sqlite-vec map compaction and vector reindex progress across daemon restarts, with bounded batches, status persistence, stop/start controls, and coverage reporting for large local databases.
+- **Admin vector backfill and sqlite-vec repair surfaces**. Added REST/OpenAPI and CLI entrypoints for vector backfill start/status/stop plus sqlite-vec map repair, keeping long-running compact/reindex work outside request handlers.
+- **Hermes historical state ingest/backfill flow**. Added Hermes `state.db` ingestion support and documentation so Hermes lifecycle capture, historical import, and harness-mem vector backfill remain separate, inspectable lanes.
+
+### Changed
+
+- **Search graph expansion now stays bounded under dense link graphs**. Graph expansion caps auxiliary candidates and uses set-based membership checks, keeping small vector searches within the release latency gate instead of loading hundreds of graph-expanded rows.
+- **Release binary packaging paths are explicit**. Trimmed Go MCP release binary path handling so packaged artifacts stay aligned with the expected release surface.
+
+### Fixed
+
+- **Codex setup/doctor recognizes double-escaped notify paths**. Codex config repair now detects harness-mem notify paths escaped through nested JSON-in-TOML payloads, preserving Computer Use notify chains while repairing stale MCP wiring.
+- **Vector backfill child process spawning is portable**. The backfill worker no longer requires Unix `nice` on Windows and uses platform-safe script path resolution for the spawned child process.
+
 ## [0.22.2] - 2026-05-14
 
 ### Fixed
@@ -2722,7 +2740,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
 [0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0

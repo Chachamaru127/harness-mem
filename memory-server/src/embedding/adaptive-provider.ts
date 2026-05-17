@@ -102,6 +102,9 @@ export function createAdaptiveEmbeddingProvider(
   const generalFallbackLabel = generalFallbackProvider
     ? `adaptive:general:${generalFallbackProvider.name}:${generalFallbackProvider.model}`
     : generalLabel;
+  const ruriGeneralFallbackEnabled = (process.env.HARNESS_MEM_ADAPTIVE_RURI_GENERAL_FALLBACK || "")
+    .trim()
+    .toLowerCase() === "1";
   let generalFallbackState: GeneralFallbackState = {
     active: false,
     failCount: 0,
@@ -197,6 +200,22 @@ export function createAdaptiveEmbeddingProvider(
     return embedWithProvider(provider, text, preferQuery);
   };
 
+  const primeBatchWithProvider = async (
+    provider: EmbeddingProvider,
+    texts: string[],
+    preferQuery: boolean
+  ): Promise<number[][]> => {
+    if (texts.length === 0) {
+      return [];
+    }
+    if (typeof provider.primeBatch === "function") {
+      return (await provider.primeBatch(texts, preferQuery ? "query" : "passage")).map((vector) =>
+        normalizeVector(vector, dimension)
+      );
+    }
+    return Promise.all(texts.map((text) => primeWithProvider(provider, text, preferQuery)));
+  };
+
   const runGeneralSync = (text: string, preferQuery: boolean): number[] => {
     if (!generalFallbackState.active && generalFallbackProvider) {
       const preflightHealth = getProviderHealth(generalProvider);
@@ -265,6 +284,44 @@ export function createAdaptiveEmbeddingProvider(
     }
   };
 
+  const runGeneralBatchAsync = async (texts: string[], preferQuery: boolean): Promise<number[][]> => {
+    if (texts.length === 0) {
+      return [];
+    }
+
+    if (!generalFallbackState.active && generalFallbackProvider) {
+      const preflightHealth = getProviderHealth(generalProvider);
+      if (preflightHealth.status === "degraded") {
+        enterGeneralFallback(preflightHealth.details);
+        return primeBatchWithProvider(generalFallbackProvider, texts, preferQuery);
+      }
+    }
+
+    if (useFallbackGeneral() && !shouldProbeGeneral()) {
+      return primeBatchWithProvider(generalFallbackProvider!, texts, preferQuery);
+    }
+
+    try {
+      const result = await primeBatchWithProvider(generalProvider, texts, preferQuery);
+      const health = getProviderHealth(generalProvider);
+      if (health.status === "healthy") {
+        exitGeneralFallback();
+        return result;
+      }
+      if (!generalFallbackProvider) {
+        return result;
+      }
+      enterGeneralFallback(health.details);
+      return primeBatchWithProvider(generalFallbackProvider, texts, preferQuery);
+    } catch (error) {
+      if (!generalFallbackProvider) {
+        throw error;
+      }
+      enterGeneralFallback(getErrorMessage(error));
+      return primeBatchWithProvider(generalFallbackProvider, texts, preferQuery);
+    }
+  };
+
   const embedPrimary = (text: string, route: AdaptiveRoute, preferQuery: boolean): number[] => {
     if (route === "openai") {
       return runGeneralSync(text, preferQuery);
@@ -279,6 +336,13 @@ export function createAdaptiveEmbeddingProvider(
 
     if (route === "openai") {
       return runGeneralAsync(normalizedText, preferQuery);
+    }
+    if (route === "ruri" && ruriGeneralFallbackEnabled) {
+      const [primary] = await Promise.all([
+        japanesePrime(),
+        runGeneralAsync(normalizedText, preferQuery),
+      ]);
+      return primary;
     }
     if (route === "ensemble") {
       await Promise.all([japanesePrime(), runGeneralAsync(normalizedText, preferQuery)]);
@@ -312,9 +376,60 @@ export function createAdaptiveEmbeddingProvider(
       const { route } = resolveRoute(text || "");
       return primeForRoute(text || "", route, true);
     },
+    async primeBatch(texts: string[], mode: "passage" | "query" = "passage"): Promise<number[][]> {
+      const normalizedTexts = texts.map((text) => text || "");
+      const preferQuery = mode === "query";
+      const results: Array<number[] | null> = new Array(normalizedTexts.length).fill(null);
+      const japaneseJobs: Array<{ index: number; text: string }> = [];
+      const generalJobs: Array<{ index: number; text: string; primary: boolean }> = [];
+
+      normalizedTexts.forEach((text, index) => {
+        const { route } = resolveRoute(text);
+        if (route === "openai") {
+          generalJobs.push({ index, text, primary: true });
+          return;
+        }
+        japaneseJobs.push({ index, text });
+        if (route === "ensemble" || (route === "ruri" && ruriGeneralFallbackEnabled)) {
+          generalJobs.push({ index, text, primary: false });
+        }
+      });
+
+      await Promise.all([
+        (async () => {
+          if (japaneseJobs.length === 0) {
+            return;
+          }
+          const vectors = await primeBatchWithProvider(
+            japaneseProvider,
+            japaneseJobs.map((job) => job.text),
+            preferQuery
+          );
+          japaneseJobs.forEach((job, offset) => {
+            results[job.index] = vectors[offset];
+          });
+        })(),
+        (async () => {
+          if (generalJobs.length === 0) {
+            return;
+          }
+          const vectors = await runGeneralBatchAsync(
+            generalJobs.map((job) => job.text),
+            preferQuery
+          );
+          generalJobs.forEach((job, offset) => {
+            if (job.primary) {
+              results[job.index] = vectors[offset];
+            }
+          });
+        })(),
+      ]);
+
+      return results.map((vector) => vector ?? new Array<number>(dimension).fill(0));
+    },
     embedSecondary(text: string, mode: "passage" | "query" = "query"): number[] | null {
       const { route } = resolveRoute(text || "");
-      if (route !== "ensemble") {
+      if (route !== "ensemble" && !(route === "ruri" && ruriGeneralFallbackEnabled)) {
         return null;
       }
       return runGeneralSync(text || "", mode === "query");
@@ -334,7 +449,7 @@ export function createAdaptiveEmbeddingProvider(
     },
     secondaryModelFor(text: string): string | null {
       const { route } = resolveRoute(text || "");
-      if (route !== "ensemble") {
+      if (route !== "ensemble" && !(route === "ruri" && ruriGeneralFallbackEnabled)) {
         return null;
       }
       return useFallbackGeneral() ? generalFallbackLabel : generalLabel;

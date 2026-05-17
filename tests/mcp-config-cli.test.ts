@@ -81,6 +81,7 @@ describe("mcp-config CLI", () => {
     expect(serializedSpec).not.toContain("super-secret-token");
     expect(codexBlock).toContain('url = "http://127.0.0.1:37889/mcp"');
     expect(codexBlock).toContain('bearer_token_env_var = "HARNESS_MEM_MCP_TOKEN"');
+    expect(codexBlock).not.toContain("enabled = true");
     expect(codexBlock).not.toContain("command =");
   });
 
@@ -126,6 +127,7 @@ describe("mcp-config CLI", () => {
 
       expect(codexConfig).toContain('url = "http://127.0.0.1:37889/mcp"');
       expect(codexConfig).toContain('bearer_token_env_var = "HARNESS_MEM_MCP_TOKEN"');
+      expect(codexConfig).not.toContain("enabled = true");
       expect(codexConfig).not.toContain("command =");
 
       expect(claudeConfig.mcpServers.harness.type).toBe("http");

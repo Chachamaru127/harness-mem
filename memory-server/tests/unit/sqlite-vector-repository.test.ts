@@ -10,6 +10,11 @@ import { Database } from "bun:sqlite";
 import { configureDatabase, initSchema, migrateSchema } from "../../src/db/schema";
 import { SqliteVectorRepository } from "../../src/db/repositories/sqlite-vector-repository";
 import type { UpsertVectorInput } from "../../src/db/repositories/IVectorRepository";
+import {
+  buildSqliteVecKnnCandidateSql,
+  serializeSqliteVecFloat32,
+  upsertSqliteVecRow,
+} from "../../src/vector/providers";
 
 function createDb(): Database {
   const db = new Database(":memory:");
@@ -192,5 +197,75 @@ describe("SqliteVectorRepository: delete", () => {
     const repo = createRepo(db);
 
     await expect(repo.delete("nonexistent")).resolves.toBeUndefined();
+  });
+});
+
+describe("sqlite-vec fast path helpers", () => {
+  test("serializeSqliteVecFloat32 は JSON vector を compact Float32Array payload に変換する", () => {
+    const payload = serializeSqliteVecFloat32("[0.25,-0.5,1]");
+
+    expect(payload).toBeInstanceOf(Float32Array);
+    expect(Array.from(payload as Float32Array)).toEqual([0.25, -0.5, 1]);
+  });
+
+  test("serializeSqliteVecFloat32 は number[] を compact Float32Array payload に変換する", () => {
+    const payload = serializeSqliteVecFloat32([0.125, 0.5]);
+
+    expect(payload).toBeInstanceOf(Float32Array);
+    expect(Array.from(payload as Float32Array)).toEqual([0.125, 0.5]);
+  });
+
+  test("buildSqliteVecKnnCandidateSql は hot path で mem_vectors に戻らない", () => {
+    const sql = buildSqliteVecKnnCandidateSql(
+      "mem_vectors_vec_model",
+      "mem_vectors_vec_map_model",
+    );
+
+    expect(sql).toContain("v.embedding MATCH ? AND k = ?");
+    expect(sql).toContain("JOIN mem_vectors_vec_map_model m ON m.rowid = v.rowid");
+    expect(sql).toContain("JOIN mem_observations o ON o.id = c.id");
+    expect(sql).not.toContain("JOIN mem_vectors mv");
+    expect(sql).not.toMatch(/LIMIT\s+\?/i);
+  });
+
+  test("upsertSqliteVecRow は既存 vec0 row を INSERT OR REPLACE ではなく UPDATE する", () => {
+    const statements: Array<{ sql: string; args: unknown[] }> = [];
+    const fakeDb = {
+      exec(sql: string) {
+        statements.push({ sql, args: [] });
+      },
+      query(sql: string) {
+        return {
+          get(...args: unknown[]) {
+            statements.push({ sql, args });
+            if (sql.includes("SELECT rowid FROM")) {
+              return { rowid: 42 };
+            }
+            return null;
+          },
+          run(...args: unknown[]) {
+            statements.push({ sql, args });
+            return {};
+          },
+        };
+      },
+    } as unknown as Database;
+
+    const ok = upsertSqliteVecRow(
+      fakeDb,
+      "obs-existing-vec0-row",
+      "[0.25,0.75]",
+      "2026-05-15T00:00:00.000Z",
+      { model: "test:model", vectorDimension: 2 },
+    );
+
+    expect(ok).toBe(true);
+    expect(statements.some((entry) => /INSERT OR REPLACE INTO .*embedding/.test(entry.sql))).toBe(false);
+    const vecUpdate = statements.find((entry) =>
+      /UPDATE mem_vectors_vec_test_model SET embedding = \? WHERE rowid = \?/.test(entry.sql)
+    );
+    expect(vecUpdate).toBeDefined();
+    expect(vecUpdate?.args[0]).toBeInstanceOf(Float32Array);
+    expect(vecUpdate?.args[1]).toBe(42);
   });
 });

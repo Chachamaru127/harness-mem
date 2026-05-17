@@ -35,8 +35,10 @@ import {
 import { buildProjectProfile, buildWakeUpContext } from "./project-profile";
 import type { Reranker, RerankInputItem, RerankOutputItem } from "../rerank/types";
 import {
+  buildSqliteVecKnnCandidateSql,
   getSqliteVecMapTableName,
   getSqliteVecTableName,
+  serializeSqliteVecFloat32,
   type VectorEngine,
 } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
@@ -86,6 +88,8 @@ import {
 // top1 の finalScore がこの値未満の場合は `no_memory: true` を返す
 // ---------------------------------------------------------------------------
 const NO_MEMORY_SCORE_THRESHOLD = 0.1;
+const SEMANTIC_RERANK_CANDIDATE_LIMIT = 50;
+const VECTOR_MIGRATION_WARNING_THRESHOLD = 0.95;
 
 // ---------------------------------------------------------------------------
 // ObservationStoreDeps: HarnessMemCore から渡される内部依存
@@ -1670,51 +1674,59 @@ export class ObservationStore {
   // lexicalSearch
   // ---------------------------------------------------------------------------
 
-  private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
-    if (!this.deps.ftsEnabled) {
-      const tokens = buildSearchTokens(request.query);
-      if (tokens.length === 0) return new Map<string, number>();
+  private boundedRecentLexicalScan(request: SearchRequest, internalLimit: number): Map<string, number> {
+    const tokens = buildSearchTokens(request.query);
+    if (tokens.length === 0) return new Map<string, number>();
 
-      const params: SQLQueryBindings[] = [];
-      let sql = `
-        SELECT
-          o.id AS id,
-          o.title AS title,
-          o.content_redacted AS content
-        FROM mem_observations o
-        WHERE 1 = 1
-      `;
+    const params: SQLQueryBindings[] = [];
+    let sql = `
+      SELECT
+        o.id AS id,
+        o.title AS title,
+        o.content_redacted AS content
+      FROM mem_observations o
+      WHERE 1 = 1
+    `;
 
-      sql = this.applyCommonFilters(sql, params, "o", request);
-      sql += " ORDER BY o.created_at DESC LIMIT ?";
-      params.push(Math.max(internalLimit * 4, 200));
+    sql = this.applyCommonFilters(sql, params, "o", request);
+    sql += " ORDER BY o.rowid DESC LIMIT ?";
+    params.push(Math.max(internalLimit * 4, 200));
 
-      const rows = this.deps.db
-        .query(sql)
-        .all(...(params as any[])) as Array<{ id: string; title: string; content: string }>;
+    const rows = this.deps.db
+      .query(sql)
+      .all(...(params as any[])) as Array<{ id: string; title: string; content: string }>;
 
-      const raw = new Map<string, number>();
-      for (const row of rows) {
-        const title = (row.title || "").toLowerCase();
-        const content = (row.content || "").toLowerCase();
-        let score = 0;
-        for (const token of tokens) {
-          if (title.includes(token)) score += 2;
-          if (content.includes(token)) score += 1;
-        }
-        if (score > 0) raw.set(row.id, score);
+    const raw = new Map<string, number>();
+    for (const row of rows) {
+      const title = (row.title || "").toLowerCase();
+      const content = (row.content || "").toLowerCase();
+      let score = 0;
+      for (const token of tokens) {
+        if (title.includes(token)) score += 2;
+        if (content.includes(token)) score += 1;
       }
+      if (score > 0) raw.set(row.id, score);
+    }
 
-      return normalizeScoreMap(raw);
+    return normalizeScoreMap(raw);
+  }
+
+  private lexicalSearch(request: SearchRequest, internalLimit: number): Map<string, number> {
+    if (
+      request.safe_mode === true ||
+      !this.deps.ftsEnabled ||
+      internalLimit <= 25 ||
+      this.isBroadShortLexicalQuery(request.query)
+    ) {
+      return this.boundedRecentLexicalScan(request, internalLimit);
     }
 
     const runFtsQuery = (ftsQuery: string): Array<{ id: string; bm25: number }> => {
       const params: unknown[] = [];
-      const latencySafeMode = request.safe_mode === true;
       let sql = `
         SELECT
           o.id AS id,
-          ${latencySafeMode ? "1.0" : "bm25(mem_observations_fts, 0, 3.0, 1.0)"} AS bm25
+          bm25(mem_observations_fts, 0, 3.0, 1.0) AS bm25
         FROM mem_observations_fts
         JOIN mem_observations o ON o.rowid = mem_observations_fts.rowid
         WHERE mem_observations_fts MATCH ?
@@ -1722,7 +1734,7 @@ export class ObservationStore {
 
       params.push(ftsQuery);
       sql = this.applyCommonFilters(sql, params, "o", request);
-      sql += latencySafeMode ? " ORDER BY mem_observations_fts.rowid DESC LIMIT ?" : " ORDER BY bm25 ASC LIMIT ?";
+      sql += " ORDER BY bm25 ASC LIMIT ?";
       params.push(internalLimit);
 
       return this.deps.db
@@ -1743,6 +1755,13 @@ export class ObservationStore {
     return normalizeScoreMap(raw);
   }
 
+  private isBroadShortLexicalQuery(query: string): boolean {
+    const tokens = query.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+    if (tokens.length === 0 || tokens.length > 2) return false;
+
+    return tokens.every((token) => /^[a-z]{2,16}$/i.test(token));
+  }
+
   // ---------------------------------------------------------------------------
   // vectorSearch
   // ---------------------------------------------------------------------------
@@ -1757,10 +1776,29 @@ export class ObservationStore {
       request.project && request.strict_project !== false
         ? Math.min(1500, Math.max(600, internalLimit * 12))
         : Math.min(2000, Math.max(800, internalLimit * 20));
+    const sqliteFallbackWindow = clampLimit(
+      Number(process.env.HARNESS_MEM_VECTOR_SQLITE_FALLBACK_WINDOW || 300),
+      300,
+      50,
+      strictProjectWindow,
+    );
+    const sqliteVecKMaxRaw = Number(process.env.HARNESS_MEM_SQLITE_VEC_K_MAX ?? 1200);
+    const sqliteVecKMax =
+      Number.isFinite(sqliteVecKMaxRaw) && sqliteVecKMaxRaw > 0
+        ? Math.floor(sqliteVecKMaxRaw)
+        : 1200;
+    const degradedReasons = new Set<string>();
+    const addDegradedReason = (reason: string): void => {
+      degradedReasons.add(`vector search degraded: ${reason}`);
+    };
+
+    const selectMigrationModel = (models: string[]): string => {
+      return models.find((model) => model.includes(":general:")) ?? models[0] ?? this.deps.getVectorModelVersion();
+    };
 
     const mergeScoreSets = (
       scoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }>,
-      migrationModel: string
+      migrationModel: string,
     ): VectorSearchResult => {
       const fused = new Map<string, number>();
       let matchedRows = 0;
@@ -1776,10 +1814,15 @@ export class ObservationStore {
         scores: normalized,
         coverage: matchedRows === 0 ? 0 : normalized.size / matchedRows,
         migrationWarning,
+        degradedReasons: degradedReasons.size > 0 ? [...degradedReasons] : undefined,
       };
     };
 
-    const runBruteForce = (model: string, queryVector: number[]): Array<{ id: string; score: number }> => {
+    const runBruteForce = (
+      model: string,
+      queryVector: number[],
+      windowLimit = strictProjectWindow,
+    ): Array<{ id: string; score: number }> => {
       const p: unknown[] = [model, this.deps.vectorDimension];
       let q = `
         SELECT
@@ -1791,8 +1834,8 @@ export class ObservationStore {
         WHERE v.model = ? AND v.dimension = ?
       `;
       q = this.applyCommonFilters(q, p, "o", request);
-      q += " ORDER BY o.created_at DESC LIMIT ?";
-      p.push(strictProjectWindow);
+      q += " ORDER BY v.rowid DESC LIMIT ?";
+      p.push(windowLimit);
 
       const bfRows = this.deps.db
         .query(q)
@@ -1855,9 +1898,9 @@ export class ObservationStore {
       ];
 
       if (this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()) {
+        let sqliteFallbackReason: string | null = null;
         try {
           const sqliteScoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }> = [];
-          let sqliteReady = true;
 
           for (const target of searchTargets) {
             const tableName = getSqliteVecTableName(target.model);
@@ -1872,36 +1915,23 @@ export class ObservationStore {
               .get(tableName, mapTableName);
 
             if (Number(tableCount?.count ?? 0) < 2) {
-              sqliteReady = false;
-              break;
+              sqliteFallbackReason = `sqlite-vec tables missing for ${target.model}`;
+              addDegradedReason(sqliteFallbackReason);
+              continue;
             }
 
+            const sqliteVecK = Math.min(
+              sqliteVecKMax,
+              Math.max(
+                internalLimit * (request.project && request.strict_project !== false ? 12 : 4),
+                internalLimit * 3,
+              ),
+            );
             const params: unknown[] = [
-              JSON.stringify(target.vector),
-              internalLimit * 3,
-              target.model,
-              this.deps.vectorDimension,
+              serializeSqliteVecFloat32(target.vector),
+              sqliteVecK,
             ];
-            let sql = `
-              SELECT
-                c.id AS id,
-                c.distance AS distance,
-                o.created_at AS created_at
-              FROM (
-                SELECT
-                  m.observation_id AS id,
-                  v.distance AS distance
-                FROM ${tableName} v
-                JOIN ${mapTableName} m ON m.rowid = v.rowid
-                WHERE v.embedding MATCH ? AND k = ?
-              ) c
-              JOIN mem_vectors mv
-                ON mv.observation_id = c.id
-                AND mv.model = ?
-                AND mv.dimension = ?
-              JOIN mem_observations o ON o.id = c.id
-              WHERE 1 = 1
-            `;
+            let sql = buildSqliteVecKnnCandidateSql(tableName, mapTableName);
             sql = this.applyCommonFilters(sql, params, "o", request);
             sql += " ORDER BY c.distance ASC LIMIT ?";
             params.push(internalLimit);
@@ -1927,12 +1957,38 @@ export class ObservationStore {
             });
           }
 
-          if (sqliteReady && sqliteScoreSets.length > 0) {
-            return mergeScoreSets(sqliteScoreSets, primaryModel);
+          if (sqliteScoreSets.length > 0) {
+            return mergeScoreSets(sqliteScoreSets, selectMigrationModel(searchTargets.map((target) => target.model)));
           }
+          sqliteFallbackReason ||= "sqlite-vec returned no usable target";
         } catch {
+          sqliteFallbackReason = "sqlite-vec query failed";
+          addDegradedReason(sqliteFallbackReason);
           this.deps.setVecTableReady(false);
         }
+
+        addDegradedReason(
+          `bounded JS fallback (${sqliteFallbackWindow} rows, primary target only): ${sqliteFallbackReason}`,
+        );
+        const primaryTarget = searchTargets[0] ? [searchTargets[0]] : [];
+        const bruteForceSets = primaryTarget.map((target) => {
+          const scored = runBruteForce(target.model, target.vector, sqliteFallbackWindow);
+          scored.sort((lhs, rhs) => rhs.score - lhs.score);
+          const sliced = scored.slice(0, internalLimit);
+
+          const raw = new Map<string, number>();
+          for (const entry of sliced) {
+            raw.set(entry.id, entry.score);
+          }
+
+          return {
+            weight: target.weight,
+            scores: normalizeScoreMap(raw),
+            matchedRows: scored.length,
+          };
+        });
+
+        return mergeScoreSets(bruteForceSets, selectMigrationModel(primaryTarget.map((target) => target.model)));
       }
 
       const bruteForceSets = searchTargets.map((target) => {
@@ -1952,7 +2008,7 @@ export class ObservationStore {
         };
       });
 
-      return mergeScoreSets(bruteForceSets, primaryModel);
+      return mergeScoreSets(bruteForceSets, selectMigrationModel(searchTargets.map((target) => target.model)));
     };
 
     const initialPlan = resolveEmbeddingPlan(request.query);
@@ -1984,6 +2040,7 @@ export class ObservationStore {
       scores: normalizeScoreMap(fused),
       coverage: coverageTotal / variantResults.length,
       migrationWarning: variantResults.find((result) => !!result.migrationWarning)?.migrationWarning,
+      degradedReasons: degradedReasons.size > 0 ? [...degradedReasons] : undefined,
     };
   }
 
@@ -2072,9 +2129,11 @@ export class ObservationStore {
     const totals = this.deps.db
       .query(
         `SELECT
-           COUNT(DISTINCT observation_id) AS total,
-           COUNT(DISTINCT CASE WHEN model = ? THEN observation_id END) AS current_count
-         FROM mem_vectors`
+           COUNT(DISTINCT o.id) AS total,
+           COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
+         FROM mem_observations o
+         LEFT JOIN mem_vectors v ON v.observation_id = o.id
+         WHERE 1=1${archivedFilterSql("o", false)}`
       )
       .get(currentModel) as { total: number; current_count: number } | null;
 
@@ -2082,6 +2141,10 @@ export class ObservationStore {
     const total = Number(totals.total);
     const current = Number(totals.current_count);
     if (current >= total) {
+      this.migrationComplete = true;
+      return null;
+    }
+    if (current / total >= VECTOR_MIGRATION_WARNING_THRESHOLD) {
       this.migrationComplete = true;
       return null;
     }
@@ -2127,6 +2190,10 @@ export class ObservationStore {
     // RQ-010: cat-3 multi-hop 強化 — デフォルトホップ数を 3 → 4 に増加
     const rawHops = this.deps.config?.graphMaxHops ?? 4;
     const MAX_DEPTH = Math.min(Math.max(rawHops, 1), 5);
+    const MAX_GRAPH_CANDIDATES = Math.min(
+      40,
+      Math.max(20, clampLimit(request.limit, 20, 1, 100) * 2),
+    );
     const DECAY = 0.5;
 
     const graphScores = new Map<string, number>();
@@ -2200,6 +2267,9 @@ export class ObservationStore {
 
       const nextFrontier = new Map<string, number>();
       for (const row of rows) {
+        if (graphScores.size >= MAX_GRAPH_CANDIDATES && !graphScores.has(row.id)) {
+          continue;
+        }
         const id = typeof row.id === "string" ? row.id : "";
         const fromId = typeof row.from_id === "string" ? row.from_id : "";
         const toId = typeof row.to_id === "string" ? row.to_id : "";
@@ -2702,9 +2772,10 @@ export class ObservationStore {
       return { ranked, pre, post: pre };
     }
 
+    const rerankCandidates = ranked.slice(0, SEMANTIC_RERANK_CANDIDATE_LIMIT);
     const reranked = this.deps.getReranker()!.rerank({
       query,
-      items: this.buildRerankInput(ranked, observations),
+      items: this.buildRerankInput(rerankCandidates, observations),
     });
     const rerankScoreById = new Map<string, number>();
     const rerankOrderById = new Map<string, number>();
@@ -3496,6 +3567,8 @@ export class ObservationStore {
       ? 0
       : typeof request.graph_weight === "number"
         ? request.graph_weight
+        : this.isBroadShortLexicalQuery(normalizedRequest.query)
+          ? 0
         : DEFAULT_GRAPH_WEIGHT;
     const queryProximityScores = new Map<string, number>();
     if (graphWeight > 0 && candidateIds.size > 0) {
@@ -3987,11 +4060,15 @@ export class ObservationStore {
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };
     // Append migration warning when vectors are in a mixed-model state
-    if (vectorResult.migrationWarning) {
+    if (vectorResult.migrationWarning || vectorResult.degradedReasons?.length) {
       const existingWarnings = Array.isArray(meta.warnings)
         ? (meta.warnings as string[])
         : [];
-      meta.warnings = [...existingWarnings, vectorResult.migrationWarning];
+      meta.warnings = [
+        ...existingWarnings,
+        ...(vectorResult.migrationWarning ? [vectorResult.migrationWarning] : []),
+        ...(vectorResult.degradedReasons ?? []),
+      ];
     }
     meta.token_estimate = buildTokenEstimateMeta({
       input: {
@@ -4015,6 +4092,7 @@ export class ObservationStore {
         expand_links: expandLinks,
         weights,
         vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
+        vector_degraded_reasons: vectorResult.degradedReasons ?? [],
         vector_search_enabled: vectorSearchEnabled,
         embedding_provider: this.deps.getEmbeddingProviderName(),
         embedding_model: this.deps.embeddingProviderModel,

@@ -182,6 +182,33 @@ harness-mem doctor --mcp-transport http
 
 HTTP gateway はまだ recommended/default ではない。複数セッションの process 数を抑えたい時だけ opt-in で使う。
 
+## 過去セッションの Backfill
+
+Hermes の過去会話は `~/.hermes/state.db` に入っている。harness-mem 側へあとから移す場合は、Backfill を使う。
+
+まず書き込みなしで件数を確認:
+
+```bash
+harness-mem ingest-hermes-state \
+  --source ~/.hermes/state.db \
+  --project-key your-project-key \
+  --dry-run \
+  --json
+```
+
+問題なければ実行:
+
+```bash
+harness-mem ingest-hermes-state \
+  --source ~/.hermes/state.db \
+  --project-key your-project-key \
+  --execute \
+  --batch-size 100 \
+  --json
+```
+
+Backfill は `session_start` / `user_prompt` / `checkpoint` / `tool_use` / `session_end` として記録する。再実行は dedupe される。tool result 本文は既定では保存せず、metadata のみ残す。本文も必要な場合だけ `--include-tool-content` を付ける。
+
 ## セッション継続性 (`session_id` / `project_key`)
 
 harness-mem は `project_key` でメモリ空間を分離する。Hermes と他ツール（Claude Code / Codex 等）で同じ `HARNESS_MEM_PROJECT_KEY` を指定すれば、検索・resume の結果も共有される。
@@ -223,7 +250,7 @@ plugins:
     - harness-mem-bridge
 ```
 
-詳細は [`plugin/README.md`](plugin/README.md) を参照。tier 3 (experimental) — per-message hookは Hermes 側に無いため、turn粒度の event は別途 JSONL ingest で補完予定 (Plans.md §111 S111-006)。
+詳細は [`plugin/README.md`](plugin/README.md) を参照。tier 3 (experimental) — per-message hookは Hermes 側に無いため、過去履歴は `~/.hermes/state.db` Backfill で補完する。
 
 ## 詳細・トラブルシューティング
 

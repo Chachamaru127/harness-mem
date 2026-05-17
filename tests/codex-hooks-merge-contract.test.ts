@@ -65,10 +65,14 @@ HARNESS_MEM_DB_PATH = "${join(tmpHome, ".harness-mem", "harness-mem.db")}"
   );
 }
 
-function writeComputerUseChainedNotifyConfig(tmpHome: string, includeManagedHarnessNotify = false): void {
+function writeComputerUseChainedNotifyConfig(
+  tmpHome: string,
+  includeManagedHarnessNotify = false,
+  slashEscape = "\\/"
+): void {
   const codexDir = join(tmpHome, ".codex");
   const notifyScript = `${ROOT}/scripts/hook-handlers/memory-codex-notify.sh`;
-  const escapedNotifyScript = notifyScript.split("/").join("\\/");
+  const escapedNotifyScript = notifyScript.split("/").join(slashEscape);
   mkdirSync(codexDir, { recursive: true });
   writeFileSync(
     join(codexDir, "config.toml"),
@@ -297,6 +301,38 @@ describe("codex hooks merge contract", () => {
 
     try {
       writeComputerUseChainedNotifyConfig(tmpHome);
+
+      const result = await runHarnessMem(
+        ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+        }
+      );
+
+      expect(result.code).toBe(0);
+
+      const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      const notifyMatches = configText.match(/^notify\s*=/gm) ?? [];
+      expect(notifyMatches).toHaveLength(1);
+      expect(configText).toContain("--previous-notify");
+      expect(configText).toContain("memory-codex-notify.sh");
+      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
+      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expect(configText).not.toContain("# >>> harness-mem codex notify");
+      expect(configText).not.toContain("/tmp/missing-harness");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("setup preserves double-escaped Computer Use notify chain while repairing stale harness MCP wiring", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-codex-computer-use-double-escaped-notify-"));
+
+    try {
+      writeComputerUseChainedNotifyConfig(tmpHome, false, "\\\\/");
 
       const result = await runHarnessMem(
         ["setup", "--platform", "codex", "--skip-start", "--skip-smoke", "--skip-quality", "--skip-version-check"],

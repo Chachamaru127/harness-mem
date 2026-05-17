@@ -155,6 +155,7 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     "/v1/ingest/gemini-events",
     "/v1/ingest/claude-code-history",
     "/v1/ingest/claude-code-sessions",
+    "/v1/ingest/hermes-state",
     "/v1/links/create",
     "/v1/observations/bulk-delete",
     "/v1/observations/share",
@@ -325,6 +326,21 @@ function parseIntegerLike(value: unknown): number | undefined {
     if (Number.isFinite(parsed)) {
       return Math.trunc(parsed);
     }
+  }
+  return undefined;
+}
+
+function parseNumberLike(value: unknown): number | undefined {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === "string") {
+    const normalized = value.trim();
+    if (!normalized) {
+      return undefined;
+    }
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : undefined;
   }
   return undefined;
 }
@@ -1208,6 +1224,22 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         return jsonResponse(core.ingestClaudeCodeHistory());
       }
 
+      if (request.method === "POST" && url.pathname === "/v1/ingest/hermes-state") {
+        const body = await parseRequestJson(request);
+        return jsonResponse(
+          await core.ingestHermesState({
+            source_db_path: typeof body.source_db_path === "string" ? body.source_db_path : "",
+            project: typeof body.project === "string" ? body.project : undefined,
+            dry_run: parseBooleanLike(body.dry_run, true),
+            limit: parseIntegerLike(body.limit),
+            since: typeof body.since === "string" || typeof body.since === "number" ? body.since : undefined,
+            after_message_id: parseIntegerLike(body.after_message_id),
+            max_content_chars: parseIntegerLike(body.max_content_chars),
+            include_tool_content: parseBooleanLike(body.include_tool_content, false),
+          })
+        );
+      }
+
       if (request.method === "POST" && url.pathname === "/v1/ingest/github-issues") {
         const body = await parseRequestJson(request);
         return jsonResponse(
@@ -1251,8 +1283,44 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
 	      if (request.method === "POST" && url.pathname === "/v1/admin/reindex-vectors") {
 	        const body = await parseRequestJson(request);
-	        return jsonResponse(core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
+	        return jsonResponse(await core.reindexVectors(typeof body.limit === "number" ? body.limit : undefined));
 	      }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/vector-backfill/start") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.startVectorBackfillWorker({
+            model: typeof body.model === "string" ? body.model : undefined,
+            dimension: parseIntegerLike(body.dimension),
+            compact_batch_size: parseIntegerLike(body.compact_batch_size),
+            reindex_batch_size: parseIntegerLike(body.reindex_batch_size),
+            interval_ms: parseIntegerLike(body.interval_ms),
+            target_coverage: parseNumberLike(body.target_coverage),
+            reset: parseBooleanLike(body.reset, false),
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/vector-backfill/stop") {
+          return jsonResponse(core.stopVectorBackfillWorker());
+        }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/vector-backfill/status") {
+          return jsonResponse(core.getVectorBackfillWorkerStatus());
+        }
+
+        if (
+          request.method === "POST" &&
+          (url.pathname === "/v1/admin/sqlite-vec/repair-map" ||
+            url.pathname === "/v1/admin/repair-sqlite-vec-map")
+        ) {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.repairSqliteVecMap({
+            model: typeof body.model === "string" ? body.model : undefined,
+            dimension: parseIntegerLike(body.dimension),
+            limit: parseIntegerLike(body.limit),
+            execute: parseBooleanLike(body.execute, false),
+            rebuild_existing: parseBooleanLike(body.rebuild_existing, false),
+          }));
+        }
 
 	      if (request.method === "POST" && url.pathname === "/v1/admin/cleanup-duplicates") {
 	        const body = await parseRequestJson(request);
