@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-05-17
+
+### ユーザー向け要約
+
+- **大きなローカル DB の vector compact / reindex backfill を、リクエスト外 worker として安全に進められるようにした**。小さな batch、進捗保存、再開、停止、coverage 表示に対応。
+- **Hermes の過去 state ingest/backfill flow を追加**。Hermes lifecycle capture、historical import、harness-mem 本体の vector backfill を混同しないよう、実装とドキュメントを整理。
+- **検索の graph expansion を bounded 化**。dense なリンクグラフでも候補を増やしすぎず、小さな `vector_search=true` 検索が release latency gate 内に収まるようにした。
+- **Codex config の二重エスケープ notify path を認識**。Computer Use 経由で `\\/Users/...` のように保存された harness-mem notify path も正しく検出し、既存 notify chain を壊さず修復できる。
+- **vector backfill child process の Windows 互換性を修正**。Unix 専用の `nice` に依存せず、Windows 配布でも backfill worker を起動できるようにした。
+
 ## [0.22.2] - 2026-05-14
 
 ### ユーザー向け要約
@@ -893,7 +903,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...HEAD
+[0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
 [0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
 [0.22.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.21.2...v0.22.0
