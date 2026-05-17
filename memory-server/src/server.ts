@@ -2061,7 +2061,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const currentSessionId = url.searchParams.get("current_session_id") || url.searchParams.get("session_id");
         const now = url.searchParams.get("now") || new Date().toISOString();
         const workStore = createWorkStore(core.getRawDb());
-        const workItems = workStore.listWorkItems(project);
+        const workItems = workStore
+          .listWorkItems()
+          .filter((item) => item.project === project || core.projectMatchesSelection(project, item.project));
         const workIds = new Set(workItems.map((item) => item.workId));
         const dependencies = workStore
           .listDependencies()

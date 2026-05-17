@@ -145,6 +145,26 @@ describe("WorkGraph HTTP query API", () => {
     }
   });
 
+  test("GET /v1/work/query accepts canonical project labels from the UI", async () => {
+    const runtime = createRuntime("canonical-label");
+    const project = "/repo/harness-mem";
+    try {
+      seedWorkGraph(runtime.core, project);
+      const { status, body } = await getJson(
+        runtime.baseUrl,
+        `/v1/work/query?project=harness-mem&mode=next&now=${encodeURIComponent("2026-05-17T10:00:00.000Z")}`
+      );
+
+      expect(status).toBe(200);
+      expect((body.meta as Record<string, unknown>).ranking).toBe("work_next_v1");
+      expect((body.meta as Record<string, unknown>).next_work_id).toBe("S125-009");
+      const items = body.items as Array<Record<string, unknown>>;
+      expect(items.map((item) => item.work_id)).toContain("S125-009");
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("GET /v1/work/query accepts cwd scope for ready work", async () => {
     const runtime = createRuntime("ready");
     const cwd = "/repo/harness-mem";
