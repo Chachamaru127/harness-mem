@@ -6,6 +6,7 @@ import { HarnessMemGraph } from "../components/HarnessMemGraph";
 import { HeaderBar } from "../components/HeaderBar";
 import { ProjectSidebar } from "../components/ProjectSidebar";
 import { SettingsModal } from "../components/SettingsModal";
+import { WorkGraphPanel } from "../components/WorkGraphPanel";
 import { useFeedPagination } from "../hooks/useFeedPagination";
 import { useSSE } from "../hooks/useSSE";
 import { useSettings } from "../hooks/useSettings";
@@ -385,6 +386,17 @@ export default function App() {
             <button
               type="button"
               role="tab"
+              id="tab-workgraph"
+              className={`tab ${settings.activeTab === "workgraph" ? "active" : ""}`}
+              aria-selected={settings.activeTab === "workgraph"}
+              aria-controls="panel-workgraph"
+              onClick={() => updateSetting("activeTab", "workgraph")}
+            >
+              WorkGraph
+            </button>
+            <button
+              type="button"
+              role="tab"
               id="tab-audit-log"
               className={`tab ${settings.activeTab === "audit-log" ? "active" : ""}`}
               aria-selected={settings.activeTab === "audit-log"}
@@ -413,6 +425,10 @@ export default function App() {
                 project={selectedProject !== "__all__" ? selectedProject : undefined}
                 depth={2}
               />
+            </div>
+          ) : settings.activeTab === "workgraph" ? (
+            <div role="tabpanel" id="panel-workgraph" aria-labelledby="tab-workgraph">
+              <WorkGraphPanel project={effectiveSelectedProject !== "__all__" ? effectiveSelectedProject : undefined} />
             </div>
           ) : settings.activeTab === "audit-log" ? (
             <div role="tabpanel" id="panel-audit-log" aria-labelledby="tab-audit-log">

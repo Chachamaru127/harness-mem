@@ -2053,8 +2053,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         }
 
         const mode = (url.searchParams.get("mode") || "next").trim();
-        if (mode !== "next" && mode !== "ready") {
-          return badRequest("mode must be next or ready");
+        if (mode !== "next" && mode !== "ready" && mode !== "blocked") {
+          return badRequest("mode must be next, ready, or blocked");
         }
 
         const limit = parseIntegerLike(url.searchParams.get("limit"));
@@ -2070,6 +2070,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           .listActive()
           .filter((lease) => lease.target.startsWith("work:") && (lease.project === null || lease.project === project));
         const readiness = evaluateWorkReadiness({ workItems, dependencies, activeLeases, now });
+        const provenanceFor = (workId: string) => ({
+          links: workStore.listLinks(workId).map((link) => ({
+            target_type: link.targetType,
+            target_id: link.targetId,
+            relation: link.relation,
+            created_at: link.createdAt,
+          })),
+          events: workStore.listEvents(workId).map((event) => ({
+            event_type: event.eventType,
+            actor: event.actor,
+            session_id: event.sessionId,
+            created_at: event.createdAt,
+          })),
+        });
 
         if (mode === "ready") {
           const byWorkId = new Map(workItems.map((item) => [item.workId, item]));
@@ -2083,6 +2097,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                 status: item?.status ?? "open",
                 ready: true,
                 reasons: decision.reasons,
+                provenance: provenanceFor(decision.workId),
               };
             });
           return rawJsonResponse({
@@ -2097,6 +2112,39 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               ranking: "work_ready_v1",
               total_work_items: workItems.length,
               blocked_work_items: readiness.decisions.filter((decision) => !decision.ready).length,
+            },
+          });
+        }
+
+        if (mode === "blocked") {
+          const byWorkId = new Map(workItems.map((item) => [item.workId, item]));
+          const items = readiness.decisions
+            .filter((decision) => !decision.ready)
+            .map((decision) => {
+              const item = byWorkId.get(decision.workId);
+              return {
+                work_id: decision.workId,
+                title: item?.title ?? "",
+                status: item?.status ?? "open",
+                assignee: item?.assignee ?? null,
+                ready: false,
+                reasons: decision.reasons,
+                provenance: provenanceFor(decision.workId),
+              };
+            });
+          return rawJsonResponse({
+            ok: true,
+            source: "workgraph",
+            items,
+            meta: {
+              count: items.length,
+              latency_ms: Date.now() - startedAt,
+              sla_latency_ms: 0,
+              filters: { project, mode, limit: limit ?? null },
+              ranking: "work_blocked_v1",
+              total_work_items: workItems.length,
+              ready_work_items: readiness.readyWorkIds.length,
+              blocked_work_items: items.length,
             },
           });
         }
@@ -2116,6 +2164,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           title: candidate.title ?? "",
           score: candidate.score,
           reasons: candidate.reasons,
+          provenance: provenanceFor(candidate.workId),
         }));
         return rawJsonResponse({
           ok: true,

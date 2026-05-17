@@ -244,6 +244,9 @@ Bun.serve({
     if (url.pathname === "/api/graph" && request.method === "GET") {
       return proxyJson(`/v1/graph${url.search || ""}`, "GET");
     }
+    if (url.pathname === "/api/work/query" && request.method === "GET") {
+      return proxyJson(`/v1/work/query${url.search || ""}`, "GET");
+    }
 
     const safePath = safePathname(url.pathname);
     if (!safePath) {

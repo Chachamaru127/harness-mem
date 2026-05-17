@@ -86,6 +86,61 @@ test.beforeEach(async ({ page }) => {
     });
   });
 
+  await page.route("**/api/work/query**", async (route) => {
+    const url = new URL(route.request().url());
+    const mode = url.searchParams.get("mode");
+    const items = mode === "next"
+      ? [
+          {
+            rank: 1,
+            work_id: "S125-014",
+            title: "Mem UI WorkGraph explainability",
+            status: "open",
+            score: 72,
+            reasons: [{ code: "priority", message: "priority 1" }],
+            provenance: {
+              links: [{ target_type: "observation", target_id: "obs-1", relation: "evidence" }],
+              events: [{ event_type: "suggested_close", actor: "hook" }],
+            },
+          },
+        ]
+      : mode === "ready"
+        ? [
+            {
+              work_id: "S125-015",
+              title: "WorkGraph release gate",
+              status: "open",
+              ready: true,
+              reasons: [],
+              provenance: { links: [], events: [] },
+            },
+          ]
+        : [
+            {
+              work_id: "S125-010",
+              title: "Claim integration",
+              status: "in_progress",
+              assignee: "agent-a",
+              ready: false,
+              reasons: [{ code: "leased", message: "work is leased by agent-a", lease: { target: "work:S125-010", agentId: "agent-a" } }],
+              provenance: {
+                links: [{ target_type: "lease", target_id: "lease-1", relation: "claimed" }],
+                events: [{ event_type: "claimed", actor: "agent-a" }],
+              },
+            },
+          ];
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        source: "workgraph",
+        items,
+        meta: { count: items.length, latency_ms: 1, filters: {}, ranking: `work_${mode}_v1` },
+      }),
+    });
+  });
+
   await page.route("**/api/stream**", async (route) => {
     const body = [
       "event: ready",
@@ -151,4 +206,16 @@ test("switches to japanese mode", async ({ page }) => {
 
   await expect(page.getByText("Harness メモリビューア")).toBeVisible();
   await expect(page.getByRole("button", { name: "設定" })).toBeVisible();
+});
+
+test("shows WorkGraph explainability", async ({ page }) => {
+  await page.goto("/");
+
+  await page.getByRole("tab", { name: "WorkGraph" }).click();
+  await expect(page.getByRole("heading", { name: "WorkGraph", exact: true })).toBeVisible();
+  await expect(page.getByText("Mem UI WorkGraph explainability")).toBeVisible();
+  await expect(page.getByText("Injection reason")).toBeVisible();
+  await expect(page.getByText("evidence:observation")).toBeVisible();
+  await expect(page.getByLabel("Blocked work").getByRole("heading", { name: "Claim integration" })).toBeVisible();
+  await expect(page.getByLabel("Claimed work").getByText("claimed:lease")).toBeVisible();
 });

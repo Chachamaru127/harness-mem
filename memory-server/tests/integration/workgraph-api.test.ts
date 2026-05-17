@@ -204,6 +204,46 @@ describe("WorkGraph HTTP query API", () => {
     }
   });
 
+  test("GET /v1/work/query mode=blocked explains claimed work with provenance", async () => {
+    const runtime = createRuntime("blocked");
+    const project = "/repo/harness-mem";
+    try {
+      seedWorkGraph(runtime.core, project);
+      const claimed = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "claim",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-a",
+        session_id: "session-s125",
+        ttl_ms: 600_000,
+        now: "2026-05-17T10:00:00.000Z",
+      });
+      const blocked = await getJson(
+        runtime.baseUrl,
+        `/v1/work/query?project=${encodeURIComponent(project)}&mode=blocked&now=${encodeURIComponent("2026-05-17T10:01:00.000Z")}`
+      );
+
+      expect(claimed.status).toBe(200);
+      expect(blocked.status).toBe(200);
+      expect((blocked.body.meta as Record<string, unknown>).ranking).toBe("work_blocked_v1");
+      const items = blocked.body.items as Array<Record<string, unknown>>;
+      const claimedItem = items.find((item) => item.work_id === "S125-009");
+      expect(claimedItem).toMatchObject({
+        work_id: "S125-009",
+        assignee: "agent-a",
+        ready: false,
+      });
+      expect((claimedItem?.reasons as Array<Record<string, unknown>>).map((reason) => reason.code)).toEqual(
+        expect.arrayContaining(["status", "leased"])
+      );
+      const provenance = claimedItem?.provenance as Record<string, Array<Record<string, unknown>>>;
+      expect(provenance.events).toContainEqual(expect.objectContaining({ event_type: "claimed", actor: "agent-a" }));
+      expect(provenance.links).toContainEqual(expect.objectContaining({ target_type: "lease", relation: "claimed" }));
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("POST /v1/work/update action=claim rejects double claim through existing lease", async () => {
     const runtime = createRuntime("claim");
     const project = "/repo/harness-mem";

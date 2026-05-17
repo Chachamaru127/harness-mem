@@ -1,6 +1,6 @@
 export type UiTheme = "light" | "dark" | "system";
 export type UiLanguage = "en" | "ja";
-export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "graph" | "audit-log";
+export type UiTab = "feed" | "environment" | "search" | "observation" | "session" | "graph" | "workgraph" | "audit-log";
 export type UiPlatformFilter = "__all__" | "claude" | "codex" | "opencode" | "cursor" | "gemini";
 export type UiDesignPreset = "bento" | "liquid" | "night";
 
@@ -95,7 +95,7 @@ export interface SearchFacetsItem {
 
 export interface ApiResponse<T> {
   ok: boolean;
-  source: "core" | "merged";
+  source: "core" | "merged" | "workgraph";
   items: T[];
   meta: {
     count: number;
@@ -106,6 +106,50 @@ export interface ApiResponse<T> {
     [key: string]: unknown;
   };
   error?: string;
+}
+
+export type WorkQueryMode = "next" | "ready" | "blocked";
+
+export interface WorkReason {
+  code: string;
+  message: string;
+  relatedWorkId?: string;
+  lease?: {
+    target: string;
+    agentId?: string;
+    expiresAt?: string;
+  };
+}
+
+export interface WorkProvenanceLink {
+  target_type: string;
+  target_id: string;
+  relation: string;
+  created_at?: string;
+}
+
+export interface WorkProvenanceEvent {
+  event_type: string;
+  actor: string;
+  session_id?: string | null;
+  created_at?: string;
+}
+
+export interface WorkProvenance {
+  links: WorkProvenanceLink[];
+  events: WorkProvenanceEvent[];
+}
+
+export interface WorkQueryItem {
+  rank?: number;
+  work_id: string;
+  title: string;
+  status?: string;
+  assignee?: string | null;
+  ready?: boolean;
+  score?: number;
+  reasons?: WorkReason[];
+  provenance?: WorkProvenance;
 }
 
 // V5-001: ナレッジグラフ サブグラフ取得結果

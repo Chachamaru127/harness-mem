@@ -6,6 +6,8 @@ import type {
   ProjectsStatsItem,
   SubgraphResult,
   UiContext,
+  WorkQueryItem,
+  WorkQueryMode,
 } from "./types";
 
 async function parseJson<T>(response: Response): Promise<T> {
@@ -148,6 +150,18 @@ export async function fetchAuditLog(params: {
   if (params.action) query.set("action", params.action);
   if (params.target_type) query.set("target_type", params.target_type);
   return request<ApiResponse<AuditLogItem>>(`/api/audit-log?${query.toString()}`);
+}
+
+export async function fetchWorkQuery(params: {
+  project?: string;
+  mode: WorkQueryMode;
+  limit?: number;
+}): Promise<ApiResponse<WorkQueryItem>> {
+  const query = new URLSearchParams();
+  if (params.project) query.set("project", params.project);
+  query.set("mode", params.mode);
+  if (typeof params.limit === "number") query.set("limit", String(params.limit));
+  return request<ApiResponse<WorkQueryItem>>(`/api/work/query?${query.toString()}`);
 }
 
 // V5-001: ナレッジグラフ サブグラフ取得
