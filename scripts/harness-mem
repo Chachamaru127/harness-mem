@@ -2092,6 +2092,12 @@ EOF
   return "$failed"
 }
 
+normalize_codex_escaped_paths() {
+  # Codex can store a JSON notify payload inside TOML, so slash escaping may be
+  # one or two layers deep: \/Users or \\/Users. Normalize both for path checks.
+  sed -e 's#\\\\/#/#g' -e 's#\\/#/#g'
+}
+
 check_codex_config_wiring() {
   local cfg="$1"
   local failed=0
@@ -2106,7 +2112,7 @@ check_codex_config_wiring() {
   local expected_notify_script="${HARNESS_ROOT}/scripts/hook-handlers/memory-codex-notify.sh"
   local normalized_cfg=""
   notify_script=""
-  normalized_cfg="$(sed 's#\\/#/#g' "$cfg")"
+  normalized_cfg="$(normalize_codex_escaped_paths <"$cfg")"
   if printf '%s\n' "$normalized_cfg" | grep -Fq "$expected_notify_script"; then
     notify_script="$expected_notify_script"
   elif grep -qE 'notify[[:space:]]*=[[:space:]]*\[' "$cfg"; then
@@ -2250,7 +2256,7 @@ rewrite_codex_harness_wiring() {
   tmp="$(mktemp)"
   cp "$cfg" "$backup" >/dev/null 2>&1 || true
 
-  normalized_cfg="$(sed 's#\\/#/#g' "$cfg")"
+  normalized_cfg="$(normalize_codex_escaped_paths <"$cfg")"
   has_expected_notify=0
   has_any_notify=0
   has_memory_notify=0
