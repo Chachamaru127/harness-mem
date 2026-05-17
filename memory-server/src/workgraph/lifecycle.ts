@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import type { LeaseRow, LeaseStore, TenantScope } from "../lease/lease-store";
+import type { SignalRow, SignalStore } from "../lease/signal-store";
 import { createWorkStore, type WorkItemRow } from "./work-store";
 
 export interface ClaimWorkInput {
@@ -20,6 +21,21 @@ export interface CloseWorkInput {
   leaseId?: string;
   reason?: string;
   sessionId?: string | null;
+  tenant?: TenantScope;
+  now?: string;
+}
+
+export interface HandoffWorkInput {
+  workId: string;
+  project: string;
+  fromAgent: string;
+  toAgent?: string | null;
+  content: string;
+  threadId?: string | null;
+  replyTo?: string | null;
+  sessionId?: string | null;
+  observationId?: string | null;
+  expiresInMs?: number;
   tenant?: TenantScope;
   now?: string;
 }
@@ -50,6 +66,19 @@ export type CloseWorkResult =
   | {
       ok: false;
       error: "not_found" | "lease_not_found" | "not_owner" | "lease_release_failed" | "invalid_status";
+      details?: string;
+    };
+
+export type HandoffWorkResult =
+  | {
+      ok: true;
+      work: WorkItemRow;
+      signal: SignalRow;
+      eventId: string;
+    }
+  | {
+      ok: false;
+      error: "not_found" | "invalid_from" | "invalid_content" | "reply_target_missing";
       details?: string;
     };
 
@@ -194,6 +223,80 @@ export function closeWork(db: Database, leaseStore: LeaseStore, input: CloseWork
       ok: true,
       work: updated,
       lease: release.lease,
+      eventId,
+    };
+  });
+
+  return tx();
+}
+
+export function handoffWork(db: Database, signalStore: SignalStore, input: HandoffWorkInput): HandoffWorkResult {
+  const now = input.now ?? new Date().toISOString();
+  const store = createWorkStore(db, { now: () => now });
+  const work = getScopedWork(store, input.workId, input.project);
+  if (!work) {
+    return { ok: false, error: "not_found" };
+  }
+
+  const tx = db.transaction((): HandoffWorkResult => {
+    const signalResult = signalStore.send({
+      from: input.fromAgent,
+      to: input.toAgent ?? null,
+      threadId: input.threadId ?? null,
+      replyTo: input.replyTo ?? null,
+      content: input.content,
+      project: input.project,
+      expiresInMs: input.expiresInMs,
+      userId: input.tenant?.userId,
+      teamId: input.tenant?.teamId,
+    });
+    if (!signalResult.ok) {
+      return { ok: false, error: signalResult.error };
+    }
+
+    const eventId = `work:${input.workId}:handoff:${signalResult.signal.signalId}`;
+    store.recordEvent({
+      eventId,
+      workId: input.workId,
+      eventType: "handoff",
+      actor: input.fromAgent,
+      sessionId: input.sessionId ?? work.sessionId,
+      createdAt: now,
+      payload: {
+        signal_id: signalResult.signal.signalId,
+        thread_id: signalResult.signal.threadId,
+        to_agent: signalResult.signal.to,
+      },
+    });
+    store.addLink({
+      workId: input.workId,
+      targetType: "signal",
+      targetId: signalResult.signal.signalId,
+      relation: "handoff",
+      createdAt: now,
+    });
+    if (input.sessionId) {
+      store.addLink({
+        workId: input.workId,
+        targetType: "session",
+        targetId: input.sessionId,
+        relation: "context",
+        createdAt: now,
+      });
+    }
+    if (input.observationId) {
+      store.addLink({
+        workId: input.workId,
+        targetType: "observation",
+        targetId: input.observationId,
+        relation: "evidence",
+        createdAt: now,
+      });
+    }
+    return {
+      ok: true,
+      work,
+      signal: signalResult.signal,
       eventId,
     };
   });

@@ -243,4 +243,48 @@ describe("WorkGraph HTTP query API", () => {
       runtime.stop();
     }
   });
+
+  test("POST /v1/work/update action=handoff sends threaded signal and links work", async () => {
+    const runtime = createRuntime("handoff");
+    const project = "/repo/harness-mem";
+    try {
+      seedWorkGraph(runtime.core, project);
+      const first = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "handoff",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-a",
+        to_agent: "agent-b",
+        content: "Continue with S125-011 verification.",
+        session_id: "session-s125",
+        observation_id: "obs-s125",
+        now: "2026-05-17T10:00:00.000Z",
+      });
+      const firstItem = (first.body.items as Array<Record<string, unknown>>)[0];
+      const reply = await postJson(runtime.baseUrl, "/v1/work/update", {
+        action: "handoff",
+        project,
+        work_id: "S125-009",
+        agent_id: "agent-b",
+        to_agent: "agent-a",
+        content: "Acknowledged.",
+        reply_to: firstItem?.signal_id,
+        now: "2026-05-17T10:01:00.000Z",
+      });
+
+      expect(first.status).toBe(200);
+      expect(reply.status).toBe(200);
+      expect((reply.body.items as Array<Record<string, unknown>>)[0]?.thread_id).toBe(firstItem?.thread_id);
+      const links = createWorkStore(runtime.core.getRawDb()).listLinks("S125-009");
+      expect(links).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ targetType: "signal", targetId: firstItem?.signal_id, relation: "handoff" }),
+          expect.objectContaining({ targetType: "session", targetId: "session-s125", relation: "context" }),
+          expect.objectContaining({ targetType: "observation", targetId: "obs-s125", relation: "evidence" }),
+        ])
+      );
+    } finally {
+      runtime.stop();
+    }
+  });
 });

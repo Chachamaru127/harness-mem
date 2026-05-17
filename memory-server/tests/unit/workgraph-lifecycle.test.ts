@@ -2,7 +2,8 @@ import { Database } from "bun:sqlite";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { initSchema, configureDatabase } from "../../src/db/schema";
 import { createLeaseStore, type LeaseStore } from "../../src/lease/lease-store";
-import { calculateClaimLeaseMetrics, claimWork, closeWork } from "../../src/workgraph/lifecycle";
+import { createSignalStore, type SignalStore } from "../../src/lease/signal-store";
+import { calculateClaimLeaseMetrics, claimWork, closeWork, handoffWork } from "../../src/workgraph/lifecycle";
 import { createWorkStore, type WorkStore } from "../../src/workgraph/work-store";
 
 function makeDb(): Database {
@@ -16,6 +17,7 @@ describe("WorkGraph lifecycle lease integration", () => {
   let db: Database;
   let store: WorkStore;
   let leaseStore: LeaseStore;
+  let signalStore: SignalStore;
   let nowMs: number;
 
   beforeEach(() => {
@@ -24,6 +26,10 @@ describe("WorkGraph lifecycle lease integration", () => {
     leaseStore = createLeaseStore(db, {
       now: () => nowMs,
       idGenerator: () => `lease-${nowMs}`,
+    });
+    signalStore = createSignalStore(db, {
+      now: () => nowMs,
+      idGenerator: () => `signal-${nowMs}`,
     });
     store = createWorkStore(db, {
       now: () => new Date(nowMs).toISOString(),
@@ -143,5 +149,45 @@ describe("WorkGraph lifecycle lease integration", () => {
       closedAt: null,
     });
     expect(leaseStore.get(claimed.lease.leaseId)).toMatchObject({ status: "active" });
+  });
+
+  test("handoff sends a threaded signal and links signal, session, and observation evidence", () => {
+    const first = handoffWork(db, signalStore, {
+      workId: "S125-010",
+      project: "/repo/harness-mem",
+      fromAgent: "agent-a",
+      toAgent: "agent-b",
+      content: "Please continue from the claim/close tests.",
+      sessionId: "session-1",
+      observationId: "obs-1",
+      now: "2026-05-17T10:00:00.000Z",
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error("handoff failed");
+
+    nowMs += 1_000;
+    const reply = handoffWork(db, signalStore, {
+      workId: "S125-010",
+      project: "/repo/harness-mem",
+      fromAgent: "agent-b",
+      toAgent: "agent-a",
+      content: "Acknowledged.",
+      replyTo: first.signal.signalId,
+      sessionId: "session-1",
+      now: "2026-05-17T10:00:01.000Z",
+    });
+    expect(reply.ok).toBe(true);
+    if (!reply.ok) throw new Error("handoff reply failed");
+
+    expect(reply.signal.threadId).toBe(first.signal.threadId);
+    expect(store.listEvents("S125-010").map((event) => event.eventType)).toEqual(["handoff", "handoff"]);
+    expect(store.listLinks("S125-010")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ targetType: "signal", targetId: first.signal.signalId, relation: "handoff" }),
+        expect.objectContaining({ targetType: "signal", targetId: reply.signal.signalId, relation: "handoff" }),
+        expect.objectContaining({ targetType: "session", targetId: "session-1", relation: "context" }),
+        expect.objectContaining({ targetType: "observation", targetId: "obs-1", relation: "evidence" }),
+      ])
+    );
   });
 });

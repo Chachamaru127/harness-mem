@@ -16,7 +16,7 @@ import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js"
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
 import { createSignalStore, type SignalStore } from "./lease/signal-store";
-import { claimWork, closeWork } from "./workgraph/lifecycle";
+import { claimWork, closeWork, handoffWork } from "./workgraph/lifecycle";
 import { rankNextWork } from "./workgraph/next";
 import { evaluateWorkReadiness } from "./workgraph/ready";
 import { createWorkStore } from "./workgraph/work-store";
@@ -2150,8 +2150,8 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (!workId || !agentId) {
           return badRequest("work_id and agent_id are required");
         }
-        if (action !== "claim" && action !== "close") {
-          return badRequest("action must be claim or close");
+        if (action !== "claim" && action !== "close" && action !== "handoff") {
+          return badRequest("action must be claim, close, or handoff");
         }
 
         const now = typeof body.now === "string" ? body.now : new Date().toISOString();
@@ -2169,13 +2169,28 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               tenant: { userId: acc.user_id, teamId: acc.team_id },
               now,
             })
-          : closeWork(core.getRawDb(), leaseStore, {
+          : action === "close"
+          ? closeWork(core.getRawDb(), leaseStore, {
               workId,
               project,
               agentId,
               leaseId: typeof body.lease_id === "string" ? body.lease_id : undefined,
               reason: typeof body.reason === "string" ? body.reason : undefined,
               sessionId: typeof body.session_id === "string" ? body.session_id : null,
+              tenant: { userId: acc.user_id, teamId: acc.team_id },
+              now,
+            })
+          : handoffWork(core.getRawDb(), signalStore, {
+              workId,
+              project,
+              fromAgent: agentId,
+              toAgent: typeof body.to_agent === "string" ? body.to_agent : null,
+              content: typeof body.content === "string" ? body.content : "",
+              threadId: typeof body.thread_id === "string" ? body.thread_id : null,
+              replyTo: typeof body.reply_to === "string" ? body.reply_to : null,
+              sessionId: typeof body.session_id === "string" ? body.session_id : null,
+              observationId: typeof body.observation_id === "string" ? body.observation_id : null,
+              expiresInMs: parseIntegerLike(body.expires_in_ms),
               tenant: { userId: acc.user_id, teamId: acc.team_id },
               now,
             });
@@ -2203,6 +2218,29 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             expires_at: "expiresAt" in result ? result.expiresAt ?? null : null,
             lease_id: "leaseId" in result ? result.leaseId ?? null : null,
           }, status);
+        }
+
+        if ("signal" in result) {
+          return rawJsonResponse({
+            ok: true,
+            source: "workgraph",
+            items: [{
+              work_id: result.work.workId,
+              title: result.work.title,
+              status: result.work.status,
+              signal_id: result.signal.signalId,
+              thread_id: result.signal.threadId,
+              to_agent: result.signal.to,
+              event_id: result.eventId,
+            }],
+            meta: {
+              count: 1,
+              latency_ms: Date.now() - startedAt,
+              sla_latency_ms: 0,
+              filters: { project, action, work_id: workId },
+              ranking: "work_update_v1",
+            },
+          });
         }
 
         return rawJsonResponse({
