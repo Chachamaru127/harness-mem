@@ -313,6 +313,24 @@ export class WorkStore {
     return row ? parseWorkItem(row) : null;
   }
 
+  listWorkItems(project?: string): WorkItemRow[] {
+    const rows = project
+      ? this.db
+          .query(
+            `SELECT * FROM mem_work_items
+              WHERE project = ?
+              ORDER BY work_id`
+          )
+          .all(project)
+      : this.db
+          .query(
+            `SELECT * FROM mem_work_items
+              ORDER BY work_id`
+          )
+          .all();
+    return (rows as Array<Record<string, unknown>>).map(parseWorkItem);
+  }
+
   addDependency(input: WorkDependencyInput): WorkDependencyRow {
     const fromWorkId = requireNonEmpty(input.fromWorkId, "fromWorkId");
     const toWorkId = requireNonEmpty(input.toWorkId, "toWorkId");

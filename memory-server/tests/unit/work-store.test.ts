@@ -58,6 +58,7 @@ describe("WorkStore", () => {
     expect(updated.priority).toBe(1);
     expect(updated.createdAt).toBe(created.createdAt);
     expect(store.getWorkItem("S125-003")?.title).toBe(updated.title);
+    expect(store.listWorkItems("/repo/harness-mem").map((item) => item.workId)).toEqual(["S125-003"]);
   });
 
   test("adds validated idempotent dependencies and cascades deletes", () => {

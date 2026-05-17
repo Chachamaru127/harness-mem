@@ -18,8 +18,9 @@
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
 #   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
 #   scripts/harness-mem model use-adaptive
-#   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run]
+#   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run|--write]
 #   scripts/harness-mem work ready --project <path>
+#   scripts/harness-mem work export-plans --project <path>
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -157,8 +158,9 @@ Commands:
   model use <id>             Set active local embedding model in config.
   model use-adaptive         Set adaptive local routing (ruri-v3-30m + multilingual-e5).
   model status [<id>]        Show install status of a model (or all installed).
-  work import-plans          Dry-run import Plans.md into the WorkGraph model. Writes zero rows by default.
+  work import-plans          Import Plans.md into the WorkGraph model. Dry-run by default; --write is explicit.
   work ready                 Show ready WorkGraph items from Plans.md and active work leases.
+  work export-plans          Print a generated Markdown view from WorkGraph DB rows.
 
 Common options:
   --project <path>      Target project path (default: current directory)

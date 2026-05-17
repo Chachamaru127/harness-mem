@@ -130,4 +130,41 @@ describe("WorkGraph CLI contract", () => {
       expect.objectContaining({ code: "leased" })
     );
   });
+
+  test("work import-plans --write is idempotent and export-plans prints generated markdown", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-write-"));
+    writePlans(tmpRoot);
+    const dbPath = join(tmpRoot, "harness-mem.db");
+
+    for (let index = 0; index < 2; index += 1) {
+      const result = runWorkCli(["import-plans", "--project", tmpRoot, "--db", dbPath, "--write", "--json"]);
+      expect(result.stderr).toBe("");
+      expect(result.status).toBe(0);
+      const payload = JSON.parse(result.stdout) as {
+        ok: boolean;
+        mode: string;
+        written_work_items: number;
+        duplicate_work_rate: number;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.mode).toBe("write");
+      expect(payload.written_work_items).toBe(5);
+      expect(payload.duplicate_work_rate).toBeLessThanOrEqual(0.05);
+    }
+
+    const db = new Database(dbPath, { readonly: true });
+    const workCount = Number((db.query(`SELECT COUNT(*) AS count FROM mem_work_items`).get() as { count: number }).count);
+    const depCount = Number((db.query(`SELECT COUNT(*) AS count FROM mem_work_dependencies`).get() as { count: number }).count);
+    db.close();
+    expect(workCount).toBe(5);
+    expect(depCount).toBe(4);
+
+    const beforePlans = readFileSync(join(tmpRoot, "Plans.md"), "utf8");
+    const exportResult = runWorkCli(["export-plans", "--project", tmpRoot, "--db", dbPath]);
+    expect(exportResult.stderr).toBe("");
+    expect(exportResult.status).toBe(0);
+    expect(exportResult.stdout).toContain("# Plans.generated.md");
+    expect(exportResult.stdout).toContain("S125-006");
+    expect(readFileSync(join(tmpRoot, "Plans.md"), "utf8")).toBe(beforePlans);
+  });
 });
