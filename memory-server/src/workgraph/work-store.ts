@@ -76,6 +76,54 @@ export interface WorkDependencyRow {
   metadataJson: string;
 }
 
+export interface WorkEventInput {
+  eventId: string;
+  workId: string;
+  eventType: string;
+  actor: string;
+  sessionId?: string | null;
+  createdAt?: string;
+  payload?: Record<string, unknown>;
+  payloadJson?: string;
+}
+
+export interface WorkEventRow {
+  eventId: string;
+  workId: string;
+  eventType: string;
+  actor: string;
+  sessionId: string | null;
+  createdAt: string;
+  payload: Record<string, unknown>;
+  payloadJson: string;
+}
+
+export type WorkLinkTargetType =
+  | "observation"
+  | "session"
+  | "event"
+  | "file"
+  | "github_issue"
+  | "plan_task"
+  | "lease"
+  | "signal";
+
+export interface WorkLinkInput {
+  workId: string;
+  targetType: WorkLinkTargetType | string;
+  targetId: string;
+  relation?: string;
+  createdAt?: string;
+}
+
+export interface WorkLinkRow {
+  workId: string;
+  targetType: string;
+  targetId: string;
+  relation: string;
+  createdAt: string;
+}
+
 export interface WorkStoreOptions {
   now?: () => string;
 }
@@ -96,6 +144,10 @@ function requireNonEmpty(value: string, field: string): string {
 
 function metadataToJson(input: { metadata?: Record<string, unknown>; metadataJson?: string }): string {
   return input.metadataJson ?? JSON.stringify(input.metadata ?? {});
+}
+
+function payloadToJson(input: { payload?: Record<string, unknown>; payloadJson?: string }): string {
+  return input.payloadJson ?? JSON.stringify(input.payload ?? {});
 }
 
 function parseMetadata(metadataJson: string): Record<string, unknown> {
@@ -154,6 +206,30 @@ function parseDependency(row: Record<string, unknown>): WorkDependencyRow {
     createdAt: String(row.created_at),
     metadata: parseMetadata(metadataJson),
     metadataJson,
+  };
+}
+
+function parseEvent(row: Record<string, unknown>): WorkEventRow {
+  const payloadJson = String(row.payload_json ?? "{}");
+  return {
+    eventId: String(row.event_id),
+    workId: String(row.work_id),
+    eventType: String(row.event_type),
+    actor: String(row.actor),
+    sessionId: row.session_id == null ? null : String(row.session_id),
+    createdAt: String(row.created_at),
+    payload: parseMetadata(payloadJson),
+    payloadJson,
+  };
+}
+
+function parseLink(row: Record<string, unknown>): WorkLinkRow {
+  return {
+    workId: String(row.work_id),
+    targetType: String(row.target_type),
+    targetId: String(row.target_id),
+    relation: String(row.relation ?? "evidence"),
+    createdAt: String(row.created_at),
   };
 }
 
@@ -299,6 +375,98 @@ export class WorkStore {
         .all(workId) as Array<Record<string, unknown>>;
     }
     return rows.map(parseDependency);
+  }
+
+  recordEvent(input: WorkEventInput): WorkEventRow {
+    const eventId = requireNonEmpty(input.eventId, "eventId");
+    const workId = requireNonEmpty(input.workId, "workId");
+    const eventType = requireNonEmpty(input.eventType, "eventType");
+    const actor = requireNonEmpty(input.actor, "actor");
+    const createdAt = input.createdAt ?? this.now();
+
+    this.db
+      .query(
+        `INSERT INTO mem_work_events (
+          event_id, work_id, event_type, actor, session_id, payload_json, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(event_id) DO UPDATE SET
+          work_id = excluded.work_id,
+          event_type = excluded.event_type,
+          actor = excluded.actor,
+          session_id = excluded.session_id,
+          payload_json = excluded.payload_json,
+          created_at = excluded.created_at`
+      )
+      .run(eventId, workId, eventType, actor, input.sessionId ?? null, payloadToJson(input), createdAt);
+
+    const row = this.db
+      .query(`SELECT * FROM mem_work_events WHERE event_id = ?`)
+      .get(eventId) as Record<string, unknown> | null;
+    if (!row) {
+      throw new Error(`work event was not persisted: ${eventId}`);
+    }
+    return parseEvent(row);
+  }
+
+  listEvents(workId: string): WorkEventRow[] {
+    const rows = this.db
+      .query(
+        `SELECT * FROM mem_work_events
+          WHERE work_id = ?
+          ORDER BY created_at, event_id`
+      )
+      .all(workId) as Array<Record<string, unknown>>;
+    return rows.map(parseEvent);
+  }
+
+  addLink(input: WorkLinkInput): WorkLinkRow {
+    const workId = requireNonEmpty(input.workId, "workId");
+    const targetType = requireNonEmpty(input.targetType, "targetType");
+    const targetId = requireNonEmpty(input.targetId, "targetId");
+    const relation = requireNonEmpty(input.relation ?? "evidence", "relation");
+    const createdAt = input.createdAt ?? this.now();
+
+    this.db
+      .query(
+        `INSERT INTO mem_work_links (
+          work_id, target_type, target_id, relation, created_at
+        ) VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(work_id, target_type, target_id, relation) DO NOTHING`
+      )
+      .run(workId, targetType, targetId, relation, createdAt);
+
+    const row = this.db
+      .query(
+        `SELECT * FROM mem_work_links
+          WHERE work_id = ? AND target_type = ? AND target_id = ? AND relation = ?`
+      )
+      .get(workId, targetType, targetId, relation) as Record<string, unknown> | null;
+    if (!row) {
+      throw new Error(`work link was not persisted: ${workId} ${targetType}:${targetId}`);
+    }
+    return parseLink(row);
+  }
+
+  listLinks(workId: string): WorkLinkRow[] {
+    const rows = this.db
+      .query(
+        `SELECT * FROM mem_work_links
+          WHERE work_id = ?
+          ORDER BY target_type, target_id, relation`
+      )
+      .all(workId) as Array<Record<string, unknown>>;
+    return rows.map(parseLink);
+  }
+
+  listLinksByTarget(targetType: string, targetId: string): WorkLinkRow[] {
+    const rows = this.db
+      .query(
+        `SELECT * FROM mem_work_links
+          WHERE target_type = ? AND target_id = ?
+          ORDER BY work_id, relation`
+      )
+      .all(targetType, targetId) as Array<Record<string, unknown>>;
+    return rows.map(parseLink);
   }
 }
 

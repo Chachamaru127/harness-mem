@@ -40,6 +40,8 @@ function columnNames(db: Database, tableName: string): string[] {
 function expectWorkGraphSchema(db: Database): void {
   expect(sqliteObjectExists(db, "table", "mem_work_items")).toBe(true);
   expect(sqliteObjectExists(db, "table", "mem_work_dependencies")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_work_events")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_work_links")).toBe(true);
 
   expect(columnNames(db, "mem_work_items").sort()).toEqual(
     [
@@ -67,10 +69,18 @@ function expectWorkGraphSchema(db: Database): void {
   expect(columnNames(db, "mem_work_dependencies").sort()).toEqual(
     ["created_at", "from_work_id", "metadata_json", "relation", "to_work_id"].sort(),
   );
+  expect(columnNames(db, "mem_work_events").sort()).toEqual(
+    ["actor", "created_at", "event_id", "event_type", "payload_json", "session_id", "work_id"].sort(),
+  );
+  expect(columnNames(db, "mem_work_links").sort()).toEqual(
+    ["created_at", "relation", "target_id", "target_type", "work_id"].sort(),
+  );
 
   expect(sqliteObjectExists(db, "index", "idx_mem_work_items_project_status_updated")).toBe(true);
   expect(sqliteObjectExists(db, "index", "idx_mem_work_items_source")).toBe(true);
   expect(sqliteObjectExists(db, "index", "idx_mem_work_dependencies_to")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_work_events_work_created")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_work_links_target")).toBe(true);
 }
 
 describe("schema migration", () => {

@@ -362,6 +362,31 @@ export const POSTGRES_INIT_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_work_dependencies_to
     ON mem_work_dependencies(to_work_id, relation, from_work_id);
+
+  CREATE TABLE IF NOT EXISTS mem_work_events (
+    event_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    session_id TEXT,
+    payload_json JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_events_work_created
+    ON mem_work_events(work_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS mem_work_links (
+    work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    relation TEXT NOT NULL DEFAULT 'evidence',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(work_id, target_type, target_id, relation)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_links_target
+    ON mem_work_links(target_type, target_id, relation);
 `;
 
 /**
@@ -468,4 +493,29 @@ export const POSTGRES_MIGRATE_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_work_dependencies_to
     ON mem_work_dependencies(to_work_id, relation, from_work_id);
+
+  CREATE TABLE IF NOT EXISTS mem_work_events (
+    event_id TEXT PRIMARY KEY,
+    work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    actor TEXT NOT NULL,
+    session_id TEXT,
+    payload_json JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_events_work_created
+    ON mem_work_events(work_id, created_at);
+
+  CREATE TABLE IF NOT EXISTS mem_work_links (
+    work_id TEXT NOT NULL REFERENCES mem_work_items(work_id) ON DELETE CASCADE,
+    target_type TEXT NOT NULL,
+    target_id TEXT NOT NULL,
+    relation TEXT NOT NULL DEFAULT 'evidence',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY(work_id, target_type, target_id, relation)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pg_work_links_target
+    ON mem_work_links(target_type, target_id, relation);
 `;

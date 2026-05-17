@@ -50,6 +50,33 @@ function initWorkGraphSchema(db: Database): void {
 
     CREATE INDEX IF NOT EXISTS idx_mem_work_dependencies_to
       ON mem_work_dependencies(to_work_id, relation, from_work_id);
+
+    CREATE TABLE IF NOT EXISTS mem_work_events (
+      event_id TEXT PRIMARY KEY,
+      work_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      actor TEXT NOT NULL,
+      session_id TEXT,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(work_id) REFERENCES mem_work_items(work_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_work_events_work_created
+      ON mem_work_events(work_id, created_at);
+
+    CREATE TABLE IF NOT EXISTS mem_work_links (
+      work_id TEXT NOT NULL,
+      target_type TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      relation TEXT NOT NULL DEFAULT 'evidence',
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(work_id, target_type, target_id, relation),
+      FOREIGN KEY(work_id) REFERENCES mem_work_items(work_id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_work_links_target
+      ON mem_work_links(target_type, target_id, relation);
   `);
 }
 

@@ -85,4 +85,47 @@ describe("WorkStore", () => {
     db.query(`DELETE FROM mem_work_items WHERE work_id = ?`).run("work-b");
     expect(store.listDependencies()).toHaveLength(0);
   });
+
+  test("records work events and evidence links with cascade cleanup", () => {
+    store.createWorkItem({ workId: "work-a", title: "A", project: "proj" });
+
+    const event = store.recordEvent({
+      eventId: "evt-work-a-1",
+      workId: "work-a",
+      eventType: "imported",
+      actor: "codex",
+      sessionId: "sess-1",
+      payload: { source: "Plans.md" },
+    });
+    expect(event).toMatchObject({
+      eventId: "evt-work-a-1",
+      workId: "work-a",
+      eventType: "imported",
+      actor: "codex",
+      sessionId: "sess-1",
+      payload: { source: "Plans.md" },
+    });
+
+    const link = store.addLink({
+      workId: "work-a",
+      targetType: "observation",
+      targetId: "obs-1",
+      relation: "evidence",
+    });
+    expect(link).toMatchObject({
+      workId: "work-a",
+      targetType: "observation",
+      targetId: "obs-1",
+      relation: "evidence",
+    });
+
+    store.addLink({ workId: "work-a", targetType: "observation", targetId: "obs-1", relation: "evidence" });
+    expect(store.listEvents("work-a")).toHaveLength(1);
+    expect(store.listLinks("work-a")).toHaveLength(1);
+    expect(store.listLinksByTarget("observation", "obs-1")).toHaveLength(1);
+
+    db.query(`DELETE FROM mem_work_items WHERE work_id = ?`).run("work-a");
+    expect(store.listEvents("work-a")).toHaveLength(0);
+    expect(store.listLinksByTarget("observation", "obs-1")).toHaveLength(0);
+  });
 });
