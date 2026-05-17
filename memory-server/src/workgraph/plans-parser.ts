@@ -217,9 +217,14 @@ export function splitMarkdownTableRow(line: string): string[] | null {
   const cells: string[] = [];
   let current = "";
   let escaped = false;
+  let inCodeSpan = false;
 
   for (const char of trimmed) {
-    if (char === "|" && !escaped) {
+    if (char === "`" && !escaped) {
+      inCodeSpan = !inCodeSpan;
+    }
+
+    if (char === "|" && !escaped && !inCodeSpan) {
       cells.push(current.trim());
       current = "";
     } else {

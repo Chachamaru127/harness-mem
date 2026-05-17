@@ -87,6 +87,20 @@ describe("workgraph Plans.md parser", () => {
     expect(byId["S125-002"].dod).toBe("parser tests pass");
   });
 
+  test("keeps pipes inside inline code within the same table cell", () => {
+    const result = parseActivePlansMarkdown(`
+| Task | 内容 | DoD | Depends | Status |
+| --- | --- | --- | --- | --- |
+| S122-006 | **gateway security** — \`HARNESS_MEM_TOOLS=core|all\` allowlist を固定 | core/all visibility が崩れない | S122-005 | cc:完了 [2dea1fe] |
+`);
+
+    expect(result.diagnostics).toEqual([]);
+    expect(result.tasks).toHaveLength(1);
+    expect(result.tasks[0].id).toBe("S122-006");
+    expect(result.tasks[0].status).toBe("closed");
+    expect(result.tasks[0].description).toContain("core|all");
+  });
+
   test("reports skipped malformed rows and unknown statuses", () => {
     const { result } = tasksById();
     expect(result.tasks.map((task) => task.id)).not.toContain("S125-005");

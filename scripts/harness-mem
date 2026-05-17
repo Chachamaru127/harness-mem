@@ -18,6 +18,8 @@
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
 #   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
 #   scripts/harness-mem model use-adaptive
+#   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run]
+#   scripts/harness-mem work ready --project <path>
 
 set -euo pipefail
 IFS=$'\n\t'
@@ -155,6 +157,8 @@ Commands:
   model use <id>             Set active local embedding model in config.
   model use-adaptive         Set adaptive local routing (ruri-v3-30m + multilingual-e5).
   model status [<id>]        Show install status of a model (or all installed).
+  work import-plans          Dry-run import Plans.md into the WorkGraph model. Writes zero rows by default.
+  work ready                 Show ready WorkGraph items from Plans.md and active work leases.
 
 Common options:
   --project <path>      Target project path (default: current directory)
@@ -249,6 +253,13 @@ Embedding note:
   HARNESS_MEM_EMBEDDING_PROVIDER accepts auto|adaptive|fallback|openai|ollama|local.
   adaptive automatically routes Japanese-heavy queries to the Japanese model and mixed/code-heavy queries to the general model.
 EOF
+}
+
+work_impl() {
+  if ! command -v bun >/dev/null 2>&1; then
+    fail "bun is required for harness-mem work commands"
+  fi
+  bun "${HARNESS_ROOT}/memory-server/src/workgraph/work-cli.ts" "$@"
 }
 
 log() {
@@ -6863,6 +6874,10 @@ main() {
   fi
   if [ "$command" = "recall" ]; then
     recall_impl "$@"
+    return
+  fi
+  if [ "$command" = "work" ]; then
+    work_impl "$@"
     return
   fi
   if [ "$command" = "mcp-gateway" ]; then
