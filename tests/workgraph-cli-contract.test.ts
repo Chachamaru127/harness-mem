@@ -1,6 +1,6 @@
 import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -33,6 +33,20 @@ function writePlans(projectDir: string): void {
   );
 }
 
+function writePlansForProject(projectDir: string, series: string): void {
+  writeFileSync(
+    join(projectDir, "Plans.md"),
+    `
+## §1 Project ${series} — cc:TODO
+
+| Task | 内容 | DoD | Depends | Status |
+| --- | --- | --- | --- | --- |
+| ${series}-001 | **First task** — ready | ready | - | cc:TODO |
+| ${series}-002 | **Second task** — blocked | blocked | ${series}-001 | cc:TODO |
+`
+  );
+}
+
 function runWorkCli(args: string[], env: Record<string, string> = {}) {
   return spawnSync("bun", [WORK_CLI, ...args], {
     cwd: ROOT,
@@ -54,6 +68,7 @@ describe("WorkGraph CLI contract", () => {
   test("scripts/harness-mem exposes work commands and MCP work tools are opt-in", () => {
     expect(HARNESS_MEM).toContain("work import-plans");
     expect(HARNESS_MEM).toContain("work ready");
+    expect(HARNESS_MEM).toContain("work sync-plans");
     expect(HARNESS_MEM).toContain("work_impl()");
     expect(MCP_MEMORY).toContain("harness_work_query");
     expect(MCP_MEMORY).toContain("harness_work_update");
@@ -168,5 +183,115 @@ describe("WorkGraph CLI contract", () => {
     expect(exportResult.stdout).toContain("# Plans.generated.md");
     expect(exportResult.stdout).toContain("S125-006");
     expect(readFileSync(join(tmpRoot, "Plans.md"), "utf8")).toBe(beforePlans);
+  });
+
+  test("work sync-plans safely scans projects and writes only with explicit --write", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-"));
+    const projectA = join(tmpRoot, "project-a");
+    const projectB = join(tmpRoot, "nested", "project-b");
+    const noPlans = join(tmpRoot, "no-plans");
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(projectB, { recursive: true });
+    mkdirSync(noPlans, { recursive: true });
+    writePlansForProject(projectA, "S901");
+    writePlansForProject(projectB, "S902");
+    const dbPath = join(tmpRoot, "harness-mem.db");
+
+    const dryRun = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--json"]);
+    expect(dryRun.stderr).toBe("");
+    expect(dryRun.status).toBe(0);
+    const dryPayload = JSON.parse(dryRun.stdout) as {
+      ok: boolean;
+      mode: string;
+      writes: number;
+      candidates: number;
+      projects_synced: number;
+    };
+    expect(dryPayload.ok).toBe(true);
+    expect(dryPayload.mode).toBe("dry-run");
+    expect(dryPayload.writes).toBe(0);
+    expect(dryPayload.candidates).toBe(2);
+    expect(dryPayload.projects_synced).toBe(2);
+    expect(existsSync(dbPath)).toBe(false);
+
+    for (let index = 0; index < 2; index += 1) {
+      const write = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--write", "--json"]);
+      expect(write.stderr).toBe("");
+      expect(write.status).toBe(0);
+      const writePayload = JSON.parse(write.stdout) as {
+        ok: boolean;
+        mode: string;
+        projects_synced: number;
+        projects_skipped: number;
+        work_items: number;
+      };
+      expect(writePayload.ok).toBe(true);
+      expect(writePayload.mode).toBe("write");
+      expect(writePayload.projects_synced).toBe(2);
+      expect(writePayload.projects_skipped).toBe(0);
+      expect(writePayload.work_items).toBe(4);
+    }
+
+    const db = new Database(dbPath, { readonly: true });
+    const rows = db
+      .query(`SELECT work_id, project FROM mem_work_items ORDER BY work_id`)
+      .all() as Array<{ work_id: string; project: string }>;
+    db.close();
+    expect(rows.map((row) => row.work_id)).toEqual(["S901-001", "S901-002", "S902-001", "S902-002"]);
+    expect(rows.map((row) => row.project)).toEqual([projectA, projectA, projectB, projectB]);
+  });
+
+  test("work sync-plans skips cross-project work id collisions", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-conflict-"));
+    const projectA = join(tmpRoot, "project-a");
+    const projectB = join(tmpRoot, "project-b");
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(projectB, { recursive: true });
+    writePlansForProject(projectA, "S903");
+    writePlansForProject(projectB, "S903");
+    const dbPath = join(tmpRoot, "harness-mem.db");
+
+    const result = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--write", "--json"]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      projects_synced: number;
+      projects_skipped: number;
+      diagnostics: Array<{ code: string }>;
+    };
+    expect(payload.projects_synced).toBe(1);
+    expect(payload.projects_skipped).toBe(1);
+    expect(payload.diagnostics).toContainEqual(expect.objectContaining({ code: "work_id_project_conflict" }));
+  });
+
+  test("work sync-plans --all-projects discovers local projects from the DB", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-all-"));
+    const projectA = join(tmpRoot, "project-a");
+    const noPlans = join(tmpRoot, "no-plans");
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(noPlans, { recursive: true });
+    writePlansForProject(projectA, "S904");
+    const dbPath = join(tmpRoot, "harness-mem.db");
+    const db = new Database(dbPath);
+    db.exec(`
+      CREATE TABLE mem_observations (project TEXT);
+      INSERT INTO mem_observations (project) VALUES ('${projectA.replace(/'/g, "''")}');
+      INSERT INTO mem_observations (project) VALUES ('${noPlans.replace(/'/g, "''")}');
+    `);
+    db.close();
+
+    const result = runWorkCli(["sync-plans", "--all-projects", "--db", dbPath, "--json"]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      candidates: number;
+      projects_synced: number;
+      writes: number;
+      diagnostics: Array<{ code: string }>;
+    };
+    expect(payload.candidates).toBe(1);
+    expect(payload.projects_synced).toBe(1);
+    expect(payload.writes).toBe(0);
+    expect(payload.diagnostics).toContainEqual(expect.objectContaining({ code: "plans_not_found" }));
   });
 });
