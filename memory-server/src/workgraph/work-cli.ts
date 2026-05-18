@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { configureDatabase, initSchema } from "../db/schema";
 import { importPlansToWorkGraphDryRun } from "./plans-importer";
 import { evaluateWorkReadiness, type ReadyLease } from "./ready";
@@ -557,7 +557,7 @@ function findInBatchWorkIdConflicts(
   const conflicts: Array<{ workId: string; existingProject: string }> = [];
   for (const item of workItems) {
     const existingProject = seenWorkProjects.get(item.workId);
-    if (existingProject && existingProject !== project) {
+    if (existingProject && projectCollisionKey(existingProject) !== projectCollisionKey(project)) {
       conflicts.push({ workId: item.workId, existingProject });
     }
   }
@@ -577,14 +577,26 @@ function findDbWorkIdConflicts(
     const uniqueIds = [...new Set(workIds)];
     const placeholders = uniqueIds.map(() => "?").join(",");
     const rows = db
-      .query(`SELECT work_id, project FROM mem_work_items WHERE work_id IN (${placeholders}) AND project <> ?`)
-      .all(...uniqueIds, project) as Array<{ work_id: string; project: string }>;
-    return rows.map((row) => ({ workId: row.work_id, existingProject: row.project }));
+      .query(`SELECT work_id, project FROM mem_work_items WHERE work_id IN (${placeholders})`)
+      .all(...uniqueIds) as Array<{ work_id: string; project: string }>;
+    const projectKey = projectCollisionKey(project);
+    return rows
+      .filter((row) => projectCollisionKey(row.project) !== projectKey)
+      .map((row) => ({ workId: row.work_id, existingProject: row.project }));
   } catch {
     return [];
   } finally {
     db.close();
   }
+}
+
+function projectCollisionKey(project: string): string {
+  const normalized = project.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (!normalized) return "";
+  if (normalized.includes("/")) {
+    return basename(normalized);
+  }
+  return normalized;
 }
 
 function safeIsDirectory(path: string): boolean {

@@ -264,6 +264,29 @@ describe("WorkGraph CLI contract", () => {
     expect(payload.diagnostics).toContainEqual(expect.objectContaining({ code: "work_id_project_conflict" }));
   });
 
+  test("work sync-plans allows same-repo path aliases with matching project labels", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-alias-"));
+    const projectA = join(tmpRoot, "stable", "harness-mem");
+    const projectB = join(tmpRoot, "worktrees", "8edc", "harness-mem");
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(projectB, { recursive: true });
+    writePlansForProject(projectA, "S905");
+    writePlansForProject(projectB, "S905");
+    const dbPath = join(tmpRoot, "harness-mem.db");
+
+    const result = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--write", "--json"]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      projects_synced: number;
+      projects_skipped: number;
+      diagnostics: Array<{ code: string }>;
+    };
+    expect(payload.projects_synced).toBe(2);
+    expect(payload.projects_skipped).toBe(0);
+    expect(payload.diagnostics).not.toContainEqual(expect.objectContaining({ code: "work_id_project_conflict" }));
+  });
+
   test("work sync-plans --all-projects discovers local projects from the DB", () => {
     tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-all-"));
     const projectA = join(tmpRoot, "project-a");
