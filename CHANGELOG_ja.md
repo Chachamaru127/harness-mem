@@ -10,6 +10,7 @@
 ### ユーザー向け要約
 
 - **既存の `Plans.md` を SessionStart 時に WorkGraph DB へ自動同期するようにした**。Codex / Claude の session 起動時、プロジェクトに `Plans.md` があれば `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` を安全に実行する。ユーザーが手動 import しなくても WorkGraph UI に出やすくなる。`Plans.md` の新規作成・編集はせず、ファイルがないプロジェクトは静かにスキップし、mtime state で未変更ファイルの毎回再同期も避ける。
+- **既存プロジェクトの `Plans.md` task id 形式を WorkGraph import で読めるようにした**。`7.1` / `9.B.3` のような dotted id や、`GIFT-M1-03` / `DEP-02` のような project-prefix id を認識する。これにより harness-mem 以外の既存 `Plans.md` も、task 名を変えずに WorkGraph に出せる。
 
 ## [0.23.0] - 2026-05-17
 

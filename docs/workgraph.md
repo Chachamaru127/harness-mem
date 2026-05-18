@@ -267,6 +267,9 @@ Visibility rule:
 | Section heading | `metadata_json.plan_section` |
 | Task id | `source_ref=plans:<task-id>` |
 
+- Accepted task id formats include `S125-001`, `S78-A05.2`,
+  project-prefixed ids such as `GIFT-M1-03` / `DEP-02`, and existing
+  project dotted ids such as `7.1` / `9.B.3`.
 - Generated exports must be written as a generated view such as
   `Plans.generated.md`, not as an automatic overwrite of `Plans.md`.
 

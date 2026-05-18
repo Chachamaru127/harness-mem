@@ -47,6 +47,22 @@ function writePlansForProject(projectDir: string, series: string): void {
   );
 }
 
+function writeMixedIdPlans(projectDir: string): void {
+  writeFileSync(
+    join(projectDir, "Plans.md"),
+    `
+## §7 Existing Project Format — cc:TODO
+
+| Task | 内容 | DoD | Depends | Status |
+| --- | --- | --- | --- | --- |
+| 7.1 | **Numeric dotted task** — support AISDR-style IDs | imported | - | cc:TODO |
+| 9.B.3 | **Dotted alphanumeric task** — support phase letter IDs | dependency parsed | 7.1 | cc:TODO |
+| GIFT-M1-03 | **Project prefixed task** — support non-S prefixes | imported | 9.B.3 | cc:WIP |
+| DEP-02 | **Short project prefix** — support dependency chains | imported | GIFT-M1-03 | blocked |
+`
+  );
+}
+
 function runWorkCli(args: string[], env: Record<string, string> = {}) {
   return spawnSync("bun", [WORK_CLI, ...args], {
     cwd: ROOT,
@@ -95,6 +111,32 @@ describe("WorkGraph CLI contract", () => {
     expect(payload.work_items).toBe(5);
     expect(payload.metrics.plans_import_fidelity).toBeGreaterThanOrEqual(0.98);
     expect(payload.diff.some((entry) => entry.kind === "work_item")).toBe(true);
+  });
+
+  test("work import-plans accepts dotted numeric and project-prefixed task ids", () => {
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-mixed-ids-"));
+    writeMixedIdPlans(tmpRoot);
+
+    const result = runWorkCli(["import-plans", "--project", tmpRoot, "--json"]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+
+    const payload = JSON.parse(result.stdout) as {
+      ok: boolean;
+      work_items: number;
+      dependencies: number;
+      diff: Array<{ kind: string; workId?: string; fromWorkId?: string; toWorkId?: string }>;
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.work_items).toBe(4);
+    expect(payload.dependencies).toBe(3);
+    expect(payload.diff).toContainEqual(expect.objectContaining({ kind: "work_item", workId: "7.1" }));
+    expect(payload.diff).toContainEqual(expect.objectContaining({ kind: "work_item", workId: "9.B.3" }));
+    expect(payload.diff).toContainEqual(expect.objectContaining({ kind: "work_item", workId: "GIFT-M1-03" }));
+    expect(payload.diff).toContainEqual(expect.objectContaining({ kind: "work_item", workId: "DEP-02" }));
+    expect(payload.diff).toContainEqual(
+      expect.objectContaining({ kind: "dependency", fromWorkId: "9.B.3", toWorkId: "GIFT-M1-03" })
+    );
   });
 
   test("work ready reads Plans.md and excludes actively leased work", () => {

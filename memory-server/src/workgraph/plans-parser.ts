@@ -63,7 +63,7 @@ interface TaskTableColumns {
   status: number;
 }
 
-const TASK_ID_PATTERN = /\bS\d+(?:-[A-Za-z0-9.]+)+\b/g;
+const TASK_ID_PATTERN = /\b(?:S\d+(?:-[A-Za-z0-9.]+)+|[A-Z][A-Z0-9]*(?:-[A-Z0-9.]+)+|\d+(?:\.[A-Za-z0-9]+)+)\b/g;
 const SECTION_PATTERN = /^(#{2,6})\s+(.+?)\s*$/;
 
 const emptySection: PlansSectionMetadata = {
