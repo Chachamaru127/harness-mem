@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -44,7 +44,9 @@ function setupCodexWorkHintSandbox(prefix: string) {
   const hookDir = join(scriptRoot, "hook-handlers");
   const libDir = join(hookDir, "lib");
   const payloadLog = join(projectDir, "payloads.jsonl");
+  const syncLog = join(projectDir, "sync-plans.log");
   const mockClient = join(scriptRoot, "harness-mem-client.sh");
+  const mockHarnessMem = join(scriptRoot, "harness-mem");
 
   mkdirSync(libDir, { recursive: true });
   mkdirSync(harnessHome, { recursive: true });
@@ -102,7 +104,20 @@ esac
   );
   chmodSync(mockClient, 0o755);
 
-  return { tmp, homeDir, harnessHome, projectDir, hookDir, payloadLog };
+  writeFileSync(
+    mockHarnessMem,
+    `#!/bin/bash
+set -euo pipefail
+printf '%s\\n' "$*" >> ${JSON.stringify(syncLog)}
+db_path="\${HARNESS_MEM_DB_PATH:-\${HARNESS_MEM_HOME:-$HOME/.harness-mem}/harness-mem.db}"
+mkdir -p "$(dirname "$db_path")"
+: > "$db_path"
+printf '%s\\n' '{"ok":true,"command":"work.sync-plans","mode":"write","writes":1,"work_items":1,"dependencies":0,"results":[],"diagnostics":[]}'
+`
+  );
+  chmodSync(mockHarnessMem, 0o755);
+
+  return { tmp, homeDir, harnessHome, projectDir, hookDir, payloadLog, syncLog };
 }
 
 function envFor(sandbox: ReturnType<typeof setupCodexWorkHintSandbox>, enabled: boolean) {
@@ -116,6 +131,46 @@ function envFor(sandbox: ReturnType<typeof setupCodexWorkHintSandbox>, enabled: 
 }
 
 describe("Codex WorkGraph hook hints (§S125-013)", () => {
+  test("SessionStart auto-syncs an existing Plans.md without enabling work hints", async () => {
+    const sandbox = setupCodexWorkHintSandbox("hmem-codex-work-auto-sync-");
+    try {
+      writeFileSync(
+        join(sandbox.projectDir, "Plans.md"),
+        `
+| Task | 内容 | DoD | Depends | Status |
+| --- | --- | --- | --- | --- |
+| S126-002 | **SessionStart auto sync** — import existing Plans.md | synced | - | cc:TODO |
+`
+      );
+
+      const runSessionStart = async () => {
+        const proc = Bun.spawn(["bash", join(sandbox.hookDir, "codex-session-start.sh")], {
+          cwd: sandbox.projectDir,
+          env: envFor(sandbox, false),
+          stdin: "pipe",
+          stdout: "pipe",
+          stderr: "pipe",
+        });
+        proc.stdin.write(JSON.stringify({ hook_event_name: "SessionStart", thread_id: "thread-work" }));
+        proc.stdin.end();
+        await new Response(proc.stdout).text();
+        await new Response(proc.stderr).text();
+        expect(await proc.exited).toBe(0);
+      };
+
+      await runSessionStart();
+      await runSessionStart();
+
+      const syncLines = readFileSync(sandbox.syncLog, "utf8").trim().split("\n").filter(Boolean);
+      expect(syncLines).toHaveLength(1);
+      expect(syncLines[0]).toBe(`work sync-plans --project ${realpathSync(sandbox.projectDir)} --write --json`);
+      expect(parsePayloadLog(sandbox.payloadLog).map((entry) => entry.command)).not.toContain("work-query");
+      expect(existsSync(join(sandbox.harnessHome, "workgraph-sync-state.json"))).toBe(true);
+    } finally {
+      rmSync(sandbox.tmp, { recursive: true, force: true });
+    }
+  });
+
   test("SessionStart keeps work hints disabled by default and preserves resume context", async () => {
     const sandbox = setupCodexWorkHintSandbox("hmem-codex-work-hint-default-");
     try {

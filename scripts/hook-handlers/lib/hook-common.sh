@@ -1286,6 +1286,139 @@ hook_workgraph_hints_enabled() {
   return 1
 }
 
+hook_workgraph_auto_sync_enabled() {
+  case "${HARNESS_MEM_WORKGRAPH_AUTO_SYNC:-1}" in
+    0|false|FALSE|no|NO|off|OFF) return 1 ;;
+  esac
+  return 0
+}
+
+hook_read_workgraph_sync_timeout_sec() {
+  hook_clamp_integer "${HARNESS_MEM_WORKGRAPH_SYNC_TIMEOUT_SEC:-3}" "3" "1" "15"
+}
+
+hook_default_db_path() {
+  if [ -n "${HARNESS_MEM_DB_PATH:-}" ]; then
+    printf '%s' "$HARNESS_MEM_DB_PATH"
+  elif [ -n "${HARNESS_MEM_HOME:-}" ]; then
+    printf '%s/harness-mem.db' "$HARNESS_MEM_HOME"
+  else
+    printf '%s/.harness-mem/harness-mem.db' "$HOME"
+  fi
+}
+
+hook_workgraph_project_key() {
+  if [ -n "${PROJECT_ROOT:-}" ] && [ -d "$PROJECT_ROOT" ]; then
+    (cd "$PROJECT_ROOT" && pwd -P) 2>/dev/null || printf '%s' "$PROJECT_ROOT"
+  else
+    printf '%s' "${PROJECT_ROOT:-}"
+  fi
+}
+
+hook_workgraph_sync_state_file() {
+  printf '%s/workgraph-sync-state.json' "${PLUGIN_DATA_DIR:-${HARNESS_MEM_HOME:-$HOME/.harness-mem}}"
+}
+
+hook_file_mtime_epoch() {
+  local path="${1:-}"
+  [ -n "$path" ] || return 0
+  stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || true
+}
+
+hook_read_workgraph_last_sync_mtime() {
+  local project_key="${1:-}"
+  [ -n "$project_key" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local state_file
+  state_file="$(hook_workgraph_sync_state_file)"
+  [ -f "$state_file" ] || return 0
+  jq -r --arg project "$project_key" '.projects[$project].plans_mtime // empty' "$state_file" 2>/dev/null || true
+}
+
+hook_write_workgraph_sync_state() {
+  local project_key="${1:-}"
+  local plans_mtime="${2:-}"
+  local plans_path="${3:-}"
+  [ -n "$project_key" ] || return 0
+  [ -n "$plans_mtime" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local state_file state_dir current updated tmp synced_at db_path
+  state_file="$(hook_workgraph_sync_state_file)"
+  state_dir="$(dirname "$state_file")"
+  mkdir -p "$state_dir" 2>/dev/null || return 0
+  if [ -f "$state_file" ]; then
+    current="$(cat "$state_file" 2>/dev/null || printf '{}')"
+  else
+    current="{}"
+  fi
+  synced_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+  db_path="$(hook_default_db_path)"
+  updated="$(printf '%s' "$current" | jq -c \
+    --arg project "$project_key" \
+    --arg plans_mtime "$plans_mtime" \
+    --arg plans_path "$plans_path" \
+    --arg db_path "$db_path" \
+    --arg synced_at "$synced_at" \
+    '
+      .version = 1
+      | .projects = (.projects // {})
+      | .projects[$project] = {
+          plans_mtime: $plans_mtime,
+          plans_path: $plans_path,
+          db_path: $db_path,
+          last_synced_at: $synced_at,
+          source: "session_start"
+        }
+    ' 2>/dev/null)"
+  [ -n "$updated" ] || return 0
+  tmp="${state_file}.$$"
+  printf '%s\n' "$updated" > "$tmp" 2>/dev/null && mv "$tmp" "$state_file" 2>/dev/null || rm -f "$tmp" 2>/dev/null || true
+}
+
+hook_sync_workgraph_plans() {
+  hook_workgraph_auto_sync_enabled || return 0
+  [ -n "${PROJECT_ROOT:-}" ] || return 0
+  command -v jq >/dev/null 2>&1 || return 0
+
+  local plans_path harness_mem_cli plans_mtime project_key last_mtime db_path force_sync timeout_sec
+  plans_path="${PROJECT_ROOT}/Plans.md"
+  [ -f "$plans_path" ] || return 0
+
+  if [ -x "${SCRIPT_DIR:-}/harness-mem" ]; then
+    harness_mem_cli="${SCRIPT_DIR}/harness-mem"
+  else
+    harness_mem_cli="${PARENT_DIR}/harness-mem"
+  fi
+  [ -x "$harness_mem_cli" ] || return 0
+
+  plans_mtime="$(hook_file_mtime_epoch "$plans_path")"
+  [ -n "$plans_mtime" ] || return 0
+  project_key="$(hook_workgraph_project_key)"
+  last_mtime="$(hook_read_workgraph_last_sync_mtime "$project_key")"
+  db_path="$(hook_default_db_path)"
+  force_sync="false"
+  case "${HARNESS_MEM_WORKGRAPH_AUTO_SYNC_FORCE:-}" in
+    1|true|TRUE|yes|YES|on|ON) force_sync="true" ;;
+  esac
+
+  if [ "$force_sync" != "true" ] && [ -f "$db_path" ] && [ "$last_mtime" = "$plans_mtime" ]; then
+    return 0
+  fi
+
+  timeout_sec="$(hook_read_workgraph_sync_timeout_sec)"
+  if command -v timeout >/dev/null 2>&1; then
+    timeout "$timeout_sec" "$harness_mem_cli" work sync-plans --project "$PROJECT_ROOT" --write --json >/dev/null 2>&1
+  else
+    "$harness_mem_cli" work sync-plans --project "$PROJECT_ROOT" --write --json >/dev/null 2>&1
+  fi
+
+  if [ "$?" -eq 0 ]; then
+    hook_write_workgraph_sync_state "$project_key" "$plans_mtime" "$plans_path"
+  fi
+}
+
 hook_read_work_hint_max_tokens() {
   hook_clamp_integer "${HARNESS_MEM_WORK_HINT_MAX_TOKENS:-160}" "160" "40" "400"
 }

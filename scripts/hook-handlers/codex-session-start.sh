@@ -38,6 +38,8 @@ if [ -z "$HEALTH_CHECK" ] || ! printf '%s' "$HEALTH_CHECK" | jq -e '.ok == true'
   fi
 fi
 
+hook_sync_workgraph_plans
+
 # Record session start event
 EVENT_PAYLOAD=$(jq -nc \
   --arg platform "codex" \

@@ -90,6 +90,8 @@ if [ -x "$CLIENT_SCRIPT" ]; then
     attempt_daemon_restart
   fi
 
+  hook_sync_workgraph_plans
+
   SESSION_NAME_ARG=""
   SESSION_NAME_TAGS='["hook","session_start","requeue_meta_v1"]'
   if [ -n "$SESSION_NAME" ]; then

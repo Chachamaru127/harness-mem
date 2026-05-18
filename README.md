@@ -705,6 +705,9 @@ In practice, a reproducible release means all of these are true before you ship:
 ## Plans.md Workflow
 
 harness-mem uses `Plans.md` as the single source of truth for task management.
+When WorkGraph hooks are installed, SessionStart automatically syncs an
+existing project `Plans.md` into the local WorkGraph DB. It does not create or
+edit `Plans.md`; projects without the file are skipped silently.
 
 ### Phase markers
 

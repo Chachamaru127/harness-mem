@@ -194,6 +194,7 @@ visibility.
 ```bash
 harness-mem work import-plans ./Plans.md --dry-run
 harness-mem work import-plans ./Plans.md --write
+harness-mem work sync-plans --project . --write
 harness-mem work ready --project .
 harness-mem work next --project . --agent codex
 harness-mem work create "Fix SessionStart duplicate injection" --priority 1
@@ -268,6 +269,27 @@ Visibility rule:
 
 - Generated exports must be written as a generated view such as
   `Plans.generated.md`, not as an automatic overwrite of `Plans.md`.
+
+## SessionStart Auto Sync
+
+Codex and Claude SessionStart hooks automatically sync an existing
+`$PROJECT_ROOT/Plans.md` into the local WorkGraph DB by calling:
+
+```bash
+harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json
+```
+
+This is intentionally DB-only:
+
+- It does not create `Plans.md`.
+- It does not edit `Plans.md`.
+- It silently skips projects without `Plans.md`.
+- It records the last synced `Plans.md` mtime under plugin state and skips
+  unchanged files when the DB already exists, so opening a session does not keep
+  refreshing every work item's recency.
+
+Operators can disable the automation with `HARNESS_MEM_WORKGRAPH_AUTO_SYNC=0`
+or force a one-off resync with `HARNESS_MEM_WORKGRAPH_AUTO_SYNC_FORCE=1`.
 
 ## Integration With Existing Runtime
 

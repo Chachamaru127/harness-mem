@@ -684,6 +684,9 @@ harness-mem uninstall --purge-db
 ## Plans.md ワークフロー
 
 harness-mem ではタスク管理の single source of truth として `Plans.md` を使っています。
+WorkGraph hooks が入っている環境では、SessionStart 時にプロジェクト既存の
+`Plans.md` を local WorkGraph DB へ自動同期します。`Plans.md` の新規作成や
+編集はせず、ファイルがないプロジェクトは静かにスキップします。
 
 ### フェーズマーカー
 

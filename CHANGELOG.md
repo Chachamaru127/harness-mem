@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **WorkGraph SessionStart auto-sync for existing `Plans.md` files**. Codex and Claude SessionStart hooks now safely call `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` when the current project already has `Plans.md`, so WorkGraph views populate without a manual import step. The hook never creates or edits `Plans.md`, skips projects without the file, and uses an mtime state file to avoid refreshing unchanged work-item recency on every session start.
+
 ## [0.23.0] - 2026-05-17
 
 ### Added
