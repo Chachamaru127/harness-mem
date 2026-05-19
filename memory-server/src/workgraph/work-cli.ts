@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import { Database } from "bun:sqlite";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { configureDatabase, initSchema } from "../db/schema";
 import { importPlansToWorkGraphDryRun } from "./plans-importer";
@@ -39,6 +40,8 @@ interface SyncDiagnostic {
   work_id?: string;
   existing_project?: string;
 }
+
+const projectCollisionKeyCache = new Map<string, string>();
 
 function main(argv: string[]): number {
   const subcommand = normalizeSubcommand(argv[0]);
@@ -593,6 +596,41 @@ function findDbWorkIdConflicts(
 function projectCollisionKey(project: string): string {
   const normalized = project.trim().replace(/\\/g, "/").replace(/\/+$/, "");
   if (!normalized) return "";
+  const cached = projectCollisionKeyCache.get(normalized);
+  if (cached) return cached;
+
+  const gitKey = gitCommonDirCollisionKey(normalized);
+  const key = gitKey ?? fallbackProjectCollisionKey(normalized);
+  projectCollisionKeyCache.set(normalized, key);
+  return key;
+}
+
+function gitCommonDirCollisionKey(project: string): string | null {
+  if (!project.includes("/") || !safeIsDirectory(project)) return null;
+  try {
+    const raw = execFileSync("git", ["-C", project, "rev-parse", "--git-common-dir"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 1000,
+    }).trim();
+    if (!raw) return null;
+    const normalized = raw.replace(/\\/g, "/").replace(/\/+$/, "");
+    const absolute = normalized.startsWith("/") ? resolve(normalized) : resolve(project, normalized);
+    return `git:${canonicalPathForCollisionKey(absolute)}`;
+  } catch {
+    return null;
+  }
+}
+
+function canonicalPathForCollisionKey(path: string): string {
+  try {
+    return realpathSync(path).replace(/\\/g, "/").replace(/\/+$/, "");
+  } catch {
+    return resolve(path).replace(/\\/g, "/").replace(/\/+$/, "");
+  }
+}
+
+function fallbackProjectCollisionKey(normalized: string): string {
   if (normalized.includes("/")) {
     return basename(normalized);
   }

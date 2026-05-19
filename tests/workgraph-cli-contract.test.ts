@@ -2,7 +2,7 @@ import { Database } from "bun:sqlite";
 import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const ROOT = join(import.meta.dir, "..");
@@ -67,6 +67,13 @@ function runWorkCli(args: string[], env: Record<string, string> = {}) {
   return spawnSync("bun", [WORK_CLI, ...args], {
     cwd: ROOT,
     env: { ...process.env, ...env },
+    encoding: "utf8",
+  });
+}
+
+function runGit(cwd: string, args: string[]) {
+  return spawnSync("git", args, {
+    cwd,
     encoding: "utf8",
   });
 }
@@ -314,6 +321,37 @@ describe("WorkGraph CLI contract", () => {
     mkdirSync(projectB, { recursive: true });
     writePlansForProject(projectA, "S905");
     writePlansForProject(projectB, "S905");
+    const dbPath = join(tmpRoot, "harness-mem.db");
+
+    const result = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--write", "--json"]);
+    expect(result.stderr).toBe("");
+    expect(result.status).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      projects_synced: number;
+      projects_skipped: number;
+      diagnostics: Array<{ code: string }>;
+    };
+    expect(payload.projects_synced).toBe(2);
+    expect(payload.projects_skipped).toBe(0);
+    expect(payload.diagnostics).not.toContainEqual(expect.objectContaining({ code: "work_id_project_conflict" }));
+  });
+
+  test("work sync-plans allows git worktree aliases with different directory names", () => {
+    if (spawnSync("git", ["--version"], { encoding: "utf8" }).status !== 0) return;
+    tmpRoot = mkdtempSync(join(tmpdir(), "harness-mem-work-sync-git-alias-"));
+    const projectA = join(tmpRoot, "stable", "harness-mem");
+    const projectB = join(tmpRoot, "worktrees", "harness-mem-s80");
+    mkdirSync(projectA, { recursive: true });
+    mkdirSync(dirname(projectB), { recursive: true });
+
+    expect(runGit(projectA, ["init"]).status).toBe(0);
+    writeFileSync(join(projectA, "README.md"), "same repo\n");
+    expect(runGit(projectA, ["add", "README.md"]).status).toBe(0);
+    expect(runGit(projectA, ["-c", "user.email=harness-mem@example.invalid", "-c", "user.name=Harness Mem", "commit", "-m", "init"]).status).toBe(0);
+    expect(runGit(projectA, ["worktree", "add", "-b", "alias-worktree", projectB]).status).toBe(0);
+
+    writePlansForProject(projectA, "S906");
+    writePlansForProject(projectB, "S906");
     const dbPath = join(tmpRoot, "harness-mem.db");
 
     const result = runWorkCli(["sync-plans", "--root", tmpRoot, "--db", dbPath, "--write", "--json"]);
