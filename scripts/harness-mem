@@ -3441,7 +3441,8 @@ check_claude_precedence_alignment() {
 }
 
 start_daemon() {
-  HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+  HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-false}" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
     HARNESS_MEM_HOST="$MEM_HOST" \
     HARNESS_MEM_PORT="$MEM_PORT" \
     HARNESS_MEM_DB_PATH="$DB_PATH" \
@@ -3470,7 +3471,8 @@ run_smoke() {
     cleanup() {
       if [ "$cleanup_done" -eq 0 ]; then
         HARNESS_MEM_HOME="$tmp_home" \
-          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+        HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+          HARNESS_MEM_ENABLE_UI="false" \
           HARNESS_MEM_HOST="127.0.0.1" \
           HARNESS_MEM_PORT="$smoke_port" \
           HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
@@ -3484,6 +3486,7 @@ run_smoke() {
 
     HARNESS_MEM_HOME="$tmp_home" \
       HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
+      HARNESS_MEM_ENABLE_UI="false" \
       HARNESS_MEM_HOST="127.0.0.1" \
       HARNESS_MEM_PORT="$smoke_port" \
       HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
@@ -5211,7 +5214,7 @@ mcp_gateway_start_impl() {
     fi
   fi
 
-  start_daemon >/dev/null 2>&1 || fail "memory daemon could not be started before mcp-gateway"
+  HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-false}" start_daemon >/dev/null 2>&1 || fail "memory daemon could not be started before mcp-gateway"
   go_bin_path="$(_mcp_gateway_go_bin_path)"
 
   if [ "$MCP_GATEWAY_FOREGROUND" -eq 1 ]; then
@@ -5534,6 +5537,7 @@ doctor_impl() {
         log "Daemon endpoint not reachable in read-only doctor mode: ${health_url}"
       else
         HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+          HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-false}" \
           HARNESS_MEM_HOST="$MEM_HOST" \
         HARNESS_MEM_PORT="$MEM_PORT" \
         HARNESS_MEM_DB_PATH="$DB_PATH" \
@@ -6079,7 +6083,7 @@ setup_impl() {
     fi
   fi
   if [ "$SKIP_START" -eq 0 ]; then
-    if start_daemon 2>/dev/null; then
+    if HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-true}" start_daemon 2>/dev/null; then
       _setup_record "daemon_start" "ok" ""
       log "Daemon started: http://${MEM_HOST}:${MEM_PORT}"
       local setup_ui_port setup_ui_health
@@ -6091,7 +6095,7 @@ setup_impl() {
         warn "Mem UI endpoint is not reachable: http://${MEM_HOST}:${setup_ui_port}"
       fi
     else
-      start_daemon || true
+      HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-true}" start_daemon || true
       _setup_record "daemon_start" "failed" "harness-memd start"
     fi
   fi

@@ -46,7 +46,7 @@ read_payload() {
 }
 
 ensure_daemon() {
-  "$DAEMON_SCRIPT" start --quiet >/dev/null 2>&1 || true
+  HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-false}" "$DAEMON_SCRIPT" start --quiet >/dev/null 2>&1 || true
 }
 
 call_get() {

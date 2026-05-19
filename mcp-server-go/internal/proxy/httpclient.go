@@ -201,6 +201,7 @@ func startDaemon() error {
 	for _, p := range scriptPaths {
 		if _, err := os.Stat(p); err == nil {
 			cmd := exec.Command("bash", p, "start")
+			cmd.Env = daemonStartEnv()
 			cmd.Stdout = os.Stderr
 			cmd.Stderr = os.Stderr
 			return cmd.Run()
@@ -209,9 +210,18 @@ func startDaemon() error {
 
 	// Fallback: try PATH
 	cmd := exec.Command("harness-memd", "start")
+	cmd.Env = daemonStartEnv()
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func daemonStartEnv() []string {
+	env := os.Environ()
+	if _, ok := os.LookupEnv("HARNESS_MEM_ENABLE_UI"); !ok {
+		env = append(env, "HARNESS_MEM_ENABLE_UI=false")
+	}
+	return env
 }
 
 func findPluginRoot() string {

@@ -205,6 +205,7 @@ describe("mcp-gateway lifecycle CLI", () => {
     expect(script).toContain("MCP_GATEWAY_LOG_FILE");
     expect(script).toContain('HARNESS_MEM_MCP_TRANSPORT="http"');
     expect(script).toContain('HARNESS_MEM_MCP_ADDR="$MCP_GATEWAY_ADDR"');
+    expect(script).toContain('HARNESS_MEM_ENABLE_UI="${HARNESS_MEM_ENABLE_UI:-false}" start_daemon');
     expect(script).toContain('if [ "$MCP_GATEWAY_FOREGROUND" -eq 1 ]; then');
     expect(script).toContain("nohup env");
     expect(script).toContain('disown "$gateway_pid"');

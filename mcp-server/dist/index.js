@@ -16149,6 +16149,7 @@ async function tryStartDaemon() {
       cwd: projectRoot,
       env: {
         ...process.env,
+        HARNESS_MEM_ENABLE_UI: process.env.HARNESS_MEM_ENABLE_UI || "false",
         HARNESS_MEM_CODEX_PROJECT_ROOT: process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || projectRoot
       }
     });
@@ -16283,6 +16284,13 @@ function toStringArray(value) {
     return [];
   }
   return value.filter((entry) => typeof entry === "string");
+}
+function workGraphToolsEnabled() {
+  const tools = (process.env.HARNESS_MEM_TOOLS || "").trim().toLowerCase();
+  return tools === "all" || envFlag("HARNESS_MEM_WORKGRAPH", false);
+}
+function visibleMemoryTools() {
+  return workGraphToolsEnabled() ? [...memoryTools, ...workTools] : memoryTools;
 }
 function getMcpPlatform() {
   return (process.env.HARNESS_MEM_MCP_PLATFORM || "").trim() || void 0;
@@ -16553,6 +16561,52 @@ async function handleMemoryToolInner(name, args) {
         const response = await callMemoryApi("/health", null, "GET");
         return successResult(response);
       }
+      case "harness_work_query": {
+        const query = new URLSearchParams();
+        const project = toStringOrUndefined(input.project);
+        const cwd = toStringOrUndefined(input.cwd);
+        if (project) query.set("project", project);
+        if (cwd) query.set("cwd", cwd);
+        const mode = toStringOrUndefined(input.mode);
+        if (mode) query.set("mode", mode);
+        const limit = toNumberOrUndefined(input.limit);
+        if (typeof limit === "number") query.set("limit", String(limit));
+        const currentSessionId = toStringOrUndefined(input.current_session_id);
+        if (currentSessionId) query.set("current_session_id", currentSessionId);
+        const sessionId = toStringOrUndefined(input.session_id);
+        if (sessionId) query.set("session_id", sessionId);
+        const now = toStringOrUndefined(input.now);
+        if (now) query.set("now", now);
+        const response = await callMemoryApi(`/v1/work/query?${query.toString()}`, null, "GET");
+        return successResult(response);
+      }
+      case "harness_work_update": {
+        const action = toStringOrUndefined(input.action);
+        const workId = toStringOrUndefined(input.work_id);
+        const agentId = toStringOrUndefined(input.agent_id);
+        if (!action || !workId || !agentId) {
+          return errorResult("action, work_id, and agent_id are required");
+        }
+        const response = await callMemoryApi("/v1/work/update", {
+          action,
+          project: toStringOrUndefined(input.project),
+          cwd: toStringOrUndefined(input.cwd),
+          work_id: workId,
+          agent_id: agentId,
+          session_id: toStringOrUndefined(input.session_id),
+          ttl_ms: toNumberOrUndefined(input.ttl_ms),
+          lease_id: toStringOrUndefined(input.lease_id),
+          reason: toStringOrUndefined(input.reason),
+          to_agent: toStringOrUndefined(input.to_agent),
+          content: toStringOrUndefined(input.content),
+          thread_id: toStringOrUndefined(input.thread_id),
+          reply_to: toStringOrUndefined(input.reply_to),
+          observation_id: toStringOrUndefined(input.observation_id),
+          expires_in_ms: toNumberOrUndefined(input.expires_in_ms),
+          now: toStringOrUndefined(input.now)
+        });
+        return successResult(response);
+      }
       case "harness_mem_delete_observation": {
         const observationId = toStringOrUndefined(input.observation_id);
         if (!observationId) {
@@ -16739,7 +16793,7 @@ async function handleMemoryToolInner(name, args) {
     return errorResult(`Memory tool failed [${kind}]: ${message}`);
   }
 }
-var execFileAsync2, HEALTH_CACHE_MS, DEFAULT_HEALTH_TIMEOUT_MS, DEFAULT_STARTUP_HEALTH_TIMEOUT_MS, HEALTH_ENDPOINTS, lastHealthyAt, memoryTools, SELF_TRACK_SKIP;
+var execFileAsync2, HEALTH_CACHE_MS, DEFAULT_HEALTH_TIMEOUT_MS, DEFAULT_STARTUP_HEALTH_TIMEOUT_MS, HEALTH_ENDPOINTS, lastHealthyAt, memoryTools, workTools, SELF_TRACK_SKIP;
 var init_memory = __esm({
   "src/tools/memory.ts"() {
     "use strict";
@@ -17246,12 +17300,61 @@ var init_memory = __esm({
         annotations: { readOnlyHint: false, idempotentHint: true }
       }
     ];
+    workTools = [
+      {
+        name: "harness_work_query",
+        description: "Query WorkGraph ready/next work for an explicit project or cwd scope. Opt-in only via HARNESS_MEM_TOOLS=all or HARNESS_MEM_WORKGRAPH=1.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project: { type: "string", description: "Project scope. Required unless cwd is supplied." },
+            cwd: { type: "string", description: "Caller cwd used as project scope. Required unless project is supplied." },
+            mode: { type: "string", enum: ["next", "ready"], description: "Query mode. Default next." },
+            limit: { type: "number" },
+            current_session_id: { type: "string" },
+            session_id: { type: "string" },
+            now: { type: "string" }
+          },
+          required: []
+        },
+        annotations: { readOnlyHint: true }
+      },
+      {
+        name: "harness_work_update",
+        description: "Update WorkGraph lifecycle using existing lease/signal primitives. Supports action=claim, close, or handoff. Opt-in only via HARNESS_MEM_TOOLS=all or HARNESS_MEM_WORKGRAPH=1.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["claim", "close", "handoff"] },
+            project: { type: "string", description: "Project scope. Required unless cwd is supplied." },
+            cwd: { type: "string", description: "Caller cwd used as project scope. Required unless project is supplied." },
+            work_id: { type: "string" },
+            agent_id: { type: "string" },
+            session_id: { type: "string" },
+            ttl_ms: { type: "number" },
+            lease_id: { type: "string" },
+            reason: { type: "string" },
+            to_agent: { type: "string" },
+            content: { type: "string" },
+            thread_id: { type: "string" },
+            reply_to: { type: "string" },
+            observation_id: { type: "string" },
+            expires_in_ms: { type: "number" },
+            now: { type: "string" }
+          },
+          required: ["action", "work_id", "agent_id"]
+        },
+        annotations: { readOnlyHint: false }
+      }
+    ];
     SELF_TRACK_SKIP = /* @__PURE__ */ new Set([
       "harness_mem_health",
       "harness_mem_record_event",
       "harness_mem_record_checkpoint",
       "harness_mem_finalize_session",
-      "harness_mem_bulk_add"
+      "harness_mem_bulk_add",
+      "harness_work_query",
+      "harness_work_update"
     ]);
   }
 });
@@ -17713,7 +17816,7 @@ var init_index = __esm({
       ...workflowTools,
       ...statusTools,
       ...codeIntelligenceTools,
-      ...memoryTools,
+      ...visibleMemoryTools(),
       ...contextBoxTools
     ];
     server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -17734,7 +17837,7 @@ var init_index = __esm({
         if (name.startsWith("harness_ast_") || name.startsWith("harness_lsp_")) {
           return await handleCodeIntelligenceTool(name, args);
         }
-        if (name.startsWith("harness_mem_")) {
+        if (name.startsWith("harness_mem_") || name.startsWith("harness_work_")) {
           return await handleMemoryTool(name, args);
         }
         if (name.startsWith("harness_cb_")) {

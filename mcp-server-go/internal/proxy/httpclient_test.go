@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"testing"
 	"time"
 )
@@ -207,6 +208,39 @@ func TestEnsureDaemon_ReusesExistingDaemonWhenStartFailsButHealthRecovers(t *tes
 	}
 	if !started {
 		t.Fatal("expected startDaemonFunc to be called")
+	}
+}
+
+func TestDaemonStartEnv_DisablesUIByDefault(t *testing.T) {
+	t.Setenv("HARNESS_MEM_ENABLE_UI", "")
+	if err := os.Unsetenv("HARNESS_MEM_ENABLE_UI"); err != nil {
+		t.Fatalf("unset HARNESS_MEM_ENABLE_UI: %v", err)
+	}
+
+	env := daemonStartEnv()
+	for _, entry := range env {
+		if entry == "HARNESS_MEM_ENABLE_UI=false" {
+			return
+		}
+	}
+	t.Fatalf("daemonStartEnv() did not include HARNESS_MEM_ENABLE_UI=false: %v", env)
+}
+
+func TestDaemonStartEnv_PreservesExplicitUISetting(t *testing.T) {
+	t.Setenv("HARNESS_MEM_ENABLE_UI", "true")
+
+	env := daemonStartEnv()
+	var matches int
+	for _, entry := range env {
+		if entry == "HARNESS_MEM_ENABLE_UI=true" {
+			matches++
+		}
+		if entry == "HARNESS_MEM_ENABLE_UI=false" {
+			t.Fatalf("daemonStartEnv() overrode explicit UI setting: %v", env)
+		}
+	}
+	if matches != 1 {
+		t.Fatalf("daemonStartEnv() explicit setting count = %d, want 1: %v", matches, env)
 	}
 }
 

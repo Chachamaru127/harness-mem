@@ -139,6 +139,8 @@ async function tryStartDaemon(): Promise<Error | null> {
       cwd: projectRoot,
       env: {
         ...process.env,
+        HARNESS_MEM_ENABLE_UI:
+          process.env.HARNESS_MEM_ENABLE_UI || "false",
         HARNESS_MEM_CODEX_PROJECT_ROOT:
           process.env.HARNESS_MEM_CODEX_PROJECT_ROOT || projectRoot,
       },
