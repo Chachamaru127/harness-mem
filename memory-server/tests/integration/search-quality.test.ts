@@ -556,6 +556,14 @@ describe("search quality integration", () => {
         debug: true,
       });
       expect(result.ok).toBe(true);
+      const vectorEngine = String(result.meta.vector_engine ?? "");
+      if (vectorEngine !== "sqlite-vec") {
+        // Linux release CI has no sqlite-vec optional package; this test can
+        // only exercise the model-specific map fast path when sqlite-vec loads.
+        expect(vectorEngine).toBe("js-fallback");
+        expect(Number(result.meta.vector_coverage)).toBe(0);
+        return;
+      }
       expect(Number(result.meta.vector_coverage)).toBeGreaterThanOrEqual(0.2);
       const debug = (result.meta.debug || {}) as Record<string, unknown>;
       const weights = (debug.weights || {}) as Record<string, unknown>;

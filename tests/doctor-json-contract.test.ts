@@ -14,19 +14,33 @@ import { join, resolve } from "node:path";
 const SCRIPT = resolve(import.meta.dir, "../scripts/harness-mem");
 
 async function runDoctorJson(): Promise<{ stdout: string; stderr: string; code: number }> {
-  const proc = Bun.spawn(["bash", SCRIPT, "doctor", "--json"], {
-    stdout: "pipe",
-    stderr: "pipe",
-    env: { ...process.env, HARNESS_MEM_DB: ":memory:" },
-  });
+  const tmpHome = mkdtempSync(join(tmpdir(), "hmem-doctor-json-"));
+  try {
+    const proc = Bun.spawn(
+      ["bash", SCRIPT, "doctor", "--json", "--read-only", "--skip-version-check", "--platform", "all"],
+      {
+        stdout: "pipe",
+        stderr: "pipe",
+        env: {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),
+          HARNESS_MEM_DB_PATH: join(tmpHome, "harness-mem.db"),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+        },
+      }
+    );
 
-  const [stdout, stderr, code] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ]);
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
 
-  return { stdout, stderr, code };
+    return { stdout, stderr, code };
+  } finally {
+    rmSync(tmpHome, { recursive: true, force: true });
+  }
 }
 
 describe("doctor --json contract", () => {
