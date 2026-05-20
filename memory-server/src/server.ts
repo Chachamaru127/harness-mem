@@ -1344,6 +1344,37 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/archive") {
+          const body = await parseRequestJson(request);
+          const candidateIds = toStringArray(body.candidate_ids).length > 0
+            ? toStringArray(body.candidate_ids)
+            : toStringArray(body.target_ids);
+          return jsonResponse(core.adminForgetArchive({
+            project: typeof body.project === "string" ? body.project : undefined,
+            candidate_ids: candidateIds,
+            limit: parseIntegerLike(body.limit),
+            score_threshold: parseNumberLike(body.score_threshold),
+            protect_accessed: typeof body.protect_accessed === "boolean" ? body.protect_accessed : undefined,
+            execute: parseBooleanLike(body.execute, false),
+            manifest_sha256: typeof body.manifest_sha256 === "string"
+              ? body.manifest_sha256
+              : typeof body.manifest_hash === "string"
+                ? body.manifest_hash
+                : undefined,
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/restore") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetRestore({
+            archive_id: typeof body.archive_id === "string" ? body.archive_id : undefined,
+            archive_full_ref: typeof body.archive_full_ref === "string" ? body.archive_full_ref : undefined,
+            execute: parseBooleanLike(body.execute, false),
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+          }));
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
           const body = await parseRequestJson(request);
           const targetIds = toStringArray(body.target_ids).length > 0

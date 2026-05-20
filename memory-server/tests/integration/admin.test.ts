@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
@@ -63,6 +64,35 @@ async function createRuntime(name: string): Promise<{ baseUrl: string; core: Har
   };
 }
 
+function archivePayloadRowsForObservation(core: HarnessMemCore, observationId: string, sessionId: string): Record<string, Array<Record<string, unknown>>> {
+  const db = core.getRawDb();
+  const observationRows = db.query(`SELECT * FROM mem_observations WHERE id = ?`).all(observationId) as Array<Record<string, unknown>>;
+  const observation = observationRows[0] ?? {};
+  const eventId = typeof observation.event_id === "string" ? observation.event_id : null;
+  const observationEntities = db
+    .query(`SELECT * FROM mem_observation_entities WHERE observation_id = ? ORDER BY entity_id ASC`)
+    .all(observationId) as Array<Record<string, unknown>>;
+  const entityIds = observationEntities.map((entry) => Number(entry.entity_id)).filter((entityId) => Number.isFinite(entityId));
+  return {
+    mem_sessions: db.query(`SELECT * FROM mem_sessions WHERE session_id = ?`).all(sessionId) as Array<Record<string, unknown>>,
+    mem_events: eventId
+      ? db.query(`SELECT * FROM mem_events WHERE observation_id = ? OR event_id = ? ORDER BY ts ASC, event_id ASC`).all(observationId, eventId) as Array<Record<string, unknown>>
+      : db.query(`SELECT * FROM mem_events WHERE observation_id = ? ORDER BY ts ASC, event_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_observations: observationRows,
+    mem_vectors: db.query(`SELECT * FROM mem_vectors WHERE observation_id = ? ORDER BY model ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_links: db.query(`SELECT * FROM mem_links WHERE from_observation_id = ? OR to_observation_id = ? ORDER BY id ASC`).all(observationId, observationId) as Array<Record<string, unknown>>,
+    mem_relations: db.query(`SELECT * FROM mem_relations WHERE observation_id = ? ORDER BY id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_facts: db.query(`SELECT * FROM mem_facts WHERE observation_id = ? ORDER BY fact_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_tags: db.query(`SELECT * FROM mem_tags WHERE observation_id = ? ORDER BY tag_type ASC, tag ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_entities: entityIds.length > 0
+      ? db.query(`SELECT * FROM mem_entities WHERE id IN (${entityIds.map(() => "?").join(", ")}) ORDER BY id ASC`).all(...(entityIds as never[])) as Array<Record<string, unknown>>
+      : [],
+    mem_observation_entities: observationEntities,
+    mem_nuggets: db.query(`SELECT * FROM mem_nuggets WHERE observation_id = ? ORDER BY seq ASC, nugget_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_nugget_vectors: db.query(`SELECT * FROM mem_nugget_vectors WHERE observation_id = ? ORDER BY nugget_id ASC, model ASC`).all(observationId) as Array<Record<string, unknown>>,
+  };
+}
+
 function seedArchiveForObservation(core: HarnessMemCore, observationId: string): void {
   const db = core.getRawDb();
   db.exec(`
@@ -95,11 +125,26 @@ function seedArchiveForObservation(core: HarnessMemCore, observationId: string):
     );
   `);
   const row = db
-    .query(`SELECT project, session_id, user_id, team_id FROM mem_observations WHERE id = ?`)
-    .get(observationId) as { project: string; session_id: string; user_id: string; team_id: string | null };
+    .query(`SELECT * FROM mem_observations WHERE id = ?`)
+    .get(observationId) as Record<string, unknown> & { project: string; session_id: string; user_id: string; team_id: string | null; content: string };
   const archiveId = `archive-${observationId}`;
   const fullRef = `sqlite:${archiveId}`;
   const now = "2026-05-20T00:00:00.000Z";
+  const manifestSha256 = "1".repeat(64);
+  const contentSha256 = createHash("sha256").update(row.content).digest("hex");
+  const payloadJson = JSON.stringify({
+    schema_version: "s129-archive-payload-v1",
+    archive_id: archiveId,
+    observation_id: observationId,
+    created_at: now,
+    actor: "system",
+    reason: "test archive",
+    content_sha256: contentSha256,
+    manifest_sha256: manifestSha256,
+    cross_store_impact: { observations: 1 },
+    rows: archivePayloadRowsForObservation(core, observationId, row.session_id),
+  });
+  const payloadSha256 = createHash("sha256").update(payloadJson).digest("hex");
   db.query(`
     INSERT OR REPLACE INTO mem_archive_stubs(
       archive_id, observation_id, project, session_id, user_id, team_id,
@@ -116,14 +161,14 @@ function seedArchiveForObservation(core: HarnessMemCore, observationId: string):
     row.team_id,
     `stub for ${observationId}`,
     fullRef,
-    "0".repeat(64),
-    "1".repeat(64),
+    contentSha256,
+    manifestSha256,
     now,
   );
   db.query(`
     INSERT OR REPLACE INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
     VALUES (?, ?, ?, ?, ?)
-  `).run(fullRef, archiveId, JSON.stringify({ restore: true, observation_id: observationId }), "2".repeat(64), now);
+  `).run(fullRef, archiveId, payloadJson, payloadSha256, now);
 }
 
 describe("memory admin integration", () => {
@@ -224,6 +269,78 @@ describe("memory admin integration", () => {
       expect(payload.items[0].evicted).toBe(0);
       expect(payload.items[0].candidates.map((candidate) => candidate.observation_id)).toContain(observationId);
       expect(payload.items[0].cross_store_impact.observations).toBeGreaterThanOrEqual(1);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("archive and restore endpoints mutate only through archive-first flow", async () => {
+    const runtime = await createRuntime("archive-restore");
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-archive",
+        event_type: "user_prompt",
+        ts: "2026-02-25T00:00:00.000Z",
+        payload: { content: "endpoint archive restore content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.getRawDb()
+        .query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", observationId);
+
+      const planResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/archive`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ candidate_ids: [observationId] }),
+      });
+      expect(planResponse.status).toBe(200);
+      const plan = (await planResponse.json()) as {
+        ok: boolean;
+        items: Array<{ manifest_sha256: string; candidate_ids: string[] }>;
+      };
+      expect(plan.ok).toBe(true);
+      expect(plan.items[0].candidate_ids).toEqual([observationId]);
+
+      const archiveResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/archive`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          candidate_ids: [observationId],
+          manifest_sha256: plan.items[0].manifest_sha256,
+          reason: "endpoint archive",
+          execute: true,
+        }),
+      });
+      expect(archiveResponse.status).toBe(200);
+      const archive = (await archiveResponse.json()) as {
+        ok: boolean;
+        items: Array<{ archive_ids: string[]; archived_count: number }>;
+      };
+      expect(archive.ok).toBe(true);
+      expect(archive.items[0].archived_count).toBe(1);
+      const archiveId = archive.items[0].archive_ids[0];
+      const archivedRow = runtime.core.getRawDb()
+        .query(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(observationId) as { archived_at: string | null };
+      expect(archivedRow.archived_at).toBeTruthy();
+
+      const restoreResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/restore`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ archive_id: archiveId, reason: "endpoint restore", execute: true }),
+      });
+      expect(restoreResponse.status).toBe(200);
+      const restore = (await restoreResponse.json()) as { ok: boolean; items: Array<{ observation_id: string }> };
+      expect(restore.ok).toBe(true);
+      expect(restore.items[0].observation_id).toBe(observationId);
+      const restoredRow = runtime.core.getRawDb()
+        .query(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(observationId) as { archived_at: string | null };
+      expect(restoredRow.archived_at).toBeNull();
     } finally {
       runtime.stop();
     }

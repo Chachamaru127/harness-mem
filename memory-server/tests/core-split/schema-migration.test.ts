@@ -83,6 +83,37 @@ function expectWorkGraphSchema(db: Database): void {
   expect(sqliteObjectExists(db, "index", "idx_mem_work_links_target")).toBe(true);
 }
 
+function expectArchiveSchema(db: Database): void {
+  expect(sqliteObjectExists(db, "table", "mem_archive_stubs")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_archive_full")).toBe(true);
+  expect(columnNames(db, "mem_archive_stubs").sort()).toEqual(
+    [
+      "archive_full_ref",
+      "archive_id",
+      "archive_state",
+      "archive_stub",
+      "content_sha256",
+      "created_at",
+      "legal_hold_snapshot",
+      "manifest_sha256",
+      "metadata_json",
+      "observation_id",
+      "project",
+      "purged_at",
+      "reason",
+      "restored_at",
+      "session_id",
+      "team_id",
+      "user_id",
+    ].sort(),
+  );
+  expect(columnNames(db, "mem_archive_full").sort()).toEqual(
+    ["archive_full_ref", "archive_id", "created_at", "payload_json", "payload_sha256", "purged_at"].sort(),
+  );
+  expect(sqliteObjectExists(db, "index", "idx_mem_archive_stubs_observation")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_archive_stubs_state_created")).toBe(true);
+}
+
 describe("schema migration", () => {
   test("fresh initSchema and migrateSchema create WorkGraph tables and indexes", () => {
     const db = createTempDb();
@@ -91,6 +122,7 @@ describe("schema migration", () => {
       expect(() => migrateSchema(db)).not.toThrow();
 
       expectWorkGraphSchema(db);
+      expectArchiveSchema(db);
     } finally {
       db.close();
     }
@@ -146,6 +178,7 @@ describe("schema migration", () => {
       expect(() => migrateSchema(db)).not.toThrow();
 
       expectWorkGraphSchema(db);
+      expectArchiveSchema(db);
       const legacySession = db
         .query(`SELECT project FROM mem_sessions WHERE session_id = 'legacy-session'`)
         .get() as { project: string } | null;

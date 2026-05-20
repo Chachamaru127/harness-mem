@@ -77,6 +77,35 @@ function countRows(core: HarnessMemCore, table: string, where = "1 = 1", values:
   return Number(row?.count ?? 0);
 }
 
+function archivePayloadRowsForObservation(core: HarnessMemCore, observationId: string, sessionId: string): Record<string, Array<Record<string, unknown>>> {
+  const db = core.getRawDb();
+  const observationRows = db.query(`SELECT * FROM mem_observations WHERE id = ?`).all(observationId) as Array<Record<string, unknown>>;
+  const observation = observationRows[0] ?? {};
+  const eventId = typeof observation.event_id === "string" ? observation.event_id : null;
+  const observationEntities = db
+    .query(`SELECT * FROM mem_observation_entities WHERE observation_id = ? ORDER BY entity_id ASC`)
+    .all(observationId) as Array<Record<string, unknown>>;
+  const entityIds = observationEntities.map((entry) => Number(entry.entity_id)).filter((entityId) => Number.isFinite(entityId));
+  return {
+    mem_sessions: db.query(`SELECT * FROM mem_sessions WHERE session_id = ?`).all(sessionId) as Array<Record<string, unknown>>,
+    mem_events: eventId
+      ? db.query(`SELECT * FROM mem_events WHERE observation_id = ? OR event_id = ? ORDER BY ts ASC, event_id ASC`).all(observationId, eventId) as Array<Record<string, unknown>>
+      : db.query(`SELECT * FROM mem_events WHERE observation_id = ? ORDER BY ts ASC, event_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_observations: observationRows,
+    mem_vectors: db.query(`SELECT * FROM mem_vectors WHERE observation_id = ? ORDER BY model ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_links: db.query(`SELECT * FROM mem_links WHERE from_observation_id = ? OR to_observation_id = ? ORDER BY id ASC`).all(observationId, observationId) as Array<Record<string, unknown>>,
+    mem_relations: db.query(`SELECT * FROM mem_relations WHERE observation_id = ? ORDER BY id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_facts: db.query(`SELECT * FROM mem_facts WHERE observation_id = ? ORDER BY fact_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_tags: db.query(`SELECT * FROM mem_tags WHERE observation_id = ? ORDER BY tag_type ASC, tag ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_entities: entityIds.length > 0
+      ? db.query(`SELECT * FROM mem_entities WHERE id IN (${entityIds.map(() => "?").join(", ")}) ORDER BY id ASC`).all(...(entityIds as never[])) as Array<Record<string, unknown>>
+      : [],
+    mem_observation_entities: observationEntities,
+    mem_nuggets: db.query(`SELECT * FROM mem_nuggets WHERE observation_id = ? ORDER BY seq ASC, nugget_id ASC`).all(observationId) as Array<Record<string, unknown>>,
+    mem_nugget_vectors: db.query(`SELECT * FROM mem_nugget_vectors WHERE observation_id = ? ORDER BY nugget_id ASC, model ASC`).all(observationId) as Array<Record<string, unknown>>,
+  };
+}
+
 function sha256File(path: string): string {
   return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
@@ -137,11 +166,26 @@ function seedArchiveForObservation(
 ): void {
   ensureArchiveTables(core);
   const row = core.getRawDb()
-    .query(`SELECT project, session_id, user_id, team_id FROM mem_observations WHERE id = ?`)
-    .get(observationId) as { project: string; session_id: string; user_id: string; team_id: string | null };
+    .query(`SELECT * FROM mem_observations WHERE id = ?`)
+    .get(observationId) as Record<string, unknown> & { project: string; session_id: string; user_id: string; team_id: string | null; content: string };
   const archiveId = `archive-${observationId}${options.archiveSuffix ? `-${options.archiveSuffix}` : ""}`;
   const fullRef = `sqlite:${archiveId}`;
   const now = "2026-05-20T00:00:00.000Z";
+  const manifestSha256 = "1".repeat(64);
+  const contentSha256 = createHash("sha256").update(row.content).digest("hex");
+  const payloadJson = options.fullPayloadJson ?? JSON.stringify({
+    schema_version: "s129-archive-payload-v1",
+    archive_id: archiveId,
+    observation_id: observationId,
+    created_at: now,
+    actor: "system",
+    reason: "test archive",
+    content_sha256: contentSha256,
+    manifest_sha256: manifestSha256,
+    cross_store_impact: { observations: 1 },
+    rows: archivePayloadRowsForObservation(core, observationId, row.session_id),
+  });
+  const payloadSha256 = options.payloadSha256 ?? createHash("sha256").update(payloadJson).digest("hex");
   core.getRawDb().query(`
     INSERT OR REPLACE INTO mem_archive_stubs(
       archive_id, observation_id, project, session_id, user_id, team_id,
@@ -160,8 +204,8 @@ function seedArchiveForObservation(
     fullRef,
     options.state ?? "archived",
     options.legalHoldSnapshot ?? 0,
-    "0".repeat(64),
-    "1".repeat(64),
+    contentSha256,
+    manifestSha256,
     now,
   );
   if (options.includeFull !== false) {
@@ -173,8 +217,8 @@ function seedArchiveForObservation(
     `).run(
       fullRef,
       archiveId,
-      options.fullPayloadJson ?? JSON.stringify({ restore: true, observation_id: observationId }),
-      options.payloadSha256 ?? "2".repeat(64),
+      payloadJson,
+      payloadSha256,
       now,
       options.fullPurgedAt ?? null,
     );
@@ -562,7 +606,7 @@ describe("S127-004 hard purge risk gates", () => {
       });
       const clearedPlan = hardPurgePlan(core, [cleared]);
       expect(clearedPlan.archive.archive_full_count).toBe(1);
-      expect(clearedPlan.archive.restore_capable_count).toBe(1);
+      expect(clearedPlan.archive.restore_capable_count).toBe(0);
       expect(clearedPlan.archive.restore_capable_full_count).toBe(0);
       expect(clearedPlan.archive.missing_restore_capable_archive_ids).toEqual([cleared]);
       const clearedExecute = executeHardPurge(core, clearedPlan, [cleared]);
@@ -577,12 +621,169 @@ describe("S127-004 hard purge risk gates", () => {
       });
       const purgedPlan = hardPurgePlan(core, [purged]);
       expect(purgedPlan.archive.archive_full_count).toBe(1);
-      expect(purgedPlan.archive.restore_capable_count).toBe(1);
+      expect(purgedPlan.archive.restore_capable_count).toBe(0);
       expect(purgedPlan.archive.restore_capable_full_count).toBe(0);
       expect(purgedPlan.archive.missing_restore_capable_archive_ids).toEqual([purged]);
       const purgedExecute = executeHardPurge(core, purgedPlan, [purged]);
       expect(purgedExecute.ok).toBe(false);
       expect(purgedExecute.error).toContain("restore-capable archive");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("execute rejects tampered archive payloads even when full rows are non-empty", () => {
+    const core = new HarnessMemCore(createConfig("tampered-archive-payload"));
+    try {
+      const target = insertObservation(core, "archive-tampered-full", "tampered archive row");
+      archiveObservation(core, target);
+      seedArchiveForObservation(core, target);
+      core.getRawDb()
+        .query(`UPDATE mem_archive_full SET payload_json = ? WHERE archive_id = ?`)
+        .run(JSON.stringify({ tampered: true, rows: { mem_observations: [{ id: target, content: "tampered archive row" }] } }), `archive-${target}`);
+
+      const plan = hardPurgePlan(core, [target]);
+      expect(plan.archive.archive_full_count).toBe(1);
+      expect(plan.archive.restore_capable_count).toBe(0);
+      expect(plan.archive.restore_capable_full_count).toBe(0);
+      expect(plan.archive.missing_restore_capable_archive_ids).toEqual([target]);
+      const executed = executeHardPurge(core, plan, [target]);
+      expect(executed.ok).toBe(false);
+      expect(executed.error).toContain("restore-capable archive");
+      expect(countRows(core, "mem_observations", "id = ?", [target])).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("execute rejects archive payloads that predate current lifecycle rows", () => {
+    const core = new HarnessMemCore(createConfig("stale-archive-payload"));
+    try {
+      const target = insertObservation(core, "archive-stale-current", "stale archive current row");
+      const archivePlan = core.adminForgetArchive({ candidate_ids: [target] }).items[0] as { manifest_sha256: string };
+      const archived = core.adminForgetArchive({
+        candidate_ids: [target],
+        manifest_sha256: archivePlan.manifest_sha256,
+        reason: "stale hard purge gate",
+        execute: true,
+      });
+      expect(archived.ok).toBe(true);
+      const now = "2026-05-20T02:00:00.000Z";
+      core.getRawDb()
+        .query(`
+          INSERT OR REPLACE INTO mem_vectors(observation_id, model, dimension, vector_json, created_at, updated_at)
+          VALUES (?, 'post-archive:model', 64, ?, ?, ?)
+        `)
+        .run(target, JSON.stringify([0.7, 0.8]), now, now);
+      core.getRawDb()
+        .query(`
+          INSERT OR REPLACE INTO mem_tags(observation_id, tag, tag_type, created_at)
+          VALUES (?, 'post-archive-tag', 'manual', ?)
+        `)
+        .run(target, now);
+      core.getRawDb()
+        .query(`
+          INSERT OR REPLACE INTO mem_nuggets(nugget_id, observation_id, seq, content, content_hash, created_at)
+          VALUES ('nugget-post-archive', ?, 99, 'post archive nugget', 'post-hash', ?)
+        `)
+        .run(target, now);
+
+      const plan = hardPurgePlan(core, [target]);
+      expect(plan.archive.archive_full_count).toBe(1);
+      expect(plan.archive.restore_capable_count).toBe(0);
+      expect(plan.archive.restore_capable_full_count).toBe(0);
+      expect(plan.archive.missing_restore_capable_archive_ids).toEqual([target]);
+      const executed = executeHardPurge(core, plan, [target]);
+      expect(executed.ok).toBe(false);
+      expect(executed.error).toContain("restore-capable archive");
+      expect(countRows(core, "mem_observations", "id = ?", [target])).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("execute rejects archive payloads when same-key lifecycle row content changes after archive", () => {
+    const core = new HarnessMemCore(createConfig("stale-same-key-payload"));
+    try {
+      const target = insertObservation(core, "archive-stale-same-key", "stale same-key archive row");
+      const keep = insertObservation(core, "archive-stale-same-key-keep", "same-key keep row");
+      insertLifecycleRows(core, target, keep);
+      const archivePlan = core.adminForgetArchive({ candidate_ids: [target] }).items[0] as { manifest_sha256: string };
+      const archived = core.adminForgetArchive({
+        candidate_ids: [target],
+        manifest_sha256: archivePlan.manifest_sha256,
+        reason: "same-key stale hard purge gate",
+        execute: true,
+      });
+      expect(archived.ok).toBe(true);
+      core.getRawDb()
+        .query(`
+          UPDATE mem_vectors
+          SET vector_json = ?, updated_at = ?
+          WHERE observation_id = ? AND model = 'test:model'
+        `)
+        .run(JSON.stringify([0.91, 0.92]), "2026-05-20T03:00:00.000Z", target);
+
+      const plan = hardPurgePlan(core, [target]);
+      expect(plan.archive.archive_full_count).toBe(1);
+      expect(plan.archive.restore_capable_count).toBe(0);
+      expect(plan.archive.restore_capable_full_count).toBe(0);
+      expect(plan.archive.missing_restore_capable_archive_ids).toEqual([target]);
+      const executed = executeHardPurge(core, plan, [target]);
+      expect(executed.ok).toBe(false);
+      expect(executed.error).toContain("restore-capable archive");
+      expect(countRows(core, "mem_observations", "id = ?", [target])).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("execute rejects archive payloads when observation content changes after archive", () => {
+    const core = new HarnessMemCore(createConfig("stale-observation-payload"));
+    try {
+      const target = insertObservation(core, "archive-stale-observation", "original observation archive row");
+      const archivePlan = core.adminForgetArchive({ candidate_ids: [target] }).items[0] as { manifest_sha256: string };
+      const archived = core.adminForgetArchive({
+        candidate_ids: [target],
+        manifest_sha256: archivePlan.manifest_sha256,
+        reason: "observation stale hard purge gate",
+        execute: true,
+      });
+      expect(archived.ok).toBe(true);
+      core.getRawDb()
+        .query(`
+          UPDATE mem_observations
+          SET content = ?, content_redacted = ?, raw_text = ?, updated_at = ?
+          WHERE id = ?
+        `)
+        .run(
+          "newer observation archive row",
+          "newer observation archive row redacted",
+          "newer observation archive row raw",
+          "2026-05-20T04:00:00.000Z",
+          target,
+        );
+      const full = core.getRawDb()
+        .query(`
+          SELECT s.observation_id, f.payload_json
+          FROM mem_archive_stubs s
+          JOIN mem_archive_full f ON f.archive_id = s.archive_id
+          WHERE s.observation_id = ?
+        `)
+        .get(target) as { observation_id: string; payload_json: string };
+      expect(full.observation_id).toBe(target);
+      expect(full.payload_json.length).toBeGreaterThan(2);
+      expect(full.payload_json).toContain("original observation archive row");
+
+      const plan = hardPurgePlan(core, [target]);
+      expect(plan.archive.archive_full_count).toBe(1);
+      expect(plan.archive.restore_capable_count).toBe(0);
+      expect(plan.archive.restore_capable_full_count).toBe(0);
+      expect(plan.archive.missing_restore_capable_archive_ids).toEqual([target]);
+      const executed = executeHardPurge(core, plan, [target]);
+      expect(executed.ok).toBe(false);
+      expect(executed.error).toContain("restore-capable archive");
+      expect(countRows(core, "mem_observations", "id = ?", [target])).toBe(1);
     } finally {
       core.shutdown("test");
     }
@@ -601,7 +802,7 @@ describe("S127-004 hard purge risk gates", () => {
       const plan = hardPurgePlan(core, [hasDuplicates, missingArchive]);
       expect(plan.archive.archive_stub_count).toBe(2);
       expect(plan.archive.archive_full_count).toBe(2);
-      expect(plan.archive.restore_capable_count).toBe(2);
+      expect(plan.archive.restore_capable_count).toBe(1);
       expect(plan.archive.restore_capable_full_count).toBe(1);
       expect(plan.archive.restore_capable_full_observation_count).toBe(1);
       expect(plan.archive.missing_restore_capable_archive_ids).toEqual([missingArchive]);

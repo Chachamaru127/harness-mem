@@ -189,6 +189,82 @@ type AdminHardPurgeRequest = {
   confirmation?: string;
 };
 
+type AdminArchiveRequest = {
+  project?: string;
+  candidate_ids?: string[];
+  target_ids?: string[];
+  limit?: number;
+  score_threshold?: number;
+  protect_accessed?: boolean;
+  execute?: boolean;
+  manifest_sha256?: string;
+  reason?: string;
+};
+
+type AdminArchiveRestoreRequest = {
+  archive_id?: string;
+  archive_full_ref?: string;
+  execute?: boolean;
+  reason?: string;
+};
+
+type ArchiveCandidateRow = {
+  id: string;
+  project: string;
+  session_id: string;
+  user_id: string;
+  team_id: string | null;
+  content: string;
+  content_redacted: string;
+  raw_text: string | null;
+  observation_type: string;
+  memory_type: string;
+  tags_json: string;
+  privacy_tags_json: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ArchiveManifest = {
+  schema_version: "s129-archive-v1";
+  operation: "admin.archive";
+  candidate_ids: string[];
+  candidate_count: number;
+  cross_store_impact: Record<string, number>;
+  manifest_sha256: string;
+};
+
+type ArchivePayload = {
+  schema_version: "s129-archive-payload-v1";
+  archive_id: string;
+  observation_id: string;
+  created_at: string;
+  actor: "system";
+  reason: string;
+  content_sha256: string;
+  manifest_sha256: string;
+  cross_store_impact: Record<string, number>;
+  rows: Record<string, Array<Record<string, unknown>>>;
+};
+
+type ArchiveStorageRow = {
+  archive_id: string;
+  observation_id: string;
+  archive_full_ref: string | null;
+  archive_state: string;
+  reason: string;
+  content_sha256: string;
+  manifest_sha256: string;
+  payload_json: string | null;
+  payload_sha256: string | null;
+  full_purged_at: string | null;
+};
+
+type ArchivePrepareResult =
+  | { ok: true; manifest: ArchiveManifest; rows: ArchiveCandidateRow[] }
+  | { ok: false; error: string };
+
 type HardPurgeCandidateRow = {
   id: string;
   project: string;
@@ -1929,57 +2005,406 @@ export class HarnessMemCore {
     return Number(row?.count ?? 0);
   }
 
-  private countRestoreCapableArchiveFullObservations(ids: string[]): number {
+  private selectArchiveStorageRowsByObservationIds(ids: string[]): ArchiveStorageRow[] {
     if (ids.length === 0 || !this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
-      return 0;
+      return [];
     }
     const placeholders = ids.map(() => "?").join(", ");
-    const row = this.db
-      .query(`
-        SELECT COUNT(*) AS count
-        FROM (
-          SELECT DISTINCT s.observation_id
-          FROM mem_archive_full f
-          JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
-          WHERE s.observation_id IN (${placeholders})
-            AND s.archive_state = 'archived'
-            AND f.purged_at IS NULL
-            AND f.payload_json IS NOT NULL
-            AND trim(f.payload_json) <> ''
-            AND trim(f.payload_json) <> '{}'
-            AND f.payload_sha256 IS NOT NULL
-            AND trim(f.payload_sha256) <> ''
-        )
+    return this.db
+      .query<ArchiveStorageRow, string[]>(`
+        SELECT
+          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.content_sha256, s.manifest_sha256,
+          f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
+        FROM mem_archive_stubs s
+        LEFT JOIN mem_archive_full f ON f.archive_full_ref = s.archive_full_ref
+        WHERE s.observation_id IN (${placeholders})
+        ORDER BY s.observation_id ASC, s.created_at DESC, s.archive_id ASC
       `)
-      .get(...(ids as never[])) as { count: number } | null;
-    return Number(row?.count ?? 0);
+      .all(...ids);
+  }
+
+  private validateArchivePayload(row: ArchiveStorageRow): { ok: true; payload: ArchivePayload; payload_sha256: string } | { ok: false; error: string } {
+    if (!row.archive_full_ref) return { ok: false, error: "archive full ref is missing" };
+    if (row.full_purged_at) return { ok: false, error: "archive full payload is purged" };
+    if (!row.payload_json || !row.payload_sha256) return { ok: false, error: "archive full payload is missing" };
+    if (row.payload_json.trim() === "" || row.payload_json.trim() === "{}") {
+      return { ok: false, error: "archive full payload is empty" };
+    }
+    const actualPayloadSha256 = sha256Hex(row.payload_json);
+    if (actualPayloadSha256 !== row.payload_sha256) {
+      return { ok: false, error: "payload_sha256 verification failed" };
+    }
+    let payload: ArchivePayload;
+    try {
+      payload = JSON.parse(row.payload_json) as ArchivePayload;
+    } catch {
+      return { ok: false, error: "archive payload_json is invalid" };
+    }
+    if (!payload || typeof payload !== "object") {
+      return { ok: false, error: "archive payload_json must be an object" };
+    }
+    if (payload.schema_version !== "s129-archive-payload-v1") {
+      return { ok: false, error: "archive payload schema_version is unsupported" };
+    }
+    if (payload.archive_id !== row.archive_id || payload.observation_id !== row.observation_id) {
+      return { ok: false, error: "archive payload identity mismatch" };
+    }
+    if (payload.manifest_sha256 !== row.manifest_sha256) {
+      return { ok: false, error: "manifest_sha256 verification failed" };
+    }
+    const observationRows = Array.isArray(payload.rows?.mem_observations)
+      ? payload.rows.mem_observations
+      : [];
+    const observation = observationRows.find((entry) => entry.id === row.observation_id);
+    if (!observation) {
+      return { ok: false, error: "archive payload missing target observation row" };
+    }
+    const observationContent = typeof observation.content === "string" ? observation.content : "";
+    const payloadContentSha256 = sha256Hex(observationContent);
+    if (payload.content_sha256 !== payloadContentSha256 || row.content_sha256 !== payloadContentSha256) {
+      return { ok: false, error: "content_sha256 verification failed" };
+    }
+    return { ok: true, payload, payload_sha256: actualPayloadSha256 };
+  }
+
+  private archivePayloadRowKey(tableName: string, row: Record<string, unknown>): string {
+    const keyColumnsByTable: Record<string, string[]> = {
+      mem_observations: ["id"],
+      mem_vectors: ["observation_id", "model"],
+      mem_links: ["id"],
+      mem_relations: ["id"],
+      mem_facts: ["fact_id"],
+      mem_events: ["event_id"],
+      mem_tags: ["observation_id", "tag", "tag_type"],
+      mem_observation_entities: ["observation_id", "entity_id"],
+      mem_entities: ["id"],
+      mem_nuggets: ["nugget_id"],
+      mem_nugget_vectors: ["nugget_id", "model"],
+    };
+    const columns = keyColumnsByTable[tableName] ?? [];
+    return columns.map((column) => String(row[column] ?? "")).join("\u001f");
+  }
+
+  private archivePayloadTableKeys(tableName: string, rows: Array<Record<string, unknown>> | undefined): string[] {
+    return [...new Set((rows ?? []).map((row) => this.archivePayloadRowKey(tableName, row)))].sort();
+  }
+
+  private archivePayloadComparableRow(tableName: string, row: Record<string, unknown>): Record<string, unknown> {
+    const comparable: Record<string, unknown> = {};
+    const excludedColumnsByTable: Record<string, Set<string>> = {
+      mem_observations: new Set(["archived_at", "updated_at"]),
+    };
+    const excludedColumns = excludedColumnsByTable[tableName] ?? new Set<string>();
+    for (const column of this.getTableColumnNames(tableName).sort()) {
+      if (excludedColumns.has(column)) continue;
+      if (Object.prototype.hasOwnProperty.call(row, column)) {
+        comparable[column] = row[column];
+      }
+    }
+    return comparable;
+  }
+
+  private archivePayloadRowContentHash(tableName: string, row: Record<string, unknown>): string {
+    return sha256Hex(stableJson(this.archivePayloadComparableRow(tableName, row)));
+  }
+
+  private archivePayloadTableHashCounts(tableName: string, rows: Array<Record<string, unknown>> | undefined): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const row of rows ?? []) {
+      const hash = this.archivePayloadRowContentHash(tableName, row);
+      counts.set(hash, (counts.get(hash) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private validateArchivePayloadCoversCurrentRows(row: ArchiveStorageRow, payload: ArchivePayload): string | null {
+    const observation = this.db
+      .query<ArchiveCandidateRow, [string]>(`
+        SELECT
+          id, project, session_id, user_id, team_id, content, content_redacted, raw_text,
+          observation_type, memory_type, tags_json, privacy_tags_json, archived_at,
+          created_at, updated_at
+        FROM mem_observations
+        WHERE id = ?
+      `)
+      .get(row.observation_id);
+    if (!observation) {
+      return "current observation row is missing";
+    }
+    const currentRows = this.collectArchivePayloadRows(observation);
+    const contentCheckedTables = [
+      "mem_observations",
+      "mem_vectors",
+      "mem_links",
+      "mem_relations",
+      "mem_facts",
+      "mem_events",
+      "mem_tags",
+      "mem_observation_entities",
+      "mem_entities",
+      "mem_nuggets",
+      "mem_nugget_vectors",
+    ];
+    for (const tableName of contentCheckedTables) {
+      const currentCounts = this.archivePayloadTableHashCounts(tableName, currentRows[tableName]);
+      const payloadCounts = this.archivePayloadTableHashCounts(tableName, payload.rows?.[tableName]);
+      for (const [hash, count] of currentCounts.entries()) {
+        if ((payloadCounts.get(hash) ?? 0) < count) {
+          return `archive payload lifecycle coverage mismatch for ${tableName}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  private summarizeSqliteVecRepair(response: ApiResponse): Record<string, unknown> {
+    const item = (response.items[0] ?? {}) as Record<string, unknown>;
+    const meta = (response.meta ?? {}) as Record<string, unknown>;
+    const failed = Number(meta.failed ?? item.failed ?? 0);
+    const skipped = Number(meta.skipped ?? item.skipped ?? 0);
+    const repaired = Number(meta.repaired ?? item.repaired ?? 0);
+    return {
+      attempted: true,
+      ok: response.ok === true && failed === 0,
+      response_ok: response.ok === true,
+      failed,
+      skipped,
+      repaired,
+      meta: response.meta,
+      error: response.error ?? null,
+    };
+  }
+
+  private repairSqliteVecAfterArchiveRestore(vectorCount: number): Record<string, unknown> {
+    const response = this.repairSqliteVecMap({
+      execute: true,
+      limit: Math.max(1, vectorCount),
+      status_counts: false,
+    });
+    return this.summarizeSqliteVecRepair(response);
+  }
+
+  private getRestoreCapableArchiveObservationIds(ids: string[]): string[] {
+    const present = new Set<string>();
+    for (const row of this.selectArchiveStorageRowsByObservationIds(ids)) {
+      if (row.archive_state !== "archived") continue;
+      const payloadValidation = this.validateArchivePayload(row);
+      if (!payloadValidation.ok) continue;
+      if (this.validateArchivePayloadCoversCurrentRows(row, payloadValidation.payload)) continue;
+      present.add(row.observation_id);
+    }
+    return [...present].sort();
+  }
+
+  private countRestoreCapableArchiveFullObservations(ids: string[]): number {
+    return this.getRestoreCapableArchiveObservationIds(ids).length;
   }
 
   private listMissingRestoreCapableArchiveIds(ids: string[]): string[] {
     if (ids.length === 0) {
       return [];
     }
-    if (!this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
-      return [...ids];
-    }
-    const placeholders = ids.map(() => "?").join(", ");
-    const rows = this.db
-      .query<{ observation_id: string }, string[]>(`
-        SELECT DISTINCT s.observation_id
-        FROM mem_archive_full f
-        JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
-        WHERE s.observation_id IN (${placeholders})
-          AND s.archive_state = 'archived'
-          AND f.purged_at IS NULL
-          AND f.payload_json IS NOT NULL
-          AND trim(f.payload_json) <> ''
-          AND trim(f.payload_json) <> '{}'
-          AND f.payload_sha256 IS NOT NULL
-          AND trim(f.payload_sha256) <> ''
-      `)
-      .all(...ids);
-    const present = new Set(rows.map((row) => row.observation_id));
+    const present = new Set(this.getRestoreCapableArchiveObservationIds(ids));
     return ids.filter((id) => !present.has(id));
+  }
+
+  private getTableColumnNames(tableName: string): string[] {
+    if (!this.tableExists(tableName)) return [];
+    const quoted = this.quoteIdentifier(tableName);
+    return this.db
+      .query<{ name: string }, []>(`PRAGMA table_info(${quoted})`)
+      .all()
+      .map((row) => row.name)
+      .filter((name) => typeof name === "string" && name.length > 0);
+  }
+
+  private selectArchiveRows(tableName: string, whereSql: string, values: unknown[] = []): Array<Record<string, unknown>> {
+    if (!this.tableExists(tableName)) return [];
+    const quoted = this.quoteIdentifier(tableName);
+    return this.db
+      .query(`SELECT * FROM ${quoted} ${whereSql}`)
+      .all(...(values as SQLQueryBindings[])) as Array<Record<string, unknown>>;
+  }
+
+  private insertArchiveRow(tableName: string, row: Record<string, unknown>, conflictMode: "IGNORE" | "REPLACE"): void {
+    const tableColumns = this.getTableColumnNames(tableName);
+    const columns = tableColumns.filter((column) => Object.prototype.hasOwnProperty.call(row, column));
+    if (columns.length === 0) return;
+    const quotedTable = this.quoteIdentifier(tableName);
+    const quotedColumns = columns.map((column) => this.quoteIdentifier(column)).join(", ");
+    const placeholders = columns.map(() => "?").join(", ");
+    const values = columns.map((column) => row[column]);
+    this.db
+      .query(`INSERT OR ${conflictMode} INTO ${quotedTable} (${quotedColumns}) VALUES (${placeholders})`)
+      .run(...(values as SQLQueryBindings[]));
+  }
+
+  private insertOrReplaceArchiveRows(tableName: string, rows: Array<Record<string, unknown>> | undefined): void {
+    for (const row of rows ?? []) {
+      this.insertArchiveRow(tableName, row, "REPLACE");
+    }
+  }
+
+  private insertOrIgnoreArchiveRows(tableName: string, rows: Array<Record<string, unknown>> | undefined): void {
+    for (const row of rows ?? []) {
+      this.insertArchiveRow(tableName, row, "IGNORE");
+    }
+  }
+
+  private buildArchiveManifest(candidateIds: string[]): ArchiveManifest {
+    const ids = uniqueSortedStrings(candidateIds);
+    const stableManifest = {
+      schema_version: "s129-archive-v1" as const,
+      operation: "admin.archive" as const,
+      candidate_ids: ids,
+      candidate_count: ids.length,
+      cross_store_impact: this.collectObservationLifecycleImpact(ids),
+    };
+    return {
+      ...stableManifest,
+      manifest_sha256: sha256Hex(stableJson(stableManifest)),
+    };
+  }
+
+  private selectArchiveCandidateRows(request: AdminArchiveRequest): { ok: true; rows: ArchiveCandidateRow[] } | { ok: false; error: string } {
+    let candidateIds = uniqueSortedStrings(
+      (request.candidate_ids && request.candidate_ids.length > 0)
+        ? request.candidate_ids
+        : request.target_ids,
+    );
+    if (candidateIds.length > 500) {
+      return { ok: false, error: "candidate_ids length exceeds maximum of 500" };
+    }
+    if (candidateIds.length === 0) {
+      const plan = runForgetPolicy(this.db, {
+        dry_run: true,
+        project: request.project,
+        limit: request.limit,
+        score_threshold: request.score_threshold,
+        protect_accessed: request.protect_accessed,
+      });
+      candidateIds = uniqueSortedStrings(plan.candidates.map((candidate) => candidate.observation_id));
+    }
+    if (candidateIds.length === 0) {
+      return { ok: true, rows: [] };
+    }
+
+    const placeholders = candidateIds.map(() => "?").join(", ");
+    const rows = this.db
+      .query<ArchiveCandidateRow, string[]>(`
+        SELECT
+          id, project, session_id, user_id, team_id, content, content_redacted, raw_text,
+          observation_type, memory_type, tags_json, privacy_tags_json, archived_at,
+          created_at, updated_at
+        FROM mem_observations
+        WHERE id IN (${placeholders})
+        ORDER BY id ASC
+      `)
+      .all(...candidateIds);
+    const found = new Set(rows.map((row) => row.id));
+    const missing = candidateIds.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      return { ok: false, error: `archive candidate rows are missing: ${missing.join(", ")}` };
+    }
+    if (request.project) {
+      const mismatched = rows.filter((row) => row.project !== request.project).map((row) => row.id);
+      if (mismatched.length > 0) {
+        return { ok: false, error: `archive candidate rows are outside project scope: ${mismatched.join(", ")}` };
+      }
+    }
+    return { ok: true, rows };
+  }
+
+  private prepareArchiveManifest(request: AdminArchiveRequest): ArchivePrepareResult {
+    const selected = this.selectArchiveCandidateRows(request);
+    if (!selected.ok) return selected;
+    return {
+      ok: true,
+      rows: selected.rows,
+      manifest: this.buildArchiveManifest(selected.rows.map((row) => row.id)),
+    };
+  }
+
+  private hasLegalHold(row: Pick<ArchiveCandidateRow, "privacy_tags_json" | "tags_json">): boolean {
+    const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+    const tags = parseJsonStringArray(row.tags_json);
+    return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+  }
+
+  private collectArchivePayloadRows(row: Pick<ArchiveCandidateRow, "id" | "session_id">): ArchivePayload["rows"] {
+    const observationRows = this.selectArchiveRows("mem_observations", "WHERE id = ?", [row.id]);
+    const observation = observationRows[0] ?? {};
+    const eventId = typeof observation.event_id === "string" && observation.event_id ? observation.event_id : null;
+    const nuggets = this.selectArchiveRows("mem_nuggets", "WHERE observation_id = ? ORDER BY seq ASC, nugget_id ASC", [row.id]);
+    const observationEntities = this.selectArchiveRows("mem_observation_entities", "WHERE observation_id = ? ORDER BY entity_id ASC", [row.id]);
+    const entityIds = observationEntities
+      .map((entry) => Number(entry.entity_id))
+      .filter((entityId) => Number.isFinite(entityId));
+    return {
+      mem_sessions: this.selectArchiveRows("mem_sessions", "WHERE session_id = ?", [row.session_id]),
+      mem_events: eventId
+        ? this.selectArchiveRows("mem_events", "WHERE observation_id = ? OR event_id = ? ORDER BY ts ASC, event_id ASC", [row.id, eventId])
+        : this.selectArchiveRows("mem_events", "WHERE observation_id = ? ORDER BY ts ASC, event_id ASC", [row.id]),
+      mem_observations: observationRows,
+      mem_vectors: this.selectArchiveRows("mem_vectors", "WHERE observation_id = ? ORDER BY model ASC", [row.id]),
+      mem_links: this.selectArchiveRows(
+        "mem_links",
+        "WHERE from_observation_id = ? OR to_observation_id = ? ORDER BY id ASC",
+        [row.id, row.id],
+      ),
+      mem_relations: this.selectArchiveRows("mem_relations", "WHERE observation_id = ? ORDER BY id ASC", [row.id]),
+      mem_facts: this.selectArchiveRows("mem_facts", "WHERE observation_id = ? ORDER BY fact_id ASC", [row.id]),
+      mem_tags: this.selectArchiveRows("mem_tags", "WHERE observation_id = ? ORDER BY tag_type ASC, tag ASC", [row.id]),
+      mem_entities: entityIds.length > 0
+        ? this.selectArchiveRows("mem_entities", `WHERE id IN (${entityIds.map(() => "?").join(", ")}) ORDER BY id ASC`, entityIds)
+        : [],
+      mem_observation_entities: observationEntities,
+      mem_nuggets: nuggets,
+      mem_nugget_vectors: this.selectArchiveRows("mem_nugget_vectors", "WHERE observation_id = ? ORDER BY nugget_id ASC, model ASC", [row.id]),
+    };
+  }
+
+  private buildArchivePayload(
+    row: ArchiveCandidateRow,
+    archiveId: string,
+    reason: string,
+    manifest: ArchiveManifest,
+    createdAt: string,
+  ): { payload: ArchivePayload; contentSha256: string; payloadJson: string; payloadSha256: string } {
+    const rows = this.collectArchivePayloadRows(row);
+    const contentSha256 = sha256Hex(String(row.content ?? ""));
+    const payload: ArchivePayload = {
+      schema_version: "s129-archive-payload-v1",
+      archive_id: archiveId,
+      observation_id: row.id,
+      created_at: createdAt,
+      actor: "system",
+      reason,
+      content_sha256: contentSha256,
+      manifest_sha256: manifest.manifest_sha256,
+      cross_store_impact: manifest.cross_store_impact,
+      rows,
+    };
+    const payloadJson = stableJson(payload);
+    const payloadSha256 = sha256Hex(payloadJson);
+    return { payload, contentSha256, payloadJson, payloadSha256 };
+  }
+
+  private restoreArchivePayloadRows(payload: ArchivePayload): void {
+    const rows = payload.rows ?? {};
+    this.insertOrIgnoreArchiveRows("mem_sessions", rows.mem_sessions);
+    this.insertOrReplaceArchiveRows("mem_events", rows.mem_events);
+    this.insertOrReplaceArchiveRows("mem_observations", rows.mem_observations);
+    this.insertOrReplaceArchiveRows("mem_vectors", rows.mem_vectors);
+    this.insertOrReplaceArchiveRows("mem_tags", rows.mem_tags);
+    this.insertOrIgnoreArchiveRows("mem_entities", rows.mem_entities);
+    this.insertOrReplaceArchiveRows("mem_observation_entities", rows.mem_observation_entities);
+    this.insertOrReplaceArchiveRows("mem_links", rows.mem_links);
+    this.insertOrReplaceArchiveRows("mem_relations", rows.mem_relations);
+    this.insertOrReplaceArchiveRows("mem_facts", rows.mem_facts);
+    this.insertOrReplaceArchiveRows("mem_nuggets", rows.mem_nuggets);
+    this.insertOrReplaceArchiveRows("mem_nugget_vectors", rows.mem_nugget_vectors);
   }
 
   private processRetryQueue(force = false): void {
@@ -2233,14 +2658,20 @@ export class HarnessMemCore {
       protect_accessed: request.protect_accessed,
     };
     const plan = runForgetPolicy(this.db, options);
-    const candidateIds = plan.candidates.map((candidate) => candidate.observation_id);
-    const impact = this.collectObservationLifecycleImpact(candidateIds);
+    const candidateIds = uniqueSortedStrings(plan.candidates.map((candidate) => candidate.observation_id));
+    const archiveManifest = this.buildArchiveManifest(candidateIds);
+    const impact = archiveManifest.cross_store_impact;
 
     return makeResponse(
       startedAt,
       [{
         ...plan,
         mode: "dry_run_plan",
+        archive_first: true,
+        candidate_ids: candidateIds,
+        candidate_count: candidateIds.length,
+        manifest_sha256: archiveManifest.manifest_sha256,
+        manifest_hash: archiveManifest.manifest_sha256,
         hard_delete_supported: false,
         cross_store_impact: impact,
         safety: {
@@ -2257,6 +2688,361 @@ export class HarnessMemCore {
         evicted: 0,
         ranking: "forget_plan_v1",
       } as Record<string, unknown>
+    );
+  }
+
+  adminForgetArchive(request: AdminArchiveRequest): ApiResponse {
+    const startedAt = performance.now();
+    const initial = this.prepareArchiveManifest(request);
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+
+    if (request.execute !== true) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_plan",
+          execute: false,
+          archive_first: true,
+          ...initial.manifest,
+          candidates: initial.rows.map((row) => ({
+            observation_id: row.id,
+            project: row.project,
+            archived_at: row.archived_at,
+            legal_hold: this.hasLegalHold(row),
+          })),
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        {
+          candidate_count: initial.manifest.candidate_count,
+          manifest_sha256: initial.manifest.manifest_sha256,
+          ranking: "archive_plan_v1",
+        },
+      );
+    }
+
+    const manifestSha256 = normalizeSha256(request.manifest_sha256);
+    if (!manifestSha256) {
+      return makeErrorResponse(startedAt, "manifest_sha256 is required for archive execute", request as unknown as Record<string, unknown>);
+    }
+    if (manifestSha256 !== initial.manifest.manifest_sha256) {
+      return makeErrorResponse(startedAt, "manifest_sha256 does not match current archive manifest", request as unknown as Record<string, unknown>);
+    }
+    const reason = typeof request.reason === "string" && request.reason.trim() ? request.reason.trim() : "";
+    if (!reason) {
+      return makeErrorResponse(startedAt, "reason is required for archive execute", request as unknown as Record<string, unknown>);
+    }
+    if (initial.manifest.candidate_count === 0) {
+      return makeErrorResponse(startedAt, "archive execute requires at least one candidate", request as unknown as Record<string, unknown>);
+    }
+
+    let transactionStarted = false;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+      const current = this.prepareArchiveManifest(request);
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      if (manifestSha256 !== current.manifest.manifest_sha256) {
+        throw new Error("manifest_sha256 does not match current archive manifest");
+      }
+
+      const archivedIds: string[] = [];
+      const archiveIds: string[] = [];
+      const skippedLegalHold: string[] = [];
+      const skippedAlreadyArchived: string[] = [];
+      const createdAt = nowIso();
+      for (const row of current.rows) {
+        if (this.hasLegalHold(row)) {
+          skippedLegalHold.push(row.id);
+          continue;
+        }
+        if (row.archived_at) {
+          skippedAlreadyArchived.push(row.id);
+          continue;
+        }
+        const existingArchive = this.db
+          .query<{ archive_id: string }, [string]>(
+            `SELECT archive_id FROM mem_archive_stubs WHERE observation_id = ? AND archive_state = 'archived' LIMIT 1`,
+          )
+          .get(row.id);
+        if (existingArchive?.archive_id) {
+          skippedAlreadyArchived.push(row.id);
+          continue;
+        }
+
+        const archiveId = `archive_${sha256Hex(`${row.id}:${current.manifest.manifest_sha256}`).slice(0, 32)}`;
+        const archiveFullRef = `sqlite:${archiveId}`;
+        const { contentSha256, payloadJson, payloadSha256 } = this.buildArchivePayload(
+          row,
+          archiveId,
+          reason,
+          current.manifest,
+          createdAt,
+        );
+        const archiveStub = stableJson({
+          schema_version: "s129-archive-stub-v1",
+          archive_id: archiveId,
+          observation_id: row.id,
+          project: row.project,
+          session_id: row.session_id,
+          user_id: row.user_id,
+          team_id: row.team_id,
+          observation_type: row.observation_type,
+          memory_type: row.memory_type,
+          content_sha256: contentSha256,
+          manifest_sha256: current.manifest.manifest_sha256,
+          created_at: createdAt,
+        });
+        const metadataJson = stableJson({
+          schema_version: "s129-archive-stub-metadata-v1",
+          impact: current.manifest.cross_store_impact,
+          payload_sha256: payloadSha256,
+        });
+
+        this.db
+          .query(`
+            INSERT INTO mem_archive_stubs(
+              archive_id, observation_id, project, session_id, user_id, team_id,
+              archive_stub, archive_full_ref, archive_state, reason, legal_hold_snapshot,
+              content_sha256, manifest_sha256, created_at, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', ?, 0, ?, ?, ?, ?)
+          `)
+          .run(
+            archiveId,
+            row.id,
+            row.project,
+            row.session_id,
+            row.user_id,
+            row.team_id,
+            archiveStub,
+            archiveFullRef,
+            reason,
+            contentSha256,
+            current.manifest.manifest_sha256,
+            createdAt,
+            metadataJson,
+          );
+        this.db
+          .query(`
+            INSERT INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `)
+          .run(archiveFullRef, archiveId, payloadJson, payloadSha256, createdAt);
+        this.db
+          .query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`)
+          .run(createdAt, createdAt, row.id);
+        archivedIds.push(row.id);
+        archiveIds.push(archiveId);
+      }
+
+      this.writeAuditLog("admin.archive.create", "archive", "", {
+        manifest_sha256: current.manifest.manifest_sha256,
+        candidate_count: current.manifest.candidate_count,
+        archived_count: archivedIds.length,
+        skipped_legal_hold: skippedLegalHold,
+        skipped_already_archived: skippedAlreadyArchived,
+        candidate_ids: current.manifest.candidate_ids,
+        archived_ids: archivedIds,
+        archive_ids: archiveIds,
+        reason,
+      });
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_execute",
+          execute: true,
+          manifest_sha256: current.manifest.manifest_sha256,
+          candidate_ids: current.manifest.candidate_ids,
+          candidate_count: current.manifest.candidate_count,
+          archived_ids: archivedIds,
+          archived_count: archivedIds.length,
+          archive_ids: archiveIds,
+          skipped_legal_hold: skippedLegalHold,
+          skipped_already_archived: skippedAlreadyArchived,
+          restore_supported: archiveIds.length > 0,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: true },
+        {
+          candidate_count: current.manifest.candidate_count,
+          archived_count: archivedIds.length,
+          manifest_sha256: current.manifest.manifest_sha256,
+          ranking: "archive_execute_v1",
+        },
+      );
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `archive execute failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
+  adminForgetRestore(request: AdminArchiveRestoreRequest): ApiResponse {
+    const startedAt = performance.now();
+    const archiveId = typeof request.archive_id === "string" && request.archive_id.trim() ? request.archive_id.trim() : null;
+    const archiveFullRef = typeof request.archive_full_ref === "string" && request.archive_full_ref.trim()
+      ? request.archive_full_ref.trim()
+      : null;
+    if (!archiveId && !archiveFullRef) {
+      return makeErrorResponse(startedAt, "archive_id or archive_full_ref is required", request as unknown as Record<string, unknown>);
+    }
+    const reason = typeof request.reason === "string" && request.reason.trim() ? request.reason.trim() : "";
+    if (request.execute === true && !reason) {
+      return makeErrorResponse(startedAt, "reason is required for restore execute", request as unknown as Record<string, unknown>);
+    }
+
+    const loadArchive = (): ArchiveStorageRow | null => this.db
+      .query(`
+        SELECT
+          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.content_sha256, s.manifest_sha256,
+          f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
+        FROM mem_archive_stubs s
+        LEFT JOIN mem_archive_full f ON f.archive_full_ref = s.archive_full_ref
+        WHERE ${archiveId ? "s.archive_id = ?" : "s.archive_full_ref = ?"}
+        LIMIT 1
+      `)
+      .get((archiveId ?? archiveFullRef) as string) as ArchiveStorageRow | null;
+
+    const validateArchive = (): {
+      ok: true;
+      row: NonNullable<ReturnType<typeof loadArchive>>;
+      payload: ArchivePayload;
+      payload_sha256: string;
+    } | { ok: false; error: string } => {
+      const row = loadArchive();
+      if (!row) return { ok: false, error: "archive not found" };
+      if (row.archive_state === "purged") return { ok: false, error: "archive_purged" };
+      const payloadValidation = this.validateArchivePayload(row);
+      if (!payloadValidation.ok) return payloadValidation;
+      const original = this.db
+        .query<{ archived_at: string | null }, [string]>(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(row.observation_id);
+      if (original && original.archived_at === null) {
+        return { ok: false, error: "active original observation already exists" };
+      }
+      return { ok: true, row, payload: payloadValidation.payload, payload_sha256: payloadValidation.payload_sha256 };
+    };
+
+    const initial = validateArchive();
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+    if (request.execute !== true) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_restore_plan",
+          execute: false,
+          archive_id: initial.row.archive_id,
+          archive_full_ref: initial.row.archive_full_ref,
+          observation_id: initial.row.observation_id,
+          manifest_sha256: initial.row.manifest_sha256,
+          payload_sha256: initial.payload_sha256,
+          restore_supported: true,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        { manifest_sha256: initial.row.manifest_sha256, ranking: "archive_restore_plan_v1" },
+      );
+    }
+
+    let transactionStarted = false;
+    let restored: {
+      row: ArchiveStorageRow;
+      payload: ArchivePayload;
+      payload_sha256: string;
+      restored_at: string;
+    } | null = null;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+      const current = validateArchive();
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      this.restoreArchivePayloadRows(current.payload);
+      const restoredAt = nowIso();
+      const observationRows = current.payload.rows.mem_observations ?? [];
+      const observation = observationRows[0] ?? {};
+      const originalPrivacyTags = parseJsonStringArray(
+        typeof observation.privacy_tags_json === "string" ? observation.privacy_tags_json : "[]",
+      );
+      const shouldKeepDeleted = /^user[_-]?delete|user_requested_delete$/i.test(current.row.reason);
+      const restoredPrivacyTags = shouldKeepDeleted
+        ? originalPrivacyTags
+        : originalPrivacyTags.filter((tag) => tag !== "deleted");
+      this.db
+        .query(`UPDATE mem_observations SET archived_at = NULL, privacy_tags_json = ?, updated_at = ? WHERE id = ?`)
+        .run(JSON.stringify(restoredPrivacyTags), restoredAt, current.row.observation_id);
+      const restoredObservation = this.db
+        .query<{ archived_at: string | null }, [string]>(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(current.row.observation_id);
+      if (!restoredObservation || restoredObservation.archived_at !== null) {
+        throw new Error("restore did not rehydrate active observation");
+      }
+      this.db
+        .query(`UPDATE mem_archive_stubs SET archive_state = 'restored', restored_at = ? WHERE archive_id = ?`)
+        .run(restoredAt, current.row.archive_id);
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+      restored = {
+        row: current.row,
+        payload: current.payload,
+        payload_sha256: current.payload_sha256,
+        restored_at: restoredAt,
+      };
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `archive restore failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
+    if (!restored) {
+      return makeErrorResponse(startedAt, "archive restore failed: restore result missing", request as unknown as Record<string, unknown>);
+    }
+    const vectorRepair = this.repairSqliteVecAfterArchiveRestore((restored.payload.rows.mem_vectors ?? []).length);
+    this.writeAuditLog("admin.archive.restore", "archive", restored.row.archive_id, {
+      archive_id: restored.row.archive_id,
+      archive_full_ref: restored.row.archive_full_ref,
+      observation_id: restored.row.observation_id,
+      manifest_sha256: restored.row.manifest_sha256,
+      payload_sha256: restored.payload_sha256,
+      sqlite_vec_repair: vectorRepair,
+      reason,
+    });
+
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "archive_restore_execute",
+        execute: true,
+        archive_id: restored.row.archive_id,
+        archive_full_ref: restored.row.archive_full_ref,
+        observation_id: restored.row.observation_id,
+        manifest_sha256: restored.row.manifest_sha256,
+        payload_sha256: restored.payload_sha256,
+        restored_at: restored.restored_at,
+        sqlite_vec_repair: vectorRepair,
+      } as unknown as Record<string, unknown>],
+      { ...request, execute: true },
+      { manifest_sha256: restored.row.manifest_sha256, ranking: "archive_restore_execute_v1" },
     );
   }
 
@@ -2510,8 +3296,8 @@ export class HarnessMemCore {
       archive.archive_stub_count += Number(row.count ?? 0);
     }
     archive.archive_full_count = this.countArchiveFullRows(ids);
-    archive.restore_capable_count = Number(archive.archive_states.archived ?? 0);
     archive.restore_capable_full_count = this.countRestoreCapableArchiveFullObservations(ids);
+    archive.restore_capable_count = archive.restore_capable_full_count;
     archive.restore_capable_full_observation_count = archive.restore_capable_full_count;
     archive.missing_restore_capable_archive_ids = this.listMissingRestoreCapableArchiveIds(ids);
     return archive;
