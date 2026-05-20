@@ -7,9 +7,11 @@ const MEM_PORT = process.env.HARNESS_MEM_PORT || "37888";
 const MEM_BASE = `http://${MEM_HOST}:${MEM_PORT}`;
 const ADMIN_TOKEN = (process.env.HARNESS_MEM_ADMIN_TOKEN || "").trim();
 const DEFAULT_PROJECT = detectDefaultProject();
+const DEFAULT_PROJECTS_STATS_PROXY_TIMEOUT_MS = 1_500;
 
 const staticDir = join(import.meta.dir, "static-parity");
 const staticIndexPath = join(staticDir, "index.html");
+let lastProjectsStatsJson: string | null = null;
 
 if (!existsSync(staticIndexPath)) {
   throw new Error(
@@ -63,7 +65,24 @@ function safePathname(pathname: string): string {
   return decoded;
 }
 
-async function proxyJson(path: string, method: "GET" | "POST", body?: Record<string, unknown>): Promise<Response> {
+function projectsStatsProxyTimeoutMs(): number {
+  const raw = Number(process.env.HARNESS_MEM_UI_PROJECTS_STATS_TIMEOUT_MS || DEFAULT_PROJECTS_STATS_PROXY_TIMEOUT_MS);
+  if (!Number.isFinite(raw)) {
+    return DEFAULT_PROJECTS_STATS_PROXY_TIMEOUT_MS;
+  }
+  return Math.max(250, Math.min(8_000, Math.floor(raw)));
+}
+
+async function proxyJson(
+  path: string,
+  method: "GET" | "POST",
+  body?: Record<string, unknown>,
+  options: { timeoutMs?: number } = {}
+): Promise<Response> {
+  const controller = typeof options.timeoutMs === "number" ? new AbortController() : null;
+  const timer = controller && typeof options.timeoutMs === "number"
+    ? setTimeout(() => controller.abort(), options.timeoutMs)
+    : null;
   try {
     const headers: Record<string, string> = {
       "content-type": "application/json",
@@ -76,6 +95,7 @@ async function proxyJson(path: string, method: "GET" | "POST", body?: Record<str
       method,
       headers,
       body: method === "POST" ? JSON.stringify(body || {}) : undefined,
+      signal: controller?.signal,
     });
     const text = await response.text();
     const contentTypeHeader = (response.headers.get("content-type") || "").toLowerCase();
@@ -114,7 +134,21 @@ async function proxyJson(path: string, method: "GET" | "POST", body?: Record<str
       status: 502,
       headers: { "content-type": "application/json; charset=utf-8" },
     });
+  } finally {
+    if (timer) {
+      clearTimeout(timer);
+    }
   }
+}
+
+function jsonResponseFromText(text: string, status = 200): Response {
+  return new Response(text, {
+    status,
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "no-store",
+    },
+  });
 }
 
 function withDefaultProjectScope(path: string): string {
@@ -124,6 +158,58 @@ function withDefaultProjectScope(path: string): string {
     scoped.searchParams.set("project", DEFAULT_PROJECT);
   }
   return `${scoped.pathname}${scoped.search}`;
+}
+
+function fallbackProjectsStatsJson(upstreamStatus: number, upstreamText: string): string {
+  if (!DEFAULT_PROJECT) {
+    return upstreamText;
+  }
+  return JSON.stringify({
+    ok: true,
+    source: "core",
+    items: [
+      {
+        project: DEFAULT_PROJECT,
+        canonical_project: basename(DEFAULT_PROJECT),
+        observations: 0,
+        sessions: 0,
+        updated_at: null,
+        member_projects: [DEFAULT_PROJECT],
+        stale: true,
+      },
+    ],
+    meta: {
+      count: 1,
+      latency_ms: 0,
+      sla_latency_ms: 200,
+      filters: {
+        project: DEFAULT_PROJECT,
+        stale: true,
+      },
+      ranking: "projects_stats_stale_fallback_v1",
+      stale: true,
+      upstream_status: upstreamStatus,
+      upstream_error: upstreamText.slice(0, 200),
+    },
+  });
+}
+
+async function proxyProjectsStats(path: string): Promise<Response> {
+  const upstream = await proxyJson(withDefaultProjectScope(path), "GET", undefined, {
+    timeoutMs: projectsStatsProxyTimeoutMs(),
+  });
+  const text = await upstream.text();
+  if (upstream.ok) {
+    lastProjectsStatsJson = text;
+    return jsonResponseFromText(text, upstream.status);
+  }
+  if (lastProjectsStatsJson) {
+    return jsonResponseFromText(lastProjectsStatsJson);
+  }
+  if (DEFAULT_PROJECT) {
+    return jsonResponseFromText(fallbackProjectsStatsJson(upstream.status, text));
+  }
+  return jsonResponseFromText(text, upstream.status);
 }
 
 async function proxyStream(path: string, request: Request): Promise<Response> {
@@ -221,7 +307,7 @@ const server = Bun.serve({
       return proxyJson(withDefaultProjectScope(`/v1/feed${url.search || ""}`), "GET");
     }
     if (url.pathname === "/api/projects/stats") {
-      return proxyJson(withDefaultProjectScope(`/v1/projects/stats${url.search || ""}`), "GET");
+      return proxyProjectsStats(`/v1/projects/stats${url.search || ""}`);
     }
     if (url.pathname === "/api/stream") {
       return proxyStream(`/v1/stream${url.search || ""}`, request);

@@ -1331,6 +1331,12 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/ProjectStats"
+        "503":
+          description: Project stats offload child is busy, timed out, or queue is full; retry later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/stream:
     get:

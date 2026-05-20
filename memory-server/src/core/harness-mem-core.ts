@@ -179,6 +179,8 @@ const DEFAULT_CHECKPOINT_CHILD_TIMEOUT_MS = 8_000;
 const DEFAULT_CHECKPOINT_CHILD_QUEUE_MAX = 1;
 const DEFAULT_MATERIALIZE_CHILD_TIMEOUT_MS = 30_000;
 const DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX = 1;
+const DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS = 8_000;
+const DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX = 1;
 const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
@@ -233,6 +235,14 @@ export function buildEventChildCommand(
 }
 
 export function buildRetryChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+export function buildProjectsStatsChildCommand(
   scriptPath: string,
   platform = process.platform,
 ): string[] {
@@ -336,6 +346,22 @@ export function shouldRunRetryQueueOutOfProcess(options: {
   if (!options.dbPath || options.dbPath === ":memory:") return false;
 
   const override = env.HARNESS_MEM_RETRY_OFFLOAD;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
+}
+
+export function shouldRunProjectsStatsOutOfProcess(options: {
+  dbPath: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS)) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+
+  const override = env.HARNESS_MEM_PROJECTS_STATS_OFFLOAD;
   if (envFalsy(override)) return false;
   if (envTruthy(override)) return true;
   if (env.NODE_ENV === "test") return false;
@@ -1147,6 +1173,7 @@ export class HarnessMemCore {
   private retryChildPending = 0;
   private checkpointChildPending = 0;
   private materializeChildPending = 0;
+  private projectsStatsChildPending = 0;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -1426,6 +1453,10 @@ export class HarnessMemCore {
     return fileURLToPath(new URL("../tools/retry-child.ts", import.meta.url));
   }
 
+  private getProjectsStatsChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/projects-stats-child.ts", import.meta.url));
+  }
+
   private getSearchWorkerMaxPending(): number {
     return clampLimit(
       Number(process.env.HARNESS_MEM_SEARCH_WORKER_QUEUE_MAX || DEFAULT_SEARCH_WORKER_QUEUE_MAX),
@@ -1477,6 +1508,24 @@ export class HarnessMemCore {
       DEFAULT_RETRY_CHILD_QUEUE_MAX,
       1,
       8,
+    );
+  }
+
+  private getProjectsStatsChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX || DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX),
+      DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private projectsStatsChildTimeoutMs(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS || DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS),
+      DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS,
+      250,
+      60_000,
     );
   }
 
@@ -4087,6 +4136,109 @@ export class HarnessMemCore {
     return this.cfgMgr.projectsStats(request);
   }
 
+  async projectsStatsQueued(request: ProjectsStatsRequest = {}): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    if (!shouldRunProjectsStatsOutOfProcess({ dbPath: this.config.dbPath })) {
+      return this.projectsStats(request);
+    }
+    if (this.projectsStatsChildPending >= this.getProjectsStatsChildMaxPending()) {
+      const response = makeErrorResponse(
+        startedAt,
+        "projects stats child queue full, retry later",
+        request as unknown as Record<string, unknown>,
+      );
+      Object.assign(response.meta, {
+        error_code: "projects_stats_offload_queue_full",
+        http_status: 503,
+        projects_stats_offload: {
+          mode: "child_process",
+          queue_full: true,
+          pending: this.projectsStatsChildPending,
+          max_pending: this.getProjectsStatsChildMaxPending(),
+        },
+      });
+      return response;
+    }
+    return this.runProjectsStatsOutOfProcess(request);
+  }
+
+  private async runProjectsStatsOutOfProcess(request: ProjectsStatsRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const timeoutMs = this.projectsStatsChildTimeoutMs();
+    const scriptPath = this.getProjectsStatsChildScriptPath();
+    this.projectsStatsChildPending += 1;
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildProjectsStatsChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS: "1",
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, request);
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`projects stats child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "projects stats child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        projects_stats_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: typeof response.meta.latency_ms === "number" ? response.meta.latency_ms : null,
+        },
+      };
+      return response;
+    } catch (error) {
+      const response = makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        request as unknown as Record<string, unknown>,
+      );
+      Object.assign(response.meta, {
+        error_code: "projects_stats_offload_failed",
+        http_status: 503,
+        projects_stats_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          timed_out: timedOut,
+        },
+      });
+      return response;
+    } finally {
+      clearTimeout(timer);
+      this.projectsStatsChildPending = Math.max(0, this.projectsStatsChildPending - 1);
+    }
+  }
+
   startClaudeMemImport(request: ClaudeMemImportRequest): ApiResponse {
     return this.ingestCoord.startClaudeMemImport(request);
   }
@@ -4439,6 +4591,7 @@ export class HarnessMemCore {
       process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
       process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
       process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS === "1" ||
       process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
       process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1";
 
@@ -4480,10 +4633,12 @@ export class HarnessMemCore {
       // ignore close errors
     }
 
-    try {
-      writeFileSync(this.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso(), state: `stopped:${signal}` }));
-    } catch {
-      // best effort
+    if (!lightweightChild) {
+      try {
+        writeFileSync(this.heartbeatPath, JSON.stringify({ pid: process.pid, ts: nowIso(), state: `stopped:${signal}` }));
+      } catch {
+        // best effort
+      }
     }
   }
 

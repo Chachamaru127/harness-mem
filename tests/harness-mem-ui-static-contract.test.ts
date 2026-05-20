@@ -22,6 +22,12 @@ describe("harness-mem UI static contract", () => {
     expect(server).toContain("function withDefaultProjectScope");
     expect(server).toContain('scoped.searchParams.set("project", DEFAULT_PROJECT);');
     expect(server).toContain('return proxyJson(withDefaultProjectScope(`/v1/feed${url.search || ""}`), "GET");');
-    expect(server).toContain('return proxyJson(withDefaultProjectScope(`/v1/projects/stats${url.search || ""}`), "GET");');
+    expect(server).toContain("async function proxyProjectsStats");
+    expect(server).toContain("HARNESS_MEM_UI_PROJECTS_STATS_TIMEOUT_MS");
+    expect(server).toContain("lastProjectsStatsJson = text;");
+    expect(server).toContain("projects_stats_stale_fallback_v1");
+    expect(server).toContain("stale: true");
+    expect(server).toContain("timeoutMs: projectsStatsProxyTimeoutMs()");
+    expect(server).toContain('return proxyProjectsStats(`/v1/projects/stats${url.search || ""}`);');
   });
 });

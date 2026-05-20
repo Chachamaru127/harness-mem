@@ -14,7 +14,7 @@
 - **大きなローカルDBでも検索・記録でdaemonが固まりにくくなった**。通常の vector search / lexical search、checkpoint / event 記録、retry queue 処理を bounded worker / child process 側へ逃がし、checkpoint はまず durable に保存してから vector/entity/link/nugget を bounded materialization child で後追い生成する。混雑時は固まる代わりに `503` backpressure として早く返す。
 - **MCP / HTTP gateway / 通常 CLI が余分な Mem UI を起動しないようにした**。Node MCP、Go MCP、HTTP MCP gateway、高レベル CLI の daemon preflight では、明示 opt-in がない限り `HARNESS_MEM_ENABLE_UI=false` を使う。`harness-mem setup` は引き続き Mem UI を既定で起動する。専用 UI LaunchAgent が `:37903` にいる運用で、旧既定 `:37901` の stray UI が増える問題を防ぐ。
 - **health と facets が巨大DB全体を不用意に舐めないようにした**。`/health` は既定で exact count を省略し、必要な時だけ `include_counts=1` で出す。`/v1/search/facets` は `query` / `project` / tenant scope なしでは `400 search_facets_unbounded` を返す。
-- **Mem UI の初回表示が現在プロジェクト優先で固まりにくくなった**。ブラウザが `project` を渡さない feed / project stats リクエストにも UI proxy が default project を補い、`/v1/projects/stats?project=...` は bounded かつ高速な privacy-safe 集計を使う。大きな複数プロジェクトDBで `daemon checking...` / `Projects Loading...` に固着する体験を避ける。
+- **Mem UI の初回表示が現在プロジェクト優先で固まりにくくなった**。ブラウザが `project` を渡さない feed / project stats リクエストにも UI proxy が default project を補い、`/v1/projects/stats?project=...` は bounded child process と高速な privacy-safe 集計を使う。stats が混雑中でも UI はすぐ stale な現在プロジェクト表示へ切り替え、「まだプロジェクトがありません」と誤表示したり daemon を待ち続けたりしない。大きな複数プロジェクトDBで `daemon checking...` / `Projects Loading...` に固着しつつ `/health/ready` まで消える体験を避ける。
 - **Codex / Claude 用 Skill に S127 後の正しい検索作法を反映した**。複数プロジェクト並行時は `project` scope を渡す、`harness_mem_search_facets` を無指定で呼ばない、検索 `503` は「記憶なし」ではなくdaemonを守る backpressure として扱う、というルールを明文化した。npm package には Claude `skills/` bundle も含め、proof pack で Codex / Claude 両方の配布面を確認する。
 
 ## [0.23.0] - 2026-05-17

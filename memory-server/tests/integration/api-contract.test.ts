@@ -270,6 +270,87 @@ describe("API contract snapshot", () => {
     }
   });
 
+  test("projects stats keeps health/ready responsive while offloaded aggregate is pending", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldOffload = process.env.HARNESS_MEM_PROJECTS_STATS_OFFLOAD;
+    const oldQueueMax = process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX;
+    const oldTimeout = process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS;
+    const oldDelay = process.env.HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_PROJECTS_STATS_OFFLOAD = "1";
+    process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX = "1";
+    process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS = "5000";
+    process.env.HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS = "500";
+
+    const runtime = createRuntime("s127-projects-stats-ready");
+    const project = "s127-projects-stats-ready-project";
+
+    try {
+      await postJson(runtime.baseUrl, "/v1/events/record", {
+        event: {
+          event_id: "s127-projects-stats-1",
+          platform: "codex",
+          project,
+          session_id: "s127-projects-stats-session",
+          event_type: "user_prompt",
+          ts: "2026-05-20T00:00:00.000Z",
+          payload: { content: "project stats offload fixture" },
+          tags: ["s127"],
+          privacy_tags: [],
+        },
+      });
+
+      const statsUrl = `${runtime.baseUrl}/v1/projects/stats?project=${encodeURIComponent(project)}`;
+      const first = fetch(statsUrl);
+
+      await Bun.sleep(30);
+      const ready = await getReadyProbe(runtime.baseUrl);
+      expect(ready.ready).toBe(true);
+      expect(ready.latencyMs).toBeLessThan(200);
+
+      const second = await fetch(statsUrl);
+      expect(second.status).toBe(503);
+      const rejected = (await second.json()) as Record<string, unknown>;
+      expect(rejected.ok).toBe(false);
+      expect((rejected.meta as Record<string, unknown>).error_code).toBe("projects_stats_offload_queue_full");
+
+      const firstResponse = await first;
+      expect(firstResponse.status).toBe(200);
+      const stats = (await firstResponse.json()) as Record<string, unknown>;
+      expect(stats.ok).toBe(true);
+      expect((stats.meta as Record<string, unknown>).projects_stats_offload).toMatchObject({
+        mode: "child_process",
+      });
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_PROJECTS_STATS_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_PROJECTS_STATS_OFFLOAD = oldOffload;
+      }
+      if (oldQueueMax === undefined) {
+        delete process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX;
+      } else {
+        process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX = oldQueueMax;
+      }
+      if (oldTimeout === undefined) {
+        delete process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS = oldTimeout;
+      }
+      if (oldDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS = oldDelay;
+      }
+    }
+  });
+
   test("checkpoint record keeps health/ready responsive while the queued write is pending", async () => {
     const oldNodeEnv = process.env.NODE_ENV;
     const oldDelay = process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;

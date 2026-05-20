@@ -1056,15 +1056,20 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
       if (request.method === "GET" && url.pathname === "/v1/projects/stats") {
         const projectFilter = url.searchParams.get("project") || "";
-        return jsonResponse(
-          core.projectsStats({
-            include_private: parseBoolean(url.searchParams.get("include_private"), false),
-            project: projectFilter || undefined,
-            project_members: projectFilter
-              ? core.expandProjectSelection(projectFilter, "observations")
-              : undefined,
-          })
-        );
+        const result = await core.projectsStatsQueued({
+          include_private: parseBoolean(url.searchParams.get("include_private"), false),
+          project: projectFilter || undefined,
+          project_members: projectFilter
+            ? core.expandProjectSelection(projectFilter, "observations")
+            : undefined,
+        });
+        const status =
+          typeof result.meta.http_status === "number" &&
+          result.meta.http_status >= 400 &&
+          result.meta.http_status < 600
+            ? result.meta.http_status
+            : 200;
+        return jsonResponse(result, status);
       }
 
       if (request.method === "GET" && url.pathname === "/v1/stream") {

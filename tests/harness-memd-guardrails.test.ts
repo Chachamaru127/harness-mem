@@ -14,6 +14,7 @@ const CHECKPOINT_CHILD = resolve(ROOT, "memory-server/src/tools/checkpoint-child
 const MATERIALIZE_CHILD = resolve(ROOT, "memory-server/src/tools/materialize-observation-child.ts");
 const EVENT_CHILD = resolve(ROOT, "memory-server/src/tools/event-child.ts");
 const RETRY_CHILD = resolve(ROOT, "memory-server/src/tools/retry-child.ts");
+const PROJECTS_STATS_CHILD = resolve(ROOT, "memory-server/src/tools/projects-stats-child.ts");
 const LOCAL_ONNX = resolve(ROOT, "memory-server/src/embedding/local-onnx.ts");
 const UI_SERVER = resolve(ROOT, "harness-mem-ui/src/server.ts");
 
@@ -308,9 +309,36 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("const lightweightChild =");
     expect(core).toContain("HARNESS_MEM_EVENT_CHILD_PROCESS");
     expect(core).toContain("HARNESS_MEM_RETRY_CHILD_PROCESS");
+    expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS");
+    expect(core).toContain("if (!lightweightChild)");
     expect(child).toContain("One-shot child process for retry queue ticks");
     expect(child).toContain("backgroundWorkersEnabled: false");
     expect(child).toContain("core.processRetryQueueNow");
+  });
+
+  test("project stats offloads aggregate work away from daemon main thread", () => {
+    const server = readFileSync(resolve(ROOT, "memory-server/src/server.ts"), "utf8");
+    const core = readFileSync(CORE, "utf8");
+    const child = readFileSync(PROJECTS_STATS_CHILD, "utf8");
+
+    expect(server).toContain("await core.projectsStatsQueued({");
+    expect(server).not.toContain("return jsonResponse(\n          core.projectsStats({");
+    expect(core).toContain("DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS = 8_000");
+    expect(core).toContain("DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX = 1");
+    expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS");
+    expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_CHILD_QUEUE_MAX");
+    expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_OFFLOAD");
+    expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS");
+    expect(core).toContain("shouldRunProjectsStatsOutOfProcess");
+    expect(core).toContain("buildProjectsStatsChildCommand");
+    expect(core).toContain("runProjectsStatsOutOfProcess(request)");
+    expect(core).toContain('error_code: "projects_stats_offload_queue_full"');
+    expect(core).toContain('error_code: "projects_stats_offload_failed"');
+    expect(core).toContain("http_status: 503");
+    expect(child).toContain("One-shot child process for project stats");
+    expect(child).toContain("backgroundWorkersEnabled: false");
+    expect(child).toContain("core.projectsStats(request)");
+    expect(child).toContain("HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS");
   });
 
   test("offload child payloads use stdin instead of process argv", () => {
@@ -319,6 +347,7 @@ describe("harness-memd guardrails", () => {
     const checkpointChild = readFileSync(CHECKPOINT_CHILD, "utf8");
     const eventChild = readFileSync(EVENT_CHILD, "utf8");
     const retryChild = readFileSync(RETRY_CHILD, "utf8");
+    const projectsStatsChild = readFileSync(PROJECTS_STATS_CHILD, "utf8");
 
     expect(core).toContain("writeJsonToChildStdin");
     expect(core).toContain("stdin: \"pipe\"");
@@ -326,6 +355,7 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("cmd: buildCheckpointChildCommand(scriptPath)");
     expect(core).toContain("cmd: buildEventChildCommand(scriptPath)");
     expect(core).toContain("cmd: buildRetryChildCommand(scriptPath)");
+    expect(core).toContain("cmd: buildProjectsStatsChildCommand(scriptPath)");
     expect(core).not.toContain("buildSearchChildCommand(scriptPath, request)");
     expect(core).not.toContain("buildCheckpointChildCommand(scriptPath, request)");
     expect(core).not.toContain("[process.execPath, \"run\", scriptPath, JSON.stringify(request)]");
@@ -333,10 +363,12 @@ describe("harness-memd guardrails", () => {
     expect(checkpointChild).toContain("for await (const chunk of process.stdin)");
     expect(eventChild).toContain("for await (const chunk of process.stdin)");
     expect(retryChild).toContain("for await (const chunk of process.stdin)");
+    expect(projectsStatsChild).toContain("for await (const chunk of process.stdin)");
     expect(searchChild).not.toContain("process.argv[2]");
     expect(checkpointChild).not.toContain("process.argv[2]");
     expect(eventChild).not.toContain("process.argv[2]");
     expect(retryChild).not.toContain("process.argv[2]");
+    expect(projectsStatsChild).not.toContain("process.argv[2]");
   });
 
   test("normal sqlite-vec search is bounded by k and query-variant caps", () => {
