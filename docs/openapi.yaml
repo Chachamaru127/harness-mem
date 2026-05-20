@@ -2462,6 +2462,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/admin/forget/hard-purge:
+    post:
+      summary: Plan or execute a gated hard purge
+      description: >
+        Plans or executes irreversible physical deletion for already archived observations only.
+        Execute mode requires execute:true, exact manifest_hash, exact candidate_count,
+        manifest_expires_at from plan mode,
+        backup_path plus backup_sha256 with SQLite integrity_check=ok or a temp-test backup token,
+        retention_ack:true, archive_ack:true, restore-capable archive stub/full payload rows
+        (reported separately as archive_full_count, restore_capable_full_count,
+        restore_capable_full_observation_count, and missing_restore_capable_archive_ids), and
+        the exact confirmation phrase returned by plan mode. This endpoint is admin HTTP only.
+      operationId: adminForgetHardPurge
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  type: string
+                target_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Explicit observation IDs to hard-purge. Every row must already be archived.
+                candidate_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Alias for target_ids when executing from a returned manifest.
+                limit:
+                  type: integer
+                  description: Maximum archived rows to plan when target_ids is omitted.
+                retention_days:
+                  type: integer
+                  description: Minimum archived age required before execute.
+                execute:
+                  type: boolean
+                  default: false
+                manifest_hash:
+                  type: string
+                  description: Required in execute mode. Must match the current recomputed manifest.
+                manifest_expires_at:
+                  type: string
+                  format: date-time
+                  description: Required in execute mode. Must be the expires_at returned by plan mode and still be in the future.
+                candidate_count:
+                  type: integer
+                  description: Required in execute mode. Must match the current recomputed manifest.
+                backup_sha256:
+                  type: string
+                  description: SHA-256 metadata for an operator-created backup. Execute mode also requires backup_path unless using temp_test_backup_token.
+                backup_path:
+                  type: string
+                  description: Required for non-temp execute mode. The file must exist, match backup_sha256, and pass SQLite PRAGMA integrity_check.
+                temp_test_backup_token:
+                  type: string
+                  description: Test-only backup evidence accepted only when the daemon DB path is a temp test DB.
+                retention_ack:
+                  type: boolean
+                archive_ack:
+                  type: boolean
+                confirmation:
+                  type: string
+                  description: Exact phrase returned by plan mode, e.g. HARD_PURGE 1 OBSERVATIONS abcdef123456.
+      responses:
+        "200":
+          description: Hard purge plan or execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/admin/consolidation/status:
     get:
       summary: Consolidation status

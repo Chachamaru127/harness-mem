@@ -1344,6 +1344,29 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
+          const body = await parseRequestJson(request);
+          const targetIds = toStringArray(body.target_ids).length > 0
+            ? toStringArray(body.target_ids)
+            : toStringArray(body.candidate_ids);
+          return jsonResponse(core.adminForgetHardPurge({
+            project: typeof body.project === "string" ? body.project : undefined,
+            target_ids: targetIds,
+            limit: parseIntegerLike(body.limit),
+            retention_days: parseIntegerLike(body.retention_days),
+            execute: parseBooleanLike(body.execute, false),
+            manifest_hash: typeof body.manifest_hash === "string" ? body.manifest_hash : undefined,
+            manifest_expires_at: typeof body.manifest_expires_at === "string" ? body.manifest_expires_at : undefined,
+            candidate_count: parseIntegerLike(body.candidate_count),
+            backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
+            backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
+            temp_test_backup_token: typeof body.temp_test_backup_token === "string" ? body.temp_test_backup_token : undefined,
+            retention_ack: parseBooleanLike(body.retention_ack, false),
+            archive_ack: parseBooleanLike(body.archive_ack, false),
+            confirmation: typeof body.confirmation === "string" ? body.confirmation : undefined,
+          }));
+        }
+
 	      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
       if (request.method === "POST" && url.pathname === "/v1/admin/teams") {
         if (!teamRepo) return badRequest("Team management is only available in SQLite mode");

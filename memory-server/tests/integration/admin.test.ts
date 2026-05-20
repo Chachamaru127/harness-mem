@@ -63,6 +63,69 @@ async function createRuntime(name: string): Promise<{ baseUrl: string; core: Har
   };
 }
 
+function seedArchiveForObservation(core: HarnessMemCore, observationId: string): void {
+  const db = core.getRawDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_archive_stubs (
+      archive_id TEXT PRIMARY KEY,
+      observation_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      team_id TEXT DEFAULT NULL,
+      archive_stub TEXT NOT NULL,
+      archive_full_ref TEXT DEFAULT NULL,
+      archive_state TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      legal_hold_snapshot INTEGER NOT NULL DEFAULT 0,
+      content_sha256 TEXT NOT NULL,
+      manifest_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      restored_at TEXT DEFAULT NULL,
+      purged_at TEXT DEFAULT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE TABLE IF NOT EXISTS mem_archive_full (
+      archive_full_ref TEXT PRIMARY KEY,
+      archive_id TEXT NOT NULL UNIQUE,
+      payload_json TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      purged_at TEXT DEFAULT NULL
+    );
+  `);
+  const row = db
+    .query(`SELECT project, session_id, user_id, team_id FROM mem_observations WHERE id = ?`)
+    .get(observationId) as { project: string; session_id: string; user_id: string; team_id: string | null };
+  const archiveId = `archive-${observationId}`;
+  const fullRef = `sqlite:${archiveId}`;
+  const now = "2026-05-20T00:00:00.000Z";
+  db.query(`
+    INSERT OR REPLACE INTO mem_archive_stubs(
+      archive_id, observation_id, project, session_id, user_id, team_id,
+      archive_stub, archive_full_ref, archive_state, reason, legal_hold_snapshot,
+      content_sha256, manifest_sha256, created_at, metadata_json
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', 'test archive', 0, ?, ?, ?, '{}')
+  `).run(
+    archiveId,
+    observationId,
+    row.project,
+    row.session_id,
+    row.user_id,
+    row.team_id,
+    `stub for ${observationId}`,
+    fullRef,
+    "0".repeat(64),
+    "1".repeat(64),
+    now,
+  );
+  db.query(`
+    INSERT OR REPLACE INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(fullRef, archiveId, JSON.stringify({ restore: true, observation_id: observationId }), "2".repeat(64), now);
+}
+
 describe("memory admin integration", () => {
   test("reindexVectors and metrics endpoints data shape", async () => {
     const { core, dir } = createCore("reindex");
@@ -161,6 +224,75 @@ describe("memory admin integration", () => {
       expect(payload.items[0].evicted).toBe(0);
       expect(payload.items[0].candidates.map((candidate) => candidate.observation_id)).toContain(observationId);
       expect(payload.items[0].cross_store_impact.observations).toBeGreaterThanOrEqual(1);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("hard purge admin endpoint requires manifest gates and deletes only archived temp DB rows", async () => {
+    const runtime = await createRuntime("hard-purge");
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-hard-purge",
+        session_id: "session-admin-hard-purge",
+        event_type: "user_prompt",
+        ts: "2026-05-20T00:00:00.000Z",
+        payload: { content: "hard purge endpoint archived content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.bulkDeleteObservations({ ids: [observationId] });
+      seedArchiveForObservation(runtime.core, observationId);
+
+      const planResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          temp_test_backup_token: "TEMP_TEST_BACKUP_S127_004",
+        }),
+      });
+      expect(planResponse.status).toBe(200);
+      const planPayload = (await planResponse.json()) as {
+        ok: boolean;
+        items: Array<{
+          manifest_hash: string;
+          expires_at: string;
+          candidate_count: number;
+          confirmation_phrase: string;
+        }>;
+      };
+      expect(planPayload.ok).toBe(true);
+
+      const plan = planPayload.items[0];
+      const executeResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          execute: true,
+          manifest_hash: plan.manifest_hash,
+          manifest_expires_at: plan.expires_at,
+          candidate_count: plan.candidate_count,
+          temp_test_backup_token: "TEMP_TEST_BACKUP_S127_004",
+          retention_ack: true,
+          archive_ack: true,
+          confirmation: plan.confirmation_phrase,
+        }),
+      });
+      expect(executeResponse.status).toBe(200);
+      const executePayload = (await executeResponse.json()) as {
+        ok: boolean;
+        meta: { deleted_count?: number };
+      };
+      expect(executePayload.ok).toBe(true);
+      expect(executePayload.meta.deleted_count).toBe(1);
+      const row = runtime.core.getRawDb()
+        .query(`SELECT id FROM mem_observations WHERE id = ?`)
+        .get(observationId);
+      expect(row).toBeNull();
     } finally {
       runtime.stop();
     }

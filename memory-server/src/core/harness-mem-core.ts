@@ -1,5 +1,7 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -170,6 +172,85 @@ const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
 
+type AdminHardPurgeRequest = {
+  project?: string;
+  target_ids?: string[];
+  limit?: number;
+  retention_days?: number;
+  execute?: boolean;
+  manifest_hash?: string;
+  manifest_expires_at?: string;
+  candidate_count?: number;
+  backup_sha256?: string;
+  backup_path?: string;
+  temp_test_backup_token?: string;
+  retention_ack?: boolean;
+  archive_ack?: boolean;
+  confirmation?: string;
+};
+
+type HardPurgeCandidateRow = {
+  id: string;
+  project: string;
+  archived_at: string | null;
+  privacy_tags_json: string;
+  tags_json: string;
+};
+
+type BackupEvidence = {
+  provided: boolean;
+  backup_sha256: string | null;
+  backup_path: string | null;
+  temp_test_backup_token_sha256: string | null;
+  kind: "backup_file" | "sha256_metadata" | "temp_test_token" | "missing";
+  integrity_check: {
+    checked: boolean;
+    ok: boolean;
+    result: string | null;
+    error: string | null;
+  };
+};
+
+type HardPurgeManifest = {
+  schema_version: "s127-hard-purge-v1";
+  operation: "admin.hard_purge";
+  generated_at: string;
+  expires_at: string;
+  project: string | null;
+  candidate_ids: string[];
+  candidate_count: number;
+  impact: Record<string, number>;
+  backup_sha256: string | null;
+  backup: BackupEvidence & { required: true };
+  retention: {
+    minimum_archived_days: number;
+    satisfied: boolean;
+    blockers: Array<{ observation_id: string; archived_at: string | null; reason: string }>;
+  };
+  archive: {
+    archive_tables_present: boolean;
+    archived_only: boolean;
+    archived_count: number;
+    archive_stub_count: number;
+    archive_full_count: number;
+    restore_capable_count: number;
+    restore_capable_full_count: number;
+    restore_capable_full_observation_count: number;
+    missing_restore_capable_archive_ids: string[];
+    archive_states: Record<string, number>;
+  };
+  legal_hold: {
+    allowed: boolean;
+    blockers: string[];
+  };
+  manifest_hash: string;
+  confirmation_phrase: string;
+};
+
+type HardPurgePrepareResult =
+  | { ok: true; manifest: HardPurgeManifest; rows: HardPurgeCandidateRow[] }
+  | { ok: false; error: string };
+
 export function buildVectorBackfillChildCommand(
   scriptPath: string,
   operation: VectorBackfillOperation,
@@ -215,6 +296,51 @@ export class EmbeddingReadinessError extends Error {
     this.readiness = readiness;
     this.code = code;
   }
+}
+
+function canonicalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeJson(entry));
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      sorted[key] = canonicalizeJson(record[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalizeJson(value));
+}
+
+function sha256Hex(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function parseJsonStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSha256(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
+}
+
+function uniqueSortedStrings(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))].sort();
 }
 
 // getConfig は core-utils.ts から re-export
@@ -574,6 +700,7 @@ export class HarnessMemCore {
   private ingestCoord!: IngestCoordinator;
   private cfgMgr!: ConfigManager;
   private analyticsSvc!: AnalyticsService;
+  private readonly hardPurgePlanExpirations = new Map<string, string>();
   /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
   /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
@@ -1693,6 +1820,12 @@ export class HarnessMemCore {
       mem_events: 0,
       mem_tags: 0,
       mem_observation_entities: 0,
+      mem_nuggets: 0,
+      mem_nugget_vectors: 0,
+      mem_vectors_vec_map: 0,
+      mem_entities_orphaned: 0,
+      mem_archive_stubs: 0,
+      mem_archive_full: 0,
     };
     if (ids.length === 0) {
       return empty;
@@ -1716,7 +1849,137 @@ export class HarnessMemCore {
       mem_events: count(`SELECT COUNT(*) AS count FROM mem_events WHERE observation_id IN (${placeholders})`),
       mem_tags: count(`SELECT COUNT(*) AS count FROM mem_tags WHERE observation_id IN (${placeholders})`),
       mem_observation_entities: count(`SELECT COUNT(*) AS count FROM mem_observation_entities WHERE observation_id IN (${placeholders})`),
+      mem_nuggets: count(`SELECT COUNT(*) AS count FROM mem_nuggets WHERE observation_id IN (${placeholders})`),
+      mem_nugget_vectors: count(`SELECT COUNT(*) AS count FROM mem_nugget_vectors WHERE observation_id IN (${placeholders})`),
+      mem_vectors_vec_map: this.countSqliteVecMapRows(ids),
+      mem_entities_orphaned: count(
+        `SELECT COUNT(*) AS count
+         FROM mem_entities e
+         WHERE EXISTS (
+           SELECT 1 FROM mem_observation_entities oe
+           WHERE oe.entity_id = e.id AND oe.observation_id IN (${placeholders})
+         )
+           AND NOT EXISTS (
+             SELECT 1 FROM mem_observation_entities oe_live
+             WHERE oe_live.entity_id = e.id AND oe_live.observation_id NOT IN (${placeholders})
+           )`,
+        [...ids, ...ids]
+      ),
+      mem_archive_stubs: this.tableExists("mem_archive_stubs")
+        ? count(`SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE observation_id IN (${placeholders})`)
+        : 0,
+      mem_archive_full: this.countArchiveFullRows(ids),
     };
+  }
+
+  private tableExists(name: string): boolean {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return false;
+    }
+    const row = this.db
+      .query(`SELECT 1 AS present FROM sqlite_master WHERE name = ? AND type IN ('table', 'view') LIMIT 1`)
+      .get(name) as { present: number } | null;
+    return !!row;
+  }
+
+  private quoteIdentifier(name: string): string {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`unsafe sqlite identifier: ${name}`);
+    }
+    return `"${name}"`;
+  }
+
+  private countSqliteVecMapRows(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map(() => "?").join(", ");
+    const tables = this.db
+      .query<{ name: string }, []>(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND (name = 'mem_vectors_vec_map' OR name LIKE 'mem_vectors_vec_map_%')`,
+      )
+      .all()
+      .filter((row) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name));
+
+    let total = 0;
+    for (const row of tables) {
+      const tableName = this.quoteIdentifier(row.name);
+      const count = this.db
+        .query(`SELECT COUNT(*) AS count FROM ${tableName} WHERE observation_id IN (${placeholders})`)
+        .get(...(ids as never[])) as { count: number } | null;
+      total += Number(count?.count ?? 0);
+    }
+    return total;
+  }
+
+  private countArchiveFullRows(ids: string[]): number {
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
+      return 0;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    const row = this.db
+      .query(`
+        SELECT COUNT(*) AS count
+        FROM mem_archive_full f
+        JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+        WHERE s.observation_id IN (${placeholders})
+      `)
+      .get(...(ids as never[])) as { count: number } | null;
+    return Number(row?.count ?? 0);
+  }
+
+  private countRestoreCapableArchiveFullObservations(ids: string[]): number {
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
+      return 0;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    const row = this.db
+      .query(`
+        SELECT COUNT(*) AS count
+        FROM (
+          SELECT DISTINCT s.observation_id
+          FROM mem_archive_full f
+          JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+          WHERE s.observation_id IN (${placeholders})
+            AND s.archive_state = 'archived'
+            AND f.purged_at IS NULL
+            AND f.payload_json IS NOT NULL
+            AND trim(f.payload_json) <> ''
+            AND trim(f.payload_json) <> '{}'
+            AND f.payload_sha256 IS NOT NULL
+            AND trim(f.payload_sha256) <> ''
+        )
+      `)
+      .get(...(ids as never[])) as { count: number } | null;
+    return Number(row?.count ?? 0);
+  }
+
+  private listMissingRestoreCapableArchiveIds(ids: string[]): string[] {
+    if (ids.length === 0) {
+      return [];
+    }
+    if (!this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
+      return [...ids];
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db
+      .query<{ observation_id: string }, string[]>(`
+        SELECT DISTINCT s.observation_id
+        FROM mem_archive_full f
+        JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+        WHERE s.observation_id IN (${placeholders})
+          AND s.archive_state = 'archived'
+          AND f.purged_at IS NULL
+          AND f.payload_json IS NOT NULL
+          AND trim(f.payload_json) <> ''
+          AND trim(f.payload_json) <> '{}'
+          AND f.payload_sha256 IS NOT NULL
+          AND trim(f.payload_sha256) <> ''
+      `)
+      .all(...ids);
+    const present = new Set(rows.map((row) => row.observation_id));
+    return ids.filter((id) => !present.has(id));
   }
 
   private processRetryQueue(force = false): void {
@@ -1995,6 +2258,654 @@ export class HarnessMemCore {
         ranking: "forget_plan_v1",
       } as Record<string, unknown>
     );
+  }
+
+  private isTempTestDatabase(): boolean {
+    if (this.config.dbPath === ":memory:") {
+      return true;
+    }
+    const resolvedDbPath = resolve(resolveHomePath(this.config.dbPath));
+    const roots = [tmpdir(), "/tmp", "/private/tmp"].map((root) => resolve(root));
+    return roots.some((root) => resolvedDbPath === root || resolvedDbPath.startsWith(`${root}/`));
+  }
+
+  private verifySqliteBackupIntegrity(backupPath: string): BackupEvidence["integrity_check"] {
+    let backupDb: Database | null = null;
+    try {
+      backupDb = new Database(backupPath, { readonly: true });
+      const row = backupDb
+        .query(`PRAGMA integrity_check`)
+        .get() as Record<string, string> | null;
+      const result = row ? String(Object.values(row)[0] ?? "") : "";
+      return {
+        checked: true,
+        ok: result === "ok",
+        result: result || null,
+        error: null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        checked: true,
+        ok: false,
+        result: null,
+        error: message,
+      };
+    } finally {
+      try {
+        backupDb?.close();
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  private resolveHardPurgeBackupEvidence(request: AdminHardPurgeRequest): BackupEvidence | { error: string } {
+    const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
+    const backupSha256 = backupSha256Raw ? normalizeSha256(backupSha256Raw) : null;
+    if (backupSha256Raw && !backupSha256) {
+      return { error: "backup_sha256 must be a sha256 hex string" };
+    }
+
+    const backupPath = typeof request.backup_path === "string" && request.backup_path.trim()
+      ? resolve(request.backup_path.trim())
+      : null;
+    if (backupPath) {
+      if (!backupSha256) {
+        return { error: "backup_sha256 is required when backup_path is provided" };
+      }
+      if (!existsSync(backupPath)) {
+        return { error: "backup_path does not exist" };
+      }
+      const actual = sha256Hex(readFileSync(backupPath));
+      if (actual !== backupSha256) {
+        return { error: "backup_path sha256 does not match backup_sha256" };
+      }
+      const integrityCheck = this.verifySqliteBackupIntegrity(backupPath);
+      if (!integrityCheck.ok) {
+        return { error: `backup_path integrity_check failed: ${integrityCheck.error ?? integrityCheck.result ?? "unknown"}` };
+      }
+      return {
+        provided: true,
+        backup_sha256: backupSha256,
+        backup_path: backupPath,
+        temp_test_backup_token_sha256: null,
+        kind: "backup_file",
+        integrity_check: integrityCheck,
+      };
+    }
+
+    const tempToken = typeof request.temp_test_backup_token === "string"
+      ? request.temp_test_backup_token.trim()
+      : "";
+    if (tempToken) {
+      if (!/^TEMP_TEST_BACKUP_[A-Za-z0-9_-]{8,}$/.test(tempToken)) {
+        return { error: "temp_test_backup_token is invalid" };
+      }
+      if (!this.isTempTestDatabase()) {
+        return { error: "temp_test_backup_token is allowed only for temp test databases" };
+      }
+      return {
+        provided: true,
+        backup_sha256: backupSha256,
+        backup_path: backupPath,
+        temp_test_backup_token_sha256: sha256Hex(tempToken),
+        kind: "temp_test_token",
+        integrity_check: {
+          checked: false,
+          ok: true,
+          result: null,
+          error: null,
+        },
+      };
+    }
+
+    if (backupSha256) {
+      return {
+        provided: false,
+        backup_sha256: backupSha256,
+        backup_path: null,
+        temp_test_backup_token_sha256: null,
+        kind: "sha256_metadata",
+        integrity_check: {
+          checked: false,
+          ok: false,
+          result: null,
+          error: "backup_path is required for executable backup evidence",
+        },
+      };
+    }
+
+    return {
+      provided: false,
+      backup_sha256: null,
+      backup_path: null,
+      temp_test_backup_token_sha256: null,
+      kind: "missing",
+      integrity_check: {
+        checked: false,
+        ok: false,
+        result: null,
+        error: null,
+      },
+    };
+  }
+
+  private selectHardPurgeCandidateRows(request: AdminHardPurgeRequest): { ok: true; rows: HardPurgeCandidateRow[] } | { ok: false; error: string } {
+    const targetIds = uniqueSortedStrings(request.target_ids);
+    const limit = Math.min(Math.max(Math.trunc(request.limit ?? 100), 1), 500);
+    const params: unknown[] = [];
+    let rows: HardPurgeCandidateRow[] = [];
+
+    if (targetIds.length > 500) {
+      return { ok: false, error: "target_ids length exceeds maximum of 500" };
+    }
+
+    if (targetIds.length > 0) {
+      const placeholders = targetIds.map(() => "?").join(", ");
+      rows = this.db
+        .query<HardPurgeCandidateRow, string[]>(`
+          SELECT id, project, archived_at, privacy_tags_json, tags_json
+          FROM mem_observations
+          WHERE id IN (${placeholders})
+          ORDER BY id ASC
+        `)
+        .all(...targetIds);
+      const found = new Set(rows.map((row) => row.id));
+      const missing = targetIds.filter((id) => !found.has(id));
+      if (missing.length > 0) {
+        return { ok: false, error: `hard purge target rows are missing: ${missing.join(", ")}` };
+      }
+    } else {
+      let sql = `
+        SELECT id, project, archived_at, privacy_tags_json, tags_json
+        FROM mem_observations
+        WHERE archived_at IS NOT NULL
+      `;
+      if (request.project) {
+        sql += ` AND project = ?`;
+        params.push(request.project);
+      }
+      sql += ` ORDER BY id ASC LIMIT ?`;
+      params.push(limit);
+      rows = this.db
+        .query<HardPurgeCandidateRow, SQLQueryBindings[]>(sql)
+        .all(...(params as SQLQueryBindings[]));
+    }
+
+    if (request.project) {
+      const mismatched = rows.filter((row) => row.project !== request.project).map((row) => row.id);
+      if (mismatched.length > 0) {
+        return { ok: false, error: `hard purge target rows are outside project scope: ${mismatched.join(", ")}` };
+      }
+    }
+
+    const unarchived = rows.filter((row) => !row.archived_at).map((row) => row.id);
+    if (unarchived.length > 0) {
+      return { ok: false, error: `hard purge rejects unarchived rows: ${unarchived.join(", ")}` };
+    }
+
+    const legalHold = rows
+      .filter((row) => {
+        const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+        const tags = parseJsonStringArray(row.tags_json);
+        return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+      })
+      .map((row) => row.id);
+    if (legalHold.length > 0) {
+      return { ok: false, error: `hard purge rejects legal_hold rows: ${legalHold.join(", ")}` };
+    }
+    if (rows.length > 0 && this.tableExists("mem_archive_stubs")) {
+      const ids = rows.map((row) => row.id);
+      const placeholders = ids.map(() => "?").join(", ");
+      const snapshotRows = this.db
+        .query<{ observation_id: string }, string[]>(`
+          SELECT observation_id
+          FROM mem_archive_stubs
+          WHERE observation_id IN (${placeholders})
+            AND COALESCE(legal_hold_snapshot, 0) <> 0
+          ORDER BY observation_id ASC
+        `)
+        .all(...ids);
+      if (snapshotRows.length > 0) {
+        return {
+          ok: false,
+          error: `hard purge rejects legal_hold archive snapshots: ${snapshotRows.map((row) => row.observation_id).join(", ")}`,
+        };
+      }
+    }
+
+    return { ok: true, rows };
+  }
+
+  private collectHardPurgeArchiveStatus(ids: string[]): HardPurgeManifest["archive"] {
+    const archiveTablesPresent = this.tableExists("mem_archive_stubs") && this.tableExists("mem_archive_full");
+    const archive: HardPurgeManifest["archive"] = {
+      archive_tables_present: archiveTablesPresent,
+      archived_only: true,
+      archived_count: ids.length,
+      archive_stub_count: 0,
+      archive_full_count: 0,
+      restore_capable_count: 0,
+      restore_capable_full_count: 0,
+      restore_capable_full_observation_count: 0,
+      missing_restore_capable_archive_ids: [...ids],
+      archive_states: {},
+    };
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs")) {
+      return archive;
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db
+      .query<{ archive_state: string; count: number }, string[]>(`
+        SELECT archive_state, COUNT(*) AS count
+        FROM mem_archive_stubs
+        WHERE observation_id IN (${placeholders})
+        GROUP BY archive_state
+      `)
+      .all(...ids);
+    for (const row of rows) {
+      archive.archive_states[row.archive_state || "unknown"] = Number(row.count ?? 0);
+      archive.archive_stub_count += Number(row.count ?? 0);
+    }
+    archive.archive_full_count = this.countArchiveFullRows(ids);
+    archive.restore_capable_count = Number(archive.archive_states.archived ?? 0);
+    archive.restore_capable_full_count = this.countRestoreCapableArchiveFullObservations(ids);
+    archive.restore_capable_full_observation_count = archive.restore_capable_full_count;
+    archive.missing_restore_capable_archive_ids = this.listMissingRestoreCapableArchiveIds(ids);
+    return archive;
+  }
+
+  private buildHardPurgeManifest(request: AdminHardPurgeRequest, rows: HardPurgeCandidateRow[]): HardPurgePrepareResult {
+    const backupEvidence = this.resolveHardPurgeBackupEvidence(request);
+    if ("error" in backupEvidence) {
+      return { ok: false, error: backupEvidence.error };
+    }
+
+    const ids = rows.map((row) => row.id).sort();
+    const minimumArchivedDays = Math.max(0, Math.trunc(request.retention_days ?? 0));
+    const retentionMs = minimumArchivedDays * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const retentionBlockers = rows
+      .map((row) => {
+        if (!row.archived_at) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "not_archived" };
+        }
+        const archivedMs = Date.parse(row.archived_at);
+        if (!Number.isFinite(archivedMs)) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "invalid_archived_at" };
+        }
+        if (retentionMs > 0 && nowMs - archivedMs < retentionMs) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "retention_window_not_elapsed" };
+        }
+        return null;
+      })
+      .filter((entry): entry is { observation_id: string; archived_at: string | null; reason: string } => entry !== null);
+
+    const legalHoldBlockers = rows
+      .filter((row) => {
+        const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+        const tags = parseJsonStringArray(row.tags_json);
+        return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+      })
+      .map((row) => row.id);
+
+    const generatedAt = nowIso();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const stableManifest = {
+      schema_version: "s127-hard-purge-v1" as const,
+      operation: "admin.hard_purge" as const,
+      project: request.project ?? null,
+      candidate_ids: ids,
+      candidate_count: ids.length,
+      impact: this.collectObservationLifecycleImpact(ids),
+      backup_sha256: backupEvidence.backup_sha256,
+      backup: {
+        required: true as const,
+        provided: backupEvidence.provided,
+        backup_sha256: backupEvidence.backup_sha256,
+        backup_path: backupEvidence.backup_path,
+        temp_test_backup_token_sha256: backupEvidence.temp_test_backup_token_sha256,
+        kind: backupEvidence.kind,
+        integrity_check: backupEvidence.integrity_check,
+      },
+      retention: {
+        minimum_archived_days: minimumArchivedDays,
+        satisfied: retentionBlockers.length === 0,
+        blockers: retentionBlockers,
+      },
+      archive: this.collectHardPurgeArchiveStatus(ids),
+      legal_hold: {
+        allowed: legalHoldBlockers.length === 0,
+        blockers: legalHoldBlockers,
+      },
+    };
+    const manifestHash = sha256Hex(stableJson(stableManifest));
+    const manifest: HardPurgeManifest = {
+      ...stableManifest,
+      generated_at: generatedAt,
+      expires_at: expiresAt,
+      manifest_hash: manifestHash,
+      confirmation_phrase: `HARD_PURGE ${ids.length} OBSERVATIONS ${manifestHash.slice(0, 12)}`,
+    };
+    return { ok: true, manifest, rows };
+  }
+
+  private prepareHardPurgeManifest(request: AdminHardPurgeRequest): HardPurgePrepareResult {
+    const selected = this.selectHardPurgeCandidateRows(request);
+    if (!selected.ok) {
+      return selected;
+    }
+    return this.buildHardPurgeManifest(request, selected.rows);
+  }
+
+  private assertHardPurgeExecuteGates(request: AdminHardPurgeRequest, manifest: HardPurgeManifest): string | null {
+    if (request.execute !== true) {
+      return null;
+    }
+    if (typeof request.manifest_hash !== "string" || !request.manifest_hash.trim()) {
+      return "manifest_hash is required for hard purge execute";
+    }
+    const manifestHash = normalizeSha256(request.manifest_hash);
+    if (!manifestHash) {
+      return "manifest_hash must be a sha256 hex string";
+    }
+    if (manifestHash !== manifest.manifest_hash) {
+      return "manifest_hash does not match current hard purge manifest";
+    }
+    if (typeof request.manifest_expires_at !== "string" || !request.manifest_expires_at.trim()) {
+      return "manifest_expires_at is required for hard purge execute";
+    }
+    const plannedExpiresAt = this.hardPurgePlanExpirations.get(manifest.manifest_hash);
+    if (!plannedExpiresAt) {
+      return "manifest_hash has no active hard purge plan";
+    }
+    if (request.manifest_expires_at !== plannedExpiresAt) {
+      return "manifest_expires_at does not match the active hard purge plan";
+    }
+    const manifestExpiresMs = Date.parse(request.manifest_expires_at);
+    if (!Number.isFinite(manifestExpiresMs)) {
+      return "manifest_expires_at must be a valid ISO timestamp";
+    }
+    if (Date.now() > manifestExpiresMs) {
+      return "manifest_expires_at has expired for hard purge execute";
+    }
+    if (typeof request.candidate_count !== "number" || !Number.isFinite(request.candidate_count)) {
+      return "candidate_count is required for hard purge execute";
+    }
+    if (Math.trunc(request.candidate_count) !== manifest.candidate_count) {
+      return "candidate_count does not match current hard purge manifest";
+    }
+    if (manifest.candidate_count === 0) {
+      return "hard purge execute requires at least one archived candidate";
+    }
+    if (request.retention_ack !== true) {
+      return "retention_ack:true is required for hard purge execute";
+    }
+    if (request.archive_ack !== true) {
+      return "archive_ack:true is required for hard purge execute";
+    }
+    if (!manifest.backup.provided) {
+      return "backup_path plus backup_sha256, or temp_test_backup_token for temp DBs, is required for hard purge execute";
+    }
+    if (manifest.backup.kind === "backup_file" && !manifest.backup.integrity_check.ok) {
+      return "backup integrity_check must be ok for hard purge execute";
+    }
+    if (!manifest.retention.satisfied) {
+      return "retention window is not satisfied for hard purge execute";
+    }
+    if (
+      !manifest.archive.archive_tables_present ||
+      manifest.archive.archive_stub_count !== manifest.candidate_count ||
+      manifest.archive.archive_full_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_full_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_full_observation_count !== manifest.candidate_count ||
+      manifest.archive.missing_restore_capable_archive_ids.length > 0 ||
+      manifest.archive.archive_states.archived !== manifest.candidate_count
+    ) {
+      return "restore-capable archive stub and full archive row are required for every hard purge candidate";
+    }
+    if (!manifest.legal_hold.allowed) {
+      return "legal_hold blocks hard purge execute";
+    }
+    if (request.confirmation !== manifest.confirmation_phrase) {
+      return `confirmation must exactly equal: ${manifest.confirmation_phrase}`;
+    }
+    return null;
+  }
+
+  private runDelete(sql: string, values: unknown[] = []): number {
+    this.db.query(sql).run(...(values as never[]));
+    const row = this.db.query(`SELECT changes() AS changes`).get() as { changes: number } | null;
+    return Number(row?.changes ?? 0);
+  }
+
+  private deleteSqliteVecRowsForHardPurge(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map(() => "?").join(", ");
+    const mapTables = this.db
+      .query<{ name: string }, []>(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND (name = 'mem_vectors_vec_map' OR name LIKE 'mem_vectors_vec_map_%')`,
+      )
+      .all()
+      .filter((row) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name));
+
+    let deleted = 0;
+    for (const mapTableRow of mapTables) {
+      const mapTable = this.quoteIdentifier(mapTableRow.name);
+      const vecTableName = mapTableRow.name.replace(/^mem_vectors_vec_map/, "mem_vectors_vec");
+      const vecTable = /^[A-Za-z_][A-Za-z0-9_]*$/.test(vecTableName) && this.tableExists(vecTableName)
+        ? this.quoteIdentifier(vecTableName)
+        : null;
+      const rowIds = this.db
+        .query<{ rowid: number }, string[]>(`SELECT rowid FROM ${mapTable} WHERE observation_id IN (${placeholders})`)
+        .all(...ids)
+        .map((row) => row.rowid)
+        .filter((rowid) => typeof rowid === "number");
+
+      if (rowIds.length > 0 && vecTable) {
+        const rowPlaceholders = rowIds.map(() => "?").join(", ");
+        deleted += this.runDelete(`DELETE FROM ${vecTable} WHERE rowid IN (${rowPlaceholders})`, rowIds);
+      }
+      deleted += this.runDelete(`DELETE FROM ${mapTable} WHERE observation_id IN (${placeholders})`, ids);
+    }
+    return deleted;
+  }
+
+  private executeHardPurgeCascade(manifest: HardPurgeManifest): Record<string, number> {
+    const ids = manifest.candidate_ids;
+    const placeholders = ids.map(() => "?").join(", ");
+    const now = nowIso();
+    const targetEntityIds = this.db
+      .query<{ entity_id: number }, string[]>(
+        `SELECT DISTINCT entity_id
+         FROM mem_observation_entities
+         WHERE observation_id IN (${placeholders})`,
+      )
+      .all(...ids)
+      .map((row) => row.entity_id)
+      .filter((entityId) => typeof entityId === "number");
+    const counts: Record<string, number> = {
+      sqlite_vec_rows: this.deleteSqliteVecRowsForHardPurge(ids),
+      mem_nugget_vectors: this.runDelete(`DELETE FROM mem_nugget_vectors WHERE observation_id IN (${placeholders})`, ids),
+      mem_nuggets: this.runDelete(`DELETE FROM mem_nuggets WHERE observation_id IN (${placeholders})`, ids),
+      mem_vectors: this.runDelete(`DELETE FROM mem_vectors WHERE observation_id IN (${placeholders})`, ids),
+      mem_links_touching: this.runDelete(
+        `DELETE FROM mem_links WHERE from_observation_id IN (${placeholders}) OR to_observation_id IN (${placeholders})`,
+        [...ids, ...ids],
+      ),
+      mem_relations: this.runDelete(`DELETE FROM mem_relations WHERE observation_id IN (${placeholders})`, ids),
+      mem_tags: this.runDelete(`DELETE FROM mem_tags WHERE observation_id IN (${placeholders})`, ids),
+      mem_observation_entities: this.runDelete(`DELETE FROM mem_observation_entities WHERE observation_id IN (${placeholders})`, ids),
+      mem_facts: this.runDelete(`DELETE FROM mem_facts WHERE observation_id IN (${placeholders})`, ids),
+      mem_events_deleted: 0,
+      mem_events_unlinked: 0,
+      mem_observations: 0,
+      mem_entities_orphaned: 0,
+      mem_archive_full_purged: 0,
+      mem_archive_stubs_purged: 0,
+    };
+
+    const safeEventRows = this.db
+      .query<{ event_id: string }, string[]>(`
+        SELECT e.event_id
+        FROM mem_events e
+        WHERE e.observation_id IN (${placeholders})
+          AND NOT EXISTS (
+            SELECT 1 FROM mem_observations o
+            WHERE o.event_id = e.event_id
+              AND o.id NOT IN (${placeholders})
+          )
+      `)
+      .all(...ids, ...ids);
+    const safeEventIds = safeEventRows.map((row) => row.event_id);
+    if (safeEventIds.length > 0) {
+      const eventPlaceholders = safeEventIds.map(() => "?").join(", ");
+      counts.mem_events_deleted = this.runDelete(
+        `DELETE FROM mem_events WHERE event_id IN (${eventPlaceholders})`,
+        safeEventIds,
+      );
+    }
+    counts.mem_events_unlinked = this.runDelete(
+      `UPDATE mem_events SET observation_id = NULL WHERE observation_id IN (${placeholders})`,
+      ids,
+    );
+
+    counts.mem_observations = this.runDelete(`DELETE FROM mem_observations WHERE id IN (${placeholders})`, ids);
+    if (targetEntityIds.length > 0) {
+      const entityPlaceholders = targetEntityIds.map(() => "?").join(", ");
+      counts.mem_entities_orphaned = this.runDelete(
+        `DELETE FROM mem_entities
+         WHERE id IN (${entityPlaceholders})
+           AND NOT EXISTS (
+             SELECT 1 FROM mem_observation_entities oe WHERE oe.entity_id = mem_entities.id
+           )`,
+        targetEntityIds,
+      );
+    }
+
+    if (this.tableExists("mem_archive_stubs")) {
+      if (this.tableExists("mem_archive_full")) {
+        counts.mem_archive_full_purged = this.runDelete(
+          `UPDATE mem_archive_full
+           SET payload_json = '{}', purged_at = ?
+           WHERE archive_id IN (
+             SELECT archive_id FROM mem_archive_stubs WHERE observation_id IN (${placeholders})
+           )`,
+          [now, ...ids],
+        );
+      }
+      counts.mem_archive_stubs_purged = this.runDelete(
+        `UPDATE mem_archive_stubs
+         SET archive_state = 'purged', purged_at = ?
+         WHERE observation_id IN (${placeholders})`,
+        [now, ...ids],
+      );
+    }
+
+    this.writeAuditLog("admin.purge.execute", "observation", "", {
+      manifest_hash: manifest.manifest_hash,
+      candidate_count: manifest.candidate_count,
+      candidate_ids: ids,
+      backup_sha256: manifest.backup_sha256,
+      backup_kind: manifest.backup.kind,
+      counts,
+    });
+
+    return counts;
+  }
+
+  adminForgetHardPurge(request: AdminHardPurgeRequest): ApiResponse {
+    const startedAt = performance.now();
+    const initial = this.prepareHardPurgeManifest(request);
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+
+    if (request.execute !== true) {
+      const nowMs = Date.now();
+      for (const [hash, expiresAt] of this.hardPurgePlanExpirations.entries()) {
+        const expiresMs = Date.parse(expiresAt);
+        if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+          this.hardPurgePlanExpirations.delete(hash);
+        }
+      }
+      this.hardPurgePlanExpirations.set(initial.manifest.manifest_hash, initial.manifest.expires_at);
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "hard_purge_plan",
+          execute: false,
+          ...initial.manifest,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        {
+          candidate_count: initial.manifest.candidate_count,
+          manifest_hash: initial.manifest.manifest_hash,
+          ranking: "hard_purge_plan_v1",
+        },
+      );
+    }
+
+    const initialGateError = this.assertHardPurgeExecuteGates(request, initial.manifest);
+    if (initialGateError) {
+      return makeErrorResponse(startedAt, initialGateError, request as unknown as Record<string, unknown>);
+    }
+
+    let transactionStarted = false;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+
+      const current = this.prepareHardPurgeManifest(request);
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      const gateError = this.assertHardPurgeExecuteGates(request, current.manifest);
+      if (gateError) {
+        throw new Error(gateError);
+      }
+
+      const deleted_counts = this.executeHardPurgeCascade(current.manifest);
+      this.hardPurgePlanExpirations.delete(current.manifest.manifest_hash);
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "hard_purge_execute",
+          execute: true,
+          manifest_hash: current.manifest.manifest_hash,
+          candidate_count: current.manifest.candidate_count,
+          candidate_ids: current.manifest.candidate_ids,
+          deleted_counts,
+          restore_supported: false,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: true },
+        {
+          candidate_count: current.manifest.candidate_count,
+          manifest_hash: current.manifest.manifest_hash,
+          deleted_count: deleted_counts.mem_observations,
+          ranking: "hard_purge_execute_v1",
+        },
+      );
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `hard purge execute failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
   }
 
   /**
