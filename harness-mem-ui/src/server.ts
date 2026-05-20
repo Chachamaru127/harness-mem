@@ -194,6 +194,38 @@ function fallbackProjectsStatsJson(upstreamStatus: number, upstreamText: string)
   });
 }
 
+function staleCachedProjectsStatsJson(cachedText: string, upstreamStatus: number, upstreamText: string): string {
+  try {
+    const payload = JSON.parse(cachedText) as Record<string, unknown>;
+    const meta = typeof payload.meta === "object" && payload.meta !== null
+      ? payload.meta as Record<string, unknown>
+      : {};
+    const items = Array.isArray(payload.items)
+      ? payload.items.map((item) => (
+          typeof item === "object" && item !== null
+            ? { ...item as Record<string, unknown>, stale: true }
+            : item
+        ))
+      : [];
+
+    return JSON.stringify({
+      ...payload,
+      ok: true,
+      items,
+      meta: {
+        ...meta,
+        stale: true,
+        cache_status: "stale",
+        ranking: "projects_stats_cached_fallback_v1",
+        upstream_status: upstreamStatus,
+        upstream_error: upstreamText.slice(0, 200),
+      },
+    });
+  } catch {
+    return fallbackProjectsStatsJson(upstreamStatus, upstreamText);
+  }
+}
+
 async function proxyProjectsStats(path: string): Promise<Response> {
   const upstream = await proxyJson(withDefaultProjectScope(path), "GET", undefined, {
     timeoutMs: projectsStatsProxyTimeoutMs(),
@@ -204,7 +236,7 @@ async function proxyProjectsStats(path: string): Promise<Response> {
     return jsonResponseFromText(text, upstream.status);
   }
   if (lastProjectsStatsJson) {
-    return jsonResponseFromText(lastProjectsStatsJson);
+    return jsonResponseFromText(staleCachedProjectsStatsJson(lastProjectsStatsJson, upstream.status, text));
   }
   if (DEFAULT_PROJECT) {
     return jsonResponseFromText(fallbackProjectsStatsJson(upstream.status, text));
