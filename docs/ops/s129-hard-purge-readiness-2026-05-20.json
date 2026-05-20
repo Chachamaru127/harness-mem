@@ -1,0 +1,70 @@
+{
+  "generated_at": "2026-05-20T10:13:58.451Z",
+  "generated_at_jst": "2026-05-20 19:13:58 JST",
+  "live_db": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+  "execute": false,
+  "hard_purge_executed": false,
+  "vacuum_executed": false,
+  "candidate_limit": 100,
+  "selected_archived_rows": 100,
+  "ready_candidate_count": 100,
+  "first_ready_candidate_ids": [
+    "obs_1655b700ec7a1aca20b3b547ae",
+    "obs_1ef22281bb7e79b5c525b26adf",
+    "obs_1efa27c2c47516d13e15d33d6f",
+    "obs_25fe73ee6d86bfd4472cd50c6c",
+    "obs_2d9949a77cc09db277a21afee5"
+  ],
+  "validation_failures": [],
+  "has_confirmation_phrase": false,
+  "confirmation_phrase_generated": false,
+  "backup": {
+    "path": "/Users/tachibanashuuta/.harness-mem/harness-mem-backup-2026-05-20T08-49-44-193Z.db",
+    "exists": true,
+    "size_bytes": 14241361920,
+    "sha256": "2c566c961d2a53048718fd25afd80b669ba19b44bd5988c1b63cc9e8d2713734",
+    "sha256_verified_current": true,
+    "integrity_check": "ok from S129 fresh backup preflight; inline recheck blocked by long-running 14GB verification"
+  },
+  "archive": {
+    "archive_states": {
+      "archived": 100
+    },
+    "restore_capable_stub_full_payload_count": 100
+  },
+  "legal_hold": {
+    "allowed": true,
+    "blockers": []
+  },
+  "retention": {
+    "minimum_archived_days": 0,
+    "satisfied": true,
+    "blockers": []
+  },
+  "impact": {
+    "observations": 100,
+    "mem_vectors": 147,
+    "mem_links_touching": 205,
+    "mem_relations": 0,
+    "mem_facts": 9,
+    "mem_events": 100,
+    "mem_tags": 261,
+    "mem_observation_entities": 0,
+    "mem_nuggets": 0,
+    "mem_nugget_vectors": 0,
+    "mem_vectors_vec_map": 147,
+    "mem_archive_stubs": 100,
+    "mem_archive_full": 100
+  },
+  "execute_ready_now": false,
+  "blockers": [
+    "hard purge execute requires separate operator approval",
+    "inline backup integrity verification is too slow for live HTTP request path"
+  ],
+  "operational_findings": [
+    "HTTP readiness with backup_path returned Bun timeout/ENOMEM before streaming fix because it tried to read a 14GB backup into memory.",
+    "Streaming SHA fix prevents ENOMEM, but inline backup integrity remains too slow for request path and should become preverified evidence before hard purge execute."
+  ],
+  "next_risk_gate": "hard purge execute remains prohibited until separate approval plus nonblocking backup evidence design",
+  "readiness_manifest_sha256": "58de4caa1a9dd1efb199b4f4876cf6f6570858fa9b20632c5d071eafb73f7c35"
+}

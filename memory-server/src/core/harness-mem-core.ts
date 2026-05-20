@@ -1,6 +1,6 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -187,6 +187,7 @@ type AdminHardPurgeRequest = {
   retention_ack?: boolean;
   archive_ack?: boolean;
   confirmation?: string;
+  readiness_only?: boolean;
 };
 
 type AdminArchiveRequest = {
@@ -329,7 +330,7 @@ type HardPurgeManifest = {
     blockers: string[];
   };
   manifest_hash: string;
-  confirmation_phrase: string;
+  confirmation_phrase?: string;
 };
 
 type HardPurgePrepareResult =
@@ -404,6 +405,22 @@ function stableJson(value: unknown): string {
 
 function sha256Hex(value: string | Buffer): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+function sha256FileHex(path: string): string {
+  const hash = createHash("sha256");
+  const fd = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(8 * 1024 * 1024);
+  try {
+    while (true) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
 }
 
 function parseJsonStringArray(value: string | null | undefined): string[] {
@@ -3183,7 +3200,7 @@ export class HarnessMemCore {
       if (!existsSync(backupPath)) {
         return { error: "backup_path does not exist" };
       }
-      const actual = sha256Hex(readFileSync(backupPath));
+      const actual = sha256FileHex(backupPath);
       if (actual !== backupSha256) {
         return { error: "backup_path sha256 does not match backup_sha256" };
       }
@@ -3453,8 +3470,10 @@ export class HarnessMemCore {
       generated_at: generatedAt,
       expires_at: expiresAt,
       manifest_hash: manifestHash,
-      confirmation_phrase: `HARD_PURGE ${ids.length} OBSERVATIONS ${manifestHash.slice(0, 12)}`,
     };
+    if (request.readiness_only !== true) {
+      manifest.confirmation_phrase = `HARD_PURGE ${ids.length} OBSERVATIONS ${manifestHash.slice(0, 12)}`;
+    }
     return { ok: true, manifest, rows };
   }
 
@@ -3535,6 +3554,9 @@ export class HarnessMemCore {
     }
     if (!manifest.legal_hold.allowed) {
       return "legal_hold blocks hard purge execute";
+    }
+    if (!manifest.confirmation_phrase) {
+      return "confirmation phrase is unavailable for readiness-only hard purge plan";
     }
     if (request.confirmation !== manifest.confirmation_phrase) {
       return `confirmation must exactly equal: ${manifest.confirmation_phrase}`;
@@ -3695,17 +3717,19 @@ export class HarnessMemCore {
 
     if (request.execute !== true) {
       const nowMs = Date.now();
-      for (const [hash, expiresAt] of this.hardPurgePlanExpirations.entries()) {
-        const expiresMs = Date.parse(expiresAt);
-        if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
-          this.hardPurgePlanExpirations.delete(hash);
+      if (request.readiness_only !== true) {
+        for (const [hash, expiresAt] of this.hardPurgePlanExpirations.entries()) {
+          const expiresMs = Date.parse(expiresAt);
+          if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+            this.hardPurgePlanExpirations.delete(hash);
+          }
         }
+        this.hardPurgePlanExpirations.set(initial.manifest.manifest_hash, initial.manifest.expires_at);
       }
-      this.hardPurgePlanExpirations.set(initial.manifest.manifest_hash, initial.manifest.expires_at);
       return makeResponse(
         startedAt,
         [{
-          mode: "hard_purge_plan",
+          mode: request.readiness_only === true ? "hard_purge_readiness" : "hard_purge_plan",
           execute: false,
           ...initial.manifest,
         } as unknown as Record<string, unknown>],
@@ -3713,7 +3737,7 @@ export class HarnessMemCore {
         {
           candidate_count: initial.manifest.candidate_count,
           manifest_hash: initial.manifest.manifest_hash,
-          ranking: "hard_purge_plan_v1",
+          ranking: request.readiness_only === true ? "hard_purge_readiness_v1" : "hard_purge_plan_v1",
         },
       );
     }

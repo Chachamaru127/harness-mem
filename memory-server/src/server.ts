@@ -1410,6 +1410,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             temp_test_backup_token: typeof body.temp_test_backup_token === "string" ? body.temp_test_backup_token : undefined,
             retention_ack: parseBooleanLike(body.retention_ack, false),
             archive_ack: parseBooleanLike(body.archive_ack, false),
+            readiness_only: parseBooleanLike(body.readiness_only, false),
             confirmation: typeof body.confirmation === "string" ? body.confirmation : undefined,
           }));
         }

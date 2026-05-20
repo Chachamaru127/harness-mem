@@ -383,6 +383,25 @@ describe("memory admin integration", () => {
       runtime.core.bulkDeleteObservations({ ids: [observationId] });
       seedArchiveForObservation(runtime.core, observationId);
 
+      const readinessResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          temp_test_backup_token: "TEMP_TEST_BACKUP_S127_004",
+          readiness_only: true,
+        }),
+      });
+      expect(readinessResponse.status).toBe(200);
+      const readinessPayload = (await readinessResponse.json()) as {
+        ok: boolean;
+        items: Array<{ mode: string; confirmation_phrase?: string }>;
+      };
+      expect(readinessPayload.ok).toBe(true);
+      expect(readinessPayload.items[0].mode).toBe("hard_purge_readiness");
+      expect(readinessPayload.items[0].confirmation_phrase).toBeUndefined();
+      expect("confirmation_phrase" in readinessPayload.items[0]).toBe(false);
+
       const planResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
         method: "POST",
         headers: { "content-type": "application/json" },

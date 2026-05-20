@@ -344,6 +344,49 @@ describe("S127-004 hard purge risk gates", () => {
     }
   });
 
+  test("readiness-only plan omits confirmation phrase and does not activate execute window", () => {
+    const core = new HarnessMemCore(createConfig("readiness-only"));
+    try {
+      const archived = insertObservation(core, "readiness-only", "readiness only archived row");
+      archiveObservation(core, archived);
+      seedArchiveForObservation(core, archived);
+
+      const response = core.adminForgetHardPurge({
+        target_ids: [archived],
+        temp_test_backup_token: TEMP_BACKUP_TOKEN,
+        readiness_only: true,
+      });
+      expect(response.ok).toBe(true);
+      const item = response.items[0] as {
+        mode: string;
+        candidate_count: number;
+        manifest_hash: string;
+        expires_at: string;
+        confirmation_phrase?: string;
+      };
+      expect(item.mode).toBe("hard_purge_readiness");
+      expect(item.candidate_count).toBe(1);
+      expect(item.confirmation_phrase).toBeUndefined();
+      expect("confirmation_phrase" in item).toBe(false);
+
+      const execute = core.adminForgetHardPurge({
+        target_ids: [archived],
+        execute: true,
+        manifest_hash: item.manifest_hash,
+        manifest_expires_at: item.expires_at,
+        candidate_count: item.candidate_count,
+        temp_test_backup_token: TEMP_BACKUP_TOKEN,
+        retention_ack: true,
+        archive_ack: true,
+        confirmation: `HARD_PURGE 1 OBSERVATIONS ${item.manifest_hash.slice(0, 12)}`,
+      });
+      expect(execute.ok).toBe(false);
+      expect(execute.error).toContain("no active hard purge plan");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("execute rejects missing confirmation, missing backup evidence, legal_hold, unarchived, and stale manifests", () => {
     const core = new HarnessMemCore(createConfig("rejects"));
     try {
