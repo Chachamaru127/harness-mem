@@ -1,0 +1,1516 @@
+{
+  "generated_at": "2026-05-20T04:58:42.864Z",
+  "db": {
+    "path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+    "size_bytes": 14719954944,
+    "wal_size_bytes": 448775152,
+    "shm_size_bytes": 884736,
+    "observations": 344946,
+    "observations_after_plan": 344946,
+    "archived": 0,
+    "expired": 0,
+    "legal_hold": 0,
+    "readonly_probe_counts_before": {
+      "observations": 344946,
+      "archived": 0,
+      "expired": 0,
+      "legal_hold": 0,
+      "audit_log": 782057
+    },
+    "readonly_probe_counts_after_local_plan": {
+      "observations": 344946,
+      "archived": 0,
+      "expired": 0,
+      "legal_hold": 0,
+      "audit_log": 782057
+    },
+    "readonly_probe_counts_after_daemon_probe": {
+      "observations": 344946,
+      "archived": 0,
+      "expired": 0,
+      "legal_hold": 0,
+      "audit_log": 782058
+    },
+    "mutation_check": "content_unchanged",
+    "audit_log_drift_check": "unchanged",
+    "live_probe_drift_check": "content_unchanged",
+    "live_probe_audit_log_drift_check": "changed",
+    "archive_tables": {
+      "mem_archive_stubs": false,
+      "mem_archive_full": false
+    }
+  },
+  "daemon": {
+    "url": "http://127.0.0.1:37888",
+    "health": {
+      "ok": true,
+      "status": 200,
+      "service_status": "ok",
+      "pid": 34341,
+      "backend_mode": "local",
+      "vector_engine": "sqlite-vec",
+      "vector_model": "adaptive:ruri-v3-30m+multilingual-e5",
+      "embedding_provider_status": "healthy",
+      "counts_status": "omitted",
+      "latency_ms": 0.08
+    },
+    "metrics": {
+      "ok": true,
+      "status": 200,
+      "coverage": {
+        "observations": 344946,
+        "mem_vectors": 518731,
+        "current_model_observations": 344946,
+        "current_model_vector_rows": 389468,
+        "vector_coverage": 1,
+        "target_coverage": 0.95,
+        "missing_current_model_vectors": 0,
+        "mem_vectors_vec_map": 394311
+      },
+      "retry_queue": {
+        "count": 0,
+        "max_retry_count": 0
+      },
+      "consolidation_queue": {
+        "pending": 0,
+        "running": 2,
+        "failed": 0,
+        "completed": 4997
+      },
+      "facts": {
+        "total": 269137,
+        "merged": 185461
+      },
+      "latency_ms": 5095.67
+    },
+    "forget_plan_endpoint": {
+      "ok": false,
+      "status": 404,
+      "body": "Not Found"
+    },
+    "hard_purge_endpoint": {
+      "skipped": true,
+      "reason": "plan-only boundary: do not POST to hard-purge because prepare mode can generate a confirmation phrase"
+    }
+  },
+  "forget_plan": {
+    "dry_run": true,
+    "evicted": 0,
+    "scanned": 344946,
+    "candidate_count": 1000,
+    "limit": 1000,
+    "score_threshold": 0.7,
+    "weights": {
+      "access": 0.4,
+      "signal": 0.3,
+      "age": 0.3
+    },
+    "score_summary": {
+      "min": 0.9499,
+      "max": 1,
+      "avg": 0.9532
+    },
+    "top_projects": [
+      {
+        "project_hash": "project_09c1093888f381f6",
+        "count": 345
+      },
+      {
+        "project_hash": "project_c3322fe1466533f0",
+        "count": 127
+      },
+      {
+        "project_hash": "project_24f71091682bb646",
+        "count": 118
+      },
+      {
+        "project_hash": "project_6b4a5fbba9968feb",
+        "count": 102
+      },
+      {
+        "project_hash": "project_41c21dd6ed019683",
+        "count": 89
+      },
+      {
+        "project_hash": "project_a838ffd7506db490",
+        "count": 48
+      },
+      {
+        "project_hash": "project_609ed728460433cc",
+        "count": 47
+      },
+      {
+        "project_hash": "project_5f1257c334a1f05b",
+        "count": 41
+      },
+      {
+        "project_hash": "project_975a31cd68de5bd2",
+        "count": 32
+      },
+      {
+        "project_hash": "project_ec57f4e14556925d",
+        "count": 22
+      },
+      {
+        "project_hash": "project_e1106907576c644e",
+        "count": 21
+      },
+      {
+        "project_hash": "project_92521fc3cbd964bd",
+        "count": 6
+      },
+      {
+        "project_hash": "project_1c631b77e911528f",
+        "count": 1
+      },
+      {
+        "project_hash": "project_c811b16c24124536",
+        "count": 1
+      }
+    ],
+    "sample_candidates": [
+      {
+        "candidate_hash": "obs_7fef767262b46931",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 181.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_9d2b68c8ec4e7faf",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 182.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_0724415f0c6b455d",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 192.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a2560e8d82ae9005",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 193.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_8a26626f9b4b4dfa",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 194.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_67a76fc5e44b926d",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 199.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_4d0690f74d41ce00",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 200.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_c2d0c22c24f5f488",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 201.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_fdf87f0bc297468e",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 202.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_291a39c5560e899e",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 209.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a4747ac0b858ddf7",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 212.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_1f2d8469902f9df2",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 213.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_c6d94b3e45f96a5c",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 214.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_045495ad41a3bc7f",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 215.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_ab064b45ecdce1c0",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 216.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_067cb567f2ac1a3f",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 217.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_fa19ae9df0ddd53c",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 219.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a8348d5ebda18eeb",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 221.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_6d32053bd2681b70",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 225.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a0627d7d8072ab65",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 226.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_99941fd84ccd57f3",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 227.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_967ae90c51c86620",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 228.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_db8f5ffc80937660",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 230.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_d8c7b00a5b825422",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 231.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b0bc2fe113cc0bd8",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 238.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_c77918f23abdeaea",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 240.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_8b7e52a7bfeb6274",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 241.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b493093ffb290814",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 242.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_64019fe98473c19b",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 243.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_c07154bf81d4d3d5",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 244.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_077a7d0407cbb87e",
+        "project_hash": "project_609ed728460433cc",
+        "score": 1,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 1
+        },
+        "age_days": 245.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a6eb3a3b0283c976",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9974,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9913805357253087
+        },
+        "age_days": 178.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_6b4a27560f3ebb14",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9954,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.984713869058642
+        },
+        "age_days": 177.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a9a4666c59b36741",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9914,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9713805357253087
+        },
+        "age_days": 175.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_77de60ba23c07ea0",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9874,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9580472023919754
+        },
+        "age_days": 173.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_e6c6e45e3608702b",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9854,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9513805357253087
+        },
+        "age_days": 172.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_9d4dd43ef29461ac",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9794,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9313805357253087
+        },
+        "age_days": 169.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_2250d83a06cb6a19",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9774,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9247138690586421
+        },
+        "age_days": 168.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_7d1291c914cd79cb",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9754,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9180472023919753
+        },
+        "age_days": 167.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_c4aac9055c0d0249",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9734,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.9113805357253087
+        },
+        "age_days": 166.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_7b46ee284ffc4d90",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9674,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8913805357253087
+        },
+        "age_days": 163.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_bb6cc5603eb370c0",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9654,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.884713869058642
+        },
+        "age_days": 162.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_7e8be25492ceaef5",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9634,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8780472023919753
+        },
+        "age_days": 161.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_9da3c1ed036ee3b7",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9614,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8713805357253087
+        },
+        "age_days": 160.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_bbb06c2c6f4b636a",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9594,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.864713869058642
+        },
+        "age_days": 159.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b8b735cac75a6c5f",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9554,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8513805357253087
+        },
+        "age_days": 157.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b2986d76da90f505",
+        "project_hash": "project_609ed728460433cc",
+        "score": 0.9534,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.844713869058642
+        },
+        "age_days": 156.71,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_5e1962db73ca9bf0",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431670320987655
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_985577ef21bcc7c5",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431673660493827
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_93f824a7313761d8",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.843169537345679
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_2924a9482001b13b",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431708113425926
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_32e3ae3862aacf53",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431721309413581
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_af76dc5cf1f126a6",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431721461419753
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_5a34c540ca4b9e74",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431728935956789
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b6b8c4aa70befd37",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431734947530863
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_788d185a97b1fe36",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431746608024692
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_dde5ac75a09a7cfc",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431757273148148
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_59913f619d5a9439",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431768642746914
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_8e03fb2bb7f8c83a",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431780381944445
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_de032bfff8f35c17",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431790398919753
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_9f53f53f049fd839",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431790982253087
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_be3de41c655c8158",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431801482253087
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_0d4482c834b75802",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431811402006173
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_1726c7792b0b73f3",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431821239197531
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_bdf2b0bca1ae73f3",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431831165123456
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_0f79d1336037db16",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431860743827161
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_f7b8ed5387ab50d0",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431875219135803
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_a61ce017fc4609f9",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431886966820987
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_8a080fddf093a3d5",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431894405864196
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_57e2f6577a545ad7",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431902032407408
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_31ceefd29e86467c",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431909105709877
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_0266baeda70ddaba",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431916540123457
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_fbecc38e18e24780",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431925125771605
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_776aa0716be2f179",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431941510030864
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_92e4b5f720c097bc",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431949880401235
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_d2fe2ef3d518c2cb",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431957516975308
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_df9237eefe9350cb",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431965801697531
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_8f37a9a9df009670",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431978356481481
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_457e7fa85c4ab20a",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431986427469137
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_76cf37b92ac12f21",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8431992115740741
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_5b64a289747c982f",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432002297067902
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_3ef0653955479c83",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432011037037036
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_45adad9a9079e736",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432026813271605
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_6d1d008d1e25165d",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432069020833334
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_bbb8051b22a0d5a5",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.843207537191358
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_78ac2f7d778da361",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432163848765432
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b1da3ea4bb0dff98",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.843217587191358
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_2b487851081f848e",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.843218275
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b78693ed96b82321",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.843219581558642
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_12b6cf59ecb2c8e9",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432215876543211
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_93a2e3af66fe770a",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432221943672841
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_ccf6b7a54235b4f9",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432233066358024
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_6407b45ff1a9e6d4",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432259094135802
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_4f7d3268a8df46cc",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432269020061729
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_09e21e50133e7678",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432269985339506
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_718fd7aa1367d5d8",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432277243827161
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_d39a901a85f7b17b",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432283229938271
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_5338b29f77c38d94",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432304122685186
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_f07d61faabeaf107",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432310581790123
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      },
+      {
+        "candidate_hash": "obs_b127b73b376793f7",
+        "project_hash": "project_09c1093888f381f6",
+        "score": 0.953,
+        "factors": {
+          "access": 1,
+          "signal": 1,
+          "age": 0.8432315820987655
+        },
+        "age_days": 156.48,
+        "access_count": 0,
+        "signal_score": 0
+      }
+    ],
+    "redaction": {
+      "project_names": "sha256-16 project hashes only",
+      "observation_ids": "sha256-16 candidate hashes only",
+      "content": "omitted"
+    }
+  },
+  "cross_store_impact": {
+    "observations": 1000,
+    "mem_vectors": 1047,
+    "mem_links_touching": 229,
+    "mem_relations": 0,
+    "mem_facts": 25,
+    "mem_events": 1000,
+    "mem_tags": 2112,
+    "mem_observation_entities": 0,
+    "mem_nuggets": 0,
+    "mem_nugget_vectors": 0,
+    "mem_vectors_vec_map": 1047,
+    "mem_archive_stubs": 0,
+    "mem_archive_full": 0
+  },
+  "backup": {
+    "path": "/Users/tachibanashuuta/.harness-mem/backups/harness-mem-backup-2026-05-20T04-12-35-622Z.db",
+    "exists": true,
+    "size_bytes": 14218321920,
+    "sha256": "edc48c6bc75a5412092cd7e3c7ab7b8669525161123437bbe847a57665ee7379",
+    "integrity_check": {
+      "checked": true,
+      "ok": true,
+      "result": "ok",
+      "error": null
+    }
+  },
+  "hard_purge_readiness": {
+    "execute_ready": false,
+    "blockers": [
+      "live execute not requested",
+      "forget candidates are dry-run soft-archive candidates, not restore-capable hard-purge candidates",
+      "mem_archive_stubs table is absent",
+      "mem_archive_full table is absent",
+      "no archived observations currently exist"
+    ]
+  }
+}
