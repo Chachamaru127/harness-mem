@@ -208,6 +208,15 @@ type AdminArchiveRestoreRequest = {
   reason?: string;
 };
 
+type AdminArchiveSearchRequest = {
+  archive_id?: string;
+  observation_id?: string;
+  project?: string;
+  archive_state?: string;
+  manifest_sha256?: string;
+  limit?: number;
+};
+
 type ArchiveCandidateRow = {
   id: string;
   project: string;
@@ -2887,6 +2896,77 @@ export class HarnessMemCore {
       const message = error instanceof Error ? error.message : String(error);
       return makeErrorResponse(startedAt, `archive execute failed: ${message}`, request as unknown as Record<string, unknown>);
     }
+  }
+
+  adminForgetArchiveSearch(request: AdminArchiveSearchRequest): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.tableExists("mem_archive_stubs")) {
+      return makeResponse(
+        startedAt,
+        [],
+        request as unknown as Record<string, unknown>,
+        { ranking: "archive_stub_search_v1", archive_tables_present: false },
+      );
+    }
+
+    const limit = clampLimit(request.limit, 50, 1, 500);
+    const conditions: string[] = [];
+    const params: SQLQueryBindings[] = [];
+    const addStringFilter = (column: string, value: string | undefined): void => {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      if (!trimmed) return;
+      conditions.push(`${column} = ?`);
+      params.push(trimmed);
+    };
+
+    addStringFilter("archive_id", request.archive_id);
+    addStringFilter("observation_id", request.observation_id);
+    addStringFilter("project", request.project);
+    addStringFilter("archive_state", request.archive_state);
+    addStringFilter("manifest_sha256", normalizeSha256(request.manifest_sha256) ?? undefined);
+
+    let sql = `
+      SELECT
+        archive_id,
+        observation_id,
+        project,
+        session_id,
+        user_id,
+        team_id,
+        archive_stub,
+        archive_full_ref,
+        archive_state,
+        reason,
+        legal_hold_snapshot,
+        content_sha256,
+        manifest_sha256,
+        created_at,
+        restored_at,
+        purged_at,
+        metadata_json
+      FROM mem_archive_stubs
+    `;
+    if (conditions.length > 0) {
+      sql += ` WHERE ${conditions.join(" AND ")}`;
+    }
+    sql += " ORDER BY created_at DESC, archive_id ASC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.db
+      .query(sql)
+      .all(...(params as never[])) as Array<Record<string, unknown>>;
+
+    return makeResponse(
+      startedAt,
+      rows,
+      request as unknown as Record<string, unknown>,
+      {
+        ranking: "archive_stub_search_v1",
+        returned: rows.length,
+        payload_json_returned: false,
+        raw_content_returned: false,
+      },
+    );
   }
 
   adminForgetRestore(request: AdminArchiveRestoreRequest): ApiResponse {

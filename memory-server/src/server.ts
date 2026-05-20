@@ -1365,6 +1365,22 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/archive/search") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetArchiveSearch({
+            archive_id: typeof body.archive_id === "string" ? body.archive_id : undefined,
+            observation_id: typeof body.observation_id === "string" ? body.observation_id : undefined,
+            project: typeof body.project === "string" ? body.project : undefined,
+            archive_state: typeof body.archive_state === "string" ? body.archive_state : undefined,
+            manifest_sha256: typeof body.manifest_sha256 === "string"
+              ? body.manifest_sha256
+              : typeof body.manifest_hash === "string"
+                ? body.manifest_hash
+                : undefined,
+            limit: parseIntegerLike(body.limit),
+          }));
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/restore") {
           const body = await parseRequestJson(request);
           return jsonResponse(core.adminForgetRestore({

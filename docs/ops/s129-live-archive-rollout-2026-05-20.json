@@ -1,0 +1,122 @@
+{
+  "generated_at": "2026-05-20T09:17:41Z",
+  "generated_at_jst": "2026-05-20 18:17:41 JST",
+  "task": "S129-003/S129-004 live archive-first rollout",
+  "result": "PASS",
+  "live_db": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+  "fresh_backup": {
+    "path": "/Users/tachibanashuuta/.harness-mem/harness-mem-backup-2026-05-20T08-49-44-193Z.db",
+    "size_bytes": 14241361920,
+    "sha256": "2c566c961d2a53048718fd25afd80b669ba19b44bd5988c1b63cc9e8d2713734",
+    "integrity_check": "ok"
+  },
+  "launchd": {
+    "plist": "/Users/tachibanashuuta/Library/LaunchAgents/com.harness-mem.daemon.plist",
+    "plist_backup": "/Users/tachibanashuuta/.harness-mem/launchd-backups/com.harness-mem.daemon.plist.pre-s129-20260520181634",
+    "program": "/Users/tachibanashuuta/.bun/bin/bun",
+    "entry": "/Users/tachibanashuuta/.codex/worktrees/c6b1/harness-mem/memory-server/src/index.ts",
+    "working_directory": "/Users/tachibanashuuta/.codex/worktrees/c6b1/harness-mem",
+    "pid": 48548,
+    "status": "ok"
+  },
+  "pre_rollout": {
+    "observations_total": 345266,
+    "observations_archived": 0,
+    "legal_hold_tags": 0,
+    "archive_tables_present": []
+  },
+  "schema_rollout": {
+    "mem_archive_stubs_exists": true,
+    "mem_archive_full_exists": true,
+    "initial_mem_archive_stubs_rows": 0,
+    "initial_mem_archive_full_rows": 0,
+    "integrity_check_after_schema": "ok"
+  },
+  "archive_plan": {
+    "candidate_count": 100,
+    "manifest_sha256": "0505353927d0c51d6c7bfee8a470b121fca5242b0ac7c48bc9b8cc8991a46b14",
+    "first_candidate_ids": [
+      "obs_1655b700ec7a1aca20b3b547ae",
+      "obs_1ef22281bb7e79b5c525b26adf",
+      "obs_1efa27c2c47516d13e15d33d6f",
+      "obs_25fe73ee6d86bfd4472cd50c6c",
+      "obs_2d9949a77cc09db277a21afee5"
+    ],
+    "cross_store_impact": {
+      "observations": 100,
+      "mem_vectors": 147,
+      "mem_links_touching": 205,
+      "mem_relations": 0,
+      "mem_facts": 9,
+      "mem_events": 100,
+      "mem_tags": 261,
+      "mem_observation_entities": 0,
+      "mem_nuggets": 0,
+      "mem_nugget_vectors": 0,
+      "mem_vectors_vec_map": 147,
+      "mem_entities_orphaned": 0,
+      "mem_archive_stubs": 0,
+      "mem_archive_full": 0
+    }
+  },
+  "archive_execute": {
+    "ok": true,
+    "candidate_count": 100,
+    "archived_count": 100,
+    "skipped_legal_hold": [],
+    "skipped_already_archived": [],
+    "first_archive_ids": [
+      "archive_1e75d9d53fc7c6be40c425b5684f7607",
+      "archive_631f048de548a3c2ba5a0dd053e8bd6e",
+      "archive_3d7f06a5759f0bb0858d9532889a106d",
+      "archive_950cb006ddf8d4f99a68d5f916f29963",
+      "archive_e8d01867fe91ad2ce18aefc6df0adae1"
+    ]
+  },
+  "post_rollout": {
+    "note": "Counts are point-in-time. Live history ingest resumed after LaunchAgent restart, so total observation count may drift; archived/stub/full are the safety counters.",
+    "observations_total": 345266,
+    "observations_archived": 100,
+    "mem_archive_stubs_rows": 100,
+    "mem_archive_full_rows": 100,
+    "archive_state_counts": {
+      "archived": 100
+    },
+    "admin_archive_create_audit_rows": 1
+  },
+  "read_path_checks": {
+    "get_observations_default_count_for_archived_sample": 0,
+    "verify_default_ok_for_archived_sample": false,
+    "verify_include_archived_ok_for_archived_sample": true,
+    "search_default_contains_archived_sample": false,
+    "archive_stub_has_no_raw_content": true,
+    "archive_stub_search_endpoint_ok": true,
+    "archive_stub_search_payload_json_returned": false,
+    "archive_stub_search_raw_content_returned": false
+  },
+  "restore_to_copy": {
+    "copy_path": "/tmp/s129-restore-copy-20260520180806.db",
+    "copy_retained": false,
+    "copy_integrity_check": "ok",
+    "copy_archived_count_before_restore": 100,
+    "copy_stubs_count_before_restore": 100,
+    "copy_full_count_before_restore": 100,
+    "archive_id": "archive_1e75d9d53fc7c6be40c425b5684f7607",
+    "plan_ok": true,
+    "execute_ok": true,
+    "mode": "archive_restore_execute",
+    "archive_state_after_restore": "restored",
+    "restored_observation_archived_at": null,
+    "sqlite_vec_repair": {
+      "attempted": true,
+      "ok": true,
+      "repaired": 2,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "not_executed": {
+    "hard_purge": true,
+    "vacuum": true
+  }
+}

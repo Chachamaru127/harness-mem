@@ -328,6 +328,26 @@ describe("memory admin integration", () => {
         .get(observationId) as { archived_at: string | null };
       expect(archivedRow.archived_at).toBeTruthy();
 
+      const archiveSearchResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/archive/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ archive_id: archiveId, limit: 1 }),
+      });
+      expect(archiveSearchResponse.status).toBe(200);
+      const archiveSearch = (await archiveSearchResponse.json()) as {
+        ok: boolean;
+        items: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      };
+      expect(archiveSearch.ok).toBe(true);
+      expect(archiveSearch.items).toHaveLength(1);
+      expect(archiveSearch.items[0].archive_id).toBe(archiveId);
+      expect(archiveSearch.items[0]).toHaveProperty("archive_stub");
+      expect(archiveSearch.items[0]).not.toHaveProperty("payload_json");
+      expect(JSON.stringify(archiveSearch.items[0])).not.toContain("endpoint archive restore content");
+      expect(archiveSearch.meta.payload_json_returned).toBe(false);
+      expect(archiveSearch.meta.raw_content_returned).toBe(false);
+
       const restoreResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/restore`, {
         method: "POST",
         headers: { "content-type": "application/json" },
