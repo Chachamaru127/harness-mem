@@ -320,9 +320,14 @@ describe("harness-memd guardrails", () => {
     const server = readFileSync(resolve(ROOT, "memory-server/src/server.ts"), "utf8");
     const core = readFileSync(CORE, "utf8");
     const child = readFileSync(PROJECTS_STATS_CHILD, "utf8");
+    const projectsStatsRoute = server.slice(
+      server.indexOf('url.pathname === "/v1/projects/stats"'),
+      server.indexOf('url.pathname === "/v1/stream"')
+    );
 
     expect(server).toContain("await core.projectsStatsQueued({");
     expect(server).not.toContain("return jsonResponse(\n          core.projectsStats({");
+    expect(projectsStatsRoute).not.toContain('core.expandProjectSelection(projectFilter, "observations")');
     expect(core).toContain("DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS = 8_000");
     expect(core).toContain("DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX = 1");
     expect(core).toContain("HARNESS_MEM_PROJECTS_STATS_CHILD_TIMEOUT_MS");
@@ -337,7 +342,8 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("http_status: 503");
     expect(child).toContain("One-shot child process for project stats");
     expect(child).toContain("backgroundWorkersEnabled: false");
-    expect(child).toContain("core.projectsStats(request)");
+    expect(child).toContain('core.expandProjectSelection(request.project, "observations")');
+    expect(child).toContain("core.projectsStats(childRequest)");
     expect(child).toContain("HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS");
   });
 

@@ -58,7 +58,13 @@ async function main(): Promise<void> {
   });
   try {
     await testDelayIfRequested();
-    const response = core.projectsStats(request);
+    const childRequest = request.project && !request.project_members
+      ? {
+          ...request,
+          project_members: core.expandProjectSelection(request.project, "observations"),
+        }
+      : request;
+    const response = core.projectsStats(childRequest);
     process.stdout.write(`${JSON.stringify(response)}\n`);
   } finally {
     core.shutdown("projects-stats-child");

@@ -1059,9 +1059,6 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const result = await core.projectsStatsQueued({
           include_private: parseBoolean(url.searchParams.get("include_private"), false),
           project: projectFilter || undefined,
-          project_members: projectFilter
-            ? core.expandProjectSelection(projectFilter, "observations")
-            : undefined,
         });
         const status =
           typeof result.meta.http_status === "number" &&
