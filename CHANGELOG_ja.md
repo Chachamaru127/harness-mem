@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-05-20
+
 ### ユーザー向け要約
 
 - **既存の `Plans.md` を SessionStart 時に WorkGraph DB へ自動同期するようにした**。Codex / Claude の session 起動時、プロジェクトに `Plans.md` があれば `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` を安全に実行する。ユーザーが手動 import しなくても WorkGraph UI に出やすくなる。`Plans.md` の新規作成・編集はせず、ファイルがないプロジェクトは静かにスキップし、mtime state で未変更ファイルの毎回再同期も避ける。
@@ -16,6 +18,7 @@
 - **health と facets が巨大DB全体を不用意に舐めないようにした**。`/health` は既定で exact count を省略し、必要な時だけ `include_counts=1` で出す。`/v1/search/facets` は `query` / `project` / tenant scope なしでは `400 search_facets_unbounded` を返す。
 - **Mem UI の初回表示が現在プロジェクト優先で固まりにくくなった**。ブラウザが `project` を渡さない feed / project stats リクエストにも UI proxy が default project を補い、`/v1/projects/stats?project=...` は bounded child process と高速な privacy-safe 集計を使う。stats が混雑中でも UI はすぐ stale な現在プロジェクト表示へ切り替え、cached stats も stale として表示するため、「まだプロジェクトがありません」と誤表示したり古い件数を最新のように見せたりしない。大きな複数プロジェクトDBで `daemon checking...` / `Projects Loading...` に固着しつつ `/health/ready` まで消える体験を避ける。
 - **Codex / Claude 用 Skill に S127 後の正しい検索作法を反映した**。複数プロジェクト並行時は `project` scope を渡す、`harness_mem_search_facets` を無指定で呼ばない、検索 `503` は「記憶なし」ではなくdaemonを守る backpressure として扱う、というルールを明文化した。npm package には Claude `skills/` bundle も含め、proof pack で Codex / Claude 両方の配布面を確認する。
+- **release test がユーザーの常駐 daemon / DB に既定で書き込まないようにした**。shadow-sync の実デーモン smoke は `HARNESS_MEM_TEST_REAL_DAEMON=1` の時だけ実行する。通常の `npm test` と release 確認は、ローカルの長寿命 DB lock や model warmup 状態に左右されにくくなる。
 
 ## [0.23.0] - 2026-05-17
 
@@ -913,7 +916,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
 [0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1
