@@ -1,0 +1,64 @@
+{
+  "ok": true,
+  "generated_at": "2026-05-20T08:32:24Z",
+  "task": "S129-003/S129-004 risk gate preflight",
+  "boundary": {
+    "live_db_mutation": false,
+    "live_schema_ddl": false,
+    "live_archive_execute": false,
+    "hard_purge": false,
+    "vacuum": false
+  },
+  "branch": {
+    "name": "codex/s129-archive-first-20260520",
+    "head": "8a61a6f"
+  },
+  "live_daemon": {
+    "url": "http://127.0.0.1:37888",
+    "status": "ok",
+    "pid": 38836,
+    "command": "/Users/tachibanashuuta/.bun/bin/bun run /Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/memory-server/src/index.ts",
+    "db_path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+    "vector_engine": "sqlite-vec",
+    "vector_model": "adaptive:ruri-v3-30m+multilingual-e5",
+    "embedding_provider_status": "healthy"
+  },
+  "runtime_drift": {
+    "live_repo": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
+    "live_repo_head": "025e02e",
+    "live_repo_branch": "main",
+    "worktree_head": "8a61a6f",
+    "source_hashes_match": false,
+    "files": {
+      "memory-server/src/server.ts": {
+        "worktree_sha256": "e0274e076f7d118135032ad5a279ff417ebda2b30b171bd3d8b265abd29e3192",
+        "live_repo_sha256": "d605a914477b70e16b2b1f0585a8e238ab88de142614cc3cabcf2e3cf2394bfa"
+      },
+      "memory-server/src/core/harness-mem-core.ts": {
+        "worktree_sha256": "75bb070f84efe156fdfafd7d5b4aacb7fb141c46b275d3f4c8db86d6705dc23d",
+        "live_repo_sha256": "408f16f70f8d1c6c9a86e75c3bd682861f9c7547b9dc7e26fd62638ab14634c9"
+      },
+      "memory-server/src/db/schema.ts": {
+        "worktree_sha256": "b09acb8e32cc68e8bd343209dfd5c411937a69fc8ed1cb8632031a14520420ac",
+        "live_repo_sha256": "9851c102781656763555fd3a82637c23e498c019ef6a9710cbcc4746e9558b54"
+      }
+    }
+  },
+  "live_db_readonly": {
+    "obs_total": 345233,
+    "obs_archived": 0,
+    "legal_hold": 0,
+    "archive_tables": []
+  },
+  "decision": {
+    "s129_003_ready_to_execute": false,
+    "s129_004_ready_to_execute": false,
+    "reason": "S129-003/S129-004 require live runtime sync/restart and live DB schema/archive mutations. They remain approval-gated even though S129-001 and S129-002 are complete.",
+    "required_user_approval": [
+      "sync or deploy S129 branch to live runtime",
+      "restart live daemon",
+      "apply live archive schema/API migration",
+      "run execute:true archive batch"
+    ]
+  }
+}
