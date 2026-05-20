@@ -2399,9 +2399,58 @@ paths:
                   type: string
                 limit:
                   type: integer
+                forget_policy:
+                  type: object
+                  description: Optional soft-archive policy options. Wet mode requires HARNESS_MEM_AUTO_FORGET=1 on the daemon.
+                  properties:
+                    dry_run:
+                      type: boolean
+                    score_threshold:
+                      type: number
+                    limit:
+                      type: integer
+                    protect_accessed:
+                      type: boolean
       responses:
         "200":
           description: Consolidation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/plan:
+    post:
+      summary: Plan forgetting candidates
+      description: Dry-runs the forgetting policy and returns candidate IDs plus cross-store impact counts. Never archives or deletes data.
+      operationId: adminForgetPlan
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  type: string
+                limit:
+                  type: integer
+                score_threshold:
+                  type: number
+                protect_accessed:
+                  type: boolean
+      responses:
+        "200":
+          description: Forget dry-run plan
           content:
             application/json:
               schema:

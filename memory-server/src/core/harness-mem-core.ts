@@ -42,6 +42,7 @@ import {
 } from "../consolidation/worker";
 import {
   runForgetPolicy,
+  type ForgetPolicyOptions,
   type ForgetPolicyResult,
 } from "../consolidation/forget-policy";
 import {
@@ -1682,6 +1683,42 @@ export class HarnessMemCore {
       .run(action, targetType, targetId, JSON.stringify(details), nowIso());
   }
 
+  private collectObservationLifecycleImpact(ids: string[]): Record<string, number> {
+    const empty = {
+      observations: 0,
+      mem_vectors: 0,
+      mem_links_touching: 0,
+      mem_relations: 0,
+      mem_facts: 0,
+      mem_events: 0,
+      mem_tags: 0,
+      mem_observation_entities: 0,
+    };
+    if (ids.length === 0) {
+      return empty;
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const count = (sql: string, values: string[] = ids): number => {
+      const row = this.db.query(sql).get(...(values as never[])) as { count: number } | null;
+      return Number(row?.count ?? 0);
+    };
+
+    return {
+      observations: ids.length,
+      mem_vectors: count(`SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id IN (${placeholders})`),
+      mem_links_touching: count(
+        `SELECT COUNT(*) AS count FROM mem_links WHERE from_observation_id IN (${placeholders}) OR to_observation_id IN (${placeholders})`,
+        [...ids, ...ids]
+      ),
+      mem_relations: count(`SELECT COUNT(*) AS count FROM mem_relations WHERE observation_id IN (${placeholders})`),
+      mem_facts: count(`SELECT COUNT(*) AS count FROM mem_facts WHERE observation_id IN (${placeholders})`),
+      mem_events: count(`SELECT COUNT(*) AS count FROM mem_events WHERE observation_id IN (${placeholders})`),
+      mem_tags: count(`SELECT COUNT(*) AS count FROM mem_tags WHERE observation_id IN (${placeholders})`),
+      mem_observation_entities: count(`SELECT COUNT(*) AS count FROM mem_observation_entities WHERE observation_id IN (${placeholders})`),
+    };
+  }
+
   private processRetryQueue(force = false): void {
     if (this.shuttingDown && !force) {
       return;
@@ -1918,8 +1955,50 @@ export class HarnessMemCore {
     return this.sessionMgr.sessionThread(request);
   }
 
+  adminForgetPlan(request: {
+    project?: string;
+    limit?: number;
+    score_threshold?: number;
+    protect_accessed?: boolean;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    const options: ForgetPolicyOptions = {
+      dry_run: true,
+      project: request.project,
+      limit: request.limit,
+      score_threshold: request.score_threshold,
+      protect_accessed: request.protect_accessed,
+    };
+    const plan = runForgetPolicy(this.db, options);
+    const candidateIds = plan.candidates.map((candidate) => candidate.observation_id);
+    const impact = this.collectObservationLifecycleImpact(candidateIds);
+
+    return makeResponse(
+      startedAt,
+      [{
+        ...plan,
+        mode: "dry_run_plan",
+        hard_delete_supported: false,
+        cross_store_impact: impact,
+        safety: {
+          mutates_memory: false,
+          archive_first: true,
+          hard_delete_requires_separate_risk_gate: true,
+          legal_hold_trumps_ttl: true,
+        },
+      } as unknown as Record<string, unknown>],
+      { ...request, dry_run: true },
+      {
+        candidate_count: candidateIds.length,
+        scanned: plan.scanned,
+        evicted: 0,
+        ranking: "forget_plan_v1",
+      } as Record<string, unknown>
+    );
+  }
+
   /**
-   * 複数の observation を一括ソフトデリート（privacy_tags に "deleted" を付与）する。
+   * 複数の observation を一括ソフトデリート（archived_at + deleted tag）する。
    */
   bulkDeleteObservations(request: { ids: string[]; user_id?: string; team_id?: string }): ApiResponse {
     const startedAt = performance.now();
@@ -1932,9 +2011,10 @@ export class HarnessMemCore {
     }
     const deleted: string[] = [];
     const skipped: string[] = [];
+    const archivedAt = nowIso();
     for (const id of ids) {
       try {
-        const existing = this.db.query(`SELECT id, privacy_tags, user_id, team_id FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string; user_id: string; team_id: string | null } | null;
+        const existing = this.db.query(`SELECT id, privacy_tags_json, user_id, team_id FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags_json: string; user_id: string; team_id: string | null } | null;
         if (!existing) {
           skipped.push(id);
           continue;
@@ -1948,15 +2028,28 @@ export class HarnessMemCore {
             continue;
           }
         }
-        const tags: string[] = existing.privacy_tags ? JSON.parse(existing.privacy_tags) : [];
+        const tags: string[] = existing.privacy_tags_json ? JSON.parse(existing.privacy_tags_json) : [];
         if (!tags.includes("deleted")) {
           tags.push("deleted");
         }
-        this.db.query(`UPDATE mem_observations SET privacy_tags = ? WHERE id = ?`).run(JSON.stringify(tags), id);
+        this.db.query(`
+          UPDATE mem_observations
+          SET privacy_tags_json = ?, archived_at = COALESCE(archived_at, ?), updated_at = ?
+          WHERE id = ?
+        `).run(JSON.stringify(tags), archivedAt, archivedAt, id);
         deleted.push(id);
       } catch {
         skipped.push(id);
       }
+    }
+    if (deleted.length > 0) {
+      this.writeAuditLog("admin.observation.bulk_delete", "observation", "", {
+        ids: deleted,
+        skipped,
+        archived_at: archivedAt,
+        user_id: request.user_id ?? "system",
+        team_id: request.team_id ?? null,
+      });
     }
     return makeResponse(
       startedAt,

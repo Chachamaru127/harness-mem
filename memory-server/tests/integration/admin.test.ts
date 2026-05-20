@@ -46,7 +46,7 @@ function findAvailablePort(): Promise<number> {
   });
 }
 
-async function createRuntime(name: string): Promise<{ baseUrl: string; stop: () => void }> {
+async function createRuntime(name: string): Promise<{ baseUrl: string; core: HarnessMemCore; stop: () => void }> {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-admin-api-${name}-`));
   const config = createConfig(dir);
   config.bindPort = await findAvailablePort();
@@ -54,6 +54,7 @@ async function createRuntime(name: string): Promise<{ baseUrl: string; stop: () 
   const server = startHarnessMemServer(core, config);
   return {
     baseUrl: `http://127.0.0.1:${server.port}`,
+    core,
     stop: () => {
       core.shutdown("test");
       server.stop(true);
@@ -119,6 +120,49 @@ describe("memory admin integration", () => {
     } finally {
       core.shutdown("test");
       rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("forget plan endpoint is dry-run and reports impact", async () => {
+    const runtime = await createRuntime("forget-plan");
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-forget",
+        event_type: "user_prompt",
+        ts: "2026-02-25T00:00:00.000Z",
+        payload: { content: "old admin forget endpoint content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.getRawDb()
+        .query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", observationId);
+
+      const response = await fetch(`${runtime.baseUrl}/v1/admin/forget/plan`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ project: "admin-project", limit: 10 }),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        items: Array<{
+          dry_run: boolean;
+          evicted: number;
+          candidates: Array<{ observation_id: string }>;
+          cross_store_impact: { observations: number };
+        }>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items[0].dry_run).toBe(true);
+      expect(payload.items[0].evicted).toBe(0);
+      expect(payload.items[0].candidates.map((candidate) => candidate.observation_id)).toContain(observationId);
+      expect(payload.items[0].cross_store_impact.observations).toBeGreaterThanOrEqual(1);
+    } finally {
+      runtime.stop();
     }
   });
 

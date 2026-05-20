@@ -1334,6 +1334,16 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 	        }));
 	      }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/plan") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetPlan({
+            project: typeof body.project === "string" ? body.project : undefined,
+            limit: parseIntegerLike(body.limit),
+            score_threshold: parseNumberLike(body.score_threshold),
+            protect_accessed: typeof body.protect_accessed === "boolean" ? body.protect_accessed : undefined,
+          }));
+        }
+
 	      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
       if (request.method === "POST" && url.pathname === "/v1/admin/teams") {
         if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
@@ -1537,6 +1547,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (bulkDelAccess instanceof Response) return bulkDelAccess;
         return jsonResponse(core.bulkDeleteObservations({ ids, user_id: bulkDelAccess.user_id, team_id: bulkDelAccess.team_id }));
       }
+
+        if (request.method === "DELETE" && url.pathname.startsWith("/v1/observations/")) {
+          const encodedId = url.pathname.slice("/v1/observations/".length);
+          const observationId = decodeURIComponent(encodedId);
+          if (!observationId.trim()) {
+            return badRequest("observation_id is required");
+          }
+          const deleteAccess = resolveAccess(request);
+          if (deleteAccess instanceof Response) return deleteAccess;
+          return jsonResponse(core.bulkDeleteObservations({
+            ids: [observationId],
+            user_id: deleteAccess.user_id,
+            team_id: deleteAccess.team_id,
+          }));
+        }
 
       // S58-005: POST /v1/observations/share — observation の team_id を更新してチームに共有
       if (request.method === "POST" && url.pathname === "/v1/observations/share") {

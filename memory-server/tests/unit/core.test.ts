@@ -364,6 +364,15 @@ describe("HarnessMemCore unit", () => {
       );
       expect(privateEvent.ok).toBe(true);
 
+      const secretEvent = core.recordEvent(
+        baseEvent({
+          event_id: "event-secret",
+          payload: { content: "classified lifecycle phrase" },
+          privacy_tags: ["secret"],
+        })
+      );
+      const secretObsId = (secretEvent.items[0] as { id: string }).id;
+
       const redacted = core.recordEvent(
         baseEvent({
           event_id: "event-redact",
@@ -381,10 +390,89 @@ describe("HarnessMemCore unit", () => {
       const visibleSearch = core.search({ query: "private secret phrase", include_private: true });
       expect(visibleSearch.items.length).toBeGreaterThan(0);
 
+      const hiddenSecret = core.search({ query: "classified lifecycle phrase", include_private: false });
+      expect((hiddenSecret.items as Array<{ id: string }>).some((item) => item.id === secretObsId)).toBe(false);
+      const visibleSecret = core.search({ query: "classified lifecycle phrase", include_private: true });
+      expect((visibleSecret.items as Array<{ id: string }>).some((item) => item.id === secretObsId)).toBe(true);
+
       const details = core.getObservations({ ids: [redactedObsId], include_private: true, compact: false });
       const content = (details.items[0] as { content: string }).content;
       expect(content.includes("[REDACTED_EMAIL]")).toBe(true);
       expect(content.includes("[REDACTED_SECRET]")).toBe(true);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("bulk delete archives observations and hides them from normal reads", () => {
+    const core = new HarnessMemCore(createConfig("delete-archive"));
+    try {
+      const inserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-delete-target",
+          payload: { content: "delete target lifecycle phrase" },
+        })
+      );
+      const obsId = (inserted.items[0] as { id: string }).id;
+
+      const deleted = core.bulkDeleteObservations({ ids: [obsId] });
+      expect(deleted.ok).toBe(true);
+      expect((deleted.meta as { deleted_count?: number }).deleted_count).toBe(1);
+
+      const row = core.getRawDb()
+        .query(`SELECT archived_at, privacy_tags_json FROM mem_observations WHERE id = ?`)
+        .get(obsId) as { archived_at: string | null; privacy_tags_json: string };
+      expect(row.archived_at).toBeTruthy();
+      expect(JSON.parse(row.privacy_tags_json)).toContain("deleted");
+
+      const search = core.search({ query: "delete target lifecycle phrase", include_private: true });
+      expect((search.items as Array<{ id: string }>).some((item) => item.id === obsId)).toBe(false);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("admin forget plan is dry-run and reports cross-store impact", () => {
+    const core = new HarnessMemCore(createConfig("forget-plan"));
+    try {
+      const first = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-plan-old",
+          payload: { content: "old low value lifecycle phrase" },
+        })
+      );
+      const firstId = (first.items[0] as { id: string }).id;
+      const second = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-plan-neighbor",
+          payload: { content: "fresh neighboring lifecycle phrase" },
+        })
+      );
+      const secondId = (second.items[0] as { id: string }).id;
+
+      const db = core.getRawDb();
+      db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", firstId);
+      db.query(`INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
+                VALUES (?, ?, 'updates', 1, ?)`)
+        .run(secondId, firstId, "2026-02-14T00:00:00.000Z");
+
+      const plan = core.adminForgetPlan({ limit: 10 });
+      expect(plan.ok).toBe(true);
+      const item = plan.items[0] as {
+        dry_run: boolean;
+        evicted: number;
+        candidates: Array<{ observation_id: string }>;
+        cross_store_impact: { observations: number; mem_links_touching: number };
+      };
+      expect(item.dry_run).toBe(true);
+      expect(item.evicted).toBe(0);
+      expect(item.candidates.map((candidate) => candidate.observation_id)).toContain(firstId);
+      expect(item.cross_store_impact.observations).toBeGreaterThanOrEqual(1);
+      expect(item.cross_store_impact.mem_links_touching).toBeGreaterThanOrEqual(1);
+
+      const row = db.query(`SELECT archived_at FROM mem_observations WHERE id = ?`).get(firstId) as { archived_at: string | null };
+      expect(row.archived_at).toBeNull();
     } finally {
       core.shutdown("test");
     }

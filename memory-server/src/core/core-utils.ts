@@ -718,7 +718,7 @@ export function visibilityFilterSql(alias: string, includePrivate: boolean): str
           ELSE '["private"]'
         END
       ) AS jt
-      WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'sensitive')
+      WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'secret', 'sensitive', 'deleted')
     )
   `;
 }
@@ -772,7 +772,7 @@ export function normalizeScoreMap(raw: Map<string, number>): Map<string, number>
 export function hasPrivateVisibilityTag(tags: string[]): boolean {
   return tags.some((tag) => {
     const normalized = tag.toLowerCase();
-    return normalized === "private" || normalized === "sensitive";
+    return normalized === "private" || normalized === "secret" || normalized === "sensitive" || normalized === "deleted";
   });
 }
 
