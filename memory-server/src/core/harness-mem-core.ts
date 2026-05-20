@@ -1,4 +1,5 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
+import { spawn as spawnChildProcess } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -509,6 +510,27 @@ async function writeJsonToChildStdin(
     await flushed;
   }
   stdinWriter.end?.();
+}
+
+function readNodeChildStream(stream: NodeJS.ReadableStream): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    stream.on("data", (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    stream.once("error", reject);
+    stream.once("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
+  });
+}
+
+function writeJsonToNodeChildStdin(
+  stdinWriter: NodeJS.WritableStream | null | undefined,
+  payload: unknown,
+): void {
+  if (!stdinWriter) {
+    throw new Error("child stdin unavailable");
+  }
+  stdinWriter.end(`${JSON.stringify(payload)}\n`);
 }
 
 class PersistentSearchWorkerClient {
@@ -4168,8 +4190,9 @@ export class HarnessMemCore {
     const scriptPath = this.getProjectsStatsChildScriptPath();
     this.projectsStatsChildPending += 1;
     let timedOut = false;
-    const proc = Bun.spawn({
-      cmd: buildProjectsStatsChildCommand(scriptPath),
+    const childCommand = buildProjectsStatsChildCommand(scriptPath);
+    // Bun.spawn can synchronously stall the daemon here; node spawn keeps request setup off the hot path.
+    const proc = spawnChildProcess(childCommand[0], childCommand.slice(1), {
       cwd: process.cwd(),
       env: {
         ...process.env,
@@ -4177,9 +4200,13 @@ export class HarnessMemCore {
         HARNESS_MEM_DB_PATH: this.config.dbPath,
         HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS: "1",
       },
-      stdin: "pipe",
-      stdout: "pipe",
-      stderr: "pipe",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const exited = new Promise<number>((resolve, reject) => {
+      proc.once("error", reject);
+      proc.once("exit", (code, signal) => {
+        resolve(code ?? (signal ? 1 : 0));
+      });
     });
     const timer = setTimeout(() => {
       timedOut = true;
@@ -4191,14 +4218,14 @@ export class HarnessMemCore {
           // best effort
         }
       }, 1_000);
-      void proc.exited.finally(() => clearTimeout(forceKill));
+      void exited.finally(() => clearTimeout(forceKill));
     }, timeoutMs);
     try {
-      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, request);
+      writeJsonToNodeChildStdin(proc.stdin, request);
       const [stdout, stderr, exitCode] = await Promise.all([
-        new Response(proc.stdout).text(),
-        new Response(proc.stderr).text(),
-        proc.exited,
+        readNodeChildStream(proc.stdout),
+        readNodeChildStream(proc.stderr),
+        exited,
       ]);
       if (exitCode !== 0) {
         const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;

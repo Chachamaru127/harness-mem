@@ -337,6 +337,8 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("shouldRunProjectsStatsOutOfProcess");
     expect(core).toContain("buildProjectsStatsChildCommand");
     expect(core).toContain("runProjectsStatsOutOfProcess(request)");
+    expect(core).toContain('import { spawn as spawnChildProcess } from "node:child_process"');
+    expect(core).toContain("const proc = spawnChildProcess(childCommand[0], childCommand.slice(1)");
     expect(core).toContain('error_code: "projects_stats_offload_queue_full"');
     expect(core).toContain('error_code: "projects_stats_offload_failed"');
     expect(core).toContain("http_status: 503");
@@ -361,7 +363,7 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("cmd: buildCheckpointChildCommand(scriptPath)");
     expect(core).toContain("cmd: buildEventChildCommand(scriptPath)");
     expect(core).toContain("cmd: buildRetryChildCommand(scriptPath)");
-    expect(core).toContain("cmd: buildProjectsStatsChildCommand(scriptPath)");
+    expect(core).toContain("const childCommand = buildProjectsStatsChildCommand(scriptPath)");
     expect(core).not.toContain("buildSearchChildCommand(scriptPath, request)");
     expect(core).not.toContain("buildCheckpointChildCommand(scriptPath, request)");
     expect(core).not.toContain("[process.execPath, \"run\", scriptPath, JSON.stringify(request)]");
