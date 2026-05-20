@@ -60,6 +60,18 @@ async function getJson(baseUrl: string, pathWithQuery: string): Promise<unknown>
   return response.json();
 }
 
+async function getReadyProbe(baseUrl: string): Promise<{ ready: boolean; latencyMs: number }> {
+  const started = performance.now();
+  const response = await fetch(`${baseUrl}/health/ready`, {
+    signal: AbortSignal.timeout(200),
+  });
+  const latencyMs = performance.now() - started;
+  expect(response.ok).toBe(true);
+  const payload = (await response.json()) as Record<string, unknown>;
+  const item = ((payload.items || []) as Array<Record<string, unknown>>)[0];
+  return { ready: item?.ready === true, latencyMs };
+}
+
 function shapeOf(value: unknown): unknown {
   if (Array.isArray(value)) {
     if (value.length === 0) {
@@ -169,7 +181,7 @@ describe("API contract snapshot", () => {
         port: item.port,
         vector_engine: item.vector_engine,
         fts_enabled: item.fts_enabled,
-        counts: item.counts,
+        counts_status: item.counts_status,
       }));
 
       const contract = {
@@ -210,6 +222,387 @@ describe("API contract snapshot", () => {
       expect((alias.items as unknown[]).length).toBeGreaterThan(0);
     } finally {
       runtime.stop();
+    }
+  });
+
+  test("GET /health can include exact counts only when requested", async () => {
+    const runtime = createRuntime("health-counts");
+
+    try {
+      const defaultHealth = (await getJson(runtime.baseUrl, "/health")) as Record<string, unknown>;
+      const defaultItem = ((defaultHealth.items || []) as Array<Record<string, unknown>>)[0];
+      expect(defaultItem.counts).toBeUndefined();
+      expect(defaultItem.counts_status).toBe("omitted");
+
+      const countedHealth = (await getJson(runtime.baseUrl, "/health?include_counts=1")) as Record<string, unknown>;
+      const countedItem = ((countedHealth.items || []) as Array<Record<string, unknown>>)[0];
+      expect(countedItem.counts_status).toBe("exact");
+      expect(typeof (countedItem.counts as Record<string, unknown>).events).toBe("number");
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("GET /health/ready stays on lightweight readiness path", async () => {
+    const runtime = createRuntime("ready-lightweight");
+    const originalHealth = runtime.core.health.bind(runtime.core);
+    let healthCalls = 0;
+
+    try {
+      (runtime.core as unknown as { health: typeof runtime.core.health }).health = () => {
+        healthCalls += 1;
+        throw new Error("full health path should not be used by /health/ready");
+      };
+
+      const response = await fetch(`${runtime.baseUrl}/health/ready`, {
+        signal: AbortSignal.timeout(200),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as Record<string, unknown>;
+      const item = ((payload.items || []) as Array<Record<string, unknown>>)[0];
+      expect(payload.meta).toMatchObject({ ranking: "ready_v1" });
+      expect(item.ready).toBe(true);
+      expect(item.counts).toBeUndefined();
+      expect(healthCalls).toBe(0);
+    } finally {
+      (runtime.core as unknown as { health: typeof runtime.core.health }).health = originalHealth;
+      runtime.stop();
+    }
+  });
+
+  test("checkpoint record keeps health/ready responsive while the queued write is pending", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldDelay = process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;
+    const oldOffload = process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD;
+    const oldTimeout = process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS = "500";
+    process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD = "1";
+    process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS = "5000";
+
+    const runtime = createRuntime("s127-checkpoint-ready");
+    const sessionId = "s127-checkpoint-ready-session";
+    const project = "s127-checkpoint-ready-project";
+
+    try {
+      const checkpointPromise = fetch(`${runtime.baseUrl}/v1/checkpoints/record`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          platform: "codex",
+          project,
+          session_id: sessionId,
+          title: "S127 checkpoint ready",
+          content: "Checkpoint write is delayed in the queue so ready probes can run concurrently.",
+          tags: ["s127"],
+          privacy_tags: [],
+        }),
+      });
+
+      await Bun.sleep(30);
+      const probes: Array<{ ready: boolean; latencyMs: number }> = [];
+      for (let i = 0; i < 4; i += 1) {
+        probes.push(await getReadyProbe(runtime.baseUrl));
+      }
+
+      expect(probes.every((probe) => probe.ready)).toBe(true);
+      expect(Math.max(...probes.map((probe) => probe.latencyMs))).toBeLessThan(200);
+
+      const checkpointResponse = await checkpointPromise;
+      expect(checkpointResponse.ok).toBe(true);
+      const checkpoint = (await checkpointResponse.json()) as Record<string, unknown>;
+      expect(checkpoint.ok).toBe(true);
+      const checkpointItems = checkpoint.items as Array<Record<string, unknown>>;
+      const observationId = String(checkpointItems[0]?.id ?? "");
+      expect(observationId).toMatch(/^obs_/);
+      expect((checkpoint.meta as Record<string, unknown>).embedding_write_status).toBe("deferred");
+      const checkpointOffload = (checkpoint.meta as Record<string, unknown>).checkpoint_offload as Record<string, unknown>;
+      expect(checkpointOffload.mode).toBe("child_process");
+      expect(((checkpointOffload.derived_materialization as Record<string, unknown>).status)).toBe("scheduled");
+
+      const thread = (await getJson(
+        runtime.baseUrl,
+        `/v1/sessions/thread?project=${encodeURIComponent(project)}&session_id=${encodeURIComponent(sessionId)}&limit=10`,
+      )) as Record<string, unknown>;
+      const items = (thread.items || []) as Array<Record<string, unknown>>;
+      expect(items.some((item) => item.title === "S127 checkpoint ready")).toBe(true);
+
+      const db = (runtime.core as unknown as { db: {
+        query: <T, P extends unknown[] = unknown[]>(sql: string) => { get: (...params: P) => T | null };
+      } }).db;
+      let derivedCounts = { vectors: 0, nuggets: 0, nuggetVectors: 0 };
+      for (let i = 0; i < 40; i += 1) {
+        const vectors = db
+          .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id = ?`)
+          .get(observationId)?.count ?? 0;
+        const nuggets = db
+          .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM mem_nuggets WHERE observation_id = ?`)
+          .get(observationId)?.count ?? 0;
+        const nuggetVectors = db
+          .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM mem_nugget_vectors WHERE observation_id = ?`)
+          .get(observationId)?.count ?? 0;
+        derivedCounts = { vectors, nuggets, nuggetVectors };
+        if (vectors > 0 && nuggets > 0 && nuggetVectors > 0) {
+          break;
+        }
+        await Bun.sleep(50);
+      }
+      expect(derivedCounts.vectors).toBeGreaterThan(0);
+      expect(derivedCounts.nuggets).toBeGreaterThan(0);
+      expect(derivedCounts.nuggetVectors).toBeGreaterThan(0);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS = oldDelay;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD = oldOffload;
+      }
+      if (oldTimeout === undefined) {
+        delete process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS = oldTimeout;
+      }
+    }
+  });
+
+  test("search offload queue full is bounded and does not spawn fallback children", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const oldWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const oldQueueMax = process.env.HARNESS_MEM_SEARCH_CHILD_QUEUE_MAX;
+    const oldDelay = process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "0";
+    process.env.HARNESS_MEM_SEARCH_CHILD_QUEUE_MAX = "1";
+    process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS = "500";
+
+    const runtime = createRuntime("s127-search-child-queue");
+
+    try {
+      const first = fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "bounded search child queue first",
+          project: "s127-search-child-queue",
+          limit: 1,
+          vector_search: false,
+        }),
+      });
+
+      await Bun.sleep(30);
+      const second = await fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "bounded search child queue second",
+          project: "s127-search-child-queue",
+          limit: 1,
+          vector_search: false,
+        }),
+      });
+      expect(second.status).toBe(503);
+      const rejected = (await second.json()) as Record<string, unknown>;
+      expect(rejected.ok).toBe(false);
+      expect((rejected.meta as Record<string, unknown>).error_code).toBe("search_offload_queue_full");
+      expect(((rejected.meta as Record<string, unknown>).search_offload as Record<string, unknown>).fallback).toBe("none");
+
+      const firstResponse = await first;
+      expect(firstResponse.ok).toBe(true);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_OFFLOAD = oldOffload;
+      }
+      if (oldWorker === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER = oldWorker;
+      }
+      if (oldQueueMax === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_CHILD_QUEUE_MAX;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_CHILD_QUEUE_MAX = oldQueueMax;
+      }
+      if (oldDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS = oldDelay;
+      }
+    }
+  });
+
+  test("checkpoint offload queue full is bounded at the parent daemon", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldDelay = process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;
+    const oldOffload = process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD;
+    const oldQueueMax = process.env.HARNESS_MEM_CHECKPOINT_CHILD_QUEUE_MAX;
+    const oldTimeout = process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS = "500";
+    process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD = "1";
+    process.env.HARNESS_MEM_CHECKPOINT_CHILD_QUEUE_MAX = "1";
+    process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS = "5000";
+
+    const runtime = createRuntime("s127-checkpoint-child-queue");
+
+    try {
+      const first = fetch(`${runtime.baseUrl}/v1/checkpoints/record`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          platform: "codex",
+          project: "s127-checkpoint-child-queue",
+          session_id: "s127-checkpoint-child-queue-session",
+          title: "First bounded checkpoint",
+          content: "The first checkpoint holds the single parent-side child slot.",
+        }),
+      });
+
+      await Bun.sleep(30);
+      const second = await fetch(`${runtime.baseUrl}/v1/checkpoints/record`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          platform: "codex",
+          project: "s127-checkpoint-child-queue",
+          session_id: "s127-checkpoint-child-queue-session",
+          title: "Second bounded checkpoint",
+          content: "The second checkpoint should be rejected before spawning another child.",
+        }),
+      });
+      expect(second.status).toBe(503);
+      const rejected = (await second.json()) as Record<string, unknown>;
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error).toBe("write queue full, retry later");
+
+      const firstResponse = await first;
+      expect(firstResponse.ok).toBe(true);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS = oldDelay;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_CHECKPOINT_OFFLOAD = oldOffload;
+      }
+      if (oldQueueMax === undefined) {
+        delete process.env.HARNESS_MEM_CHECKPOINT_CHILD_QUEUE_MAX;
+      } else {
+        process.env.HARNESS_MEM_CHECKPOINT_CHILD_QUEUE_MAX = oldQueueMax;
+      }
+      if (oldTimeout === undefined) {
+        delete process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS = oldTimeout;
+      }
+    }
+  });
+
+  test("event offload queue full is bounded at the parent daemon", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldDelay = process.env.HARNESS_MEM_TEST_EVENT_CHILD_DELAY_MS;
+    const oldOffload = process.env.HARNESS_MEM_EVENT_OFFLOAD;
+    const oldQueueMax = process.env.HARNESS_MEM_EVENT_CHILD_QUEUE_MAX;
+    const oldTimeout = process.env.HARNESS_MEM_EVENT_CHILD_TIMEOUT_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_TEST_EVENT_CHILD_DELAY_MS = "500";
+    process.env.HARNESS_MEM_EVENT_OFFLOAD = "1";
+    process.env.HARNESS_MEM_EVENT_CHILD_QUEUE_MAX = "1";
+    process.env.HARNESS_MEM_EVENT_CHILD_TIMEOUT_MS = "5000";
+
+    const runtime = createRuntime("s127-event-child-queue");
+
+    try {
+      const first = fetch(`${runtime.baseUrl}/v1/events/record`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            platform: "codex",
+            project: "s127-event-child-queue",
+            session_id: "s127-event-child-queue-session",
+            event_type: "user_prompt",
+            payload: { content: "The first event holds the single parent-side child slot." },
+          },
+        }),
+      });
+
+      await Bun.sleep(30);
+      const second = await fetch(`${runtime.baseUrl}/v1/events/record`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          event: {
+            platform: "codex",
+            project: "s127-event-child-queue",
+            session_id: "s127-event-child-queue-session",
+            event_type: "user_prompt",
+            payload: { content: "The second event should be rejected before spawning another child." },
+          },
+        }),
+      });
+      expect(second.status).toBe(503);
+      const rejected = (await second.json()) as Record<string, unknown>;
+      expect(rejected.ok).toBe(false);
+      expect(rejected.error).toBe("write queue full, retry later");
+
+      const firstResponse = await first;
+      expect(firstResponse.ok).toBe(true);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_EVENT_CHILD_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_EVENT_CHILD_DELAY_MS = oldDelay;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_EVENT_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_EVENT_OFFLOAD = oldOffload;
+      }
+      if (oldQueueMax === undefined) {
+        delete process.env.HARNESS_MEM_EVENT_CHILD_QUEUE_MAX;
+      } else {
+        process.env.HARNESS_MEM_EVENT_CHILD_QUEUE_MAX = oldQueueMax;
+      }
+      if (oldTimeout === undefined) {
+        delete process.env.HARNESS_MEM_EVENT_CHILD_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_EVENT_CHILD_TIMEOUT_MS = oldTimeout;
+      }
     }
   });
 });

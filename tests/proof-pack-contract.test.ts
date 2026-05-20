@@ -142,6 +142,8 @@ describe("proof-pack summary JSON contract", () => {
     expect(script).toContain("bin/harness-mcp-server");
     expect(script).toContain("codex/skills/harness-mem/SKILL.md");
     expect(script).toContain("codex/skills/harness-recall/SKILL.md");
+    expect(script).toContain("skills/harness-recall/SKILL.md");
+    expect(script).toContain("claude_skill_harness_recall");
     expect(script).toContain("codex_skill_drift");
     expect(script).toContain("codex_post_doctor_liveness");
     expect(script).toContain("post_health_check");

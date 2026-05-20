@@ -16,6 +16,7 @@ import { resolve } from "node:path";
 
 const SKILL_PATH = resolve(import.meta.dir, "../skills/harness-recall/SKILL.md");
 const HOOK_PATH = resolve(import.meta.dir, "../scripts/userprompt-inject-policy.sh");
+const PACKAGE_JSON_PATH = resolve(import.meta.dir, "../package.json");
 
 const TRIGGER_PHRASES = [
   "思い出して",
@@ -72,6 +73,22 @@ describe("§96 /harness-recall skill contract", () => {
   test("output format guideline requires a source: line", () => {
     const body = readFileSync(SKILL_PATH, "utf8");
     expect(body).toMatch(/source:/i);
+  });
+
+  test("S127 bounded search guidance is present for Claude recall UX", () => {
+    const body = readFileSync(SKILL_PATH, "utf8");
+    expect(body).toContain("S127 後の検索安全ルール");
+    expect(body).toContain("harness_mem_search_facets");
+    expect(body).toContain("search_facets_unbounded");
+    expect(body).toContain("503");
+    expect(body).toContain("backpressure");
+    expect(body).toContain("project");
+    expect(body).toContain("strict_project=true");
+  });
+
+  test("npm package includes the Claude harness-recall skill bundle", () => {
+    const pkg = JSON.parse(readFileSync(PACKAGE_JSON_PATH, "utf8")) as { files?: string[] };
+    expect(pkg.files ?? []).toContain("skills/");
   });
 
   test("SKILL.md trigger_phrases must match the RECALL_KEYWORDS regex in userprompt-inject-policy.sh (guard against silent divergence)", () => {

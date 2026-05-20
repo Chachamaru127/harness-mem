@@ -117,6 +117,15 @@ async function proxyJson(path: string, method: "GET" | "POST", body?: Record<str
   }
 }
 
+function withDefaultProjectScope(path: string): string {
+  const scoped = new URL(path, "http://harness-mem.local");
+  const project = scoped.searchParams.get("project");
+  if ((!project || project.trim().length === 0) && DEFAULT_PROJECT) {
+    scoped.searchParams.set("project", DEFAULT_PROJECT);
+  }
+  return `${scoped.pathname}${scoped.search}`;
+}
+
 async function proxyStream(path: string, request: Request): Promise<Response> {
   try {
     const upstream = await fetch(`${MEM_BASE}${path}`, {
@@ -178,8 +187,9 @@ async function parseBody(request: Request): Promise<Record<string, unknown>> {
   return {};
 }
 
-Bun.serve({
+const server = Bun.serve({
   port: UI_PORT,
+  idleTimeout: 255,
   fetch: async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
 
@@ -208,10 +218,10 @@ Bun.serve({
       return proxyJson("/v1/admin/environment", "GET");
     }
     if (url.pathname === "/api/feed") {
-      return proxyJson(`/v1/feed${url.search || ""}`, "GET");
+      return proxyJson(withDefaultProjectScope(`/v1/feed${url.search || ""}`), "GET");
     }
     if (url.pathname === "/api/projects/stats") {
-      return proxyJson(`/v1/projects/stats${url.search || ""}`, "GET");
+      return proxyJson(withDefaultProjectScope(`/v1/projects/stats${url.search || ""}`), "GET");
     }
     if (url.pathname === "/api/stream") {
       return proxyStream(`/v1/stream${url.search || ""}`, request);
@@ -270,4 +280,15 @@ Bun.serve({
   },
 });
 
-console.log(`harness-mem-ui running on http://127.0.0.1:${UI_PORT} (static=${staticDir})`);
+const keepAlive = setInterval(() => {}, 2_147_483_647);
+
+function shutdown() {
+  clearInterval(keepAlive);
+  server.stop(true);
+  process.exit(0);
+}
+
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
+console.log(`harness-mem-ui running on ${server.url.href} (static=${staticDir})`);

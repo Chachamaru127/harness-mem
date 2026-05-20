@@ -279,6 +279,115 @@ describe("event-recorder: recordEvent", () => {
     expect(vectorCount?.count).toBe(0);
   });
 
+  test("deferEmbedding=true の checkpoint は inline vector/nugget 生成をスキップする", async () => {
+    let embeddingCalls = 0;
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => {
+          embeddingCalls += 1;
+          return {
+            primary: { model: "local:ruri-v3-30m", vector: [1, 0, 0, 0] },
+            secondary: null,
+          };
+        },
+        embedContent: () => {
+          embeddingCalls += 1;
+          return [0, 1, 0, 0];
+        },
+      },
+    );
+
+    const res = await recorder.recordEventQueued(
+      makeEvent({
+        event_id: "checkpoint-deferred-001",
+        event_type: "checkpoint",
+        payload: {
+          title: "Queued checkpoint",
+          content: "Checkpoint should be durable before vector backfill catches up.",
+        },
+      }),
+      { allowQueue: true, deferEmbedding: true },
+    );
+
+    expect(res).not.toBe("queue_full");
+    expect((res as Record<string, unknown>).ok).toBe(true);
+    expect(((res as Record<string, unknown>).meta as Record<string, unknown>).embedding_write_status).toBe("deferred");
+    expect(embeddingCalls).toBe(0);
+
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+    const observation = db
+      .query<{ title: string; content: string }, [string]>(
+        `SELECT title, content FROM mem_observations WHERE id = ?`,
+      )
+      .get("obs_checkpoint-deferred-001");
+    expect(observation?.title).toBe("Queued checkpoint");
+
+    const vectorCount = db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id = ?`,
+      )
+      .get("obs_checkpoint-deferred-001");
+    const nuggetCount = db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) AS count FROM mem_nuggets WHERE observation_id = ?`,
+      )
+      .get("obs_checkpoint-deferred-001");
+    expect(vectorCount?.count).toBe(0);
+    expect(nuggetCount?.count).toBe(0);
+  });
+
+  test("deferred checkpoint は後段 materializer で vector/entity/nugget を生成できる", async () => {
+    let passageEmbeddings = 0;
+    let nuggetEmbeddings = 0;
+    const recorder = makeRecorder(
+      { vectorDimension: 4 },
+      {
+        getVectorEngine: () => "js-fallback",
+        buildPassageEmbeddings: () => {
+          passageEmbeddings += 1;
+          return {
+            primary: { model: "local:ruri-v3-30m", vector: [1, 0, 0, 0] },
+            secondary: null,
+          };
+        },
+        embedContent: () => {
+          nuggetEmbeddings += 1;
+          return [0, 1, 0, 0];
+        },
+      },
+    );
+
+    const res = await recorder.recordEventQueued(
+      makeEvent({
+        event_id: "checkpoint-materialize-001",
+        event_type: "checkpoint",
+        payload: {
+          title: "Deferred checkpoint materialization",
+          content:
+            "Materialize memory-server/src/core/harness-mem-core.ts and package @chachamaru127/harness-mem so semantic checkpoint recall catches up after durable write.",
+        },
+      }),
+      { allowQueue: true, deferEmbedding: true },
+    );
+
+    expect(res).not.toBe("queue_full");
+    expect((res as Record<string, unknown>).ok).toBe(true);
+    expect(passageEmbeddings).toBe(0);
+    expect(nuggetEmbeddings).toBe(0);
+
+    const materialized = recorder.materializeObservationDerivedData("obs_checkpoint-materialize-001");
+
+    expect(materialized.materialized).toBe(true);
+    expect(materialized.vector_rows).toBe(1);
+    expect(Number(materialized.entity_links)).toBeGreaterThan(0);
+    expect(Number(materialized.nugget_rows)).toBeGreaterThan(0);
+    expect(Number(materialized.nugget_vector_rows)).toBeGreaterThan(0);
+    expect(passageEmbeddings).toBe(1);
+    expect(nuggetEmbeddings).toBeGreaterThan(0);
+  });
+
   test("checkpoint 以外の write embedding failure は従来通りエラーにする", () => {
     const recorder = makeRecorder(
       { vectorDimension: 4 },

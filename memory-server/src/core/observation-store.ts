@@ -90,6 +90,9 @@ import {
 const NO_MEMORY_SCORE_THRESHOLD = 0.1;
 const SEMANTIC_RERANK_CANDIDATE_LIMIT = 50;
 const VECTOR_MIGRATION_WARNING_THRESHOLD = 0.95;
+const DEFAULT_SQLITE_VEC_K_MAX = 240;
+const DEFAULT_SQLITE_VEC_VARIANT_MAX = 1;
+const VECTOR_MIGRATION_PROGRESS_CACHE_TTL_MS = 600_000;
 
 // ---------------------------------------------------------------------------
 // ObservationStoreDeps: HarnessMemCore から渡される内部依存
@@ -925,6 +928,7 @@ function hasCurrentValueCue(text: string): boolean {
 
 export class ObservationStore {
   private migrationComplete = false;
+  private migrationProgressCache: { model: string; checkedAtMs: number; warning: string | null } | null = null;
 
   constructor(private readonly deps: ObservationStoreDeps) {}
 
@@ -1689,7 +1693,7 @@ export class ObservationStore {
     `;
 
     sql = this.applyCommonFilters(sql, params, "o", request);
-    sql += " ORDER BY o.rowid DESC LIMIT ?";
+    sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
     params.push(Math.max(internalLimit * 4, 200));
 
     const rows = this.deps.db
@@ -1782,11 +1786,18 @@ export class ObservationStore {
       50,
       strictProjectWindow,
     );
-    const sqliteVecKMaxRaw = Number(process.env.HARNESS_MEM_SQLITE_VEC_K_MAX ?? 1200);
+    const sqliteVecKMaxRaw = Number(process.env.HARNESS_MEM_SQLITE_VEC_K_MAX ?? DEFAULT_SQLITE_VEC_K_MAX);
     const sqliteVecKMax =
       Number.isFinite(sqliteVecKMaxRaw) && sqliteVecKMaxRaw > 0
         ? Math.floor(sqliteVecKMaxRaw)
-        : 1200;
+        : DEFAULT_SQLITE_VEC_K_MAX;
+    const sqliteVecVariantMaxRaw = Number(
+      process.env.HARNESS_MEM_SQLITE_VEC_VARIANT_MAX ?? DEFAULT_SQLITE_VEC_VARIANT_MAX,
+    );
+    const sqliteVecVariantMax =
+      Number.isFinite(sqliteVecVariantMaxRaw) && sqliteVecVariantMaxRaw > 0
+        ? Math.min(4, Math.floor(sqliteVecVariantMaxRaw))
+        : DEFAULT_SQLITE_VEC_VARIANT_MAX;
     const degradedReasons = new Set<string>();
     const addDegradedReason = (reason: string): void => {
       degradedReasons.add(`vector search degraded: ${reason}`);
@@ -1923,8 +1934,8 @@ export class ObservationStore {
             const sqliteVecK = Math.min(
               sqliteVecKMax,
               Math.max(
-                internalLimit * (request.project && request.strict_project !== false ? 12 : 4),
-                internalLimit * 3,
+                internalLimit * (request.project && request.strict_project !== false ? 4 : 3),
+                internalLimit,
               ),
             );
             const params: unknown[] = [
@@ -2016,7 +2027,15 @@ export class ObservationStore {
       this.deps.getEmbeddingProviderName() === "adaptive"
         ? expandQuery(request.query, initialPlan.route)
         : { original: request.query, expanded: [], route: initialPlan.route };
-    const variantQueries = [expandedQuery.original, ...expandedQuery.expanded].filter(Boolean);
+    const allVariantQueries = [expandedQuery.original, ...expandedQuery.expanded].filter(Boolean);
+    const variantLimit =
+      this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()
+        ? sqliteVecVariantMax
+        : 4;
+    const variantQueries = allVariantQueries.slice(0, variantLimit);
+    if (allVariantQueries.length > variantQueries.length) {
+      addDegradedReason(`sqlite-vec variant cap ${variantQueries.length}/${allVariantQueries.length}`);
+    }
     const variantWeights = [1, 0.9, 0.8, 0.7];
     const variantResults = variantQueries.map((variant, index) =>
       runVariantSearch(index === 0 ? initialPlan : resolveEmbeddingPlan(variant), variantWeights[index] ?? 0.7),
@@ -2125,31 +2144,39 @@ export class ObservationStore {
 
   private getMigrationProgress(currentModel: string): string | null {
     if (this.migrationComplete) return null;
+    const nowMs = Date.now();
+    if (
+      this.migrationProgressCache?.model === currentModel &&
+      nowMs - this.migrationProgressCache.checkedAtMs < VECTOR_MIGRATION_PROGRESS_CACHE_TTL_MS
+    ) {
+      return this.migrationProgressCache.warning;
+    }
 
     const totals = this.deps.db
       .query(
         `SELECT
-           COUNT(DISTINCT o.id) AS total,
-           COUNT(DISTINCT CASE WHEN v.model = ? THEN o.id END) AS current_count
-         FROM mem_observations o
-         LEFT JOIN mem_vectors v ON v.observation_id = o.id
-         WHERE 1=1${archivedFilterSql("o", false)}`
+           (SELECT COUNT(*) FROM mem_observations o WHERE 1=1${archivedFilterSql("o", false)}) AS total,
+           (SELECT COUNT(*) FROM mem_vectors WHERE model = ?) AS current_count`
       )
       .get(currentModel) as { total: number; current_count: number } | null;
 
     if (!totals || totals.total === 0) return null;
     const total = Number(totals.total);
-    const current = Number(totals.current_count);
+    const current = Math.min(total, Number(totals.current_count));
     if (current >= total) {
       this.migrationComplete = true;
+      this.migrationProgressCache = { model: currentModel, checkedAtMs: nowMs, warning: null };
       return null;
     }
     if (current / total >= VECTOR_MIGRATION_WARNING_THRESHOLD) {
       this.migrationComplete = true;
+      this.migrationProgressCache = { model: currentModel, checkedAtMs: nowMs, warning: null };
       return null;
     }
     const pct = Math.round((current / total) * 100);
-    return `vector_migration: ${current}/${total} vectors reindexed (${pct}%)`;
+    const warning = `vector_migration: ${current}/${total} vectors reindexed (${pct}%)`;
+    this.migrationProgressCache = { model: currentModel, checkedAtMs: nowMs, warning };
+    return warning;
   }
 
   private tagMatchScore(tagsJson: unknown, queryTokens: string[]): number {
@@ -4492,6 +4519,26 @@ export class ObservationStore {
     const includePrivate = Boolean(request.include_private);
     const projectMembers = request.project_members ?? this.resolveProjectMembers(request.project);
     const query = (request.query || "").trim();
+
+    const hasTenantFilter = Boolean(request.user_id || request.team_id || this.deps.accessFilter?.sql);
+    if (!query && !request.project && projectMembers.length === 0 && !hasTenantFilter) {
+      const response = makeErrorResponse(
+        startedAt,
+        "search facets require a query or project filter to stay bounded",
+        {
+          query: undefined,
+          project: undefined,
+          include_private: includePrivate,
+        },
+      );
+      response.meta = {
+        ...response.meta,
+        ranking: "search_facets_v1",
+        http_status: 400,
+        error_code: "search_facets_unbounded",
+      };
+      return response;
+    }
 
     // MAJOR-5: SQL GROUP BY で project・event_type・時間バケットを集計し、
     // JS 側の全件ループを排除する。tags_json のみ JS でパースが必要なため

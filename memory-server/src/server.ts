@@ -452,7 +452,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         }
 
         if (request.method === "GET" && (url.pathname === "/health" || url.pathname === "/v1/health")) {
-          return jsonResponse(core.health());
+          return jsonResponse(core.health({ includeCounts: parseBoolean(url.searchParams.get("include_counts"), false) }));
         }
 
         if (request.method === "GET" && url.pathname === "/health/ready") {
@@ -630,7 +630,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               }
             );
           }
-          return jsonResponse(result);
+          const status =
+            typeof result.meta.http_status === "number" &&
+            result.meta.http_status >= 400 &&
+            result.meta.http_status < 600
+              ? result.meta.http_status
+              : 200;
+          return jsonResponse(result, status);
         }
 
         if (request.method === "POST" && url.pathname === "/v1/search") {
@@ -756,7 +762,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
               return parsedObservationTypeFromPrefix;
             })(),
           };
-          return jsonResponse(await core.searchPrepared(req));
+          const result = await core.searchPrepared(req);
+          const status =
+            typeof result.meta.http_status === "number" &&
+            result.meta.http_status >= 400 &&
+            result.meta.http_status < 600
+              ? result.meta.http_status
+              : 200;
+          return jsonResponse(result, status);
         }
 
       if (request.method === "GET" && url.pathname === "/v1/feed") {
@@ -846,7 +859,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           user_id: facetsAccess.user_id,
           team_id: facetsAccess.team_id,
         };
-        return jsonResponse(core.searchFacets(req));
+        const result = core.searchFacets(req);
+        const status =
+          typeof result.meta.http_status === "number" &&
+          result.meta.http_status >= 400 &&
+          result.meta.http_status < 600
+            ? result.meta.http_status
+            : 200;
+        return jsonResponse(result, status);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/timeline") {
@@ -945,7 +965,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           privacy_tags: toStringArray(body.privacy_tags),
         };
 
-        return jsonResponse(core.recordCheckpoint(req));
+        const result = await core.recordCheckpointQueued(req);
+        if (result === "queue_full") {
+          return new Response(
+            JSON.stringify({ ok: false, error: "write queue full, retry later" }),
+            {
+              status: 503,
+              headers: {
+                "content-type": "application/json; charset=utf-8",
+                "retry-after": "1",
+              },
+            }
+          );
+        }
+        const status =
+          typeof result.meta.http_status === "number" &&
+          result.meta.http_status >= 400 &&
+          result.meta.http_status < 600
+            ? result.meta.http_status
+            : 200;
+        return jsonResponse(result, status);
       }
 
       if (request.method === "POST" && url.pathname === "/v1/sessions/finalize") {
@@ -1016,9 +1055,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       }
 
       if (request.method === "GET" && url.pathname === "/v1/projects/stats") {
+        const projectFilter = url.searchParams.get("project") || "";
         return jsonResponse(
           core.projectsStats({
             include_private: parseBoolean(url.searchParams.get("include_private"), false),
+            project: projectFilter || undefined,
+            project_members: projectFilter
+              ? core.expandProjectSelection(projectFilter, "observations")
+              : undefined,
           })
         );
       }

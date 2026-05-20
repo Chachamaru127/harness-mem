@@ -2264,7 +2264,7 @@ rewrite_codex_harness_wiring() {
   local cfg="$1"
   local notify_script="$2"
   local tmp backup
-  local normalized_cfg has_expected_notify has_any_notify has_memory_notify emit_notify
+  local normalized_cfg has_expected_notify has_any_notify has_memory_notify has_previous_notify_chain emit_notify
   local notify_count has_managed_notify remove_memory_notify
 
   backup="${cfg}.bak-harness-mem-$(date +%Y%m%d%H%M%S)"
@@ -2275,6 +2275,7 @@ rewrite_codex_harness_wiring() {
   has_expected_notify=0
   has_any_notify=0
   has_memory_notify=0
+  has_previous_notify_chain=0
   notify_count=0
   has_managed_notify=0
   emit_notify=1
@@ -2289,12 +2290,18 @@ rewrite_codex_harness_wiring() {
   if grep -q 'memory-codex-notify\.sh' "$cfg"; then
     has_memory_notify=1
   fi
+  if grep -q -- '--previous-notify' "$cfg"; then
+    has_previous_notify_chain=1
+  fi
   notify_count="$(grep -cE '^[[:space:]]*notify[[:space:]]*=' "$cfg" 2>/dev/null || true)"
   if grep -Fq "$BEGIN_CODEX_NOTIFY" "$cfg"; then
     has_managed_notify=1
   fi
 
-  if [ "$has_expected_notify" -eq 1 ]; then
+  if [ "$has_previous_notify_chain" -eq 1 ] && [ "$has_memory_notify" -eq 1 ]; then
+    emit_notify=0
+    remove_memory_notify=0
+  elif [ "$has_expected_notify" -eq 1 ]; then
     if [ "$has_managed_notify" -eq 1 ] && [ "${notify_count:-0}" -le 1 ]; then
       emit_notify=1
     else

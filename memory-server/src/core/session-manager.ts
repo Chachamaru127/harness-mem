@@ -269,6 +269,22 @@ function parseExplicitHandoffSections(text: string | null | undefined, maxItems:
 // SessionManager クラス
 // ---------------------------------------------------------------------------
 
+export function buildCheckpointEvent(request: RecordCheckpointRequest): EventEnvelope {
+  return {
+    platform: request.platform || "claude",
+    project: request.project || basename(process.cwd()),
+    session_id: request.session_id,
+    event_type: "checkpoint",
+    ts: nowIso(),
+    payload: {
+      title: request.title,
+      content: request.content,
+    },
+    tags: request.tags || [],
+    privacy_tags: request.privacy_tags || [],
+  };
+}
+
 export class SessionManager {
   constructor(private readonly deps: SessionManagerDeps) {}
 
@@ -684,21 +700,7 @@ export class SessionManager {
   }
 
   recordCheckpoint(request: RecordCheckpointRequest): ApiResponse {
-    const event: EventEnvelope = {
-      platform: request.platform || "claude",
-      project: request.project || basename(process.cwd()),
-      session_id: request.session_id,
-      event_type: "checkpoint",
-      ts: nowIso(),
-      payload: {
-        title: request.title,
-        content: request.content,
-      },
-      tags: request.tags || [],
-      privacy_tags: request.privacy_tags || [],
-    };
-
-    return this.deps.recordEvent(event);
+    return this.deps.recordEvent(buildCheckpointEvent(request));
   }
 
   // ---------------------------------------------------------------------------

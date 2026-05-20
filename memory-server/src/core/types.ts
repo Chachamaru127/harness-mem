@@ -185,6 +185,8 @@ export interface FeedRequest {
 
 export interface ProjectsStatsRequest {
   include_private?: boolean;
+  project?: string;
+  project_members?: string[];
 }
 
 export interface SessionsListRequest {

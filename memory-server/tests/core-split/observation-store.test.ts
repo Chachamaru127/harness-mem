@@ -1125,6 +1125,18 @@ describe("observation-store: feed", () => {
 // ---------------------------------------------------------------------------
 
 describe("observation-store: searchFacets", () => {
+  test("全体ファセット検索は query/project なしでは即時拒否する", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      project: "proj-obs",
+      tags: ["tag-a", "tag-b"],
+    });
+    const res = store.searchFacets({});
+    expect(res.ok).toBe(false);
+    expect(res.meta.http_status).toBe(400);
+    expect(res.meta.error_code).toBe("search_facets_unbounded");
+  });
+
   test("ファセット検索が ok=true を返す", () => {
     const { store, db } = makeStore();
     insertTestObservation(db, {

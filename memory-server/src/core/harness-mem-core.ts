@@ -54,7 +54,7 @@ import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
-import { SessionManager } from "./session-manager";
+import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
@@ -166,6 +166,20 @@ import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
 const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
+const DEFAULT_SEARCH_CHILD_TIMEOUT_MS = 20_000;
+const DEFAULT_SEARCH_CHILD_QUEUE_MAX = 1;
+const DEFAULT_SEARCH_WORKER_TIMEOUT_MS = 3_000;
+const DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS = 20_000;
+const DEFAULT_SEARCH_WORKER_QUEUE_MAX = 2;
+const DEFAULT_EVENT_CHILD_TIMEOUT_MS = 8_000;
+const DEFAULT_EVENT_CHILD_QUEUE_MAX = 1;
+const DEFAULT_RETRY_CHILD_TIMEOUT_MS = 30_000;
+const DEFAULT_RETRY_CHILD_QUEUE_MAX = 1;
+const DEFAULT_CHECKPOINT_CHILD_TIMEOUT_MS = 8_000;
+const DEFAULT_CHECKPOINT_CHILD_QUEUE_MAX = 1;
+const DEFAULT_MATERIALIZE_CHILD_TIMEOUT_MS = 30_000;
+const DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX = 1;
+const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
 
@@ -176,6 +190,157 @@ export function buildVectorBackfillChildCommand(
 ): string[] {
   const runCommand = [process.execPath, "run", scriptPath, JSON.stringify(operation)];
   return platform === "win32" ? runCommand : ["nice", "-n", "10", ...runCommand];
+}
+
+export function buildSearchChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+export function buildSearchWorkerCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+export function buildCheckpointChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+export function buildMaterializeObservationChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return platform === "win32" ? runCommand : ["nice", "-n", "10", ...runCommand];
+}
+
+export function buildEventChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+export function buildRetryChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return runCommand;
+}
+
+function envTruthy(raw: string | undefined): boolean {
+  if (raw === undefined) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "on" || normalized === "yes";
+}
+
+function envFalsy(raw: string | undefined): boolean {
+  if (raw === undefined) return false;
+  const normalized = raw.trim().toLowerCase();
+  return normalized === "0" || normalized === "false" || normalized === "off" || normalized === "no";
+}
+
+export function shouldRunSearchOutOfProcess(
+  request: SearchRequest,
+  options: {
+    vectorEngine: VectorEngine;
+    dbPath: string;
+    env?: Record<string, string | undefined>;
+  },
+): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_SEARCH_CHILD_PROCESS)) return false;
+  if (envTruthy(env.HARNESS_MEM_SEARCH_WORKER_PROCESS)) return false;
+  if (request.safe_mode === true) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+  if (options.vectorEngine === "disabled") return false;
+
+  const override = env.HARNESS_MEM_SEARCH_OFFLOAD;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
+}
+
+export function shouldUsePersistentSearchWorker(options: {
+  vectorEngine: VectorEngine;
+  dbPath: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_SEARCH_CHILD_PROCESS)) return false;
+  if (envTruthy(env.HARNESS_MEM_SEARCH_WORKER_PROCESS)) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+  if (options.vectorEngine === "disabled") return false;
+
+  const override = env.HARNESS_MEM_SEARCH_WORKER;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
+}
+
+export function shouldRunCheckpointOutOfProcess(options: {
+  dbPath: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS)) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+
+  const override = env.HARNESS_MEM_CHECKPOINT_OFFLOAD;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
+}
+
+export function shouldRunEventOutOfProcess(options: {
+  dbPath: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_EVENT_CHILD_PROCESS)) return false;
+  if (envTruthy(env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS)) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+
+  const override = env.HARNESS_MEM_EVENT_OFFLOAD;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
+}
+
+export function shouldRunRetryQueueOutOfProcess(options: {
+  dbPath: string;
+  env?: Record<string, string | undefined>;
+}): boolean {
+  const env = options.env ?? process.env;
+  if (envTruthy(env.HARNESS_MEM_RETRY_CHILD_PROCESS)) return false;
+  if (!options.dbPath || options.dbPath === ":memory:") return false;
+
+  const override = env.HARNESS_MEM_RETRY_OFFLOAD;
+  if (envFalsy(override)) return false;
+  if (envTruthy(override)) return true;
+  if (env.NODE_ENV === "test") return false;
+
+  return true;
 }
 
 interface ResolvedEmbeddingVariant {
@@ -216,10 +381,401 @@ export class EmbeddingReadinessError extends Error {
   }
 }
 
+type SearchOffloadMode = "child_process" | "persistent_worker";
+
+interface SearchWorkerRequestEnvelope {
+  id: string;
+  request: SearchRequest;
+}
+
+interface SearchWorkerResponseEnvelope {
+  id?: string;
+  ok?: boolean;
+  response?: ApiResponse;
+  error?: string;
+  type?: "ready" | "warmup";
+  pid?: number;
+  warmup_ms?: number | null;
+  warmup_error?: string;
+}
+
+interface SearchWorkerResult {
+  response: ApiResponse;
+  ready_at_start: boolean;
+  pid: number | null;
+  warmup_ms: number | null;
+}
+
+interface PendingSearchWorkerRequest {
+  resolve: (value: SearchWorkerResult) => void;
+  reject: (error: Error) => void;
+  timer: ReturnType<typeof setTimeout>;
+  readyAtStart: boolean;
+}
+
+class SearchOffloadQueueFullError extends Error {
+  readonly code = "SEARCH_OFFLOAD_QUEUE_FULL";
+
+  constructor(
+    readonly queueName: string,
+    readonly pending: number,
+    readonly maxPending: number,
+  ) {
+    super(`${queueName} queue full: ${pending}/${maxPending}`);
+    this.name = "SearchOffloadQueueFullError";
+  }
+}
+
+function isSearchOffloadQueueFull(error: unknown): error is SearchOffloadQueueFullError {
+  return error instanceof SearchOffloadQueueFullError;
+}
+
+class SearchOffloadUnavailableError extends Error {
+  readonly code = "SEARCH_OFFLOAD_UNAVAILABLE";
+
+  constructor(
+    readonly queueName: string,
+    readonly reason: string,
+  ) {
+    super(`${queueName} unavailable: ${reason}`);
+    this.name = "SearchOffloadUnavailableError";
+  }
+}
+
+function isSearchOffloadUnavailable(error: unknown): error is SearchOffloadUnavailableError {
+  return error instanceof SearchOffloadUnavailableError;
+}
+
+type SearchWorkerProcess = ReturnType<typeof Bun.spawn>;
+type SearchWorkerStdin = {
+  write: (chunk: Uint8Array | string) => unknown;
+  flush?: () => unknown;
+  end?: () => unknown;
+};
+
+function truncateTail(value: string, maxLength = 4_000): string {
+  return value.length <= maxLength ? value : value.slice(value.length - maxLength);
+}
+
+function firstResponseObservationId(response: ApiResponse): string | null {
+  const first = Array.isArray(response.items) ? response.items[0] : null;
+  if (!first || typeof first !== "object") {
+    return null;
+  }
+  const item = first as Record<string, unknown>;
+  const id = item.id ?? item.observation_id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+async function writeJsonToChildStdin(
+  stdinWriter: SearchWorkerStdin | null | undefined,
+  payload: unknown,
+): Promise<void> {
+  if (!stdinWriter) {
+    throw new Error("child stdin unavailable");
+  }
+  const written = stdinWriter.write(`${JSON.stringify(payload)}\n`);
+  if (written instanceof Promise) {
+    await written;
+  }
+  const flushed = stdinWriter.flush?.();
+  if (flushed instanceof Promise) {
+    await flushed;
+  }
+  stdinWriter.end?.();
+}
+
+class PersistentSearchWorkerClient {
+  private proc: SearchWorkerProcess | null = null;
+  private stdinWriter: SearchWorkerStdin | null = null;
+  private readonly pending = new Map<string, PendingSearchWorkerRequest>();
+  private readonly encoder = new TextEncoder();
+  private sequence = 0;
+  private ready = false;
+  private warmupComplete = false;
+  private workerPid: number | null = null;
+  private warmupMs: number | null = null;
+  private stderrTail = "";
+
+  constructor(
+    private readonly options: {
+      scriptPath: string;
+      cwd: string;
+      env: Record<string, string | undefined>;
+      maxPending: number;
+    },
+  ) {}
+
+  isReady(): boolean {
+    return this.ready;
+  }
+
+  isWarmupComplete(): boolean {
+    return this.warmupComplete;
+  }
+
+  ensureStarted(): void {
+    if (this.proc && this.stdinWriter) {
+      return;
+    }
+    const proc = Bun.spawn({
+      cmd: buildSearchWorkerCommand(this.options.scriptPath),
+      cwd: this.options.cwd,
+      env: {
+        ...this.options.env,
+        HARNESS_MEM_SEARCH_CHILD_PROCESS: "1",
+        HARNESS_MEM_SEARCH_WORKER_PROCESS: "1",
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    this.proc = proc;
+    this.ready = false;
+    this.warmupComplete = false;
+    this.workerPid = typeof proc.pid === "number" ? proc.pid : null;
+    this.warmupMs = null;
+    this.stderrTail = "";
+    if (!proc.stdin) {
+      this.killCurrentWorker("search worker stdin unavailable");
+      throw new Error("search worker stdin unavailable");
+    }
+    this.stdinWriter = proc.stdin as SearchWorkerStdin;
+    void this.readStdout(proc);
+    void this.readStderr(proc);
+    void proc.exited.then(
+      (exitCode) => this.handleExit(proc, exitCode),
+      (error) => this.handleExit(proc, null, error),
+    );
+  }
+
+  async request(request: SearchRequest, timeoutMs: number): Promise<SearchWorkerResult> {
+    this.ensureStarted();
+    if (!this.proc || !this.stdinWriter) {
+      throw new Error("search worker did not start");
+    }
+    if (this.pending.size >= this.options.maxPending) {
+      throw new SearchOffloadQueueFullError("search worker", this.pending.size, this.options.maxPending);
+    }
+
+    const id = `search-${Date.now()}-${++this.sequence}`;
+    const readyAtStart = this.ready;
+    const envelope: SearchWorkerRequestEnvelope = { id, request };
+    const payload = this.encoder.encode(`${JSON.stringify(envelope)}\n`);
+    const promise = new Promise<SearchWorkerResult>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (!this.pending.has(id)) {
+          return;
+        }
+        this.pending.delete(id);
+        reject(new Error(`search worker request timed out after ${timeoutMs}ms`));
+        this.killCurrentWorker(`request timeout after ${timeoutMs}ms`);
+      }, timeoutMs);
+      this.pending.set(id, {
+        resolve,
+        reject,
+        timer,
+        readyAtStart,
+      });
+    });
+
+    try {
+      const written = this.stdinWriter.write(payload);
+      if (written instanceof Promise) {
+        await written;
+      }
+      const flushed = this.stdinWriter.flush?.();
+      if (flushed instanceof Promise) {
+        await flushed;
+      }
+    } catch (error) {
+      const pending = this.pending.get(id);
+      if (pending) {
+        clearTimeout(pending.timer);
+        this.pending.delete(id);
+      }
+      this.killCurrentWorker(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+
+    return promise;
+  }
+
+  stop(reason = "shutdown"): void {
+    this.killCurrentWorker(reason);
+  }
+
+  private async readStdout(proc: SearchWorkerProcess): Promise<void> {
+    const stdout = proc.stdout;
+    if (!stdout || typeof stdout === "number") {
+      return;
+    }
+    const reader = stdout.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        buffer += decoder.decode(value, { stream: true });
+        buffer = this.consumeStdoutBuffer(buffer);
+      }
+      buffer += decoder.decode();
+      if (buffer.trim()) {
+        this.handleWorkerLine(buffer.trim());
+      }
+    } catch (error) {
+      if (this.proc === proc) {
+        this.killCurrentWorker(error instanceof Error ? error.message : String(error));
+      }
+    }
+  }
+
+  private async readStderr(proc: SearchWorkerProcess): Promise<void> {
+    const stderr = proc.stderr;
+    if (!stderr || typeof stderr === "number") {
+      return;
+    }
+    try {
+      const text = await new Response(stderr).text();
+      if (text.trim()) {
+        this.stderrTail = truncateTail(`${this.stderrTail}\n${text.trim()}`);
+      }
+    } catch {
+      // best effort: stderr exists only to improve fallback diagnostics.
+    }
+  }
+
+  private consumeStdoutBuffer(buffer: string): string {
+    let newlineIndex = buffer.indexOf("\n");
+    while (newlineIndex >= 0) {
+      const line = buffer.slice(0, newlineIndex).trim();
+      if (line) {
+        this.handleWorkerLine(line);
+      }
+      buffer = buffer.slice(newlineIndex + 1);
+      newlineIndex = buffer.indexOf("\n");
+    }
+    return buffer;
+  }
+
+  private handleWorkerLine(line: string): void {
+    if (!line.startsWith("{")) {
+      return;
+    }
+    let message: SearchWorkerResponseEnvelope;
+    try {
+      message = JSON.parse(line) as SearchWorkerResponseEnvelope;
+    } catch {
+      this.stderrTail = truncateTail(`${this.stderrTail}\n${line}`);
+      return;
+    }
+
+    if (message.type === "ready") {
+      this.ready = true;
+      this.workerPid = typeof message.pid === "number" ? message.pid : this.workerPid;
+      this.warmupMs = typeof message.warmup_ms === "number" ? message.warmup_ms : null;
+      if (message.warmup_error) {
+        this.stderrTail = truncateTail(`${this.stderrTail}\nwarmup: ${message.warmup_error}`);
+      }
+      return;
+    }
+
+    if (message.type === "warmup") {
+      this.workerPid = typeof message.pid === "number" ? message.pid : this.workerPid;
+      this.warmupComplete = true;
+      this.warmupMs = typeof message.warmup_ms === "number" ? message.warmup_ms : this.warmupMs;
+      if (message.warmup_error) {
+        this.stderrTail = truncateTail(`${this.stderrTail}\nwarmup: ${message.warmup_error}`);
+      }
+      return;
+    }
+
+    if (typeof message.id !== "string") {
+      return;
+    }
+    const pending = this.pending.get(message.id);
+    if (!pending) {
+      return;
+    }
+    this.pending.delete(message.id);
+    clearTimeout(pending.timer);
+    if (message.ok === true && message.response) {
+      pending.resolve({
+        response: message.response,
+        ready_at_start: pending.readyAtStart,
+        pid: this.workerPid,
+        warmup_ms: this.warmupMs,
+      });
+      return;
+    }
+    pending.reject(new Error(message.error || "search worker returned an error"));
+  }
+
+  private handleExit(proc: SearchWorkerProcess, exitCode: number | null, error?: unknown): void {
+    if (this.proc !== proc) {
+      return;
+    }
+    const detail = error instanceof Error
+      ? error.message
+      : `exit ${exitCode ?? "unknown"}`;
+    const stderr = this.stderrTail.trim();
+    this.proc = null;
+    this.stdinWriter = null;
+    this.ready = false;
+    this.warmupComplete = false;
+    this.workerPid = null;
+    this.rejectAllPending(
+      new Error(`search worker stopped (${detail})${stderr ? `: ${stderr}` : ""}`),
+    );
+  }
+
+  private rejectAllPending(error: Error): void {
+    for (const [, pending] of this.pending) {
+      clearTimeout(pending.timer);
+      pending.reject(error);
+    }
+    this.pending.clear();
+  }
+
+  private killCurrentWorker(reason: string): void {
+    const proc = this.proc;
+    const stdinWriter = this.stdinWriter;
+    this.proc = null;
+    this.stdinWriter = null;
+    this.ready = false;
+    this.workerPid = null;
+    this.rejectAllPending(new Error(`search worker stopped: ${reason}`));
+    if (!proc) {
+      return;
+    }
+    try {
+      try {
+        stdinWriter?.end?.();
+      } catch {
+        // best effort
+      }
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    } catch {
+      // best effort
+    }
+  }
+}
+
 // getConfig は core-utils.ts から re-export
 export { getConfig } from "./core-utils.js";
 
-export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): ApiResponse {
+export function parseChildApiResponse(stdout: string, stderr = "", label = "child"): ApiResponse {
   const lines = stdout
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -236,8 +792,12 @@ export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): A
   }
   const detail = lastJsonError instanceof Error ? lastJsonError.message : "no JSON response found";
   throw new Error(
-    `vector backfill child returned invalid JSON: ${detail}; stderr=${stderr.trim()} stdout=${stdout.trim()}`,
+    `${label} returned invalid JSON: ${detail}; stderr=${stderr.trim()} stdout=${stdout.trim()}`,
   );
+}
+
+export function parseVectorBackfillChildResponse(stdout: string, stderr = ""): ApiResponse {
+  return parseChildApiResponse(stdout, stderr, "vector backfill child");
 }
 
 interface ProjectNormalizationOptions {
@@ -554,6 +1114,7 @@ export class HarnessMemCore {
   private embeddingProvider!: EmbeddingProvider;
   private embeddingHealth: EmbeddingHealth = { status: "healthy", details: "not-initialized" };
   private embeddingWarnings: string[] = [];
+  private runtimeWarnings: Array<{ message: string; expiresAtMs: number }> = [];
   private vectorModelVersion = VECTOR_MODEL_VERSION;
   private reranker: Reranker | null = null;
   private rerankerEnabled = false;
@@ -579,6 +1140,13 @@ export class HarnessMemCore {
   private reindexVectorsScheduler!: ReindexVectorsScheduler;
   /** S124-007: out-of-request vector compact rebuild + reindex worker */
   private vectorBackfillWorker!: VectorBackfillWorker;
+  /** S127-002: warm persistent worker for normal vector search. */
+  private searchWorker: PersistentSearchWorkerClient | null = null;
+  private searchChildPending = 0;
+  private eventChildPending = 0;
+  private retryChildPending = 0;
+  private checkpointChildPending = 0;
+  private materializeChildPending = 0;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -613,6 +1181,7 @@ export class HarnessMemCore {
     const shouldStartWorkers = this.config.backgroundWorkersEnabled ?? (process.env.NODE_ENV !== "test");
     if (shouldStartWorkers) {
       this.startBackgroundWorkers();
+      this.startSearchWorkerIfNeeded();
     }
   }
 
@@ -821,6 +1390,376 @@ export class HarnessMemCore {
       throw new Error(`vector backfill child exited ${exitCode}: ${stderr.trim() || stdout.trim()}`);
     }
     return parseVectorBackfillChildResponse(stdout, stderr);
+  }
+
+  private async runSearchOutOfProcess(request: SearchRequest): Promise<ApiResponse> {
+    if (shouldUsePersistentSearchWorker({
+      vectorEngine: this.vectorEngine,
+      dbPath: this.config.dbPath,
+    })) {
+      return this.runSearchWithPersistentWorker(request);
+    }
+    return this.runSearchWithOneShotChild(request);
+  }
+
+  private getSearchWorkerScriptPath(): string {
+    return fileURLToPath(new URL("../tools/search-worker.ts", import.meta.url));
+  }
+
+  private getSearchChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/search-child.ts", import.meta.url));
+  }
+
+  private getCheckpointChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/checkpoint-child.ts", import.meta.url));
+  }
+
+  private getMaterializeObservationChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/materialize-observation-child.ts", import.meta.url));
+  }
+
+  private getEventChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/event-child.ts", import.meta.url));
+  }
+
+  private getRetryChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/retry-child.ts", import.meta.url));
+  }
+
+  private getSearchWorkerMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_SEARCH_WORKER_QUEUE_MAX || DEFAULT_SEARCH_WORKER_QUEUE_MAX),
+      DEFAULT_SEARCH_WORKER_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private getSearchChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_SEARCH_CHILD_QUEUE_MAX || DEFAULT_SEARCH_CHILD_QUEUE_MAX),
+      DEFAULT_SEARCH_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private getCheckpointChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_CHECKPOINT_CHILD_QUEUE_MAX || DEFAULT_CHECKPOINT_CHILD_QUEUE_MAX),
+      DEFAULT_CHECKPOINT_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private getMaterializeChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_MATERIALIZE_CHILD_QUEUE_MAX || DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX),
+      DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private getEventChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_EVENT_CHILD_QUEUE_MAX || DEFAULT_EVENT_CHILD_QUEUE_MAX),
+      DEFAULT_EVENT_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private getRetryChildMaxPending(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_RETRY_CHILD_QUEUE_MAX || DEFAULT_RETRY_CHILD_QUEUE_MAX),
+      DEFAULT_RETRY_CHILD_QUEUE_MAX,
+      1,
+      8,
+    );
+  }
+
+  private startSearchWorkerIfNeeded(): void {
+    if (!shouldUsePersistentSearchWorker({
+      vectorEngine: this.vectorEngine,
+      dbPath: this.config.dbPath,
+    })) {
+      return;
+    }
+    const worker = this.getOrCreateSearchWorker();
+    try {
+      worker.ensureStarted();
+    } catch (error) {
+      this.embeddingWarnings.push(
+        `search worker start failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private getOrCreateSearchWorker(): PersistentSearchWorkerClient {
+    if (!this.searchWorker) {
+      this.searchWorker = new PersistentSearchWorkerClient({
+        scriptPath: this.getSearchWorkerScriptPath(),
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          HARNESS_MEM_DB_PATH: this.config.dbPath,
+        },
+        maxPending: this.getSearchWorkerMaxPending(),
+      });
+    }
+    return this.searchWorker;
+  }
+
+  private searchWorkerTimeoutMs(worker: PersistentSearchWorkerClient): number {
+    if (worker.isReady()) {
+      return clampLimit(
+        Number(process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS || DEFAULT_SEARCH_WORKER_TIMEOUT_MS),
+        DEFAULT_SEARCH_WORKER_TIMEOUT_MS,
+        250,
+        60_000,
+      );
+    }
+    return clampLimit(
+      Number(
+        process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS ||
+          process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS ||
+          DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS,
+      ),
+      DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS,
+      250,
+      60_000,
+    );
+  }
+
+  private checkpointChildTimeoutMs(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_CHECKPOINT_CHILD_TIMEOUT_MS || DEFAULT_CHECKPOINT_CHILD_TIMEOUT_MS),
+      DEFAULT_CHECKPOINT_CHILD_TIMEOUT_MS,
+      250,
+      60_000,
+    );
+  }
+
+  private materializeChildTimeoutMs(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_MATERIALIZE_CHILD_TIMEOUT_MS || DEFAULT_MATERIALIZE_CHILD_TIMEOUT_MS),
+      DEFAULT_MATERIALIZE_CHILD_TIMEOUT_MS,
+      250,
+      120_000,
+    );
+  }
+
+  private eventChildTimeoutMs(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_EVENT_CHILD_TIMEOUT_MS || DEFAULT_EVENT_CHILD_TIMEOUT_MS),
+      DEFAULT_EVENT_CHILD_TIMEOUT_MS,
+      250,
+      60_000,
+    );
+  }
+
+  private retryChildTimeoutMs(): number {
+    return clampLimit(
+      Number(process.env.HARNESS_MEM_RETRY_CHILD_TIMEOUT_MS || DEFAULT_RETRY_CHILD_TIMEOUT_MS),
+      DEFAULT_RETRY_CHILD_TIMEOUT_MS,
+      250,
+      60_000,
+    );
+  }
+
+  private async runSearchWithPersistentWorker(request: SearchRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const worker = this.getOrCreateSearchWorker();
+    worker.ensureStarted();
+    if (request.safe_mode !== true && request.vector_search !== false && !worker.isWarmupComplete()) {
+      throw new SearchOffloadUnavailableError("search worker", "warming");
+    }
+    const timeoutMs = this.searchWorkerTimeoutMs(worker);
+    const result = await worker.request(request, timeoutMs);
+    const response = result.response;
+    const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+    const workerLatencyMs =
+      typeof response.meta.latency_ms === "number"
+        ? response.meta.latency_ms
+        : null;
+    response.meta = {
+      ...response.meta,
+      latency_ms: offloadWallMs,
+      search_offload: {
+        mode: "persistent_worker",
+        timeout_ms: timeoutMs,
+        wall_ms: offloadWallMs,
+        worker_latency_ms: workerLatencyMs,
+        worker_ready_at_start: result.ready_at_start,
+        worker_pid: result.pid,
+        worker_warmup_ms: result.warmup_ms,
+      },
+    };
+    return response;
+  }
+
+  private async runSearchWithOneShotChild(request: SearchRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const scriptPath = this.getSearchChildScriptPath();
+    const timeoutMs = clampLimit(
+      Number(process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS || DEFAULT_SEARCH_CHILD_TIMEOUT_MS),
+      DEFAULT_SEARCH_CHILD_TIMEOUT_MS,
+      250,
+      60_000,
+    );
+    const maxPending = this.getSearchChildMaxPending();
+    if (this.searchChildPending >= maxPending) {
+      throw new SearchOffloadQueueFullError("search child", this.searchChildPending, maxPending);
+    }
+    this.searchChildPending += 1;
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildSearchChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_SEARCH_CHILD_PROCESS: "1",
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, request);
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`search child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "search child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      const childLatencyMs =
+        typeof response.meta.latency_ms === "number"
+          ? response.meta.latency_ms
+          : null;
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        search_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: childLatencyMs,
+        },
+      };
+      return response;
+    } finally {
+      clearTimeout(timer);
+      this.searchChildPending = Math.max(0, this.searchChildPending - 1);
+    }
+  }
+
+  private makeSearchOffloadRejectedResponse(
+    startedAt: number,
+    request: SearchRequest,
+    error: SearchOffloadQueueFullError | SearchOffloadUnavailableError,
+    mode: SearchOffloadMode,
+  ): ApiResponse {
+    const queueFull = error instanceof SearchOffloadQueueFullError;
+    const reason = queueFull ? "queue_full" : error.reason;
+    const response = makeErrorResponse(
+      startedAt,
+      `${error.queueName} is busy; retry later (${reason})`,
+      request as unknown as Record<string, unknown>,
+    );
+    Object.assign(response.meta, {
+      error_code: queueFull ? "search_offload_queue_full" : "search_offload_unavailable",
+      http_status: 503,
+      search_offload: {
+        mode,
+        fallback: "none",
+        queue_full: queueFull,
+        reason,
+        ...(queueFull
+          ? {
+              pending: error.pending,
+              max_pending: error.maxPending,
+            }
+          : {}),
+      },
+    });
+    return response;
+  }
+
+  private async searchWithSafeFallback(
+    request: SearchRequest,
+    reason: string,
+    mode: SearchOffloadMode = "child_process",
+  ): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const safeRequest: SearchRequest = {
+      ...request,
+      safe_mode: true,
+      vector_search: false,
+      expand_links: false,
+      graph_depth: 0,
+      graph_weight: 0,
+    };
+    let fallback: ApiResponse;
+    let fallbackMode: "child_process" | "empty_error" = "child_process";
+    let fallbackFailedReason: string | null = null;
+    try {
+      fallback = await this.runSearchWithOneShotChild(safeRequest);
+    } catch (fallbackError) {
+      fallbackMode = "empty_error";
+      fallbackFailedReason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      fallback = makeErrorResponse(
+        startedAt,
+        `search offload failed and safe fallback failed: ${fallbackFailedReason}`,
+        safeRequest as unknown as Record<string, unknown>,
+      );
+    }
+    const existingWarnings = Array.isArray(fallback.meta.warnings)
+      ? (fallback.meta.warnings as string[])
+      : [];
+    const fallbackFailed = fallbackMode === "empty_error";
+    fallback.meta = {
+      ...fallback.meta,
+      ...(fallbackFailed
+        ? {
+            error_code: "search_fallback_failed",
+            http_status: 503,
+          }
+        : {}),
+      warnings: [
+        ...existingWarnings,
+        fallbackFailed
+          ? `search offload failed; safe lexical fallback also failed: ${reason.slice(0, 240)}`
+          : `search offload failed; returned safe lexical fallback: ${reason.slice(0, 240)}`,
+      ],
+      search_offload: {
+        mode,
+        fallback: fallbackFailed ? "none" : "safe_lexical",
+        fallback_mode: fallbackMode,
+        failed_reason: reason.slice(0, 500),
+        ...(fallbackFailedReason ? { fallback_failed_reason: fallbackFailedReason.slice(0, 500) } : {}),
+      },
+    };
+    return fallback;
   }
 
   private configureDatabase(): void {
@@ -1686,6 +2625,17 @@ export class HarnessMemCore {
     if (this.shuttingDown && !force) {
       return;
     }
+    if (!force && shouldRunRetryQueueOutOfProcess({ dbPath: this.config.dbPath })) {
+      if (this.retryChildPending >= this.getRetryChildMaxPending()) {
+        return;
+      }
+      void this.runRetryQueueOutOfProcess(false).catch((error) => {
+        this.pushRuntimeWarning(
+          `retry queue child failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      });
+      return;
+    }
 
     const now = nowIso();
     const rows = this.db
@@ -1722,16 +2672,223 @@ export class HarnessMemCore {
     }
   }
 
+  processRetryQueueNow(force = false): ApiResponse {
+    const startedAt = performance.now();
+    this.processRetryQueue(force);
+    return makeResponse(
+      startedAt,
+      [{ processed: true, force }],
+      { force },
+      { ranking: "retry_queue_v1" },
+    );
+  }
+
+  private async runRetryQueueOutOfProcess(force: boolean): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const timeoutMs = this.retryChildTimeoutMs();
+    const scriptPath = this.getRetryChildScriptPath();
+    this.retryChildPending += 1;
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildRetryChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_RETRY_CHILD_PROCESS: "1",
+        HARNESS_MEM_EMBEDDING_PROVIDER: "fallback",
+        HARNESS_MEM_EMBEDDING_MODEL: VECTOR_MODEL_VERSION,
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, { force });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`retry queue child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "retry queue child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        retry_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: typeof response.meta.latency_ms === "number" ? response.meta.latency_ms : null,
+        },
+      };
+      return response;
+    } finally {
+      clearTimeout(timer);
+      this.retryChildPending = Math.max(0, this.retryChildPending - 1);
+    }
+  }
+
+  private pushRuntimeWarning(message: string, ttlMs = DEFAULT_RUNTIME_WARNING_TTL_MS): void {
+    const now = Date.now();
+    const nextWarnings = this.runtimeWarnings.filter(
+      (warning) => warning.expiresAtMs > now && warning.message !== message,
+    );
+    nextWarnings.push({ message, expiresAtMs: now + ttlMs });
+    this.runtimeWarnings = nextWarnings.slice(-10);
+  }
+
+  private currentRuntimeWarnings(): string[] {
+    const now = Date.now();
+    this.runtimeWarnings = this.runtimeWarnings.filter((warning) => warning.expiresAtMs > now);
+    return this.runtimeWarnings.map((warning) => warning.message);
+  }
+
   recordEvent(event: EventEnvelope, options: { allowQueue: boolean } = { allowQueue: true }): ApiResponse {
     return this.eventRec.recordEvent(event, options);
   }
 
   async recordEventQueued(
     event: EventEnvelope,
-    options: { allowQueue: boolean } = { allowQueue: true }
+    options: { allowQueue: boolean; deferEmbedding?: boolean } = { allowQueue: true }
   ): Promise<ApiResponse | "queue_full"> {
-    await this.prepareRecordEventEmbedding(event);
+    if (options.deferEmbedding !== true && shouldRunEventOutOfProcess({ dbPath: this.config.dbPath })) {
+      if (this.eventChildPending >= this.getEventChildMaxPending()) {
+        return "queue_full";
+      }
+      return this.runEventOutOfProcess(event);
+    }
+    if (options.deferEmbedding !== true) {
+      await this.prepareRecordEventEmbedding(event);
+    }
     return this.eventRec.recordEventQueued(event, options);
+  }
+
+  materializeObservationDerivedData(observationId: string): ApiResponse {
+    const startedAt = performance.now();
+    const normalizedId = typeof observationId === "string" ? observationId.trim() : "";
+    if (!normalizedId) {
+      return makeErrorResponse(startedAt, "observation_id is required", {});
+    }
+
+    try {
+      const item = this.eventRec.materializeObservationDerivedData(normalizedId);
+      return makeResponse(
+        startedAt,
+        [item],
+        { observation_id: normalizedId },
+        {
+          ranking: "observation_materialize_v1",
+          vector_engine: this.vectorEngine,
+          embedding_provider: this.embeddingProvider.name,
+          embedding_provider_status: this.embeddingHealth.status,
+        },
+      );
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        `observation materialization failed: ${error instanceof Error ? error.message : String(error)}`,
+        { observation_id: normalizedId },
+      );
+    }
+  }
+
+  private async runEventOutOfProcess(event: EventEnvelope): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const timeoutMs = this.eventChildTimeoutMs();
+    const scriptPath = this.getEventChildScriptPath();
+    this.eventChildPending += 1;
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildEventChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_EVENT_CHILD_PROCESS: "1",
+        HARNESS_MEM_EMBEDDING_PROVIDER: "fallback",
+        HARNESS_MEM_EMBEDDING_MODEL: VECTOR_MODEL_VERSION,
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, event);
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`event child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "event child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        event_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: typeof response.meta.latency_ms === "number" ? response.meta.latency_ms : null,
+        },
+      };
+      return response;
+    } catch (error) {
+      const response = makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        {
+          project: event.project,
+          session_id: event.session_id,
+          event_type: event.event_type,
+        },
+      );
+      Object.assign(response.meta, {
+        error_code: "event_offload_failed",
+        http_status: 503,
+        event_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          timed_out: timedOut,
+        },
+      });
+      return response;
+    } finally {
+      clearTimeout(timer);
+      this.eventChildPending = Math.max(0, this.eventChildPending - 1);
+    }
   }
 
   private platformVisibilityFilterSql(alias: string): string {
@@ -1779,10 +2936,49 @@ export class HarnessMemCore {
   }
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
-    if (request.safe_mode !== true && request.vector_search !== false) {
+    const startedAt = performance.now();
+    const shouldOffloadSearch = shouldRunSearchOutOfProcess(request, {
+      vectorEngine: this.vectorEngine,
+      dbPath: this.config.dbPath,
+    });
+    const offloadMode: SearchOffloadMode = shouldUsePersistentSearchWorker({
+      vectorEngine: this.vectorEngine,
+      dbPath: this.config.dbPath,
+    })
+      ? "persistent_worker"
+      : "child_process";
+    if (request.safe_mode !== true && request.vector_search !== false && !shouldOffloadSearch) {
       await this.prepareSearchEmbedding(request.query || "");
     }
-    const response = this.search(request);
+    let response: ApiResponse;
+    if (shouldOffloadSearch) {
+      try {
+        response = await this.runSearchOutOfProcess(request);
+      } catch (error) {
+        if (isSearchOffloadQueueFull(error) || isSearchOffloadUnavailable(error)) {
+          return this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
+        }
+        if (
+          offloadMode === "persistent_worker" &&
+          error instanceof Error &&
+          error.message.includes("search worker request timed out")
+        ) {
+          return this.makeSearchOffloadRejectedResponse(
+            startedAt,
+            request,
+            new SearchOffloadUnavailableError("search worker", "timeout"),
+            offloadMode,
+          );
+        }
+        response = await this.searchWithSafeFallback(
+          request,
+          error instanceof Error ? error.message : String(error),
+          offloadMode,
+        );
+      }
+    } else {
+      response = this.search(request);
+    }
 
     // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）
     const llmConfig = buildLlmRerankerConfigFromEnv();
@@ -2155,6 +3351,186 @@ export class HarnessMemCore {
     return this.sessionMgr.recordCheckpoint(request);
   }
 
+  async recordCheckpointQueued(request: RecordCheckpointRequest): Promise<ApiResponse | "queue_full"> {
+    if (shouldRunCheckpointOutOfProcess({ dbPath: this.config.dbPath })) {
+      if (this.checkpointChildPending >= this.getCheckpointChildMaxPending()) {
+        return "queue_full";
+      }
+      return this.runCheckpointOutOfProcess(request);
+    }
+    return this.recordEventQueued(buildCheckpointEvent(request), {
+      allowQueue: true,
+      deferEmbedding: true,
+    });
+  }
+
+  private scheduleObservationMaterialization(observationId: string | null): Record<string, unknown> {
+    if (!observationId) {
+      return { status: "skipped", reason: "missing_observation_id" };
+    }
+    if (!this.config.dbPath || this.config.dbPath === ":memory:") {
+      return { status: "skipped", reason: "in_memory_db" };
+    }
+    if (envFalsy(process.env.HARNESS_MEM_CHECKPOINT_MATERIALIZE)) {
+      return { status: "disabled" };
+    }
+    if (this.materializeChildPending >= this.getMaterializeChildMaxPending()) {
+      return {
+        status: "queue_full",
+        max_pending: this.getMaterializeChildMaxPending(),
+      };
+    }
+
+    this.materializeChildPending += 1;
+    void this.runObservationMaterializeOutOfProcess(observationId)
+      .catch((error) => {
+        this.pushRuntimeWarning(
+          `checkpoint materialization child failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      })
+      .finally(() => {
+        this.materializeChildPending = Math.max(0, this.materializeChildPending - 1);
+      });
+
+    return {
+      status: "scheduled",
+      observation_id: observationId,
+      mode: "child_process",
+      timeout_ms: this.materializeChildTimeoutMs(),
+    };
+  }
+
+  private async runObservationMaterializeOutOfProcess(observationId: string): Promise<ApiResponse> {
+    const timeoutMs = this.materializeChildTimeoutMs();
+    const scriptPath = this.getMaterializeObservationChildScriptPath();
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildMaterializeObservationChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD: "1",
+        HARNESS_MEM_EMBEDDING_PROVIDER: "fallback",
+        HARNESS_MEM_EMBEDDING_MODEL: VECTOR_MODEL_VERSION,
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, { observation_id: observationId });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`observation materialization child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      return parseChildApiResponse(stdout, stderr, "observation materialization child");
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private async runCheckpointOutOfProcess(request: RecordCheckpointRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const timeoutMs = this.checkpointChildTimeoutMs();
+    const scriptPath = this.getCheckpointChildScriptPath();
+    this.checkpointChildPending += 1;
+    let timedOut = false;
+    const proc = Bun.spawn({
+      cmd: buildCheckpointChildCommand(scriptPath),
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_CHECKPOINT_CHILD_PROCESS: "1",
+        HARNESS_MEM_EMBEDDING_PROVIDER: "fallback",
+        HARNESS_MEM_EMBEDDING_MODEL: VECTOR_MODEL_VERSION,
+      },
+      stdin: "pipe",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void proc.exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      await writeJsonToChildStdin(proc.stdin as SearchWorkerStdin | null, request);
+      const [stdout, stderr, exitCode] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`checkpoint child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "checkpoint child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      const materialization = this.scheduleObservationMaterialization(firstResponseObservationId(response));
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        checkpoint_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: typeof response.meta.latency_ms === "number" ? response.meta.latency_ms : null,
+          derived_materialization: materialization,
+        },
+      };
+      return response;
+    } catch (error) {
+      const response = makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        {
+          project: request.project,
+          session_id: request.session_id,
+        },
+      );
+      Object.assign(response.meta, {
+        error_code: "checkpoint_offload_failed",
+        http_status: 503,
+        checkpoint_offload: {
+          mode: "child_process",
+          timeout_ms: timeoutMs,
+          timed_out: timedOut,
+        },
+      });
+      return response;
+    } finally {
+      clearTimeout(timer);
+      this.checkpointChildPending = Math.max(0, this.checkpointChildPending - 1);
+    }
+  }
+
   finalizeSession(request: FinalizeSessionRequest): ApiResponse {
     return this.sessionMgr.finalizeSession(request);
   }
@@ -2168,18 +3544,23 @@ export class HarnessMemCore {
     return this.obsStore.resumePack(request);
   }
 
-  health(): ApiResponse {
+  health(options: { includeCounts?: boolean } = {}): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
 
-    const sessions = this.db.query(`SELECT COUNT(*) AS count FROM mem_sessions`).get() as { count: number };
-    const events = this.db.query(`SELECT COUNT(*) AS count FROM mem_events`).get() as { count: number };
-    const observations = this.db.query(`SELECT COUNT(*) AS count FROM mem_observations`).get() as { count: number };
-    const queue = this.db.query(`SELECT COUNT(*) AS count FROM mem_retry_queue`).get() as { count: number };
+    const includeCounts = options.includeCounts === true;
+    const counts = includeCounts
+      ? {
+          sessions: Number((this.db.query(`SELECT COUNT(*) AS count FROM mem_sessions`).get() as { count: number }).count || 0),
+          events: Number((this.db.query(`SELECT COUNT(*) AS count FROM mem_events`).get() as { count: number }).count || 0),
+          observations: Number((this.db.query(`SELECT COUNT(*) AS count FROM mem_observations`).get() as { count: number }).count || 0),
+          retry_queue: Number((this.db.query(`SELECT COUNT(*) AS count FROM mem_retry_queue`).get() as { count: number }).count || 0),
+        }
+      : undefined;
 
     const dbPath = resolveHomePath(this.config.dbPath);
-    const dbSize = existsSync(dbPath) ? statSync(dbPath).size : 0;
+    const dbSize = includeCounts && existsSync(dbPath) ? statSync(dbPath).size : null;
 
     const managedDegraded = this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected());
     const embeddingDegraded = embeddingReadiness.required && !embeddingReadiness.ready;
@@ -2252,6 +3633,7 @@ export class HarnessMemCore {
           managed_backend: this.managedBackend ? this.managedBackend.getStatus() : null,
           warnings: [
             ...this.embeddingWarnings,
+            ...this.currentRuntimeWarnings(),
             ...(embeddingDegraded
               ? [
                   embeddingReadiness.state === "failed"
@@ -2263,16 +3645,12 @@ export class HarnessMemCore {
               ? ["managed mode active but ManagedBackend not connected — writes are BLOCKED (fail-close)"]
               : []),
           ],
-          counts: {
-            sessions: Number(sessions.count || 0),
-            events: Number(events.count || 0),
-            observations: Number(observations.count || 0),
-            retry_queue: Number(queue.count || 0),
-          },
+          counts_status: includeCounts ? "exact" : "omitted",
+          ...(counts ? { counts } : {}),
         },
       ],
       {},
-      { ranking: "health_v1" }
+      { ranking: "health_v1", counts_status: includeCounts ? "exact" : "omitted" }
     );
   }
 
@@ -2309,34 +3687,28 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
     const embeddingReadiness = this.getEmbeddingReadiness();
-    const currentVectorPredicate = this.vectorModelVersion.startsWith("adaptive:")
-      ? "v.model LIKE 'adaptive:%'"
-      : "v.model = ?";
-    const currentVectorParams = this.vectorModelVersion.startsWith("adaptive:")
-      ? []
-      : [this.vectorModelVersion];
-
-      const vectorCoverage = this.db
-        .query(`
-          SELECT
-            (SELECT COUNT(*) FROM mem_vectors) AS mem_vectors_count,
-            (SELECT COUNT(*) FROM mem_observations WHERE archived_at IS NULL) AS observations_count,
-            (
-              SELECT COUNT(DISTINCT o.id)
-              FROM mem_observations o
-              JOIN mem_vectors v ON v.observation_id = o.id
-              WHERE o.archived_at IS NULL
-                AND ${currentVectorPredicate}
-            ) AS current_model_observations
-        `)
-        .get(...currentVectorParams) as {
-          mem_vectors_count: number;
-          observations_count: number;
-          current_model_observations: number;
-        } | null;
-      const observationsCount = Number(vectorCoverage?.observations_count ?? 0);
-      const currentModelObservations = Number(vectorCoverage?.current_model_observations ?? 0);
-      const currentModelCoverage = observationsCount === 0 ? 1 : currentModelObservations / observationsCount;
+    const vectorCoverage = this.db
+      .query(`
+        SELECT
+          (SELECT COUNT(*) FROM mem_vectors) AS mem_vectors_count,
+          (SELECT COUNT(*) FROM mem_observations WHERE archived_at IS NULL) AS observations_count
+      `)
+      .get() as {
+        mem_vectors_count: number;
+        observations_count: number;
+      } | null;
+    const currentModelVectorRows = this.vectorModelVersion.startsWith("adaptive:")
+      ? this.db
+          .query<{ count: number }, []>(
+            `SELECT COUNT(*) AS count FROM mem_vectors WHERE model >= 'adaptive:' AND model < 'adaptive;'`,
+          )
+          .get()
+      : this.db
+          .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM mem_vectors WHERE model = ?`)
+          .get(this.vectorModelVersion);
+    const observationsCount = Number(vectorCoverage?.observations_count ?? 0);
+    const currentModelObservations = Math.min(observationsCount, Number(currentModelVectorRows?.count ?? 0));
+    const currentModelCoverage = observationsCount === 0 ? 1 : currentModelObservations / observationsCount;
 
     const vecMapTables = this.db
       .query<{ name: string }, []>(
@@ -2407,6 +3779,7 @@ export class HarnessMemCore {
               observations: observationsCount,
               mem_vectors: Number(vectorCoverage?.mem_vectors_count ?? 0),
               current_model_observations: currentModelObservations,
+              current_model_vector_rows: Number(currentModelVectorRows?.count ?? 0),
               vector_coverage: currentModelCoverage,
               target_coverage: 0.95,
               missing_current_model_vectors: Math.max(0, observationsCount - currentModelObservations),
@@ -3060,6 +4433,19 @@ export class HarnessMemCore {
       return;
     }
     this.shuttingDown = true;
+    const lightweightChild =
+      process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
+      process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
+      process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1";
+
+    if (this.searchWorker) {
+      this.searchWorker.stop("core shutdown");
+      this.searchWorker = null;
+    }
 
     // §91-002: stop partial-finalize scheduler before stopping ingest timers
     this.partialFinalizeScheduler.stop();
@@ -3070,7 +4456,9 @@ export class HarnessMemCore {
     }
     this.ingestCoord.stopTimers();
 
-    this.processRetryQueue(true);
+    if (!lightweightChild) {
+      this.processRetryQueue(true);
+    }
 
     // Shutdown managed backend (fire-and-forget, best effort)
     if (this.managedBackend) {
@@ -3078,10 +4466,12 @@ export class HarnessMemCore {
       this.managedBackend = null;
     }
 
-    try {
-      this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
-    } catch {
-      // best effort
+    if (!lightweightChild) {
+      try {
+        this.db.exec("PRAGMA wal_checkpoint(TRUNCATE);");
+      } catch {
+        // best effort
+      }
     }
 
     try {

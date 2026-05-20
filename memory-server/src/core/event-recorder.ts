@@ -65,6 +65,16 @@ function normalizeTags(tags: unknown): string[] {
   return [...deduped];
 }
 
+function parseJsonArray(raw: string | null | undefined): unknown[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
 function isBlockedTag(tags: string[]): boolean {
   return tags.includes("block") || tags.includes("no_mem");
 }
@@ -160,6 +170,18 @@ function isRetryableWriteEmbeddingFailure(error: unknown): boolean {
   }
 
   return maybe.readiness?.retryable !== false;
+}
+
+function writeQueueDelayMsForTest(): number {
+  if (process.env.NODE_ENV !== "test") {
+    return 0;
+  }
+  return clampLimit(
+    Number(process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS || 0),
+    0,
+    0,
+    5_000,
+  );
 }
 
 function extractFirstUrl(value: string): string | null {
@@ -345,6 +367,11 @@ export interface EventRecorderDeps {
   refreshEmbeddingHealth: () => void;
 }
 
+export interface RecordEventOptions {
+  allowQueue: boolean;
+  deferEmbedding?: boolean;
+}
+
 // ---------------------------------------------------------------------------
 // EventRecorder クラス
 // ---------------------------------------------------------------------------
@@ -418,9 +445,13 @@ export class EventRecorder {
       reject = rej;
     });
 
-    this.writeQueue = this.writeQueue.then(() => {
+    this.writeQueue = this.writeQueue.then(async () => {
       this.writeQueuePending -= 1;
       try {
+        const delayMs = writeQueueDelayMsForTest();
+        if (delayMs > 0) {
+          await Bun.sleep(delayMs);
+        }
         resolve(fn());
       } catch (err) {
         reject(err);
@@ -563,6 +594,90 @@ export class EventRecorder {
   /** reindexVectors などから呼び出す公開ラッパー */
   reindexObservationVector(observationId: string, content: string, createdAt: string): void {
     this.upsertVector(observationId, content, createdAt);
+  }
+
+  materializeObservationDerivedData(observationId: string): Record<string, unknown> {
+    const row = this.deps.db
+      .query<{
+        id: string;
+        project: string;
+        session_id: string;
+        content: string;
+        content_redacted: string;
+        raw_text: string | null;
+        observation_type: string;
+        tags_json: string;
+        event_time: string | null;
+        observed_at: string | null;
+        valid_from: string | null;
+        valid_to: string | null;
+        supersedes: string | null;
+        invalidated_at: string | null;
+        created_at: string;
+      }, [string]>(`
+        SELECT
+          id, project, session_id, content, content_redacted, raw_text,
+          observation_type, tags_json, event_time, observed_at, valid_from,
+          valid_to, supersedes, invalidated_at, created_at
+        FROM mem_observations
+        WHERE id = ?
+      `)
+      .get(observationId);
+
+    if (!row) {
+      return {
+        observation_id: observationId,
+        materialized: false,
+        skipped_reason: "missing_observation",
+      };
+    }
+
+    const createdAt = row.created_at || nowIso();
+    const content = row.content_redacted || row.content || "";
+    const embeddingSource = row.raw_text || content;
+    const tags = normalizeTags(parseJsonArray(row.tags_json));
+    const temporal = {
+      event_time: row.event_time,
+      observed_at: row.observed_at ?? createdAt,
+      valid_from: row.valid_from,
+      valid_to: row.valid_to,
+      supersedes: row.supersedes,
+      invalidated_at: row.invalidated_at,
+    };
+
+    const transaction = this.deps.db.transaction(() => {
+      this.deps.db.query(`DELETE FROM mem_observation_entities WHERE observation_id = ?`).run(observationId);
+      this.deps.db.query(`DELETE FROM mem_relations WHERE observation_id = ?`).run(observationId);
+      this.deps.db.query(`DELETE FROM mem_nugget_vectors WHERE observation_id = ?`).run(observationId);
+      this.deps.db.query(`DELETE FROM mem_nuggets WHERE observation_id = ?`).run(observationId);
+
+      this.upsertVector(observationId, embeddingSource, createdAt);
+      this.extractAndStoreEntities(observationId, content, createdAt);
+      this.extractAndStoreGraphRelations(observationId, content, tags, createdAt, temporal);
+      this.autoLinkObservation(observationId, row.session_id, createdAt);
+      this.autoSupersedes(observationId, row.project, row.observation_type, content, createdAt);
+      this.runSemanticAutoLinkerIfEnabled(observationId, row.session_id, createdAt);
+      this.insertNuggets(observationId, content, createdAt);
+    });
+
+    transaction();
+
+    return {
+      observation_id: observationId,
+      materialized: true,
+      vector_rows: this.countDerivedRows("mem_vectors", "observation_id", observationId),
+      entity_links: this.countDerivedRows("mem_observation_entities", "observation_id", observationId),
+      relation_rows: this.countDerivedRows("mem_relations", "observation_id", observationId),
+      nugget_rows: this.countDerivedRows("mem_nuggets", "observation_id", observationId),
+      nugget_vector_rows: this.countDerivedRows("mem_nugget_vectors", "observation_id", observationId),
+    };
+  }
+
+  private countDerivedRows(tableName: string, columnName: string, observationId: string): number {
+    const row = this.deps.db
+      .query<{ count: number }, [string]>(`SELECT COUNT(*) AS count FROM ${tableName} WHERE ${columnName} = ?`)
+      .get(observationId);
+    return Number(row?.count ?? 0);
   }
 
   private extractAndStoreEntities(observationId: string, content: string, createdAt: string): void {
@@ -869,6 +984,39 @@ export class EventRecorder {
     }
   }
 
+  private runSemanticAutoLinkerIfEnabled(observationId: string, sessionId: string, createdAt: string): void {
+    if (process.env["HARNESS_MEM_AUTO_LINK_SEMANTIC"] !== "true") {
+      return;
+    }
+
+    try {
+      runAutoLinker(
+        {
+          db: this.deps.db,
+          semanticEnabled: true,
+          getEmbedding: (obsId: string) => {
+            const row = this.deps.db
+              .query<{ vector_json: string }, [string]>(`
+                SELECT vector_json FROM mem_vectors WHERE observation_id = ? LIMIT 1
+              `)
+              .get(obsId);
+            if (!row) return null;
+            try {
+              return JSON.parse(row.vector_json) as number[];
+            } catch {
+              return null;
+            }
+          },
+        },
+        observationId,
+        sessionId,
+        createdAt,
+      );
+    } catch {
+      // best effort: auto-linker エラーは event recording を中断しない
+    }
+  }
+
   private enqueueRetry(event: EventEnvelope, reason: string): void {
     const current = nowIso();
     this.deps.db
@@ -885,7 +1033,7 @@ export class EventRecorder {
 
   recordEvent(
     event: EventEnvelope,
-    options: { allowQueue: boolean } = { allowQueue: true }
+    options: RecordEventOptions = { allowQueue: true }
   ): ApiResponse {
     const startedAt = performance.now();
 
@@ -946,6 +1094,7 @@ export class EventRecorder {
     const observationId = `obs_${eventId}`;
     const current = nowIso();
     let degradedEmbeddingWarning: string | null = null;
+    const deferEmbedding = options.deferEmbedding === true && event.event_type === "checkpoint";
 
     // S78-B01: Verbatim raw storage — HARNESS_MEM_RAW_MODE=1 の時のみ raw_text を保存する。
     // raw_text は payload の verbatim content（stripPrivateBlocks 適用済み）。
@@ -1174,53 +1323,25 @@ export class EventRecorder {
         // S78-B01: RAW mode — embedding は raw_text から生成（より高信号）。
         // raw_text が null の場合は従来通り redactedContent を使用。
         const embeddingSource = rawText ?? redactedContent;
-        try {
-          this.upsertVector(observationId, embeddingSource, timestamp);
-        } catch (error) {
-          if (event.event_type !== "checkpoint" || !isRetryableWriteEmbeddingFailure(error)) {
-            throw error;
-          }
-          degradedEmbeddingWarning = formatErrorMessage(error);
-        }
-        this.extractAndStoreEntities(observationId, redactedContent, timestamp);
-        // S78-C02: Populate co-occurrence relations for graph memory
-        this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp, temporalAnchors);
-        this.autoLinkObservation(observationId, event.session_id, timestamp);
-        this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
-
-        // S74-003: auto-linker — Strategy C (semantic similarity) のみ実行
-        // Strategy A (entity co-occurrence) と B (temporal proximity) は
-        // autoLinkObservation が高度な推論付きで担当済み（contradicts/causes/updates 判定含む）
-        // runAutoLinker は semantic similarity リンクのみを追加する
-        if (process.env["HARNESS_MEM_AUTO_LINK_SEMANTIC"] === "true") {
+        if (!deferEmbedding) {
           try {
-            runAutoLinker(
-              {
-                db: this.deps.db,
-                semanticEnabled: true,
-                getEmbedding: (obsId: string) => {
-                  const row = this.deps.db
-                    .query<{ vector_json: string }, [string]>(`
-                      SELECT vector_json FROM mem_vectors WHERE observation_id = ? LIMIT 1
-                    `)
-                    .get(obsId);
-                  if (!row) return null;
-                  try {
-                    return JSON.parse(row.vector_json) as number[];
-                  } catch {
-                    return null;
-                  }
-                },
-              },
-              observationId,
-              event.session_id,
-              timestamp,
-            );
-          } catch {
-            // best effort: auto-linker エラーは event recording を中断しない
+            this.upsertVector(observationId, embeddingSource, timestamp);
+          } catch (error) {
+            if (event.event_type !== "checkpoint" || !isRetryableWriteEmbeddingFailure(error)) {
+              throw error;
+            }
+            degradedEmbeddingWarning = formatErrorMessage(error);
           }
         }
-        this.insertNuggets(observationId, redactedContent, timestamp);
+        if (!deferEmbedding) {
+          this.extractAndStoreEntities(observationId, redactedContent, timestamp);
+          // S78-C02: Populate co-occurrence relations for graph memory
+          this.extractAndStoreGraphRelations(observationId, redactedContent, tags, timestamp, temporalAnchors);
+          this.autoLinkObservation(observationId, event.session_id, timestamp);
+          this.autoSupersedes(observationId, normalizedProject, observationType, redactedContent, timestamp);
+          this.runSemanticAutoLinkerIfEnabled(observationId, event.session_id, timestamp);
+          this.insertNuggets(observationId, redactedContent, timestamp);
+        }
 
         if (isPrivateTag(privacyTags)) {
           this.deps.db.query(`
@@ -1306,8 +1427,12 @@ export class EventRecorder {
       this.deps.replicateManagedEvent(storedEvent);
 
       const writeDurability = this.deps.getManagedRequired() ? "managed" : "local";
-      const embeddingMeta =
-        degradedEmbeddingWarning === null
+      const embeddingMeta = deferEmbedding
+        ? {
+            embedding_write_status: "deferred",
+            embedding_deferred: true,
+          }
+        : degradedEmbeddingWarning === null
           ? {}
           : {
               embedding_write_status: "degraded",
@@ -1343,7 +1468,7 @@ export class EventRecorder {
 
   async recordEventQueued(
     event: EventEnvelope,
-    options: { allowQueue: boolean } = { allowQueue: true }
+    options: RecordEventOptions = { allowQueue: true }
   ): Promise<ApiResponse | "queue_full"> {
     if (this.writeQueuePending >= this.writeQueueLimit) {
       return "queue_full";
