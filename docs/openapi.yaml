@@ -2471,7 +2471,10 @@ paths:
         preverified_backup_evidence_token that hard-purge plan/execute can use without
         re-reading the full backup or running integrity_check inside the hard-purge
         request path. Tokens expire, are bound to the current daemon DB identity and
-        backup file stat, and are consumed after successful hard purge execute.
+        backup file stat, and candidate coverage. The token must be created with
+        candidate_ids/target_ids and hard-purge rejects preverified evidence unless
+        the covered candidates exactly match the current purge manifest. Tokens are
+        consumed after successful hard purge execute.
       operationId: adminForgetBackupEvidence
       tags: [Admin]
       security:
@@ -2482,7 +2485,7 @@ paths:
           application/json:
             schema:
               type: object
-              required: [backup_path, backup_sha256]
+              required: [backup_path, backup_sha256, candidate_ids]
               properties:
                 backup_path:
                   type: string
@@ -2490,6 +2493,16 @@ paths:
                 backup_sha256:
                   type: string
                   description: SHA-256 hex digest of backup_path.
+                candidate_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Observation IDs whose active row and restore-capable archived payload must be present in the backup.
+                target_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Alias for candidate_ids.
                 ttl_seconds:
                   type: integer
                   minimum: 0
@@ -2517,7 +2530,8 @@ paths:
         Plans or executes irreversible physical deletion for already archived observations only.
         Execute mode requires execute:true, exact manifest_hash, exact candidate_count,
         manifest_expires_at from plan mode,
-        backup_path plus backup_sha256 with SQLite integrity_check=ok, a preverified_backup_evidence_token,
+        backup_path plus backup_sha256 with SQLite integrity_check=ok, a preverified_backup_evidence_token
+        whose candidate coverage exactly matches the current manifest,
         or a temp-test backup token,
         retention_ack:true, archive_ack:true, restore-capable archive stub/full payload rows
         (reported separately as archive_full_count, restore_capable_full_count,
@@ -2575,7 +2589,7 @@ paths:
                   description: Required for direct non-temp backup evidence. The file must exist, match backup_sha256, and pass SQLite PRAGMA integrity_check.
                 preverified_backup_evidence_token:
                   type: string
-                  description: Token returned by /v1/admin/forget/backup-evidence. Hard-purge validates token expiry, optional backup_path/backup_sha256 match, DB identity, and file stat without re-hashing or re-running integrity_check.
+                  description: Token returned by /v1/admin/forget/backup-evidence. Hard-purge validates token expiry, optional backup_path/backup_sha256 match, DB identity, file stat, candidate_ids, and candidate_coverage_sha256 without re-hashing or re-running integrity_check.
                 temp_test_backup_token:
                   type: string
                   description: Test-only backup evidence accepted only when the daemon DB path is a temp test DB.

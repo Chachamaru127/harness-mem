@@ -491,6 +491,7 @@ describe("memory admin integration", () => {
         body: JSON.stringify({
           backup_path: backup.path,
           backup_sha256: backup.sha256,
+          candidate_ids: [observationId],
           ttl_seconds: 60,
         }),
       });
@@ -501,6 +502,8 @@ describe("memory admin integration", () => {
           preverified_backup_evidence_token: string;
           backup_path: string;
           backup_sha256: string;
+          candidate_ids: string[];
+          candidate_coverage_sha256: string;
           integrity_check: { checked: boolean; ok: boolean };
         }>;
       };
@@ -509,6 +512,8 @@ describe("memory admin integration", () => {
       expect(evidence.preverified_backup_evidence_token).toMatch(/^preverified_backup_/);
       expect(evidence.backup_path).toBe(backup.path);
       expect(evidence.backup_sha256).toBe(backup.sha256);
+      expect(evidence.candidate_ids).toEqual([observationId]);
+      expect(evidence.candidate_coverage_sha256).toMatch(/^[a-f0-9]{64}$/);
       expect(evidence.integrity_check).toMatchObject({ checked: true, ok: true });
 
       const readinessResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
@@ -529,7 +534,12 @@ describe("memory admin integration", () => {
           expires_at: string;
           candidate_count: number;
           confirmation_phrase?: string;
-          backup: { kind: string; integrity_check: { checked: boolean; ok: boolean } };
+          backup: {
+            kind: string;
+            candidate_ids: string[];
+            candidate_coverage_sha256: string;
+            integrity_check: { checked: boolean; ok: boolean };
+          };
         }>;
       };
       expect(readinessPayload.ok).toBe(true);
@@ -538,6 +548,8 @@ describe("memory admin integration", () => {
       expect("confirmation_phrase" in readinessPayload.items[0]).toBe(false);
       expect(readinessPayload.items[0].backup).toMatchObject({
         kind: "preverified_backup",
+        candidate_ids: [observationId],
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
         integrity_check: { checked: false, ok: true },
       });
 

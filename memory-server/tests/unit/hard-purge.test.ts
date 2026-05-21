@@ -121,17 +121,21 @@ function createBackupArtifact(core: HarnessMemCore, name: string): { path: strin
 function preverifyBackupArtifact(
   core: HarnessMemCore,
   backup: { path: string; sha256: string },
+  candidateIds: string[],
   ttlSeconds?: number,
 ): {
   preverified_backup_evidence_token: string;
   backup_path: string;
   backup_sha256: string;
+  candidate_ids: string[];
+  candidate_coverage_sha256: string;
   expires_at: string;
   integrity_check: { checked: boolean; ok: boolean };
 } {
   const response = core.adminForgetBackupEvidence({
     backup_path: backup.path,
     backup_sha256: backup.sha256,
+    candidate_ids: candidateIds,
     ttl_seconds: ttlSeconds,
   });
   expect(response.ok).toBe(true);
@@ -139,6 +143,8 @@ function preverifyBackupArtifact(
     preverified_backup_evidence_token: string;
     backup_path: string;
     backup_sha256: string;
+    candidate_ids: string[];
+    candidate_coverage_sha256: string;
     expires_at: string;
     integrity_check: { checked: boolean; ok: boolean };
   };
@@ -963,8 +969,10 @@ describe("S127-004 hard purge risk gates", () => {
       archiveObservation(core, target);
       seedArchiveForObservation(core, target);
       const backup = createBackupArtifact(core, "preverified-valid");
-      const evidence = preverifyBackupArtifact(core, backup);
+      const evidence = preverifyBackupArtifact(core, backup, [target]);
       expect(evidence.integrity_check).toMatchObject({ checked: true, ok: true });
+      expect(evidence.candidate_ids).toEqual([target]);
+      expect(evidence.candidate_coverage_sha256).toMatch(/^[a-f0-9]{64}$/);
 
       const planResponse = core.adminForgetHardPurge({
         target_ids: [target],
@@ -978,6 +986,8 @@ describe("S127-004 hard purge risk gates", () => {
         backup_path: backup.path,
         backup_sha256: backup.sha256,
         integrity_check: { checked: false, ok: true, result: "preverified" },
+        candidate_ids: [target],
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
       });
 
       const executed = core.adminForgetHardPurge({
@@ -998,6 +1008,60 @@ describe("S127-004 hard purge risk gates", () => {
     }
   });
 
+  test("preverified backup evidence binds exact candidate coverage", () => {
+    const core = new HarnessMemCore(createConfig("preverified-coverage"));
+    try {
+      const target = insertObservation(core, "preverified-coverage-target", "preverified coverage target row");
+      archiveObservation(core, target);
+      seedArchiveForObservation(core, target);
+      const backup = createBackupArtifact(core, "preverified-coverage");
+      const evidence = preverifyBackupArtifact(core, backup, [target]);
+
+      const other = insertObservation(core, "preverified-coverage-other", "preverified coverage other row");
+      archiveObservation(core, other);
+      seedArchiveForObservation(core, other);
+
+      const targetMismatch = core.adminForgetHardPurge({
+        target_ids: [other],
+        preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+      });
+      expect(targetMismatch.ok).toBe(false);
+      expect(targetMismatch.error).toContain("candidate_ids coverage mismatch");
+
+      const missingBackupCoverage = core.adminForgetBackupEvidence({
+        backup_path: backup.path,
+        backup_sha256: backup.sha256,
+        candidate_ids: [other],
+      });
+      expect(missingBackupCoverage.ok).toBe(false);
+      expect(missingBackupCoverage.error).toContain("missing observations");
+
+      const currentArchive = core.getRawDb()
+        .query<{ archive_id: string; payload_json: string }, [string]>(`
+          SELECT f.archive_id, f.payload_json
+          FROM mem_archive_full f
+          JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+          WHERE s.observation_id = ?
+          LIMIT 1
+        `)
+        .get(target);
+      expect(currentArchive).toBeDefined();
+      const reformattedPayloadJson = JSON.stringify(JSON.parse(currentArchive!.payload_json), null, 2);
+      core.getRawDb()
+        .query(`UPDATE mem_archive_full SET payload_json = ?, payload_sha256 = ? WHERE archive_id = ?`)
+        .run(reformattedPayloadJson, createHash("sha256").update(reformattedPayloadJson).digest("hex"), currentArchive!.archive_id);
+
+      const coverageHashMismatch = core.adminForgetHardPurge({
+        target_ids: [target],
+        preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+      });
+      expect(coverageHashMismatch.ok).toBe(false);
+      expect(coverageHashMismatch.error).toContain("candidate coverage hash mismatch");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("preverified backup evidence rejects expired token, path mismatch, sha mismatch, db mismatch, integrity failure, and replay after execute", () => {
     const core = new HarnessMemCore(createConfig("preverified-rejects"));
     try {
@@ -1006,7 +1070,7 @@ describe("S127-004 hard purge risk gates", () => {
       seedArchiveForObservation(core, target);
       const backup = createBackupArtifact(core, "preverified-rejects");
 
-      const expiredEvidence = preverifyBackupArtifact(core, backup, 0);
+      const expiredEvidence = preverifyBackupArtifact(core, backup, [target], 0);
       const expired = core.adminForgetHardPurge({
         target_ids: [target],
         preverified_backup_evidence_token: expiredEvidence.preverified_backup_evidence_token,
@@ -1014,7 +1078,7 @@ describe("S127-004 hard purge risk gates", () => {
       expect(expired.ok).toBe(false);
       expect(expired.error).toContain("expired");
 
-      const mismatchEvidence = preverifyBackupArtifact(core, backup);
+      const mismatchEvidence = preverifyBackupArtifact(core, backup, [target]);
       const pathMismatch = core.adminForgetHardPurge({
         target_ids: [target],
         backup_path: join(backup.path, "..", "other.db"),
@@ -1031,7 +1095,22 @@ describe("S127-004 hard purge risk gates", () => {
       expect(shaMismatch.ok).toBe(false);
       expect(shaMismatch.error).toContain("backup_sha256 mismatch");
 
-      const dbMismatchEvidence = preverifyBackupArtifact(core, backup);
+      const missingCoverageEvidence = preverifyBackupArtifact(core, backup, [target]);
+      const coverageTokenStore = (core as unknown as {
+        preverifiedBackupEvidenceTokens: Map<string, { candidate_ids?: string[]; candidate_coverage_sha256?: string }>;
+      }).preverifiedBackupEvidenceTokens;
+      const missingCoverageEntry = coverageTokenStore.get(missingCoverageEvidence.preverified_backup_evidence_token);
+      expect(missingCoverageEntry).toBeDefined();
+      delete missingCoverageEntry!.candidate_ids;
+      delete missingCoverageEntry!.candidate_coverage_sha256;
+      const missingCoverage = core.adminForgetHardPurge({
+        target_ids: [target],
+        preverified_backup_evidence_token: missingCoverageEvidence.preverified_backup_evidence_token,
+      });
+      expect(missingCoverage.ok).toBe(false);
+      expect(missingCoverage.error).toContain("candidate coverage is missing");
+
+      const dbMismatchEvidence = preverifyBackupArtifact(core, backup, [target]);
       const tokenStore = (core as unknown as {
         preverifiedBackupEvidenceTokens: Map<string, { db_identity_sha256: string }>;
       }).preverifiedBackupEvidenceTokens;
@@ -1052,6 +1131,7 @@ describe("S127-004 hard purge risk gates", () => {
       const integrityFailure = core.adminForgetBackupEvidence({
         backup_path: badBackupPath,
         backup_sha256: sha256File(badBackupPath),
+        candidate_ids: [target],
       });
       expect(integrityFailure.ok).toBe(false);
       expect(integrityFailure.error).toContain("integrity_check");
@@ -1060,7 +1140,7 @@ describe("S127-004 hard purge risk gates", () => {
       archiveObservation(core, replayTarget);
       seedArchiveForObservation(core, replayTarget);
       const replayBackup = createBackupArtifact(core, "preverified-replay");
-      const replayEvidence = preverifyBackupArtifact(core, replayBackup);
+      const replayEvidence = preverifyBackupArtifact(core, replayBackup, [replayTarget]);
       const replayPlanResponse = core.adminForgetHardPurge({
         target_ids: [replayTarget],
         preverified_backup_evidence_token: replayEvidence.preverified_backup_evidence_token,

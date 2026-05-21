@@ -194,6 +194,8 @@ type AdminHardPurgeRequest = {
 type AdminBackupEvidenceRequest = {
   backup_path?: string;
   backup_sha256?: string;
+  candidate_ids?: string[];
+  target_ids?: string[];
   ttl_seconds?: number;
 };
 
@@ -294,6 +296,8 @@ type BackupEvidence = {
   provided: boolean;
   backup_sha256: string | null;
   backup_path: string | null;
+  candidate_ids: string[] | null;
+  candidate_coverage_sha256: string | null;
   temp_test_backup_token_sha256: string | null;
   preverified_backup_evidence_token_sha256: string | null;
   kind: "backup_file" | "sha256_metadata" | "temp_test_token" | "preverified_backup" | "missing";
@@ -316,6 +320,8 @@ type BackupFileSnapshot = {
 type PreverifiedBackupEvidence = BackupFileSnapshot & {
   token_sha256: string;
   backup_sha256: string;
+  candidate_ids: string[];
+  candidate_coverage_sha256: string;
   created_at: string;
   expires_at: string;
   db_identity_sha256: string;
@@ -2000,11 +2006,11 @@ export class HarnessMemCore {
     };
   }
 
-  private tableExists(name: string): boolean {
+  private tableExists(name: string, db: Database = this.db): boolean {
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       return false;
     }
-    const row = this.db
+    const row = db
       .query(`SELECT 1 AS present FROM sqlite_master WHERE name = ? AND type IN ('table', 'view') LIMIT 1`)
       .get(name) as { present: number } | null;
     return !!row;
@@ -2057,12 +2063,12 @@ export class HarnessMemCore {
     return Number(row?.count ?? 0);
   }
 
-  private selectArchiveStorageRowsByObservationIds(ids: string[]): ArchiveStorageRow[] {
-    if (ids.length === 0 || !this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
+  private selectArchiveStorageRowsByObservationIds(ids: string[], db: Database = this.db): ArchiveStorageRow[] {
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs", db) || !this.tableExists("mem_archive_full", db)) {
       return [];
     }
     const placeholders = ids.map(() => "?").join(", ");
-    return this.db
+    return db
       .query<ArchiveStorageRow, string[]>(`
         SELECT
           s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
@@ -2074,6 +2080,89 @@ export class HarnessMemCore {
         ORDER BY s.observation_id ASC, s.created_at DESC, s.archive_id ASC
       `)
       .all(...ids);
+  }
+
+  private computeCandidateBackupCoverage(
+    db: Database,
+    candidateIds: string[],
+  ): { candidate_ids: string[]; candidate_coverage_sha256: string } | { error: string } {
+    const ids = uniqueSortedStrings(candidateIds);
+    if (ids.length === 0) {
+      return { error: "candidate_ids are required for backup evidence coverage" };
+    }
+    if (ids.length > 500) {
+      return { error: "candidate_ids length exceeds maximum of 500" };
+    }
+    if (!this.tableExists("mem_observations", db)) {
+      return { error: "backup candidate coverage requires mem_observations" };
+    }
+    if (!this.tableExists("mem_archive_stubs", db) || !this.tableExists("mem_archive_full", db)) {
+      return { error: "backup candidate coverage requires mem_archive_stubs and mem_archive_full" };
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const observationRows = db
+      .query<{ id: string }, string[]>(`
+        SELECT id
+        FROM mem_observations
+        WHERE id IN (${placeholders})
+        ORDER BY id ASC
+      `)
+      .all(...ids);
+    const observed = new Set(observationRows.map((row) => row.id));
+    const missingObservations = ids.filter((id) => !observed.has(id));
+    if (missingObservations.length > 0) {
+      return { error: `backup candidate coverage missing observations: ${missingObservations.join(", ")}` };
+    }
+
+    const rowsByObservation = new Map<string, ArchiveStorageRow[]>();
+    for (const row of this.selectArchiveStorageRowsByObservationIds(ids, db)) {
+      const rows = rowsByObservation.get(row.observation_id) ?? [];
+      rows.push(row);
+      rowsByObservation.set(row.observation_id, rows);
+    }
+
+    const candidates: Array<Record<string, unknown>> = [];
+    const missingRestoreCapable: string[] = [];
+    for (const id of ids) {
+      let covered: Record<string, unknown> | null = null;
+      for (const row of rowsByObservation.get(id) ?? []) {
+        if (row.archive_state !== "archived") continue;
+        const payloadValidation = this.validateArchivePayload(row);
+        if (!payloadValidation.ok) continue;
+        covered = {
+          observation_id: id,
+          archive_id: row.archive_id,
+          archive_full_ref: row.archive_full_ref,
+          archive_state: row.archive_state,
+          content_sha256: row.content_sha256,
+          manifest_sha256: row.manifest_sha256,
+          payload_sha256: row.payload_sha256,
+          payload_json_sha256: payloadValidation.payload_sha256,
+        };
+        break;
+      }
+      if (covered) {
+        candidates.push(covered);
+      } else {
+        missingRestoreCapable.push(id);
+      }
+    }
+
+    if (missingRestoreCapable.length > 0) {
+      return {
+        error: `backup candidate coverage missing restore-capable archive payloads: ${missingRestoreCapable.join(", ")}`,
+      };
+    }
+
+    return {
+      candidate_ids: ids,
+      candidate_coverage_sha256: sha256Hex(stableJson({
+        schema_version: "s130-backup-candidate-coverage-v1",
+        candidate_ids: ids,
+        candidates,
+      })),
+    };
   }
 
   private validateArchivePayload(row: ArchiveStorageRow): { ok: true; payload: ArchivePayload; payload_sha256: string } | { ok: false; error: string } {
@@ -3207,6 +3296,17 @@ export class HarnessMemCore {
   }
 
   private createPreverifiedBackupEvidenceToken(request: AdminBackupEvidenceRequest): { token: string; evidence: PreverifiedBackupEvidence } | { error: string } {
+    const candidateIds = uniqueSortedStrings(
+      (request.candidate_ids && request.candidate_ids.length > 0)
+        ? request.candidate_ids
+        : request.target_ids,
+    );
+    if (candidateIds.length === 0) {
+      return { error: "candidate_ids or target_ids are required for backup evidence" };
+    }
+    if (candidateIds.length > 500) {
+      return { error: "candidate_ids length exceeds maximum of 500" };
+    }
     const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
     const backupSha256 = normalizeSha256(backupSha256Raw);
     if (!backupSha256) {
@@ -3234,6 +3334,24 @@ export class HarnessMemCore {
     if (!integrityCheck.ok) {
       return { error: `backup_path integrity_check failed: ${integrityCheck.error ?? integrityCheck.result ?? "unknown"}` };
     }
+    let backupDb: Database | null = null;
+    let coverage: { candidate_ids: string[]; candidate_coverage_sha256: string } | { error: string };
+    try {
+      backupDb = new Database(backupPath, { readonly: true });
+      coverage = this.computeCandidateBackupCoverage(backupDb, candidateIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      coverage = { error: `backup candidate coverage failed: ${message}` };
+    } finally {
+      try {
+        backupDb?.close();
+      } catch {
+        // best effort
+      }
+    }
+    if ("error" in coverage) {
+      return { error: coverage.error };
+    }
 
     const ttlSeconds = request.ttl_seconds === undefined
       ? 5 * 60
@@ -3248,6 +3366,8 @@ export class HarnessMemCore {
     const evidence: PreverifiedBackupEvidence = {
       ...snapshot,
       backup_sha256: backupSha256,
+      candidate_ids: coverage.candidate_ids,
+      candidate_coverage_sha256: coverage.candidate_coverage_sha256,
       token_sha256: sha256Hex(token),
       created_at: createdAt,
       expires_at: expiresAt,
@@ -3262,6 +3382,7 @@ export class HarnessMemCore {
     token: string,
     requestedPath: string | null,
     requestedSha256: string | null,
+    candidateIds: string[],
   ): BackupEvidence | { error: string } {
     if (!/^preverified_backup_[A-Za-z0-9_-]{16,}$/.test(token)) {
       return { error: "preverified_backup_evidence_token is invalid" };
@@ -3284,6 +3405,20 @@ export class HarnessMemCore {
     if (this.currentDatabaseIdentitySha256() !== evidence.db_identity_sha256) {
       return { error: "preverified_backup_evidence_token db identity mismatch" };
     }
+    const expectedIds = uniqueSortedStrings(candidateIds);
+    if (!Array.isArray(evidence.candidate_ids) || evidence.candidate_ids.length === 0 || !evidence.candidate_coverage_sha256) {
+      return { error: "preverified_backup_evidence_token candidate coverage is missing" };
+    }
+    if (stableJson(evidence.candidate_ids) !== stableJson(expectedIds)) {
+      return { error: "preverified_backup_evidence_token candidate_ids coverage mismatch" };
+    }
+    const currentCoverage = this.computeCandidateBackupCoverage(this.db, expectedIds);
+    if ("error" in currentCoverage) {
+      return { error: `preverified_backup_evidence_token current candidate coverage failed: ${currentCoverage.error}` };
+    }
+    if (currentCoverage.candidate_coverage_sha256 !== evidence.candidate_coverage_sha256) {
+      return { error: "preverified_backup_evidence_token candidate coverage hash mismatch" };
+    }
     const current = this.snapshotBackupFile(evidence.path);
     if ("error" in current) {
       return { error: current.error };
@@ -3299,6 +3434,8 @@ export class HarnessMemCore {
       provided: true,
       backup_sha256: evidence.backup_sha256,
       backup_path: evidence.path,
+      candidate_ids: evidence.candidate_ids,
+      candidate_coverage_sha256: evidence.candidate_coverage_sha256,
       temp_test_backup_token_sha256: null,
       preverified_backup_evidence_token_sha256: evidence.token_sha256,
       kind: "preverified_backup",
@@ -3363,7 +3500,7 @@ export class HarnessMemCore {
     }
   }
 
-  private resolveHardPurgeBackupEvidence(request: AdminHardPurgeRequest): BackupEvidence | { error: string } {
+  private resolveHardPurgeBackupEvidence(request: AdminHardPurgeRequest, candidateIds: string[]): BackupEvidence | { error: string } {
     const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
     const backupSha256 = backupSha256Raw ? normalizeSha256(backupSha256Raw) : null;
     if (backupSha256Raw && !backupSha256) {
@@ -3377,7 +3514,7 @@ export class HarnessMemCore {
       ? request.preverified_backup_evidence_token.trim()
       : "";
     if (preverifiedToken) {
-      return this.resolvePreverifiedBackupEvidence(preverifiedToken, backupPath, backupSha256);
+      return this.resolvePreverifiedBackupEvidence(preverifiedToken, backupPath, backupSha256, candidateIds);
     }
 
     if (backupPath) {
@@ -3399,6 +3536,8 @@ export class HarnessMemCore {
         provided: true,
         backup_sha256: backupSha256,
         backup_path: backupPath,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
         temp_test_backup_token_sha256: null,
         preverified_backup_evidence_token_sha256: null,
         kind: "backup_file",
@@ -3420,6 +3559,8 @@ export class HarnessMemCore {
         provided: true,
         backup_sha256: backupSha256,
         backup_path: backupPath,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
         temp_test_backup_token_sha256: sha256Hex(tempToken),
         preverified_backup_evidence_token_sha256: null,
         kind: "temp_test_token",
@@ -3437,6 +3578,8 @@ export class HarnessMemCore {
         provided: false,
         backup_sha256: backupSha256,
         backup_path: null,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
         temp_test_backup_token_sha256: null,
         preverified_backup_evidence_token_sha256: null,
         kind: "sha256_metadata",
@@ -3453,6 +3596,8 @@ export class HarnessMemCore {
       provided: false,
       backup_sha256: null,
       backup_path: null,
+      candidate_ids: null,
+      candidate_coverage_sha256: null,
       temp_test_backup_token_sha256: null,
       preverified_backup_evidence_token_sha256: null,
       kind: "missing",
@@ -3592,12 +3737,12 @@ export class HarnessMemCore {
   }
 
   private buildHardPurgeManifest(request: AdminHardPurgeRequest, rows: HardPurgeCandidateRow[]): HardPurgePrepareResult {
-    const backupEvidence = this.resolveHardPurgeBackupEvidence(request);
+    const ids = rows.map((row) => row.id).sort();
+    const backupEvidence = this.resolveHardPurgeBackupEvidence(request, ids);
     if ("error" in backupEvidence) {
       return { ok: false, error: backupEvidence.error };
     }
 
-    const ids = rows.map((row) => row.id).sort();
     const minimumArchivedDays = Math.max(0, Math.trunc(request.retention_days ?? 0));
     const retentionMs = minimumArchivedDays * 24 * 60 * 60 * 1000;
     const nowMs = Date.now();
@@ -3640,6 +3785,8 @@ export class HarnessMemCore {
         provided: backupEvidence.provided,
         backup_sha256: backupEvidence.backup_sha256,
         backup_path: backupEvidence.backup_path,
+        candidate_ids: backupEvidence.candidate_ids,
+        candidate_coverage_sha256: backupEvidence.candidate_coverage_sha256,
         temp_test_backup_token_sha256: backupEvidence.temp_test_backup_token_sha256,
         preverified_backup_evidence_token_sha256: backupEvidence.preverified_backup_evidence_token_sha256,
         kind: backupEvidence.kind,
@@ -3731,6 +3878,18 @@ export class HarnessMemCore {
       !manifest.backup.integrity_check.ok
     ) {
       return "backup integrity_check must be ok for hard purge execute";
+    }
+    if (manifest.backup.kind === "preverified_backup") {
+      if (
+        !manifest.backup.candidate_ids ||
+        manifest.backup.candidate_ids.length === 0 ||
+        !manifest.backup.candidate_coverage_sha256
+      ) {
+        return "preverified backup candidate coverage is required for hard purge execute";
+      }
+      if (stableJson(manifest.backup.candidate_ids) !== stableJson(manifest.candidate_ids)) {
+        return "preverified backup candidate coverage does not match current hard purge manifest";
+      }
     }
     if (!manifest.retention.satisfied) {
       return "retention window is not satisfied for hard purge execute";
@@ -3914,6 +4073,8 @@ export class HarnessMemCore {
       backup_sha256: evidence.backup_sha256,
       size_bytes: evidence.size_bytes,
       mtime_ms: evidence.mtime_ms,
+      candidate_ids: evidence.candidate_ids,
+      candidate_coverage_sha256: evidence.candidate_coverage_sha256,
       token_sha256: evidence.token_sha256,
       expires_at: evidence.expires_at,
       db_identity_sha256: evidence.db_identity_sha256,
@@ -3925,6 +4086,8 @@ export class HarnessMemCore {
         preverified_backup_evidence_token: token,
         backup_path: evidence.path,
         backup_sha256: evidence.backup_sha256,
+        candidate_ids: evidence.candidate_ids,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
         size_bytes: evidence.size_bytes,
         mtime_ms: evidence.mtime_ms,
         mtime_iso: evidence.mtime_iso,
@@ -3937,11 +4100,14 @@ export class HarnessMemCore {
       {
         backup_path: evidence.path,
         backup_sha256: evidence.backup_sha256,
+        candidate_ids: evidence.candidate_ids,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
         ttl_seconds: request.ttl_seconds,
       },
       {
         ranking: "preverified_backup_evidence_v1",
         backup_sha256: evidence.backup_sha256,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
         size_bytes: evidence.size_bytes,
         expires_at: evidence.expires_at,
       },

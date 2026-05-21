@@ -1393,9 +1393,13 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/backup-evidence") {
           const body = await parseRequestJson(request);
+          const candidateIds = toStringArray(body.candidate_ids).length > 0
+            ? toStringArray(body.candidate_ids)
+            : toStringArray(body.target_ids);
           return jsonResponse(core.adminForgetBackupEvidence({
             backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
             backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
+            candidate_ids: candidateIds,
             ttl_seconds: parseIntegerLike(body.ttl_seconds),
           }));
         }

@@ -1,6 +1,6 @@
 # Memory Lifecycle Archive Design
 
-- Status: refreshed for S130-001
+- Status: refreshed for S130 preverified-evidence candidate coverage review fix
 - Date: 2026-05-21
 - Plan source: `Plans.md` sections 127-130
 - Scope: current contract snapshot for archive-first, restore, gated hard
@@ -123,11 +123,14 @@ Hard purge execute currently accepts these backup evidence shapes:
 - `backup_path` plus `backup_sha256`: the server verifies file existence,
   streams SHA-256, opens the backup read-only, and runs SQLite
   `PRAGMA integrity_check`.
+- `preverified_backup_evidence_token`: the server trusts a prior
+  `/v1/admin/forget/backup-evidence` verification only when token expiry,
+  DB identity, backup file stat, and exact candidate coverage all still match.
 - `temp_test_backup_token`: test-only, accepted only for temp DB paths.
 - `backup_sha256` alone: metadata only; useful in plan output but not enough
   for execute.
 
-Known S129 blocker:
+S129 motivation and S130 resolution:
 
 - A 14GB live backup passed out-of-band SHA and `integrity_check`, but running
   full backup integrity inside the live hard-purge HTTP request path timed out
@@ -135,10 +138,19 @@ Known S129 blocker:
   to streaming, which avoids ENOMEM, but request-path integrity verification
   remains too slow for release-quality physical purge.
 - S130 therefore adds preverified backup evidence before live canary purge:
-  a separate command/API must verify path, size, sha256, SQLite
-  `integrity_check`, DB identity, `created_at`, `expires_at`, and replay/path
-  binding, then let hard purge consume that evidence without rereading a 14GB
-  file inline.
+  a separate command/API verifies path, size, sha256, SQLite
+  `integrity_check`, DB identity, `created_at`, `expires_at`, replay/path
+  binding, and candidate coverage, then lets hard purge consume that evidence
+  without rereading a 14GB file inline.
+- Candidate coverage is part of the safety proof. Backup evidence creation
+  requires `candidate_ids`/`target_ids`, verifies that the backup SQLite file
+  contains every candidate observation plus `mem_archive_stubs` rows with
+  `archive_state='archived'` and matching non-empty `mem_archive_full`
+  `payload_json`/`payload_sha256`, and records sorted candidate IDs plus
+  `candidate_coverage_sha256`. Hard purge with preverified evidence rejects
+  tokens whose coverage is missing, whose candidate IDs do not exactly match
+  the current purge manifest, or whose current archive coverage hash no longer
+  matches the backup evidence hash.
 
 ## Risk Gates
 
@@ -282,8 +294,8 @@ Representative response fields:
 Current endpoint:
 
 - `POST /v1/admin/forget/archive`
-- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
-  intended for MCP operators.
+- MCP: intentionally not exposed; destructive lifecycle execution remains
+  admin HTTP/CLI only unless a future risk-gated MCP design is approved.
 
 Required inputs:
 
@@ -318,16 +330,16 @@ timestamps, reason, state, and `restore_supported`. It must not return
 Current endpoint:
 
 - `POST /v1/admin/forget/archive/search`
-- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
-  intended for MCP operators.
+- MCP: intentionally not exposed; archive stub search stays admin HTTP/CLI
+  only unless a future risk-gated MCP design is approved.
 
 ### 4. Restore
 
 Current endpoint:
 
 - `POST /v1/admin/forget/restore`
-- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
-  intended for MCP operators.
+- MCP: intentionally not exposed; restore stays admin HTTP/CLI only unless a
+  future risk-gated MCP design is approved.
 
 Required inputs:
 
@@ -369,10 +381,10 @@ all conditions are true:
 - `legal_hold_snapshot = 0` and the current row is not tagged `legal_hold`.
 - The configured retention window has elapsed, unless the user explicitly
   confirms an emergency purge.
-- A restorable backup exists and its evidence is accepted. Until S130-002
-  lands, production execute still performs inline backup file SHA and SQLite
-  integrity verification when `backup_path` is used; live canary purge must use
-  the S130 preverified-evidence path instead.
+- A restorable backup exists and its evidence is accepted. Direct
+  `backup_path` evidence still performs inline streaming SHA and SQLite
+  integrity verification, so live canary purge must use the S130
+  preverified-evidence path with exact candidate coverage instead.
 - The run is against the intended project scope.
 
 After purge:
@@ -457,13 +469,13 @@ Implemented now:
 
 Still changed by S130:
 
-- S129-005A/S130-002 must design and implement preverified backup evidence so
-  live hard purge and compact do not rerun 14GB backup integrity inline.
-- S130-003 must sync the readiness-only and preverified-evidence contracts to
-  OpenAPI, MCP schema, docs, and integration tests.
-- OpenAPI currently documents hard purge but does not yet include the full
-  archive/search/restore HTTP surface; MCP currently exposes forget plan but
-  not archive/search/restore/hard-purge tools.
+- S130-002/S130-003 now implement preverified backup evidence, readiness-only
+  hard purge contract, OpenAPI docs, integration tests, and explicit MCP
+  exclusion checks. The S130 review fix adds candidate coverage binding so a
+  token proves the backup covers the exact purge manifest candidates.
+- MCP currently exposes forget plan only; archive/search/restore/hard-purge
+  and backup-evidence remain intentionally absent from TS, Go, and dist MCP
+  tool surfaces.
 - S130-004/S130-005 must create a fresh live backup after implementation and
   rerun live readiness using the new evidence path without deletion.
 - S130-006 may execute a small live hard-purge canary only after the

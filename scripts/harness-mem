@@ -99,6 +99,7 @@ BACKUP_DEST_DIR=""
 BACKUP_EVIDENCE_PATH=""
 BACKUP_EVIDENCE_SHA256=""
 BACKUP_EVIDENCE_TTL_SECONDS=""
+BACKUP_EVIDENCE_CANDIDATE_IDS=()
 VERSION_CHECK_IN_SETUP=1
 AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
 AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
@@ -175,6 +176,7 @@ Common options:
   --dest-dir <path>     Destination directory for backup (default: same dir as DB)
   --backup-path <path>  Backup file to preverify with backup-evidence
   --backup-sha256 <hex> SHA-256 for --backup-path
+  --candidate-id <id>   Candidate observation ID covered by backup-evidence (repeatable)
   --ttl-seconds <n>     Lifetime for backup-evidence token (default: 300)
   --source <path>       Source SQLite path for import-claude-mem
                         For ingest-hermes-state, defaults to ~/.hermes/state.db
@@ -747,6 +749,12 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--backup-sha256 requires a sha256 hex string"
         BACKUP_EVIDENCE_SHA256="$1"
+        ;;
+      --candidate-id|--target-id)
+        local opt="$1"
+        shift
+        [ "$#" -gt 0 ] || fail "$opt requires an observation id"
+        BACKUP_EVIDENCE_CANDIDATE_IDS+=("$1")
         ;;
       --ttl-seconds)
         shift
@@ -3747,19 +3755,23 @@ backup_evidence_impl() {
   if [ -n "$BACKUP_EVIDENCE_TTL_SECONDS" ]; then
     is_uint "$BACKUP_EVIDENCE_TTL_SECONDS" || fail "--ttl-seconds must be a non-negative integer"
   fi
+  [ "${#BACKUP_EVIDENCE_CANDIDATE_IDS[@]}" -gt 0 ] || fail "backup-evidence requires at least one --candidate-id <id>"
 
-  local backup_dir backup_base backup_path payload
+  local backup_dir backup_base backup_path payload candidate_ids_json
   backup_dir="$(cd "$(dirname "$BACKUP_EVIDENCE_PATH")" && pwd)"
   backup_base="$(basename "$BACKUP_EVIDENCE_PATH")"
   backup_path="${backup_dir}/${backup_base}"
+  candidate_ids_json="$(printf '%s\n' "${BACKUP_EVIDENCE_CANDIDATE_IDS[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')"
   payload="$(
     jq -nc \
       --arg backup_path "$backup_path" \
       --arg backup_sha256 "$BACKUP_EVIDENCE_SHA256" \
+      --argjson candidate_ids "$candidate_ids_json" \
       --arg ttl_seconds "$BACKUP_EVIDENCE_TTL_SECONDS" \
       '{
         backup_path: $backup_path,
-        backup_sha256: $backup_sha256
+        backup_sha256: $backup_sha256,
+        candidate_ids: $candidate_ids
       } + (if $ttl_seconds == "" then {} else {ttl_seconds: ($ttl_seconds | tonumber)} end)'
   )"
 

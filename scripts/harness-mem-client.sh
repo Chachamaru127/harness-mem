@@ -229,6 +229,7 @@ main() {
 	      call_post "/v1/admin/backup" "$payload" || fallback_error "admin-backup" "admin-backup failed"
 	      ;;
 	    admin-backup-evidence)
+	      REQUEST_TIMEOUT="${HARNESS_MEM_ADMIN_BACKUP_EVIDENCE_TIMEOUT_SEC:-${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-900}}"
 	      call_post "/v1/admin/forget/backup-evidence" "$payload" || fallback_error "admin-backup-evidence" "admin-backup-evidence failed"
 	      ;;
 	    admin-reindex-vectors)
