@@ -1,9 +1,10 @@
 # Memory Lifecycle Archive Design
 
-- Status: frozen for S127-003
-- Date: 2026-05-20
-- Plan source: `Plans.md` section 127
-- Scope: design only. No hard purge implementation is part of S127-003.
+- Status: refreshed for S130-001
+- Date: 2026-05-21
+- Plan source: `Plans.md` sections 127-130
+- Scope: current contract snapshot for archive-first, restore, gated hard
+  purge, and compact boundaries.
 
 ## Purpose
 
@@ -22,8 +23,7 @@ archived and what can still be restored.
 
 ## Current Baseline
 
-The current implementation already provides the safety surface this design
-builds on:
+The current implementation provides the safety surface this design builds on:
 
 - `mem_observations.archived_at` marks a row as soft-archived.
 - Bulk delete adds the `deleted` privacy tag and sets `archived_at`.
@@ -31,10 +31,129 @@ builds on:
   auto-forget wet mode.
 - `/v1/admin/forget/plan` and `harness_mem_admin_forget_plan` return candidate
   IDs plus cross-store impact counts. They do not mutate memory.
+- `/v1/admin/forget/archive` plans or executes archive-first mutation.
+- `/v1/admin/forget/archive/search` returns archive stubs only.
+- `/v1/admin/forget/restore` plans or executes restore from full archive
+  payload while the archive is not purged.
+- `/v1/admin/forget/hard-purge` plans, readiness-checks, or executes gated
+  physical deletion for already archived rows only.
 - The forget policy excludes `private`, `secret`, `sensitive`, and
   `legal_hold` rows from automatic archive candidates. `legal_hold` also
   trumps TTL expiry.
-- Hard delete is not currently supported by the forget plan response.
+- Hard delete is never part of the forget plan response. It lives behind the
+  separate hard-purge endpoint and risk gate.
+
+S129 live evidence:
+
+- Live archive rollout created `mem_archive_stubs` and `mem_archive_full`, then
+  archived 100 rows with `mem_archive_stubs=100`, `mem_archive_full=100`, and
+  `archive_state='archived'`.
+- Default `get_observations`, `verify`, and search excluded the archived sample;
+  `verify include_archived=true` still worked for admin diagnostics.
+- Archive stub search returned no `payload_json` and no raw content.
+- Restore was executed on a copy and set the restored observation
+  `archived_at` back to `NULL`.
+- Hard purge readiness selected 100 archived rows with legal-hold blockers 0
+  and restore-capable stub/full payload count 100, but did not delete rows or
+  run compaction.
+
+## Current Endpoint Matrix
+
+| Endpoint | Mode | Mutates DB | Current contract |
+|---|---|---:|---|
+| `POST /v1/admin/forget/plan` | dry-run plan | No | Returns candidate IDs, manifest hash, scores, and cross-store impact. It never archives or deletes. |
+| `POST /v1/admin/forget/archive` | archive plan when `execute` is false | No | Recomputes archive manifest for candidate IDs or policy-selected rows. |
+| `POST /v1/admin/forget/archive` | archive execute when `execute:true` | Yes | Requires matching `manifest_sha256` and `reason`; writes `mem_archive_full` and `mem_archive_stubs` in one transaction, then sets `archived_at`. |
+| `POST /v1/admin/forget/archive/search` | admin stub search | No | Returns `mem_archive_stubs` fields only; response metadata states `payload_json_returned:false` and `raw_content_returned:false`. |
+| `POST /v1/admin/forget/restore` | restore plan when `execute` is false | No | Verifies archive row and payload integrity, returns `restore_supported:true` if not purged and original row is not active. |
+| `POST /v1/admin/forget/restore` | restore execute when `execute:true` | Yes | Requires `reason`; rehydrates archived rows from `payload_json`, clears `archived_at`, marks stub `restored`, and audits `admin.archive.restore`. |
+| `POST /v1/admin/forget/hard-purge` | purge plan when `execute` is false | No | Selects already archived rows only, validates backup evidence, archive coverage, retention, legal hold, and returns a short-lived confirmation phrase. |
+| `POST /v1/admin/forget/hard-purge` | readiness when `readiness_only:true` and `execute` is false | No | Same safety manifest as plan, but no `confirmation_phrase` and no active execute window. |
+| `POST /v1/admin/forget/hard-purge` | purge execute when `execute:true` | Yes | Requires exact manifest hash, candidate count, manifest expiry, backup evidence, `retention_ack`, `archive_ack`, restore-capable archive coverage, legal-hold clearance, and exact confirmation. |
+
+## Lifecycle State Machine
+
+```text
+active observation
+  | archive execute
+  v
+archived
+  | restore execute
+  v
+restored
+
+archived
+  | hard purge execute
+  v
+purged
+```
+
+State rules:
+
+- `active`: `mem_observations.archived_at IS NULL`. Normal read paths may see
+  the row if privacy and project filters allow it.
+- `archived`: `mem_observations.archived_at IS NOT NULL` and
+  `mem_archive_stubs.archive_state='archived'`. Full payload must be present in
+  `mem_archive_full` for restore-capable archive coverage.
+- `restored`: restore has executed, the observation is active again, and the
+  stub remains as audit evidence with `archive_state='restored'`.
+- `purged`: hard purge has physically deleted source lifecycle rows, marks the
+  stub `archive_state='purged'`, and clears or removes the full payload.
+  Restore must fail with `archive_purged`.
+- Hard purge candidates must be in `archived`, not `active`, `restored`, or
+  already `purged`.
+
+## Read-Path Exclusion
+
+Active read paths exclude archived rows by default. This includes normal
+search, resume/timeline-style reads, consolidation, contradiction detection,
+content dedupe, default `get_observations`, and default `verify`.
+
+Admin-only exceptions:
+
+- `include_archived=true` may be used by privileged diagnostics where supported.
+- `/v1/admin/forget/archive/search` exposes stubs, not full payload.
+- Restore reads full payload internally, but does not return `payload_json` to
+  normal search or MCP core tools.
+
+## Backup Evidence Boundary
+
+Hard purge execute currently accepts these backup evidence shapes:
+
+- `backup_path` plus `backup_sha256`: the server verifies file existence,
+  streams SHA-256, opens the backup read-only, and runs SQLite
+  `PRAGMA integrity_check`.
+- `temp_test_backup_token`: test-only, accepted only for temp DB paths.
+- `backup_sha256` alone: metadata only; useful in plan output but not enough
+  for execute.
+
+Known S129 blocker:
+
+- A 14GB live backup passed out-of-band SHA and `integrity_check`, but running
+  full backup integrity inside the live hard-purge HTTP request path timed out
+  and previously risked whole-file memory pressure. S129 changed SHA checking
+  to streaming, which avoids ENOMEM, but request-path integrity verification
+  remains too slow for release-quality physical purge.
+- S130 therefore adds preverified backup evidence before live canary purge:
+  a separate command/API must verify path, size, sha256, SQLite
+  `integrity_check`, DB identity, `created_at`, `expires_at`, and replay/path
+  binding, then let hard purge consume that evidence without rereading a 14GB
+  file inline.
+
+## Risk Gates
+
+- Archive execute is mutating but reversible. It may proceed after manifest
+  match and reason, but it must never delete source rows or run compaction.
+- Hard purge execute is irreversible and requires an explicit operator risk
+  gate. As of 2026-05-21, S130-006 is pre-approved only if a restorable fresh
+  backup, preverified evidence, manifest match, legal-hold clearance, archive
+  coverage, retention acknowledgement, and exact confirmation are all present.
+- `VACUUM`, `VACUUM INTO`, or safe compact is a separate irreversible
+  operational gate. As of 2026-05-21, S130-007 is pre-approved only after purge
+  and only if rollback backup, free-space checks, daemon stop/start handling,
+  and expected reclaimed bytes are recorded.
+- npm publish, tag, and GitHub Release remain outside this lifecycle risk gate
+  and require separate release approval.
 
 ## Data Model
 
@@ -135,7 +254,7 @@ The plan stays read-only. It returns candidate IDs, scores, TTL reason when
 present, and cross-store impact counts. Future archive execution must require a
 manifest derived from this plan, not an ad hoc list typed by hand.
 
-Recommended future fields:
+Representative response fields:
 
 ```json
 {
@@ -160,10 +279,11 @@ Recommended future fields:
 
 ### 2. Archive
 
-Future endpoint:
+Current endpoint:
 
 - `POST /v1/admin/forget/archive`
-- MCP: `harness_mem_admin_archive`
+- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
+  intended for MCP operators.
 
 Required inputs:
 
@@ -195,17 +315,19 @@ Archived stub search is admin-only and should return `archive_stub`, IDs,
 timestamps, reason, state, and `restore_supported`. It must not return
 `payload_json`, raw content, raw vectors, or filesystem paths.
 
-Recommended endpoint:
+Current endpoint:
 
-- `POST /v1/admin/archives/search`
-- MCP: `harness_mem_admin_archives_search`
+- `POST /v1/admin/forget/archive/search`
+- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
+  intended for MCP operators.
 
 ### 4. Restore
 
-Recommended endpoint:
+Current endpoint:
 
 - `POST /v1/admin/forget/restore`
-- MCP: `harness_mem_admin_restore_archive`
+- MCP: not yet exposed; S130-003 must sync the MCP schema if this surface is
+  intended for MCP operators.
 
 Required inputs:
 
@@ -234,20 +356,23 @@ Restore behavior:
 
 ## Hard Purge And VACUUM Gate
 
-Hard purge is S127-004 or later. It must remain a separate risk gate from
-archive creation.
+Hard purge is implemented, but it remains a separate risk gate from archive
+creation.
 
 Purge may physically delete source rows and the full archive payload only when
 all conditions are true:
 
-- The operator supplied the exact `manifest_sha256`.
+- The operator supplied the exact hard-purge `manifest_hash`.
 - The archive exists and its payload integrity check passes.
 - A fresh dry-run plan still matches the target set, or the operator supplies a
   documented mismatch override.
 - `legal_hold_snapshot = 0` and the current row is not tagged `legal_hold`.
 - The configured retention window has elapsed, unless the user explicitly
   confirms an emergency purge.
-- A `VACUUM INTO` backup has succeeded and its size/hash are recorded.
+- A restorable backup exists and its evidence is accepted. Until S130-002
+  lands, production execute still performs inline backup file SHA and SQLite
+  integrity verification when `backup_path` is used; live canary purge must use
+  the S130 preverified-evidence path instead.
 - The run is against the intended project scope.
 
 After purge:
@@ -257,10 +382,10 @@ After purge:
 - `archive_full_ref` may remain only as a non-resolvable historical token.
 - Restore is impossible and must return a clear `archive_purged` error.
 
-Database compaction (`VACUUM`) is allowed only after purge audit has been
-written, backup integrity is recorded, and no restore-capable archives are being
-processed in the same transaction. `VACUUM` must never be part of the archive
-step.
+Database compaction (`VACUUM` or `VACUUM INTO`) is allowed only after purge
+audit has been written, backup integrity is recorded, rollback is possible, and
+no restore-capable archives are being processed in the same transaction.
+Compaction must never be part of the archive step or the hard-purge transaction.
 
 ## Invariants
 
@@ -297,7 +422,7 @@ Use `mem_audit_log` for every lifecycle transition:
 
 ## Test Plan
 
-S127-003 is docs-only, so repository tests are not required for this change.
+S130-001 is docs-only, so repository tests are not required for this change.
 Implementation work must add targeted coverage before landing:
 
 - Schema migration adds archive tables without modifying active search results.
@@ -315,10 +440,46 @@ Implementation work must add targeted coverage before landing:
 - Purge tests run only against temporary databases and verify cascade behavior.
 - VACUUM tests use a temporary copy or `VACUUM INTO` artifact, never the user DB.
 
+## S130 Plan-Vs-Implementation Diff
+
+Implemented now:
+
+- Archive-first schema and API exist for plan, execute, stub search, and
+  restore.
+- Live DB has archive tables and 100 restore-capable archived rows from S129.
+- Normal read paths exclude archived rows by default.
+- Hard purge readiness exists, including `readiness_only:true` with no
+  confirmation phrase and no execute window.
+- Hard purge execute has code-level gates for manifest, expiry, candidate
+  count, backup evidence, retention ack, archive ack, restore-capable
+  stub/full coverage, legal hold, and confirmation.
+- Backup SHA verification is streaming rather than whole-file memory loading.
+
+Still changed by S130:
+
+- S129-005A/S130-002 must design and implement preverified backup evidence so
+  live hard purge and compact do not rerun 14GB backup integrity inline.
+- S130-003 must sync the readiness-only and preverified-evidence contracts to
+  OpenAPI, MCP schema, docs, and integration tests.
+- OpenAPI currently documents hard purge but does not yet include the full
+  archive/search/restore HTTP surface; MCP currently exposes forget plan but
+  not archive/search/restore/hard-purge tools.
+- S130-004/S130-005 must create a fresh live backup after implementation and
+  rerun live readiness using the new evidence path without deletion.
+- S130-006 may execute a small live hard-purge canary only after the
+  pre-approved conditions are all true.
+- S130-007 may execute compact/VACUUM only after purge and rollback evidence.
+- S130-008 must review release surface and changelog/readme/package evidence;
+  publish/tag remains a separate approval.
+
 ## S127 Boundary
 
 - S127-001: repaired active/archived visibility and soft-delete contracts.
 - S127-002: exposed dry-run forget planning and impact accounting.
-- S127-003: fixes this design contract only.
-- S127-004: may implement hard purge, but only with the risk gate above and
+- S127-003: fixed the initial design contract.
+- S127-004: implemented hard purge behind the risk gate and
   temporary-database tests.
+- S129-002/S129-004: implemented and live-validated archive-first restore
+  capability without physical deletion.
+- S129-005: added live hard-purge readiness and `readiness_only:true`; no live
+  physical deletion or compaction was performed.
