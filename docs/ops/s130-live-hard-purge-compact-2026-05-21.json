@@ -1,0 +1,441 @@
+{
+  "schema_version": "s130-live-hard-purge-compact-v1",
+  "generated_at": "2026-05-21T04:45:00Z",
+  "live_db": {
+    "path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+    "post_compact_sha256": "ac1b77f057d970dc5dd5c495aa116dd8312297f83697cd9ba55f913c205f76eb",
+    "post_compact_integrity_check": "ok"
+  },
+  "backup": {
+    "path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+    "size_bytes": 14355976192,
+    "sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+    "integrity_check": "ok"
+  },
+  "preverified_evidence": {
+    "ok": true,
+    "source": "core",
+    "items": [
+      {
+        "mode": "backup_evidence",
+        "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "candidate_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "candidate_coverage_sha256": "6b8ac3881d11950aff97295bcf623a98ef79fe0c6d15330700a54e30fbb71584",
+        "size_bytes": 14355976192,
+        "mtime_ms": 1779336484764,
+        "mtime_iso": "2026-05-21T04:08:04.764Z",
+        "token_sha256": "91196f574136f75dbfa7535265bdd2165adf12b21ac153b780364b0acec4aeb1",
+        "db_identity_sha256": "d649b229c4e9a455693c67042490fb6f28734f47d067719e83b6c90e02507171",
+        "created_at": "2026-05-21T04:29:32.530Z",
+        "expires_at": "2026-05-21T05:29:32.530Z",
+        "integrity_check": {
+          "checked": true,
+          "ok": true,
+          "result": "ok",
+          "error": null
+        }
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "latency_ms": 56716.86,
+      "sla_latency_ms": 200,
+      "filters": {
+        "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "candidate_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "candidate_coverage_sha256": "6b8ac3881d11950aff97295bcf623a98ef79fe0c6d15330700a54e30fbb71584",
+        "ttl_seconds": 3600
+      },
+      "ranking": "preverified_backup_evidence_v1",
+      "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+      "candidate_coverage_sha256": "6b8ac3881d11950aff97295bcf623a98ef79fe0c6d15330700a54e30fbb71584",
+      "size_bytes": 14355976192,
+      "expires_at": "2026-05-21T05:29:32.530Z"
+    }
+  },
+  "readiness": {
+    "ok": true,
+    "source": "core",
+    "items": [
+      {
+        "mode": "hard_purge_readiness",
+        "execute": false,
+        "schema_version": "s127-hard-purge-v1",
+        "operation": "admin.hard_purge",
+        "project": null,
+        "candidate_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "candidate_count": 10,
+        "impact": {
+          "observations": 10,
+          "mem_vectors": 20,
+          "mem_links_touching": 44,
+          "mem_relations": 0,
+          "mem_facts": 2,
+          "mem_events": 10,
+          "mem_tags": 32,
+          "mem_observation_entities": 0,
+          "mem_nuggets": 0,
+          "mem_nugget_vectors": 0,
+          "mem_vectors_vec_map": 20,
+          "mem_entities_orphaned": 0,
+          "mem_archive_stubs": 10,
+          "mem_archive_full": 10
+        },
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "backup": {
+          "required": true,
+          "provided": true,
+          "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+          "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+          "candidate_ids": [
+            "obs_1655b700ec7a1aca20b3b547ae",
+            "obs_1ef22281bb7e79b5c525b26adf",
+            "obs_1efa27c2c47516d13e15d33d6f",
+            "obs_25fe73ee6d86bfd4472cd50c6c",
+            "obs_2d9949a77cc09db277a21afee5",
+            "obs_32c96131234886bd0a67ac1c79",
+            "obs_3407a350365591c8b9f99523bc",
+            "obs_3780012cd04a38bc93f18af8c6",
+            "obs_3e05ffae2399627c884addba8f",
+            "obs_3ebf4a4d737cb97db268cfefb9"
+          ],
+          "candidate_coverage_sha256": "6b8ac3881d11950aff97295bcf623a98ef79fe0c6d15330700a54e30fbb71584",
+          "temp_test_backup_token_sha256": null,
+          "preverified_backup_evidence_token_sha256": "91196f574136f75dbfa7535265bdd2165adf12b21ac153b780364b0acec4aeb1",
+          "kind": "preverified_backup",
+          "integrity_check": {
+            "checked": false,
+            "ok": true,
+            "result": "preverified",
+            "error": null
+          }
+        },
+        "retention": {
+          "minimum_archived_days": 0,
+          "satisfied": true,
+          "blockers": []
+        },
+        "archive": {
+          "archive_tables_present": true,
+          "archived_only": true,
+          "archived_count": 10,
+          "archive_stub_count": 10,
+          "archive_full_count": 10,
+          "restore_capable_count": 10,
+          "restore_capable_full_count": 10,
+          "restore_capable_full_observation_count": 10,
+          "missing_restore_capable_archive_ids": [],
+          "archive_states": {
+            "archived": 10
+          }
+        },
+        "legal_hold": {
+          "allowed": true,
+          "blockers": []
+        },
+        "generated_at": "2026-05-21T04:32:01.802Z",
+        "expires_at": "2026-05-21T04:37:01.802Z",
+        "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa"
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "latency_ms": 23664.07,
+      "sla_latency_ms": 200,
+      "filters": {
+        "target_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "execute": false,
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+        "retention_ack": false,
+        "archive_ack": false,
+        "readiness_only": true
+      },
+      "ranking": "hard_purge_readiness_v1",
+      "candidate_count": 10,
+      "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa"
+    }
+  },
+  "hard_purge_plan": {
+    "ok": true,
+    "source": "core",
+    "items": [
+      {
+        "mode": "hard_purge_plan",
+        "execute": false,
+        "schema_version": "s127-hard-purge-v1",
+        "operation": "admin.hard_purge",
+        "project": null,
+        "candidate_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "candidate_count": 10,
+        "impact": {
+          "observations": 10,
+          "mem_vectors": 20,
+          "mem_links_touching": 44,
+          "mem_relations": 0,
+          "mem_facts": 2,
+          "mem_events": 10,
+          "mem_tags": 32,
+          "mem_observation_entities": 0,
+          "mem_nuggets": 0,
+          "mem_nugget_vectors": 0,
+          "mem_vectors_vec_map": 20,
+          "mem_entities_orphaned": 0,
+          "mem_archive_stubs": 10,
+          "mem_archive_full": 10
+        },
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "backup": {
+          "required": true,
+          "provided": true,
+          "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+          "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+          "candidate_ids": [
+            "obs_1655b700ec7a1aca20b3b547ae",
+            "obs_1ef22281bb7e79b5c525b26adf",
+            "obs_1efa27c2c47516d13e15d33d6f",
+            "obs_25fe73ee6d86bfd4472cd50c6c",
+            "obs_2d9949a77cc09db277a21afee5",
+            "obs_32c96131234886bd0a67ac1c79",
+            "obs_3407a350365591c8b9f99523bc",
+            "obs_3780012cd04a38bc93f18af8c6",
+            "obs_3e05ffae2399627c884addba8f",
+            "obs_3ebf4a4d737cb97db268cfefb9"
+          ],
+          "candidate_coverage_sha256": "6b8ac3881d11950aff97295bcf623a98ef79fe0c6d15330700a54e30fbb71584",
+          "temp_test_backup_token_sha256": null,
+          "preverified_backup_evidence_token_sha256": "91196f574136f75dbfa7535265bdd2165adf12b21ac153b780364b0acec4aeb1",
+          "kind": "preverified_backup",
+          "integrity_check": {
+            "checked": false,
+            "ok": true,
+            "result": "preverified",
+            "error": null
+          }
+        },
+        "retention": {
+          "minimum_archived_days": 0,
+          "satisfied": true,
+          "blockers": []
+        },
+        "archive": {
+          "archive_tables_present": true,
+          "archived_only": true,
+          "archived_count": 10,
+          "archive_stub_count": 10,
+          "archive_full_count": 10,
+          "restore_capable_count": 10,
+          "restore_capable_full_count": 10,
+          "restore_capable_full_observation_count": 10,
+          "missing_restore_capable_archive_ids": [],
+          "archive_states": {
+            "archived": 10
+          }
+        },
+        "legal_hold": {
+          "allowed": true,
+          "blockers": []
+        },
+        "generated_at": "2026-05-21T04:32:39.016Z",
+        "expires_at": "2026-05-21T04:37:39.016Z",
+        "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa"
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "latency_ms": 22288.49,
+      "sla_latency_ms": 200,
+      "filters": {
+        "target_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "execute": false,
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+        "retention_ack": false,
+        "archive_ack": false,
+        "readiness_only": false
+      },
+      "ranking": "hard_purge_plan_v1",
+      "candidate_count": 10,
+      "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa"
+    }
+  },
+  "hard_purge_execute": {
+    "ok": true,
+    "source": "core",
+    "items": [
+      {
+        "mode": "hard_purge_execute",
+        "execute": true,
+        "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa",
+        "candidate_count": 10,
+        "candidate_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "deleted_counts": {
+          "sqlite_vec_rows": 40,
+          "mem_nugget_vectors": 0,
+          "mem_nuggets": 0,
+          "mem_vectors": 20,
+          "mem_links_touching": 44,
+          "mem_relations": 0,
+          "mem_tags": 32,
+          "mem_observation_entities": 0,
+          "mem_facts": 2,
+          "mem_events_deleted": 10,
+          "mem_events_unlinked": 0,
+          "mem_observations": 10,
+          "mem_entities_orphaned": 0,
+          "mem_archive_full_purged": 10,
+          "mem_archive_stubs_purged": 10
+        },
+        "restore_supported": false
+      }
+    ],
+    "meta": {
+      "count": 1,
+      "latency_ms": 79102.17,
+      "sla_latency_ms": 200,
+      "filters": {
+        "target_ids": [
+          "obs_1655b700ec7a1aca20b3b547ae",
+          "obs_1ef22281bb7e79b5c525b26adf",
+          "obs_1efa27c2c47516d13e15d33d6f",
+          "obs_25fe73ee6d86bfd4472cd50c6c",
+          "obs_2d9949a77cc09db277a21afee5",
+          "obs_32c96131234886bd0a67ac1c79",
+          "obs_3407a350365591c8b9f99523bc",
+          "obs_3780012cd04a38bc93f18af8c6",
+          "obs_3e05ffae2399627c884addba8f",
+          "obs_3ebf4a4d737cb97db268cfefb9"
+        ],
+        "execute": true,
+        "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa",
+        "manifest_expires_at": "2026-05-21T04:37:39.016Z",
+        "candidate_count": 10,
+        "backup_sha256": "f44284dcf05cb5d5ff425a10163bb7154a5714536fff25d682dcd9ecad4449a1",
+        "backup_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-backup-2026-05-21T04-05-55-483Z.db",
+        "retention_ack": true,
+        "archive_ack": true,
+        "readiness_only": false
+      },
+      "ranking": "hard_purge_execute_v1",
+      "candidate_count": 10,
+      "manifest_hash": "fc5de703d760a19e63c02975115d6a6f631343faab6e2c913a8df374991f97aa",
+      "deleted_count": 10
+    }
+  },
+  "post_purge_verification": {
+    "observations_remaining": 0,
+    "stubs_purged": 10,
+    "full_payloads_cleared": 10,
+    "archived_stubs_remaining": 90,
+    "purged_stubs_total": 10,
+    "audit_purge_entries": 1,
+    "get_observations_count": 0,
+    "token_replay_error": "preverified_backup_evidence_token is unknown or consumed"
+  },
+  "compact": {
+    "method": "launchd stop + sqlite VACUUM INTO + verified swap",
+    "pre_size_bytes": 14874537984,
+    "pre_page_count": 3631479,
+    "pre_freelist_count": 74,
+    "page_size": 4096,
+    "post_size_bytes": 14374510592,
+    "post_page_count": 3509402,
+    "post_freelist_count": 0,
+    "reclaimed_bytes": 500027392,
+    "rollback_path": "/Users/tachibanashuuta/.harness-mem/s130/harness-mem-pre-compact-live-2026-05-21T04-36-00Z.db",
+    "rollback_sha256": "89d7d3b70e9ba62e86add0c992731a248f43d814bdc88d7e153a570e0c2162fc",
+    "integrity_check": "ok"
+  },
+  "post_compact_health": {
+    "ok": true,
+    "pid": 70083,
+    "status": "ok",
+    "db_size_bytes": 14374510592,
+    "counts": {
+      "sessions": 9006,
+      "events": 355022,
+      "observations": 347997,
+      "retry_queue": 0
+    },
+    "ready_warnings": []
+  }
+}

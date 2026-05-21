@@ -9,11 +9,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- **Archive-first memory lifecycle hardening**. Added preverified backup evidence for hard purge so live hard-purge requests can consume a short-lived, single-use token instead of re-reading a multi-GB SQLite backup or rerunning `PRAGMA integrity_check` inline. Evidence is bound to backup path/size/SHA/integrity, DB identity, sorted candidate IDs, and restore-capable archive/full-payload coverage.
 - **WorkGraph SessionStart auto-sync for existing `Plans.md` files**. Codex and Claude SessionStart hooks now safely call `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` when the current project already has `Plans.md`, so WorkGraph views populate without a manual import step. The hook never creates or edits `Plans.md`, skips projects without the file, and uses an mtime state file to avoid refreshing unchanged work-item recency on every session start.
 - **WorkGraph Plans parser accepts existing cross-project task id styles**. Plans import now recognizes dotted ids such as `7.1` / `9.B.3` and project-prefixed ids such as `GIFT-M1-03` / `DEP-02`, so non-harness projects with established `Plans.md` formats can populate WorkGraph without renaming tasks.
 
 ### Fixed
 
+- **Hard purge canary and safe compact runbook evidence**. Captured live evidence for a 10-observation hard-purge canary, restore-capable archive coverage, token replay rejection, and a `VACUUM INTO` safe compact that moved the previous live DB to a rollback path before restarting the daemon.
 - **MCP and CLI daemon autostart no longer spawn an extra Mem UI by default**. Node MCP, Go MCP, the HTTP MCP gateway, and high-level CLI daemon preflight now start or preflight the shared daemon with `HARNESS_MEM_ENABLE_UI=false` unless the operator explicitly opts back in. `harness-mem setup` still starts the Mem UI by default. This preserves the original singleton-daemon topology while avoiding stray UI listeners such as `:37901` when a dedicated UI LaunchAgent is already running.
 
 ## [0.23.0] - 2026-05-17
