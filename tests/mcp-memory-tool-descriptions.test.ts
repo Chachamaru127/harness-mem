@@ -14,4 +14,14 @@ describe("MCP memory tool descriptions", () => {
     expect(source).toContain("get_observations");
     expect(source).toContain("token_estimate");
   });
+
+  test("keeps destructive memory lifecycle admin actions off the MCP tool surface", () => {
+    const source = readFileSync(TOOL_FILE, "utf8");
+
+    expect(source).toContain("harness_mem_admin_forget_plan");
+    expect(source).not.toContain("harness_mem_admin_hard_purge");
+    expect(source).not.toContain("harness_mem_admin_backup_evidence");
+    expect(source).not.toContain("/v1/admin/forget/hard-purge");
+    expect(source).not.toContain("/v1/admin/forget/backup-evidence");
+  });
 });
