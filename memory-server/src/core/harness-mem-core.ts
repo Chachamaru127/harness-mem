@@ -1,5 +1,5 @@
 import { Database, type SQLQueryBindings } from "bun:sqlite";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -183,11 +183,18 @@ type AdminHardPurgeRequest = {
   candidate_count?: number;
   backup_sha256?: string;
   backup_path?: string;
+  preverified_backup_evidence_token?: string;
   temp_test_backup_token?: string;
   retention_ack?: boolean;
   archive_ack?: boolean;
   confirmation?: string;
   readiness_only?: boolean;
+};
+
+type AdminBackupEvidenceRequest = {
+  backup_path?: string;
+  backup_sha256?: string;
+  ttl_seconds?: number;
 };
 
 type AdminArchiveRequest = {
@@ -288,13 +295,31 @@ type BackupEvidence = {
   backup_sha256: string | null;
   backup_path: string | null;
   temp_test_backup_token_sha256: string | null;
-  kind: "backup_file" | "sha256_metadata" | "temp_test_token" | "missing";
+  preverified_backup_evidence_token_sha256: string | null;
+  kind: "backup_file" | "sha256_metadata" | "temp_test_token" | "preverified_backup" | "missing";
   integrity_check: {
     checked: boolean;
     ok: boolean;
     result: string | null;
     error: string | null;
   };
+};
+
+type BackupFileSnapshot = {
+  path: string;
+  realpath: string;
+  size_bytes: number;
+  mtime_ms: number;
+  mtime_iso: string;
+};
+
+type PreverifiedBackupEvidence = BackupFileSnapshot & {
+  token_sha256: string;
+  backup_sha256: string;
+  created_at: string;
+  expires_at: string;
+  db_identity_sha256: string;
+  integrity_check: BackupEvidence["integrity_check"];
 };
 
 type HardPurgeManifest = {
@@ -803,6 +828,7 @@ export class HarnessMemCore {
   private cfgMgr!: ConfigManager;
   private analyticsSvc!: AnalyticsService;
   private readonly hardPurgePlanExpirations = new Map<string, string>();
+  private readonly preverifiedBackupEvidenceTokens = new Map<string, PreverifiedBackupEvidence>();
   /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
   /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
@@ -3143,6 +3169,160 @@ export class HarnessMemCore {
     );
   }
 
+  private currentDatabaseIdentitySha256(): string {
+    if (this.config.dbPath === ":memory:") {
+      return sha256Hex(stableJson({ db_path: ":memory:" }));
+    }
+    const dbPath = resolve(resolveHomePath(this.config.dbPath));
+    try {
+      const stat = statSync(dbPath);
+      return sha256Hex(stableJson({
+        db_path: dbPath,
+        realpath: realpathSync(dbPath),
+        dev: stat.dev,
+        ino: stat.ino,
+      }));
+    } catch {
+      return sha256Hex(stableJson({ db_path: dbPath, realpath: null, dev: null, ino: null }));
+    }
+  }
+
+  private snapshotBackupFile(backupPath: string): BackupFileSnapshot | { error: string } {
+    try {
+      const stat = statSync(backupPath);
+      if (!stat.isFile()) {
+        return { error: "backup_path must be a file" };
+      }
+      return {
+        path: backupPath,
+        realpath: realpathSync(backupPath),
+        size_bytes: stat.size,
+        mtime_ms: stat.mtimeMs,
+        mtime_iso: stat.mtime.toISOString(),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: `backup_path stat failed: ${message}` };
+    }
+  }
+
+  private createPreverifiedBackupEvidenceToken(request: AdminBackupEvidenceRequest): { token: string; evidence: PreverifiedBackupEvidence } | { error: string } {
+    const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
+    const backupSha256 = normalizeSha256(backupSha256Raw);
+    if (!backupSha256) {
+      return { error: "backup_sha256 must be a sha256 hex string" };
+    }
+    const backupPath = typeof request.backup_path === "string" && request.backup_path.trim()
+      ? resolve(request.backup_path.trim())
+      : "";
+    if (!backupPath) {
+      return { error: "backup_path is required" };
+    }
+    if (!existsSync(backupPath)) {
+      return { error: "backup_path does not exist" };
+    }
+
+    const snapshot = this.snapshotBackupFile(backupPath);
+    if ("error" in snapshot) {
+      return snapshot;
+    }
+    const actual = sha256FileHex(backupPath);
+    if (actual !== backupSha256) {
+      return { error: "backup_path sha256 does not match backup_sha256" };
+    }
+    const integrityCheck = this.verifySqliteBackupIntegrity(backupPath);
+    if (!integrityCheck.ok) {
+      return { error: `backup_path integrity_check failed: ${integrityCheck.error ?? integrityCheck.result ?? "unknown"}` };
+    }
+
+    const ttlSeconds = request.ttl_seconds === undefined
+      ? 5 * 60
+      : Math.trunc(request.ttl_seconds);
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 0 || ttlSeconds > 24 * 60 * 60) {
+      return { error: "ttl_seconds must be an integer from 0 to 86400" };
+    }
+    const nowMs = Date.now();
+    const createdAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + ttlSeconds * 1000).toISOString();
+    const token = `preverified_backup_${randomBytes(32).toString("base64url")}`;
+    const evidence: PreverifiedBackupEvidence = {
+      ...snapshot,
+      backup_sha256: backupSha256,
+      token_sha256: sha256Hex(token),
+      created_at: createdAt,
+      expires_at: expiresAt,
+      db_identity_sha256: this.currentDatabaseIdentitySha256(),
+      integrity_check: integrityCheck,
+    };
+    this.preverifiedBackupEvidenceTokens.set(token, evidence);
+    return { token, evidence };
+  }
+
+  private resolvePreverifiedBackupEvidence(
+    token: string,
+    requestedPath: string | null,
+    requestedSha256: string | null,
+  ): BackupEvidence | { error: string } {
+    if (!/^preverified_backup_[A-Za-z0-9_-]{16,}$/.test(token)) {
+      return { error: "preverified_backup_evidence_token is invalid" };
+    }
+    const evidence = this.preverifiedBackupEvidenceTokens.get(token);
+    if (!evidence) {
+      return { error: "preverified_backup_evidence_token is unknown or consumed" };
+    }
+    const expiresMs = Date.parse(evidence.expires_at);
+    if (!Number.isFinite(expiresMs) || Date.now() >= expiresMs) {
+      this.preverifiedBackupEvidenceTokens.delete(token);
+      return { error: "preverified_backup_evidence_token has expired" };
+    }
+    if (requestedPath && requestedPath !== evidence.path) {
+      return { error: "preverified_backup_evidence_token backup_path mismatch" };
+    }
+    if (requestedSha256 && requestedSha256 !== evidence.backup_sha256) {
+      return { error: "preverified_backup_evidence_token backup_sha256 mismatch" };
+    }
+    if (this.currentDatabaseIdentitySha256() !== evidence.db_identity_sha256) {
+      return { error: "preverified_backup_evidence_token db identity mismatch" };
+    }
+    const current = this.snapshotBackupFile(evidence.path);
+    if ("error" in current) {
+      return { error: current.error };
+    }
+    if (
+      current.realpath !== evidence.realpath ||
+      current.size_bytes !== evidence.size_bytes ||
+      current.mtime_ms !== evidence.mtime_ms
+    ) {
+      return { error: "preverified_backup_evidence_token backup file stat changed" };
+    }
+    return {
+      provided: true,
+      backup_sha256: evidence.backup_sha256,
+      backup_path: evidence.path,
+      temp_test_backup_token_sha256: null,
+      preverified_backup_evidence_token_sha256: evidence.token_sha256,
+      kind: "preverified_backup",
+      integrity_check: {
+        checked: false,
+        ok: true,
+        result: "preverified",
+        error: null,
+      },
+    };
+  }
+
+  private consumePreverifiedBackupEvidenceToken(request: AdminHardPurgeRequest, manifest: HardPurgeManifest): void {
+    if (manifest.backup.kind !== "preverified_backup") {
+      return;
+    }
+    const token = typeof request.preverified_backup_evidence_token === "string"
+      ? request.preverified_backup_evidence_token.trim()
+      : "";
+    if (token) {
+      this.preverifiedBackupEvidenceTokens.delete(token);
+    }
+  }
+
   private isTempTestDatabase(): boolean {
     if (this.config.dbPath === ":memory:") {
       return true;
@@ -3193,6 +3373,13 @@ export class HarnessMemCore {
     const backupPath = typeof request.backup_path === "string" && request.backup_path.trim()
       ? resolve(request.backup_path.trim())
       : null;
+    const preverifiedToken = typeof request.preverified_backup_evidence_token === "string"
+      ? request.preverified_backup_evidence_token.trim()
+      : "";
+    if (preverifiedToken) {
+      return this.resolvePreverifiedBackupEvidence(preverifiedToken, backupPath, backupSha256);
+    }
+
     if (backupPath) {
       if (!backupSha256) {
         return { error: "backup_sha256 is required when backup_path is provided" };
@@ -3213,6 +3400,7 @@ export class HarnessMemCore {
         backup_sha256: backupSha256,
         backup_path: backupPath,
         temp_test_backup_token_sha256: null,
+        preverified_backup_evidence_token_sha256: null,
         kind: "backup_file",
         integrity_check: integrityCheck,
       };
@@ -3233,6 +3421,7 @@ export class HarnessMemCore {
         backup_sha256: backupSha256,
         backup_path: backupPath,
         temp_test_backup_token_sha256: sha256Hex(tempToken),
+        preverified_backup_evidence_token_sha256: null,
         kind: "temp_test_token",
         integrity_check: {
           checked: false,
@@ -3249,6 +3438,7 @@ export class HarnessMemCore {
         backup_sha256: backupSha256,
         backup_path: null,
         temp_test_backup_token_sha256: null,
+        preverified_backup_evidence_token_sha256: null,
         kind: "sha256_metadata",
         integrity_check: {
           checked: false,
@@ -3264,6 +3454,7 @@ export class HarnessMemCore {
       backup_sha256: null,
       backup_path: null,
       temp_test_backup_token_sha256: null,
+      preverified_backup_evidence_token_sha256: null,
       kind: "missing",
       integrity_check: {
         checked: false,
@@ -3450,6 +3641,7 @@ export class HarnessMemCore {
         backup_sha256: backupEvidence.backup_sha256,
         backup_path: backupEvidence.backup_path,
         temp_test_backup_token_sha256: backupEvidence.temp_test_backup_token_sha256,
+        preverified_backup_evidence_token_sha256: backupEvidence.preverified_backup_evidence_token_sha256,
         kind: backupEvidence.kind,
         integrity_check: backupEvidence.integrity_check,
       },
@@ -3532,9 +3724,12 @@ export class HarnessMemCore {
       return "archive_ack:true is required for hard purge execute";
     }
     if (!manifest.backup.provided) {
-      return "backup_path plus backup_sha256, or temp_test_backup_token for temp DBs, is required for hard purge execute";
+      return "backup_path plus backup_sha256, preverified_backup_evidence_token, or temp_test_backup_token for temp DBs, is required for hard purge execute";
     }
-    if (manifest.backup.kind === "backup_file" && !manifest.backup.integrity_check.ok) {
+    if (
+      (manifest.backup.kind === "backup_file" || manifest.backup.kind === "preverified_backup") &&
+      !manifest.backup.integrity_check.ok
+    ) {
       return "backup integrity_check must be ok for hard purge execute";
     }
     if (!manifest.retention.satisfied) {
@@ -3708,6 +3903,51 @@ export class HarnessMemCore {
     return counts;
   }
 
+  adminForgetBackupEvidence(request: AdminBackupEvidenceRequest): ApiResponse {
+    const startedAt = performance.now();
+    const created = this.createPreverifiedBackupEvidenceToken(request);
+    if ("error" in created) {
+      return makeErrorResponse(startedAt, created.error, request as unknown as Record<string, unknown>);
+    }
+    const { token, evidence } = created;
+    this.writeAuditLog("admin.backup_evidence.create", "backup", evidence.path, {
+      backup_sha256: evidence.backup_sha256,
+      size_bytes: evidence.size_bytes,
+      mtime_ms: evidence.mtime_ms,
+      token_sha256: evidence.token_sha256,
+      expires_at: evidence.expires_at,
+      db_identity_sha256: evidence.db_identity_sha256,
+    });
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "backup_evidence",
+        preverified_backup_evidence_token: token,
+        backup_path: evidence.path,
+        backup_sha256: evidence.backup_sha256,
+        size_bytes: evidence.size_bytes,
+        mtime_ms: evidence.mtime_ms,
+        mtime_iso: evidence.mtime_iso,
+        token_sha256: evidence.token_sha256,
+        db_identity_sha256: evidence.db_identity_sha256,
+        created_at: evidence.created_at,
+        expires_at: evidence.expires_at,
+        integrity_check: evidence.integrity_check,
+      } as unknown as Record<string, unknown>],
+      {
+        backup_path: evidence.path,
+        backup_sha256: evidence.backup_sha256,
+        ttl_seconds: request.ttl_seconds,
+      },
+      {
+        ranking: "preverified_backup_evidence_v1",
+        backup_sha256: evidence.backup_sha256,
+        size_bytes: evidence.size_bytes,
+        expires_at: evidence.expires_at,
+      },
+    );
+  }
+
   adminForgetHardPurge(request: AdminHardPurgeRequest): ApiResponse {
     const startedAt = performance.now();
     const initial = this.prepareHardPurgeManifest(request);
@@ -3765,6 +4005,7 @@ export class HarnessMemCore {
       this.hardPurgePlanExpirations.delete(current.manifest.manifest_hash);
       this.db.exec("COMMIT");
       transactionStarted = false;
+      this.consumePreverifiedBackupEvidenceToken(request, current.manifest);
 
       return makeResponse(
         startedAt,

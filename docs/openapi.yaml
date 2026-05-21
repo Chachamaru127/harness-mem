@@ -2462,6 +2462,54 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/admin/forget/backup-evidence:
+    post:
+      summary: Preverify backup evidence for hard purge
+      description: >
+        Verifies an operator-created SQLite backup once by checking backup_path existence,
+        backup_sha256, and PRAGMA integrity_check=ok. Returns an in-memory
+        preverified_backup_evidence_token that hard-purge plan/execute can use without
+        re-reading the full backup or running integrity_check inside the hard-purge
+        request path. Tokens expire, are bound to the current daemon DB identity and
+        backup file stat, and are consumed after successful hard purge execute.
+      operationId: adminForgetBackupEvidence
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [backup_path, backup_sha256]
+              properties:
+                backup_path:
+                  type: string
+                  description: Path to an operator-created SQLite backup file.
+                backup_sha256:
+                  type: string
+                  description: SHA-256 hex digest of backup_path.
+                ttl_seconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                  default: 300
+                  description: Token lifetime. Zero is accepted for test/expiry verification.
+      responses:
+        "200":
+          description: Preverified backup evidence token and metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/admin/forget/hard-purge:
     post:
       summary: Plan or execute a gated hard purge
@@ -2469,11 +2517,14 @@ paths:
         Plans or executes irreversible physical deletion for already archived observations only.
         Execute mode requires execute:true, exact manifest_hash, exact candidate_count,
         manifest_expires_at from plan mode,
-        backup_path plus backup_sha256 with SQLite integrity_check=ok or a temp-test backup token,
+        backup_path plus backup_sha256 with SQLite integrity_check=ok, a preverified_backup_evidence_token,
+        or a temp-test backup token,
         retention_ack:true, archive_ack:true, restore-capable archive stub/full payload rows
         (reported separately as archive_full_count, restore_capable_full_count,
         restore_capable_full_observation_count, and missing_restore_capable_archive_ids), and
-        the exact confirmation phrase returned by plan mode. This endpoint is admin HTTP only.
+        the exact confirmation phrase returned by plan mode. readiness_only:true returns a read-only
+        manifest without confirmation_phrase and without opening an execute window. This endpoint is
+        admin HTTP only.
       operationId: adminForgetHardPurge
       tags: [Admin]
       security:
@@ -2518,13 +2569,20 @@ paths:
                   description: Required in execute mode. Must match the current recomputed manifest.
                 backup_sha256:
                   type: string
-                  description: SHA-256 metadata for an operator-created backup. Execute mode also requires backup_path unless using temp_test_backup_token.
+                  description: SHA-256 metadata for an operator-created backup. Execute mode also requires backup_path unless using preverified_backup_evidence_token or temp_test_backup_token.
                 backup_path:
                   type: string
-                  description: Required for non-temp execute mode. The file must exist, match backup_sha256, and pass SQLite PRAGMA integrity_check.
+                  description: Required for direct non-temp backup evidence. The file must exist, match backup_sha256, and pass SQLite PRAGMA integrity_check.
+                preverified_backup_evidence_token:
+                  type: string
+                  description: Token returned by /v1/admin/forget/backup-evidence. Hard-purge validates token expiry, optional backup_path/backup_sha256 match, DB identity, and file stat without re-hashing or re-running integrity_check.
                 temp_test_backup_token:
                   type: string
                   description: Test-only backup evidence accepted only when the daemon DB path is a temp test DB.
+                readiness_only:
+                  type: boolean
+                  default: false
+                  description: Return readiness evidence only. Does not include confirmation_phrase and does not create an executable hard-purge window.
                 retention_ack:
                   type: boolean
                 archive_ack:

@@ -96,6 +96,9 @@ VECTOR_BACKFILL_DIMENSION=""
 VECTOR_BACKFILL_RESET=0
 STOP_NOW=0
 BACKUP_DEST_DIR=""
+BACKUP_EVIDENCE_PATH=""
+BACKUP_EVIDENCE_SHA256=""
+BACKUP_EVIDENCE_TTL_SECONDS=""
 VERSION_CHECK_IN_SETUP=1
 AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
 AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
@@ -138,6 +141,7 @@ Commands:
   smoke      Run isolated daemon smoke test against record/search privacy flow.
   uninstall  Remove memory wiring and optionally purge local memory DB.
   backup                     Create a WAL-safe snapshot of the memory DB via VACUUM INTO.
+  backup-evidence            Preverify a backup file and return a hard-purge evidence token.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
   ingest-hermes-state        Backfill Hermes ~/.hermes/state.db into harness-mem (dry-run by default).
   admin-repair-sqlite-vec-map
@@ -169,6 +173,9 @@ Common options:
   --platform <value>    all|codex|opencode|claude|cursor|antigravity or comma list (default: all)
                         examples: codex,cursor  /  opencode,cursor
   --dest-dir <path>     Destination directory for backup (default: same dir as DB)
+  --backup-path <path>  Backup file to preverify with backup-evidence
+  --backup-sha256 <hex> SHA-256 for --backup-path
+  --ttl-seconds <n>     Lifetime for backup-evidence token (default: 300)
   --source <path>       Source SQLite path for import-claude-mem
                         For ingest-hermes-state, defaults to ~/.hermes/state.db
   --job <job_id>        Import job id for verify/cutover
@@ -730,6 +737,21 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--dest-dir requires a path"
         BACKUP_DEST_DIR="$1"
+        ;;
+      --backup-path)
+        shift
+        [ "$#" -gt 0 ] || fail "--backup-path requires a path"
+        BACKUP_EVIDENCE_PATH="$1"
+        ;;
+      --backup-sha256)
+        shift
+        [ "$#" -gt 0 ] || fail "--backup-sha256 requires a sha256 hex string"
+        BACKUP_EVIDENCE_SHA256="$1"
+        ;;
+      --ttl-seconds)
+        shift
+        [ "$#" -gt 0 ] || fail "--ttl-seconds requires a number"
+        BACKUP_EVIDENCE_TTL_SECONDS="$1"
         ;;
       --source)
         shift
@@ -3714,6 +3736,48 @@ backup_impl() {
   backup_path="$(echo "$response" | jq -r '.items[0].path // .meta.backup_path // ""' 2>/dev/null || true)"
   if [ -n "$backup_path" ]; then
     log "Backup created: $backup_path"
+	  fi
+}
+
+backup_evidence_impl() {
+  ensure_dependencies
+  [ -n "$BACKUP_EVIDENCE_PATH" ] || fail "backup-evidence requires --backup-path <path>"
+  [ -f "$BACKUP_EVIDENCE_PATH" ] || fail "backup file not found: $BACKUP_EVIDENCE_PATH"
+  [[ "$BACKUP_EVIDENCE_SHA256" =~ ^[A-Fa-f0-9]{64}$ ]] || fail "backup-evidence requires --backup-sha256 <64 hex chars>"
+  if [ -n "$BACKUP_EVIDENCE_TTL_SECONDS" ]; then
+    is_uint "$BACKUP_EVIDENCE_TTL_SECONDS" || fail "--ttl-seconds must be a non-negative integer"
+  fi
+
+  local backup_dir backup_base backup_path payload
+  backup_dir="$(cd "$(dirname "$BACKUP_EVIDENCE_PATH")" && pwd)"
+  backup_base="$(basename "$BACKUP_EVIDENCE_PATH")"
+  backup_path="${backup_dir}/${backup_base}"
+  payload="$(
+    jq -nc \
+      --arg backup_path "$backup_path" \
+      --arg backup_sha256 "$BACKUP_EVIDENCE_SHA256" \
+      --arg ttl_seconds "$BACKUP_EVIDENCE_TTL_SECONDS" \
+      '{
+        backup_path: $backup_path,
+        backup_sha256: $backup_sha256
+      } + (if $ttl_seconds == "" then {} else {ttl_seconds: ($ttl_seconds | tonumber)} end)'
+  )"
+
+  start_daemon
+
+  local response
+  response="$(
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" admin-backup-evidence "$payload"
+  )"
+  echo "$response"
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Backup evidence preverification failed"
+  local token
+  token="$(echo "$response" | jq -r '.items[0].preverified_backup_evidence_token // ""' 2>/dev/null || true)"
+  if [ -n "$token" ]; then
+    log "Backup evidence token created: $token"
   fi
 }
 
@@ -6987,6 +7051,9 @@ main() {
       ;;
     backup)
       backup_impl
+      ;;
+    backup-evidence)
+      backup_evidence_impl
       ;;
     import-claude-mem)
       import_claude_mem_impl

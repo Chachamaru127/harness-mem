@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -116,6 +116,32 @@ function createBackupArtifact(core: HarnessMemCore, name: string): { path: strin
   const path = join(dir, "backup.db");
   core.getRawDb().exec(`VACUUM INTO '${path.replace(/'/g, "''")}'`);
   return { path, sha256: sha256File(path) };
+}
+
+function preverifyBackupArtifact(
+  core: HarnessMemCore,
+  backup: { path: string; sha256: string },
+  ttlSeconds?: number,
+): {
+  preverified_backup_evidence_token: string;
+  backup_path: string;
+  backup_sha256: string;
+  expires_at: string;
+  integrity_check: { checked: boolean; ok: boolean };
+} {
+  const response = core.adminForgetBackupEvidence({
+    backup_path: backup.path,
+    backup_sha256: backup.sha256,
+    ttl_seconds: ttlSeconds,
+  });
+  expect(response.ok).toBe(true);
+  return response.items[0] as {
+    preverified_backup_evidence_token: string;
+    backup_path: string;
+    backup_sha256: string;
+    expires_at: string;
+    integrity_check: { checked: boolean; ok: boolean };
+  };
 }
 
 function ensureArchiveTables(core: HarnessMemCore): void {
@@ -925,6 +951,144 @@ describe("S127-004 hard purge risk gates", () => {
         confirmation: validPlan.confirmation_phrase,
       });
       expect(validExecute.ok).toBe(true);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("preverified backup evidence token supports hard purge plan and execute without inline backup verification", () => {
+    const core = new HarnessMemCore(createConfig("preverified-backup"));
+    try {
+      const target = insertObservation(core, "preverified-valid", "preverified backup row");
+      archiveObservation(core, target);
+      seedArchiveForObservation(core, target);
+      const backup = createBackupArtifact(core, "preverified-valid");
+      const evidence = preverifyBackupArtifact(core, backup);
+      expect(evidence.integrity_check).toMatchObject({ checked: true, ok: true });
+
+      const planResponse = core.adminForgetHardPurge({
+        target_ids: [target],
+        preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+      });
+      expect(planResponse.ok).toBe(true);
+      const plan = planResponse.items[0] as ReturnType<typeof hardPurgePlan>;
+      expect(plan.backup).toMatchObject({
+        kind: "preverified_backup",
+        provided: true,
+        backup_path: backup.path,
+        backup_sha256: backup.sha256,
+        integrity_check: { checked: false, ok: true, result: "preverified" },
+      });
+
+      const executed = core.adminForgetHardPurge({
+        target_ids: [target],
+        execute: true,
+        manifest_hash: plan.manifest_hash,
+        manifest_expires_at: plan.expires_at,
+        candidate_count: plan.candidate_count,
+        preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+        retention_ack: true,
+        archive_ack: true,
+        confirmation: plan.confirmation_phrase,
+      });
+      expect(executed.ok).toBe(true);
+      expect(countRows(core, "mem_observations", "id = ?", [target])).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("preverified backup evidence rejects expired token, path mismatch, sha mismatch, db mismatch, integrity failure, and replay after execute", () => {
+    const core = new HarnessMemCore(createConfig("preverified-rejects"));
+    try {
+      const target = insertObservation(core, "preverified-reject-target", "preverified reject target row");
+      archiveObservation(core, target);
+      seedArchiveForObservation(core, target);
+      const backup = createBackupArtifact(core, "preverified-rejects");
+
+      const expiredEvidence = preverifyBackupArtifact(core, backup, 0);
+      const expired = core.adminForgetHardPurge({
+        target_ids: [target],
+        preverified_backup_evidence_token: expiredEvidence.preverified_backup_evidence_token,
+      });
+      expect(expired.ok).toBe(false);
+      expect(expired.error).toContain("expired");
+
+      const mismatchEvidence = preverifyBackupArtifact(core, backup);
+      const pathMismatch = core.adminForgetHardPurge({
+        target_ids: [target],
+        backup_path: join(backup.path, "..", "other.db"),
+        preverified_backup_evidence_token: mismatchEvidence.preverified_backup_evidence_token,
+      });
+      expect(pathMismatch.ok).toBe(false);
+      expect(pathMismatch.error).toContain("backup_path mismatch");
+
+      const shaMismatch = core.adminForgetHardPurge({
+        target_ids: [target],
+        backup_sha256: "c".repeat(64),
+        preverified_backup_evidence_token: mismatchEvidence.preverified_backup_evidence_token,
+      });
+      expect(shaMismatch.ok).toBe(false);
+      expect(shaMismatch.error).toContain("backup_sha256 mismatch");
+
+      const dbMismatchEvidence = preverifyBackupArtifact(core, backup);
+      const tokenStore = (core as unknown as {
+        preverifiedBackupEvidenceTokens: Map<string, { db_identity_sha256: string }>;
+      }).preverifiedBackupEvidenceTokens;
+      const tokenEntry = tokenStore.get(dbMismatchEvidence.preverified_backup_evidence_token);
+      expect(tokenEntry).toBeDefined();
+      tokenEntry!.db_identity_sha256 = "0".repeat(64);
+      const dbMismatch = core.adminForgetHardPurge({
+        target_ids: [target],
+        preverified_backup_evidence_token: dbMismatchEvidence.preverified_backup_evidence_token,
+      });
+      expect(dbMismatch.ok).toBe(false);
+      expect(dbMismatch.error).toContain("db identity mismatch");
+
+      const badDir = mkdtempSync(join(tmpdir(), "harness-mem-hard-purge-bad-backup-"));
+      cleanupPaths.push(badDir);
+      const badBackupPath = join(badDir, "not-sqlite.db");
+      writeFileSync(badBackupPath, "not a sqlite database");
+      const integrityFailure = core.adminForgetBackupEvidence({
+        backup_path: badBackupPath,
+        backup_sha256: sha256File(badBackupPath),
+      });
+      expect(integrityFailure.ok).toBe(false);
+      expect(integrityFailure.error).toContain("integrity_check");
+
+      const replayTarget = insertObservation(core, "preverified-replay-target", "preverified replay row");
+      archiveObservation(core, replayTarget);
+      seedArchiveForObservation(core, replayTarget);
+      const replayBackup = createBackupArtifact(core, "preverified-replay");
+      const replayEvidence = preverifyBackupArtifact(core, replayBackup);
+      const replayPlanResponse = core.adminForgetHardPurge({
+        target_ids: [replayTarget],
+        preverified_backup_evidence_token: replayEvidence.preverified_backup_evidence_token,
+      });
+      expect(replayPlanResponse.ok).toBe(true);
+      const replayPlan = replayPlanResponse.items[0] as ReturnType<typeof hardPurgePlan>;
+      const replayExecute = core.adminForgetHardPurge({
+        target_ids: [replayTarget],
+        execute: true,
+        manifest_hash: replayPlan.manifest_hash,
+        manifest_expires_at: replayPlan.expires_at,
+        candidate_count: replayPlan.candidate_count,
+        preverified_backup_evidence_token: replayEvidence.preverified_backup_evidence_token,
+        retention_ack: true,
+        archive_ack: true,
+        confirmation: replayPlan.confirmation_phrase,
+      });
+      expect(replayExecute.ok).toBe(true);
+
+      const secondTarget = insertObservation(core, "preverified-replay-second", "preverified replay second row");
+      archiveObservation(core, secondTarget);
+      seedArchiveForObservation(core, secondTarget);
+      const replayUse = core.adminForgetHardPurge({
+        target_ids: [secondTarget],
+        preverified_backup_evidence_token: replayEvidence.preverified_backup_evidence_token,
+      });
+      expect(replayUse.ok).toBe(false);
+      expect(replayUse.error).toContain("unknown or consumed");
     } finally {
       core.shutdown("test");
     }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -28,6 +28,17 @@ function createCore(name: string): { core: HarnessMemCore; dir: string } {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-admin-${name}-`));
   const config = createConfig(dir);
   return { core: new HarnessMemCore(config), dir };
+}
+
+function sha256File(path: string): string {
+  return createHash("sha256").update(readFileSync(path)).digest("hex");
+}
+
+function createBackupArtifact(core: HarnessMemCore, name: string): { path: string; sha256: string; dir: string } {
+  const dir = mkdtempSync(join(tmpdir(), `harness-mem-admin-backup-${name}-`));
+  const path = join(dir, "backup.db");
+  core.getRawDb().exec(`VACUUM INTO '${path.replace(/'/g, "''")}'`);
+  return { path, sha256: sha256File(path), dir };
 }
 
 function findAvailablePort(): Promise<number> {
@@ -450,6 +461,152 @@ describe("memory admin integration", () => {
         .get(observationId);
       expect(row).toBeNull();
     } finally {
+      runtime.stop();
+    }
+  });
+
+  test("hard purge admin endpoint accepts preverified backup evidence and readiness-only stays non-executable", async () => {
+    const runtime = await createRuntime("hard-purge-preverified");
+    let backupDir: string | null = null;
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-hard-purge-preverified",
+        session_id: "session-admin-hard-purge-preverified",
+        event_type: "user_prompt",
+        ts: "2026-05-20T00:00:00.000Z",
+        payload: { content: "hard purge preverified endpoint content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.bulkDeleteObservations({ ids: [observationId] });
+      seedArchiveForObservation(runtime.core, observationId);
+
+      const backup = createBackupArtifact(runtime.core, "preverified");
+      backupDir = backup.dir;
+      const evidenceResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/backup-evidence`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          backup_path: backup.path,
+          backup_sha256: backup.sha256,
+          ttl_seconds: 60,
+        }),
+      });
+      expect(evidenceResponse.status).toBe(200);
+      const evidencePayload = (await evidenceResponse.json()) as {
+        ok: boolean;
+        items: Array<{
+          preverified_backup_evidence_token: string;
+          backup_path: string;
+          backup_sha256: string;
+          integrity_check: { checked: boolean; ok: boolean };
+        }>;
+      };
+      expect(evidencePayload.ok).toBe(true);
+      const evidence = evidencePayload.items[0];
+      expect(evidence.preverified_backup_evidence_token).toMatch(/^preverified_backup_/);
+      expect(evidence.backup_path).toBe(backup.path);
+      expect(evidence.backup_sha256).toBe(backup.sha256);
+      expect(evidence.integrity_check).toMatchObject({ checked: true, ok: true });
+
+      const readinessResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+          readiness_only: true,
+        }),
+      });
+      expect(readinessResponse.status).toBe(200);
+      const readinessPayload = (await readinessResponse.json()) as {
+        ok: boolean;
+        items: Array<{
+          mode: string;
+          manifest_hash: string;
+          expires_at: string;
+          candidate_count: number;
+          confirmation_phrase?: string;
+          backup: { kind: string; integrity_check: { checked: boolean; ok: boolean } };
+        }>;
+      };
+      expect(readinessPayload.ok).toBe(true);
+      expect(readinessPayload.items[0].mode).toBe("hard_purge_readiness");
+      expect(readinessPayload.items[0].confirmation_phrase).toBeUndefined();
+      expect("confirmation_phrase" in readinessPayload.items[0]).toBe(false);
+      expect(readinessPayload.items[0].backup).toMatchObject({
+        kind: "preverified_backup",
+        integrity_check: { checked: false, ok: true },
+      });
+
+      const readinessExecuteResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          execute: true,
+          manifest_hash: readinessPayload.items[0].manifest_hash,
+          manifest_expires_at: readinessPayload.items[0].expires_at,
+          candidate_count: readinessPayload.items[0].candidate_count,
+          preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+          retention_ack: true,
+          archive_ack: true,
+          confirmation: `HARD_PURGE 1 OBSERVATIONS ${readinessPayload.items[0].manifest_hash.slice(0, 12)}`,
+        }),
+      });
+      const readinessExecutePayload = (await readinessExecuteResponse.json()) as { ok: boolean; error?: string };
+      expect(readinessExecutePayload.ok).toBe(false);
+      expect(readinessExecutePayload.error).toContain("no active hard purge plan");
+
+      const planResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+        }),
+      });
+      expect(planResponse.status).toBe(200);
+      const planPayload = (await planResponse.json()) as {
+        ok: boolean;
+        items: Array<{
+          manifest_hash: string;
+          expires_at: string;
+          candidate_count: number;
+          confirmation_phrase: string;
+          backup: { kind: string };
+        }>;
+      };
+      expect(planPayload.ok).toBe(true);
+      expect(planPayload.items[0].backup.kind).toBe("preverified_backup");
+      const plan = planPayload.items[0];
+
+      const executeResponse = await fetch(`${runtime.baseUrl}/v1/admin/forget/hard-purge`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target_ids: [observationId],
+          execute: true,
+          manifest_hash: plan.manifest_hash,
+          manifest_expires_at: plan.expires_at,
+          candidate_count: plan.candidate_count,
+          preverified_backup_evidence_token: evidence.preverified_backup_evidence_token,
+          retention_ack: true,
+          archive_ack: true,
+          confirmation: plan.confirmation_phrase,
+        }),
+      });
+      expect(executeResponse.status).toBe(200);
+      const executePayload = (await executeResponse.json()) as {
+        ok: boolean;
+        meta: { deleted_count?: number };
+      };
+      expect(executePayload.ok).toBe(true);
+      expect(executePayload.meta.deleted_count).toBe(1);
+    } finally {
+      if (backupDir) rmSync(backupDir, { recursive: true, force: true });
       runtime.stop();
     }
   });

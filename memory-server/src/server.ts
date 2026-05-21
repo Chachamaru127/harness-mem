@@ -1391,6 +1391,15 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/backup-evidence") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetBackupEvidence({
+            backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
+            backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
+            ttl_seconds: parseIntegerLike(body.ttl_seconds),
+          }));
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
           const body = await parseRequestJson(request);
           const targetIds = toStringArray(body.target_ids).length > 0
@@ -1407,6 +1416,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             candidate_count: parseIntegerLike(body.candidate_count),
             backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
             backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
+            preverified_backup_evidence_token: typeof body.preverified_backup_evidence_token === "string" ? body.preverified_backup_evidence_token : undefined,
             temp_test_backup_token: typeof body.temp_test_backup_token === "string" ? body.temp_test_backup_token : undefined,
             retention_ack: parseBooleanLike(body.retention_ack, false),
             archive_ack: parseBooleanLike(body.archive_ack, false),
