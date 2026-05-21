@@ -1,0 +1,114 @@
+{
+  "schema_version": "s131-remaining-purge-release-decision-v1",
+  "generated_at": "2026-05-21T06:25:00Z",
+  "live_db": {
+    "path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+    "size_bytes": 14397116416,
+    "sha256": "158af21e06cc686142021e03329a41c7104ca7a4d9ae52e20cfc3e2c451d50c7",
+    "page_count": 3514921,
+    "freelist_count": 316,
+    "page_size": 4096,
+    "estimated_reclaimable_bytes": 1294336,
+    "wal_size_bytes": 5854552
+  },
+  "runtime_alignment": {
+    "codex_wiring": "pass",
+    "codex_skill_drift": "pass",
+    "daemon_launchagent_source": "/Users/tachibanashuuta/.codex/worktrees/c6b1/harness-mem/memory-server/src/index.ts",
+    "ui_launchagent_source": "/Users/tachibanashuuta/.codex/worktrees/c6b1/harness-mem/harness-mem-ui/src/server.ts",
+    "mcp_gateway_launchagent_source": "/Users/tachibanashuuta/.codex/worktrees/c6b1/harness-mem/scripts/harness-mem mcp-gateway start --foreground",
+    "health_ready": true,
+    "health_warnings": []
+  },
+  "backup": {
+    "path": "/Users/tachibanashuuta/.harness-mem/s131/harness-mem-backup-2026-05-21T05-18-16-046Z.db",
+    "size_bytes": 14377254912,
+    "sha256": "aee8903cc5f7e0f5848a5f0f12bc7b5b1477fa546c8d832235ba7f2fb5120014",
+    "integrity_check": "ok"
+  },
+  "preverified_backup_evidence": {
+    "token_sha256": "c3953cf15d0e2f4441710acb35234f5021d6b0c3f8001b63efee383a1c7b878d",
+    "candidate_count": 90,
+    "candidate_coverage_sha256": "6cde0f6cd7b35b0af353b6cadb3efc0634830985ea6684b8f5be5d4ba0032ea0",
+    "expires_at": "2026-05-21T08:12:04.813Z",
+    "raw_token_committed": false
+  },
+  "hard_purge": {
+    "manifest_hash": "51ee798b2a265abd4939c6141fbf0983ecfb5e9c82595f624357d9aadcfc1035",
+    "candidate_count": 90,
+    "legal_hold_blockers": 0,
+    "restore_capable_count": 90,
+    "impact": {
+      "observations": 90,
+      "mem_vectors": 127,
+      "mem_links_touching": 161,
+      "mem_relations": 0,
+      "mem_facts": 7,
+      "mem_events": 90,
+      "mem_tags": 229,
+      "mem_observation_entities": 0,
+      "mem_nuggets": 0,
+      "mem_nugget_vectors": 0,
+      "mem_vectors_vec_map": 127,
+      "mem_entities_orphaned": 0,
+      "mem_archive_stubs": 90,
+      "mem_archive_full": 90
+    },
+    "deleted_counts": {
+      "sqlite_vec_rows": 254,
+      "mem_nugget_vectors": 0,
+      "mem_nuggets": 0,
+      "mem_vectors": 127,
+      "mem_links_touching": 161,
+      "mem_relations": 0,
+      "mem_tags": 229,
+      "mem_observation_entities": 0,
+      "mem_facts": 7,
+      "mem_events_deleted": 90,
+      "mem_events_unlinked": 0,
+      "mem_observations": 90,
+      "mem_entities_orphaned": 0,
+      "mem_archive_full_purged": 90,
+      "mem_archive_stubs_purged": 90
+    },
+    "post_counts": {
+      "archive_archived": 0,
+      "archive_purged": 100,
+      "full_available": 0,
+      "full_purged_empty": 100,
+      "remaining_target_observations": 0,
+      "audit_entries_for_manifest": 1
+    },
+    "post_replay_check": {
+      "ok": false,
+      "error_prefix": "hard purge target rows are missing",
+      "note": "After purge there are no archived target rows left, so replay is non-executable before any new purge window can be created."
+    }
+  },
+  "compact_decision": {
+    "executed": false,
+    "reason": "Full VACUUM INTO would copy roughly 14GB to reclaim about 1.3MB of free pages after the remaining 90-row purge.",
+    "next_compact_trigger": "Run safe compact only when free pages or WAL growth make the expected reclaimed bytes operationally meaningful."
+  },
+  "verification": {
+    "targeted_tests": "pass: 30 pass / 0 fail / 397 expect calls",
+    "typecheck": "pass",
+    "git_diff_check": "pass",
+    "script_syntax": "pass",
+    "npm_pack_dry_run": "pass: @chachamaru127/harness-mem@0.23.0, 533 files",
+    "smoke": "pass",
+    "doctor": "degraded: failed_count=0, warn_count=1 daemon reachable_with_warnings; health warnings=[]"
+  },
+  "release_decision": {
+    "status": "release-candidate-ready",
+    "publish": "separate approval required",
+    "tag": "separate approval required",
+    "github_release": "separate approval required",
+    "notes": [
+      "All 100 archived rows are now purged.",
+      "Codex wiring and skill drift are fixed.",
+      "LaunchAgents are aligned to the S130/S131 worktree until merge/release source is chosen.",
+      "Doctor daemon warning remains non-blocking because live health reports no warnings."
+    ]
+  }
+}

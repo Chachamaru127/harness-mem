@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-21（§130 release reflection closeout）
+最終更新: 2026-05-21（§131 runtime drift cleanup + remaining purge）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -1070,6 +1070,30 @@ Risk Gate update (2026-05-20): S129-005 は live DB に対して read-only readi
 - S130-004-S130-005 は live DB を読む/backup するが、削除はしない。実行前に backup destination と空き容量を確認する。
 - S130-006 hard purge execute と S130-007 compact/VACUUM execute は、2026-05-21 に operator 事前承認済み。ただし、復元可能な fresh backup、preverified evidence、restore/rollback path、空き容量、manifest 一致、legal_hold 0 の条件が満たせない場合は実行しない。
 - S130-008 は release 反映レビューまでで止め、npm publish / tag / GitHub Release は別の release approval に分離する。
+
+
+## §131 Runtime Drift Cleanup + Remaining Archive Purge (2026-05-21) — cc:完了
+
+策定日: 2026-05-21
+分類: Memory lifecycle / local runtime wiring / live purge / release decision
+
+判断: S130 canary で 10 件の hard purge と compact が成立したため、次は **Codex doctor drift の修復、LaunchAgent の runtime source 統一、残り 90 件の archive済み row の fresh-backup 前提 purge、release 判断材料の更新** を同じ運用パスで閉じる。理由: 物理削除は成功済みでも、runtime が複数 checkout を指すと後続検証が再現できない。残り 90 件も、S130 と同じ backup evidence / candidate coverage / manifest gate を満たす場合だけ purge する。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S131-001 | **Codex doctor drift cleanup** `[tdd:skip:local-config]` — Codex wiring / hooks / skill drift を `doctor --fix` で修復し、read-only doctor を再確認する | `codex_wiring` と `codex_skill_drift` が PASS。残る warning があれば release blocker か local runtime note かを分類する | S130-008 | cc:完了 [local:2026-05-21] — fail=0, Codex drift fixed |
+| S131-002 | **LaunchAgent source alignment** `[tdd:skip:local-config]` — daemon / UI / MCP gateway の LaunchAgent が同じ S130 runtime source を指すように整理する | plist backup、`plutil -lint`、launchctl restart、daemon/UI/MCP gateway の working directory が S130 worktree で一致。正式 release 後に canonical checkout へ戻す判断点を残す | S131-001 | cc:完了 [local:2026-05-21] — daemon/UI/MCP gateway aligned |
+| S131-003 | **Remaining 90 fresh backup + evidence** `[tdd:skip:ops-risk-gate]` — 残り `archive_state='archived'` 90 件について fresh backup、sha256、integrity、preverified candidate coverage を作る | backup path/size/sha256/integrity_check=ok、candidate_count=90、candidate_coverage_sha256、token_sha256 が ops 証跡に残る。raw token は commit しない | S131-002 | cc:完了 [live:2026-05-21] — backup/evidence PASS |
+| S131-004 | **Remaining 90 hard purge execute** `[tdd:skip:ops-risk-gate]` — S131-003 の evidence で readiness/plan/execute を実行し、残り archive済み 90 件を purge する | legal_hold 0、restore-capable 90/90、manifest/count/expiry/confirmation 一致、purged stubs +90、full payload cleared +90、target observations 0、audit PASS、post-purge replay が非実行で拒否される | S131-003 | cc:完了 [live:2026-05-21] — purged remaining 90; archived=0, purged=100 |
+| S131-005 | **Post-purge compact + release decision** `[tdd:skip:release-review]` — 必要なら safe compact を行い、doctor/smoke/tests/package dry-run と release判断を更新する | compact 前後 size/free pages、rollback DB、health ready、targeted tests、doctor result、smoke、`npm pack --dry-run --json`、release go/no-go が docs/ops にまとまる。publish/tag は別承認 | S131-004 | cc:完了 [release-decision:2026-05-21] — no compact; release-candidate-ready |
+
+### Execution Notes
+
+- S131-003/S131-004 はユーザーが 2026-05-21 に明示承認済み。ただし fresh backup、preverified evidence、manifest 一致、legal_hold 0、archive coverage 90/90 が満たせない場合は実行しない。
+- LaunchAgent は S131 完了時点では S130 worktree に揃える。正式 merge / release 後に canonical checkout へ戻すかは release decision で扱う。
+- Raw preverified token と confirmation phrase は ops artifact に保存しない。
 
 
 ## アーカイブ (完了 / 休止セクション)

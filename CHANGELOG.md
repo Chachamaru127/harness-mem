@@ -15,7 +15,7 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Fixed
 
-- **Hard purge canary and safe compact runbook evidence**. Captured live evidence for a 10-observation hard-purge canary, restore-capable archive coverage, token replay rejection, and a `VACUUM INTO` safe compact that moved the previous live DB to a rollback path before restarting the daemon.
+- **Hard purge canary, remaining purge, and safe compact runbook evidence**. Captured live evidence for a 10-observation hard-purge canary, a follow-up purge of the remaining 90 archived observations, restore-capable archive coverage, token replay rejection, and a `VACUUM INTO` safe compact that moved the previous live DB to a rollback path before restarting the daemon.
 - **MCP and CLI daemon autostart no longer spawn an extra Mem UI by default**. Node MCP, Go MCP, the HTTP MCP gateway, and high-level CLI daemon preflight now start or preflight the shared daemon with `HARNESS_MEM_ENABLE_UI=false` unless the operator explicitly opts back in. `harness-mem setup` still starts the Mem UI by default. This preserves the original singleton-daemon topology while avoiding stray UI listeners such as `:37901` when a dedicated UI LaunchAgent is already running.
 
 ## [0.23.0] - 2026-05-17
