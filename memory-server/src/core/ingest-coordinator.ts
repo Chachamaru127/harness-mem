@@ -65,6 +65,7 @@ import { parseClaudeCodeChunk, decodeClaudeProjectDir, type ClaudeCodeContext } 
 import { ingestHermesStateDbQueued, type HermesStateIngestRequest } from "../ingest/hermes-state";
 import { parseGitHubIssues } from "../connectors/github-issues";
 import { parseDecisionsMd, parseAdrFile, type AdrObservation } from "../connectors/adr-decisions";
+import { recordRecallTelemetry } from "../telemetry/otel";
 
 // ---------------------------------------------------------------------------
 // モジュールレベルのヘルパー
@@ -2890,7 +2891,7 @@ export class IngestCoordinator {
       }
     }
 
-    return makeResponse(
+    const response = makeResponse(
       startedAt,
       [
         {
@@ -2903,5 +2904,26 @@ export class IngestCoordinator {
       request as unknown as Record<string, unknown>,
       { ingest_mode: "knowledge_file_v1" }
     );
+    if (kind === "adr") {
+      const firstAdr = observations[0]?.metadata as Record<string, unknown> | undefined;
+      recordRecallTelemetry(
+        "adr.ingest",
+        {
+          "harness.result": response.ok ? "ok" : "error",
+          "adr.status": typeof firstAdr?.status === "string" ? firstAdr.status : "unknown",
+          "adr.has_supersedes": false,
+          "adr.entries_imported": imported,
+          "adr.entries_skipped": skipped,
+          "adr.parse_error_count": parseErrors.length,
+        },
+        {
+          recall_latency_ms: typeof response.meta.latency_ms === "number"
+            ? response.meta.latency_ms
+            : Number((performance.now() - startedAt).toFixed(2)),
+          adr_recall_count: imported,
+        },
+      );
+    }
+    return response;
   }
 }

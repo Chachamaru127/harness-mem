@@ -1,8 +1,34 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 type TelemetryExporterMode = "disabled" | "local" | "otlp_http";
+type TelemetryAttributeValue = string | number | boolean;
+
+export const RECALL_TELEMETRY_SCHEMA_VERSION = "s128-008";
+
+export const RECALL_TELEMETRY_SPAN_NAMES = [
+  "recall.search",
+  "recall.project",
+  "recall.projection.build",
+  "recall.worker",
+  "recall.inject",
+  "adr.ingest",
+] as const;
+
+export type RecallTelemetrySpanName = (typeof RECALL_TELEMETRY_SPAN_NAMES)[number];
+
+export const RECALL_TELEMETRY_METRIC_NAMES = [
+  "recall_latency_ms",
+  "fallback_count",
+  "projection_staleness_ms",
+  "worker_queue_depth",
+  "recall_cache_hit_count",
+  "recall_cache_miss_count",
+  "adr_recall_count",
+] as const;
+
+export type RecallTelemetryMetricName = (typeof RECALL_TELEMETRY_METRIC_NAMES)[number];
 
 export interface TelemetryInitOptions {
   serviceName: string;
@@ -38,7 +64,7 @@ interface LifecycleSpan {
   name: string;
   startTimeUnixNano: string;
   endTimeUnixNano: string;
-  attributes: Record<string, string | number | boolean>;
+  attributes: Record<string, TelemetryAttributeValue>;
 }
 
 interface ExporterConfig {
@@ -53,6 +79,53 @@ const DEFAULT_NAMESPACE = "harness-mem";
 const LOCAL_ONLY_EXPORTER = "local";
 const DEFAULT_FLUSH_TIMEOUT_MS = 5_000;
 const MAX_LOCAL_SPANS = 128;
+const RECALL_TELEMETRY_SPAN_NAME_SET = new Set<string>(RECALL_TELEMETRY_SPAN_NAMES);
+const RECALL_TELEMETRY_METRIC_NAME_SET = new Set<string>(RECALL_TELEMETRY_METRIC_NAMES);
+const RECALL_TELEMETRY_ALLOWED_ATTRIBUTE_SET = new Set<string>([
+  "telemetry.schema.version",
+  "harness.operation",
+  "harness.result",
+  "harness.error_code",
+  "recall.scope",
+  "recall.project_present",
+  "recall.session_present",
+  "recall.include_private",
+  "recall.safe_mode",
+  "recall.forensic",
+  "recall.limit",
+  "recall.items_count",
+  "recall.degraded",
+  "recall.degraded_reason",
+  "recall.cache.hit",
+  "recall.cache.key_hash",
+  "recall.cache.knobs_hash",
+  "recall.cache.ttl_ms",
+  "recall.cache.age_ms",
+  "recall.cache.data_watermark_hash",
+  "recall.projection.generation",
+  "recall.projection.status",
+  "recall.projection.source_watermark_hash",
+  "recall.projection.current_watermark_hash",
+  "recall.projection.candidate_count",
+  "recall.projection.planned_count",
+  "recall.projection.skipped_count",
+  "recall.projection.writes",
+  "recall.worker.mode",
+  "recall.worker.fallback",
+  "recall.worker.ready",
+  "recall.worker.warmup_complete",
+  "recall.worker.warmup_pending",
+  "recall.worker.queue_depth",
+  "recall.worker.timeout_ms",
+  "recall.inject.kind",
+  "recall.inject.count",
+  "adr.status",
+  "adr.has_supersedes",
+  "adr.entries_imported",
+  "adr.entries_skipped",
+  "adr.parse_error_count",
+  ...RECALL_TELEMETRY_METRIC_NAMES.map((name) => `metric.${name}`),
+]);
 
 let activeRuntime: OpenTelemetryRuntime | null = null;
 
@@ -96,6 +169,49 @@ export async function shutdownTelemetry(reason: string): Promise<TelemetryStatus
 
 export function resetTelemetryForTests(): void {
   activeRuntime = null;
+}
+
+export function hashTelemetryValue(value: unknown, length = 16): string {
+  return createHash("sha256").update(String(value ?? "")).digest("hex").slice(0, length);
+}
+
+export function recallTelemetryAllowedAttributes(): string[] {
+  return [...RECALL_TELEMETRY_ALLOWED_ATTRIBUTE_SET].sort();
+}
+
+export function sanitizeRecallTelemetryAttributes(
+  attrs: Record<string, unknown> = {},
+): Record<string, TelemetryAttributeValue> {
+  const sanitized: Record<string, TelemetryAttributeValue> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!RECALL_TELEMETRY_ALLOWED_ATTRIBUTE_SET.has(key)) continue;
+    if (isSensitiveKey(key)) continue;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+export function recordRecallTelemetry(
+  name: RecallTelemetrySpanName,
+  attributes: Record<string, unknown> = {},
+  metrics: Partial<Record<RecallTelemetryMetricName, number | undefined>> = {},
+): void {
+  if (!RECALL_TELEMETRY_SPAN_NAME_SET.has(name)) {
+    return;
+  }
+  const metricAttributes: Record<string, number> = {};
+  for (const [metricName, value] of Object.entries(metrics)) {
+    if (!RECALL_TELEMETRY_METRIC_NAME_SET.has(metricName)) continue;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    metricAttributes[`metric.${metricName}`] = value;
+  }
+  activeRuntime?.recordLifecycleSpan(name, {
+    "telemetry.schema.version": RECALL_TELEMETRY_SCHEMA_VERSION,
+    ...sanitizeRecallTelemetryAttributes(attributes),
+    ...sanitizeRecallTelemetryAttributes(metricAttributes),
+  });
 }
 
 export function resolveHarnessMemVersion(cwd = process.cwd()): string {

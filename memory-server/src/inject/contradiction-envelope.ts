@@ -28,6 +28,7 @@ import type {
   ContradictionDetectorResult,
   ContradictionPair,
 } from "../consolidation/contradiction-detector";
+import { recordRecallTelemetry } from "../telemetry/otel";
 
 /**
  * Default session id used when contradiction_scan is invoked outside of a
@@ -101,6 +102,15 @@ export function recordContradictionEnvelopes(
     store.recordTrace(env, sessionId);
     out.push(env);
   }
+  recordRecallTelemetry(
+    "recall.inject",
+    {
+      "harness.result": "ok",
+      "recall.inject.kind": "contradiction",
+      "recall.inject.count": out.length,
+      "recall.session_present": Boolean(sessionId),
+    },
+  );
   return out;
 }
 

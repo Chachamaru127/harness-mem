@@ -56,7 +56,7 @@ import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
-import { getTelemetryStatus } from "../telemetry/otel";
+import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
@@ -693,6 +693,10 @@ class PersistentSearchWorkerClient {
 
   isWarmupComplete(): boolean {
     return this.warmupComplete;
+  }
+
+  pendingDepth(): number {
+    return this.pending.size;
   }
 
   ensureStarted(): void {
@@ -1778,6 +1782,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const worker = this.getOrCreateSearchWorker();
     worker.ensureStarted();
+    const queueDepthAtStart = worker.pendingDepth();
     if (request.safe_mode !== true && request.vector_search !== false && !worker.isWarmupComplete()) {
       throw new SearchOffloadUnavailableError("search worker", "warming");
     }
@@ -1802,6 +1807,28 @@ export class HarnessMemCore {
         worker_warmup_ms: result.warmup_ms,
       },
     };
+    recordRecallTelemetry(
+      "recall.worker",
+      {
+        ...this.recallScopeAttributes({
+          project: request.scope?.project ?? request.project,
+          session_id: request.scope?.session_id ?? request.session_id,
+          include_private: request.include_private,
+          safe_mode: request.safe_mode,
+          limit: request.limit,
+        }),
+        "harness.result": response.ok ? "ok" : "error",
+        "recall.worker.mode": "persistent_worker",
+        "recall.worker.ready": result.ready_at_start,
+        "recall.worker.warmup_complete": result.warmup_ms !== null,
+        "recall.worker.queue_depth": queueDepthAtStart,
+        "recall.worker.timeout_ms": timeoutMs,
+      },
+      {
+        recall_latency_ms: offloadWallMs,
+        worker_queue_depth: queueDepthAtStart,
+      },
+    );
     return response;
   }
 
@@ -1815,6 +1842,7 @@ export class HarnessMemCore {
       60_000,
     );
     const maxPending = this.getSearchChildMaxPending();
+    const queueDepthAtStart = this.searchChildPending;
     if (this.searchChildPending >= maxPending) {
       throw new SearchOffloadQueueFullError("search child", this.searchChildPending, maxPending);
     }
@@ -1871,6 +1899,26 @@ export class HarnessMemCore {
           child_latency_ms: childLatencyMs,
         },
       };
+      recordRecallTelemetry(
+        "recall.worker",
+        {
+          ...this.recallScopeAttributes({
+            project: request.scope?.project ?? request.project,
+            session_id: request.scope?.session_id ?? request.session_id,
+            include_private: request.include_private,
+            safe_mode: request.safe_mode,
+            limit: request.limit,
+          }),
+          "harness.result": response.ok ? "ok" : "error",
+          "recall.worker.mode": "child_process",
+          "recall.worker.queue_depth": queueDepthAtStart,
+          "recall.worker.timeout_ms": timeoutMs,
+        },
+        {
+          recall_latency_ms: offloadWallMs,
+          worker_queue_depth: queueDepthAtStart,
+        },
+      );
       return response;
     } finally {
       clearTimeout(timer);
@@ -3134,7 +3182,7 @@ export class HarnessMemCore {
         limit: request.limit,
         includePrivate: request.include_private === true,
       });
-      return makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+      const response = makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
         ranking: "recall_projection_dry_run_v1",
         projection_generation: plan.generation,
         source_watermark: plan.source_watermark,
@@ -3145,12 +3193,16 @@ export class HarnessMemCore {
         diagnostics: plan.diagnostics,
         writes: 0,
       });
+      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "dry_run", plan);
+      return response;
     } catch (error) {
-      return makeErrorResponse(
+      const response = makeErrorResponse(
         startedAt,
         error instanceof Error ? error.message : String(error),
         request as unknown as Record<string, unknown>,
       );
+      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "dry_run");
+      return response;
     }
   }
 
@@ -3163,7 +3215,7 @@ export class HarnessMemCore {
         includePrivate: request.include_private === true,
       });
       this.repeatRecallCache.clear();
-      return makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+      const response = makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
         ranking: "recall_projection_refresh_v1",
         projection_generation: plan.generation,
         source_watermark: plan.source_watermark,
@@ -3175,12 +3227,16 @@ export class HarnessMemCore {
         writes: plan.items.length,
         cache_cleared: true,
       });
+      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "write", plan);
+      return response;
     } catch (error) {
-      return makeErrorResponse(
+      const response = makeErrorResponse(
         startedAt,
         error instanceof Error ? error.message : String(error),
         request as unknown as Record<string, unknown>,
       );
+      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "write");
+      return response;
     }
   }
 
@@ -3209,6 +3265,195 @@ export class HarnessMemCore {
     });
   }
 
+  private recallScopeAttributes(request: {
+    project?: string;
+    session_id?: string;
+    include_private?: boolean;
+    safe_mode?: boolean;
+    forensic?: boolean;
+    limit?: number;
+  }): Record<string, string | number | boolean> {
+    const hasProject = typeof request.project === "string" && request.project.trim().length > 0;
+    const hasSession = typeof request.session_id === "string" && request.session_id.trim().length > 0;
+    const scope = hasProject && hasSession
+      ? "project_session"
+      : hasProject
+        ? "project"
+        : hasSession
+          ? "session"
+          : "none";
+    return {
+      "recall.scope": scope,
+      "recall.project_present": hasProject,
+      "recall.session_present": hasSession,
+      "recall.include_private": request.include_private === true,
+      "recall.safe_mode": request.safe_mode === true,
+      "recall.forensic": request.forensic === true,
+      "recall.limit": request.limit ?? 20,
+    };
+  }
+
+  private projectionStalenessMs(projectionRun: RecallProjectionRunRow | null): number | undefined {
+    if (!projectionRun?.completed_at) return undefined;
+    const completedAt = Date.parse(projectionRun.completed_at);
+    if (!Number.isFinite(completedAt)) return undefined;
+    return Math.max(0, Date.now() - completedAt);
+  }
+
+  private countAdrRecallItems(items: unknown[]): number {
+    return items.filter((item) => {
+      if (!item || typeof item !== "object") return false;
+      const record = item as Record<string, unknown>;
+      const title = typeof record.title === "string" ? record.title.toLowerCase() : "";
+      if (title.includes("adr-") || title.includes("[adr")) return true;
+      const metadata = record.metadata;
+      if (!metadata || typeof metadata !== "object") return false;
+      const metadataRecord = metadata as Record<string, unknown>;
+      const observationType = typeof metadataRecord.observation_type === "string"
+        ? metadataRecord.observation_type.toLowerCase()
+        : "";
+      if (observationType.includes("adr")) return true;
+      const tags = metadataRecord.tags;
+      return Array.isArray(tags) && tags.some((tag) => typeof tag === "string" && tag.toLowerCase() === "adr");
+    }).length;
+  }
+
+  private recordRecallProjectionBuildTelemetry(
+    startedAt: number,
+    request: { project: string; limit?: number; include_private?: boolean },
+    response: ApiResponse,
+    operation: "dry_run" | "write",
+    plan?: RecallProjectionPlan,
+  ): void {
+    recordRecallTelemetry(
+      "recall.projection.build",
+      {
+        ...this.recallScopeAttributes({
+          project: request.project,
+          include_private: request.include_private,
+          limit: request.limit,
+          safe_mode: true,
+        }),
+        "harness.operation": operation,
+        "harness.result": response.ok ? "ok" : "error",
+        "harness.error_code": typeof response.meta.error_code === "string" ? response.meta.error_code : undefined,
+        "recall.items_count": Array.isArray(response.items) ? response.items.length : 0,
+        "recall.projection.generation": plan?.generation,
+        "recall.projection.status": response.ok ? "completed" : "failed",
+        "recall.projection.source_watermark_hash": plan ? hashTelemetryValue(plan.source_watermark) : undefined,
+        "recall.projection.candidate_count": plan?.candidate_count,
+        "recall.projection.planned_count": plan?.planned_count,
+        "recall.projection.skipped_count": plan?.skipped_count,
+        "recall.projection.writes": operation === "write" && plan ? plan.items.length : 0,
+      },
+      {
+        recall_latency_ms: typeof response.meta.latency_ms === "number"
+          ? response.meta.latency_ms
+          : Number((performance.now() - startedAt).toFixed(2)),
+      },
+    );
+  }
+
+  private recordRecallProjectTelemetry(
+    startedAt: number,
+    request: RecallRuntimeRequest,
+    response: ApiResponse,
+    projectionRun: RecallProjectionRunRow | null = null,
+    sourceWatermark: string | null = null,
+  ): void {
+    const degraded = response.meta.recall_degraded === true;
+    const items = Array.isArray(response.items) ? response.items : [];
+    recordRecallTelemetry(
+      "recall.project",
+      {
+        ...this.recallScopeAttributes({
+          project: request.project,
+          session_id: request.session_id,
+          include_private: request.include_private,
+          safe_mode: request.safe_mode !== false,
+          forensic: request.forensic,
+          limit: request.limit,
+        }),
+        "harness.result": response.ok ? "ok" : "error",
+        "harness.error_code": typeof response.meta.error_code === "string" ? response.meta.error_code : undefined,
+        "recall.items_count": items.length,
+        "recall.degraded": degraded,
+        "recall.degraded_reason": typeof response.meta.recall_degraded_reason === "string"
+          ? response.meta.recall_degraded_reason
+          : undefined,
+        "recall.projection.generation": typeof response.meta.projection_generation === "string"
+          ? response.meta.projection_generation
+          : projectionRun?.generation,
+        "recall.projection.source_watermark_hash": typeof response.meta.projection_source_watermark === "string"
+          ? hashTelemetryValue(response.meta.projection_source_watermark)
+          : projectionRun?.source_watermark
+            ? hashTelemetryValue(projectionRun.source_watermark)
+            : undefined,
+        "recall.projection.current_watermark_hash": sourceWatermark ? hashTelemetryValue(sourceWatermark) : undefined,
+      },
+      {
+        recall_latency_ms: typeof response.meta.latency_ms === "number"
+          ? response.meta.latency_ms
+          : Number((performance.now() - startedAt).toFixed(2)),
+        fallback_count: degraded ? 1 : 0,
+        projection_staleness_ms: this.projectionStalenessMs(projectionRun),
+        adr_recall_count: this.countAdrRecallItems(items),
+      },
+    );
+  }
+
+  private recordRecallSearchTelemetry(
+    startedAt: number,
+    request: SearchRequest,
+    response: ApiResponse,
+  ): void {
+    const meta = response.meta as Record<string, unknown>;
+    const cache = meta.recall_cache && typeof meta.recall_cache === "object"
+      ? meta.recall_cache as Record<string, unknown>
+      : null;
+    const offload = meta.search_offload && typeof meta.search_offload === "object"
+      ? meta.search_offload as Record<string, unknown>
+      : null;
+    const cacheHit = typeof meta.recall_cache_hit === "boolean" ? meta.recall_cache_hit : undefined;
+    const fallback = typeof offload?.fallback === "string" ? offload.fallback : undefined;
+    const items = Array.isArray(response.items) ? response.items : [];
+    recordRecallTelemetry(
+      "recall.search",
+      {
+        ...this.recallScopeAttributes({
+          project: request.scope?.project ?? request.project,
+          session_id: request.scope?.session_id ?? request.session_id,
+          include_private: request.include_private,
+          safe_mode: request.safe_mode,
+          limit: request.limit,
+        }),
+        "harness.result": response.ok ? "ok" : "error",
+        "harness.error_code": typeof meta.error_code === "string" ? meta.error_code : undefined,
+        "recall.items_count": items.length,
+        "recall.cache.hit": cacheHit,
+        "recall.cache.key_hash": typeof cache?.key_hash === "string" ? cache.key_hash : undefined,
+        "recall.cache.knobs_hash": typeof cache?.knobs_hash === "string" ? cache.knobs_hash : undefined,
+        "recall.cache.ttl_ms": typeof cache?.ttl_ms === "number" ? cache.ttl_ms : undefined,
+        "recall.cache.age_ms": typeof cache?.age_ms === "number" ? cache.age_ms : undefined,
+        "recall.cache.data_watermark_hash": typeof cache?.data_watermark === "string"
+          ? hashTelemetryValue(cache.data_watermark)
+          : undefined,
+        "recall.worker.mode": typeof offload?.mode === "string" ? offload.mode : undefined,
+        "recall.worker.fallback": fallback,
+        "recall.worker.queue_depth": typeof offload?.pending === "number" ? offload.pending : undefined,
+      },
+      {
+        recall_latency_ms: typeof meta.latency_ms === "number"
+          ? meta.latency_ms
+          : Number((performance.now() - startedAt).toFixed(2)),
+        fallback_count: fallback && fallback !== "none" ? 1 : 0,
+        worker_queue_depth: typeof offload?.pending === "number" ? offload.pending : undefined,
+        recall_cache_hit_count: cacheHit === true ? 1 : 0,
+        recall_cache_miss_count: cacheHit === false ? 1 : 0,
+      },
+    );
+  }
+
   async recallPrepared(request: RecallRuntimeRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
     const query = request.query.trim();
@@ -3228,6 +3473,7 @@ export class HarnessMemCore {
     if (!query) {
       const response = makeErrorResponse(startedAt, "query is required", filters);
       response.meta.http_status = 400;
+      this.recordRecallProjectTelemetry(startedAt, request, response);
       return response;
     }
 
@@ -3240,6 +3486,7 @@ export class HarnessMemCore {
       response.meta.http_status = 400;
       response.meta.recall_scope_required = true;
       response.meta.recall_degraded_reason = "scope_required";
+      this.recordRecallProjectTelemetry(startedAt, request, response);
       return response;
     }
 
@@ -3276,7 +3523,7 @@ export class HarnessMemCore {
       return this.fallbackRecallSearch(request, "projection_no_match", startedAt, latestRun, sourceWatermark);
     }
 
-    return makeResponse(startedAt, items, filters, {
+    const response = makeResponse(startedAt, items, filters, {
       ranking: "recall_projection_v1",
       recall_runtime: true,
       recall_degraded: false,
@@ -3285,6 +3532,8 @@ export class HarnessMemCore {
       projection_source_watermark: latestRun.source_watermark,
       projection_completed_at: latestRun.completed_at,
     });
+    this.recordRecallProjectTelemetry(startedAt, request, response, latestRun, sourceWatermark);
+    return response;
   }
 
   private getLatestRecallProjectionRun(project: string): RecallProjectionRunRow | null {
@@ -3415,6 +3664,7 @@ export class HarnessMemCore {
       projection_source_watermark: projectionRun?.source_watermark ?? null,
       current_source_watermark: sourceWatermark,
     });
+    this.recordRecallProjectTelemetry(startedAt, request, fallback, projectionRun, sourceWatermark);
     return fallback;
   }
 
@@ -3574,6 +3824,7 @@ export class HarnessMemCore {
     const startedAt = performance.now();
     const cacheLookup = this.lookupRepeatRecallCache(request, startedAt);
     if (cacheLookup?.response) {
+      this.recordRecallSearchTelemetry(startedAt, request, cacheLookup.response);
       return cacheLookup.response;
     }
     const cacheCandidate = cacheLookup?.candidate ?? null;
@@ -3596,19 +3847,23 @@ export class HarnessMemCore {
         response = await this.runSearchOutOfProcess(request);
       } catch (error) {
         if (isSearchOffloadQueueFull(error) || isSearchOffloadUnavailable(error)) {
-          return this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
+          const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
+          this.recordRecallSearchTelemetry(startedAt, request, rejected);
+          return rejected;
         }
         if (
           offloadMode === "persistent_worker" &&
           error instanceof Error &&
           error.message.includes("search worker request timed out")
         ) {
-          return this.makeSearchOffloadRejectedResponse(
+          const rejected = this.makeSearchOffloadRejectedResponse(
             startedAt,
             request,
             new SearchOffloadUnavailableError("search worker", "timeout"),
             offloadMode,
           );
+          this.recordRecallSearchTelemetry(startedAt, request, rejected);
+          return rejected;
         }
         response = await this.searchWithSafeFallback(
           request,
@@ -3691,7 +3946,9 @@ export class HarnessMemCore {
       }
     }
 
-    return this.storeRepeatRecallCache(cacheCandidate, response);
+    const finalResponse = this.storeRepeatRecallCache(cacheCandidate, response);
+    this.recordRecallSearchTelemetry(startedAt, request, finalResponse);
+    return finalResponse;
   }
 
   feed(request: FeedRequest): ApiResponse {

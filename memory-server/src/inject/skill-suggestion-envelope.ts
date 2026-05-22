@@ -26,6 +26,7 @@ import {
 } from "./envelope";
 import { InjectTraceStore } from "./trace-store";
 import type { SkillSuggestion } from "../core/types";
+import { recordRecallTelemetry } from "../telemetry/otel";
 
 /**
  * Default confidence when no upstream score is available. The detector is
@@ -90,6 +91,15 @@ export function recordSkillSuggestionEnvelope(
   const store = new InjectTraceStore(db);
   const env = buildSkillSuggestionEnvelope(suggestion);
   store.recordTrace(env, sessionId);
+  recordRecallTelemetry(
+    "recall.inject",
+    {
+      "harness.result": "ok",
+      "recall.inject.kind": "suggest",
+      "recall.inject.count": 1,
+      "recall.session_present": Boolean(sessionId),
+    },
+  );
   return env;
 }
 

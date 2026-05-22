@@ -1,13 +1,38 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
   initializeTelemetry,
+  recallTelemetryAllowedAttributes,
+  recordRecallTelemetry,
+  RECALL_TELEMETRY_METRIC_NAMES,
+  RECALL_TELEMETRY_SPAN_NAMES,
   resetTelemetryForTests,
+  sanitizeRecallTelemetryAttributes,
   shutdownTelemetry,
 } from "../../src/telemetry/otel";
 
 afterEach(() => {
   resetTelemetryForTests();
 });
+
+function collectSpans(payload: unknown): Array<{ name: string; attributes: Array<{ key: string; value: Record<string, unknown> }> }> {
+  const resourceSpans = (payload as { resourceSpans?: Array<{ scopeSpans?: Array<{ spans?: unknown[] }> }> }).resourceSpans ?? [];
+  return resourceSpans.flatMap((resourceSpan) =>
+    (resourceSpan.scopeSpans ?? []).flatMap((scopeSpan) =>
+      (scopeSpan.spans ?? []) as Array<{ name: string; attributes: Array<{ key: string; value: Record<string, unknown> }> }>,
+    ),
+  );
+}
+
+function plainAttributes(span: { attributes: Array<{ key: string; value: Record<string, unknown> }> }): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const attr of span.attributes) {
+    if ("stringValue" in attr.value) out[attr.key] = attr.value.stringValue;
+    if ("intValue" in attr.value) out[attr.key] = Number(attr.value.intValue);
+    if ("doubleValue" in attr.value) out[attr.key] = attr.value.doubleValue;
+    if ("boolValue" in attr.value) out[attr.key] = attr.value.boolValue;
+  }
+  return out;
+}
 
 describe("S128-007 OpenTelemetry plumbing", () => {
   test("defaults to local-only exporter with service resource attributes", async () => {
@@ -100,5 +125,96 @@ describe("S128-007 OpenTelemetry plumbing", () => {
     expect(status.exporter.shutdown).toBe(true);
     expect(status.exporter.last_flush_ok).toBe(true);
     expect(status.exporter.pending_spans).toBe(0);
+  });
+});
+
+describe("S128-008 recall semantic telemetry", () => {
+  test("publishes fixed recall span and metric names", () => {
+    expect(RECALL_TELEMETRY_SPAN_NAMES).toEqual([
+      "recall.search",
+      "recall.project",
+      "recall.projection.build",
+      "recall.worker",
+      "recall.inject",
+      "adr.ingest",
+    ]);
+    expect(RECALL_TELEMETRY_METRIC_NAMES).toEqual([
+      "recall_latency_ms",
+      "fallback_count",
+      "projection_staleness_ms",
+      "worker_queue_depth",
+      "recall_cache_hit_count",
+      "recall_cache_miss_count",
+      "adr_recall_count",
+    ]);
+    expect(recallTelemetryAllowedAttributes()).toContain("metric.recall_latency_ms");
+    expect(recallTelemetryAllowedAttributes()).toContain("recall.cache.key_hash");
+  });
+
+  test("allowlist strips raw content, prompts, paths, and secrets from semantic spans", async () => {
+    const calls: Array<{ body: unknown }> = [];
+    const runtime = initializeTelemetry({
+      serviceName: "harness-mem-memory-daemon",
+      serviceVersion: "0.24.1",
+      component: "memory-daemon",
+      env: {
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://collector.test/v1/traces",
+      },
+      fetchImpl: async (_url, init) => {
+        calls.push({ body: JSON.parse(String(init?.body)) });
+        return new Response(null, { status: 204 });
+      },
+      now: () => 1_700_000_000_000,
+    });
+
+    recordRecallTelemetry(
+      "recall.search",
+      {
+        "recall.scope": "project",
+        "recall.project_present": true,
+        "recall.session_present": false,
+        "recall.cache.hit": true,
+        "recall.cache.key_hash": "abc123",
+        "query": "raw user prompt must not leave process",
+        "project": "raw-project-name",
+        "content": "raw observation content",
+        "authorization": "Bearer nope",
+        "api_key": "nope",
+      },
+      {
+        recall_latency_ms: 12.5,
+        recall_cache_hit_count: 1,
+        fallback_count: 0,
+      },
+    );
+    await runtime.flush("test");
+
+    const span = collectSpans(calls[0]!.body).find((candidate) => candidate.name === "recall.search");
+    expect(span).toBeDefined();
+    const attrs = plainAttributes(span!);
+    expect(attrs["recall.scope"]).toBe("project");
+    expect(attrs["recall.cache.key_hash"]).toBe("abc123");
+    expect(attrs["metric.recall_latency_ms"]).toBe(12.5);
+    expect(attrs["metric.recall_cache_hit_count"]).toBe(1);
+    expect(attrs.query).toBeUndefined();
+    expect(attrs.project).toBeUndefined();
+    expect(attrs.content).toBeUndefined();
+    expect(attrs.authorization).toBeUndefined();
+    expect(attrs.api_key).toBeUndefined();
+  });
+
+  test("semantic sanitizer keeps only scalar allowlisted attributes", () => {
+    expect(sanitizeRecallTelemetryAttributes({
+      "recall.items_count": 3,
+      "recall.safe_mode": true,
+      "recall.cache.key_hash": "cache-key",
+      "recall.cache": { raw: "object" },
+      "raw_prompt": "drop",
+      "secret.token": "drop",
+    })).toEqual({
+      "recall.items_count": 3,
+      "recall.safe_mode": true,
+      "recall.cache.key_hash": "cache-key",
+    });
   });
 });

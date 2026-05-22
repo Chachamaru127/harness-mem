@@ -9,7 +9,7 @@
 
 import { createInterface } from "node:readline";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
-import { initializeTelemetry, resolveHarnessMemVersion, shutdownTelemetry } from "../telemetry/otel";
+import { initializeTelemetry, recordRecallTelemetry, resolveHarnessMemVersion, shutdownTelemetry } from "../telemetry/otel";
 import type { ApiResponse, SearchRequest } from "../core/types";
 
 interface SearchWorkerRequestEnvelope {
@@ -64,6 +64,13 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.stack || error.message : String(error);
 }
 
+function recallScope(request: SearchRequest): "project_session" | "project" | "session" | "none" {
+  if (request.project && request.session_id) return "project_session";
+  if (request.project) return "project";
+  if (request.session_id) return "session";
+  return "none";
+}
+
 async function warmWorker(core: HarnessMemCore): Promise<{ warmup_ms: number; warmup_error?: string }> {
   const startedAt = performance.now();
   try {
@@ -92,6 +99,7 @@ async function runSearch(
   request: SearchRequest,
   warmupState: SearchWorkerWarmupState,
 ): Promise<void> {
+  const startedAt = performance.now();
   try {
     let effectiveRequest = request;
     let workerFallback: Record<string, unknown> | null = null;
@@ -122,8 +130,48 @@ async function runSearch(
         search_worker: workerFallback,
       };
     }
+    recordRecallTelemetry(
+      "recall.worker",
+      {
+        "harness.result": response.ok ? "ok" : "error",
+        "recall.scope": recallScope(request),
+        "recall.project_present": Boolean(request.project),
+        "recall.session_present": Boolean(request.session_id),
+        "recall.include_private": request.include_private === true,
+        "recall.safe_mode": request.safe_mode === true,
+        "recall.limit": request.limit ?? 20,
+        "recall.worker.mode": "persistent_worker_process",
+        "recall.worker.fallback": workerFallback ? "safe_lexical" : "none",
+        "recall.worker.warmup_pending": !warmupState.done,
+        "recall.worker.queue_depth": 0,
+      },
+      {
+        recall_latency_ms: Number((performance.now() - startedAt).toFixed(2)),
+        fallback_count: workerFallback ? 1 : 0,
+        worker_queue_depth: 0,
+      },
+    );
     writeProtocol({ id, ok: true, response });
   } catch (error) {
+    recordRecallTelemetry(
+      "recall.worker",
+      {
+        "harness.result": "error",
+        "harness.error_code": "search_worker_error",
+        "recall.scope": recallScope(request),
+        "recall.project_present": Boolean(request.project),
+        "recall.session_present": Boolean(request.session_id),
+        "recall.include_private": request.include_private === true,
+        "recall.safe_mode": request.safe_mode === true,
+        "recall.limit": request.limit ?? 20,
+        "recall.worker.mode": "persistent_worker_process",
+        "recall.worker.queue_depth": 0,
+      },
+      {
+        recall_latency_ms: Number((performance.now() - startedAt).toFixed(2)),
+        worker_queue_depth: 0,
+      },
+    );
     writeProtocol({ id, ok: false, error: errorMessage(error).slice(0, 2_000) });
   }
 }
