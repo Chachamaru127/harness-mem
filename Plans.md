@@ -121,10 +121,12 @@
 
 ```text
 完了: S128-001, S128-002, S128-002a を Lead が確定。Benefit gate は GO, but sliced。
-完了: S128-003, S128-004, S128-004a, S128-004b, S128-005, S128-006 を red-test-first で実装。次の対象は S128-007〜S128-009 の local-first OpenTelemetry、または S128-010〜S128-011 の ADR runtime。
+完了: S128-003, S128-004, S128-004a, S128-004b, S128-005, S128-006 を red-test-first で実装。
+完了: S128-007, S128-008, S128-009 で local-first OpenTelemetry / semantic telemetry / local inspect-export surface を実装。
+完了: S128-010, S128-011, S128-012, S128-013 で ADR template / ADR recall object / explanation UX / warn-mode release gate を実装し、初回 value signal は positive。
 ```
 
-次に進む条件: `Spec.md`、`docs/recall-runtime.md`、ADR-003、benefit gate が「local-first continuity runtime」の判断を明文化し、OpenTelemetry が外部送信 default にならず、ADR が Why 付き recall object として扱われること。S128-001〜S128-006 で Recall core は実装済みのため、次は local-first OpenTelemetry または ADR runtime へ進む。
+次に進む条件: `Spec.md`、`docs/recall-runtime.md`、ADR-003、benefit gate が「local-first continuity runtime」の判断を明文化し、OpenTelemetry が外部送信 default にならず、ADR が Why 付き recall object として扱われること。S128-001〜S128-013 で Recall Runtime core / OTel / ADR / explanation / warn-mode gate は実装済み。次は S128 gate を 2-3 回の通常運用で観測し、release enforce へ上げるか warn 継続にするかを判断する。
 
 ---
 
