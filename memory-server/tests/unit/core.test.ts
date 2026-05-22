@@ -130,7 +130,7 @@ describe("HarnessMemCore unit", () => {
 
     expect(shouldRunSearchOutOfProcess(request, options)).toBe(true);
     expect(shouldUsePersistentSearchWorker(options)).toBe(true);
-    expect(shouldRunSearchOutOfProcess({ ...request, safe_mode: true }, options)).toBe(false);
+    expect(shouldRunSearchOutOfProcess({ ...request, safe_mode: true }, options)).toBe(true);
     expect(shouldRunSearchOutOfProcess(request, { ...options, dbPath: ":memory:" })).toBe(false);
     expect(shouldRunSearchOutOfProcess(request, { ...options, vectorEngine: "disabled" })).toBe(false);
     expect(shouldRunSearchOutOfProcess(request, { ...options, env: { NODE_ENV: "test" } })).toBe(false);

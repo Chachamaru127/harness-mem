@@ -415,7 +415,6 @@ export function shouldRunSearchOutOfProcess(
   const env = options.env ?? process.env;
   if (envTruthy(env.HARNESS_MEM_SEARCH_CHILD_PROCESS)) return false;
   if (envTruthy(env.HARNESS_MEM_SEARCH_WORKER_PROCESS)) return false;
-  if (request.safe_mode === true) return false;
   if (!options.dbPath || options.dbPath === ":memory:") return false;
   if (options.vectorEngine === "disabled") return false;
 
@@ -423,6 +422,11 @@ export function shouldRunSearchOutOfProcess(
   if (envFalsy(override)) return false;
   if (envTruthy(override)) return true;
   if (env.NODE_ENV === "test") return false;
+
+  // Safe-mode search disables vector/graph expansion, but it can still be an
+  // expensive scoped lexical scan on large local DBs. Keep it off the daemon
+  // event loop in normal runtime so health/readiness stays responsive.
+  if (request.safe_mode === true) return true;
 
   return true;
 }

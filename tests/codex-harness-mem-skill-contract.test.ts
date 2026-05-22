@@ -46,6 +46,9 @@ describe("Codex harness-mem skill contract", () => {
     expect(body).toContain("503");
     expect(body).toContain("backpressure");
     expect(body).toContain("project");
+    expect(body).toContain("Do not use unscoped search when a project can be inferred");
+    expect(body).toContain("Cross-project or unscoped search is only");
+    expect(body).toContain("project=unknown");
     expect(body).toContain("vector_search=false");
   });
 });

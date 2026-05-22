@@ -121,5 +121,8 @@ describe("§97 Codex harness-recall skill contract", () => {
     expect(body).toContain("backpressure");
     expect(body).toContain("project");
     expect(body).toContain("strict_project=true");
+    expect(body).toContain("`project` を推定できる時は必ず渡す");
+    expect(body).toContain("project なし検索は、明示的な横断調査");
+    expect(body).toContain("project=unknown");
   });
 });
