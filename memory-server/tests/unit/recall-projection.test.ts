@@ -119,4 +119,70 @@ describe("Recall projection", () => {
     });
     expect(readRecallDataWatermark(store, { project: "proj-a" })).not.toBe(before);
   });
+
+  test("ADR observations project as decision recall objects with provenance", () => {
+    const store = db();
+    insertTestObservation(store, {
+      id: "obs-adr",
+      event_id: "evt-adr",
+      project: "proj-a",
+      title: "[ADR-004] Recall Runtime",
+      content: [
+        "# ADR-004: Recall Runtime",
+        "## Status",
+        "Accepted",
+        "## Options",
+        "- SQLite projection",
+        "## Consequences",
+        "- Stable repeat recall under large DBs",
+        "## Supersedes",
+        "- ADR-003",
+      ].join("\n"),
+      tags: ["adr", "adr-status:accepted"],
+      created_at: "2026-05-22T00:00:00.000Z",
+    });
+    store
+      .query(`UPDATE mem_events SET payload_json = ? WHERE event_id = ?`)
+      .run(
+        JSON.stringify({
+          content: "ADR content",
+          title: "[ADR-004] Recall Runtime",
+          metadata: {
+            type: "adr",
+            filePath: "docs/adr/ADR-004-recall-runtime.md",
+            status: "accepted",
+            sourcePlansSection: "Plans.md §128 S128-011",
+            options: ["SQLite projection"],
+            consequences: ["Stable repeat recall under large DBs"],
+            supersedes: ["ADR-003"],
+            decisionsMdRefs: [".claude/memory/decisions.md#D13"],
+            workRefs: ["§128", "S128-011"],
+          },
+        }),
+        "evt-adr",
+      );
+
+    const plan = buildRecallProjectionPlan(store, {
+      project: "proj-a",
+      now: () => "2026-05-22T00:03:00.000Z",
+    });
+
+    expect(plan.planned_count).toBe(1);
+    expect(plan.items[0]).toMatchObject({
+      recall_type: "decision",
+      source_type: "adr",
+      source_id: "obs-adr",
+      source_ref: "adr:docs/adr/ADR-004-recall-runtime.md",
+    });
+    const metadata = JSON.parse(plan.items[0].metadata_json) as Record<string, unknown>;
+    expect(metadata.status).toBe("accepted");
+    expect(metadata.sourcePlansSection).toBe("Plans.md §128 S128-011");
+    expect(metadata.provenance).toMatchObject({
+      file_path: "docs/adr/ADR-004-recall-runtime.md",
+      source_plans_section: "Plans.md §128 S128-011",
+      decisions_md_refs: [".claude/memory/decisions.md#D13"],
+      supersedes: ["ADR-003"],
+      observation_id: "obs-adr",
+    });
+  });
 });

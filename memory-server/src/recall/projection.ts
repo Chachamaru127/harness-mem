@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Database, SQLQueryBindings } from "bun:sqlite";
-import { hasPrivateVisibilityTag, nowIso, parseArrayJson } from "../core/core-utils.js";
+import { hasPrivateVisibilityTag, nowIso, parseArrayJson, parseJsonSafe } from "../core/core-utils.js";
 
 export type RecallProjectionMode = "dry_run" | "write";
 
@@ -18,7 +18,7 @@ export interface RecallProjectionItem {
   workspace: string | null;
   tenant: string | null;
   session_id: string | null;
-  source_type: "observation";
+  source_type: "observation" | "adr";
   source_id: string;
   source_ref: string;
   projection_generation: string;
@@ -57,6 +57,7 @@ interface ObservationRow {
   memory_type: string | null;
   tags_json: string | null;
   privacy_tags_json: string | null;
+  payload_json: string | null;
   user_id: string | null;
   team_id: string | null;
   created_at: string | null;
@@ -81,10 +82,28 @@ function increment(map: Record<string, number>, key: string): void {
 function mapRecallType(row: ObservationRow): RecallProjectionItem["recall_type"] {
   const observationType = (row.observation_type || "").toLowerCase();
   const memoryType = (row.memory_type || "").toLowerCase();
-  if (observationType.includes("decision") || observationType.includes("adr")) return "decision";
+  const tags = parseArrayJson(row.tags_json ?? "[]").map((tag) => tag.toLowerCase());
+  if (observationType.includes("decision") || observationType.includes("adr") || tags.includes("adr")) return "decision";
   if (observationType.includes("session") || observationType.includes("summary")) return "episode";
   if (memoryType === "procedural" || observationType.includes("profile")) return "profile";
   return "fact";
+}
+
+function metadataFromPayload(payloadJson: string | null): Record<string, unknown> {
+  const payload = parseJsonSafe(payloadJson);
+  return parseJsonSafe(payload.metadata);
+}
+
+function adrSourceRef(metadata: Record<string, unknown>, fallbackId: string): string {
+  const filePath = typeof metadata.filePath === "string" && metadata.filePath.trim()
+    ? metadata.filePath.trim()
+    : null;
+  return filePath ? `adr:${filePath}` : `adr:${fallbackId}`;
+}
+
+function isAdrProjection(row: ObservationRow, metadata: Record<string, unknown>, tags: string[]): boolean {
+  const metadataType = typeof metadata.type === "string" ? metadata.type.toLowerCase() : "";
+  return metadataType === "adr" || tags.map((tag) => tag.toLowerCase()).includes("adr");
 }
 
 export function readRecallDataWatermark(db: Database, request: { project?: string; sessionId?: string }): string {
@@ -122,13 +141,15 @@ export function buildRecallProjectionPlan(db: Database, request: RecallProjectio
   const scopeKey = `project:${sha256Short(project, 12)}`;
   const rows = db
     .query(
-      `SELECT id, project, session_id, title, content_redacted, observation_type, memory_type,
-              tags_json, privacy_tags_json, user_id, team_id, created_at, updated_at, valid_from, valid_to
-       FROM mem_observations
-       WHERE project = ?
-         AND archived_at IS NULL
-         AND (expires_at IS NULL OR expires_at > ?)
-       ORDER BY COALESCE(updated_at, created_at) DESC, created_at DESC, id ASC
+      `SELECT o.id, o.project, o.session_id, o.title, o.content_redacted, o.observation_type, o.memory_type,
+              o.tags_json, o.privacy_tags_json, e.payload_json, o.user_id, o.team_id,
+              o.created_at, o.updated_at, o.valid_from, o.valid_to
+       FROM mem_observations o
+       LEFT JOIN mem_events e ON e.event_id = o.event_id
+       WHERE o.project = ?
+         AND o.archived_at IS NULL
+         AND (o.expires_at IS NULL OR o.expires_at > ?)
+       ORDER BY COALESCE(o.updated_at, o.created_at) DESC, o.created_at DESC, o.id ASC
        LIMIT ?`
     )
     .all(project, projectedAt, limit) as ObservationRow[];
@@ -147,8 +168,12 @@ export function buildRecallProjectionPlan(db: Database, request: RecallProjectio
       continue;
     }
     const tags = parseArrayJson(row.tags_json ?? "[]");
+    const sourceMetadata = metadataFromPayload(row.payload_json);
+    const isAdr = isAdrProjection(row, sourceMetadata, tags);
     const recallType = mapRecallType(row);
-    const recallId = `rcl_${sha256Short(`${generation}:observation:${row.id}`, 24)}`;
+    const sourceType: RecallProjectionItem["source_type"] = isAdr ? "adr" : "observation";
+    const sourceRef = isAdr ? adrSourceRef(sourceMetadata, row.id) : `observation:${row.id}`;
+    const recallId = `rcl_${sha256Short(`${generation}:${sourceType}:${sourceRef}`, 24)}`;
     items.push({
       recall_id: recallId,
       recall_type: recallType,
@@ -156,9 +181,9 @@ export function buildRecallProjectionPlan(db: Database, request: RecallProjectio
       workspace: null,
       tenant: row.team_id || row.user_id || null,
       session_id: row.session_id,
-      source_type: "observation",
+      source_type: sourceType,
       source_id: row.id,
-      source_ref: `observation:${row.id}`,
+      source_ref: sourceRef,
       projection_generation: generation,
       title: row.title,
       content_redacted: content.slice(0, 2_000),
@@ -171,6 +196,22 @@ export function buildRecallProjectionPlan(db: Database, request: RecallProjectio
         observation_type: row.observation_type ?? "context",
         memory_type: row.memory_type ?? "semantic",
         tags,
+        ...sourceMetadata,
+        provenance: isAdr
+          ? {
+              source: typeof sourceMetadata.source === "string" ? sourceMetadata.source : sourceRef,
+              file_path: typeof sourceMetadata.filePath === "string" ? sourceMetadata.filePath : null,
+              source_plans_section: typeof sourceMetadata.sourcePlansSection === "string"
+                ? sourceMetadata.sourcePlansSection
+                : null,
+              decisions_md_refs: Array.isArray(sourceMetadata.decisionsMdRefs)
+                ? sourceMetadata.decisionsMdRefs
+                : [],
+              work_refs: Array.isArray(sourceMetadata.workRefs) ? sourceMetadata.workRefs : [],
+              supersedes: Array.isArray(sourceMetadata.supersedes) ? sourceMetadata.supersedes : [],
+              observation_id: row.id,
+            }
+          : undefined,
       }),
     });
   }

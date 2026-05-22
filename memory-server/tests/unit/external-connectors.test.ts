@@ -304,6 +304,55 @@ This avoids API costs and latency.
     expect(observation!.metadata.project).toBe("harness-mem");
   });
 
+  it("BEADS ADR metadata を provenance として抽出する", () => {
+    const { observation, error } = parseAdrFile({
+      filePath: "docs/adr/ADR-004-recall-runtime.md",
+      content: `# ADR-004: Recall Runtime
+
+Status: Accepted
+Source Plans Section: Plans.md §128 S128-011
+
+## Status
+Accepted
+
+## Source Plans Section
+Plans.md §128 S128-011
+
+## Evidence
+- .claude/memory/decisions.md#D13
+
+## Options
+- SQLite projection
+- Qdrant sidecar
+
+## Decision
+Use local projection as the hot recall path.
+
+## Consequences
+- Repeat recall becomes stable under large DBs
+
+## Supersedes
+- ADR-003
+`,
+      project: "harness-mem",
+    });
+
+    expect(error).toBeUndefined();
+    expect(observation!.metadata.status).toBe("accepted");
+    expect(observation!.metadata.sourcePlansSection).toBe("Plans.md §128 S128-011");
+    expect(observation!.metadata.options).toEqual(["SQLite projection", "Qdrant sidecar"]);
+    expect(observation!.metadata.consequences).toEqual(["Repeat recall becomes stable under large DBs"]);
+    expect(observation!.metadata.supersedes).toEqual(["ADR-003"]);
+    expect(observation!.metadata.decisionsMdRefs).toEqual([".claude/memory/decisions.md#D13"]);
+    expect(observation!.metadata.workRefs).toContain("S128-011");
+    expect(observation!.metadata.workRefs).toContain("§128");
+    expect(observation!.metadata.provenance).toMatchObject({
+      file_path: "docs/adr/ADR-004-recall-runtime.md",
+      source_plans_section: "Plans.md §128 S128-011",
+      supersedes: ["ADR-003"],
+    });
+  });
+
   it("ファイル名から日付を推定する", () => {
     const { observation } = parseAdrFile({
       filePath: "docs/adr/2026-01-15-use-sqlite.md",

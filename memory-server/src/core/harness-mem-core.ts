@@ -3591,6 +3591,9 @@ export class HarnessMemCore {
       }
       const title = row.title ?? "";
       const content = row.content_redacted ?? "";
+      const metadata: Record<string, unknown> = row.metadata_json
+        ? JSON.parse(row.metadata_json) as Record<string, unknown>
+        : {};
       const titleLower = title.toLowerCase();
       const haystack = `${titleLower}\n${content.toLowerCase()}`;
       let score = haystack.includes(query) ? 3 : 0;
@@ -3622,7 +3625,8 @@ export class HarnessMemCore {
         valid_from: row.valid_from,
         valid_to: row.valid_to,
         privacy_tags: privacyTags,
-        metadata: row.metadata_json ? JSON.parse(row.metadata_json) : {},
+        metadata,
+        provenance: metadata.provenance ?? null,
       });
     }
 
