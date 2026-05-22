@@ -318,6 +318,14 @@ interface RecallProjectionRunRow {
   source_watermark: string;
   completed_at: string | null;
 }
+type RecallExplanationReason =
+  | "scope_match"
+  | "type_match"
+  | "source_match"
+  | "lexical_match"
+  | "adr_provenance"
+  | "work_ref"
+  | "degraded_fallback";
 
 export function buildVectorBackfillChildCommand(
   scriptPath: string,
@@ -3555,6 +3563,145 @@ export class HarnessMemCore {
     return unique.length > 0 ? unique : [normalized].filter(Boolean);
   }
 
+  private recallScopeLabel(request: { project?: string; session_id?: string; forensic?: boolean }): string {
+    if (request.forensic === true) return "forensic";
+    const hasProject = typeof request.project === "string" && request.project.trim().length > 0;
+    const hasSession = typeof request.session_id === "string" && request.session_id.trim().length > 0;
+    if (hasProject && hasSession) return "project_session";
+    if (hasProject) return "project";
+    if (hasSession) return "session";
+    return "none";
+  }
+
+  private isSafeRecallExplanationString(value: string): boolean {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const lower = trimmed.toLowerCase();
+    if (/(secret|token|password|api[_-]?key|private[_-]?key|bearer\s+)/.test(lower)) return false;
+    if (/(^|[\s"'=])\/Users\//.test(trimmed) || /[A-Za-z]:\\Users\\/.test(trimmed)) return false;
+    return true;
+  }
+
+  private compactRecallExplanationString(value: unknown, maxLength = 120): string | undefined {
+    if (typeof value !== "string") return undefined;
+    const compact = value.replace(/\s+/g, " ").trim();
+    if (!this.isSafeRecallExplanationString(compact)) return undefined;
+    return compact.length > maxLength ? `${compact.slice(0, maxLength - 1)}...` : compact;
+  }
+
+  private compactRecallExplanationList(value: unknown, maxItems = 4, maxLength = 80): string[] {
+    if (!Array.isArray(value)) return [];
+    const seen = new Set<string>();
+    const items: string[] = [];
+    for (const entry of value) {
+      const compact = this.compactRecallExplanationString(entry, maxLength);
+      if (!compact || seen.has(compact)) continue;
+      seen.add(compact);
+      items.push(compact);
+      if (items.length >= maxItems) break;
+    }
+    return items;
+  }
+
+  private buildRecallProjectionExplanation(params: {
+    row: RecallProjectionSearchRow;
+    request: { project: string; session_id?: string };
+    metadata: Record<string, unknown>;
+    lexical: boolean;
+  }): Record<string, unknown> {
+    const provenance = params.metadata.provenance && typeof params.metadata.provenance === "object"
+      ? params.metadata.provenance as Record<string, unknown>
+      : {};
+    const reasons: RecallExplanationReason[] = ["scope_match", "type_match", "source_match"];
+    if (params.lexical) reasons.push("lexical_match");
+
+    const sourceRef = this.compactRecallExplanationString(params.row.source_ref, 160);
+    const workRefs = [
+      ...this.compactRecallExplanationList(provenance.work_refs),
+      ...this.compactRecallExplanationList(params.metadata.workRefs),
+    ].filter((value, index, list) => list.indexOf(value) === index).slice(0, 4);
+    const sourcePlansSection =
+      this.compactRecallExplanationString(provenance.source_plans_section) ??
+      this.compactRecallExplanationString(params.metadata.sourcePlansSection);
+
+    const explanation: Record<string, unknown> = {
+      version: "recall_explanation_v1",
+      summary: "",
+      reasons,
+      scope: this.recallScopeLabel(params.request),
+      type: params.row.recall_type,
+      source: {
+        type: params.row.source_type,
+        ...(sourceRef ? { ref: sourceRef } : {}),
+      },
+    };
+
+    if (params.row.source_type === "adr") {
+      reasons.push("adr_provenance");
+      const options = Array.isArray(params.metadata.options) ? params.metadata.options : [];
+      const consequences = Array.isArray(params.metadata.consequences) ? params.metadata.consequences : [];
+      const supersedes = this.compactRecallExplanationList(
+        Array.isArray(provenance.supersedes) ? provenance.supersedes : params.metadata.supersedes,
+      );
+      explanation.adr = {
+        ...(this.compactRecallExplanationString(params.metadata.status, 40)
+          ? { status: this.compactRecallExplanationString(params.metadata.status, 40) }
+          : {}),
+        ...(sourcePlansSection ? { source_plans_section: sourcePlansSection } : {}),
+        option_count: options.length,
+        consequence_count: consequences.length,
+        ...(supersedes.length > 0 ? { supersedes } : {}),
+      };
+    }
+
+    if (workRefs.length > 0 || sourcePlansSection) {
+      reasons.push("work_ref");
+      explanation.work = {
+        ...(workRefs.length > 0 ? { refs: workRefs } : {}),
+        ...(sourcePlansSection ? { source_plans_section: sourcePlansSection } : {}),
+      };
+    }
+
+    explanation.summary = reasons.join("+");
+    return explanation;
+  }
+
+  private attachFallbackRecallExplanations(response: ApiResponse, request: RecallRuntimeRequest, reason: string): ApiResponse {
+    if (!Array.isArray(response.items)) return response;
+    response.items = response.items.map((item) => {
+      if (!item || typeof item !== "object") return item;
+      const record = item as Record<string, unknown>;
+      const sourceRef = typeof record.id === "string"
+        ? this.compactRecallExplanationString(`observation:${record.id}`, 160)
+        : undefined;
+      const reasons: RecallExplanationReason[] = ["scope_match", "source_match", "degraded_fallback"];
+      if (typeof record.observation_type === "string" || typeof record.memory_type === "string") {
+        reasons.push("type_match");
+      }
+      if (record.reason) reasons.push("lexical_match");
+      return {
+        ...record,
+        explanation: {
+          version: "recall_explanation_v1",
+          summary: reasons.join("+"),
+          reasons,
+          scope: this.recallScopeLabel(request),
+          type: typeof record.observation_type === "string"
+            ? record.observation_type
+            : typeof record.memory_type === "string"
+              ? record.memory_type
+              : "observation",
+          source: {
+            type: "observation",
+            ...(sourceRef ? { ref: sourceRef } : {}),
+          },
+          fallback: reason,
+        },
+      };
+    });
+    return response;
+  }
+
   private searchRecallProjection(request: {
     query: string;
     project: string;
@@ -3596,14 +3743,28 @@ export class HarnessMemCore {
         : {};
       const titleLower = title.toLowerCase();
       const haystack = `${titleLower}\n${content.toLowerCase()}`;
-      let score = haystack.includes(query) ? 3 : 0;
+      const exactQueryMatch = haystack.includes(query);
+      let score = exactQueryMatch ? 3 : 0;
+      let termMatch = false;
       for (const term of terms) {
-        if (titleLower.includes(term)) score += 2;
-        if (haystack.includes(term)) score += 1;
+        const titleMatch = titleLower.includes(term);
+        const bodyMatch = haystack.includes(term);
+        if (titleMatch) score += 2;
+        if (bodyMatch) score += 1;
+        termMatch = termMatch || titleMatch || bodyMatch;
       }
       if (score <= 0) {
         continue;
       }
+      const explanation = this.buildRecallProjectionExplanation({
+        row,
+        request: {
+          project: request.project,
+          session_id: request.session_id,
+        },
+        metadata,
+        lexical: exactQueryMatch || termMatch,
+      });
       items.push({
         id: row.recall_id,
         recall_id: row.recall_id,
@@ -3627,6 +3788,7 @@ export class HarnessMemCore {
         privacy_tags: privacyTags,
         metadata,
         provenance: metadata.provenance ?? null,
+        explanation,
       });
     }
 
@@ -3668,6 +3830,7 @@ export class HarnessMemCore {
       projection_source_watermark: projectionRun?.source_watermark ?? null,
       current_source_watermark: sourceWatermark,
     });
+    this.attachFallbackRecallExplanations(fallback, request, reason);
     this.recordRecallProjectTelemetry(startedAt, request, fallback, projectionRun, sourceWatermark);
     return fallback;
   }

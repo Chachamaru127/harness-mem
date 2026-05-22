@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 const SCRIPT = resolve(import.meta.dir, "../scripts/harness-mem");
+const HARNESS_MEM_SOURCE = readFileSync(SCRIPT, "utf8");
 
 async function runHarnessMem(args: string[], home: string): Promise<{ code: number; stdout: string; stderr: string }> {
   const proc = Bun.spawn(["bash", SCRIPT, ...args], {
@@ -47,5 +48,13 @@ describe("recall CLI contract", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
+  });
+
+  test("recall explain exposes compact /v1/recall explanation contract", () => {
+    expect(HARNESS_MEM_SOURCE).toContain("recall explain");
+    expect(HARNESS_MEM_SOURCE).toContain("/v1/recall");
+    expect(HARNESS_MEM_SOURCE).toContain("explanation");
+    expect(HARNESS_MEM_SOURCE).toContain("without memory body text");
+    expect(HARNESS_MEM_SOURCE).not.toContain("content_redacted,");
   });
 });

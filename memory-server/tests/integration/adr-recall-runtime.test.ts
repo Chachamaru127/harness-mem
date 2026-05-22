@@ -121,6 +121,7 @@ describe("ADR recall runtime ingestion", () => {
             source_ref?: string;
             metadata?: Record<string, unknown>;
             provenance?: Record<string, unknown>;
+            explanation?: Record<string, unknown>;
           }>;
           meta: Record<string, unknown>;
         };
@@ -145,6 +146,33 @@ describe("ADR recall runtime ingestion", () => {
           work_refs: ["S128-011", "§128"],
           supersedes: ["ADR-003"],
         });
+        expect(payload.items[0].explanation).toMatchObject({
+          version: "recall_explanation_v1",
+          scope: "project",
+          type: "decision",
+          source: {
+            type: "adr",
+            ref: "adr:docs/adr/ADR-004-recall-runtime-adr-ingestion.md",
+          },
+          adr: {
+            status: "accepted",
+            source_plans_section: "Plans.md §128 S128-011",
+            option_count: 2,
+            consequence_count: 2,
+            supersedes: ["ADR-003"],
+          },
+          work: {
+            refs: ["S128-011", "§128"],
+            source_plans_section: "Plans.md §128 S128-011",
+          },
+        });
+        expect(payload.items[0].explanation?.reasons).toEqual(
+          expect.arrayContaining(["scope_match", "type_match", "source_match", "lexical_match", "adr_provenance", "work_ref"]),
+        );
+        const explanationJson = JSON.stringify(payload.items[0].explanation);
+        expect(explanationJson).not.toContain("Qdrant sidecar");
+        expect(explanationJson).not.toContain("Repeat recall stays stable under large DBs");
+        expect(explanationJson).not.toContain(project);
       }
     } finally {
       runtime.stop();

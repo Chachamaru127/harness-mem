@@ -157,6 +157,18 @@ describe("Recall Runtime API", () => {
       expect(hitPayload.ok).toBe(true);
       expect(hitPayload.items.length).toBe(1);
       expect(hitPayload.items[0].source_ref).toMatch(/^observation:/);
+      expect(hitPayload.items[0].explanation).toMatchObject({
+        version: "recall_explanation_v1",
+        scope: "project",
+        type: "fact",
+        source: { type: "observation" },
+      });
+      expect(hitPayload.items[0].explanation).not.toHaveProperty("project");
+      expect((hitPayload.items[0].explanation as { reasons?: unknown[] }).reasons).toEqual(
+        expect.arrayContaining(["scope_match", "type_match", "source_match", "lexical_match"]),
+      );
+      expect(JSON.stringify(hitPayload.items[0].explanation)).not.toContain("alpha sentinel");
+      expect(JSON.stringify(hitPayload.items[0].explanation)).not.toContain(project);
       expect(hitPayload.meta.ranking).toBe("recall_projection_v1");
       expect(hitPayload.meta.recall_degraded).toBe(false);
 
@@ -177,6 +189,13 @@ describe("Recall Runtime API", () => {
       expect(stalePayload.meta.ranking).toBe("recall_degraded_fallback_v1");
       expect(stalePayload.meta.recall_degraded).toBe(true);
       expect(stalePayload.meta.recall_degraded_reason).toBe("projection_stale");
+      expect(stalePayload.items[0].explanation).toMatchObject({
+        version: "recall_explanation_v1",
+        scope: "project",
+        fallback: "projection_stale",
+      });
+      expect(JSON.stringify(stalePayload.items[0].explanation)).not.toContain("beta sentinel");
+      expect(JSON.stringify(stalePayload.items[0].explanation)).not.toContain(project);
     } finally {
       runtime.stop();
     }

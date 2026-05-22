@@ -134,7 +134,7 @@ Unified Harness Memory helper
 Commands:
   setup      Configure Codex/OpenCode/Cursor/Claude wiring, start daemon, run smoke and quality checks.
   doctor     Validate wiring and daemon health (optionally repair with --fix).
-  recall     Manage contextual recall mode (on|quiet|off|status).
+  recall     Manage contextual recall mode (on|quiet|off|status) or explain recall results.
   versions   Snapshot local/upstream versions for Codex/OpenCode/Cursor/Claude/Antigravity.
   update     Update global harness-mem package and prompt auto-update opt-in (interactive).
   smoke      Run isolated daemon smoke test against record/search privacy flow.
@@ -261,6 +261,12 @@ Command options:
     quiet             Enable quiet contextual recall (default, rerank threshold 0.8 / fallback top 1)
     off               Disable contextual recall injection
     status            Show current contextual recall mode
+    explain           Query /v1/recall and print compact explanation-only result JSON
+      --query <text>    Required recall query
+      --project <name>  Project scope; use with --session for narrower scope
+      --session <id>    Session scope
+      --limit <n>       Result limit (default: 5)
+      --url <url>       Override endpoint (default: http://127.0.0.1:${HARNESS_MEM_PORT:-37888}/v1/recall)
   adr new:
     --title <title>       ADR title (also used for slug unless --slug is provided)
     --status <status>     Proposed|Accepted|Superseded|Deprecated|Rejected
@@ -6882,6 +6888,98 @@ model_impl() {
   esac
 }
 
+recall_explain_impl() {
+  local query=""
+  local project=""
+  local session_id=""
+  local limit="5"
+  local url="http://${MEM_HOST}:${MEM_PORT}/v1/recall"
+
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --query)
+        query="${2:-}"
+        shift 2
+        ;;
+      --project)
+        project="${2:-}"
+        shift 2
+        ;;
+      --session|--session-id)
+        session_id="${2:-}"
+        shift 2
+        ;;
+      --limit)
+        limit="${2:-}"
+        shift 2
+        ;;
+      --url)
+        url="${2:-}"
+        shift 2
+        ;;
+      --help|-h)
+        cat <<'EOF'
+Usage: harness-mem recall explain --query <text> (--project <name>|--session <id>) [--limit <n>] [--url <url>]
+
+Prints compact recall explanations from /v1/recall without memory body text.
+EOF
+        return 0
+        ;;
+      *)
+        fail "Unknown recall explain option: $1"
+        ;;
+    esac
+  done
+
+  [ -n "$query" ] || fail "recall explain requires --query"
+  [ -n "$project$session_id" ] || fail "recall explain requires --project or --session"
+  case "$limit" in
+    ''|*[!0-9]*)
+      fail "recall explain --limit must be a positive integer"
+      ;;
+  esac
+
+  require_cmd curl
+  require_cmd jq
+
+  local payload
+  payload="$(
+    jq -n \
+      --arg query "$query" \
+      --arg project "$project" \
+      --arg session_id "$session_id" \
+      --argjson limit "$limit" \
+      '{
+        query: $query,
+        limit: $limit
+      }
+      + (if $project != "" then {project: $project} else {} end)
+      + (if $session_id != "" then {session_id: $session_id} else {} end)'
+  )"
+
+  curl --silent --show-error --fail --max-time 8 \
+    -H "content-type: application/json" \
+    -d "$payload" \
+    "$url" |
+    jq '{
+      ok,
+      items: [(.items // [])[] | {
+        id,
+        title,
+        recall_type,
+        source_type,
+        source_ref,
+        explanation
+      }],
+      meta: {
+        count: .meta.count,
+        ranking: .meta.ranking,
+        recall_degraded: .meta.recall_degraded,
+        recall_degraded_reason: .meta.recall_degraded_reason
+      }
+    }'
+}
+
 recall_impl() {
   local subcmd="${1:-status}"
   case "$subcmd" in
@@ -6896,8 +6994,12 @@ recall_impl() {
     status)
       echo "contextual recall mode: $(read_recall_mode)"
       ;;
+    explain)
+      shift
+      recall_explain_impl "$@"
+      ;;
     *)
-      fail "Unknown recall subcommand: ${subcmd}. Use: on | quiet | off | status"
+      fail "Unknown recall subcommand: ${subcmd}. Use: on | quiet | off | status | explain"
       ;;
   esac
 }
