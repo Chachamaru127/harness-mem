@@ -1,5 +1,6 @@
 import { HarnessMemCore, getConfig } from "./core/harness-mem-core";
 import { checkRemoteBindSafety, startHarnessMemServer } from "./server";
+import { shutdownTelemetry } from "./telemetry/otel";
 
 const config = getConfig();
 
@@ -20,15 +21,22 @@ const server = startHarnessMemServer(core, config);
 
 console.error(`[harness-memd] listening on http://${config.bindHost}:${config.bindPort}`);
 
-const gracefulShutdown = (signal: string): void => {
+let shuttingDown = false;
+const gracefulShutdown = async (signal: string): Promise<void> => {
+  if (shuttingDown) return;
+  shuttingDown = true;
   console.error(`[harness-memd] received ${signal}, draining queue and shutting down`);
+  server.stop(true);
   try {
     core.shutdown(signal);
   } finally {
-    server.stop(true);
+    const telemetry = await shutdownTelemetry(signal);
+    if (telemetry.exporter.last_flush_ok === false) {
+      console.error(`[harness-memd] telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
+    }
     process.exit(0);
   }
 };
 
-process.on("SIGINT", () => gracefulShutdown("SIGINT"));
-process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => { void gracefulShutdown("SIGINT"); });
+process.on("SIGTERM", () => { void gracefulShutdown("SIGTERM"); });

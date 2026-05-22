@@ -56,6 +56,7 @@ import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
+import { getTelemetryStatus } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
@@ -4225,6 +4226,7 @@ export class HarnessMemCore {
           embedding_readiness_required: embeddingReadiness.required,
           embedding_readiness_state: embeddingReadiness.state,
           embedding_readiness_retryable: embeddingReadiness.retryable,
+          telemetry: getTelemetryStatus(),
           features: {
             capture: this.config.captureEnabled,
             retrieval: this.config.retrievalEnabled,

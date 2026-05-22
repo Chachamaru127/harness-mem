@@ -9,6 +9,7 @@
 
 import { createInterface } from "node:readline";
 import { HarnessMemCore, getConfig } from "../core/harness-mem-core";
+import { initializeTelemetry, resolveHarnessMemVersion, shutdownTelemetry } from "../telemetry/otel";
 import type { ApiResponse, SearchRequest } from "../core/types";
 
 interface SearchWorkerRequestEnvelope {
@@ -128,24 +129,36 @@ async function runSearch(
 }
 
 async function main(): Promise<void> {
+  initializeTelemetry({
+    serviceName: "harness-mem-search-worker",
+    serviceVersion: resolveHarnessMemVersion(),
+    component: "search-worker",
+    resourceAttributes: {
+      "harness.worker.kind": "search",
+    },
+  });
   const core = new HarnessMemCore({
     ...getConfig(),
     backgroundWorkersEnabled: false,
   });
   let shuttingDown = false;
-  const shutdown = (): void => {
+  const shutdown = async (reason: string): Promise<void> => {
     if (shuttingDown) {
       return;
     }
     shuttingDown = true;
     try {
-      core.shutdown("search-worker");
+      core.shutdown(reason);
     } finally {
+      const telemetry = await shutdownTelemetry(reason);
+      if (telemetry.exporter.last_flush_ok === false) {
+        console.error(`telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
+      }
       process.exit(0);
     }
   };
-  process.once("SIGTERM", shutdown);
-  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", () => { void shutdown("SIGTERM"); });
+  process.once("SIGINT", () => { void shutdown("SIGINT"); });
 
   const warmupState: SearchWorkerWarmupState = {
     done: false,
@@ -190,6 +203,10 @@ async function main(): Promise<void> {
     }
   } finally {
     core.shutdown("search-worker-eof");
+    const telemetry = await shutdownTelemetry("search-worker-eof");
+    if (telemetry.exporter.last_flush_ok === false) {
+      console.error(`telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
+    }
   }
 }
 

@@ -16,6 +16,7 @@ import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js"
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
 import { createSignalStore, type SignalStore } from "./lease/signal-store";
+import { initializeTelemetry, resolveHarnessMemVersion } from "./telemetry/otel";
 import { claimWork, closeWork, handoffWork } from "./workgraph/lifecycle";
 import { rankNextWork } from "./workgraph/next";
 import { evaluateWorkReadiness } from "./workgraph/ready";
@@ -413,6 +414,16 @@ function tooManyRequests(resetAt: number): Response {
 }
 
 export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
+  initializeTelemetry({
+    serviceName: "harness-mem-memory-daemon",
+    serviceVersion: resolveHarnessMemVersion(),
+    component: "memory-daemon",
+    resourceAttributes: {
+      "harness.bind_host": config.bindHost,
+      "harness.bind_port": config.bindPort,
+    },
+  });
+
   // HARDEN-003: Sync エンドポイント用インメモリストア（サーバー起動時に初期化）
   const syncStore: SyncStore = createSyncStore();
 
