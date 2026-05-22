@@ -556,6 +556,26 @@ export interface Config {
   reindexVectorsIntervalMs?: number;
   /** S89-003: 1 tick あたりの reindex 件数上限 (既定 100) */
   reindexVectorsBatchSize?: number;
+  /** S132: restore-capable forget maintenance scheduler を有効にするか (既定 false = opt-in) */
+  forgetMaintenanceEnabled?: boolean;
+  /** S132: scheduler tick 間隔 ms (既定 3600000 = 1 時間) */
+  forgetMaintenanceIntervalMs?: number;
+  /** S132: automatic maintenance mode。dry-run は mutation なし、archive は restore-capable archive のみ */
+  forgetMaintenanceMode?: "dry-run" | "archive";
+  /** S132: interval tick 自体を trigger として扱うか。false の場合は threshold 超過時だけ動く */
+  forgetMaintenanceScheduleEnabled?: boolean;
+  /** S132: 1 batch あたりの候補数上限 */
+  forgetMaintenanceLimit?: number;
+  /** S132: forget policy score threshold */
+  forgetMaintenanceScoreThreshold?: number;
+  /** S132: accessed rows を保護するか */
+  forgetMaintenanceProtectAccessed?: boolean;
+  /** S132: DB file size threshold bytes */
+  forgetMaintenanceDbBytesThreshold?: number;
+  /** S132: WAL file size threshold bytes */
+  forgetMaintenanceWalBytesThreshold?: number;
+  /** S132: active observations threshold */
+  forgetMaintenanceActiveObservationsThreshold?: number;
   /** S108-014: temporal graph signal PoC を有効にするか (既定 false = opt-in)。
    *  daemon 起動時に env / userConfig から一度だけ解決し、search hot path では
    *  config 経由で読む（per-search の process.env 読み取りを廃止）。 */

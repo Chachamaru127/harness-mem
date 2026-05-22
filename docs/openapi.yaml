@@ -2462,6 +2462,46 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/admin/forget/maintenance:
+    post:
+      summary: Run archive-first forget maintenance
+      description: >
+        Runs the manual/scheduled/threshold forget maintenance surface. By default
+        it returns a dry-run archive-first plan. When the daemon is configured with
+        forget maintenance mode=archive, triggered maintenance may write
+        restore-capable archive rows. It never executes hard purge or database
+        compaction.
+      operationId: adminForgetMaintenance
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Operator or scheduler reason label.
+                force:
+                  type: boolean
+                  description: Run maintenance even if configured thresholds are not exceeded.
+      responses:
+        "200":
+          description: Maintenance plan, skip, or archive result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/admin/forget/backup-evidence:
     post:
       summary: Preverify backup evidence for hard purge

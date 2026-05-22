@@ -437,6 +437,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       try {
         const url = new URL(request.url);
         const remoteAddress = server?.requestIP(request)?.address ?? null;
+        if (url.pathname.startsWith("/v1/admin/forget/")) {
+          server?.timeout(request, 255);
+        }
 
         // V5-010: Rate Limiting（全エンドポイントに適用）
         if (rateLimiter) {
@@ -1362,6 +1365,14 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
                 ? body.manifest_hash
                 : undefined,
             reason: typeof body.reason === "string" ? body.reason : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/maintenance") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetMaintenance({
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+            force: parseBooleanLike(body.force, false),
           }));
         }
 

@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-21（§131 runtime drift cleanup + remaining purge）
+最終更新: 2026-05-22（§132 live cleanup + forget maintenance automation）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -1094,6 +1094,33 @@ Risk Gate update (2026-05-20): S129-005 は live DB に対して read-only readi
 - S131-003/S131-004 はユーザーが 2026-05-21 に明示承認済み。ただし fresh backup、preverified evidence、manifest 一致、legal_hold 0、archive coverage 90/90 が満たせない場合は実行しない。
 - LaunchAgent は S131 完了時点では S130 worktree に揃える。正式 merge / release 後に canonical checkout へ戻すかは release decision で扱う。
 - Raw preverified token と confirmation phrase は ops artifact に保存しない。
+
+## §132 Live Cleanup + Forget Maintenance Automation (2026-05-21) — cc:完了 [local]
+
+策定日: 2026-05-21
+分類: Memory lifecycle / live cleanup / scheduled and threshold maintenance
+
+判断: 14GB live DB の cleanup は、引き続き **archive-first + fresh backup + gated hard purge + compact** の順で行う。自動実行は schedule / threshold で **restore-capable archive まで**を opt-in 実行可能にし、hard purge / VACUUM は自動では走らせない。理由: archive は検索対象から安全に外せるが、物理削除と DB swap は復元・空き容量・daemon 停止を伴う Risk Gate なので、無人実行すると事故時の説明可能性が落ちる。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S132-001 | **Live forget plan timeout unblock** `[tdd:required]` — live 348k+ observations で `/v1/admin/forget/plan` が Bun default 10s idle timeout に当たり得るため、admin forget request timeout を明示延長する | plan/archive/backup-evidence/hard-purge/maintenance の長時間 admin request が server timeout で落ちない。contract test と live plan smoke PASS | S131 | cc:完了 [local] |
+| S132-002 | **Forget maintenance scheduler / threshold trigger** `[tdd:required]` — daemon opt-in の schedule / threshold trigger を追加し、mode=`dry-run` or `archive` で archive-first batch を実行できるようにする | `HARNESS_MEM_FORGET_MAINTENANCE_ENABLED=1` で scheduler 起動。schedule trigger と db/wal/active-count threshold trigger が audit つきで dry-run/archive を実行。default は disabled + dry-run。hard purge / VACUUM は実行しない | S132-001 | cc:完了 [local] |
+| S132-003 | **Manual maintenance endpoint / CLI surface** `[tdd:required]` — `POST /v1/admin/forget/maintenance` で同じ判定を手動実行できるようにし、既存 manual archive/purge 経路と併存させる | force/manual 実行、threshold-only skip、archive execute が API test で固定される。MCP には destructive hard purge を出さない既存方針を維持 | S132-002 | cc:完了 [local] |
+| S132-004 | **Live DB cleanup batch** `[tdd:skip:ops-risk-gate]` — fresh backup 後に live DB の forget candidates を archive-first で退避し、preverified evidence を使って hard purge、最後に compact 要否を判断する | fresh backup sha256/integrity OK、archive/purge counts、health、file size/free pages、rollback path、実行しなかった場合の理由が docs/ops に残る | S132-003 | cc:完了 [local] |
+| S132-005 | **Autopilot runbook / release review** `[tdd:skip:docs]` — schedule/threshold の推奨値、無人実行の境界、manual hard purge/compact 手順を docs/ops または lifecycle spec に反映する | operator が「自動 archive」と「手動 purge/compact」の違いを判断でき、release reflection が更新される | S132-004 | cc:完了 [local] |
+| S132-006 | **Derived cache cleanup follow-up** `[tdd:required]` — S132 live cleanup で 14GB の主因が low-score observations より vector/graph derived data にあると判明したため、stale vector pruning を first-class command/API 化し、graph link/relation cleanup policy を設計する | stale vector prune is covered by tests and ops evidence; graph/link cleanup has a dry-run impact plan before any live mutation | S132-004 | cc:TODO |
+
+### Automation Contract
+
+- Schedule trigger: configured interval で候補を dry-run または restore-capable archive にする。
+- Threshold trigger: DB size / WAL size / active observation count のいずれかが閾値を超えた時だけ同じ batch を走らせる。
+- Default: disabled。enabled でも mode default は `dry-run`。
+- Automatic boundary: hard purge, payload clearing, `VACUUM` / `VACUUM INTO`, DB file swap は自動実行しない。
+- Safety: legal_hold / private / secret / sensitive は候補除外。archive execute は manifest match と reason 必須。
+- S132 live evidence: 700 rows hard-purged behind backup evidence, stale vector cache pruning removed 177184 derived rows, and compact reduced the live DB from roughly 14.42GB to roughly 13.11GB. Evidence: `docs/ops/s132-live-cleanup-automation-2026-05-22.md`.
 
 
 ## アーカイブ (完了 / 休止セクション)

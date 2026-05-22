@@ -478,6 +478,120 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
+  test("forget maintenance skips when no schedule or threshold trigger fires", () => {
+    const config = createConfig("forget-maintenance-skip");
+    config.forgetMaintenanceMode = "dry-run";
+    config.forgetMaintenanceActiveObservationsThreshold = 100;
+    const core = new HarnessMemCore(config);
+    try {
+      core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-maintenance-skip",
+          payload: { content: "maintenance skip candidate phrase" },
+        })
+      );
+
+      const result = core.adminForgetMaintenance({ reason: "scheduler" });
+      expect(result.ok).toBe(true);
+      expect(result.meta.skipped).toBe("thresholds_not_exceeded");
+      expect((result.items[0] as { mode: string }).mode).toBe("forget_maintenance_skipped");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("forget maintenance dry-run reports threshold candidates without archiving", () => {
+    const config = createConfig("forget-maintenance-dry-run");
+    config.forgetMaintenanceMode = "dry-run";
+    config.forgetMaintenanceActiveObservationsThreshold = 0;
+    config.forgetMaintenanceLimit = 10;
+    const core = new HarnessMemCore(config);
+    try {
+      const inserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-maintenance-dry-run",
+          payload: { content: "maintenance dry run low value phrase" },
+        })
+      );
+      const obsId = (inserted.items[0] as { id: string }).id;
+      const db = core.getRawDb();
+      db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", obsId);
+
+      const result = core.adminForgetMaintenance({ reason: "scheduler" });
+      expect(result.ok).toBe(true);
+      const item = result.items[0] as {
+        mode: string;
+        execute: boolean;
+        triggers: string[];
+        archive_plan: { candidate_count: number; candidate_ids: string[] };
+      };
+      expect(item.mode).toBe("forget_maintenance_plan");
+      expect(item.execute).toBe(false);
+      expect(item.triggers).toContain("threshold:active_observations");
+      expect(item.archive_plan.candidate_count).toBe(1);
+      expect(item.archive_plan.candidate_ids).toContain(obsId);
+
+      const row = db.query(`SELECT archived_at FROM mem_observations WHERE id = ?`).get(obsId) as { archived_at: string | null };
+      expect(row.archived_at).toBeNull();
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("forget maintenance archive mode creates restore-capable archive and leaves purge manual", () => {
+    const config = createConfig("forget-maintenance-archive");
+    config.forgetMaintenanceMode = "archive";
+    config.forgetMaintenanceScheduleEnabled = true;
+    config.forgetMaintenanceLimit = 10;
+    const core = new HarnessMemCore(config);
+    try {
+      const inserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-maintenance-archive",
+          payload: { content: "maintenance archive low value phrase" },
+        })
+      );
+      const obsId = (inserted.items[0] as { id: string }).id;
+      const db = core.getRawDb();
+      db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", obsId);
+
+      const result = core.adminForgetMaintenance({ reason: "scheduler" });
+      expect(result.ok).toBe(true);
+      const item = result.items[0] as {
+        mode: string;
+        execute: boolean;
+        automatic_hard_purge: boolean;
+        automatic_compact: boolean;
+        archive: { archived_count: number; archived_ids: string[] };
+      };
+      expect(item.mode).toBe("forget_maintenance_archive");
+      expect(item.execute).toBe(true);
+      expect(item.automatic_hard_purge).toBe(false);
+      expect(item.automatic_compact).toBe(false);
+      expect(item.archive.archived_count).toBe(1);
+      expect(item.archive.archived_ids).toContain(obsId);
+
+      const row = db.query(`SELECT archived_at FROM mem_observations WHERE id = ?`).get(obsId) as { archived_at: string | null };
+      expect(row.archived_at).toBeTruthy();
+      const archiveRow = db
+        .query<{ stub_count: number; full_count: number }, [string]>(`
+          SELECT
+            (SELECT COUNT(*) FROM mem_archive_stubs WHERE observation_id = ? AND archive_state = 'archived') AS stub_count,
+            (SELECT COUNT(*)
+             FROM mem_archive_full f
+             JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+             WHERE s.observation_id = ?) AS full_count
+        `)
+        .get(obsId, obsId);
+      expect(archiveRow?.stub_count).toBe(1);
+      expect(archiveRow?.full_count).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("hybrid ranking includes recency influence", () => {
     const core = new HarnessMemCore(createConfig("ranking"));
     try {

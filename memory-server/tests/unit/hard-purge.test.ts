@@ -635,6 +635,44 @@ describe("S127-004 hard purge risk gates", () => {
     }
   });
 
+  test("execute accepts a plan that was fresh when the execute request started", () => {
+    const core = new HarnessMemCore(createConfig("manifest-expiry-request-start"));
+    const originalDateNow = Date.now;
+    try {
+      const target = insertObservation(core, "expiry-request-start-target", "target expiry request start row");
+      archiveObservation(core, target);
+      seedArchiveForObservation(core, target);
+      const plan = hardPurgePlan(core, [target]);
+      const requestedAtMs = originalDateNow();
+      const nearExpiry = new Date(requestedAtMs + 1000).toISOString();
+      (core as unknown as { hardPurgePlanExpirations: Map<string, string> })
+        .hardPurgePlanExpirations
+        .set(plan.manifest_hash, nearExpiry);
+
+      let calls = 0;
+      Date.now = () => {
+        calls += 1;
+        return calls === 1 ? requestedAtMs : requestedAtMs + 10 * 60 * 1000;
+      };
+
+      const executed = core.adminForgetHardPurge({
+        target_ids: [target],
+        execute: true,
+        manifest_hash: plan.manifest_hash,
+        manifest_expires_at: nearExpiry,
+        candidate_count: plan.candidate_count,
+        temp_test_backup_token: TEMP_BACKUP_TOKEN,
+        retention_ack: true,
+        archive_ack: true,
+        confirmation: plan.confirmation_phrase,
+      });
+      expect(executed.ok).toBe(true);
+    } finally {
+      Date.now = originalDateNow;
+      core.shutdown("test");
+    }
+  });
+
   test("execute requires restore-capable archive stub and full archive rows", () => {
     const core = new HarnessMemCore(createConfig("archive-required"));
     try {

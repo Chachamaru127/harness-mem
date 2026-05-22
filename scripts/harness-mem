@@ -100,6 +100,8 @@ BACKUP_EVIDENCE_PATH=""
 BACKUP_EVIDENCE_SHA256=""
 BACKUP_EVIDENCE_TTL_SECONDS=""
 BACKUP_EVIDENCE_CANDIDATE_IDS=()
+FORGET_MAINTENANCE_FORCE=0
+FORGET_MAINTENANCE_REASON=""
 VERSION_CHECK_IN_SETUP=1
 AUTO_UPDATE_PACKAGE="${HARNESS_MEM_NPM_PACKAGE:-@chachamaru127/harness-mem}"
 AUTO_UPDATE_CHANNEL="${HARNESS_MEM_AUTO_UPDATE_CHANNEL:-latest}"
@@ -143,6 +145,7 @@ Commands:
   uninstall  Remove memory wiring and optionally purge local memory DB.
   backup                     Create a WAL-safe snapshot of the memory DB via VACUUM INTO.
   backup-evidence            Preverify a backup file and return a hard-purge evidence token.
+  forget-maintenance         Run the archive-first forget maintenance planner/trigger.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
   ingest-hermes-state        Backfill Hermes ~/.hermes/state.db into harness-mem (dry-run by default).
   admin-repair-sqlite-vec-map
@@ -178,6 +181,8 @@ Common options:
   --backup-sha256 <hex> SHA-256 for --backup-path
   --candidate-id <id>   Candidate observation ID covered by backup-evidence (repeatable)
   --ttl-seconds <n>     Lifetime for backup-evidence token (default: 300)
+  --reason <s>          Reason label for forget-maintenance
+  --force               Force forget-maintenance even when thresholds are not exceeded
   --source <path>       Source SQLite path for import-claude-mem
                         For ingest-hermes-state, defaults to ~/.hermes/state.db
   --job <job_id>        Import job id for verify/cutover
@@ -760,6 +765,14 @@ parse_options() {
         shift
         [ "$#" -gt 0 ] || fail "--ttl-seconds requires a number"
         BACKUP_EVIDENCE_TTL_SECONDS="$1"
+        ;;
+      --reason)
+        shift
+        [ "$#" -gt 0 ] || fail "--reason requires a value"
+        FORGET_MAINTENANCE_REASON="$1"
+        ;;
+      --force)
+        FORGET_MAINTENANCE_FORCE=1
         ;;
       --source)
         shift
@@ -3791,6 +3804,31 @@ backup_evidence_impl() {
   if [ -n "$token" ]; then
     log "Backup evidence token created: $token"
   fi
+}
+
+forget_maintenance_impl() {
+  ensure_dependencies
+  local payload
+  payload="$(
+    jq -nc \
+      --arg reason "$FORGET_MAINTENANCE_REASON" \
+      --argjson force "$FORGET_MAINTENANCE_FORCE" \
+      '{
+        force: ($force == 1)
+      } + (if $reason == "" then {} else {reason: $reason} end)'
+  )"
+
+  start_daemon
+
+  local response
+  response="$(
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" admin-forget-maintenance "$payload"
+  )"
+  echo "$response"
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Forget maintenance failed"
 }
 
 admin_repair_sqlite_vec_map_impl() {
@@ -7066,6 +7104,9 @@ main() {
       ;;
     backup-evidence)
       backup_evidence_impl
+      ;;
+    forget-maintenance)
+      forget_maintenance_impl
       ;;
     import-claude-mem)
       import_claude_mem_impl

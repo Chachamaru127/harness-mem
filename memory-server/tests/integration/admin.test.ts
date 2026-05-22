@@ -58,10 +58,11 @@ function findAvailablePort(): Promise<number> {
   });
 }
 
-async function createRuntime(name: string): Promise<{ baseUrl: string; core: HarnessMemCore; stop: () => void }> {
+async function createRuntime(name: string, configure?: (config: Config) => void): Promise<{ baseUrl: string; core: HarnessMemCore; stop: () => void }> {
   const dir = mkdtempSync(join(tmpdir(), `harness-mem-admin-api-${name}-`));
   const config = createConfig(dir);
   config.bindPort = await findAvailablePort();
+  configure?.(config);
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
   return {
@@ -280,6 +281,61 @@ describe("memory admin integration", () => {
       expect(payload.items[0].evicted).toBe(0);
       expect(payload.items[0].candidates.map((candidate) => candidate.observation_id)).toContain(observationId);
       expect(payload.items[0].cross_store_impact.observations).toBeGreaterThanOrEqual(1);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("forget maintenance endpoint runs archive-first and does not hard purge automatically", async () => {
+    const runtime = await createRuntime("forget-maintenance", (config) => {
+      config.forgetMaintenanceMode = "archive";
+      config.forgetMaintenanceScheduleEnabled = true;
+      config.forgetMaintenanceLimit = 10;
+    });
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-maintenance",
+        event_type: "user_prompt",
+        ts: "2026-02-25T00:00:00.000Z",
+        payload: { content: "old admin forget maintenance content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.getRawDb()
+        .query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", observationId);
+
+      const response = await fetch(`${runtime.baseUrl}/v1/admin/forget/maintenance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "scheduler" }),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        items: Array<{
+          mode: string;
+          execute: boolean;
+          automatic_hard_purge: boolean;
+          automatic_compact: boolean;
+          archive: { archived_count: number; archived_ids: string[] };
+        }>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items[0].mode).toBe("forget_maintenance_archive");
+      expect(payload.items[0].execute).toBe(true);
+      expect(payload.items[0].archive.archived_count).toBe(1);
+      expect(payload.items[0].archive.archived_ids).toContain(observationId);
+      expect(payload.items[0].automatic_hard_purge).toBe(false);
+      expect(payload.items[0].automatic_compact).toBe(false);
+
+      const sourceRow = runtime.core.getRawDb()
+        .query(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(observationId) as { archived_at: string | null };
+      expect(sourceRow.archived_at).toBeTruthy();
     } finally {
       runtime.stop();
     }

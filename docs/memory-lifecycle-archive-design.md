@@ -1,8 +1,8 @@
 # Memory Lifecycle Archive Design
 
-- Status: refreshed for S130 preverified-evidence candidate coverage review fix
+- Status: refreshed for S132 archive-first maintenance automation
 - Date: 2026-05-21
-- Plan source: `Plans.md` sections 127-130
+- Plan source: `Plans.md` sections 127-132
 - Scope: current contract snapshot for archive-first, restore, gated hard
   purge, and compact boundaries.
 
@@ -37,6 +37,15 @@ The current implementation provides the safety surface this design builds on:
   payload while the archive is not purged.
 - `/v1/admin/forget/hard-purge` plans, readiness-checks, or executes gated
   physical deletion for already archived rows only.
+- `/v1/admin/forget/maintenance` runs the same archive-first candidate
+  pipeline as a manual, scheduled, or threshold-triggered maintenance surface.
+  It defaults to non-mutating `dry-run` mode and can only auto-execute
+  restore-capable archive, never hard purge or compaction.
+- `scripts/forget-maintenance-offline.ts` is the live large-DB maintenance
+  runner. It runs with daemon/gateway stopped and calls core archive, backup
+  evidence, and hard-purge gates instead of issuing raw observation deletes.
+  It may also prune derived stale vector cache rows when the current vector
+  already exists for the same observation.
 - The forget policy excludes `private`, `secret`, `sensitive`, and
   `legal_hold` rows from automatic archive candidates. `legal_hold` also
   trumps TTL expiry.
@@ -64,6 +73,7 @@ S129 live evidence:
 | `POST /v1/admin/forget/plan` | dry-run plan | No | Returns candidate IDs, manifest hash, scores, and cross-store impact. It never archives or deletes. |
 | `POST /v1/admin/forget/archive` | archive plan when `execute` is false | No | Recomputes archive manifest for candidate IDs or policy-selected rows. |
 | `POST /v1/admin/forget/archive` | archive execute when `execute:true` | Yes | Requires matching `manifest_sha256` and `reason`; writes `mem_archive_full` and `mem_archive_stubs` in one transaction, then sets `archived_at`. |
+| `POST /v1/admin/forget/maintenance` | maintenance plan or archive | Maybe | Used by manual calls and opt-in schedule/threshold automation. Default mode is `dry-run`. `archive` mode writes restore-capable archive rows only. It never hard-purges, clears payloads, or compacts the DB. |
 | `POST /v1/admin/forget/archive/search` | admin stub search | No | Returns `mem_archive_stubs` fields only; response metadata states `payload_json_returned:false` and `raw_content_returned:false`. |
 | `POST /v1/admin/forget/restore` | restore plan when `execute` is false | No | Verifies archive row and payload integrity, returns `restore_supported:true` if not purged and original row is not active. |
 | `POST /v1/admin/forget/restore` | restore execute when `execute:true` | Yes | Requires `reason`; rehydrates archived rows from `payload_json`, clears `archived_at`, marks stub `restored`, and audits `admin.archive.restore`. |
@@ -156,6 +166,10 @@ S129 motivation and S130 resolution:
 
 - Archive execute is mutating but reversible. It may proceed after manifest
   match and reason, but it must never delete source rows or run compaction.
+- Scheduled/threshold maintenance may run archive-first batches only when
+  explicitly enabled. Its default mode is `dry-run`; `archive` mode is still
+  reversible and writes full archive payloads. Automatic hard purge and
+  automatic `VACUUM` remain out of scope by design.
 - Hard purge execute is irreversible and requires an explicit operator risk
   gate. As of 2026-05-21, S130-006 is pre-approved only if a restorable fresh
   backup, preverified evidence, manifest match, legal-hold clearance, archive
@@ -164,6 +178,11 @@ S129 motivation and S130 resolution:
   operational gate. As of 2026-05-21, S130-007 is pre-approved only after purge
   and only if rollback backup, free-space checks, daemon stop/start handling,
   and expected reclaimed bytes are recorded.
+- Derived cache pruning is lower risk than observation hard purge because it
+  does not delete canonical memory content, but live execution still requires a
+  backup and daemon stop evidence. Current S132 prune rules delete only
+  non-current `mem_vectors` rows for observations that already have the current
+  vector model.
 - npm publish, tag, and GitHub Release remain outside this lifecycle risk gate
   and require separate release approval.
 
@@ -412,6 +431,9 @@ Compaction must never be part of the archive step or the hard-purge transaction.
 - `mem_nugget_vectors` may be archived for faster restore, but search
   correctness must not depend on preserving stale vector rows; they are
   rebuildable from canonical nugget content.
+- Stale `mem_vectors` rows are cache, not canonical memory, when the same
+  observation already has a current-model vector. They may be pruned by offline
+  maintenance and rebuilt if an old model is intentionally reintroduced.
 - `legal_hold` blocks automatic archive and all purge attempts.
 - `archive_stub` is safe to index; `payload_json` is not.
 - `archive_full_ref` is opaque and must not expose host-specific paths in API

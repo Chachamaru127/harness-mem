@@ -232,6 +232,10 @@ main() {
 	      REQUEST_TIMEOUT="${HARNESS_MEM_ADMIN_BACKUP_EVIDENCE_TIMEOUT_SEC:-${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-900}}"
 	      call_post "/v1/admin/forget/backup-evidence" "$payload" || fallback_error "admin-backup-evidence" "admin-backup-evidence failed"
 	      ;;
+	    admin-forget-maintenance)
+	      REQUEST_TIMEOUT="${HARNESS_MEM_ADMIN_FORGET_MAINTENANCE_TIMEOUT_SEC:-${HARNESS_MEM_CLIENT_TIMEOUT_SEC:-180}}"
+	      call_post "/v1/admin/forget/maintenance" "$payload" || fallback_error "admin-forget-maintenance" "admin-forget-maintenance failed"
+	      ;;
 	    admin-reindex-vectors)
 	      call_post "/v1/admin/reindex-vectors" "$payload" || fallback_error "admin-reindex-vectors" "admin-reindex-vectors failed"
 	      ;;
@@ -309,7 +313,7 @@ main() {
       call_post "/v1/admin/imports/${verify_job_id}/verify" "{}" || fallback_error "verify-import" "verify-import failed"
       ;;
     *)
-		      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
+		      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-forget-maintenance|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
       exit 1
       ;;
   esac

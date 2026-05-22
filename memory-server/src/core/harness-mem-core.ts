@@ -227,6 +227,17 @@ type AdminArchiveSearchRequest = {
   limit?: number;
 };
 
+type AdminForgetMaintenanceRequest = {
+  reason?: string;
+  force?: boolean;
+};
+
+type ForgetMaintenanceMeasurements = {
+  db_size_bytes: number | null;
+  wal_size_bytes: number | null;
+  active_observations: number;
+};
+
 type ArchiveCandidateRow = {
   id: string;
   project: string;
@@ -841,6 +852,9 @@ export class HarnessMemCore {
   private reindexVectorsScheduler!: ReindexVectorsScheduler;
   /** S124-007: out-of-request vector compact rebuild + reindex worker */
   private vectorBackfillWorker!: VectorBackfillWorker;
+  /** S132: opt-in restore-capable archive maintenance scheduler */
+  private forgetMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private forgetMaintenanceRunning = false;
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -1902,6 +1916,32 @@ export class HarnessMemCore {
     this.partialFinalizeScheduler.start();
     // S89-003: start reindex backfill scheduler (no-op when enabled=false)
     this.reindexVectorsScheduler.start();
+    this.startForgetMaintenanceScheduler();
+  }
+
+  private startForgetMaintenanceScheduler(): void {
+    if (this.config.forgetMaintenanceEnabled !== true) {
+      return;
+    }
+    const intervalMs = clampLimit(this.config.forgetMaintenanceIntervalMs, 3600000, 60000, 24 * 60 * 60 * 1000);
+    this.forgetMaintenanceTimer = setInterval(() => {
+      if (this.shuttingDown || this.forgetMaintenanceRunning) return;
+      this.forgetMaintenanceRunning = true;
+      try {
+        this.adminForgetMaintenance({ reason: "scheduler" });
+      } catch (error) {
+        try {
+          this.writeAuditLog("admin.forget_maintenance.error", "observation", "", {
+            reason: "scheduler",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // best effort
+        }
+      } finally {
+        this.forgetMaintenanceRunning = false;
+      }
+    }, intervalMs);
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
@@ -3030,6 +3070,164 @@ export class HarnessMemCore {
     }
   }
 
+  private collectForgetMaintenanceMeasurements(): ForgetMaintenanceMeasurements {
+    const dbPath = resolve(resolveHomePath(this.config.dbPath));
+    const dbSizeBytes = this.config.dbPath === ":memory:" || !existsSync(dbPath)
+      ? null
+      : statSync(dbPath).size;
+    const walPath = `${dbPath}-wal`;
+    const walSizeBytes = this.config.dbPath === ":memory:" || !existsSync(walPath)
+      ? null
+      : statSync(walPath).size;
+    const active = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`)
+      .get();
+    return {
+      db_size_bytes: dbSizeBytes,
+      wal_size_bytes: walSizeBytes,
+      active_observations: Number(active?.count ?? 0),
+    };
+  }
+
+  private forgetMaintenanceThresholds(): Record<string, number | undefined> {
+    return {
+      db_size_bytes: this.config.forgetMaintenanceDbBytesThreshold,
+      wal_size_bytes: this.config.forgetMaintenanceWalBytesThreshold,
+      active_observations: this.config.forgetMaintenanceActiveObservationsThreshold,
+    };
+  }
+
+  private forgetMaintenanceTriggers(
+    request: AdminForgetMaintenanceRequest,
+    measurements: ForgetMaintenanceMeasurements,
+  ): string[] {
+    const triggers: string[] = [];
+    const reason = (request.reason || "manual").trim() || "manual";
+    if (request.force === true) {
+      triggers.push("manual");
+    }
+    if (reason === "scheduler" && this.config.forgetMaintenanceScheduleEnabled === true) {
+      triggers.push("schedule");
+    }
+    const dbThreshold = this.config.forgetMaintenanceDbBytesThreshold;
+    if (typeof dbThreshold === "number" && measurements.db_size_bytes !== null && measurements.db_size_bytes > dbThreshold) {
+      triggers.push("threshold:db_size_bytes");
+    }
+    const walThreshold = this.config.forgetMaintenanceWalBytesThreshold;
+    if (typeof walThreshold === "number" && measurements.wal_size_bytes !== null && measurements.wal_size_bytes > walThreshold) {
+      triggers.push("threshold:wal_size_bytes");
+    }
+    const activeThreshold = this.config.forgetMaintenanceActiveObservationsThreshold;
+    if (typeof activeThreshold === "number" && measurements.active_observations > activeThreshold) {
+      triggers.push("threshold:active_observations");
+    }
+    return triggers;
+  }
+
+  adminForgetMaintenance(request: AdminForgetMaintenanceRequest = {}): ApiResponse {
+    const startedAt = performance.now();
+    const measurements = this.collectForgetMaintenanceMeasurements();
+    const thresholds = this.forgetMaintenanceThresholds();
+    const triggers = uniqueSortedStrings(this.forgetMaintenanceTriggers(request, measurements));
+    const mode = this.config.forgetMaintenanceMode === "archive" ? "archive" : "dry-run";
+    const baseMeta: Record<string, unknown> = {
+      ranking: "forget_maintenance_v1",
+      mode,
+      triggers,
+      measurements,
+      thresholds,
+    };
+
+    if (triggers.length === 0) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "forget_maintenance_skipped",
+          execute: false,
+          reason: request.reason || "manual",
+          triggers,
+          measurements,
+          thresholds,
+        } as unknown as Record<string, unknown>],
+        request as unknown as Record<string, unknown>,
+        { ...baseMeta, skipped: "thresholds_not_exceeded" },
+      );
+    }
+
+    const archiveRequest: AdminArchiveRequest = {
+      limit: this.config.forgetMaintenanceLimit,
+      score_threshold: this.config.forgetMaintenanceScoreThreshold,
+      protect_accessed: this.config.forgetMaintenanceProtectAccessed,
+    };
+    const plan = this.adminForgetArchive(archiveRequest);
+    if (!plan.ok) {
+      return makeErrorResponse(startedAt, plan.error || "forget maintenance archive plan failed", request as unknown as Record<string, unknown>);
+    }
+    const planItem = (plan.items[0] || {}) as Record<string, unknown>;
+    const candidateCount = Number(planItem.candidate_count ?? 0);
+    this.writeAuditLog("admin.forget_maintenance.plan", "observation", "", {
+      mode,
+      reason: request.reason || "manual",
+      triggers,
+      measurements,
+      thresholds,
+      candidate_count: candidateCount,
+      manifest_sha256: planItem.manifest_sha256,
+    });
+
+    if (mode !== "archive" || candidateCount === 0) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "forget_maintenance_plan",
+          execute: false,
+          archive_first: true,
+          triggers,
+          measurements,
+          thresholds,
+          archive_plan: planItem,
+          automatic_hard_purge: false,
+          automatic_compact: false,
+        } as unknown as Record<string, unknown>],
+        request as unknown as Record<string, unknown>,
+        { ...baseMeta, candidate_count: candidateCount, execute: false },
+      );
+    }
+
+    const manifestSha = typeof planItem.manifest_sha256 === "string" ? planItem.manifest_sha256 : "";
+    const executed = this.adminForgetArchive({
+      ...archiveRequest,
+      execute: true,
+      manifest_sha256: manifestSha,
+      reason: `forget-maintenance:${triggers.join("+")}`,
+    });
+    if (!executed.ok) {
+      return makeErrorResponse(startedAt, executed.error || "forget maintenance archive execute failed", request as unknown as Record<string, unknown>);
+    }
+
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "forget_maintenance_archive",
+        execute: true,
+        archive_first: true,
+        triggers,
+        measurements,
+        thresholds,
+        archive: executed.items[0],
+        automatic_hard_purge: false,
+        automatic_compact: false,
+      } as unknown as Record<string, unknown>],
+      request as unknown as Record<string, unknown>,
+      {
+        ...baseMeta,
+        candidate_count: candidateCount,
+        archived_count: (executed.items[0] as Record<string, unknown> | undefined)?.archived_count,
+        execute: true,
+      },
+    );
+  }
+
   adminForgetArchiveSearch(request: AdminArchiveSearchRequest): ApiResponse {
     const startedAt = performance.now();
     if (!this.tableExists("mem_archive_stubs")) {
@@ -3824,7 +4022,7 @@ export class HarnessMemCore {
     return this.buildHardPurgeManifest(request, selected.rows);
   }
 
-  private assertHardPurgeExecuteGates(request: AdminHardPurgeRequest, manifest: HardPurgeManifest): string | null {
+  private assertHardPurgeExecuteGates(request: AdminHardPurgeRequest, manifest: HardPurgeManifest, requestedAtMs: number = Date.now()): string | null {
     if (request.execute !== true) {
       return null;
     }
@@ -3852,7 +4050,7 @@ export class HarnessMemCore {
     if (!Number.isFinite(manifestExpiresMs)) {
       return "manifest_expires_at must be a valid ISO timestamp";
     }
-    if (Date.now() > manifestExpiresMs) {
+    if (requestedAtMs > manifestExpiresMs) {
       return "manifest_expires_at has expired for hard purge execute";
     }
     if (typeof request.candidate_count !== "number" || !Number.isFinite(request.candidate_count)) {
@@ -4116,6 +4314,7 @@ export class HarnessMemCore {
 
   adminForgetHardPurge(request: AdminHardPurgeRequest): ApiResponse {
     const startedAt = performance.now();
+    const requestedAtMs = Date.now();
     const initial = this.prepareHardPurgeManifest(request);
     if (!initial.ok) {
       return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
@@ -4148,7 +4347,7 @@ export class HarnessMemCore {
       );
     }
 
-    const initialGateError = this.assertHardPurgeExecuteGates(request, initial.manifest);
+    const initialGateError = this.assertHardPurgeExecuteGates(request, initial.manifest, requestedAtMs);
     if (initialGateError) {
       return makeErrorResponse(startedAt, initialGateError, request as unknown as Record<string, unknown>);
     }
@@ -4162,7 +4361,7 @@ export class HarnessMemCore {
       if (!current.ok) {
         throw new Error(current.error);
       }
-      const gateError = this.assertHardPurgeExecuteGates(request, current.manifest);
+      const gateError = this.assertHardPurgeExecuteGates(request, current.manifest, requestedAtMs);
       if (gateError) {
         throw new Error(gateError);
       }
@@ -5366,6 +5565,10 @@ export class HarnessMemCore {
     this.partialFinalizeScheduler.stop();
     // S89-003: stop reindex backfill scheduler
     this.reindexVectorsScheduler.stop();
+    if (this.forgetMaintenanceTimer) {
+      clearInterval(this.forgetMaintenanceTimer);
+      this.forgetMaintenanceTimer = null;
+    }
     if (process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD !== "1") {
       this.vectorBackfillWorker.stop();
     }
