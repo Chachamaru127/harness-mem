@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { spawn as spawnChildProcess } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
@@ -96,11 +97,13 @@ import {
   ensureSession,
   envFlag,
   fileUriToPath,
+  hasPrivateVisibilityTag,
   makeErrorResponse,
   makeResponse,
   normalizeTemporalTimestamp,
   normalizeVectorDimension,
   nowIso,
+  parseArrayJson,
   parseBackendMode,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
@@ -163,6 +166,13 @@ export type {
   VerifyImportRequest,
 } from "./types.js";
 import { getDecayTier, getDecayMultiplier } from "./adaptive-decay.js";
+import {
+  buildRecallProjectionPlan,
+  clearRecallProjection,
+  materializeRecallProjection,
+  readRecallDataWatermark,
+  type RecallProjectionPlan,
+} from "../recall/projection.js";
 
 const VECTOR_MODEL_VERSION = "local-hash-v3";
 const HEARTBEAT_FILE = "~/.harness-mem/daemon.heartbeat";
@@ -183,8 +193,130 @@ const DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX = 1;
 const DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS = 8_000;
 const DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX = 1;
 const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
+const DEFAULT_REPEAT_RECALL_CACHE_TTL_MS = 60_000;
+const MAX_REPEAT_RECALL_CACHE_TTL_MS = 300_000;
+const REPEAT_RECALL_CACHE_CAPACITY = 128;
+const RECALL_DEGRADATION_MANIFEST = {
+  version: "recall_degradation_v1",
+  recall_sla_latency_ms: 200,
+  projection_sla_latency_ms: 50,
+  ready_probe_policy: "no_exact_db_counts",
+  reasons: [
+    {
+      code: "scope_required",
+      fallback_path: "none",
+      retryable: true,
+      user_action: "send project or session_id, or set forensic=true for broad search",
+    },
+    {
+      code: "projection_missing",
+      fallback_path: "observation_search",
+      retryable: true,
+      user_action: "run recall projection refresh for the scoped project",
+    },
+    {
+      code: "projection_stale",
+      fallback_path: "observation_search",
+      retryable: true,
+      user_action: "refresh recall projection",
+    },
+    {
+      code: "projection_no_match",
+      fallback_path: "observation_search",
+      retryable: false,
+      user_action: "narrow query or refresh projection if new data was just recorded",
+    },
+    {
+      code: "projection_project_scope_required",
+      fallback_path: "observation_search",
+      retryable: true,
+      user_action: "send project scope for projection recall",
+    },
+    {
+      code: "projection_access_filter_unsupported",
+      fallback_path: "observation_search",
+      retryable: false,
+      user_action: "use observation search until projection stores user/team fields",
+    },
+    {
+      code: "vector_unavailable",
+      fallback_path: "lexical_or_projection",
+      retryable: true,
+      user_action: "check vector engine readiness; recall must still return lexical/projection results",
+    },
+    {
+      code: "worker_timeout",
+      fallback_path: "in_process_or_lexical",
+      retryable: true,
+      user_action: "retry or lower limit; recall must not block health readiness",
+    },
+    {
+      code: "queue_full",
+      fallback_path: "bounded_retry",
+      retryable: true,
+      user_action: "retry after the reported retry window",
+    },
+    {
+      code: "otel_exporter_down",
+      fallback_path: "local_no_export",
+      retryable: true,
+      user_action: "fix telemetry exporter; recall result path must continue",
+    },
+  ],
+};
 type EmbeddingPrimeMode = "passage" | "query";
 type EmbeddingReadinessState = "not_required" | "ready" | "warming" | "failed";
+interface RepeatRecallCacheEntry {
+  storedAtMs: number;
+  ttlMs: number;
+  keyHash: string;
+  knobsHash: string;
+  dataWatermark: string;
+  response: ApiResponse;
+}
+interface RepeatRecallCacheCandidate {
+  key: string;
+  keyHash: string;
+  knobsHash: string;
+  dataWatermark: string;
+  ttlMs: number;
+}
+interface RecallRuntimeRequest {
+  query: string;
+  project?: string;
+  session_id?: string;
+  limit?: number;
+  include_private?: boolean;
+  forensic?: boolean;
+  safe_mode?: boolean;
+  user_id?: string;
+  team_id?: string;
+}
+interface RecallProjectionSearchRow {
+  recall_id: string;
+  recall_type: string;
+  project: string;
+  workspace: string | null;
+  tenant: string | null;
+  session_id: string | null;
+  source_type: string;
+  source_id: string;
+  source_ref: string;
+  projection_generation: string;
+  title: string | null;
+  content_redacted: string;
+  source_created_at: string | null;
+  projected_at: string;
+  valid_from: string | null;
+  valid_to: string | null;
+  privacy_tags_json: string | null;
+  metadata_json: string | null;
+}
+interface RecallProjectionRunRow {
+  generation: string;
+  source_watermark: string;
+  completed_at: string | null;
+}
 
 export function buildVectorBackfillChildCommand(
   scriptPath: string,
@@ -1171,6 +1303,7 @@ export class HarnessMemCore {
   private shuttingDown = false;
   private readonly projectNormalizationRoots: string[];
   private readonly environmentSnapshotCache = new TtlCache<EnvironmentSnapshot>(DEFAULT_ENVIRONMENT_CACHE_TTL_MS);
+  private readonly repeatRecallCache = new Map<string, RepeatRecallCacheEntry>();
 
   // ---------------------------------------------------------------------------
   // モジュールインスタンス (facade パターン)
@@ -2992,6 +3125,436 @@ export class HarnessMemCore {
     return response;
   }
 
+  buildRecallProjection(request: { project: string; limit?: number; include_private?: boolean }): ApiResponse {
+    const startedAt = performance.now();
+    try {
+      const plan = buildRecallProjectionPlan(this.db, {
+        project: request.project,
+        limit: request.limit,
+        includePrivate: request.include_private === true,
+      });
+      return makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+        ranking: "recall_projection_dry_run_v1",
+        projection_generation: plan.generation,
+        source_watermark: plan.source_watermark,
+        candidate_count: plan.candidate_count,
+        planned_count: plan.planned_count,
+        skipped_count: plan.skipped_count,
+        skipped_reasons: plan.skipped_reasons,
+        diagnostics: plan.diagnostics,
+        writes: 0,
+      });
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        request as unknown as Record<string, unknown>,
+      );
+    }
+  }
+
+  refreshRecallProjection(request: { project: string; limit?: number; include_private?: boolean }): ApiResponse {
+    const startedAt = performance.now();
+    try {
+      const plan = materializeRecallProjection(this.db, {
+        project: request.project,
+        limit: request.limit,
+        includePrivate: request.include_private === true,
+      });
+      this.repeatRecallCache.clear();
+      return makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+        ranking: "recall_projection_refresh_v1",
+        projection_generation: plan.generation,
+        source_watermark: plan.source_watermark,
+        candidate_count: plan.candidate_count,
+        planned_count: plan.planned_count,
+        skipped_count: plan.skipped_count,
+        skipped_reasons: plan.skipped_reasons,
+        diagnostics: plan.diagnostics,
+        writes: plan.items.length,
+        cache_cleared: true,
+      });
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        request as unknown as Record<string, unknown>,
+      );
+    }
+  }
+
+  deleteRecallProjection(request: { project: string }): ApiResponse {
+    const startedAt = performance.now();
+    try {
+      const result = clearRecallProjection(this.db, request.project);
+      this.repeatRecallCache.clear();
+      return makeResponse(startedAt, [result], request as unknown as Record<string, unknown>, {
+        ranking: "recall_projection_clear_v1",
+        cache_cleared: true,
+      });
+    } catch (error) {
+      return makeErrorResponse(
+        startedAt,
+        error instanceof Error ? error.message : String(error),
+        request as unknown as Record<string, unknown>,
+      );
+    }
+  }
+
+  recallDegradationManifest(): ApiResponse {
+    const startedAt = performance.now();
+    return makeResponse(startedAt, [RECALL_DEGRADATION_MANIFEST], {}, {
+      ranking: "recall_degradation_manifest_v1",
+    });
+  }
+
+  async recallPrepared(request: RecallRuntimeRequest): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const query = request.query.trim();
+    const project = request.project?.trim() || undefined;
+    const sessionId = request.session_id?.trim() || undefined;
+    const limit = clampLimit(request.limit ?? 10, 10, 1, 50);
+    const filters = {
+      query,
+      project,
+      session_id: sessionId,
+      limit,
+      include_private: request.include_private === true,
+      forensic: request.forensic === true,
+      safe_mode: request.safe_mode !== false,
+    };
+
+    if (!query) {
+      const response = makeErrorResponse(startedAt, "query is required", filters);
+      response.meta.http_status = 400;
+      return response;
+    }
+
+    if (!project && !sessionId && request.forensic !== true) {
+      const response = makeErrorResponse(
+        startedAt,
+        "recall requires project or session_id scope; set forensic=true for broad observation search",
+        filters,
+      );
+      response.meta.http_status = 400;
+      response.meta.recall_scope_required = true;
+      response.meta.recall_degraded_reason = "scope_required";
+      return response;
+    }
+
+    if (request.forensic === true) {
+      return this.fallbackRecallSearch(request, "forensic_observation_search", startedAt, null, null);
+    }
+
+    if (!project) {
+      return this.fallbackRecallSearch(request, "projection_project_scope_required", startedAt, null, null);
+    }
+
+    if (request.user_id || request.team_id) {
+      return this.fallbackRecallSearch(request, "projection_access_filter_unsupported", startedAt, null, null);
+    }
+
+    const latestRun = this.getLatestRecallProjectionRun(project);
+    const sourceWatermark = readRecallDataWatermark(this.db, { project });
+    if (!latestRun) {
+      return this.fallbackRecallSearch(request, "projection_missing", startedAt, null, sourceWatermark);
+    }
+    if (latestRun.source_watermark !== sourceWatermark) {
+      return this.fallbackRecallSearch(request, "projection_stale", startedAt, latestRun, sourceWatermark);
+    }
+
+    const items = this.searchRecallProjection({
+      query,
+      project,
+      session_id: sessionId,
+      limit,
+      include_private: request.include_private === true,
+    });
+
+    if (items.length === 0) {
+      return this.fallbackRecallSearch(request, "projection_no_match", startedAt, latestRun, sourceWatermark);
+    }
+
+    return makeResponse(startedAt, items, filters, {
+      ranking: "recall_projection_v1",
+      recall_runtime: true,
+      recall_degraded: false,
+      recall_scope: sessionId ? "project_session" : "project",
+      projection_generation: latestRun.generation,
+      projection_source_watermark: latestRun.source_watermark,
+      projection_completed_at: latestRun.completed_at,
+    });
+  }
+
+  private getLatestRecallProjectionRun(project: string): RecallProjectionRunRow | null {
+    return this.db
+      .query(
+        `SELECT generation, source_watermark, completed_at
+         FROM mem_recall_projection_runs
+         WHERE project = ? AND status = 'completed'
+         ORDER BY completed_at DESC, started_at DESC
+         LIMIT 1`
+      )
+      .get(project) as RecallProjectionRunRow | null;
+  }
+
+  private tokenizeRecallQuery(query: string): string[] {
+    const normalized = query.trim().toLowerCase();
+    const tokens = normalized.match(/[\p{L}\p{N}_-]+/gu) ?? [];
+    const unique = [...new Set(tokens.filter((token) => token.length > 1))].slice(0, 12);
+    return unique.length > 0 ? unique : [normalized].filter(Boolean);
+  }
+
+  private searchRecallProjection(request: {
+    query: string;
+    project: string;
+    session_id?: string;
+    limit: number;
+    include_private: boolean;
+  }): Record<string, unknown>[] {
+    const query = request.query.trim().toLowerCase();
+    const terms = this.tokenizeRecallQuery(query);
+    const params: SQLQueryBindings[] = [request.project];
+    let sessionClause = "";
+    if (request.session_id) {
+      sessionClause = " AND session_id = ?";
+      params.push(request.session_id);
+    }
+    params.push(Math.max(request.limit * 20, 100));
+    const rows = this.db
+      .query(
+        `SELECT recall_id, recall_type, project, workspace, tenant, session_id, source_type, source_id,
+                source_ref, projection_generation, title, content_redacted, source_created_at, projected_at,
+                valid_from, valid_to, privacy_tags_json, metadata_json
+         FROM mem_recall_items
+         WHERE project = ?${sessionClause}
+         ORDER BY COALESCE(source_created_at, projected_at) DESC, recall_id ASC
+         LIMIT ?`
+      )
+      .all(...params) as RecallProjectionSearchRow[];
+
+    const items: Record<string, unknown>[] = [];
+    for (const row of rows) {
+      const privacyTags = parseArrayJson(row.privacy_tags_json ?? "[]");
+      if (!request.include_private && hasPrivateVisibilityTag(privacyTags)) {
+        continue;
+      }
+      const title = row.title ?? "";
+      const content = row.content_redacted ?? "";
+      const titleLower = title.toLowerCase();
+      const haystack = `${titleLower}\n${content.toLowerCase()}`;
+      let score = haystack.includes(query) ? 3 : 0;
+      for (const term of terms) {
+        if (titleLower.includes(term)) score += 2;
+        if (haystack.includes(term)) score += 1;
+      }
+      if (score <= 0) {
+        continue;
+      }
+      items.push({
+        id: row.recall_id,
+        recall_id: row.recall_id,
+        title: row.title,
+        content,
+        snippet: content.slice(0, 240),
+        score,
+        recall_type: row.recall_type,
+        project: row.project,
+        workspace: row.workspace,
+        tenant: row.tenant,
+        session_id: row.session_id,
+        source_type: row.source_type,
+        source_id: row.source_id,
+        source_ref: row.source_ref,
+        projection_generation: row.projection_generation,
+        source_created_at: row.source_created_at,
+        projected_at: row.projected_at,
+        valid_from: row.valid_from,
+        valid_to: row.valid_to,
+        privacy_tags: privacyTags,
+        metadata: row.metadata_json ? JSON.parse(row.metadata_json) : {},
+      });
+    }
+
+    return items
+      .sort((left, right) => Number(right.score ?? 0) - Number(left.score ?? 0))
+      .slice(0, request.limit);
+  }
+
+  private async fallbackRecallSearch(
+    request: RecallRuntimeRequest,
+    reason: string,
+    startedAt: number,
+    projectionRun: RecallProjectionRunRow | null,
+    sourceWatermark: string | null,
+  ): Promise<ApiResponse> {
+    const fallback = await this.searchPrepared({
+      query: request.query,
+      project: request.project,
+      session_id: request.session_id,
+      limit: request.limit,
+      include_private: request.include_private === true,
+      strict_project: true,
+      safe_mode: request.safe_mode !== false,
+      vector_search: request.safe_mode === false,
+      expand_links: request.safe_mode === false,
+      graph_depth: request.safe_mode === false ? undefined : 0,
+      graph_weight: request.safe_mode === false ? undefined : 0,
+      user_id: request.user_id,
+      team_id: request.team_id,
+    });
+    Object.assign(fallback.meta, {
+      latency_ms: Math.round((performance.now() - startedAt) * 100) / 100,
+      ranking: reason === "forensic_observation_search" ? "recall_forensic_observation_search_v1" : "recall_degraded_fallback_v1",
+      recall_runtime: true,
+      recall_degraded: reason !== "forensic_observation_search",
+      recall_degraded_reason: reason,
+      fallback_path: "observation_search",
+      projection_generation: projectionRun?.generation ?? null,
+      projection_source_watermark: projectionRun?.source_watermark ?? null,
+      current_source_watermark: sourceWatermark,
+    });
+    return fallback;
+  }
+
+  private getRepeatRecallCacheTtlMs(): number {
+    const raw = process.env.HARNESS_MEM_RECALL_CACHE_TTL_MS;
+    if (raw === undefined || raw.trim() === "") {
+      return DEFAULT_REPEAT_RECALL_CACHE_TTL_MS;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return DEFAULT_REPEAT_RECALL_CACHE_TTL_MS;
+    }
+    return Math.min(MAX_REPEAT_RECALL_CACHE_TTL_MS, Math.floor(parsed));
+  }
+
+  private sha256Short(value: string, length = 16): string {
+    return createHash("sha256").update(value).digest("hex").slice(0, length);
+  }
+
+  private cloneApiResponse(response: ApiResponse): ApiResponse {
+    return JSON.parse(JSON.stringify(response)) as ApiResponse;
+  }
+
+  private getSearchCacheScope(request: SearchRequest): { project?: string; sessionId?: string } {
+    return {
+      project: request.scope?.project ?? request.project,
+      sessionId: request.scope?.session_id ?? request.session_id,
+    };
+  }
+
+  private buildRepeatRecallCacheCandidate(request: SearchRequest): RepeatRecallCacheCandidate | null {
+    const ttlMs = this.getRepeatRecallCacheTtlMs();
+    if (ttlMs <= 0) return null;
+    if (!request.query || !request.query.trim()) return null;
+    if (request.debug === true || request.include_archived === true) return null;
+    const scope = this.getSearchCacheScope(request);
+    if (!scope.project && !scope.sessionId) return null;
+
+    const normalizedQueryHash = this.sha256Short(request.query.trim().replace(/\s+/g, " ").toLowerCase(), 24);
+    const dataWatermark = readRecallDataWatermark(this.db, scope);
+    const knobs = {
+      as_of: request.as_of ?? null,
+      branch: request.branch ?? null,
+      expand_links: request.safe_mode === true ? false : request.expand_links !== false,
+      graph_depth: request.safe_mode === true ? 0 : request.graph_depth ?? 0,
+      graph_weight: request.safe_mode === true ? 0 : request.graph_weight ?? null,
+      memory_type: request.memory_type ?? null,
+      observation_type: request.observation_type ?? null,
+      question_kind: request.question_kind ?? null,
+      safe_mode: request.safe_mode === true,
+      sort_by: request.sort_by ?? "relevance",
+      strict_project: request.strict_project !== false,
+      vector_search: request.safe_mode === true ? false : request.vector_search !== false,
+    };
+    const knobsHash = this.sha256Short(JSON.stringify(knobs), 16);
+    const keyPayload = {
+      normalized_query_hash: normalizedQueryHash,
+      scope,
+      recall_mode: "search_prepared_v1",
+      result_shape: "api_response_v1",
+      limit: request.limit ?? 20,
+      include_private: request.include_private === true,
+      forensic: false,
+      since: request.since ?? null,
+      until: request.until ?? null,
+      knobs_hash: knobsHash,
+      data_watermark: dataWatermark,
+    };
+    const key = JSON.stringify(keyPayload);
+    return {
+      key,
+      keyHash: this.sha256Short(key, 16),
+      knobsHash,
+      dataWatermark,
+      ttlMs,
+    };
+  }
+
+  private lookupRepeatRecallCache(
+    request: SearchRequest,
+    startedAt: number,
+  ): { response: ApiResponse | null; candidate: RepeatRecallCacheCandidate | null } | null {
+    const candidate = this.buildRepeatRecallCacheCandidate(request);
+    if (!candidate) return null;
+    const cached = this.repeatRecallCache.get(candidate.key);
+    if (!cached) {
+      return { response: null, candidate };
+    }
+    const nowMs = Date.now();
+    if (nowMs - cached.storedAtMs > cached.ttlMs || cached.dataWatermark !== candidate.dataWatermark) {
+      this.repeatRecallCache.delete(candidate.key);
+      return { response: null, candidate };
+    }
+    const response = this.cloneApiResponse(cached.response);
+    response.meta = {
+      ...response.meta,
+      latency_ms: Math.round((performance.now() - startedAt) * 100) / 100,
+      recall_cache_hit: true,
+      recall_cache: {
+        hit: true,
+        key_hash: cached.keyHash,
+        knobs_hash: cached.knobsHash,
+        age_ms: nowMs - cached.storedAtMs,
+        ttl_ms: cached.ttlMs,
+        data_watermark: cached.dataWatermark,
+      },
+    };
+    return { response, candidate };
+  }
+
+  private storeRepeatRecallCache(candidate: RepeatRecallCacheCandidate | null, response: ApiResponse): ApiResponse {
+    if (!candidate) return response;
+    if (!response.ok) return response;
+    const nextResponse = this.cloneApiResponse(response);
+    nextResponse.meta = {
+      ...nextResponse.meta,
+      recall_cache_hit: false,
+      recall_cache: {
+        hit: false,
+        key_hash: candidate.keyHash,
+        knobs_hash: candidate.knobsHash,
+        ttl_ms: candidate.ttlMs,
+        data_watermark: candidate.dataWatermark,
+      },
+    };
+    this.repeatRecallCache.set(candidate.key, {
+      storedAtMs: Date.now(),
+      ttlMs: candidate.ttlMs,
+      keyHash: candidate.keyHash,
+      knobsHash: candidate.knobsHash,
+      dataWatermark: candidate.dataWatermark,
+      response: this.cloneApiResponse(nextResponse),
+    });
+    while (this.repeatRecallCache.size > REPEAT_RECALL_CACHE_CAPACITY) {
+      const oldest = this.repeatRecallCache.keys().next().value;
+      if (typeof oldest !== "string") break;
+      this.repeatRecallCache.delete(oldest);
+    }
+    return nextResponse;
+  }
+
   search(request: SearchRequest): ApiResponse {
     const startedAt = performance.now();
     try {
@@ -3008,6 +3571,11 @@ export class HarnessMemCore {
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
+    const cacheLookup = this.lookupRepeatRecallCache(request, startedAt);
+    if (cacheLookup?.response) {
+      return cacheLookup.response;
+    }
+    const cacheCandidate = cacheLookup?.candidate ?? null;
     const shouldOffloadSearch = shouldRunSearchOutOfProcess(request, {
       vectorEngine: this.vectorEngine,
       dbPath: this.config.dbPath,
@@ -3122,7 +3690,7 @@ export class HarnessMemCore {
       }
     }
 
-    return response;
+    return this.storeRepeatRecallCache(cacheCandidate, response);
   }
 
   feed(request: FeedRequest): ApiResponse {

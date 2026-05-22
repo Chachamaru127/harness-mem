@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-20（§127 Search Runtime Stability）
+最終更新: 2026-05-22（§128 Recall Runtime Architecture）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -40,13 +40,91 @@
 |------|--------|
 | gate artifacts / README / proof bar | onnx manifest (2026-04-10) / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ、Go MCP server (~5ms cold start) |
-| 最新リリース | **v0.23.0**（2026-05-17、resumable vector compact/reindex backfill worker、Hermes state backfill、search/runtime closeout。repo package version は 0.23.0） |
-| 次フェーズの焦点 | **§126 WorkGraph Plans sync command** / **§125 WorkGraph Task Continuity MVP** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
+| 最新リリース | **v0.24.1**（2026-05-22、Codex MCP config transport drift repair。repo package version は 0.24.1。v0.24.0 で WorkGraph SessionStart auto-sync と S127 bounded search worker runtime を release 済み） |
+| 次フェーズの焦点 | **§128 Recall Runtime Architecture** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
 | CI Gate | **Layer 1+2 PASS**（onnx `run-ci`、bilingual=0.8800、p95 13.28ms、history reset at v0.11.0） |
 
 - benchmark SSOT: `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`
 - Japanese companion current: `overall_f1_mean=0.6580`
 - Japanese historical baseline: `overall_f1_mean=0.8020`
+
+---
+
+## §128 Recall Runtime Architecture — cc:TODO
+
+策定日: 2026-05-22
+分類: Product architecture / recall runtime / observability / ADR — owner は `harness-mem`。Local task。Claude / Codex / Hermes / WorkGraph との接続はあるが、sibling repo の責務移動や cross-repo API 変更はこの § では行わない。
+仕様正本: `Spec.md`。本 § は実装順序と検証条件の正本であり、product truth は `Spec.md` を優先する。
+
+背景: §115 / §127 で巨大 DB による daemon blocking、safe search timeout、worker queue / fallback / health readiness は operational green まで持ち込んだ。ただし、DB 大量化による検索不安定化を「さらに速い search」だけで追うと、harness-mem が generic RAG backend に寄ってしまう。harness-mem の世界観は **local-first / multi-agent continuity / operator-owned memory / degradation-aware recall** であり、次の基盤は DB パッチではなく Recall Runtime として切る。
+
+判断:
+
+- `Spec.md` を product-level SSOT とし、`Plans.md` は task contract、ADR は Why の正本として分離する。
+- `mem_observations` は監査・再構成の正本として残し、通常 recall は再構築可能な hot projection (`mem_recall_items` / `mem_recall_chunks` / `mem_recall_profiles` 相当) から返す。
+- MCP / hooks / UI の通常 recall は `project` / `workspace` / `tenant` / `session` の scope-first 契約にする。無指定 broad search は forensic / admin mode として扱う。
+- OpenTelemetry を標準導入する。ただし **標準 = instrumentation contract + local observability first** であり、外部 OTLP export は明示 opt-in。外部送信は Risk Gate 対象。
+- ADR を一級 memory object にする。`docs/adr/` と `.claude/memory/decisions.md` を別物として放置せず、Why / options / consequences / supersedes を search / WorkGraph / recall explanation へ接続する。新規 ADR は BEADS shape (`Boundary`, `Evidence`, `Alternatives`, `Decision`, `Signals`) でレビュー可能にする。
+
+### Product Principles
+
+- harness-mem は memory database ではなく **agent continuity runtime**。
+- 大量化への答えは「巨大 raw DB を賢く全探索」ではなく「いつ何を思い出すべきかを型・scope・degradation で制御」。
+- 壊れ方も product surface。vector / worker / daemon / exporter が degraded でも、scoped lexical + recent decision + active work は返す。
+- OpenTelemetry は vendor lock-in ではなく、recall path の因果関係を残すための共通言語。Datadog / Grafana / local collector は後から選べる。
+- ADR は docs ではなく runtime fuel。agent が「なぜその判断か」を説明できる状態まで持ち込む。
+- BEADS は backend 採用ではなく判断モデルとして使う。dependency-aware work graph は WorkGraph に、Boundary/Evidence/Alternatives/Decision/Signals は ADR に接続する。
+
+### Non-goals / Stop Line
+
+- 初手で Postgres / Qdrant / managed service を default にしない。
+- 外部 OTLP endpoint へ telemetry を default 送信しない。
+- OpenTelemetry に raw prompt / raw observation / secret / PII を載せない。
+- `HARNESS_MEM_TOOLS=core` の tool surface を無条件に増やさない。
+- ADR を `.claude/memory/decisions.md` の単純置換にしない。local SSOT は残し、shareable ADR と runtime-ingested decision を接続する。
+- Plans.md を自動改変して ADR を生成しない。生成は explicit command / UI action のみ。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S128-000 | **Product Spec SSOT freeze** `[tdd:skip:docs-spec]` — `Spec.md` を作成し、local-first continuity runtime / Recall Runtime / WorkGraph / ADR / OpenTelemetry / regression gates の正解条件を固定する | `Spec.md` が存在し、Plans は task contract、ADR は Why、Spec は product truth という分離が明記される。BEADS 由来の採用/不採用境界とデグレ条件が入る | - | cc:完了 [local] |
+| S128-000a | **BEADS ADR contract freeze** `[tdd:skip:docs-spec]` — ADR に `Boundary`, `Evidence`, `Alternatives`, `Decision`, `Signals` の判断形を導入し、旧 ADR との互換を保つ | `Spec.md` に BEADS ADR shape が入り、旧 ADR の書き換えを要求しない。Signals は review trigger / regression gate / rollback 条件として定義される | S128-000 | cc:完了 [local] |
+| S128-001 | **Recall Runtime detailed spec freeze** `[tdd:skip:docs-spec]` — `docs/recall-runtime.md` に purpose / recall object taxonomy / scope contract / hot-cold projection / degradation contract / observability / ADR connection を固定する | 完了: `docs/recall-runtime.md` を作成。`Spec.md` と整合し、`raw observation`, `episode`, `fact`, `decision`, `profile`, `work item`, `recall item` を区別。通常 recall は scoped hot projection、raw observation search は forensic/admin/debug と明記。§115/§127 の bounded search、§125 WorkGraph、§126 Plans sync、ADR connector / inject observability との境界を記録。repeat recall cache の TTL / knobs hash / projection watermark 契約も追加 | S128-000 | cc:完了 [local] |
+| S128-002 | **ADR for Recall Runtime architecture** `[tdd:skip:adr]` — `docs/adr/ADR-003-recall-runtime-architecture.md` を作成し、DB肥大対策ではなく product基盤として採用する Why / alternatives / consequences を記録する | 完了: `docs/adr/ADR-003-recall-runtime-architecture.md` を `Status: Proposed` で作成。BEADS shape を含め、`SQLite projection`, `Postgres/pgvector`, `Qdrant sidecar`, `managed service`, DB/search tuning continuation を比較。`decisions.md` D13 に source pointer / Why を追記 | S128-000a, S128-001 | cc:完了 [local] |
+| S128-002a | **Benefit / no-go gate** `[tdd:skip:planning-review]` — 現行 S127/S125/ADR connector/inject observability で既に足りるものと、§128 で追加価値が出るものを採点し、core / OTel / ADR runtime の進行可否を分ける | 完了: `docs/recall-runtime-benefit-gate.md` で Product Fit / Evidence / User Value / Feasibility / Regression Safety / Strategic Leverage / Evidence Strength を 5 点採点。結論は GO: core projection / scoped recall / degradation / repeat cache / ADR / local OTel は価値あり。NO-GO: Postgres/Qdrant/managed service default、core search replacement。Evidence Strength 2 以下の slice は Required 化しない方針を固定 | S128-001, S128-002 | cc:完了 [local] |
+| S128-003 | **Recall projection schema red tests** `[tdd:required]` — additive schema として hot projection table 群を設計し、fresh/migrate/downgrade-safe tests を先に固定する | 完了: `mem_recall_projection_runs`, `mem_recall_items`, `mem_recall_chunks`, `mem_recall_profiles` を additive migration。fresh/legacy migration tests で tables / indexes / compatibility を確認。既存 `mem_observations`, search, WorkGraph, privacy, session ingest は変更なし | S128-002a | cc:完了 [local] |
+| S128-004 | **Projection builder dry-run** `[tdd:required]` — raw observations から recall projection を作る dry-run builder を実装し、write なしで row counts / skipped reasons / privacy diagnostics を返す | 完了: `buildRecallProjectionPlan` と `/v1/admin/recall-projection action=dry-run` を追加。project scope、privacy skip、source watermark、generation、skipped reasons、DB writes 0 を unit/integration tests で確認 | S128-003 | cc:完了 [local] |
+| S128-004a | **Projection materialize / refresh path** `[tdd:required]` — dry-run projection を実際に書き込む explicit write path と bounded refresh path を追加する | 完了: `/v1/admin/recall-projection action=write|refresh|materialize|clear` と idempotent materialize / rollback delete を追加。background worker は未導入だが、write は admin explicit action に限定し、stale/missing 時の `/v1/recall` fallback は S128-006 で実装 | S128-004 | cc:完了 [local] |
+| S128-004b | **Repeat recall query cache** `[tdd:required]` — gbrain 型の短TTL query cache を通常 recall 経路へ追加し、繰り返し recall を DB 再探索なしで返せるようにする | 完了: in-process bounded cache を `searchPrepared` に追加。key は normalized query hash / scope / shape / privacy / safe-mode knobs hash / data watermark を含む。TTL default 60s / max 300s / `HARNESS_MEM_RECALL_CACHE_TTL_MS=0` で disable。hit/miss は safe metadata のみ、raw prompt/raw observation は非露出。TTL 0、repeat hit、data change invalidation tests PASS | S128-004a | cc:完了 [local] |
+| S128-005 | **Scoped recall API contract** `[tdd:required]` — MCP / HTTP の通常 recall が project/workspace/session scope を要求し、unscoped broad query は明示 forensic flag を必要にする | 完了: 既存 `/v1/search` / `harness_mem_search` は互換維持。新規 `/v1/recall` は project/session scope 必須、unscoped は 400 + `recall_scope_required`、`forensic=true` は明示的 observation search fallback。projection が fresh なら `mem_recall_items` を読む | S128-004b | cc:完了 [local] |
+| S128-006 | **Degradation SLO manifest** `[tdd:required]` — vector unavailable / worker timeout / queue full / OTel exporter down / projection stale の各 degraded mode で返す最低保証を manifest 化する | 完了: `/v1/admin/recall-degradation-manifest` と `/v1/recall` の `recall_degraded_reason` / `fallback_path` を追加。projection missing/stale/no-match/project-scope/access-filter fallback を integration tests で確認。manifest は vector/worker/queue/OTel down の最低保証コードも固定し、`/health/ready` は既存 lightweight path を維持 | S128-005 | cc:完了 [local] |
+| S128-007 | **OpenTelemetry SDK standard plumbing** `[tdd:required]` — memory daemon / search worker / MCP gateway に OTel API/SDK 初期化を追加し、service name/version/resource attrs と graceful shutdown を固定する | default は no external export または local-only exporter。`OTEL_EXPORTER_OTLP_ENDPOINT` 等が明示された時だけ OTLP export。SIGTERM/shutdown で flush。unit/contract tests PASS | S128-002a | cc:TODO |
+| S128-008 | **Recall semantic telemetry** `[tdd:required]` — `recall.search`, `recall.project`, `recall.projection.build`, `recall.worker`, `recall.inject`, `adr.ingest` などの span/metric names と allowed attributes を固定する | raw content / secret を attribute に載せない allowlist tests PASS。metrics に `recall_latency_ms`, `fallback_count`, `projection_staleness_ms`, `worker_queue_depth`, `recall_cache_hit_count`, `recall_cache_miss_count`, `adr_recall_count` 相当が出る | S128-007 | cc:TODO |
+| S128-009 | **Local telemetry inspect/export surface** `[tdd:required]` — external collector なしでも trace summary を見られる admin endpoint / CLI を追加する | `harness-mem telemetry status|export` または admin endpoint が recent spans/metrics summary を返す。OTLP exporter failure は recall を落とさない | S128-008 | cc:TODO |
+| S128-010 | **ADR template + CLI/UI entrypoint** `[tdd:required]` — `harness-mem adr new` / template / validation を追加し、status/options/consequences/supersedes/source Plans § を必須化する | ADR file は `docs/adr/ADR-NNN-*.md` へ生成。legacy `docs/adr-001-*` は index 対象または migration candidate として扱う。dry-run default、write は explicit。existing ADR connector tests と新規 CLI contract PASS | S128-002a | cc:TODO |
+| S128-011 | **ADR ingestion as recall object** `[tdd:required]` — 既存 ADR connector を拡張し、ADR を decision recall / WorkGraph evidence / search explanation に出せるようにする | ADR search が title/status/options/consequences/supersedes で引ける。WorkGraph task / Plans § / decisions.md への link が provenance として返る。Depends on §125 WorkGraph schema/links being available | S128-010, S128-003, §125 | cc:TODO |
+| S128-012 | **Recall explanation UX** `[tdd:required]` — MCP / UI / CLI で「なぜこの memory が出たか」を scope / type / source / ADR / work evidence 付きで説明する | explanation は compact。P6 に従い top-k / token budget / first-turn suppression を守る。UI/Vitest/contract tests PASS | S128-005, S128-011 | cc:TODO |
+| S128-013 | **Recall Runtime benchmark + release gate** `[tdd:required]` — large DB fixture / local DB smoke で latency, fallback, projection freshness, repeat recall cache, ADR recall precision, no-secret-telemetry を gate 化する | 初回は warn mode。`recall_p95`, `ready_latency`, `fallback_rate`, `projection_freshness`, `repeat_recall_cache_hit_rate`, `cache_invalidation_correctness`, `adr_precision`, `otel_redaction`, `sessionstart_non_displacement`, `core_search_compatibility` が manifest に出る | S128-006, S128-009, S128-012 | cc:TODO |
+
+### Execution Waves
+
+| Wave | 対象 | 目的 | 並列性 |
+|------|------|------|--------|
+| Wave 0 | S128-000, S128-000a, S128-001, S128-002, S128-002a | 世界観・Spec・Why・実装価値を固定し、DB patch や過剰バンドルへ矮小化しない | 直列 |
+| Wave 1 | S128-003, S128-004, S128-004a, S128-004b, S128-005, S128-006 | Recall core: projection / repeat cache / scope / degraded mode を先に実用化 | 依存順 |
+| Wave 2 | S128-007, S128-008, S128-009 | Observability: OTel は opt-in / local inspect first で追加 | 依存順 |
+| Wave 3 | S128-010, S128-011 | ADR runtime: BEADS template / ingestion / WorkGraph evidence 接続 | 依存順 |
+| Wave 4 | S128-012, S128-013 | explanation UX と release gate | 並列可 |
+
+推奨初回 scope:
+
+```text
+完了: S128-001, S128-002, S128-002a を Lead が確定。Benefit gate は GO, but sliced。
+完了: S128-003, S128-004, S128-004a, S128-004b, S128-005, S128-006 を red-test-first で実装。次の対象は S128-007〜S128-009 の local-first OpenTelemetry、または S128-010〜S128-011 の ADR runtime。
+```
+
+次に進む条件: `Spec.md`、`docs/recall-runtime.md`、ADR-003、benefit gate が「local-first continuity runtime」の判断を明文化し、OpenTelemetry が外部送信 default にならず、ADR が Why 付き recall object として扱われること。S128-001〜S128-006 で Recall core は実装済みのため、次は local-first OpenTelemetry または ADR runtime へ進む。
 
 ---
 
@@ -916,13 +994,13 @@ Codex / Claude Code / Hermes
 ## §125 WorkGraph Task Continuity MVP (2026-05-17) — cc:TODO
 
 策定日: 2026-05-17
-分類: Work lifecycle / task continuity — owner は `harness-mem`。`docs/harness_mem_final_research_improvement_report.md` の WorkGraph 提案を、Product / Architecture / QA / Skeptic の subagent review で絞り込んだ実行計画。
+分類: Work lifecycle / task continuity — owner は `harness-mem`。BEADS / agentmemory 調査から `docs/workgraph.md` へ取り込んだ WorkGraph 提案を、Product / Architecture / QA / Skeptic の subagent review で絞り込んだ実行計画。
 
 判断: 採用する。ただし初回は「新しい巨大タスク管理ツール」ではなく、**Plans.md を安全に読み、ready / next / claim の根拠を memory と接続する task continuity layer** として段階導入する。既存の `lease` / `signal` / `verify` / `inject_traces` / graph / privacy / project isolation は再実装しない。WorkGraph は additive schema と小さい CLI/API surface から始め、MCP / hooks / UI は benchmark と consumed-rate が見えてから解放する。
 
 背景:
 
-- `package.json` は `0.23.0` だが、旧レポートは `0.22.2`、Plans current status は `v0.21.2` 前提を含んでいたため、WorkGraph 前に status truth を同期する必要がある。
+- `package.json` は現在 `0.24.1`。WorkGraph 着手時の旧レポートは `0.22.2`、当時の Plans current status は `v0.21.2` 前提を含んでいたため、S125 では先に status truth を同期した。`docs/workgraph.md` の `0.23.0` baseline は S125-001 freeze 時点の履歴値であり、現在リリース状態は本ファイル上部の current status を正とする。
 - report の推奨 `§116` は既に別 section で使用済みのため、本実行計画は `§125` として追跡する。
 - `.claude/memory/decisions.md` / `.claude/memory/patterns.md` はこの worktree に存在しなかった。今後の実装判断は `docs/workgraph.md` と Plans を SSOT にし、必要なら memory へ Why 付きで記録する。
 

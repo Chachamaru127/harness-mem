@@ -83,6 +83,56 @@ function expectWorkGraphSchema(db: Database): void {
   expect(sqliteObjectExists(db, "index", "idx_mem_work_links_target")).toBe(true);
 }
 
+function expectRecallProjectionSchema(db: Database): void {
+  expect(sqliteObjectExists(db, "table", "mem_recall_projection_runs")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_recall_items")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_recall_chunks")).toBe(true);
+  expect(sqliteObjectExists(db, "table", "mem_recall_profiles")).toBe(true);
+
+  expect(columnNames(db, "mem_recall_projection_runs").sort()).toEqual(
+    [
+      "completed_at",
+      "diagnostics_json",
+      "generation",
+      "item_count",
+      "project",
+      "scope_key",
+      "skipped_count",
+      "source_watermark",
+      "started_at",
+      "status",
+    ].sort(),
+  );
+  expect(columnNames(db, "mem_recall_items").sort()).toEqual(
+    [
+      "content_redacted",
+      "metadata_json",
+      "privacy_tags_json",
+      "project",
+      "projected_at",
+      "projection_generation",
+      "recall_id",
+      "recall_type",
+      "session_id",
+      "source_created_at",
+      "source_id",
+      "source_ref",
+      "source_type",
+      "tenant",
+      "title",
+      "valid_from",
+      "valid_to",
+      "workspace",
+    ].sort(),
+  );
+
+  expect(sqliteObjectExists(db, "index", "idx_mem_recall_runs_project_completed")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_recall_items_scope_type_created")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_recall_items_source")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_recall_chunks_recall_index")).toBe(true);
+  expect(sqliteObjectExists(db, "index", "idx_mem_recall_profiles_project_type")).toBe(true);
+}
+
 describe("schema migration", () => {
   test("fresh initSchema and migrateSchema create WorkGraph tables and indexes", () => {
     const db = createTempDb();
@@ -91,6 +141,7 @@ describe("schema migration", () => {
       expect(() => migrateSchema(db)).not.toThrow();
 
       expectWorkGraphSchema(db);
+      expectRecallProjectionSchema(db);
     } finally {
       db.close();
     }
@@ -146,6 +197,7 @@ describe("schema migration", () => {
       expect(() => migrateSchema(db)).not.toThrow();
 
       expectWorkGraphSchema(db);
+      expectRecallProjectionSchema(db);
       const legacySession = db
         .query(`SELECT project FROM mem_sessions WHERE session_id = 'legacy-session'`)
         .get() as { project: string } | null;

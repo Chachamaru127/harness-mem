@@ -80,6 +80,84 @@ function initWorkGraphSchema(db: Database): void {
   `);
 }
 
+function initRecallProjectionSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_recall_projection_runs (
+      generation TEXT PRIMARY KEY,
+      project TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      source_watermark TEXT NOT NULL,
+      status TEXT NOT NULL,
+      item_count INTEGER NOT NULL DEFAULT 0,
+      skipped_count INTEGER NOT NULL DEFAULT 0,
+      diagnostics_json TEXT NOT NULL DEFAULT '{}',
+      started_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_recall_runs_project_completed
+      ON mem_recall_projection_runs(project, completed_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mem_recall_items (
+      recall_id TEXT PRIMARY KEY,
+      recall_type TEXT NOT NULL,
+      project TEXT NOT NULL,
+      workspace TEXT,
+      tenant TEXT,
+      session_id TEXT,
+      source_type TEXT NOT NULL,
+      source_id TEXT NOT NULL,
+      source_ref TEXT NOT NULL,
+      projection_generation TEXT NOT NULL,
+      title TEXT,
+      content_redacted TEXT NOT NULL,
+      source_created_at TEXT,
+      projected_at TEXT NOT NULL,
+      valid_from TEXT,
+      valid_to TEXT,
+      privacy_tags_json TEXT NOT NULL DEFAULT '[]',
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(projection_generation) REFERENCES mem_recall_projection_runs(generation) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_recall_items_scope_type_created
+      ON mem_recall_items(project, recall_type, source_created_at DESC);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_recall_items_source
+      ON mem_recall_items(source_type, source_id);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_recall_items_generation
+      ON mem_recall_items(projection_generation);
+
+    CREATE TABLE IF NOT EXISTS mem_recall_chunks (
+      chunk_id TEXT PRIMARY KEY,
+      recall_id TEXT NOT NULL,
+      chunk_index INTEGER NOT NULL,
+      content_redacted TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY(recall_id) REFERENCES mem_recall_items(recall_id) ON DELETE CASCADE
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_mem_recall_chunks_recall_index
+      ON mem_recall_chunks(recall_id, chunk_index);
+
+    CREATE TABLE IF NOT EXISTS mem_recall_profiles (
+      profile_id TEXT PRIMARY KEY,
+      project TEXT NOT NULL,
+      profile_type TEXT NOT NULL,
+      content_redacted TEXT NOT NULL,
+      projection_generation TEXT NOT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(projection_generation) REFERENCES mem_recall_projection_runs(generation) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_recall_profiles_project_type
+      ON mem_recall_profiles(project, profile_type);
+  `);
+}
+
 export function initSchema(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS mem_sessions (
@@ -509,6 +587,7 @@ export function initSchema(db: Database): void {
       ON mem_signals(to_agent, sent_at) WHERE to_agent IS NULL;
   `);
   initWorkGraphSchema(db);
+  initRecallProjectionSchema(db);
 }
 
 function addColumnIfMissing(db: Database, tableName: string, columnName: string, definition: string): void {
@@ -1182,6 +1261,7 @@ export function migrateSchema(db: Database): void {
   }
 
   initWorkGraphSchema(db);
+  initRecallProjectionSchema(db);
 }
 
 export function initFtsIndex(db: Database): boolean {

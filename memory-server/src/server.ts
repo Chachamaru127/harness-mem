@@ -487,6 +487,68 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           });
         }
 
+        if (request.method === "GET" && url.pathname === "/v1/admin/recall-degradation-manifest") {
+          return jsonResponse(core.recallDegradationManifest());
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/recall-projection") {
+          const body = await parseRequestJson(request);
+          const project = typeof body.project === "string" ? body.project.trim() : "";
+          const action = typeof body.action === "string" ? body.action.trim() : "dry-run";
+          if (!project) {
+            return badRequest("project is required");
+          }
+          const req = {
+            project,
+            limit: parseIntegerLike(body.limit),
+            include_private: parseBooleanLike(body.include_private, false),
+          };
+          if (action === "dry-run" || action === "dry_run") {
+            return jsonResponse(core.buildRecallProjection(req));
+          }
+          if (action === "write" || action === "refresh" || action === "materialize") {
+            return jsonResponse(core.refreshRecallProjection(req));
+          }
+          if (action === "clear" || action === "delete") {
+            return jsonResponse(core.deleteRecallProjection({ project }));
+          }
+          return badRequest("action must be dry-run, write, refresh, materialize, clear, or delete");
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/recall") {
+          const body = await parseRequestJson(request);
+          const recallValidation = validator.validateSearch(body);
+          if (!recallValidation.valid) {
+            return badRequest(recallValidation.errors.join("; "));
+          }
+          const query = typeof body.query === "string" ? body.query.trim() : "";
+          if (!query) {
+            return badRequest("query is required");
+          }
+          const recallIdentity = resolveRequestIdentity(request);
+          const recallAccessFilter = recallIdentity
+            ? buildAccessFilter("o", recallIdentity)
+            : null;
+          const result = await core.recallPrepared({
+            query,
+            project: typeof body.project === "string" ? body.project : undefined,
+            session_id: typeof body.session_id === "string" ? body.session_id : undefined,
+            limit: parseIntegerLike(body.limit),
+            include_private: parseBooleanLike(body.include_private, false),
+            forensic: parseBooleanLike(body.forensic, false),
+            safe_mode: parseBooleanLike(body.safe_mode, true),
+            user_id: recallAccessFilter?.user_id ?? undefined,
+            team_id: recallAccessFilter?.team_id ?? undefined,
+          });
+          const status =
+            typeof result.meta.http_status === "number" &&
+            result.meta.http_status >= 400 &&
+            result.meta.http_status < 600
+              ? result.meta.http_status
+              : 200;
+          return jsonResponse(result, status);
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/consolidation/run") {
           const body = await parseRequestJson(request);
           // S81-B02: accept forget_policy as a sub-object on the run request.

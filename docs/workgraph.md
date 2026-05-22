@@ -4,7 +4,8 @@ Status: frozen for S125-001
 Date: 2026-05-17  
 Package baseline: `@chachamaru127/harness-mem` `0.23.0`  
 Plan source: `Plans.md` §125 WorkGraph Task Continuity MVP  
-Research source: `/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/harness_mem_final_research_improvement_report.md`
+Research source: BEADS / agentmemory research incorporated into this spec and
+`Plans.md` §125. External local download paths are not package SSOT.
 
 ## Purpose
 

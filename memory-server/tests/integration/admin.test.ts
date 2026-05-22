@@ -62,6 +62,14 @@ async function createRuntime(name: string): Promise<{ baseUrl: string; stop: () 
   };
 }
 
+async function postJson(baseUrl: string, path: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 describe("memory admin integration", () => {
   test("reindexVectors and metrics endpoints data shape", async () => {
     const { core, dir } = createCore("reindex");
@@ -162,6 +170,76 @@ describe("memory admin integration", () => {
       const stopPayload = (await stopResponse.json()) as { ok: boolean; items: unknown[] };
       expect(stopPayload.ok).toBe(true);
       expect(stopPayload.items.length).toBe(1);
+    } finally {
+      runtime.stop();
+    }
+  });
+
+  test("recall projection admin endpoint supports dry-run, write, and clear", async () => {
+    const runtime = await createRuntime("recall-projection");
+    const project = "admin-recall-project";
+    try {
+      const recordResponse = await postJson(runtime.baseUrl, "/v1/events/record", {
+        event: {
+          event_id: "admin-recall-1",
+          platform: "codex",
+          project,
+          session_id: "admin-recall-session",
+          event_type: "user_prompt",
+          ts: "2026-05-22T00:00:00.000Z",
+          payload: { content: "recall projection admin value test" },
+          tags: ["admin", "recall"],
+          privacy_tags: [],
+        },
+      });
+      expect(recordResponse.status).toBe(200);
+
+      const dryRunResponse = await postJson(runtime.baseUrl, "/v1/admin/recall-projection", {
+        project,
+        action: "dry-run",
+        limit: 10,
+      });
+      expect(dryRunResponse.status).toBe(200);
+      const dryRunPayload = (await dryRunResponse.json()) as {
+        ok: boolean;
+        items: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      };
+      expect(dryRunPayload.ok).toBe(true);
+      expect(dryRunPayload.items.length).toBe(1);
+      expect(dryRunPayload.meta.writes).toBe(0);
+      expect(dryRunPayload.meta.planned_count).toBe(1);
+
+      const writeResponse = await postJson(runtime.baseUrl, "/v1/admin/recall-projection", {
+        project,
+        action: "write",
+        limit: 10,
+      });
+      expect(writeResponse.status).toBe(200);
+      const writePayload = (await writeResponse.json()) as {
+        ok: boolean;
+        items: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      };
+      expect(writePayload.ok).toBe(true);
+      expect(writePayload.items.length).toBe(1);
+      expect(writePayload.meta.writes).toBe(1);
+      expect(writePayload.meta.cache_cleared).toBe(true);
+
+      const clearResponse = await postJson(runtime.baseUrl, "/v1/admin/recall-projection", {
+        project,
+        action: "clear",
+      });
+      expect(clearResponse.status).toBe(200);
+      const clearPayload = (await clearResponse.json()) as {
+        ok: boolean;
+        items: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      };
+      expect(clearPayload.ok).toBe(true);
+      expect(clearPayload.items[0].deleted_items).toBe(1);
+      expect(clearPayload.items[0].deleted_runs).toBe(1);
+      expect(clearPayload.meta.cache_cleared).toBe(true);
     } finally {
       runtime.stop();
     }

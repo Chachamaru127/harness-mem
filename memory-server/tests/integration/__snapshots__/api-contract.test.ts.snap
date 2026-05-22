@@ -402,6 +402,14 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "question_kind": "string",
       "question_kind_confidence": "number",
       "ranking": "string",
+      "recall_cache": {
+        "data_watermark": "string",
+        "hit": "boolean",
+        "key_hash": "string",
+        "knobs_hash": "string",
+        "ttl_ms": "number",
+      },
+      "recall_cache_hit": "boolean",
       "sla_latency_ms": "number",
       "token_estimate": {
         "estimated_input_tokens": "number",

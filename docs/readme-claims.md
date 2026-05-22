@@ -3,6 +3,8 @@
 This document maps user-facing README claims to the source of truth that supports them.
 Use it before changing public copy. The companion SSOT matrix is
 [`benchmark-claim-ssot-matrix-2026-03-13.md`](./benchmarks/benchmark-claim-ssot-matrix-2026-03-13.md).
+Project-level product boundaries live in [`Spec.md`](../Spec.md); public copy
+must not exceed that product spec or the measured evidence below.
 
 ## Rules
 
