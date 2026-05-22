@@ -17,6 +17,7 @@
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
 #   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
+#   scripts/harness-mem adr new --title <title> --status <status> --options <text> --consequences <text> --supersedes <text> --source-plans "Plans.md §NNN" [--write]
 #   scripts/harness-mem model use-adaptive
 #   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run|--write]
 #   scripts/harness-mem work ready --project <path>
@@ -154,6 +155,7 @@ Commands:
   mcp-gateway start|stop|status
                               Manage the opt-in local Streamable HTTP MCP gateway.
   mcp-config                  Print or write Claude/Codex/Hermes MCP config snippets.
+  adr new                     Render a BEADS-shaped ADR template. Dry-run by default; --write is explicit.
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
@@ -252,6 +254,14 @@ Command options:
     quiet             Enable quiet contextual recall (default, rerank threshold 0.8 / fallback top 1)
     off               Disable contextual recall injection
     status            Show current contextual recall mode
+  adr new:
+    --title <title>       ADR title (also used for slug unless --slug is provided)
+    --status <status>     Proposed|Accepted|Superseded|Deprecated|Rejected
+    --options <text>      Required; repeatable or semicolon-separated
+    --consequences <text> Required; repeatable or semicolon-separated
+    --supersedes <text>   Required; use "None" when there is no prior ADR
+    --source-plans <ref>  Required; must include a Plans.md §NNN reference
+    --write               Create docs/adr/ADR-NNN-*.md. Default is dry-run.
 
 Embedding note:
   HARNESS_MEM_EMBEDDING_PROVIDER accepts auto|adaptive|fallback|openai|ollama|local.
@@ -264,6 +274,13 @@ work_impl() {
     fail "bun is required for harness-mem work commands"
   fi
   bun "${HARNESS_ROOT}/memory-server/src/workgraph/work-cli.ts" "$@"
+}
+
+adr_impl() {
+  if ! command -v bun >/dev/null 2>&1; then
+    fail "bun is required for harness-mem adr commands"
+  fi
+  bun "${HARNESS_ROOT}/memory-server/src/adr/adr-cli.ts" "$@"
 }
 
 log() {
@@ -6893,6 +6910,10 @@ main() {
   fi
   if [ "$command" = "work" ]; then
     work_impl "$@"
+    return
+  fi
+  if [ "$command" = "adr" ]; then
+    adr_impl "$@"
     return
   fi
   if [ "$command" = "mcp-gateway" ]; then
