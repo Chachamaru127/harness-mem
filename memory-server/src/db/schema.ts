@@ -204,8 +204,8 @@ export function initSchema(db: Database): void {
     CREATE INDEX IF NOT EXISTS idx_mem_observations_lookup
       ON mem_observations(platform, project, session_id, created_at);
 
-      CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
-        ON mem_observations(project, session_id, created_at, id);
+    CREATE INDEX IF NOT EXISTS idx_mem_obs_project_session_created
+      ON mem_observations(project, session_id, created_at, id);
 
     CREATE TABLE IF NOT EXISTS mem_tags (
       observation_id TEXT NOT NULL,
@@ -1208,6 +1208,16 @@ export function migrateSchema(db: Database): void {
   }
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_at ON mem_observations(archived_at)`);
+  } catch {
+    // already exists
+  }
+  try {
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_mem_obs_project_archived_created
+        ON mem_observations(project, archived_at, created_at DESC, id);
+      CREATE INDEX IF NOT EXISTS idx_mem_obs_archived_created
+        ON mem_observations(archived_at, created_at DESC, id);
+    `);
   } catch {
     // already exists
   }

@@ -200,9 +200,10 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
   let cacheEvictions = 0;
   const embeddingCache = new Map<string, number[]>();
   const inflightComputations = new Map<string, Promise<number[]>>();
+  let initPromise: Promise<void> | null = null;
   let lastHealth: EmbeddingHealth = {
-    status: "degraded",
-    details: `local model ${modelId}: initializing...`,
+    status: "healthy",
+    details: `local model ${modelId}: lazy initialization pending`,
   };
 
   function failSyncEmbed(
@@ -212,13 +213,6 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     details: string,
     retryable: boolean
   ): never {
-    const normalizedText = text || "";
-    if (retryable && code !== "init_failed") {
-      void primeInternal(normalizedText, prefix, {
-        cacheKey: `${prefix}${normalizedText}`,
-        skipCacheLookup: true,
-      }).catch(() => undefined);
-    }
     throw createLocalOnnxError(modelId, code, details, retryable);
   }
 
@@ -261,35 +255,43 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     }
   }
 
-  // Start async initialization immediately
-  const initPromise: Promise<void> = (async () => {
-    try {
-      // Dynamic import to avoid bundling issues at startup
-      const transformers: TransformersModule = await import("@huggingface/transformers");
-      const { AutoTokenizer, AutoModel, env } = transformers;
-
-      // Force local-only mode: do not fetch from HuggingFace Hub at inference time
-      env.localModelPath = modelPath;
-      env.allowRemoteModels = false;
-      env.useBrowserCache = false;
-
-      tokenizer = await AutoTokenizer.from_pretrained(modelPath);
-      model = await AutoModel.from_pretrained(modelPath, {
-        local_files_only: true,
-      });
-
-      lastHealth = {
-        status: "healthy",
-        details: `local ONNX: ${modelId} (dim=${dimension})`,
-      };
-    } catch (err) {
-      initError = String(err);
+  function ensureInitialized(): Promise<void> {
+    if (!initPromise) {
       lastHealth = {
         status: "degraded",
-        details: `local model ${modelId} failed to load: ${initError}`,
+        details: `local model ${modelId}: initializing...`,
       };
+      initPromise = (async () => {
+        try {
+          // Dynamic import to avoid bundling issues at startup
+          const transformers: TransformersModule = await import("@huggingface/transformers");
+          const { AutoTokenizer, AutoModel, env } = transformers;
+
+          // Force local-only mode: do not fetch from HuggingFace Hub at inference time
+          env.localModelPath = modelPath;
+          env.allowRemoteModels = false;
+          env.useBrowserCache = false;
+
+          tokenizer = await AutoTokenizer.from_pretrained(modelPath);
+          model = await AutoModel.from_pretrained(modelPath, {
+            local_files_only: true,
+          });
+
+          lastHealth = {
+            status: "healthy",
+            details: `local ONNX: ${modelId} (dim=${dimension})`,
+          };
+        } catch (err) {
+          initError = String(err);
+          lastHealth = {
+            status: "degraded",
+            details: `local model ${modelId} failed to load: ${initError}`,
+          };
+        }
+      })();
     }
-  })();
+    return initPromise;
+  }
 
   function embedSync(text: string, prefix: string): number[] {
     const normalizedText = text || "";
@@ -307,17 +309,11 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
       return cached;
     }
 
-    // Trigger async inference for next call (fire-and-forget).
-    void primeInternal(normalizedText, prefix, {
-      cacheKey,
-      skipCacheLookup: true,
-    });
-
     failSyncEmbed(
       normalizedText,
       prefix,
       "prime_required",
-      `local ONNX model ${modelId} requires async prime before sync embed (${cacheKey.slice(0, 64)})`,
+      `local ONNX model ${modelId} requires async prime before sync embed (mode=${prefix === queryPrefix ? "query" : "passage"}, chars=${normalizedText.length})`,
       true
     );
   }
@@ -412,7 +408,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     }
 
     const running = (async () => {
-      await initPromise;
+      await ensureInitialized();
       if (initError !== null || tokenizer === null || model === null) {
         throw createLocalOnnxError(
           modelId,
@@ -476,7 +472,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
 
     const missing = [...missingByKey.entries()];
     if (missing.length > 0) {
-      await initPromise;
+      await ensureInitialized();
       if (initError !== null || tokenizer === null || model === null) {
         throw createLocalOnnxError(
           modelId,
@@ -575,7 +571,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
 
     // Expose the init promise for callers that want to await readiness
     get ready(): Promise<void> {
-      return initPromise;
+      return initPromise ?? Promise.resolve();
     },
   };
 }

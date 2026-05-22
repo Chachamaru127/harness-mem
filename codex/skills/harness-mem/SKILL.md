@@ -29,10 +29,21 @@ codex mcp add harness -- node /path/to/harness-mem/mcp-server/dist/index.js
 
 ## Recommended Retrieval Sequence
 
-1. `harness_mem_search` — Find relevant memories by natural language query
-2. `harness_mem_timeline` — Expand temporal context around search results
-3. `harness_mem_get_observations` — Get full observation text for specific entries
-4. `harness_mem_resume_pack` — Get cross-platform resume context at session start
+1. `harness_mem_resume_pack(project, session_id)` — Get cross-platform resume context at session start
+2. `harness_mem_search({ query, project })` — Find relevant memories by natural language query
+3. `harness_mem_timeline` — Expand temporal context around scoped search results
+4. `harness_mem_get_observations` — Get full observation text for specific entries
+
+When the current project is known, pass `project` on search-like calls. In parallel Claude / Codex projects, search the current project first and only broaden after the scoped result is insufficient.
+
+## S127 Bounded Search Rules
+
+S127 makes search safer by keeping heavy retrieval off the daemon main loop. Treat these responses as normal control signals:
+
+- `harness_mem_search_facets` is a scoped refinement tool. Do not call it with no arguments. Pass at least `query`, `project`, or tenant/access scope. An unscoped call returns `400` with `search_facets_unbounded`; narrow the request instead of retrying globally.
+- Heavy `harness_mem_search` can return `503` (`search_offload_queue_full`, `search_offload_unavailable`, or similar). This means the daemon is applying backpressure so it does not freeze; it is not proof that memory is absent.
+- On `503`, retry once with a narrower `query`, the current `project`, and a smaller `limit`. If lexical evidence is enough, use `vector_search=false`. If it still returns `503`, say memory search is temporarily busy and continue from SSOT/current files.
+- When reporting results, include the search scope in the answer (for example, `project=/path/to/repo`, `hits=3`, or `503 backpressure`) so the user can tell whether the answer came from the right project.
 
 ## Recommended Lifecycle Sequence
 
@@ -54,7 +65,7 @@ codex mcp add harness -- node /path/to/harness-mem/mcp-server/dist/index.js
 - `harness_mem_sessions_list` — List active sessions
 - `harness_mem_session_thread` — Get events within a session
 - `harness_mem_finalize_session` — End session with summary
-- `harness_mem_search_facets` — Get search facets
+- `harness_mem_search_facets` — Get scoped search facets; never call without `query`, `project`, or tenant/access scope
 
 ### Administration
 - `harness_mem_health` — Daemon health check

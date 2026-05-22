@@ -2,11 +2,15 @@
  * ShadowSyncManager 実測統合テスト
  *
  * dual-write / shadow-read の動作を実測する。
- * port 37888 のデーモンが稼働中の場合は実デーモンに対する検証も行う。
+ * HARNESS_MEM_TEST_REAL_DAEMON=1 の場合だけ port 37888 の実デーモンも検証する。
  */
 
 import { describe, expect, test } from "bun:test";
 import { ShadowSyncManager } from "../../src/projector/shadow-sync";
+
+const REAL_DAEMON_TEST_ENABLED = process.env.HARNESS_MEM_TEST_REAL_DAEMON === "1";
+const REAL_DAEMON_SKIP_MESSAGE =
+  "  [skip] real daemon smoke disabled; set HARNESS_MEM_TEST_REAL_DAEMON=1 to exercise port 37888";
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -14,6 +18,9 @@ import { ShadowSyncManager } from "../../src/projector/shadow-sync";
 
 /** デーモンが port 37888 で稼働中かどうかを確認する。 */
 async function isDaemonRunning(): Promise<boolean> {
+  if (!REAL_DAEMON_TEST_ENABLED) {
+    return false;
+  }
   try {
     const res = await fetch("http://localhost:37888/health", { signal: AbortSignal.timeout(2000) });
     if (!res.ok) return false;
@@ -324,7 +331,7 @@ describe("ShadowSyncManager - 実デーモン shadow-read", () => {
   test("デーモンに書き込み後、検索して shadow-read 一致率を測定する", async () => {
     const running = await isDaemonRunning();
     if (!running) {
-      console.log("  [skip] daemon not running on port 37888");
+      console.log(REAL_DAEMON_SKIP_MESSAGE);
       return; // test.skip の代わりに早期 return
     }
 
@@ -365,7 +372,7 @@ describe("ShadowSyncManager - 実デーモン shadow-read", () => {
   test("複数書き込み後の shadow-read でメトリクス集積が正しい", async () => {
     const running = await isDaemonRunning();
     if (!running) {
-      console.log("  [skip] daemon not running on port 37888");
+      console.log(REAL_DAEMON_SKIP_MESSAGE);
       return;
     }
 
@@ -456,7 +463,7 @@ describe("ShadowSyncManager - performance measurement", () => {
   test("実デーモンへの 10件 dual-write + shadow-read が合計 5 秒以内に完了すること", async () => {
     const running = await isDaemonRunning();
     if (!running) {
-      console.log("  [skip] daemon not running on port 37888");
+      console.log(REAL_DAEMON_SKIP_MESSAGE);
       return;
     }
 

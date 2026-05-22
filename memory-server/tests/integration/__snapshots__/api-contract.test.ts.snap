@@ -105,12 +105,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
   "health": {
     "items": [
       {
-        "counts": {
-          "events": "number",
-          "observations": "number",
-          "retry_queue": "number",
-          "sessions": "number",
-        },
+        "counts_status": "string",
         "fts_enabled": "boolean",
         "host": "string",
         "port": "number",
@@ -120,6 +115,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
     ],
     "meta": {
       "count": "number",
+      "counts_status": "string",
       "filters": {},
       "latency_ms": "number",
       "ranking": "string",

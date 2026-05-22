@@ -361,12 +361,20 @@ components:
           type: string
         fts_enabled:
           type: boolean
+        counts_status:
+          type: string
+          enum: [omitted, exact]
         counts:
           type: object
+          description: Exact table counts. Omitted unless /health?include_counts=1 is requested.
           properties:
             observations:
               type: integer
             sessions:
+              type: integer
+            events:
+              type: integer
+            retry_queue:
               type: integer
 
     MetricsResult:
@@ -584,10 +592,17 @@ paths:
   /health:
     get:
       summary: Health check
-      description: Returns server health status.
+      description: Returns server health status. Exact table counts are omitted by default to keep routine probes lightweight.
       operationId: getHealth
       security: []
       tags: [System]
+      parameters:
+        - name: include_counts
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Include exact SQLite table counts for diagnostics. This may be expensive on large local databases.
       responses:
         "200":
           description: Server health information
@@ -633,7 +648,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
         "503":
-          description: Write queue full
+          description: Write offload worker busy, timed out, or queue full
           content:
             application/json:
               schema:
@@ -782,6 +797,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Search offload worker is busy, warming, timed out, or queue is full; retry later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/search/facets:
     get:
@@ -817,6 +838,12 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/FacetResult"
+        "400":
+          description: Facet request is unbounded; provide query, project, or tenant scope.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/feed:
     get:
@@ -1204,6 +1231,12 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Checkpoint write queue is full; retry later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/resume-pack:
     post:
@@ -1274,6 +1307,11 @@ paths:
       operationId: projectsStats
       tags: [Projects]
       parameters:
+        - name: project
+          in: query
+          description: Optional project scope. Supplying this keeps stats bounded for multi-project clients.
+          schema:
+            type: string
         - name: include_private
           in: query
           schema:
@@ -1293,6 +1331,12 @@ paths:
                         type: array
                         items:
                           $ref: "#/components/schemas/ProjectStats"
+        "503":
+          description: Project stats offload child is busy, timed out, or queue is full; retry later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /v1/stream:
     get:

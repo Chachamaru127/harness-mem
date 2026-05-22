@@ -73,19 +73,25 @@ That's it. Start with `/plan-with-agent`.
 
 ## Codex CLI Setup
 
-Use Codex CLI with Team Config (shared `.codex/`):
-
-1. Copy `codex/.codex` into your project as `.codex`
-2. Copy `codex/AGENTS.md` into your project root as `AGENTS.md`
-3. Optional: copy `codex/.codex/config.toml` and set the MCP server path
-
-Script setup:
+Codex reads MCP servers from your **global** `~/.codex/config.toml`. Let the
+harness manage the single `[mcp_servers.harness]` block there:
 
 ```bash
 /path/to/claude-code-harness/scripts/setup-codex.sh
 ```
 
 Claude Code users can run `/setup codex` to apply it without leaving the session.
+
+> **Do not copy `config.toml` into a repo-local `.codex/`.** Codex merges a
+> project-local `.codex/config.toml` with the global one on the same
+> `[mcp_servers.harness]` key. If the two disagree on transport (stdio
+> `command` vs http `url`), Codex refuses to start with
+> `url is not supported for stdio`. Keep the harness MCP server defined only in
+> the global config.
+
+Project-scoped files that are safe to copy: `codex/AGENTS.md` into your project
+root, and `codex/.codex/rules/` for harness rules. These contain no MCP server
+definition, so they never collide with the global config.
 
 Use `$plan-with-agent`, `$work`, `$harness-review` to run the workflow.
 

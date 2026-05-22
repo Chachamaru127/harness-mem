@@ -405,7 +405,8 @@ hook_acquire_continuity_lock() {
     fi
 
     if [ -z "$owner_pid" ]; then
-      lock_mtime="$(stat -f %m "$CONTINUITY_LOCK_DIR" 2>/dev/null || stat -c %Y "$CONTINUITY_LOCK_DIR" 2>/dev/null || printf '0')"
+      lock_mtime="$(hook_file_mtime_epoch "$CONTINUITY_LOCK_DIR")"
+      lock_mtime="$(hook_clamp_integer "$lock_mtime" "0" "0" "9999999999")"
       if [ "$lock_mtime" != "0" ]; then
         lock_age=$(($(date +%s) - lock_mtime))
         if [ "$lock_age" -ge 2 ]; then
@@ -1321,8 +1322,19 @@ hook_workgraph_sync_state_file() {
 
 hook_file_mtime_epoch() {
   local path="${1:-}"
+  local result
   [ -n "$path" ] || return 0
-  stat -f '%m' "$path" 2>/dev/null || stat -c '%Y' "$path" 2>/dev/null || true
+  # Try GNU stat first (Linux/Git Bash), then BSD stat (macOS). Capture output
+  # before printing because GNU `stat -f` can leak filesystem stats on stdout.
+  result="$(stat -c '%Y' "$path" 2>/dev/null)" && case "$result" in
+    ''|*[!0-9]*) ;;
+    *) printf '%s' "$result"; return 0 ;;
+  esac
+  result="$(stat -f '%m' "$path" 2>/dev/null)" && case "$result" in
+    ''|*[!0-9]*) ;;
+    *) printf '%s' "$result"; return 0 ;;
+  esac
+  return 0
 }
 
 hook_read_workgraph_last_sync_mtime() {

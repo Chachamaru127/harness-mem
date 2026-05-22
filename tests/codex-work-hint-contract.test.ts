@@ -58,6 +58,7 @@ function setupCodexWorkHintSandbox(prefix: string) {
     join(harnessHome, "config.json"),
     JSON.stringify({ recall: { mode: "quiet" } }, null, 2)
   );
+  writeFileSync(join(harnessHome, "harness-mem.db"), "");
 
   writeFileSync(
     mockClient,
@@ -125,7 +126,11 @@ function envFor(sandbox: ReturnType<typeof setupCodexWorkHintSandbox>, enabled: 
     ...process.env,
     HOME: sandbox.homeDir,
     HARNESS_MEM_HOME: sandbox.harnessHome,
+    HARNESS_MEM_DB_PATH: join(sandbox.harnessHome, "harness-mem.db"),
+    CLAUDE_PLUGIN_DATA: sandbox.harnessHome,
     HARNESS_MEM_WORKGRAPH: "",
+    HARNESS_MEM_WORKGRAPH_AUTO_SYNC: "1",
+    HARNESS_MEM_WORKGRAPH_AUTO_SYNC_FORCE: "",
     HARNESS_MEM_WORK_HINTS: enabled ? "1" : "",
   };
 }

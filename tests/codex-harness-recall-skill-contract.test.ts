@@ -111,4 +111,15 @@ describe("§97 Codex harness-recall skill contract", () => {
     const body = readRequiredFile(CODEX_SKILL_PATH);
     expect(body).toMatch(/source:/i);
   });
+
+  test("S127 bounded search guidance is present for Codex recall UX", () => {
+    const body = readRequiredFile(CODEX_SKILL_PATH);
+    expect(body).toContain("S127 後の検索安全ルール");
+    expect(body).toContain("harness_mem_search_facets");
+    expect(body).toContain("search_facets_unbounded");
+    expect(body).toContain("503");
+    expect(body).toContain("backpressure");
+    expect(body).toContain("project");
+    expect(body).toContain("strict_project=true");
+  });
 });

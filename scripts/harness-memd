@@ -25,6 +25,7 @@ done
 SCRIPT_DIR="$(cd -P "$(dirname "$SCRIPT_SOURCE")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 STATE_DIR="${HARNESS_MEM_HOME:-$HOME/.harness-mem}"
+DEFAULT_STATE_DIR="$HOME/.harness-mem"
 PID_FILE="${STATE_DIR}/daemon.pid"
 LOCK_FILE="${STATE_DIR}/daemon.lock"
 LOG_FILE="${STATE_DIR}/daemon.log"
@@ -32,12 +33,16 @@ UI_LOG_FILE="${STATE_DIR}/harness-mem-ui.log"
 HEARTBEAT_FILE="${STATE_DIR}/daemon.heartbeat"
 UI_PID_FILE="${STATE_DIR}/harness-mem-ui.pid"
 DB_PATH="${HARNESS_MEM_DB_PATH:-$STATE_DIR/harness-mem.db}"
+DEFAULT_DB_PATH="${DEFAULT_STATE_DIR}/harness-mem.db"
 HOST="${HARNESS_MEM_HOST:-127.0.0.1}"
 PORT="${HARNESS_MEM_PORT:-37888}"
+DEFAULT_HOST="127.0.0.1"
+DEFAULT_PORT="37888"
 UI_PORT="${HARNESS_MEM_UI_PORT:-37901}"
 HEALTH_URL="http://${HOST}:${PORT}/health"
 READY_URL="http://${HOST}:${PORT}/health/ready"
 UI_CONTEXT_URL="http://${HOST}:${UI_PORT}/api/context"
+HEALTH_PROBE_TIMEOUT_SEC="${HARNESS_MEM_HEALTH_PROBE_TIMEOUT_SEC:-3}"
 START_TIMEOUT_SEC="${HARNESS_MEM_START_TIMEOUT_SEC:-20}"
 STOP_TIMEOUT_SEC="${HARNESS_MEM_STOP_TIMEOUT_SEC:-5}"
 LOG_MAX_BYTES="${HARNESS_MEM_LOG_MAX_BYTES:-5242880}"
@@ -97,6 +102,22 @@ is_trueish() {
 
 is_ui_enabled() {
   is_trueish "$UI_ENABLED_RAW"
+}
+
+should_delegate_daemon_start_to_launchctl() {
+  if is_trueish "${HARNESS_MEM_DISABLE_LAUNCHCTL_DELEGATION:-false}"; then
+    return 1
+  fi
+
+  if [ -n "${HARNESS_MEM_DAEMON_LAUNCHD_LABEL:-}" ]; then
+    return 0
+  fi
+
+  [ "$DAEMON_LAUNCHD_LABEL" = "com.harness-mem.daemon" ] \
+    && [ "$STATE_DIR" = "$DEFAULT_STATE_DIR" ] \
+    && [ "$DB_PATH" = "$DEFAULT_DB_PATH" ] \
+    && [ "$HOST" = "$DEFAULT_HOST" ] \
+    && [ "$PORT" = "$DEFAULT_PORT" ]
 }
 
 read_backend_mode() {
@@ -377,9 +398,9 @@ wait_for_ui() {
 
 is_health_reachable() {
   local response
-  response="$(curl --silent --show-error --max-time 1 "$READY_URL" 2>/dev/null || true)"
+  response="$(curl --silent --show-error --max-time "$HEALTH_PROBE_TIMEOUT_SEC" "$READY_URL" 2>/dev/null || true)"
   if [ -z "$response" ]; then
-    response="$(curl --silent --show-error --max-time 1 "$HEALTH_URL" 2>/dev/null || true)"
+    response="$(curl --silent --show-error --max-time "$HEALTH_PROBE_TIMEOUT_SEC" "$HEALTH_URL" 2>/dev/null || true)"
   fi
   if [ -z "$response" ]; then
     return 1
@@ -683,6 +704,47 @@ start_daemon() {
 
   if ! command -v bun >/dev/null 2>&1; then
     echo "[ERR] bun is required but not found" >&2
+    return 1
+  fi
+
+  # When the daemon is LaunchAgent-managed, launchd must own the long-running
+  # server process. Spawning a detached daemon here makes launchd think the job
+  # exited, which can lead to periodic start attempts and EADDRINUSE loops.
+  if should_delegate_daemon_start_to_launchctl && is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then
+    local launchd_runtime_pid
+    launchd_runtime_pid="$(discover_daemon_pid_from_port || true)"
+    if [ -n "$launchd_runtime_pid" ]; then
+      echo "$launchd_runtime_pid" > "$PID_FILE"
+      if wait_for_health; then
+        log "harness-memd already running (pid=${launchd_runtime_pid})"
+        if start_ui; then
+          return 0
+        fi
+        return 1
+      fi
+      warn "LaunchAgent is loaded and daemon listener exists on port ${PORT} (pid=${launchd_runtime_pid}) but health endpoint is unreachable"
+      warn "Refusing to spawn detached daemon under LaunchAgent management"
+      return 1
+    fi
+
+    if ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
+      warn "launchctl kickstart failed for ${DAEMON_LAUNCHD_LABEL}"
+      return 1
+    fi
+    if wait_for_health; then
+      local runtime_pid
+      runtime_pid="$(refresh_pid_file_from_runtime || true)"
+      if [ -n "$runtime_pid" ]; then
+        log "harness-memd started via launchctl (pid=${runtime_pid}, port=${PORT})"
+      else
+        log "harness-memd started via launchctl (port=${PORT})"
+      fi
+      if start_ui; then
+        return 0
+      fi
+      return 1
+    fi
+    warn "launchctl start did not restore health in time"
     return 1
   fi
 
@@ -1037,6 +1099,10 @@ main() {
       acquire_lock || exit 1
       trap release_lock EXIT
       if is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then
+        # launchd will invoke this script's start path, which owns the real
+        # daemon transition and needs the operation lock itself.
+        release_lock
+        trap - EXIT
         if ! kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
           warn "launchctl kickstart failed for ${DAEMON_LAUNCHD_LABEL}"
           exit 1

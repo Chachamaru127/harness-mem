@@ -360,6 +360,26 @@ describe("config-manager: projectsStats", () => {
     expect(projects.some((p) => typeof p === "string")).toBe(true);
     expect(projects).toContain("proj-stats-test");
   });
+
+  test("project filter bounds project stats to the requested project", () => {
+    const db = createTestDb();
+    dbs.push(db);
+    const config = createTestConfig();
+
+    insertTestObservation(db, { project: "proj-stats-target" });
+    insertTestObservation(db, { project: "proj-stats-noise" });
+
+    const deps = createDeps(db, config);
+    const manager = new ConfigManager(deps);
+    const res = manager.projectsStats({
+      project: "proj-stats-target",
+      project_members: ["proj-stats-target"],
+    });
+    expect(res.ok).toBe(true);
+    const projects = (res.items as Array<Record<string, unknown>>).map((p) => p.project);
+    expect(projects).toEqual(["proj-stats-target"]);
+    expect(res.meta.filters.project).toBe("proj-stats-target");
+  });
 });
 
 // ---------------------------------------------------------------------------

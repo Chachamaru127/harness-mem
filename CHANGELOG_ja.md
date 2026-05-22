@@ -7,13 +7,26 @@
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-05-22
+
+### ユーザー向け要約
+
+- **Codex の MCP 設定が transport 切替後に `url is not supported for stdio` で起動不能になる問題を修正**。`harness-mem mcp-config --client codex` は、要求された transport を書く前に既存の `[mcp_servers.harness]` / `[mcp_servers.harness.env]` を managed/unmanaged・stdio/http を問わず全て除去するようにした（shell の `setup` と同じ挙動）。従来は harness-mem マーカー外に残った stdio の `command` 定義が `--transport http` 書き込み後も生き残り、Codex が古い `command` と新しい `url` をマージして起動を拒否していた。README の Codex セットアップも、harness MCP サーバーはグローバル `~/.codex/config.toml` のみで定義し、repo ローカルの `.codex/config.toml` には置かないと明記した。
+
+## [0.24.0] - 2026-05-20
+
 ### ユーザー向け要約
 
 - **archive-first の忘却フローを hard purge 手前まで強化した**。multi-GB の SQLite backup を hard-purge request 内で読み直さず、事前検証済み backup evidence token を使えるようにした。token は backup path / size / SHA / integrity、DB identity、候補ID、復元可能な archive/full payload coverage に結びつく。
 - **実DBで hard purge canary、残り90件 purge、safe compact を検証した**。まず10件だけ物理削除し、その後 archive 済みの残り90件も fresh backup と preverified evidence の条件を満たして削除した。archive stub は全100件 `purged`、full payload は全100件 cleared。10件 canary 後には `VACUUM INTO` で compact DB を作り、旧 live DB を rollback path に退避してから置き換えた。
 - **既存の `Plans.md` を SessionStart 時に WorkGraph DB へ自動同期するようにした**。Codex / Claude の session 起動時、プロジェクトに `Plans.md` があれば `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` を安全に実行する。ユーザーが手動 import しなくても WorkGraph UI に出やすくなる。`Plans.md` の新規作成・編集はせず、ファイルがないプロジェクトは静かにスキップし、mtime state で未変更ファイルの毎回再同期も避ける。
 - **既存プロジェクトの `Plans.md` task id 形式を WorkGraph import で読めるようにした**。`7.1` / `9.B.3` のような dotted id や、`GIFT-M1-03` / `DEP-02` のような project-prefix id を認識する。これにより harness-mem 以外の既存 `Plans.md` も、task 名を変えずに WorkGraph に出せる。
+- **大きなローカルDBでも検索・記録でdaemonが固まりにくくなった**。通常の vector search / lexical search、checkpoint / event 記録、retry queue 処理を bounded worker / child process 側へ逃がし、checkpoint はまず durable に保存してから vector/entity/link/nugget を bounded materialization child で後追い生成する。混雑時は固まる代わりに `503` backpressure として早く返す。
 - **MCP / HTTP gateway / 通常 CLI が余分な Mem UI を起動しないようにした**。Node MCP、Go MCP、HTTP MCP gateway、高レベル CLI の daemon preflight では、明示 opt-in がない限り `HARNESS_MEM_ENABLE_UI=false` を使う。`harness-mem setup` は引き続き Mem UI を既定で起動する。専用 UI LaunchAgent が `:37903` にいる運用で、旧既定 `:37901` の stray UI が増える問題を防ぐ。
+- **health と facets が巨大DB全体を不用意に舐めないようにした**。`/health` は既定で exact count を省略し、必要な時だけ `include_counts=1` で出す。`/v1/search/facets` は `query` / `project` / tenant scope なしでは `400 search_facets_unbounded` を返す。
+- **Mem UI の初回表示が現在プロジェクト優先で固まりにくくなった**。ブラウザが `project` を渡さない feed / project stats リクエストにも UI proxy が default project を補い、`/v1/projects/stats?project=...` は bounded child process と高速な privacy-safe 集計を使う。stats が混雑中でも UI はすぐ stale な現在プロジェクト表示へ切り替え、cached stats も stale として表示するため、「まだプロジェクトがありません」と誤表示したり古い件数を最新のように見せたりしない。大きな複数プロジェクトDBで `daemon checking...` / `Projects Loading...` に固着しつつ `/health/ready` まで消える体験を避ける。
+- **Codex / Claude 用 Skill に S127 後の正しい検索作法を反映した**。複数プロジェクト並行時は `project` scope を渡す、`harness_mem_search_facets` を無指定で呼ばない、検索 `503` は「記憶なし」ではなくdaemonを守る backpressure として扱う、というルールを明文化した。npm package には Claude `skills/` bundle も含め、proof pack で Codex / Claude 両方の配布面を確認する。
+- **release test がユーザーの常駐 daemon / DB に既定で書き込まないようにした**。shadow-sync の実デーモン smoke は `HARNESS_MEM_TEST_REAL_DAEMON=1` の時だけ実行する。通常の `npm test` と release 確認は、ローカルの長寿命 DB lock や model warmup 状態に左右されにくくなる。
 
 ## [0.23.0] - 2026-05-17
 
@@ -911,7 +924,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...HEAD
+[0.24.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
 [0.22.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.0...v0.22.1

@@ -47,6 +47,7 @@ export interface ProjectsStatsItem {
   sessions: number;
   updated_at: string | null;
   member_projects?: string[];
+  stale?: boolean;
 }
 
 export interface SessionListItem {

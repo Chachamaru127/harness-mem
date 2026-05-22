@@ -21,6 +21,7 @@ interface UiCopy {
   projects: string;
   allProjects: string;
   noProjects: string;
+  statsRefreshing: string;
   observationsUnit: string;
   sessionsUnit: string;
   feed: string;
@@ -124,6 +125,7 @@ const COPY: Record<UiLanguage, UiCopy> = {
     projects: "Projects",
     allProjects: "All projects",
     noProjects: "No projects yet.",
+    statsRefreshing: "refreshing...",
     observationsUnit: "obs",
     sessionsUnit: "sessions",
     feed: "Feed",
@@ -275,6 +277,7 @@ const COPY: Record<UiLanguage, UiCopy> = {
     projects: "プロジェクト",
     allProjects: "すべてのプロジェクト",
     noProjects: "まだプロジェクトがありません。",
+    statsRefreshing: "更新中...",
     observationsUnit: "件",
     sessionsUnit: "セッション",
     feed: "フィード",

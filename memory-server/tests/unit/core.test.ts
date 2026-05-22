@@ -6,6 +6,10 @@ import {
   HarnessMemCore,
   getConfig,
   parseVectorBackfillChildResponse,
+  shouldRunEventOutOfProcess,
+  shouldRunRetryQueueOutOfProcess,
+  shouldRunSearchOutOfProcess,
+  shouldUsePersistentSearchWorker,
   type Config,
   type EventEnvelope,
 } from "../../src/core/harness-mem-core";
@@ -114,6 +118,68 @@ describe("HarnessMemCore unit", () => {
         process.env.HARNESS_MEM_SQLITE_VEC_PATH = previous;
       }
     }
+  });
+
+  test("disk-backed js-fallback search offloads by default outside tests", () => {
+    const request = { query: "main thread readiness", limit: 1 };
+    const options = {
+      vectorEngine: "js-fallback" as const,
+      dbPath: "/tmp/harness-mem.db",
+      env: {},
+    };
+
+    expect(shouldRunSearchOutOfProcess(request, options)).toBe(true);
+    expect(shouldUsePersistentSearchWorker(options)).toBe(true);
+    expect(shouldRunSearchOutOfProcess({ ...request, safe_mode: true }, options)).toBe(false);
+    expect(shouldRunSearchOutOfProcess(request, { ...options, dbPath: ":memory:" })).toBe(false);
+    expect(shouldRunSearchOutOfProcess(request, { ...options, vectorEngine: "disabled" })).toBe(false);
+    expect(shouldRunSearchOutOfProcess(request, { ...options, env: { NODE_ENV: "test" } })).toBe(false);
+    expect(shouldRunSearchOutOfProcess(request, {
+      ...options,
+      env: { HARNESS_MEM_SEARCH_OFFLOAD: "0" },
+    })).toBe(false);
+  });
+
+  test("disk-backed event writes offload by default outside tests", () => {
+    const options = {
+      dbPath: "/tmp/harness-mem.db",
+      env: {},
+    };
+
+    expect(shouldRunEventOutOfProcess(options)).toBe(true);
+    expect(shouldRunEventOutOfProcess({ ...options, dbPath: ":memory:" })).toBe(false);
+    expect(shouldRunEventOutOfProcess({ ...options, env: { NODE_ENV: "test" } })).toBe(false);
+    expect(shouldRunEventOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_EVENT_OFFLOAD: "0" },
+    })).toBe(false);
+    expect(shouldRunEventOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_EVENT_CHILD_PROCESS: "1" },
+    })).toBe(false);
+    expect(shouldRunEventOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_CHECKPOINT_CHILD_PROCESS: "1" },
+    })).toBe(false);
+  });
+
+  test("disk-backed retry queue ticks offload by default outside tests", () => {
+    const options = {
+      dbPath: "/tmp/harness-mem.db",
+      env: {},
+    };
+
+    expect(shouldRunRetryQueueOutOfProcess(options)).toBe(true);
+    expect(shouldRunRetryQueueOutOfProcess({ ...options, dbPath: ":memory:" })).toBe(false);
+    expect(shouldRunRetryQueueOutOfProcess({ ...options, env: { NODE_ENV: "test" } })).toBe(false);
+    expect(shouldRunRetryQueueOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_RETRY_OFFLOAD: "0" },
+    })).toBe(false);
+    expect(shouldRunRetryQueueOutOfProcess({
+      ...options,
+      env: { HARNESS_MEM_RETRY_CHILD_PROCESS: "1" },
+    })).toBe(false);
   });
 
   test("search can skip vector and nugget paths for MCP safe mode", () => {
@@ -336,7 +402,7 @@ describe("HarnessMemCore unit", () => {
       expect(second.ok).toBe(true);
       expect((second.meta as Record<string, unknown>).deduped).toBe(true);
 
-      const health = core.health();
+      const health = core.health({ includeCounts: true });
       const counts = (health.items[0] as { counts: { events: number } }).counts;
       expect(counts.events).toBe(1);
     } finally {

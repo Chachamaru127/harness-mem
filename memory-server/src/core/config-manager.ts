@@ -47,7 +47,6 @@ import {
   nowIso,
   parseJsonSafe,
   resolveHomePath,
-  visibilityFilterSql as visibilityFilterSqlUtil,
 } from "./core-utils.js";
 
 export interface RepairSqliteVecMapOptions {
@@ -141,6 +140,26 @@ function shouldExposeProjectInStats(project: string): boolean {
     }
   }
   return true;
+}
+
+function projectsStatsVisibilityFilterSql(alias: string, includePrivate: boolean): string {
+  if (includePrivate) {
+    return "";
+  }
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(alias)) {
+    throw new Error(`Invalid SQL alias: ${alias}`);
+  }
+
+  return `
+    AND (
+      ${alias}.privacy_tags_json IS NULL
+      OR (
+        json_valid(${alias}.privacy_tags_json)
+        AND lower(${alias}.privacy_tags_json) NOT LIKE '%"private"%'
+        AND lower(${alias}.privacy_tags_json) NOT LIKE '%"sensitive"%'
+      )
+    )
+  `;
 }
 
 function currentVectorModelPredicate(alias: string, model: string): { sql: string; params: string[] } {
@@ -1292,7 +1311,15 @@ export class ConfigManager {
   projectsStats(request: ProjectsStatsRequest = {}): ApiResponse {
     const startedAt = performance.now();
     const includePrivate = Boolean(request.include_private);
-    const visibility = visibilityFilterSqlUtil("o", includePrivate);
+    const visibility = projectsStatsVisibilityFilterSql("o", includePrivate);
+    const projectMembers = Array.isArray(request.project_members)
+      ? request.project_members.filter((project) => typeof project === "string" && project.trim().length > 0)
+      : typeof request.project === "string" && request.project.trim().length > 0
+        ? [request.project.trim()]
+        : [];
+    const projectFilter = projectMembers.length > 0
+      ? ` AND o.project IN (${projectMembers.map(() => "?").join(", ")}) `
+      : "";
     const platformVisibility = this.deps.isAntigravityIngestEnabled()
       ? ""
       : ` AND o.platform <> 'antigravity' `;
@@ -1326,12 +1353,13 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${projectFilter}
         ${archivedFilter}
         ${visibility}
         GROUP BY o.project
         ORDER BY updated_at DESC
       `)
-      .all() as Array<{ project: string; observations: number; sessions: number; updated_at: string | null }>;
+      .all(...projectMembers) as Array<{ project: string; observations: number; sessions: number; updated_at: string | null }>;
 
     const sessionRows = this.deps.db
       .query(`
@@ -1341,10 +1369,11 @@ export class ConfigManager {
         FROM mem_observations o
         WHERE 1 = 1
         ${platformVisibility}
+        ${projectFilter}
         ${archivedFilter}
         ${visibility}
       `)
-      .all() as Array<{ project: string; session_id: string }>;
+      .all(...projectMembers) as Array<{ project: string; session_id: string }>;
 
     const grouped = new Map<string, {
       project: string;
@@ -1409,6 +1438,14 @@ export class ConfigManager {
         lhs.project.localeCompare(rhs.project)
       );
 
-    return makeResponse(startedAt, items, { include_private: includePrivate }, { ranking: "projects_stats_v1" });
+    return makeResponse(
+      startedAt,
+      items,
+      {
+        include_private: includePrivate,
+        project: request.project,
+      },
+      { ranking: "projects_stats_v1" }
+    );
   }
 }

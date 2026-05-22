@@ -138,29 +138,51 @@ function buildCodexManagedBlock(serverSpec) {
   ].join("\n");
 }
 
+// Remove every harness artifact from a Codex TOML config: the managed marker
+// block AND any unmanaged `[mcp_servers.harness]` / `[mcp_servers.harness.env]`
+// tables. Mirrors the awk in scripts/harness-mem `rewrite_codex_harness_wiring`,
+// so the Node CLI and shell setup both converge a config to a single harness
+// block regardless of prior stdio/http transport. Without this, a stale stdio
+// `command` left outside the markers survives an http upsert and Codex rejects
+// the merged section with "url is not supported for stdio".
+function stripCodexHarnessArtifacts(content, beginMarker, endMarker) {
+  const out = [];
+  let skip = false;
+  for (const line of content.split("\n")) {
+    if (line === beginMarker) {
+      skip = true;
+      continue;
+    }
+    if (line === endMarker) {
+      skip = false;
+      continue;
+    }
+    if (/^\[mcp_servers\.harness(\.env)?\]\s*(#.*)?$/.test(line)) {
+      skip = true;
+      continue;
+    }
+    if (skip) {
+      // A new table header ends the harness section we are dropping.
+      if (/^\[/.test(line)) {
+        skip = false;
+        out.push(line);
+      }
+      continue;
+    }
+    out.push(line);
+  }
+  return out.join("\n");
+}
+
 function upsertManagedBlock(content, beginMarker, endMarker, block) {
-  const start = content.indexOf(beginMarker);
-  const end = content.indexOf(endMarker);
-
-  if (start !== -1 && end !== -1 && end >= start) {
-    const afterEnd = end + endMarker.length;
-    const tail =
-      content.slice(afterEnd, afterEnd + 1) === "\n"
-        ? content.slice(afterEnd + 1)
-        : content.slice(afterEnd);
-    const head = content.slice(0, start).replace(/\s*$/, "");
-    return `${head}\n\n${block}${tail ? tail.replace(/^\n*/, "") : ""}`.trimEnd() + "\n";
+  const stripped = stripCodexHarnessArtifacts(content, beginMarker, endMarker)
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd();
+  const managed = block.replace(/\s*$/, "");
+  if (!stripped) {
+    return `${managed}\n`;
   }
-
-  if (/\[mcp_servers\.harness\]/.test(content)) {
-    return null;
-  }
-
-  const trimmed = content.trimEnd();
-  if (!trimmed) {
-    return `${block}`;
-  }
-  return `${trimmed}\n\n${block}`;
+  return `${stripped}\n\n${managed}\n`;
 }
 
 function ensureFileDir(filePath) {
@@ -183,16 +205,6 @@ function writeCodexConfig(options = {}) {
     END_CODEX_MCP,
     buildCodexManagedBlock(serverSpec)
   );
-
-  if (next === null) {
-    return {
-      client: "codex",
-      status: "skipped",
-      filePath,
-      reason:
-        "existing [mcp_servers.harness] section is unmanaged. Merge the printed snippet manually or rerun full setup.",
-    };
-  }
 
   fs.writeFileSync(filePath, next, "utf8");
   return { client: "codex", status: "updated", filePath };
@@ -572,6 +584,7 @@ module.exports = {
   END_HERMES_MCP,
   buildCodexManagedBlock,
   buildHermesManagedBlock,
+  stripCodexHarnessArtifacts,
   parseCliArgs,
   resolveClaudeTargets,
   resolveServerSpec,

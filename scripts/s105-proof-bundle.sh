@@ -137,13 +137,15 @@ jq -n \
       and has_path("scripts/harness-mem")
       and has_path("codex/skills/harness-mem/SKILL.md")
       and has_path("codex/skills/harness-recall/SKILL.md")
+      and has_path("skills/harness-recall/SKILL.md")
     ),
     package_inclusion: {
       npm_pack_dry_run: ($pack_code == 0),
       bin_harness_mcp_server: has_path("bin/harness-mcp-server"),
       scripts_harness_mem: has_path("scripts/harness-mem"),
       codex_skill_harness_mem: has_path("codex/skills/harness-mem/SKILL.md"),
-      codex_skill_harness_recall: has_path("codex/skills/harness-recall/SKILL.md")
+      codex_skill_harness_recall: has_path("codex/skills/harness-recall/SKILL.md"),
+      claude_skill_harness_recall: has_path("skills/harness-recall/SKILL.md")
     },
     setup: {
       isolated_home: ('"$ISOLATED_HOME"' == 1),

@@ -14,11 +14,15 @@ interface ProjectSidebarProps {
 export function ProjectSidebar(props: ProjectSidebarProps) {
   const { projects, loading, selectedProject, onSelectProject, language } = props;
   const copy = getUiCopy(language);
-  const totalObservations = projects.reduce((acc, item) => acc + item.observations, 0);
-  const totalSessions = projects.reduce((acc, item) => acc + item.sessions, 0);
+  const completeProjects = projects.filter((item) => item.stale !== true);
+  const totalObservations = completeProjects.reduce((acc, item) => acc + item.observations, 0);
+  const totalSessions = completeProjects.reduce((acc, item) => acc + item.sessions, 0);
+  const allStatsRefreshing = projects.length > 0 && completeProjects.length === 0;
   const labelMap = buildProjectDisplayNameMap(projects.map((project) => project.project));
   const totalsLabel = loading && projects.length === 0
     ? copy.loading
+    : allStatsRefreshing
+      ? copy.statsRefreshing
     : `${totalObservations} ${copy.observationsUnit} / ${totalSessions} ${copy.sessionsUnit}`;
 
   return (
@@ -44,7 +48,9 @@ export function ProjectSidebar(props: ProjectSidebarProps) {
           >
             <span className="project-name">{getProjectDisplayName(project.project, labelMap)}</span>
             <span className="stats">
-              {project.observations} {copy.observationsUnit} / {project.sessions} {copy.sessionsUnit}
+              {project.stale === true
+                ? copy.statsRefreshing
+                : `${project.observations} ${copy.observationsUnit} / ${project.sessions} ${copy.sessionsUnit}`}
             </span>
           </button>
         ))}
