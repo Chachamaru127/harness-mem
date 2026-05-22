@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Archive-first memory lifecycle hardening**. Added preverified backup evidence for hard purge so live hard-purge requests can consume a short-lived, single-use token instead of re-reading a multi-GB SQLite backup or rerunning `PRAGMA integrity_check` inline. Evidence is bound to backup path/size/SHA/integrity, DB identity, sorted candidate IDs, and restore-capable archive/full-payload coverage.
+
+### Fixed
+
+- **Hard purge canary, remaining purge, and safe compact runbook evidence**. Captured live evidence for a 10-observation hard-purge canary, a follow-up purge of the remaining 90 archived observations, restore-capable archive coverage, token replay rejection, and a `VACUUM INTO` safe compact that moved the previous live DB to a rollback path before restarting the daemon.
+
 ## [0.24.1] - 2026-05-22
 
 ### Fixed
@@ -17,14 +25,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
-- **Archive-first memory lifecycle hardening**. Added preverified backup evidence for hard purge so live hard-purge requests can consume a short-lived, single-use token instead of re-reading a multi-GB SQLite backup or rerunning `PRAGMA integrity_check` inline. Evidence is bound to backup path/size/SHA/integrity, DB identity, sorted candidate IDs, and restore-capable archive/full-payload coverage.
 - **WorkGraph SessionStart auto-sync for existing `Plans.md` files**. Codex and Claude SessionStart hooks now safely call `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` when the current project already has `Plans.md`, so WorkGraph views populate without a manual import step. The hook never creates or edits `Plans.md`, skips projects without the file, and uses an mtime state file to avoid refreshing unchanged work-item recency on every session start.
 - **WorkGraph Plans parser accepts existing cross-project task id styles**. Plans import now recognizes dotted ids such as `7.1` / `9.B.3` and project-prefixed ids such as `GIFT-M1-03` / `DEP-02`, so non-harness projects with established `Plans.md` formats can populate WorkGraph without renaming tasks.
 - **S127 bounded search worker runtime**. Normal vector search, lexical search, checkpoint writes, event writes, and retry queue ticks now run behind bounded worker/child-process boundaries on large local databases. Checkpoints are durable first, then a bounded materialization child catches vector/entity/link/nugget data up off the request path. Heavy work returns fast `503` backpressure when worker slots are busy instead of freezing the daemon main loop.
 
 ### Fixed
 
-- **Hard purge canary, remaining purge, and safe compact runbook evidence**. Captured live evidence for a 10-observation hard-purge canary, a follow-up purge of the remaining 90 archived observations, restore-capable archive coverage, token replay rejection, and a `VACUUM INTO` safe compact that moved the previous live DB to a rollback path before restarting the daemon.
 - **MCP and CLI daemon autostart no longer spawn an extra Mem UI by default**. Node MCP, Go MCP, the HTTP MCP gateway, and high-level CLI daemon preflight now start or preflight the shared daemon with `HARNESS_MEM_ENABLE_UI=false` unless the operator explicitly opts back in. `harness-mem setup` still starts the Mem UI by default. This preserves the original singleton-daemon topology while avoiding stray UI listeners such as `:37901` when a dedicated UI LaunchAgent is already running.
 - **Routine health and search facets stay bounded on large local databases**. `/health` now omits exact table counts unless `include_counts=1` is requested, `/health/ready` stays on the lightweight readiness path, and `/v1/search/facets` returns `400 search_facets_unbounded` unless the request includes `query`, `project`, or tenant/access scope.
 - **Mem UI first load now prefers the current project scope**. The UI proxy adds the detected default project to feed and project-stats requests when the browser omits `project`, and `/v1/projects/stats?project=...` now runs its aggregate in a bounded child process with a faster privacy-safe stats filter. If stats are still busy, the UI switches to a stale current-project placeholder quickly instead of showing "No projects yet" or waiting on the daemon; cached stats are also marked stale before display. This avoids the user-facing `daemon checking...` / `Projects Loading...` stuck state without making `/health/ready` disappear on large multi-project databases.

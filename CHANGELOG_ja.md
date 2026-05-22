@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **archive-first の忘却フローを hard purge 手前まで強化した**。multi-GB の SQLite backup を hard-purge request 内で読み直さず、事前検証済み backup evidence token を使えるようにした。token は backup path / size / SHA / integrity、DB identity、候補ID、復元可能な archive/full payload coverage に結びつく。
+- **実DBで hard purge canary、残り90件 purge、safe compact を検証した**。まず10件だけ物理削除し、その後 archive 済みの残り90件も fresh backup と preverified evidence の条件を満たして削除した。archive stub は全100件 `purged`、full payload は全100件 cleared。10件 canary 後には `VACUUM INTO` で compact DB を作り、旧 live DB を rollback path に退避してから置き換えた。
+
 ## [0.24.1] - 2026-05-22
 
 ### ユーザー向け要約
@@ -17,8 +22,6 @@
 
 ### ユーザー向け要約
 
-- **archive-first の忘却フローを hard purge 手前まで強化した**。multi-GB の SQLite backup を hard-purge request 内で読み直さず、事前検証済み backup evidence token を使えるようにした。token は backup path / size / SHA / integrity、DB identity、候補ID、復元可能な archive/full payload coverage に結びつく。
-- **実DBで hard purge canary、残り90件 purge、safe compact を検証した**。まず10件だけ物理削除し、その後 archive 済みの残り90件も fresh backup と preverified evidence の条件を満たして削除した。archive stub は全100件 `purged`、full payload は全100件 cleared。10件 canary 後には `VACUUM INTO` で compact DB を作り、旧 live DB を rollback path に退避してから置き換えた。
 - **既存の `Plans.md` を SessionStart 時に WorkGraph DB へ自動同期するようにした**。Codex / Claude の session 起動時、プロジェクトに `Plans.md` があれば `harness-mem work sync-plans --project "$PROJECT_ROOT" --write --json` を安全に実行する。ユーザーが手動 import しなくても WorkGraph UI に出やすくなる。`Plans.md` の新規作成・編集はせず、ファイルがないプロジェクトは静かにスキップし、mtime state で未変更ファイルの毎回再同期も避ける。
 - **既存プロジェクトの `Plans.md` task id 形式を WorkGraph import で読めるようにした**。`7.1` / `9.B.3` のような dotted id や、`GIFT-M1-03` / `DEP-02` のような project-prefix id を認識する。これにより harness-mem 以外の既存 `Plans.md` も、task 名を変えずに WorkGraph に出せる。
 - **大きなローカルDBでも検索・記録でdaemonが固まりにくくなった**。通常の vector search / lexical search、checkpoint / event 記録、retry queue 処理を bounded worker / child process 側へ逃がし、checkpoint はまず durable に保存してから vector/entity/link/nugget を bounded materialization child で後追い生成する。混雑時は固まる代わりに `503` backpressure として早く返す。
