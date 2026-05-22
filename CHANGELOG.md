@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-05-22
+
+### Fixed
+
+- **Codex MCP config no longer breaks with `url is not supported for stdio` after a transport switch**. `harness-mem mcp-config --client codex` now strips every existing `[mcp_servers.harness]` / `[mcp_servers.harness.env]` table (managed or unmanaged, stdio or http) before writing the requested transport, matching the shell `setup` path. Previously an unmanaged stdio `command` block left outside the harness-mem markers survived an `--transport http` write, so Codex merged a stale `command` with the new `url` and refused to start. README Codex setup now documents that the harness MCP server lives only in the global `~/.codex/config.toml`, never a repo-local `.codex/config.toml`, because Codex merges both files on the same key.
+
 ## [0.24.0] - 2026-05-20
 
 ### Added

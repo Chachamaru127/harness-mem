@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.24.1] - 2026-05-22
+
+### ユーザー向け要約
+
+- **Codex の MCP 設定が transport 切替後に `url is not supported for stdio` で起動不能になる問題を修正**。`harness-mem mcp-config --client codex` は、要求された transport を書く前に既存の `[mcp_servers.harness]` / `[mcp_servers.harness.env]` を managed/unmanaged・stdio/http を問わず全て除去するようにした（shell の `setup` と同じ挙動）。従来は harness-mem マーカー外に残った stdio の `command` 定義が `--transport http` 書き込み後も生き残り、Codex が古い `command` と新しい `url` をマージして起動を拒否していた。README の Codex セットアップも、harness MCP サーバーはグローバル `~/.codex/config.toml` のみで定義し、repo ローカルの `.codex/config.toml` には置かないと明記した。
+
 ## [0.24.0] - 2026-05-20
 
 ### ユーザー向け要約
