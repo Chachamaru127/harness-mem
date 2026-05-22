@@ -16,7 +16,7 @@ import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js"
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
 import { createSignalStore, type SignalStore } from "./lease/signal-store";
-import { initializeTelemetry, resolveHarnessMemVersion } from "./telemetry/otel";
+import { getTelemetryLocalExport, initializeTelemetry, resolveHarnessMemVersion } from "./telemetry/otel";
 import { claimWork, closeWork, handoffWork } from "./workgraph/lifecycle";
 import { rankNextWork } from "./workgraph/next";
 import { evaluateWorkReadiness } from "./workgraph/ready";
@@ -474,6 +474,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "GET" && url.pathname === "/v1/admin/metrics") {
           return jsonResponse(core.metrics());
+        }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/telemetry/status") {
+          const telemetry = getTelemetryLocalExport({ limit: 0 });
+          return rawJsonResponse({
+            ok: true,
+            schema: "harness_mem.telemetry.status.v1",
+            generated_at: telemetry.generated_at,
+            status: telemetry.status,
+            summary: telemetry.summary,
+          });
+        }
+
+        if (request.method === "GET" && url.pathname === "/v1/admin/telemetry/export") {
+          return rawJsonResponse(getTelemetryLocalExport({ limit: parseIntegerLike(url.searchParams.get("limit")) }));
         }
 
         if (request.method === "GET" && url.pathname === "/v1/admin/environment") {

@@ -173,4 +173,36 @@ describe("S128-008 recall semantic telemetry wiring", () => {
       expect(attrs.file_path).toBeUndefined();
     }
   });
+
+  test("keeps recall successful when OTLP exporter flush fails", async () => {
+    initializeTelemetry({
+      serviceName: "harness-mem-memory-daemon",
+      serviceVersion: "0.24.1",
+      component: "memory-daemon",
+      env: {
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://collector.test/v1/traces",
+      },
+      fetchImpl: async () => {
+        throw new Error("collector offline");
+      },
+    });
+
+    const { core } = makeCore("exporter-failure");
+    try {
+      core.recordEvent(event({ event_id: "evt-exporter-failure" }));
+      const recall = await core.recallPrepared({
+        query: "telemetry alpha",
+        project: "proj-telemetry",
+        limit: 5,
+        safe_mode: true,
+      });
+      expect(recall.ok).toBe(true);
+
+      const status = await shutdownTelemetry("test");
+      expect(status.exporter.last_flush_ok).toBe(false);
+      expect(status.exporter.last_flush_error).toContain("collector offline");
+    } finally {
+      core.shutdown("test");
+    }
+  });
 });

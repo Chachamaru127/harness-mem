@@ -15,6 +15,7 @@
 #   scripts/harness-mem verify-import --job <job_id>
 #   scripts/harness-mem cutover-claude-mem --job <job_id> --stop-now
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
+#   scripts/harness-mem telemetry status|export [--limit <n>] [--json]
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
 #   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
 #   scripts/harness-mem adr new --title <title> --status <status> --options <text> --consequences <text> --supersedes <text> --source-plans "Plans.md §NNN" [--write]
@@ -152,6 +153,7 @@ Commands:
   promote                    Promote backend mode: local → hybrid → managed.
   rollback                   Rollback backend mode to local.
   cleanup-stale-mcp          Inspect or terminate stale stdio harness-mcp-* children.
+  telemetry status|export     Inspect local telemetry spans and metric summaries without an external collector.
   mcp-gateway start|stop|status
                               Manage the opt-in local Streamable HTTP MCP gateway.
   mcp-config                  Print or write Claude/Codex/Hermes MCP config snippets.
@@ -229,6 +231,11 @@ Command options:
     --execute             Kill only eligible stale stdio MCP children
     --older-than <dur>    Required with --execute. Examples: 30s, 10m, 2h, 1d
     --json                Output structured JSON result
+  telemetry:
+    status                 Show local telemetry exporter status and recent span/metric summary
+    export                 Print sanitized recent spans and metric summaries as JSON
+    --limit <n>            Max recent spans to include in export (default: daemon default)
+    --json                 Output structured JSON for status
   mcp-gateway:
     start                  Start the singleton local Streamable HTTP gateway
     stop                   Stop the pidfile-managed gateway
@@ -6895,6 +6902,92 @@ recall_impl() {
   esac
 }
 
+_telemetry_admin_get() {
+  local path="${1:-}"
+  local endpoint="http://${MEM_HOST}:${MEM_PORT}${path}"
+  local endpoint_config token token_config
+  endpoint_config="$(_curl_config_escape "$endpoint")"
+  token="${HARNESS_MEM_ADMIN_TOKEN:-}"
+  {
+    printf 'url = "%s"\n' "$endpoint_config"
+    printf 'request = "GET"\n'
+    printf 'header = "Accept: application/json"\n'
+    if [ -n "$token" ]; then
+      token_config="$(_curl_config_escape "$token")"
+      printf 'header = "x-harness-mem-token: %s"\n' "$token_config"
+    fi
+  } | curl --silent --show-error --fail --max-time 5 --config -
+}
+
+_telemetry_print_status_human() {
+  local payload="${1:-}"
+  if command -v jq >/dev/null 2>&1; then
+    printf '%s\n' "$payload" | jq -r '
+      "[harness-mem] telemetry: \(.status.exporter.mode)",
+      "  service: \(.status.service_name)@\(.status.service_version)",
+      "  spans: pending=\(.status.exporter.pending_spans) total=\(.summary.span_count_total) flushed=\(.status.exporter.flushed_spans)",
+      "  last flush: ok=\(.status.exporter.last_flush_ok // "n/a") error=\(.status.exporter.last_flush_error // "n/a")",
+      "  span counts: \(.summary.span_counts | to_entries | map("\(.key)=\(.value)") | join(", ") // "none")",
+      "  metrics: \(.summary.metrics | map("\(.name) count=\(.count) latest=\(.latest)") | join(", ") // "none")"
+    '
+    return
+  fi
+  printf '%s\n' "$payload"
+}
+
+telemetry_impl() {
+  local subcmd="${1:-status}"
+  if [ "$#" -gt 0 ]; then
+    shift || true
+  fi
+  local json_output=0
+  local limit=""
+  while [ "$#" -gt 0 ]; do
+    case "$1" in
+      --json)
+        json_output=1
+        ;;
+      --limit)
+        shift || true
+        [ "$#" -gt 0 ] || fail "telemetry --limit requires a value"
+        limit="$1"
+        ;;
+      *)
+        fail "Unknown telemetry option: $1. Use: telemetry status|export [--limit <n>] [--json]"
+        ;;
+    esac
+    shift || true
+  done
+
+  local path payload
+  case "$subcmd" in
+    status)
+      path="/v1/admin/telemetry/status"
+      ;;
+    export)
+      path="/v1/admin/telemetry/export"
+      if [ -n "$limit" ]; then
+        path="${path}?limit=${limit}"
+      fi
+      json_output=1
+      ;;
+    *)
+      fail "Unknown telemetry subcommand: ${subcmd}. Use: status | export"
+      ;;
+  esac
+
+  payload="$(_telemetry_admin_get "$path")" || {
+    warn "Cannot reach daemon telemetry endpoint at http://${MEM_HOST}:${MEM_PORT}${path}"
+    return 1
+  }
+
+  if [ "$json_output" -eq 1 ]; then
+    printf '%s\n' "$payload"
+  else
+    _telemetry_print_status_human "$payload"
+  fi
+}
+
 main() {
   local command="${1:-help}"
   shift || true
@@ -6906,6 +6999,10 @@ main() {
   fi
   if [ "$command" = "recall" ]; then
     recall_impl "$@"
+    return
+  fi
+  if [ "$command" = "telemetry" ]; then
+    telemetry_impl "$@"
     return
   fi
   if [ "$command" = "work" ]; then

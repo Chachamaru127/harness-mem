@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import {
+  getTelemetryLocalExport,
   initializeTelemetry,
   recallTelemetryAllowedAttributes,
   recordRecallTelemetry,
@@ -216,5 +217,76 @@ describe("S128-008 recall semantic telemetry", () => {
       "recall.safe_mode": true,
       "recall.cache.key_hash": "cache-key",
     });
+  });
+});
+
+describe("S128-009 local telemetry inspect/export", () => {
+  test("summarizes recent spans and strips raw prompt/content/project path keys", () => {
+    const runtime = initializeTelemetry({
+      serviceName: "harness-mem-memory-daemon",
+      serviceVersion: "0.24.1",
+      component: "memory-daemon",
+      env: {
+        OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=test,project.path=/private/project,service.version=0.24.1",
+      },
+      now: () => 1_700_000_000_000,
+    });
+
+    runtime.recordLifecycleSpan("telemetry.test", {
+      "safe.attr": "ok",
+      "prompt": "drop this prompt",
+      "content": "drop this content",
+      "project.path": "/private/project",
+      "api_key": "drop",
+    });
+    recordRecallTelemetry(
+      "recall.search",
+      {
+        "recall.scope": "project",
+        "recall.project_present": true,
+        "recall.cache.hit": true,
+      },
+      {
+        recall_latency_ms: 11,
+        recall_cache_hit_count: 1,
+      },
+    );
+
+    const exported = getTelemetryLocalExport({ limit: 10 });
+    expect(exported.schema).toBe("harness_mem.telemetry.export.v1");
+    expect(exported.status.exporter.mode).toBe("local");
+    expect(exported.status.resource["project.path"]).toBeUndefined();
+    expect(exported.summary.span_counts["recall.search"]).toBe(1);
+    expect(exported.summary.metrics.find((metric) => metric.name === "recall_latency_ms")?.latest).toBe(11);
+
+    const serialized = JSON.stringify(exported);
+    expect(serialized).not.toContain("drop this prompt");
+    expect(serialized).not.toContain("drop this content");
+    expect(serialized).not.toContain("/private/project");
+    expect(serialized).not.toContain("api_key");
+  });
+
+  test("OTLP exporter failure is inspectable and leaves recall spans local", async () => {
+    const runtime = initializeTelemetry({
+      serviceName: "harness-mem-memory-daemon",
+      serviceVersion: "0.24.1",
+      component: "memory-daemon",
+      env: {
+        OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://collector.test/v1/traces?token=secret",
+      },
+      fetchImpl: async () => {
+        throw new Error("collector unavailable");
+      },
+    });
+
+    recordRecallTelemetry("recall.search", { "recall.scope": "project" }, { recall_latency_ms: 12 });
+    const status = await runtime.flush("test");
+    const exported = getTelemetryLocalExport({ limit: 5 });
+
+    expect(status.exporter.last_flush_ok).toBe(false);
+    expect(status.exporter.pending_spans).toBeGreaterThan(0);
+    expect(exported.status.exporter.endpoint).toBe("http://collector.test/v1/traces");
+    expect(exported.status.exporter.last_flush_error).toContain("collector unavailable");
+    expect(exported.summary.span_counts["recall.search"]).toBe(1);
   });
 });

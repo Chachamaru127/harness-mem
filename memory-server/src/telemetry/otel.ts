@@ -58,6 +58,44 @@ export interface TelemetryStatus {
   resource: Record<string, string | number | boolean>;
 }
 
+export interface TelemetryLocalSpan {
+  name: string;
+  start_time_unix_nano: string;
+  end_time_unix_nano: string;
+  attributes: Record<string, TelemetryAttributeValue>;
+}
+
+export interface TelemetryMetricSummary {
+  name: string;
+  count: number;
+  sum: number;
+  min: number;
+  max: number;
+  latest: number;
+}
+
+export interface TelemetryLocalSummary {
+  span_count_total: number;
+  span_counts: Record<string, number>;
+  metrics: TelemetryMetricSummary[];
+  truncated: boolean;
+  limit: number;
+  max_local_spans: number;
+}
+
+export interface TelemetryLocalExport {
+  ok: true;
+  schema: "harness_mem.telemetry.export.v1";
+  generated_at: string;
+  status: TelemetryStatus;
+  summary: TelemetryLocalSummary;
+  spans: TelemetryLocalSpan[];
+}
+
+export interface TelemetryExportOptions {
+  limit?: number;
+}
+
 interface LifecycleSpan {
   traceId: string;
   spanId: string;
@@ -158,6 +196,10 @@ export function getTelemetryStatus(): TelemetryStatus {
     },
     resource: {},
   };
+}
+
+export function getTelemetryLocalExport(options: TelemetryExportOptions = {}): TelemetryLocalExport {
+  return activeRuntime?.localExport(options) ?? emptyTelemetryLocalExport(options);
 }
 
 export async function shutdownTelemetry(reason: string): Promise<TelemetryStatus> {
@@ -298,6 +340,24 @@ export class OpenTelemetryRuntime {
         shutdown: this.shutdownComplete,
       },
       resource: { ...this.resource },
+    };
+  }
+
+  localExport(options: TelemetryExportOptions = {}): TelemetryLocalExport {
+    const limit = normalizeExportLimit(options.limit);
+    const recent = limit === 0 ? [] : this.spans.slice(-limit);
+    return {
+      ok: true,
+      schema: "harness_mem.telemetry.export.v1",
+      generated_at: new Date(this.now()).toISOString(),
+      status: sanitizeTelemetryStatusForExport(this.status()),
+      summary: summarizeLocalSpans(this.spans, limit),
+      spans: recent.map((span) => ({
+        name: span.name,
+        start_time_unix_nano: span.startTimeUnixNano,
+        end_time_unix_nano: span.endTimeUnixNano,
+        attributes: sanitizeTelemetryExportAttributes(span.attributes),
+      })),
     };
   }
 
@@ -542,6 +602,112 @@ function sanitizeResourceAttributes(
     }
   }
   return sanitized;
+}
+
+function emptyTelemetryLocalExport(options: TelemetryExportOptions): TelemetryLocalExport {
+  const limit = normalizeExportLimit(options.limit);
+  return {
+    ok: true,
+    schema: "harness_mem.telemetry.export.v1",
+    generated_at: new Date().toISOString(),
+    status: sanitizeTelemetryStatusForExport(getTelemetryStatus()),
+    summary: {
+      span_count_total: 0,
+      span_counts: {},
+      metrics: [],
+      truncated: false,
+      limit,
+      max_local_spans: MAX_LOCAL_SPANS,
+    },
+    spans: [],
+  };
+}
+
+function normalizeExportLimit(limit: number | undefined): number {
+  if (typeof limit !== "number" || !Number.isFinite(limit)) return 32;
+  return Math.max(0, Math.min(MAX_LOCAL_SPANS, Math.trunc(limit)));
+}
+
+function summarizeLocalSpans(spans: LifecycleSpan[], limit: number): TelemetryLocalSummary {
+  const spanCounts: Record<string, number> = {};
+  const metrics = new Map<string, TelemetryMetricSummary>();
+  for (const span of spans) {
+    spanCounts[span.name] = (spanCounts[span.name] ?? 0) + 1;
+    for (const [key, value] of Object.entries(span.attributes)) {
+      if (!key.startsWith("metric.") || typeof value !== "number" || !Number.isFinite(value)) {
+        continue;
+      }
+      const name = key.slice("metric.".length);
+      const current = metrics.get(name);
+      if (!current) {
+        metrics.set(name, { name, count: 1, sum: value, min: value, max: value, latest: value });
+        continue;
+      }
+      current.count += 1;
+      current.sum += value;
+      current.min = Math.min(current.min, value);
+      current.max = Math.max(current.max, value);
+      current.latest = value;
+    }
+  }
+  return {
+    span_count_total: spans.length,
+    span_counts: Object.fromEntries(Object.entries(spanCounts).sort(([a], [b]) => a.localeCompare(b))),
+    metrics: [...metrics.values()].sort((a, b) => a.name.localeCompare(b.name)),
+    truncated: spans.length > limit,
+    limit,
+    max_local_spans: MAX_LOCAL_SPANS,
+  };
+}
+
+function sanitizeTelemetryStatusForExport(status: TelemetryStatus): TelemetryStatus {
+  return {
+    ...status,
+    exporter: {
+      ...status.exporter,
+      endpoint: sanitizeEndpointForExport(status.exporter.endpoint),
+      last_flush_error: sanitizeTelemetryError(status.exporter.last_flush_error),
+    },
+    resource: sanitizeTelemetryExportAttributes(status.resource),
+  };
+}
+
+function sanitizeEndpointForExport(endpoint: string | null): string | null {
+  if (!endpoint) return null;
+  try {
+    const parsed = new URL(endpoint);
+    parsed.username = "";
+    parsed.password = "";
+    parsed.search = "";
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return endpoint.replace(/[?#].*$/, "");
+  }
+}
+
+function sanitizeTelemetryError(error: string | null): string | null {
+  if (!error) return null;
+  return error.replace(/(authorization|token|api[_-]?key|password)=([^,\s]+)/gi, "$1=<redacted>");
+}
+
+function sanitizeTelemetryExportAttributes(
+  attrs: Record<string, string | number | boolean>,
+): Record<string, TelemetryAttributeValue> {
+  const sanitized: Record<string, TelemetryAttributeValue> = {};
+  for (const [key, value] of Object.entries(attrs)) {
+    if (!isTelemetryExportSafeKey(key)) continue;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+function isTelemetryExportSafeKey(key: string): boolean {
+  if (!key || isSensitiveKey(key)) return false;
+  return !/(^|[._-])(query|prompt|content|body|file|path|cwd|home|session_id)($|[._-])/i.test(key) &&
+    !/(^|[._-])project($|[._-])(?!present)/i.test(key);
 }
 
 function isSensitiveKey(key: string): boolean {
