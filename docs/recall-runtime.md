@@ -117,11 +117,17 @@ Projection writes are explicit:
 
 - Dry-run reports row counts, skipped reasons, privacy diagnostics, and proposed
   writes without changing the DB.
-- Materialize/refresh requires `--write` or an admin API action. Current local
-  surface: `POST /v1/admin/recall-projection` with `action=dry-run|write|clear`.
+- Manual materialize/refresh requires `--write` or an admin API action. Current
+  local surface: `POST /v1/admin/recall-projection` with
+  `action=dry-run|write|clear`.
 - Refresh is idempotent and bounded to the requested project scope.
 - Missing or stale projection falls back to current scoped observation search
   with a structured degraded reason.
+- Missing/stale recall may also schedule a bounded, debounced one-shot child
+  refresh for that project. The recall response remains degraded fallback; the
+  child only rebuilds the hot projection and clears the parent repeat cache on
+  success. Auto refresh is local/off-main and can be disabled with
+  `HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH=0`.
 
 ## Repeat Recall Cache
 
@@ -192,8 +198,8 @@ fallback path is used.
 
 | Reason | Meaning | Minimum useful result |
 |---|---|---|
-| `projection_missing` | Projection has not been built yet | scoped observation fallback |
-| `projection_stale` | Projection watermark is behind source data | scoped observation fallback plus staleness |
+| `projection_missing` | Projection has not been built yet | scoped observation fallback plus optional auto refresh |
+| `projection_stale` | Projection watermark is behind source data | scoped observation fallback plus optional auto refresh |
 | `vector_unavailable` | embedding/vector path unavailable | lexical + recent + decision/work fallback |
 | `worker_timeout` | worker exceeded bounded latency | partial result or retryable backpressure |
 | `queue_full` | queue is saturated | `503` with retry/backoff metadata |

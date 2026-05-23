@@ -69,6 +69,52 @@ async function recordMemory(
   expect(response.status).toBe(200);
 }
 
+function enableProjectionAutoRefreshForTest(): () => void {
+  const previousAutoRefresh = process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH;
+  const previousDebounce = process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS;
+  const previousTimeout = process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS;
+  process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH = "1";
+  process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS = "1";
+  process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS = "10000";
+  return () => {
+    if (previousAutoRefresh === undefined) {
+      delete process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH;
+    } else {
+      process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH = previousAutoRefresh;
+    }
+    if (previousDebounce === undefined) {
+      delete process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS;
+    } else {
+      process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS = previousDebounce;
+    }
+    if (previousTimeout === undefined) {
+      delete process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS;
+    } else {
+      process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS = previousTimeout;
+    }
+  };
+}
+
+async function waitForProjectionRecall(
+  baseUrl: string,
+  request: { query: string; project: string; limit: number },
+): Promise<{ ok: boolean; items: Array<Record<string, unknown>>; meta: Record<string, unknown> } | null> {
+  for (let attempt = 0; attempt < 40; attempt += 1) {
+    await Bun.sleep(100);
+    const refreshedResponse = await postJson(baseUrl, "/v1/recall", request);
+    expect(refreshedResponse.status).toBe(200);
+    const candidate = (await refreshedResponse.json()) as {
+      ok: boolean;
+      items: Array<Record<string, unknown>>;
+      meta: Record<string, unknown>;
+    };
+    if (candidate.meta.ranking === "recall_projection_v1") {
+      return candidate;
+    }
+  }
+  return null;
+}
+
 describe("Recall Runtime API", () => {
   test("exposes degradation manifest without raw memory content", async () => {
     const runtime = createRuntime("manifest");
@@ -107,6 +153,7 @@ describe("Recall Runtime API", () => {
   });
 
   test("falls back to observation search when projection is missing", async () => {
+    const restoreAutoRefresh = enableProjectionAutoRefreshForTest();
     const runtime = createRuntime("projection-missing");
     const project = "recall-runtime-missing";
     try {
@@ -127,12 +174,34 @@ describe("Recall Runtime API", () => {
       expect(payload.meta.recall_degraded).toBe(true);
       expect(payload.meta.recall_degraded_reason).toBe("projection_missing");
       expect(payload.meta.fallback_path).toBe("observation_search");
+      expect(payload.meta.recall_projection_auto_refresh).toMatchObject({
+        version: "recall_projection_auto_refresh_v1",
+        status: "scheduled",
+        reason: "projection_missing",
+        mode: "child_process",
+      });
+      expect(JSON.stringify(payload.meta.recall_projection_auto_refresh)).not.toContain(project);
+
+      const refreshedPayload = await waitForProjectionRecall(runtime.baseUrl, {
+        query: "fallback sentinel",
+        project,
+        limit: 5,
+      });
+      expect(refreshedPayload).not.toBeNull();
+      expect(refreshedPayload!.ok).toBe(true);
+      expect(refreshedPayload!.items.length).toBeGreaterThan(0);
+      expect(refreshedPayload!.meta.recall_degraded).toBe(false);
+      expect(
+        refreshedPayload!.items.some((item) => String(item.content ?? "").includes("fallback sentinel")),
+      ).toBe(true);
     } finally {
       runtime.stop();
+      restoreAutoRefresh();
     }
   });
 
   test("uses materialized projection and degrades when projection becomes stale", async () => {
+    const restoreAutoRefresh = enableProjectionAutoRefreshForTest();
     const runtime = createRuntime("projection-hit-stale");
     const project = "recall-runtime-hit";
     try {
@@ -189,6 +258,13 @@ describe("Recall Runtime API", () => {
       expect(stalePayload.meta.ranking).toBe("recall_degraded_fallback_v1");
       expect(stalePayload.meta.recall_degraded).toBe(true);
       expect(stalePayload.meta.recall_degraded_reason).toBe("projection_stale");
+      expect(stalePayload.meta.recall_projection_auto_refresh).toMatchObject({
+        version: "recall_projection_auto_refresh_v1",
+        status: "scheduled",
+        reason: "projection_stale",
+        mode: "child_process",
+      });
+      expect(JSON.stringify(stalePayload.meta.recall_projection_auto_refresh)).not.toContain(project);
       expect(stalePayload.items[0].explanation).toMatchObject({
         version: "recall_explanation_v1",
         scope: "project",
@@ -196,8 +272,23 @@ describe("Recall Runtime API", () => {
       });
       expect(JSON.stringify(stalePayload.items[0].explanation)).not.toContain("beta sentinel");
       expect(JSON.stringify(stalePayload.items[0].explanation)).not.toContain(project);
+
+      const refreshedPayload = await waitForProjectionRecall(runtime.baseUrl, {
+        query: "beta sentinel",
+        project,
+        limit: 5,
+      });
+      expect(refreshedPayload).not.toBeNull();
+      expect(refreshedPayload!.ok).toBe(true);
+      expect(refreshedPayload!.items.length).toBeGreaterThan(0);
+      expect(refreshedPayload!.meta.recall_degraded).toBe(false);
+      expect(
+        refreshedPayload!.items.some((item) => String(item.content ?? "").includes("beta sentinel")),
+      ).toBe(true);
+      expect(refreshedPayload!.items[0].source_ref).toMatch(/^observation:/);
     } finally {
       runtime.stop();
+      restoreAutoRefresh();
     }
   });
 });

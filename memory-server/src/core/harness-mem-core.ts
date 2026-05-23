@@ -193,6 +193,10 @@ const DEFAULT_MATERIALIZE_CHILD_TIMEOUT_MS = 30_000;
 const DEFAULT_MATERIALIZE_CHILD_QUEUE_MAX = 1;
 const DEFAULT_PROJECTS_STATS_CHILD_TIMEOUT_MS = 8_000;
 const DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX = 1;
+const DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS = 30_000;
+const DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX = 1;
+const DEFAULT_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS = 1_000;
+const DEFAULT_RECALL_PROJECTION_REFRESH_LIMIT = 5_000;
 const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
 const DEFAULT_REPEAT_RECALL_CACHE_TTL_MS = 60_000;
 const MAX_REPEAT_RECALL_CACHE_TTL_MS = 300_000;
@@ -318,6 +322,15 @@ interface RecallProjectionRunRow {
   source_watermark: string;
   completed_at: string | null;
 }
+interface RecallProjectionAutoRefreshRequest {
+  project: string;
+  include_private: boolean;
+  limit: number;
+  reason: "projection_missing" | "projection_stale";
+  projection_generation: string | null;
+  projection_source_watermark: string | null;
+  current_source_watermark: string | null;
+}
 type RecallExplanationReason =
   | "scope_match"
   | "type_match"
@@ -390,6 +403,14 @@ export function buildProjectsStatsChildCommand(
 ): string[] {
   const runCommand = [process.execPath, "run", scriptPath];
   return runCommand;
+}
+
+export function buildRecallProjectionRefreshChildCommand(
+  scriptPath: string,
+  platform = process.platform,
+): string[] {
+  const runCommand = [process.execPath, "run", scriptPath];
+  return platform === "win32" ? runCommand : ["nice", "-n", "10", ...runCommand];
 }
 
 function envTruthy(raw: string | undefined): boolean {
@@ -1346,6 +1367,9 @@ export class HarnessMemCore {
   private checkpointChildPending = 0;
   private materializeChildPending = 0;
   private projectsStatsChildPending = 0;
+  private recallProjectionRefreshChildPending = 0;
+  private readonly recallProjectionRefreshTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly recallProjectionRefreshInFlight = new Set<string>();
 
   constructor(private readonly config: Config) {
     const dbPath = resolveHomePath(config.dbPath);
@@ -1629,6 +1653,10 @@ export class HarnessMemCore {
     return fileURLToPath(new URL("../tools/projects-stats-child.ts", import.meta.url));
   }
 
+  private getRecallProjectionRefreshChildScriptPath(): string {
+    return fileURLToPath(new URL("../tools/recall-projection-refresh-child.ts", import.meta.url));
+  }
+
   private getSearchWorkerMaxPending(): number {
     return clampLimit(
       Number(process.env.HARNESS_MEM_SEARCH_WORKER_QUEUE_MAX || DEFAULT_SEARCH_WORKER_QUEUE_MAX),
@@ -1689,6 +1717,54 @@ export class HarnessMemCore {
       DEFAULT_PROJECTS_STATS_CHILD_QUEUE_MAX,
       1,
       8,
+    );
+  }
+
+  private getRecallProjectionRefreshChildMaxPending(): number {
+    return clampLimit(
+      Number(
+        process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX ||
+          DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX,
+      ),
+      DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX,
+      1,
+      4,
+    );
+  }
+
+  private recallProjectionRefreshChildTimeoutMs(): number {
+    return clampLimit(
+      Number(
+        process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS ||
+          DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS,
+      ),
+      DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS,
+      250,
+      120_000,
+    );
+  }
+
+  private recallProjectionRefreshDebounceMs(): number {
+    return clampLimit(
+      Number(
+        process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS ||
+          DEFAULT_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS,
+      ),
+      DEFAULT_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS,
+      0,
+      60_000,
+    );
+  }
+
+  private recallProjectionRefreshLimit(): number {
+    return clampLimit(
+      Number(
+        process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_LIMIT ||
+          DEFAULT_RECALL_PROJECTION_REFRESH_LIMIT,
+      ),
+      DEFAULT_RECALL_PROJECTION_REFRESH_LIMIT,
+      1,
+      DEFAULT_RECALL_PROJECTION_REFRESH_LIMIT,
     );
   }
 
@@ -3366,6 +3442,262 @@ export class HarnessMemCore {
     );
   }
 
+  private isRecallProjectionAutoRefreshEnabled(): boolean {
+    if (envFalsy(process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH)) {
+      return false;
+    }
+    if (process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD === "1") {
+      return false;
+    }
+    if (process.env.NODE_ENV === "test" && !envTruthy(process.env.HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH)) {
+      return false;
+    }
+    return true;
+  }
+
+  private recallProjectionRefreshKey(project: string, includePrivate: boolean): string {
+    return `${includePrivate ? "private" : "public"}\u0000${project}`;
+  }
+
+  private scheduleRecallProjectionAutoRefresh(
+    request: RecallProjectionAutoRefreshRequest,
+  ): Record<string, unknown> {
+    const key = this.recallProjectionRefreshKey(request.project, request.include_private);
+    const keyHash = this.sha256Short(key, 20);
+    const baseMeta = {
+      version: "recall_projection_auto_refresh_v1",
+      reason: request.reason,
+      key_hash: keyHash,
+      mode: "child_process",
+      debounce_ms: this.recallProjectionRefreshDebounceMs(),
+      timeout_ms: this.recallProjectionRefreshChildTimeoutMs(),
+      current_source_watermark_hash: request.current_source_watermark
+        ? hashTelemetryValue(request.current_source_watermark)
+        : null,
+      projection_source_watermark_hash: request.projection_source_watermark
+        ? hashTelemetryValue(request.projection_source_watermark)
+        : null,
+    };
+
+    if (!this.isRecallProjectionAutoRefreshEnabled()) {
+      return { ...baseMeta, status: "disabled" };
+    }
+    if (!request.current_source_watermark || request.current_source_watermark === "0:") {
+      return { ...baseMeta, status: "skipped_empty_source" };
+    }
+    if (this.recallProjectionRefreshInFlight.has(key)) {
+      return {
+        ...baseMeta,
+        status: "in_flight",
+        queue_depth: this.recallProjectionRefreshChildPending,
+      };
+    }
+    if (this.recallProjectionRefreshTimers.has(key)) {
+      return {
+        ...baseMeta,
+        status: "already_scheduled",
+        queue_depth: this.recallProjectionRefreshChildPending + this.recallProjectionRefreshTimers.size,
+      };
+    }
+
+    const maxPending = this.getRecallProjectionRefreshChildMaxPending();
+    const queuedOrRunning = this.recallProjectionRefreshChildPending + this.recallProjectionRefreshTimers.size;
+    if (queuedOrRunning >= maxPending) {
+      return {
+        ...baseMeta,
+        status: "queue_full",
+        queue_depth: queuedOrRunning,
+        max_pending: maxPending,
+      };
+    }
+
+    const timer = setTimeout(() => {
+      this.recallProjectionRefreshTimers.delete(key);
+      if (this.shuttingDown) {
+        return;
+      }
+      if (this.recallProjectionRefreshChildPending >= this.getRecallProjectionRefreshChildMaxPending()) {
+        this.pushRuntimeWarning(`recall projection refresh queue full: key=${keyHash}`);
+        return;
+      }
+
+      this.recallProjectionRefreshChildPending += 1;
+      this.recallProjectionRefreshInFlight.add(key);
+      void this.runRecallProjectionRefreshOutOfProcess(request, keyHash)
+        .then((response) => {
+          if (!response.ok) {
+            this.pushRuntimeWarning(
+              `recall projection refresh child returned error: key=${keyHash} error=${String(response.meta.error_code ?? "unknown")}`,
+            );
+          }
+        })
+        .catch((error) => {
+          this.pushRuntimeWarning(
+            `recall projection refresh child failed: key=${keyHash} error=${error instanceof Error ? error.message : String(error)}`,
+          );
+        })
+        .finally(() => {
+          this.recallProjectionRefreshInFlight.delete(key);
+          this.recallProjectionRefreshChildPending = Math.max(0, this.recallProjectionRefreshChildPending - 1);
+        });
+    }, this.recallProjectionRefreshDebounceMs());
+    const maybeTimer = timer as ReturnType<typeof setTimeout> & { unref?: () => void };
+    maybeTimer.unref?.();
+    this.recallProjectionRefreshTimers.set(key, timer);
+
+    return {
+      ...baseMeta,
+      status: "scheduled",
+      queue_depth: queuedOrRunning + 1,
+      max_pending: maxPending,
+    };
+  }
+
+  private async runRecallProjectionRefreshOutOfProcess(
+    request: RecallProjectionAutoRefreshRequest,
+    keyHash: string,
+  ): Promise<ApiResponse> {
+    const startedAt = performance.now();
+    const timeoutMs = this.recallProjectionRefreshChildTimeoutMs();
+    const scriptPath = this.getRecallProjectionRefreshChildScriptPath();
+    const childCommand = buildRecallProjectionRefreshChildCommand(scriptPath);
+    const queueDepthAtStart = this.recallProjectionRefreshChildPending;
+    let timedOut = false;
+    const proc = spawnChildProcess(childCommand[0], childCommand.slice(1), {
+      cwd: process.cwd(),
+      env: {
+        ...process.env,
+        NODE_ENV: "test",
+        HARNESS_MEM_DB_PATH: this.config.dbPath,
+        HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD: "1",
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    const exited = new Promise<number>((resolve, reject) => {
+      proc.once("error", reject);
+      proc.once("exit", (code, signal) => {
+        resolve(code ?? (signal ? 1 : 0));
+      });
+    });
+    const timer = setTimeout(() => {
+      timedOut = true;
+      proc.kill("SIGTERM");
+      const forceKill = setTimeout(() => {
+        try {
+          proc.kill("SIGKILL");
+        } catch {
+          // best effort
+        }
+      }, 1_000);
+      void exited.finally(() => clearTimeout(forceKill));
+    }, timeoutMs);
+    try {
+      writeJsonToNodeChildStdin(proc.stdin, {
+        project: request.project,
+        limit: request.limit,
+        include_private: request.include_private,
+      });
+      const [stdout, stderr, exitCode] = await Promise.all([
+        readNodeChildStream(proc.stdout),
+        readNodeChildStream(proc.stderr),
+        exited,
+      ]);
+      if (exitCode !== 0) {
+        const reason = timedOut ? `timed out after ${timeoutMs}ms` : `exited ${exitCode}`;
+        throw new Error(`recall projection refresh child ${reason}: ${stderr.trim() || stdout.trim()}`);
+      }
+      const response = parseChildApiResponse(stdout, stderr, "recall projection refresh child");
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      this.repeatRecallCache.clear();
+      response.meta = {
+        ...response.meta,
+        latency_ms: offloadWallMs,
+        recall_projection_refresh_offload: {
+          mode: "child_process",
+          key_hash: keyHash,
+          reason: request.reason,
+          timeout_ms: timeoutMs,
+          wall_ms: offloadWallMs,
+          child_latency_ms: typeof response.meta.latency_ms === "number" ? response.meta.latency_ms : null,
+          cache_cleared: true,
+        },
+      };
+      recordRecallTelemetry(
+        "recall.projection.build",
+        {
+          ...this.recallScopeAttributes({
+            project: request.project,
+            include_private: request.include_private,
+            limit: request.limit,
+            safe_mode: true,
+          }),
+          "harness.operation": "auto_refresh",
+          "harness.result": response.ok ? "ok" : "error",
+          "harness.error_code": typeof response.meta.error_code === "string" ? response.meta.error_code : undefined,
+          "recall.items_count": Array.isArray(response.items) ? response.items.length : 0,
+          "recall.projection.generation": typeof response.meta.projection_generation === "string"
+            ? response.meta.projection_generation
+            : request.projection_generation ?? undefined,
+          "recall.projection.status": response.ok ? "completed" : "failed",
+          "recall.projection.source_watermark_hash": typeof response.meta.source_watermark === "string"
+            ? hashTelemetryValue(response.meta.source_watermark)
+            : undefined,
+          "recall.projection.current_watermark_hash": request.current_source_watermark
+            ? hashTelemetryValue(request.current_source_watermark)
+            : undefined,
+          "recall.projection.candidate_count": typeof response.meta.candidate_count === "number"
+            ? response.meta.candidate_count
+            : undefined,
+          "recall.projection.planned_count": typeof response.meta.planned_count === "number"
+            ? response.meta.planned_count
+            : undefined,
+          "recall.projection.skipped_count": typeof response.meta.skipped_count === "number"
+            ? response.meta.skipped_count
+            : undefined,
+          "recall.projection.writes": typeof response.meta.writes === "number" ? response.meta.writes : 0,
+          "recall.worker.mode": "child_process",
+          "recall.worker.queue_depth": queueDepthAtStart,
+          "recall.worker.timeout_ms": timeoutMs,
+        },
+        {
+          recall_latency_ms: offloadWallMs,
+          worker_queue_depth: queueDepthAtStart,
+        },
+      );
+      return response;
+    } catch (error) {
+      const offloadWallMs = Number((performance.now() - startedAt).toFixed(2));
+      recordRecallTelemetry(
+        "recall.projection.build",
+        {
+          ...this.recallScopeAttributes({
+            project: request.project,
+            include_private: request.include_private,
+            limit: request.limit,
+            safe_mode: true,
+          }),
+          "harness.operation": "auto_refresh",
+          "harness.result": "error",
+          "harness.error_code": timedOut ? "recall_projection_refresh_timeout" : "recall_projection_refresh_failed",
+          "recall.projection.status": "failed",
+          "recall.projection.current_watermark_hash": request.current_source_watermark
+            ? hashTelemetryValue(request.current_source_watermark)
+            : undefined,
+          "recall.worker.mode": "child_process",
+          "recall.worker.queue_depth": queueDepthAtStart,
+          "recall.worker.timeout_ms": timeoutMs,
+        },
+        {
+          recall_latency_ms: offloadWallMs,
+          worker_queue_depth: queueDepthAtStart,
+        },
+      );
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private recordRecallProjectTelemetry(
     startedAt: number,
     request: RecallRuntimeRequest,
@@ -3517,10 +3849,28 @@ export class HarnessMemCore {
     const latestRun = this.getLatestRecallProjectionRun(project);
     const sourceWatermark = readRecallDataWatermark(this.db, { project });
     if (!latestRun) {
-      return this.fallbackRecallSearch(request, "projection_missing", startedAt, null, sourceWatermark);
+      const autoRefresh = this.scheduleRecallProjectionAutoRefresh({
+        project,
+        include_private: request.include_private === true,
+        limit: this.recallProjectionRefreshLimit(),
+        reason: "projection_missing",
+        projection_generation: null,
+        projection_source_watermark: null,
+        current_source_watermark: sourceWatermark,
+      });
+      return this.fallbackRecallSearch(request, "projection_missing", startedAt, null, sourceWatermark, autoRefresh);
     }
     if (latestRun.source_watermark !== sourceWatermark) {
-      return this.fallbackRecallSearch(request, "projection_stale", startedAt, latestRun, sourceWatermark);
+      const autoRefresh = this.scheduleRecallProjectionAutoRefresh({
+        project,
+        include_private: request.include_private === true,
+        limit: this.recallProjectionRefreshLimit(),
+        reason: "projection_stale",
+        projection_generation: latestRun.generation,
+        projection_source_watermark: latestRun.source_watermark,
+        current_source_watermark: sourceWatermark,
+      });
+      return this.fallbackRecallSearch(request, "projection_stale", startedAt, latestRun, sourceWatermark, autoRefresh);
     }
 
     const items = this.searchRecallProjection({
@@ -3807,6 +4157,7 @@ export class HarnessMemCore {
     startedAt: number,
     projectionRun: RecallProjectionRunRow | null,
     sourceWatermark: string | null,
+    autoRefresh?: Record<string, unknown>,
   ): Promise<ApiResponse> {
     const fallback = await this.searchPrepared({
       query: request.query,
@@ -3834,6 +4185,9 @@ export class HarnessMemCore {
       projection_source_watermark: projectionRun?.source_watermark ?? null,
       current_source_watermark: sourceWatermark,
     });
+    if (autoRefresh) {
+      fallback.meta.recall_projection_auto_refresh = autoRefresh;
+    }
     this.attachFallbackRecallExplanations(fallback, request, reason);
     this.recordRecallProjectTelemetry(startedAt, request, fallback, projectionRun, sourceWatermark);
     return fallback;
@@ -5617,8 +5971,14 @@ export class HarnessMemCore {
       process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
       process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
       process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS === "1" ||
+      process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD === "1" ||
       process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
       process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1";
+
+    for (const timer of this.recallProjectionRefreshTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.recallProjectionRefreshTimers.clear();
 
     if (this.searchWorker) {
       this.searchWorker.stop("core shutdown");

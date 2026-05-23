@@ -15,6 +15,7 @@ const MATERIALIZE_CHILD = resolve(ROOT, "memory-server/src/tools/materialize-obs
 const EVENT_CHILD = resolve(ROOT, "memory-server/src/tools/event-child.ts");
 const RETRY_CHILD = resolve(ROOT, "memory-server/src/tools/retry-child.ts");
 const PROJECTS_STATS_CHILD = resolve(ROOT, "memory-server/src/tools/projects-stats-child.ts");
+const RECALL_PROJECTION_REFRESH_CHILD = resolve(ROOT, "memory-server/src/tools/recall-projection-refresh-child.ts");
 const LOCAL_ONNX = resolve(ROOT, "memory-server/src/embedding/local-onnx.ts");
 const UI_SERVER = resolve(ROOT, "harness-mem-ui/src/server.ts");
 
@@ -127,7 +128,7 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("fallback = await this.runSearchWithOneShotChild(safeRequest)");
     expect(core).not.toContain("const fallback = this.search({");
     expect(core).toContain("HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS || DEFAULT_SEARCH_CHILD_TIMEOUT_MS");
-    expect(core).toContain("if (request.safe_mode === true) return false;");
+    expect(core).toContain("if (request.safe_mode === true) return true;");
     expect(core).not.toContain("request.safe_mode === true || request.vector_search === false");
     expect(core).toContain("child_latency_ms");
     expect(child).toContain("backgroundWorkersEnabled: false");
@@ -349,6 +350,32 @@ describe("harness-memd guardrails", () => {
     expect(child).toContain("HARNESS_MEM_TEST_PROJECTS_STATS_CHILD_DELAY_MS");
   });
 
+  test("recall projection stale refresh is bounded and off-main", () => {
+    const core = readFileSync(CORE, "utf8");
+    const child = readFileSync(RECALL_PROJECTION_REFRESH_CHILD, "utf8");
+
+    expect(core).toContain("DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS = 30_000");
+    expect(core).toContain("DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX = 1");
+    expect(core).toContain("DEFAULT_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS = 1_000");
+    expect(core).toContain("HARNESS_MEM_RECALL_PROJECTION_AUTO_REFRESH");
+    expect(core).toContain("HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_TIMEOUT_MS");
+    expect(core).toContain("HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX");
+    expect(core).toContain("HARNESS_MEM_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS");
+    expect(core).toContain("HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD");
+    expect(core).toContain("buildRecallProjectionRefreshChildCommand");
+    expect(core).toContain("scheduleRecallProjectionAutoRefresh");
+    expect(core).toContain("runRecallProjectionRefreshOutOfProcess(request, keyHash)");
+    expect(core).toContain('recall_projection_auto_refresh = autoRefresh');
+    expect(core).toContain("this.repeatRecallCache.clear()");
+    expect(core).toContain('harness.operation": "auto_refresh"');
+    expect(core).toContain("const childCommand = buildRecallProjectionRefreshChildCommand(scriptPath)");
+    expect(core).toContain("const proc = spawnChildProcess(childCommand[0], childCommand.slice(1)");
+    expect(core).toContain("this.recallProjectionRefreshTimers.clear()");
+    expect(child).toContain("One-shot child process for recall projection refresh");
+    expect(child).toContain("backgroundWorkersEnabled: false");
+    expect(child).toContain("core.refreshRecallProjection(request)");
+  });
+
   test("offload child payloads use stdin instead of process argv", () => {
     const core = readFileSync(CORE, "utf8");
     const searchChild = readFileSync(SEARCH_CHILD, "utf8");
@@ -356,6 +383,7 @@ describe("harness-memd guardrails", () => {
     const eventChild = readFileSync(EVENT_CHILD, "utf8");
     const retryChild = readFileSync(RETRY_CHILD, "utf8");
     const projectsStatsChild = readFileSync(PROJECTS_STATS_CHILD, "utf8");
+    const recallProjectionRefreshChild = readFileSync(RECALL_PROJECTION_REFRESH_CHILD, "utf8");
 
     expect(core).toContain("writeJsonToChildStdin");
     expect(core).toContain("stdin: \"pipe\"");
@@ -364,6 +392,7 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("cmd: buildEventChildCommand(scriptPath)");
     expect(core).toContain("cmd: buildRetryChildCommand(scriptPath)");
     expect(core).toContain("const childCommand = buildProjectsStatsChildCommand(scriptPath)");
+    expect(core).toContain("const childCommand = buildRecallProjectionRefreshChildCommand(scriptPath)");
     expect(core).not.toContain("buildSearchChildCommand(scriptPath, request)");
     expect(core).not.toContain("buildCheckpointChildCommand(scriptPath, request)");
     expect(core).not.toContain("[process.execPath, \"run\", scriptPath, JSON.stringify(request)]");
@@ -372,11 +401,13 @@ describe("harness-memd guardrails", () => {
     expect(eventChild).toContain("for await (const chunk of process.stdin)");
     expect(retryChild).toContain("for await (const chunk of process.stdin)");
     expect(projectsStatsChild).toContain("for await (const chunk of process.stdin)");
+    expect(recallProjectionRefreshChild).toContain("for await (const chunk of process.stdin)");
     expect(searchChild).not.toContain("process.argv[2]");
     expect(checkpointChild).not.toContain("process.argv[2]");
     expect(eventChild).not.toContain("process.argv[2]");
     expect(retryChild).not.toContain("process.argv[2]");
     expect(projectsStatsChild).not.toContain("process.argv[2]");
+    expect(recallProjectionRefreshChild).not.toContain("process.argv[2]");
   });
 
   test("normal sqlite-vec search is bounded by k and query-variant caps", () => {
