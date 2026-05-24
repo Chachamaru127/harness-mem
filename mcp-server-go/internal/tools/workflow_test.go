@@ -89,6 +89,12 @@ func TestHandleWork_WithTODO(t *testing.T) {
 	if !strings.Contains(text, "TODO") {
 		t.Errorf("handleWork with TODO: got %q, expected 'TODO' label", text)
 	}
+	if !strings.Contains(text, "Mark as cc:完了") {
+		t.Errorf("handleWork with TODO: got %q, expected canonical completion guidance", text)
+	}
+	if strings.Contains(text, "Mark as cc:DONE") {
+		t.Errorf("handleWork with TODO: got %q, should not emit legacy completion guidance", text)
+	}
 }
 
 // --- handleReview ---

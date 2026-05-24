@@ -20,7 +20,7 @@ import (
 var (
 	reTODO = regexp.MustCompile(`cc:TODO`)
 	reWIP  = regexp.MustCompile(`cc:WIP`)
-	reDONE = regexp.MustCompile(`cc:DONE`)
+	reDONE = regexp.MustCompile(`cc:(?:完了|[dD][oO][nN][eE])(?:\s|$|\[|\(|<|\|)`)
 )
 
 var ssotFiles = []string{

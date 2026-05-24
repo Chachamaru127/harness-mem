@@ -25,17 +25,18 @@ func TestHandleStatus_NoPlansFile(t *testing.T) {
 	}
 }
 
-// TestHandleStatus_WithCounts verifies that TODO/WIP/DONE counts are
+// TestHandleStatus_WithCounts verifies that TODO/WIP/done counts are
 // correctly computed and rendered.
 func TestHandleStatus_WithCounts(t *testing.T) {
 	root := makeProjectRoot(t)
 
-	// 2 TODO, 1 WIP, 1 DONE
+	// 2 TODO, 1 WIP, 2 done. cc:完了 is canonical; cc:DONE remains an alias.
 	plans := "# Plans\n\n" +
 		"- a <!-- cc:TODO -->\n" +
 		"- b <!-- cc:TODO -->\n" +
 		"- c <!-- cc:WIP -->\n" +
-		"- d <!-- cc:DONE -->\n"
+		"- d <!-- cc:完了 -->\n" +
+		"- e <!-- cc:DONE -->\n"
 	if err := os.WriteFile(filepath.Join(root, "Plans.md"), []byte(plans), 0o644); err != nil {
 		t.Fatalf("WriteFile Plans.md: %v", err)
 	}
@@ -49,12 +50,13 @@ func TestHandleStatus_WithCounts(t *testing.T) {
 
 	// Check individual counts appear in the output.
 	for label, want := range map[string]string{
-		"TODO":  "2",
-		"WIP":   "1",
-		"Done":  "1",
+		"TODO": "2",
+		"WIP":  "1",
+		"Done": "2",
 	} {
-		if !strings.Contains(text, want) {
-			t.Errorf("handleStatus counts: output %q does not contain %q for %s", text, want, label)
+		line := label + ": " + want
+		if !strings.Contains(text, line) {
+			t.Errorf("handleStatus counts: output %q does not contain %q", text, line)
 		}
 	}
 }
@@ -111,7 +113,7 @@ func TestHandleStatus_SuggestedAction_WithTODO(t *testing.T) {
 func TestHandleStatus_SuggestedAction_AllDone(t *testing.T) {
 	root := makeProjectRoot(t)
 
-	plans := "# Plans\n\n- a <!-- cc:DONE -->\n"
+	plans := "# Plans\n\n- a <!-- cc:完了 -->\n"
 	if err := os.WriteFile(filepath.Join(root, "Plans.md"), []byte(plans), 0o644); err != nil {
 		t.Fatalf("WriteFile Plans.md: %v", err)
 	}

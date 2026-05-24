@@ -15053,7 +15053,7 @@ ${taskId ? `\u{1F3AF} Targeting task: ${taskId}` : "\u{1F3AF} Will process next 
 1. Read Plans.md to find cc:TODO tasks
 2. Mark task as cc:WIP
 3. Implement the task
-4. ${full ? "Self-review and fix issues" : "Mark as cc:DONE"}
+4. ${full ? "Self-review and fix issues" : "Mark as cc:\u5B8C\u4E86"}
 5. ${full ? "Commit changes" : ""}
 
 \u{1F4A1} This tool provides work instructions. The actual implementation
@@ -15200,7 +15200,7 @@ function getPlansStatus() {
   return {
     todo: (content.match(/cc:TODO/g) || []).length,
     wip: (content.match(/cc:WIP/g) || []).length,
-    done: (content.match(/cc:DONE/g) || []).length
+    done: (content.match(DONE_MARKER_PATTERN) || []).length
   };
 }
 function getSessionCount() {
@@ -15306,12 +15306,13 @@ function handleStatus(args) {
     content: [{ type: "text", text: status }]
   };
 }
-var MESSAGE_WINDOW_MS, statusTools, SSOT_FILES;
+var MESSAGE_WINDOW_MS, DONE_MARKER_PATTERN, statusTools, SSOT_FILES;
 var init_status = __esm({
   "src/tools/status.ts"() {
     "use strict";
     init_utils();
     MESSAGE_WINDOW_MS = 36e5;
+    DONE_MARKER_PATTERN = /cc:(?:完了|[dD][oO][nN][eE])(?:\s|$|\[|\(|<|\|)/g;
     statusTools = [
       {
         name: "harness_status",

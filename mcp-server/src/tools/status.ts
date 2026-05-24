@@ -28,6 +28,7 @@ interface BroadcastMessage {
 
 /** Default message window: 1 hour in milliseconds */
 const MESSAGE_WINDOW_MS = 3600000;
+const DONE_MARKER_PATTERN = /cc:(?:完了|[dD][oO][nN][eE])(?:\s|$|\[|\(|<|\|)/g;
 
 // Tool definitions
 export const statusTools: Tool[] = [
@@ -59,7 +60,7 @@ function getPlansStatus(): { todo: number; wip: number; done: number } | null {
   return {
     todo: (content.match(/cc:TODO/g) || []).length,
     wip: (content.match(/cc:WIP/g) || []).length,
-    done: (content.match(/cc:DONE/g) || []).length,
+    done: (content.match(DONE_MARKER_PATTERN) || []).length,
   };
 }
 

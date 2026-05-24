@@ -161,7 +161,7 @@ To execute, the AI client should:
 1. Read Plans.md to find cc:TODO tasks
 2. Mark task as cc:WIP
 3. Implement the task
-4. Mark as cc:DONE
+4. Mark as cc:完了
 
 This tool provides work instructions. The actual implementation
 should be performed by the AI client using its native capabilities.`, workMode, parallelInfo, todoCount, wipCount, targetInfo))

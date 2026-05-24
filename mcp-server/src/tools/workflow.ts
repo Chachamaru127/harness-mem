@@ -246,7 +246,7 @@ ${taskId ? `🎯 Targeting task: ${taskId}` : "🎯 Will process next available 
 1. Read Plans.md to find cc:TODO tasks
 2. Mark task as cc:WIP
 3. Implement the task
-4. ${full ? "Self-review and fix issues" : "Mark as cc:DONE"}
+4. ${full ? "Self-review and fix issues" : "Mark as cc:完了"}
 5. ${full ? "Commit changes" : ""}
 
 💡 This tool provides work instructions. The actual implementation
