@@ -16,8 +16,8 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("actions/cache@v5");
     expect(workflow).toContain("actions/setup-go@v6");
     expect(workflow).toContain("cache-dependency-path: mcp-server-go/go.sum");
-    expect(workflow).toContain("actions/upload-artifact@v6");
-    expect(workflow).toContain("actions/download-artifact@v6");
+    expect(workflow).toContain("actions/upload-artifact@v7");
+    expect(workflow).toContain("actions/download-artifact@v7");
     expect(workflow).toContain("softprops/action-gh-release@v3");
     expect(workflow).not.toContain("actions/checkout@v4");
     expect(workflow).not.toContain("actions/setup-node@v4");
@@ -25,6 +25,8 @@ describe("release workflow contract", () => {
     expect(workflow).not.toContain("actions/setup-go@v5");
     expect(workflow).not.toContain("actions/upload-artifact@v4");
     expect(workflow).not.toContain("actions/download-artifact@v4");
+    expect(workflow).not.toContain("actions/upload-artifact@v6");
+    expect(workflow).not.toContain("actions/download-artifact@v6");
     expect(workflow).not.toContain("softprops/action-gh-release@v2");
     expect(workflow).toContain("os: macos-latest");
     expect(workflow).toContain("os: windows-latest");
