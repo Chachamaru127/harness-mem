@@ -7,6 +7,16 @@
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-05-24
+
+### ユーザー向け要約
+
+- **Recall Runtime 基盤を追加**。通常 recall は巨大DB全体を毎回探すのではなく、project/session scope、検索用 projection、repeat recall cache、degradation metadata、compact explanation、ADR decision recall を使う経路になった。
+- **検索用 projection が古くても自動復旧するようにした**。`projection_missing` / `projection_stale` のときは scoped fallback で即返し、裏で child process が project 単位の projection refresh を予約する。成功後は repeat recall cache も安全に消す。
+- **OpenTelemetry 対応を local-first で追加**。daemon / search worker / Go MCP の recall path を span/metric として観測できる。外部 OTLP 送信は明示 opt-in のまま。`harness-mem telemetry status|export` で local inspect できる。
+- **ADR を Why 付き memory object として扱えるようにした**。BEADS 互換 template、ADR CLI、ADR ingestion、recall explanation を追加し、「何を決めたか」だけでなく「なぜそうしたか」を再利用しやすくした。
+- **リリース前に Mac / Windows 配布 smoke を走らせるようにした**。npm tarball を macOS / Windows に install して `harness-mem smoke` を実行し、Go MCP も macOS / Windows で native test/build する。
+
 ## [0.24.1] - 2026-05-22
 
 ### ユーザー向け要約
@@ -922,7 +932,9 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...HEAD
+[0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2
+[0.24.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2

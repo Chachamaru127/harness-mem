@@ -7,6 +7,25 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.24.2] - 2026-05-24
+
+### Added
+
+- **Recall Runtime foundation**. Added scoped `/v1/recall`, hot/cold recall projection tables, repeat recall query cache, degradation metadata, compact recall explanations, and ADR-as-recall-object support so normal recall can answer from project/session-scoped memory instead of broad raw observation search.
+- **Local-first OpenTelemetry observability**. Added OpenTelemetry-compatible daemon/search-worker/Go MCP instrumentation, semantic recall spans and metrics, `/v1/admin/telemetry/status`, `/v1/admin/telemetry/export`, and `harness-mem telemetry status|export`. External OTLP export remains opt-in only.
+- **ADR runtime tooling**. Added BEADS-compatible `harness-mem adr new` templates and ADR ingestion metadata so decisions can be retrieved with Why/evidence/provenance instead of only being static docs.
+- **Recall Runtime release evidence**. Added a warn-mode `benchmark:recall-runtime` gate covering recall p95, fallback rate, projection freshness, repeat cache behavior, ADR precision, OTel redaction, session-start non-displacement, and core search compatibility.
+
+### Changed
+
+- **Large local DB recall now recovers from stale projections automatically**. When `/v1/recall` detects `projection_missing` or `projection_stale`, it returns a scoped fallback immediately and schedules a debounced one-flight child-process projection refresh, clearing repeat recall cache after a successful refresh.
+- **Safe search and Skills are more project-scoped by default**. Local dogfood moved heavy safe search off the daemon main thread, and bundled Claude/Codex Skills now prefer project-scoped lookup during multi-session work while treating `503` as daemon-protecting backpressure.
+- **Release CI now checks distribution targets before publishing**. The release workflow installs the npm tarball and runs `harness-mem smoke` on macOS and Windows before npm publish, runs native Go MCP smoke on macOS and Windows before GitHub Release, and uploads the Recall Runtime gate artifact.
+
+### Security
+
+- Telemetry exports redact raw prompts, raw observations, project paths, secrets, and PII-like attribute keys. Tests cover both local inspect/export and OTLP exporter paths.
+
 ## [0.24.1] - 2026-05-22
 
 ### Fixed
@@ -2762,7 +2781,9 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...HEAD
+[0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2
+[0.24.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...v0.24.0
 [0.23.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.2...v0.23.0
 [0.22.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.22.1...v0.22.2
