@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-05-24
+
 ### ユーザー向け要約
 
 - **新規 Claude Code / Codex setup は local HTTP MCP gateway が既定になった**。`harness-mem setup --platform claude,codex` は loopback の共有 gateway を使う設定を書き、local token file を owner-only permission で作成し、client config には token 実値ではなく環境変数参照だけを残す。
@@ -941,7 +943,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...HEAD
+[0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...v0.24.1
 [0.24.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.23.0...v0.24.0
