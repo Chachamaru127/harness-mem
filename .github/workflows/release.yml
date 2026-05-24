@@ -9,6 +9,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   package-install-smoke:
     name: Package install smoke (${{ matrix.label }})
@@ -23,12 +26,13 @@ jobs:
             os: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
+          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -85,15 +89,16 @@ jobs:
       contents: read
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 20
           registry-url: "https://registry.npmjs.org"
+          package-manager-cache: false
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -179,7 +184,7 @@ jobs:
           npm run build --silent
 
       - name: Restore multilingual-e5 cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.harness-mem/models/multilingual-e5
           key: release-embedding-${{ runner.os }}-multilingual-e5-v1
@@ -258,7 +263,7 @@ jobs:
 
       - name: Upload Recall Runtime gate artifact
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: s128-recall-runtime-gate
           path: artifacts/release-gates/s128-recall-runtime-gate.json
@@ -291,12 +296,13 @@ jobs:
             ext: .exe
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
+          cache-dependency-path: mcp-server-go/go.sum
 
       - name: Run Go tests
         run: cd mcp-server-go && go test ./...
@@ -306,7 +312,7 @@ jobs:
           cd mcp-server-go && GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags="-s -w" -o ../harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./main.go
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
@@ -324,12 +330,13 @@ jobs:
             os: windows-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.22'
+          cache-dependency-path: mcp-server-go/go.sum
 
       - name: Run Go tests natively
         shell: bash
@@ -357,13 +364,13 @@ jobs:
       contents: write
     steps:
       - name: Download Go binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           pattern: harness-mcp-*
           merge-multiple: true
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           generate_release_notes: true
           files: |
