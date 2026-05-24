@@ -217,6 +217,58 @@ describe("mcp-gateway lifecycle CLI", () => {
     }
   }, 60_000);
 
+  test("default HTTP setup preserves existing Codex stdio wiring unless transport is explicit", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-preserve-codex-stdio-"));
+    const harnessHome = join(tmpHome, ".harness-mem");
+
+    try {
+      mkdirSync(join(tmpHome, ".codex"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".codex", "config.toml"),
+        `
+[mcp_servers.harness]
+command = "node"
+args = ["C:\\\\Harness\\\\mcp-server\\\\dist\\\\index.js"]
+enabled = true
+
+[mcp_servers.harness.env]
+HARNESS_MEM_HOST = "127.0.0.1"
+HARNESS_MEM_PORT = "37888"
+HARNESS_MEM_DB_PATH = "C:\\\\Harness\\\\harness-mem.db"
+`.trimStart()
+      );
+
+      const result = await runHarnessMem(
+        [
+          "setup",
+          "--platform",
+          "codex",
+          "--skip-start",
+          "--skip-smoke",
+          "--skip-quality",
+          "--skip-version-check",
+        ],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: harnessHome,
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+          HARNESS_MEM_SKIP_AUTO_UPDATE: "1",
+          OS: "Windows_NT",
+        }
+      );
+
+      expect(result.code).toBe(0);
+      const codexConfig = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      expect(codexConfig).toContain('command = "node"');
+      expect(codexConfig).toContain('args = ["C:\\\\Harness\\\\mcp-server\\\\dist\\\\index.js"]');
+      expect(codexConfig).not.toContain("url = ");
+      expect(codexConfig).not.toContain("bearer_token_env_var");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("status --json reports endpoint, token auth, gateway probe, and memory daemon health", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-gateway-status-"));
     const gatewayPort = randomPort();

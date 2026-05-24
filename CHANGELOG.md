@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-05-24
+
+### Fixed
+
+- **Windows setup now preserves existing Codex stdio wiring under the HTTP default**. Default HTTP setup no longer rewrites an existing Codex stdio MCP block just because Windows-style paths cannot be validated from Git Bash. Explicit transport migration can still rewrite the block, but implicit setup now keeps the user's existing stdio transport stable.
+
 ## [0.25.2] - 2026-05-24
 
 ### Fixed
@@ -2810,7 +2816,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...HEAD
+[0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0

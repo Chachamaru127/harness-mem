@@ -2010,6 +2010,46 @@ is_windows_shell() {
   [ "${OS:-}" = "Windows_NT" ]
 }
 
+is_windows_style_path() {
+  local value="${1:-}"
+  [[ "$value" =~ ^[A-Za-z]:[\\/] ]] || [[ "$value" == \\* ]]
+}
+
+file_exists_for_current_shell() {
+  local value="${1:-}" posix_value=""
+  [ -n "$value" ] || return 1
+  if [ -f "$value" ]; then
+    return 0
+  fi
+  if is_windows_shell && is_windows_style_path "$value"; then
+    if command -v cygpath >/dev/null 2>&1; then
+      posix_value="$(cygpath -u "$value" 2>/dev/null || true)"
+      [ -n "$posix_value" ] && [ -f "$posix_value" ] && return 0
+      return 1
+    fi
+    return 0
+  fi
+  return 1
+}
+
+parent_dir_exists_for_current_shell() {
+  local value="${1:-}" dir posix_value=""
+  [ -n "$value" ] || return 1
+  dir="$(dirname "$value")"
+  if [ -d "$dir" ]; then
+    return 0
+  fi
+  if is_windows_shell && is_windows_style_path "$value"; then
+    if command -v cygpath >/dev/null 2>&1; then
+      posix_value="$(cygpath -u "$value" 2>/dev/null || true)"
+      [ -n "$posix_value" ] && [ -d "$(dirname "$posix_value")" ] && return 0
+      return 1
+    fi
+    return 0
+  fi
+  return 1
+}
+
 download_go_binary() {
   local bin_name bin_path release_url version
   bin_name="$(_resolve_go_bin_name)"
@@ -2280,15 +2320,19 @@ check_codex_config_wiring() {
   mcp_entry_path=""
   if [ -n "$mcp_command_value" ] && [[ "$mcp_command_value" = /* ]]; then
     mcp_entry_path="$mcp_command_value"
+  elif [ -n "$mcp_command_value" ] && is_windows_shell && is_windows_style_path "$mcp_command_value"; then
+    mcp_entry_path="$mcp_command_value"
   elif [ -n "$mcp_args_value" ]; then
     if [[ "$mcp_args_value" = /* ]]; then
+      mcp_entry_path="$mcp_args_value"
+    elif is_windows_shell && is_windows_style_path "$mcp_args_value"; then
       mcp_entry_path="$mcp_args_value"
     elif [ -n "$mcp_cwd_value" ]; then
       mcp_entry_path="${mcp_cwd_value}/${mcp_args_value}"
     fi
   fi
 
-  if [ -n "$mcp_entry_path" ] && [ -f "$mcp_entry_path" ]; then
+  if [ -n "$mcp_entry_path" ] && file_exists_for_current_shell "$mcp_entry_path"; then
     log "Codex MCP entrypoint path: OK"
   else
     warn "Codex MCP wiring points to a non-existent entrypoint in: $cfg"
@@ -2319,7 +2363,7 @@ check_codex_config_wiring() {
   elif [ "$cfg_host" != "$MEM_HOST" ] || [ "$cfg_port" != "$MEM_PORT" ]; then
     warn "Codex MCP env wiring has stale HOST/PORT values in: $cfg (expected ${MEM_HOST}:${MEM_PORT}, got ${cfg_host}:${cfg_port})"
     failed=1
-  elif [ -n "$cfg_db_path" ] && [ ! -d "$(dirname "$cfg_db_path")" ]; then
+  elif [ -n "$cfg_db_path" ] && ! parent_dir_exists_for_current_shell "$cfg_db_path"; then
     warn "Codex MCP DB_PATH parent directory does not exist in: $cfg (${cfg_db_path})"
     failed=1
   else
@@ -2327,6 +2371,13 @@ check_codex_config_wiring() {
   fi
 
   return "$failed"
+}
+
+codex_harness_mcp_has_http_url() {
+  local cfg="$1"
+  [ -f "$cfg" ] || return 1
+  awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg" \
+    | grep -qE '^[[:space:]]*url[[:space:]]*='
 }
 
 print_codex_mcp_block() {
@@ -2567,8 +2618,12 @@ EOF
     log "Created Codex config: $cfg"
   else
     local had_managed_wiring=0
+    local current_has_http=0
     if rg -qi 'memory-codex-notify\.sh|^\[mcp_servers\.harness\]|bin/harness-mcp-server|mcp-server/dist/index\.js' "$cfg"; then
       had_managed_wiring=1
+    fi
+    if codex_harness_mcp_has_http_url "$cfg"; then
+      current_has_http=1
     fi
 
     if ! rg -q 'memory-codex-notify\.sh' "$cfg"; then
@@ -2605,16 +2660,16 @@ EOF
     fi
 
     if [ -n "$DOCTOR_MCP_TRANSPORT" ] && grep -Fq "$BEGIN_CODEX_MCP" "$cfg"; then
-      local desired_transport current_has_http
+      local desired_transport
       desired_transport="$(_normalize_mcp_transport_option "$MCP_CONFIG_TRANSPORT" 2>/dev/null || printf 'stdio')"
-      current_has_http=0
-      if awk '/^\[mcp_servers\.harness\][[:space:]]*(#.*)?$/{found=1;next} /^\[/{found=0} found' "$cfg" \
-        | grep -qE '^[[:space:]]*url[[:space:]]*='; then
-        current_has_http=1
-      fi
       if { [ "$desired_transport" = "streamable_http" ] && [ "$current_has_http" -eq 0 ]; } \
         || { [ "$desired_transport" = "stdio" ] && [ "$current_has_http" -eq 1 ]; }; then
         rewrite_codex_harness_wiring "$cfg" "$notify_script"
+        if codex_harness_mcp_has_http_url "$cfg"; then
+          current_has_http=1
+        else
+          current_has_http=0
+        fi
       fi
     fi
 

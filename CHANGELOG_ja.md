@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.3] - 2026-05-24
+
+### ユーザー向け要約
+
+- **Windows でも既存 Codex stdio 設定を HTTP default が上書きしないようにした**。Git Bash から Windows 形式 path を検査できない場合でも、明示 migration なしの setup は既存 stdio を維持する。明示的に transport を指定した場合だけ書き換える。
+
 ## [0.25.2] - 2026-05-24
 
 ### ユーザー向け要約
@@ -955,7 +961,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...HEAD
+[0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
