@@ -41,8 +41,12 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("HTTP MCP client config does not reference HARNESS_MEM_MCP_TOKEN");
     expect(workflow).toContain("MCP token leaked into HTTP client config");
     expect(workflow).toContain("MCP token file mode is");
+    expect(workflow).toContain('RUNNER_OS:-}" = "Windows"');
+    expect(workflow).toContain("config_paths=()");
+    expect(workflow).toContain("No Claude/Codex client config paths were created");
     expect(workflow).toContain("npm exec -- harness-mem mcp-config --transport stdio");
     expect(workflow).toContain("MCP token leaked into client config or config output");
+    expect(workflow).toContain("npm exec -- harness-memd stop");
     expect(workflow).toContain("Implicit setup rewrote existing Codex stdio config to HTTP");
     expect(workflow).toContain("needs: [go-build]");
     expect(workflow).toContain("needs: [go-build, package-install-smoke]");

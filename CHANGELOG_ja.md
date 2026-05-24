@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-05-24
+
+### ユーザー向け要約
+
+- **Mac / Windows の release package smoke を実ランナー差分に合わせた**。Mac では存在しない任意ディレクトリを `grep` 対象から外し、Windows では Git Bash の POSIX mode 表示を安全 gate に使わない。代わりに token の存在、HTTP health、rollback、token redaction、cleanup を配布 gate として確認する。
+
 ## [0.25.1] - 2026-05-24
 
 ### ユーザー向け要約
@@ -949,7 +955,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...HEAD
+[0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2

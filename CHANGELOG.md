@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.2] - 2026-05-24
+
+### Fixed
+
+- **Release package smoke now handles Mac/Windows runner differences**. The HTTP MCP config check ignores optional missing config directories instead of letting BSD `grep` turn a valid token-env reference into a failure, stops spawned gateway/daemon processes during cleanup, and treats Windows POSIX mode output as non-authoritative while still verifying token presence, HTTP health, rollback, and token redaction.
+
 ## [0.25.1] - 2026-05-24
 
 ### Fixed
@@ -2804,7 +2810,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...HEAD
+[0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2

@@ -77,7 +77,9 @@ jobs:
           bun --version
           smoke_root="$(mktemp -d)"
           cleanup() {
-            rm -rf "${smoke_root}"
+            npm exec -- harness-mem mcp-gateway stop >/dev/null 2>&1 || true
+            npm exec -- harness-memd stop >/dev/null 2>&1 || true
+            rm -rf "${smoke_root}" || true
           }
           trap cleanup EXIT
 
@@ -107,21 +109,33 @@ jobs:
             echo "::error::MCP token file is empty"
             exit 1
           fi
-          token_mode="$( (stat -c '%a' "${HARNESS_MEM_HOME}/mcp-gateway.token" 2>/dev/null || stat -f '%Lp' "${HARNESS_MEM_HOME}/mcp-gateway.token" 2>/dev/null) | head -n1 )"
-          if [ "${token_mode}" != "600" ]; then
-            echo "::error::MCP token file mode is ${token_mode}; expected 600"
+          if [ "${RUNNER_OS:-}" = "Windows" ]; then
+            echo "Windows runner: skipping POSIX token mode assertion; token presence and redaction are verified below."
+          else
+            token_mode="$( (stat -c '%a' "${HARNESS_MEM_HOME}/mcp-gateway.token" 2>/dev/null || stat -f '%Lp' "${HARNESS_MEM_HOME}/mcp-gateway.token" 2>/dev/null) | head -n1 )"
+            if [ "${token_mode}" != "600" ]; then
+              echo "::error::MCP token file mode is ${token_mode}; expected 600"
+              exit 1
+            fi
+          fi
+          config_paths=()
+          for config_path in "${http_home}/.codex" "${http_home}/.claude.json" "${http_home}/.claude"; do
+            [ -e "${config_path}" ] && config_paths+=("${config_path}")
+          done
+          if [ "${#config_paths[@]}" -eq 0 ]; then
+            echo "::error::No Claude/Codex client config paths were created"
             exit 1
           fi
-          if ! grep -R "HARNESS_MEM_MCP_TOKEN" "${http_home}/.codex" "${http_home}/.claude.json" "${http_home}/.claude" >/dev/null 2>&1; then
+          if ! grep -R "HARNESS_MEM_MCP_TOKEN" "${config_paths[@]}" >/dev/null 2>&1; then
             echo "::error::HTTP MCP client config does not reference HARNESS_MEM_MCP_TOKEN"
             exit 1
           fi
-          if grep -R "${token}" "${http_home}/.codex" "${http_home}/.claude.json" "${http_home}/.claude" 2>/dev/null; then
+          if grep -R "${token}" "${config_paths[@]}" 2>/dev/null; then
             echo "::error::MCP token leaked into HTTP client config"
             exit 1
           fi
           npm exec -- harness-mem mcp-config --transport stdio --client codex,claude --home "${http_home}" --write --json | tee "${smoke_root}/rollback.json" >/dev/null
-          if grep -R "${token}" "${http_home}/.codex" "${http_home}/.claude.json" "${http_home}/.claude" "${smoke_root}/rollback.json" 2>/dev/null; then
+          if grep -R "${token}" "${config_paths[@]}" "${smoke_root}/rollback.json" 2>/dev/null; then
             echo "::error::MCP token leaked into client config or config output"
             exit 1
           fi
@@ -132,6 +146,7 @@ jobs:
           fi
           node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const h=c.mcpServers && c.mcpServers.harness; if (!h || h.url || h.type === "http" || !h.command) { console.error(JSON.stringify(h)); process.exit(1); }' "${http_home}/.claude.json"
           npm exec -- harness-mem mcp-gateway stop >/dev/null
+          npm exec -- harness-memd stop >/dev/null
 
           rm -f "${pack_path}"
 
