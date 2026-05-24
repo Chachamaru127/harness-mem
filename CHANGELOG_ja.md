@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.4] - 2026-05-24
+
+### ユーザー向け要約
+
+- **Mac / Windows 配布 smoke の後片付けで release が止まらないようにした**。HTTP setup、gateway health、doctor HTTP、token redaction、rollback、既存 stdio 保護は引き続き失敗すれば release を止める。一方で、それらが通った後の stale / unexpected な gateway・daemon stop だけでは publish を止めない。
+
 ## [0.25.3] - 2026-05-24
 
 ### ユーザー向け要約
@@ -961,7 +967,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...HEAD
+[0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4
 [0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
 [0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1

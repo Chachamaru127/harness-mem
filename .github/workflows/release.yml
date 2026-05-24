@@ -145,8 +145,8 @@ jobs:
             exit 1
           fi
           node -e 'const fs=require("fs"); const c=JSON.parse(fs.readFileSync(process.argv[1],"utf8")); const h=c.mcpServers && c.mcpServers.harness; if (!h || h.url || h.type === "http" || !h.command) { console.error(JSON.stringify(h)); process.exit(1); }' "${http_home}/.claude.json"
-          npm exec -- harness-mem mcp-gateway stop >/dev/null
-          npm exec -- harness-memd stop >/dev/null
+          npm exec -- harness-mem mcp-gateway stop >/dev/null 2>&1 || true
+          npm exec -- harness-memd stop >/dev/null 2>&1 || true
 
           rm -f "${pack_path}"
 
