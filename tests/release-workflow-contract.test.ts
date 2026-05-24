@@ -8,6 +8,11 @@ describe("release workflow contract", () => {
   test("release workflow uses the same repository behavior gate as local maintainers", () => {
     const workflow = readFileSync(RELEASE_WORKFLOW_PATH, "utf8");
 
+    expect(workflow).toContain("package-install-smoke:");
+    expect(workflow).toContain("os: macos-latest");
+    expect(workflow).toContain("os: windows-latest");
+    expect(workflow).toContain("npm exec -- harness-mem smoke --project");
+    expect(workflow).toContain("needs: [package-install-smoke]");
     expect(workflow).toContain("name: Install release runner prerequisites");
     expect(workflow).toContain("sudo apt-get install -y jq ripgrep");
     expect(workflow).toContain("name: Install MCP server dependencies");
@@ -21,6 +26,11 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("name: Run repository behavior gate");
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("name: Run memory server typecheck");
+    expect(workflow).toContain("name: Recall Runtime release gate (§S128-013)");
+    expect(workflow).toContain("npm run benchmark:recall-runtime");
+    expect(workflow).toContain("go-native-smoke:");
+    expect(workflow).toContain("name: Go MCP native smoke (${{ matrix.label }})");
+    expect(workflow).toContain("needs: [publish-npm, go-build, go-native-smoke]");
     expect(workflow).not.toContain("name: Run memory server quality gates");
     expect(workflow).not.toContain("cd memory-server\n          bun run test");
   });

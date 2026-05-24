@@ -10,8 +10,77 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  package-install-smoke:
+    name: Package install smoke (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos
+            os: macos-latest
+          - label: windows
+            os: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.10"
+
+      - name: Install smoke prerequisites (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew list jq >/dev/null 2>&1 || brew install jq
+          brew list ripgrep >/dev/null 2>&1 || brew install ripgrep
+
+      - name: Install smoke prerequisites (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install jq ripgrep -y --no-progress
+
+      - name: Verify package install and daemon smoke
+        shell: bash
+        env:
+          HARNESS_MEM_SKIP_AUTO_UPDATE: "1"
+          HARNESS_MEM_NON_INTERACTIVE: "1"
+          HARNESS_MEM_ENABLE_UI: "false"
+        run: |
+          set -euo pipefail
+          bash --version
+          bun --version
+          smoke_root="$(mktemp -d)"
+          cleanup() {
+            rm -rf "${smoke_root}"
+          }
+          trap cleanup EXIT
+
+          pack_json="$(npm pack --json)"
+          pack_file="$(printf '%s' "${pack_json}" | node -e 'const fs=require("fs"); const data=JSON.parse(fs.readFileSync(0,"utf8")); process.stdout.write(data[0].filename);')"
+          pack_path="$(node -e 'process.stdout.write(require("path").resolve(process.argv[1]))' "${pack_file}")"
+
+          mkdir -p "${smoke_root}/app" "${smoke_root}/project"
+          cd "${smoke_root}/app"
+          npm init -y >/dev/null
+          npm install "${pack_path}"
+          npm exec -- harness-mem --help >/dev/null
+          npm exec -- harness-mem smoke --project "${smoke_root}/project"
+
+          rm -f "${pack_path}"
+
   publish-npm:
     runs-on: ubuntu-latest
+    needs: [package-install-smoke]
     permissions:
       contents: read
     steps:
@@ -180,6 +249,21 @@ jobs:
           # to enforce after two stable releases.
           bash scripts/check-workgraph-release-gate.sh
 
+      - name: Recall Runtime release gate (§S128-013)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/release-gates
+          npm run benchmark:recall-runtime -- --out artifacts/release-gates/s128-recall-runtime-gate.json
+
+      - name: Upload Recall Runtime gate artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: s128-recall-runtime-gate
+          path: artifacts/release-gates/s128-recall-runtime-gate.json
+          if-no-files-found: warn
+
       - name: Dry-run package check
         run: npm pack --dry-run
 
@@ -227,9 +311,48 @@ jobs:
           name: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}
 
+  go-native-smoke:
+    name: Go MCP native smoke (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: macos
+            os: macos-latest
+          - label: windows
+            os: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Run Go tests natively
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server-go
+          go test ./...
+
+      - name: Build native Go MCP binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd mcp-server-go
+          ext=""
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            ext=".exe"
+          fi
+          go build -trimpath -ldflags="-s -w" -o "../harness-mcp-native-${{ matrix.label }}${ext}" ./main.go
+          test -s "../harness-mcp-native-${{ matrix.label }}${ext}"
+
   github-release:
     runs-on: ubuntu-latest
-    needs: [publish-npm, go-build]
+    needs: [publish-npm, go-build, go-native-smoke]
     permissions:
       contents: write
     steps:
