@@ -139,6 +139,9 @@ function requiresAdminToken(method: string, pathname: string): boolean {
     }
     return false;
   }
+  if (method === "DELETE" && pathname.startsWith("/v1/observations/")) {
+    return true;
+  }
   if (method !== "POST") {
     return false;
   }
@@ -448,6 +451,9 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
       try {
         const url = new URL(request.url);
         const remoteAddress = server?.requestIP(request)?.address ?? null;
+        if (url.pathname.startsWith("/v1/admin/forget/")) {
+          server?.timeout(request, 255);
+        }
 
         // V5-010: Rate Limiting（全エンドポイントに適用）
         if (rateLimiter) {
@@ -1468,6 +1474,114 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 	        }));
 	      }
 
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/plan") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetPlan({
+            project: typeof body.project === "string" ? body.project : undefined,
+            limit: parseIntegerLike(body.limit),
+            score_threshold: parseNumberLike(body.score_threshold),
+            protect_accessed: typeof body.protect_accessed === "boolean" ? body.protect_accessed : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/archive") {
+          const body = await parseRequestJson(request);
+          const candidateIds = toStringArray(body.candidate_ids).length > 0
+            ? toStringArray(body.candidate_ids)
+            : toStringArray(body.target_ids);
+          return jsonResponse(core.adminForgetArchive({
+            project: typeof body.project === "string" ? body.project : undefined,
+            candidate_ids: candidateIds,
+            limit: parseIntegerLike(body.limit),
+            score_threshold: parseNumberLike(body.score_threshold),
+            protect_accessed: typeof body.protect_accessed === "boolean" ? body.protect_accessed : undefined,
+            execute: parseBooleanLike(body.execute, false),
+            manifest_sha256: typeof body.manifest_sha256 === "string"
+              ? body.manifest_sha256
+              : typeof body.manifest_hash === "string"
+                ? body.manifest_hash
+                : undefined,
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/maintenance") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetMaintenance({
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+            force: parseBooleanLike(body.force, false),
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/archive/search") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetArchiveSearch({
+            archive_id: typeof body.archive_id === "string" ? body.archive_id : undefined,
+            observation_id: typeof body.observation_id === "string" ? body.observation_id : undefined,
+            project: typeof body.project === "string" ? body.project : undefined,
+            archive_state: typeof body.archive_state === "string" ? body.archive_state : undefined,
+            manifest_sha256: typeof body.manifest_sha256 === "string"
+              ? body.manifest_sha256
+              : typeof body.manifest_hash === "string"
+                ? body.manifest_hash
+                : undefined,
+            limit: parseIntegerLike(body.limit),
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/restore") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetRestore({
+            archive_id: typeof body.archive_id === "string" ? body.archive_id : undefined,
+            archive_full_ref: typeof body.archive_full_ref === "string" ? body.archive_full_ref : undefined,
+            execute: parseBooleanLike(body.execute, false),
+            reason: typeof body.reason === "string" ? body.reason : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/backup-evidence") {
+          const body = await parseRequestJson(request);
+          const candidateIds = toStringArray(body.candidate_ids).length > 0
+            ? toStringArray(body.candidate_ids)
+            : toStringArray(body.target_ids);
+          return jsonResponse(core.adminForgetBackupEvidence({
+            backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
+            backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
+            candidate_ids: candidateIds,
+            ttl_seconds: parseIntegerLike(body.ttl_seconds),
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
+          const body = await parseRequestJson(request);
+          const targetIds = toStringArray(body.target_ids).length > 0
+            ? toStringArray(body.target_ids)
+            : toStringArray(body.candidate_ids);
+          const manifestHash = typeof body.manifest_hash === "string"
+            ? body.manifest_hash
+            : typeof body.manifest_sha256 === "string"
+              ? body.manifest_sha256
+              : undefined;
+          return jsonResponse(core.adminForgetHardPurge({
+            project: typeof body.project === "string" ? body.project : undefined,
+            target_ids: targetIds,
+            limit: parseIntegerLike(body.limit),
+            retention_days: parseIntegerLike(body.retention_days),
+            execute: parseBooleanLike(body.execute, false),
+            manifest_hash: manifestHash,
+            manifest_expires_at: typeof body.manifest_expires_at === "string" ? body.manifest_expires_at : undefined,
+            candidate_count: parseIntegerLike(body.candidate_count),
+            backup_sha256: typeof body.backup_sha256 === "string" ? body.backup_sha256 : undefined,
+            backup_path: typeof body.backup_path === "string" ? body.backup_path : undefined,
+            preverified_backup_evidence_token: typeof body.preverified_backup_evidence_token === "string" ? body.preverified_backup_evidence_token : undefined,
+            temp_test_backup_token: typeof body.temp_test_backup_token === "string" ? body.temp_test_backup_token : undefined,
+            retention_ack: parseBooleanLike(body.retention_ack, false),
+            archive_ack: parseBooleanLike(body.archive_ack, false),
+            readiness_only: parseBooleanLike(body.readiness_only, false),
+            confirmation: typeof body.confirmation === "string" ? body.confirmation : undefined,
+          }));
+        }
+
 	      // TEAM-003: Team CRUD エンドポイント（POST/GET /v1/admin/teams）
       if (request.method === "POST" && url.pathname === "/v1/admin/teams") {
         if (!teamRepo) return badRequest("Team management is only available in SQLite mode");
@@ -1671,6 +1785,21 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         if (bulkDelAccess instanceof Response) return bulkDelAccess;
         return jsonResponse(core.bulkDeleteObservations({ ids, user_id: bulkDelAccess.user_id, team_id: bulkDelAccess.team_id }));
       }
+
+        if (request.method === "DELETE" && url.pathname.startsWith("/v1/observations/")) {
+          const encodedId = url.pathname.slice("/v1/observations/".length);
+          const observationId = decodeURIComponent(encodedId);
+          if (!observationId.trim()) {
+            return badRequest("observation_id is required");
+          }
+          const deleteAccess = resolveAccess(request);
+          if (deleteAccess instanceof Response) return deleteAccess;
+          return jsonResponse(core.bulkDeleteObservations({
+            ids: [observationId],
+            user_id: deleteAccess.user_id,
+            team_id: deleteAccess.team_id,
+          }));
+        }
 
       // S58-005: POST /v1/observations/share — observation の team_id を更新してチームに共有
       if (request.method === "POST" && url.pathname === "/v1/observations/share") {

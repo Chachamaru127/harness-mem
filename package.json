@@ -55,7 +55,8 @@
     "sqlite-vec-darwin-arm64": "0.1.9"
   },
   "devDependencies": {
-    "pg": "^8.20.0"
+    "pg": "^8.20.0",
+    "yaml": "^2.9.0"
   },
   "scripts": {
     "codex:setup": "bash scripts/setup-codex-memory.sh",

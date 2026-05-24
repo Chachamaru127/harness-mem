@@ -16341,11 +16341,27 @@ async function handleMemoryTool(name, args) {
   return result;
 }
 async function runConsolidation(input) {
+  const forgetPolicy = input.forget_policy && typeof input.forget_policy === "object" ? input.forget_policy : void 0;
   const response = await callMemoryApi("/v1/admin/consolidation/run", {
     reason: toStringOrUndefined(input.reason),
     project: toStringOrUndefined(input.project),
     session_id: toStringOrUndefined(input.session_id),
-    limit: toNumberOrUndefined(input.limit)
+    limit: toNumberOrUndefined(input.limit),
+    forget_policy: forgetPolicy ? {
+      dry_run: typeof forgetPolicy.dry_run === "boolean" ? forgetPolicy.dry_run : void 0,
+      score_threshold: toNumberOrUndefined(forgetPolicy.score_threshold),
+      limit: toNumberOrUndefined(forgetPolicy.limit),
+      protect_accessed: typeof forgetPolicy.protect_accessed === "boolean" ? forgetPolicy.protect_accessed : void 0
+    } : void 0
+  });
+  return successResult(response);
+}
+async function runForgetPlan(input) {
+  const response = await callMemoryApi("/v1/admin/forget/plan", {
+    project: toStringOrUndefined(input.project),
+    limit: toNumberOrUndefined(input.limit),
+    score_threshold: toNumberOrUndefined(input.score_threshold),
+    protect_accessed: typeof input.protect_accessed === "boolean" ? input.protect_accessed : void 0
   });
   return successResult(response);
 }
@@ -16622,6 +16638,8 @@ async function handleMemoryToolInner(name, args) {
         });
         return successResult(response);
       }
+      case "harness_mem_admin_forget_plan":
+        return runForgetPlan(input);
       case "harness_mem_admin_import_claude_mem": {
         const sourceDbPath = toStringOrUndefined(input.source_db_path);
         if (!sourceDbPath) {
@@ -17119,6 +17137,21 @@ var init_memory = __esm({
         annotations: { readOnlyHint: true }
       },
       {
+        name: "harness_mem_admin_forget_plan",
+        description: "Dry-run the forgetting policy and return candidate IDs plus cross-store impact counts. This never archives or deletes data.",
+        inputSchema: {
+          type: "object",
+          properties: {
+            project: { type: "string" },
+            limit: { type: "number" },
+            score_threshold: { type: "number" },
+            protect_accessed: { type: "boolean" }
+          },
+          required: []
+        },
+        annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true }
+      },
+      {
         name: "harness_mem_admin_consolidation_run",
         description: "Run consolidation worker (extract + dedupe) immediately.",
         inputSchema: {
@@ -17127,7 +17160,17 @@ var init_memory = __esm({
             reason: { type: "string" },
             project: { type: "string" },
             session_id: { type: "string" },
-            limit: { type: "number" }
+            limit: { type: "number" },
+            forget_policy: {
+              type: "object",
+              description: "Optional soft-archive policy options. Wet mode still requires HARNESS_MEM_AUTO_FORGET=1 on the daemon.",
+              properties: {
+                dry_run: { type: "boolean" },
+                score_threshold: { type: "number" },
+                limit: { type: "number" },
+                protect_accessed: { type: "boolean" }
+              }
+            }
           },
           required: []
         },

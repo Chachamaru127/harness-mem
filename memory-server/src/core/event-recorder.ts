@@ -22,6 +22,7 @@ import { splitIntoNuggets } from "./nugget-splitter.js";
 import {
   clampLimit,
   ensureSession,
+  expiredFilterSql,
   generateEventId,
   isPrivateTag,
   makeResponse,
@@ -1173,6 +1174,7 @@ export class EventRecorder {
               FROM mem_observations
               WHERE content_dedupe_hash = ?
                 AND archived_at IS NULL
+                ${expiredFilterSql("mem_observations")}
               LIMIT 1
             `)
             .get(contentDedupeHash) as { id: string } | null;
