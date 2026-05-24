@@ -718,7 +718,7 @@ export function visibilityFilterSql(alias: string, includePrivate: boolean): str
           ELSE '["private"]'
         END
       ) AS jt
-      WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'sensitive')
+      WHERE lower(CAST(jt.value AS TEXT)) IN ('private', 'secret', 'sensitive', 'deleted')
     )
   `;
 }
@@ -772,7 +772,7 @@ export function normalizeScoreMap(raw: Map<string, number>): Map<string, number>
 export function hasPrivateVisibilityTag(tags: string[]): boolean {
   return tags.some((tag) => {
     const normalized = tag.toLowerCase();
-    return normalized === "private" || normalized === "sensitive";
+    return normalized === "private" || normalized === "secret" || normalized === "sensitive" || normalized === "deleted";
   });
 }
 
@@ -1329,12 +1329,96 @@ export function getConfig(): Config {
     ? (temporalGraphRaw === "true" || temporalGraphRaw === "1")
     : userConfig.temporalGraphEnabled === true;
 
+  const configBool = (envName: string, configKey: string, fallback: boolean): boolean => {
+    const raw = (process.env[envName] || "").trim().toLowerCase();
+    if (raw !== "") return raw === "true" || raw === "1" || raw === "yes";
+    const value = userConfig[configKey];
+    return typeof value === "boolean" ? value : fallback;
+  };
+  const configNumber = (envName: string, configKey: string): number | undefined => {
+    const raw = (process.env[envName] || "").trim();
+    const value = raw !== "" ? Number(raw) : userConfig[configKey];
+    return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+  };
+  const forgetMaintenanceModeRaw = String(
+    process.env.HARNESS_MEM_FORGET_MAINTENANCE_MODE
+      || userConfig.forgetMaintenanceMode
+      || "dry-run",
+  ).trim().toLowerCase();
+  const forgetMaintenanceMode = forgetMaintenanceModeRaw === "archive" ? "archive" : "dry-run";
+  const forgetMaintenanceIntervalCandidate = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_INTERVAL_MS",
+    "forgetMaintenanceIntervalMs",
+  ) ?? 3600000;
+  const forgetMaintenanceLimitCandidate = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_LIMIT",
+    "forgetMaintenanceLimit",
+  ) ?? 100;
+  const forgetMaintenanceScoreThresholdCandidate = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_SCORE_THRESHOLD",
+    "forgetMaintenanceScoreThreshold",
+  ) ?? 0.7;
+  const forgetMaintenanceProtectAccessed = configBool(
+    "HARNESS_MEM_FORGET_MAINTENANCE_PROTECT_ACCESSED",
+    "forgetMaintenanceProtectAccessed",
+    true,
+  );
+  const forgetMaintenanceDbBytesThreshold = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_DB_BYTES_THRESHOLD",
+    "forgetMaintenanceDbBytesThreshold",
+  );
+  const forgetMaintenanceWalBytesThreshold = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_WAL_BYTES_THRESHOLD",
+    "forgetMaintenanceWalBytesThreshold",
+  );
+  const forgetMaintenanceActiveObservationsThreshold = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_ACTIVE_OBSERVATIONS_THRESHOLD",
+    "forgetMaintenanceActiveObservationsThreshold",
+  );
+
   return {
     partialFinalizeEnabled,
     partialFinalizeIntervalMs,
     reindexVectorsEnabled,
     reindexVectorsIntervalMs,
     reindexVectorsBatchSize,
+    forgetMaintenanceEnabled: configBool(
+      "HARNESS_MEM_FORGET_MAINTENANCE_ENABLED",
+      "forgetMaintenanceEnabled",
+      false,
+    ),
+    forgetMaintenanceIntervalMs: clampLimit(
+      forgetMaintenanceIntervalCandidate,
+      3600000,
+      60000,
+      24 * 60 * 60 * 1000,
+    ),
+    forgetMaintenanceMode,
+    forgetMaintenanceScheduleEnabled: configBool(
+      "HARNESS_MEM_FORGET_MAINTENANCE_SCHEDULE_ENABLED",
+      "forgetMaintenanceScheduleEnabled",
+      false,
+    ),
+    forgetMaintenanceLimit: clampLimit(
+      forgetMaintenanceLimitCandidate,
+      100,
+      1,
+      500,
+    ),
+    forgetMaintenanceScoreThreshold: Math.max(0, Math.min(1, forgetMaintenanceScoreThresholdCandidate)),
+    forgetMaintenanceProtectAccessed,
+    forgetMaintenanceDbBytesThreshold:
+      typeof forgetMaintenanceDbBytesThreshold === "number" && forgetMaintenanceDbBytesThreshold >= 0
+        ? Math.floor(forgetMaintenanceDbBytesThreshold)
+        : undefined,
+    forgetMaintenanceWalBytesThreshold:
+      typeof forgetMaintenanceWalBytesThreshold === "number" && forgetMaintenanceWalBytesThreshold >= 0
+        ? Math.floor(forgetMaintenanceWalBytesThreshold)
+        : undefined,
+    forgetMaintenanceActiveObservationsThreshold:
+      typeof forgetMaintenanceActiveObservationsThreshold === "number" && forgetMaintenanceActiveObservationsThreshold >= 0
+        ? Math.floor(forgetMaintenanceActiveObservationsThreshold)
+        : undefined,
     temporalGraphEnabled,
     dbPath,
     bindHost,

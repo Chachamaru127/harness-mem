@@ -1,7 +1,8 @@
-import { createHash } from "node:crypto";
 import { Database, type SQLQueryBindings } from "bun:sqlite";
 import { spawn as spawnChildProcess } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { createHash, randomBytes } from "node:crypto";
+import { closeSync, existsSync, openSync, readFileSync, readSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -44,6 +45,7 @@ import {
 } from "../consolidation/worker";
 import {
   runForgetPolicy,
+  type ForgetPolicyOptions,
   type ForgetPolicyResult,
 } from "../consolidation/forget-policy";
 import {
@@ -340,6 +342,213 @@ type RecallExplanationReason =
   | "work_ref"
   | "degraded_fallback";
 
+type AdminHardPurgeRequest = {
+  project?: string;
+  target_ids?: string[];
+  limit?: number;
+  retention_days?: number;
+  execute?: boolean;
+  manifest_hash?: string;
+  manifest_expires_at?: string;
+  candidate_count?: number;
+  backup_sha256?: string;
+  backup_path?: string;
+  preverified_backup_evidence_token?: string;
+  temp_test_backup_token?: string;
+  retention_ack?: boolean;
+  archive_ack?: boolean;
+  confirmation?: string;
+  readiness_only?: boolean;
+};
+
+type AdminBackupEvidenceRequest = {
+  backup_path?: string;
+  backup_sha256?: string;
+  candidate_ids?: string[];
+  target_ids?: string[];
+  ttl_seconds?: number;
+};
+
+type AdminArchiveRequest = {
+  project?: string;
+  candidate_ids?: string[];
+  target_ids?: string[];
+  limit?: number;
+  score_threshold?: number;
+  protect_accessed?: boolean;
+  execute?: boolean;
+  manifest_sha256?: string;
+  reason?: string;
+};
+
+type AdminArchiveRestoreRequest = {
+  archive_id?: string;
+  archive_full_ref?: string;
+  execute?: boolean;
+  reason?: string;
+};
+
+type AdminArchiveSearchRequest = {
+  archive_id?: string;
+  observation_id?: string;
+  project?: string;
+  archive_state?: string;
+  manifest_sha256?: string;
+  limit?: number;
+};
+
+type AdminForgetMaintenanceRequest = {
+  reason?: string;
+  force?: boolean;
+};
+
+type ForgetMaintenanceMeasurements = {
+  db_size_bytes: number | null;
+  wal_size_bytes: number | null;
+  active_observations: number;
+};
+
+type ArchiveCandidateRow = {
+  id: string;
+  project: string;
+  session_id: string;
+  user_id: string;
+  team_id: string | null;
+  content: string;
+  content_redacted: string;
+  raw_text: string | null;
+  observation_type: string;
+  memory_type: string;
+  tags_json: string;
+  privacy_tags_json: string;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type ArchiveManifest = {
+  schema_version: "s129-archive-v1";
+  operation: "admin.archive";
+  candidate_ids: string[];
+  candidate_count: number;
+  cross_store_impact: Record<string, number>;
+  manifest_sha256: string;
+};
+
+type ArchivePayload = {
+  schema_version: "s129-archive-payload-v1";
+  archive_id: string;
+  observation_id: string;
+  created_at: string;
+  actor: "system";
+  reason: string;
+  content_sha256: string;
+  manifest_sha256: string;
+  cross_store_impact: Record<string, number>;
+  rows: Record<string, Array<Record<string, unknown>>>;
+};
+
+type ArchiveStorageRow = {
+  archive_id: string;
+  observation_id: string;
+  archive_full_ref: string | null;
+  archive_state: string;
+  reason: string;
+  content_sha256: string;
+  manifest_sha256: string;
+  payload_json: string | null;
+  payload_sha256: string | null;
+  full_purged_at: string | null;
+};
+
+type ArchivePrepareResult =
+  | { ok: true; manifest: ArchiveManifest; rows: ArchiveCandidateRow[] }
+  | { ok: false; error: string };
+
+type HardPurgeCandidateRow = {
+  id: string;
+  project: string;
+  archived_at: string | null;
+  privacy_tags_json: string;
+  tags_json: string;
+};
+
+type BackupEvidence = {
+  provided: boolean;
+  backup_sha256: string | null;
+  backup_path: string | null;
+  candidate_ids: string[] | null;
+  candidate_coverage_sha256: string | null;
+  temp_test_backup_token_sha256: string | null;
+  preverified_backup_evidence_token_sha256: string | null;
+  kind: "backup_file" | "sha256_metadata" | "temp_test_token" | "preverified_backup" | "missing";
+  integrity_check: {
+    checked: boolean;
+    ok: boolean;
+    result: string | null;
+    error: string | null;
+  };
+};
+
+type BackupFileSnapshot = {
+  path: string;
+  realpath: string;
+  size_bytes: number;
+  mtime_ms: number;
+  mtime_iso: string;
+};
+
+type PreverifiedBackupEvidence = BackupFileSnapshot & {
+  token_sha256: string;
+  backup_sha256: string;
+  candidate_ids: string[];
+  candidate_coverage_sha256: string;
+  created_at: string;
+  expires_at: string;
+  db_identity_sha256: string;
+  integrity_check: BackupEvidence["integrity_check"];
+};
+
+type HardPurgeManifest = {
+  schema_version: "s127-hard-purge-v1";
+  operation: "admin.hard_purge";
+  generated_at: string;
+  expires_at: string;
+  project: string | null;
+  candidate_ids: string[];
+  candidate_count: number;
+  impact: Record<string, number>;
+  backup_sha256: string | null;
+  backup: BackupEvidence & { required: true };
+  retention: {
+    minimum_archived_days: number;
+    satisfied: boolean;
+    blockers: Array<{ observation_id: string; archived_at: string | null; reason: string }>;
+  };
+  archive: {
+    archive_tables_present: boolean;
+    archived_only: boolean;
+    archived_count: number;
+    archive_stub_count: number;
+    archive_full_count: number;
+    restore_capable_count: number;
+    restore_capable_full_count: number;
+    restore_capable_full_observation_count: number;
+    missing_restore_capable_archive_ids: string[];
+    archive_states: Record<string, number>;
+  };
+  legal_hold: {
+    allowed: boolean;
+    blockers: string[];
+  };
+  manifest_hash: string;
+  confirmation_phrase?: string;
+};
+
+type HardPurgePrepareResult =
+  | { ok: true; manifest: HardPurgeManifest; rows: HardPurgeCandidateRow[] }
+  | { ok: false; error: string };
+
 export function buildVectorBackfillChildCommand(
   scriptPath: string,
   operation: VectorBackfillOperation,
@@ -572,6 +781,67 @@ export class EmbeddingReadinessError extends Error {
     this.readiness = readiness;
     this.code = code;
   }
+}
+
+function canonicalizeJson(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => canonicalizeJson(entry));
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(record).sort()) {
+      sorted[key] = canonicalizeJson(record[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+function stableJson(value: unknown): string {
+  return JSON.stringify(canonicalizeJson(value));
+}
+
+function sha256Hex(value: string | Buffer): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function sha256FileHex(path: string): string {
+  const hash = createHash("sha256");
+  const fd = openSync(path, "r");
+  const buffer = Buffer.allocUnsafe(8 * 1024 * 1024);
+  try {
+    while (true) {
+      const bytesRead = readSync(fd, buffer, 0, buffer.length, null);
+      if (bytesRead === 0) break;
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
+function parseJsonStringArray(value: string | null | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed)
+      ? parsed.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function normalizeSha256(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
+}
+
+function uniqueSortedStrings(values: string[] | undefined): string[] {
+  return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))].sort();
 }
 
 type SearchOffloadMode = "child_process" | "persistent_worker";
@@ -1353,12 +1623,17 @@ export class HarnessMemCore {
   private ingestCoord!: IngestCoordinator;
   private cfgMgr!: ConfigManager;
   private analyticsSvc!: AnalyticsService;
+  private readonly hardPurgePlanExpirations = new Map<string, string>();
+  private readonly preverifiedBackupEvidenceTokens = new Map<string, PreverifiedBackupEvidence>();
   /** §91-002: partial-finalize scheduler (opt-in via config.partialFinalizeEnabled) */
   private partialFinalizeScheduler!: PartialFinalizeScheduler;
   /** S89-003: vector reindex backfill scheduler (opt-in via config.reindexVectorsEnabled) */
   private reindexVectorsScheduler!: ReindexVectorsScheduler;
   /** S124-007: out-of-request vector compact rebuild + reindex worker */
   private vectorBackfillWorker!: VectorBackfillWorker;
+  /** S132: opt-in restore-capable archive maintenance scheduler */
+  private forgetMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
+  private forgetMaintenanceRunning = false;
   /** S127-002: warm persistent worker for normal vector search. */
   private searchWorker: PersistentSearchWorkerClient | null = null;
   private searchChildPending = 0;
@@ -2920,6 +3195,32 @@ export class HarnessMemCore {
     this.partialFinalizeScheduler.start();
     // S89-003: start reindex backfill scheduler (no-op when enabled=false)
     this.reindexVectorsScheduler.start();
+    this.startForgetMaintenanceScheduler();
+  }
+
+  private startForgetMaintenanceScheduler(): void {
+    if (this.config.forgetMaintenanceEnabled !== true) {
+      return;
+    }
+    const intervalMs = clampLimit(this.config.forgetMaintenanceIntervalMs, 3600000, 60000, 24 * 60 * 60 * 1000);
+    this.forgetMaintenanceTimer = setInterval(() => {
+      if (this.shuttingDown || this.forgetMaintenanceRunning) return;
+      this.forgetMaintenanceRunning = true;
+      try {
+        this.adminForgetMaintenance({ reason: "scheduler" });
+      } catch (error) {
+        try {
+          this.writeAuditLog("admin.forget_maintenance.error", "observation", "", {
+            reason: "scheduler",
+            error: error instanceof Error ? error.message : String(error),
+          });
+        } catch {
+          // best effort
+        }
+      } finally {
+        this.forgetMaintenanceRunning = false;
+      }
+    }, intervalMs);
   }
 
   getStreamEventsSince(lastEventId: number, limitInput?: number): StreamEvent[] {
@@ -2960,6 +3261,610 @@ export class HarnessMemCore {
         VALUES (?, 'system', ?, ?, ?, ?)
       `)
       .run(action, targetType, targetId, JSON.stringify(details), nowIso());
+  }
+
+  private collectObservationLifecycleImpact(ids: string[]): Record<string, number> {
+    const empty = {
+      observations: 0,
+      mem_vectors: 0,
+      mem_links_touching: 0,
+      mem_relations: 0,
+      mem_facts: 0,
+      mem_events: 0,
+      mem_tags: 0,
+      mem_observation_entities: 0,
+      mem_nuggets: 0,
+      mem_nugget_vectors: 0,
+      mem_vectors_vec_map: 0,
+      mem_entities_orphaned: 0,
+      mem_archive_stubs: 0,
+      mem_archive_full: 0,
+    };
+    if (ids.length === 0) {
+      return empty;
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const count = (sql: string, values: string[] = ids): number => {
+      const row = this.db.query(sql).get(...(values as never[])) as { count: number } | null;
+      return Number(row?.count ?? 0);
+    };
+
+    return {
+      observations: ids.length,
+      mem_vectors: count(`SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id IN (${placeholders})`),
+      mem_links_touching: count(
+        `SELECT COUNT(*) AS count FROM mem_links WHERE from_observation_id IN (${placeholders}) OR to_observation_id IN (${placeholders})`,
+        [...ids, ...ids]
+      ),
+      mem_relations: count(`SELECT COUNT(*) AS count FROM mem_relations WHERE observation_id IN (${placeholders})`),
+      mem_facts: count(`SELECT COUNT(*) AS count FROM mem_facts WHERE observation_id IN (${placeholders})`),
+      mem_events: count(`SELECT COUNT(*) AS count FROM mem_events WHERE observation_id IN (${placeholders})`),
+      mem_tags: count(`SELECT COUNT(*) AS count FROM mem_tags WHERE observation_id IN (${placeholders})`),
+      mem_observation_entities: count(`SELECT COUNT(*) AS count FROM mem_observation_entities WHERE observation_id IN (${placeholders})`),
+      mem_nuggets: count(`SELECT COUNT(*) AS count FROM mem_nuggets WHERE observation_id IN (${placeholders})`),
+      mem_nugget_vectors: count(`SELECT COUNT(*) AS count FROM mem_nugget_vectors WHERE observation_id IN (${placeholders})`),
+      mem_vectors_vec_map: this.countSqliteVecMapRows(ids),
+      mem_entities_orphaned: count(
+        `SELECT COUNT(*) AS count
+         FROM mem_entities e
+         WHERE EXISTS (
+           SELECT 1 FROM mem_observation_entities oe
+           WHERE oe.entity_id = e.id AND oe.observation_id IN (${placeholders})
+         )
+           AND NOT EXISTS (
+             SELECT 1 FROM mem_observation_entities oe_live
+             WHERE oe_live.entity_id = e.id AND oe_live.observation_id NOT IN (${placeholders})
+           )`,
+        [...ids, ...ids]
+      ),
+      mem_archive_stubs: this.tableExists("mem_archive_stubs")
+        ? count(`SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE observation_id IN (${placeholders})`)
+        : 0,
+      mem_archive_full: this.countArchiveFullRows(ids),
+    };
+  }
+
+  private tableExists(name: string, db: Database = this.db): boolean {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return false;
+    }
+    const row = db
+      .query(`SELECT 1 AS present FROM sqlite_master WHERE name = ? AND type IN ('table', 'view') LIMIT 1`)
+      .get(name) as { present: number } | null;
+    return !!row;
+  }
+
+  private quoteIdentifier(name: string): string {
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`unsafe sqlite identifier: ${name}`);
+    }
+    return `"${name}"`;
+  }
+
+  private countSqliteVecMapRows(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map(() => "?").join(", ");
+    const tables = this.db
+      .query<{ name: string }, []>(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND (name = 'mem_vectors_vec_map' OR name LIKE 'mem_vectors_vec_map_%')`,
+      )
+      .all()
+      .filter((row) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name));
+
+    let total = 0;
+    for (const row of tables) {
+      const tableName = this.quoteIdentifier(row.name);
+      const count = this.db
+        .query(`SELECT COUNT(*) AS count FROM ${tableName} WHERE observation_id IN (${placeholders})`)
+        .get(...(ids as never[])) as { count: number } | null;
+      total += Number(count?.count ?? 0);
+    }
+    return total;
+  }
+
+  private countArchiveFullRows(ids: string[]): number {
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs") || !this.tableExists("mem_archive_full")) {
+      return 0;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    const row = this.db
+      .query(`
+        SELECT COUNT(*) AS count
+        FROM mem_archive_full f
+        JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+        WHERE s.observation_id IN (${placeholders})
+      `)
+      .get(...(ids as never[])) as { count: number } | null;
+    return Number(row?.count ?? 0);
+  }
+
+  private selectArchiveStorageRowsByObservationIds(ids: string[], db: Database = this.db): ArchiveStorageRow[] {
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs", db) || !this.tableExists("mem_archive_full", db)) {
+      return [];
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    return db
+      .query<ArchiveStorageRow, string[]>(`
+        SELECT
+          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.content_sha256, s.manifest_sha256,
+          f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
+        FROM mem_archive_stubs s
+        LEFT JOIN mem_archive_full f ON f.archive_full_ref = s.archive_full_ref
+        WHERE s.observation_id IN (${placeholders})
+        ORDER BY s.observation_id ASC, s.created_at DESC, s.archive_id ASC
+      `)
+      .all(...ids);
+  }
+
+  private computeCandidateBackupCoverage(
+    db: Database,
+    candidateIds: string[],
+  ): { candidate_ids: string[]; candidate_coverage_sha256: string } | { error: string } {
+    const ids = uniqueSortedStrings(candidateIds);
+    if (ids.length === 0) {
+      return { error: "candidate_ids are required for backup evidence coverage" };
+    }
+    if (ids.length > 500) {
+      return { error: "candidate_ids length exceeds maximum of 500" };
+    }
+    if (!this.tableExists("mem_observations", db)) {
+      return { error: "backup candidate coverage requires mem_observations" };
+    }
+    if (!this.tableExists("mem_archive_stubs", db) || !this.tableExists("mem_archive_full", db)) {
+      return { error: "backup candidate coverage requires mem_archive_stubs and mem_archive_full" };
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const observationRows = db
+      .query<{ id: string }, string[]>(`
+        SELECT id
+        FROM mem_observations
+        WHERE id IN (${placeholders})
+        ORDER BY id ASC
+      `)
+      .all(...ids);
+    const observed = new Set(observationRows.map((row) => row.id));
+    const missingObservations = ids.filter((id) => !observed.has(id));
+    if (missingObservations.length > 0) {
+      return { error: `backup candidate coverage missing observations: ${missingObservations.join(", ")}` };
+    }
+
+    const rowsByObservation = new Map<string, ArchiveStorageRow[]>();
+    for (const row of this.selectArchiveStorageRowsByObservationIds(ids, db)) {
+      const rows = rowsByObservation.get(row.observation_id) ?? [];
+      rows.push(row);
+      rowsByObservation.set(row.observation_id, rows);
+    }
+
+    const candidates: Array<Record<string, unknown>> = [];
+    const missingRestoreCapable: string[] = [];
+    for (const id of ids) {
+      let covered: Record<string, unknown> | null = null;
+      for (const row of rowsByObservation.get(id) ?? []) {
+        if (row.archive_state !== "archived") continue;
+        const payloadValidation = this.validateArchivePayload(row);
+        if (!payloadValidation.ok) continue;
+        covered = {
+          observation_id: id,
+          archive_id: row.archive_id,
+          archive_full_ref: row.archive_full_ref,
+          archive_state: row.archive_state,
+          content_sha256: row.content_sha256,
+          manifest_sha256: row.manifest_sha256,
+          payload_sha256: row.payload_sha256,
+          payload_json_sha256: payloadValidation.payload_sha256,
+        };
+        break;
+      }
+      if (covered) {
+        candidates.push(covered);
+      } else {
+        missingRestoreCapable.push(id);
+      }
+    }
+
+    if (missingRestoreCapable.length > 0) {
+      return {
+        error: `backup candidate coverage missing restore-capable archive payloads: ${missingRestoreCapable.join(", ")}`,
+      };
+    }
+
+    return {
+      candidate_ids: ids,
+      candidate_coverage_sha256: sha256Hex(stableJson({
+        schema_version: "s130-backup-candidate-coverage-v1",
+        candidate_ids: ids,
+        candidates,
+      })),
+    };
+  }
+
+  private validateArchivePayload(row: ArchiveStorageRow): { ok: true; payload: ArchivePayload; payload_sha256: string } | { ok: false; error: string } {
+    if (!row.archive_full_ref) return { ok: false, error: "archive full ref is missing" };
+    if (row.full_purged_at) return { ok: false, error: "archive full payload is purged" };
+    if (!row.payload_json || !row.payload_sha256) return { ok: false, error: "archive full payload is missing" };
+    if (row.payload_json.trim() === "" || row.payload_json.trim() === "{}") {
+      return { ok: false, error: "archive full payload is empty" };
+    }
+    const actualPayloadSha256 = sha256Hex(row.payload_json);
+    if (actualPayloadSha256 !== row.payload_sha256) {
+      return { ok: false, error: "payload_sha256 verification failed" };
+    }
+    let payload: ArchivePayload;
+    try {
+      payload = JSON.parse(row.payload_json) as ArchivePayload;
+    } catch {
+      return { ok: false, error: "archive payload_json is invalid" };
+    }
+    if (!payload || typeof payload !== "object") {
+      return { ok: false, error: "archive payload_json must be an object" };
+    }
+    if (payload.schema_version !== "s129-archive-payload-v1") {
+      return { ok: false, error: "archive payload schema_version is unsupported" };
+    }
+    if (payload.archive_id !== row.archive_id || payload.observation_id !== row.observation_id) {
+      return { ok: false, error: "archive payload identity mismatch" };
+    }
+    if (payload.manifest_sha256 !== row.manifest_sha256) {
+      return { ok: false, error: "manifest_sha256 verification failed" };
+    }
+    const observationRows = Array.isArray(payload.rows?.mem_observations)
+      ? payload.rows.mem_observations
+      : [];
+    const observation = observationRows.find((entry) => entry.id === row.observation_id);
+    if (!observation) {
+      return { ok: false, error: "archive payload missing target observation row" };
+    }
+    const observationContent = typeof observation.content === "string" ? observation.content : "";
+    const payloadContentSha256 = sha256Hex(observationContent);
+    if (payload.content_sha256 !== payloadContentSha256 || row.content_sha256 !== payloadContentSha256) {
+      return { ok: false, error: "content_sha256 verification failed" };
+    }
+    return { ok: true, payload, payload_sha256: actualPayloadSha256 };
+  }
+
+  private archivePayloadRowKey(tableName: string, row: Record<string, unknown>): string {
+    const keyColumnsByTable: Record<string, string[]> = {
+      mem_observations: ["id"],
+      mem_vectors: ["observation_id", "model"],
+      mem_links: ["id"],
+      mem_relations: ["id"],
+      mem_facts: ["fact_id"],
+      mem_events: ["event_id"],
+      mem_tags: ["observation_id", "tag", "tag_type"],
+      mem_observation_entities: ["observation_id", "entity_id"],
+      mem_entities: ["id"],
+      mem_nuggets: ["nugget_id"],
+      mem_nugget_vectors: ["nugget_id", "model"],
+    };
+    const columns = keyColumnsByTable[tableName] ?? [];
+    return columns.map((column) => String(row[column] ?? "")).join("\u001f");
+  }
+
+  private archivePayloadTableKeys(tableName: string, rows: Array<Record<string, unknown>> | undefined): string[] {
+    return [...new Set((rows ?? []).map((row) => this.archivePayloadRowKey(tableName, row)))].sort();
+  }
+
+  private archivePayloadComparableRow(tableName: string, row: Record<string, unknown>): Record<string, unknown> {
+    const comparable: Record<string, unknown> = {};
+    const excludedColumnsByTable: Record<string, Set<string>> = {
+      mem_observations: new Set(["archived_at", "updated_at"]),
+    };
+    const excludedColumns = excludedColumnsByTable[tableName] ?? new Set<string>();
+    for (const column of this.getTableColumnNames(tableName).sort()) {
+      if (excludedColumns.has(column)) continue;
+      if (Object.prototype.hasOwnProperty.call(row, column)) {
+        comparable[column] = row[column];
+      }
+    }
+    return comparable;
+  }
+
+  private archivePayloadRowContentHash(tableName: string, row: Record<string, unknown>): string {
+    return sha256Hex(stableJson(this.archivePayloadComparableRow(tableName, row)));
+  }
+
+  private archivePayloadTableHashCounts(tableName: string, rows: Array<Record<string, unknown>> | undefined): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const row of rows ?? []) {
+      const hash = this.archivePayloadRowContentHash(tableName, row);
+      counts.set(hash, (counts.get(hash) ?? 0) + 1);
+    }
+    return counts;
+  }
+
+  private validateArchivePayloadCoversCurrentRows(row: ArchiveStorageRow, payload: ArchivePayload): string | null {
+    const observation = this.db
+      .query<ArchiveCandidateRow, [string]>(`
+        SELECT
+          id, project, session_id, user_id, team_id, content, content_redacted, raw_text,
+          observation_type, memory_type, tags_json, privacy_tags_json, archived_at,
+          created_at, updated_at
+        FROM mem_observations
+        WHERE id = ?
+      `)
+      .get(row.observation_id);
+    if (!observation) {
+      return "current observation row is missing";
+    }
+    const currentRows = this.collectArchivePayloadRows(observation);
+    const contentCheckedTables = [
+      "mem_observations",
+      "mem_vectors",
+      "mem_links",
+      "mem_relations",
+      "mem_facts",
+      "mem_events",
+      "mem_tags",
+      "mem_observation_entities",
+      "mem_entities",
+      "mem_nuggets",
+      "mem_nugget_vectors",
+    ];
+    for (const tableName of contentCheckedTables) {
+      const currentCounts = this.archivePayloadTableHashCounts(tableName, currentRows[tableName]);
+      const payloadCounts = this.archivePayloadTableHashCounts(tableName, payload.rows?.[tableName]);
+      for (const [hash, count] of currentCounts.entries()) {
+        if ((payloadCounts.get(hash) ?? 0) < count) {
+          return `archive payload lifecycle coverage mismatch for ${tableName}`;
+        }
+      }
+    }
+    return null;
+  }
+
+  private summarizeSqliteVecRepair(response: ApiResponse): Record<string, unknown> {
+    const item = (response.items[0] ?? {}) as Record<string, unknown>;
+    const meta = (response.meta ?? {}) as Record<string, unknown>;
+    const failed = Number(meta.failed ?? item.failed ?? 0);
+    const skipped = Number(meta.skipped ?? item.skipped ?? 0);
+    const repaired = Number(meta.repaired ?? item.repaired ?? 0);
+    return {
+      attempted: true,
+      ok: response.ok === true && failed === 0,
+      response_ok: response.ok === true,
+      failed,
+      skipped,
+      repaired,
+      meta: response.meta,
+      error: response.error ?? null,
+    };
+  }
+
+  private repairSqliteVecAfterArchiveRestore(vectorCount: number): Record<string, unknown> {
+    const response = this.repairSqliteVecMap({
+      execute: true,
+      limit: Math.max(1, vectorCount),
+      status_counts: false,
+    });
+    return this.summarizeSqliteVecRepair(response);
+  }
+
+  private getRestoreCapableArchiveObservationIds(ids: string[]): string[] {
+    const present = new Set<string>();
+    for (const row of this.selectArchiveStorageRowsByObservationIds(ids)) {
+      if (row.archive_state !== "archived") continue;
+      const payloadValidation = this.validateArchivePayload(row);
+      if (!payloadValidation.ok) continue;
+      if (this.validateArchivePayloadCoversCurrentRows(row, payloadValidation.payload)) continue;
+      present.add(row.observation_id);
+    }
+    return [...present].sort();
+  }
+
+  private countRestoreCapableArchiveFullObservations(ids: string[]): number {
+    return this.getRestoreCapableArchiveObservationIds(ids).length;
+  }
+
+  private listMissingRestoreCapableArchiveIds(ids: string[]): string[] {
+    if (ids.length === 0) {
+      return [];
+    }
+    const present = new Set(this.getRestoreCapableArchiveObservationIds(ids));
+    return ids.filter((id) => !present.has(id));
+  }
+
+  private getTableColumnNames(tableName: string): string[] {
+    if (!this.tableExists(tableName)) return [];
+    const quoted = this.quoteIdentifier(tableName);
+    return this.db
+      .query<{ name: string }, []>(`PRAGMA table_info(${quoted})`)
+      .all()
+      .map((row) => row.name)
+      .filter((name) => typeof name === "string" && name.length > 0);
+  }
+
+  private selectArchiveRows(tableName: string, whereSql: string, values: unknown[] = []): Array<Record<string, unknown>> {
+    if (!this.tableExists(tableName)) return [];
+    const quoted = this.quoteIdentifier(tableName);
+    return this.db
+      .query(`SELECT * FROM ${quoted} ${whereSql}`)
+      .all(...(values as SQLQueryBindings[])) as Array<Record<string, unknown>>;
+  }
+
+  private insertArchiveRow(tableName: string, row: Record<string, unknown>, conflictMode: "IGNORE" | "REPLACE"): void {
+    const tableColumns = this.getTableColumnNames(tableName);
+    const columns = tableColumns.filter((column) => Object.prototype.hasOwnProperty.call(row, column));
+    if (columns.length === 0) return;
+    const quotedTable = this.quoteIdentifier(tableName);
+    const quotedColumns = columns.map((column) => this.quoteIdentifier(column)).join(", ");
+    const placeholders = columns.map(() => "?").join(", ");
+    const values = columns.map((column) => row[column]);
+    this.db
+      .query(`INSERT OR ${conflictMode} INTO ${quotedTable} (${quotedColumns}) VALUES (${placeholders})`)
+      .run(...(values as SQLQueryBindings[]));
+  }
+
+  private insertOrReplaceArchiveRows(tableName: string, rows: Array<Record<string, unknown>> | undefined): void {
+    for (const row of rows ?? []) {
+      this.insertArchiveRow(tableName, row, "REPLACE");
+    }
+  }
+
+  private insertOrIgnoreArchiveRows(tableName: string, rows: Array<Record<string, unknown>> | undefined): void {
+    for (const row of rows ?? []) {
+      this.insertArchiveRow(tableName, row, "IGNORE");
+    }
+  }
+
+  private buildArchiveManifest(candidateIds: string[]): ArchiveManifest {
+    const ids = uniqueSortedStrings(candidateIds);
+    const stableManifest = {
+      schema_version: "s129-archive-v1" as const,
+      operation: "admin.archive" as const,
+      candidate_ids: ids,
+      candidate_count: ids.length,
+      cross_store_impact: this.collectObservationLifecycleImpact(ids),
+    };
+    return {
+      ...stableManifest,
+      manifest_sha256: sha256Hex(stableJson(stableManifest)),
+    };
+  }
+
+  private selectArchiveCandidateRows(request: AdminArchiveRequest): { ok: true; rows: ArchiveCandidateRow[] } | { ok: false; error: string } {
+    let candidateIds = uniqueSortedStrings(
+      (request.candidate_ids && request.candidate_ids.length > 0)
+        ? request.candidate_ids
+        : request.target_ids,
+    );
+    if (candidateIds.length > 500) {
+      return { ok: false, error: "candidate_ids length exceeds maximum of 500" };
+    }
+    if (candidateIds.length === 0) {
+      const plan = runForgetPolicy(this.db, {
+        dry_run: true,
+        project: request.project,
+        limit: request.limit,
+        score_threshold: request.score_threshold,
+        protect_accessed: request.protect_accessed,
+      });
+      candidateIds = uniqueSortedStrings(plan.candidates.map((candidate) => candidate.observation_id));
+    }
+    if (candidateIds.length === 0) {
+      return { ok: true, rows: [] };
+    }
+
+    const placeholders = candidateIds.map(() => "?").join(", ");
+    const rows = this.db
+      .query<ArchiveCandidateRow, string[]>(`
+        SELECT
+          id, project, session_id, user_id, team_id, content, content_redacted, raw_text,
+          observation_type, memory_type, tags_json, privacy_tags_json, archived_at,
+          created_at, updated_at
+        FROM mem_observations
+        WHERE id IN (${placeholders})
+        ORDER BY id ASC
+      `)
+      .all(...candidateIds);
+    const found = new Set(rows.map((row) => row.id));
+    const missing = candidateIds.filter((id) => !found.has(id));
+    if (missing.length > 0) {
+      return { ok: false, error: `archive candidate rows are missing: ${missing.join(", ")}` };
+    }
+    if (request.project) {
+      const mismatched = rows.filter((row) => row.project !== request.project).map((row) => row.id);
+      if (mismatched.length > 0) {
+        return { ok: false, error: `archive candidate rows are outside project scope: ${mismatched.join(", ")}` };
+      }
+    }
+    return { ok: true, rows };
+  }
+
+  private prepareArchiveManifest(request: AdminArchiveRequest): ArchivePrepareResult {
+    const selected = this.selectArchiveCandidateRows(request);
+    if (!selected.ok) return selected;
+    return {
+      ok: true,
+      rows: selected.rows,
+      manifest: this.buildArchiveManifest(selected.rows.map((row) => row.id)),
+    };
+  }
+
+  private hasLegalHold(row: Pick<ArchiveCandidateRow, "privacy_tags_json" | "tags_json">): boolean {
+    const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+    const tags = parseJsonStringArray(row.tags_json);
+    return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+  }
+
+  private collectArchivePayloadRows(row: Pick<ArchiveCandidateRow, "id" | "session_id">): ArchivePayload["rows"] {
+    const observationRows = this.selectArchiveRows("mem_observations", "WHERE id = ?", [row.id]);
+    const observation = observationRows[0] ?? {};
+    const eventId = typeof observation.event_id === "string" && observation.event_id ? observation.event_id : null;
+    const nuggets = this.selectArchiveRows("mem_nuggets", "WHERE observation_id = ? ORDER BY seq ASC, nugget_id ASC", [row.id]);
+    const observationEntities = this.selectArchiveRows("mem_observation_entities", "WHERE observation_id = ? ORDER BY entity_id ASC", [row.id]);
+    const entityIds = observationEntities
+      .map((entry) => Number(entry.entity_id))
+      .filter((entityId) => Number.isFinite(entityId));
+    return {
+      mem_sessions: this.selectArchiveRows("mem_sessions", "WHERE session_id = ?", [row.session_id]),
+      mem_events: eventId
+        ? this.selectArchiveRows("mem_events", "WHERE observation_id = ? OR event_id = ? ORDER BY ts ASC, event_id ASC", [row.id, eventId])
+        : this.selectArchiveRows("mem_events", "WHERE observation_id = ? ORDER BY ts ASC, event_id ASC", [row.id]),
+      mem_observations: observationRows,
+      mem_vectors: this.selectArchiveRows("mem_vectors", "WHERE observation_id = ? ORDER BY model ASC", [row.id]),
+      mem_links: this.selectArchiveRows(
+        "mem_links",
+        "WHERE from_observation_id = ? OR to_observation_id = ? ORDER BY id ASC",
+        [row.id, row.id],
+      ),
+      mem_relations: this.selectArchiveRows("mem_relations", "WHERE observation_id = ? ORDER BY id ASC", [row.id]),
+      mem_facts: this.selectArchiveRows("mem_facts", "WHERE observation_id = ? ORDER BY fact_id ASC", [row.id]),
+      mem_tags: this.selectArchiveRows("mem_tags", "WHERE observation_id = ? ORDER BY tag_type ASC, tag ASC", [row.id]),
+      mem_entities: entityIds.length > 0
+        ? this.selectArchiveRows("mem_entities", `WHERE id IN (${entityIds.map(() => "?").join(", ")}) ORDER BY id ASC`, entityIds)
+        : [],
+      mem_observation_entities: observationEntities,
+      mem_nuggets: nuggets,
+      mem_nugget_vectors: this.selectArchiveRows("mem_nugget_vectors", "WHERE observation_id = ? ORDER BY nugget_id ASC, model ASC", [row.id]),
+    };
+  }
+
+  private buildArchivePayload(
+    row: ArchiveCandidateRow,
+    archiveId: string,
+    reason: string,
+    manifest: ArchiveManifest,
+    createdAt: string,
+  ): { payload: ArchivePayload; contentSha256: string; payloadJson: string; payloadSha256: string } {
+    const rows = this.collectArchivePayloadRows(row);
+    const contentSha256 = sha256Hex(String(row.content ?? ""));
+    const payload: ArchivePayload = {
+      schema_version: "s129-archive-payload-v1",
+      archive_id: archiveId,
+      observation_id: row.id,
+      created_at: createdAt,
+      actor: "system",
+      reason,
+      content_sha256: contentSha256,
+      manifest_sha256: manifest.manifest_sha256,
+      cross_store_impact: manifest.cross_store_impact,
+      rows,
+    };
+    const payloadJson = stableJson(payload);
+    const payloadSha256 = sha256Hex(payloadJson);
+    return { payload, contentSha256, payloadJson, payloadSha256 };
+  }
+
+  private restoreArchivePayloadRows(payload: ArchivePayload): void {
+    const rows = payload.rows ?? {};
+    this.insertOrIgnoreArchiveRows("mem_sessions", rows.mem_sessions);
+    this.insertOrReplaceArchiveRows("mem_events", rows.mem_events);
+    this.insertOrReplaceArchiveRows("mem_observations", rows.mem_observations);
+    this.insertOrReplaceArchiveRows("mem_vectors", rows.mem_vectors);
+    this.insertOrReplaceArchiveRows("mem_tags", rows.mem_tags);
+    this.insertOrIgnoreArchiveRows("mem_entities", rows.mem_entities);
+    this.insertOrReplaceArchiveRows("mem_observation_entities", rows.mem_observation_entities);
+    this.insertOrReplaceArchiveRows("mem_links", rows.mem_links);
+    this.insertOrReplaceArchiveRows("mem_relations", rows.mem_relations);
+    this.insertOrReplaceArchiveRows("mem_facts", rows.mem_facts);
+    this.insertOrReplaceArchiveRows("mem_nuggets", rows.mem_nuggets);
+    this.insertOrReplaceArchiveRows("mem_nugget_vectors", rows.mem_nugget_vectors);
   }
 
   private processRetryQueue(force = false): void {
@@ -4536,8 +5441,1588 @@ export class HarnessMemCore {
     return this.sessionMgr.sessionThread(request);
   }
 
+  adminForgetPlan(request: {
+    project?: string;
+    limit?: number;
+    score_threshold?: number;
+    protect_accessed?: boolean;
+  }): ApiResponse {
+    const startedAt = performance.now();
+    const options: ForgetPolicyOptions = {
+      dry_run: true,
+      project: request.project,
+      limit: request.limit,
+      score_threshold: request.score_threshold,
+      protect_accessed: request.protect_accessed,
+    };
+    const plan = runForgetPolicy(this.db, options);
+    const candidateIds = uniqueSortedStrings(plan.candidates.map((candidate) => candidate.observation_id));
+    const archiveManifest = this.buildArchiveManifest(candidateIds);
+    const impact = archiveManifest.cross_store_impact;
+
+    return makeResponse(
+      startedAt,
+      [{
+        ...plan,
+        mode: "dry_run_plan",
+        archive_first: true,
+        candidate_ids: candidateIds,
+        candidate_count: candidateIds.length,
+        manifest_sha256: archiveManifest.manifest_sha256,
+        manifest_hash: archiveManifest.manifest_sha256,
+        hard_delete_supported: false,
+        cross_store_impact: impact,
+        safety: {
+          mutates_memory: false,
+          archive_first: true,
+          hard_delete_requires_separate_risk_gate: true,
+          legal_hold_trumps_ttl: true,
+        },
+      } as unknown as Record<string, unknown>],
+      { ...request, dry_run: true },
+      {
+        candidate_count: candidateIds.length,
+        scanned: plan.scanned,
+        evicted: 0,
+        ranking: "forget_plan_v1",
+      } as Record<string, unknown>
+    );
+  }
+
+  adminForgetArchive(request: AdminArchiveRequest): ApiResponse {
+    const startedAt = performance.now();
+    const initial = this.prepareArchiveManifest(request);
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+
+    if (request.execute !== true) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_plan",
+          execute: false,
+          archive_first: true,
+          ...initial.manifest,
+          candidates: initial.rows.map((row) => ({
+            observation_id: row.id,
+            project: row.project,
+            archived_at: row.archived_at,
+            legal_hold: this.hasLegalHold(row),
+          })),
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        {
+          candidate_count: initial.manifest.candidate_count,
+          manifest_sha256: initial.manifest.manifest_sha256,
+          ranking: "archive_plan_v1",
+        },
+      );
+    }
+
+    const manifestSha256 = normalizeSha256(request.manifest_sha256);
+    if (!manifestSha256) {
+      return makeErrorResponse(startedAt, "manifest_sha256 is required for archive execute", request as unknown as Record<string, unknown>);
+    }
+    if (manifestSha256 !== initial.manifest.manifest_sha256) {
+      return makeErrorResponse(startedAt, "manifest_sha256 does not match current archive manifest", request as unknown as Record<string, unknown>);
+    }
+    const reason = typeof request.reason === "string" && request.reason.trim() ? request.reason.trim() : "";
+    if (!reason) {
+      return makeErrorResponse(startedAt, "reason is required for archive execute", request as unknown as Record<string, unknown>);
+    }
+    if (initial.manifest.candidate_count === 0) {
+      return makeErrorResponse(startedAt, "archive execute requires at least one candidate", request as unknown as Record<string, unknown>);
+    }
+
+    let transactionStarted = false;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+      const current = this.prepareArchiveManifest(request);
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      if (manifestSha256 !== current.manifest.manifest_sha256) {
+        throw new Error("manifest_sha256 does not match current archive manifest");
+      }
+
+      const archivedIds: string[] = [];
+      const archiveIds: string[] = [];
+      const skippedLegalHold: string[] = [];
+      const skippedAlreadyArchived: string[] = [];
+      const createdAt = nowIso();
+      for (const row of current.rows) {
+        if (this.hasLegalHold(row)) {
+          skippedLegalHold.push(row.id);
+          continue;
+        }
+        if (row.archived_at) {
+          skippedAlreadyArchived.push(row.id);
+          continue;
+        }
+        const existingArchive = this.db
+          .query<{ archive_id: string }, [string]>(
+            `SELECT archive_id FROM mem_archive_stubs WHERE observation_id = ? AND archive_state = 'archived' LIMIT 1`,
+          )
+          .get(row.id);
+        if (existingArchive?.archive_id) {
+          skippedAlreadyArchived.push(row.id);
+          continue;
+        }
+
+        const archiveId = `archive_${sha256Hex(`${row.id}:${current.manifest.manifest_sha256}`).slice(0, 32)}`;
+        const archiveFullRef = `sqlite:${archiveId}`;
+        const { contentSha256, payloadJson, payloadSha256 } = this.buildArchivePayload(
+          row,
+          archiveId,
+          reason,
+          current.manifest,
+          createdAt,
+        );
+        const archiveStub = stableJson({
+          schema_version: "s129-archive-stub-v1",
+          archive_id: archiveId,
+          observation_id: row.id,
+          project: row.project,
+          session_id: row.session_id,
+          user_id: row.user_id,
+          team_id: row.team_id,
+          observation_type: row.observation_type,
+          memory_type: row.memory_type,
+          content_sha256: contentSha256,
+          manifest_sha256: current.manifest.manifest_sha256,
+          created_at: createdAt,
+        });
+        const metadataJson = stableJson({
+          schema_version: "s129-archive-stub-metadata-v1",
+          impact: current.manifest.cross_store_impact,
+          payload_sha256: payloadSha256,
+        });
+
+        this.db
+          .query(`
+            INSERT INTO mem_archive_stubs(
+              archive_id, observation_id, project, session_id, user_id, team_id,
+              archive_stub, archive_full_ref, archive_state, reason, legal_hold_snapshot,
+              content_sha256, manifest_sha256, created_at, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'archived', ?, 0, ?, ?, ?, ?)
+          `)
+          .run(
+            archiveId,
+            row.id,
+            row.project,
+            row.session_id,
+            row.user_id,
+            row.team_id,
+            archiveStub,
+            archiveFullRef,
+            reason,
+            contentSha256,
+            current.manifest.manifest_sha256,
+            createdAt,
+            metadataJson,
+          );
+        this.db
+          .query(`
+            INSERT INTO mem_archive_full(archive_full_ref, archive_id, payload_json, payload_sha256, created_at)
+            VALUES (?, ?, ?, ?, ?)
+          `)
+          .run(archiveFullRef, archiveId, payloadJson, payloadSha256, createdAt);
+        this.db
+          .query(`UPDATE mem_observations SET archived_at = ?, updated_at = ? WHERE id = ? AND archived_at IS NULL`)
+          .run(createdAt, createdAt, row.id);
+        archivedIds.push(row.id);
+        archiveIds.push(archiveId);
+      }
+
+      this.writeAuditLog("admin.archive.create", "archive", "", {
+        manifest_sha256: current.manifest.manifest_sha256,
+        candidate_count: current.manifest.candidate_count,
+        archived_count: archivedIds.length,
+        skipped_legal_hold: skippedLegalHold,
+        skipped_already_archived: skippedAlreadyArchived,
+        candidate_ids: current.manifest.candidate_ids,
+        archived_ids: archivedIds,
+        archive_ids: archiveIds,
+        reason,
+      });
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_execute",
+          execute: true,
+          manifest_sha256: current.manifest.manifest_sha256,
+          candidate_ids: current.manifest.candidate_ids,
+          candidate_count: current.manifest.candidate_count,
+          archived_ids: archivedIds,
+          archived_count: archivedIds.length,
+          archive_ids: archiveIds,
+          skipped_legal_hold: skippedLegalHold,
+          skipped_already_archived: skippedAlreadyArchived,
+          restore_supported: archiveIds.length > 0,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: true },
+        {
+          candidate_count: current.manifest.candidate_count,
+          archived_count: archivedIds.length,
+          manifest_sha256: current.manifest.manifest_sha256,
+          ranking: "archive_execute_v1",
+        },
+      );
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `archive execute failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
+  private collectForgetMaintenanceMeasurements(): ForgetMaintenanceMeasurements {
+    const dbPath = resolve(resolveHomePath(this.config.dbPath));
+    const dbSizeBytes = this.config.dbPath === ":memory:" || !existsSync(dbPath)
+      ? null
+      : statSync(dbPath).size;
+    const walPath = `${dbPath}-wal`;
+    const walSizeBytes = this.config.dbPath === ":memory:" || !existsSync(walPath)
+      ? null
+      : statSync(walPath).size;
+    const active = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`)
+      .get();
+    return {
+      db_size_bytes: dbSizeBytes,
+      wal_size_bytes: walSizeBytes,
+      active_observations: Number(active?.count ?? 0),
+    };
+  }
+
+  private forgetMaintenanceThresholds(): Record<string, number | undefined> {
+    return {
+      db_size_bytes: this.config.forgetMaintenanceDbBytesThreshold,
+      wal_size_bytes: this.config.forgetMaintenanceWalBytesThreshold,
+      active_observations: this.config.forgetMaintenanceActiveObservationsThreshold,
+    };
+  }
+
+  private forgetMaintenanceTriggers(
+    request: AdminForgetMaintenanceRequest,
+    measurements: ForgetMaintenanceMeasurements,
+  ): string[] {
+    const triggers: string[] = [];
+    const reason = (request.reason || "manual").trim() || "manual";
+    if (request.force === true) {
+      triggers.push("manual");
+    }
+    if (reason === "scheduler" && this.config.forgetMaintenanceScheduleEnabled === true) {
+      triggers.push("schedule");
+    }
+    const dbThreshold = this.config.forgetMaintenanceDbBytesThreshold;
+    if (typeof dbThreshold === "number" && measurements.db_size_bytes !== null && measurements.db_size_bytes > dbThreshold) {
+      triggers.push("threshold:db_size_bytes");
+    }
+    const walThreshold = this.config.forgetMaintenanceWalBytesThreshold;
+    if (typeof walThreshold === "number" && measurements.wal_size_bytes !== null && measurements.wal_size_bytes > walThreshold) {
+      triggers.push("threshold:wal_size_bytes");
+    }
+    const activeThreshold = this.config.forgetMaintenanceActiveObservationsThreshold;
+    if (typeof activeThreshold === "number" && measurements.active_observations > activeThreshold) {
+      triggers.push("threshold:active_observations");
+    }
+    return triggers;
+  }
+
+  adminForgetMaintenance(request: AdminForgetMaintenanceRequest = {}): ApiResponse {
+    const startedAt = performance.now();
+    const measurements = this.collectForgetMaintenanceMeasurements();
+    const thresholds = this.forgetMaintenanceThresholds();
+    const triggers = uniqueSortedStrings(this.forgetMaintenanceTriggers(request, measurements));
+    const mode = this.config.forgetMaintenanceMode === "archive" ? "archive" : "dry-run";
+    const baseMeta: Record<string, unknown> = {
+      ranking: "forget_maintenance_v1",
+      mode,
+      triggers,
+      measurements,
+      thresholds,
+    };
+
+    if (triggers.length === 0) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "forget_maintenance_skipped",
+          execute: false,
+          reason: request.reason || "manual",
+          triggers,
+          measurements,
+          thresholds,
+        } as unknown as Record<string, unknown>],
+        request as unknown as Record<string, unknown>,
+        { ...baseMeta, skipped: "thresholds_not_exceeded" },
+      );
+    }
+
+    const archiveRequest: AdminArchiveRequest = {
+      limit: this.config.forgetMaintenanceLimit,
+      score_threshold: this.config.forgetMaintenanceScoreThreshold,
+      protect_accessed: this.config.forgetMaintenanceProtectAccessed,
+    };
+    const plan = this.adminForgetArchive(archiveRequest);
+    if (!plan.ok) {
+      return makeErrorResponse(startedAt, plan.error || "forget maintenance archive plan failed", request as unknown as Record<string, unknown>);
+    }
+    const planItem = (plan.items[0] || {}) as Record<string, unknown>;
+    const candidateCount = Number(planItem.candidate_count ?? 0);
+    this.writeAuditLog("admin.forget_maintenance.plan", "observation", "", {
+      mode,
+      reason: request.reason || "manual",
+      triggers,
+      measurements,
+      thresholds,
+      candidate_count: candidateCount,
+      manifest_sha256: planItem.manifest_sha256,
+    });
+
+    if (mode !== "archive" || candidateCount === 0) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "forget_maintenance_plan",
+          execute: false,
+          archive_first: true,
+          triggers,
+          measurements,
+          thresholds,
+          archive_plan: planItem,
+          automatic_hard_purge: false,
+          automatic_compact: false,
+        } as unknown as Record<string, unknown>],
+        request as unknown as Record<string, unknown>,
+        { ...baseMeta, candidate_count: candidateCount, execute: false },
+      );
+    }
+
+    const manifestSha = typeof planItem.manifest_sha256 === "string" ? planItem.manifest_sha256 : "";
+    const executed = this.adminForgetArchive({
+      ...archiveRequest,
+      execute: true,
+      manifest_sha256: manifestSha,
+      reason: `forget-maintenance:${triggers.join("+")}`,
+    });
+    if (!executed.ok) {
+      return makeErrorResponse(startedAt, executed.error || "forget maintenance archive execute failed", request as unknown as Record<string, unknown>);
+    }
+
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "forget_maintenance_archive",
+        execute: true,
+        archive_first: true,
+        triggers,
+        measurements,
+        thresholds,
+        archive: executed.items[0],
+        automatic_hard_purge: false,
+        automatic_compact: false,
+      } as unknown as Record<string, unknown>],
+      request as unknown as Record<string, unknown>,
+      {
+        ...baseMeta,
+        candidate_count: candidateCount,
+        archived_count: (executed.items[0] as Record<string, unknown> | undefined)?.archived_count,
+        execute: true,
+      },
+    );
+  }
+
+  adminForgetArchiveSearch(request: AdminArchiveSearchRequest): ApiResponse {
+    const startedAt = performance.now();
+    if (!this.tableExists("mem_archive_stubs")) {
+      return makeResponse(
+        startedAt,
+        [],
+        request as unknown as Record<string, unknown>,
+        { ranking: "archive_stub_search_v1", archive_tables_present: false },
+      );
+    }
+
+    const limit = clampLimit(request.limit, 50, 1, 500);
+    const conditions: string[] = [];
+    const params: SQLQueryBindings[] = [];
+    const addStringFilter = (column: string, value: string | undefined): void => {
+      const trimmed = typeof value === "string" ? value.trim() : "";
+      if (!trimmed) return;
+      conditions.push(`${column} = ?`);
+      params.push(trimmed);
+    };
+
+    addStringFilter("archive_id", request.archive_id);
+    addStringFilter("observation_id", request.observation_id);
+    addStringFilter("project", request.project);
+    addStringFilter("archive_state", request.archive_state);
+    addStringFilter("manifest_sha256", normalizeSha256(request.manifest_sha256) ?? undefined);
+
+    let sql = `
+      SELECT
+        archive_id,
+        observation_id,
+        project,
+        session_id,
+        user_id,
+        team_id,
+        archive_stub,
+        archive_full_ref,
+        archive_state,
+        reason,
+        legal_hold_snapshot,
+        content_sha256,
+        manifest_sha256,
+        created_at,
+        restored_at,
+        purged_at,
+        metadata_json
+      FROM mem_archive_stubs
+    `;
+    if (conditions.length > 0) {
+      sql += ` WHERE ${conditions.join(" AND ")}`;
+    }
+    sql += " ORDER BY created_at DESC, archive_id ASC LIMIT ?";
+    params.push(limit);
+
+    const rows = this.db
+      .query(sql)
+      .all(...(params as never[])) as Array<Record<string, unknown>>;
+
+    return makeResponse(
+      startedAt,
+      rows,
+      request as unknown as Record<string, unknown>,
+      {
+        ranking: "archive_stub_search_v1",
+        returned: rows.length,
+        payload_json_returned: false,
+        raw_content_returned: false,
+      },
+    );
+  }
+
+  adminForgetRestore(request: AdminArchiveRestoreRequest): ApiResponse {
+    const startedAt = performance.now();
+    const archiveId = typeof request.archive_id === "string" && request.archive_id.trim() ? request.archive_id.trim() : null;
+    const archiveFullRef = typeof request.archive_full_ref === "string" && request.archive_full_ref.trim()
+      ? request.archive_full_ref.trim()
+      : null;
+    if (!archiveId && !archiveFullRef) {
+      return makeErrorResponse(startedAt, "archive_id or archive_full_ref is required", request as unknown as Record<string, unknown>);
+    }
+    const reason = typeof request.reason === "string" && request.reason.trim() ? request.reason.trim() : "";
+    if (request.execute === true && !reason) {
+      return makeErrorResponse(startedAt, "reason is required for restore execute", request as unknown as Record<string, unknown>);
+    }
+
+    const loadArchive = (): ArchiveStorageRow | null => this.db
+      .query(`
+        SELECT
+          s.archive_id, s.observation_id, s.archive_full_ref, s.archive_state, s.reason,
+          s.content_sha256, s.manifest_sha256,
+          f.payload_json, f.payload_sha256, f.purged_at AS full_purged_at
+        FROM mem_archive_stubs s
+        LEFT JOIN mem_archive_full f ON f.archive_full_ref = s.archive_full_ref
+        WHERE ${archiveId ? "s.archive_id = ?" : "s.archive_full_ref = ?"}
+        LIMIT 1
+      `)
+      .get((archiveId ?? archiveFullRef) as string) as ArchiveStorageRow | null;
+
+    const validateArchive = (): {
+      ok: true;
+      row: NonNullable<ReturnType<typeof loadArchive>>;
+      payload: ArchivePayload;
+      payload_sha256: string;
+    } | { ok: false; error: string } => {
+      const row = loadArchive();
+      if (!row) return { ok: false, error: "archive not found" };
+      if (row.archive_state === "purged") return { ok: false, error: "archive_purged" };
+      const payloadValidation = this.validateArchivePayload(row);
+      if (!payloadValidation.ok) return payloadValidation;
+      const original = this.db
+        .query<{ archived_at: string | null }, [string]>(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(row.observation_id);
+      if (original && original.archived_at === null) {
+        return { ok: false, error: "active original observation already exists" };
+      }
+      return { ok: true, row, payload: payloadValidation.payload, payload_sha256: payloadValidation.payload_sha256 };
+    };
+
+    const initial = validateArchive();
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+    if (request.execute !== true) {
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "archive_restore_plan",
+          execute: false,
+          archive_id: initial.row.archive_id,
+          archive_full_ref: initial.row.archive_full_ref,
+          observation_id: initial.row.observation_id,
+          manifest_sha256: initial.row.manifest_sha256,
+          payload_sha256: initial.payload_sha256,
+          restore_supported: true,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        { manifest_sha256: initial.row.manifest_sha256, ranking: "archive_restore_plan_v1" },
+      );
+    }
+
+    let transactionStarted = false;
+    let restored: {
+      row: ArchiveStorageRow;
+      payload: ArchivePayload;
+      payload_sha256: string;
+      restored_at: string;
+    } | null = null;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+      const current = validateArchive();
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      this.restoreArchivePayloadRows(current.payload);
+      const restoredAt = nowIso();
+      const observationRows = current.payload.rows.mem_observations ?? [];
+      const observation = observationRows[0] ?? {};
+      const originalPrivacyTags = parseJsonStringArray(
+        typeof observation.privacy_tags_json === "string" ? observation.privacy_tags_json : "[]",
+      );
+      const shouldKeepDeleted = /^user[_-]?delete|user_requested_delete$/i.test(current.row.reason);
+      const restoredPrivacyTags = shouldKeepDeleted
+        ? originalPrivacyTags
+        : originalPrivacyTags.filter((tag) => tag !== "deleted");
+      this.db
+        .query(`UPDATE mem_observations SET archived_at = NULL, privacy_tags_json = ?, updated_at = ? WHERE id = ?`)
+        .run(JSON.stringify(restoredPrivacyTags), restoredAt, current.row.observation_id);
+      const restoredObservation = this.db
+        .query<{ archived_at: string | null }, [string]>(`SELECT archived_at FROM mem_observations WHERE id = ?`)
+        .get(current.row.observation_id);
+      if (!restoredObservation || restoredObservation.archived_at !== null) {
+        throw new Error("restore did not rehydrate active observation");
+      }
+      this.db
+        .query(`UPDATE mem_archive_stubs SET archive_state = 'restored', restored_at = ? WHERE archive_id = ?`)
+        .run(restoredAt, current.row.archive_id);
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+      restored = {
+        row: current.row,
+        payload: current.payload,
+        payload_sha256: current.payload_sha256,
+        restored_at: restoredAt,
+      };
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `archive restore failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
+    if (!restored) {
+      return makeErrorResponse(startedAt, "archive restore failed: restore result missing", request as unknown as Record<string, unknown>);
+    }
+    const vectorRepair = this.repairSqliteVecAfterArchiveRestore((restored.payload.rows.mem_vectors ?? []).length);
+    this.writeAuditLog("admin.archive.restore", "archive", restored.row.archive_id, {
+      archive_id: restored.row.archive_id,
+      archive_full_ref: restored.row.archive_full_ref,
+      observation_id: restored.row.observation_id,
+      manifest_sha256: restored.row.manifest_sha256,
+      payload_sha256: restored.payload_sha256,
+      sqlite_vec_repair: vectorRepair,
+      reason,
+    });
+
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "archive_restore_execute",
+        execute: true,
+        archive_id: restored.row.archive_id,
+        archive_full_ref: restored.row.archive_full_ref,
+        observation_id: restored.row.observation_id,
+        manifest_sha256: restored.row.manifest_sha256,
+        payload_sha256: restored.payload_sha256,
+        restored_at: restored.restored_at,
+        sqlite_vec_repair: vectorRepair,
+      } as unknown as Record<string, unknown>],
+      { ...request, execute: true },
+      { manifest_sha256: restored.row.manifest_sha256, ranking: "archive_restore_execute_v1" },
+    );
+  }
+
+  private currentDatabaseIdentitySha256(): string {
+    if (this.config.dbPath === ":memory:") {
+      return sha256Hex(stableJson({ db_path: ":memory:" }));
+    }
+    const dbPath = resolve(resolveHomePath(this.config.dbPath));
+    try {
+      const stat = statSync(dbPath);
+      return sha256Hex(stableJson({
+        db_path: dbPath,
+        realpath: realpathSync(dbPath),
+        dev: stat.dev,
+        ino: stat.ino,
+      }));
+    } catch {
+      return sha256Hex(stableJson({ db_path: dbPath, realpath: null, dev: null, ino: null }));
+    }
+  }
+
+  private snapshotBackupFile(backupPath: string): BackupFileSnapshot | { error: string } {
+    try {
+      const stat = statSync(backupPath);
+      if (!stat.isFile()) {
+        return { error: "backup_path must be a file" };
+      }
+      return {
+        path: backupPath,
+        realpath: realpathSync(backupPath),
+        size_bytes: stat.size,
+        mtime_ms: stat.mtimeMs,
+        mtime_iso: stat.mtime.toISOString(),
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { error: `backup_path stat failed: ${message}` };
+    }
+  }
+
+  private createPreverifiedBackupEvidenceToken(request: AdminBackupEvidenceRequest): { token: string; evidence: PreverifiedBackupEvidence } | { error: string } {
+    const candidateIds = uniqueSortedStrings(
+      (request.candidate_ids && request.candidate_ids.length > 0)
+        ? request.candidate_ids
+        : request.target_ids,
+    );
+    if (candidateIds.length === 0) {
+      return { error: "candidate_ids or target_ids are required for backup evidence" };
+    }
+    if (candidateIds.length > 500) {
+      return { error: "candidate_ids length exceeds maximum of 500" };
+    }
+    const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
+    const backupSha256 = normalizeSha256(backupSha256Raw);
+    if (!backupSha256) {
+      return { error: "backup_sha256 must be a sha256 hex string" };
+    }
+    const backupPath = typeof request.backup_path === "string" && request.backup_path.trim()
+      ? resolve(request.backup_path.trim())
+      : "";
+    if (!backupPath) {
+      return { error: "backup_path is required" };
+    }
+    if (!existsSync(backupPath)) {
+      return { error: "backup_path does not exist" };
+    }
+
+    const snapshot = this.snapshotBackupFile(backupPath);
+    if ("error" in snapshot) {
+      return snapshot;
+    }
+    const actual = sha256FileHex(backupPath);
+    if (actual !== backupSha256) {
+      return { error: "backup_path sha256 does not match backup_sha256" };
+    }
+    const integrityCheck = this.verifySqliteBackupIntegrity(backupPath);
+    if (!integrityCheck.ok) {
+      return { error: `backup_path integrity_check failed: ${integrityCheck.error ?? integrityCheck.result ?? "unknown"}` };
+    }
+    let backupDb: Database | null = null;
+    let coverage: { candidate_ids: string[]; candidate_coverage_sha256: string } | { error: string };
+    try {
+      backupDb = new Database(backupPath, { readonly: true });
+      coverage = this.computeCandidateBackupCoverage(backupDb, candidateIds);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      coverage = { error: `backup candidate coverage failed: ${message}` };
+    } finally {
+      try {
+        backupDb?.close();
+      } catch {
+        // best effort
+      }
+    }
+    if ("error" in coverage) {
+      return { error: coverage.error };
+    }
+
+    const ttlSeconds = request.ttl_seconds === undefined
+      ? 5 * 60
+      : Math.trunc(request.ttl_seconds);
+    if (!Number.isFinite(ttlSeconds) || ttlSeconds < 0 || ttlSeconds > 24 * 60 * 60) {
+      return { error: "ttl_seconds must be an integer from 0 to 86400" };
+    }
+    const nowMs = Date.now();
+    const createdAt = new Date(nowMs).toISOString();
+    const expiresAt = new Date(nowMs + ttlSeconds * 1000).toISOString();
+    const token = `preverified_backup_${randomBytes(32).toString("base64url")}`;
+    const evidence: PreverifiedBackupEvidence = {
+      ...snapshot,
+      backup_sha256: backupSha256,
+      candidate_ids: coverage.candidate_ids,
+      candidate_coverage_sha256: coverage.candidate_coverage_sha256,
+      token_sha256: sha256Hex(token),
+      created_at: createdAt,
+      expires_at: expiresAt,
+      db_identity_sha256: this.currentDatabaseIdentitySha256(),
+      integrity_check: integrityCheck,
+    };
+    this.preverifiedBackupEvidenceTokens.set(token, evidence);
+    return { token, evidence };
+  }
+
+  private resolvePreverifiedBackupEvidence(
+    token: string,
+    requestedPath: string | null,
+    requestedSha256: string | null,
+    candidateIds: string[],
+  ): BackupEvidence | { error: string } {
+    if (!/^preverified_backup_[A-Za-z0-9_-]{16,}$/.test(token)) {
+      return { error: "preverified_backup_evidence_token is invalid" };
+    }
+    const evidence = this.preverifiedBackupEvidenceTokens.get(token);
+    if (!evidence) {
+      return { error: "preverified_backup_evidence_token is unknown or consumed" };
+    }
+    const expiresMs = Date.parse(evidence.expires_at);
+    if (!Number.isFinite(expiresMs) || Date.now() >= expiresMs) {
+      this.preverifiedBackupEvidenceTokens.delete(token);
+      return { error: "preverified_backup_evidence_token has expired" };
+    }
+    if (requestedPath && requestedPath !== evidence.path) {
+      return { error: "preverified_backup_evidence_token backup_path mismatch" };
+    }
+    if (requestedSha256 && requestedSha256 !== evidence.backup_sha256) {
+      return { error: "preverified_backup_evidence_token backup_sha256 mismatch" };
+    }
+    if (this.currentDatabaseIdentitySha256() !== evidence.db_identity_sha256) {
+      return { error: "preverified_backup_evidence_token db identity mismatch" };
+    }
+    const expectedIds = uniqueSortedStrings(candidateIds);
+    if (!Array.isArray(evidence.candidate_ids) || evidence.candidate_ids.length === 0 || !evidence.candidate_coverage_sha256) {
+      return { error: "preverified_backup_evidence_token candidate coverage is missing" };
+    }
+    if (stableJson(evidence.candidate_ids) !== stableJson(expectedIds)) {
+      return { error: "preverified_backup_evidence_token candidate_ids coverage mismatch" };
+    }
+    const currentCoverage = this.computeCandidateBackupCoverage(this.db, expectedIds);
+    if ("error" in currentCoverage) {
+      return { error: `preverified_backup_evidence_token current candidate coverage failed: ${currentCoverage.error}` };
+    }
+    if (currentCoverage.candidate_coverage_sha256 !== evidence.candidate_coverage_sha256) {
+      return { error: "preverified_backup_evidence_token candidate coverage hash mismatch" };
+    }
+    const current = this.snapshotBackupFile(evidence.path);
+    if ("error" in current) {
+      return { error: current.error };
+    }
+    if (
+      current.realpath !== evidence.realpath ||
+      current.size_bytes !== evidence.size_bytes ||
+      current.mtime_ms !== evidence.mtime_ms
+    ) {
+      return { error: "preverified_backup_evidence_token backup file stat changed" };
+    }
+    return {
+      provided: true,
+      backup_sha256: evidence.backup_sha256,
+      backup_path: evidence.path,
+      candidate_ids: evidence.candidate_ids,
+      candidate_coverage_sha256: evidence.candidate_coverage_sha256,
+      temp_test_backup_token_sha256: null,
+      preverified_backup_evidence_token_sha256: evidence.token_sha256,
+      kind: "preverified_backup",
+      integrity_check: {
+        checked: false,
+        ok: true,
+        result: "preverified",
+        error: null,
+      },
+    };
+  }
+
+  private consumePreverifiedBackupEvidenceToken(request: AdminHardPurgeRequest, manifest: HardPurgeManifest): void {
+    if (manifest.backup.kind !== "preverified_backup") {
+      return;
+    }
+    const token = typeof request.preverified_backup_evidence_token === "string"
+      ? request.preverified_backup_evidence_token.trim()
+      : "";
+    if (token) {
+      this.preverifiedBackupEvidenceTokens.delete(token);
+    }
+  }
+
+  private isTempTestDatabase(): boolean {
+    if (this.config.dbPath === ":memory:") {
+      return true;
+    }
+    const resolvedDbPath = resolve(resolveHomePath(this.config.dbPath));
+    const roots = [tmpdir(), "/tmp", "/private/tmp"].map((root) => resolve(root));
+    return roots.some((root) => resolvedDbPath === root || resolvedDbPath.startsWith(`${root}/`));
+  }
+
+  private verifySqliteBackupIntegrity(backupPath: string): BackupEvidence["integrity_check"] {
+    let backupDb: Database | null = null;
+    try {
+      backupDb = new Database(backupPath, { readonly: true });
+      const row = backupDb
+        .query(`PRAGMA integrity_check`)
+        .get() as Record<string, string> | null;
+      const result = row ? String(Object.values(row)[0] ?? "") : "";
+      return {
+        checked: true,
+        ok: result === "ok",
+        result: result || null,
+        error: null,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return {
+        checked: true,
+        ok: false,
+        result: null,
+        error: message,
+      };
+    } finally {
+      try {
+        backupDb?.close();
+      } catch {
+        // best effort
+      }
+    }
+  }
+
+  private resolveHardPurgeBackupEvidence(request: AdminHardPurgeRequest, candidateIds: string[]): BackupEvidence | { error: string } {
+    const backupSha256Raw = typeof request.backup_sha256 === "string" ? request.backup_sha256.trim() : "";
+    const backupSha256 = backupSha256Raw ? normalizeSha256(backupSha256Raw) : null;
+    if (backupSha256Raw && !backupSha256) {
+      return { error: "backup_sha256 must be a sha256 hex string" };
+    }
+
+    const backupPath = typeof request.backup_path === "string" && request.backup_path.trim()
+      ? resolve(request.backup_path.trim())
+      : null;
+    const preverifiedToken = typeof request.preverified_backup_evidence_token === "string"
+      ? request.preverified_backup_evidence_token.trim()
+      : "";
+    if (preverifiedToken) {
+      return this.resolvePreverifiedBackupEvidence(preverifiedToken, backupPath, backupSha256, candidateIds);
+    }
+
+    if (backupPath) {
+      if (!backupSha256) {
+        return { error: "backup_sha256 is required when backup_path is provided" };
+      }
+      if (!existsSync(backupPath)) {
+        return { error: "backup_path does not exist" };
+      }
+      const actual = sha256FileHex(backupPath);
+      if (actual !== backupSha256) {
+        return { error: "backup_path sha256 does not match backup_sha256" };
+      }
+      const integrityCheck = this.verifySqliteBackupIntegrity(backupPath);
+      if (!integrityCheck.ok) {
+        return { error: `backup_path integrity_check failed: ${integrityCheck.error ?? integrityCheck.result ?? "unknown"}` };
+      }
+      return {
+        provided: true,
+        backup_sha256: backupSha256,
+        backup_path: backupPath,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
+        temp_test_backup_token_sha256: null,
+        preverified_backup_evidence_token_sha256: null,
+        kind: "backup_file",
+        integrity_check: integrityCheck,
+      };
+    }
+
+    const tempToken = typeof request.temp_test_backup_token === "string"
+      ? request.temp_test_backup_token.trim()
+      : "";
+    if (tempToken) {
+      if (!/^TEMP_TEST_BACKUP_[A-Za-z0-9_-]{8,}$/.test(tempToken)) {
+        return { error: "temp_test_backup_token is invalid" };
+      }
+      if (!this.isTempTestDatabase()) {
+        return { error: "temp_test_backup_token is allowed only for temp test databases" };
+      }
+      return {
+        provided: true,
+        backup_sha256: backupSha256,
+        backup_path: backupPath,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
+        temp_test_backup_token_sha256: sha256Hex(tempToken),
+        preverified_backup_evidence_token_sha256: null,
+        kind: "temp_test_token",
+        integrity_check: {
+          checked: false,
+          ok: true,
+          result: null,
+          error: null,
+        },
+      };
+    }
+
+    if (backupSha256) {
+      return {
+        provided: false,
+        backup_sha256: backupSha256,
+        backup_path: null,
+        candidate_ids: null,
+        candidate_coverage_sha256: null,
+        temp_test_backup_token_sha256: null,
+        preverified_backup_evidence_token_sha256: null,
+        kind: "sha256_metadata",
+        integrity_check: {
+          checked: false,
+          ok: false,
+          result: null,
+          error: "backup_path is required for executable backup evidence",
+        },
+      };
+    }
+
+    return {
+      provided: false,
+      backup_sha256: null,
+      backup_path: null,
+      candidate_ids: null,
+      candidate_coverage_sha256: null,
+      temp_test_backup_token_sha256: null,
+      preverified_backup_evidence_token_sha256: null,
+      kind: "missing",
+      integrity_check: {
+        checked: false,
+        ok: false,
+        result: null,
+        error: null,
+      },
+    };
+  }
+
+  private selectHardPurgeCandidateRows(request: AdminHardPurgeRequest): { ok: true; rows: HardPurgeCandidateRow[] } | { ok: false; error: string } {
+    const targetIds = uniqueSortedStrings(request.target_ids);
+    const limit = Math.min(Math.max(Math.trunc(request.limit ?? 100), 1), 500);
+    const params: unknown[] = [];
+    let rows: HardPurgeCandidateRow[] = [];
+
+    if (targetIds.length > 500) {
+      return { ok: false, error: "target_ids length exceeds maximum of 500" };
+    }
+
+    if (targetIds.length > 0) {
+      const placeholders = targetIds.map(() => "?").join(", ");
+      rows = this.db
+        .query<HardPurgeCandidateRow, string[]>(`
+          SELECT id, project, archived_at, privacy_tags_json, tags_json
+          FROM mem_observations
+          WHERE id IN (${placeholders})
+          ORDER BY id ASC
+        `)
+        .all(...targetIds);
+      const found = new Set(rows.map((row) => row.id));
+      const missing = targetIds.filter((id) => !found.has(id));
+      if (missing.length > 0) {
+        return { ok: false, error: `hard purge target rows are missing: ${missing.join(", ")}` };
+      }
+    } else {
+      let sql = `
+        SELECT id, project, archived_at, privacy_tags_json, tags_json
+        FROM mem_observations
+        WHERE archived_at IS NOT NULL
+      `;
+      if (request.project) {
+        sql += ` AND project = ?`;
+        params.push(request.project);
+      }
+      sql += ` ORDER BY id ASC LIMIT ?`;
+      params.push(limit);
+      rows = this.db
+        .query<HardPurgeCandidateRow, SQLQueryBindings[]>(sql)
+        .all(...(params as SQLQueryBindings[]));
+    }
+
+    if (request.project) {
+      const mismatched = rows.filter((row) => row.project !== request.project).map((row) => row.id);
+      if (mismatched.length > 0) {
+        return { ok: false, error: `hard purge target rows are outside project scope: ${mismatched.join(", ")}` };
+      }
+    }
+
+    const unarchived = rows.filter((row) => !row.archived_at).map((row) => row.id);
+    if (unarchived.length > 0) {
+      return { ok: false, error: `hard purge rejects unarchived rows: ${unarchived.join(", ")}` };
+    }
+
+    const legalHold = rows
+      .filter((row) => {
+        const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+        const tags = parseJsonStringArray(row.tags_json);
+        return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+      })
+      .map((row) => row.id);
+    if (legalHold.length > 0) {
+      return { ok: false, error: `hard purge rejects legal_hold rows: ${legalHold.join(", ")}` };
+    }
+    if (rows.length > 0 && this.tableExists("mem_archive_stubs")) {
+      const ids = rows.map((row) => row.id);
+      const placeholders = ids.map(() => "?").join(", ");
+      const snapshotRows = this.db
+        .query<{ observation_id: string }, string[]>(`
+          SELECT observation_id
+          FROM mem_archive_stubs
+          WHERE observation_id IN (${placeholders})
+            AND COALESCE(legal_hold_snapshot, 0) <> 0
+          ORDER BY observation_id ASC
+        `)
+        .all(...ids);
+      if (snapshotRows.length > 0) {
+        return {
+          ok: false,
+          error: `hard purge rejects legal_hold archive snapshots: ${snapshotRows.map((row) => row.observation_id).join(", ")}`,
+        };
+      }
+    }
+
+    return { ok: true, rows };
+  }
+
+  private collectHardPurgeArchiveStatus(ids: string[]): HardPurgeManifest["archive"] {
+    const archiveTablesPresent = this.tableExists("mem_archive_stubs") && this.tableExists("mem_archive_full");
+    const archive: HardPurgeManifest["archive"] = {
+      archive_tables_present: archiveTablesPresent,
+      archived_only: true,
+      archived_count: ids.length,
+      archive_stub_count: 0,
+      archive_full_count: 0,
+      restore_capable_count: 0,
+      restore_capable_full_count: 0,
+      restore_capable_full_observation_count: 0,
+      missing_restore_capable_archive_ids: [...ids],
+      archive_states: {},
+    };
+    if (ids.length === 0 || !this.tableExists("mem_archive_stubs")) {
+      return archive;
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    const rows = this.db
+      .query<{ archive_state: string; count: number }, string[]>(`
+        SELECT archive_state, COUNT(*) AS count
+        FROM mem_archive_stubs
+        WHERE observation_id IN (${placeholders})
+        GROUP BY archive_state
+      `)
+      .all(...ids);
+    for (const row of rows) {
+      archive.archive_states[row.archive_state || "unknown"] = Number(row.count ?? 0);
+      archive.archive_stub_count += Number(row.count ?? 0);
+    }
+    archive.archive_full_count = this.countArchiveFullRows(ids);
+    archive.restore_capable_full_count = this.countRestoreCapableArchiveFullObservations(ids);
+    archive.restore_capable_count = archive.restore_capable_full_count;
+    archive.restore_capable_full_observation_count = archive.restore_capable_full_count;
+    archive.missing_restore_capable_archive_ids = this.listMissingRestoreCapableArchiveIds(ids);
+    return archive;
+  }
+
+  private buildHardPurgeManifest(request: AdminHardPurgeRequest, rows: HardPurgeCandidateRow[]): HardPurgePrepareResult {
+    const ids = rows.map((row) => row.id).sort();
+    const backupEvidence = this.resolveHardPurgeBackupEvidence(request, ids);
+    if ("error" in backupEvidence) {
+      return { ok: false, error: backupEvidence.error };
+    }
+
+    const minimumArchivedDays = Math.max(0, Math.trunc(request.retention_days ?? 0));
+    const retentionMs = minimumArchivedDays * 24 * 60 * 60 * 1000;
+    const nowMs = Date.now();
+    const retentionBlockers = rows
+      .map((row) => {
+        if (!row.archived_at) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "not_archived" };
+        }
+        const archivedMs = Date.parse(row.archived_at);
+        if (!Number.isFinite(archivedMs)) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "invalid_archived_at" };
+        }
+        if (retentionMs > 0 && nowMs - archivedMs < retentionMs) {
+          return { observation_id: row.id, archived_at: row.archived_at, reason: "retention_window_not_elapsed" };
+        }
+        return null;
+      })
+      .filter((entry): entry is { observation_id: string; archived_at: string | null; reason: string } => entry !== null);
+
+    const legalHoldBlockers = rows
+      .filter((row) => {
+        const privacyTags = parseJsonStringArray(row.privacy_tags_json);
+        const tags = parseJsonStringArray(row.tags_json);
+        return privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+      })
+      .map((row) => row.id);
+
+    const generatedAt = nowIso();
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
+    const stableManifest = {
+      schema_version: "s127-hard-purge-v1" as const,
+      operation: "admin.hard_purge" as const,
+      project: request.project ?? null,
+      candidate_ids: ids,
+      candidate_count: ids.length,
+      impact: this.collectObservationLifecycleImpact(ids),
+      backup_sha256: backupEvidence.backup_sha256,
+      backup: {
+        required: true as const,
+        provided: backupEvidence.provided,
+        backup_sha256: backupEvidence.backup_sha256,
+        backup_path: backupEvidence.backup_path,
+        candidate_ids: backupEvidence.candidate_ids,
+        candidate_coverage_sha256: backupEvidence.candidate_coverage_sha256,
+        temp_test_backup_token_sha256: backupEvidence.temp_test_backup_token_sha256,
+        preverified_backup_evidence_token_sha256: backupEvidence.preverified_backup_evidence_token_sha256,
+        kind: backupEvidence.kind,
+        integrity_check: backupEvidence.integrity_check,
+      },
+      retention: {
+        minimum_archived_days: minimumArchivedDays,
+        satisfied: retentionBlockers.length === 0,
+        blockers: retentionBlockers,
+      },
+      archive: this.collectHardPurgeArchiveStatus(ids),
+      legal_hold: {
+        allowed: legalHoldBlockers.length === 0,
+        blockers: legalHoldBlockers,
+      },
+    };
+    const manifestHash = sha256Hex(stableJson(stableManifest));
+    const manifest: HardPurgeManifest = {
+      ...stableManifest,
+      generated_at: generatedAt,
+      expires_at: expiresAt,
+      manifest_hash: manifestHash,
+    };
+    if (request.readiness_only !== true) {
+      manifest.confirmation_phrase = `HARD_PURGE ${ids.length} OBSERVATIONS ${manifestHash.slice(0, 12)}`;
+    }
+    return { ok: true, manifest, rows };
+  }
+
+  private prepareHardPurgeManifest(request: AdminHardPurgeRequest): HardPurgePrepareResult {
+    const selected = this.selectHardPurgeCandidateRows(request);
+    if (!selected.ok) {
+      return selected;
+    }
+    return this.buildHardPurgeManifest(request, selected.rows);
+  }
+
+  private assertHardPurgeExecuteGates(request: AdminHardPurgeRequest, manifest: HardPurgeManifest, requestedAtMs: number = Date.now()): string | null {
+    if (request.execute !== true) {
+      return null;
+    }
+    if (typeof request.manifest_hash !== "string" || !request.manifest_hash.trim()) {
+      return "manifest_hash is required for hard purge execute";
+    }
+    const manifestHash = normalizeSha256(request.manifest_hash);
+    if (!manifestHash) {
+      return "manifest_hash must be a sha256 hex string";
+    }
+    if (manifestHash !== manifest.manifest_hash) {
+      return "manifest_hash does not match current hard purge manifest";
+    }
+    if (typeof request.manifest_expires_at !== "string" || !request.manifest_expires_at.trim()) {
+      return "manifest_expires_at is required for hard purge execute";
+    }
+    const plannedExpiresAt = this.hardPurgePlanExpirations.get(manifest.manifest_hash);
+    if (!plannedExpiresAt) {
+      return "manifest_hash has no active hard purge plan";
+    }
+    if (request.manifest_expires_at !== plannedExpiresAt) {
+      return "manifest_expires_at does not match the active hard purge plan";
+    }
+    const manifestExpiresMs = Date.parse(request.manifest_expires_at);
+    if (!Number.isFinite(manifestExpiresMs)) {
+      return "manifest_expires_at must be a valid ISO timestamp";
+    }
+    if (requestedAtMs > manifestExpiresMs) {
+      return "manifest_expires_at has expired for hard purge execute";
+    }
+    if (typeof request.candidate_count !== "number" || !Number.isFinite(request.candidate_count)) {
+      return "candidate_count is required for hard purge execute";
+    }
+    if (Math.trunc(request.candidate_count) !== manifest.candidate_count) {
+      return "candidate_count does not match current hard purge manifest";
+    }
+    if (manifest.candidate_count === 0) {
+      return "hard purge execute requires at least one archived candidate";
+    }
+    if (request.retention_ack !== true) {
+      return "retention_ack:true is required for hard purge execute";
+    }
+    if (request.archive_ack !== true) {
+      return "archive_ack:true is required for hard purge execute";
+    }
+    if (!manifest.backup.provided) {
+      return "backup_path plus backup_sha256, preverified_backup_evidence_token, or temp_test_backup_token for temp DBs, is required for hard purge execute";
+    }
+    if (
+      (manifest.backup.kind === "backup_file" || manifest.backup.kind === "preverified_backup") &&
+      !manifest.backup.integrity_check.ok
+    ) {
+      return "backup integrity_check must be ok for hard purge execute";
+    }
+    if (manifest.backup.kind === "preverified_backup") {
+      if (
+        !manifest.backup.candidate_ids ||
+        manifest.backup.candidate_ids.length === 0 ||
+        !manifest.backup.candidate_coverage_sha256
+      ) {
+        return "preverified backup candidate coverage is required for hard purge execute";
+      }
+      if (stableJson(manifest.backup.candidate_ids) !== stableJson(manifest.candidate_ids)) {
+        return "preverified backup candidate coverage does not match current hard purge manifest";
+      }
+    }
+    if (!manifest.retention.satisfied) {
+      return "retention window is not satisfied for hard purge execute";
+    }
+    if (
+      !manifest.archive.archive_tables_present ||
+      manifest.archive.archive_stub_count !== manifest.candidate_count ||
+      manifest.archive.archive_full_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_full_count !== manifest.candidate_count ||
+      manifest.archive.restore_capable_full_observation_count !== manifest.candidate_count ||
+      manifest.archive.missing_restore_capable_archive_ids.length > 0 ||
+      manifest.archive.archive_states.archived !== manifest.candidate_count
+    ) {
+      return "restore-capable archive stub and full archive row are required for every hard purge candidate";
+    }
+    if (!manifest.legal_hold.allowed) {
+      return "legal_hold blocks hard purge execute";
+    }
+    if (!manifest.confirmation_phrase) {
+      return "confirmation phrase is unavailable for readiness-only hard purge plan";
+    }
+    if (request.confirmation !== manifest.confirmation_phrase) {
+      return `confirmation must exactly equal: ${manifest.confirmation_phrase}`;
+    }
+    return null;
+  }
+
+  private runDelete(sql: string, values: unknown[] = []): number {
+    this.db.query(sql).run(...(values as never[]));
+    const row = this.db.query(`SELECT changes() AS changes`).get() as { changes: number } | null;
+    return Number(row?.changes ?? 0);
+  }
+
+  private deleteSqliteVecRowsForHardPurge(ids: string[]): number {
+    if (ids.length === 0) return 0;
+    const placeholders = ids.map(() => "?").join(", ");
+    const mapTables = this.db
+      .query<{ name: string }, []>(
+        `SELECT name
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND (name = 'mem_vectors_vec_map' OR name LIKE 'mem_vectors_vec_map_%')`,
+      )
+      .all()
+      .filter((row) => /^[A-Za-z_][A-Za-z0-9_]*$/.test(row.name));
+
+    let deleted = 0;
+    for (const mapTableRow of mapTables) {
+      const mapTable = this.quoteIdentifier(mapTableRow.name);
+      const vecTableName = mapTableRow.name.replace(/^mem_vectors_vec_map/, "mem_vectors_vec");
+      const vecTable = /^[A-Za-z_][A-Za-z0-9_]*$/.test(vecTableName) && this.tableExists(vecTableName)
+        ? this.quoteIdentifier(vecTableName)
+        : null;
+      const rowIds = this.db
+        .query<{ rowid: number }, string[]>(`SELECT rowid FROM ${mapTable} WHERE observation_id IN (${placeholders})`)
+        .all(...ids)
+        .map((row) => row.rowid)
+        .filter((rowid) => typeof rowid === "number");
+
+      if (rowIds.length > 0 && vecTable) {
+        const rowPlaceholders = rowIds.map(() => "?").join(", ");
+        deleted += this.runDelete(`DELETE FROM ${vecTable} WHERE rowid IN (${rowPlaceholders})`, rowIds);
+      }
+      deleted += this.runDelete(`DELETE FROM ${mapTable} WHERE observation_id IN (${placeholders})`, ids);
+    }
+    return deleted;
+  }
+
+  private executeHardPurgeCascade(manifest: HardPurgeManifest): Record<string, number> {
+    const ids = manifest.candidate_ids;
+    const placeholders = ids.map(() => "?").join(", ");
+    const now = nowIso();
+    const targetEntityIds = this.db
+      .query<{ entity_id: number }, string[]>(
+        `SELECT DISTINCT entity_id
+         FROM mem_observation_entities
+         WHERE observation_id IN (${placeholders})`,
+      )
+      .all(...ids)
+      .map((row) => row.entity_id)
+      .filter((entityId) => typeof entityId === "number");
+    const counts: Record<string, number> = {
+      sqlite_vec_rows: this.deleteSqliteVecRowsForHardPurge(ids),
+      mem_nugget_vectors: this.runDelete(`DELETE FROM mem_nugget_vectors WHERE observation_id IN (${placeholders})`, ids),
+      mem_nuggets: this.runDelete(`DELETE FROM mem_nuggets WHERE observation_id IN (${placeholders})`, ids),
+      mem_vectors: this.runDelete(`DELETE FROM mem_vectors WHERE observation_id IN (${placeholders})`, ids),
+      mem_links_touching: this.runDelete(
+        `DELETE FROM mem_links WHERE from_observation_id IN (${placeholders}) OR to_observation_id IN (${placeholders})`,
+        [...ids, ...ids],
+      ),
+      mem_relations: this.runDelete(`DELETE FROM mem_relations WHERE observation_id IN (${placeholders})`, ids),
+      mem_tags: this.runDelete(`DELETE FROM mem_tags WHERE observation_id IN (${placeholders})`, ids),
+      mem_observation_entities: this.runDelete(`DELETE FROM mem_observation_entities WHERE observation_id IN (${placeholders})`, ids),
+      mem_facts: this.runDelete(`DELETE FROM mem_facts WHERE observation_id IN (${placeholders})`, ids),
+      mem_events_deleted: 0,
+      mem_events_unlinked: 0,
+      mem_observations: 0,
+      mem_entities_orphaned: 0,
+      mem_archive_full_purged: 0,
+      mem_archive_stubs_purged: 0,
+    };
+
+    const safeEventRows = this.db
+      .query<{ event_id: string }, string[]>(`
+        SELECT e.event_id
+        FROM mem_events e
+        WHERE e.observation_id IN (${placeholders})
+          AND NOT EXISTS (
+            SELECT 1 FROM mem_observations o
+            WHERE o.event_id = e.event_id
+              AND o.id NOT IN (${placeholders})
+          )
+      `)
+      .all(...ids, ...ids);
+    const safeEventIds = safeEventRows.map((row) => row.event_id);
+    if (safeEventIds.length > 0) {
+      const eventPlaceholders = safeEventIds.map(() => "?").join(", ");
+      counts.mem_events_deleted = this.runDelete(
+        `DELETE FROM mem_events WHERE event_id IN (${eventPlaceholders})`,
+        safeEventIds,
+      );
+    }
+    counts.mem_events_unlinked = this.runDelete(
+      `UPDATE mem_events SET observation_id = NULL WHERE observation_id IN (${placeholders})`,
+      ids,
+    );
+
+    counts.mem_observations = this.runDelete(`DELETE FROM mem_observations WHERE id IN (${placeholders})`, ids);
+    if (targetEntityIds.length > 0) {
+      const entityPlaceholders = targetEntityIds.map(() => "?").join(", ");
+      counts.mem_entities_orphaned = this.runDelete(
+        `DELETE FROM mem_entities
+         WHERE id IN (${entityPlaceholders})
+           AND NOT EXISTS (
+             SELECT 1 FROM mem_observation_entities oe WHERE oe.entity_id = mem_entities.id
+           )`,
+        targetEntityIds,
+      );
+    }
+
+    if (this.tableExists("mem_archive_stubs")) {
+      if (this.tableExists("mem_archive_full")) {
+        counts.mem_archive_full_purged = this.runDelete(
+          `UPDATE mem_archive_full
+           SET payload_json = '{}', purged_at = ?
+           WHERE archive_id IN (
+             SELECT archive_id FROM mem_archive_stubs WHERE observation_id IN (${placeholders})
+           )`,
+          [now, ...ids],
+        );
+      }
+      counts.mem_archive_stubs_purged = this.runDelete(
+        `UPDATE mem_archive_stubs
+         SET archive_state = 'purged', purged_at = ?
+         WHERE observation_id IN (${placeholders})`,
+        [now, ...ids],
+      );
+    }
+
+    this.writeAuditLog("admin.purge.execute", "observation", "", {
+      manifest_hash: manifest.manifest_hash,
+      candidate_count: manifest.candidate_count,
+      candidate_ids: ids,
+      backup_sha256: manifest.backup_sha256,
+      backup_kind: manifest.backup.kind,
+      counts,
+    });
+
+    return counts;
+  }
+
+  adminForgetBackupEvidence(request: AdminBackupEvidenceRequest): ApiResponse {
+    const startedAt = performance.now();
+    const created = this.createPreverifiedBackupEvidenceToken(request);
+    if ("error" in created) {
+      return makeErrorResponse(startedAt, created.error, request as unknown as Record<string, unknown>);
+    }
+    const { token, evidence } = created;
+    this.writeAuditLog("admin.backup_evidence.create", "backup", evidence.path, {
+      backup_sha256: evidence.backup_sha256,
+      size_bytes: evidence.size_bytes,
+      mtime_ms: evidence.mtime_ms,
+      candidate_ids: evidence.candidate_ids,
+      candidate_coverage_sha256: evidence.candidate_coverage_sha256,
+      token_sha256: evidence.token_sha256,
+      expires_at: evidence.expires_at,
+      db_identity_sha256: evidence.db_identity_sha256,
+    });
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "backup_evidence",
+        preverified_backup_evidence_token: token,
+        backup_path: evidence.path,
+        backup_sha256: evidence.backup_sha256,
+        candidate_ids: evidence.candidate_ids,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
+        size_bytes: evidence.size_bytes,
+        mtime_ms: evidence.mtime_ms,
+        mtime_iso: evidence.mtime_iso,
+        token_sha256: evidence.token_sha256,
+        db_identity_sha256: evidence.db_identity_sha256,
+        created_at: evidence.created_at,
+        expires_at: evidence.expires_at,
+        integrity_check: evidence.integrity_check,
+      } as unknown as Record<string, unknown>],
+      {
+        backup_path: evidence.path,
+        backup_sha256: evidence.backup_sha256,
+        candidate_ids: evidence.candidate_ids,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
+        ttl_seconds: request.ttl_seconds,
+      },
+      {
+        ranking: "preverified_backup_evidence_v1",
+        backup_sha256: evidence.backup_sha256,
+        candidate_coverage_sha256: evidence.candidate_coverage_sha256,
+        size_bytes: evidence.size_bytes,
+        expires_at: evidence.expires_at,
+      },
+    );
+  }
+
+  adminForgetHardPurge(request: AdminHardPurgeRequest): ApiResponse {
+    const startedAt = performance.now();
+    const requestedAtMs = Date.now();
+    const initial = this.prepareHardPurgeManifest(request);
+    if (!initial.ok) {
+      return makeErrorResponse(startedAt, initial.error, request as unknown as Record<string, unknown>);
+    }
+
+    if (request.execute !== true) {
+      const nowMs = Date.now();
+      if (request.readiness_only !== true) {
+        for (const [hash, expiresAt] of this.hardPurgePlanExpirations.entries()) {
+          const expiresMs = Date.parse(expiresAt);
+          if (!Number.isFinite(expiresMs) || expiresMs <= nowMs) {
+            this.hardPurgePlanExpirations.delete(hash);
+          }
+        }
+        this.hardPurgePlanExpirations.set(initial.manifest.manifest_hash, initial.manifest.expires_at);
+      }
+      return makeResponse(
+        startedAt,
+        [{
+          mode: request.readiness_only === true ? "hard_purge_readiness" : "hard_purge_plan",
+          execute: false,
+          ...initial.manifest,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: false },
+        {
+          candidate_count: initial.manifest.candidate_count,
+          manifest_hash: initial.manifest.manifest_hash,
+          ranking: request.readiness_only === true ? "hard_purge_readiness_v1" : "hard_purge_plan_v1",
+        },
+      );
+    }
+
+    const initialGateError = this.assertHardPurgeExecuteGates(request, initial.manifest, requestedAtMs);
+    if (initialGateError) {
+      return makeErrorResponse(startedAt, initialGateError, request as unknown as Record<string, unknown>);
+    }
+
+    let transactionStarted = false;
+    try {
+      this.db.exec("BEGIN IMMEDIATE");
+      transactionStarted = true;
+
+      const current = this.prepareHardPurgeManifest(request);
+      if (!current.ok) {
+        throw new Error(current.error);
+      }
+      const gateError = this.assertHardPurgeExecuteGates(request, current.manifest, requestedAtMs);
+      if (gateError) {
+        throw new Error(gateError);
+      }
+
+      const deleted_counts = this.executeHardPurgeCascade(current.manifest);
+      this.hardPurgePlanExpirations.delete(current.manifest.manifest_hash);
+      this.db.exec("COMMIT");
+      transactionStarted = false;
+      this.consumePreverifiedBackupEvidenceToken(request, current.manifest);
+
+      return makeResponse(
+        startedAt,
+        [{
+          mode: "hard_purge_execute",
+          execute: true,
+          manifest_hash: current.manifest.manifest_hash,
+          candidate_count: current.manifest.candidate_count,
+          candidate_ids: current.manifest.candidate_ids,
+          deleted_counts,
+          restore_supported: false,
+        } as unknown as Record<string, unknown>],
+        { ...request, execute: true },
+        {
+          candidate_count: current.manifest.candidate_count,
+          manifest_hash: current.manifest.manifest_hash,
+          deleted_count: deleted_counts.mem_observations,
+          ranking: "hard_purge_execute_v1",
+        },
+      );
+    } catch (error) {
+      if (transactionStarted) {
+        try {
+          this.db.exec("ROLLBACK");
+        } catch {
+          // Preserve the original failure.
+        }
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      return makeErrorResponse(startedAt, `hard purge execute failed: ${message}`, request as unknown as Record<string, unknown>);
+    }
+  }
+
   /**
-   * 複数の observation を一括ソフトデリート（privacy_tags に "deleted" を付与）する。
+   * 複数の observation を一括ソフトデリート（archived_at + deleted tag）する。
    */
   bulkDeleteObservations(request: { ids: string[]; user_id?: string; team_id?: string }): ApiResponse {
     const startedAt = performance.now();
@@ -4550,9 +7035,10 @@ export class HarnessMemCore {
     }
     const deleted: string[] = [];
     const skipped: string[] = [];
+    const archivedAt = nowIso();
     for (const id of ids) {
       try {
-        const existing = this.db.query(`SELECT id, privacy_tags, user_id, team_id FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags: string; user_id: string; team_id: string | null } | null;
+        const existing = this.db.query(`SELECT id, privacy_tags_json, user_id, team_id FROM mem_observations WHERE id = ?`).get(id) as { id: string; privacy_tags_json: string; user_id: string; team_id: string | null } | null;
         if (!existing) {
           skipped.push(id);
           continue;
@@ -4566,15 +7052,28 @@ export class HarnessMemCore {
             continue;
           }
         }
-        const tags: string[] = existing.privacy_tags ? JSON.parse(existing.privacy_tags) : [];
+        const tags: string[] = existing.privacy_tags_json ? JSON.parse(existing.privacy_tags_json) : [];
         if (!tags.includes("deleted")) {
           tags.push("deleted");
         }
-        this.db.query(`UPDATE mem_observations SET privacy_tags = ? WHERE id = ?`).run(JSON.stringify(tags), id);
+        this.db.query(`
+          UPDATE mem_observations
+          SET privacy_tags_json = ?, archived_at = COALESCE(archived_at, ?), updated_at = ?
+          WHERE id = ?
+        `).run(JSON.stringify(tags), archivedAt, archivedAt, id);
         deleted.push(id);
       } catch {
         skipped.push(id);
       }
+    }
+    if (deleted.length > 0) {
+      this.writeAuditLog("admin.observation.bulk_delete", "observation", "", {
+        ids: deleted,
+        skipped,
+        archived_at: archivedAt,
+        user_id: request.user_id ?? "system",
+        team_id: request.team_id ?? null,
+      });
     }
     return makeResponse(
       startedAt,
@@ -5989,6 +8488,10 @@ export class HarnessMemCore {
     this.partialFinalizeScheduler.stop();
     // S89-003: stop reindex backfill scheduler
     this.reindexVectorsScheduler.stop();
+    if (this.forgetMaintenanceTimer) {
+      clearInterval(this.forgetMaintenanceTimer);
+      this.forgetMaintenanceTimer = null;
+    }
     if (process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD !== "1") {
       this.vectorBackfillWorker.stop();
     }

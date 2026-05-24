@@ -2443,9 +2443,455 @@ paths:
                   type: string
                 limit:
                   type: integer
+                forget_policy:
+                  type: object
+                  description: Optional soft-archive policy options. Wet mode requires HARNESS_MEM_AUTO_FORGET=1 on the daemon.
+                  properties:
+                    dry_run:
+                      type: boolean
+                    score_threshold:
+                      type: number
+                    limit:
+                      type: integer
+                    protect_accessed:
+                      type: boolean
       responses:
         "200":
           description: Consolidation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/plan:
+    post:
+      summary: Plan forgetting candidates
+      description: Dry-runs the forgetting policy and returns candidate IDs plus cross-store impact counts. Never archives or deletes data.
+      operationId: adminForgetPlan
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  type: string
+                limit:
+                  type: integer
+                score_threshold:
+                  type: number
+                protect_accessed:
+                  type: boolean
+      responses:
+        "200":
+          description: Forget dry-run plan
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/maintenance:
+    post:
+      summary: Run archive-first forget maintenance
+      description: >
+        Runs the manual/scheduled/threshold forget maintenance surface. By default
+        it returns a dry-run archive-first plan. When the daemon is configured with
+        forget maintenance mode=archive, triggered maintenance may write
+        restore-capable archive rows. It never executes hard purge or database
+        compaction.
+      operationId: adminForgetMaintenance
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                  description: Operator or scheduler reason label.
+                force:
+                  type: boolean
+                  description: Run maintenance even if configured thresholds are not exceeded.
+      responses:
+        "200":
+          description: Maintenance plan, skip, or archive result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/archive:
+    post:
+      summary: Plan or execute restore-capable archive
+      description: >
+        Plans or executes archive-first forgetting. Plan mode returns a manifest
+        and candidate IDs without mutating data. Execute mode requires execute:true,
+        a matching manifest_sha256 or manifest_hash from plan mode, and a reason;
+        it writes restore-capable stub/full archive rows and marks source
+        observations archived. It does not hard-purge or compact data.
+      operationId: adminForgetArchive
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  type: string
+                candidate_ids:
+                  type: array
+                  items:
+                    type: string
+                target_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Alias for candidate_ids.
+                limit:
+                  type: integer
+                score_threshold:
+                  type: number
+                protect_accessed:
+                  type: boolean
+                execute:
+                  type: boolean
+                  default: false
+                manifest_sha256:
+                  type: string
+                  description: Required in execute mode. Must match the plan manifest.
+                manifest_hash:
+                  type: string
+                  description: Alias for manifest_sha256.
+                reason:
+                  type: string
+                  description: Required in execute mode.
+      responses:
+        "200":
+          description: Archive plan or execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/archive/search:
+    post:
+      summary: Search archive stubs
+      description: >
+        Searches restore-capable archive stubs for admin diagnostics. Responses
+        are stub-focused and do not return full archive payload JSON or raw
+        observation content.
+      operationId: adminForgetArchiveSearch
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                archive_id:
+                  type: string
+                observation_id:
+                  type: string
+                project:
+                  type: string
+                archive_state:
+                  type: string
+                  enum: [archived, restored, purged]
+                manifest_sha256:
+                  type: string
+                manifest_hash:
+                  type: string
+                  description: Alias for manifest_sha256.
+                limit:
+                  type: integer
+      responses:
+        "200":
+          description: Archive stub search result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/restore:
+    post:
+      summary: Plan or execute archive restore
+      description: >
+        Plans or executes restore from a non-purged archive payload. Execute
+        mode requires execute:true plus archive_id or archive_full_ref, and
+        rehydrates the active observation while marking the archive restored.
+      operationId: adminForgetRestore
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              anyOf:
+                - required: [archive_id]
+                - required: [archive_full_ref]
+              properties:
+                archive_id:
+                  type: string
+                archive_full_ref:
+                  type: string
+                execute:
+                  type: boolean
+                  default: false
+                reason:
+                  type: string
+      responses:
+        "200":
+          description: Restore plan or execution result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/backup-evidence:
+    post:
+      summary: Preverify backup evidence for hard purge
+      description: >
+        Verifies an operator-created SQLite backup once by checking backup_path existence,
+        backup_sha256, and PRAGMA integrity_check=ok. Returns an in-memory
+        preverified_backup_evidence_token that hard-purge plan/execute can use without
+        re-reading the full backup or running integrity_check inside the hard-purge
+        request path. Tokens expire, are bound to the current daemon DB identity and
+        backup file stat, and candidate coverage. The token must be created with
+        candidate_ids/target_ids and hard-purge rejects preverified evidence unless
+        the covered candidates exactly match the current purge manifest. Tokens are
+        consumed after successful hard purge execute.
+      operationId: adminForgetBackupEvidence
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [backup_path, backup_sha256, candidate_ids]
+              properties:
+                backup_path:
+                  type: string
+                  description: Path to an operator-created SQLite backup file.
+                backup_sha256:
+                  type: string
+                  description: SHA-256 hex digest of backup_path.
+                candidate_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Observation IDs whose active row and restore-capable archived payload must be present in the backup.
+                target_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Alias for candidate_ids.
+                ttl_seconds:
+                  type: integer
+                  minimum: 0
+                  maximum: 86400
+                  default: 300
+                  description: Token lifetime. Zero is accepted for test/expiry verification.
+      responses:
+        "200":
+          description: Preverified backup evidence token and metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /v1/admin/forget/hard-purge:
+    post:
+      summary: Plan or execute a gated hard purge
+      description: >
+        Plans or executes irreversible physical deletion for already archived observations only.
+        Execute mode requires execute:true, exact manifest_hash (or manifest_sha256 alias),
+        exact candidate_count,
+        manifest_expires_at from plan mode,
+        backup_path plus backup_sha256 with SQLite integrity_check=ok, a preverified_backup_evidence_token
+        whose candidate coverage exactly matches the current manifest,
+        or a temp-test backup token,
+        retention_ack:true, archive_ack:true, restore-capable archive stub/full payload rows
+        (reported separately as archive_full_count, restore_capable_full_count,
+        restore_capable_full_observation_count, and missing_restore_capable_archive_ids), and
+        the exact confirmation phrase returned by plan mode. readiness_only:true returns a read-only
+        manifest without confirmation_phrase and without opening an execute window. This endpoint is
+        admin HTTP only.
+      operationId: adminForgetHardPurge
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - type: object
+                  description: Plan or readiness mode. Does not delete data.
+                  properties:
+                    project:
+                      type: string
+                    target_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Explicit archived observation IDs to evaluate.
+                    candidate_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Alias for target_ids.
+                    limit:
+                      type: integer
+                      description: Maximum archived rows to plan when target_ids is omitted.
+                    retention_days:
+                      type: integer
+                      description: Minimum archived age required before execute.
+                    readiness_only:
+                      type: boolean
+                      default: false
+                      description: Return readiness evidence only. Does not include confirmation_phrase and does not create an executable hard-purge window.
+                    preverified_backup_evidence_token:
+                      type: string
+                    backup_sha256:
+                      type: string
+                    backup_path:
+                      type: string
+                    temp_test_backup_token:
+                      type: string
+                - type: object
+                  description: Execute mode. Deletes already archived rows only after all gates pass.
+                  required:
+                    - execute
+                    - manifest_expires_at
+                    - candidate_count
+                    - retention_ack
+                    - archive_ack
+                    - confirmation
+                  allOf:
+                    - anyOf:
+                        - required: [manifest_hash]
+                        - required: [manifest_sha256]
+                    - anyOf:
+                        - required: [backup_path, backup_sha256]
+                        - required: [preverified_backup_evidence_token]
+                        - required: [temp_test_backup_token]
+                  properties:
+                    project:
+                      type: string
+                    target_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Explicit observation IDs to hard-purge. Every row must already be archived.
+                    candidate_ids:
+                      type: array
+                      items:
+                        type: string
+                      description: Alias for target_ids when executing from a returned manifest.
+                    execute:
+                      type: boolean
+                      enum: [true]
+                    manifest_hash:
+                      type: string
+                      description: Must match the current recomputed manifest.
+                    manifest_sha256:
+                      type: string
+                      description: Alias for manifest_hash, accepted for consistency with archive manifests.
+                    manifest_expires_at:
+                      type: string
+                      format: date-time
+                      description: Must be the expires_at returned by plan mode and still be in the future.
+                    candidate_count:
+                      type: integer
+                      description: Must match the current recomputed manifest.
+                    backup_sha256:
+                      type: string
+                      description: SHA-256 metadata for an operator-created backup.
+                    backup_path:
+                      type: string
+                      description: Direct backup evidence path. Must match backup_sha256 and pass SQLite PRAGMA integrity_check.
+                    preverified_backup_evidence_token:
+                      type: string
+                      description: Token returned by /v1/admin/forget/backup-evidence.
+                    temp_test_backup_token:
+                      type: string
+                      description: Test-only backup evidence accepted only when the daemon DB path is a temp test DB.
+                    retention_ack:
+                      type: boolean
+                      enum: [true]
+                    archive_ack:
+                      type: boolean
+                      enum: [true]
+                    confirmation:
+                      type: string
+                      description: Exact phrase returned by plan mode, e.g. HARD_PURGE 1 OBSERVATIONS abcdef123456.
+      responses:
+        "200":
+          description: Hard purge plan or execution result
           content:
             application/json:
               schema:

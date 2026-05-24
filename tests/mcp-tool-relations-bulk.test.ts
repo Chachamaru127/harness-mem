@@ -25,6 +25,12 @@ describe("NEXT-005: MCP ツール拡充（関係編集・バルク操作）", ()
     expect(source).toContain("harness_mem_bulk_delete");
   });
 
+  test("memory.ts に dry-run forget plan ツールが定義されている", () => {
+    const source = readFileSync(TOOL_FILE, "utf8");
+    expect(source).toContain("harness_mem_admin_forget_plan");
+    expect(source).toContain("/v1/admin/forget/plan");
+  });
+
   test("memory.ts に harness_mem_export ツールが定義されており、/v1/export にルーティングされる", () => {
     const source = readFileSync(TOOL_FILE, "utf8");
     expect(source).toContain("harness_mem_export");
@@ -39,6 +45,12 @@ describe("NEXT-005: MCP ツール拡充（関係編集・バルク操作）", ()
   test("server.ts に /v1/observations/bulk-delete エンドポイントが実装されている", () => {
     const source = readFileSync(SERVER_FILE, "utf8");
     expect(source).toContain("/v1/observations/bulk-delete");
+  });
+
+  test("server.ts に単体 delete と forget plan エンドポイントが実装されている", () => {
+    const source = readFileSync(SERVER_FILE, "utf8");
+    expect(source).toContain("/v1/observations/");
+    expect(source).toContain("/v1/admin/forget/plan");
   });
 
   test("server.ts に /v1/export エンドポイントが実装されている", () => {

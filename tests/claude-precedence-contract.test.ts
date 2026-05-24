@@ -23,8 +23,9 @@ async function runHarnessMem(
 }
 
 describe("claude precedence contract", () => {
-  // Full release gates can slow doctor startup after the benchmark-heavy suite.
-  // Keep this above Bun's default while preserving a bounded contract.
+  // This contract only validates Claude config precedence. Keep it independent
+  // from daemon/launchctl startup state so benchmark-heavy release gates do not
+  // turn a config check into a startup timeout check.
   test("doctor --json marks claude_precedence drift when ~/.claude.json and settings.json disagree", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-claude-precedence-"));
 
@@ -71,7 +72,7 @@ describe("claude precedence contract", () => {
         )
       );
 
-      const result = await runHarnessMem(["doctor", "--json", "--platform", "claude", "--skip-version-check"], {
+      const result = await runHarnessMem(["doctor", "--json", "--platform", "claude", "--skip-version-check", "--read-only"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: join(tmpHome, ".harness-mem"),

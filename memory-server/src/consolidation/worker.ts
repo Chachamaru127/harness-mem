@@ -2,6 +2,7 @@ import { type Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { dedupeFacts, buildSupersededDecisions, type ConsolidationFact } from "./deduper";
 import { extractFacts, llmExtractWithDiff, type ExistingFact } from "./extractor";
+import { expiredFilterSql } from "../core/core-utils";
 
 export interface ConsolidationRunOptions {
   reason?: string;
@@ -115,11 +116,13 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
   const observations = db
     .query(
       `
-        SELECT id, title, content_redacted, observation_type,
-               event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at
-        FROM mem_observations
-        WHERE project = ? AND session_id = ?
-        ORDER BY created_at ASC
+        SELECT o.id, o.title, o.content_redacted, o.observation_type,
+               o.event_time, o.observed_at, o.valid_from, o.valid_to, o.supersedes, o.invalidated_at
+        FROM mem_observations o
+        WHERE o.project = ? AND o.session_id = ?
+          AND o.archived_at IS NULL
+          ${expiredFilterSql("o")}
+        ORDER BY o.created_at ASC
       `
     )
     .all(project, sessionId) as Array<{

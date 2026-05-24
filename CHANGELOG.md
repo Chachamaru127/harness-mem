@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Archive-first memory lifecycle hardening**. Added preverified backup evidence for hard purge so live hard-purge requests can consume a short-lived, single-use token instead of re-reading a multi-GB SQLite backup or rerunning `PRAGMA integrity_check` inline. Evidence is bound to backup path/size/SHA/integrity, DB identity, sorted candidate IDs, and restore-capable archive/full-payload coverage.
+
+### Fixed
+
+- **Archive-first forget maintenance safety gates**. Single-observation deletes now follow the same admin-token gate as bulk deletes in auth-enabled deployments, hard-purge execute accepts the `manifest_sha256` alias used by archive manifests, readiness-only plans stay non-executable, and automated maintenance remains bounded to dry-run or restore-capable archive work rather than hard purge or compact.
+
 ## [0.24.2] - 2026-05-24
 
 ### Added

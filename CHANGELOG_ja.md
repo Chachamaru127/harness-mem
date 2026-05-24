@@ -7,6 +7,11 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **archive-first の忘却フローを hard purge 手前まで強化した**。multi-GB の SQLite backup を hard-purge request 内で読み直さず、事前検証済み backup evidence token を使えるようにした。token は backup path / size / SHA / integrity、DB identity、候補ID、復元可能な archive/full payload coverage に結びつく。
+- **archive-first 忘却の安全 gate を揃えた**。認証有効時の単体 observation delete も bulk delete と同じ admin token 必須にし、hard-purge execute は archive manifest と同じ `manifest_sha256` alias を受ける。`readiness_only:true` は実行 window を作らず、自動メンテナンスは dry-run または復元可能 archive までに限定する。
+
 ## [0.24.2] - 2026-05-24
 
 ### ユーザー向け要約

@@ -158,6 +158,46 @@ function initRecallProjectionSchema(db: Database): void {
   `);
 }
 
+function initArchiveSchema(db: Database): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS mem_archive_stubs (
+      archive_id TEXT PRIMARY KEY,
+      observation_id TEXT NOT NULL,
+      project TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      team_id TEXT DEFAULT NULL,
+      archive_stub TEXT NOT NULL,
+      archive_full_ref TEXT DEFAULT NULL,
+      archive_state TEXT NOT NULL,
+      reason TEXT NOT NULL,
+      legal_hold_snapshot INTEGER NOT NULL DEFAULT 0,
+      content_sha256 TEXT NOT NULL,
+      manifest_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      restored_at TEXT DEFAULT NULL,
+      purged_at TEXT DEFAULT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_mem_archive_stubs_observation
+      ON mem_archive_stubs(observation_id, archive_state);
+
+    CREATE INDEX IF NOT EXISTS idx_mem_archive_stubs_state_created
+      ON mem_archive_stubs(archive_state, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS mem_archive_full (
+      archive_full_ref TEXT PRIMARY KEY,
+      archive_id TEXT NOT NULL UNIQUE,
+      payload_json TEXT NOT NULL,
+      payload_sha256 TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      purged_at TEXT DEFAULT NULL,
+      FOREIGN KEY(archive_id) REFERENCES mem_archive_stubs(archive_id)
+    );
+  `);
+}
+
 export function initSchema(db: Database): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS mem_sessions (
@@ -588,6 +628,7 @@ export function initSchema(db: Database): void {
   `);
   initWorkGraphSchema(db);
   initRecallProjectionSchema(db);
+  initArchiveSchema(db);
 }
 
 function addColumnIfMissing(db: Database, tableName: string, columnName: string, definition: string): void {
@@ -1262,6 +1303,7 @@ export function migrateSchema(db: Database): void {
 
   initWorkGraphSchema(db);
   initRecallProjectionSchema(db);
+  initArchiveSchema(db);
 }
 
 export function initFtsIndex(db: Database): boolean {
