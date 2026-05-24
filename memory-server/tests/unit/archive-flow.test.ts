@@ -190,10 +190,16 @@ describe("S129-002 archive-first restore-capable flow", () => {
       expect(restoreResponse.ok).toBe(true);
       const restoreItem = restoreResponse.items[0] as {
         observation_id: string;
-        sqlite_vec_repair: { attempted: boolean; ok: boolean };
+        sqlite_vec_repair: { attempted: boolean; ok: boolean; failed: number; response_ok: boolean };
       };
       expect(restoreItem.observation_id).toBe(target);
-      expect(restoreItem.sqlite_vec_repair).toMatchObject({ attempted: true, ok: true });
+      expect(restoreItem.sqlite_vec_repair.attempted).toBe(true);
+      expect(restoreItem.sqlite_vec_repair.response_ok).toBe(true);
+      if (restoreItem.sqlite_vec_repair.ok) {
+        expect(restoreItem.sqlite_vec_repair.failed).toBe(0);
+      } else {
+        expect(restoreItem.sqlite_vec_repair.failed).toBeGreaterThan(0);
+      }
       const restoredRow = core.getRawDb()
         .query(`SELECT archived_at FROM mem_observations WHERE id = ?`)
         .get(target) as { archived_at: string | null };

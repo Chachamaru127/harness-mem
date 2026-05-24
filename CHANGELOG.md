@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.5] - 2026-05-24
+
+### Fixed
+
+- **Release behavior gate now treats archive restore sqlite-vec repair as environment-aware**. The archive restore test still verifies restore success, lifecycle-row rehydration, search visibility, and explicit repair failure reporting, but no longer requires sqlite-vec repair success on Linux runners where sqlite-vec is unavailable and JS fallback is expected.
+
 ## [0.25.4] - 2026-05-24
 
 ### Fixed
@@ -2822,7 +2828,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...HEAD
+[0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4
 [0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2

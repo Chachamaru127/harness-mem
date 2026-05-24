@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.5] - 2026-05-24
+
+### ユーザー向け要約
+
+- **Linux release gate で archive restore テストが環境差分に負けないようにした**。restore 自体の成功、関連 lifecycle row の復元、検索への再表示、repair 失敗時の明示報告は引き続き確認する。一方で、sqlite-vec が使えず JS fallback になる Linux runner では、sqlite-vec repair の成功そのものを必須にしない。
+
 ## [0.25.4] - 2026-05-24
 
 ### ユーザー向け要約
@@ -967,7 +973,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...HEAD
+[0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4
 [0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
 [0.25.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...v0.25.2
