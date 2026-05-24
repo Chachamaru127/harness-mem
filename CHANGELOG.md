@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-05-24
+
+### Fixed
+
+- **Release Go toolchain setup now follows `mcp-server-go/go.mod`**. The release workflow no longer pins Go 1.22 for Go MCP build and native smoke jobs, so CI installs the Go version required by the checked-in module before running Mac, Windows, and cross-compile gates.
+
 ## [0.25.0] - 2026-05-24
 
 ### Added
@@ -2798,7 +2804,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...v0.24.1

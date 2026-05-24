@@ -15,6 +15,7 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("package-manager-cache: false");
     expect(workflow).toContain("actions/cache@v5");
     expect(workflow).toContain("actions/setup-go@v6");
+    expect(workflow).toContain("go-version-file: mcp-server-go/go.mod");
     expect(workflow).toContain("cache-dependency-path: mcp-server-go/go.sum");
     expect(workflow).toContain("actions/upload-artifact@v7");
     expect(workflow).toContain("actions/download-artifact@v7");
@@ -23,6 +24,7 @@ describe("release workflow contract", () => {
     expect(workflow).not.toContain("actions/setup-node@v4");
     expect(workflow).not.toContain("actions/cache@v4");
     expect(workflow).not.toContain("actions/setup-go@v5");
+    expect(workflow).not.toContain("go-version: '1.22'");
     expect(workflow).not.toContain("actions/upload-artifact@v4");
     expect(workflow).not.toContain("actions/download-artifact@v4");
     expect(workflow).not.toContain("actions/upload-artifact@v6");

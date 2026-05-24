@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.1] - 2026-05-24
+
+### ユーザー向け要約
+
+- **release CI の Go version を `mcp-server-go/go.mod` に追従させた**。Go MCP の build / native smoke が古い Go 1.22 固定で落ちないようにし、Mac / Windows / cross-compile の配布 gate が、repo の Go module が要求する version で動くようにした。
+
 ## [0.25.0] - 2026-05-24
 
 ### ユーザー向け要約
@@ -943,7 +949,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.1...HEAD
+[0.25.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.0...v0.25.1
 [0.25.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.2...v0.25.0
 [0.24.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.1...v0.24.2
 [0.24.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.24.0...v0.24.1

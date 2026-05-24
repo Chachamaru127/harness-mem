@@ -365,7 +365,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version-file: mcp-server-go/go.mod
           cache-dependency-path: mcp-server-go/go.sum
 
       - name: Run Go tests
@@ -399,7 +399,7 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v6
         with:
-          go-version: '1.22'
+          go-version-file: mcp-server-go/go.mod
           cache-dependency-path: mcp-server-go/go.sum
 
       - name: Run Go tests natively
