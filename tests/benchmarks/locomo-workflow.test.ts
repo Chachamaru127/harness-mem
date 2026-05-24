@@ -11,6 +11,7 @@ describe("LOCOMO workflow", () => {
     expect(source).toContain("workflow_dispatch");
     expect(source).toContain("schedule");
     expect(source).toContain("run-locomo-benchmark.ts");
-    expect(source).toContain("actions/upload-artifact@v4");
+    expect(source).toContain("actions/upload-artifact@v7");
+    expect(source).not.toContain("actions/upload-artifact@v4");
   });
 });

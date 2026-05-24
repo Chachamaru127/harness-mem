@@ -111,6 +111,14 @@ function readCommands(data: Record<string, unknown>, event: string): string[] {
   );
 }
 
+function expectDefaultCodexHttpMcp(configText: string): void {
+  expect(configText).toContain(`[mcp_servers.harness]`);
+  expect(configText).toContain(`url = "http://127.0.0.1:37889/mcp"`);
+  expect(configText).toContain(`bearer_token_env_var = "HARNESS_MEM_MCP_TOKEN"`);
+  expect(configText).not.toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
+  expect(configText).not.toContain(`cwd = "${ROOT}"`);
+}
+
 // Per-test timeout raised to 60s globally: all tests in this suite spawn the
 // harness-mem CLI subprocess. On GitHub Actions ubuntu-latest the cold boot
 // routinely exceeds bun's 5s default (observed 5001ms timeout during v0.13.0
@@ -288,8 +296,7 @@ describe("codex hooks merge contract", () => {
 
       const configText = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
       expect(configText).toContain(`notify = ["bash", "${ROOT}/scripts/hook-handlers/memory-codex-notify.sh"]`);
-      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
-      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expectDefaultCodexHttpMcp(configText);
       expect(configText).not.toContain("/tmp/missing-harness");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
@@ -319,8 +326,7 @@ describe("codex hooks merge contract", () => {
       expect(notifyMatches).toHaveLength(1);
       expect(configText).toContain("--previous-notify");
       expect(configText).toContain("memory-codex-notify.sh");
-      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
-      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expectDefaultCodexHttpMcp(configText);
       expect(configText).not.toContain("# >>> harness-mem codex notify");
       expect(configText).not.toContain("/tmp/missing-harness");
     } finally {
@@ -351,8 +357,7 @@ describe("codex hooks merge contract", () => {
       expect(notifyMatches).toHaveLength(1);
       expect(configText).toContain("--previous-notify");
       expect(configText).toContain("memory-codex-notify.sh");
-      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
-      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expectDefaultCodexHttpMcp(configText);
       expect(configText).not.toContain("# >>> harness-mem codex notify");
       expect(configText).not.toContain("/tmp/missing-harness");
     } finally {
@@ -383,8 +388,7 @@ describe("codex hooks merge contract", () => {
       expect(notifyMatches).toHaveLength(1);
       expect(configText).toContain("--previous-notify");
       expect(configText).toContain("memory-codex-notify.sh");
-      expect(configText).toContain(`command = "${ROOT}/bin/harness-mcp-server"`);
-      expect(configText).toContain(`cwd = "${ROOT}"`);
+      expectDefaultCodexHttpMcp(configText);
       expect(configText).not.toContain("# >>> harness-mem codex notify");
       expect(configText).not.toContain("/tmp/missing-harness");
     } finally {

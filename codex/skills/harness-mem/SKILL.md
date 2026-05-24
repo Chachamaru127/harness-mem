@@ -20,12 +20,27 @@ Use this skill when work needs:
 ## MCP Setup
 
 The harness-mem MCP server is configured automatically by `harness-mem setup --platform codex`.
+New Codex setup defaults to the local Streamable HTTP gateway at
+`http://127.0.0.1:37889/mcp`; existing stdio wiring remains valid unless the
+user explicitly migrates or rolls back.
 
 Manual registration:
 
 ```bash
-codex mcp add harness -- node /path/to/harness-mem/mcp-server/dist/index.js
+harness-mem setup --platform codex
+harness-mem doctor --platform codex
 ```
+
+Rollback to stdio:
+
+```bash
+harness-mem mcp-config --transport stdio --client codex --write
+```
+
+If Codex reports `url is not supported for stdio`, inspect the
+`[mcp_servers.harness]` stanza before debugging the daemon. A single stanza must
+be either HTTP (`url` + `bearer_token_env_var`) or stdio (`command`/`args`/`env`);
+never leave both shapes in one block.
 
 ## Recommended Retrieval Sequence
 

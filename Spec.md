@@ -1,9 +1,9 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-05-22
+Last updated: 2026-05-24
 Owner: harness-mem
-Companion plan: `Plans.md` §128 Recall Runtime Architecture
+Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration
 
 ## Purpose
 
@@ -232,6 +232,50 @@ Recommended resource attributes:
 Allowed recall telemetry should focus on structural data: latency, queue depth,
 fallback reason, projection staleness, result count, scope type, and tool/client
 surface.
+
+## MCP Transport Defaults
+
+Harness-mem has two local MCP layers:
+
+- The memory daemon (`harness-memd`) is the local HTTP API owner on
+  `127.0.0.1:37888`.
+- The MCP transport surface is either a per-client stdio frontend or the local
+  Streamable HTTP gateway on `127.0.0.1:37889/mcp`.
+
+The product direction is to make the local Streamable HTTP gateway the default
+MCP transport for new Tier 1 Claude Code and Codex setup, after the migration
+gates in `Plans.md` §130 pass. This is a local-first default, not a remote or
+managed-service default.
+
+Default HTTP MCP is allowed only if all of these stay true:
+
+- The gateway binds to loopback by default and does not listen on public
+  interfaces unless the user explicitly opts in.
+- The gateway requires local authentication or an equivalent verified local
+  protection model. Tokens or secrets must not be printed in config previews,
+  logs, telemetry, README examples, or doctor output.
+- Setup may create a local gateway token file under `HARNESS_MEM_HOME` with
+  owner-only permissions; client config must refer to token environment names or
+  placeholders rather than writing token values.
+- Setup and doctor can prove the client config, token propagation, gateway
+  health, and daemon health are coherent before reporting green.
+- Existing stdio installs keep working, and users can explicitly choose or roll
+  back to stdio.
+- Hermes remains explicit opt-in until its transport compatibility and support
+  tier are re-evaluated.
+- HTTP transport failures degrade to actionable doctor guidance or stdio
+  fallback, not to broken first-turn continuity.
+
+Default HTTP MCP must not:
+
+- Require cloud accounts, external collectors, managed backends, or API keys.
+- Delete or rewrite local memory data.
+- Remove the stdio compatibility path before a separate deprecation decision.
+- Widen `HARNESS_MEM_TOOLS=core` or weaken project / privacy isolation.
+
+Release claims may say HTTP MCP is the new default only after Mac and Windows
+package-install smoke gates cover a clean install, existing install migration,
+token redaction, multi-session behavior, and rollback.
 
 ## Non-Goals
 

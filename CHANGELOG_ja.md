@@ -9,6 +9,10 @@
 
 ### ユーザー向け要約
 
+- **新規 Claude Code / Codex setup は local HTTP MCP gateway が既定になった**。`harness-mem setup --platform claude,codex` は loopback の共有 gateway を使う設定を書き、local token file を owner-only permission で作成し、client config には token 実値ではなく環境変数参照だけを残す。
+- **Mac / Windows の配布 smoke で HTTP default を検証するようにした**。npm package に Go MCP binary を同梱してから pack し、fresh HTTP setup、gateway health、doctor HTTP、token file mode、HTTP config の token redaction、stdio rollback、既存 stdio 保護を release 前に確認する。
+- **setup / doctor / docs / Skills の transport 説明を揃えた**。Claude Code / Codex は HTTP default、既存 stdio は明示 migration なしに維持、Hermes は明示 opt-in のまま、という運用に統一した。
+- **Codex の HTTP/stdio 設定衝突を起こしにくくした**。古い notify path を直すときも `--previous-notify` chain は保持し、rollback 時は `url` と stdio `command` / `cwd` / `env` が同じ stanza に混ざらないようにした。
 - **archive-first の忘却フローを hard purge 手前まで強化した**。multi-GB の SQLite backup を hard-purge request 内で読み直さず、事前検証済み backup evidence token を使えるようにした。token は backup path / size / SHA / integrity、DB identity、候補ID、復元可能な archive/full payload coverage に結びつく。
 - **archive-first 忘却の安全 gate を揃えた**。認証有効時の単体 observation delete も bulk delete と同じ admin token 必須にし、hard-purge execute は archive manifest と同じ `manifest_sha256` alias を受ける。`readiness_only:true` は実行 window を作らず、自動メンテナンスは dry-run または復元可能 archive までに限定する。
 

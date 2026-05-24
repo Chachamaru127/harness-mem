@@ -307,15 +307,23 @@ memory daemon is fighting for the same runtime state.
 
 Do not try to solve this by turning stdio into a shared singleton broker. That
 works against the way stdio MCP clients launch and supervise local servers, and
-it creates harder lifecycle and security failure modes. The opt-in path for
-reducing frontend process fan-out is a local-only Streamable HTTP MCP gateway at
+it creates harder lifecycle and security failure modes. New Claude Code and
+Codex setup now defaults to the local-only Streamable HTTP MCP gateway at
 `http://127.0.0.1:37889/mcp`, with the existing stdio path kept as the
-compatibility fallback.
+compatibility and rollback fallback.
 
 ```bash
-export HARNESS_MEM_MCP_TOKEN="<local-secret>"
-harness-mem mcp-gateway start
-harness-mem mcp-config --transport http --client claude,codex --write
+harness-mem setup --platform claude,codex
+harness-mem doctor --platform claude,codex
+```
+
+Setup creates or reuses a local token file under `HARNESS_MEM_HOME` with
+owner-only permissions. Client config stores only `HARNESS_MEM_MCP_TOKEN` or
+`Bearer ${HARNESS_MEM_MCP_TOKEN}` placeholders, not the token value. To roll
+back a client to stdio:
+
+```bash
+harness-mem mcp-config --transport stdio --client claude,codex --write
 ```
 
 Hermes remains explicit opt-in: use

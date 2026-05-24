@@ -60,16 +60,15 @@ cleanup の対象は、親クライアントが終了した後も残った stale
 stdio frontend を singleton broker 化する方針は推奨しません。Hermes を含む stdio MCP
 クライアントは「自分が起動した subprocess と stdio で話す」前提で lifecycle を管理します。
 そこを共有 broker にすると、親子関係、停止、認証、project_key 分離の責任が曖昧になります。
-frontend プロセス数を減らす中期方針は、既存 stdio を互換 fallback として残し、
-local-only の Streamable HTTP MCP gateway (`http://127.0.0.1:37889/mcp`) を opt-in で
-使えるようにすることです。
+frontend プロセス数を減らす方針として、Claude Code / Codex の新規 setup は local-only の
+Streamable HTTP MCP gateway (`http://127.0.0.1:37889/mcp`) を default にします。ただし Hermes
+はこの default 対象ではなく、既存 stdio を互換 fallback として残します。
 
-HTTP MCP を試す場合は、先に token 付き gateway を起動し、Hermes 用 YAML を明示生成します。
+Hermes で HTTP MCP を使う場合は、先に token 付き gateway を起動し、Hermes 用 YAML を明示生成します。
 秘密 token の値は config へ書かず、`Bearer ${HARNESS_MEM_MCP_TOKEN}` という環境変数参照だけを
 残します。
 
 ```bash
-export HARNESS_MEM_MCP_TOKEN="<local-secret>"
 harness-mem mcp-gateway start
 harness-mem mcp-config --transport http --client hermes --write
 ```
@@ -303,8 +302,9 @@ env:
 - `127.0.0.1:37888` の memory daemon が複数いる場合は、別問題として daemon split-brain を疑います。
 
 stdio MCP は session ごとに subprocess を持つため、frontend process 数だけを減らす目的で
-singleton 化しないでください。将来の opt-in 方向は Streamable HTTP MCP gateway
-(`127.0.0.1:37889/mcp`) であり、stdio は互換 fallback として残します。
+singleton 化しないでください。Claude Code / Codex の新規 setup は Streamable HTTP MCP gateway
+(`127.0.0.1:37889/mcp`) を default にしますが、Hermes は明示 opt-in のままです。stdio は互換
+fallback として残します。
 
 ### 3. メモリが Claude Code と分離している
 
@@ -403,7 +403,7 @@ pytest
 
 - **Hermes built-in memory との並行運用**: Hermes は組み込みメモリ層 (procedural memory) を持つ。本統合では harness-mem を **追加の MCP ツール** として並行運用する形になる。built-in memory を harness-mem で置換する Python adapter は今回スコープ外（将来検討、`integrations/hermes/README.md` "Out of Scope" 参照）。
 - **Backfill は過去データの取り込み**: `harness-mem ingest-hermes-state` は `~/.hermes/state.db` に既にある履歴を取り込む one-shot 処理。Hermes の per-message hook を追加するものではない。
-- **HTTP MCP transport は opt-in 段階**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし既定の案内はまだ stdio fallback を維持する。互換 smoke / latency benchmark を見ながら recommended/default 化を判断する。
+- **Hermes の HTTP MCP transport は opt-in**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし Hermes は Claude/Codex の HTTP default 対象ではなく、既定案内は stdio fallback を維持する。
 - **on-demand spawn と複数クライアント**: 方式 B（`bunx` で Hermes 起動時に spawn）を選ぶと、Hermes セッション間でも独立 daemon になる場合がある。複数ツールでメモリ共有する用途では方式 A（別プロセス常駐）を推奨。
 
 ## 関連リソース

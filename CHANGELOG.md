@@ -9,10 +9,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ### Added
 
+- **Local Streamable HTTP MCP is now the default for new Claude Code and Codex setup**. Fresh `harness-mem setup --platform claude,codex` writes local loopback HTTP MCP config, starts the shared gateway, bootstraps a managed local token file with owner-only permissions, and keeps the token value out of client config by using environment-variable placeholders.
+- **HTTP MCP release gates for Mac and Windows distribution**. The release package smoke now stages the Go MCP binaries into the npm package before packing, verifies fresh HTTP setup, gateway health, doctor HTTP status, token file mode, HTTP-config token redaction, stdio rollback redaction, and existing-stdio preservation on macOS and Windows before publish.
 - **Archive-first memory lifecycle hardening**. Added preverified backup evidence for hard purge so live hard-purge requests can consume a short-lived, single-use token instead of re-reading a multi-GB SQLite backup or rerunning `PRAGMA integrity_check` inline. Evidence is bound to backup path/size/SHA/integrity, DB identity, sorted candidate IDs, and restore-capable archive/full-payload coverage.
+
+### Changed
+
+- **Setup, doctor, docs, and Skills now describe the HTTP/default + stdio/rollback transport model**. Claude Code and Codex are treated as Tier 1 HTTP-default setup targets, existing stdio wiring is preserved unless migration is explicit, and Hermes remains explicit opt-in.
 
 ### Fixed
 
+- **Codex transport repair avoids mixed HTTP/stdio MCP stanzas**. Setup now repairs stale managed Codex notify paths while preserving existing `--previous-notify` chains, and transport rollback rewrites the harness MCP block so `url` does not coexist with stdio `command` / `cwd` / `env` keys.
 - **Archive-first forget maintenance safety gates**. Single-observation deletes now follow the same admin-token gate as bulk deletes in auth-enabled deployments, hard-purge execute accepts the `manifest_sha256` alias used by archive manifests, readiness-only plans stay non-executable, and automated maintenance remains bounded to dry-run or restore-capable archive work rather than hard purge or compact.
 
 ## [0.24.2] - 2026-05-24

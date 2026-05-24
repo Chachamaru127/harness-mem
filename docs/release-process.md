@@ -151,6 +151,13 @@ When you are ready to ship:
 2. add a matching summary entry to `CHANGELOG_ja.md`
 3. update `package.json` version to `X.Y.Z`
 4. update `package-lock.json` to the same version when it exists
+5. update `.claude-plugin/plugin.json` `version` to `X.Y.Z`
+6. update `.claude-plugin/marketplace.json` plugin `version` and `metadata.version` to `X.Y.Z`
+
+The repository behavior gate (`tests/marketplace-schema.test.ts`) asserts that the
+`plugin.json` and `marketplace.json` versions match `package.json`. Bumping
+`package.json` alone makes `npm test` fail inside the release workflow and blocks
+publish, so all four version surfaces must move together.
 
 The important part is not the exact editing style.
 The important part is that all release surfaces agree on the same version and the same user-facing story.
@@ -238,7 +245,7 @@ Use this when you want the shortest possible release checklist.
 
 1. `CHANGELOG.md [Unreleased]` is up to date
 2. `CHANGELOG_ja.md` summary will match the release
-3. `package.json` version is correct
+3. `package.json`, `package-lock.json`, `.claude-plugin/plugin.json`, and `.claude-plugin/marketplace.json` versions all match
 4. `npm test` passes
 5. `npm pack --dry-run` passes
 6. tag = `package.json` version

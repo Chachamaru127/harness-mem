@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-24（§128 Recall Runtime Architecture / Release CI hygiene / archive-first forget integration）
+最終更新: 2026-05-24（§128 Recall Runtime Architecture / §130 HTTP MCP default implementation / Release CI hygiene / archive-first forget integration）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -41,7 +41,7 @@
 | gate artifacts / README / proof bar | onnx manifest (2026-04-10) / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ、Go MCP server (~5ms cold start) |
 | 最新リリース | **v0.24.2**（2026-05-24、S128 Recall Runtime / projection auto-refresh / local OTel / ADR runtime / Mac+Windows package install smoke gate を release 済み） |
-| 次フェーズの焦点 | **§128 Recall Runtime Architecture** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
+| 次フェーズの焦点 | **§130 S130-009 release gate + publish decision** / **§128 Recall Runtime Architecture dogfood gates** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
 | CI Gate | **Layer 1+2 PASS**（onnx `run-ci`、bilingual=0.8800、p95 13.28ms、history reset at v0.11.0） |
 
 - benchmark SSOT: `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`
@@ -131,6 +131,78 @@
 ```
 
 次に進む条件: `Spec.md`、`docs/recall-runtime.md`、ADR-003、benefit gate が「local-first continuity runtime」の判断を明文化し、OpenTelemetry が外部送信 default にならず、ADR が Why 付き recall object として扱われること。S128-001〜S128-013 で Recall Runtime core / OTel / ADR / explanation / warn-mode gate は実装済み。次は S128 gate を 2-3 回の通常運用で観測し、release enforce へ上げるか warn 継続にするかを判断する。
+
+---
+
+## §130 Local Streamable HTTP MCP Default Migration — cc:WIP
+
+策定日: 2026-05-24
+分類: Product behavior / setup / MCP transport / release safety — owner は `harness-mem`。Local task。Claude Code / Codex / Hermes の client config surface に影響するが、sibling repo の責務移動や cross-repo API 変更はこの § では行わない。必要になった場合だけ XR を起票する。
+仕様正本: `Spec.md` の `MCP Transport Defaults`。本 § は実装順序と検証条件の正本。
+
+背景: S127/S128 で daemon blocking、projection stale、repeat recall、OTel、ADR runtime は local-first に安定化した。一方で現行の MCP default は stdio のままで、複数セッションでは per-client frontend process が増える。Streamable HTTP MCP gateway は実装済みだが opt-in であり、default 化には token propagation / gateway lifecycle / client compatibility / rollback / package smoke を明示 gate 化する必要がある。
+
+判断:
+
+- HTTP MCP default は **GO, but gated**。Transport default を変える価値はあるが、token と client env の検証なしに default flip はしない。
+- Default 対象は新規 Tier 1 setup (`codex`, `claude`) のみ。既存 install は explicit migration / doctor repair で扱い、Hermes は明示 opt-in のまま。
+- stdio は compatibility fallback として残す。HTTP failure が first-turn continuity を壊す場合は stdio へ戻せることを release gate にする。
+- local-first の意味は変えない。HTTP は loopback gateway であり、外部 endpoint / managed service / external telemetry export ではない。
+
+### Benefit Gate
+
+| 軸 | 点数 | 判定 | 根拠 | 未検証 |
+|----|------|------|------|--------|
+| Product Fit | 4/5 | Recommended | multi-session process fan-out と stale stdio config conflict を減らし、local continuity runtime の導線を単純化できる | 実ユーザー環境での client token propagation |
+| Evidence Strength | 3/5 | Conditional | local gateway / mcp-config / doctor opt-in は既存実装と tests あり。MCP 公式仕様も Streamable HTTP を標準 transport として扱う | Claude/Codex の最新 HTTP MCP config 挙動の clean install smoke |
+| User Value | 4/5 | Recommended | 新規ユーザーは gateway 1 つに寄り、複数セッション時の process/diagnosis が分かりやすくなる | Token/env の UX が悪いと逆効果 |
+| Implementation Feasibility | 3/5 | Conditional | 既存 `mcp-gateway` / `mcp-config` / tests を拡張できる | token persistence と rollback UX が未実装 |
+| Regression Safety | 3/5 | Conditional | stdio fallback を残せば安全に進められる | default flip は package surface と CI smoke が必要 |
+| Strategic Leverage | 4/5 | Recommended | local-first かつ multi-client continuity の基盤に合う | Hermes / Tier 2+ は別判断 |
+
+結論: Required 化してよいのは **spec/ADR, security/token gate, setup/doctor migration, Mac+Windows package smoke, docs/rollback** まで。HTTP-only 化、Hermes default 化、stdio deprecation は Reject / future。
+
+### Non-goals / Stop Line
+
+- remote MCP endpoint を default にしない。
+- token なし HTTP gateway を default にしない。
+- `~/.harness-mem/harness-mem.db` や既存 memory を削除・再作成しない。
+- 既存 stdio install を一方的に HTTP へ書き換えない。
+- Hermes を `--client all` の default 対象に含めない。
+- Claude/Codex の片方で token propagation が不確かなまま green 判定しない。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S130-000 | **HTTP MCP default ADR + spec freeze** `[tdd:skip:adr]` — BEADS 形の ADR を作成し、`Spec.md` の HTTP default 条件と rollback 条件を確定する | `docs/adr/ADR-004-local-streamable-http-mcp-default.md` が存在し、Boundary/Evidence/Alternatives/Decision/Signals を含む。`Spec.md` と Plans §130 が一致し、stdio fallback / Hermes opt-in / token gate が明記される | - | cc:完了 [local: ADR-004 + Spec.md MCP Transport Defaults] |
+| S130-001 | **Client compatibility + token propagation spike** `[tdd:required]` — Claude Code / Codex の HTTP MCP config が clean HOME で token を受け取れるかを検証し、不可なら fallback 条件を固定する | temp HOME で `mcp-config --transport http` preview/write、`codex mcp get/list` 相当、Claude JSON shape、gateway initialize probe を検証する script/test が PASS。token env が client process に届かない場合は HTTP default を該当 client で停止する判定が実装される | S130-000 | cc:完了 [local: fresh setup/mcp-config/token tests + direct initialize/tools-list] |
+| S130-002 | **Gateway security hardening gate** `[tdd:required]` — loopback bind / token required / Origin validation / protocol header / no-secret logs を default 化前の stop-ship gate にする | gateway は default で `127.0.0.1` only、token なし 401/403、不正 Origin 拒否、valid initialize PASS、token が logs/telemetry/doctor/config preview に出ないことを unit/integration tests で確認 | S130-001 | cc:完了 [local: gateway security tests + token redaction checks] |
+| S130-003 | **Managed local token bootstrap** `[tdd:required]` — setup が local gateway token を安全に生成・保存・再利用し、client config から参照できるようにする | fresh setup で 0600 相当の local token state が作られ、doctor/gateway/client が同じ token を参照する。token rotate / missing / mismatch の doctor guidance があり、secret 値は stdout/stderr/files under config preview に露出しない | S130-002 | cc:完了 [local: mcp-gateway.token 0600 + env placeholder tests] |
+| S130-004 | **setup default transport policy** `[tdd:required]` — 新規 Tier 1 setup は HTTP MCP を default にし、unsupported / unhealthy / explicit opt-out では stdio fallback へ落とす | `harness-mem setup --platform codex,claude` fresh HOME は HTTP config + gateway healthy。`--mcp-transport stdio` または env opt-out で stdio config。既存 managed stdio は user consent / doctor fix なしに破壊されない | S130-003 | cc:完了 [local: setup default HTTP + existing stdio preservation test] |
+| S130-005 | **doctor / repair / rollback UX** `[tdd:required]` — HTTP default の health check、self-repair、stdio rollback を doctor に統合する | `doctor --platform codex,claude` が gateway/token/client/daemon を分離診断し、`doctor --fix` は managed HTTP を修復、`mcp-config --transport stdio --write` または dedicated rollback path で stdio に戻せる。失敗理由は actionable で、DB は触らない | S130-004 | cc:完了 [local: doctor inferred/explicit HTTP + stdio rollback contract] |
+| S130-006 | **Mac + Windows package install smoke gate** `[tdd:required]` — release CI で新規 install / existing stdio migration / rollback / token redaction を OS 別に検証する | GitHub Actions matrix が macOS / Windows Git Bash で `go-build` artifact を npm package に同梱してから `npm pack` artifact の setup/doctor/mcp-config/gateway smoke を実行。HTTP config 状態と rollback 後の両方で token redaction を検証し、既存 stdio config が implicit setup で HTTP に書き換わらないことも見る。Node action annotation / go.sum cache warning が再発しない。Windows native の unsupported path は明確に skip/guidance | S130-005 | cc:完了 [local: release package smoke Mac/Windows workflow contract + Go artifact prepack gate + token/stdio regression checks] |
+| S130-007 | **Local dogfood migration** `[tdd:required]` — 現ローカル環境で HTTP default 相当へ移行し、複数 Codex/Claude session で安定性と recall を観測する | local config backup 後に HTTP gateway 運用へ切替。複数 session 起動で gateway 1 つ / daemon 1 つ / recall green / projection auto-refresh green / telemetry redaction green。問題時は stdio rollback 手順で復旧できる | S130-006 | cc:完了 [local: doctor all_green + gateway 1 + recall_projection_v1] |
+| S130-008 | **Docs / Skills / non-expert explainer update** `[tdd:skip:docs-only]` — README/README_ja/setup docs/Skills/HTML explainer を HTTP default 後の実態へ更新する | docs は「新規 default HTTP、stdio fallback、Hermes opt-in、rollback、token は表示しない」を明記。Skills は `url is not supported for stdio` など transport conflict の診断順を更新。非専門家向け説明が `out/` に生成される | S130-007 | cc:完了 [local: README/setup docs/skills/HTML explainer updated] |
+| S130-009 | **Release gate + publish decision** `[tdd:required]` — HTTP default を release claim に上げる最終 gate を追加し、ADR status を Accepted にする | `npm run benchmark:recall-runtime` と package smoke が PASS。ADR-004 Signals が満たされ、README claims と release notes が実測値を超えない。PR review APPROVE 後に release 可能 | S130-008 | cc:TODO |
+
+### Execution Waves
+
+| Wave | 対象 | 目的 | 並列性 |
+|------|------|------|--------|
+| Wave 0 | S130-000, S130-001 | default 化してよい条件と client token 実態を先に固定する | 直列 |
+| Wave 1 | S130-002, S130-003 | security / token を default 化の前提にする | 直列 |
+| Wave 2 | S130-004, S130-005 | setup / doctor / rollback の product UX を作る | 直列 |
+| Wave 3 | S130-006 | 配布先 OS で壊れないことを CI で担保する | 独立 gate |
+| Wave 4 | S130-007, S130-008, S130-009 | local dogfood、説明更新、release 判断 | 依存順 |
+
+推奨初回 scope:
+
+```text
+S130-000 → S130-001 を先に実行。
+token propagation が Claude/Codex 両方で clean install green なら S130-002 以降へ進む。
+片方でも不確かなら、その client は stdio fallback default のままにし、HTTP default 対象から外す。
+```
 
 ---
 

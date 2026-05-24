@@ -217,7 +217,7 @@ There are two different process layers:
 | Layer | Default endpoint | Owner | Normal multiplicity |
 |---|---|---|---|
 | Memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server, SQLite connection, runtime APIs | One per local runtime |
-| Streamable HTTP MCP gateway (opt-in) | `127.0.0.1:37889/mcp` | Go MCP gateway, token-authenticated loopback HTTP transport, proxies to `:37888` | One shared local gateway |
+| Streamable HTTP MCP gateway (default for new Claude/Codex setup) | `127.0.0.1:37889/mcp` | Go MCP gateway, token-authenticated loopback HTTP transport, proxies to `:37888` | One shared local gateway |
 | stdio MCP frontend | client stdin/stdout | Frontend process that exposes MCP tools and proxies to `:37888`; Go binary preferred, Node.js fallback available | One per open MCP client session |
 
 Seeing several stdio MCP frontend processes is not automatically a failure. On
@@ -234,30 +234,36 @@ is a daemon lifecycle issue, not a normal stdio MCP process fan-out issue.
 Do not attempt to make stdio itself a shared singleton broker. Stdio MCP clients
 launch and supervise their own local server subprocess, so a shared broker makes
 shutdown ownership, project isolation, and authentication harder to reason
-about. The intended opt-in direction for fewer frontend processes is a
-local-only Streamable HTTP MCP gateway at `http://127.0.0.1:37889/mcp`, while
-keeping the existing stdio MCP route as the compatibility fallback.
+about. New Claude Code and Codex setup uses the local-only Streamable HTTP MCP
+gateway at `http://127.0.0.1:37889/mcp` by default, while keeping stdio as the
+compatibility fallback.
 
-Opt-in gateway lifecycle:
+Default gateway lifecycle for new Claude/Codex setup:
 
 ```bash
-export HARNESS_MEM_MCP_TOKEN="<local-secret>"
-harness-mem mcp-gateway start
-harness-mem mcp-gateway status
-harness-mem doctor --mcp-transport http
+harness-mem setup --platform claude,codex
+harness-mem doctor --platform claude,codex
 ```
 
 `mcp-gateway status --json` reports the running pid, endpoint, auth mode,
 gateway probe result, and memory daemon health. The gateway has its own pidfile
 and log under `HARNESS_MEM_HOME`; it does not replace `harness-memd`.
 
-Opt-in client config generation:
+Setup creates or reuses `HARNESS_MEM_HOME/mcp-gateway.token` with owner-only
+permissions and writes `HARNESS_MEM_HOME/mcp-gateway.env` for shell-based
+launches. On macOS it also best-effort syncs `HARNESS_MEM_MCP_TOKEN` into the
+launchd user environment for newly launched GUI clients.
+
+Rollback / explicit config generation:
 
 ```bash
-# Claude / Codex HTTP MCP config. The token value itself stays in your shell env.
+# Return Claude / Codex to stdio without touching the memory DB.
+harness-mem mcp-config --transport stdio --client claude,codex --write
+
+# Explicit HTTP config generation. The token value itself is not written.
 harness-mem mcp-config --transport http --client claude,codex --write
 
-# Hermes is explicit opt-in because it is still tier 3 / experimental.
+# Hermes is explicit opt-in.
 harness-mem mcp-config --transport http --client hermes --write
 ```
 
@@ -474,7 +480,8 @@ frontends still share the daemon behind `127.0.0.1:37888`.
 - `HARNESS_MEM_MCP_ADDR` (default: `127.0.0.1:37889`)
 - `HARNESS_MEM_MCP_URL` (optional full HTTP MCP URL for `mcp-config --transport http`)
 - `HARNESS_MEM_MCP_PATH` (default: `/mcp`, used when `HARNESS_MEM_MCP_URL` is not set)
-- `HARNESS_MEM_MCP_TOKEN` (required for `mcp-gateway start`; `HARNESS_MEM_REMOTE_TOKEN` is accepted as a compatibility fallback)
+- `HARNESS_MEM_MCP_TOKEN` (optional override; otherwise setup/gateway uses `HARNESS_MEM_HOME/mcp-gateway.token`)
+- `HARNESS_MEM_MCP_TOKEN_FILE` (default: `HARNESS_MEM_HOME/mcp-gateway.token`)
 - `HARNESS_MEM_MCP_TOKEN_ENV_VAR` (default: `HARNESS_MEM_MCP_TOKEN`, the token env var name written by config generation)
 - `HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC` (default: `10`)
 - `HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC` (default: `5`)

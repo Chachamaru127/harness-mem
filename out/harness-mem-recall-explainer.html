@@ -1,0 +1,546 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Harness-mem Recall Runtime Explainer</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #17202a;
+      --muted: #5e6977;
+      --line: #d8dee7;
+      --paper: #fbfcfe;
+      --panel: #ffffff;
+      --soft: #eef4f8;
+      --green: #0f7b57;
+      --blue: #1e63a5;
+      --amber: #9a5b00;
+      --red: #a33b3b;
+      --shadow: 0 14px 36px rgba(23, 32, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: 0;
+    }
+
+    main {
+      width: min(1120px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 32px 0 56px;
+    }
+
+    header {
+      display: grid;
+      grid-template-columns: 1.35fr 0.65fr;
+      gap: 24px;
+      align-items: end;
+      padding: 28px 0 24px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    h1, h2, h3, p { margin: 0; }
+
+    h1 {
+      font-size: clamp(30px, 4.4vw, 56px);
+      line-height: 1.05;
+      max-width: 760px;
+    }
+
+    h2 {
+      font-size: 24px;
+      line-height: 1.25;
+      margin-bottom: 14px;
+    }
+
+    h3 {
+      font-size: 17px;
+      line-height: 1.35;
+      margin-bottom: 8px;
+    }
+
+    section { margin-top: 34px; }
+
+    .lead {
+      color: var(--muted);
+      font-size: 18px;
+      margin-top: 18px;
+      max-width: 780px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 18px;
+    }
+
+    .badge {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 6px 10px;
+      background: var(--panel);
+      color: var(--muted);
+      font-size: 13px;
+      white-space: nowrap;
+    }
+
+    .status-panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: var(--shadow);
+    }
+
+    .status-list {
+      display: grid;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .status-item {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      margin-top: 7px;
+      background: var(--green);
+    }
+
+    .dot.amber { background: var(--amber); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+    }
+
+    .two {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .metric {
+      display: grid;
+      gap: 5px;
+      padding: 16px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .metric strong {
+      font-size: 26px;
+      line-height: 1.1;
+    }
+
+    .metric span { color: var(--muted); }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .step {
+      min-height: 154px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      position: relative;
+    }
+
+    .step::after {
+      content: ">";
+      position: absolute;
+      right: -11px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted);
+      font-weight: 700;
+      background: var(--paper);
+      width: 18px;
+      text-align: center;
+    }
+
+    .step:last-child::after { content: ""; }
+
+    .step-num {
+      display: inline-grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: var(--soft);
+      color: var(--blue);
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+
+    .table th,
+    .table td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .table th {
+      background: var(--soft);
+      font-size: 14px;
+    }
+
+    .table tr:last-child td { border-bottom: 0; }
+
+    .callout {
+      border-left: 5px solid var(--blue);
+      background: #f3f8fc;
+      padding: 16px 18px;
+      border-radius: 8px;
+    }
+
+    .callout.warn {
+      border-left-color: var(--amber);
+      background: #fff7e8;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    code {
+      padding: 2px 5px;
+      border-radius: 5px;
+      background: #eef1f5;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.92em;
+    }
+
+    .legend {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    .legend-item {
+      display: grid;
+      gap: 6px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      background: var(--panel);
+    }
+
+    .pill {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 4px 9px;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .pill.green { background: var(--green); }
+    .pill.blue { background: var(--blue); }
+    .pill.amber { background: var(--amber); }
+    .pill.red { background: var(--red); }
+
+    @media (max-width: 920px) {
+      header,
+      .two,
+      .grid,
+      .legend {
+        grid-template-columns: 1fr;
+      }
+
+      .flow {
+        grid-template-columns: 1fr;
+      }
+
+      .step::after {
+        content: "v";
+        top: auto;
+        right: 18px;
+        bottom: -14px;
+      }
+
+      .step:last-child::after { content: ""; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Harness-mem は今、どう記憶を取り出しているか</h1>
+        <p class="lead">巨大化したDBを毎回ぜんぶ探すのではなく、プロジェクト単位に絞り、検索用の整理データを使います。古くなった棚は、検索を止めずに裏で軽く更新する段階まで進みました。</p>
+        <div class="badge-row">
+          <span class="badge">local-first</span>
+          <span class="badge">project scoped recall</span>
+          <span class="badge">auto projection refresh</span>
+          <span class="badge">worker offload</span>
+          <span class="badge">OpenTelemetry local only</span>
+          <span class="badge">HTTP MCP default</span>
+          <span class="badge">ADR / decisions aware</span>
+        </div>
+      </div>
+      <aside class="status-panel">
+        <h2>現在の状態</h2>
+        <div class="status-list">
+          <div class="status-item"><span class="dot"></span><p>daemon は起動中。ready 応答は <strong>0.03ms</strong>。</p></div>
+          <div class="status-item"><span class="dot"></span><p>新規 Claude Code / Codex setup は local HTTP MCP gateway が default。</p></div>
+          <div class="status-item"><span class="dot"></span><p>OpenTelemetry 対応済み。外部送信なしの local mode。</p></div>
+          <div class="status-item"><span class="dot"></span><p><code>projection_stale</code> 検知後、自動更新で <code>recall_projection_v1</code> に復帰。</p></div>
+        </div>
+      </aside>
+    </header>
+
+    <section>
+      <h2>ひとことで</h2>
+      <div class="callout">
+          <p><strong>今の Harness-mem は、まず「今のプロジェクトに関係する記憶」だけを取りに行きます。</strong> 検索用に整えた projection が新しければ高速ルートで返し、古ければ scoped fallback で即返します。Claude Code / Codex との接続は、新規 setup では local HTTP MCP gateway を使うため、複数セッションでも入口を 1 つに寄せやすくなりました。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>記憶を取り出す流れ</h2>
+      <div class="flow" aria-label="recall flow">
+        <div class="step">
+          <span class="step-num">1</span>
+          <h3>質問を受ける</h3>
+          <p class="small">例: 「Recall Runtime Architecture を思い出して」</p>
+        </div>
+        <div class="step">
+          <span class="step-num">2</span>
+          <h3>範囲を絞る</h3>
+          <p class="small">まず current project。必要なら session。広域検索は明示時だけ。</p>
+        </div>
+        <div class="step">
+          <span class="step-num">3</span>
+          <h3>projection を見る</h3>
+          <p class="small">検索用に整理済みの記憶。新しければ本命ルート。</p>
+        </div>
+        <div class="step">
+          <span class="step-num">4</span>
+          <h3>古ければ即 fallback</h3>
+          <p class="small">本体DBから project scoped に探し、同時に棚更新を予約する。</p>
+        </div>
+        <div class="step">
+          <span class="step-num">5</span>
+          <h3>次回は棚に戻る</h3>
+          <p class="small">child refresh 後は <code>recall_projection_v1</code> へ復帰。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>どの範囲の情報を取りに行くか</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>範囲</th>
+            <th>いつ使うか</th>
+            <th>今の扱い</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Project</strong></td>
+            <td>通常の recall / search。今の repo の話。</td>
+            <td>第一候補。Skills でも project 指定を原則化。</td>
+          </tr>
+          <tr>
+            <td><strong>Project + Session</strong></td>
+            <td>特定の作業セッションの続き。</td>
+            <td>より狭い。混入が少ない。</td>
+          </tr>
+          <tr>
+            <td><strong>ADR / decisions</strong></td>
+            <td>「なぜ決めたか」「方針は何か」。</td>
+            <td>decision recall object として取り出せる。</td>
+          </tr>
+          <tr>
+            <td><strong>WorkGraph / Plans</strong></td>
+            <td>作業計画、依存関係、次にやること。</td>
+            <td>通常検索に混ぜすぎず、必要な時に evidence として接続。</td>
+          </tr>
+          <tr>
+            <td><strong>全体 / forensic</strong></td>
+            <td>明示的な横断調査、デバッグ、管理操作。</td>
+            <td>通常ルートでは避ける。巨大DBで重くなりやすい。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Claude / Codex とのつながり</h2>
+      <div class="two">
+        <div class="card">
+          <h3>新規 setup</h3>
+          <p>Claude Code / Codex は <code>http://127.0.0.1:37889/mcp</code> の local HTTP gateway に接続します。gateway は同じ local daemon と DB にだけつながります。</p>
+        </div>
+        <div class="card">
+          <h3>戻し方</h3>
+          <p>うまく動かない環境では <code>harness-mem mcp-config --transport stdio --client claude,codex --write</code> で stdio に戻せます。記憶DBは消しません。</p>
+        </div>
+      </div>
+      <p class="small" style="margin-top:12px;">token は <code>HARNESS_MEM_HOME/mcp-gateway.token</code> に owner-only permission で保存します。client config には token の値ではなく、環境変数名や placeholder だけを書きます。Hermes は引き続き明示 opt-in です。</p>
+    </section>
+
+    <section>
+      <h2>速度の現在地</h2>
+      <div class="grid">
+        <div class="metric">
+          <span>daemon ready</span>
+          <strong>0.03ms</strong>
+          <span>生存確認は非常に軽い</span>
+        </div>
+        <div class="metric">
+          <span>stale 検知時</span>
+          <strong>644.61ms</strong>
+          <span>fallback で返し、refresh を予約</span>
+        </div>
+        <div class="metric">
+          <span>refresh 後 recall</span>
+          <strong>60.19ms</strong>
+          <span><code>recall_projection_v1</code> に復帰</span>
+        </div>
+      </div>
+      <p class="small" style="margin-top:12px;">計測時刻: 2026-05-24 JST。stale の初回は <code>status=scheduled</code> を返し、約3秒後の再確認で <code>recall_projection_v1</code> に戻りました。</p>
+    </section>
+
+    <section>
+      <h2>4つの取り出しルート</h2>
+      <div class="legend">
+        <div class="legend-item">
+          <span class="pill green">本命</span>
+          <h3>recall projection</h3>
+          <p class="small">整理済みデータから高速に返す。理想状態。</p>
+        </div>
+        <div class="legend-item">
+          <span class="pill blue">近道</span>
+          <h3>repeat cache</h3>
+          <p class="small">同じ scope / query の繰り返しを短時間だけ速く返す。</p>
+        </div>
+        <div class="legend-item">
+          <span class="pill amber">予備</span>
+          <h3>scoped fallback</h3>
+          <p class="small">projection が古い時に project 範囲で本体DBを探し、棚更新を予約する。</p>
+        </div>
+        <div class="legend-item">
+          <span class="pill red">管理用</span>
+          <h3>forensic search</h3>
+          <p class="small">横断調査用。通常の会話では使いすぎない。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>今までの問題に対して何が変わったか</h2>
+      <div class="two">
+        <div class="card">
+          <h3>以前</h3>
+          <p>巨大DBで検索すると daemon 本体が SQLite scan に捕まり、health まで timeout することがありました。さらに stdio MCP frontend がセッションごとに増え、どの入口が問題か見分けにくいことがありました。</p>
+        </div>
+        <div class="card">
+          <h3>現在</h3>
+          <p>重い検索は worker へ逃がし、Skills は project 指定を原則化。stale / missing projection は child process で自動更新され、Claude / Codex の新規接続は local HTTP gateway に寄ります。</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>今回の更新で変わったところ</h2>
+      <div class="callout">
+        <p><strong>検索用の棚が古くなっても、ユーザーを待たせずに復旧へ向かうようになりました。</strong> まず fallback で答えを返し、同時に <code>recall_projection_auto_refresh</code> を予約します。更新作業は daemon 本体ではなく child process 側で行うため、検索中も ready 応答を守れます。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>今の安定化ポイント</h2>
+      <table class="table">
+        <thead>
+          <tr>
+            <th>仕組み</th>
+            <th>何を防ぐか</th>
+            <th>ユーザーから見た変化</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>debounce refresh</td>
+            <td>新しい記憶が連続して増えた時の更新連打。</td>
+            <td>裏の棚更新がまとめられ、daemon が重くなりにくい。</td>
+          </tr>
+          <tr>
+            <td>one-flight queue</td>
+            <td>複数セッションから同じ project の refresh が重なること。</td>
+            <td>並行作業でも refresh storm になりにくい。</td>
+          </tr>
+          <tr>
+            <td>child process refresh</td>
+            <td>projection rebuild が daemon 本体を塞ぐこと。</td>
+            <td>検索中も health / ready が軽いまま。</td>
+          </tr>
+          <tr>
+            <td>OpenTelemetry local</td>
+            <td>検索が遅い時に、どこで詰まったか分からなくなること。</td>
+            <td>Claude / Codex どちらの利用でも、daemon 側で recall latency や fallback を観測できる。</td>
+          </tr>
+          <tr>
+            <td>HTTP MCP gateway</td>
+            <td>複数セッションで MCP frontend が増え、切り分けが難しくなること。</td>
+            <td>新規 Claude / Codex setup では入口が local gateway に寄り、stdio へ戻す道も残る。</td>
+          </tr>
+          <tr>
+            <td>safe meta</td>
+            <td>raw query / project path / secret が telemetry に出ること。</td>
+            <td>状態だけ分かり、内容は漏れない。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>結論</h2>
+      <div class="callout">
+        <p>今の Harness-mem は、巨大DBをそのまま毎回探す段階から、<strong>project scope、projection、fallback、worker、telemetry、自動 refresh、local HTTP MCP gateway</strong> を使う Recall Runtime に進化しています。通常の複数セッション運用はかなり安定し、検索棚が古くなっても自動で回復へ向かう状態になりました。</p>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

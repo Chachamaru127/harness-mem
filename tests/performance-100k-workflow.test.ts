@@ -11,6 +11,7 @@ describe("performance 100k workflow", () => {
     expect(source).toContain("workflow_dispatch");
     expect(source).toContain("schedule");
     expect(source).toContain("HARNESS_MEM_RUN_100K_BENCH=1 bun test tests/benchmarks/performance-100k.test.ts");
-    expect(source).toContain("actions/upload-artifact@v4");
+    expect(source).toContain("actions/upload-artifact@v7");
+    expect(source).not.toContain("actions/upload-artifact@v4");
   });
 });

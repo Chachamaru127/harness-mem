@@ -180,7 +180,7 @@ npm run codex:doctor
 | 層 | 既定の接続先 | 役割 | 正常な数 |
 |---|---|---|---|
 | memory daemon (`harness-memd`) | `127.0.0.1:37888` | TypeScript/Bun server、SQLite 接続、runtime API | local runtime ごとに 1 つ |
-| Streamable HTTP MCP gateway (opt-in) | `127.0.0.1:37889/mcp` | token 認証付き loopback HTTP transport の Go MCP gateway。`:37888` に proxy する | 共有 local gateway として 1 つ |
+| Streamable HTTP MCP gateway (新規 Claude/Codex setup の default) | `127.0.0.1:37889/mcp` | token 認証付き loopback HTTP transport の Go MCP gateway。`:37888` に proxy する | 共有 local gateway として 1 つ |
 | stdio MCP frontend | client stdin/stdout | MCP tool を公開し、`:37888` に proxy する frontend process。Go binary を優先し、Node.js fallback も使える | 開いている MCP client session ごとに 1 つ |
 
 stdio MCP frontend process が複数見えるだけでは、すぐ障害とは判定しません。Go binary
@@ -195,30 +195,35 @@ frontend 増加とは別物です。
 
 stdio 自体を shared singleton broker にする方針は推奨しません。stdio MCP client は、自分が
 起動した local server subprocess を監視する前提で動くため、broker 化すると停止責任、
-project 分離、認証の見通しが悪くなります。frontend プロセス数を減らす中期方針は、
-既存 stdio MCP を互換 fallback として残しつつ、`http://127.0.0.1:37889/mcp` の
-local-only Streamable HTTP MCP gateway を opt-in で導入することです。
+project 分離、認証の見通しが悪くなります。新規 Claude Code / Codex setup は
+`http://127.0.0.1:37889/mcp` の local-only Streamable HTTP MCP gateway を default にし、
+既存 stdio MCP を互換 fallback として残します。
 
-opt-in gateway lifecycle:
+新規 Claude/Codex setup の gateway lifecycle:
 
 ```bash
-export HARNESS_MEM_MCP_TOKEN="<local-secret>"
-harness-mem mcp-gateway start
-harness-mem mcp-gateway status
-harness-mem doctor --mcp-transport http
+harness-mem setup --platform claude,codex
+harness-mem doctor --platform claude,codex
 ```
 
 `mcp-gateway status --json` は running pid、endpoint、auth mode、gateway probe、memory
 daemon health を返します。gateway は `HARNESS_MEM_HOME` 配下の独立した pidfile / log を
 使い、`harness-memd` を置き換えるものではありません。
 
-HTTP MCP の opt-in 設定生成:
+setup は `HARNESS_MEM_HOME/mcp-gateway.token` を owner-only permission で作成または再利用し、
+shell 起動向けに `HARNESS_MEM_HOME/mcp-gateway.env` も書きます。macOS では新しく起動する
+GUI client 向けに `HARNESS_MEM_MCP_TOKEN` を launchd user environment へ best-effort で同期します。
+
+rollback / 明示的な設定生成:
 
 ```bash
-# Claude / Codex の HTTP MCP 設定。token の値そのものは shell env に残す
+# Claude / Codex を stdio に戻す。memory DB は触らない
+harness-mem mcp-config --transport stdio --client claude,codex --write
+
+# Claude / Codex の HTTP MCP 設定。token の値そのものは書かない
 harness-mem mcp-config --transport http --client claude,codex --write
 
-# Hermes は tier 3 / experimental なので、明示したときだけ YAML を書く
+# Hermes は明示したときだけ YAML を書く
 harness-mem mcp-config --transport http --client hermes --write
 ```
 
@@ -435,7 +440,8 @@ codex mcp get harness
 - `HARNESS_MEM_MCP_ADDR` (default: `127.0.0.1:37889`)
 - `HARNESS_MEM_MCP_URL` (`mcp-config --transport http` で使う接続先 URL を直接指定する場合)
 - `HARNESS_MEM_MCP_PATH` (default: `/mcp`, `HARNESS_MEM_MCP_URL` 未指定時に使用)
-- `HARNESS_MEM_MCP_TOKEN` (`mcp-gateway start` では必須。互換 fallback として `HARNESS_MEM_REMOTE_TOKEN` も使用可)
+- `HARNESS_MEM_MCP_TOKEN` (任意 override。未指定時は `HARNESS_MEM_HOME/mcp-gateway.token` を使う)
+- `HARNESS_MEM_MCP_TOKEN_FILE` (default: `HARNESS_MEM_HOME/mcp-gateway.token`)
 - `HARNESS_MEM_MCP_TOKEN_ENV_VAR` (default: `HARNESS_MEM_MCP_TOKEN`, 設定時に書く token 環境変数名)
 - `HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC` (default: `10`)
 - `HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC` (default: `5`)

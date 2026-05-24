@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -85,6 +85,138 @@ function writeHealthyReadOnlyConfig(home: string): string {
 }
 
 describe("mcp-gateway lifecycle CLI", () => {
+  test("fresh Claude/Codex setup defaults to HTTP config and creates a managed token file", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-http-default-"));
+    const harnessHome = join(tmpHome, ".harness-mem");
+    const gatewayPort = randomPort();
+    const memoryPort = randomPort(46000, 1000);
+
+    try {
+      const result = await runHarnessMem(
+        [
+          "setup",
+          "--platform",
+          "codex,claude",
+          "--skip-start",
+          "--skip-smoke",
+          "--skip-quality",
+          "--skip-version-check",
+        ],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: harnessHome,
+          HARNESS_MEM_MCP_ADDR: `127.0.0.1:${gatewayPort}`,
+          HARNESS_MEM_PORT: String(memoryPort),
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+          HARNESS_MEM_SKIP_AUTO_UPDATE: "1",
+          HARNESS_MEM_MCP_TOKEN: "",
+          HARNESS_MEM_REMOTE_TOKEN: "",
+        }
+      );
+
+      expect(result.code).toBe(0);
+
+      const codexConfig = readFileSync(join(tmpHome, ".codex", "config.toml"), "utf8");
+      const claudeConfig = JSON.parse(readFileSync(join(tmpHome, ".claude.json"), "utf8")) as {
+        mcpServers: {
+          harness: {
+            type: string;
+            url: string;
+            headers: { Authorization: string };
+            command?: string;
+            env?: Record<string, string>;
+          };
+        };
+      };
+      const tokenPath = join(harnessHome, "mcp-gateway.token");
+      const envPath = join(harnessHome, "mcp-gateway.env");
+      const token = readFileSync(tokenPath, "utf8").trim();
+
+      expect(codexConfig).toContain(`url = "http://127.0.0.1:${gatewayPort}/mcp"`);
+      expect(codexConfig).toContain('bearer_token_env_var = "HARNESS_MEM_MCP_TOKEN"');
+      expect(codexConfig).not.toContain("command =");
+      expect(claudeConfig.mcpServers.harness.type).toBe("http");
+      expect(claudeConfig.mcpServers.harness.url).toBe(`http://127.0.0.1:${gatewayPort}/mcp`);
+      expect(claudeConfig.mcpServers.harness.headers.Authorization).toBe(
+        "Bearer ${HARNESS_MEM_MCP_TOKEN}"
+      );
+      expect(claudeConfig.mcpServers.harness.command).toBeUndefined();
+      expect(JSON.stringify(claudeConfig)).not.toContain(token);
+      expect(readFileSync(envPath, "utf8")).toContain("export HARNESS_MEM_MCP_TOKEN=");
+      expect(token).toMatch(/^[a-f0-9]{64}$/);
+      expect(statSync(tokenPath).mode & 0o777).toBe(0o600);
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
+  test("default HTTP setup preserves existing stdio Claude wiring unless transport is explicit", async () => {
+    const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-preserve-stdio-"));
+    const harnessHome = join(tmpHome, ".harness-mem");
+
+    try {
+      mkdirSync(join(tmpHome, ".claude"), { recursive: true });
+      writeFileSync(
+        join(tmpHome, ".claude.json"),
+        JSON.stringify(
+          {
+            mcpServers: {
+              harness: {
+                command: join(ROOT, "bin", "harness-mcp-server"),
+                enabled: true,
+                env: {
+                  HARNESS_MEM_HOST: "127.0.0.1",
+                  HARNESS_MEM_PORT: "37888",
+                  HARNESS_MEM_DB_PATH: join(harnessHome, "harness-mem.db"),
+                },
+              },
+            },
+          },
+          null,
+          2
+        )
+      );
+
+      const result = await runHarnessMem(
+        [
+          "setup",
+          "--platform",
+          "claude",
+          "--skip-start",
+          "--skip-smoke",
+          "--skip-quality",
+          "--skip-version-check",
+        ],
+        {
+          ...process.env,
+          HOME: tmpHome,
+          HARNESS_MEM_HOME: harnessHome,
+          HARNESS_MEM_NON_INTERACTIVE: "1",
+          HARNESS_MEM_SKIP_AUTO_UPDATE: "1",
+        }
+      );
+
+      expect(result.code).toBe(0);
+      const claudeConfig = JSON.parse(readFileSync(join(tmpHome, ".claude.json"), "utf8")) as {
+        mcpServers: {
+          harness: {
+            command?: string;
+            type?: string;
+            url?: string;
+            env?: Record<string, string>;
+          };
+        };
+      };
+      expect(claudeConfig.mcpServers.harness.command).toBe(join(ROOT, "bin", "harness-mcp-server"));
+      expect(claudeConfig.mcpServers.harness.url).toBeUndefined();
+      expect(claudeConfig.mcpServers.harness.type).toBeUndefined();
+      expect(claudeConfig.mcpServers.harness.env?.HARNESS_MEM_HOST).toBe("127.0.0.1");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  }, 60_000);
+
   test("status --json reports endpoint, token auth, gateway probe, and memory daemon health", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-gateway-status-"));
     const gatewayPort = randomPort();
