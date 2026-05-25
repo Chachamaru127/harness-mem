@@ -1507,9 +1507,44 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/maintenance") {
           const body = await parseRequestJson(request);
+          const rawThresholds = body.thresholds && typeof body.thresholds === "object" && !Array.isArray(body.thresholds)
+            ? body.thresholds as Record<string, unknown>
+            : {};
+          const rawVectorPrune = body.vector_prune && typeof body.vector_prune === "object" && !Array.isArray(body.vector_prune)
+            ? body.vector_prune as Record<string, unknown>
+            : undefined;
           return jsonResponse(core.adminForgetMaintenance({
             reason: typeof body.reason === "string" ? body.reason : undefined,
             force: parseBooleanLike(body.force, false),
+            mode: body.mode === "archive" ? "archive" : body.mode === "dry-run" ? "dry-run" : undefined,
+            limit: parseIntegerLike(body.limit),
+            score_threshold: parseNumberLike(body.score_threshold),
+            protect_accessed: typeof body.protect_accessed === "boolean" ? body.protect_accessed : undefined,
+            thresholds: {
+              db_size_bytes: parseNumberLike(rawThresholds.db_size_bytes),
+              wal_size_bytes: parseNumberLike(rawThresholds.wal_size_bytes),
+              active_observations: parseNumberLike(rawThresholds.active_observations),
+              archived_observations: parseNumberLike(rawThresholds.archived_observations),
+              stale_vector_rows: parseNumberLike(rawThresholds.stale_vector_rows),
+            },
+            vector_prune: rawVectorPrune
+              ? {
+                  project: typeof rawVectorPrune.project === "string" ? rawVectorPrune.project : undefined,
+                  limit: parseIntegerLike(rawVectorPrune.limit),
+                  current_model: typeof rawVectorPrune.current_model === "string" ? rawVectorPrune.current_model : undefined,
+                  execute: parseBooleanLike(rawVectorPrune.execute, false),
+                }
+              : undefined,
+          }));
+        }
+
+        if (request.method === "POST" && url.pathname === "/v1/admin/forget/vector-prune") {
+          const body = await parseRequestJson(request);
+          return jsonResponse(core.adminForgetVectorPrune({
+            project: typeof body.project === "string" ? body.project : undefined,
+            limit: parseIntegerLike(body.limit),
+            current_model: typeof body.current_model === "string" ? body.current_model : undefined,
+            execute: parseBooleanLike(body.execute, false),
           }));
         }
 

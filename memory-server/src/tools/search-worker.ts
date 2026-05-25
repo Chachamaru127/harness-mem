@@ -93,6 +93,16 @@ function isEmbeddingReady(core: HarnessMemCore): boolean {
   return item?.embedding_ready !== false && item?.embedding_readiness_state !== "warming";
 }
 
+async function testDelayIfRequested(): Promise<void> {
+  if (process.env.NODE_ENV !== "test") {
+    return;
+  }
+  const delayMs = Number(process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS || 0);
+  if (Number.isFinite(delayMs) && delayMs > 0) {
+    await Bun.sleep(Math.min(5_000, Math.floor(delayMs)));
+  }
+}
+
 async function runSearch(
   core: HarnessMemCore,
   id: string,
@@ -123,6 +133,7 @@ async function runSearch(
         };
       }
     }
+    await testDelayIfRequested();
     const response = core.search(effectiveRequest);
     if (workerFallback) {
       response.meta = {

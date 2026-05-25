@@ -10,6 +10,10 @@ export type EventType = "session_start" | "user_prompt" | "tool_use" | "checkpoi
 /** V5-004: 心理学的記憶モデルの種類 */
 export type MemoryType = "episodic" | "semantic" | "procedural";
 
+export interface TtlPolicyRule {
+  days?: number | null;
+}
+
 export interface EventEnvelope {
   event_id?: string;
   platform: Platform | string;
@@ -578,6 +582,14 @@ export interface Config {
   forgetMaintenanceWalBytesThreshold?: number;
   /** S132: active observations threshold */
   forgetMaintenanceActiveObservationsThreshold?: number;
+  /** S129-006: archived observations threshold */
+  forgetMaintenanceArchivedObservationsThreshold?: number;
+  /** S129-006: stale vector rows threshold */
+  forgetMaintenanceStaleVectorRowsThreshold?: number;
+  /** S129-006: current vector model used to classify stale vector rows */
+  forgetMaintenanceCurrentVectorModel?: string;
+  /** S129-008: ingest-time TTL policy by observation_type. null/undefined means no default TTL. */
+  ttlPolicyByObservationType?: Record<string, TtlPolicyRule | null>;
   /** S108-014: temporal graph signal PoC を有効にするか (既定 false = opt-in)。
    *  daemon 起動時に env / userConfig から一度だけ解決し、search hot path では
    *  config 経由で読む（per-search の process.env 読み取りを廃止）。 */

@@ -400,12 +400,37 @@ type AdminArchiveSearchRequest = {
 type AdminForgetMaintenanceRequest = {
   reason?: string;
   force?: boolean;
+  mode?: "dry-run" | "archive";
+  limit?: number;
+  score_threshold?: number;
+  protect_accessed?: boolean;
+  thresholds?: Partial<Record<keyof ForgetMaintenanceThresholds, number>>;
+  vector_prune?: AdminVectorPruneRequest;
+};
+
+type AdminVectorPruneRequest = {
+  project?: string;
+  limit?: number;
+  current_model?: string;
+  execute?: boolean;
 };
 
 type ForgetMaintenanceMeasurements = {
   db_size_bytes: number | null;
   wal_size_bytes: number | null;
   active_observations: number;
+  archived_observations: number;
+  archived_vector_rows: number;
+  stale_vector_rows: number;
+  current_vector_model: string;
+};
+
+type ForgetMaintenanceThresholds = {
+  db_size_bytes?: number;
+  wal_size_bytes?: number;
+  active_observations?: number;
+  archived_observations?: number;
+  stale_vector_rows?: number;
 };
 
 type ArchiveCandidateRow = {
@@ -4703,10 +4728,22 @@ export class HarnessMemCore {
     );
   }
 
+  private normalizeRecallProjectScope(project: string): string {
+    try {
+      return this.normalizeProjectInput(project);
+    } catch {
+      return normalizePathLike(project.trim());
+    }
+  }
+
   async recallPrepared(request: RecallRuntimeRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
     const query = request.query.trim();
-    const project = request.project?.trim() || undefined;
+    const rawProject = request.project?.trim() || undefined;
+    const project = rawProject ? this.normalizeRecallProjectScope(rawProject) : undefined;
+    const normalizedRequest: RecallRuntimeRequest = project === request.project
+      ? request
+      : { ...request, project };
     const sessionId = request.session_id?.trim() || undefined;
     const limit = clampLimit(request.limit ?? 10, 10, 1, 50);
     const filters = {
@@ -4722,7 +4759,7 @@ export class HarnessMemCore {
     if (!query) {
       const response = makeErrorResponse(startedAt, "query is required", filters);
       response.meta.http_status = 400;
-      this.recordRecallProjectTelemetry(startedAt, request, response);
+      this.recordRecallProjectTelemetry(startedAt, normalizedRequest, response);
       return response;
     }
 
@@ -4735,20 +4772,20 @@ export class HarnessMemCore {
       response.meta.http_status = 400;
       response.meta.recall_scope_required = true;
       response.meta.recall_degraded_reason = "scope_required";
-      this.recordRecallProjectTelemetry(startedAt, request, response);
+      this.recordRecallProjectTelemetry(startedAt, normalizedRequest, response);
       return response;
     }
 
     if (request.forensic === true) {
-      return this.fallbackRecallSearch(request, "forensic_observation_search", startedAt, null, null);
+      return this.fallbackRecallSearch(normalizedRequest, "forensic_observation_search", startedAt, null, null);
     }
 
     if (!project) {
-      return this.fallbackRecallSearch(request, "projection_project_scope_required", startedAt, null, null);
+      return this.fallbackRecallSearch(normalizedRequest, "projection_project_scope_required", startedAt, null, null);
     }
 
     if (request.user_id || request.team_id) {
-      return this.fallbackRecallSearch(request, "projection_access_filter_unsupported", startedAt, null, null);
+      return this.fallbackRecallSearch(normalizedRequest, "projection_access_filter_unsupported", startedAt, null, null);
     }
 
     const latestRun = this.getLatestRecallProjectionRun(project);
@@ -4763,7 +4800,7 @@ export class HarnessMemCore {
         projection_source_watermark: null,
         current_source_watermark: sourceWatermark,
       });
-      return this.fallbackRecallSearch(request, "projection_missing", startedAt, null, sourceWatermark, autoRefresh);
+      return this.fallbackRecallSearch(normalizedRequest, "projection_missing", startedAt, null, sourceWatermark, autoRefresh);
     }
     if (latestRun.source_watermark !== sourceWatermark) {
       const autoRefresh = this.scheduleRecallProjectionAutoRefresh({
@@ -4775,7 +4812,7 @@ export class HarnessMemCore {
         projection_source_watermark: latestRun.source_watermark,
         current_source_watermark: sourceWatermark,
       });
-      return this.fallbackRecallSearch(request, "projection_stale", startedAt, latestRun, sourceWatermark, autoRefresh);
+      return this.fallbackRecallSearch(normalizedRequest, "projection_stale", startedAt, latestRun, sourceWatermark, autoRefresh);
     }
 
     const items = this.searchRecallProjection({
@@ -4787,7 +4824,7 @@ export class HarnessMemCore {
     });
 
     if (items.length === 0) {
-      return this.fallbackRecallSearch(request, "projection_no_match", startedAt, latestRun, sourceWatermark);
+      return this.fallbackRecallSearch(normalizedRequest, "projection_no_match", startedAt, latestRun, sourceWatermark);
     }
 
     const response = makeResponse(startedAt, items, filters, {
@@ -4799,7 +4836,7 @@ export class HarnessMemCore {
       projection_source_watermark: latestRun.source_watermark,
       projection_completed_at: latestRun.completed_at,
     });
-    this.recordRecallProjectTelemetry(startedAt, request, response, latestRun, sourceWatermark);
+    this.recordRecallProjectTelemetry(startedAt, normalizedRequest, response, latestRun, sourceWatermark);
     return response;
   }
 
@@ -5276,30 +5313,36 @@ export class HarnessMemCore {
       try {
         response = await this.runSearchOutOfProcess(request);
       } catch (error) {
-        if (isSearchOffloadQueueFull(error) || isSearchOffloadUnavailable(error)) {
+        if (isSearchOffloadQueueFull(error)) {
           const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
           this.recordRecallSearchTelemetry(startedAt, request, rejected);
           return rejected;
         }
-        if (
+        if (isSearchOffloadUnavailable(error)) {
+          if (error.reason === "timeout") {
+            response = await this.searchWithSafeFallback(request, `${error.queueName} unavailable: ${error.reason}`, offloadMode);
+          } else {
+            const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
+            this.recordRecallSearchTelemetry(startedAt, request, rejected);
+            return rejected;
+          }
+        } else if (
           offloadMode === "persistent_worker" &&
           error instanceof Error &&
           error.message.includes("search worker request timed out")
         ) {
-          const rejected = this.makeSearchOffloadRejectedResponse(
-            startedAt,
+          response = await this.searchWithSafeFallback(
             request,
-            new SearchOffloadUnavailableError("search worker", "timeout"),
+            error.message,
             offloadMode,
           );
-          this.recordRecallSearchTelemetry(startedAt, request, rejected);
-          return rejected;
+        } else {
+          response = await this.searchWithSafeFallback(
+            request,
+            error instanceof Error ? error.message : String(error),
+            offloadMode,
+          );
         }
-        response = await this.searchWithSafeFallback(
-          request,
-          error instanceof Error ? error.message : String(error),
-          offloadMode,
-        );
       }
     } else {
       response = this.search(request);
@@ -5699,24 +5742,61 @@ export class HarnessMemCore {
     const active = this.db
       .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`)
       .get();
+    const archived = this.db
+      .query<{ count: number }, []>(`SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NOT NULL`)
+      .get();
+    const archivedVectorRows = this.db
+      .query<{ count: number }, []>(
+        `SELECT COUNT(*) AS count
+         FROM mem_vectors v
+         JOIN mem_observations o ON o.id = v.observation_id
+         WHERE o.archived_at IS NOT NULL`,
+      )
+      .get();
+    const currentVectorModel = this.config.forgetMaintenanceCurrentVectorModel || this.vectorModelVersion;
+    const currentVectorModelIsAdaptiveFamily =
+      !this.config.forgetMaintenanceCurrentVectorModel && currentVectorModel.startsWith("adaptive:");
+    const staleVectorRows = currentVectorModelIsAdaptiveFamily
+      ? this.db
+          .query<{ count: number }, [number]>(
+            `SELECT COUNT(*) AS count
+             FROM mem_vectors
+             WHERE model < 'adaptive:' OR model >= 'adaptive;' OR dimension <> ?`,
+          )
+          .get(this.config.vectorDimension)
+      : this.db
+          .query<{ count: number }, [string, number]>(
+            `SELECT COUNT(*) AS count
+             FROM mem_vectors
+             WHERE model <> ? OR dimension <> ?`,
+          )
+          .get(currentVectorModel, this.config.vectorDimension);
     return {
       db_size_bytes: dbSizeBytes,
       wal_size_bytes: walSizeBytes,
       active_observations: Number(active?.count ?? 0),
+      archived_observations: Number(archived?.count ?? 0),
+      archived_vector_rows: Number(archivedVectorRows?.count ?? 0),
+      stale_vector_rows: Number(staleVectorRows?.count ?? 0),
+      current_vector_model: currentVectorModel,
     };
   }
 
-  private forgetMaintenanceThresholds(): Record<string, number | undefined> {
+  private forgetMaintenanceThresholds(request: AdminForgetMaintenanceRequest = {}): ForgetMaintenanceThresholds {
+    const overrides = request.thresholds ?? {};
     return {
-      db_size_bytes: this.config.forgetMaintenanceDbBytesThreshold,
-      wal_size_bytes: this.config.forgetMaintenanceWalBytesThreshold,
-      active_observations: this.config.forgetMaintenanceActiveObservationsThreshold,
+      db_size_bytes: overrides.db_size_bytes ?? this.config.forgetMaintenanceDbBytesThreshold,
+      wal_size_bytes: overrides.wal_size_bytes ?? this.config.forgetMaintenanceWalBytesThreshold,
+      active_observations: overrides.active_observations ?? this.config.forgetMaintenanceActiveObservationsThreshold,
+      archived_observations: overrides.archived_observations ?? this.config.forgetMaintenanceArchivedObservationsThreshold,
+      stale_vector_rows: overrides.stale_vector_rows ?? this.config.forgetMaintenanceStaleVectorRowsThreshold,
     };
   }
 
   private forgetMaintenanceTriggers(
     request: AdminForgetMaintenanceRequest,
     measurements: ForgetMaintenanceMeasurements,
+    thresholds: ForgetMaintenanceThresholds,
   ): string[] {
     const triggers: string[] = [];
     const reason = (request.reason || "manual").trim() || "manual";
@@ -5726,17 +5806,25 @@ export class HarnessMemCore {
     if (reason === "scheduler" && this.config.forgetMaintenanceScheduleEnabled === true) {
       triggers.push("schedule");
     }
-    const dbThreshold = this.config.forgetMaintenanceDbBytesThreshold;
+    const dbThreshold = thresholds.db_size_bytes;
     if (typeof dbThreshold === "number" && measurements.db_size_bytes !== null && measurements.db_size_bytes > dbThreshold) {
       triggers.push("threshold:db_size_bytes");
     }
-    const walThreshold = this.config.forgetMaintenanceWalBytesThreshold;
+    const walThreshold = thresholds.wal_size_bytes;
     if (typeof walThreshold === "number" && measurements.wal_size_bytes !== null && measurements.wal_size_bytes > walThreshold) {
       triggers.push("threshold:wal_size_bytes");
     }
-    const activeThreshold = this.config.forgetMaintenanceActiveObservationsThreshold;
+    const activeThreshold = thresholds.active_observations;
     if (typeof activeThreshold === "number" && measurements.active_observations > activeThreshold) {
       triggers.push("threshold:active_observations");
+    }
+    const archivedThreshold = thresholds.archived_observations;
+    if (typeof archivedThreshold === "number" && measurements.archived_observations > archivedThreshold) {
+      triggers.push("threshold:archived_observations");
+    }
+    const staleVectorRowsThreshold = thresholds.stale_vector_rows;
+    if (typeof staleVectorRowsThreshold === "number" && measurements.stale_vector_rows > staleVectorRowsThreshold) {
+      triggers.push("threshold:stale_vector_rows");
     }
     return triggers;
   }
@@ -5744,9 +5832,9 @@ export class HarnessMemCore {
   adminForgetMaintenance(request: AdminForgetMaintenanceRequest = {}): ApiResponse {
     const startedAt = performance.now();
     const measurements = this.collectForgetMaintenanceMeasurements();
-    const thresholds = this.forgetMaintenanceThresholds();
-    const triggers = uniqueSortedStrings(this.forgetMaintenanceTriggers(request, measurements));
-    const mode = this.config.forgetMaintenanceMode === "archive" ? "archive" : "dry-run";
+    const thresholds = this.forgetMaintenanceThresholds(request);
+    const triggers = uniqueSortedStrings(this.forgetMaintenanceTriggers(request, measurements, thresholds));
+    const mode = request.mode === "archive" || this.config.forgetMaintenanceMode === "archive" ? "archive" : "dry-run";
     const baseMeta: Record<string, unknown> = {
       ranking: "forget_maintenance_v1",
       mode,
@@ -5772,9 +5860,9 @@ export class HarnessMemCore {
     }
 
     const archiveRequest: AdminArchiveRequest = {
-      limit: this.config.forgetMaintenanceLimit,
-      score_threshold: this.config.forgetMaintenanceScoreThreshold,
-      protect_accessed: this.config.forgetMaintenanceProtectAccessed,
+      limit: request.limit ?? this.config.forgetMaintenanceLimit,
+      score_threshold: request.score_threshold ?? this.config.forgetMaintenanceScoreThreshold,
+      protect_accessed: request.protect_accessed ?? this.config.forgetMaintenanceProtectAccessed,
     };
     const plan = this.adminForgetArchive(archiveRequest);
     if (!plan.ok) {
@@ -5782,6 +5870,13 @@ export class HarnessMemCore {
     }
     const planItem = (plan.items[0] || {}) as Record<string, unknown>;
     const candidateCount = Number(planItem.candidate_count ?? 0);
+    const shouldPlanVectorPrune =
+      !!request.vector_prune ||
+      triggers.includes("threshold:archived_observations") ||
+      triggers.includes("threshold:stale_vector_rows");
+    const vectorPrunePlan = shouldPlanVectorPrune
+      ? (this.adminForgetVectorPrune(request.vector_prune ?? {}).items[0] as Record<string, unknown> | undefined)
+      : undefined;
     this.writeAuditLog("admin.forget_maintenance.plan", "observation", "", {
       mode,
       reason: request.reason || "manual",
@@ -5790,6 +5885,7 @@ export class HarnessMemCore {
       thresholds,
       candidate_count: candidateCount,
       manifest_sha256: planItem.manifest_sha256,
+      vector_prune_candidate_count: vectorPrunePlan?.candidate_count,
     });
 
     if (mode !== "archive" || candidateCount === 0) {
@@ -5803,6 +5899,7 @@ export class HarnessMemCore {
           measurements,
           thresholds,
           archive_plan: planItem,
+          ...(vectorPrunePlan ? { vector_prune_plan: vectorPrunePlan } : {}),
           automatic_hard_purge: false,
           automatic_compact: false,
         } as unknown as Record<string, unknown>],
@@ -5832,6 +5929,7 @@ export class HarnessMemCore {
         measurements,
         thresholds,
         archive: executed.items[0],
+        ...(vectorPrunePlan ? { vector_prune_plan: vectorPrunePlan } : {}),
         automatic_hard_purge: false,
         automatic_compact: false,
       } as unknown as Record<string, unknown>],
@@ -5841,6 +5939,112 @@ export class HarnessMemCore {
         candidate_count: candidateCount,
         archived_count: (executed.items[0] as Record<string, unknown> | undefined)?.archived_count,
         execute: true,
+      },
+    );
+  }
+
+  adminForgetVectorPrune(request: AdminVectorPruneRequest = {}): ApiResponse {
+    const startedAt = performance.now();
+    const limit = clampLimit(request.limit, 1000, 1, 10_000);
+    const project = typeof request.project === "string" && request.project.trim()
+      ? this.normalizeProjectInput(request.project.trim())
+      : undefined;
+    const currentModel = typeof request.current_model === "string" && request.current_model.trim()
+      ? request.current_model.trim()
+      : this.config.forgetMaintenanceCurrentVectorModel || this.vectorModelVersion;
+    const currentModelIsAdaptiveFamily =
+      !request.current_model &&
+      !this.config.forgetMaintenanceCurrentVectorModel &&
+      currentModel.startsWith("adaptive:");
+    const params: unknown[] = [];
+    let whereSql = "WHERE o.archived_at IS NOT NULL";
+    if (project) {
+      whereSql += " AND o.project = ?";
+      params.push(project);
+    }
+
+    const countRow = this.db
+      .query(`SELECT COUNT(*) AS count FROM mem_vectors v JOIN mem_observations o ON o.id = v.observation_id ${whereSql}`)
+      .get(...(params as never[])) as { count: number } | null;
+    const groupedRows = this.db
+      .query(`
+        SELECT v.model AS model, v.dimension AS dimension, COUNT(*) AS count
+        FROM mem_vectors v
+        JOIN mem_observations o ON o.id = v.observation_id
+        ${whereSql}
+        GROUP BY v.model, v.dimension
+        ORDER BY count DESC, v.model ASC
+      `)
+      .all(...(params as never[])) as Array<{ model: string; dimension: number; count: number }>;
+    const staleRows = currentModelIsAdaptiveFamily
+      ? this.db
+          .query(
+            `SELECT COUNT(*) AS count
+             FROM mem_vectors v
+             JOIN mem_observations o ON o.id = v.observation_id
+             ${whereSql}
+               AND (v.model < 'adaptive:' OR v.model >= 'adaptive;' OR v.dimension <> ?)`,
+          )
+          .get(...(params as never[]), this.config.vectorDimension) as { count: number } | null
+      : this.db
+          .query(
+            `SELECT COUNT(*) AS count
+             FROM mem_vectors v
+             JOIN mem_observations o ON o.id = v.observation_id
+             ${whereSql}
+               AND (v.model <> ? OR v.dimension <> ?)`,
+          )
+          .get(...(params as never[]), currentModel, this.config.vectorDimension) as { count: number } | null;
+    const sampleRows = this.db
+      .query(`
+        SELECT v.observation_id AS observation_id, v.model AS model, v.dimension AS dimension,
+               o.project AS project, o.archived_at AS archived_at
+        FROM mem_vectors v
+        JOIN mem_observations o ON o.id = v.observation_id
+        ${whereSql}
+        ORDER BY o.archived_at ASC, v.rowid ASC
+        LIMIT ?
+      `)
+      .all(...(params as never[]), limit) as Array<Record<string, unknown>>;
+    const sampleIds = [...new Set(sampleRows
+      .map((row) => typeof row.observation_id === "string" ? row.observation_id : null)
+      .filter((id): id is string => !!id))];
+
+    const item = {
+      mode: "archived_vector_prune_plan",
+      dry_run: true,
+      execute: false,
+      requested_execute_rejected: request.execute === true,
+      archived_only: true,
+      project: project ?? null,
+      current_model: currentModel,
+      current_dimension: this.config.vectorDimension,
+      candidate_count: Number(countRow?.count ?? 0),
+      stale_candidate_count: Number(staleRows?.count ?? 0),
+      grouped_by_model: groupedRows.map((row) => ({
+        model: row.model,
+        dimension: Number(row.dimension),
+        count: Number(row.count),
+        stale: currentModelIsAdaptiveFamily
+          ? !row.model.startsWith("adaptive:") || Number(row.dimension) !== this.config.vectorDimension
+          : row.model !== currentModel || Number(row.dimension) !== this.config.vectorDimension,
+      })),
+      samples: sampleRows,
+      estimated_delete_counts: {
+        mem_vectors: Number(countRow?.count ?? 0),
+        mem_vectors_vec_map_sample_rows: this.countSqliteVecMapRows(sampleIds),
+      },
+    };
+
+    return makeResponse(
+      startedAt,
+      [item as unknown as Record<string, unknown>],
+      request as unknown as Record<string, unknown>,
+      {
+        ranking: "archived_vector_prune_dry_run_v1",
+        candidate_count: item.candidate_count,
+        stale_candidate_count: item.stale_candidate_count,
+        execute: false,
       },
     );
   }

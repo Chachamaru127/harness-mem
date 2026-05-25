@@ -161,12 +161,14 @@ describe("harness-memd guardrails", () => {
     expect(core).toContain("isSearchOffloadQueueFull(error)");
     expect(core).toContain("isSearchOffloadUnavailable(error)");
     expect(core).toContain('new SearchOffloadUnavailableError("search worker", "warming")');
-    expect(core).toContain('new SearchOffloadUnavailableError("search worker", "timeout")');
+    expect(core).toContain("error.message.includes(\"search worker request timed out\")");
+    expect(core).toContain("response = await this.searchWithSafeFallback");
     expect(core).toContain('fallback: "none"');
     expect(core).toContain('mode: "persistent_worker"');
     expect(core).toContain("worker_ready_at_start");
     expect(core).toContain("worker_warmup_ms");
     expect(core).toContain("search worker request timed out");
+    expect(worker).toContain("HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS");
     expect(core).toContain('proc.kill("SIGKILL")');
     expect(worker).toContain("HARNESS_MEM_SEARCH_WORKER_PRIME_TEXT");
     expect(worker).toContain("harness mem search worker warmup");

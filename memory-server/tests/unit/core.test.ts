@@ -361,6 +361,70 @@ describe("HarnessMemCore unit", () => {
     }
   });
 
+  test("scoped vector search reranks bounded lexical candidates before global vector scan", () => {
+    const core = new HarnessMemCore(createConfig("vector-prefilter-rerank"));
+    try {
+      const high = core.recordEvent(
+        baseEvent({
+          event_id: "vector-prefilter-high",
+          payload: { content: "prefilter sentinel shared phrase high" },
+        })
+      );
+      const low = core.recordEvent(
+        baseEvent({
+          event_id: "vector-prefilter-low",
+          payload: { content: "prefilter sentinel shared phrase low" },
+        })
+      );
+      const highId = (high.items[0] as { id: string }).id;
+      const lowId = (low.items[0] as { id: string }).id;
+      const db = core.getRawDb();
+      const modelRow = db.query(`SELECT model FROM mem_vectors WHERE observation_id = ? LIMIT 1`).get(highId) as { model: string };
+      const queryVector = Array.from({ length: 64 }, (_, index) => index === 0 ? 1 : 0);
+      const oppositeVector = Array.from({ length: 64 }, (_, index) => index === 1 ? 1 : 0);
+
+      (core as unknown as {
+        embeddingProvider: {
+          name: "fallback";
+          model: string;
+          dimension: number;
+          embed: () => number[];
+          embedQuery: () => number[];
+          health: () => { status: "healthy"; details: string };
+        };
+      }).embeddingProvider = {
+        name: "fallback",
+        model: modelRow.model,
+        dimension: 64,
+        embed: () => queryVector,
+        embedQuery: () => queryVector,
+        health: () => ({ status: "healthy", details: "test" }),
+      };
+      db.query(`UPDATE mem_vectors SET vector_json = ? WHERE observation_id = ?`).run(JSON.stringify(queryVector), highId);
+      db.query(`UPDATE mem_vectors SET vector_json = ? WHERE observation_id = ?`).run(JSON.stringify(oppositeVector), lowId);
+
+      const result = core.search({
+        query: "prefilter sentinel shared phrase",
+        project: "test-project",
+        include_private: true,
+        vector_search: true,
+        strict_project: true,
+        limit: 2,
+      });
+      expect(result.ok).toBe(true);
+      const meta = result.meta as Record<string, unknown>;
+      const prefilter = meta.vector_prefilter as Record<string, unknown>;
+      expect(prefilter.mode).toBe("lexical_candidate_rerank");
+      expect(Number(prefilter.candidates)).toBeGreaterThanOrEqual(2);
+      expect(Number(prefilter.matched_rows)).toBeGreaterThanOrEqual(2);
+      expect((result.items[0] as { id: string }).id).toBe(highId);
+      const topScores = (result.items[0] as { scores: Record<string, number> }).scores;
+      expect(topScores.vector).toBeGreaterThan(0.9);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("safe mode stays bounded when FTS is unavailable", () => {
     const core = new HarnessMemCore(createConfig("safe-mode-fts-unavailable"));
     try {
@@ -653,6 +717,100 @@ describe("HarnessMemCore unit", () => {
         .get(obsId, obsId);
       expect(archiveRow?.stub_count).toBe(1);
       expect(archiveRow?.full_count).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("forget maintenance can trigger real-db vector prune dry-run without mutation", () => {
+    const config = createConfig("forget-maintenance-vector-prune");
+    config.forgetMaintenanceMode = "dry-run";
+    config.forgetMaintenanceArchivedObservationsThreshold = 0;
+    config.forgetMaintenanceStaleVectorRowsThreshold = 0;
+    config.forgetMaintenanceLimit = 10;
+    const core = new HarnessMemCore(config);
+    try {
+      const inserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-vector-prune",
+          payload: { content: "archived vector prune dry run phrase" },
+        })
+      );
+      const obsId = (inserted.items[0] as { id: string }).id;
+      const db = core.getRawDb();
+      db.query(`UPDATE mem_observations SET archived_at = ? WHERE id = ?`).run("2026-02-15T00:00:00.000Z", obsId);
+
+      const result = core.adminForgetMaintenance({ reason: "scheduler", vector_prune: { limit: 10 } });
+      expect(result.ok).toBe(true);
+      const item = result.items[0] as {
+        mode: string;
+        vector_prune_plan: {
+          mode: string;
+          dry_run: boolean;
+          candidate_count: number;
+          samples: Array<{ observation_id: string }>;
+        };
+      };
+      expect(item.mode).toBe("forget_maintenance_plan");
+      expect(item.vector_prune_plan.mode).toBe("archived_vector_prune_plan");
+      expect(item.vector_prune_plan.dry_run).toBe(true);
+      expect(item.vector_prune_plan.candidate_count).toBeGreaterThanOrEqual(1);
+      expect(item.vector_prune_plan.samples.map((sample) => sample.observation_id)).toContain(obsId);
+      const vectorCount = db
+        .query(`SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id = ?`)
+        .get(obsId) as { count: number };
+      expect(vectorCount.count).toBeGreaterThan(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("ingest TTL policy applies by observation_type only when expires_at is absent", () => {
+    const config = createConfig("ttl-policy-by-observation-type");
+    config.ttlPolicyByObservationType = {
+      action: { days: 30 },
+      decision: null,
+    };
+    const core = new HarnessMemCore(config);
+    try {
+      const action = core.recordEvent(
+        baseEvent({
+          event_id: "ttl-policy-action",
+          event_type: "tool_use",
+          payload: { command: "bun test ttl policy action" },
+        })
+      );
+      const decision = core.recordEvent(
+        baseEvent({
+          event_id: "ttl-policy-decision",
+          payload: { content: "decided to keep durable decisions without default ttl" },
+        })
+      );
+      const explicit = core.recordEvent(
+        baseEvent({
+          event_id: "ttl-policy-explicit",
+          event_type: "tool_use",
+          expires_at: "2030-01-01T00:00:00.000Z",
+          payload: { command: "explicit ttl wins" },
+        })
+      );
+      const db = core.getRawDb();
+      const actionRow = db
+        .query(`SELECT observation_type, expires_at FROM mem_observations WHERE id = ?`)
+        .get((action.items[0] as { id: string }).id) as { observation_type: string; expires_at: string | null };
+      const decisionRow = db
+        .query(`SELECT observation_type, expires_at FROM mem_observations WHERE id = ?`)
+        .get((decision.items[0] as { id: string }).id) as { observation_type: string; expires_at: string | null };
+      const explicitRow = db
+        .query(`SELECT expires_at FROM mem_observations WHERE id = ?`)
+        .get((explicit.items[0] as { id: string }).id) as { expires_at: string | null };
+
+      expect(actionRow.observation_type).toBe("action");
+      expect(actionRow.expires_at).toBeTruthy();
+      expect(new Date(actionRow.expires_at!).getTime()).toBeGreaterThan(Date.now());
+      expect(decisionRow.observation_type).toBe("decision");
+      expect(decisionRow.expires_at).toBeNull();
+      expect(explicitRow.expires_at).toBe("2030-01-01T00:00:00.000Z");
     } finally {
       core.shutdown("test");
     }

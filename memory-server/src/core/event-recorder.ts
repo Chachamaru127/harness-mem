@@ -103,6 +103,19 @@ function redactContent(raw: string, tags: string[]): string {
   return content;
 }
 
+function resolveTtlPolicyExpiresAt(config: Config, observationType: string, baseIso: string): string | null {
+  const rule = config.ttlPolicyByObservationType?.[observationType];
+  const days = rule && typeof rule.days === "number" ? rule.days : null;
+  if (!Number.isFinite(days) || !days || days <= 0) {
+    return null;
+  }
+  const baseMs = Date.parse(baseIso);
+  if (!Number.isFinite(baseMs)) {
+    return null;
+  }
+  return new Date(baseMs + days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 function buildDedupeHash(event: EventEnvelope): string {
   const basis = {
     platform: (event.platform || "unknown").toString().trim().toLowerCase(),
@@ -1199,8 +1212,12 @@ export class EventRecorder {
           ? event.topic.trim()
           : null;
 
-        // S78-D01: expires_at 正規化（ISO-8601 または Unix 秒 → ISO-8601、不正値 → null）
-        const expiresAt = normalizeExpiresAt(event.expires_at);
+        // S78-D01: explicit expires_at wins. S129-008 applies conservative default TTL only when absent.
+        const explicitExpiresAt = normalizeExpiresAt(event.expires_at);
+        const hasExplicitExpiresAt = event.expires_at !== undefined && event.expires_at !== null && event.expires_at !== "";
+        const expiresAt = hasExplicitExpiresAt
+          ? explicitExpiresAt
+          : resolveTtlPolicyExpiresAt(this.deps.config, observationType, current);
 
         // S78-E02: branch — 呼び出し元が明示的に渡した値のみ採用（自動検出なし）
         const branch = typeof event.branch === "string" && event.branch.trim()

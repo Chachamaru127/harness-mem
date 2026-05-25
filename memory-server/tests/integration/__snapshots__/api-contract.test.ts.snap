@@ -421,6 +421,12 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
       "vector_coverage": "number",
       "vector_engine": "string",
       "vector_model": "string",
+      "vector_prefilter": {
+        "candidates": "number",
+        "matched_rows": "number",
+        "mode": "string",
+        "variant_count": "number",
+      },
       "vector_search_enabled": "boolean",
     },
     "no_memory": "boolean",

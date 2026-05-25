@@ -402,6 +402,57 @@ describe("memory admin integration", () => {
     }
   });
 
+  test("forget vector-prune endpoint is archived-only dry-run", async () => {
+    const runtime = await createRuntime("forget-vector-prune");
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-vector-prune",
+        event_type: "user_prompt",
+        ts: "2026-02-25T00:00:00.000Z",
+        payload: { content: "endpoint archived vector prune content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.getRawDb()
+        .query(`UPDATE mem_observations SET archived_at = ? WHERE id = ?`)
+        .run("2026-02-26T00:00:00.000Z", observationId);
+
+      const response = await fetch(`${runtime.baseUrl}/v1/admin/forget/vector-prune`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ project: "admin-project", limit: 10, execute: true }),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        items: Array<{
+          mode: string;
+          dry_run: boolean;
+          execute: boolean;
+          requested_execute_rejected: boolean;
+          candidate_count: number;
+          samples: Array<{ observation_id: string }>;
+        }>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items[0].mode).toBe("archived_vector_prune_plan");
+      expect(payload.items[0].dry_run).toBe(true);
+      expect(payload.items[0].execute).toBe(false);
+      expect(payload.items[0].requested_execute_rejected).toBe(true);
+      expect(payload.items[0].candidate_count).toBeGreaterThanOrEqual(1);
+      expect(payload.items[0].samples.map((sample) => sample.observation_id)).toContain(observationId);
+      const vectorCount = runtime.core.getRawDb()
+        .query(`SELECT COUNT(*) AS count FROM mem_vectors WHERE observation_id = ?`)
+        .get(observationId) as { count: number };
+      expect(vectorCount.count).toBeGreaterThan(0);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("archive and restore endpoints mutate only through archive-first flow", async () => {
     const runtime = await createRuntime("archive-restore");
     try {

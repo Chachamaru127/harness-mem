@@ -531,6 +531,100 @@ describe("API contract snapshot", () => {
     }
   });
 
+  test("persistent vector search timeout returns safe lexical fallback instead of 503", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const oldWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const oldWorkerTimeout = process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+    const oldStartupTimeout = process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS;
+    const oldWorkerDelay = process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS = "1000";
+    process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = "50";
+    process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = "300";
+
+    const runtime = createRuntime("s128-search-worker-timeout-fallback");
+    try {
+      runtime.core.recordEvent({
+        platform: "claude",
+        project: "s128-search-worker-timeout-fallback",
+        session_id: "session-search-worker-timeout",
+        event_type: "user_prompt",
+        ts: "2026-02-14T00:00:00.000Z",
+        payload: { content: "persistent timeout safe lexical fallback sentinel" },
+      });
+
+      const warmup = await fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "warmup safe lexical",
+          project: "s128-search-worker-timeout-fallback",
+          limit: 1,
+          safe_mode: true,
+          vector_search: false,
+        }),
+      });
+      expect(warmup.status).toBe(200);
+
+      const response = await fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "persistent timeout safe lexical fallback sentinel",
+          project: "s128-search-worker-timeout-fallback",
+          limit: 3,
+          vector_search: true,
+        }),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        items: Array<{ content?: string }>;
+        meta: { search_offload?: Record<string, unknown>; warnings?: string[] };
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items.some((item) => String(item.content || "").includes("safe lexical fallback sentinel"))).toBe(true);
+      expect(payload.meta.search_offload?.mode).toBe("persistent_worker");
+      expect(payload.meta.search_offload?.fallback).toBe("safe_lexical");
+      expect(payload.meta.warnings?.some((warning) => warning.includes("returned safe lexical fallback"))).toBe(true);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_OFFLOAD = oldOffload;
+      }
+      if (oldWorker === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER = oldWorker;
+      }
+      if (oldWorkerTimeout === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = oldWorkerTimeout;
+      }
+      if (oldStartupTimeout === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS = oldStartupTimeout;
+      }
+      if (oldWorkerDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = oldWorkerDelay;
+      }
+    }
+  });
+
   test("checkpoint offload queue full is bounded at the parent daemon", async () => {
     const oldNodeEnv = process.env.NODE_ENV;
     const oldDelay = process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;

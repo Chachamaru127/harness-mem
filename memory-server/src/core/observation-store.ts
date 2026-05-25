@@ -90,6 +90,7 @@ import {
 const NO_MEMORY_SCORE_THRESHOLD = 0.1;
 const SEMANTIC_RERANK_CANDIDATE_LIMIT = 50;
 const VECTOR_MIGRATION_WARNING_THRESHOLD = 0.95;
+const DEFAULT_VECTOR_LEXICAL_PREFILTER_LIMIT = 300;
 const DEFAULT_SQLITE_VEC_K_MAX = 240;
 const DEFAULT_SQLITE_VEC_VARIANT_MAX = 1;
 const VECTOR_MIGRATION_PROGRESS_CACHE_TTL_MS = 600_000;
@@ -1770,7 +1771,11 @@ export class ObservationStore {
   // vectorSearch
   // ---------------------------------------------------------------------------
 
-  private vectorSearch(request: SearchRequest, internalLimit: number): VectorSearchResult {
+  private vectorSearch(
+    request: SearchRequest,
+    internalLimit: number,
+    lexicalCandidateIds: string[] = [],
+  ): VectorSearchResult {
     if (this.deps.getVectorEngine() === "disabled") {
       return { scores: new Map<string, number>(), coverage: 0 };
     }
@@ -1802,6 +1807,15 @@ export class ObservationStore {
     const addDegradedReason = (reason: string): void => {
       degradedReasons.add(`vector search degraded: ${reason}`);
     };
+    const lexicalPrefilterLimit = clampLimit(
+      Number(process.env.HARNESS_MEM_VECTOR_LEXICAL_PREFILTER_LIMIT || DEFAULT_VECTOR_LEXICAL_PREFILTER_LIMIT),
+      DEFAULT_VECTOR_LEXICAL_PREFILTER_LIMIT,
+      50,
+      1000,
+    );
+    const lexicalPrefilterIds = request.project && request.strict_project !== false
+      ? [...new Set(lexicalCandidateIds)].slice(0, lexicalPrefilterLimit)
+      : [];
 
     const selectMigrationModel = (models: string[]): string => {
       return models.find((model) => model.includes(":general:")) ?? models[0] ?? this.deps.getVectorModelVersion();
@@ -1810,6 +1824,7 @@ export class ObservationStore {
     const mergeScoreSets = (
       scoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }>,
       migrationModel: string,
+      prefilter?: VectorSearchResult["prefilter"],
     ): VectorSearchResult => {
       const fused = new Map<string, number>();
       let matchedRows = 0;
@@ -1826,6 +1841,7 @@ export class ObservationStore {
         coverage: matchedRows === 0 ? 0 : normalized.size / matchedRows,
         migrationWarning,
         degradedReasons: degradedReasons.size > 0 ? [...degradedReasons] : undefined,
+        ...(prefilter ? { prefilter } : {}),
       };
     };
 
@@ -1887,17 +1903,17 @@ export class ObservationStore {
       };
     };
 
-    const runVariantSearch = (
+    const buildSearchTargets = (
       plan: ReturnType<typeof resolveEmbeddingPlan>,
       variantWeight: number
-    ): VectorSearchResult => {
+    ): Array<{ model: string; vector: number[]; weight: number }> => {
       const primaryModel = plan.primary.model ?? this.deps.getVectorModelVersion();
       const hasEnsemble = plan.route === "ensemble" && !!plan.secondary;
       const primaryWeight = hasEnsemble
         ? computeJapaneseEnsembleWeight(plan.analysis?.jaRatio)
         : 1;
       const secondaryWeight = hasEnsemble ? 1 - primaryWeight : 0;
-      const searchTargets = [
+      return [
         { model: primaryModel, vector: plan.primary.vector, weight: primaryWeight * variantWeight },
         ...(plan.secondary
           ? [{
@@ -1907,7 +1923,65 @@ export class ObservationStore {
             }]
           : []),
       ];
+    };
 
+    const runLexicalCandidateRerank = (
+      plan: ReturnType<typeof resolveEmbeddingPlan>,
+      variantWeight: number,
+    ): VectorSearchResult => {
+      const searchTargets = buildSearchTargets(plan, variantWeight);
+      const scoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }> = [];
+      const MAX_BATCH = 200;
+
+      for (const target of searchTargets) {
+        const raw = new Map<string, number>();
+        let matchedRows = 0;
+        for (let i = 0; i < lexicalPrefilterIds.length; i += MAX_BATCH) {
+          const batch = lexicalPrefilterIds.slice(i, i + MAX_BATCH);
+          if (batch.length === 0) continue;
+          const placeholders = batch.map(() => "?").join(", ");
+          const rows = this.deps.db
+            .query<{ id: string; vector_json: string }, (string | number)[]>(
+              `SELECT observation_id AS id, vector_json
+               FROM mem_vectors
+               WHERE observation_id IN (${placeholders})
+                 AND model = ? AND dimension = ?`,
+            )
+            .all(...batch, target.model, this.deps.vectorDimension);
+
+          matchedRows += rows.length;
+          for (const row of rows) {
+            let vector: number[];
+            try {
+              const parsed = JSON.parse(row.vector_json);
+              if (!Array.isArray(parsed)) continue;
+              vector = parsed.filter((value): value is number => typeof value === "number");
+            } catch {
+              continue;
+            }
+            raw.set(row.id, (cosineSimilarity(target.vector, vector) + 1) / 2);
+          }
+        }
+        scoreSets.push({
+          weight: target.weight,
+          scores: normalizeScoreMap(raw),
+          matchedRows,
+        });
+      }
+
+      return mergeScoreSets(scoreSets, selectMigrationModel(searchTargets.map((target) => target.model)), {
+        mode: "lexical_candidate_rerank",
+        candidates: lexicalPrefilterIds.length,
+        matched_rows: scoreSets.reduce((sum, scoreSet) => sum + scoreSet.matchedRows, 0),
+        variant_count: 1,
+      });
+    };
+
+    const runVariantSearch = (
+      plan: ReturnType<typeof resolveEmbeddingPlan>,
+      variantWeight: number
+    ): VectorSearchResult => {
+      const searchTargets = buildSearchTargets(plan, variantWeight);
       if (this.deps.getVectorEngine() === "sqlite-vec" && this.deps.getVecTableReady()) {
         let sqliteFallbackReason: string | null = null;
         try {
@@ -2037,6 +2111,46 @@ export class ObservationStore {
       addDegradedReason(`sqlite-vec variant cap ${variantQueries.length}/${allVariantQueries.length}`);
     }
     const variantWeights = [1, 0.9, 0.8, 0.7];
+    if (lexicalPrefilterIds.length > 0) {
+      const prefilteredResults = variantQueries.map((variant, index) =>
+        runLexicalCandidateRerank(
+          index === 0 ? initialPlan : resolveEmbeddingPlan(variant),
+          variantWeights[index] ?? 0.7,
+        ),
+      );
+      const matchedRows = prefilteredResults.reduce(
+        (sum, result) => sum + Number(result.prefilter?.matched_rows ?? 0),
+        0,
+      );
+      if (matchedRows > 0) {
+        if (prefilteredResults.length === 1) {
+          return prefilteredResults[0]!;
+        }
+
+        const fused = new Map<string, number>();
+        let coverageTotal = 0;
+        for (const [index, result] of prefilteredResults.entries()) {
+          const variantWeight = variantWeights[index] ?? 0.7;
+          coverageTotal += result.coverage * variantWeight;
+          for (const [id, score] of result.scores.entries()) {
+            fused.set(id, Math.max(fused.get(id) ?? 0, score * variantWeight));
+          }
+        }
+        return {
+          scores: normalizeScoreMap(fused),
+          coverage: coverageTotal / prefilteredResults.length,
+          migrationWarning: prefilteredResults.find((result) => !!result.migrationWarning)?.migrationWarning,
+          degradedReasons: degradedReasons.size > 0 ? [...degradedReasons] : undefined,
+          prefilter: {
+            mode: "lexical_candidate_rerank",
+            candidates: lexicalPrefilterIds.length,
+            matched_rows: matchedRows,
+            variant_count: prefilteredResults.length,
+          },
+        };
+      }
+      addDegradedReason("lexical candidate rerank found no vector rows; using global vector fallback");
+    }
     const variantResults = variantQueries.map((variant, index) =>
       runVariantSearch(index === 0 ? initialPlan : resolveEmbeddingPlan(variant), variantWeights[index] ?? 0.7),
     );
@@ -3530,8 +3644,11 @@ export class ObservationStore {
 
     const lexical = this.lexicalSearch(normalizedRequest, internalLimit);
     const vectorSearchEnabled = normalizedRequest.vector_search !== false;
+    const lexicalCandidateIdsForVector = [...lexical.entries()]
+      .sort((lhs, rhs) => rhs[1] - lhs[1])
+      .map(([id]) => id);
     const vectorResult = vectorSearchEnabled
-      ? this.vectorSearch(normalizedRequest, internalLimit)
+      ? this.vectorSearch(normalizedRequest, internalLimit, lexicalCandidateIdsForVector)
       : { scores: new Map<string, number>(), coverage: 0 };
     const vector = vectorResult.scores;
     const graph = new Map<string, number>();
@@ -4084,6 +4201,7 @@ export class ObservationStore {
         graph: graph.size,
         final: finalRanked.length,
       },
+      ...(vectorResult.prefilter ? { vector_prefilter: vectorResult.prefilter } : {}),
       vector_coverage: Number(vectorCoverage.toFixed(6)),
     };
     // Append migration warning when vectors are in a mixed-model state

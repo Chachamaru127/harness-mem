@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
 import { startHarnessMemServer } from "../../src/server";
 
@@ -289,6 +289,38 @@ describe("Recall Runtime API", () => {
     } finally {
       runtime.stop();
       restoreAutoRefresh();
+    }
+  });
+
+  test("normalizes short project keys before reading recall projection", async () => {
+    const runtime = createRuntime("short-project-projection");
+    const project = process.cwd();
+    try {
+      await recordMemory(runtime.baseUrl, "recall-short-project-1", project, "short project projection sentinel");
+      const refreshResponse = await postJson(runtime.baseUrl, "/v1/admin/recall-projection", {
+        project,
+        action: "write",
+      });
+      expect(refreshResponse.status).toBe(200);
+
+      const recall = await postJson(runtime.baseUrl, "/v1/recall", {
+        query: "short project projection sentinel",
+        project: basename(project),
+        limit: 5,
+      });
+      expect(recall.status).toBe(200);
+      const payload = (await recall.json()) as {
+        ok: boolean;
+        items: Array<Record<string, unknown>>;
+        meta: Record<string, unknown>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.meta.ranking).toBe("recall_projection_v1");
+      expect(payload.meta.recall_degraded).toBe(false);
+      expect(payload.items.length).toBeGreaterThan(0);
+      expect(payload.items[0].project).toBe(project);
+    } finally {
+      runtime.stop();
     }
   });
 });

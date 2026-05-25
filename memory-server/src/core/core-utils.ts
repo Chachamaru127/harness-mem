@@ -811,6 +811,12 @@ export interface VectorSearchResult {
   coverage: number;
   migrationWarning?: string;
   degradedReasons?: string[];
+  prefilter?: {
+    mode: "lexical_candidate_rerank";
+    candidates: number;
+    matched_rows: number;
+    variant_count: number;
+  };
 }
 
 export interface SearchCandidate {
@@ -1189,6 +1195,14 @@ export const DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS = 60000;
 export const DEFAULT_CLAUDE_CODE_BACKFILL_HOURS = 24;
 export const DEFAULT_SEARCH_RANKING = "hybrid_v3";
 export const DEFAULT_SEARCH_EXPAND_LINKS = true;
+export const DEFAULT_FORGET_MAINTENANCE_DB_BYTES_THRESHOLD = 10 * 1024 * 1024 * 1024;
+export const DEFAULT_FORGET_MAINTENANCE_WAL_BYTES_THRESHOLD = 512 * 1024 * 1024;
+export const DEFAULT_FORGET_MAINTENANCE_ACTIVE_OBSERVATIONS_THRESHOLD = 250_000;
+export const DEFAULT_FORGET_MAINTENANCE_ARCHIVED_OBSERVATIONS_THRESHOLD = 10_000;
+export const DEFAULT_FORGET_MAINTENANCE_STALE_VECTOR_ROWS_THRESHOLD = 10_000;
+const DEFAULT_TTL_POLICY_BY_OBSERVATION_TYPE: NonNullable<Config["ttlPolicyByObservationType"]> = {
+  action: { days: 90 },
+};
 
 export function envFlag(name: string, defaultValue: boolean): boolean {
   const raw = process.env[name];
@@ -1203,6 +1217,34 @@ export function parseBackendMode(value: string | undefined): "local" | "managed"
   const normalized = (value || "").trim().toLowerCase();
   if (normalized === "managed" || normalized === "hybrid") return normalized;
   return "local";
+}
+
+function normalizeTtlPolicyByObservationType(input: unknown): Config["ttlPolicyByObservationType"] | undefined {
+  if (!input || typeof input !== "object" || Array.isArray(input)) {
+    return undefined;
+  }
+  const policy: NonNullable<Config["ttlPolicyByObservationType"]> = {};
+  for (const [rawType, rawRule] of Object.entries(input as Record<string, unknown>)) {
+    const observationType = rawType.trim();
+    if (!observationType) continue;
+    if (rawRule === null) {
+      policy[observationType] = null;
+      continue;
+    }
+    if (typeof rawRule === "number" && Number.isFinite(rawRule) && rawRule > 0) {
+      policy[observationType] = { days: clampLimit(rawRule, 90, 1, 3650) };
+      continue;
+    }
+    if (rawRule && typeof rawRule === "object" && !Array.isArray(rawRule)) {
+      const days = (rawRule as Record<string, unknown>).days;
+      if (typeof days === "number" && Number.isFinite(days) && days > 0) {
+        policy[observationType] = { days: clampLimit(days, 90, 1, 3650) };
+      } else {
+        policy[observationType] = null;
+      }
+    }
+  }
+  return Object.keys(policy).length > 0 ? policy : undefined;
 }
 
 export function getConfig(): Config {
@@ -1375,6 +1417,23 @@ export function getConfig(): Config {
     "HARNESS_MEM_FORGET_MAINTENANCE_ACTIVE_OBSERVATIONS_THRESHOLD",
     "forgetMaintenanceActiveObservationsThreshold",
   );
+  const forgetMaintenanceArchivedObservationsThreshold = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_ARCHIVED_OBSERVATIONS_THRESHOLD",
+    "forgetMaintenanceArchivedObservationsThreshold",
+  );
+  const forgetMaintenanceStaleVectorRowsThreshold = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_STALE_VECTOR_ROWS_THRESHOLD",
+    "forgetMaintenanceStaleVectorRowsThreshold",
+  );
+  const ttlPolicyEnv = (process.env.HARNESS_MEM_TTL_POLICY_BY_OBSERVATION_TYPE || "").trim();
+  let ttlPolicyByObservationType = normalizeTtlPolicyByObservationType(userConfig.ttlPolicyByObservationType);
+  if (ttlPolicyEnv) {
+    try {
+      ttlPolicyByObservationType = normalizeTtlPolicyByObservationType(JSON.parse(ttlPolicyEnv));
+    } catch {
+      ttlPolicyByObservationType = undefined;
+    }
+  }
 
   return {
     partialFinalizeEnabled,
@@ -1410,15 +1469,31 @@ export function getConfig(): Config {
     forgetMaintenanceDbBytesThreshold:
       typeof forgetMaintenanceDbBytesThreshold === "number" && forgetMaintenanceDbBytesThreshold >= 0
         ? Math.floor(forgetMaintenanceDbBytesThreshold)
-        : undefined,
+        : DEFAULT_FORGET_MAINTENANCE_DB_BYTES_THRESHOLD,
     forgetMaintenanceWalBytesThreshold:
       typeof forgetMaintenanceWalBytesThreshold === "number" && forgetMaintenanceWalBytesThreshold >= 0
         ? Math.floor(forgetMaintenanceWalBytesThreshold)
-        : undefined,
+        : DEFAULT_FORGET_MAINTENANCE_WAL_BYTES_THRESHOLD,
     forgetMaintenanceActiveObservationsThreshold:
       typeof forgetMaintenanceActiveObservationsThreshold === "number" && forgetMaintenanceActiveObservationsThreshold >= 0
         ? Math.floor(forgetMaintenanceActiveObservationsThreshold)
-        : undefined,
+        : DEFAULT_FORGET_MAINTENANCE_ACTIVE_OBSERVATIONS_THRESHOLD,
+    forgetMaintenanceArchivedObservationsThreshold:
+      typeof forgetMaintenanceArchivedObservationsThreshold === "number" && forgetMaintenanceArchivedObservationsThreshold >= 0
+        ? Math.floor(forgetMaintenanceArchivedObservationsThreshold)
+        : DEFAULT_FORGET_MAINTENANCE_ARCHIVED_OBSERVATIONS_THRESHOLD,
+    forgetMaintenanceStaleVectorRowsThreshold:
+      typeof forgetMaintenanceStaleVectorRowsThreshold === "number" && forgetMaintenanceStaleVectorRowsThreshold >= 0
+        ? Math.floor(forgetMaintenanceStaleVectorRowsThreshold)
+        : DEFAULT_FORGET_MAINTENANCE_STALE_VECTOR_ROWS_THRESHOLD,
+    forgetMaintenanceCurrentVectorModel:
+      typeof process.env.HARNESS_MEM_FORGET_MAINTENANCE_CURRENT_VECTOR_MODEL === "string" &&
+      process.env.HARNESS_MEM_FORGET_MAINTENANCE_CURRENT_VECTOR_MODEL.trim()
+        ? process.env.HARNESS_MEM_FORGET_MAINTENANCE_CURRENT_VECTOR_MODEL.trim()
+        : typeof userConfig.forgetMaintenanceCurrentVectorModel === "string" && userConfig.forgetMaintenanceCurrentVectorModel.trim()
+          ? userConfig.forgetMaintenanceCurrentVectorModel.trim()
+          : undefined,
+    ttlPolicyByObservationType: ttlPolicyByObservationType ?? DEFAULT_TTL_POLICY_BY_OBSERVATION_TYPE,
     temporalGraphEnabled,
     dbPath,
     bindHost,
