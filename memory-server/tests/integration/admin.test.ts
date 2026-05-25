@@ -402,6 +402,63 @@ describe("memory admin integration", () => {
     }
   });
 
+  test("forget status endpoint explains lifecycle state without raw tokens", async () => {
+    const runtime = await createRuntime("forget-status", (config) => {
+      config.forgetMaintenanceMode = "dry-run";
+      config.forgetMaintenanceActiveObservationsThreshold = 0;
+    });
+    try {
+      const inserted = runtime.core.recordEvent({
+        platform: "claude",
+        project: "admin-project",
+        session_id: "session-admin-forget-status",
+        event_type: "user_prompt",
+        ts: "2026-02-25T00:00:00.000Z",
+        payload: { content: "old admin forget status content" },
+        tags: ["admin"],
+        privacy_tags: [],
+      });
+      const observationId = (inserted.items[0] as { id: string }).id;
+      runtime.core.getRawDb()
+        .query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", observationId);
+      await fetch(`${runtime.baseUrl}/v1/admin/forget/maintenance`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ reason: "scheduler" }),
+      });
+
+      const response = await fetch(`${runtime.baseUrl}/v1/admin/forget/status`);
+      expect(response.status).toBe(200);
+      const payloadText = await response.text();
+      expect(payloadText).not.toContain("preverified_backup_");
+      expect(payloadText).not.toContain("\"confirmation_phrase\":");
+      expect(payloadText).not.toContain("old admin forget status content");
+      const payload = JSON.parse(payloadText) as {
+        ok: boolean;
+        items: Array<{
+          mode: string;
+          risk_level: string;
+          counts: { active_observations: number; archive_states: Record<string, number> };
+          last_run: { maintenance: unknown };
+          restore_window: { hard_purge_requires_backup_evidence: boolean };
+          safety: { raw_content_returned: boolean; tokens_returned: boolean; confirmation_phrases_returned: boolean };
+        }>;
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items[0].mode).toBe("forget_status");
+      expect(payload.items[0].counts.active_observations).toBeGreaterThanOrEqual(1);
+      expect(payload.items[0].last_run.maintenance).toBeTruthy();
+      expect(payload.items[0].restore_window.hard_purge_requires_backup_evidence).toBe(true);
+      expect(payload.items[0].safety.raw_content_returned).toBe(false);
+      expect(payload.items[0].safety.tokens_returned).toBe(false);
+      expect(payload.items[0].safety.confirmation_phrases_returned).toBe(false);
+      expect(["low", "medium", "attention"]).toContain(payload.items[0].risk_level);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("forget vector-prune endpoint is archived-only dry-run", async () => {
     const runtime = await createRuntime("forget-vector-prune");
     try {

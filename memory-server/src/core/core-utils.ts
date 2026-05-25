@@ -1396,6 +1396,14 @@ export function getConfig(): Config {
     "HARNESS_MEM_FORGET_MAINTENANCE_LIMIT",
     "forgetMaintenanceLimit",
   ) ?? 100;
+  const forgetMaintenanceHealthBudgetCandidate = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_HEALTH_BUDGET_MS",
+    "forgetMaintenanceHealthBudgetMs",
+  ) ?? 2000;
+  const forgetMaintenanceBackoffCandidate = configNumber(
+    "HARNESS_MEM_FORGET_MAINTENANCE_BACKOFF_MS",
+    "forgetMaintenanceBackoffMs",
+  ) ?? 300000;
   const forgetMaintenanceScoreThresholdCandidate = configNumber(
     "HARNESS_MEM_FORGET_MAINTENANCE_SCORE_THRESHOLD",
     "forgetMaintenanceScoreThreshold",
@@ -1463,6 +1471,18 @@ export function getConfig(): Config {
       100,
       1,
       500,
+    ),
+    forgetMaintenanceHealthBudgetMs: clampLimit(
+      forgetMaintenanceHealthBudgetCandidate,
+      2000,
+      100,
+      60_000,
+    ),
+    forgetMaintenanceBackoffMs: clampLimit(
+      forgetMaintenanceBackoffCandidate,
+      300_000,
+      1_000,
+      24 * 60 * 60 * 1000,
     ),
     forgetMaintenanceScoreThreshold: Math.max(0, Math.min(1, forgetMaintenanceScoreThresholdCandidate)),
     forgetMaintenanceProtectAccessed,

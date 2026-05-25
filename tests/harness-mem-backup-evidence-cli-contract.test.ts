@@ -29,10 +29,14 @@ describe("harness-mem backup evidence CLI contract", () => {
 
   test("exposes archive-first forget maintenance without hard purge automation", () => {
     expect(CLI).toContain("forget-maintenance");
+    expect(CLI).toContain("forget status");
+    expect(CLI).toContain("forget_status_impl");
     expect(CLI).toContain("forget_maintenance_impl");
     expect(CLI).toContain("--force");
     expect(CLIENT).toContain("admin-forget-maintenance");
+    expect(CLIENT).toContain("admin-forget-status");
     expect(CLIENT).toContain("/v1/admin/forget/maintenance");
+    expect(CLIENT).toContain("/v1/admin/forget/status");
     expect(CLIENT).toContain("HARNESS_MEM_ADMIN_FORGET_MAINTENANCE_TIMEOUT_SEC");
     expect(CLI).not.toContain("forget-maintenance hard-purge");
   });
@@ -46,6 +50,16 @@ describe("harness-mem backup evidence CLI contract", () => {
     expect(OFFLINE).toContain("core.adminForgetBackupEvidence");
     expect(OFFLINE).toContain("core.adminForgetHardPurge");
     expect(OFFLINE).toContain("--limit <1..5000>");
+    expect(OFFLINE).toContain("autonomy_report");
+    expect(OFFLINE).toContain("L1_reversible_archive");
+    expect(OFFLINE).toContain("L3_guarded_purge");
+    expect(OFFLINE).toContain("--batch-size");
+    expect(OFFLINE).toContain("--checkpoint-path");
+    expect(OFFLINE).toContain("s129-offline-lifecycle-checkpoint-v1");
+    expect(OFFLINE).toContain("local daemon appears to be running");
+    expect(OFFLINE).toContain("--autonomous-purge-enabled");
+    expect(OFFLINE).toContain("s129-autonomous-purge-profile-v1");
+    expect(OFFLINE).toContain("profile_hash_required");
   });
 
   test("offline maintenance runner gates compaction behind explicit execute", () => {
@@ -53,6 +67,8 @@ describe("harness-mem backup evidence CLI contract", () => {
     expect(OFFLINE).toContain("Run VACUUM after execute");
     expect(OFFLINE).toContain("--compact requires --execute");
     expect(OFFLINE).toContain("admin.vacuum.execute");
+    expect(OFFLINE).toContain("backupRestoreDrill");
+    expect(OFFLINE).toContain("PRAGMA quick_check");
     expect(OFFLINE).toContain("compactDatabase(core, config.dbPath");
   });
 

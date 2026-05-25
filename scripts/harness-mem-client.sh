@@ -132,6 +132,7 @@ fallback_error_code() {
     admin-consolidation-run) printf 'admin_consolidation_run_failed' ;;
     admin-consolidation-status) printf 'admin_consolidation_status_failed' ;;
     admin-audit-log) printf 'admin_audit_log_failed' ;;
+    admin-forget-status) printf 'admin_forget_status_failed' ;;
     sessions-list) printf 'sessions_list_failed' ;;
     session-thread) printf 'session_thread_failed' ;;
     search-facets) printf 'search_facets_failed' ;;
@@ -164,7 +165,7 @@ fallback_error() {
 
 is_get_command() {
   case "$1" in
-    health|admin-metrics|admin-consolidation-status|admin-vector-backfill-status|admin-audit-log|sessions-list|session-thread|search-facets|work-query)
+    health|admin-metrics|admin-consolidation-status|admin-vector-backfill-status|admin-audit-log|sessions-list|session-thread|search-facets|work-query|admin-forget-status)
       return 0
       ;;
     *)
@@ -268,6 +269,9 @@ main() {
       audit_query="$(payload_to_query "$payload")"
       call_get "/v1/admin/audit-log${audit_query}" || fallback_error "admin-audit-log" "admin-audit-log failed"
       ;;
+    admin-forget-status)
+      call_get "/v1/admin/forget/status" || fallback_error "admin-forget-status" "admin-forget-status failed"
+      ;;
     sessions-list)
       local sessions_query
       sessions_query="$(payload_to_query "$payload")"
@@ -313,7 +317,7 @@ main() {
       call_post "/v1/admin/imports/${verify_job_id}/verify" "{}" || fallback_error "verify-import" "verify-import failed"
       ;;
     *)
-		      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-forget-maintenance|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
+		      echo "Usage: $0 {health|record-event|search|timeline|get-observations|resume-pack|record-checkpoint|finalize-session|work-query|ingest-codex-history|ingest-hermes-state|admin-backup|admin-backup-evidence|admin-forget-maintenance|admin-forget-status|admin-reindex-vectors|admin-repair-sqlite-vec-map|admin-vector-backfill-start|admin-vector-backfill-status|admin-vector-backfill-stop|admin-cleanup-duplicates|admin-metrics|admin-consolidation-run|admin-consolidation-status|admin-audit-log|sessions-list|session-thread|search-facets|import-claude-mem|import-status|verify-import} [json/query]" >&2
       exit 1
       ;;
   esac

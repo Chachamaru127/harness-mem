@@ -572,6 +572,10 @@ export interface Config {
   forgetMaintenanceScheduleEnabled?: boolean;
   /** S132: 1 batch あたりの候補数上限 */
   forgetMaintenanceLimit?: number;
+  /** S129-012: scheduler tick の soft budget ms。超過時は backoff へ入る */
+  forgetMaintenanceHealthBudgetMs?: number;
+  /** S129-012: scheduler budget/error 後の backoff ms */
+  forgetMaintenanceBackoffMs?: number;
   /** S132: forget policy score threshold */
   forgetMaintenanceScoreThreshold?: number;
   /** S132: accessed rows を保護するか */

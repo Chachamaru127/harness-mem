@@ -159,6 +159,10 @@ describe("config-manager: getConfig (module-level function)", () => {
     expect(config).toHaveProperty("captureEnabled");
     expect(config).toHaveProperty("retrievalEnabled");
     expect(config).toHaveProperty("injectionEnabled");
+    expect(config.forgetMaintenanceEnabled).toBe(false);
+    expect(config.forgetMaintenanceMode).toBe("dry-run");
+    expect(config.forgetMaintenanceHealthBudgetMs).toBeGreaterThan(0);
+    expect(config.forgetMaintenanceBackoffMs).toBeGreaterThan(0);
   });
 });
 

@@ -107,6 +107,7 @@ import {
   normalizeVectorDimension,
   nowIso,
   parseArrayJson,
+  parseJsonSafe,
   parseBackendMode,
   resolveHomePath,
   resolveWorkspaceRootFromWorkspaceFile,
@@ -431,6 +432,35 @@ type ForgetMaintenanceThresholds = {
   active_observations?: number;
   archived_observations?: number;
   stale_vector_rows?: number;
+};
+
+type ForgetAutonomyLevel =
+  | "L0_report"
+  | "L1_reversible_archive"
+  | "L2_derived_cache_prune"
+  | "L3_guarded_purge"
+  | "L4_compact";
+
+type ForgetAutonomyReportRequest = {
+  candidate_ids?: string[];
+  project?: string;
+  protect_accessed?: boolean;
+  autonomy_level?: ForgetAutonomyLevel;
+  estimated_reclaim_bytes?: number;
+  vector_prune_plan?: Record<string, unknown> | null;
+};
+
+type ForgetAutonomyReport = {
+  autonomy_level: ForgetAutonomyLevel;
+  estimated_reclaim_bytes: number;
+  excluded_by_reason: Record<string, number>;
+  legal_hold_count: number;
+  durable_type_count: number;
+  candidate_count: number;
+  restore_required_before_purge: boolean;
+  default_hard_purge: false;
+  default_compact: false;
+  excluded_counts_may_overlap: true;
 };
 
 type ArchiveCandidateRow = {
@@ -868,6 +898,15 @@ function normalizeSha256(value: unknown): string | null {
 function uniqueSortedStrings(values: string[] | undefined): string[] {
   return [...new Set((values ?? []).map((value) => value.trim()).filter(Boolean))].sort();
 }
+
+function stringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((entry): entry is string => typeof entry === "string" && entry.length > 0)
+    : [];
+}
+
+const AUTONOMOUS_FORGET_DURABLE_TYPES = new Set(["decision", "pattern", "preference", "lesson"]);
+const AUTONOMOUS_FORGET_PRIVACY_TAGS = new Set(["private", "secret", "sensitive"]);
 
 type SearchOffloadMode = "child_process" | "persistent_worker";
 
@@ -1659,6 +1698,7 @@ export class HarnessMemCore {
   /** S132: opt-in restore-capable archive maintenance scheduler */
   private forgetMaintenanceTimer: ReturnType<typeof setInterval> | null = null;
   private forgetMaintenanceRunning = false;
+  private forgetMaintenanceBackoffUntilMs = 0;
   /** S127-002: warm persistent worker for normal vector search. */
   private searchWorker: PersistentSearchWorkerClient | null = null;
   private searchChildPending = 0;
@@ -3228,16 +3268,39 @@ export class HarnessMemCore {
       return;
     }
     const intervalMs = clampLimit(this.config.forgetMaintenanceIntervalMs, 3600000, 60000, 24 * 60 * 60 * 1000);
+    const healthBudgetMs = clampLimit(this.config.forgetMaintenanceHealthBudgetMs, 2000, 100, 60_000);
+    const backoffMs = clampLimit(this.config.forgetMaintenanceBackoffMs, 300_000, 1_000, 24 * 60 * 60 * 1000);
     this.forgetMaintenanceTimer = setInterval(() => {
       if (this.shuttingDown || this.forgetMaintenanceRunning) return;
+      if (Date.now() < this.forgetMaintenanceBackoffUntilMs) return;
       this.forgetMaintenanceRunning = true;
+      const startedAt = performance.now();
       try {
-        this.adminForgetMaintenance({ reason: "scheduler" });
+        const schedulerLimit = Math.min(clampLimit(this.config.forgetMaintenanceLimit, 100, 1, 500), 100);
+        const response = this.adminForgetMaintenance({
+          reason: "scheduler",
+          limit: schedulerLimit,
+          mode: this.config.forgetMaintenanceMode === "archive" ? "archive" : "dry-run",
+        });
+        const durationMs = Math.round(performance.now() - startedAt);
+        if (durationMs > healthBudgetMs) {
+          this.forgetMaintenanceBackoffUntilMs = Date.now() + backoffMs;
+          this.writeAuditLog("admin.forget_maintenance.backoff", "observation", "", {
+            reason: "health_budget_exceeded",
+            duration_ms: durationMs,
+            health_budget_ms: healthBudgetMs,
+            backoff_ms: backoffMs,
+            mode: this.config.forgetMaintenanceMode,
+            candidate_count: response.meta?.candidate_count,
+          });
+        }
       } catch (error) {
+        this.forgetMaintenanceBackoffUntilMs = Date.now() + backoffMs;
         try {
           this.writeAuditLog("admin.forget_maintenance.error", "observation", "", {
             reason: "scheduler",
             error: error instanceof Error ? error.message : String(error),
+            backoff_ms: backoffMs,
           });
         } catch {
           // best effort
@@ -5829,6 +5892,186 @@ export class HarnessMemCore {
     return triggers;
   }
 
+  private sumTextBytesById(table: string, idColumn: string, columns: string[], ids: string[]): number {
+    if (ids.length === 0 || !this.tableExists(table)) return 0;
+    const quotedTable = this.quoteIdentifier(table);
+    const tableColumns = new Set((this.db.query(`PRAGMA table_info(${quotedTable})`).all() as Array<{ name: string }>)
+      .map((row) => row.name));
+    if (!tableColumns.has(idColumn)) return 0;
+    const usableColumns = columns.filter((column) => tableColumns.has(column));
+    if (usableColumns.length === 0) return 0;
+    const expression = usableColumns
+      .map((column) => `COALESCE(LENGTH(${this.quoteIdentifier(column)}), 0)`)
+      .join(" + ");
+    const quotedIdColumn = this.quoteIdentifier(idColumn);
+    let total = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const placeholders = chunk.map(() => "?").join(", ");
+      const row = this.db
+        .query(`SELECT COALESCE(SUM(${expression}), 0) AS bytes FROM ${quotedTable} WHERE ${quotedIdColumn} IN (${placeholders})`)
+        .get(...(chunk as never[])) as { bytes: number } | null;
+      total += Number(row?.bytes ?? 0);
+    }
+    return total;
+  }
+
+  private sumArchiveFullBytesByObservationId(ids: string[]): number {
+    if (ids.length === 0 || !this.tableExists("mem_archive_full") || !this.tableExists("mem_archive_stubs")) return 0;
+    let total = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const placeholders = chunk.map(() => "?").join(", ");
+      const row = this.db
+        .query(`
+          SELECT COALESCE(SUM(COALESCE(LENGTH(f.payload_json), 0) + COALESCE(LENGTH(f.payload_sha256), 0)), 0) AS bytes
+          FROM mem_archive_full f
+          JOIN mem_archive_stubs s ON s.archive_id = f.archive_id
+          WHERE s.observation_id IN (${placeholders})
+        `)
+        .get(...(chunk as never[])) as { bytes: number } | null;
+      total += Number(row?.bytes ?? 0);
+    }
+    return total;
+  }
+
+  private estimateForgetReclaimBytes(candidateIds: string[]): number {
+    const ids = uniqueSortedStrings(candidateIds);
+    if (ids.length === 0) return 0;
+    return [
+      this.sumTextBytesById("mem_observations", "id", [
+        "title",
+        "content",
+        "content_redacted",
+        "raw_text",
+        "tags_json",
+        "privacy_tags_json",
+        "content_dedupe_hash",
+      ], ids),
+      this.sumTextBytesById("mem_vectors", "observation_id", ["vector_json"], ids),
+      this.sumTextBytesById("mem_events", "observation_id", ["payload_json", "tags_json", "privacy_tags_json", "dedupe_hash"], ids),
+      this.sumTextBytesById("mem_facts", "observation_id", ["subject", "predicate", "object", "source", "metadata_json"], ids),
+      this.sumTextBytesById("mem_relations", "observation_id", ["relation_type", "target", "metadata_json"], ids),
+      this.sumTextBytesById("mem_tags", "observation_id", ["tag", "tag_type"], ids),
+      this.sumTextBytesById("mem_nuggets", "observation_id", ["content", "content_hash"], ids),
+      this.sumTextBytesById("mem_nugget_vectors", "observation_id", ["vector_json"], ids),
+      this.sumTextBytesById("mem_archive_stubs", "observation_id", [
+        "archive_stub",
+        "archive_full_ref",
+        "reason",
+        "content_sha256",
+        "manifest_sha256",
+        "metadata_json",
+      ], ids),
+      this.sumArchiveFullBytesByObservationId(ids),
+    ].reduce((sum, value) => sum + value, 0);
+  }
+
+  private collectForgetExclusionReport(request: {
+    candidate_ids: string[];
+    project?: string;
+    protect_accessed?: boolean;
+  }): { excluded_by_reason: Record<string, number>; legal_hold_count: number; durable_type_count: number } {
+    const candidateSet = new Set(request.candidate_ids);
+    const excluded: Record<string, number> = {
+      legal_hold: 0,
+      privacy_protected: 0,
+      durable_type: 0,
+      access_protected: 0,
+      fresh_under_min_age: 0,
+      already_archived: 0,
+    };
+    const params: unknown[] = [];
+    let activeSql = `
+      SELECT id, created_at, expires_at, access_count, observation_type, memory_type, tags_json, privacy_tags_json
+      FROM mem_observations
+      WHERE archived_at IS NULL
+    `;
+    let archivedSql = `SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NOT NULL`;
+    if (request.project) {
+      activeSql += ` AND project = ?`;
+      archivedSql += ` AND project = ?`;
+      params.push(request.project);
+    }
+
+    const protectAccessed = request.protect_accessed !== false;
+    const nowMs = Date.now();
+    const activeRows = this.db.query(activeSql).all(...(params as never[])) as Array<{
+      id: string;
+      created_at: string | null;
+      expires_at: string | null;
+      access_count: number | null;
+      observation_type: string | null;
+      memory_type: string | null;
+      tags_json: string | null;
+      privacy_tags_json: string | null;
+    }>;
+    const archivedRow = this.db.query(archivedSql).get(...(params as never[])) as { count: number } | null;
+    excluded.already_archived = Number(archivedRow?.count ?? 0);
+
+    let legalHoldCount = 0;
+    let durableTypeCount = 0;
+    for (const row of activeRows) {
+      const privacyTags = parseJsonStringArray(row.privacy_tags_json).map((tag) => tag.toLowerCase());
+      const tags = parseJsonStringArray(row.tags_json).map((tag) => tag.toLowerCase());
+      const hasLegalHold = privacyTags.includes("legal_hold") || tags.includes("legal_hold");
+      const hasPrivacyProtected = privacyTags.some((tag) => AUTONOMOUS_FORGET_PRIVACY_TAGS.has(tag));
+      const observationType = (row.observation_type ?? "").toLowerCase();
+      const memoryType = (row.memory_type ?? "").toLowerCase();
+      const hasDurableType =
+        AUTONOMOUS_FORGET_DURABLE_TYPES.has(observationType) ||
+        AUTONOMOUS_FORGET_DURABLE_TYPES.has(memoryType);
+      const expiresAtMs = row.expires_at ? Date.parse(row.expires_at) : Number.POSITIVE_INFINITY;
+      const isExpired = Number.isFinite(expiresAtMs) && expiresAtMs <= nowMs;
+      const createdAtMs = row.created_at ? Date.parse(row.created_at) : Number.NaN;
+      const ageDays = Number.isFinite(createdAtMs)
+        ? Math.max(0, (nowMs - createdAtMs) / (24 * 60 * 60 * 1000))
+        : 0;
+      if (hasLegalHold) legalHoldCount += 1;
+      if (hasDurableType) durableTypeCount += 1;
+      if (candidateSet.has(row.id)) continue;
+      if (hasLegalHold) excluded.legal_hold += 1;
+      if (hasPrivacyProtected) excluded.privacy_protected += 1;
+      if (hasDurableType && !isExpired) excluded.durable_type += 1;
+      if (protectAccessed && Number(row.access_count ?? 0) > 0 && !isExpired) excluded.access_protected += 1;
+      if (ageDays < 30 && !isExpired) excluded.fresh_under_min_age += 1;
+    }
+
+    return {
+      excluded_by_reason: excluded,
+      legal_hold_count: legalHoldCount,
+      durable_type_count: durableTypeCount,
+    };
+  }
+
+  adminForgetAutonomyReport(request: ForgetAutonomyReportRequest = {}): ForgetAutonomyReport {
+    const candidateIds = uniqueSortedStrings(request.candidate_ids ?? []);
+    const exclusionReport = this.collectForgetExclusionReport({
+      candidate_ids: candidateIds,
+      project: request.project,
+      protect_accessed: request.protect_accessed,
+    });
+    const estimatedFromCandidates = this.estimateForgetReclaimBytes(candidateIds);
+    const vectorPrunePlan = request.vector_prune_plan ?? null;
+    const vectorPruneBytes = typeof vectorPrunePlan?.removable_vector_json_bytes === "number"
+      ? Number(vectorPrunePlan.removable_vector_json_bytes)
+      : typeof vectorPrunePlan?.deleted_vector_json_bytes_estimate === "number"
+        ? Number(vectorPrunePlan.deleted_vector_json_bytes_estimate)
+        : 0;
+    return {
+      autonomy_level: request.autonomy_level ?? "L0_report",
+      estimated_reclaim_bytes: Math.max(0, Math.floor(request.estimated_reclaim_bytes ?? (estimatedFromCandidates + vectorPruneBytes))),
+      excluded_by_reason: exclusionReport.excluded_by_reason,
+      legal_hold_count: exclusionReport.legal_hold_count,
+      durable_type_count: exclusionReport.durable_type_count,
+      candidate_count: candidateIds.length,
+      restore_required_before_purge: true,
+      default_hard_purge: false,
+      default_compact: false,
+      excluded_counts_may_overlap: true,
+    };
+  }
+
   adminForgetMaintenance(request: AdminForgetMaintenanceRequest = {}): ApiResponse {
     const startedAt = performance.now();
     const measurements = this.collectForgetMaintenanceMeasurements();
@@ -5844,6 +6087,10 @@ export class HarnessMemCore {
     };
 
     if (triggers.length === 0) {
+      const autonomyReport = this.adminForgetAutonomyReport({
+        autonomy_level: "L0_report",
+        protect_accessed: request.protect_accessed ?? this.config.forgetMaintenanceProtectAccessed,
+      });
       return makeResponse(
         startedAt,
         [{
@@ -5853,9 +6100,11 @@ export class HarnessMemCore {
           triggers,
           measurements,
           thresholds,
+          ...autonomyReport,
+          autonomy_report: autonomyReport,
         } as unknown as Record<string, unknown>],
         request as unknown as Record<string, unknown>,
-        { ...baseMeta, skipped: "thresholds_not_exceeded" },
+        { ...baseMeta, ...autonomyReport, skipped: "thresholds_not_exceeded" },
       );
     }
 
@@ -5870,6 +6119,7 @@ export class HarnessMemCore {
     }
     const planItem = (plan.items[0] || {}) as Record<string, unknown>;
     const candidateCount = Number(planItem.candidate_count ?? 0);
+    const candidateIds = stringArray(planItem.candidate_ids);
     const shouldPlanVectorPrune =
       !!request.vector_prune ||
       triggers.includes("threshold:archived_observations") ||
@@ -5877,6 +6127,12 @@ export class HarnessMemCore {
     const vectorPrunePlan = shouldPlanVectorPrune
       ? (this.adminForgetVectorPrune(request.vector_prune ?? {}).items[0] as Record<string, unknown> | undefined)
       : undefined;
+    const autonomyReport = this.adminForgetAutonomyReport({
+      autonomy_level: mode === "archive" && candidateCount > 0 ? "L1_reversible_archive" : "L0_report",
+      candidate_ids: candidateIds,
+      protect_accessed: archiveRequest.protect_accessed,
+      vector_prune_plan: vectorPrunePlan ?? null,
+    });
     this.writeAuditLog("admin.forget_maintenance.plan", "observation", "", {
       mode,
       reason: request.reason || "manual",
@@ -5886,6 +6142,11 @@ export class HarnessMemCore {
       candidate_count: candidateCount,
       manifest_sha256: planItem.manifest_sha256,
       vector_prune_candidate_count: vectorPrunePlan?.candidate_count,
+      autonomy_level: autonomyReport.autonomy_level,
+      estimated_reclaim_bytes: autonomyReport.estimated_reclaim_bytes,
+      excluded_by_reason: autonomyReport.excluded_by_reason,
+      legal_hold_count: autonomyReport.legal_hold_count,
+      durable_type_count: autonomyReport.durable_type_count,
     });
 
     if (mode !== "archive" || candidateCount === 0) {
@@ -5902,9 +6163,11 @@ export class HarnessMemCore {
           ...(vectorPrunePlan ? { vector_prune_plan: vectorPrunePlan } : {}),
           automatic_hard_purge: false,
           automatic_compact: false,
+          ...autonomyReport,
+          autonomy_report: autonomyReport,
         } as unknown as Record<string, unknown>],
         request as unknown as Record<string, unknown>,
-        { ...baseMeta, candidate_count: candidateCount, execute: false },
+        { ...baseMeta, ...autonomyReport, candidate_count: candidateCount, execute: false },
       );
     }
 
@@ -5932,13 +6195,142 @@ export class HarnessMemCore {
         ...(vectorPrunePlan ? { vector_prune_plan: vectorPrunePlan } : {}),
         automatic_hard_purge: false,
         automatic_compact: false,
+        ...autonomyReport,
+        autonomy_report: autonomyReport,
       } as unknown as Record<string, unknown>],
       request as unknown as Record<string, unknown>,
       {
         ...baseMeta,
+        ...autonomyReport,
         candidate_count: candidateCount,
         archived_count: (executed.items[0] as Record<string, unknown> | undefined)?.archived_count,
         execute: true,
+      },
+    );
+  }
+
+  adminForgetStatus(): ApiResponse {
+    const startedAt = performance.now();
+    const measurements = this.collectForgetMaintenanceMeasurements();
+    const archivedStateRows = this.db
+      .query<{ archive_state: string; count: number }, []>(`
+        SELECT archive_state, COUNT(*) AS count
+        FROM mem_archive_stubs
+        GROUP BY archive_state
+      `)
+      .all();
+    const archiveStates = archivedStateRows.reduce<Record<string, number>>((acc, row) => {
+      acc[row.archive_state] = Number(row.count ?? 0);
+      return acc;
+    }, {});
+    const auditRows = this.db
+      .query<{ action: string; details_json: string; created_at: string }, []>(`
+        SELECT action, details_json, created_at
+        FROM mem_audit_log
+        WHERE action IN (
+          'admin.forget_maintenance.plan',
+          'admin.forget_maintenance.backoff',
+          'admin.forget_maintenance.error',
+          'admin.archive.create',
+          'admin.vacuum.execute',
+          'admin.vector_cache_prune.execute'
+        )
+        ORDER BY created_at DESC, id DESC
+        LIMIT 100
+      `)
+      .all();
+    const lastByAction: Record<string, Record<string, unknown>> = {};
+    for (const row of auditRows) {
+      if (lastByAction[row.action]) continue;
+      const details = parseJsonSafe(row.details_json);
+      lastByAction[row.action] = {
+        action: row.action,
+        created_at: row.created_at,
+        details: {
+          mode: details.mode ?? null,
+          reason: details.reason ?? null,
+          candidate_count: details.candidate_count ?? null,
+          archived_count: details.archived_count ?? null,
+          deleted_rows: details.deleted_rows ?? null,
+          deleted_count: details.deleted_count ?? null,
+          reclaimed_bytes: details.reclaimed_bytes ?? (parseJsonSafe(details.after ?? {}).reclaimed_bytes ?? null),
+          duration_ms: details.duration_ms ?? null,
+          skipped: details.skipped ?? null,
+          error: details.error ?? null,
+        },
+      };
+    }
+    const lastMaintenance = lastByAction["admin.forget_maintenance.plan"] ?? null;
+    const lastArchive = lastByAction["admin.archive.create"] ?? null;
+    const lastCompact = lastByAction["admin.vacuum.execute"] ?? null;
+    const lastVectorPrune = lastByAction["admin.vector_cache_prune.execute"] ?? null;
+    const backoffActive = Date.now() < this.forgetMaintenanceBackoffUntilMs;
+    const nextRun = this.config.forgetMaintenanceEnabled === true
+      ? {
+          interval_ms: this.config.forgetMaintenanceIntervalMs,
+          backoff_until: backoffActive ? new Date(this.forgetMaintenanceBackoffUntilMs).toISOString() : null,
+          exact_next_run_at: null,
+        }
+      : null;
+    const latestCompactDetails = lastCompact ? parseJsonSafe(lastCompact.details) : {};
+    const reclaimedBytes = Number(latestCompactDetails.reclaimed_bytes ?? 0);
+    const riskLevel = backoffActive
+      ? "attention"
+      : this.config.forgetMaintenanceMode === "archive"
+        ? "low"
+        : measurements.archived_observations > 0 || measurements.stale_vector_rows > 0
+          ? "medium"
+          : "low";
+    return makeResponse(
+      startedAt,
+      [{
+        mode: "forget_status",
+        scheduler: {
+          enabled: this.config.forgetMaintenanceEnabled === true,
+          mode: this.config.forgetMaintenanceMode,
+          running: this.forgetMaintenanceRunning,
+          schedule_enabled: this.config.forgetMaintenanceScheduleEnabled === true,
+          limit: this.config.forgetMaintenanceLimit,
+          health_budget_ms: this.config.forgetMaintenanceHealthBudgetMs,
+          backoff_ms: this.config.forgetMaintenanceBackoffMs,
+          next_run: nextRun,
+        },
+        counts: {
+          active_observations: measurements.active_observations,
+          archived_observations: measurements.archived_observations,
+          archive_states: archiveStates,
+          archived_vector_rows: measurements.archived_vector_rows,
+          stale_vector_rows: measurements.stale_vector_rows,
+        },
+        last_run: {
+          maintenance: lastMaintenance,
+          archive: lastArchive,
+          vector_prune: lastVectorPrune,
+          compact: lastCompact,
+        },
+        reclaim: {
+          db_size_bytes: measurements.db_size_bytes,
+          wal_size_bytes: measurements.wal_size_bytes,
+          last_compact_reclaimed_bytes: Number.isFinite(reclaimedBytes) ? reclaimedBytes : 0,
+        },
+        restore_window: {
+          archive_restore_supported: Number(archiveStates.archived ?? 0) > 0,
+          hard_purge_requires_backup_evidence: true,
+          compact_requires_restore_drill: true,
+        },
+        risk_level: riskLevel,
+        safety: {
+          raw_content_returned: false,
+          tokens_returned: false,
+          confirmation_phrases_returned: false,
+          automatic_hard_purge: false,
+          automatic_compact: false,
+        },
+      } as unknown as Record<string, unknown>],
+      {},
+      {
+        ranking: "forget_status_v1",
+        risk_level: riskLevel,
       },
     );
   }

@@ -102,10 +102,14 @@ interface ObsRow {
   created_at: string | null;
   access_count: number | null;
   signal_score: number | null;
+  observation_type: string | null;
+  memory_type: string | null;
   archived_at: string | null;
   expires_at: string | null;
   privacy_tags_json: string | null;
 }
+
+const DURABLE_FORGET_TYPES = new Set(["decision", "pattern", "preference", "lesson"]);
 
 function clamp01(v: number): number {
   if (!Number.isFinite(v)) return 0;
@@ -202,7 +206,7 @@ export function collectForgetCandidates(
 
   const params: unknown[] = [];
   let sql = `
-    SELECT id, project, created_at, access_count, signal_score, archived_at, expires_at, privacy_tags_json
+    SELECT id, project, created_at, access_count, signal_score, observation_type, memory_type, archived_at, expires_at, privacy_tags_json
     FROM mem_observations
     WHERE archived_at IS NULL
   `;
@@ -264,6 +268,12 @@ export function collectForgetCandidates(
         signal_score: signalScore,
         expired_at: row.expires_at,
       });
+      continue;
+    }
+
+    const observationType = (row.observation_type ?? "").toLowerCase();
+    const memoryType = (row.memory_type ?? "").toLowerCase();
+    if (DURABLE_FORGET_TYPES.has(observationType) || DURABLE_FORGET_TYPES.has(memoryType)) {
       continue;
     }
 

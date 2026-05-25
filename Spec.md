@@ -233,6 +233,57 @@ Allowed recall telemetry should focus on structural data: latency, queue depth,
 fallback reason, projection staleness, result count, scope type, and tool/client
 surface.
 
+## Memory Lifecycle And Autonomous Forgetting
+
+Harness-mem may become self-maintaining, but it must not silently destroy local
+memory by default. Autonomous forgetting is a staged lifecycle, not one command
+that deletes everything.
+
+### Autonomy Ladder
+
+| Level | Behaviour | Default | Safety boundary |
+|---|---|---:|---|
+| L0 report | Measure DB size, active/archive counts, stale vectors, candidate impact | On | No mutation |
+| L1 reversible archive | Archive low-value or expired rows with full restore payload | Opt-in | Restore must work before purge |
+| L2 derived cache prune | Delete stale vector/cache rows only when canonical memory remains | Opt-in | Rebuildable data only |
+| L3 guarded purge | Physically delete already archived rows after retention and backup evidence | Opt-in only | Backup, archive coverage, legal-hold, audit |
+| L4 compact | Reclaim file size with `VACUUM`/safe compact after purge | Opt-in only | Daemon stop/start and rollback backup |
+
+L1 is the highest level that may become regular daemon automation. L3/L4 may be
+autonomous only under an explicit local maintenance profile that the operator
+enabled; they must never be the default for new installs.
+
+### Forgetting Policy Contract
+
+Autonomous forgetting must preserve these rules:
+
+- `legal_hold`, `private`, `secret`, and `sensitive` rows are never automatic
+  archive or purge candidates.
+- Explicit `expires_at` beats value scoring, except `legal_hold` still wins.
+- Durable memory types such as `decision`, `pattern`, `preference`, and `lesson`
+  must not receive default TTL unless a policy explicitly opts them in.
+- Candidate selection must report cross-store impact before mutation.
+- Archive execute must be reversible and must not run hard purge or compact in
+  the same request.
+- Hard purge must target archived rows only and must prove restore-capable
+  archive coverage in a backup created after archive.
+- Compact must run after purge and record before/after bytes, duration, and
+  daemon health.
+- Every autonomous run must write audit evidence and expose status explaining
+  what was skipped, archived, purged, compacted, and why.
+- `/v1/admin/forget/maintenance`, the offline lifecycle runner, and
+  `harness-mem forget status` must expose the lifecycle level, candidate
+  counts, estimated reclaim bytes, exclusion reasons, restore requirements, and
+  risk level without returning raw memory content, backup tokens, or
+  confirmation phrases.
+
+### Completion Definition
+
+This feature is done when a local user can enable a conservative maintenance
+profile and harness-mem keeps memory growth under configured thresholds without
+blocking `/health/ready`, while still giving the user an understandable audit
+trail and a restore window before irreversible purge.
+
 ## MCP Transport Defaults
 
 Harness-mem has two local MCP layers:

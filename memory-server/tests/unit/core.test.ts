@@ -644,9 +644,28 @@ describe("HarnessMemCore unit", () => {
         })
       );
       const obsId = (inserted.items[0] as { id: string }).id;
+      const durableInserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-maintenance-durable",
+          payload: { content: "maintenance durable decision phrase" },
+        })
+      );
+      const durableId = (durableInserted.items[0] as { id: string }).id;
+      const legalHoldInserted = core.recordEvent(
+        baseEvent({
+          event_id: "event-forget-maintenance-legal-hold",
+          payload: { content: "maintenance legal hold phrase" },
+          privacy_tags: ["legal_hold"],
+        })
+      );
+      const legalHoldId = (legalHoldInserted.items[0] as { id: string }).id;
       const db = core.getRawDb();
       db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
         .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", obsId);
+      db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0, observation_type = 'decision' WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", durableId);
+      db.query(`UPDATE mem_observations SET created_at = ?, updated_at = ?, signal_score = 0, access_count = 0 WHERE id = ?`)
+        .run("2020-01-01T00:00:00.000Z", "2020-01-01T00:00:00.000Z", legalHoldId);
 
       const result = core.adminForgetMaintenance({ reason: "scheduler" });
       expect(result.ok).toBe(true);
@@ -654,13 +673,26 @@ describe("HarnessMemCore unit", () => {
         mode: string;
         execute: boolean;
         triggers: string[];
+        autonomy_level: string;
+        estimated_reclaim_bytes: number;
+        excluded_by_reason: Record<string, number>;
+        legal_hold_count: number;
+        durable_type_count: number;
         archive_plan: { candidate_count: number; candidate_ids: string[] };
       };
       expect(item.mode).toBe("forget_maintenance_plan");
       expect(item.execute).toBe(false);
       expect(item.triggers).toContain("threshold:active_observations");
+      expect(item.autonomy_level).toBe("L0_report");
+      expect(item.estimated_reclaim_bytes).toBeGreaterThan(0);
+      expect(item.excluded_by_reason.legal_hold).toBeGreaterThanOrEqual(1);
+      expect(item.excluded_by_reason.durable_type).toBeGreaterThanOrEqual(1);
+      expect(item.legal_hold_count).toBeGreaterThanOrEqual(1);
+      expect(item.durable_type_count).toBeGreaterThanOrEqual(1);
       expect(item.archive_plan.candidate_count).toBe(1);
       expect(item.archive_plan.candidate_ids).toContain(obsId);
+      expect(item.archive_plan.candidate_ids).not.toContain(durableId);
+      expect(item.archive_plan.candidate_ids).not.toContain(legalHoldId);
 
       const row = db.query(`SELECT archived_at FROM mem_observations WHERE id = ?`).get(obsId) as { archived_at: string | null };
       expect(row.archived_at).toBeNull();
@@ -694,12 +726,22 @@ describe("HarnessMemCore unit", () => {
         execute: boolean;
         automatic_hard_purge: boolean;
         automatic_compact: boolean;
+        autonomy_level: string;
+        estimated_reclaim_bytes: number;
+        excluded_by_reason: Record<string, number>;
+        legal_hold_count: number;
+        durable_type_count: number;
         archive: { archived_count: number; archived_ids: string[] };
       };
       expect(item.mode).toBe("forget_maintenance_archive");
       expect(item.execute).toBe(true);
       expect(item.automatic_hard_purge).toBe(false);
       expect(item.automatic_compact).toBe(false);
+      expect(item.autonomy_level).toBe("L1_reversible_archive");
+      expect(item.estimated_reclaim_bytes).toBeGreaterThan(0);
+      expect(item.excluded_by_reason).toHaveProperty("legal_hold");
+      expect(item.legal_hold_count).toBeGreaterThanOrEqual(0);
+      expect(item.durable_type_count).toBeGreaterThanOrEqual(0);
       expect(item.archive.archived_count).toBe(1);
       expect(item.archive.archived_ids).toContain(obsId);
 
@@ -750,8 +792,18 @@ describe("HarnessMemCore unit", () => {
           candidate_count: number;
           samples: Array<{ observation_id: string }>;
         };
+        autonomy_level: string;
+        estimated_reclaim_bytes: number;
+        excluded_by_reason: Record<string, number>;
+        legal_hold_count: number;
+        durable_type_count: number;
       };
       expect(item.mode).toBe("forget_maintenance_plan");
+      expect(item.autonomy_level).toBe("L0_report");
+      expect(item.estimated_reclaim_bytes).toBeGreaterThanOrEqual(0);
+      expect(item.excluded_by_reason).toHaveProperty("already_archived");
+      expect(item.legal_hold_count).toBeGreaterThanOrEqual(0);
+      expect(item.durable_type_count).toBeGreaterThanOrEqual(0);
       expect(item.vector_prune_plan.mode).toBe("archived_vector_prune_plan");
       expect(item.vector_prune_plan.dry_run).toBe(true);
       expect(item.vector_prune_plan.candidate_count).toBeGreaterThanOrEqual(1);

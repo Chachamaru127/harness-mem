@@ -482,6 +482,10 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           return jsonResponse(core.metrics());
         }
 
+        if (request.method === "GET" && url.pathname === "/v1/admin/forget/status") {
+          return jsonResponse(core.adminForgetStatus());
+        }
+
         if (request.method === "GET" && url.pathname === "/v1/admin/telemetry/status") {
           const telemetry = getTelemetryLocalExport({ limit: 0 });
           return rawJsonResponse({

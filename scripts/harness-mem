@@ -152,6 +152,7 @@ Commands:
   backup                     Create a WAL-safe snapshot of the memory DB via VACUUM INTO.
   backup-evidence            Preverify a backup file and return a hard-purge evidence token.
   forget-maintenance         Run the archive-first forget maintenance planner/trigger.
+  forget status              Show autonomous forgetting status, counts, last run, restore window and risk.
   import-claude-mem          One-shot import from Claude-mem SQLite into harness-mem.
   ingest-hermes-state        Backfill Hermes ~/.hermes/state.db into harness-mem (dry-run by default).
   admin-repair-sqlite-vec-map
@@ -4010,6 +4011,33 @@ forget_maintenance_impl() {
   echo "$response" | jq -e '.ok == true' >/dev/null || fail "Forget maintenance failed"
 }
 
+forget_status_impl() {
+  ensure_dependencies
+  start_daemon
+
+  local response
+  response="$(
+    HARNESS_MEM_HOST="$MEM_HOST" \
+    HARNESS_MEM_PORT="$MEM_PORT" \
+    HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+    "$HARNESS_ROOT/scripts/harness-mem-client.sh" admin-forget-status "{}"
+  )"
+  echo "$response"
+  echo "$response" | jq -e '.ok == true' >/dev/null || fail "Forget status failed"
+}
+
+forget_impl() {
+  local subcommand="${1:-status}"
+  case "$subcommand" in
+    status)
+      forget_status_impl
+      ;;
+    *)
+      fail "Unknown forget command: $subcommand"
+      ;;
+  esac
+}
+
 admin_repair_sqlite_vec_map_impl() {
   ensure_dependencies
   [ -n "$REPAIR_SQLITE_VEC_MODEL" ] || fail "admin-repair-sqlite-vec-map requires --model <model>; refusing to infer an admin repair target"
@@ -7526,6 +7554,21 @@ main() {
     adr_impl "$@"
     return
   fi
+  if [ "$command" = "forget" ]; then
+    local forget_subcmd="${1:-status}"
+    if [ "$#" -gt 0 ]; then
+      shift || true
+    fi
+    parse_options "$@"
+    normalize_ui_lang
+    TARGET_DIR="$(abs_dir "$TARGET_DIR")"
+    if should_use_stable_runtime_root; then
+      sync_to_stable_runtime_root
+    fi
+    maybe_auto_update "$command"
+    forget_impl "$forget_subcmd"
+    return
+  fi
   if [ "$command" = "mcp-gateway" ]; then
     local gateway_subcmd="${1:-status}"
     if [ "$#" -gt 0 ]; then
@@ -7632,6 +7675,9 @@ main() {
       ;;
     forget-maintenance)
       forget_maintenance_impl
+      ;;
+    forget)
+      forget_impl "$@"
       ;;
     import-claude-mem)
       import_claude_mem_impl
