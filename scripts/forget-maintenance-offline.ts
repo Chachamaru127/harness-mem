@@ -424,7 +424,13 @@ async function checkDaemonStoppedForExecute(args: Args, config: Config): Promise
     || process.env.HARNESS_MEM_URL
     || `http://${config.bindHost || "127.0.0.1"}:${config.bindPort || 8765}`;
   if (args.allowRunningDaemon) {
-    return { checked: true, required: true, base_url: baseUrl, overridden: true };
+    return {
+      checked: true,
+      required: true,
+      base_url: baseUrl,
+      overridden: true,
+      db_handles: inspectDbHandles(config.dbPath),
+    };
   }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 350);
@@ -437,11 +443,57 @@ async function checkDaemonStoppedForExecute(args: Args, config: Config): Promise
     if (error instanceof Error && error.message.includes("local daemon appears")) {
       throw error;
     }
-    return { checked: true, required: true, base_url: baseUrl, running: false };
+    const dbHandles = inspectDbHandles(config.dbPath);
+    if (dbHandles.checked && Number(dbHandles.process_count ?? 0) > 0) {
+      throw new Error(
+        `database file is still open by ${dbHandles.process_count} process(es); run scripts/harness-memd offline-stop before --execute`,
+      );
+    }
+    return { checked: true, required: true, base_url: baseUrl, running: false, db_handles: dbHandles };
   } finally {
     clearTimeout(timeout);
   }
-  return { checked: true, required: true, base_url: baseUrl, running: false };
+  const dbHandles = inspectDbHandles(config.dbPath);
+  if (dbHandles.checked && Number(dbHandles.process_count ?? 0) > 0) {
+    throw new Error(
+      `database file is still open by ${dbHandles.process_count} process(es); run scripts/harness-memd offline-stop before --execute`,
+    );
+  }
+  return { checked: true, required: true, base_url: baseUrl, running: false, db_handles: dbHandles };
+}
+
+function inspectDbHandles(dbPath: string): Record<string, unknown> {
+  if (dbPath === ":memory:") {
+    return { checked: false, reason: "memory_db" };
+  }
+  const lsof = Bun.which("lsof");
+  if (!lsof) {
+    return { checked: false, reason: "lsof_unavailable" };
+  }
+  const resolved = resolve(resolveHomePath(dbPath));
+  const proc = Bun.spawnSync({
+    cmd: [lsof, "-nP", resolved, `${resolved}-wal`, `${resolved}-shm`],
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const stdout = new TextDecoder().decode(proc.stdout).trim();
+  const lines = stdout ? stdout.split(/\r?\n/) : [];
+  const rows = lines.slice(1).filter(Boolean);
+  const pids = new Set<string>();
+  for (const row of rows) {
+    const columns = row.trim().split(/\s+/);
+    if (columns[1] && /^\d+$/.test(columns[1])) {
+      pids.add(columns[1]);
+    }
+  }
+  return {
+    checked: true,
+    db_path: resolved,
+    process_count: pids.size,
+    pids: [...pids],
+    rows: rows.slice(0, 20),
+    truncated: rows.length > 20,
+  };
 }
 
 function auditOfflineCompact(core: HarnessMemCore, details: Record<string, unknown>): void {

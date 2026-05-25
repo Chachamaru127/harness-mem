@@ -6,6 +6,8 @@
 #   scripts/harness-memd start [--quiet]
 #   scripts/harness-memd stop [--quiet]
 #   scripts/harness-memd restart [--quiet]
+#   scripts/harness-memd offline-stop [--quiet]
+#   scripts/harness-memd offline-start [--quiet]
 #   scripts/harness-memd status
 #   scripts/harness-memd cleanup-stale
 #   scripts/harness-memd doctor
@@ -177,6 +179,28 @@ launchctl_target() {
   printf 'gui/%s/%s' "$uid" "$label"
 }
 
+launchctl_domain() {
+  local uid
+  uid="$(id -u 2>/dev/null || true)"
+  if [ -z "$uid" ]; then
+    return 1
+  fi
+  printf 'gui/%s' "$uid"
+}
+
+launchctl_plist_path() {
+  local label="${1:-}"
+  if [ "$label" = "$DAEMON_LAUNCHD_LABEL" ] && [ -n "${HARNESS_MEM_DAEMON_LAUNCHD_PLIST:-}" ]; then
+    printf '%s' "$HARNESS_MEM_DAEMON_LAUNCHD_PLIST"
+    return 0
+  fi
+  if [ "$label" = "$UI_LAUNCHD_LABEL" ] && [ -n "${HARNESS_MEM_UI_LAUNCHD_PLIST:-}" ]; then
+    printf '%s' "$HARNESS_MEM_UI_LAUNCHD_PLIST"
+    return 0
+  fi
+  printf '%s/Library/LaunchAgents/%s.plist' "$HOME" "$label"
+}
+
 is_launchctl_job_loaded() {
   local target
   if ! has_launchctl; then
@@ -190,6 +214,25 @@ kickstart_launchctl_job() {
   local target
   target="$(launchctl_target "${1:-}")" || return 1
   launchctl kickstart -k "$target" >/dev/null 2>&1
+}
+
+bootout_launchctl_job() {
+  local target
+  target="$(launchctl_target "${1:-}")" || return 1
+  launchctl bootout "$target" >/dev/null 2>&1
+}
+
+bootstrap_launchctl_job() {
+  local label="${1:-}"
+  local domain plist
+  domain="$(launchctl_domain)" || return 1
+  plist="$(launchctl_plist_path "$label")"
+  if [ ! -f "$plist" ]; then
+    warn "LaunchAgent plist not found for ${label}: ${plist}"
+    return 1
+  fi
+  launchctl bootstrap "$domain" "$plist" >/dev/null 2>&1 || true
+  kickstart_launchctl_job "$label"
 }
 
 log() {
@@ -527,6 +570,52 @@ discover_listener_pid_for_port() {
 
 discover_listener_pid_from_port() {
   discover_listener_pid_for_port "$PORT"
+}
+
+db_handle_pids() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+  lsof -nP -t "$DB_PATH" "${DB_PATH}-wal" "${DB_PATH}-shm" 2>/dev/null | sort -u || true
+}
+
+wait_for_db_handles_closed() {
+  if ! command -v lsof >/dev/null 2>&1; then
+    return 0
+  fi
+
+  local retries=$((STOP_TIMEOUT_SEC * 2 + 4))
+  local attempt=0
+  local handles
+  while [ "$attempt" -lt "$retries" ]; do
+    handles="$(db_handle_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+    if [ -z "$handles" ]; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+
+  handles="$(db_handle_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  if [ -n "$handles" ]; then
+    warn "DB handles still open for ${DB_PATH}: ${handles}"
+    lsof -nP "$DB_PATH" "${DB_PATH}-wal" "${DB_PATH}-shm" 2>/dev/null || true
+    return 1
+  fi
+  return 0
+}
+
+wait_for_daemon_listener_closed() {
+  local retries=$((STOP_TIMEOUT_SEC * 2 + 4))
+  local attempt=0
+  while [ "$attempt" -lt "$retries" ]; do
+    if [ -z "$(discover_listener_pid_from_port || true)" ]; then
+      return 0
+    fi
+    sleep 0.5
+    attempt=$((attempt + 1))
+  done
+  return 1
 }
 
 read_process_args() {
@@ -909,6 +998,71 @@ stop_daemon() {
   return 0
 }
 
+offline_stop_daemon() {
+  ensure_state_dir
+  stop_ui || true
+
+  if is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then
+    log "Booting out LaunchAgent ${DAEMON_LAUNCHD_LABEL} for offline maintenance..."
+    bootout_launchctl_job "$DAEMON_LAUNCHD_LABEL" || true
+  else
+    stop_daemon || true
+  fi
+
+  local pid
+  pid="$(read_pid_file)"
+  local runtime_pid
+  runtime_pid="$(discover_daemon_pid_from_port || true)"
+  if [ -z "$pid" ] && [ -n "$runtime_pid" ]; then
+    pid="$runtime_pid"
+  fi
+  if [ -n "$pid" ] && is_pid_running "$pid"; then
+    log "Stopping harness-memd runtime process (pid=${pid})..."
+    kill -TERM "$pid" >/dev/null 2>&1 || true
+  fi
+
+  if ! wait_for_daemon_listener_closed; then
+    warn "Daemon listener on port ${PORT} did not close in time"
+    return 1
+  fi
+  if ! wait_for_db_handles_closed; then
+    return 1
+  fi
+  cleanup_runtime_artifacts
+  log "harness-memd offline maintenance stop complete (port=${PORT}, db=${DB_PATH})"
+  return 0
+}
+
+offline_start_daemon() {
+  ensure_state_dir
+  if has_launchctl; then
+    if ! is_launchctl_job_loaded "$DAEMON_LAUNCHD_LABEL"; then
+      log "Bootstrapping LaunchAgent ${DAEMON_LAUNCHD_LABEL} after offline maintenance..."
+      if ! bootstrap_launchctl_job "$DAEMON_LAUNCHD_LABEL"; then
+        warn "launchctl bootstrap failed for ${DAEMON_LAUNCHD_LABEL}; falling back to start"
+        start_daemon
+        return $?
+      fi
+    else
+      kickstart_launchctl_job "$DAEMON_LAUNCHD_LABEL" || true
+    fi
+    if wait_for_health; then
+      local runtime_pid
+      runtime_pid="$(refresh_pid_file_from_runtime || true)"
+      if [ -n "$runtime_pid" ]; then
+        log "harness-memd offline maintenance start complete (pid=${runtime_pid}, port=${PORT})"
+      else
+        log "harness-memd offline maintenance start complete (port=${PORT})"
+      fi
+      return 0
+    fi
+    warn "offline maintenance start did not restore health in time"
+    return 1
+  fi
+
+  start_daemon
+}
+
 status_daemon() {
   ensure_state_dir
   apply_log_rotation
@@ -1094,6 +1248,16 @@ main() {
       acquire_lock || exit 1
       trap release_lock EXIT
       stop_daemon
+      ;;
+    offline-stop)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      offline_stop_daemon
+      ;;
+    offline-start)
+      acquire_lock || exit 1
+      trap release_lock EXIT
+      offline_start_daemon
       ;;
     restart)
       acquire_lock || exit 1

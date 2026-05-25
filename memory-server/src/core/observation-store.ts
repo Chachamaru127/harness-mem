@@ -2149,7 +2149,18 @@ export class ObservationStore {
           },
         };
       }
-      addDegradedReason("lexical candidate rerank found no vector rows; using global vector fallback");
+      addDegradedReason("lexical candidate rerank found no vector rows; skipped global vector fallback");
+      return {
+        scores: new Map<string, number>(),
+        coverage: 0,
+        degradedReasons: degradedReasons.size > 0 ? [...degradedReasons] : undefined,
+        prefilter: {
+          mode: "lexical_candidate_rerank",
+          candidates: lexicalPrefilterIds.length,
+          matched_rows: 0,
+          variant_count: prefilteredResults.length,
+        },
+      };
     }
     const variantResults = variantQueries.map((variant, index) =>
       runVariantSearch(index === 0 ? initialPlan : resolveEmbeddingPlan(variant), variantWeights[index] ?? 0.7),

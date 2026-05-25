@@ -625,6 +625,48 @@ describe("API contract snapshot", () => {
     }
   });
 
+  test("strict project vector search does not fall back to global KNN when lexical candidates lack vectors", async () => {
+    const runtime = createRuntime("s129-vector-prefilter-no-global-fallback");
+    try {
+      const response = runtime.core.recordEvent({
+        event_id: "s129-no-vector-lexical",
+        platform: "codex",
+        project: "s129-vector-prefilter",
+        session_id: "s129-vector-prefilter-session",
+        event_type: "user_prompt",
+        ts: "2026-05-25T00:00:00.000Z",
+        payload: { content: "s129 lexical only vector prefilter sentinel" },
+        tags: [],
+        privacy_tags: [],
+      });
+      expect(response.ok).toBe(true);
+      const observationId = (response.items[0] as { id?: string } | undefined)?.id;
+      expect(observationId).toBe("obs_s129-no-vector-lexical");
+      runtime.core.db
+        .query("DELETE FROM mem_vectors WHERE observation_id = ?")
+        .run(observationId);
+
+      const search = runtime.core.search({
+        query: "s129 lexical only vector prefilter sentinel",
+        project: "s129-vector-prefilter",
+        limit: 3,
+        include_private: false,
+        strict_project: true,
+        vector_search: true,
+      });
+      expect(search.ok).toBe(true);
+      expect(search.items.some((item) => String(item.content || "").includes("s129 lexical only vector prefilter sentinel"))).toBe(true);
+      expect(search.meta.vector_candidates).toBe(0);
+      expect((search.meta.vector_prefilter as Record<string, unknown> | undefined)?.mode).toBe("lexical_candidate_rerank");
+      expect((search.meta.vector_prefilter as Record<string, unknown> | undefined)?.matched_rows).toBe(0);
+      expect((search.meta.warnings as string[] | undefined)?.some((warning) =>
+        warning.includes("skipped global vector fallback")
+      )).toBe(true);
+    } finally {
+      runtime.stop();
+    }
+  });
+
   test("checkpoint offload queue full is bounded at the parent daemon", async () => {
     const oldNodeEnv = process.env.NODE_ENV;
     const oldDelay = process.env.HARNESS_MEM_TEST_WRITE_QUEUE_DELAY_MS;

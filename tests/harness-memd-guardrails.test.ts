@@ -94,6 +94,22 @@ describe("harness-memd guardrails", () => {
     expect(script).toContain('log "harness-memd started via launchctl');
   });
 
+  test("offline maintenance stop bootouts launchd and waits for DB handles", () => {
+    const script = readFileSync(SCRIPT, "utf8");
+
+    expect(script).toContain("offline-stop");
+    expect(script).toContain("offline-start");
+    expect(script).toContain("bootout_launchctl_job");
+    expect(script).toContain("bootstrap_launchctl_job");
+    expect(script).toContain("offline_stop_daemon");
+    expect(script).toContain("offline_start_daemon");
+    expect(script).toContain("runtime_pid=\"$(discover_daemon_pid_from_port || true)\"");
+    expect(script).toContain("wait_for_db_handles_closed");
+    expect(script).toContain('lsof -nP -t "$DB_PATH" "${DB_PATH}-wal" "${DB_PATH}-shm"');
+    expect(script).toContain("harness-memd offline maintenance stop complete");
+    expect(script).toContain("harness-memd offline maintenance start complete");
+  });
+
   test("safe lexical scan uses indexed recency order instead of rowid scan", () => {
     const store = readFileSync(OBSERVATION_STORE, "utf8");
     const schema = readFileSync(SCHEMA, "utf8");

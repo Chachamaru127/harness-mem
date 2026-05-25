@@ -60,6 +60,9 @@ describe("harness-mem backup evidence CLI contract", () => {
     expect(OFFLINE).toContain("--autonomous-purge-enabled");
     expect(OFFLINE).toContain("s129-autonomous-purge-profile-v1");
     expect(OFFLINE).toContain("profile_hash_required");
+    expect(OFFLINE).toContain("inspectDbHandles");
+    expect(OFFLINE).toContain("database file is still open");
+    expect(OFFLINE).toContain("scripts/harness-memd offline-stop");
   });
 
   test("offline maintenance runner gates compaction behind explicit execute", () => {
