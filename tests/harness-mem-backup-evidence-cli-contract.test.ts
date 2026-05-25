@@ -38,12 +38,22 @@ describe("harness-mem backup evidence CLI contract", () => {
   });
 
   test("offline maintenance runner supports archive-first cleanup through core gates", () => {
+    expect(OFFLINE).toContain("--archive-only");
+    expect(OFFLINE).toContain("offline_archive_only");
     expect(OFFLINE).toContain("--archive-first");
     expect(OFFLINE).toContain("offline_archive_first_hard_purge");
     expect(OFFLINE).toContain("core.adminForgetArchive");
     expect(OFFLINE).toContain("core.adminForgetBackupEvidence");
     expect(OFFLINE).toContain("core.adminForgetHardPurge");
     expect(OFFLINE).toContain("--limit <1..5000>");
+  });
+
+  test("offline maintenance runner gates compaction behind explicit execute", () => {
+    expect(OFFLINE).toContain("--compact");
+    expect(OFFLINE).toContain("Run VACUUM after execute");
+    expect(OFFLINE).toContain("--compact requires --execute");
+    expect(OFFLINE).toContain("admin.vacuum.execute");
+    expect(OFFLINE).toContain("compactDatabase(core, config.dbPath");
   });
 
   test("offline maintenance runner supports stale vector cache pruning", () => {

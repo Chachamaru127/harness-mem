@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 import { createHash } from "node:crypto";
-import { createReadStream, statSync } from "node:fs";
+import { createReadStream, existsSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { HarnessMemCore, getConfig, type ApiResponse, type Config } from "../memory-server/src/core/harness-mem-core";
+import { resolveHomePath } from "../memory-server/src/core/core-utils";
 
 type Args = {
   dbPath?: string;
@@ -11,7 +13,9 @@ type Args = {
   limit: number;
   execute: boolean;
   archiveFirst: boolean;
+  archiveOnly: boolean;
   pruneStaleVectors: boolean;
+  compact: boolean;
   reason: string;
   currentVectorModel: string;
   scoreThreshold?: number;
@@ -23,7 +27,9 @@ function parseArgs(argv: string[]): Args {
     limit: 100,
     execute: false,
     archiveFirst: false,
+    archiveOnly: false,
     pruneStaleVectors: false,
+    compact: false,
     reason: "offline-forget-maintenance",
     currentVectorModel: "adaptive:general:local:multilingual-e5",
   };
@@ -47,8 +53,12 @@ function parseArgs(argv: string[]): Args {
       args.protectAccessed = false;
     } else if (arg === "--archive-first") {
       args.archiveFirst = true;
+    } else if (arg === "--archive-only") {
+      args.archiveOnly = true;
     } else if (arg === "--prune-stale-vectors") {
       args.pruneStaleVectors = true;
+    } else if (arg === "--compact" || arg === "--vacuum") {
+      args.compact = true;
     } else if (arg === "--current-vector-model") {
       args.currentVectorModel = argv[++i];
     } else if (arg === "--reason") {
@@ -76,9 +86,23 @@ function parseArgs(argv: string[]): Args {
   if (args.archiveFirst && args.pruneStaleVectors) {
     throw new Error("--archive-first and --prune-stale-vectors cannot be combined");
   }
-  if (!args.backupPath) throw new Error("--backup-path is required");
-  if (!args.backupSha256 || !/^[a-fA-F0-9]{64}$/.test(args.backupSha256)) {
-    throw new Error("--backup-sha256 must be a 64-character hex digest");
+  if (args.archiveOnly && args.archiveFirst) {
+    throw new Error("--archive-only and --archive-first cannot be combined");
+  }
+  if (args.archiveOnly && args.pruneStaleVectors) {
+    throw new Error("--archive-only and --prune-stale-vectors cannot be combined");
+  }
+  if (args.archiveOnly && args.compact) {
+    throw new Error("--compact cannot be combined with --archive-only; compact after hard purge");
+  }
+  if (args.compact && !args.execute) {
+    throw new Error("--compact requires --execute");
+  }
+  if (!args.archiveOnly) {
+    if (!args.backupPath) throw new Error("--backup-path is required");
+    if (!args.backupSha256 || !/^[a-fA-F0-9]{64}$/.test(args.backupSha256)) {
+      throw new Error("--backup-sha256 must be a 64-character hex digest");
+    }
   }
   return args;
 }
@@ -93,9 +117,11 @@ function usage(code: number): never {
     "",
     "Modes:",
     "  default          Hard-purge already archived rows only.",
+    "  --archive-only  Archive candidates and stop before backup/hard-purge.",
     "  --archive-first Archive candidates first, then use backup evidence and hard-purge those archived rows.",
     "  --prune-stale-vectors",
     "                   Delete non-current vector cache rows only when the current vector already exists.",
+    "  --compact        Run VACUUM after execute to reclaim file size. Requires --execute.",
     "",
     "Filters:",
     "  --project <path>",
@@ -197,6 +223,69 @@ function vectorModelRows(core: HarnessMemCore): Array<{ model: string; rows: num
     .all();
 }
 
+function databaseSizeSnapshot(dbPath: string): Record<string, number | string | null> {
+  const fileSize = (path: string): number => existsSync(path) ? statSync(path).size : 0;
+  if (dbPath === ":memory:") {
+    return {
+      db_path: dbPath,
+      db_bytes: null,
+      wal_bytes: null,
+      shm_bytes: null,
+      total_bytes: null,
+    };
+  }
+  const resolved = resolve(resolveHomePath(dbPath));
+  const dbBytes = fileSize(resolved);
+  const walBytes = fileSize(`${resolved}-wal`);
+  const shmBytes = fileSize(`${resolved}-shm`);
+  return {
+    db_path: resolved,
+    db_bytes: dbBytes,
+    wal_bytes: walBytes,
+    shm_bytes: shmBytes,
+    total_bytes: dbBytes + walBytes + shmBytes,
+  };
+}
+
+function auditOfflineCompact(core: HarnessMemCore, details: Record<string, unknown>): void {
+  core.getRawDb()
+    .query(`
+      INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at)
+      VALUES ('admin.vacuum.execute', 'offline-runner', 'database', '', ?, ?)
+    `)
+    .run(JSON.stringify(details), new Date().toISOString());
+}
+
+function compactDatabase(core: HarnessMemCore, dbPath: string, details: Record<string, unknown>): Record<string, unknown> {
+  const before = databaseSizeSnapshot(dbPath);
+  const startedAt = Date.now();
+  core.getRawDb().exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  core.getRawDb().exec("VACUUM");
+  core.getRawDb().exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  const afterVacuum = databaseSizeSnapshot(dbPath);
+  const durationMs = Date.now() - startedAt;
+  const totalBefore = typeof before.total_bytes === "number" ? before.total_bytes : null;
+  const totalAfterVacuum = typeof afterVacuum.total_bytes === "number" ? afterVacuum.total_bytes : null;
+  auditOfflineCompact(core, {
+    ...details,
+    before,
+    after_vacuum: afterVacuum,
+    duration_ms: durationMs,
+    reclaimed_bytes: totalBefore !== null && totalAfterVacuum !== null ? Math.max(0, totalBefore - totalAfterVacuum) : null,
+  });
+  core.getRawDb().exec("PRAGMA wal_checkpoint(TRUNCATE)");
+  const after = databaseSizeSnapshot(dbPath);
+  const totalAfter = typeof after.total_bytes === "number" ? after.total_bytes : null;
+  return {
+    execute: true,
+    before,
+    after_vacuum: afterVacuum,
+    after,
+    duration_ms: durationMs,
+    reclaimed_bytes: totalBefore !== null && totalAfter !== null ? Math.max(0, totalBefore - totalAfter) : null,
+  };
+}
+
 function auditOfflineVectorPrune(core: HarnessMemCore, details: Record<string, unknown>): void {
   core.getRawDb()
     .query(`
@@ -222,13 +311,18 @@ function archiveRequest(args: Args): {
 
 async function main(): Promise<void> {
   const args = parseArgs(Bun.argv.slice(2));
-  const expectedSha = args.backupSha256!.toLowerCase();
-  const actualSha = await sha256File(args.backupPath!);
-  if (actualSha !== expectedSha) {
-    hardFail(`backup sha256 mismatch: expected=${expectedSha} actual=${actualSha}`);
+  let expectedSha = "";
+  let backupStat: ReturnType<typeof statSync> | null = null;
+  if (!args.archiveOnly) {
+    expectedSha = args.backupSha256!.toLowerCase();
+    const actualSha = await sha256File(args.backupPath!);
+    if (actualSha !== expectedSha) {
+      hardFail(`backup sha256 mismatch: expected=${expectedSha} actual=${actualSha}`);
+    }
+    backupStat = statSync(args.backupPath!);
   }
-  const backupStat = statSync(args.backupPath!);
-  const core = new HarnessMemCore(buildOfflineConfig(args));
+  const config = buildOfflineConfig(args);
+  const core = new HarnessMemCore(config);
   try {
     const before = {
       active_observations: count(core, `SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`),
@@ -236,6 +330,66 @@ async function main(): Promise<void> {
       archive_archived: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'archived'`),
       archive_purged: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'purged'`),
     };
+    if (args.archiveOnly) {
+      const plan = core.adminForgetArchive(archiveRequest(args));
+      if (!plan.ok) {
+        hardFail(`archive plan failed: ${plan.error ?? "unknown"}`);
+      }
+      const archivePlanItem = firstItem(plan);
+      if (!args.execute || Number(archivePlanItem.candidate_count ?? 0) === 0) {
+        console.log(JSON.stringify({
+          ok: true,
+          mode: "offline_archive_only",
+          execute: false,
+          archive_first: true,
+          candidate_count: Number(archivePlanItem.candidate_count ?? 0),
+          before,
+          archive_plan: {
+            manifest_sha256: archivePlanItem.manifest_sha256,
+            candidate_count: archivePlanItem.candidate_count,
+            cross_store_impact: archivePlanItem.cross_store_impact,
+          },
+          skipped: Number(archivePlanItem.candidate_count ?? 0) === 0 ? "no_archive_candidates" : "execute_required",
+        }, null, 2));
+        return;
+      }
+
+      const executed = core.adminForgetArchive({
+        ...archiveRequest(args),
+        execute: true,
+        manifest_sha256: String(archivePlanItem.manifest_sha256 ?? ""),
+        reason: args.reason.trim(),
+      });
+      if (!executed.ok) {
+        hardFail(`archive execute failed: ${executed.error ?? "unknown"}`);
+      }
+      const archiveExecutedItem = firstItem(executed);
+      const after = {
+        active_observations: count(core, `SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`),
+        archived_observations: count(core, `SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NOT NULL`),
+        archive_archived: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'archived'`),
+        archive_purged: count(core, `SELECT COUNT(*) AS count FROM mem_archive_stubs WHERE archive_state = 'purged'`),
+      };
+      console.log(JSON.stringify({
+        ok: true,
+        mode: "offline_archive_only",
+        execute: true,
+        archive_first: true,
+        candidate_count: Number(archiveExecutedItem.candidate_count ?? 0),
+        archive_executed: {
+          manifest_sha256: archiveExecutedItem.manifest_sha256,
+          candidate_count: archiveExecutedItem.candidate_count,
+          archived_count: archiveExecutedItem.archived_count,
+          skipped_legal_hold: archiveExecutedItem.skipped_legal_hold,
+          skipped_already_archived: archiveExecutedItem.skipped_already_archived,
+          restore_supported: archiveExecutedItem.restore_supported,
+        },
+        before,
+        after,
+        next_step: "create a backup of this post-archive database, then rerun without --archive-only to hard-purge archived rows",
+      }, null, 2));
+      return;
+    }
     if (args.pruneStaleVectors) {
       const staleBefore = staleVectorRows(core, args.currentVectorModel);
       const vectorRowsBefore = vectorModelRows(core);
@@ -295,10 +449,20 @@ async function main(): Promise<void> {
         freelist_count: count(core, `SELECT freelist_count AS count FROM pragma_freelist_count`),
         page_size: count(core, `SELECT page_size AS count FROM pragma_page_size`),
       };
+      const compact = args.compact
+        ? compactDatabase(core, config.dbPath, {
+            mode: "offline_prune_stale_vectors",
+            current_vector_model: args.currentVectorModel,
+            backup_path: args.backupPath,
+            backup_sha256: expectedSha,
+            reason: args.reason,
+          })
+        : null;
       console.log(JSON.stringify({
         ok: true,
         mode: "offline_prune_stale_vectors",
         execute: true,
+        compact_requested: args.compact,
         current_vector_model: args.currentVectorModel,
         deleted_rows_estimate: totalRows,
         deleted_vector_json_bytes_estimate: totalBytes,
@@ -309,10 +473,11 @@ async function main(): Promise<void> {
         vector_rows_before: vectorRowsBefore,
         vector_rows_after: vectorRowsAfter,
         reclaimable_bytes_estimate: after.freelist_count * after.page_size,
+        compact,
         backup: {
           path: args.backupPath,
           sha256: expectedSha,
-          size_bytes: backupStat.size,
+          size_bytes: backupStat!.size,
         },
       }, null, 2));
       return;
@@ -431,12 +596,24 @@ async function main(): Promise<void> {
       freelist_count: count(core, `SELECT freelist_count AS count FROM pragma_freelist_count`),
       page_size: count(core, `SELECT page_size AS count FROM pragma_page_size`),
     };
+    const compact = args.compact
+      ? compactDatabase(core, config.dbPath, {
+          mode: args.archiveFirst ? "offline_archive_first_hard_purge" : "offline_hard_purge_archived",
+          archive_first: args.archiveFirst,
+          candidate_count: candidateIds.length,
+          candidate_ids: candidateIds,
+          backup_path: args.backupPath,
+          backup_sha256: expectedSha,
+          reason: args.reason,
+        })
+      : null;
 
     console.log(JSON.stringify({
       ok: true,
       mode: args.archiveFirst ? "offline_archive_first_hard_purge" : "offline_hard_purge_archived",
       execute: args.execute,
       archive_first: args.archiveFirst,
+      compact_requested: args.compact,
       candidate_count: candidateIds.length,
       candidate_ids: candidateIds,
       archive_plan: archivePlanItem ? {
@@ -455,7 +632,7 @@ async function main(): Promise<void> {
       backup: {
         path: args.backupPath,
         sha256: expectedSha,
-        size_bytes: backupStat.size,
+        size_bytes: backupStat!.size,
       },
       evidence: {
         token_sha256: evidenceItem.token_sha256,
@@ -474,6 +651,7 @@ async function main(): Promise<void> {
       before,
       after,
       reclaimable_bytes_estimate: after.freelist_count * after.page_size,
+      compact,
     }, null, 2));
   } finally {
     core.shutdown("offline-runner");
