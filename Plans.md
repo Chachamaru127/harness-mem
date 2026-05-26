@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-26（§130 release claim/readme closeout / Codex + Codex App wording / recall-runtime regression gate）
+最終更新: 2026-05-26（§130 release claim/readme closeout / Codex + Codex App wording / v0.25.8 published）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -40,8 +40,8 @@
 |------|--------|
 | gate artifacts / README / proof bar | onnx manifest (2026-04-10) / README / proof bar / SSOT matrix を再同期済み |
 | 維持できている価値 | local-first Claude Code+Codex bridge、adaptive retrieval、MCP structured result、522問日本語ベンチ、Go MCP server (~5ms cold start) |
-| 最新 published release | **v0.25.5**（2026-05-24、npm/GitHub Release 確認済み） |
-| corrective release 状態 | **v0.25.8 prepared**（v0.25.6/v0.25.7 は tag push 後の publish gate failure。tag は動かさず新 patch で修正する） |
+| 最新 published release | **v0.25.8**（2026-05-26、npm/GitHub Release 確認済み） |
+| corrective release 状態 | **v0.25.8 published**（v0.25.6/v0.25.7 は tag push 後の publish gate failure。tag は動かさず v0.25.8 で修正完了） |
 | 次フェーズの焦点 | **§128 Recall Runtime Architecture dogfood gates** / **§108 Developer Workflow Recall + Temporal Graph Positioning Hardening** / **§110 Cross-repo Handoff Workflow Codification** / **§89 Search Quality Hardening (XR-002)** / **§90 Session Resume Injection Hook (XR-003)** / **§78 Phase A-E follow-up** / **§97 Codex Recall Skill Parity** |
 | CI Gate | **Layer 1+2 PASS**（onnx `run-ci`、bilingual=0.8800、p95 13.28ms、history reset at v0.11.0） |
 
@@ -194,7 +194,7 @@
 | S130-009d | **Codex CLI + Codex App wording/evidence update** `[tdd:required]` — このユーザー環境で Codex CLI と Codex App が問題なく使えている事実を、過大な汎用サポート claim にせず README へ反映する | `doctor --platform codex`、Codex MCP config、Codex App での実利用 evidence を分けて記録し、README/README_ja は「Codex CLI は Tier 1、Codex App はこの local setup で dogfood green / same Codex config path」とスコープ付きで表現する。再現可能な App 固有 smoke がない限り、Codex App を Tier 1 汎用 claim へ昇格しない | S130-009c | cc:完了 [local: Codex CLI Tier 1 + Codex App dogfood evidence doc] |
 | S130-009e | **Agentmemory-inspired README refresh** `[tdd:skip:docs-only]` — agentmemory の魅力である即時理解・対応面の広さ・デモ導線を参考にしつつ、S79/S81/S108 の既存 cross-pollination / README positioning を再発明せず、harness-mem の強みを project-scoped / local-first / Claude+Codex continuity に絞って README を再構成する | README/README_ja の first viewport が「何が変わるか」「30秒で試す」「証拠」「対応ツール」「安全境界」を短く提示する。agentmemory 風の広さはコピーせず、unsupported clients / optional integrations / benchmark domain を正直に分ける。既存の README claim ceiling test と benchmark claim SSOT test が PASS | S130-009d | cc:完了 [local: README/README_ja first viewport refreshed; claim/benchmark gates PASS] |
 | S130-009 | **Release follow-up gate + publish decision** `[tdd:required]` — S130-009a-e 後に package/benchmark/release note を再確認し、次の corrective release 要否を判断する | 完了: `npm run benchmark:recall-runtime`, source smoke, package tarball smoke, `npm pack --dry-run --json`, `claude plugin validate`, version sync, harness-review, and `claude -p` review が PASS。S130-009a-e と S129 self-forgetting closeout を v0.25.6 release notes へ backfill。v0.25.6 tag push 後の CI で observation-store sqlite-vec fallback test fixture が lexical prefilter に吸われる問題を検出したため、tag は動かさず v0.25.7 corrective release で修正する | S130-009e | cc:完了 [local: v0.25.7 corrective release gate] |
-| S130-010 | **v0.25.8 release gate corrective** `[tdd:required]` — v0.25.7 tag CI で `memory-durability` migration Recall@10 が 0.30 まで落ちて publish を止めたため、fixture のカテゴリ信号を日本語クエリと揃える | `tests/benchmarks/memory-durability.test.ts` の migration fixture は `migration` と `移行` の両タグを持ち、既存 0.40 閾値と default search route は維持する。degraded local ONNX runner でも migration query が insertion-order の design-decision 上位10件へ吸われず、`bash scripts/run-bun-test-safe.sh tests/benchmarks/memory-durability.test.ts -t "Long-term Recall@10: migration"`、release version sync、Claude review、tag workflow が PASS。v0.25.6/v0.25.7 tags は移動・削除しない | S130-009 | cc:完了 [local: default-route fixture fix + version/pack/plugin/reviews PASS; remote release pending tag workflow] |
+| S130-010 | **v0.25.8 release gate corrective** `[tdd:required]` — v0.25.7 tag CI で `memory-durability` migration Recall@10 が 0.30 まで落ちて publish を止めたため、fixture のカテゴリ信号を日本語クエリと揃える | `tests/benchmarks/memory-durability.test.ts` の migration fixture は `migration` と `移行` の両タグを持ち、既存 0.40 閾値と default search route は維持する。degraded local ONNX runner でも migration query が insertion-order の design-decision 上位10件へ吸われず、`bash scripts/run-bun-test-safe.sh tests/benchmarks/memory-durability.test.ts -t "Long-term Recall@10: migration"`、release version sync、Claude review、tag workflow が PASS。v0.25.6/v0.25.7 tags は移動・削除しない | S130-009 | cc:完了 [9c63444] (remote: v0.25.8 tag workflow, npm publish, GitHub Release PASS) |
 
 ### Execution Waves
 
