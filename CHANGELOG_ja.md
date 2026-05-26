@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.8] - 2026-05-26
+
+### ユーザー向け要約
+
+- **release の repository behavior gate で、長期 migration recall が意図したカテゴリ信号を見るようにした**。memory durability fixture の migration 記録に `migration` と `移行` の両タグを持たせた。既存の Recall@10 閾値と default search route は維持し、local ONNX degraded runner で insertion-order の design 記録が migration evidence を押し出す CI-only failure を避ける。
+
 ## [0.25.7] - 2026-05-26
 
 ### ユーザー向け要約
@@ -991,7 +997,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.8...HEAD
+[0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5

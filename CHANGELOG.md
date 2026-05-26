@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.8] - 2026-05-26
+
+### Fixed
+
+- **Release repository behavior gate now keeps long-term migration recall on the intended category signal**. The memory durability fixture now marks migration records with both `migration` and `移行`. This keeps the existing Recall@10 floor and the default search route while avoiding a CI-only failure where degraded local ONNX runners ranked insertion-order design records above migration evidence.
+
 ## [0.25.7] - 2026-05-26
 
 ### Fixed
@@ -2852,7 +2858,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.8...HEAD
+[0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
