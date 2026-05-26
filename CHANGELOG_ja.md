@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.7] - 2026-05-26
+
+### ユーザー向け要約
+
+- **release の repository behavior gate が、意図した sqlite-vec fallback 経路を確実に踏むようにした**。sqlite-vec query failure の回帰テストで lexical prefilter に吸われない query を使い、壊れた sqlite-vec table から bounded JS fallback warning へ落ちることを CI で確認できる。
+
 ## [0.25.6] - 2026-05-26
 
 ### ユーザー向け要約
@@ -985,7 +991,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...HEAD
+[0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4

@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.7] - 2026-05-26
+
+### Fixed
+
+- **Release repository behavior gate now exercises the intended sqlite-vec fallback path**. The sqlite-vec query failure regression test now avoids lexical prefilter matches, so CI reaches the malformed sqlite-vec table path and verifies the bounded JS fallback warning instead of silently bypassing the gate.
+
 ## [0.25.6] - 2026-05-26
 
 ### Added
@@ -2846,7 +2852,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...HEAD
+[0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4

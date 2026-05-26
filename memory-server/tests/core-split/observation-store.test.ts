@@ -469,6 +469,7 @@ describe("observation-store: search", () => {
        VALUES (?, ?, 2, ?, '2026-02-20T00:00:00.000Z', '2026-02-20T00:00:00.000Z')`
     ).run("obs-sqlite-secondary", "openai:text-embedding-3-small", "[0,1]");
 
+    // Avoid lexical prefilter matches so this fixture reaches the sqlite-vec query failure path.
     const res = store.search({ query: "zzzzzz vector only", project: "proj-obs", limit: 5 });
     expect(res.ok).toBe(true);
     const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
@@ -535,7 +536,7 @@ describe("observation-store: search", () => {
     db.query(`INSERT INTO ${mapTableName}(rowid, observation_id, updated_at) VALUES (?, ?, ?)`)
       .run(2, "obs-sqlite-large-secondary", "2026-02-20T00:00:00.000Z");
 
-    const res = store.search({ query: "large index vector only", project: "proj-obs", limit: 5 });
+    const res = store.search({ query: "zzzzzz vector only", project: "proj-obs", limit: 5 });
     expect(res.ok).toBe(true);
     const ids = (res.items as Array<Record<string, unknown>>).map((item) => String(item.id));
     expect(ids).toContain("obs-sqlite-large-primary");
