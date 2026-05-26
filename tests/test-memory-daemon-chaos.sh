@@ -23,7 +23,42 @@ cleanup() {
 }
 trap cleanup EXIT
 
+wait_for_health() {
+  local round="$1"
+  local last=""
+
+  for _ in $(seq 1 30); do
+    if last="$("$ROOT/scripts/harness-mem-client.sh" health 2>&1)" && \
+      printf '%s' "$last" | jq -e '.ok == true' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "[chaos] health did not become ok (round=${round})" >&2
+  printf '%s\n' "$last" >&2
+  return 1
+}
+
+wait_for_search() {
+  local round="$1"
+  local last=""
+
+  for _ in $(seq 1 30); do
+    if last="$("$ROOT/scripts/harness-mem-client.sh" search '{"query":"chaos round","project":"chaos","limit":5}' 2>&1)" && \
+      printf '%s' "$last" | jq -e '.ok == true and (.items | length) >= 1' >/dev/null 2>&1; then
+      return 0
+    fi
+    sleep 0.5
+  done
+
+  echo "[chaos] search did not return the recorded event (round=${round})" >&2
+  printf '%s\n' "$last" >&2
+  return 1
+}
+
 "$ROOT/scripts/harness-memd" start --quiet
+wait_for_health "initial"
 
 for round in $(seq 1 "$ROUNDS"); do
   "$ROOT/scripts/harness-mem-client.sh" record-event "{\"event\":{\"event_id\":\"chaos-${round}\",\"platform\":\"codex\",\"project\":\"chaos\",\"session_id\":\"chaos-session\",\"event_type\":\"user_prompt\",\"payload\":{\"content\":\"chaos round ${round}\"},\"tags\":[\"chaos\"],\"privacy_tags\":[]}}" >/dev/null
@@ -34,12 +69,8 @@ for round in $(seq 1 "$ROUNDS"); do
   fi
 
   "$ROOT/scripts/harness-memd" start --quiet
-
-  health="$($ROOT/scripts/harness-mem-client.sh health)"
-  printf '%s' "$health" | jq -e '.ok == true' >/dev/null
-
-  search="$($ROOT/scripts/harness-mem-client.sh search '{"query":"chaos round","project":"chaos","limit":5}')"
-  printf '%s' "$search" | jq -e '.ok == true and (.items | length) >= 1' >/dev/null
+  wait_for_health "$round"
+  wait_for_search "$round"
 
 done
 

@@ -5,6 +5,8 @@ on:
     paths:
       - "memory-server/**"
       - "tests/benchmarks/**"
+      - "tests/test-memory-daemon-chaos.sh"
+      - "tests/hardening-artifacts.test.ts"
       - ".github/workflows/quality-benchmark.yml"
   push:
     branches:
@@ -12,6 +14,8 @@ on:
     paths:
       - "memory-server/**"
       - "tests/benchmarks/**"
+      - "tests/test-memory-daemon-chaos.sh"
+      - "tests/hardening-artifacts.test.ts"
       - ".github/workflows/quality-benchmark.yml"
 
 jobs:
