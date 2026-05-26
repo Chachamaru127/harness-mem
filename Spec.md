@@ -44,6 +44,13 @@ Harness-mem competes on four properties together:
 - Operator-owned evidence: important recall, work, and decisions must be
   inspectable through source pointers, provenance, and compact explanations.
 
+Codex support is scoped:
+
+- Codex CLI is the Tier 1 Codex target.
+- Codex App may use the same user-scoped Codex config path in local dogfood
+  setups, but App-specific support must stay a scoped dogfood note until a
+  reproducible App smoke exists.
+
 ## Source-Of-Truth Layers
 
 | Layer | File / surface | Owns | Must not do |
@@ -326,7 +333,9 @@ Default HTTP MCP must not:
 
 Release claims may say HTTP MCP is the new default only after Mac and Windows
 package-install smoke gates cover a clean install, existing install migration,
-token redaction, multi-session behavior, and rollback.
+token redaction, multi-session behavior, and rollback. This gate was promoted
+for the v0.25.0 line; later README changes must still keep token, rollback,
+Hermes opt-in, and existing stdio preservation visible.
 
 ## Non-Goals
 

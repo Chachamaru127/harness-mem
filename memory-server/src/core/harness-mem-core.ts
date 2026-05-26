@@ -4257,13 +4257,17 @@ export class HarnessMemCore {
 
   buildRecallProjection(request: { project: string; limit?: number; include_private?: boolean }): ApiResponse {
     const startedAt = performance.now();
+    const normalizedRequest = {
+      ...request,
+      project: this.normalizeRecallProjectScope(request.project),
+    };
     try {
       const plan = buildRecallProjectionPlan(this.db, {
-        project: request.project,
+        project: normalizedRequest.project,
         limit: request.limit,
         includePrivate: request.include_private === true,
       });
-      const response = makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+      const response = makeResponse(startedAt, plan.items as unknown[], normalizedRequest as unknown as Record<string, unknown>, {
         ranking: "recall_projection_dry_run_v1",
         projection_generation: plan.generation,
         source_watermark: plan.source_watermark,
@@ -4274,29 +4278,33 @@ export class HarnessMemCore {
         diagnostics: plan.diagnostics,
         writes: 0,
       });
-      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "dry_run", plan);
+      this.recordRecallProjectionBuildTelemetry(startedAt, normalizedRequest, response, "dry_run", plan);
       return response;
     } catch (error) {
       const response = makeErrorResponse(
         startedAt,
         error instanceof Error ? error.message : String(error),
-        request as unknown as Record<string, unknown>,
+        normalizedRequest as unknown as Record<string, unknown>,
       );
-      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "dry_run");
+      this.recordRecallProjectionBuildTelemetry(startedAt, normalizedRequest, response, "dry_run");
       return response;
     }
   }
 
   refreshRecallProjection(request: { project: string; limit?: number; include_private?: boolean }): ApiResponse {
     const startedAt = performance.now();
+    const normalizedRequest = {
+      ...request,
+      project: this.normalizeRecallProjectScope(request.project),
+    };
     try {
       const plan = materializeRecallProjection(this.db, {
-        project: request.project,
+        project: normalizedRequest.project,
         limit: request.limit,
         includePrivate: request.include_private === true,
       });
       this.repeatRecallCache.clear();
-      const response = makeResponse(startedAt, plan.items as unknown[], request as unknown as Record<string, unknown>, {
+      const response = makeResponse(startedAt, plan.items as unknown[], normalizedRequest as unknown as Record<string, unknown>, {
         ranking: "recall_projection_refresh_v1",
         projection_generation: plan.generation,
         source_watermark: plan.source_watermark,
@@ -4308,25 +4316,29 @@ export class HarnessMemCore {
         writes: plan.items.length,
         cache_cleared: true,
       });
-      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "write", plan);
+      this.recordRecallProjectionBuildTelemetry(startedAt, normalizedRequest, response, "write", plan);
       return response;
     } catch (error) {
       const response = makeErrorResponse(
         startedAt,
         error instanceof Error ? error.message : String(error),
-        request as unknown as Record<string, unknown>,
+        normalizedRequest as unknown as Record<string, unknown>,
       );
-      this.recordRecallProjectionBuildTelemetry(startedAt, request, response, "write");
+      this.recordRecallProjectionBuildTelemetry(startedAt, normalizedRequest, response, "write");
       return response;
     }
   }
 
   deleteRecallProjection(request: { project: string }): ApiResponse {
     const startedAt = performance.now();
+    const normalizedRequest = {
+      ...request,
+      project: this.normalizeRecallProjectScope(request.project),
+    };
     try {
-      const result = clearRecallProjection(this.db, request.project);
+      const result = clearRecallProjection(this.db, normalizedRequest.project);
       this.repeatRecallCache.clear();
-      return makeResponse(startedAt, [result], request as unknown as Record<string, unknown>, {
+      return makeResponse(startedAt, [result], normalizedRequest as unknown as Record<string, unknown>, {
         ranking: "recall_projection_clear_v1",
         cache_cleared: true,
       });
@@ -4334,7 +4346,7 @@ export class HarnessMemCore {
       return makeErrorResponse(
         startedAt,
         error instanceof Error ? error.message : String(error),
-        request as unknown as Record<string, unknown>,
+        normalizedRequest as unknown as Record<string, unknown>,
       );
     }
   }

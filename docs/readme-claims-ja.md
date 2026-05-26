@@ -20,6 +20,8 @@
 | ~5ms cold start. | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` と Go MCP の bench artifact | measured | スコープは Go MCP 層の cold start であり、アプリ全体ではない。 |
 | Zero cloud, zero API keys. | local SQLite の architecture と setup guide | stable | core runtime は local のまま。任意の外部連携まで含めて拡張しない。 |
 | Claude Code と Codex が同じ local memory runtime を共有する。 | setup guide と architecture docs | bounded | 対応している Claude Code / Codex 経路にのみ適用される。 |
+| 新規 Claude Code / Codex setup は local Streamable HTTP MCP gateway を default にする。 | `Spec.md` MCP Transport Defaults、`docs/adr/ADR-004-local-streamable-http-mcp-default.md`、`CHANGELOG.md` v0.25.0 | stable | スコープは新規 managed Tier 1 setup。既存 stdio は維持され、stdio rollback は引き続き明記し、Hermes は明示 opt-in のまま。 |
+| Codex App はこのメンテナ環境で local dogfood green。 | `docs/codex-app-dogfood-2026-05-26.md`、README supported tools note | dogfood | 再現可能な App 固有 smoke が入るまでは Codex App 全般の Tier 1 claim ではない。Codex CLI が Tier 1 の Codex target。 |
 | Cursor は低い tier で対応している。 | README の supported tools セクション | descriptive | これは support tier の表現であり、品質の同等性主張ではない。 |
 | 日本語 / 英語 / code の adaptive routing がある。 | adaptive retrieval docs と benchmark docs | measured | 言語ルーティングの主張は、それを定義している benchmark / design docs に紐づける。 |
 | main gate / Japanese companion / historical baseline は別物。 | SSOT matrix | strict | 歴史的な日本語 baseline を現行 companion と混同しない。 |

@@ -1,18 +1,19 @@
 # ADR-004: Local Streamable HTTP MCP Default
 
 Date: 2026-05-24
-Status: Proposed
+Status: Accepted
 Source Plans Section: Plans.md §130
 
 ---
 
 ## Status
 
-Proposed
+Accepted
 
-Promotion rule: keep this ADR Proposed until `Plans.md` §130 S130-009 passes
-the release gate. Promote to Accepted only after package smoke, recall runtime
-gate, and review signals are green for the release candidate.
+Accepted for the v0.25.0 line after the local HTTP setup, package smoke,
+rollback, and token-redaction gates landed. Later README and release-note edits
+must still respect the signals below: loopback-only, token-gated, reversible,
+Hermes opt-in, and no token values in docs or config previews.
 
 ## Source Plans Section
 

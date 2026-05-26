@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- **README and claim maps now separate Codex CLI Tier 1 from Codex App dogfood**. The public docs keep Codex CLI as the Tier 1 Codex target, record Codex App as scoped maintainer dogfood through the same local config path, and avoid promoting App parity without a reproducible App-specific smoke.
+- **ADR-004, Spec, Plans, and README now align with the v0.25.0 HTTP MCP default release state**. The HTTP default claim is tied to accepted ADR evidence, CHANGELOG v0.25.0, existing stdio preservation, rollback, token redaction, and Hermes opt-in.
+
+### Fixed
+
+- **Recall projection admin actions now normalize project scope before building, writing, or clearing projections**. Short project keys now read the same materialized projection scope as dry-run, write, and clear actions, preventing valid recall requests from falling back to `recall_degraded_fallback_v1`.
+- **Package smoke now waits for the search worker to finish warming**. The isolated smoke test retries transient `search_offload_unavailable` / warming responses instead of failing a healthy fresh install before the persistent search worker is ready.
+
 ## [0.25.5] - 2026-05-24
 
 ### Fixed

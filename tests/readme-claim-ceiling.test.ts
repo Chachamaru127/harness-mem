@@ -39,6 +39,10 @@ describe("S108-012 README claim ceiling", () => {
   const readmeJa = read("README_ja.md");
   const claimsEn = read("docs/readme-claims.md");
   const claimsJa = read("docs/readme-claims-ja.md");
+  const spec = read("Spec.md");
+  const adr004 = read("docs/adr/ADR-004-local-streamable-http-mcp-default.md");
+  const changelog = read("CHANGELOG.md");
+  const codexAppDogfood = read("docs/codex-app-dogfood-2026-05-26.md");
 
   test("README.md is free of banned superlatives", () => {
     for (const pattern of BANNED_PHRASES) {
@@ -74,32 +78,59 @@ describe("S108-012 README claim ceiling", () => {
     expect(claimsJa).toContain(CURRENT_LEAD_TAGLINE);
   });
 
-  test("each claim map row references either README or a docs/architecture surface", () => {
-    // Every row in the EN claim map must cite a source-of-truth column that
-    // points at a file in the repo (README, docs/, or memory-server). This
-    // guards against silent claim drift where someone adds a row without
+  test("each claim map row references a repo evidence surface", () => {
+    // Every claim map row must cite a source-of-truth column that points at a
+    // repo evidence surface (README, docs/, Spec.md, CHANGELOG, memory-server).
+    // This guards against silent claim drift where someone adds a row without
     // tying it to evidence.
-    const rows = claimsEn
-      .split("\n")
-      .filter((line) => line.startsWith("| ") && !line.startsWith("| README claim") && !line.startsWith("| ---"));
-    expect(rows.length).toBeGreaterThan(0);
-    for (const row of rows) {
-      const cells = row.split("|").map((c) => c.trim());
-      // | <claim> | <source> | <status> | <notes> |  → cells[1..4]
-      const source = cells[2] ?? "";
-      const hasFileRef =
-        /README/i.test(source) ||
-        /docs\//i.test(source) ||
-        /architecture/i.test(source) ||
-        /memory-server/i.test(source) ||
-        /setup guide/i.test(source) ||
-        /SSOT/i.test(source) ||
-        /benchmark/i.test(source) ||
-        /local SQLite/i.test(source);
-      if (!hasFileRef) {
-        throw new Error(`claim map row missing file/source reference: ${row}`);
+    for (const [label, claims] of [["EN", claimsEn], ["JA", claimsJa]] as const) {
+      const rows = claims
+        .split("\n")
+        .filter((line) => line.startsWith("| ") && !line.startsWith("| README") && !line.startsWith("| ---"));
+      expect(rows.length).toBeGreaterThan(0);
+      for (const row of rows) {
+        const cells = row.split("|").map((c) => c.trim());
+        // | <claim> | <source> | <status> | <notes> |  → cells[1..4]
+        const source = cells[2] ?? "";
+        const hasFileRef =
+          /README/i.test(source) ||
+          /docs\//i.test(source) ||
+          /CHANGELOG/i.test(source) ||
+          /Spec\.md/i.test(source) ||
+          /architecture/i.test(source) ||
+          /memory-server/i.test(source) ||
+          /setup guide/i.test(source) ||
+          /SSOT/i.test(source) ||
+          /benchmark/i.test(source) ||
+          /local SQLite/i.test(source);
+        if (!hasFileRef) {
+          throw new Error(`${label} claim map row missing file/source reference: ${row}`);
+        }
+        expect(hasFileRef).toBe(true);
       }
-      expect(hasFileRef).toBe(true);
     }
+  });
+
+  test("HTTP MCP default claim is backed by accepted ADR and release evidence", () => {
+    expect(readmeEn).toContain("Since v0.25.0, new");
+    expect(readmeJa).toContain("v0.25.0 以降の新規");
+    expect(adr004).toContain("Status: Accepted");
+    expect(spec).toContain("This gate was promoted");
+    expect(changelog).toContain("## [0.25.0]");
+    expect(changelog).toContain("Local Streamable HTTP MCP is now the default");
+    expect(claimsEn).toContain("New Claude Code and Codex setup defaults to the local Streamable HTTP MCP gateway.");
+    expect(claimsJa).toContain("新規 Claude Code / Codex setup は local Streamable HTTP MCP gateway を default にする。");
+  });
+
+  test("Codex App wording stays scoped to dogfood instead of Tier 1 parity", () => {
+    expect(readmeEn).toContain("Codex App dogfood");
+    expect(readmeJa).toContain("Codex App dogfood");
+    expect(readmeEn).toContain("| **Dogfood** | Codex App |");
+    expect(readmeJa).toContain("| **Dogfood** | Codex App |");
+    expect(readmeEn).not.toContain("| **Tier 1** | Codex App |");
+    expect(readmeJa).not.toContain("| **Tier 1** | Codex App |");
+    expect(codexAppDogfood).toContain("not a general Tier 1 support claim");
+    expect(claimsEn).toContain("Codex App is local-dogfood green in this maintainer setup.");
+    expect(claimsJa).toContain("Codex App はこのメンテナ環境で local dogfood green。");
   });
 });

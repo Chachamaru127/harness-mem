@@ -3747,27 +3747,47 @@ run_smoke() {
         HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
         "$HARNESS_ROOT/scripts/harness-mem-client.sh" record-event >/dev/null
 
-    default_search="$(
-      jq -nc --arg q "$marker" --arg project "$project_name" '{query:$q,project:$project,limit:10,include_private:false}' \
-        | HARNESS_MEM_HOME="$tmp_home" \
-          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
-          HARNESS_MEM_HOST="127.0.0.1" \
-          HARNESS_MEM_PORT="$smoke_port" \
-          HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-          "$HARNESS_ROOT/scripts/harness-mem-client.sh" search
-    )"
+    smoke_search() {
+      local include_private="$1"
+      local payload=""
+      local response=""
+      local body=""
+      local status=""
+      local attempt=0
+
+      payload="$(jq -nc --arg q "$marker" --arg project "$project_name" --argjson include_private "$include_private" '{query:$q,project:$project,limit:10,include_private:$include_private}')"
+
+      for attempt in $(seq 1 30); do
+        response="$(
+          curl -sS \
+            -X POST "http://127.0.0.1:${smoke_port}/v1/search" \
+            -H 'content-type: application/json' \
+            --data-binary "$payload" \
+            -w $'\n%{http_code}'
+        )"
+        status="${response##*$'\n'}"
+        body="${response%$'\n'*}"
+        if [ "$status" = "200" ]; then
+          printf '%s' "$body"
+          return 0
+        fi
+        if [ "$status" = "503" ] && printf '%s' "$body" | grep -Eq 'search_offload_unavailable|warming'; then
+          sleep 0.5
+          continue
+        fi
+        printf '%s\n' "$body" >&2
+        return 1
+      done
+
+      printf '%s\n' "$body" >&2
+      return 1
+    }
+
+    default_search="$(smoke_search false)"
     printf '%s' "$default_search" | jq -e '.ok == true and (.items | length) >= 1' >/dev/null
     printf '%s' "$default_search" | jq -e '[.items[] | (.privacy_tags // []) | index("private")] | map(select(. != null)) | length == 0' >/dev/null
 
-    private_search="$(
-      jq -nc --arg q "$marker" --arg project "$project_name" '{query:$q,project:$project,limit:10,include_private:true}' \
-        | HARNESS_MEM_HOME="$tmp_home" \
-          HARNESS_MEM_DB_PATH="$tmp_home/harness-mem.db" \
-          HARNESS_MEM_HOST="127.0.0.1" \
-          HARNESS_MEM_PORT="$smoke_port" \
-          HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
-          "$HARNESS_ROOT/scripts/harness-mem-client.sh" search
-    )"
+    private_search="$(smoke_search true)"
     printf '%s' "$private_search" | jq -e '[.items[] | (.privacy_tags // []) | index("private")] | map(select(. != null)) | length >= 1' >/dev/null
   )
 

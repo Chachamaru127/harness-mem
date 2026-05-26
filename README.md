@@ -58,12 +58,19 @@
 
 Harness-mem gives Claude Code and Codex the same local project memory, so the next session can open on the thread you were already working on instead of a blank slate. It is built for people who switch tools inside the same project and do not want to re-explain the same decisions twice.
 
+### Why people install it
+
+- **Resume the actual thread**: the next Claude Code or Codex turn can start from the current project chain, not a generic memory dump.
+- **Keep memory local**: project data stays in local SQLite unless you explicitly configure an external integration.
+- **Share one runtime**: Claude Code and Codex CLI use the same daemon, database, and setup / doctor flow.
+- **Stay honest about scope**: Cursor and other integrations can ingest and search, but Tier 1 continuity is optimized for Claude Code + Codex.
+
 ### 3-minute setup path
 
 1. Run `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude`.
 2. Run `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude`.
 3. Confirm both clients are green and point at the current checkout or install path.
-4. Start a fresh Claude Code or Codex session and check that the first turn already knows the current thread.
+4. Start a fresh Claude Code or Codex CLI session and check that the first turn already knows the current thread.
 
 ### Trust block
 
@@ -77,6 +84,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 - **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
 - **Supported path: Cursor**: hooks and MCP work out of the box, but the continuity story is not as central as Claude Code + Codex.
 - **Experimental path: OpenCode**: usable, but not the same parity promise.
+- **Codex App dogfood**: this maintainer setup also works from Codex App through the same local Codex config path. That is recorded as local dogfood, not a blanket Tier 1 App claim.
 
 ### What this means in practice
 
@@ -307,8 +315,9 @@ memory daemon is fighting for the same runtime state.
 
 Do not try to solve this by turning stdio into a shared singleton broker. That
 works against the way stdio MCP clients launch and supervise local servers, and
-it creates harder lifecycle and security failure modes. New Claude Code and
-Codex setup now defaults to the local-only Streamable HTTP MCP gateway at
+it creates harder lifecycle and security failure modes. Since v0.25.0, new
+Claude Code and Codex setup defaults to the local-only Streamable HTTP MCP
+gateway at
 `http://127.0.0.1:37889/mcp`, with the existing stdio path kept as the
 compatibility and rollback fallback.
 
@@ -334,6 +343,7 @@ Hermes YAML generated.
 
 - Claude Code and Codex share one local daemon and one local SQLite database.
 - First-turn continuity is supported on the Claude Code and Codex hook paths after `harness-mem setup` and `harness-mem doctor` are green.
+- Codex CLI is the Tier 1 Codex target. Codex App is local-dogfood green in this maintainer setup when it uses the same user-scoped Codex config path, but App-specific parity is not claimed without a reproducible App smoke.
 - On those supported hook paths, the default SessionStart artifact is hybrid: chain-first continuity stays on top, and a short recent-project teaser may appear second when there is distinct nearby work worth surfacing.
 - If hook wiring or the local runtime is stale, search and recall can still work while the "open a fresh session and it already remembers" UX degrades.
 - Experimental or maintenance-tier clients can still ingest/search, but parity with Claude Code and Codex is not claimed.
@@ -604,6 +614,7 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 |---|---|---|---|
 | **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
 | **Tier 1** | Codex CLI | v0.116.0+; verified through v0.130.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules. v0.130.0 additive metadata and paged thread summary ingest are tolerated; remote-control and plugin sharing remain Codex-owned |
+| **Dogfood** | Codex App | Maintainer local setup | Uses the same local Codex config path in this setup. Kept as dogfood until an App-specific reproducible smoke exists |
 | **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 

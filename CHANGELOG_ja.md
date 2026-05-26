@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **Codex CLI と Codex App のサポート表現を分けた**。Codex CLI は Tier 1 の Codex 対象として残し、Codex App は同じ local config path で動くメンテナ dogfood として記録した。App 固有の再現可能 smoke が入るまでは、Codex App 全般の parity は主張しない。
+- **ADR-004 / Spec / Plans / README の HTTP MCP default 状態を v0.25.0 release 済みに揃えた**。HTTP default claim は accepted ADR、CHANGELOG v0.25.0、既存 stdio 維持、rollback、token redaction、Hermes opt-in に紐づけた。
+- **short project key の recall が projection を読めず degraded fallback へ落ちる回帰を直した**。recall projection の write / dry-run / clear が同じ project scope 正規化を使うため、短い project 名でも materialized projection を読める。
+- **fresh install 直後の package smoke が search worker warming で落ちないようにした**。search worker が準備中の一時的な `search_offload_unavailable` は短く retry し、正常な install を premature failure にしない。
+
 ## [0.25.5] - 2026-05-24
 
 ### ユーザー向け要約

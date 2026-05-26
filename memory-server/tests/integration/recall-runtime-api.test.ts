@@ -302,6 +302,12 @@ describe("Recall Runtime API", () => {
         action: "write",
       });
       expect(refreshResponse.status).toBe(200);
+      const refreshPayload = (await refreshResponse.json()) as {
+        items: Array<Record<string, unknown>>;
+      };
+      const expectedProject = String(refreshPayload.items[0]?.project ?? "");
+      expect(expectedProject).toBeTruthy();
+      expect(expectedProject).not.toBe(basename(project));
 
       const recall = await postJson(runtime.baseUrl, "/v1/recall", {
         query: "short project projection sentinel",
@@ -318,7 +324,7 @@ describe("Recall Runtime API", () => {
       expect(payload.meta.ranking).toBe("recall_projection_v1");
       expect(payload.meta.recall_degraded).toBe(false);
       expect(payload.items.length).toBeGreaterThan(0);
-      expect(payload.items[0].project).toBe(project);
+      expect(payload.items[0].project).toBe(expectedProject);
     } finally {
       runtime.stop();
     }
