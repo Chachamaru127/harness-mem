@@ -7,8 +7,13 @@
 
 ## [Unreleased]
 
+## [0.25.6] - 2026-05-26
+
 ### ユーザー向け要約
 
+- **大きなローカルDB向けの自律忘却を、安全境界つきで閉じた**。report / archive / purge / compact の段階を分け、offline daemon ownership check、実DB archive canary、profile hash 付き purge/compact canary、status / audit 表示を追加した。破壊的な自動実行は default では有効にしない。
+- **archive-first maintenance に実DB threshold と compact canary evidence を追加した**。active / archived / purged / stale vector の圧力を説明し、compact 前に backup / restore / quick-check gate を残す。
+- **大きなローカルDBの search / recall が、全体 vector work より先に scoped path を使うようになった**。scoped lexical prefilter + vector rerank と safe fallback により、worker warming / timeout / candidate vector 欠落が user-visible failure になりにくくなった。
 - **Codex CLI と Codex App のサポート表現を分けた**。Codex CLI は Tier 1 の Codex 対象として残し、Codex App は同じ local config path で動くメンテナ dogfood として記録した。App 固有の再現可能 smoke が入るまでは、Codex App 全般の parity は主張しない。
 - **ADR-004 / Spec / Plans / README の HTTP MCP default 状態を v0.25.0 release 済みに揃えた**。HTTP default claim は accepted ADR、CHANGELOG v0.25.0、既存 stdio 維持、rollback、token redaction、Hermes opt-in に紐づけた。
 - **short project key の recall が projection を読めず degraded fallback へ落ちる回帰を直した**。recall projection の write / dry-run / clear が同じ project scope 正規化を使うため、短い project 名でも materialized projection を読める。
@@ -980,7 +985,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...HEAD
+[0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4
 [0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3

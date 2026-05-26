@@ -7,8 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.6] - 2026-05-26
+
+### Added
+
+- **Autonomous forgetting now has local-first safety gates for large local DB maintenance**. The self-forgetting closeout adds report/archive/purge/compact boundaries, offline daemon ownership checks, real-DB archive canary evidence, profile-hash-gated purge/compact canaries, and status/audit reporting while keeping destructive automation opt-in.
+- **Archive-first maintenance now includes real-DB threshold and compact canary evidence**. Maintenance planning can explain active/archive/purge/vector-prune pressure, and the offline runner records backup/restore/quick-check gates before compacting.
+
 ### Changed
 
+- **Large local DB search and recall now prefer bounded scoped paths before global vector work**. Scoped lexical prefilter + vector rerank and safe fallback paths reduce user-visible failures when vector workers are warming, timing out, or missing candidate vectors.
 - **README and claim maps now separate Codex CLI Tier 1 from Codex App dogfood**. The public docs keep Codex CLI as the Tier 1 Codex target, record Codex App as scoped maintainer dogfood through the same local config path, and avoid promoting App parity without a reproducible App-specific smoke.
 - **ADR-004, Spec, Plans, and README now align with the v0.25.0 HTTP MCP default release state**. The HTTP default claim is tied to accepted ADR evidence, CHANGELOG v0.25.0, existing stdio preservation, rollback, token redaction, and Hermes opt-in.
 
@@ -2838,7 +2846,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...HEAD
+[0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
 [0.25.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.4...v0.25.5
 [0.25.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.3...v0.25.4
 [0.25.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.2...v0.25.3
