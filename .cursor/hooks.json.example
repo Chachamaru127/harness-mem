@@ -1,7 +1,17 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
     "beforeSubmitPrompt": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "afterAgentResponse": [
       {
         "command": "bash .cursor/hooks/memory-cursor-event.sh"
       }
@@ -17,6 +27,11 @@
       }
     ],
     "afterFileEdit": [
+      {
+        "command": "bash .cursor/hooks/memory-cursor-event.sh"
+      }
+    ],
+    "sessionEnd": [
       {
         "command": "bash .cursor/hooks/memory-cursor-event.sh"
       }

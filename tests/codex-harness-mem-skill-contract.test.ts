@@ -51,4 +51,19 @@ describe("Codex harness-mem skill contract", () => {
     expect(body).toContain("project=unknown");
     expect(body).toContain("vector_search=false");
   });
+
+  test("supported client setup distinguishes Codex HTTP from Cursor user-scope wiring", () => {
+    const body = readRequiredFile(SKILL_PATH);
+    expect(body).toContain("Supported Client Setup");
+    expect(body).toContain("harness-mem setup --platform codex");
+    expect(body).toContain("harness-mem doctor --platform codex");
+    expect(body).toContain("http://127.0.0.1:37889/mcp");
+    expect(body).toContain("harness-mem setup --platform cursor");
+    expect(body).toContain("harness-mem doctor --platform cursor");
+    expect(body).toContain("~/.cursor/mcp.json");
+    expect(body).toContain("mcpServers.harness-mem");
+    expect(body).toContain("official Cursor Hooks");
+    expect(body).toContain("MCP reload");
+    expect(body).toContain("Tier 2 supported local client");
+  });
 });

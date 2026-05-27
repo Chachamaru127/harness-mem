@@ -11,6 +11,8 @@ const END_HERMES_MCP = "# <<< harness-mem hermes mcp";
 const DEFAULT_HTTP_ADDR = "127.0.0.1:37889";
 const DEFAULT_HTTP_PATH = "/mcp";
 const DEFAULT_TOKEN_ENV_VAR = "HARNESS_MEM_MCP_TOKEN";
+const CURSOR_MCP_SERVER_ID = "harness-mem";
+const CURSOR_LEGACY_MCP_SERVER_ID = "harness";
 const HERMES_SAFE_TOOLS = [
   "harness_mem_search",
   "harness_mem_timeline",
@@ -63,6 +65,10 @@ function resolveTokenEnvVar(options = {}) {
 
 function buildAuthorizationHeader(tokenEnvVar) {
   return `Bearer \${${tokenEnvVar}}`;
+}
+
+function buildCursorAuthorizationHeader(tokenEnvVar) {
+  return `Bearer \${env:${tokenEnvVar}}`;
 }
 
 function resolveServerSpec(options = {}) {
@@ -293,6 +299,40 @@ function writeClaudeConfig(options = {}) {
   return { client: "claude", status: "updated", filePath };
 }
 
+function buildCursorHarnessConfig(serverSpec) {
+  if (serverSpec.transport === "http") {
+    return {
+      url: serverSpec.url,
+      headers: {
+        Authorization: buildCursorAuthorizationHeader(serverSpec.bearerTokenEnvVar),
+      },
+    };
+  }
+
+  return {
+    type: "stdio",
+    command: serverSpec.command,
+    args: serverSpec.args,
+    env: serverSpec.env,
+  };
+}
+
+function writeCursorConfig(options = {}) {
+  const homeDir = resolveHomeDir(options);
+  const filePath = options.filePath || path.join(homeDir, ".cursor", "mcp.json");
+  const serverSpec = options.serverSpec || resolveServerSpec(options);
+
+  ensureFileDir(filePath);
+
+  const parsed = parseJsonFile(filePath, { mcpServers: {} });
+  parsed.mcpServers = parsed.mcpServers || {};
+  parsed.mcpServers[CURSOR_MCP_SERVER_ID] = buildCursorHarnessConfig(serverSpec);
+  delete parsed.mcpServers[CURSOR_LEGACY_MCP_SERVER_ID];
+
+  fs.writeFileSync(filePath, `${JSON.stringify(parsed, null, 2)}\n`, "utf8");
+  return { client: "cursor", status: "updated", filePath };
+}
+
 function escapeYamlDoubleQuoted(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
@@ -453,6 +493,11 @@ function buildPrintableSummary(results, serverSpec) {
           env: serverSpec.env,
         };
   const claudeSnippet = JSON.stringify({ mcpServers: { harness: claudeHarness } }, null, 2);
+  const cursorSnippet = JSON.stringify(
+    { mcpServers: { [CURSOR_MCP_SERVER_ID]: buildCursorHarnessConfig(serverSpec) } },
+    null,
+    2
+  );
   const hermesSnippet = buildHermesManagedBlock(serverSpec).trimEnd();
 
   const lines = [
@@ -488,6 +533,9 @@ function buildPrintableSummary(results, serverSpec) {
     "",
     "Claude snippet:",
     claudeSnippet,
+    "",
+    "Cursor snippet:",
+    cursorSnippet,
     "",
     "Hermes snippet:",
     hermesSnippet,
@@ -544,6 +592,19 @@ function runMcpConfigCli(options = {}) {
         }
         continue;
       }
+      if (client === "cursor") {
+        const filePath = path.join(resolveHomeDir({ homeDir }), ".cursor", "mcp.json");
+        if (parsed.write) {
+          results.push(writeCursorConfig({ homeDir, filePath, serverSpec }));
+        } else {
+          results.push({
+            client: "cursor",
+            status: "preview",
+            filePath,
+          });
+        }
+        continue;
+      }
       if (client === "hermes") {
         const filePath = path.join(resolveHomeDir({ homeDir }), ".hermes", "config.yaml");
         if (parsed.write) {
@@ -582,7 +643,9 @@ module.exports = {
   END_CODEX_MCP,
   BEGIN_HERMES_MCP,
   END_HERMES_MCP,
+  CURSOR_MCP_SERVER_ID,
   buildCodexManagedBlock,
+  buildCursorHarnessConfig,
   buildHermesManagedBlock,
   stripCodexHarnessArtifacts,
   parseCliArgs,
@@ -592,6 +655,7 @@ module.exports = {
   upsertManagedBlock,
   writeClaudeConfig,
   writeCodexConfig,
+  writeCursorConfig,
   writeHermesConfig,
 };
 

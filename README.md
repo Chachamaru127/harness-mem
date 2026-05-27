@@ -56,14 +56,14 @@
 
 ### 30-second version
 
-Harness-mem gives Claude Code and Codex the same local project memory, so the next session can open on the thread you were already working on instead of a blank slate. It is built for people who switch tools inside the same project and do not want to re-explain the same decisions twice.
+Harness-mem gives Claude Code and Codex the same local project memory, so the next session can open on the thread you were already working on instead of a blank slate. Cursor can also be wired as a supported local client for MCP search and hook-based conversation capture. It is built for people who switch tools inside the same project and do not want to re-explain the same decisions twice.
 
 ### Why people install it
 
 - **Resume the actual thread**: the next Claude Code or Codex turn can start from the current project chain, not a generic memory dump.
 - **Keep memory local**: project data stays in local SQLite unless you explicitly configure an external integration.
 - **Share one runtime**: Claude Code and Codex CLI use the same daemon, database, and setup / doctor flow.
-- **Stay honest about scope**: Cursor and other integrations can ingest and search, but Tier 1 continuity is optimized for Claude Code + Codex.
+- **Stay honest about scope**: Cursor is supported for user-scoped MCP plus hook ingest/search, but Tier 1 continuity is optimized for Claude Code + Codex.
 
 ### 3-minute setup path
 
@@ -71,6 +71,8 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 2. Run `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude`.
 3. Confirm both clients are green and point at the current checkout or install path.
 4. Start a fresh Claude Code or Codex CLI session and check that the first turn already knows the current thread.
+
+If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run a separate `harness-mem setup --platform cursor` followed by `harness-mem doctor --platform cursor`. Cursor may need an MCP reload or a new Cursor session before the `harness-mem` server appears.
 
 ### Trust block
 
@@ -82,7 +84,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 ### Support tiers
 
 - **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
-- **Supported path: Cursor**: hooks and MCP work out of the box, but the continuity story is not as central as Claude Code + Codex.
+- **Supported path: Cursor**: `setup --platform cursor` wires user-scoped `~/.cursor/hooks.json` and `~/.cursor/mcp.json` (`mcpServers.harness-mem`) for hook ingest and MCP search. It is supported, but not a Tier 1 continuity parity claim.
 - **Experimental path: OpenCode**: usable, but not the same parity promise.
 - **Codex App dogfood**: this maintainer setup also works from Codex App through the same local Codex config path. That is recorded as local dogfood, not a blanket Tier 1 App claim.
 
@@ -90,7 +92,7 @@ Harness-mem gives Claude Code and Codex the same local project memory, so the ne
 
 - **You use Claude Code and Codex** → harness-mem gives both tools the same local project runtime. On supported hook paths, the first turn stays chain-first (`what we were just doing`) and can also surface a short `Also Recently in This Project` teaser for nearby context.
 - **You care about privacy** → everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
-- **You also use Cursor** → hooks and MCP work out of the box, but it is tier 2 rather than the main continuity path.
+- **You also use Cursor** → run Cursor setup/doctor to enable hook ingest and MCP search. Cursor remains tier 2 rather than the main continuity path.
 
 ---
 
@@ -153,6 +155,7 @@ Pick the path that matches your stack. That's the whole decision.
 | **Only Claude Code** | `/plugin marketplace add Chachamaru127/harness-mem` → `/plugin install harness-mem@chachamaru127` |
 | **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
 | **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
+| **Cursor as an additional local client** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
 
 ### Claude-harness companion mode
 
@@ -209,7 +212,7 @@ All green = ready. If something is off:
 harness-mem doctor --fix
 ```
 
-A green `doctor` plus active `SessionStart`, `UserPromptSubmit`, and `Stop` hooks is the runtime contract for first-turn continuity on Claude Code and Codex.
+A green `doctor` plus active `SessionStart`, `UserPromptSubmit`, and `Stop` hooks is the runtime contract for first-turn continuity on Claude Code and Codex. For Cursor, green doctor means user-scoped hooks and `mcpServers.harness-mem` are wired; verify the first real Cursor session by checking that prompt and assistant events ingest/search for the current project.
 
 ### Update
 
@@ -615,7 +618,7 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Tier 1** | Claude Code | v2.1.80 | Full hook lifecycle (18 events incl. StopFailure), MCP, plugin marketplace, `--channels` push, `--inline-plugin` setup |
 | **Tier 1** | Codex CLI | v0.116.0+; verified through v0.130.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules. v0.130.0 additive metadata and paged thread summary ingest are tolerated; remote-control and plugin sharing remain Codex-owned |
 | **Dogfood** | Codex App | Maintainer local setup | Uses the same local Codex config path in this setup. Kept as dogfood until an App-specific reproducible smoke exists |
-| **Tier 2** | Cursor | Latest | hooks.json + sandbox.json + MCP. No new investment beyond maintenance |
+| **Tier 2** | Cursor | Latest | User-scoped `~/.cursor/hooks.json` + `~/.cursor/mcp.json` (`mcpServers.harness-mem`), hook spool ingest, MCP search, and setup/doctor support. May require Cursor MCP reload/new session after setup |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 
 ---

@@ -48,6 +48,13 @@ npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,claude
 ```
 
+Add Cursor only when you want the same local runtime available from Cursor:
+
+```bash
+harness-mem setup --platform codex,claude,cursor
+harness-mem doctor --platform codex,claude,cursor
+```
+
 Dry-run expectations:
 
 - this is more convenient than repo checkout for day-to-day use
@@ -72,6 +79,13 @@ Typical commands:
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
 ```
 
+Cursor-only evaluation:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform cursor
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform cursor
+```
+
 Dry-run expectations:
 
 - best default for a clean start
@@ -83,3 +97,24 @@ Dry-run expectations:
 - Choose global install if you want a persistent CLI and your user can install globals cleanly.
 - Choose repo checkout if you are contributing to harness-mem itself.
 - Avoid `sudo` unless you are debugging a broken environment and understand the ownership impact.
+
+## 5. Cursor-specific expectations
+
+Best for:
+
+- users who want Cursor MCP search against the same local harness-mem DB
+- users who want Cursor prompt / assistant / tool events captured through official Cursor hooks
+
+What it changes:
+
+- `~/.cursor/hooks.json`
+- `~/.cursor/hooks/memory-cursor-event.sh`
+- `~/.cursor/mcp.json` with `mcpServers.harness-mem`
+- local Cursor hook spool under `~/.harness-mem/adapters/cursor/events.jsonl`
+
+Dry-run expectations:
+
+- setup is user-scoped and does not depend on whether the current checkout is a git worktree
+- setup merges harness-mem hook entries without deleting unrelated Cursor hooks
+- Cursor may need reload/restart or a new session before MCP discovery sees `harness-mem`
+- doctor green proves wiring; a real Cursor prompt followed by project-scoped search proves ingest

@@ -1,7 +1,7 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-05-24
+Last updated: 2026-05-28
 Owner: harness-mem
 Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration
 
@@ -291,6 +291,44 @@ profile and harness-mem keeps memory growth under configured thresholds without
 blocking `/health/ready`, while still giving the user an understandable audit
 trail and a restore window before irreversible purge.
 
+## Cursor Conversation Capture
+
+Cursor session continuity for harness-mem uses **official Cursor Agent Hooks**
+as the primary ingest path. MCP tools may read memory but must not become the
+primary write path for Cursor conversation events.
+
+### Ingest contract
+
+- **Primary input**: JSON lines appended from Cursor hook commands to the local
+  spool at `~/.harness-mem/adapters/cursor/events.jsonl` (override via
+  `HARNESS_MEM_CURSOR_EVENTS_PATH`).
+- **Saved hook events** (minimum):
+  - `sessionStart` → `session_start`
+  - `beforeSubmitPrompt` → `user_prompt`
+  - `afterAgentResponse` → `checkpoint` with `title: assistant_response`
+  - `afterMCPExecution` / `afterShellExecution` / `afterFileEdit` → `tool_use`
+  - `sessionEnd` and `stop` → `session_end`
+- **Out of scope**:
+  - `afterAgentThought` (not ingested)
+  - Automatic reading or parsing of `transcript_path` file contents
+- **Session identity**: `conversation_id` is preferred; `session_id` is
+  equivalent when `conversation_id` is absent. `generation_id` is stored in
+  event metadata only and must not be used as the session id.
+- **Common metadata** (when present on the hook payload): `generation_id`,
+  `transcript_path`, `model`, `cursor_version`, `workspace_roots`. Only
+  `transcript_path` is metadata-only; harness-mem must not open transcript files
+  during ingest.
+- **Fail-open**: hook receiver and ingest must never block or fail Cursor user
+  actions. Spool append and ingest errors are ignored or logged without
+  surfacing errors back to Cursor.
+
+### Setup contract
+
+- User-scope `~/.cursor/hooks.json` must register harness-mem hook commands for
+  all saved events above without removing unrelated user hooks (superset merge).
+- `harness-mem setup --platform cursor` and `harness-mem doctor --platform cursor`
+  verify the hook script, spool path, MCP wiring, and required hook entries.
+
 ## MCP Transport Defaults
 
 Harness-mem has two local MCP layers:
@@ -321,6 +359,13 @@ Default HTTP MCP is allowed only if all of these stay true:
   back to stdio.
 - Hermes remains explicit opt-in until its transport compatibility and support
   tier are re-evaluated.
+- Cursor is a supported local client through user-scoped Cursor MCP config at
+  `~/.cursor/mcp.json`. Cursor setup must not depend on whether the current
+  workspace is a git worktree; project-scoped Cursor config can be added later
+  only with an explicit plan. The Cursor user-scope MCP server id is
+  `harness-mem`; setup/write flows must remove the older Cursor-only `harness`
+  id to avoid duplicate MCP registration. Claude/Codex keep their existing
+  `harness` server id, and Hermes keeps `harness_mem`.
 - HTTP transport failures degrade to actionable doctor guidance or stdio
   fallback, not to broken first-turn continuity.
 

@@ -5,6 +5,8 @@ import { join } from "node:path";
 
 const {
   buildCodexManagedBlock,
+  buildCursorHarnessConfig,
+  CURSOR_MCP_SERVER_ID,
   resolveServerSpec,
   runMcpConfigCli,
 } = require("../scripts/lib/mcp-config");
@@ -85,6 +87,24 @@ describe("mcp-config CLI", () => {
     expect(codexBlock).not.toContain("command =");
   });
 
+  test("builds Cursor HTTP MCP config with Cursor env token syntax", () => {
+    const spec = resolveServerSpec({
+      transport: "http",
+      env: {
+        HARNESS_MEM_MCP_TOKEN: "super-secret-token",
+      },
+      addr: "127.0.0.1:37889",
+    });
+
+    const cursorHarness = buildCursorHarnessConfig(spec);
+    const serialized = JSON.stringify(cursorHarness);
+
+    expect(cursorHarness.url).toBe("http://127.0.0.1:37889/mcp");
+    expect(cursorHarness.headers.Authorization).toBe("Bearer ${env:HARNESS_MEM_MCP_TOKEN}");
+    expect(serialized).not.toContain("super-secret-token");
+    expect(cursorHarness.command).toBeUndefined();
+  });
+
   test("writes HTTP Claude, Codex, and Hermes config files when explicitly requested", () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-mcp-config-http-"));
 
@@ -145,6 +165,93 @@ describe("mcp-config CLI", () => {
       expect(hermesConfig).toContain("- harness_mem_record_checkpoint");
       expect(combined).not.toContain("super-secret-token");
       expect(chunks.join("")).toContain("[ok] hermes:");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  test("writes Cursor user-scope MCP config when explicitly requested", () => {
+    const tmpHome = mkdtempSync(join(process.cwd(), ".tmp-hmem-mcp-config-cursor-"));
+
+    try {
+      const chunks: string[] = [];
+      const code = runMcpConfigCli({
+        argv: ["--write", "--client", "cursor", "--home", tmpHome],
+        env: {
+          ...process.env,
+          HARNESS_MEM_HOST: "127.0.0.1",
+          HARNESS_MEM_PORT: "37888",
+        },
+        stdout: { write: (chunk: string) => void chunks.push(chunk) },
+      });
+
+      expect(code).toBe(0);
+
+      const cursorConfig = JSON.parse(readFileSync(join(tmpHome, ".cursor", "mcp.json"), "utf8")) as {
+        mcpServers: {
+          "harness-mem": {
+            type: string;
+            command: string;
+            args: string[];
+            env: Record<string, string>;
+          };
+          harness?: unknown;
+        };
+      };
+
+      expect(CURSOR_MCP_SERVER_ID).toBe("harness-mem");
+      expect(cursorConfig.mcpServers["harness-mem"].type).toBe("stdio");
+      expect(cursorConfig.mcpServers["harness-mem"].command).toBe("node");
+      expect(cursorConfig.mcpServers["harness-mem"].args[0]).toContain("mcp-server/dist/index.js");
+      expect(cursorConfig.mcpServers["harness-mem"].env.HARNESS_MEM_HOST).toBe("127.0.0.1");
+      expect(cursorConfig.mcpServers.harness).toBeUndefined();
+      expect(chunks.join("")).toContain("[ok] cursor:");
+    } finally {
+      rmSync(tmpHome, { recursive: true, force: true });
+    }
+  });
+
+  test("Cursor write migrates legacy harness server id to harness-mem", () => {
+    const tmpHome = mkdtempSync(join(process.cwd(), ".tmp-hmem-mcp-config-cursor-migrate-"));
+
+    try {
+      const cursorDir = join(tmpHome, ".cursor");
+      mkdirSync(cursorDir, { recursive: true });
+      writeFileSync(
+        join(cursorDir, "mcp.json"),
+        JSON.stringify(
+          {
+            mcpServers: {
+              harness: {
+                type: "stdio",
+                command: "/old/bin/harness-mcp-server",
+                env: { HARNESS_MEM_PORT: "9999" },
+              },
+              unrelated: { command: "example" },
+            },
+          },
+          null,
+          2
+        ),
+        "utf8"
+      );
+
+      const code = runMcpConfigCli({
+        argv: ["--write", "--client", "cursor", "--home", tmpHome],
+        env: { ...process.env, HARNESS_MEM_HOST: "127.0.0.1", HARNESS_MEM_PORT: "37888" },
+        stdout: { write: () => {} },
+      });
+
+      expect(code).toBe(0);
+
+      const cursorConfig = JSON.parse(readFileSync(join(cursorDir, "mcp.json"), "utf8")) as {
+        mcpServers: Record<string, unknown>;
+      };
+
+      expect(cursorConfig.mcpServers["harness-mem"]).toBeTruthy();
+      expect(cursorConfig.mcpServers.harness).toBeUndefined();
+      expect(cursorConfig.mcpServers.unrelated).toEqual({ command: "example" });
+      expect(JSON.stringify(cursorConfig)).not.toContain("/old/bin/harness-mcp-server");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }

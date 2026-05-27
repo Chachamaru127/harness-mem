@@ -7,7 +7,7 @@
 
 - [ ] `npx` 経路を選んだ、または `npm install -g` を意図して選んだ、または repo checkout から実行している。
 - [ ] セットアップや doctor で `sudo` を使っていない。
-- [ ] Claude Code、Codex、または両方を検証するか把握している。
+- [ ] Claude Code、Codex、Cursor、またはそれらの組み合わせのどれを検証するか把握している。
 
 ## 2. setup の実行
 
@@ -27,9 +27,19 @@
 - [ ] 新しい Codex セッションで、最初のターンに直近のプロジェクト文脈を復元できる。
 - [ ] 復元された文脈が、古い別プロジェクトではなく現在のプロジェクトと一致している。
 
+## 4b. Cursor を選んだ場合の確認
+
+- [ ] `harness-mem setup --platform cursor` を実行した、または platform list に `cursor` を含めた。
+- [ ] `harness-mem doctor --platform cursor --read-only --strict-exit` が green である。
+- [ ] MCP server list がキャッシュされている場合、Cursor reload / restart または新しい Cursor セッションを開いた。
+- [ ] `~/.cursor/mcp.json` に `mcpServers.harness-mem` があり、古い Cursor-only の `harness` entry が残っていない。
+- [ ] 実際の Cursor prompt と assistant response の後、project-scoped search で両方の event が見つかる。
+- [ ] Cursor は hook ingest と MCP search に対応しているが、Tier 1 continuity と同等の claim ではないことを理解している。
+
 ## 5. 安全境界の確認
 
 - [ ] ローカルデータの保存場所を理解している。
+- [ ] Cursor を使う場合、hook JSONL は override しない限り `~/.harness-mem/adapters/cursor/events.jsonl` にローカル spool されることを理解している。
 - [ ] 非対応または実験的なクライアントでは、同じ first-turn continuity UX が保証されないことを理解している。
 - [ ] setup の成功と first-turn continuity の成功は別物だと説明できる。
 
