@@ -1,0 +1,27 @@
+bun test v1.3.10 (30e609e0)
+
+tests/benchmarks/memory-durability.test.ts:
+dtype not specified for "model". Using the default dtype (fp32) for this device (cpu).
+[harness-mem][warn] local model multilingual-e5 unavailable for sync embed: local ONNX model multilingual-e5 requires async prime before sync embed (mode=passage, chars=56)
+[long-term] Migration Recall@10: 0.9000 (9/10)
+(pass) S56-003: Long-term Memory Retention > Long-term Recall@10: migration カテゴリ [104.66ms]
+
+ 1 pass
+ 5 filtered out
+ 0 fail
+ 1 expect() calls
+Ran 1 test across 1 file. [1.81s]
+============================================================
+Bun v1.3.10 (30e609e0) macOS Silicon
+macOS v26.3.2
+CPU: fp aes crc32 atomics
+Args: "bun" "test" "tests/benchmarks/memory-durability.test.ts" "-t" "Long-term Recall@10: migration"
+Features: Bun.stderr(2) bunfig dotenv jsc transpiler_cache(7) tsconfig napi_module_register process_dlopen(2) exited
+Builtins: "bun:test" "bun:sqlite" "node:child_process" "node:crypto" "node:events" "node:fs" "node:os" "node:path" "node:stream" "node:url" "node:util"
+Elapsed: 1810ms | User: 3178ms | Sys: 721ms
+RSS: 1.84GB | Peak: 1.84GB | Commit: 0.99GB | Faults: 79 | Machine: 0.07TB
+
+panic(main thread): A C++ exception occurred
+oh no: Bun has crashed. This indicates a bug in Bun, not your code.
+
+[harness-mem][warn] Bun crashed after reporting 0 failing tests; treating this as known Bun runtime noise.

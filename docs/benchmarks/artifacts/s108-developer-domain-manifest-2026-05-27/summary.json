@@ -1,0 +1,34 @@
+{
+  "schema_version": "s108-developer-domain-manifest.v1",
+  "task_id": "S108-005b",
+  "generated_at": "2026-05-27T07:20:32.810Z",
+  "manifest_path": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
+  "inputs": {
+    "code_token_runs": 3,
+    "temporal_cases": 66
+  },
+  "metrics": {
+    "dev_workflow_recall_at_10": 0.7708,
+    "dev_workflow_recall_mean": 0.7708,
+    "bilingual_recall_at_10": 0.9,
+    "temporal_order_score": 0.75,
+    "temporal_answer_hit_at_10": 0.8182,
+    "japanese_temporal_slice": 0.7778,
+    "current_stale_answer_regressions": 0,
+    "temporal_p95_latency_ms": 7.3805
+  },
+  "gates": {
+    "dev_workflow": true,
+    "bilingual": true,
+    "temporal_order": true,
+    "japanese_temporal": true,
+    "current_stale_regressions": true
+  },
+  "artifacts": {
+    "report_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/summary.json",
+    "code_token_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/code-token/summary.json",
+    "temporal_planner_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.json"
+  },
+  "rollback": "Restore memory-server/src/benchmark/results/ci-run-manifest-latest.json from version control, or rerun npm run benchmark:developer-domain from a known-good checkout.",
+  "overall_passed": true
+}

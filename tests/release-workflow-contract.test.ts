@@ -69,6 +69,8 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("name: Run memory server typecheck");
     expect(workflow).toContain("name: Recall Runtime release gate (§S128-013)");
     expect(workflow).toContain("npm run benchmark:recall-runtime");
+    expect(workflow).toContain("npm run benchmark:recall-runtime -- --enforce --out artifacts/release-gates/s128-recall-runtime-gate.json");
+    expect(workflow).toContain("npm run benchmark:developer-domain");
     expect(workflow).toContain("go-native-smoke:");
     expect(workflow).toContain("name: Go MCP native smoke (${{ matrix.label }})");
     expect(workflow).toContain("needs: [publish-npm, go-build, go-native-smoke]");

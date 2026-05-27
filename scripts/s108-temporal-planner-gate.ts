@@ -65,6 +65,7 @@ interface TemporalPlannerGateResult {
     answer_hit_at_10: number;
     japanese_temporal_slice: number;
     current_stale_answer_regressions: number;
+    p95_latency_ms: number;
   };
   gates: {
     temporal_order_score: { threshold: number; passed: boolean };
@@ -95,6 +96,13 @@ function round(value: number): number {
 
 function average(values: number[]): number {
   return values.length === 0 ? 0 : values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function percentile(values: number[], p: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.ceil((p / 100) * sorted.length) - 1);
+  return sorted[index];
 }
 
 function createConfig(dir: string): Config {
@@ -170,6 +178,7 @@ function renderSummary(result: TemporalPlannerGateResult): string {
     `| temporal order score | ${result.gates.temporal_order_score.threshold.toFixed(2)} | ${result.metrics.temporal_order_score.toFixed(4)} | ${result.gates.temporal_order_score.passed ? "yes" : "no"} |`,
     `| Japanese temporal slice hit@10 | ${result.gates.japanese_temporal_slice.threshold.toFixed(2)} | ${result.metrics.japanese_temporal_slice.toFixed(4)} | ${result.gates.japanese_temporal_slice.passed ? "yes" : "no"} |`,
     `| current stale answer regressions | ${result.gates.current_stale_answer_regressions.threshold.toFixed(0)} | ${result.metrics.current_stale_answer_regressions.toFixed(0)} | ${result.gates.current_stale_answer_regressions.passed ? "yes" : "no"} |`,
+    `| p95 latency ms | n/a | ${result.metrics.p95_latency_ms.toFixed(4)} | n/a |`,
     "",
     `- answer_top1_rate: ${result.metrics.answer_top1_rate.toFixed(4)}`,
     `- answer_hit_at_10: ${result.metrics.answer_hit_at_10.toFixed(4)}`,
@@ -258,6 +267,7 @@ export async function runTemporalPlannerGate(options: GateOptions = {}): Promise
       answer_hit_at_10: round(average(caseResults.map((entry) => entry.answer_hit_at_10 ? 1 : 0))),
       japanese_temporal_slice: round(average(japaneseTemporal.map((entry) => entry.answer_hit_at_10 ? 1 : 0))),
       current_stale_answer_regressions: staleRegressions,
+      p95_latency_ms: round(percentile(caseResults.map((entry) => entry.latency_ms), 95)),
     },
     gates: {
       temporal_order_score: { threshold: TEMPORAL_ORDER_GATE, passed: false },

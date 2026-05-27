@@ -49,13 +49,13 @@ T_BILINGUAL="$(jq -r '.bilingual_recall_10' "${THRESHOLDS_PATH}")"
 T_KNOWLEDGE="$(jq -r '.knowledge_update_freshness' "${THRESHOLDS_PATH}")"
 T_TEMPORAL="$(jq -r '.temporal_ordering' "${THRESHOLDS_PATH}")"
 
-# Read actual scores from manifest
-# dev_workflow_recall is not yet emitted by run-ci.ts (§78-A05 will add it).
-# Use null sentinel to detect the missing field and report as N/A.
-S_DEV_WORKFLOW="$(jq -r '.results.dev_workflow_recall // "null"' "${MANIFEST_PATH}")"
-S_BILINGUAL="$(jq -r '.results.bilingual_recall // "null"' "${MANIFEST_PATH}")"
+# Read actual scores from manifest. S108-005b writes the canonical
+# developer-domain reconciliation block and mirrors the release-gate fields
+# into .results for older readers.
+S_DEV_WORKFLOW="$(jq -r '.results.dev_workflow_recall // .developer_domain_reconciliation.metrics.dev_workflow_recall_at_10 // "null"' "${MANIFEST_PATH}")"
+S_BILINGUAL="$(jq -r '.results.bilingual_recall // .developer_domain_reconciliation.metrics.bilingual_recall_at_10 // "null"' "${MANIFEST_PATH}")"
 S_KNOWLEDGE="$(jq -r '.results.freshness // "null"' "${MANIFEST_PATH}")"
-S_TEMPORAL="$(jq -r '.results.temporal // "null"' "${MANIFEST_PATH}")"
+S_TEMPORAL="$(jq -r '.developer_domain_reconciliation.metrics.temporal_order_score // .results.temporal // "null"' "${MANIFEST_PATH}")"
 
 ANY_FAIL=0
 
@@ -77,7 +77,7 @@ compare_metric() {
       echo "::error::Developer-domain gate [${name}]: score missing from manifest (threshold=${threshold})"
       ANY_FAIL=1
     else
-      echo "::warning::Developer-domain gate [${name}]: score missing from manifest — will be populated by §78-A05 (threshold=${threshold})"
+      echo "::warning::Developer-domain gate [${name}]: score missing from manifest — run S108-005b reconciliation (threshold=${threshold})"
     fi
     printf "  %-30s  %8s  %8s  %s\n" "${name}" "${symbol}" "${threshold}" "${status}"
     return
@@ -154,7 +154,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     _row "temporal ordering"           "${S_TEMPORAL}"     "${T_TEMPORAL}"
 
     echo ""
-    echo "> Mode: \`${MODE}\` — flip to \`enforce\` after §78-A03 and §78-A05 land."
+    echo "> Mode: \`${MODE}\` — flip to \`enforce\` after S108-005b reconciliation is present and green."
   } >> "${GITHUB_STEP_SUMMARY}"
 fi
 

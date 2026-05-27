@@ -28,6 +28,20 @@
         "model": "multilingual-e5",
         "vectorDimension": 384
       }
+    },
+    {
+      "timestamp": "2026-05-27T07:20:23.739Z",
+      "f1": 0.6137539004205671,
+      "freshness": 0.99,
+      "temporal": 0.7097222222222221,
+      "bilingual": 0.9,
+      "cat1": 0.6042522694696608,
+      "embedding": {
+        "mode": "onnx",
+        "provider": "local",
+        "model": "multilingual-e5",
+        "vectorDimension": 384
+      }
     }
   ]
 }

@@ -1,0 +1,109 @@
+{
+  "schema_version": "s128-enforce-readiness.v1",
+  "task_id": "S128-021",
+  "generated_at": "2026-05-27T07:20:47.878Z",
+  "artifact_dir": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27",
+  "gate_runs": [
+    {
+      "run": 1,
+      "artifact": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/recall-runtime-enforce-1.json",
+      "status": "pass",
+      "warnings": [],
+      "recall_p95_ms": 1.08,
+      "fallback_rate": 0,
+      "adr_precision": 1,
+      "passed": true
+    },
+    {
+      "run": 2,
+      "artifact": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/recall-runtime-enforce-2.json",
+      "status": "pass",
+      "warnings": [],
+      "recall_p95_ms": 0.41,
+      "fallback_rate": 0,
+      "adr_precision": 1,
+      "passed": true
+    },
+    {
+      "run": 3,
+      "artifact": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/recall-runtime-enforce-3.json",
+      "status": "pass",
+      "warnings": [],
+      "recall_p95_ms": 0.61,
+      "fallback_rate": 0,
+      "adr_precision": 1,
+      "passed": true
+    }
+  ],
+  "live_recall": {
+    "label": "live_recall_explain",
+    "command": [
+      "scripts/harness-mem",
+      "recall",
+      "explain",
+      "--query",
+      "Recall Runtime Architecture",
+      "--project",
+      "harness-mem",
+      "--limit",
+      "3"
+    ],
+    "exit_code": 0,
+    "log_path": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/live_recall_explain.json",
+    "passed": true,
+    "item_count": 3,
+    "degraded": false,
+    "degraded_reason": null
+  },
+  "command_checks": [
+    {
+      "label": "memory_durability_migration",
+      "command": [
+        "bash",
+        "scripts/run-bun-test-safe.sh",
+        "tests/benchmarks/memory-durability.test.ts",
+        "-t",
+        "Long-term Recall@10: migration"
+      ],
+      "exit_code": 0,
+      "duration_ms": 1869.6539,
+      "log_path": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/memory_durability_migration.log",
+      "passed": true,
+      "parsed": {
+        "recall_at_10": 0.9,
+        "hits": 9,
+        "total": 10
+      }
+    },
+    {
+      "label": "chaos_smoke",
+      "command": [
+        "bash",
+        "tests/test-memory-daemon-chaos.sh",
+        "2"
+      ],
+      "exit_code": 0,
+      "duration_ms": 6380.403,
+      "log_path": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/chaos_smoke.log",
+      "passed": true,
+      "parsed": {
+        "rounds": 2
+      }
+    },
+    {
+      "label": "release_workflow_contract",
+      "command": [
+        "bun",
+        "test",
+        "scripts/s128-recall-runtime-gate.test.ts",
+        "tests/release-workflow-contract.test.ts"
+      ],
+      "exit_code": 0,
+      "duration_ms": 305.9711,
+      "log_path": "docs/benchmarks/artifacts/s128-enforce-readiness-2026-05-27/release_workflow_contract.log",
+      "passed": true
+    }
+  ],
+  "overall_passed": true,
+  "recommendation": "ready_for_s128_release_enforce"
+}
