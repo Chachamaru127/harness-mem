@@ -7,6 +7,8 @@
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-05-28
+
 ### ユーザー向け要約
 
 - **Cursor を Tier 2 の supported local client として追加した**。user-scope の `~/.cursor/mcp.json`（`mcpServers.harness-mem`）、公式 Cursor Hooks による会話取り込み（8 イベント）、`setup/doctor --platform cursor`、project スコープ MCP 検索に対応。worktree 有無に依存しない。

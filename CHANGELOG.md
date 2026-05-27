@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-05-28
+
 ### Added
 
 - **Cursor is now a Tier 2 supported local client** with user-scoped `~/.cursor/mcp.json` (`mcpServers.harness-mem`), official Cursor Hooks conversation capture (8 saved hook events), `harness-mem setup --platform cursor` / `harness-mem doctor --platform cursor`, and project-scoped MCP search. Setup does not depend on git worktree layout.
@@ -2874,7 +2876,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...HEAD
+[0.26.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...v0.26.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6
