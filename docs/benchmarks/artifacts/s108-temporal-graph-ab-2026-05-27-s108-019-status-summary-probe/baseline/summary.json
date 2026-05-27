@@ -1,0 +1,38 @@
+{
+  "schema_version": "s108-temporal-planner.v1",
+  "generated_at": "2026-05-27T09:39:15.558Z",
+  "task_id": "S108-008",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
+    "total_cases": 69,
+    "evaluated_cases": 69
+  },
+  "metrics": {
+    "temporal_order_score": 0.814,
+    "answer_top1_rate": 0.8986,
+    "answer_hit_at_10": 0.9855,
+    "japanese_temporal_slice": 1,
+    "current_stale_answer_regressions": 0,
+    "p95_latency_ms": 7.1268
+  },
+  "gates": {
+    "temporal_order_score": {
+      "threshold": 0.7,
+      "passed": true
+    },
+    "japanese_temporal_slice": {
+      "threshold": 0.72,
+      "passed": true
+    },
+    "current_stale_answer_regressions": {
+      "threshold": 0,
+      "passed": true
+    }
+  },
+  "overall_passed": true,
+  "artifacts": {
+    "summary_json": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-019-status-summary-probe/baseline/summary.json",
+    "case_results_json": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-019-status-summary-probe/baseline/case-results.json",
+    "summary_md": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-019-status-summary-probe/baseline/summary.md"
+  }
+}

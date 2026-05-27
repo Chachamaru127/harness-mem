@@ -668,6 +668,9 @@ const AFTER_CUE_PATTERN = /\b(after|right after|following|since)\b/i;
 const BEFORE_CUE_PATTERN = /\b(before|prior to|until)\b/i;
 const CURRENT_SLOT_ONLY_PATTERN = /\b(default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
+const EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old)\b/i;
+const PREVIOUS_STATUS_TEXT_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old|before)\b/i;
+const STATUS_SUMMARY_CUE_PATTERN = /\b(status|latest|current)\b/i;
 const REASON_CUE_PATTERN = /\b(because|since|due to|reason|caused by|triggered by)\b/i;
 const LIST_CUE_PATTERN = /\b(and|all|list|including)\b/i;
 const FILLER_CUE_PATTERN = /^(?:ちなみに|なお|ただ|実際には|現時点では|まず|最初に|最後に|That said|Actually|Currently|Right now|At the moment)\b/i;
@@ -677,6 +680,37 @@ const GENERIC_RECENT_QUERY_PATTERN =
   /^(?:直近|最近|最後|latest|recent|last)(?:\s*(?:を|の|について|見て|調べて|教えて|show|check|tell me).*)?$/i;
 const SESSION_PROGRESS_QUERY_PATTERN =
   /\b(last step|final step|latest step|most recent step|where did .* leave off|how far .* progress)\b|(どこまで進んだ|最後のステップ|最後に何をした|前回.*どこまで|進捗)/i;
+const STATUS_SUMMARY_STOPWORDS = new Set([
+  "what",
+  "which",
+  "was",
+  "were",
+  "is",
+  "are",
+  "the",
+  "for",
+  "before",
+  "previous",
+  "previously",
+  "former",
+  "formerly",
+  "prior",
+  "earlier",
+  "current",
+  "currently",
+  "latest",
+  "status",
+  "method",
+  "mode",
+  "stack",
+  "version",
+  "engine",
+  "何",
+  "以前",
+  "前",
+  "現在",
+  "最新",
+]);
 
 function hasTemporalIntent(query: string): boolean {
   return TEMPORAL_INTENT_PATTERN.test(query);
@@ -684,6 +718,11 @@ function hasTemporalIntent(query: string): boolean {
 
 function hasPreviousValueIntent(query: string): boolean {
   return PREVIOUS_CUE_PATTERN.test(query) || JAPANESE_PREVIOUS_PATTERN.test(query);
+}
+
+function hasExplicitPreviousStatusIntent(query: string): boolean {
+  return EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN.test(query) ||
+    /(以前|前の|前回|前は|もともと|元は|当初|当時)/.test(query);
 }
 
 function hasCurrentValueIntent(query: string): boolean {
@@ -3464,10 +3503,26 @@ export class ObservationStore {
       params.push(phase2Limit);
 
       const rows = this.deps.db.query(sql).all(...params) as Array<Record<string, unknown>>;
+      const statusSummaryRows = anchor.direction === "desc"
+        ? this.loadTemporalStatusSummaryCandidates(
+            request,
+            anchor,
+            projectMembers,
+            includePrivate,
+            Math.max(limit, 10)
+          )
+        : [];
+      const candidateRowsById = new Map<string, Record<string, unknown>>();
+      for (const row of [...statusSummaryRows, ...rows]) {
+        const id = typeof row.id === "string" ? row.id : "";
+        if (!id || id === anchorId || candidateRowsById.has(id)) continue;
+        candidateRowsById.set(id, row);
+      }
+      const candidateRows = [...candidateRowsById.values()];
 
       // S43-005: query との lexical 関連性でスコアリングして top-3 quality candidate を保証する
       const queryTokens = buildSearchTokens(request.query);
-      const scored = rows.map((row) => {
+      const scored = candidateRows.map((row) => {
         const titleText = typeof row.title === "string" ? row.title.toLowerCase() : "";
         const contentText =
           typeof row.content_redacted === "string" ? row.content_redacted.toLowerCase() : "";
@@ -3544,6 +3599,76 @@ export class ObservationStore {
     }
   }
 
+  private loadTemporalStatusSummaryCandidates(
+    request: SearchRequest,
+    anchor: TemporalAnchor,
+    projectMembers: string[],
+    includePrivate: boolean,
+    limit: number
+  ): Array<Record<string, unknown>> {
+    if (!hasExplicitPreviousStatusIntent(request.query)) return [];
+    if (hasCurrentValueIntent(request.query)) return [];
+
+    const params: unknown[] = [];
+    let sql = `
+      SELECT
+        o.id, o.event_id, o.platform, o.project, o.session_id,
+        o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
+        o.memory_type, o.event_time, o.observed_at, o.valid_from, o.valid_to,
+        o.supersedes, o.invalidated_at, o.created_at, o.access_count,
+        COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) AS temporal_anchor,
+        e.event_type AS event_type
+      FROM mem_observations o
+      LEFT JOIN mem_events e ON e.event_id = o.event_id
+      WHERE (
+        LOWER(COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '')) LIKE '%previous%'
+        OR COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '') LIKE '%以前%'
+      )
+      AND (
+        LOWER(COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '')) LIKE '%current%'
+        OR LOWER(COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '')) LIKE '%status%'
+        OR LOWER(COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '')) LIKE '%latest%'
+        OR COALESCE(o.title, '') || ' ' || COALESCE(o.content_redacted, '') LIKE '%現在%'
+      )
+    `;
+    sql = this.appendProjectFilter(sql, params, "o", projectMembers);
+    if (!includePrivate) {
+      sql += " AND (o.privacy_tags_json IS NULL OR o.privacy_tags_json = '[]')";
+    }
+    sql += " ORDER BY temporal_anchor DESC LIMIT ?";
+    params.push(Math.max(limit, 1));
+
+    const rows = this.deps.db.query(sql).all(...(params as any[])) as Array<Record<string, unknown>>;
+    return rows.filter((row) => this.isPreviousStatusSummaryAnswer(request, anchor, row));
+  }
+
+  private isPreviousStatusSummaryAnswer(
+    request: SearchRequest,
+    anchor: TemporalAnchor,
+    row: Record<string, unknown>
+  ): boolean {
+    if (hasCurrentValueIntent(request.query)) return false;
+
+    const titleText = typeof row.title === "string" ? row.title : "";
+    const contentText = typeof row.content_redacted === "string" ? row.content_redacted : "";
+    const combined = `${titleText} ${contentText}`;
+    const lower = combined.toLowerCase();
+    if (!combined.trim()) return false;
+
+    const hasStatusCue = STATUS_SUMMARY_CUE_PATTERN.test(lower) || JAPANESE_CURRENT_PATTERN.test(combined);
+    const hasCurrentCue = CURRENT_CUE_PATTERN.test(lower) || JAPANESE_CURRENT_PATTERN.test(combined);
+    const hasPreviousCue = PREVIOUS_STATUS_TEXT_PATTERN.test(lower) || JAPANESE_PREVIOUS_PATTERN.test(combined);
+    if (!hasStatusCue || !hasCurrentCue || !hasPreviousCue) return false;
+
+    const tokens = buildSearchTokens(`${request.query} ${anchor.referenceText}`)
+      .map((token) => token.toLowerCase())
+      .filter((token) => token.length >= 3 && !STATUS_SUMMARY_STOPWORDS.has(token));
+    const uniqueTokens = [...new Set(tokens)];
+    if (uniqueTokens.length === 0) return false;
+
+    return uniqueTokens.some((token) => lower.includes(token));
+  }
+
   private isTemporalAnchorSelfAnswer(
     request: SearchRequest,
     anchor: TemporalAnchor,
@@ -3555,6 +3680,10 @@ export class ObservationStore {
       : "";
     const combined = `${titleText} ${contentText}`;
     if (!combined.trim()) return false;
+
+    if (anchor.direction === "desc" && this.isPreviousStatusSummaryAnswer(request, anchor, row)) {
+      return true;
+    }
 
     const referenceTokens = buildSearchTokens(anchor.referenceText)
       .map((token) => token.toLowerCase())
