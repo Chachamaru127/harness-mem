@@ -2,11 +2,18 @@ import { createHash } from "node:crypto";
 import { basename } from "node:path";
 import type { PlatformIngester, IngesterDeps } from "./types";
 
+export type CursorHookIngestEventType =
+  | "user_prompt"
+  | "tool_use"
+  | "session_start"
+  | "session_end"
+  | "checkpoint";
+
 export interface CursorHookIngestEvent {
   lineOffset: number;
   line: string;
   parsed: Record<string, unknown>;
-  eventType: "user_prompt" | "tool_use" | "session_end";
+  eventType: CursorHookIngestEventType;
   sessionId: string;
   project: string;
   timestamp: string;
@@ -86,7 +93,7 @@ function normalizeCursorHookEvent(
   parsed: Record<string, unknown>,
   fallbackNowIso: () => string
 ): {
-  eventType: "user_prompt" | "tool_use" | "session_end";
+  eventType: CursorHookIngestEventType;
   sessionId: string;
   project: string;
   timestamp: string;
@@ -97,9 +104,36 @@ function normalizeCursorHookEvent(
     return null;
   }
 
+  if (hookEventName === "afteragentthought") {
+    return null;
+  }
+
   const timestamp = resolveTimestamp(parsed, fallbackNowIso);
   const project = resolveProject(parsed) || "unknown";
   const sessionId = resolveSessionId(parsed, project, timestamp, fallbackNowIso);
+  const metadata = buildCursorHookMetadata(parsed);
+
+  if (hookEventName === "sessionstart") {
+    const composerMode = normalizeString(parsed.composer_mode);
+    const isBackground = parsed.is_background_agent === true;
+    return {
+      eventType: "session_start",
+      sessionId,
+      project,
+      timestamp,
+      payload: {
+        source_type: "cursor_hook",
+        hook_event_name: "sessionStart",
+        title: "Cursor session start",
+        content: composerMode
+          ? `Cursor session started (${composerMode})`
+          : "Cursor session started",
+        composer_mode: composerMode || undefined,
+        is_background_agent: isBackground,
+        ...metadata,
+      },
+    };
+  }
 
   if (hookEventName === "beforesubmitprompt") {
     const prompt = extractPrompt(parsed);
@@ -119,6 +153,30 @@ function normalizeCursorHookEvent(
         prompt,
         content: prompt,
         attachments: extractAttachments(parsed),
+        ...metadata,
+      },
+    };
+  }
+
+  if (hookEventName === "afteragentresponse") {
+    const assistantContent = extractAssistantResponse(parsed);
+    if (!assistantContent) {
+      return null;
+    }
+
+    return {
+      eventType: "checkpoint",
+      sessionId,
+      project,
+      timestamp,
+      payload: {
+        source_type: "cursor_hook",
+        hook_event_name: "afterAgentResponse",
+        role: "assistant",
+        title: "assistant_response",
+        content: assistantContent,
+        last_assistant_message: assistantContent,
+        ...metadata,
       },
     };
   }
@@ -143,6 +201,7 @@ function normalizeCursorHookEvent(
         tool_name: toolName,
         tool_input: toRecord(parsed.tool_input),
         tool_response: toRecord(parsed.result_json),
+        ...metadata,
       },
     };
   }
@@ -165,6 +224,7 @@ function normalizeCursorHookEvent(
         command,
         output,
         exit_code: toNumber(parsed.exit_code),
+        ...metadata,
       },
     };
   }
@@ -184,12 +244,36 @@ function normalizeCursorHookEvent(
         content: filePath ? `Edited ${filePath}` : "File edit event",
         file_path: filePath,
         edits: Array.isArray(parsed.edits) ? parsed.edits : [],
+        ...metadata,
+      },
+    };
+  }
+
+  if (hookEventName === "sessionend") {
+    const reason = normalizeString(parsed.reason) || normalizeString(parsed.final_status) || "completed";
+    const durationMs = toNumber(parsed.duration_ms);
+    return {
+      eventType: "session_end",
+      sessionId,
+      project,
+      timestamp,
+      payload: {
+        source_type: "cursor_hook",
+        hook_event_name: "sessionEnd",
+        title: "Cursor session end",
+        content: `Cursor session ended (${reason})`,
+        status: reason,
+        duration_ms: durationMs ?? undefined,
+        is_background_agent: parsed.is_background_agent === true ? true : undefined,
+        error_message: normalizeString(parsed.error_message) || undefined,
+        ...metadata,
       },
     };
   }
 
   if (hookEventName === "stop") {
     const status = normalizeString(parsed.status) || "completed";
+    const loopCount = toNumber(parsed.loop_count);
     return {
       eventType: "session_end",
       sessionId,
@@ -201,11 +285,34 @@ function normalizeCursorHookEvent(
         title: "Cursor session end",
         content: `Cursor session ended (${status})`,
         status,
+        loop_count: loopCount ?? undefined,
+        ...metadata,
       },
     };
   }
 
   return null;
+}
+
+function buildCursorHookMetadata(parsed: Record<string, unknown>): Record<string, unknown> {
+  const metadata: Record<string, unknown> = {};
+  const generationId = normalizeString(parsed.generation_id);
+  if (generationId) {
+    metadata.generation_id = generationId;
+  }
+  const transcriptPath = normalizeString(parsed.transcript_path);
+  if (transcriptPath) {
+    metadata.transcript_path = transcriptPath;
+  }
+  const model = normalizeString(parsed.model);
+  if (model) {
+    metadata.model = model;
+  }
+  const cursorVersion = normalizeString(parsed.cursor_version);
+  if (cursorVersion) {
+    metadata.cursor_version = cursorVersion;
+  }
+  return metadata;
 }
 
 function resolveHookEventName(parsed: Record<string, unknown>): string {
@@ -247,7 +354,6 @@ function resolveSessionId(
 ): string {
   const direct =
     normalizeString(parsed.conversation_id) ||
-    normalizeString(parsed.generation_id) ||
     normalizeString(parsed.session_id) ||
     normalizeString(parsed.thread_id);
   if (direct) {
@@ -336,6 +442,26 @@ function extractPrompt(parsed: Record<string, unknown>): string {
   return "";
 }
 
+function extractAssistantResponse(parsed: Record<string, unknown>): string {
+  const directCandidates = [
+    parsed.text,
+    parsed.response,
+    parsed.message,
+    parsed.output,
+    parsed.content,
+    toRecord(parsed.payload).text,
+    toRecord(parsed.payload).message,
+    toRecord(parsed.payload).content,
+  ];
+  for (const candidate of directCandidates) {
+    const text = normalizeString(candidate);
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
 function extractAttachments(parsed: Record<string, unknown>): string[] {
   const attachments = parsed.attachments;
   if (!Array.isArray(attachments)) {
@@ -415,7 +541,8 @@ function toNumber(value: unknown): number | null {
 
 export class CursorHooksIngester implements PlatformIngester {
   readonly name = "cursor";
-  readonly description = "Cursor フックイベント（プロンプト・ツール・ファイル編集・セッション終了）を取り込む";
+  readonly description =
+    "Cursor フックイベント（プロンプト・応答・ツール・セッション開始/終了）を取り込む";
   readonly pollIntervalMs = 0;
 
   private deps?: IngesterDeps;

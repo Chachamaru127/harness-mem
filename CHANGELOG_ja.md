@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **Cursor を Tier 2 の supported local client として追加した**。user-scope の `~/.cursor/mcp.json`（`mcpServers.harness-mem`）、公式 Cursor Hooks による会話取り込み（8 イベント）、`setup/doctor --platform cursor`、project スコープ MCP 検索に対応。worktree 有無に依存しない。
+- **Cursor hook ingest を拡張した**。`sessionStart` / `beforeSubmitPrompt` / `afterAgentResponse` / tool hooks / `sessionEnd`・`stop` を保存し、`conversation_id` を session id に、`transcript_path` は metadata のみ、ingest は fail-open。
+- **Cursor 向け mcp-config**（`--client cursor`）を追加し、旧 `harness` server id を write 時に整理する。
+- **README・setup・onboarding・claim map・Skill** を Tier 2 表記に揃え、Tier 1 同等 claim をしない契約テストを追加した。
+
 ## [0.25.9] - 2026-05-27
 
 ### ユーザー向け要約

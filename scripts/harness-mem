@@ -17,7 +17,7 @@
 #   scripts/harness-mem cleanup-stale-mcp [--dry-run] [--execute --older-than <duration>] [--json]
 #   scripts/harness-mem telemetry status|export [--limit <n>] [--json]
 #   scripts/harness-mem mcp-gateway {start|stop|status} [--foreground] [--json]
-#   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,hermes|all>] [--write]
+#   scripts/harness-mem mcp-config [--transport <stdio|http>] [--client <claude,codex,cursor,hermes|all>] [--write]
 #   scripts/harness-mem adr new --title <title> --status <status> --options <text> --consequences <text> --supersedes <text> --source-plans "Plans.md §NNN" [--write]
 #   scripts/harness-mem model use-adaptive
 #   scripts/harness-mem work import-plans [Plans.md] [--project <path>] [--dry-run|--write]
@@ -129,6 +129,8 @@ MCP_GATEWAY_ENV_FILE="${HARNESS_MEM_MCP_ENV_FILE:-$STATE_DIR/mcp-gateway.env}"
 MCP_GATEWAY_START_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_START_TIMEOUT_SEC:-10}"
 MCP_GATEWAY_STOP_TIMEOUT_SEC="${HARNESS_MEM_MCP_GATEWAY_STOP_TIMEOUT_SEC:-5}"
 MCP_GATEWAY_LAUNCHD_LABEL="${HARNESS_MEM_MCP_GATEWAY_LAUNCHD_LABEL:-com.harness-mem.mcp-gateway}"
+CURSOR_MCP_SERVER_ID="harness-mem"
+CURSOR_LEGACY_MCP_SERVER_ID="harness"
 
 BEGIN_CODEX_NOTIFY="# >>> harness-mem codex notify"
 END_CODEX_NOTIFY="# <<< harness-mem codex notify"
@@ -169,7 +171,7 @@ Commands:
   telemetry status|export     Inspect local telemetry spans and metric summaries without an external collector.
   mcp-gateway start|stop|status
                               Manage the local Streamable HTTP MCP gateway.
-  mcp-config                  Print or write Claude/Codex/Hermes MCP config snippets.
+  mcp-config                  Print or write Claude/Codex/Cursor/Hermes MCP config snippets.
   adr new                     Render a BEADS-shaped ADR template. Dry-run by default; --write is explicit.
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
@@ -3130,7 +3132,13 @@ upsert_cursor_hooks_json() {
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      { "command": "${hook_command}" }
+    ],
     "beforeSubmitPrompt": [
+      { "command": "${hook_command}" }
+    ],
+    "afterAgentResponse": [
       { "command": "${hook_command}" }
     ],
     "afterMCPExecution": [
@@ -3140,6 +3148,9 @@ upsert_cursor_hooks_json() {
       { "command": "${hook_command}" }
     ],
     "afterFileEdit": [
+      { "command": "${hook_command}" }
+    ],
+    "sessionEnd": [
       { "command": "${hook_command}" }
     ],
     "stop": [
@@ -3169,10 +3180,13 @@ EOF
 
     .version = (.version // 1)
     | .hooks = (.hooks // {})
+    | .hooks.sessionStart = ((.hooks.sessionStart // []) | strip_memory_hook | ensure_cmd($cmd))
     | .hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.afterAgentResponse = ((.hooks.afterAgentResponse // []) | strip_memory_hook | ensure_cmd($cmd))
     | .hooks.afterMCPExecution = ((.hooks.afterMCPExecution // []) | strip_memory_hook | ensure_cmd($cmd))
     | .hooks.afterShellExecution = ((.hooks.afterShellExecution // []) | strip_memory_hook | ensure_cmd($cmd))
     | .hooks.afterFileEdit = ((.hooks.afterFileEdit // []) | strip_memory_hook | ensure_cmd($cmd))
+    | .hooks.sessionEnd = ((.hooks.sessionEnd // []) | strip_memory_hook | ensure_cmd($cmd))
     | .hooks.stop = ((.hooks.stop // []) | strip_memory_hook | ensure_cmd($cmd))
   ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
@@ -3236,21 +3250,24 @@ EOF
 
   tmp="$(mktemp)"
   if jq \
+    --arg server_id "$CURSOR_MCP_SERVER_ID" \
+    --arg legacy_server_id "$CURSOR_LEGACY_MCP_SERVER_ID" \
     --arg mcp_entry "$mcp_entry" \
     --arg host "$MEM_HOST" \
     --arg port "$MEM_PORT" \
     --arg db_path "$DB_PATH" \
     '
       .mcpServers = (.mcpServers // {})
-      | .mcpServers.harness = (.mcpServers.harness // {})
-      | .mcpServers.harness.type = (.mcpServers.harness.type // "stdio")
-      | .mcpServers.harness.command = $mcp_entry
-      | del(.mcpServers.harness.args)
-      | .mcpServers.harness.env = ((.mcpServers.harness.env // {}) + {
+      | .mcpServers[$server_id] = (.mcpServers[$server_id] // {})
+      | .mcpServers[$server_id].type = (.mcpServers[$server_id].type // "stdio")
+      | .mcpServers[$server_id].command = $mcp_entry
+      | del(.mcpServers[$server_id].args)
+      | .mcpServers[$server_id].env = ((.mcpServers[$server_id].env // {}) + {
           "HARNESS_MEM_HOST": $host,
           "HARNESS_MEM_PORT": $port,
           "HARNESS_MEM_DB_PATH": $db_path
         })
+      | del(.mcpServers[$legacy_server_id])
     ' "$file" >"$tmp" 2>/dev/null; then
     mv "$tmp" "$file"
     log "Updated Cursor MCP wiring: $file"
@@ -3283,11 +3300,15 @@ check_cursor_wiring() {
     failed=1
   else
     if jq -e --arg cmd "$hook_command" '
-      (.hooks.beforeSubmitPrompt // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
-      and (.hooks.afterMCPExecution // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
-      and (.hooks.afterShellExecution // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
-      and (.hooks.afterFileEdit // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
-      and (.hooks.stop // [] | any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh"))))
+      def wired: any((.command // "") == $cmd or ((.command // "") | contains("memory-cursor-event.sh")));
+      (.hooks.sessionStart // [] | wired)
+      and (.hooks.beforeSubmitPrompt // [] | wired)
+      and (.hooks.afterAgentResponse // [] | wired)
+      and (.hooks.afterMCPExecution // [] | wired)
+      and (.hooks.afterShellExecution // [] | wired)
+      and (.hooks.afterFileEdit // [] | wired)
+      and (.hooks.sessionEnd // [] | wired)
+      and (.hooks.stop // [] | wired)
     ' "$hooks_json" >/dev/null 2>&1; then
       log "Cursor hooks JSON wiring: OK"
     else
@@ -3300,17 +3321,30 @@ check_cursor_wiring() {
     warn "Cursor MCP config missing: $mcp_json"
     failed=1
   else
-    if jq -e --arg mcp_entry "$mcp_entry" '
-      .mcpServers.harness != null
+    if jq -e \
+      --arg server_id "$CURSOR_MCP_SERVER_ID" \
+      --arg legacy_server_id "$CURSOR_LEGACY_MCP_SERVER_ID" \
+      --arg mcp_entry "$mcp_entry" '
+      .mcpServers[$server_id] != null
       and (
-        ((.mcpServers.harness.command // "") == $mcp_entry)
+        ((.mcpServers[$server_id].command // "") == $mcp_entry)
         or (
-          (.mcpServers.harness.command // "") == "npx"
-          and ((.mcpServers.harness.args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
+          (.mcpServers[$server_id].command // "") == "npx"
+          and ((.mcpServers[$server_id].args // []) | any((. | tostring) | contains("harness-mcp-server") or contains("harness-mem")))
         )
+        or (
+          (.mcpServers[$server_id].command // "") == "node"
+          and ((.mcpServers[$server_id].args // []) | any((. | tostring) | contains("mcp-server/dist/index.js")))
+        )
+        or ((.mcpServers[$server_id].url // "") | test("^http://127\\.0\\.0\\.1:[0-9]+/mcp$"))
       )
     ' "$mcp_json" >/dev/null 2>&1; then
       log "Cursor MCP wiring: OK"
+      if jq -e \
+        --arg legacy_server_id "$CURSOR_LEGACY_MCP_SERVER_ID" \
+        '.mcpServers[$legacy_server_id] != null' "$mcp_json" >/dev/null 2>&1; then
+        warn "Cursor MCP legacy server id '${CURSOR_LEGACY_MCP_SERVER_ID}' remains; rerun setup to migrate to '${CURSOR_MCP_SERVER_ID}' only"
+      fi
     else
       warn "Cursor MCP wiring is incomplete: $mcp_json"
       failed=1
@@ -6804,12 +6838,16 @@ uninstall_cursor_wiring() {
   if [ -f "$hooks_json" ]; then
     tmp="$(mktemp)"
     if jq '
+      def strip: map(select(((.command // "") | contains("memory-cursor-event.sh")) | not));
       .hooks = (.hooks // {})
-      | .hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
-      | .hooks.afterMCPExecution = ((.hooks.afterMCPExecution // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
-      | .hooks.afterShellExecution = ((.hooks.afterShellExecution // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
-      | .hooks.afterFileEdit = ((.hooks.afterFileEdit // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
-      | .hooks.stop = ((.hooks.stop // []) | map(select(((.command // "") | contains("memory-cursor-event.sh")) | not)))
+      | .hooks.sessionStart = ((.hooks.sessionStart // []) | strip)
+      | .hooks.beforeSubmitPrompt = ((.hooks.beforeSubmitPrompt // []) | strip)
+      | .hooks.afterAgentResponse = ((.hooks.afterAgentResponse // []) | strip)
+      | .hooks.afterMCPExecution = ((.hooks.afterMCPExecution // []) | strip)
+      | .hooks.afterShellExecution = ((.hooks.afterShellExecution // []) | strip)
+      | .hooks.afterFileEdit = ((.hooks.afterFileEdit // []) | strip)
+      | .hooks.sessionEnd = ((.hooks.sessionEnd // []) | strip)
+      | .hooks.stop = ((.hooks.stop // []) | strip)
     ' "$hooks_json" >"$tmp" 2>/dev/null; then
       mv "$tmp" "$hooks_json"
       log "Removed Cursor memory hooks from: $hooks_json"
@@ -6824,7 +6862,11 @@ uninstall_cursor_wiring() {
 
   if [ -f "$mcp_json" ]; then
     tmp="$(mktemp)"
-    if jq 'if has("mcpServers") then .mcpServers |= del(.harness) else . end' "$mcp_json" >"$tmp" 2>/dev/null; then
+    if jq \
+      --arg server_id "$CURSOR_MCP_SERVER_ID" \
+      --arg legacy_server_id "$CURSOR_LEGACY_MCP_SERVER_ID" \
+      'if has("mcpServers") then .mcpServers |= (del(.[$server_id]) | del(.[$legacy_server_id])) else . end' \
+      "$mcp_json" >"$tmp" 2>/dev/null; then
       mv "$tmp" "$mcp_json"
       log "Removed Cursor harness MCP wiring from: $mcp_json"
     else

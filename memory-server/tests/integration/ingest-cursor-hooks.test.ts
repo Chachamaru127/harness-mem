@@ -39,7 +39,6 @@ function createRuntime(name: string): {
 
   const core = new HarnessMemCore(config);
   const server = startHarnessMemServer(core, config);
-  const port = server.port;
 
   return {
     dir,
@@ -54,7 +53,7 @@ function createRuntime(name: string): {
 }
 
 describe("cursor hooks ingest integration", () => {
-  test("skips old backfill, ingests delta, and separates projects", async () => {
+  test("skips old backfill, ingests delta, separates projects, and search finds prompt + assistant", async () => {
     const runtime = createRuntime("hooks");
     const { baseUrl, cursorEventsPath } = runtime;
 
@@ -84,29 +83,52 @@ describe("cursor hooks ingest integration", () => {
       expect(firstIngest.items[0]?.files_scanned).toBe(1);
       expect(firstIngest.items[0]?.files_skipped_backfill).toBe(1);
 
+      const harnessProject = join(runtime.dir, "cursor-ingest-harness-project");
+      const contextProject = join(runtime.dir, "cursor-ingest-context-project");
+      const userPromptPhrase = "cursor hooks ingest user prompt proof";
+      const assistantPhrase = "cursor hooks ingest assistant response proof";
+
       appendFileSync(
         cursorEventsPath,
         [
           JSON.stringify({
+            hook_event_name: "sessionStart",
+            conversation_id: "cursor-live-1",
+            workspace_roots: [harnessProject],
+            composer_mode: "agent",
+            timestamp: "2026-02-16T09:59:00.000Z",
+          }),
+          JSON.stringify({
             hook_event_name: "beforeSubmitPrompt",
             conversation_id: "cursor-live-1",
-            workspace_roots: ["/Users/test/Desktop/Code/CC-harness/harness-mem"],
-            prompt: "今の手動テストです",
+            generation_id: "gen-user-1",
+            transcript_path: "/tmp/transcripts/cursor-live-1.jsonl",
+            workspace_roots: [harnessProject],
+            prompt: userPromptPhrase,
             timestamp: "2026-02-16T10:00:00.000Z",
+          }),
+          JSON.stringify({
+            hook_event_name: "afterAgentResponse",
+            conversation_id: "cursor-live-1",
+            generation_id: "gen-assistant-1",
+            transcript_path: "/tmp/transcripts/cursor-live-1.jsonl",
+            workspace_roots: [harnessProject],
+            text: assistantPhrase,
+            timestamp: "2026-02-16T10:00:00.500Z",
           }),
           JSON.stringify({
             hook_event_name: "afterShellExecution",
             conversation_id: "cursor-live-2",
-            workspace_roots: ["/Users/test/Desktop/Code/CC-harness/Context-Harness"],
+            workspace_roots: [contextProject],
             command: "rg -n TODO src",
             output: "src/a.ts:1: TODO",
             timestamp: "2026-02-16T10:00:01.000Z",
           }),
           JSON.stringify({
-            hook_event_name: "stop",
+            hook_event_name: "sessionEnd",
             conversation_id: "cursor-live-2",
-            workspace_roots: ["/Users/test/Desktop/Code/CC-harness/Context-Harness"],
-            status: "completed",
+            workspace_roots: [contextProject],
+            reason: "completed",
             timestamp: "2026-02-16T10:00:02.000Z",
           }),
         ].join("\n") + "\n",
@@ -123,19 +145,26 @@ describe("cursor hooks ingest integration", () => {
         items: Array<{ events_imported: number }>;
       };
       expect(secondIngest.ok).toBe(true);
-      expect(secondIngest.items[0]?.events_imported).toBe(3);
+      expect(secondIngest.items[0]?.events_imported).toBe(5);
 
-      const harnessProject = "/Users/test/Desktop/Code/CC-harness/harness-mem";
-      const contextProject = "/Users/test/Desktop/Code/CC-harness/Context-Harness";
-
-      const harnessFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(harnessProject)}&limit=20&include_private=false`);
+      const harnessFeedRes = await fetch(
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(harnessProject)}&limit=20&include_private=false`
+      );
       expect(harnessFeedRes.ok).toBe(true);
-      const harnessFeed = (await harnessFeedRes.json()) as { ok: boolean; items: Array<{ project: string }> };
+      const harnessFeed = (await harnessFeedRes.json()) as {
+        ok: boolean;
+        items: Array<{ project: string; event_type: string }>;
+      };
       expect(harnessFeed.ok).toBe(true);
-      expect(harnessFeed.items.length).toBe(1);
-      expect(harnessFeed.items[0]?.project).toBe(harnessProject);
+      expect(harnessFeed.items.length).toBeGreaterThanOrEqual(3);
+      expect(harnessFeed.items.every((item) => item.project === harnessProject)).toBe(true);
+      expect(harnessFeed.items.some((item) => item.event_type === "user_prompt")).toBe(true);
+      expect(harnessFeed.items.some((item) => item.event_type === "checkpoint")).toBe(true);
+      expect(harnessFeed.items.some((item) => item.event_type === "session_start")).toBe(true);
 
-      const contextFeedRes = await fetch(`${baseUrl}/v1/feed?project=${encodeURIComponent(contextProject)}&limit=20&include_private=false`);
+      const contextFeedRes = await fetch(
+        `${baseUrl}/v1/feed?project=${encodeURIComponent(contextProject)}&limit=20&include_private=false`
+      );
       expect(contextFeedRes.ok).toBe(true);
       const contextFeed = (await contextFeedRes.json()) as {
         ok: boolean;
@@ -146,6 +175,61 @@ describe("cursor hooks ingest integration", () => {
       expect(contextFeed.items.every((item) => item.project === contextProject)).toBe(true);
       expect(contextFeed.items.some((item) => item.event_type === "tool_use")).toBe(true);
       expect(contextFeed.items.some((item) => item.event_type === "session_end")).toBe(true);
+
+      const promptSearchRes = await fetch(`${baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: userPromptPhrase,
+          project: harnessProject,
+          limit: 10,
+          vector_search: false,
+        }),
+      });
+      expect(promptSearchRes.ok).toBe(true);
+      const promptSearch = (await promptSearchRes.json()) as {
+        ok: boolean;
+        items: Array<{ title?: string; content?: string }>;
+        meta?: {
+          latest_interaction?: {
+            prompt?: { content?: string };
+            response?: { content?: string };
+          };
+        };
+      };
+      expect(promptSearch.ok).toBe(true);
+      expect(
+        (promptSearch.items || []).some(
+          (row) =>
+            (row.title || "").includes("Cursor prompt") || (row.content || "").includes(userPromptPhrase)
+        )
+      ).toBe(true);
+      expect(promptSearch.meta?.latest_interaction?.prompt?.content).toContain(userPromptPhrase);
+      expect(promptSearch.meta?.latest_interaction?.response?.content).toContain(assistantPhrase);
+
+      const assistantSearchRes = await fetch(`${baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: assistantPhrase,
+          project: harnessProject,
+          limit: 10,
+          vector_search: false,
+        }),
+      });
+      expect(assistantSearchRes.ok).toBe(true);
+      const assistantSearch = (await assistantSearchRes.json()) as {
+        ok: boolean;
+        items: Array<{ title?: string; content?: string }>;
+      };
+      expect(assistantSearch.ok).toBe(true);
+      expect(
+        (assistantSearch.items || []).some(
+          (row) =>
+            (row.title || "").includes("assistant_response") ||
+            (row.content || "").includes(assistantPhrase)
+        )
+      ).toBe(true);
     } finally {
       runtime.stop();
     }

@@ -48,6 +48,103 @@ describe("cursor hooks ingest parser", () => {
     expect(parsed.events[0]?.dedupeHash.length).toBe(64);
   });
 
+  test("maps sessionStart, afterAgentResponse, and sessionEnd with metadata", () => {
+    const chunk = [
+      JSON.stringify({
+        hook_event_name: "sessionStart",
+        conversation_id: "cursor-conv-2",
+        session_id: "cursor-conv-2",
+        generation_id: "gen-start",
+        transcript_path: "/tmp/transcripts/conv-2.jsonl",
+        workspace_roots: ["/Users/test/proj"],
+        composer_mode: "agent",
+        timestamp: "2026-02-16T09:00:00.000Z",
+      }),
+      JSON.stringify({
+        hook_event_name: "afterAgentResponse",
+        conversation_id: "cursor-conv-2",
+        generation_id: "gen-response-1",
+        transcript_path: "/tmp/transcripts/conv-2.jsonl",
+        workspace_roots: ["/Users/test/proj"],
+        text: "Assistant says hello from Cursor hook.",
+        timestamp: "2026-02-16T09:00:01.000Z",
+      }),
+      JSON.stringify({
+        hook_event_name: "sessionEnd",
+        conversation_id: "cursor-conv-2",
+        generation_id: "gen-end",
+        workspace_roots: ["/Users/test/proj"],
+        reason: "completed",
+        duration_ms: 1200,
+        timestamp: "2026-02-16T09:00:02.000Z",
+      }),
+    ].join("\n") + "\n";
+
+    const parsed = parseCursorHooksChunk({
+      sourceKey: "cursor_hooks:/tmp/events.jsonl",
+      baseOffset: 0,
+      chunk,
+      fallbackNowIso: () => "2026-02-16T09:00:59.000Z",
+    });
+
+    expect(parsed.events.length).toBe(3);
+    expect(parsed.events[0]?.eventType).toBe("session_start");
+    expect(parsed.events[0]?.payload.composer_mode).toBe("agent");
+    expect(parsed.events[0]?.payload.generation_id).toBe("gen-start");
+    expect(parsed.events[0]?.payload.transcript_path).toBe("/tmp/transcripts/conv-2.jsonl");
+
+    expect(parsed.events[1]?.eventType).toBe("checkpoint");
+    expect(parsed.events[1]?.payload.title).toBe("assistant_response");
+    expect(parsed.events[1]?.payload.content).toBe("Assistant says hello from Cursor hook.");
+    expect(parsed.events[1]?.payload.generation_id).toBe("gen-response-1");
+
+    expect(parsed.events[2]?.eventType).toBe("session_end");
+    expect(parsed.events[2]?.payload.hook_event_name).toBe("sessionEnd");
+    expect(parsed.events[2]?.payload.status).toBe("completed");
+    expect(parsed.events[2]?.payload.duration_ms).toBe(1200);
+  });
+
+  test("prefers conversation_id over generation_id for session id", () => {
+    const line = JSON.stringify({
+      hook_event_name: "afterAgentResponse",
+      conversation_id: "conv-stable",
+      generation_id: "gen-ephemeral",
+      workspace_roots: ["/tmp/project"],
+      text: "reply body",
+      timestamp: "2026-02-16T11:30:00.000Z",
+    });
+
+    const parsed = parseCursorHooksChunk({
+      sourceKey: "cursor_hooks:/tmp/events.jsonl",
+      baseOffset: 0,
+      chunk: `${line}\n`,
+      fallbackNowIso: () => "2026-02-16T11:30:59.000Z",
+    });
+
+    expect(parsed.events.length).toBe(1);
+    expect(parsed.events[0]?.sessionId).toBe("conv-stable");
+    expect(parsed.events[0]?.payload.generation_id).toBe("gen-ephemeral");
+  });
+
+  test("ignores afterAgentThought", () => {
+    const line = JSON.stringify({
+      hook_event_name: "afterAgentThought",
+      conversation_id: "conv-thought",
+      workspace_roots: ["/tmp/project"],
+      text: "hidden reasoning",
+      duration_ms: 900,
+    });
+
+    const parsed = parseCursorHooksChunk({
+      sourceKey: "cursor_hooks:/tmp/events.jsonl",
+      baseOffset: 0,
+      chunk: `${line}\n`,
+      fallbackNowIso: () => "2026-02-16T12:00:00.000Z",
+    });
+
+    expect(parsed.events.length).toBe(0);
+  });
+
   test("falls back session_id to cursor:<project>:<date>", () => {
     const line = JSON.stringify({
       hook_event_name: "beforeSubmitPrompt",

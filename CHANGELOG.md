@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- **Cursor is now a Tier 2 supported local client** with user-scoped `~/.cursor/mcp.json` (`mcpServers.harness-mem`), official Cursor Hooks conversation capture (8 saved hook events), `harness-mem setup --platform cursor` / `harness-mem doctor --platform cursor`, and project-scoped MCP search. Setup does not depend on git worktree layout.
+- **Cursor hook ingest now captures session continuity events** including `sessionStart`, `beforeSubmitPrompt`, `afterAgentResponse`, tool hooks, and `sessionEnd`/`stop`, with `conversation_id` session identity, metadata-only `transcript_path`, and fail-open spool ingest at `~/.harness-mem/adapters/cursor/events.jsonl`.
+- **Cursor MCP config CLI support** via `harness-mem mcp-config --client cursor`, including legacy `harness` server id cleanup on write.
+
+### Changed
+
+- **README, setup docs, onboarding, claim maps, and harness-mem Skill** now document Cursor as Tier 2 (not Tier 1 continuity parity) with reload/new-session guidance and contract tests for public claim ceilings.
+
 ## [0.25.9] - 2026-05-27
 
 ### Fixed
@@ -2864,7 +2874,7 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.8...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...HEAD
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6

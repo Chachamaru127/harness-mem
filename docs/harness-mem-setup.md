@@ -10,11 +10,19 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
 ```
 
+If Cursor is part of the same local workflow, add it explicitly:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude,cursor
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude,cursor
+```
+
 Success means:
 
 - `doctor` is green for both clients
 - `~/.codex/hooks.json` and `~/.claude.json` point at the current harness-mem checkout
 - the first prompt in each supported client can recover recent project context
+- for Cursor, `~/.cursor/hooks.json` and `~/.cursor/mcp.json` are wired, and a real Cursor prompt/assistant exchange can be found through project-scoped search after ingest
 
 Related onboarding docs:
 
@@ -448,7 +456,29 @@ frontends still share the daemon behind `127.0.0.1:37888`.
 
 - Uses `~/.cursor/hooks.json`
 - Uses `~/.cursor/hooks/memory-cursor-event.sh`
-- Uses `~/.cursor/mcp.json` (`mcpServers.harness`)
+- Uses `~/.cursor/mcp.json` (`mcpServers.harness-mem`)
+- Cursor is a Tier 2 supported local client: MCP search and hook ingest are supported, but this is not a Tier 1 continuity parity claim with Claude Code / Codex
+- Cursor setup is user-scoped and does not depend on whether the current checkout is a git worktree
+- Setup merges harness-mem hooks without removing unrelated user hooks
+- Cursor may need an MCP reload, window reload, restart, or a new chat/session before the `harness-mem` MCP server appears
+- Hook events are appended as JSONL to `~/.harness-mem/adapters/cursor/events.jsonl` by default; override with `HARNESS_MEM_CURSOR_EVENTS_PATH`
+- Saved Cursor hook events:
+  - `sessionStart` -> `session_start`
+  - `beforeSubmitPrompt` -> `user_prompt`
+  - `afterAgentResponse` -> `checkpoint` with `title: assistant_response`
+  - `afterMCPExecution` / `afterShellExecution` / `afterFileEdit` -> `tool_use`
+  - `sessionEnd` / `stop` -> `session_end`
+- `afterAgentThought` is intentionally not ingested
+- `transcript_path` is stored as metadata only; harness-mem does not read transcript file contents during ingest
+
+Verification:
+
+```bash
+harness-mem setup --platform cursor
+harness-mem doctor --platform cursor --read-only --strict-exit
+```
+
+After a real Cursor chat, verify project-scoped recall with `harness_mem_search` or the REST search endpoint. A green doctor proves wiring; ingest/search proves that prompt and assistant events reached the local memory DB.
 
 ### Claude workflows
 

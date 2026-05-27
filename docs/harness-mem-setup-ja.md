@@ -10,11 +10,19 @@ npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,c
 npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude
 ```
 
-成功の目安は次の3つです。
+同じローカル workflow で Cursor も使う場合は、明示的に追加します。
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude,cursor
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude,cursor
+```
+
+成功の目安は次の4つです。
 
 - `doctor` が両方のクライアントで green
 - `~/.codex/hooks.json` と `~/.claude.json` が現在の harness-mem の checkout を参照している
 - 各対応クライアントの最初のプロンプトで、直前の作業コンテキストを復元できる
+- Cursor では `~/.cursor/hooks.json` と `~/.cursor/mcp.json` が配線され、実際の Cursor prompt / assistant exchange が ingest 後の project-scoped search で見つかる
 
 関連ドキュメント:
 
@@ -408,7 +416,29 @@ codex mcp get harness
 
 - `~/.cursor/hooks.json` を使う
 - `~/.cursor/hooks/memory-cursor-event.sh` を使う
-- `~/.cursor/mcp.json` (`mcpServers.harness`) を使う
+- `~/.cursor/mcp.json` (`mcpServers.harness-mem`) を使う
+- Cursor は Tier 2 supported local client。MCP 検索と hook ingest は対応済みだが、Claude Code / Codex と同等の Tier 1 continuity parity claim ではない
+- Cursor setup は user-scoped であり、現在の checkout が git worktree かどうかには依存しない
+- setup は harness-mem hooks を merge し、既存の user hooks を消さない
+- 設定後、Cursor 側で `harness-mem` MCP server が見えるまで MCP reload、window reload、restart、または新しい chat/session が必要な場合がある
+- hook event は既定で `~/.harness-mem/adapters/cursor/events.jsonl` に JSONL として追記される。必要なら `HARNESS_MEM_CURSOR_EVENTS_PATH` で変更できる
+- 保存対象の Cursor hook events:
+  - `sessionStart` -> `session_start`
+  - `beforeSubmitPrompt` -> `user_prompt`
+  - `afterAgentResponse` -> `checkpoint` (`title: assistant_response`)
+  - `afterMCPExecution` / `afterShellExecution` / `afterFileEdit` -> `tool_use`
+  - `sessionEnd` / `stop` -> `session_end`
+- `afterAgentThought` は意図的に取り込まない
+- `transcript_path` は metadata としてのみ保存し、ingest 時に transcript 本文は読まない
+
+確認コマンド:
+
+```bash
+harness-mem setup --platform cursor
+harness-mem doctor --platform cursor --read-only --strict-exit
+```
+
+実際の Cursor chat 後は、`harness_mem_search` または REST search endpoint で current project の prompt / assistant event が検索できることを確認する。green doctor は配線確認、ingest/search は会話イベントが local memory DB に到達したことの確認。
 
 ### Claude の流れ
 

@@ -7,7 +7,7 @@ Pass condition: every item below is `Yes`.
 
 - [ ] I picked the `npx` path, or I intentionally chose `npm install -g`, or I am running from a repo checkout.
 - [ ] I did not use `sudo` for setup or doctor.
-- [ ] I know whether I am validating Claude Code, Codex, or both.
+- [ ] I know whether I am validating Claude Code, Codex, Cursor, or a combination of them.
 
 ## 2. Run setup
 
@@ -27,9 +27,19 @@ Pass condition: every item below is `Yes`.
 - [ ] A fresh Codex session can recover recent project context on the first turn.
 - [ ] The recovered context matches the current project, not an older one.
 
+## 4b. Confirm Cursor if selected
+
+- [ ] I ran `harness-mem setup --platform cursor` or included `cursor` in the platform list.
+- [ ] I ran `harness-mem doctor --platform cursor --read-only --strict-exit` and it is green.
+- [ ] I reloaded/restarted Cursor or opened a new Cursor session if the MCP server list was cached.
+- [ ] `~/.cursor/mcp.json` contains `mcpServers.harness-mem`, not a stale Cursor-only `harness` entry.
+- [ ] After a real Cursor prompt and assistant response, project-scoped search can find both events.
+- [ ] I understand Cursor is supported for hook ingest and MCP search, but this is not a Tier 1 continuity parity claim.
+
 ## 5. Confirm safety boundaries
 
 - [ ] I understand where local data is stored.
+- [ ] If I use Cursor, I understand hook JSONL is spooled locally under `~/.harness-mem/adapters/cursor/events.jsonl` unless overridden.
 - [ ] I understand that unsupported or experimental clients may not have the same first-turn continuity UX.
 - [ ] I can explain the difference between setup success and first-turn continuity success.
 

@@ -17,14 +17,14 @@ Use this skill when work needs:
 - Progressive retrieval (search → timeline → observations) instead of full-history stuffing
 - Unified memory across multiple coding tools (Claude Code, Codex, OpenCode, Cursor)
 
-## MCP Setup
+## Supported Client Setup
 
-The harness-mem MCP server is configured automatically by `harness-mem setup --platform codex`.
-New Codex setup defaults to the local Streamable HTTP gateway at
-`http://127.0.0.1:37889/mcp`; existing stdio wiring remains valid unless the
-user explicitly migrates or rolls back.
+### Codex
 
-Manual registration:
+The harness-mem MCP server is configured automatically by
+`harness-mem setup --platform codex`. New Codex setup defaults to the local
+Streamable HTTP gateway at `http://127.0.0.1:37889/mcp`; existing stdio wiring
+remains valid unless the user explicitly migrates or rolls back.
 
 ```bash
 harness-mem setup --platform codex
@@ -41,6 +41,23 @@ If Codex reports `url is not supported for stdio`, inspect the
 `[mcp_servers.harness]` stanza before debugging the daemon. A single stanza must
 be either HTTP (`url` + `bearer_token_env_var`) or stdio (`command`/`args`/`env`);
 never leave both shapes in one block.
+
+### Cursor
+
+Cursor is a Tier 2 supported local client. Use the repo/source setup flow, not an
+installed user skill copy:
+
+```bash
+harness-mem setup --platform cursor
+harness-mem doctor --platform cursor
+```
+
+Cursor uses user-scoped `~/.cursor/mcp.json` with
+`mcpServers.harness-mem` for MCP search. Cursor conversation capture uses
+official Cursor Hooks via `~/.cursor/hooks.json` and the local hook spool; it is
+not the Codex local Streamable HTTP MCP default. After setup, Cursor may need an
+MCP reload, window reload, restart, or a new chat/session before the
+`harness-mem` MCP server appears.
 
 ## Recommended Retrieval Sequence
 

@@ -48,6 +48,13 @@ npm install -g @chachamaru127/harness-mem
 harness-mem setup --platform codex,claude
 ```
 
+Cursor も同じ local runtime から使いたい場合:
+
+```bash
+harness-mem setup --platform codex,claude,cursor
+harness-mem doctor --platform codex,claude,cursor
+```
+
 dry-run の見方:
 
 - 日常利用では repo checkout より扱いやすい
@@ -72,6 +79,13 @@ dry-run の見方:
 npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude
 ```
 
+Cursor だけ試す場合:
+
+```bash
+npx -y --package @chachamaru127/harness-mem harness-mem setup --platform cursor
+npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform cursor
+```
+
 dry-run の見方:
 
 - clean start の既定として最も扱いやすい
@@ -83,3 +97,24 @@ dry-run の見方:
 - 永続 CLI が欲しくて global install が素直に通るなら `npm install -g`
 - harness-mem 本体を開発しているなら repo checkout
 - ownership の影響を理解していない限り `sudo` は避ける
+
+## 5. Cursor 固有の見方
+
+向いている人:
+
+- Cursor からも同じ local harness-mem DB を MCP 検索したい人
+- Cursor の prompt / assistant / tool event を公式 Hooks 経由で保存したい人
+
+変更されるもの:
+
+- `~/.cursor/hooks.json`
+- `~/.cursor/hooks/memory-cursor-event.sh`
+- `mcpServers.harness-mem` を含む `~/.cursor/mcp.json`
+- `~/.harness-mem/adapters/cursor/events.jsonl` の local Cursor hook spool
+
+dry-run の見方:
+
+- setup は user-scoped で、現在の checkout が git worktree かどうかには依存しない
+- setup は harness-mem hook entry を merge し、無関係な Cursor hooks は削除しない
+- Cursor が `harness-mem` MCP server を認識するまで reload / restart または新 session が必要な場合がある
+- doctor green は配線確認、実際の Cursor prompt 後の project-scoped search は ingest 確認

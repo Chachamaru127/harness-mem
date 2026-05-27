@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-27（S108 developer-domain / S128 release gate enforce readiness closeout）
+最終更新: 2026-05-28（S133 Supported Tool Surface Docs and Skill Alignment）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -215,6 +215,61 @@ S130-000 → S130-001 を先に実行。
 token propagation が Claude/Codex 両方で clean install green なら S130-002 以降へ進む。
 片方でも不確かなら、その client は stdio fallback default のままにし、HTTP default 対象から外す。
 ```
+
+---
+
+## §131 Cursor User-Scope MCP Support — cc:完了
+
+策定日: 2026-05-28
+分類: Product behavior / setup / MCP client compatibility — owner は `harness-mem`。Cursor の user-scope MCP 設定と、この worktree 上の dogfood 環境を対象にする。
+仕様正本: `Spec.md` の `MCP Transport Defaults`。`Spec delta`: Cursor は `~/.cursor/mcp.json` の user-scope MCP config を使う supported local client とし、git worktree かどうかに依存しない。Cursor の MCP server id は Claude/Codex の `harness` と区別するため `harness-mem` とする。
+
+背景: この Cursor セッションでは MCP server 一覧に harness-mem が出ておらず、`~/.cursor/mcp.json` は空だった。既存の setup には Cursor wiring があるが、現在の環境へ未適用で、`mcp-config` の client surface も Claude/Codex/Hermes 中心のまま。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S131-001 | **Cursor user-scope MCP config dogfood** `[tdd:required]` — この環境の `~/.cursor/mcp.json` / hooks を harness-mem に接続し、doctor と Cursor MCP discovery で確認する | `~/.cursor/mcp.json` に `harness-mem` server が入り、旧 `harness` server id が残らず、`harness-mem doctor --platform cursor --read-only` が green。Cursor セッションから harness MCP tools が確認できる。worktree path に依存した壊れ方がない | - | cc:完了 [local: ~/.cursor/mcp.json is harness-mem only; doctor healthy; current agent MCP discovery may remain cached until Cursor reload/new session] |
+| S131-002 | **Cursor mcp-config client support** `[tdd:required]` — `harness-mem mcp-config --client cursor` で Cursor user-scope MCP JSON を preview/write できるようにし、既存 setup と同じ server spec を使う | `tests/mcp-config-cli.test.ts` に Cursor JSON preview/write contract があり、Cursor server id は `harness-mem`、旧 `harness` は write 時に cleanup される。既存 Claude/Codex/Hermes の挙動を壊さない。secret/token 値を出力しない | S131-001 | cc:完了 [local: mcp-config cursor preview/write + legacy cleanup tests PASS; secret/token values remain redacted] |
+| S131-003 | **Cursor docs and doctor wording alignment** `[tdd:skip:docs-only]` — Cursor user-scope / worktree 非依存 / reload 必要性を README または setup docs に明記する | §133 で docs / onboarding / Skill までまとめて同期し、user-scope と project-scope の違い、worktree 非依存、設定後に Cursor 側の MCP reload/restart が必要な場合を説明する | S131-002 | cc:完了 (§133でdocs/Skill alignment完了) |
+
+team_validation_mode: manual-pass（Product / Architecture / Security / QA / Skeptic 観点を単独で確認）。Security gate: local user config のみを対象にし、DB 削除・token 実値露出・外部 endpoint 追加は行わない。QA gate: doctor、mcp-config contract test、Cursor MCP discovery の順に確認する。
+
+---
+
+## §132 Cursor Conversation Capture — cc:完了
+
+策定日: 2026-05-28
+分類: Cursor ingest / hooks — owner は `harness-mem`。§131 の user-scope MCP 接続後、Cursor 公式 Hooks payload を主入力として会話継続を保存する。
+仕様正本: `Spec.md` の **Cursor Conversation Capture**。Hooks 主経路、MCP は保存主経路ではない。`transcript_path` は metadata のみ（本文自動読取は out-of-scope）。`afterAgentThought` は out-of-scope。保存失敗は fail-open（Cursor 操作を止めない）。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S132-000 | **spec freeze** | `Spec.md` に Cursor conversation capture contract を追加 | - | cc:完了 |
+| S132-001 | **parser red tests** | `cursor-hooks-ingest.test.ts` に sessionStart / afterAgentResponse / sessionEnd / metadata / afterAgentThought reject の fixture を先に追加 | S132-000 | cc:完了 |
+| S132-002 | **parser impl** | `cursor-hooks.ts` を拡張（イベントマッピング + generation_id / transcript_path metadata） | S132-001 | cc:完了 |
+| S132-003 | **setup/doctor wiring** | `hooks.json.example` + `harness-mem` setup/doctor/uninstall に Cursor conversation capture の 8 hook event を merge | S132-002 | cc:完了 |
+| S132-004 | **integration + search proof** | `ingest-cursor-hooks.test.ts` で assistant response ingest と search が PASS | S132-002 | cc:完了 |
+| S132-005 | **local dogfood** | `~/.cursor/hooks.json` に sessionStart/afterAgentResponse/sessionEnd を merge 済み。daemon ingest + search で prompt/assistant を確認 | S132-003, S132-004 | cc:完了 |
+
+---
+
+## §133 Supported Tool Surface Docs and Skill Alignment — cc:完了
+
+策定日: 2026-05-28
+分類: Documentation / onboarding / Skill contract — owner は `harness-mem`。§131 と §132 で実装済みの Cursor user-scope MCP と Cursor Hooks capture を、ユーザー導入動線、検証手順、公開 claim、harness-mem Skill に反映する。
+仕様正本: `Spec.md` の **Cursor Conversation Capture** と **MCP Transport Defaults**。`Spec skip reason`: 新 API、データモデル、権限、保存挙動は追加せず、既存 product contract を docs / Skill / contract tests に同期する作業のため。
+
+Docs SSOT rule: Cursor の product truth は `Spec.md`、詳細 setup truth は `docs/harness-mem-setup.md`、public claim ceiling は `docs/readme-claims.md`、agent operating summary は `codex/skills/harness-mem/SKILL.md` に置く。README / onboarding / Skill は同じ長文 event matrix を重複させず、短い要約とリンクに留める。contract test は `mcpServers.harness-mem`、`setup --platform cursor`、`doctor --platform cursor`、Tier 2 claim ceiling、scoped search を検査する。
+
+team_validation_mode: subagent（Product / Architecture / Security / QA / Skeptic 観点を read-only で確認）。Security gate: user-scope config と local spool の説明に留め、secret/token 実値や transcript 本文は例示しない。QA gate: docs contract、Skill contract、Cursor MCP/Hook contract、Cursor ingest unit/integration、doctor を通す。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S133-000 | **plan contract and SSOT rule** `[tdd:skip:planning-docs]` — §133 を追加し、S131-003 と §132 hook 数表記を整合する | `Plans.md` に §133 と Docs SSOT rule があり、S131-003 が §133 で閉じること、§132 が 8 hook event として記述される | S131, S132 | cc:完了 |
+| S133-001 | **README supported tools alignment** `[tdd:skip:docs-only]` — README / README_ja の install、verify、supported tools を Cursor Tier 2 として同期する | README が `setup --platform cursor` / `doctor --platform cursor` を案内し、Cursor を Tier 1 同等と claim しない | S133-000 | cc:完了 |
+| S133-002 | **onboarding verification alignment** `[tdd:skip:docs-only]` — setup guide、onboarding checklist、dry-run、claim map に Cursor 導入と検証手順を追加する | setup docs が `mcpServers.harness-mem`、8 hook events、reload/new session、spool path、metadata-only 境界を説明し、checklist が prompt/assistant ingest search 確認を含む | S133-001 | cc:完了 |
+| S133-003 | **harness-mem Skill alignment** `[tdd:required]` — `codex/skills/harness-mem/SKILL.md` を Cursor 対応に更新し、contract test を拡張する | Skill が Codex HTTP MCP と Cursor user-scope MCP/Hooks capture を区別し、`tests/codex-harness-mem-skill-contract.test.ts` が required wording を検査する | S133-002 | cc:完了 |
+| S133-004 | **docs contract and regression verification** `[tdd:required]` — docs/README contract test を追加・更新し、関連 Cursor tests を実行する | docs contract、Skill contract、mcp-config、cursor hooks merge、cursor ingest unit/integration、doctor、`git diff --check` が PASS | S133-003 | cc:完了 |
 
 ---
 
