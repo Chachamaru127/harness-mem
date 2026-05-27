@@ -14,9 +14,37 @@ type TemporalFocus =
   | "latest"
   | "still"
   | "no_longer"
+  | "as_of"
+  | "include_superseded"
+  | "relation_freshness"
   | "直後"
   | "今も"
   | "以前";
+
+interface TemporalRelationFixture {
+  kind: string;
+  src?: string;
+  dst?: string;
+  strength?: number;
+  event_time?: string | null;
+  observed_at?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  supersedes?: string | null;
+  invalidated_at?: string | null;
+}
+
+interface TemporalLinkFixture {
+  relation: "updates" | "extends" | "derives" | "follows" | "shared_entity" | "contradicts" | "causes" | "part_of" | "supersedes";
+  to_entry_id: string;
+  weight?: number;
+  event_time?: string | null;
+  observed_at?: string | null;
+  valid_from?: string | null;
+  valid_to?: string | null;
+  supersedes?: string | null;
+  invalidated_at?: string | null;
+}
 
 interface TemporalCase {
   id: string;
@@ -24,9 +52,23 @@ interface TemporalCase {
   slice: string;
   query_language: "en" | "ja";
   query: string;
+  as_of?: string;
+  include_superseded?: boolean;
   expected_answer_entry_id: string;
   expected_order: string[];
-  entries: Array<{ id: string; content: string; timestamp: string }>;
+  entries: Array<{
+    id: string;
+    content: string;
+    timestamp: string;
+    event_time?: string | null;
+    observed_at?: string | null;
+    valid_from?: string | null;
+    valid_to?: string | null;
+    supersedes?: string | null;
+    invalidated_at?: string | null;
+    relations?: TemporalRelationFixture[];
+    links?: TemporalLinkFixture[];
+  }>;
 }
 
 interface GateOptions {
@@ -42,6 +84,14 @@ interface CaseResult {
   focus: TemporalFocus;
   slice: string;
   query_language: "en" | "ja";
+  as_of?: string;
+  include_superseded?: boolean;
+  relation_freshness?: {
+    relation_rows: number;
+    fresh_relation_rows: number;
+    invalidated_relation_rows: number;
+    expired_relation_rows: number;
+  };
   expected_answer_id: string;
   retrieved_ids: string[];
   answer_top1: boolean;
@@ -134,8 +184,12 @@ function eventForCase(testCase: TemporalCase, entry: TemporalCase["entries"][num
     session_id: `s108-temporal-planner-${testCase.id}`,
     event_type: "user_prompt",
     ts: entry.timestamp,
-    event_time: entry.timestamp,
-    observed_at: entry.timestamp,
+    event_time: entry.event_time ?? entry.timestamp,
+    observed_at: entry.observed_at ?? entry.timestamp,
+    valid_from: entry.valid_from ?? undefined,
+    valid_to: entry.valid_to ?? undefined,
+    supersedes: entry.supersedes ?? undefined,
+    invalidated_at: entry.invalidated_at ?? undefined,
     payload: { content: entry.content },
     tags: [],
     privacy_tags: [],
@@ -147,10 +201,10 @@ function expectedRankOrder(testCase: TemporalCase): string[] {
   const rest = testCase.expected_order
     .map((id) => `obs_${testCase.id}-${id}`)
     .filter((id) => id !== expectedId);
-  if (["current", "latest", "still", "no_longer", "今も"].includes(testCase.temporal_focus)) {
+  if (["current", "latest", "still", "no_longer", "as_of", "relation_freshness", "今も"].includes(testCase.temporal_focus)) {
     return [expectedId, ...rest.reverse()];
   }
-  if (["previous", "以前", "before"].includes(testCase.temporal_focus)) {
+  if (["previous", "include_superseded", "以前", "before"].includes(testCase.temporal_focus)) {
     return [expectedId, ...rest];
   }
   return [expectedId, ...rest];
@@ -162,6 +216,68 @@ function hasCurrentStaleRegression(testCase: TemporalCase, topItem: Record<strin
   if (forbidden.length === 0) return false;
   const content = String(topItem?.content ?? "").toLowerCase();
   return forbidden.some((answer) => content.includes(answer.toLowerCase()));
+}
+
+function observationIdForEntry(testCase: TemporalCase, entryId: string): string {
+  return `obs_${testCase.id}-${entryId}`;
+}
+
+function relationFreshnessForCase(testCase: TemporalCase): CaseResult["relation_freshness"] {
+  const relationRows = testCase.entries.flatMap((entry) => entry.relations ?? []);
+  if (relationRows.length === 0) return undefined;
+  return {
+    relation_rows: relationRows.length,
+    fresh_relation_rows: relationRows.filter((relation) => !relation.invalidated_at && !relation.valid_to).length,
+    invalidated_relation_rows: relationRows.filter((relation) => Boolean(relation.invalidated_at)).length,
+    expired_relation_rows: relationRows.filter((relation) => Boolean(relation.valid_to) && !relation.invalidated_at).length,
+  };
+}
+
+function seedFixtureRelations(core: HarnessMemCore, testCase: TemporalCase): void {
+  const db = core.getRawDb();
+  const insertRelation = db.query(`
+    INSERT INTO mem_relations(
+      src, dst, kind, strength, observation_id,
+      event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
+      created_at
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const entry of testCase.entries) {
+    const observationId = observationIdForEntry(testCase, entry.id);
+    for (const relation of entry.relations ?? []) {
+      insertRelation.run(
+        relation.src ?? observationId,
+        relation.dst ?? `${testCase.id}:relation`,
+        relation.kind,
+        relation.strength ?? 1.0,
+        observationId,
+        relation.event_time ?? entry.event_time ?? entry.timestamp,
+        relation.observed_at ?? entry.observed_at ?? entry.timestamp,
+        relation.valid_from ?? entry.valid_from ?? null,
+        relation.valid_to ?? entry.valid_to ?? null,
+        relation.supersedes ?? entry.supersedes ?? null,
+        relation.invalidated_at ?? entry.invalidated_at ?? null,
+        entry.timestamp,
+      );
+    }
+
+    for (const link of entry.links ?? []) {
+      core.createLink({
+        from_observation_id: observationId,
+        to_observation_id: observationIdForEntry(testCase, link.to_entry_id),
+        relation: link.relation,
+        weight: link.weight ?? 1.0,
+        event_time: link.event_time ?? entry.event_time ?? entry.timestamp,
+        observed_at: link.observed_at ?? entry.observed_at ?? entry.timestamp,
+        valid_from: link.valid_from ?? entry.valid_from ?? null,
+        valid_to: link.valid_to ?? entry.valid_to ?? null,
+        supersedes: link.supersedes ?? observationIdForEntry(testCase, link.to_entry_id),
+        invalidated_at: link.invalidated_at ?? entry.invalidated_at ?? null,
+      });
+    }
+  }
 }
 
 function renderSummary(result: TemporalPlannerGateResult): string {
@@ -203,6 +319,7 @@ export async function runTemporalPlannerGate(options: GateOptions = {}): Promise
       for (const entry of testCase.entries) {
         core.recordEvent(eventForCase(testCase, entry, project));
       }
+      seedFixtureRelations(core, testCase);
     }
 
     for (const testCase of cases) {
@@ -214,6 +331,8 @@ export async function runTemporalPlannerGate(options: GateOptions = {}): Promise
         include_private: true,
         strict_project: true,
         question_kind: "timeline",
+        as_of: testCase.as_of,
+        include_superseded: testCase.include_superseded,
         limit: 10,
       });
       const latencyMs = performance.now() - startedAt;
@@ -225,6 +344,9 @@ export async function runTemporalPlannerGate(options: GateOptions = {}): Promise
         focus: testCase.temporal_focus,
         slice: testCase.slice,
         query_language: testCase.query_language,
+        ...(testCase.as_of ? { as_of: testCase.as_of } : {}),
+        ...(testCase.include_superseded !== undefined ? { include_superseded: testCase.include_superseded } : {}),
+        ...(relationFreshnessForCase(testCase) ? { relation_freshness: relationFreshnessForCase(testCase) } : {}),
         expected_answer_id: expectedAnswerId,
         retrieved_ids: retrievedIds,
         answer_top1: retrievedIds[0] === expectedAnswerId,

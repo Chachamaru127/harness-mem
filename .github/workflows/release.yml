@@ -323,16 +323,26 @@ jobs:
           # reads the tier and exits 0/1 accordingly.
           bash scripts/check-inject-actionability.sh
 
-      - name: WorkGraph release gate (§S125-015)
+      - name: WorkGraph release gate (§S125-016)
         shell: bash
         env:
           MANIFEST_PATH: memory-server/src/benchmark/results/ci-run-manifest-latest.json
-          HARNESS_MEM_WORKGRAPH_GATE: warn
+          HARNESS_MEM_WORKGRAPH_GATE: enforce
         run: |
           set -euo pipefail
-          # First WorkGraph release is warn-only. Flip HARNESS_MEM_WORKGRAPH_GATE
-          # to enforce after two stable releases.
+          mkdir -p artifacts/release-gates
+          # S125-016 adds an enforce readiness pack before the manifest gate:
+          # 3 enforce smoke runs plus a dry-run import of the real Plans.md.
+          npm run benchmark:workgraph:readiness -- --runs 3 --artifact-dir artifacts/release-gates/s125-workgraph-enforce-readiness
           bash scripts/check-workgraph-release-gate.sh
+
+      - name: Upload WorkGraph gate artifact
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: s125-workgraph-enforce-readiness
+          path: artifacts/release-gates/s125-workgraph-enforce-readiness
+          if-no-files-found: warn
 
       - name: Recall Runtime release gate (§S128-013)
         shell: bash

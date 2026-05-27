@@ -67,6 +67,11 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("name: Run repository behavior gate");
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("name: Run memory server typecheck");
+    expect(workflow).toContain("name: WorkGraph release gate (§S125-016)");
+    expect(workflow).toContain("HARNESS_MEM_WORKGRAPH_GATE: enforce");
+    expect(workflow).toContain("npm run benchmark:workgraph:readiness -- --runs 3 --artifact-dir artifacts/release-gates/s125-workgraph-enforce-readiness");
+    expect(workflow).toContain("name: Upload WorkGraph gate artifact");
+    expect(workflow).toContain("name: s125-workgraph-enforce-readiness");
     expect(workflow).toContain("name: Recall Runtime release gate (§S128-013)");
     expect(workflow).toContain("npm run benchmark:recall-runtime");
     expect(workflow).toContain("npm run benchmark:recall-runtime -- --enforce --out artifacts/release-gates/s128-recall-runtime-gate.json");

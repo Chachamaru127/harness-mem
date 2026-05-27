@@ -1,0 +1,95 @@
+{
+  "schema_version": "s125-workgraph-enforce-readiness.v1",
+  "task_id": "S125-016",
+  "generated_at": "2026-05-27T08:27:07.648Z",
+  "artifact_dir": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27",
+  "gate_runs": [
+    {
+      "run": 1,
+      "artifact": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27/workgraph-enforce-1.json",
+      "mode": "enforce",
+      "tier": "green",
+      "passed": true,
+      "failed_metrics": [],
+      "metrics": {
+        "plans_import_fidelity": 1,
+        "ready_precision": 1,
+        "blocker_recall": 1,
+        "next_action_accuracy": 1,
+        "duplicate_work_rate": 0,
+        "claim_lease_success_rate": 1,
+        "work_hint_consumed_rate": 0.6
+      }
+    },
+    {
+      "run": 2,
+      "artifact": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27/workgraph-enforce-2.json",
+      "mode": "enforce",
+      "tier": "green",
+      "passed": true,
+      "failed_metrics": [],
+      "metrics": {
+        "plans_import_fidelity": 1,
+        "ready_precision": 1,
+        "blocker_recall": 1,
+        "next_action_accuracy": 1,
+        "duplicate_work_rate": 0,
+        "claim_lease_success_rate": 1,
+        "work_hint_consumed_rate": 0.6
+      }
+    },
+    {
+      "run": 3,
+      "artifact": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27/workgraph-enforce-3.json",
+      "mode": "enforce",
+      "tier": "green",
+      "passed": true,
+      "failed_metrics": [],
+      "metrics": {
+        "plans_import_fidelity": 1,
+        "ready_precision": 1,
+        "blocker_recall": 1,
+        "next_action_accuracy": 1,
+        "duplicate_work_rate": 0,
+        "claim_lease_success_rate": 1,
+        "work_hint_consumed_rate": 0.6
+      }
+    }
+  ],
+  "real_plans_dry_run": {
+    "path": "Plans.md",
+    "writes": 0,
+    "imported_work_items": 215,
+    "expected_work_items": 215,
+    "dependencies": 221,
+    "diff_entries": 436,
+    "plans_import_fidelity": 1,
+    "diagnostics_count": 7,
+    "diagnostics_by_code": {
+      "invalid_dependency": 3,
+      "missing_dependency_work_item": 4
+    },
+    "required_task_ids_present": [
+      "S125-016",
+      "S108-017"
+    ],
+    "passed": true
+  },
+  "command_checks": [
+    {
+      "label": "release_workflow_contract",
+      "command": [
+        "bun",
+        "test",
+        "tests/release-workflow-contract.test.ts",
+        "tests/workgraph-release-gate-script.test.ts"
+      ],
+      "exit_code": 0,
+      "duration_ms": 156.3501,
+      "log_path": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27/release_workflow_contract.log",
+      "passed": true
+    }
+  ],
+  "overall_passed": true,
+  "recommendation": "ready_for_workgraph_release_enforce"
+}

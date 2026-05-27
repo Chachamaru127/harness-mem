@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# §S125-015: WorkGraph release gate.
+# §S125-016: WorkGraph release gate.
 #
-# Initial release mode is warn: missing/failing WorkGraph metrics emit a
-# GitHub warning but do not block. Set HARNESS_MEM_WORKGRAPH_GATE=enforce after
-# two stable releases to make failures blocking.
+# Defaults to warn mode for local compatibility. Release workflow sets
+# HARNESS_MEM_WORKGRAPH_GATE=enforce after the readiness pack is green.
 
 set -euo pipefail
 
@@ -56,7 +55,7 @@ CLAIM_LEASE="$(jq -r '.workgraph_release_gate.metrics.claim_lease_success_rate /
 WORK_HINT="$(jq -r '.workgraph_release_gate.metrics.work_hint_consumed_rate // "null"' "${MANIFEST_PATH}")"
 
 echo ""
-echo "=== WorkGraph Release Gate (§S125-015) ==="
+echo "=== WorkGraph Release Gate (§S125-016) ==="
 echo "  Manifest                  : ${MANIFEST_PATH}"
 echo "  mode                      : ${MODE}"
 echo "  tier                      : ${TIER}"
@@ -73,7 +72,7 @@ echo ""
 
 if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
   {
-    echo "## WorkGraph Release Gate (§S125-015)"
+    echo "## WorkGraph Release Gate (§S125-016)"
     echo ""
     echo "| Metric | Value |"
     echo "|--------|-------|"

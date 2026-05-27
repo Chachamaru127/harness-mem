@@ -1,6 +1,6 @@
 # S108-008 Temporal Query Planner Gate
 
-- generated_at: 2026-05-27T08:21:24.788Z
+- generated_at: 2026-05-27T08:28:27.932Z
 - fixture: tests/benchmarks/fixtures/temporal-s108-expanded.json
 - evaluated_cases: 69/69
 - overall_passed: yes
@@ -10,7 +10,7 @@
 | temporal order score | 0.70 | 0.7464 | yes |
 | Japanese temporal slice hit@10 | 0.72 | 0.7778 | yes |
 | current stale answer regressions | 0 | 0 | yes |
-| p95 latency ms | n/a | 7.1911 | n/a |
+| p95 latency ms | n/a | 15.3907 | n/a |
 
 - answer_top1_rate: 0.7101
 - answer_hit_at_10: 0.8261

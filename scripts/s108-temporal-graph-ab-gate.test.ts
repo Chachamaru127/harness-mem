@@ -1,5 +1,5 @@
 /**
- * S108-015: A/B promotion gate decision logic tests
+ * S108-017: A/B diagnostic gate decision logic tests
  *
  * Pure-function tests for `decide()` — verifies that the threshold-based gate
  * makes the correct call for each (baseline, candidate) input. Does not run
@@ -21,7 +21,7 @@ function metrics(overrides: Partial<GateMetrics> = {}): GateMetrics {
   };
 }
 
-describe("S108-015 decide()", () => {
+describe("S108-017 decide()", () => {
   test("hit@10 lift >= 2%pt and p95 stable → improved", () => {
     const baseline = metrics({ hit_at_10_rate: 0.78, p95_latency_ms: 30 });
     const candidate = metrics({ hit_at_10_rate: 0.81, p95_latency_ms: 32 });
