@@ -1,0 +1,31 @@
+{
+  "schema_version": "s108-temporal-graph-ab.v1",
+  "generated_at": "2026-05-27T09:39:16.262Z",
+  "task_id": "S108-017",
+  "baseline": {
+    "answer_top1_rate": 0.8986,
+    "hit_at_10_rate": 0.9855,
+    "mean_order_score": 0.814,
+    "p95_latency_ms": 7.1268,
+    "cases": 69
+  },
+  "candidate": {
+    "answer_top1_rate": 0.8986,
+    "hit_at_10_rate": 0.9855,
+    "mean_order_score": 0.814,
+    "p95_latency_ms": 7.0351,
+    "cases": 69
+  },
+  "delta": {
+    "answer_top1_rate": 0,
+    "hit_at_10_rate": 0,
+    "mean_order_score": 0,
+    "p95_latency_ms": -0.09170000000000034
+  },
+  "margins": {
+    "hit_at_10_threshold": 0.02,
+    "max_p95_regression_ms": 5
+  },
+  "decision": "neutral",
+  "decision_reason": "hit@10 delta 0.00%pt within ±2%pt threshold"
+}
