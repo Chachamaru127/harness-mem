@@ -1,0 +1,80 @@
+{
+  "schema": "harness_mem.recall_runtime_gate.v1",
+  "task_id": "S128-013",
+  "generated_at": "2026-05-27T07:20:47.878Z",
+  "mode": "enforce",
+  "fixture": {
+    "event_count": 180,
+    "adr_count": 1,
+    "query_count": 8
+  },
+  "thresholds": {
+    "recall_p95_ms": 250,
+    "ready_latency_ms": 75,
+    "fallback_rate": 0,
+    "repeat_recall_cache_hit_rate": 1,
+    "adr_precision": 1
+  },
+  "metrics": {
+    "recall_p95": {
+      "value": 1.08,
+      "threshold": 250,
+      "comparator": "<=",
+      "status": "pass"
+    },
+    "ready_latency": {
+      "value": 0.12,
+      "threshold": 75,
+      "comparator": "<=",
+      "status": "pass"
+    },
+    "fallback_rate": {
+      "value": 0,
+      "threshold": 0,
+      "comparator": "<=",
+      "status": "pass"
+    },
+    "projection_freshness": {
+      "passed": true,
+      "status": "pass",
+      "projected_recall_ok": true,
+      "stale_fallback_detected": true
+    },
+    "repeat_recall_cache_hit_rate": {
+      "value": 1,
+      "threshold": 1,
+      "comparator": ">=",
+      "status": "pass"
+    },
+    "cache_invalidation_correctness": {
+      "passed": true,
+      "status": "pass"
+    },
+    "adr_precision": {
+      "value": 1,
+      "threshold": 1,
+      "comparator": ">=",
+      "status": "pass",
+      "hits": 3,
+      "total": 3
+    },
+    "otel_redaction": {
+      "passed": true,
+      "status": "pass"
+    },
+    "sessionstart_non_displacement": {
+      "passed": true,
+      "status": "pass",
+      "ready_latency_ms": 0.12
+    },
+    "core_search_compatibility": {
+      "passed": true,
+      "status": "pass"
+    }
+  },
+  "summary": {
+    "status": "pass",
+    "warnings": [],
+    "value_signal": "positive"
+  }
+}

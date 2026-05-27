@@ -304,10 +304,11 @@ jobs:
           set -euo pipefail
           # Run the full benchmark to produce a fresh manifest, then evaluate the
           # 4 developer-domain metrics against Layer 1 absolute floor thresholds.
-          # mode=warn (default) means failures emit ::warning:: but do not block
-          # the release. Flip mode to "enforce" in developer-domain-thresholds.json
-          # once §78-A03 (bilingual) and §78-A05 (dev-workflow) both land.
+          # mode=enforce means developer-domain metric failures block release.
+          # S108-005b reconciles S108 metrics into the manifest before the gate
+          # reads it.
           npm run benchmark
+          npm run benchmark:developer-domain
           bash scripts/check-developer-domain-gate.sh
 
       - name: Inject actionability gate (§S109-004)
@@ -338,7 +339,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artifacts/release-gates
-          npm run benchmark:recall-runtime -- --out artifacts/release-gates/s128-recall-runtime-gate.json
+          npm run benchmark:recall-runtime -- --enforce --out artifacts/release-gates/s128-recall-runtime-gate.json
 
       - name: Upload Recall Runtime gate artifact
         if: always()

@@ -133,15 +133,16 @@ Why this matters:
 - `npm pack --dry-run` protects package contents
 - targeted contracts protect release-sensitive wiring claims
 
-### Developer-domain ranking gate (S108-005)
+### Developer-domain ranking gate (S108-005/S108-005b)
 
 S108-004 selected the `code_token` tokenizer (camelCase / kebab-case / path / issue / PR / command) as the default ranking policy. The release gate is wired through:
 
 - `docs/benchmarks/developer-domain-thresholds.json` — Layer 1 floors (recall@10 ≥ 0.70, bilingual recall@10 ≥ 0.88, search p95 ≤ 50ms)
+- `npm run benchmark:developer-domain` — reconciles S108 dev-workflow and S108 temporal planner metrics into the CI manifest
 - `scripts/check-developer-domain-gate.sh` — reads `mode` and the env override `HARNESS_MEM_DEVDOMAIN_GATE=warn|enforce`
 - `.github/workflows/release.yml` — invokes the script before publish
 
-Default mode stays `warn` until `ci-run-manifest-latest.json` emits a `dev_workflow_recall` field (tracked under §78-A05 follow-up). Maintainers can flip to enforce locally with `HARNESS_MEM_DEVDOMAIN_GATE=enforce bash scripts/check-developer-domain-gate.sh` and roll back with `HARNESS_MEM_DEVDOMAIN_GATE=warn`. CHANGELOG entry is required only on the manifest emit + enforce flip release; not on tokenizer-internal tweaks.
+Default mode is now `enforce`: developer-domain metric failures block release after S108-005b reconciliation writes the manifest fields. Maintainers can verify locally with `npm run benchmark:developer-domain && bash scripts/check-developer-domain-gate.sh` and roll back with `HARNESS_MEM_DEVDOMAIN_GATE=warn`. CHANGELOG entry is required only when the gate contract changes; not on tokenizer-internal tweaks.
 
 ## 5. Versioning and release notes
 

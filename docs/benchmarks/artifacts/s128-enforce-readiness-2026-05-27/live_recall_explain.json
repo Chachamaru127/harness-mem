@@ -1,0 +1,80 @@
+{
+  "ok": true,
+  "items": [
+    {
+      "id": "rcl_b623a8732ab68cb8a8a43287",
+      "title": "local main / daemon / package を v0.25.8 へ更新\nmemory-durability migration Recall@10 と chaos smoke をローカル再実測\nS108/S128 の war",
+      "recall_type": "fact",
+      "source_type": "observation",
+      "source_ref": "observation:obs_00mpnev0vx338447ae4a4b21dc",
+      "explanation": {
+        "version": "recall_explanation_v1",
+        "summary": "scope_match+type_match+source_match+lexical_match",
+        "reasons": [
+          "scope_match",
+          "type_match",
+          "source_match",
+          "lexical_match"
+        ],
+        "scope": "project",
+        "type": "fact",
+        "source": {
+          "type": "observation",
+          "ref": "observation:obs_00mpnev0vx338447ae4a4b21dc"
+        }
+      }
+    },
+    {
+      "id": "rcl_596351a0fa04fa4b1daab4e0",
+      "title": "Read-only sidecar for harness-mem. You are not alone in the codebase; do not edit files or run mutating commands. Workin",
+      "recall_type": "profile",
+      "source_type": "observation",
+      "source_ref": "observation:obs_00mpnexd9w48dca1b6d1ef4762",
+      "explanation": {
+        "version": "recall_explanation_v1",
+        "summary": "scope_match+type_match+source_match+lexical_match",
+        "reasons": [
+          "scope_match",
+          "type_match",
+          "source_match",
+          "lexical_match"
+        ],
+        "scope": "project",
+        "type": "profile",
+        "source": {
+          "type": "observation",
+          "ref": "observation:obs_00mpnexd9w48dca1b6d1ef4762"
+        }
+      }
+    },
+    {
+      "id": "rcl_0fd2a7abc7497852178a29e5",
+      "title": "作業ディレクトリ: /tmp/harness-mem-pr109-1779859365 で作業してください。\n\nあなたは Dependabot PR #109 の補完 worker です。現在の PR は package-lock.json",
+      "recall_type": "decision",
+      "source_type": "observation",
+      "source_ref": "observation:obs_00mpnmf5am5e9bc1d493213248",
+      "explanation": {
+        "version": "recall_explanation_v1",
+        "summary": "scope_match+type_match+source_match+lexical_match",
+        "reasons": [
+          "scope_match",
+          "type_match",
+          "source_match",
+          "lexical_match"
+        ],
+        "scope": "project",
+        "type": "decision",
+        "source": {
+          "type": "observation",
+          "ref": "observation:obs_00mpnmf5am5e9bc1d493213248"
+        }
+      }
+    }
+  ],
+  "meta": {
+    "count": 3,
+    "ranking": "recall_projection_v1",
+    "recall_degraded": false,
+    "recall_degraded_reason": null
+  }
+}

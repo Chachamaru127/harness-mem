@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-04-10T08:10:51.561Z",
-  "git_sha": "512f02730369ef72682e273dd12323ec3c9fb454",
+  "generated_at": "2026-05-27T07:20:23.753Z",
+  "git_sha": "eb88c96604d5dc76052560775cb64df47cbb562f",
   "strict_mode": true,
   "embedding": {
     "mode": "onnx",
@@ -34,28 +34,37 @@
   },
   "results": {
     "all_passed": true,
-    "locomo_f1": 0.591674128340795,
-    "bilingual_recall": 0.88,
-    "freshness": 1,
-    "temporal": 0.6458333333333334,
-    "cat1_f1": 0.5897595158464723,
-    "cat2_f1": 0.6849206349206349,
-    "cat3_f1": 0.4972922502334267
+    "locomo_f1": 0.6137539004205671,
+    "bilingual_recall": 0.9,
+    "freshness": 0.99,
+    "temporal": 0.75,
+    "cat1_f1": 0.6042522694696608,
+    "cat2_f1": 0.7087301587301588,
+    "cat3_f1": 0.5357537886949651,
+    "dev_workflow_recall": 0.7708
   },
   "paired_improvement": {
     "label": "cat-2/cat-3",
     "matched": 76,
-    "mean_delta": 0.44908148043159474,
+    "mean_delta": 0.4794458529012304,
     "gate_enabled": false
   },
   "performance": {
-    "locomo_search_p95_ms": 13.280000000000001,
-    "locomo_token_avg": 427.75
+    "locomo_search_p95_ms": 38.35,
+    "locomo_token_avg": 462.98333333333335
   },
   "comparisons": {
     "bilingual_baseline_mode": null,
     "bilingual_baseline_recall": null,
     "bilingual_delta": null
+  },
+  "inject_actionability": {
+    "delivered_rate": 1,
+    "consumed_rate": 0.6,
+    "fixture_size": 10,
+    "consumed_count": 6,
+    "hooks_health_summary": "session_start=alive;user_prompt_submit=alive;stop=alive",
+    "tier": "green"
   },
   "work_hint_actionability": {
     "work_hint_delivered_rate": 1,
@@ -92,5 +101,39 @@
       "work_hint_consumed_rate_yellow_min": 0.3,
       "work_hint_consumed_rate_green_min": 0.6
     }
+  },
+  "developer_domain_reconciliation": {
+    "schema_version": "s108-developer-domain-manifest.v1",
+    "task_id": "S108-005b",
+    "generated_at": "2026-05-27T07:20:32.810Z",
+    "manifest_path": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
+    "inputs": {
+      "code_token_runs": 3,
+      "temporal_cases": 66
+    },
+    "metrics": {
+      "dev_workflow_recall_at_10": 0.7708,
+      "dev_workflow_recall_mean": 0.7708,
+      "bilingual_recall_at_10": 0.9,
+      "temporal_order_score": 0.75,
+      "temporal_answer_hit_at_10": 0.8182,
+      "japanese_temporal_slice": 0.7778,
+      "current_stale_answer_regressions": 0,
+      "temporal_p95_latency_ms": 7.3805
+    },
+    "gates": {
+      "dev_workflow": true,
+      "bilingual": true,
+      "temporal_order": true,
+      "japanese_temporal": true,
+      "current_stale_regressions": true
+    },
+    "artifacts": {
+      "report_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/summary.json",
+      "code_token_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/code-token/summary.json",
+      "temporal_planner_summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.json"
+    },
+    "rollback": "Restore memory-server/src/benchmark/results/ci-run-manifest-latest.json from version control, or rerun npm run benchmark:developer-domain from a known-good checkout.",
+    "overall_passed": true
   }
 }

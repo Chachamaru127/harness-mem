@@ -1,0 +1,14 @@
+bun test v1.3.10 (30e609e0)
+
+
+scripts/s128-recall-runtime-gate.test.ts:
+(pass) S128-013 recall runtime gate > emits warn-mode manifest with the required value signals [185.42ms]
+(pass) S128-013 recall runtime gate > does not leak raw fixture content or project names into the manifest [70.87ms]
+
+tests/release-workflow-contract.test.ts:
+(pass) release workflow contract > release workflow uses the same repository behavior gate as local maintainers [0.67ms]
+
+ 3 pass
+ 0 fail
+ 85 expect() calls
+Ran 3 tests across 2 files. [298.00ms]
