@@ -3694,7 +3694,8 @@ export class ObservationStore {
     const tokens = referenceTokens.length > 0 ? referenceTokens : queryTokens;
     const overlap = tokens.filter((token) => combined.includes(token)).length;
     const normalizedReference = anchor.referenceText.toLowerCase().replace(/\s+/g, " ").trim();
-    const hasReferencePhrase = normalizedReference.length >= 5 && combined.includes(normalizedReference);
+    const normalizedCombined = combined.replace(/\s+/g, " ").trim();
+    const hasReferencePhrase = normalizedReference.length >= 5 && normalizedCombined.includes(normalizedReference);
     const hasAnchorOverlap = hasReferencePhrase || tokens.length === 0 || overlap / tokens.length >= 0.5;
     if (!hasAnchorOverlap) return false;
 
