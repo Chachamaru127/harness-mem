@@ -264,6 +264,10 @@ function seedFixtureRelations(core: HarnessMemCore, testCase: TemporalCase): voi
     }
 
     for (const link of entry.links ?? []) {
+      const supersedes =
+        link.relation === "supersedes"
+          ? (link.supersedes ?? observationIdForEntry(testCase, link.to_entry_id))
+          : null;
       core.createLink({
         from_observation_id: observationId,
         to_observation_id: observationIdForEntry(testCase, link.to_entry_id),
@@ -273,7 +277,7 @@ function seedFixtureRelations(core: HarnessMemCore, testCase: TemporalCase): voi
         observed_at: link.observed_at ?? entry.observed_at ?? entry.timestamp,
         valid_from: link.valid_from ?? entry.valid_from ?? null,
         valid_to: link.valid_to ?? entry.valid_to ?? null,
-        supersedes: link.supersedes ?? observationIdForEntry(testCase, link.to_entry_id),
+        supersedes,
         invalidated_at: link.invalidated_at ?? entry.invalidated_at ?? null,
       });
     }

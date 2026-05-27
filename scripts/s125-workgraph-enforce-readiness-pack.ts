@@ -61,6 +61,14 @@ const DEFAULT_ARTIFACT_DIR = join(ROOT_DIR, "docs/benchmarks/artifacts/s125-work
 const FIDELITY_FLOOR = 0.98;
 const REQUIRED_TASK_IDS = ["S125-016", "S108-017"];
 
+function normalizeRuns(value: number | undefined): number {
+  if (value === undefined) return 3;
+  if (!Number.isFinite(value) || !Number.isInteger(value) || value < 1) {
+    throw new Error("--runs must be a positive integer");
+  }
+  return value;
+}
+
 function rel(path: string): string {
   return relative(ROOT_DIR, path).replace(/\\/g, "/");
 }
@@ -133,7 +141,7 @@ function runRealPlansDryRun(plansPath: string, project: string): RealPlansCheck 
 
 export async function runS125WorkGraphEnforceReadinessPack(options: Options = {}): Promise<ReadinessPack> {
   const artifactDir = resolve(options.artifactDir ?? DEFAULT_ARTIFACT_DIR);
-  const runs = Math.max(1, Math.floor(options.runs ?? 3));
+  const runs = normalizeRuns(options.runs);
   const plansPath = resolve(options.plansPath ?? join(ROOT_DIR, "Plans.md"));
   const project = options.project ?? ROOT_DIR;
   const now = options.now ?? new Date();
@@ -194,7 +202,8 @@ function parseArgs(argv: string[]): Options & { json?: boolean } {
     if (token === "--artifact-dir" && argv[i + 1]) {
       options.artifactDir = argv[++i];
     } else if (token === "--runs" && argv[i + 1]) {
-      options.runs = Number(argv[++i]);
+      const parsed = Number(argv[++i]);
+      options.runs = normalizeRuns(parsed);
     } else if (token === "--plans" && argv[i + 1]) {
       options.plansPath = argv[++i];
     } else if (token === "--project" && argv[i + 1]) {

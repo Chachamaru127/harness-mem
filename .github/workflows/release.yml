@@ -338,7 +338,7 @@ jobs:
 
       - name: Upload WorkGraph gate artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: s125-workgraph-enforce-readiness
           path: artifacts/release-gates/s125-workgraph-enforce-readiness
@@ -353,7 +353,7 @@ jobs:
 
       - name: Upload Recall Runtime gate artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: s128-recall-runtime-gate
           path: artifacts/release-gates/s128-recall-runtime-gate.json
@@ -402,7 +402,7 @@ jobs:
           cd mcp-server-go && GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} go build -trimpath -ldflags="-s -w" -o ../harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }} ./main.go
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}
           path: harness-mcp-${{ matrix.goos }}-${{ matrix.goarch }}${{ matrix.ext }}

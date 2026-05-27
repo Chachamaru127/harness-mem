@@ -1,7 +1,7 @@
 {
   "schema_version": "s125-workgraph-enforce-readiness.v1",
   "task_id": "S125-016",
-  "generated_at": "2026-05-27T08:27:07.648Z",
+  "generated_at": "2026-05-27T08:41:31.116Z",
   "artifact_dir": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27",
   "gate_runs": [
     {
@@ -85,7 +85,7 @@
         "tests/workgraph-release-gate-script.test.ts"
       ],
       "exit_code": 0,
-      "duration_ms": 156.3501,
+      "duration_ms": 158.4998,
       "log_path": "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27/release_workflow_contract.log",
       "passed": true
     }
