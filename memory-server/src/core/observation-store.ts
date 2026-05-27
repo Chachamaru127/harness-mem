@@ -3693,7 +3693,9 @@ export class ObservationStore {
       .filter((token) => token.length >= 3);
     const tokens = referenceTokens.length > 0 ? referenceTokens : queryTokens;
     const overlap = tokens.filter((token) => combined.includes(token)).length;
-    const hasAnchorOverlap = tokens.length === 0 || overlap / tokens.length >= 0.5;
+    const normalizedReference = anchor.referenceText.toLowerCase().replace(/\s+/g, " ").trim();
+    const hasReferencePhrase = normalizedReference.length >= 5 && combined.includes(normalizedReference);
+    const hasAnchorOverlap = hasReferencePhrase || tokens.length === 0 || overlap / tokens.length >= 0.5;
     if (!hasAnchorOverlap) return false;
 
     if (anchor.direction === "asc") {
