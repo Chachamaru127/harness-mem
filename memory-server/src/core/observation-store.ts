@@ -3324,13 +3324,26 @@ export class ObservationStore {
         hybridScores.set(id, 0.6 * vScore + 0.4 * lScore);
       }
 
+      const rankedAnchorIds = [...hybridScores.entries()]
+        .sort((a, b) => b[1] - a[1])
+        .map(([id]) => id);
+
       let anchorId: string | null = null;
-      let bestScore = -1;
-      for (const [id, score] of hybridScores.entries()) {
-        if (score > bestScore) {
-          bestScore = score;
+      let anchorObs: Record<string, unknown> | null = null;
+      let includeAnchorSelf = false;
+      for (const id of rankedAnchorIds.slice(0, ANCHOR_SEARCH_LIMIT)) {
+        const row = this.loadTemporalAnchorObservation(id);
+        if (row && this.isTemporalAnchorSelfAnswer(request, anchor, row)) {
           anchorId = id;
+          anchorObs = row;
+          includeAnchorSelf = true;
+          break;
         }
+      }
+
+      if (!anchorId) {
+        anchorId = rankedAnchorIds[0] ?? null;
+        anchorObs = anchorId ? this.loadTemporalAnchorObservation(anchorId) : null;
       }
 
       // §35 SD-005: anchor 未検出時フォールバック — direction ベースの時間軸ソートで結果を返す
@@ -3405,12 +3418,8 @@ export class ObservationStore {
         });
       }
 
-      // アンカーエントリの persisted temporal anchor を取得
-      const anchorObs = this.deps.db
-        .query("SELECT COALESCE(event_time, valid_from, observed_at, created_at) AS temporal_anchor FROM mem_observations WHERE id = ?")
-        .get(anchorId) as { temporal_anchor: string } | null;
       if (!anchorObs) return null;
-      const anchorTs = anchorObs.temporal_anchor;
+      const anchorTs = String(anchorObs.temporal_anchor ?? "");
 
       // Phase 2: anchorTs を基点に時間フィルタ SQL で検索
       const params: SQLQueryBindings[] = [];
@@ -3483,7 +3492,14 @@ export class ObservationStore {
       withoutRelevance.sort(
         (a, b) => directionMultiplier * a.created_at.localeCompare(b.created_at)
       );
-      const merged = [...withRelevance, ...withoutRelevance].slice(0, limit);
+      const anchorSelf = includeAnchorSelf
+        ? [{
+            row: anchorObs,
+            relevanceScore: Math.max(queryTokens.length, 1) + 1,
+            created_at: String(anchorObs.temporal_anchor ?? anchorObs.created_at ?? ""),
+          }]
+        : [];
+      const merged = [...anchorSelf, ...withRelevance, ...withoutRelevance].slice(0, limit);
 
       return merged.map(({ row, relevanceScore }) => {
         const tags = parseArrayJson(row.tags_json);
@@ -3526,6 +3542,65 @@ export class ObservationStore {
       // フォールバック: anchor search に失敗した場合は null を返して通常検索に切り替え
       return null;
     }
+  }
+
+  private isTemporalAnchorSelfAnswer(
+    request: SearchRequest,
+    anchor: TemporalAnchor,
+    row: Record<string, unknown>
+  ): boolean {
+    const titleText = typeof row.title === "string" ? row.title.toLowerCase() : "";
+    const contentText = typeof row.content_redacted === "string"
+      ? row.content_redacted.toLowerCase()
+      : "";
+    const combined = `${titleText} ${contentText}`;
+    if (!combined.trim()) return false;
+
+    const referenceTokens = buildSearchTokens(anchor.referenceText)
+      .map((token) => token.toLowerCase())
+      .filter((token) => token.length >= 3);
+    const queryTokens = buildSearchTokens(request.query)
+      .map((token) => token.toLowerCase())
+      .filter((token) => token.length >= 3);
+    const tokens = referenceTokens.length > 0 ? referenceTokens : queryTokens;
+    const overlap = tokens.filter((token) => combined.includes(token)).length;
+    const hasAnchorOverlap = tokens.length === 0 || overlap / tokens.length >= 0.5;
+    if (!hasAnchorOverlap) return false;
+
+    if (anchor.direction === "asc") {
+      return (
+        combined.includes("right after") ||
+        combined.includes("immediately after") ||
+        combined.includes("直後")
+      );
+    }
+
+    if (anchor.direction === "desc") {
+      return (
+        combined.includes("before ") ||
+        combined.includes("以前") ||
+        combined.includes("前に")
+      );
+    }
+
+    return false;
+  }
+
+  private loadTemporalAnchorObservation(id: string): Record<string, unknown> | null {
+    return this.deps.db
+      .query(`
+        SELECT
+          o.id, o.event_id, o.platform, o.project, o.session_id,
+          o.title, o.content_redacted, o.tags_json, o.privacy_tags_json,
+          o.memory_type, o.event_time, o.observed_at, o.valid_from, o.valid_to,
+          o.supersedes, o.invalidated_at, o.created_at, o.access_count,
+          COALESCE(o.event_time, o.valid_from, o.observed_at, o.created_at) AS temporal_anchor,
+          e.event_type AS event_type
+        FROM mem_observations o
+        LEFT JOIN mem_events e ON e.event_id = o.event_id
+        WHERE o.id = ?
+      `)
+      .get(id) as Record<string, unknown> | null;
   }
 
   // ---------------------------------------------------------------------------

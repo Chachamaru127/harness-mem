@@ -13,4 +13,15 @@ describe("S108-008 temporal query planner gate", () => {
     expect(result.metrics.temporal_order_score).toBeGreaterThanOrEqual(0.70);
     expect(result.metrics.current_stale_answer_regressions).toBe(0);
   });
+
+  test("planner keeps temporal anchor self-answer cases in recall", async () => {
+    const result = await runTemporalPlannerGate({
+      writeArtifacts: false,
+      now: new Date("2026-05-27T00:00:00.000Z"),
+    });
+
+    expect(result.metrics.answer_hit_at_10).toBeGreaterThanOrEqual(0.90);
+    expect(result.metrics.answer_top1_rate).toBeGreaterThanOrEqual(0.80);
+    expect(result.metrics.japanese_temporal_slice).toBeGreaterThanOrEqual(0.88);
+  });
 });
