@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { ConfigManager, type ConfigManagerDeps } from "../../src/core/config-manager";
 import { getConfig, type Config, type ApiResponse } from "../../src/core/config-manager";
+import { __resetUserConfigCache } from "../../src/core/core-utils";
 import {
   getSqliteVecMapTableName,
   getSqliteVecTableName,
@@ -151,18 +152,30 @@ describe("config-manager: getConfig (module-level function)", () => {
   });
 
   test("デフォルト設定に必須フィールドが含まれる", () => {
-    const config = getConfig();
-    expect(config).toHaveProperty("dbPath");
-    expect(config).toHaveProperty("bindHost");
-    expect(config).toHaveProperty("bindPort");
-    expect(config).toHaveProperty("vectorDimension");
-    expect(config).toHaveProperty("captureEnabled");
-    expect(config).toHaveProperty("retrievalEnabled");
-    expect(config).toHaveProperty("injectionEnabled");
-    expect(config.forgetMaintenanceEnabled).toBe(false);
-    expect(config.forgetMaintenanceMode).toBe("dry-run");
-    expect(config.forgetMaintenanceHealthBudgetMs).toBeGreaterThan(0);
-    expect(config.forgetMaintenanceBackoffMs).toBeGreaterThan(0);
+    const previousConfigPath = process.env.HARNESS_MEM_CONFIG_PATH;
+    process.env.HARNESS_MEM_CONFIG_PATH = "/tmp/harness-mem-test-missing-config.json";
+    __resetUserConfigCache();
+    try {
+      const config = getConfig();
+      expect(config).toHaveProperty("dbPath");
+      expect(config).toHaveProperty("bindHost");
+      expect(config).toHaveProperty("bindPort");
+      expect(config).toHaveProperty("vectorDimension");
+      expect(config).toHaveProperty("captureEnabled");
+      expect(config).toHaveProperty("retrievalEnabled");
+      expect(config).toHaveProperty("injectionEnabled");
+      expect(config.forgetMaintenanceEnabled).toBe(false);
+      expect(config.forgetMaintenanceMode).toBe("dry-run");
+      expect(config.forgetMaintenanceHealthBudgetMs).toBeGreaterThan(0);
+      expect(config.forgetMaintenanceBackoffMs).toBeGreaterThan(0);
+    } finally {
+      if (previousConfigPath === undefined) {
+        delete process.env.HARNESS_MEM_CONFIG_PATH;
+      } else {
+        process.env.HARNESS_MEM_CONFIG_PATH = previousConfigPath;
+      }
+      __resetUserConfigCache();
+    }
   });
 });
 

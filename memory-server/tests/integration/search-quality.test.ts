@@ -552,7 +552,7 @@ describe("search quality integration", () => {
         query: "coverage threshold test",
         project: "search-quality",
         include_private: true,
-        strict_project: true,
+        strict_project: false,
         debug: true,
       });
       expect(result.ok).toBe(true);

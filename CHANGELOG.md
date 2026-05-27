@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.25.9] - 2026-05-27
+
+### Fixed
+
+- **Temporal after-anchor retrieval now tolerates whitespace-split anchor phrases**. The S108 temporal planner now normalizes stored observation text before exact phrase matching, so observations like `API v3 beta` split across a newline still satisfy after-anchor self-answer retrieval. A focused S108 regression keeps `s108-temp-025` returning the post-beta validation event as top1 while preserving adjacent current/previous/before API cases.
+
 ## [0.25.8] - 2026-05-26
 
 ### Fixed

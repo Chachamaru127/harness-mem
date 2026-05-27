@@ -103,9 +103,9 @@ All numbers below come from committed artifacts you can rerun yourself — no ma
 | **MCP cold start** | ~5ms (median, n=10) | [bench JSON](docs/benchmarks/go-mcp-bench/) · `scripts/bench-go-mcp.sh` |
 | **Single Go binary** | 7.04MB stripped · 4 platforms | macOS arm64/amd64 · Linux amd64 · Windows amd64 |
 | **Memory (RSS)** | ~13MB after `initialize` + `tools/list` | bench JSON, measured on Apple M1 |
-| **LoCoMo F1** | 0.5917 (120 QA · 3-run PASS) | [run-ci manifest](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
-| **Search p95** | 13.28ms | same manifest |
-| **Bilingual recall@10** | 0.8800 | same manifest |
+| **LoCoMo F1** | 0.6138 (120 QA · 3-run PASS) | [run-ci manifest](memory-server/src/benchmark/results/ci-run-manifest-latest.json) |
+| **Search p95** | 38.35ms | same manifest |
+| **Bilingual recall@10** | 0.9000 | same manifest |
 
 The MCP frontend is the layer Claude Code and Codex actually talk to. The Go binary is the fast preferred path; if it is missing, a wrapper script transparently falls back to the Node.js build — you still get every feature, just at Node.js cold start.
 
@@ -391,7 +391,7 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | **External dependencies** | Node.js + Bun (Go binary auto-downloaded) | None | Node.js + Python + uv + Chroma | Python + API keys |
 | **Migration path** | `import-claude-mem` → `verify` → `cutover` | — | — | — |
 | **Workspace isolation** | Strict (symlink-resolved paths) | Global | Basename only | Per-user / per-agent |
-| **Benchmark (F1)** | 0.5917 (LoCoMo 120Q, 3-run PASS, p95 13.28ms) *(general-lifelog reference, not target)* | — | — | — |
+| **Benchmark (F1)** | 0.6138 (LoCoMo 120Q, 3-run PASS, p95 38.35ms) *(general-lifelog reference, not target)* | — | — | — |
 | **Cross-tool transfer** | Recall@10: 0.60 | N/A | N/A | N/A |
 | **Cost** | Free (local) | Included in Claude plan | Free | $99+/mo (cloud) |
 
@@ -462,18 +462,18 @@ Source:
 - [`docs/benchmarks/japanese-release-proof-bar.md`](docs/benchmarks/japanese-release-proof-bar.md)
 
 Current latest run:
-- generated_at: `2026-04-10T08:10:51.561Z`
-- git_sha: `512f027`
+- generated_at: `2026-05-27T07:20:23.753Z`
+- git_sha: `eb88c96`
 - embedding: `onnx`
 
 | Metric | Value |
 |---|---:|
-| LoCoMo F1 | 0.5917 |
-| Bilingual recall@10 | 0.8800 |
-| Freshness | 1.0000 |
-| Temporal | 0.6458 |
-| Search p95 | 13.28ms |
-| Token avg | 427.75 |
+| LoCoMo F1 | 0.6138 |
+| Bilingual recall@10 | 0.9000 |
+| Freshness | 0.9900 |
+| Temporal | 0.7464 |
+| Search p95 | 38.35ms |
+| Token avg | 462.98 |
 
 Verdict: `PASS`
 

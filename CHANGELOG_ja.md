@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.25.9] - 2026-05-27
+
+### ユーザー向け要約
+
+- **temporal after-anchor retrieval が、改行で分割された anchor phrase でも落ちないようにした**。保存済み observation 側も whitespace 正規化してから exact phrase match するため、`API v3 beta` が改行で割れていても `s108-temp-025` は post-beta validation event を top1 で返す。隣接する current / previous / before API ケースは維持する。
+
 ## [0.25.8] - 2026-05-26
 
 ### ユーザー向け要約

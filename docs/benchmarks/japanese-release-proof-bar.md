@@ -8,7 +8,7 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 
 | Role | Source | Status | Notes |
 |---|---|---|---|
-| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-04-10T08:10:51.561Z`, `git_sha=512f027`, verdict `PASS` |
+| Main ship / no-ship gate | `memory-server/src/benchmark/results/ci-run-manifest-latest.json` | current truth | `generated_at=2026-05-27T07:20:23.753Z`, `git_sha=eb88c96`, verdict `PASS` |
 | Current Japanese companion | `docs/benchmarks/artifacts/s43-ja-release-v2-latest/summary.json` | current truth | `96 QA`, run family is canonicalized to `run1/run2/run3` only |
 | Historical Japanese baseline | `docs/benchmarks/artifacts/s40-ja-baseline-latest/summary.json` | historical snapshot | `32 QA`, kept only as baseline context |
 | Deprecated alias | `docs/benchmarks/artifacts/s40-ja-release-latest/` | deprecated | do not cite this path in README / proof / Plans |
@@ -20,16 +20,16 @@ This document defines what harness-mem can safely claim about Japanese capabilit
 Source:
 - `memory-server/src/benchmark/results/ci-run-manifest-latest.json`
 
-Current latest run (`onnx`, `git_sha=512f027`):
+Current latest run (`onnx`, `git_sha=eb88c96`):
 
 | Metric | Value | Meaning |
 |---|---:|---|
-| LoCoMo F1 | 0.5917 | Main retrieval + answer quality gate |
-| Bilingual recall@10 | 0.8800 | EN<->JA retrieval companion metric |
-| Freshness | 1.0000 | Current-state questions stay correct |
-| Temporal | 0.6458 | Ordering / time reasoning gate |
-| Search p95 | 13.28ms | Latency envelope |
-| Token avg | 427.75 | Cost / verbosity envelope |
+| LoCoMo F1 | 0.6138 | Main retrieval + answer quality gate |
+| Bilingual recall@10 | 0.9000 | EN<->JA retrieval companion metric |
+| Freshness | 0.9900 | Current-state questions stay correct |
+| Temporal | 0.7464 | Ordering / time reasoning gate |
+| Search p95 | 38.35ms | Latency envelope |
+| Token avg | 462.98 | Cost / verbosity envelope |
 
 Verdict: `PASS`
 
