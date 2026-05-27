@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-28（S133 Supported Tool Surface Docs and Skill Alignment）
+最終更新: 2026-05-28（§131–§133 Cursor Tier 2、v0.26.0 release、PR #116 → main `9f26ab4`）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -218,7 +218,7 @@ token propagation が Claude/Codex 両方で clean install green なら S130-002
 
 ---
 
-## §131 Cursor User-Scope MCP Support — cc:完了
+## §131 Cursor User-Scope MCP Support — cc:完了 [9f26ab4]
 
 策定日: 2026-05-28
 分類: Product behavior / setup / MCP client compatibility — owner は `harness-mem`。Cursor の user-scope MCP 設定と、この worktree 上の dogfood 環境を対象にする。
@@ -236,7 +236,7 @@ team_validation_mode: manual-pass（Product / Architecture / Security / QA / Ske
 
 ---
 
-## §132 Cursor Conversation Capture — cc:完了
+## §132 Cursor Conversation Capture — cc:完了 [9f26ab4]
 
 策定日: 2026-05-28
 分類: Cursor ingest / hooks — owner は `harness-mem`。§131 の user-scope MCP 接続後、Cursor 公式 Hooks payload を主入力として会話継続を保存する。
@@ -253,7 +253,7 @@ team_validation_mode: manual-pass（Product / Architecture / Security / QA / Ske
 
 ---
 
-## §133 Supported Tool Surface Docs and Skill Alignment — cc:完了
+## §133 Supported Tool Surface Docs and Skill Alignment — cc:完了 [9f26ab4]
 
 策定日: 2026-05-28
 分類: Documentation / onboarding / Skill contract — owner は `harness-mem`。§131 と §132 で実装済みの Cursor user-scope MCP と Cursor Hooks capture を、ユーザー導入動線、検証手順、公開 claim、harness-mem Skill に反映する。
@@ -269,7 +269,9 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 | S133-001 | **README supported tools alignment** `[tdd:skip:docs-only]` — README / README_ja の install、verify、supported tools を Cursor Tier 2 として同期する | README が `setup --platform cursor` / `doctor --platform cursor` を案内し、Cursor を Tier 1 同等と claim しない | S133-000 | cc:完了 |
 | S133-002 | **onboarding verification alignment** `[tdd:skip:docs-only]` — setup guide、onboarding checklist、dry-run、claim map に Cursor 導入と検証手順を追加する | setup docs が `mcpServers.harness-mem`、8 hook events、reload/new session、spool path、metadata-only 境界を説明し、checklist が prompt/assistant ingest search 確認を含む | S133-001 | cc:完了 |
 | S133-003 | **harness-mem Skill alignment** `[tdd:required]` — `codex/skills/harness-mem/SKILL.md` を Cursor 対応に更新し、contract test を拡張する | Skill が Codex HTTP MCP と Cursor user-scope MCP/Hooks capture を区別し、`tests/codex-harness-mem-skill-contract.test.ts` が required wording を検査する | S133-002 | cc:完了 |
-| S133-004 | **docs contract and regression verification** `[tdd:required]` — docs/README contract test を追加・更新し、関連 Cursor tests を実行する | docs contract、Skill contract、mcp-config、cursor hooks merge、cursor ingest unit/integration、doctor、`git diff --check` が PASS | S133-003 | cc:完了 |
+| S133-004 | **docs contract and regression verification** `[tdd:required]` — docs/README contract test を追加・更新し、関連 Cursor tests を実行する | docs contract、Skill contract、mcp-config、cursor hooks merge、cursor ingest unit/integration、doctor、`git diff --check` が PASS | S133-003 | cc:完了 [9f26ab4] |
+
+**Release closeout:** `v0.26.0`（`bb358fc` feat + `bdfc733` chore）を tag / GitHub Release 後、PR [#116](https://github.com/Chachamaru127/harness-mem/pull/116) で `main` に merge 済み（`9f26ab4`）。
 
 ---
 
