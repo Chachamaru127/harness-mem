@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runTemporalPlannerGate } from "../../scripts/s108-temporal-planner-gate";
@@ -31,8 +31,19 @@ describe("S108-008 temporal query planner gate", () => {
   test("planner keeps previous status-summary answers in recall", async () => {
     const artifactDir = mkdtempSync(join(tmpdir(), "harness-mem-s108-temp-025-"));
     try {
+      const fixturePath = join(artifactDir, "temporal-s108-expanded.json");
+      const fixture = JSON.parse(
+        readFileSync(join(process.cwd(), "tests/benchmarks/fixtures/temporal-s108-expanded.json"), "utf8")
+      ) as Array<{ id: string; entries: Array<{ id: string; content: string }> }>;
+      const apiV3Case = fixture.find((entry) => entry.id === "s108-temp-025");
+      const apiV3Event = apiV3Case?.entries.find((entry) => entry.id === "s108-api-e3");
+      expect(apiV3Event).toBeDefined();
+      apiV3Event!.content = "Right after API v3 beta\nopened, partners validated webhook signatures and retry headers.";
+      writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`, "utf8");
+
       const result = await runTemporalPlannerGate({
         artifactDir,
+        fixturePath,
         now: new Date("2026-05-27T00:00:00.000Z"),
       });
 
