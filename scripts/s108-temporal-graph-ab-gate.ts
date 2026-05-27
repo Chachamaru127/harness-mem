@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * S108-015: temporal-graph A/B promotion gate
+ * S108-017: temporal-graph A/B diagnostic gate
  *
  * Runs the existing temporal-planner gate fixture twice:
  *   - baseline: HARNESS_MEM_TEMPORAL_GRAPH unset (default behavior)
@@ -42,7 +42,7 @@ interface GateMetrics {
 interface ABGateReport {
   schema_version: "s108-temporal-graph-ab.v1";
   generated_at: string;
-  task_id: "S108-015";
+  task_id: "S108-017";
   baseline: GateMetrics;
   candidate: GateMetrics;
   delta: {
@@ -183,7 +183,7 @@ async function main(): Promise<void> {
   const report: ABGateReport = {
     schema_version: "s108-temporal-graph-ab.v1",
     generated_at: new Date().toISOString(),
-    task_id: "S108-015",
+    task_id: "S108-017",
     baseline,
     candidate,
     delta: {
@@ -201,9 +201,9 @@ async function main(): Promise<void> {
   };
 
   const reportPath = join(artifactDir, "ab-report.json");
-  writeFileSync(reportPath, JSON.stringify(report, null, 2));
-  console.log(`[s108-015] decision=${decision}  reason=${reason}`);
-  console.log(`[s108-015] artifact: ${reportPath}`);
+  writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`[s108-017] decision=${decision}  reason=${reason}`);
+  console.log(`[s108-017] artifact: ${reportPath}`);
 
   if (decision === "regressed") {
     process.exit(1);
@@ -212,7 +212,7 @@ async function main(): Promise<void> {
 
 if (import.meta.main) {
   main().catch((err) => {
-    console.error("[s108-015] error:", err);
+    console.error("[s108-017] error:", err);
     process.exit(2);
   });
 }

@@ -1,25 +1,25 @@
 {
   "schema_version": "s108-code-token-tuning.v1",
-  "generated_at": "2026-05-27T07:20:32.810Z",
+  "generated_at": "2026-05-27T08:21:24.788Z",
   "task_id": "S108-004",
   "runs": [
     {
       "run": 1,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.1227
+      "p95_ms": 0.2808
     },
     {
       "run": 2,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.1089
+      "p95_ms": 0.1255
     },
     {
       "run": 3,
       "recall_at_10": 0.7708,
       "mrr": 0.7617,
-      "p95_ms": 0.162
+      "p95_ms": 0.0978
     }
   ],
   "gates": {
@@ -31,7 +31,7 @@
     },
     "search_p95_local_ms": {
       "threshold": 50,
-      "max": 0.162,
+      "max": 0.2808,
       "passed": true
     },
     "bilingual_recall_at_10": {

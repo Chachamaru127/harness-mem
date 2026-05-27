@@ -71,6 +71,24 @@ If the gate decides `neutral`, only `Plans.md` is updated (with the artifact pat
 
 If the gate decides `regressed`, `temporal-graph-selective-import-2026-05-07.md` is updated to flip the affected decision-table rows back to `defer` / `reject`.
 
+## S108-017 fixture refresh note
+
+The 2026-05-27 refresh keeps this policy but strengthens the fixture with three
+diagnostic slices:
+
+- `as_of`: point-in-time query uses a fixed ISO timestamp and ignores future
+  release-gate state.
+- `include_superseded`: historical queries can explicitly retrieve superseded
+  memory while current queries still demote or exclude it.
+- `relation_freshness`: `mem_relations.valid_from`, `valid_to`, and
+  `invalidated_at` are seeded in the fixture so the A/B harness can inspect edge
+  freshness, not only observation recency.
+
+The refreshed A/B artifact is
+`docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-017/ab-report.json`.
+Its decision is `neutral`, so `HARNESS_MEM_TEMPORAL_GRAPH=1` remains
+diagnostic-only.
+
 ## When to run the gate
 
 - Before any release that touches `temporal-graph-signal.ts`, `observation-store.ts` score blender, or `mem_relations` reads.

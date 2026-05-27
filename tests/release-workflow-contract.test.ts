@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const RELEASE_WORKFLOW_PATH = join(process.cwd(), ".github", "workflows", "release.yml");
+const UPLOAD_ARTIFACT_V7_SHA = "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a";
 
 describe("release workflow contract", () => {
   test("release workflow uses the same repository behavior gate as local maintainers", () => {
@@ -17,7 +18,7 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("actions/setup-go@v6");
     expect(workflow).toContain("go-version-file: mcp-server-go/go.mod");
     expect(workflow).toContain("cache-dependency-path: mcp-server-go/go.sum");
-    expect(workflow).toContain("actions/upload-artifact@v7");
+    expect(workflow).toContain(`actions/upload-artifact@${UPLOAD_ARTIFACT_V7_SHA}`);
     expect(workflow).toContain("actions/download-artifact@v7");
     expect(workflow).toContain("softprops/action-gh-release@v3");
     expect(workflow).not.toContain("actions/checkout@v4");
@@ -25,6 +26,7 @@ describe("release workflow contract", () => {
     expect(workflow).not.toContain("actions/cache@v4");
     expect(workflow).not.toContain("actions/setup-go@v5");
     expect(workflow).not.toContain("go-version: '1.22'");
+    expect(workflow).not.toContain("actions/upload-artifact@v7");
     expect(workflow).not.toContain("actions/upload-artifact@v4");
     expect(workflow).not.toContain("actions/download-artifact@v4");
     expect(workflow).not.toContain("actions/upload-artifact@v6");
@@ -67,6 +69,11 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("name: Run repository behavior gate");
     expect(workflow).toContain("npm test");
     expect(workflow).toContain("name: Run memory server typecheck");
+    expect(workflow).toContain("name: WorkGraph release gate (§S125-016)");
+    expect(workflow).toContain("HARNESS_MEM_WORKGRAPH_GATE: enforce");
+    expect(workflow).toContain("npm run benchmark:workgraph:readiness -- --runs 3 --artifact-dir artifacts/release-gates/s125-workgraph-enforce-readiness");
+    expect(workflow).toContain("name: Upload WorkGraph gate artifact");
+    expect(workflow).toContain("name: s125-workgraph-enforce-readiness");
     expect(workflow).toContain("name: Recall Runtime release gate (§S128-013)");
     expect(workflow).toContain("npm run benchmark:recall-runtime");
     expect(workflow).toContain("npm run benchmark:recall-runtime -- --enforce --out artifacts/release-gates/s128-recall-runtime-gate.json");

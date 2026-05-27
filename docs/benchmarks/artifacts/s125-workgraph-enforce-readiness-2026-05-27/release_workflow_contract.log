@@ -1,0 +1,15 @@
+bun test v1.3.10 (30e609e0)
+
+
+tests/release-workflow-contract.test.ts:
+(pass) release workflow contract > release workflow uses the same repository behavior gate as local maintainers [0.77ms]
+
+tests/workgraph-release-gate-script.test.ts:
+(pass) check-workgraph-release-gate.sh (§S125-016) > passes a green manifest [41.01ms]
+(pass) check-workgraph-release-gate.sh (§S125-016) > warn mode does not block a failing manifest [35.78ms]
+(pass) check-workgraph-release-gate.sh (§S125-016) > enforce mode blocks a failing manifest [43.76ms]
+
+ 4 pass
+ 0 fail
+ 80 expect() calls
+Ran 4 tests across 2 files. [151.00ms]

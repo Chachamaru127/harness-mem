@@ -1,21 +1,21 @@
 {
   "schema_version": "s108-developer-domain-manifest.v1",
   "task_id": "S108-005b",
-  "generated_at": "2026-05-27T07:20:32.810Z",
+  "generated_at": "2026-05-27T08:21:24.788Z",
   "manifest_path": "memory-server/src/benchmark/results/ci-run-manifest-latest.json",
   "inputs": {
     "code_token_runs": 3,
-    "temporal_cases": 66
+    "temporal_cases": 69
   },
   "metrics": {
     "dev_workflow_recall_at_10": 0.7708,
     "dev_workflow_recall_mean": 0.7708,
     "bilingual_recall_at_10": 0.9,
-    "temporal_order_score": 0.75,
-    "temporal_answer_hit_at_10": 0.8182,
+    "temporal_order_score": 0.7464,
+    "temporal_answer_hit_at_10": 0.8261,
     "japanese_temporal_slice": 0.7778,
     "current_stale_answer_regressions": 0,
-    "temporal_p95_latency_ms": 7.3805
+    "temporal_p95_latency_ms": 7.1911
   },
   "gates": {
     "dev_workflow": true,

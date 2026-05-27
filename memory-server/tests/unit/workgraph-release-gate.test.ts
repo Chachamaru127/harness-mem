@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { runWorkGraphReleaseGateSmoke } from "../../src/benchmark/workgraph-release-gate";
 
-describe("WorkGraph release gate smoke (§S125-015)", () => {
+describe("WorkGraph release gate smoke (§S125-016)", () => {
   test("emits all WorkGraph MVP metrics at passing thresholds in warn mode", () => {
     const result = runWorkGraphReleaseGateSmoke("warn");
 

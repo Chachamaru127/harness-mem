@@ -11,6 +11,9 @@ type TemporalFocus =
   | "latest"
   | "still"
   | "no_longer"
+  | "as_of"
+  | "include_superseded"
+  | "relation_freshness"
   | "直後"
   | "今も"
   | "以前";
@@ -65,6 +68,9 @@ const REQUIRED_FOCI: TemporalFocus[] = [
   "latest",
   "still",
   "no_longer",
+  "as_of",
+  "include_superseded",
+  "relation_freshness",
   "直後",
   "今も",
   "以前",
@@ -97,7 +103,7 @@ describe("S108-006 temporal fixture expansion", () => {
       const entryIds = new Set(testCase.entries.map((entry) => entry.id));
       expect(entryIds.has(testCase.expected_answer_entry_id)).toBe(true);
       expect(testCase.expected_answer.trim().length).toBeGreaterThan(0);
-      expect(testCase.expected_order.length).toBeGreaterThanOrEqual(3);
+      expect(testCase.expected_order.length).toBeGreaterThanOrEqual(2);
       for (const orderedId of testCase.expected_order) {
         expect(entryIds.has(orderedId)).toBe(true);
       }

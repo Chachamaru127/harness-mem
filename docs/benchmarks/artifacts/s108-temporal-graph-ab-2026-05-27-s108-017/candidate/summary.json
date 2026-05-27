@@ -1,6 +1,6 @@
 {
   "schema_version": "s108-temporal-planner.v1",
-  "generated_at": "2026-05-27T08:21:24.788Z",
+  "generated_at": "2026-05-27T08:41:38.500Z",
   "task_id": "S108-008",
   "fixture": {
     "path": "tests/benchmarks/fixtures/temporal-s108-expanded.json",
@@ -13,7 +13,7 @@
     "answer_hit_at_10": 0.8261,
     "japanese_temporal_slice": 0.7778,
     "current_stale_answer_regressions": 0,
-    "p95_latency_ms": 7.1911
+    "p95_latency_ms": 12.385
   },
   "gates": {
     "temporal_order_score": {
@@ -31,8 +31,8 @@
   },
   "overall_passed": true,
   "artifacts": {
-    "summary_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.json",
-    "case_results_json": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/case-results.json",
-    "summary_md": "docs/benchmarks/artifacts/s108-developer-domain-manifest-2026-05-27/temporal-planner/summary.md"
+    "summary_json": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-017/candidate/summary.json",
+    "case_results_json": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-017/candidate/case-results.json",
+    "summary_md": "docs/benchmarks/artifacts/s108-temporal-graph-ab-2026-05-27-s108-017/candidate/summary.md"
   }
 }

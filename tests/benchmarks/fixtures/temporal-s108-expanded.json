@@ -3374,5 +3374,175 @@
       ],
       "anchor_hint": "Japanese previous query should return immediate predecessor"
     }
+  },
+  {
+    "id": "s108-temp-067",
+    "description": "WorkGraph release gate mode as of a past date. (as_of)",
+    "difficulty": "hard",
+    "domain": "dev-workflow",
+    "source_scenario": "workgraph-release-gate",
+    "temporal_focus": "as_of",
+    "slice": "point_in_time",
+    "query_language": "en",
+    "query": "As of 2024-02-01, which WorkGraph release gate mode was active?",
+    "as_of": "2024-02-01T00:00:00.000Z",
+    "include_superseded": false,
+    "expected_answer": "warn",
+    "expected_answer_entry_id": "s108-workgraph-gate-e1",
+    "expected_order": [
+      "s108-workgraph-gate-e1",
+      "s108-workgraph-gate-e2"
+    ],
+    "entries": [
+      {
+        "id": "s108-workgraph-gate-e1",
+        "timestamp": "2024-01-20T09:00:00.000Z",
+        "valid_from": "2024-01-20T09:00:00.000Z",
+        "valid_to": "2024-05-27T00:00:00.000Z",
+        "content": "As of January, WorkGraph release gate mode is warn. The release workflow records WorkGraph metrics but does not block a release."
+      },
+      {
+        "id": "s108-workgraph-gate-e2",
+        "timestamp": "2024-05-27T00:00:00.000Z",
+        "valid_from": "2024-05-27T00:00:00.000Z",
+        "content": "S125-016 promotes WorkGraph release gate mode to enforce after the readiness pack is green."
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "warn"
+      ],
+      "forbidden_answers": [
+        "enforce"
+      ],
+      "anchor_hint": "Point-in-time query must ignore release-gate updates after as_of"
+    }
+  },
+  {
+    "id": "s108-temp-068",
+    "description": "Superseded WorkGraph bridge is still retrievable when explicitly requested. (include_superseded)",
+    "difficulty": "hard",
+    "domain": "dev-workflow",
+    "source_scenario": "workgraph-bridge-history",
+    "temporal_focus": "include_superseded",
+    "slice": "superseded_history",
+    "query_language": "en",
+    "query": "Include superseded history: before WorkGraph auto-sync, which bridge did sessions use?",
+    "include_superseded": true,
+    "expected_answer": "manual note bridge",
+    "expected_answer_entry_id": "s108-workgraph-bridge-e1",
+    "expected_order": [
+      "s108-workgraph-bridge-e1",
+      "s108-workgraph-bridge-e2"
+    ],
+    "entries": [
+      {
+        "id": "s108-workgraph-bridge-e1",
+        "timestamp": "2024-03-01T10:00:00.000Z",
+        "valid_from": "2024-03-01T10:00:00.000Z",
+        "valid_to": "2024-04-01T10:00:00.000Z",
+        "invalidated_at": "2024-04-01T10:00:00.000Z",
+        "content": "Superseded bridge memory: sessions used the manual note bridge before WorkGraph auto-sync."
+      },
+      {
+        "id": "s108-workgraph-bridge-e2",
+        "timestamp": "2024-04-01T10:00:00.000Z",
+        "valid_from": "2024-04-01T10:00:00.000Z",
+        "content": "Current bridge memory: sessions use WorkGraph auto-sync. This supersedes the manual note bridge.",
+        "links": [
+          {
+            "relation": "supersedes",
+            "to_entry_id": "s108-workgraph-bridge-e1",
+            "event_time": "2024-04-01T10:00:00.000Z",
+            "valid_from": "2024-04-01T10:00:00.000Z"
+          }
+        ],
+        "relations": [
+          {
+            "kind": "supersedes",
+            "src": "workgraph_auto_sync",
+            "dst": "manual_note_bridge",
+            "strength": 1,
+            "valid_from": "2024-04-01T10:00:00.000Z"
+          }
+        ]
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "manual note bridge"
+      ],
+      "forbidden_answers": [
+        "WorkGraph auto-sync"
+      ],
+      "anchor_hint": "Explicit superseded-history query should keep historical bridge retrievable"
+    }
+  },
+  {
+    "id": "s108-temp-069",
+    "description": "Fresh relation edge should beat expired relation edge. (relation freshness)",
+    "difficulty": "hard",
+    "domain": "dev-workflow",
+    "source_scenario": "workgraph-relation-freshness",
+    "temporal_focus": "relation_freshness",
+    "slice": "relation_freshness",
+    "query_language": "en",
+    "query": "Which WorkGraph rollout dependency relation is still fresh: legacy checklist or Plans.md dry-run readiness pack?",
+    "as_of": "2026-05-27T00:00:00.000Z",
+    "include_superseded": false,
+    "expected_answer": "Plans.md dry-run readiness pack",
+    "expected_answer_entry_id": "s108-workgraph-relation-e2",
+    "expected_order": [
+      "s108-workgraph-relation-e1",
+      "s108-workgraph-relation-e2"
+    ],
+    "entries": [
+      {
+        "id": "s108-workgraph-relation-e1",
+        "timestamp": "2024-01-05T09:00:00.000Z",
+        "valid_from": "2024-01-05T09:00:00.000Z",
+        "valid_to": "2024-02-01T09:00:00.000Z",
+        "invalidated_at": "2024-02-01T09:00:00.000Z",
+        "content": "Stale relation: WorkGraph rollout dependency pointed at the legacy checklist.",
+        "relations": [
+          {
+            "kind": "depends_on",
+            "src": "workgraph_rollout",
+            "dst": "legacy_checklist",
+            "strength": 1,
+            "valid_from": "2024-01-05T09:00:00.000Z",
+            "valid_to": "2024-02-01T09:00:00.000Z",
+            "invalidated_at": "2024-02-01T09:00:00.000Z"
+          }
+        ]
+      },
+      {
+        "id": "s108-workgraph-relation-e2",
+        "timestamp": "2024-05-20T09:00:00.000Z",
+        "valid_from": "2024-05-20T09:00:00.000Z",
+        "content": "Fresh relation: WorkGraph rollout dependency points at the Plans.md dry-run readiness pack.",
+        "relations": [
+          {
+            "kind": "depends_on",
+            "src": "workgraph_rollout",
+            "dst": "plans_md_dry_run_readiness_pack",
+            "strength": 1,
+            "valid_from": "2024-05-20T09:00:00.000Z"
+          }
+        ]
+      }
+    ],
+    "evaluation": {
+      "answer_type": "span",
+      "must_contain": [
+        "Plans.md dry-run readiness pack"
+      ],
+      "forbidden_answers": [
+        "legacy checklist"
+      ],
+      "anchor_hint": "Relation freshness should use valid_from/valid_to/invalidated_at on mem_relations"
+    }
   }
 ]

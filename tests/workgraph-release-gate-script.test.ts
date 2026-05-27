@@ -48,7 +48,7 @@ function writeManifest(path: string, passed: boolean): void {
   );
 }
 
-describe("check-workgraph-release-gate.sh (§S125-015)", () => {
+describe("check-workgraph-release-gate.sh (§S125-016)", () => {
   test("passes a green manifest", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "hmem-workgraph-gate-pass-"));
     try {

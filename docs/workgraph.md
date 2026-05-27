@@ -429,6 +429,8 @@ Required test families:
 Release posture:
 
 - The first release with WorkGraph metrics may warn instead of block.
-- After two stable releases, parser/ready/claim regressions can become blocking.
+- S125-016 promotes the release workflow to `HARNESS_MEM_WORKGRAPH_GATE=enforce`
+  after the readiness pack proves three green enforce smokes, real `Plans.md`
+  dry-run import fidelity, and the release workflow contract.
 - Any regression that changes core tool visibility, auto-edits `Plans.md`, or
   bypasses human approval is a stop-ship issue.
