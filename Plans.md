@@ -275,6 +275,54 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 
 ---
 
+## §134 Cursor Hook Spool Ingest Gap Investigation — cc:完了 [local]
+
+策定日: 2026-05-28
+分類: Cursor ingest / dogfood incident investigation — owner は `harness-mem`。§132 の Cursor Hooks capture が local spool には記録されるが、検索可能な `mem_events` / `mem_observations` に反映されない現象を対象にする。
+仕様正本: `Spec.md` の **Cursor Conversation Capture**。保存失敗は fail-open だが、daemon ingest が spool offset を進める場合は DB 反映または明示的な skip reason が観測できること。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S134-001 | **root cause evidence** `[tdd:skip:investigation]` — `~/.harness-mem/adapters/cursor/events.jsonl`、`mem_ingest_offsets`、`mem_events` / `mem_observations`、ingest code path を突き合わせる | 完了: 対象 session `dd9d71c4-81be-4cf6-98ba-e7c02b0adc4b` は spool に 248 行あるが DB は 0 行。対象 `beforeSubmitPrompt` を rollback transaction で再実行すると parser は `user_prompt` を返す一方、`recordEvent` が `write embedding is unavailable: local ONNX model ruri-v3-30m is still warming up` で `ok:false`。`ingestCursorHooksEvents()` は `result.ok` を count しないだけで `parsedChunk.consumedBytes` ぶん offset を進めるため、embedding warmup 中の non-checkpoint hook events が DB 未反映のまま消費済みになる | §132, §133 | cc:完了 [local] |
+
+---
+
+## §135 Cursor Hook Ingest Retry Offset Fix — cc:完了 [local]
+
+策定日: 2026-05-28
+分類: Cursor ingest / reliability fix — owner は `harness-mem`。§134 で特定した recordEvent 失敗時の offset 過進行を、既存 Cursor ingest contract を壊さず最小差分で修正する。
+仕様正本: `Spec.md` の **Cursor Conversation Capture**。保存失敗は fail-open だが、DB 未反映の event line は消費済みにせず次回 ingest で再試行できること。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S135-001 | **Cursor hook record failure retry offset** `[tdd:required]` — `recordEvent()` 失敗時に失敗行の `lineOffset` で offset を止め、summary に失敗理由を返す | 完了: 失敗前のイベントは記録済みとして offset 前進、失敗イベント以降は次回再試行。summary / meta に `hooks_events_failed`, `retry_offset`, `last_record_error` を追加。Cursor ingest unit/integration と typecheck が PASS | §134 | cc:完了 [local] |
+
+---
+
+## §136 Cursor Hook Ingest Bounded Backfill — cc:完了 [local]
+
+策定日: 2026-05-28
+分類: Cursor ingest / runtime stability — owner は `harness-mem`。§135 検証中に、過去 session offset へ巻き戻した場合に 1 request で大量 hook events を同期処理し、daemon main thread が SQLite/vector writes で `/health/ready` を長時間返せなくなる現象を対象にする。
+仕様正本: `Spec.md` の **Cursor Conversation Capture**。保存失敗は fail-open、かつ backfill は daemon readiness を長時間奪わない bounded work として扱う。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S136-001 | **bounded cursor hook ingest batch** `[tdd:required]` — Cursor hook ingest を 1 run あたり bounded 件数に制限し、未処理分は `retry_offset` から次回再開する | 完了: 1回50件まで処理し、残りは `hooks_events_deferred` / `retry_offset` として返す。対象 session backfill 実測で ingest 51.8ms、ready 0.8ms、offset は50件後に前進。focused integration test PASS | §135 | cc:完了 [local] |
+
+---
+
+## §137 Checkpoint Record Main-thread Stall — cc:完了 [local]
+
+策定日: 2026-05-28
+分類: checkpoint record / runtime stability — owner は `harness-mem`。Cursor ingest 修正検証中に `harness_mem_record_checkpoint` が daemon main thread を長時間塞ぎ、`/health/ready` が timeout する現象を対象にする。
+仕様正本: `Spec.md` の local-first memory write / bounded daemon responsiveness。checkpoint write は fail-open ではなく durability を返すが、derived materialization / heavy indexing は request path と daemon main thread を塞がないこと。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S137-001 | **checkpoint stall root cause and fix** `[tdd:required]` — `recordCheckpointQueued` / child offload / materialization scheduling のどこで main thread が塞がるか runtime log で特定し、証拠に基づいて最小修正する | 完了: HTTP と MCP の両経路で runtime log を取得し、`recordCheckpointQueued` は child offload、checkpoint child は 0.8-1.0s で exit 0、derived materialization は child process で 95-161ms、直後の `/health/ready` は 0.2-7.5ms。stall は再現せず、旧 unmanaged daemon 残存による環境要因と判断。追加コード修正は不要、instrumentation は削除済み | §127-005, §136 | cc:完了 [local] |
+
+---
+
 ## §78 World-class Retrieval & Memory Architecture — cc:WIP (Phase A–E 全タスクが landed、残は follow-up: §78-B02b tests / §78-C02b NLP upgrade / §78-D01b tests / §78-E02b branch merge workflow)
 
 策定日: 2026-04-13

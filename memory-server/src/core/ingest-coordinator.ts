@@ -81,6 +81,8 @@ function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
 
+const MAX_CURSOR_HOOK_EVENTS_PER_INGEST = 50;
+
 // ---------------------------------------------------------------------------
 // ファイルリスト系ヘルパー（core から移動）
 // ---------------------------------------------------------------------------
@@ -328,14 +330,20 @@ function mergeOpencodeIngestSummary(target: OpencodeIngestSummary, partial: Open
 
 interface CursorIngestSummary {
   eventsImported: number;
+  eventsFailed: number;
+  eventsDeferred: number;
   filesScanned: number;
   filesSkippedBackfill: number;
   hooksEventsImported: number;
+  retryOffset?: number;
+  lastRecordError?: string;
 }
 
 function emptyCursorIngestSummary(): CursorIngestSummary {
   return {
     eventsImported: 0,
+    eventsFailed: 0,
+    eventsDeferred: 0,
     filesScanned: 0,
     filesSkippedBackfill: 0,
     hooksEventsImported: 0,
@@ -344,9 +352,17 @@ function emptyCursorIngestSummary(): CursorIngestSummary {
 
 function mergeCursorIngestSummary(target: CursorIngestSummary, partial: CursorIngestSummary): void {
   target.eventsImported += partial.eventsImported;
+  target.eventsFailed += partial.eventsFailed;
+  target.eventsDeferred += partial.eventsDeferred;
   target.filesScanned += partial.filesScanned;
   target.filesSkippedBackfill += partial.filesSkippedBackfill;
   target.hooksEventsImported += partial.hooksEventsImported;
+  if (partial.retryOffset !== undefined) {
+    target.retryOffset = partial.retryOffset;
+  }
+  if (partial.lastRecordError) {
+    target.lastRecordError = partial.lastRecordError;
+  }
 }
 
 interface AntigravityIngestSummary {
@@ -1643,7 +1659,15 @@ export class IngestCoordinator {
     });
 
     let imported = 0;
+    let nextOffset = offset + parsedChunk.consumedBytes;
+    let processed = 0;
     for (const entry of parsedChunk.events) {
+      if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST) {
+        nextOffset = Math.max(offset, entry.lineOffset);
+        summary.eventsDeferred = parsedChunk.events.length - processed;
+        summary.retryOffset = nextOffset;
+        break;
+      }
       const result = this.deps.recordEvent(
         {
           platform: "cursor",
@@ -1658,6 +1682,14 @@ export class IngestCoordinator {
         },
         { allowQueue: false }
       );
+      if (!result.ok) {
+        nextOffset = Math.max(offset, entry.lineOffset);
+        summary.eventsFailed += 1;
+        summary.retryOffset = nextOffset;
+        summary.lastRecordError = result.error || "recordEvent failed";
+        break;
+      }
+      processed += 1;
       const deduped = Boolean((result.meta as Record<string, unknown>)?.deduped);
       if (result.ok && !deduped) {
         imported += 1;
@@ -1667,8 +1699,8 @@ export class IngestCoordinator {
     summary.eventsImported += imported;
     summary.hooksEventsImported += imported;
 
-    if (parsedChunk.consumedBytes > 0) {
-      this.updateIngestOffset(sourceKey, offset + parsedChunk.consumedBytes);
+    if (nextOffset > offset) {
+      this.updateIngestOffset(sourceKey, nextOffset);
     }
 
     return summary;
@@ -1685,6 +1717,8 @@ export class IngestCoordinator {
             files_scanned: 0,
             files_skipped_backfill: 0,
             hooks_events_imported: 0,
+            hooks_events_failed: 0,
+            hooks_events_deferred: 0,
           },
         ],
         {},
@@ -1702,10 +1736,20 @@ export class IngestCoordinator {
           files_scanned: summary.filesScanned,
           files_skipped_backfill: summary.filesSkippedBackfill,
           hooks_events_imported: summary.hooksEventsImported,
+          hooks_events_failed: summary.eventsFailed,
+          hooks_events_deferred: summary.eventsDeferred,
+          retry_offset: summary.retryOffset,
+          last_record_error: summary.lastRecordError,
         },
       ],
       {},
-      { ingest_mode: "cursor_spool_v1" }
+      {
+        ingest_mode: "cursor_spool_v1",
+        hooks_events_failed: summary.eventsFailed,
+        hooks_events_deferred: summary.eventsDeferred,
+        retry_offset: summary.retryOffset,
+        last_record_error: summary.lastRecordError,
+      }
     );
   }
 
