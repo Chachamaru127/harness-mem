@@ -1,9 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
 import { appendFileSync, mkdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { mkdtempSync } from "node:fs";
+import { IngestCoordinator } from "../../src/core/ingest-coordinator";
 import { HarnessMemCore, type Config } from "../../src/core/harness-mem-core";
+import type { ApiResponse, EventEnvelope } from "../../src/core/types";
 import { startHarnessMemServer } from "../../src/server";
 
 function createRuntime(name: string): {
@@ -53,6 +56,258 @@ function createRuntime(name: string): {
 }
 
 describe("cursor hooks ingest integration", () => {
+  test("stops offset at failed recordEvent line and retries it on next ingest", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-hooks-retry-"));
+    const cursorEventsPath = join(dir, "cursor", "events.jsonl");
+    mkdirSync(join(dir, "cursor"), { recursive: true });
+
+    const firstLine = JSON.stringify({
+      hook_event_name: "beforeSubmitPrompt",
+      conversation_id: "cursor-retry-1",
+      workspace_roots: [join(dir, "project")],
+      prompt: "cursor hook retry first prompt",
+      timestamp: "2026-02-16T10:00:00.000Z",
+    });
+    const secondPrompt = "cursor hook retry second prompt";
+    const secondLine = JSON.stringify({
+      hook_event_name: "beforeSubmitPrompt",
+      conversation_id: "cursor-retry-1",
+      workspace_roots: [join(dir, "project")],
+      prompt: secondPrompt,
+      timestamp: "2026-02-16T10:00:01.000Z",
+    });
+    const fileContent = `${firstLine}\n${secondLine}\n`;
+    writeFileSync(cursorEventsPath, fileContent, "utf8");
+
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE mem_ingest_offsets(
+        source_key TEXT PRIMARY KEY,
+        offset INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    const config: Config = {
+      dbPath: join(dir, "harness-mem.db"),
+      bindHost: "127.0.0.1",
+      bindPort: 0,
+      vectorDimension: 64,
+      captureEnabled: true,
+      retrievalEnabled: true,
+      injectionEnabled: true,
+      codexHistoryEnabled: false,
+      codexProjectRoot: dir,
+      codexSessionsRoot: join(dir, "codex-sessions"),
+      codexIngestIntervalMs: 3600000,
+      codexBackfillHours: 24,
+      cursorIngestEnabled: true,
+      cursorEventsPath,
+      cursorBackfillHours: 24,
+    };
+
+    const okResponse = (): ApiResponse => ({
+      ok: true,
+      source: "core",
+      items: [],
+      meta: {
+        count: 0,
+        latency_ms: 0,
+        sla_latency_ms: 200,
+        filters: {},
+        ranking: "test",
+      },
+    });
+    const failResponse = (): ApiResponse => ({
+      ok: false,
+      source: "core",
+      items: [],
+      meta: {
+        count: 0,
+        latency_ms: 0,
+        sla_latency_ms: 200,
+        filters: {},
+        ranking: "test",
+      },
+      error: "write embedding is unavailable: local ONNX model is still warming up",
+    });
+
+    const recorded: EventEnvelope[] = [];
+    let failSecondPrompt = true;
+    const coordinator = new IngestCoordinator({
+      db,
+      config,
+      recordEvent: (event) => {
+        recorded.push(event);
+        if (failSecondPrompt && event.payload?.prompt === secondPrompt) {
+          return failResponse();
+        }
+        return okResponse();
+      },
+      recordEventQueued: async () => okResponse(),
+      upsertSessionSummary: () => {},
+      heartbeatPath: join(dir, "heartbeat.json"),
+      isShuttingDown: () => false,
+      processRetryQueue: () => {},
+      runConsolidation: async () => {},
+    });
+
+    try {
+      const failedLineOffset = Buffer.byteLength(`${firstLine}\n`, "utf8");
+      const firstIngest = coordinator.ingestCursorHistory();
+      expect(firstIngest.ok).toBe(true);
+      expect(firstIngest.items[0]).toMatchObject({
+        events_imported: 1,
+        hooks_events_imported: 1,
+        hooks_events_failed: 1,
+        retry_offset: failedLineOffset,
+      });
+      expect((firstIngest.items[0] as { last_record_error?: string }).last_record_error).toContain(
+        "write embedding is unavailable"
+      );
+      expect(recorded.map((event) => event.payload?.prompt)).toEqual([
+        "cursor hook retry first prompt",
+        secondPrompt,
+      ]);
+
+      const offsetAfterFailure = db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(`cursor_hooks:${cursorEventsPath}`) as { offset: number } | null;
+      expect(offsetAfterFailure?.offset).toBe(failedLineOffset);
+
+      recorded.length = 0;
+      failSecondPrompt = false;
+      const secondIngest = coordinator.ingestCursorHistory();
+      expect(secondIngest.ok).toBe(true);
+      expect(secondIngest.items[0]).toMatchObject({
+        events_imported: 1,
+        hooks_events_imported: 1,
+        hooks_events_failed: 0,
+      });
+      expect(recorded.map((event) => event.payload?.prompt)).toEqual([secondPrompt]);
+
+      const offsetAfterRetry = db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(`cursor_hooks:${cursorEventsPath}`) as { offset: number } | null;
+      expect(offsetAfterRetry?.offset).toBe(Buffer.byteLength(fileContent, "utf8"));
+    } finally {
+      db.close(false);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("bounds cursor hook ingest work per run and resumes from deferred offset", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-cursor-hooks-bounded-"));
+    const cursorEventsPath = join(dir, "cursor", "events.jsonl");
+    mkdirSync(join(dir, "cursor"), { recursive: true });
+
+    const lines = Array.from({ length: 55 }, (_, index) =>
+      JSON.stringify({
+        hook_event_name: "beforeSubmitPrompt",
+        conversation_id: "cursor-bounded-1",
+        workspace_roots: [join(dir, "project")],
+        prompt: `cursor bounded prompt ${index}`,
+        timestamp: `2026-02-16T10:00:${String(index).padStart(2, "0")}.000Z`,
+      })
+    );
+    const fileContent = `${lines.join("\n")}\n`;
+    writeFileSync(cursorEventsPath, fileContent, "utf8");
+
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE mem_ingest_offsets(
+        source_key TEXT PRIMARY KEY,
+        offset INTEGER NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    const config: Config = {
+      dbPath: join(dir, "harness-mem.db"),
+      bindHost: "127.0.0.1",
+      bindPort: 0,
+      vectorDimension: 64,
+      captureEnabled: true,
+      retrievalEnabled: true,
+      injectionEnabled: true,
+      codexHistoryEnabled: false,
+      codexProjectRoot: dir,
+      codexSessionsRoot: join(dir, "codex-sessions"),
+      codexIngestIntervalMs: 3600000,
+      codexBackfillHours: 24,
+      cursorIngestEnabled: true,
+      cursorEventsPath,
+      cursorBackfillHours: 24,
+    };
+
+    const okResponse = (): ApiResponse => ({
+      ok: true,
+      source: "core",
+      items: [],
+      meta: {
+        count: 0,
+        latency_ms: 0,
+        sla_latency_ms: 200,
+        filters: {},
+        ranking: "test",
+      },
+    });
+
+    const recorded: EventEnvelope[] = [];
+    const coordinator = new IngestCoordinator({
+      db,
+      config,
+      recordEvent: (event) => {
+        recorded.push(event);
+        return okResponse();
+      },
+      recordEventQueued: async () => okResponse(),
+      upsertSessionSummary: () => {},
+      heartbeatPath: join(dir, "heartbeat.json"),
+      isShuttingDown: () => false,
+      processRetryQueue: () => {},
+      runConsolidation: async () => {},
+    });
+
+    try {
+      const deferredOffset = Buffer.byteLength(`${lines.slice(0, 50).join("\n")}\n`, "utf8");
+      const firstIngest = coordinator.ingestCursorHistory();
+      expect(firstIngest.ok).toBe(true);
+      expect(firstIngest.items[0]).toMatchObject({
+        events_imported: 50,
+        hooks_events_imported: 50,
+        hooks_events_failed: 0,
+        hooks_events_deferred: 5,
+        retry_offset: deferredOffset,
+      });
+      expect(recorded).toHaveLength(50);
+
+      const offsetAfterFirst = db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(`cursor_hooks:${cursorEventsPath}`) as { offset: number } | null;
+      expect(offsetAfterFirst?.offset).toBe(deferredOffset);
+
+      recorded.length = 0;
+      const secondIngest = coordinator.ingestCursorHistory();
+      expect(secondIngest.ok).toBe(true);
+      expect(secondIngest.items[0]).toMatchObject({
+        events_imported: 5,
+        hooks_events_imported: 5,
+        hooks_events_failed: 0,
+        hooks_events_deferred: 0,
+      });
+      expect(recorded).toHaveLength(5);
+
+      const offsetAfterSecond = db
+        .query(`SELECT offset FROM mem_ingest_offsets WHERE source_key = ?`)
+        .get(`cursor_hooks:${cursorEventsPath}`) as { offset: number } | null;
+      expect(offsetAfterSecond?.offset).toBe(Buffer.byteLength(fileContent, "utf8"));
+    } finally {
+      db.close(false);
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("skips old backfill, ingests delta, separates projects, and search finds prompt + assistant", async () => {
     const runtime = createRuntime("hooks");
     const { baseUrl, cursorEventsPath } = runtime;
