@@ -3,7 +3,7 @@
 Status: active SSOT
 Last updated: 2026-05-28
 Owner: harness-mem
-Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration
+Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping
 
 ## Purpose
 
@@ -382,6 +382,59 @@ token redaction, multi-session behavior, and rollback. This gate was promoted
 for the v0.25.0 line; later README changes must still keep token, rollback,
 Hermes opt-in, and existing stdio preservation visible.
 
+## Benchmark And Competitive Evaluation
+
+Harness-mem maintains an internal benchmark to compare against competitors and
+track retrieval quality. The following product contracts govern how benchmark
+results may be used.
+
+### Fairness (must)
+
+- Local reproduced measurements MUST use the same dataset, scorer, and manifest
+  for every competitor measured in a reproduced run.
+- Published (reference-only) competitor values MUST NOT appear in reproduced
+  ranking tables.
+- Live external competitor measurement requires explicit opt-in and valid
+  credentials; it is not the default.
+
+### Competitor measurement tier (must)
+
+- **Reproduced**: harness-mem only (default local measurement).
+- **Published (reference-only)**: Agentmemory, Supermemory, Claude-mem, Mem0,
+  MemPalace — reference numbers from external sources; not mixed into reproduced
+  rankings unless explicitly labeled as published reference.
+
+### Self-seeded benchmark non-superiority (must)
+
+- harness-mem seeds and retrieves its own benchmark cases in the internal
+  benchmark.
+- Perfect scores on self-seeded internal cases confirm implementation health
+  only; they MUST NOT be cited as proof of superiority over competitors in
+  README or external materials.
+
+### Two-tier scoring (should)
+
+- **Accurate Retrieval (AR)** and **Conflict Resolution (CR)**: substring match
+  scoring is permitted for baseline checks.
+- Hard cases SHOULD be supplemented with LLM judge grounding scores (OpenRouter,
+  budget-capped) as a separate field; do not conflate string-match recall with
+  end-to-end memory capability (see LoCoMo-Plus critique that exact-match scoring
+  mixes memory with prompt adaptation).
+
+### Standard capability vocabulary (must)
+
+Benchmark cases and reports SHOULD map to MemoryAgentBench's four capabilities:
+
+- **Accurate Retrieval (AR)**: find the correct fact or memory fragment.
+- **Test-Time Learning (TTL)**: apply a recent correction or instruction in
+  subsequent queries.
+- **Long-Range Understanding (LRU)**: connect facts across distant turns or
+  sessions.
+- **Conflict Resolution (CR)**: prefer newer facts over superseded ones.
+
+Companion implementation plan: `Plans.md` §138 Internal Memory Benchmark /
+§139 Benchmark Competency Mapping.
+
 ## Non-Goals
 
 - Do not turn harness-mem into a managed memory service by default.
@@ -394,6 +447,10 @@ Hermes opt-in, and existing stdio preservation visible.
   work context.
 - Do not use public README copy to claim unmeasured quality or unsupported
   clients.
+- Do not present competitor marketing or published benchmark numbers as locally
+  reproduced measurements.
+- Do not transcribe internal self-seeded perfect scores into README or external
+  materials as superiority claims over competitors.
 
 ## Regression Gates
 
@@ -411,6 +468,8 @@ The following are stop-ship regressions:
 - OpenTelemetry leaks raw content or secrets.
 - `Plans.md` is edited automatically by import/sync without an explicit write
   action intended for the plan itself.
+- Published (reference-only) competitor values appear in reproduced ranking
+  tables or dashboards without explicit separation.
 
 ## Open Decisions
 
@@ -430,6 +489,8 @@ The following are stop-ship regressions:
 - `docs/workgraph.md`
 - `docs/inject-envelope.md`
 - `docs/readme-claims.md`
+- `Plans.md` §138 Internal Memory Benchmark
+- `Plans.md` §139 Benchmark Competency Mapping
 - `docs/adr/ADR-002-commercial-packaging.md`
 - `docs/adr-001-auto-memory-coexistence.md`
 - BEADS / agentmemory research is incorporated through `docs/workgraph.md` and

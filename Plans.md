@@ -323,6 +323,47 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 
 ---
 
+## §138 Internal Memory Benchmark Dashboard — cc:完了 [local]
+
+策定日: 2026-05-28
+背景: 競合比較を主観ではなく「同一 dataset / 同一 scorer / 同一 manifest」で行う内部ベンチが必要。公開互換 retrieval と、日本語・日英混在 coding-memory を分離して測る。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S138-001 | **benchmark schema + fairness manifest** `[tdd:required]` — `benchmarks/internal-memory/` に schema、competitors manifest、report contract を追加する | `competitors.manifest.json` が harness-mem / Agentmemory / Supermemory / Claude-mem を reproduced 対象として列挙し、published 値と分離ルールを明記。schema unit test PASS | - | cc:完了 [local] |
+| S138-002 | **ja + mixed coding-memory fixtures** `[tdd:required]` — 日本語・混在・分離・再開カテゴリの seed dataset を追加する | `coding-memory-ja-mixed-v1.jsonl` と `public-retrieval-v1.jsonl` が loader で検証され、必須カテゴリを含む | S138-001 | cc:完了 [local] |
+| S138-003 | **harness-mem adapter + scorers** `[tdd:required]` — in-process harness adapter と Recall/MRR/nDCG scorer smoke を実装する | `bun test benchmarks/internal-memory/tests/harness-adapter.test.ts` と scorers test PASS | S138-002 | cc:完了 [local] |
+| S138-004 | **competitor adapters (Agentmemory / Supermemory / Claude-mem)** `[tdd:required]` — credential 未設定時は `skipped_missing_credentials` を記録する adapter を追加する | skip contract test PASS。runner smoke で 4 competitor が raw-results に出力される | S138-003 | cc:完了 [local] |
+| S138-005 | **dashboard pack generation** `[tdd:required]` — summary JSON / scorecard Markdown / dashboard HTML / reproducibility manifest を生成する | `npm run benchmark:internal-memory -- --limit 6` で `reports/latest/*` が生成され runner smoke test PASS | S138-004 | cc:完了 [local] |
+| S138-006 | **OpenRouter budget judge wiring** `[tdd:required]` — `OPENROUTER_API_KEY` + `INTERNAL_BENCH_BUDGET_USD=20` で LLM grounding judge を runner に接続し、reproducibility に spend を記録する | `--use-openrouter` で judge 実行、cap 超過時は停止、openrouter-budget unit test PASS | S138-005 | cc:完了 [local] |
+| S138-007 | **competitor=published 切替（reproduced は harness-mem のみ）** `[tdd:required]` — Agentmemory / Supermemory / Claude-mem を `competitors.manifest.json` で `measurement: published` に降格し、`import-published.ts` に published 値枠（出典・null=reference-only）を用意。runner 既定 reproduced 対象を harness-mem のみにし、外部実測は `--competitors <id>` の opt-in に降格。scorecard / dashboard で published と reproduced を別表に分離 | DoD(Yes/No): (1) manifest の `measurement: reproduced` が `["harness-mem"]` のみ＝Yes、(2) agentmemory/supermemory/claude-mem/mem0/mempalace が `published`＝Yes、(3) `import-published.ts` が 5 競合の published frame を持ち数値不明は null + reference-only note＝Yes、(4) scorecard.md に "Reproduced" と "Published (reference-only)" の 2 表が出て published が reproduced ランキングに混ざらない＝Yes、(5) `bun test benchmarks/internal-memory/tests/` PASS（schema test を新契約に更新）＝Yes | S138-006 | cc:完了 [local] |
+| S138-008 | **harness-mem 再ベースライン（OpenRouter judge）** `[tdd:required]` — `unset OPENROUTER_API_KEY; INTERNAL_BENCH_BUDGET_USD=20 ... --use-openrouter --env-file <.env> --competitors harness-mem` で全16ケースを実データ再測し `reports/latest/*` を再生成、OpenRouter 消費を reproducibility に記録。dashboard-pack test は temp dir へ書くよう最小修正し共有 `reports/latest/` を汚さない | DoD(Yes/No): (1) reproduced harness-mem が 16 ケース実行 status=completed＝Yes、(2) 全 5 layer recall@10=1.000 / P95<10ms＝Yes（public/ja/mixed/isolation/resume いずれも R@10=1.000、P95 ≤5.9ms）、(3) OpenRouter spent ≤ $20（実測 $0.000154 / 16 req）＝Yes、(4) scorecard claim_safety に「harness-mem は自分で種を入れて引く＝実装動作確認であり対外優位の証明ではない」明記＝Yes、(5) dashboard-pack test が共有 reports を上書きしない（temp dir）＝Yes | S138-007 | cc:完了 [local] |
+
+### Spec delta（§138 follow-up）
+
+`Spec.md` 本体への変更は不要（Spec skip reason: 内部ベンチの fairness / measurement 区分は product contract ではなく benchmark 運用ルールで、`Spec.md` の Non-Goals「public README copy で未測定の品質を主張しない」を強化する方向であり矛盾しない）。本 follow-up は spec を緩めず、(a) reproduced は harness-mem のみ（自己シード構造のため対外優位の証明にはならない）、(b) 競合は published(reference-only) として別表化し reproduced ランキングに混ぜない、という公平性ルールを `competitors.manifest.json` の `fairness_rules` と scorecard `claim_safety` に明文化した。README 等への数値転記は引き続き禁止（claim_safety 維持）。
+
+---
+
+## §139 Benchmark Competency Mapping And Two-Tier Scoring — cc:完了
+
+策定日: 2026-05-28
+背景: 案A 確定 — MemoryAgentBench の4能力（Accurate Retrieval / Test-Time Learning / Long-Range Understanding / Conflict Resolution）を標準語彙として採用し、内部ベンチを二段採点（substring + LLM judge）へ拡張する。§138 で fairness / competitor=published / 自己シード非優位を運用ルール化したが、§139 で Spec.md product contract へ昇格済み。本セクションは dataset / scorer / README マッピングの実装タスク。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S139-001 | **MemoryAgentBench 4能力マッピング定義** `[tdd:required]` — 既存 layer（public / ja_coding / mixed_coding / isolation / resume）を AR / TTL / LRU / CR に対応づけ、未カバー能力を特定する | DoD(Yes/No): (1) マッピング表が `benchmarks/internal-memory/README.md` に追加される＝Yes、(2) 未カバー能力（CR / TTL 等）が列挙される＝Yes | S138-008 | cc:完了 |
+| S139-002 | **矛盾解決(CR)ケース追加** `[tdd:required]` — 古い事実→新しい事実の上書き、FactConsolidation 風ケースを `coding-memory-ja-mixed-v1.jsonl` に追加する | DoD(Yes/No): (1) CR カテゴリ ≥2 件＝Yes、(2) loader/schema test PASS＝Yes | S139-001 | cc:完了 |
+| S139-003 | **テスト時学習(TTL)ケース追加** `[tdd:required]` — 直前の訂正・指示を後続クエリで反映できるかを測るケースを追加する | DoD(Yes/No): (1) TTL カテゴリ ≥2 件＝Yes、(2) schema test PASS＝Yes | S139-001 | cc:完了 |
+| S139-004 | **採点二段構え化** `[tdd:required]` — AR/CR は substring 維持、難問は LLM judge スコアを別フィールドで記録し `contentRecallFallback` 依存度を下げる | DoD(Yes/No): (1) scorer が substring と `llm_grounding` を分離出力＝Yes、(2) scorers test PASS＝Yes | S139-002, S139-003 | cc:完了 |
+| S139-005 | **調査トレンド証跡** `[tdd:skip:docs-only]` — MemoryAgentBench / LongMemEval-V2 / LoCoMo-Plus / agentmemory の出典と採用判断を `docs/benchmarks/` に1枚まとめる | DoD(Yes/No): (1) 参照 md が存在する＝Yes、(2) 出典リンクが有効＝Yes | S139-001 | cc:完了 |
+
+### Spec delta（§139）
+
+§139 は `Spec.md` に `Benchmark And Competitive Evaluation` を新設し product contract 化した（competitor=published、自己シード非優位、二段採点、MemoryAgentBench 4能力語彙）。`Non-Goals` に published 値の対外転記禁止と自己シード満点の優位主張禁止を追記。`Regression Gates` に published 値が reproduced ランキングへ混入した場合の stop-ship を追加。
+
+---
+
 ## §78 World-class Retrieval & Memory Architecture — cc:WIP (Phase A–E 全タスクが landed、残は follow-up: §78-B02b tests / §78-C02b NLP upgrade / §78-D01b tests / §78-E02b branch merge workflow)
 
 策定日: 2026-04-13
