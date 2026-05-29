@@ -72,6 +72,16 @@ bun run benchmark:internal-memory:dashboard
 - `datasets/coding-memory-ja-mixed-v1.jsonl` — 日本語・混在・分離・再開
 - `datasets/public-retrieval-v1.jsonl` — 英語中心の公開互換サブセット
 - `datasets/longmemeval-s-manifest.json` — 外部データ参照用マニフェスト（fixture のみ）
+- `datasets/coding-memory-real-ja-mixed-v1.jsonl` — 実データ由来パイロット（§140、PII マスク済み）
+
+## Real-data pipeline (§140)
+
+```bash
+bun run benchmark:internal-memory:real-data-pipeline
+bun run benchmark:internal-memory:pii-test
+```
+
+See `docs/benchmarks/real-data-pipeline.md`.
 
 ## MemoryAgentBench 4 能力マッピング（§139）
 

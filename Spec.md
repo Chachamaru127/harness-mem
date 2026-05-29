@@ -3,7 +3,7 @@
 Status: active SSOT
 Last updated: 2026-05-28
 Owner: harness-mem
-Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping
+Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot
 
 ## Purpose
 
@@ -433,7 +433,20 @@ Benchmark cases and reports SHOULD map to MemoryAgentBench's four capabilities:
 - **Conflict Resolution (CR)**: prefer newer facts over superseded ones.
 
 Companion implementation plan: `Plans.md` §138 Internal Memory Benchmark /
-§139 Benchmark Competency Mapping.
+§139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot.
+
+### Real-Data Benchmark (must)
+
+When conversation history is used to build benchmark cases:
+
+- PII MUST be irreversibly masked (consistent token replacement) before LLM
+  generation, storage, or commit. Mapping tables MUST NOT be persisted.
+- Generated cases MUST pass a leakage filter (questions answerable without
+  retrieval context are discarded).
+- Japanese and mixed-language hard cases MUST use semantic scoring (LLM judge
+  and/or morphological normalization), not raw substring match alone.
+- Real-data self-seeded results MUST follow the non-superiority rule above;
+  live competitor comparison requires the same masked dataset for all systems.
 
 ## Non-Goals
 
@@ -451,6 +464,8 @@ Companion implementation plan: `Plans.md` §138 Internal Memory Benchmark /
   reproduced measurements.
 - Do not transcribe internal self-seeded perfect scores into README or external
   materials as superiority claims over competitors.
+- Do not persist PII mask mapping tables (reversible keys) in the repository,
+  reports, or committed datasets.
 
 ## Regression Gates
 
@@ -470,6 +485,8 @@ The following are stop-ship regressions:
   action intended for the plan itself.
 - Published (reference-only) competitor values appear in reproduced ranking
   tables or dashboards without explicit separation.
+- Raw PII (names, emails, phone numbers, API keys, home-directory paths) appears
+  in committed benchmark datasets or generated reports.
 
 ## Open Decisions
 
@@ -491,6 +508,8 @@ The following are stop-ship regressions:
 - `docs/readme-claims.md`
 - `Plans.md` §138 Internal Memory Benchmark
 - `Plans.md` §139 Benchmark Competency Mapping
+- `Plans.md` §140 Real-Data Benchmark Pilot
+- `docs/benchmarks/real-data-pipeline.md`
 - `docs/adr/ADR-002-commercial-packaging.md`
 - `docs/adr-001-auto-memory-coexistence.md`
 - BEADS / agentmemory research is incorporated through `docs/workgraph.md` and

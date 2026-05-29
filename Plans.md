@@ -365,6 +365,30 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 
 ---
 
+## §140 Real-Data JA/EN Memory Benchmark Pilot — cc:完了
+
+策定日: 2026-05-29
+背景: harness-mem 実履歴（日英混在）を PII 不可逆マスク後に LLM 自動生成し、MemoryAgentBench 4能力のパイロット・ベンチ（50-100件）を構築。generate-then-filter + leakage 除去 + LLM-as-judge + 人手抜き取りの end-to-end パイプライン。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S140-000 | **Python/Presidio セットアップ** `[tdd:skip:setup]` — `benchmarks/internal-memory/pii/` に Presidio + pytest baseline | DoD(Yes/No): (1) requirements.txt 固定＝Yes、(2) pytest 起動可能＝Yes | S139-006 | cc:完了 |
+| S140-001 | **PII 不可逆マスク** `[tdd:required]` — Presidio + regex fallback、一貫トークン置換、写像破棄 | DoD(Yes/No): (1) synthetic PII unit test PASS＝Yes、(2) スキャン 0 件＝Yes、(3) 写像永続化なし＝Yes | S140-000 | cc:完了 |
+| S140-002 | **実履歴エクスポート + チャンク化** `[tdd:required]` — read-only DB → round 単位 corpus、timestamp/session 保持 | DoD(Yes/No): (1) masked-corpus.jsonl 生成＝Yes、(2) DB 書き換えなし＝Yes | S140-001 | cc:完了 |
+| S140-003 | **能力別候補生成** `[tdd:required]` — AR/TTL/LRU/CR、生成器≠judge モデル、各能力≥12件候補 | DoD(Yes/No): (1) schema-valid 候補≥48件＝Yes、(2) モデル分離＝Yes | S140-002 | cc:完了 |
+| S140-004 | **機械フィルタ** `[tdd:required]` — leakage/shortcut/dedup/answerability/PII scan | DoD(Yes/No): (1) leakage unit test PASS＝Yes、(2) filter stats ログ＝Yes | S140-003 | cc:完了 |
+| S140-005 | **LLM-as-judge ゲート** `[tdd:required]` — reason→score、多次元、k=3 合議、golden 一致率記録 | DoD(Yes/No): (1) judge_scores 付与＝Yes、(2) golden agreement 記録＝Yes、(3) 予算内 spend 記録＝Yes | S140-004 | cc:完了 |
+| S140-006 | **人手抜き取り** `[tdd:skip:human-review]` — CR/TTL 全件、AR/LRU 25-30%、review-log.json | DoD(Yes/No): (1) review-log 存在＝Yes、(2) 不合格除去＝Yes | S140-005 | cc:完了 |
+| S140-007 | **gold 確定** `[tdd:required]` — `coding-memory-real-ja-mixed-v1.jsonl`、loader 登録、50-100件 | DoD(Yes/No): (1) schema test PASS＝Yes、(2) ≥50件＝Yes、(3) PII scan 0＝Yes | S140-006 | cc:完了 |
+| S140-008 | **JA 意味採点 + 実測** `[tdd:required]` — score-case JA/混在 semantic、reports 再生成、claim_safety | DoD(Yes/No): (1) real-data 層 completed＝Yes、(2) semantic 採点＝Yes、(3) claim_safety 明記＝Yes | S140-007 | cc:完了 |
+| S140-009 | **パイプライン文書** `[tdd:skip:docs-only]` — `docs/benchmarks/real-data-pipeline.md` | DoD(Yes/No): (1) 文書存在＝Yes、(2) リンク有効＝Yes | S140-001 | cc:完了 |
+
+### Spec delta（§140）
+
+`Spec.md` に `### Real-Data Benchmark` を追加（PII 不可逆マスク、leakage フィルタ必須、JA 意味採点、非優位ルール）。`Non-Goals` にマスク写像永続化禁止、`Regression Gates` に dataset/reports への生 PII 混入 stop-ship を追加。
+
+---
+
 ## §78 World-class Retrieval & Memory Architecture — cc:WIP (Phase A–E 全タスクが landed、残は follow-up: §78-B02b tests / §78-C02b NLP upgrade / §78-D01b tests / §78-E02b branch merge workflow)
 
 策定日: 2026-04-13
