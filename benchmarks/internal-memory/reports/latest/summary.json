@@ -1,11 +1,12 @@
 {
   "schema_version": "internal-memory-summary-v1",
-  "generated_at": "2026-05-29T04:29:04.177Z",
-  "run_id": "internal-memory-17a62e5c-168d-477a-ba32-9deba0a4b4ac",
-  "git_sha": "0baf60f",
+  "generated_at": "2026-05-29T06:13:34.027Z",
+  "run_id": "internal-memory-ed9a4c63-c831-433c-8fba-d2a729b11540",
+  "git_sha": "97bfa4b",
   "dataset_ids": [
     "public-retrieval-v1.jsonl",
-    "coding-memory-ja-mixed-v1.jsonl"
+    "coding-memory-ja-mixed-v1.jsonl",
+    "coding-memory-real-ja-mixed-v1.jsonl"
   ],
   "competitors": [
     {
@@ -15,14 +16,14 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
-          "ran_count": 5,
+          "case_count": 31,
+          "ran_count": 31,
           "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 0.7333333333333333,
-          "ndcg_at_10_mean": 0.8,
-          "latency_p50_ms": 5.170458000000053,
-          "latency_p95_ms": 6.758375000000001
+          "recall_at_10_mean": 0.7741935483870968,
+          "mrr_mean": 0.6569892473118278,
+          "ndcg_at_10_mean": 0.6864400667080295,
+          "latency_p50_ms": 4.250707999999577,
+          "latency_p95_ms": 12.211749999998574
         },
         {
           "layer": "ja_coding",
@@ -32,20 +33,20 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.8,
           "ndcg_at_10_mean": 0.8523719014285831,
-          "latency_p50_ms": 2.2094999999999345,
-          "latency_p95_ms": 2.8157079999998587,
+          "latency_p50_ms": 2.283999999999878,
+          "latency_p95_ms": 3.2510829999998805,
           "ja_recall_at_10": 1
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
-          "ran_count": 6,
+          "case_count": 27,
+          "ran_count": 27,
           "skipped_count": 0,
           "recall_at_10_mean": 1,
-          "mrr_mean": 0.9166666666666666,
-          "ndcg_at_10_mean": 0.9384882922619097,
-          "latency_p50_ms": 1.565791999999874,
-          "latency_p95_ms": 2.7018749999997453,
+          "mrr_mean": 0.6975308641975309,
+          "ndcg_at_10_mean": 0.7764424556878469,
+          "latency_p50_ms": 2.7815840000000662,
+          "latency_p95_ms": 4.115375000000313,
           "mixed_recall_at_10": 1
         },
         {
@@ -56,21 +57,21 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.75,
           "ndcg_at_10_mean": 0.8154648767857288,
-          "latency_p50_ms": 2.6334580000000187,
-          "latency_p95_ms": 3.4170839999999316,
+          "latency_p50_ms": 2.667416000000003,
+          "latency_p95_ms": 2.7232500000000073,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         },
         {
           "layer": "resume",
-          "case_count": 2,
-          "ran_count": 2,
+          "case_count": 7,
+          "ran_count": 7,
           "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 1,
-          "ndcg_at_10_mean": 1,
-          "latency_p50_ms": 3.4130830000001424,
-          "latency_p95_ms": 3.678625000000011,
+          "recall_at_10_mean": 0.7142857142857143,
+          "mrr_mean": 0.4761904761904762,
+          "ndcg_at_10_mean": 0.5087025800532861,
+          "latency_p50_ms": 4.745708999998897,
+          "latency_p95_ms": 10.168792000000394,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         }
@@ -84,9 +85,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
+          "case_count": 31,
           "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 31,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -106,9 +107,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
+          "case_count": 27,
           "ran_count": 0,
-          "skipped_count": 6,
+          "skipped_count": 27,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -128,9 +129,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 2,
+          "case_count": 7,
           "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 7,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -149,9 +150,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
+          "case_count": 31,
           "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 31,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -171,9 +172,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
+          "case_count": 27,
           "ran_count": 0,
-          "skipped_count": 6,
+          "skipped_count": 27,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -193,9 +194,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 2,
+          "case_count": 7,
           "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 7,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -214,9 +215,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
+          "case_count": 31,
           "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 31,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -236,9 +237,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
+          "case_count": 27,
           "ran_count": 0,
-          "skipped_count": 6,
+          "skipped_count": 27,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -258,9 +259,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 2,
+          "case_count": 7,
           "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 7,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -279,9 +280,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
+          "case_count": 31,
           "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 31,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -301,9 +302,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
+          "case_count": 27,
           "ran_count": 0,
-          "skipped_count": 6,
+          "skipped_count": 27,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -323,9 +324,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 2,
+          "case_count": 7,
           "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 7,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -344,9 +345,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 5,
+          "case_count": 31,
           "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 31,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -366,9 +367,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 6,
+          "case_count": 27,
           "ran_count": 0,
-          "skipped_count": 6,
+          "skipped_count": 27,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -388,9 +389,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 2,
+          "case_count": 7,
           "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 7,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -403,13 +404,6 @@
       "published_note": "Reference only, not reproduced. general-lifelog domain mismatch with developer-workflow; not comparable to harness-mem scores."
     }
   ],
-  "openrouter_budget": {
-    "cap_usd": 20,
-    "spent_usd": 0.000036899999999999996,
-    "remaining_usd": 19.9999631,
-    "request_count": 4,
-    "enabled": true
-  },
   "env_files_loaded": [
     "~/LocalWork/Code/CC-harness/harness-mem/.env"
   ],
@@ -419,6 +413,7 @@
     "Only harness-mem is reproduced by default. External competitors are published(reference-only) unless live-measured opt-in via --competitors.",
     "harness-mem seeds its own fixtures and retrieves them in-process, so high scores confirm the runner works end-to-end, NOT external competitive superiority.",
     "Scoring includes a content-substring recall fallback (score-case.ts) that can favor self-seeded adapters like harness-mem; treat reproduced harness-mem scores as implementation sanity, not competitive superiority.",
+    "Real-data pilot cases (coding-memory-real-ja-mixed-v1.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
     "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision."
   ]
 }

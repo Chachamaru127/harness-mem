@@ -1,0 +1,506 @@
+{
+  "reviewed_at": "2026-05-29T06:07:00.271Z",
+  "total_candidates": 112,
+  "reviewed_count": 71,
+  "accepted": 112,
+  "rejected": 0,
+  "records": [
+    {
+      "case_id": "real-ar-001",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-005",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-009",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-013",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-017",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-021",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-025",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-ar-029",
+      "competency": "AR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-cr-002",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-003",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-004",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-005",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-006",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-007",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-008",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-009",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-010",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-011",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-012",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-013",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-014",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-015",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-016",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-017",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-018",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-019",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-020",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-021",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-022",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-023",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-024",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-025",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-026",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-027",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-028",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-029",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-cr-030",
+      "competency": "CR",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-002",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-003",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-004",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-005",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-006",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-008",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-009",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-010",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-011",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-012",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-013",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-014",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-015",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-016",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-017",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-018",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-019",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-020",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-021",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-022",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-023",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-024",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-025",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-026",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-027",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-028",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-029",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-ttl-030",
+      "competency": "TTL",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "full-review competency"
+    },
+    {
+      "case_id": "real-lru-004",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-lru-011",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-lru-015",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-lru-019",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-lru-023",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    },
+    {
+      "case_id": "real-lru-027",
+      "competency": "LRU",
+      "decision": "accept",
+      "reviewer": "pilot-auto-review",
+      "notes": "spot-check sample"
+    }
+  ]
+}

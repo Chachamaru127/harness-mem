@@ -1,0 +1,18 @@
+{
+  "schema_version": "real-data-pipeline-v1",
+  "generated_at": "2026-05-29T06:07:00.273Z",
+  "corpus_rounds": 1604,
+  "candidates_generated": 120,
+  "filter_stats": {
+    "input": 120,
+    "passed": 112,
+    "rejected_leakage": 8,
+    "rejected_shortcut": 0,
+    "rejected_dedup": 0,
+    "rejected_answerability": 0,
+    "rejected_pii": 0
+  },
+  "judge_model": "google/gemini-2.5-flash-lite",
+  "generator_model": "google/gemini-2.5-flash-lite",
+  "golden_agreement_rate": 1
+}
