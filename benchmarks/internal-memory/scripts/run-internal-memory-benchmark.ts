@@ -95,6 +95,13 @@ export async function runInternalMemoryBenchmark(
     ...publishedTargets.map((id) => ({ id, published: true })),
   ];
   const cases = loadDefaultDatasets().slice(0, options.limit);
+  const dataset_ids = [
+    "public-retrieval-v1.jsonl",
+    "coding-memory-ja-mixed-v1.jsonl",
+    ...(cases.some((row) => row.case_id.startsWith("real-"))
+      ? ["coding-memory-real-ja-mixed-v1.jsonl"]
+      : []),
+  ];
   const runId = `internal-memory-${randomUUID()}`;
   const results: ScoredCaseResult[] = [];
 
@@ -146,7 +153,7 @@ export async function runInternalMemoryBenchmark(
   const summary = buildSummary({
     run_id: runId,
     git_sha: gitSha(),
-    dataset_ids: ["public-retrieval-v1.jsonl", "coding-memory-ja-mixed-v1.jsonl"],
+    dataset_ids,
     results,
     openrouter_budget: budget,
     env_files_loaded: loadedEnvFiles,

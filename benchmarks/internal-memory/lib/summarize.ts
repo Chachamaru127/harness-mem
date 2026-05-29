@@ -97,6 +97,7 @@ export function buildSummary(input: {
       "Only harness-mem is reproduced by default. External competitors are published(reference-only) unless live-measured opt-in via --competitors.",
       "harness-mem seeds its own fixtures and retrieves them in-process, so high scores confirm the runner works end-to-end, NOT external competitive superiority.",
       "Scoring includes a content-substring recall fallback (score-case.ts) that can favor self-seeded adapters like harness-mem; treat reproduced harness-mem scores as implementation sanity, not competitive superiority.",
+      "Real-data pilot cases (coding-memory-real-ja-mixed-v1.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
       "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision.",
     ],
   };

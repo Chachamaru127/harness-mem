@@ -15,6 +15,11 @@ const CATEGORY_COMPETENCY: Record<string, Competency> = {
   english_symbol: "AR",
   english_deploy: "AR",
   english_debug: "AR",
+  real_ar: "AR",
+  real_mixed_ar: "AR",
+  real_conflict_resolution: "CR",
+  real_test_time_learning: "TTL",
+  real_long_range: "LRU",
 };
 
 const LAYER_COMPETENCY: Partial<Record<BenchmarkLayer, Competency>> = {

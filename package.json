@@ -82,6 +82,8 @@
     "benchmark:internal-memory:smoke": "bun run benchmarks/internal-memory/scripts/runner-smoke.ts",
     "benchmark:internal-memory:embedding-smoke": "HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1 bun run benchmarks/internal-memory/scripts/smoke-embedding.ts",
     "benchmark:internal-memory:test": "bun test benchmarks/internal-memory/tests/",
+    "benchmark:internal-memory:real-data-pipeline": "bun run benchmarks/internal-memory/scripts/run-real-data-pipeline.ts",
+    "benchmark:internal-memory:pii-test": "cd benchmarks/internal-memory/pii && python3 -m pytest",
     "test:ui": "cd harness-mem-ui && bunx vitest",
     "test:e2e": "cd harness-mem-ui && bunx playwright test",
     "poc:graph-sqlite": "bun run scripts/graph-store-poc-sqlite-cte.ts",

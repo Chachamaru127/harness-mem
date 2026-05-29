@@ -3,6 +3,7 @@ import {
   inferCompetency,
   usesSubstringGrounding,
 } from "../scorers/competency";
+import { semanticGroundingScore } from "./ja-normalize";
 import {
   groundingScore,
   mrr,
@@ -87,7 +88,13 @@ export function scoreCase(
   };
 
   if (caseRow.expected_keywords?.length && usesSubstringGrounding(competency)) {
-    const substringScore = groundingScore(retrievedContents, caseRow.expected_keywords);
+    const useSemantic =
+      caseRow.language_profile === "ja" ||
+      caseRow.language_profile === "mixed" ||
+      caseRow.category.startsWith("real_");
+    const substringScore = useSemantic
+      ? semanticGroundingScore(retrievedContents, caseRow.expected_keywords)
+      : groundingScore(retrievedContents, caseRow.expected_keywords);
     result.substring_grounding_score = substringScore;
     result.grounding_score = substringScore;
   }
