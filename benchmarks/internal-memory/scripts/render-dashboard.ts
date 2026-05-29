@@ -2,7 +2,19 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getPublishedReference } from "../adapters/import-published";
-import type { BenchmarkSummary, ScoredCaseResult } from "../lib/types";
+import { inferCompetency, usesLlmJudge } from "../scorers/competency";
+import type { BenchmarkCase, BenchmarkSummary, Competency, ScoredCaseResult } from "../lib/types";
+
+const COMPETENCY_ORDER: Competency[] = ["AR", "CR", "TTL", "LRU"];
+
+function competencyOf(row: ScoredCaseResult): Competency {
+  return row.competency ?? inferCompetency(row as unknown as BenchmarkCase);
+}
+
+function meanOf(values: number[]): string {
+  if (values.length === 0) return "—";
+  return (values.reduce((acc, value) => acc + value, 0) / values.length).toFixed(3);
+}
 
 /** Mask personal absolute paths: collapse the home directory prefix to `~`. */
 function redactPath(filePath: string): string {
@@ -50,6 +62,36 @@ export function renderScorecard(summary: BenchmarkSummary, results: ScoredCaseRe
     lines.push(
       `| ${competitor.competitor_id} | ${competitor.status} | ${(competitor.japanese_mixed_score ?? 0).toFixed(3)} | ${(publicLayer?.recall_at_10_mean ?? 0).toFixed(3)} | ${(jaLayer?.recall_at_10_mean ?? 0).toFixed(3)} | ${(mixedLayer?.recall_at_10_mean ?? 0).toFixed(3)} | ${p95.toFixed(1)} |`,
     );
+  }
+
+  const reproducedIds = new Set(reproduced.map((competitor) => competitor.competitor_id));
+  const tierRows = results.filter(
+    (row) => reproducedIds.has(row.competitor_id) && row.status === "ok",
+  );
+  if (tierRows.length > 0) {
+    lines.push(
+      "",
+      "## Competency tiers (§139 two-tier scoring)",
+      "",
+      "AR/CR use expected-keyword substring grounding; TTL/LRU use the OpenRouter LLM judge (opt-in). The two tiers stay in separate columns and are never collapsed into one grounding number.",
+      "",
+      "| Competency | Tier | Cases | Substring grounding | LLM grounding |",
+      "|---|---|---:|---:|---:|",
+    );
+    for (const competency of COMPETENCY_ORDER) {
+      const rows = tierRows.filter((row) => competencyOf(row) === competency);
+      if (rows.length === 0) continue;
+      const tier = usesLlmJudge(competency) ? "llm_judge" : "substring";
+      const substringScores = rows
+        .map((row) => row.substring_grounding_score)
+        .filter((value): value is number => typeof value === "number");
+      const llmScores = rows
+        .map((row) => row.llm_grounding_score)
+        .filter((value): value is number => typeof value === "number");
+      lines.push(
+        `| ${competency} | ${tier} | ${rows.length} | ${meanOf(substringScores)} | ${meanOf(llmScores)} |`,
+      );
+    }
   }
 
   lines.push(
@@ -215,7 +257,13 @@ export function writeReportPack(
   outDir: string = REPORT_DIR,
 ): void {
   mkdirSync(outDir, { recursive: true });
-  writeFileSync(join(outDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
+  // Redact personal absolute paths before persisting; env_files_loaded would
+  // otherwise leak the operator's home directory into the committed report.
+  const redactedSummary: BenchmarkSummary = {
+    ...summary,
+    env_files_loaded: summary.env_files_loaded?.map(redactPath),
+  };
+  writeFileSync(join(outDir, "summary.json"), `${JSON.stringify(redactedSummary, null, 2)}\n`);
   writeFileSync(
     join(outDir, "raw-results.jsonl"),
     `${results.map((row) => JSON.stringify(row)).join("\n")}\n`,

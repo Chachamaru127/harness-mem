@@ -1,7 +1,7 @@
 # Reproducibility manifest
-- run_id: internal-memory-f6c923c0-b0f6-4113-af56-5dfc87056414
-- generated_at: 2026-05-29T01:48:23.061Z
-- git_sha: 6121b08
+- run_id: internal-memory-17a62e5c-168d-477a-ba32-9deba0a4b4ac
+- generated_at: 2026-05-29T04:29:04.177Z
+- git_sha: 0baf60f
 - datasets: public-retrieval-v1.jsonl, coding-memory-ja-mixed-v1.jsonl
 - competitors: harness-mem, agentmemory, supermemory, claude-mem, mem0, mempalace
 - node: v24.3.0
@@ -15,8 +15,8 @@
 - INTERNAL_BENCH_BUDGET_USD: 20
 ## OpenRouter budget
 - cap_usd: 20
-- spent_usd: 0.000154
-- request_count: 16
+- spent_usd: 0.000037
+- request_count: 4
 
 ## Env files loaded
 

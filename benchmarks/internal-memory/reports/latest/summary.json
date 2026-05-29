@@ -1,8 +1,8 @@
 {
   "schema_version": "internal-memory-summary-v1",
-  "generated_at": "2026-05-29T01:48:23.061Z",
-  "run_id": "internal-memory-f6c923c0-b0f6-4113-af56-5dfc87056414",
-  "git_sha": "6121b08",
+  "generated_at": "2026-05-29T04:29:04.177Z",
+  "run_id": "internal-memory-17a62e5c-168d-477a-ba32-9deba0a4b4ac",
+  "git_sha": "0baf60f",
   "dataset_ids": [
     "public-retrieval-v1.jsonl",
     "coding-memory-ja-mixed-v1.jsonl"
@@ -21,31 +21,31 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.7333333333333333,
           "ndcg_at_10_mean": 0.8,
-          "latency_p50_ms": 4.541666999999961,
-          "latency_p95_ms": 6.2365420000000995
+          "latency_p50_ms": 5.170458000000053,
+          "latency_p95_ms": 6.758375000000001
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
-          "ran_count": 3,
+          "case_count": 5,
+          "ran_count": 5,
           "skipped_count": 0,
           "recall_at_10_mean": 1,
-          "mrr_mean": 0.8333333333333334,
-          "ndcg_at_10_mean": 0.8769765845238192,
-          "latency_p50_ms": 2.6790000000000873,
-          "latency_p95_ms": 2.681999999999789,
+          "mrr_mean": 0.8,
+          "ndcg_at_10_mean": 0.8523719014285831,
+          "latency_p50_ms": 2.2094999999999345,
+          "latency_p95_ms": 2.8157079999998587,
           "ja_recall_at_10": 1
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
-          "ran_count": 4,
+          "case_count": 6,
+          "ran_count": 6,
           "skipped_count": 0,
           "recall_at_10_mean": 1,
-          "mrr_mean": 1,
-          "ndcg_at_10_mean": 1,
-          "latency_p50_ms": 1.119542000000365,
-          "latency_p95_ms": 2.123666000000412,
+          "mrr_mean": 0.9166666666666666,
+          "ndcg_at_10_mean": 0.9384882922619097,
+          "latency_p50_ms": 1.565791999999874,
+          "latency_p95_ms": 2.7018749999997453,
           "mixed_recall_at_10": 1
         },
         {
@@ -56,8 +56,8 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.75,
           "ndcg_at_10_mean": 0.8154648767857288,
-          "latency_p50_ms": 2.548208000000159,
-          "latency_p95_ms": 2.741834000000381,
+          "latency_p50_ms": 2.6334580000000187,
+          "latency_p95_ms": 3.4170839999999316,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         },
@@ -69,8 +69,8 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 1,
           "ndcg_at_10_mean": 1,
-          "latency_p50_ms": 2.52520800000093,
-          "latency_p95_ms": 4.509249999999156,
+          "latency_p50_ms": 3.4130830000001424,
+          "latency_p95_ms": 3.678625000000011,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         }
@@ -95,9 +95,9 @@
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
+          "case_count": 5,
           "ran_count": 0,
-          "skipped_count": 3,
+          "skipped_count": 5,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -106,9 +106,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
+          "case_count": 6,
           "ran_count": 0,
-          "skipped_count": 4,
+          "skipped_count": 6,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -160,9 +160,9 @@
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
+          "case_count": 5,
           "ran_count": 0,
-          "skipped_count": 3,
+          "skipped_count": 5,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -171,9 +171,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
+          "case_count": 6,
           "ran_count": 0,
-          "skipped_count": 4,
+          "skipped_count": 6,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -225,9 +225,9 @@
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
+          "case_count": 5,
           "ran_count": 0,
-          "skipped_count": 3,
+          "skipped_count": 5,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -236,9 +236,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
+          "case_count": 6,
           "ran_count": 0,
-          "skipped_count": 4,
+          "skipped_count": 6,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -290,9 +290,9 @@
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
+          "case_count": 5,
           "ran_count": 0,
-          "skipped_count": 3,
+          "skipped_count": 5,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -301,9 +301,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
+          "case_count": 6,
           "ran_count": 0,
-          "skipped_count": 4,
+          "skipped_count": 6,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -355,9 +355,9 @@
         },
         {
           "layer": "ja_coding",
-          "case_count": 3,
+          "case_count": 5,
           "ran_count": 0,
-          "skipped_count": 3,
+          "skipped_count": 5,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -366,9 +366,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 4,
+          "case_count": 6,
           "ran_count": 0,
-          "skipped_count": 4,
+          "skipped_count": 6,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -405,13 +405,13 @@
   ],
   "openrouter_budget": {
     "cap_usd": 20,
-    "spent_usd": 0.000154425,
-    "remaining_usd": 19.999845575,
-    "request_count": 16,
+    "spent_usd": 0.000036899999999999996,
+    "remaining_usd": 19.9999631,
+    "request_count": 4,
     "enabled": true
   },
   "env_files_loaded": [
-    "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/.env"
+    "~/LocalWork/Code/CC-harness/harness-mem/.env"
   ],
   "claim_safety": [
     "Internal benchmark only. Do not copy scores into README until reproduced on target hardware.",

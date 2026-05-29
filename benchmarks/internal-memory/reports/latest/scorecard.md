@@ -1,11 +1,19 @@
 # Internal Memory Benchmark Scorecard
-Generated: 2026-05-29T01:48:23.061Z
-Run ID: internal-memory-f6c923c0-b0f6-4113-af56-5dfc87056414
-Git SHA: 6121b08
+Generated: 2026-05-29T04:29:04.177Z
+Run ID: internal-memory-17a62e5c-168d-477a-ba32-9deba0a4b4ac
+Git SHA: 0baf60f
 ## Reproduced (locally measured — same dataset / scorer / manifest)
 | Competitor | Status | JA+Mixed score | Public R@10 | JA R@10 | Mixed R@10 | P95 latency (ms) |
 |---|---:|---:|---:|---:|---:|---:|
-| harness-mem | completed | 1.000 | 1.000 | 1.000 | 1.000 | 6.2 |
+| harness-mem | completed | 1.000 | 1.000 | 1.000 | 1.000 | 6.8 |
+## Competency tiers (§139 two-tier scoring)
+AR/CR use expected-keyword substring grounding; TTL/LRU use the OpenRouter LLM judge (opt-in). The two tiers stay in separate columns and are never collapsed into one grounding number.
+| Competency | Tier | Cases | Substring grounding | LLM grounding |
+|---|---|---:|---:|---:|
+| AR | substring | 12 | 1.000 | — |
+| CR | substring | 4 | 1.000 | — |
+| TTL | llm_judge | 2 | — | 1.000 |
+| LRU | llm_judge | 2 | — | 1.000 |
 ## Published (reference-only — NOT comparable, kept separate from the ranking above)
 | Competitor | Domain | Published R@10 | Source / note |
 |---|---|---:|---|
@@ -16,9 +24,9 @@ Git SHA: 6121b08
 | mempalace | general-lifelog | 0.966 | LongMemEval paper claim (96.6%). Reference only, not reproduced. general-lifelog domain mismatch with developer-workflow; not comparable to harness-mem scores. |
 ## OpenRouter spend
 - cap_usd: 20
-- spent_usd: 0.000154
-- remaining_usd: 19.999846
-- request_count: 16
+- spent_usd: 0.000037
+- remaining_usd: 19.999963
+- request_count: 4
 ## Claim safety
 - Internal benchmark only. Do not copy scores into README until reproduced on target hardware.
 - Published competitor values are reference-only and stay in a separate table from reproduced local runs; never merge them into one ranking.

@@ -42,6 +42,40 @@ const fixtureResults: ScoredCaseResult[] = [
     ndcg_at_10: 0.5,
     latency_ms: 25,
     retrieved_ids: ["obs_mix-sym-001-m1"],
+    substring_grounding_score: 1,
+  },
+  {
+    case_id: "cr-001",
+    layer: "ja_coding",
+    category: "conflict_resolution",
+    competency: "CR",
+    language_profile: "ja",
+    competitor_id: "harness-mem",
+    status: "ok",
+    recall_at_5: 1,
+    recall_at_10: 1,
+    mrr: 1,
+    ndcg_at_10: 1,
+    latency_ms: 22,
+    retrieved_ids: ["obs_cr-001-new"],
+    substring_grounding_score: 1,
+  },
+  {
+    case_id: "ttl-001",
+    layer: "ja_coding",
+    category: "test_time_learning",
+    competency: "TTL",
+    language_profile: "ja",
+    competitor_id: "harness-mem",
+    status: "ok",
+    recall_at_5: 1,
+    recall_at_10: 1,
+    mrr: 0.5,
+    ndcg_at_10: 0.63,
+    latency_ms: 18,
+    retrieved_ids: ["obs_ttl-001-m2"],
+    llm_grounding_score: 0.9,
+    llm_judge_model: "google/gemini-2.5-flash-lite",
   },
   {
     case_id: "pub-001",
@@ -78,5 +112,26 @@ describe("internal-memory dashboard pack", () => {
     const scorecard = readFileSync(join(REPORT, "scorecard.md"), "utf8");
     expect(scorecard).toContain("harness-mem");
     expect(scorecard).toContain("Claim safety");
+  });
+
+  test("scorecard separates AR/CR substring from TTL/LRU llm grounding", () => {
+    const summary = buildSummary({
+      run_id: "fixture-run-tiers",
+      git_sha: "fixture",
+      dataset_ids: ["coding-memory-ja-mixed-v1.jsonl"],
+      results: fixtureResults,
+    });
+    writeReportPack(summary, fixtureResults, REPORT);
+
+    const scorecard = readFileSync(join(REPORT, "scorecard.md"), "utf8");
+    expect(scorecard).toContain("Competency tiers");
+    expect(scorecard).toContain("Substring grounding");
+    expect(scorecard).toContain("LLM grounding");
+    // AR/CR rows carry a substring tier; TTL carries an llm_judge tier.
+    expect(scorecard).toMatch(/\| CR \| substring \|/);
+    expect(scorecard).toMatch(/\| TTL \| llm_judge \|/);
+    // Substring-only rows must not invent an LLM grounding number (and vice versa).
+    expect(scorecard).toMatch(/\| CR \| substring \| \d+ \| 1\.000 \| — \|/);
+    expect(scorecard).toMatch(/\| TTL \| llm_judge \| \d+ \| — \| 0\.900 \|/);
   });
 });
