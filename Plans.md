@@ -340,6 +340,10 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 | S138-006 | **業務Ops 再ポジション** `[tdd:skip:docs-only]` — AI Ops Hackathon（業務オペレーション自動化、非エンジニア審査）に合わせ、Skill description / 本文を「コーディングに限らない業務作業ログ」へ広げる | Skill が業務適用セクションを持ち、daemon 無しでも user-provided ログで動く旨を明記。契約テスト必須語は維持され PASS | S138-002 | cc:完了 |
 | S138-007 | **業務シナリオ demo fixture** `[tdd:skip:fixture]` — `examples/senpai-note/ops-demo-session.md`（返金対応の雑メモ）と `ops-handoff-pack.md`（完成形）を追加 | 非エンジニアの業務ログが、次シフトが30秒で引き継げる handoff pack に変換されるデモが成立。個人情報・実社名なし | S138-006 | cc:完了 |
 | S138-008 | **発表構成 + 当日セットアップ** `[tdd:skip:docs-only]` — `docs/senpai-note-hackathon-pitch.md`（採点基準 実用性40/AI活用度30/完成度30 マッピング付き）と `docs/senpai-note-hackathon-setup.md`（Claude Code 発火確認・daemon不要デモ・フォールバック）を追加 | 3 分/90 秒のピッチ台本、採点マッピング、5 分セットアップ確認手順が揃う | S138-007 | cc:完了 |
+| S138-009 | **AI実行チェーン demo** `[tdd:skip:fixture]` — REPLAY_PROMPT を次のAIに渡して**次の実務（顧客返信）まで自動実行**する流れを `examples/senpai-note/ops-replay-result.md` で示し、ピッチ/セットアップに組み込む | 「ドキュメント作成ではなく業務自動化」を実演で示せる。返信ドラフトが Do not ルールを守る | S138-007 | cc:完了 |
+| S138-010 | **声入力パス（VoiceOS 任意）** `[tdd:skip:fixture]` — `examples/senpai-note/ops-voice-input.md`（喋り起こし）を追加し、声でも貼りでも同じ handoff pack になる動線を用意。VoiceOS は依存先にせず上振れ要素に留める | 声/貼りどちらでもデモ成立。VoiceOS 不調時は文字起こし貼りにフォールバック | S138-007 | cc:完了 |
+
+勝ち筋メモ（2026-05-31）: 審査テーマ「業務をAI Agentで自動化」に対し、要約止まりだと"ドキュメント作成"に見える弱点がある。対策は①REPLAY_PROMPT→次AIで実務実行（S138-009）、②30分→30秒のストップウォッチ演出、③声入力(VoiceOS任意, S138-010)。デモは daemon/VoiceOS に依存せず完結させ、声と実行チェーンを上振れに置く。
 
 策定背景補足（2026-05-31 追記）: イベント詳細（普段の業務を AI Agent で自動化 / 非エンジニア参加 / 実用性40・AI活用度30・完成度30 / 約2時間ビルド+約60分発表）に合わせ、コーディング引き継ぎから**業務オペレーション汎用の属人化解消**へ見せ方を再ポジション。技術実装（Skill + 契約テスト）はそのまま温存し、業務 fixture と発表/セットアップ docs を上に重ねた。
 

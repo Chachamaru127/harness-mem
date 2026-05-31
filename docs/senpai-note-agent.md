@@ -28,9 +28,17 @@ paste rough notes and get a handoff card + runbook + replay prompt.
 
 This works **without a running memory daemon**: when memory is unavailable, the
 agent uses the user-provided log as its source and marks `source:` as
-user-provided. That makes it usable on day one in any team. Business examples
-live in `examples/senpai-note/ops-demo-session.md` and `ops-handoff-pack.md`;
-the hackathon pitch and setup are in `docs/senpai-note-hackathon-pitch.md` and
+user-provided. Input can be typed notes or a voice transcript (e.g. VoiceOS),
+so capture stays low-effort for non-engineers — voice is an optional booster,
+not a dependency.
+
+The value is not documentation but automation: the generated `REPLAY_PROMPT`
+is a runnable instruction that lets the next AI agent perform the next task
+(e.g. draft the customer reply) while respecting the "do not repeat" rules.
+Business examples live in `examples/senpai-note/`:
+`ops-demo-session.md` (typed log) / `ops-voice-input.md` (spoken transcript) →
+`ops-handoff-pack.md` (handoff) → `ops-replay-result.md` (the next AI's output).
+The hackathon pitch and setup are in `docs/senpai-note-hackathon-pitch.md` and
 `docs/senpai-note-hackathon-setup.md`.
 
 ## Product Principle
