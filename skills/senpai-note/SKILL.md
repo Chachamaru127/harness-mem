@@ -1,6 +1,6 @@
 ---
 name: senpai-note
-description: 作業ログ、前回作業、セッション、引き継ぎ、runbook、handoff、手順化、再利用、次回使える形、次の人に渡す、replay prompt、このセッションを資産化、などの意図が出たときに invoke する Skill。harness-mem の記憶 (session thread / resume pack / scoped search) または user 提供ログから、次の人が 30 秒で動ける handoff pack (HANDOFF_CARD / RUNBOOK / REPLAY_PROMPT) を、source を明示して生成する。
+description: 作業ログ、前回作業、セッション、引き継ぎ、runbook、handoff、手順化、再利用、次回使える形、次の人に渡す、replay prompt、このセッションを資産化、などの意図が出たときに invoke する Skill。harness-mem の記憶 (session thread / resume pack / scoped search) または user 提供ログ（コーディングに限らず、経理・サポート・採用などの日々の業務オペレーションの作業ログも対象）から、次の人が 30 秒で動ける handoff pack (HANDOFF_CARD / RUNBOOK / REPLAY_PROMPT) を、source を明示して生成する。
 trigger_phrases:
   - Senpai Note
   - 引き継ぎ
@@ -17,13 +17,25 @@ trigger_phrases:
 
 # senpai-note
 
-Senpai Note Agent は AI coding session の記憶を、次の人がすぐ再利用できる
-**handoff pack** に変換する Skill。単なる要約では終わらせない。次の operator /
-チームメイト / 未来の自分が、迷いを減らし、同じ失敗を繰り返さず、明確な開始点から
-作業を続けられる成果物を出す。
+Senpai Note Agent は AI coding session **や日々の業務オペレーション**の記憶 /
+作業ログを、次の人がすぐ再利用できる **handoff pack** に変換する Skill。
+単なる要約では終わらせない。次の operator / チームメイト / 未来の自分が、迷いを
+減らし、同じ失敗を繰り返さず、明確な開始点から作業を続けられる成果物を出す。
 
 この Skill は harness-mem の既存 primitive の上に薄く乗る product layer であり、
 新しい daemon endpoint / DB schema / 外部サービスを追加しない。
+
+## 業務適用（非エンジニアでも使える）
+
+入力はコードのセッションに限らない。経理の月次締め、カスタマーサポートの一次/二次
+対応、採用の候補者対応、問い合わせ対応など、**属人化しやすい業務オペレーション**の
+雑な作業メモ・チャット履歴・引き継ぎ口頭メモをそのまま入力にできる。
+
+harness-mem の記憶 daemon が無くても動く。記憶が使えないときは user が貼った
+業務ログを source として handoff pack を生成し、`source:` に user-provided と
+明記する。これにより「その人しか分からない業務」を、誰でも 30 秒で引き継げる
+カード + 手順 + AI Agent 用 replay prompt に変換する。業務例の入出力は
+`examples/senpai-note/ops-demo-session.md` / `ops-handoff-pack.md` を参照。
 
 ## 発火条件
 

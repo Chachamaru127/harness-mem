@@ -19,6 +19,20 @@ The agent turns session memory into three concrete artifacts:
 2. Reusable runbook
 3. Replay prompt for the next AI coding session
 
+## Business Ops Positioning
+
+The same engine applies beyond coding. Input can be any messy work log from
+attrition-prone business operations — month-end accounting, customer-support
+escalations, recruiting candidate handling, inquiry triage. A non-engineer can
+paste rough notes and get a handoff card + runbook + replay prompt.
+
+This works **without a running memory daemon**: when memory is unavailable, the
+agent uses the user-provided log as its source and marks `source:` as
+user-provided. That makes it usable on day one in any team. Business examples
+live in `examples/senpai-note/ops-demo-session.md` and `ops-handoff-pack.md`;
+the hackathon pitch and setup are in `docs/senpai-note-hackathon-pitch.md` and
+`docs/senpai-note-hackathon-setup.md`.
+
 ## Product Principle
 
 The agent must optimize for "the next person can act immediately", not for

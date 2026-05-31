@@ -336,7 +336,12 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 | S138-002 | **Senpai Note Skill MVP** `[tdd:required]` — `skills/senpai-note/SKILL.md` を追加し、handoff/runbook/replay prompt 生成ルールと retrieval fallback を定義する | Skill が trigger_phrases、routing (session_thread/resume_pack/search)、HANDOFF_CARD/RUNBOOK/REPLAY_PROMPT、503/backpressure、project scope、source/summary を含む | S138-001 | cc:完了 |
 | S138-003 | **Demo fixture and sample output** `[tdd:skip:fixture]` — `examples/senpai-note/demo-session.md` と `examples/senpai-note/handoff-pack.md` を追加する | 雑な作業ログが、次の人が使える handoff pack に変換されるデモが成立する。固有名詞・非公開名を含まない | S138-002 | cc:完了 |
 | S138-004 | **Skill contract test** `[tdd:required]` — `tests/senpai-note-skill-contract.test.ts` を追加する | Skill file, frontmatter, triggers, routes, output contract, bounded recall terms, package inclusion をテストし PASS | S138-002 | cc:完了 |
-| S138-005 | **Hackathon demo readiness** `[tdd:skip:demo]` — 3 分デモ台本（課題→雑ログ→「このセッションを Senpai Note にして」→3 artifact→締め）を準備し、no-degradation を確認する | targeted test (`senpai-note-skill-contract`) PASS、既存 skill contract/proof-bundle path に影響なし、package dry-run に `skills/senpai-note/SKILL.md` が含まれる | S138-002..S138-004 | cc:WIP |
+| S138-005 | **Hackathon demo readiness** `[tdd:skip:demo]` — 3 分デモ台本（課題→雑ログ→「このセッションを Senpai Note にして」→3 artifact→締め）を準備し、no-degradation を確認する | targeted test (`senpai-note-skill-contract`) PASS、既存 skill contract/proof-bundle path に影響なし、package dry-run に `skills/senpai-note/SKILL.md` が含まれる | S138-002..S138-004 | cc:完了 |
+| S138-006 | **業務Ops 再ポジション** `[tdd:skip:docs-only]` — AI Ops Hackathon（業務オペレーション自動化、非エンジニア審査）に合わせ、Skill description / 本文を「コーディングに限らない業務作業ログ」へ広げる | Skill が業務適用セクションを持ち、daemon 無しでも user-provided ログで動く旨を明記。契約テスト必須語は維持され PASS | S138-002 | cc:完了 |
+| S138-007 | **業務シナリオ demo fixture** `[tdd:skip:fixture]` — `examples/senpai-note/ops-demo-session.md`（返金対応の雑メモ）と `ops-handoff-pack.md`（完成形）を追加 | 非エンジニアの業務ログが、次シフトが30秒で引き継げる handoff pack に変換されるデモが成立。個人情報・実社名なし | S138-006 | cc:完了 |
+| S138-008 | **発表構成 + 当日セットアップ** `[tdd:skip:docs-only]` — `docs/senpai-note-hackathon-pitch.md`（採点基準 実用性40/AI活用度30/完成度30 マッピング付き）と `docs/senpai-note-hackathon-setup.md`（Claude Code 発火確認・daemon不要デモ・フォールバック）を追加 | 3 分/90 秒のピッチ台本、採点マッピング、5 分セットアップ確認手順が揃う | S138-007 | cc:完了 |
+
+策定背景補足（2026-05-31 追記）: イベント詳細（普段の業務を AI Agent で自動化 / 非エンジニア参加 / 実用性40・AI活用度30・完成度30 / 約2時間ビルド+約60分発表）に合わせ、コーディング引き継ぎから**業務オペレーション汎用の属人化解消**へ見せ方を再ポジション。技術実装（Skill + 契約テスト）はそのまま温存し、業務 fixture と発表/セットアップ docs を上に重ねた。
 
 ---
 
