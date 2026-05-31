@@ -323,6 +323,23 @@ team_validation_mode: subagent（Product / Architecture / Security / QA / Skepti
 
 ---
 
+## §138 Senpai Note Agent — cc:WIP
+
+策定日: 2026-05-31
+分類: product layer / Skill MVP — owner は `harness-mem`。ハッカソン向けの体験実装。
+背景: AI coding session の作業ログは蓄積されても、次の人がすぐ使える handoff / runbook / replay prompt に変換されない限り、同じ調査・同じ失敗・同じ文脈説明が繰り返される。既存の local-first memory / scoped recall / session thread / procedural skill primitives を再利用し、daemon schema を増やさずに「次の人が助かる」プロダクト体験を Skill + docs + examples として追加する。
+仕様正本: `Spec.md` source-of-truth layers（`skills/*/SKILL.md` が体験実装、`docs/*` が個別機能仕様）/ §127 bounded search safety / local-first・no auto external sharing。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S138-001 | **Senpai Note feature spec** `[tdd:skip:docs-only]` — `docs/senpai-note-agent.md` を追加し、handoff pack の目的、非目標、input source、source/evidence rules、output contract を定義する | spec が local-first / scoped recall / no auto external sharing / no private product names を明記する | Spec.md source-of-truth layers | cc:完了 |
+| S138-002 | **Senpai Note Skill MVP** `[tdd:required]` — `skills/senpai-note/SKILL.md` を追加し、handoff/runbook/replay prompt 生成ルールと retrieval fallback を定義する | Skill が trigger_phrases、routing (session_thread/resume_pack/search)、HANDOFF_CARD/RUNBOOK/REPLAY_PROMPT、503/backpressure、project scope、source/summary を含む | S138-001 | cc:完了 |
+| S138-003 | **Demo fixture and sample output** `[tdd:skip:fixture]` — `examples/senpai-note/demo-session.md` と `examples/senpai-note/handoff-pack.md` を追加する | 雑な作業ログが、次の人が使える handoff pack に変換されるデモが成立する。固有名詞・非公開名を含まない | S138-002 | cc:完了 |
+| S138-004 | **Skill contract test** `[tdd:required]` — `tests/senpai-note-skill-contract.test.ts` を追加する | Skill file, frontmatter, triggers, routes, output contract, bounded recall terms, package inclusion をテストし PASS | S138-002 | cc:完了 |
+| S138-005 | **Hackathon demo readiness** `[tdd:skip:demo]` — 3 分デモ台本（課題→雑ログ→「このセッションを Senpai Note にして」→3 artifact→締め）を準備し、no-degradation を確認する | targeted test (`senpai-note-skill-contract`) PASS、既存 skill contract/proof-bundle path に影響なし、package dry-run に `skills/senpai-note/SKILL.md` が含まれる | S138-002..S138-004 | cc:WIP |
+
+---
+
 ## §78 World-class Retrieval & Memory Architecture — cc:WIP (Phase A–E 全タスクが landed、残は follow-up: §78-B02b tests / §78-C02b NLP upgrade / §78-D01b tests / §78-E02b branch merge workflow)
 
 策定日: 2026-04-13
