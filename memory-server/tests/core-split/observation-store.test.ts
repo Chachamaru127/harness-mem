@@ -1310,6 +1310,33 @@ describe("S43-005: temporal retrieval alignment", () => {
   });
 });
 
+describe("observation-store: searchInProcessDegraded", () => {
+  test("returns bounded lexical matches with degradation labels", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      project: "proj-degraded",
+      session_id: "sess-degraded",
+      title: "degraded sentinel title",
+      content: "degraded sentinel body for in-process fallback",
+      created_at: "2026-06-02T00:00:00.000Z",
+    });
+
+    const res = store.searchInProcessDegraded({
+      query: "degraded sentinel",
+      project: "proj-degraded",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeGreaterThan(0);
+    expect(res.meta.degradation).toEqual(
+      expect.arrayContaining(["safe_lexical_fallback", "in_process_degraded"]),
+    );
+    expect(res.meta.in_process_degraded).toBe(true);
+    expect(String((res.items[0] as { content?: string }).content || "")).toContain("degraded sentinel");
+  });
+});
+
 // ---------------------------------------------------------------------------
 // timeline
 // ---------------------------------------------------------------------------

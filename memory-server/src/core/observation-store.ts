@@ -1718,7 +1718,11 @@ export class ObservationStore {
   // lexicalSearch
   // ---------------------------------------------------------------------------
 
-  private boundedRecentLexicalScan(request: SearchRequest, internalLimit: number): Map<string, number> {
+  private boundedRecentLexicalScan(
+    request: SearchRequest,
+    internalLimit: number,
+    recentRowLimit?: number,
+  ): Map<string, number> {
     const tokens = buildSearchTokens(request.query);
     if (tokens.length === 0) return new Map<string, number>();
 
@@ -1734,7 +1738,7 @@ export class ObservationStore {
 
     sql = this.applyCommonFilters(sql, params, "o", request);
     sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
-    params.push(Math.max(internalLimit * 4, 200));
+    params.push(recentRowLimit ?? Math.max(internalLimit * 4, 200));
 
     const rows = this.deps.db
       .query(sql)
@@ -1752,6 +1756,32 @@ export class ObservationStore {
       if (score > 0) raw.set(row.id, score);
     }
 
+    return normalizeScoreMap(raw);
+  }
+
+  private boundedRecentRowsOnly(
+    request: SearchRequest,
+    internalLimit: number,
+    recentRowLimit?: number,
+  ): Map<string, number> {
+    const params: SQLQueryBindings[] = [];
+    let sql = `
+      SELECT o.id AS id
+      FROM mem_observations o
+      WHERE 1 = 1
+    `;
+    sql = this.applyCommonFilters(sql, params, "o", request);
+    sql += " ORDER BY o.created_at DESC, o.id DESC LIMIT ?";
+    params.push(recentRowLimit ?? Math.max(internalLimit * 4, 200));
+
+    const rows = this.deps.db
+      .query(sql)
+      .all(...(params as any[])) as Array<{ id: string }>;
+
+    const raw = new Map<string, number>();
+    for (let index = 0; index < rows.length; index += 1) {
+      raw.set(rows[index].id, Math.max(0.05, 1 - index * 0.01));
+    }
     return normalizeScoreMap(raw);
   }
 
@@ -3817,6 +3847,12 @@ export class ObservationStore {
     } else if (latencySafeMode) {
       internalLimit = Math.min(25, Math.max(5, limit));
     }
+    if (!request.project && !request.session_id && !request.scope?.project && !request.scope?.session_id) {
+      const broadTokens = buildSearchTokens(request.query);
+      if (broadTokens.length >= 3) {
+        internalLimit = Math.min(internalLimit, 15);
+      }
+    }
     const includePrivate = Boolean(request.include_private);
     const strictProject = request.strict_project !== false;
     const expandLinks =
@@ -4508,39 +4544,41 @@ export class ObservationStore {
       const hitIds = (items as Array<{ id?: unknown }>)
         .map((item) => item.id as string)
         .filter((id): id is string => Boolean(id));
-      if (hitIds.length > 0) {
-        try {
-          this.deps.db.transaction(() => {
-            const now = new Date().toISOString();
-            const ph = hitIds.map(() => "?").join(",");
-            // COMP-002: access_count インクリメント + last_accessed_at 更新（バッチ）
-            this.deps.db
-              .query(
-                `UPDATE mem_observations SET access_count = COALESCE(access_count,0)+1, last_accessed_at=? WHERE id IN (${ph})`
-              )
-              .run(now, ...hitIds);
-            // audit_log バッチ INSERT
-            const auditValues = hitIds.map(() => "(?,?,?,?,?,?)").join(",");
-            const auditParams: SQLQueryBindings[] = [];
-            for (const id of hitIds) {
-              auditParams.push(
-                "search_hit",
-                "system",
-                "observation",
-                id,
-                JSON.stringify({ query: request.query?.substring(0, 100), project: normalizedProject }),
-                now
-              );
-            }
-            this.deps.db
-              .query(
-                `INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at) VALUES ${auditValues}`
-              )
-              .run(...auditParams);
-          })();
-        } catch {
-          // best effort: access_count 更新に失敗しても検索結果は返す
-        }
+      const skipSearchHitSideEffects = latencySafeMode || request.skip_search_hit === true;
+      if (hitIds.length > 0 && !skipSearchHitSideEffects) {
+        const recordSearchHits = () => {
+          try {
+            this.deps.db.transaction(() => {
+              const now = new Date().toISOString();
+              const ph = hitIds.map(() => "?").join(",");
+              this.deps.db
+                .query(
+                  `UPDATE mem_observations SET access_count = COALESCE(access_count,0)+1, last_accessed_at=? WHERE id IN (${ph})`
+                )
+                .run(now, ...hitIds);
+              const auditValues = hitIds.map(() => "(?,?,?,?,?,?)").join(",");
+              const auditParams: SQLQueryBindings[] = [];
+              for (const id of hitIds) {
+                auditParams.push(
+                  "search_hit",
+                  "system",
+                  "observation",
+                  id,
+                  JSON.stringify({ query: request.query?.substring(0, 100), project: normalizedProject }),
+                  now
+                );
+              }
+              this.deps.db
+                .query(
+                  `INSERT INTO mem_audit_log(action, actor, target_type, target_id, details_json, created_at) VALUES ${auditValues}`
+                )
+                .run(...auditParams);
+            })();
+          } catch {
+            // best effort: access_count 更新に失敗しても検索結果は返す
+          }
+        };
+        queueMicrotask(recordSearchHits);
       }
     } catch {
       // best effort
@@ -4658,6 +4696,112 @@ export class ObservationStore {
     }
 
     return response;
+  }
+
+  /**
+   * §145: bounded in-process degraded search when worker/child offload fails.
+   * Uses recent-row lexical scan only; never writes search_hit side effects.
+   */
+  searchInProcessDegraded(request: SearchRequest): ApiResponse {
+    const startedAt = performance.now();
+
+    if (!this.deps.config.retrievalEnabled) {
+      return makeResponse(startedAt, [], request as unknown as Record<string, unknown>, {
+        retrieval_enabled: false,
+        degradation: ["safe_lexical_fallback", "in_process_degraded"],
+      });
+    }
+
+    if (!request.query || !request.query.trim()) {
+      return makeErrorResponse(
+        startedAt,
+        "query is required",
+        request as unknown as Record<string, unknown>,
+      );
+    }
+
+    const limit = clampLimit(request.limit, 20, 1, 100);
+    const recentRowLimit = clampLimit(
+      Number(process.env.HARNESS_MEM_IN_PROCESS_DEGRADED_ROW_LIMIT || 200),
+      200,
+      50,
+      1000,
+    );
+    const internalLimit = Math.min(limit, 25);
+    const includePrivate = Boolean(request.include_private);
+    const strictProject = request.strict_project !== false;
+    const normalizedProject = request.project
+      ? this.deps.normalizeProject(request.project)
+      : request.project;
+    const projectMembers =
+      request.project && strictProject
+        ? this.resolveProjectMembers(request.project)
+        : undefined;
+    const cleanedQuery = request.query.replace(/\bfile:\S+/g, "").replace(/\s+/g, " ").trim();
+    const normalizedRequest: SearchRequest = {
+      ...request,
+      query: cleanedQuery || request.query,
+      project: normalizedProject,
+      project_members: projectMembers,
+      include_private: includePrivate,
+      strict_project: strictProject,
+      expand_links: false,
+      vector_search: false,
+      safe_mode: true,
+      graph_depth: 0,
+      graph_weight: 0,
+      skip_search_hit: true,
+    };
+
+    let lexical = this.boundedRecentLexicalScan(normalizedRequest, internalLimit, recentRowLimit);
+    if (lexical.size === 0) {
+      lexical = this.boundedRecentRowsOnly(normalizedRequest, internalLimit, recentRowLimit);
+    }
+
+    const rankedIds = [...lexical.entries()]
+      .sort((lhs, rhs) => rhs[1] - lhs[1])
+      .slice(0, limit)
+      .map(([id]) => id);
+    const observations = loadObservations(this.deps.db, rankedIds);
+    const items = rankedIds
+      .map((id, index) => {
+        const observation = observations.get(id);
+        if (!observation) return null;
+        const privacyTags = parseArrayJson(observation.privacy_tags_json);
+        if (!includePrivate && hasPrivateVisibilityTag(privacyTags)) {
+          return null;
+        }
+        const score = lexical.get(id) ?? 0;
+        return {
+          id,
+          platform: observation.platform,
+          project: observation.project,
+          session_id: observation.session_id,
+          title: observation.title,
+          content: observation.content_redacted,
+          created_at: observation.created_at,
+          tags: parseArrayJson(observation.tags_json),
+          privacy_tags: privacyTags,
+          rank: index + 1,
+          scores: {
+            lexical: Number(score.toFixed(6)),
+            vector: 0,
+            recency: recencyScore(String(observation.created_at || "")),
+            final: Number(score.toFixed(6)),
+          },
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
+
+    return makeResponse(startedAt, items, request as unknown as Record<string, unknown>, {
+      ranking: "in_process_degraded_v1",
+      degradation: ["safe_lexical_fallback", "in_process_degraded"],
+      in_process_degraded: true,
+      vector_search_enabled: false,
+      fts_enabled: this.deps.ftsEnabled,
+      recent_row_limit: recentRowLimit,
+      lexical_candidates: lexical.size,
+    });
   }
 
   /**

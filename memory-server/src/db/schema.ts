@@ -1,10 +1,34 @@
 import { type Database } from "bun:sqlite";
 
-export function configureDatabase(db: Database): void {
+function parsePragmaInt(raw: string | undefined): number | null {
+  if (raw === undefined || raw.trim() === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? Math.trunc(value) : null;
+}
+
+export function configureDatabase(
+  db: Database,
+  env: Record<string, string | undefined> = process.env,
+): void {
   db.exec("PRAGMA journal_mode=WAL;");
   db.exec("PRAGMA synchronous=NORMAL;");
   db.exec("PRAGMA foreign_keys=ON;");
   db.exec("PRAGMA busy_timeout=5000;");
+
+  const cacheSize = parsePragmaInt(env.HARNESS_MEM_SQLITE_CACHE_SIZE);
+  if (cacheSize !== null) {
+    db.exec(`PRAGMA cache_size=${cacheSize};`);
+  }
+
+  const mmapSize = parsePragmaInt(env.HARNESS_MEM_SQLITE_MMAP_SIZE);
+  if (mmapSize !== null && mmapSize >= 0) {
+    db.exec(`PRAGMA mmap_size=${mmapSize};`);
+  }
+
+  const tempStore = (env.HARNESS_MEM_SQLITE_TEMP_STORE || "MEMORY").trim().toUpperCase();
+  if (tempStore === "MEMORY" || tempStore === "FILE" || tempStore === "DEFAULT") {
+    db.exec(`PRAGMA temp_store=${tempStore};`);
+  }
 }
 
 function initWorkGraphSchema(db: Database): void {

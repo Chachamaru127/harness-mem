@@ -1,9 +1,9 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-05-28
+Last updated: 2026-06-02
 Owner: harness-mem
-Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot
+Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix
 
 ## Purpose
 
@@ -81,7 +81,11 @@ then older reports or memory.
    search, or existing MCP core tools.
 5. Keep degradation useful. If vector search, a worker, a projection, or a
    telemetry exporter fails, scoped lexical / recent / decision / work recall
-   should still return a structured degraded result.
+   should still return a structured degraded result. While the local DB remains
+   readable, search MUST NOT return `empty_error` (`ok=false` with `items=[]`).
+   A bounded in-process degraded path (recent/scoped lexical scan with strict
+   row caps) with stable degradation labels is required before surfacing a true
+   error.
 
 ## Recall Runtime
 
@@ -147,6 +151,7 @@ such as:
 - `worker_timeout`
 - `worker_queue_full`
 - `safe_lexical_fallback`
+- `in_process_degraded`
 - `otel_exporter_unavailable`
 
 `503` means backpressure, not "no memory". Agents and skills must treat it as a
@@ -447,6 +452,69 @@ When conversation history is used to build benchmark cases:
   and/or morphological normalization), not raw substring match alone.
 - Real-data self-seeded results MUST follow the non-superiority rule above;
   live competitor comparison requires the same masked dataset for all systems.
+- LLM leakage filter (query-alone N=3 trials; discard if any trial answers without
+  context) MUST be implemented for scale datasets (v2+).
+- OpenRouter spend (cap, actual spend, generator/judge model separation) MUST be
+  recorded in pipeline manifest and reproducibility artifacts when OpenRouter is
+  used.
+- Runner loads `coding-memory-real-ja-mixed-v2.jsonl` when present; v1 pilot is
+  archived and not double-counted.
+
+### Agentmemory live comparison (must)
+
+When Agentmemory is live-measured via `--competitors agentmemory`:
+
+- Use official local REST only: default `AGENTMEMORY_URL=http://127.0.0.1:3111`,
+  endpoints `/agentmemory/health`, `/agentmemory/remember`, `/agentmemory/smart-search`.
+- Protected Agentmemory deployments use `AGENTMEMORY_SECRET` as bearer token.
+  Secret values MUST NOT appear in reports, logs, or commits; reproducibility
+  records set/unset only.
+- Non-localhost Agentmemory URLs MUST be rejected unless a later explicit
+  risk-gated plan approves remote targets.
+- Agentmemory is promoted from published(reference-only) to reproduced only
+  after adapter E2E seed+search smoke passes on the same dataset, scorer, and
+  manifest as harness-mem.
+- Live Agentmemory comparison on real-data v2 still follows the non-superiority
+  rule; domain mismatch (generic-agent vs developer-workflow) MUST be noted in
+  claim safety.
+
+Companion implementation plan: `Plans.md` §142 Agentmemory Live Comparison Benchmark.
+
+### LoCoMo cross-system comparison (must)
+
+When comparing harness-mem against Agentmemory on the official LoCoMo dataset:
+
+- Use the official LoCoMo dataset (`snap-research/locomo`, `data/locomo10.json`) as the
+  common benchmark data. Do not commit raw dataset files; record source URL and license
+  in docs.
+- Compare with the same dataset, EM/F1 scorer (`locomo-evaluator`), and shared answer
+  synthesis (`synthesizeLocomoAnswer`). Only retrieval differs between systems.
+- Align embedding backbone on OpenAI `text-embedding-3-small` for both harness-mem
+  (`HARNESS_MEM_EMBEDDING_PROVIDER=openai`) and Agentmemory daemon
+  (`EMBEDDING_PROVIDER=openai`). `fallback` hash embeddings are smoke-only; ONNX/local
+  is optional for fully-local runs.
+- Agentmemory live runs inherit §142 localhost-only / `AGENTMEMORY_SECRET` non-exposure
+  rules. `OPENAI_API_KEY` / `HARNESS_MEM_OPENAI_API_KEY` are handled via `.env` guard;
+  values MUST NOT appear in reports (set/unset only).
+- LoCoMo is English general-lifelog domain; harness-mem's primary domain is Japanese
+  developer workflow. Domain mismatch MUST be noted in claim safety. Results are
+  same-run reproduced measurements only; they MUST NOT be cited as external superiority
+  proof.
+
+Companion implementation plan: `Plans.md` §143 LoCoMo Common Benchmark.
+
+### Large DB search p95 regression gate (must)
+
+When the local observation store exceeds 100k active rows:
+
+- Search MUST remain degradation-safe: worker/child offload failures MUST fall
+  back to bounded in-process degraded results (Rule #5), never `empty_error`.
+- A read-only snapshot reproduction harness MUST measure fixed-query search p95
+  before/after changes; live production DB files MUST NOT be mutated by the gate.
+- p95 thresholds and query fixtures MUST be recorded in reproducibility artifacts;
+  gate failure blocks release claims about large-DB search stability.
+
+Companion implementation plan: `Plans.md` §145 Large DB Search Timeout Fix.
 
 ## Non-Goals
 
@@ -508,7 +576,7 @@ The following are stop-ship regressions:
 - `docs/readme-claims.md`
 - `Plans.md` §138 Internal Memory Benchmark
 - `Plans.md` §139 Benchmark Competency Mapping
-- `Plans.md` §140 Real-Data Benchmark Pilot
+- `Plans.md` §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark
 - `docs/benchmarks/real-data-pipeline.md`
 - `docs/adr/ADR-002-commercial-packaging.md`
 - `docs/adr-001-auto-memory-coexistence.md`

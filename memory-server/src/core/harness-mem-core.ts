@@ -11,6 +11,7 @@ import {
   initSchema as initDbSchema,
   migrateSchema as migrateDbSchema,
 } from "../db/schema";
+import { runSearchDbMaintenanceIfDue } from "../db/search-maintenance";
 import type { StorageAdapter } from "../db/storage-adapter";
 import { SqliteStorageAdapter } from "../db/sqlite-adapter";
 import { createStorageAdapter } from "../db/adapter-factory";
@@ -184,6 +185,8 @@ const DEFAULT_ENVIRONMENT_CACHE_TTL_MS = 20_000;
 const DEFAULT_SEARCH_CHILD_TIMEOUT_MS = 20_000;
 const DEFAULT_SEARCH_CHILD_QUEUE_MAX = 1;
 const DEFAULT_SEARCH_WORKER_TIMEOUT_MS = 3_000;
+const DEFAULT_SEARCH_WORKER_SCALE_OBS_THRESHOLD = 100_000;
+const DEFAULT_SEARCH_WORKER_SCALE_TIMEOUT_MS = 8_000;
 const DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS = 20_000;
 const DEFAULT_SEARCH_WORKER_QUEUE_MAX = 2;
 const DEFAULT_EVENT_CHILD_TIMEOUT_MS = 8_000;
@@ -257,6 +260,18 @@ const RECALL_DEGRADATION_MANIFEST = {
       fallback_path: "in_process_or_lexical",
       retryable: true,
       user_action: "retry or lower limit; recall must not block health readiness",
+    },
+    {
+      code: "safe_lexical_fallback",
+      fallback_path: "safe_lexical_child",
+      retryable: true,
+      user_action: "retry search; lexical-only results are returned",
+    },
+    {
+      code: "in_process_degraded",
+      fallback_path: "bounded_recent_lexical",
+      retryable: true,
+      user_action: "retry later for full hybrid search; degraded in-process results were returned",
     },
     {
       code: "queue_full",
@@ -1121,7 +1136,6 @@ class PersistentSearchWorkerClient {
         }
         this.pending.delete(id);
         reject(new Error(`search worker request timed out after ${timeoutMs}ms`));
-        this.killCurrentWorker(`request timeout after ${timeoutMs}ms`);
       }, timeoutMs);
       this.pending.set(id, {
         resolve,
@@ -1702,6 +1716,7 @@ export class HarnessMemCore {
   /** S127-002: warm persistent worker for normal vector search. */
   private searchWorker: PersistentSearchWorkerClient | null = null;
   private searchChildPending = 0;
+  private cachedObservationCount: { value: number; checkedAtMs: number } | null = null;
   private eventChildPending = 0;
   private retryChildPending = 0;
   private checkpointChildPending = 0;
@@ -2150,24 +2165,80 @@ export class HarnessMemCore {
   }
 
   private searchWorkerTimeoutMs(worker: PersistentSearchWorkerClient): number {
-    if (worker.isReady()) {
-      return clampLimit(
-        Number(process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS || DEFAULT_SEARCH_WORKER_TIMEOUT_MS),
-        DEFAULT_SEARCH_WORKER_TIMEOUT_MS,
-        250,
-        60_000,
-      );
-    }
-    return clampLimit(
-      Number(
-        process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS ||
-          process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS ||
+    const base = worker.isReady()
+      ? clampLimit(
+          Number(process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS || DEFAULT_SEARCH_WORKER_TIMEOUT_MS),
+          DEFAULT_SEARCH_WORKER_TIMEOUT_MS,
+          250,
+          60_000,
+        )
+      : clampLimit(
+          Number(
+            process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS ||
+              process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS ||
+              DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS,
+          ),
           DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS,
-      ),
-      DEFAULT_SEARCH_WORKER_STARTUP_TIMEOUT_MS,
-      250,
+          250,
+          60_000,
+        );
+
+    const scaleThreshold = clampLimit(
+      Number(process.env.HARNESS_MEM_SEARCH_SCALE_OBS_THRESHOLD || DEFAULT_SEARCH_WORKER_SCALE_OBS_THRESHOLD),
+      DEFAULT_SEARCH_WORKER_SCALE_OBS_THRESHOLD,
+      10_000,
+      5_000_000,
+    );
+    const scaleTimeoutMs = clampLimit(
+      Number(process.env.HARNESS_MEM_SEARCH_SCALE_TIMEOUT_MS || DEFAULT_SEARCH_WORKER_SCALE_TIMEOUT_MS),
+      DEFAULT_SEARCH_WORKER_SCALE_TIMEOUT_MS,
+      base,
       60_000,
     );
+    if (this.getActiveObservationCount() >= scaleThreshold) {
+      return Math.max(base, scaleTimeoutMs);
+    }
+    return base;
+  }
+
+  private getActiveObservationCount(): number {
+    const nowMs = Date.now();
+    if (this.cachedObservationCount && nowMs - this.cachedObservationCount.checkedAtMs < 60_000) {
+      return this.cachedObservationCount.value;
+    }
+    let value = 0;
+    try {
+      const row = this.db
+        .query(`SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`)
+        .get() as { count?: number } | null;
+      value = Number(row?.count ?? 0);
+    } catch {
+      value = 0;
+    }
+    this.cachedObservationCount = { value, checkedAtMs: nowMs };
+    return value;
+  }
+
+  private canReadLocalDb(): boolean {
+    try {
+      this.db.query("SELECT 1 AS ok").get();
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private maybeRunSearchDbMaintenance(): void {
+    try {
+      runSearchDbMaintenanceIfDue(this.db, {
+        ftsEnabled: this.ftsEnabled,
+        writeAudit: (action, targetType, targetId, details) => {
+          this.writeAuditLog(action, targetType, targetId, details);
+        },
+      });
+    } catch {
+      // best effort
+    }
   }
 
   private checkpointChildTimeoutMs(): number {
@@ -2401,23 +2472,33 @@ export class HarnessMemCore {
       graph_weight: 0,
     };
     let fallback: ApiResponse;
-    let fallbackMode: "child_process" | "empty_error" = "child_process";
+    let fallbackMode: "child_process" | "in_process" | "empty_error" = "child_process";
     let fallbackFailedReason: string | null = null;
     try {
       fallback = await this.runSearchWithOneShotChild(safeRequest);
     } catch (fallbackError) {
-      fallbackMode = "empty_error";
       fallbackFailedReason = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
-      fallback = makeErrorResponse(
-        startedAt,
-        `search offload failed and safe fallback failed: ${fallbackFailedReason}`,
-        safeRequest as unknown as Record<string, unknown>,
-      );
+      if (this.canReadLocalDb()) {
+        fallback = this.obsStore.searchInProcessDegraded(request);
+        fallbackMode = "in_process";
+      } else {
+        fallbackMode = "empty_error";
+        fallback = makeErrorResponse(
+          startedAt,
+          `search offload failed and safe fallback failed: ${fallbackFailedReason}`,
+          safeRequest as unknown as Record<string, unknown>,
+        );
+      }
     }
     const existingWarnings = Array.isArray(fallback.meta.warnings)
       ? (fallback.meta.warnings as string[])
       : [];
     const fallbackFailed = fallbackMode === "empty_error";
+    const degradation = Array.isArray(fallback.meta.degradation)
+      ? [...(fallback.meta.degradation as string[])]
+      : fallbackMode === "in_process"
+        ? ["safe_lexical_fallback", "in_process_degraded"]
+        : ["safe_lexical_fallback"];
     fallback.meta = {
       ...fallback.meta,
       ...(fallbackFailed
@@ -2426,20 +2507,31 @@ export class HarnessMemCore {
             http_status: 503,
           }
         : {}),
+      degradation,
       warnings: [
         ...existingWarnings,
         fallbackFailed
           ? `search offload failed; safe lexical fallback also failed: ${reason.slice(0, 240)}`
-          : `search offload failed; returned safe lexical fallback: ${reason.slice(0, 240)}`,
+          : fallbackMode === "in_process"
+            ? `search offload failed; returned in-process degraded fallback: ${reason.slice(0, 240)}`
+            : `search offload failed; returned safe lexical fallback: ${reason.slice(0, 240)}`,
       ],
       search_offload: {
         mode,
-        fallback: fallbackFailed ? "none" : "safe_lexical",
+        fallback: fallbackFailed ? "none" : fallbackMode === "in_process" ? "in_process_degraded" : "safe_lexical",
         fallback_mode: fallbackMode,
         failed_reason: reason.slice(0, 500),
         ...(fallbackFailedReason ? { fallback_failed_reason: fallbackFailedReason.slice(0, 500) } : {}),
       },
     };
+    if (!fallbackFailed) {
+      fallback.ok = true;
+      delete fallback.error;
+      if (fallback.meta && typeof fallback.meta === "object") {
+        delete (fallback.meta as Record<string, unknown>).http_status;
+        delete (fallback.meta as Record<string, unknown>).error_code;
+      }
+    }
     return fallback;
   }
 
@@ -8408,6 +8500,7 @@ export class HarnessMemCore {
     };
 
     const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options);
+    this.maybeRunSearchDbMaintenance();
     try {
       this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
         ...stats,
