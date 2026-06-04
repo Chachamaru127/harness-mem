@@ -3,6 +3,39 @@ import { readFileSync } from "node:fs";
 export interface LocomoTurn {
   speaker: string;
   text: string;
+  /** ISO timestamp resolved from the session date when available */
+  timestamp?: string;
+}
+
+const MONTHS: Record<string, number> = {
+  jan: 0, january: 0, feb: 1, february: 1, mar: 2, march: 2, apr: 3, april: 3,
+  may: 4, jun: 5, june: 5, jul: 6, july: 6, aug: 7, august: 7, sep: 8, sept: 8,
+  september: 8, oct: 9, october: 9, nov: 10, november: 10, dec: 11, december: 11,
+};
+
+/**
+ * Parses LoCoMo session date strings like "1:56 pm on 8 May, 2023" into an ISO
+ * timestamp. Returns undefined when the format is not recognized.
+ */
+export function parseLocomoSessionDate(raw: unknown): string | undefined {
+  const value = String(raw || "").trim();
+  if (!value) return undefined;
+  const match =
+    /(?:(\d{1,2}):(\d{2})\s*(am|pm)\s+on\s+)?(\d{1,2})\s+([A-Za-z]+),?\s+(\d{4})/i.exec(value);
+  if (!match) return undefined;
+  const [, hh, mm, ampm, day, monthName, year] = match;
+  const month = MONTHS[(monthName || "").toLowerCase()];
+  if (month == null) return undefined;
+  let hour = hh != null ? Number(hh) : 0;
+  const minute = mm != null ? Number(mm) : 0;
+  if (ampm) {
+    const lower = ampm.toLowerCase();
+    if (lower === "pm" && hour < 12) hour += 12;
+    if (lower === "am" && hour === 12) hour = 0;
+  }
+  const date = new Date(Date.UTC(Number(year), month, Number(day), hour, minute, 0));
+  if (Number.isNaN(date.getTime())) return undefined;
+  return date.toISOString();
 }
 
 export interface LocomoQuestion {
@@ -51,17 +84,21 @@ function normalizeAnswer(entry: Record<string, unknown>): string {
 
 function extractRawConversationTurns(conversation: unknown): Array<Record<string, unknown>> {
   if (!isObject(conversation)) return [];
-  const sessions: Array<{ index: number; turns: unknown[] }> = [];
+  const sessions: Array<{ index: number; turns: unknown[]; timestamp?: string }> = [];
   for (const [key, value] of Object.entries(conversation)) {
     const match = /^session_(\d+)$/.exec(key);
     if (!match || !Array.isArray(value)) continue;
-    sessions.push({ index: Number(match[1]), turns: value });
+    const index = Number(match[1]);
+    const timestamp = parseLocomoSessionDate(conversation[`session_${index}_date_time`]);
+    sessions.push({ index, turns: value, timestamp });
   }
   sessions.sort((a, b) => a.index - b.index);
   const turns: Array<Record<string, unknown>> = [];
   for (const session of sessions) {
     for (const turn of session.turns) {
-      if (isObject(turn)) turns.push(turn);
+      if (isObject(turn)) {
+        turns.push(session.timestamp ? { ...turn, __session_timestamp: session.timestamp } : turn);
+      }
     }
   }
   return turns;
@@ -72,19 +109,28 @@ function normalizeConversation(value: unknown): LocomoTurn[] {
     return value
       .map((turn) => {
         const normalized = (turn || {}) as Record<string, unknown>;
+        const timestamp =
+          typeof normalized.timestamp === "string" && normalized.timestamp.trim().length > 0
+            ? normalized.timestamp.trim()
+            : undefined;
         return {
           speaker: String(normalized.speaker || "").trim(),
           text: String(normalized.text || "").trim(),
+          ...(timestamp ? { timestamp } : {}),
         };
       })
       .filter((turn) => turn.text.length > 0);
   }
 
   return extractRawConversationTurns(value)
-    .map((turn) => ({
-      speaker: String(turn.speaker || "").trim(),
-      text: String(turn.text || "").trim(),
-    }))
+    .map((turn) => {
+      const timestamp = typeof turn.__session_timestamp === "string" ? turn.__session_timestamp : undefined;
+      return {
+        speaker: String(turn.speaker || "").trim(),
+        text: String(turn.text || "").trim(),
+        ...(timestamp ? { timestamp } : {}),
+      };
+    })
     .filter((turn) => turn.text.length > 0);
 }
 

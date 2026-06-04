@@ -270,6 +270,55 @@ function resolveRelativeWeekday(token: string, referenceIso: string): string | n
   return formatDate(resolved);
 }
 
+function resolveRelativeDay(token: string, referenceIso: string): string | null {
+  const source = normalizeLower(token);
+  const ref = asValidDate(referenceIso);
+  const shiftDays = (days: number): string => {
+    const resolved = new Date(ref.getTime());
+    resolved.setUTCDate(resolved.getUTCDate() + days);
+    return formatDate(resolved);
+  };
+
+  if (/\btoday\b/.test(source)) return shiftDays(0);
+  if (/\byesterday\b/.test(source)) return shiftDays(-1);
+  if (/\b(day before yesterday)\b/.test(source)) return shiftDays(-2);
+  if (/\btomorrow\b/.test(source)) return shiftDays(1);
+
+  const agoMatch = /\b(\d+)\s+(day|week|month|year)s?\s+ago\b/.exec(source);
+  if (agoMatch) {
+    const amount = Number(agoMatch[1]);
+    const unit = agoMatch[2];
+    if (unit === "day") return shiftDays(-amount);
+    if (unit === "week") return shiftDays(-amount * 7);
+    if (unit === "month") {
+      const resolved = new Date(ref.getTime());
+      resolved.setUTCMonth(resolved.getUTCMonth() - amount);
+      return formatDate(resolved);
+    }
+    if (unit === "year") {
+      const resolved = new Date(ref.getTime());
+      resolved.setUTCFullYear(resolved.getUTCFullYear() - amount);
+      return formatDate(resolved);
+    }
+  }
+
+  const lastUnit = /\blast\s+(week|month|year)\b/.exec(source);
+  if (lastUnit) {
+    const unit = lastUnit[1];
+    if (unit === "week") return shiftDays(-7);
+    if (unit === "month") {
+      const resolved = new Date(ref.getTime());
+      resolved.setUTCMonth(resolved.getUTCMonth() - 1);
+      return formatDate(resolved);
+    }
+    if (unit === "year") {
+      return String(ref.getUTCFullYear() - 1);
+    }
+  }
+
+  return null;
+}
+
 function normalizeTemporalAnswer(text: string, referenceIso: string): { value: string; notes: string[] } {
   const notes: string[] = [];
   const explicit = findExplicitDate(text, referenceIso);
@@ -278,10 +327,16 @@ function normalizeTemporalAnswer(text: string, referenceIso: string): { value: s
     return { value: explicit, notes };
   }
 
-  const relative = resolveRelativeWeekday(text, referenceIso);
-  if (relative) {
+  const relativeWeekday = resolveRelativeWeekday(text, referenceIso);
+  if (relativeWeekday) {
     notes.push("temporal:resolved_relative_weekday");
-    return { value: relative, notes };
+    return { value: relativeWeekday, notes };
+  }
+
+  const relativeDay = resolveRelativeDay(text, referenceIso);
+  if (relativeDay) {
+    notes.push("temporal:resolved_relative_day");
+    return { value: relativeDay, notes };
   }
 
   return { value: normalizeSpaces(text), notes };

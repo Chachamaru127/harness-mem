@@ -34,6 +34,38 @@ describe("LOCOMO answer normalizer", () => {
     expect(normalized.notes).toContain("temporal:resolved_relative_weekday");
   });
 
+  test("resolves 'yesterday' against the conversation reference date", () => {
+    const normalized = normalizeLocomoAnswer({
+      question: "When did Caroline go to the LGBTQ support group?",
+      kind: "temporal",
+      rawAnswer: "I went to a LGBTQ support group yesterday.",
+      evidence: [],
+      referenceIso: "2023-05-08T13:56:00.000Z",
+    });
+    expect(normalized.normalized).toBe("May 7, 2023");
+    expect(normalized.notes).toContain("temporal:resolved_relative_day");
+  });
+
+  test("resolves 'N days ago' and 'last week' against reference", () => {
+    const daysAgo = normalizeLocomoAnswer({
+      question: "When?",
+      kind: "temporal",
+      rawAnswer: "That was 3 days ago.",
+      evidence: [],
+      referenceIso: "2023-05-08T00:00:00.000Z",
+    });
+    expect(daysAgo.normalized).toBe("May 5, 2023");
+
+    const lastWeek = normalizeLocomoAnswer({
+      question: "When?",
+      kind: "temporal",
+      rawAnswer: "I started last week.",
+      evidence: [],
+      referenceIso: "2023-05-08T00:00:00.000Z",
+    });
+    expect(lastWeek.normalized).toBe("May 1, 2023");
+  });
+
   test("produces counterfactual answer in conclusion + reason format", () => {
     const normalized = normalizeLocomoAnswer({
       question: "Would I still pursue counseling if I hadn't received support?",
