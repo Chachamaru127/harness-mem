@@ -1335,6 +1335,28 @@ describe("observation-store: searchInProcessDegraded", () => {
     expect(res.meta.in_process_degraded).toBe(true);
     expect(String((res.items[0] as { content?: string }).content || "")).toContain("degraded sentinel");
   });
+
+  test("normalizes scope.project like the normal search path", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-scope-normalized",
+      project: "proj-scope",
+      session_id: "sess-degraded-scope",
+      title: "scope normalized sentinel",
+      content: "scope normalized sentinel body",
+      created_at: "2026-06-02T00:00:00.000Z",
+    });
+
+    const res = store.searchInProcessDegraded({
+      query: "scope normalized sentinel",
+      scope: { project: "PROJ-SCOPE" },
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    expect(res.items.map((item) => item.id)).toContain("obs-scope-normalized");
+    expect(res.items.every((item) => item.project === "proj-scope")).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------

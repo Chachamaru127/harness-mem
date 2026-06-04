@@ -4733,6 +4733,9 @@ export class ObservationStore {
     const normalizedProject = request.project
       ? this.deps.normalizeProject(request.project)
       : request.project;
+    const normalizedScopeProject = request.scope?.project
+      ? this.deps.normalizeProject(request.scope.project)
+      : undefined;
     const projectMembers =
       request.project && strictProject
         ? this.resolveProjectMembers(request.project)
@@ -4751,6 +4754,9 @@ export class ObservationStore {
       graph_depth: 0,
       graph_weight: 0,
       skip_search_hit: true,
+      scope: request.scope
+        ? { ...request.scope, project: normalizedScopeProject ?? request.scope.project }
+        : undefined,
     };
 
     let lexical = this.boundedRecentLexicalScan(normalizedRequest, internalLimit, recentRowLimit);
