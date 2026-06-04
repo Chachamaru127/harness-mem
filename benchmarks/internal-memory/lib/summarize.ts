@@ -97,7 +97,10 @@ export function buildSummary(input: {
       "Only harness-mem is reproduced by default. External competitors are published(reference-only) unless live-measured opt-in via --competitors.",
       "harness-mem seeds its own fixtures and retrieves them in-process, so high scores confirm the runner works end-to-end, NOT external competitive superiority.",
       "Scoring includes a content-substring recall fallback (score-case.ts) that can favor self-seeded adapters like harness-mem; treat reproduced harness-mem scores as implementation sanity, not competitive superiority.",
-      "Real-data pilot cases (coding-memory-real-ja-mixed-v1.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
+      "Real-data v2 cases (coding-memory-real-ja-mixed-v2.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs at scale, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
+      "Real-data pilot v1 (coding-memory-real-ja-mixed-v1.jsonl) is archived; runner prefers v2 when present.",
+      "Agentmemory live measurement uses official local REST only (AGENTMEMORY_URL default http://127.0.0.1:3111, /agentmemory/remember + /agentmemory/smart-search). Remote URLs are blocked; AGENTMEMORY_SECRET is never logged.",
+      "Agentmemory is promoted from published(reference-only) to reproduced only when explicitly passed to --competitors and health/seed/search smoke passes on the same masked dataset/scorer.",
       "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision.",
     ],
   };

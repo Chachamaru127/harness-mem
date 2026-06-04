@@ -2,20 +2,35 @@ import type { OpenRouterBudget } from "../openrouter-budget";
 import { scanTextForPii } from "../pii-scan";
 import type { CandidateCase, JudgeDimensionScores } from "./types";
 
-const JUDGE_MODEL =
-  process.env.INTERNAL_BENCH_JUDGE_MODEL?.trim() ??
-  process.env.INTERNAL_BENCH_OPENROUTER_MODEL?.trim() ??
-  "google/gemini-2.5-flash-lite";
+const DEFAULT_JUDGE_MODEL = "google/gemini-2.5-flash-lite";
+const DEFAULT_GENERATOR_MODEL = "openai/gpt-4o-mini";
 
-const GENERATOR_MODEL =
-  process.env.INTERNAL_BENCH_GENERATOR_MODEL?.trim() ?? "google/gemini-2.5-flash-lite";
+function resolveJudgeModel(): string {
+  return (
+    process.env.INTERNAL_BENCH_JUDGE_MODEL?.trim() ??
+    process.env.INTERNAL_BENCH_OPENROUTER_MODEL?.trim() ??
+    DEFAULT_JUDGE_MODEL
+  );
+}
+
+function resolveGeneratorModel(): string {
+  return process.env.INTERNAL_BENCH_GENERATOR_MODEL?.trim() ?? DEFAULT_GENERATOR_MODEL;
+}
+
+export function assertModelsSeparated(): void {
+  const generator = resolveGeneratorModel();
+  const judge = resolveJudgeModel();
+  if (generator === judge) {
+    throw new Error(`Generator and judge models must differ (generator=${generator}, judge=${judge})`);
+  }
+}
 
 export function getGeneratorModel(): string {
-  return GENERATOR_MODEL;
+  return resolveGeneratorModel();
 }
 
 export function getJudgeModel(): string {
-  return JUDGE_MODEL;
+  return resolveJudgeModel();
 }
 
 function heuristicJudge(caseRow: CandidateCase): JudgeDimensionScores {
@@ -54,7 +69,7 @@ async function llmJudgeOnce(
       pii_clean?: number;
       reason?: string;
     }>({
-      model: JUDGE_MODEL,
+      model: getJudgeModel(),
       max_tokens: 256,
       messages: [
         {
@@ -90,7 +105,7 @@ async function llmJudgeOnce(
 export async function judgeCandidate(
   caseRow: CandidateCase,
   budget?: OpenRouterBudget,
-  k = 3,
+  k = 5,
 ): Promise<JudgeDimensionScores> {
   if (!budget || !process.env.OPENROUTER_API_KEY?.trim()) {
     return heuristicJudge(caseRow);

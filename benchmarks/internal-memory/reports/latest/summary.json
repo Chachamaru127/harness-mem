@@ -1,12 +1,12 @@
 {
   "schema_version": "internal-memory-summary-v1",
-  "generated_at": "2026-05-29T06:13:34.027Z",
-  "run_id": "internal-memory-ed9a4c63-c831-433c-8fba-d2a729b11540",
-  "git_sha": "97bfa4b",
+  "generated_at": "2026-05-29T17:24:29.673Z",
+  "run_id": "internal-memory-11e74600-b40a-4076-802e-aa8dbca3802a",
+  "git_sha": "82d457c",
   "dataset_ids": [
     "public-retrieval-v1.jsonl",
     "coding-memory-ja-mixed-v1.jsonl",
-    "coding-memory-real-ja-mixed-v1.jsonl"
+    "coding-memory-real-ja-mixed-v2.jsonl"
   ],
   "competitors": [
     {
@@ -16,14 +16,14 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
-          "ran_count": 31,
+          "case_count": 55,
+          "ran_count": 55,
           "skipped_count": 0,
-          "recall_at_10_mean": 0.7741935483870968,
-          "mrr_mean": 0.6569892473118278,
-          "ndcg_at_10_mean": 0.6864400667080295,
-          "latency_p50_ms": 4.250707999999577,
-          "latency_p95_ms": 12.211749999998574
+          "recall_at_10_mean": 0.5272727272727272,
+          "mrr_mean": 0.4818181818181818,
+          "ndcg_at_10_mean": 0.4937208866883143,
+          "latency_p50_ms": 0.5546659999999974,
+          "latency_p95_ms": 183.2568339999998
         },
         {
           "layer": "ja_coding",
@@ -33,21 +33,21 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.8,
           "ndcg_at_10_mean": 0.8523719014285831,
-          "latency_p50_ms": 2.283999999999878,
-          "latency_p95_ms": 3.2510829999998805,
+          "latency_p50_ms": 1.0138340000000028,
+          "latency_p95_ms": 1.8175409999999772,
           "ja_recall_at_10": 1
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
-          "ran_count": 27,
+          "case_count": 1006,
+          "ran_count": 1006,
           "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 0.6975308641975309,
-          "ndcg_at_10_mean": 0.7764424556878469,
-          "latency_p50_ms": 2.7815840000000662,
-          "latency_p95_ms": 4.115375000000313,
-          "mixed_recall_at_10": 1
+          "recall_at_10_mean": 0.5208747514910537,
+          "mrr_mean": 0.510934393638171,
+          "ndcg_at_10_mean": 0.5135373708463509,
+          "latency_p50_ms": 0.552082999999925,
+          "latency_p95_ms": 3.1897079999998823,
+          "mixed_recall_at_10": 0.5208747514910537
         },
         {
           "layer": "isolation",
@@ -57,91 +57,95 @@
           "recall_at_10_mean": 1,
           "mrr_mean": 0.75,
           "ndcg_at_10_mean": 0.8154648767857288,
-          "latency_p50_ms": 2.667416000000003,
-          "latency_p95_ms": 2.7232500000000073,
+          "latency_p50_ms": 0.7668329999999912,
+          "latency_p95_ms": 0.8461670000000083,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         },
         {
           "layer": "resume",
-          "case_count": 7,
-          "ran_count": 7,
+          "case_count": 352,
+          "ran_count": 352,
           "skipped_count": 0,
-          "recall_at_10_mean": 0.7142857142857143,
-          "mrr_mean": 0.4761904761904762,
-          "ndcg_at_10_mean": 0.5087025800532861,
-          "latency_p50_ms": 4.745708999998897,
-          "latency_p95_ms": 10.168792000000394,
+          "recall_at_10_mean": 1,
+          "mrr_mean": 1,
+          "ndcg_at_10_mean": 1,
+          "latency_p50_ms": 0.006999999997788109,
+          "latency_p95_ms": 0.010666999998647952,
           "ja_recall_at_10": 1,
           "mixed_recall_at_10": 1
         }
       ],
-      "japanese_mixed_score": 1
+      "japanese_mixed_score": 0.6432272390821614
     },
     {
       "competitor_id": "agentmemory",
-      "measurement": "published",
-      "status": "skipped",
+      "measurement": "reproduced",
+      "status": "completed",
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
-          "ran_count": 0,
-          "skipped_count": 31,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
+          "case_count": 55,
+          "ran_count": 55,
+          "skipped_count": 0,
+          "recall_at_10_mean": 0.2,
+          "mrr_mean": 0.2,
+          "ndcg_at_10_mean": 0.2,
+          "latency_p50_ms": 332.41466700000456,
+          "latency_p95_ms": 441.73762499995064
         },
         {
           "layer": "ja_coding",
           "case_count": 5,
-          "ran_count": 0,
-          "skipped_count": 5,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
+          "ran_count": 5,
+          "skipped_count": 0,
+          "recall_at_10_mean": 0.4,
+          "mrr_mean": 0.4,
+          "ndcg_at_10_mean": 0.4,
+          "latency_p50_ms": 322.9221670000006,
+          "latency_p95_ms": 389.5709999999963,
+          "ja_recall_at_10": 0.4
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
-          "ran_count": 0,
-          "skipped_count": 27,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
+          "case_count": 1006,
+          "ran_count": 1006,
+          "skipped_count": 0,
+          "recall_at_10_mean": 0.11332007952286283,
+          "mrr_mean": 0.11332007952286283,
+          "ndcg_at_10_mean": 0.11332007952286283,
+          "latency_p50_ms": 338.0769169999985,
+          "latency_p95_ms": 416.92316700005904,
+          "mixed_recall_at_10": 0.11332007952286283
         },
         {
           "layer": "isolation",
           "case_count": 2,
-          "ran_count": 0,
-          "skipped_count": 2,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
+          "ran_count": 2,
+          "skipped_count": 0,
+          "recall_at_10_mean": 1,
+          "mrr_mean": 1,
+          "ndcg_at_10_mean": 1,
+          "latency_p50_ms": 339.56445800000074,
+          "latency_p95_ms": 358.2754580000037,
+          "ja_recall_at_10": 1,
+          "mixed_recall_at_10": 1
         },
         {
           "layer": "resume",
-          "case_count": 7,
-          "ran_count": 0,
-          "skipped_count": 7,
+          "case_count": 352,
+          "ran_count": 352,
+          "skipped_count": 0,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
+          "latency_p50_ms": 364.00570900016464,
+          "latency_p95_ms": 469.26679200003855,
+          "ja_recall_at_10": 0,
+          "mixed_recall_at_10": 0
         }
       ],
-      "published_recall_at_10": null,
-      "published_source": "Vendor docs / marketing — no comparable published retrieval@10 benchmark.",
-      "published_note": "Reference only, not reproduced. Run --competitors agentmemory with credentials to live-measure."
+      "japanese_mixed_score": 0.08734270910436713
     },
     {
       "competitor_id": "supermemory",
@@ -150,9 +154,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
+          "case_count": 55,
           "ran_count": 0,
-          "skipped_count": 31,
+          "skipped_count": 55,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -172,9 +176,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
+          "case_count": 1006,
           "ran_count": 0,
-          "skipped_count": 27,
+          "skipped_count": 1006,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -194,9 +198,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 7,
+          "case_count": 352,
           "ran_count": 0,
-          "skipped_count": 7,
+          "skipped_count": 352,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -215,9 +219,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
+          "case_count": 55,
           "ran_count": 0,
-          "skipped_count": 31,
+          "skipped_count": 55,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -237,9 +241,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
+          "case_count": 1006,
           "ran_count": 0,
-          "skipped_count": 27,
+          "skipped_count": 1006,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -259,9 +263,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 7,
+          "case_count": 352,
           "ran_count": 0,
-          "skipped_count": 7,
+          "skipped_count": 352,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -280,9 +284,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
+          "case_count": 55,
           "ran_count": 0,
-          "skipped_count": 31,
+          "skipped_count": 55,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -302,9 +306,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
+          "case_count": 1006,
           "ran_count": 0,
-          "skipped_count": 27,
+          "skipped_count": 1006,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -324,9 +328,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 7,
+          "case_count": 352,
           "ran_count": 0,
-          "skipped_count": 7,
+          "skipped_count": 352,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -345,9 +349,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 31,
+          "case_count": 55,
           "ran_count": 0,
-          "skipped_count": 31,
+          "skipped_count": 55,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -367,9 +371,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 27,
+          "case_count": 1006,
           "ran_count": 0,
-          "skipped_count": 27,
+          "skipped_count": 1006,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -389,9 +393,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 7,
+          "case_count": 352,
           "ran_count": 0,
-          "skipped_count": 7,
+          "skipped_count": 352,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -413,7 +417,10 @@
     "Only harness-mem is reproduced by default. External competitors are published(reference-only) unless live-measured opt-in via --competitors.",
     "harness-mem seeds its own fixtures and retrieves them in-process, so high scores confirm the runner works end-to-end, NOT external competitive superiority.",
     "Scoring includes a content-substring recall fallback (score-case.ts) that can favor self-seeded adapters like harness-mem; treat reproduced harness-mem scores as implementation sanity, not competitive superiority.",
-    "Real-data pilot cases (coding-memory-real-ja-mixed-v1.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
+    "Real-data v2 cases (coding-memory-real-ja-mixed-v2.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs at scale, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.",
+    "Real-data pilot v1 (coding-memory-real-ja-mixed-v1.jsonl) is archived; runner prefers v2 when present.",
+    "Agentmemory live measurement uses official local REST only (AGENTMEMORY_URL default http://127.0.0.1:3111, /agentmemory/remember + /agentmemory/smart-search). Remote URLs are blocked; AGENTMEMORY_SECRET is never logged.",
+    "Agentmemory is promoted from published(reference-only) to reproduced only when explicitly passed to --competitors and health/seed/search smoke passes on the same masked dataset/scorer.",
     "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision."
   ]
 }

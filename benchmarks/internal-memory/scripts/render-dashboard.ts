@@ -1,4 +1,4 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getPublishedReference } from "../adapters/import-published";
@@ -127,6 +127,40 @@ export function renderScorecard(summary: BenchmarkSummary, results: ScoredCaseRe
     );
   }
 
+  const manifestPath = join(ROOT, "datasets/real-data-pilot/pipeline-manifest.json");
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as {
+        schema_version?: string;
+        dataset_version?: string;
+        competency_counts?: Record<string, number>;
+        golden_agreement_rate?: number;
+        openrouter_spent_usd?: number;
+        openrouter_budget_cap_usd?: number;
+        target_per_competency?: number;
+      };
+      if (manifest.schema_version === "real-data-pipeline-v2" || manifest.dataset_version === "v2") {
+        lines.push(
+          "",
+          "## Real-data v2 pipeline (§141 scale)",
+          "",
+          `- target_per_competency: ${manifest.target_per_competency ?? "n/a"}`,
+          `- golden_agreement_rate: ${manifest.golden_agreement_rate !== undefined ? (manifest.golden_agreement_rate * 100).toFixed(1) + "%" : "n/a"}`,
+          `- openrouter_spent_usd: ${manifest.openrouter_spent_usd?.toFixed(6) ?? "0"} / cap ${manifest.openrouter_budget_cap_usd ?? "n/a"}`,
+          "",
+          "| Competency | Gold cases |",
+          "|---|---:|",
+        );
+        for (const comp of COMPETENCY_ORDER) {
+          const count = manifest.competency_counts?.[comp] ?? 0;
+          if (count > 0) lines.push(`| ${comp} | ${count} |`);
+        }
+      }
+    } catch {
+      // ignore malformed manifest
+    }
+  }
+
   lines.push("", "## Claim safety", "");
   for (const note of summary.claim_safety) {
     lines.push(`- ${note}`);
@@ -225,7 +259,9 @@ export function renderReproducibility(summary: BenchmarkSummary, competitors: st
     "",
     "## Environment flags observed",
     "",
-    `- AGENTMEMORY_BASE_URL: ${process.env.AGENTMEMORY_BASE_URL ? "set" : "unset"}`,
+    `- AGENTMEMORY_URL: ${process.env.AGENTMEMORY_URL ? "set" : "unset (default http://127.0.0.1:3111)"}`,
+    `- AGENTMEMORY_SECRET: ${process.env.AGENTMEMORY_SECRET ? "set" : "unset"}`,
+    `- agentmemory_endpoints: /agentmemory/health, /agentmemory/remember, /agentmemory/smart-search`,
     `- SUPERMEMORY_API_KEY: ${process.env.SUPERMEMORY_API_KEY ? "set" : "unset"}`,
     `- CLAUDE_MEM_BASE_URL: ${process.env.CLAUDE_MEM_BASE_URL ? "set" : "unset"}`,
     `- HARNESS_MEM_BASE_URL: ${process.env.HARNESS_MEM_BASE_URL ? "set" : "unset"}`,

@@ -15,17 +15,29 @@ const caseRow: BenchmarkCase = {
 };
 
 describe("external competitor adapters skip contract", () => {
-  test("agentmemory skips when AGENTMEMORY_BASE_URL is unset", async () => {
-    const previous = process.env.AGENTMEMORY_BASE_URL;
-    delete process.env.AGENTMEMORY_BASE_URL;
+  test("agentmemory rejects remote AGENTMEMORY_URL", () => {
+    const previous = process.env.AGENTMEMORY_URL;
+    process.env.AGENTMEMORY_URL = "https://agentmemory.example.com";
+    try {
+      expect(() => new AgentmemoryAdapter()).toThrow(/localhost-only/);
+    } finally {
+      if (previous) process.env.AGENTMEMORY_URL = previous;
+      else delete process.env.AGENTMEMORY_URL;
+    }
+  });
+
+  test("agentmemory skips when health check fails", async () => {
+    const previous = process.env.AGENTMEMORY_URL;
+    process.env.AGENTMEMORY_URL = "http://127.0.0.1:59999";
     const adapter = new AgentmemoryAdapter();
     const context = { run_id: "r", competitor_id: "agentmemory", project_prefix: "p" };
     try {
       const result = await adapter.query(caseRow, context);
       expect(result.status).toBe("skipped_missing_credentials");
-      expect(result.skip_reason).toContain("AGENTMEMORY_BASE_URL");
+      expect(result.skip_reason).toMatch(/health check failed|unreachable/);
     } finally {
-      if (previous) process.env.AGENTMEMORY_BASE_URL = previous;
+      if (previous) process.env.AGENTMEMORY_URL = previous;
+      else delete process.env.AGENTMEMORY_URL;
       await adapter.dispose();
     }
   });

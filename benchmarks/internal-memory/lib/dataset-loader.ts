@@ -22,8 +22,12 @@ export function loadDefaultDatasets(): BenchmarkCase[] {
 
 export function loadRealDataDataset(): BenchmarkCase[] {
   try {
-    return loadJsonlDataset("datasets/coding-memory-real-ja-mixed-v1.jsonl");
+    return loadJsonlDataset("datasets/coding-memory-real-ja-mixed-v2.jsonl");
   } catch {
-    return [];
+    try {
+      return loadJsonlDataset("datasets/coding-memory-real-ja-mixed-v1.jsonl");
+    } catch {
+      return [];
+    }
   }
 }

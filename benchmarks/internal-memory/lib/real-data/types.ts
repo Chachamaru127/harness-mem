@@ -46,7 +46,7 @@ export interface HumanReviewLog {
 }
 
 export interface PipelineManifest {
-  schema_version: "real-data-pipeline-v1";
+  schema_version: "real-data-pipeline-v1" | "real-data-pipeline-v2";
   generated_at: string;
   corpus_rounds: number;
   candidates_generated: number;
@@ -55,6 +55,11 @@ export interface PipelineManifest {
   generator_model?: string;
   golden_agreement_rate?: number;
   openrouter_spent_usd?: number;
+  openrouter_budget_cap_usd?: number;
+  target_per_competency?: number;
+  dataset_version?: string;
+  review_queue_stats?: { total: number; cr_ttl_full: number; ar_lru_spot: number };
+  competency_counts?: Record<string, number>;
 }
 
 export type { CorpusRound };

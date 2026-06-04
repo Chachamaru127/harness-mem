@@ -6,7 +6,9 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dir, "..");
-const REAL_DATASET = join(ROOT, "datasets/coding-memory-real-ja-mixed-v1.jsonl");
+const REAL_DATASET_V2 = join(ROOT, "datasets/coding-memory-real-ja-mixed-v2.jsonl");
+const REAL_DATASET_V1 = join(ROOT, "datasets/coding-memory-real-ja-mixed-v1.jsonl");
+const MANIFEST_PATH = join(ROOT, "datasets/real-data-pilot/pipeline-manifest.json");
 
 describe("real-data dataset schema", () => {
   test("loads real dataset when present with valid schema", () => {
@@ -15,7 +17,10 @@ describe("real-data dataset schema", () => {
       console.warn("real dataset not generated yet — skip count assertion");
       return;
     }
-    expect(cases.length).toBeGreaterThanOrEqual(50);
+    const minCases = cases.some((c) => c.case_id.startsWith("real-") && parseInt(c.case_id.split("-").pop() ?? "0", 10) > 100)
+      ? 300
+      : 50;
+    expect(cases.length).toBeGreaterThanOrEqual(minCases);
     for (let i = 0; i < cases.length; i += 1) {
       assertBenchmarkCase(cases[i], i + 1);
     }
@@ -24,11 +29,13 @@ describe("real-data dataset schema", () => {
   });
 
   test("real dataset has no PII leaks when file exists", () => {
-    try {
-      const source = readFileSync(REAL_DATASET, "utf8");
-      expect(scanJsonlForPii(source)).toEqual([]);
-    } catch {
-      // file not generated in CI without pipeline run
+    for (const path of [REAL_DATASET_V2, REAL_DATASET_V1]) {
+      try {
+        const source = readFileSync(path, "utf8");
+        expect(scanJsonlForPii(source)).toEqual([]);
+      } catch {
+        // file not generated
+      }
     }
   });
 });

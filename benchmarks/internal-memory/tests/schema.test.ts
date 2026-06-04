@@ -32,6 +32,10 @@ describe("internal-memory dataset schema", () => {
     expect(published).toContain("agentmemory");
     expect(published).toContain("supermemory");
     expect(published).toContain("claude-mem");
+    const agentmemory = manifest.competitors.find((row) => row.id === "agentmemory") as {
+      live_opt_in_env?: string[];
+    };
+    expect(agentmemory?.live_opt_in_env).toEqual(["AGENTMEMORY_URL", "AGENTMEMORY_SECRET"]);
   });
 
   test("ja-mixed dataset includes required categories", () => {

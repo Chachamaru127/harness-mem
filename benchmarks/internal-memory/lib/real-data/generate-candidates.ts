@@ -53,7 +53,7 @@ function layerForLang(lang: LanguageProfile): BenchmarkCase["layer"] {
   return "ja_coding";
 }
 
-function buildArCase(round: CorpusRound, turnIdx: number, seq: number): CandidateCase | null {
+export function buildArSeed(round: CorpusRound, turnIdx: number, seq: number): CandidateCase | null {
   const turn = round.turns[turnIdx];
   if (!turn || turn.content.length < 30) return null;
   const lang = round.language_hint;
@@ -74,7 +74,7 @@ function buildArCase(round: CorpusRound, turnIdx: number, seq: number): Candidat
   };
 }
 
-function buildCrCase(rounds: CorpusRound[], seq: number, offset = 0): CandidateCase | null {
+export function buildCrSeed(rounds: CorpusRound[], seq: number, offset = 0): CandidateCase | null {
   const slice = rounds.slice(offset);
   const round =
     slice.find((r) => r.turns.some((t) => t.supersedes)) ??
@@ -110,7 +110,7 @@ function buildCrCase(rounds: CorpusRound[], seq: number, offset = 0): CandidateC
   };
 }
 
-function buildTtlCase(round: CorpusRound, seq: number): CandidateCase | null {
+export function buildTtlSeed(round: CorpusRound, seq: number): CandidateCase | null {
   if (round.turns.length < 2) return null;
   const instruction = round.turns[0];
   const follow = round.turns[1];
@@ -138,7 +138,7 @@ function buildTtlCase(round: CorpusRound, seq: number): CandidateCase | null {
   };
 }
 
-function buildLruCase(rounds: CorpusRound[], seq: number): CandidateCase | null {
+export function buildLruSeed(rounds: CorpusRound[], seq: number): CandidateCase | null {
   if (rounds.length < 2) return null;
   const a = rounds[0];
   const b = rounds[1];
@@ -191,7 +191,7 @@ export function generateCandidatesFromCorpus(
   for (let i = 0; i < rounds.length && arSeq <= per; i += 1) {
     const round = rounds[i];
     const turnIdx = round.turns.length > 1 ? i % round.turns.length : 0;
-    const c = buildArCase(round, turnIdx, arSeq);
+    const c = buildArSeed(round, turnIdx, arSeq);
     if (c) {
       candidates.push(c);
       arSeq += 1;
@@ -199,14 +199,14 @@ export function generateCandidatesFromCorpus(
   }
 
   for (let i = 0; i < rounds.length && crSeq <= per; i += 3) {
-    const c = buildCrCase(rounds, crSeq, i);
+    const c = buildCrSeed(rounds, crSeq, i);
     if (!c) continue;
     candidates.push(c);
     crSeq += 1;
   }
 
   for (let i = 0; i < rounds.length && ttlSeq <= per; i += 1) {
-    const c = buildTtlCase(rounds[i], ttlSeq);
+    const c = buildTtlSeed(rounds[i], ttlSeq);
     if (c) {
       candidates.push(c);
       ttlSeq += 1;
@@ -214,7 +214,7 @@ export function generateCandidatesFromCorpus(
   }
 
   for (let i = 0; i < rounds.length - 1 && lruSeq <= per; i += 1) {
-    const c = buildLruCase(rounds.slice(i, i + 2), lruSeq);
+    const c = buildLruSeed(rounds.slice(i, i + 2), lruSeq);
     if (c) {
       candidates.push(c);
       lruSeq += 1;

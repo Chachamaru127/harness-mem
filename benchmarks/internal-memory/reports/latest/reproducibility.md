@@ -1,13 +1,15 @@
 # Reproducibility manifest
-- run_id: internal-memory-ed9a4c63-c831-433c-8fba-d2a729b11540
-- generated_at: 2026-05-29T06:13:34.027Z
-- git_sha: 97bfa4b
-- datasets: public-retrieval-v1.jsonl, coding-memory-ja-mixed-v1.jsonl, coding-memory-real-ja-mixed-v1.jsonl
+- run_id: internal-memory-11e74600-b40a-4076-802e-aa8dbca3802a
+- generated_at: 2026-05-29T17:24:29.673Z
+- git_sha: 82d457c
+- datasets: public-retrieval-v1.jsonl, coding-memory-ja-mixed-v1.jsonl, coding-memory-real-ja-mixed-v2.jsonl
 - competitors: harness-mem, agentmemory, supermemory, claude-mem, mem0, mempalace
 - node: v24.3.0
 - platform: darwin
 ## Environment flags observed
-- AGENTMEMORY_BASE_URL: unset
+- AGENTMEMORY_URL: unset (default http://127.0.0.1:3111)
+- AGENTMEMORY_SECRET: unset
+- agentmemory_endpoints: /agentmemory/health, /agentmemory/remember, /agentmemory/smart-search
 - SUPERMEMORY_API_KEY: unset
 - CLAUDE_MEM_BASE_URL: unset
 - HARNESS_MEM_BASE_URL: unset

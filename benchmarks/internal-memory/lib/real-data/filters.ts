@@ -1,5 +1,7 @@
 import { tokenOverlapScore } from "../ja-normalize";
+import type { OpenRouterBudget } from "../openrouter-budget";
 import { scanTextForPii } from "../pii-scan";
+import { hasLlmLeakage } from "./llm-leakage";
 import type { CandidateCase, FilterStats } from "./types";
 
 function hasShortcutLeak(caseRow: CandidateCase): boolean {
@@ -39,6 +41,63 @@ export function hasLeakage(caseRow: CandidateCase): boolean {
 export interface FilterOptions {
   /** Simulated leakage check without LLM (query contains answer). */
   skipLeakage?: boolean;
+  budget?: OpenRouterBudget;
+  leakageTrials?: number;
+}
+
+export async function filterCandidatesAsync(
+  candidates: CandidateCase[],
+  options: FilterOptions = {},
+): Promise<{ passed: CandidateCase[]; stats: FilterStats }> {
+  const stats: FilterStats = {
+    input: candidates.length,
+    passed: 0,
+    rejected_leakage: 0,
+    rejected_shortcut: 0,
+    rejected_dedup: 0,
+    rejected_answerability: 0,
+    rejected_pii: 0,
+  };
+  const passed: CandidateCase[] = [];
+  const leakageN = options.leakageTrials ?? 3;
+
+  for (const candidate of candidates) {
+    const serialized = JSON.stringify(candidate);
+    if (scanTextForPii(serialized).length > 0) {
+      stats.rejected_pii += 1;
+      candidate.filter_passed = false;
+      candidate.filter_reason = "pii_leak";
+      continue;
+    }
+    if (!options.skipLeakage && (await hasLlmLeakage(candidate, options.budget, leakageN))) {
+      stats.rejected_leakage += 1;
+      candidate.filter_passed = false;
+      candidate.filter_reason = "leakage";
+      continue;
+    }
+    if (hasShortcutLeak(candidate)) {
+      stats.rejected_shortcut += 1;
+      candidate.filter_passed = false;
+      candidate.filter_reason = "shortcut";
+      continue;
+    }
+    if (!isAnswerable(candidate)) {
+      stats.rejected_answerability += 1;
+      candidate.filter_passed = false;
+      candidate.filter_reason = "not_answerable";
+      continue;
+    }
+    if (passed.some((p) => isDuplicate(p, candidate))) {
+      stats.rejected_dedup += 1;
+      candidate.filter_passed = false;
+      candidate.filter_reason = "duplicate";
+      continue;
+    }
+    candidate.filter_passed = true;
+    passed.push(candidate);
+    stats.passed += 1;
+  }
+  return { passed, stats };
 }
 
 export function filterCandidates(

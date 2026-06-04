@@ -19,8 +19,8 @@
       "measurement": "published",
       "external_api_required": null,
       "live_adapter": "agentmemory",
-      "live_opt_in_env": ["AGENTMEMORY_BASE_URL", "AGENTMEMORY_API_KEY"],
-      "published_source": "No comparable published retrieval@10 benchmark — reference only, not reproduced. Live measurement is opt-in via --competitors agentmemory."
+      "live_opt_in_env": ["AGENTMEMORY_URL", "AGENTMEMORY_SECRET"],
+      "published_source": "No comparable published retrieval@10 benchmark — reference only, not reproduced. Live measurement is opt-in via --competitors agentmemory against local http://127.0.0.1:3111 (/agentmemory/* REST)."
     },
     {
       "id": "supermemory",

@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
 import { execSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { loadDefaultDatasets } from "../lib/dataset-loader";
 import { loadBenchmarkEnvFiles } from "../lib/load-env";
@@ -14,7 +16,7 @@ import {
 import { scoreCase } from "../lib/score-case";
 import { inferCompetency, usesLlmJudge } from "../scorers/competency";
 import { buildSummary } from "../lib/summarize";
-import type { ScoredCaseResult } from "../lib/types";
+import type { AdapterQueryResult, ScoredCaseResult } from "../lib/types";
 import { writeReportPack } from "./render-dashboard";
 
 export interface RunBenchmarkOptions {
@@ -95,12 +97,15 @@ export async function runInternalMemoryBenchmark(
     ...publishedTargets.map((id) => ({ id, published: true })),
   ];
   const cases = loadDefaultDatasets().slice(0, options.limit);
+  const realDatasetId = existsSync(
+    join(import.meta.dir, "../datasets/coding-memory-real-ja-mixed-v2.jsonl"),
+  )
+    ? "coding-memory-real-ja-mixed-v2.jsonl"
+    : "coding-memory-real-ja-mixed-v1.jsonl";
   const dataset_ids = [
     "public-retrieval-v1.jsonl",
     "coding-memory-ja-mixed-v1.jsonl",
-    ...(cases.some((row) => row.case_id.startsWith("real-"))
-      ? ["coding-memory-real-ja-mixed-v1.jsonl"]
-      : []),
+    ...(cases.some((row) => row.case_id.startsWith("real-")) ? [realDatasetId] : []),
   ];
   const runId = `internal-memory-${randomUUID()}`;
   const results: ScoredCaseResult[] = [];
@@ -122,9 +127,31 @@ export async function runInternalMemoryBenchmark(
     };
 
     try {
+      let processed = 0;
       for (const caseRow of cases) {
-        await adapter.prepareCase(caseRow, context);
-        const queryResult = await adapter.query(caseRow, context);
+        const caseStarted = performance.now();
+        if (!published && processed >= 700) {
+          console.error(
+            `[internal-memory] ${competitorId}: starting ${processed + 1}/${cases.length} ${caseRow.case_id}`,
+          );
+        }
+        try {
+          await adapter.prepareCase(caseRow, context);
+        } catch (error) {
+          console.error(
+            `[internal-memory] ${competitorId}: prepare failed at ${processed + 1}/${cases.length} ${caseRow.case_id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          throw error;
+        }
+        let queryResult: AdapterQueryResult;
+        try {
+          queryResult = await adapter.query(caseRow, context);
+        } catch (error) {
+          console.error(
+            `[internal-memory] ${competitorId}: query failed at ${processed + 1}/${cases.length} ${caseRow.case_id}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+          throw error;
+        }
         const scored = scoreCase(caseRow, competitorId, queryResult);
 
         if (budget && scored.status === "ok" && queryResult.hits.length > 0 && usesLlmJudge(inferCompetency(caseRow))) {
@@ -144,6 +171,13 @@ export async function runInternalMemoryBenchmark(
         }
 
         results.push(scored);
+        processed += 1;
+        const caseMs = performance.now() - caseStarted;
+        if (!published && (processed % 100 === 0 || caseMs > 1_000)) {
+          console.error(
+            `[internal-memory] ${competitorId}: ${processed}/${cases.length} cases scored (last=${caseRow.case_id}, ${caseMs.toFixed(1)}ms)`,
+          );
+        }
       }
     } finally {
       await adapter.dispose();

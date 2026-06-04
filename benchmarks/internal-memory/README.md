@@ -9,7 +9,7 @@
 | ID | 既定の measurement | 種別 / opt-in 実測 |
 |----|--------------------|--------------------|
 | `harness-mem` | **reproduced** | ローカル in-process（テストは temp DB） |
-| `agentmemory` | published(reference-only) | opt-in: `--competitors agentmemory` + `AGENTMEMORY_BASE_URL`, 任意 `AGENTMEMORY_API_KEY` |
+| `agentmemory` | published(reference-only) | opt-in: `--competitors agentmemory` + local `AGENTMEMORY_URL` (default `http://127.0.0.1:3111`), optional `AGENTMEMORY_SECRET` |
 | `supermemory` | published(reference-only) | opt-in: `--competitors supermemory` + `SUPERMEMORY_API_KEY`, 任意 `SUPERMEMORY_BASE_URL` |
 | `claude-mem` | published(reference-only) | opt-in: `--competitors claude-mem` + 任意 `CLAUDE_MEM_BASE_URL`, `HARNESS_MEM_TOKEN`（harness-mem 互換 `/v1/search`） |
 | `mem0` | published(reference-only) | 実測経路なし（公称値のみ） |
@@ -73,6 +73,7 @@ bun run benchmark:internal-memory:dashboard
 - `datasets/public-retrieval-v1.jsonl` — 英語中心の公開互換サブセット
 - `datasets/longmemeval-s-manifest.json` — 外部データ参照用マニフェスト（fixture のみ）
 - `datasets/coding-memory-real-ja-mixed-v1.jsonl` — 実データ由来パイロット（§140、PII マスク済み）
+- `datasets/coding-memory-real-ja-mixed-v2.jsonl` — 実データ本格スケール（§141、350/能力、runner は v2 優先）
 
 ## Real-data pipeline (§140)
 
@@ -82,6 +83,24 @@ bun run benchmark:internal-memory:pii-test
 ```
 
 See `docs/benchmarks/real-data-pipeline.md`.
+
+## Agentmemory live comparison (§142)
+
+Official Agentmemory is self-hosted on `http://127.0.0.1:3111` with REST under `/agentmemory/*`.
+Protected deployments use `AGENTMEMORY_SECRET` as a bearer token. There is no vendor-issued API key.
+
+```bash
+# Terminal 1: start Agentmemory (official quickstart)
+npx @agentmemory/agentmemory
+
+# Terminal 2: smoke (same dataset/scorer as harness-mem)
+bun run benchmark:internal-memory -- --competitors harness-mem,agentmemory --limit 20
+
+# Full v2 comparison (after smoke passes)
+bun run benchmark:internal-memory -- --competitors harness-mem,agentmemory
+```
+
+See `docs/benchmarks/agentmemory-live-runbook.md` for preflight, localhost-only guard, and claim safety.
 
 ## MemoryAgentBench 4 能力マッピング（§139）
 

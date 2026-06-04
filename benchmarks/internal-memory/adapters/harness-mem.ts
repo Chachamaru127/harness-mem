@@ -1,4 +1,4 @@
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -15,16 +15,28 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
   private core: HarnessMemCore | null = null;
   private tempDir: string | null = null;
   private readonly prepared = new Set<string>();
+  /** Dedupe passage embedding primes across cases (real-data v2 has repeated corpus). */
+  private readonly primedPassages = new Set<string>();
 
   private async ensureCore(): Promise<HarnessMemCore> {
     if (this.core) return this.core;
     this.tempDir = mkdtempSync(join(tmpdir(), "internal-mem-bench-"));
+    const useLocalEmbedding = process.env.HARNESS_MEM_INTERNAL_BENCH_EMBEDDING === "1";
+    const useSearchOffload = process.env.HARNESS_MEM_INTERNAL_BENCH_SEARCH_OFFLOAD === "1";
+    if (!useSearchOffload) {
+      // The benchmark uses a small temp DB; persistent search-worker offload can
+      // stall long scale runs at worker boundaries without improving fidelity.
+      process.env.HARNESS_MEM_SEARCH_OFFLOAD = "0";
+      process.env.HARNESS_MEM_SEARCH_WORKER = "0";
+    }
     const config: Config = {
       dbPath: join(this.tempDir, "harness-mem.db"),
       bindHost: "127.0.0.1",
       bindPort: 0,
       vectorDimension: 384,
-      embeddingProvider: "local",
+      // Scale real-data v2 (~1400 cases) uses hash fallback for wall-clock sanity;
+      // set HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1 for ONNX smoke tests.
+      embeddingProvider: useLocalEmbedding ? "local" : "fallback",
       captureEnabled: true,
       retrievalEnabled: true,
       injectionEnabled: true,
@@ -71,7 +83,11 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     const core = await this.ensureCore();
     const project = this.scopedProject(caseRow, context);
     for (const memory of caseRow.memories) {
-      await core.primeEmbedding(memory.content, "passage");
+      const passageKey = `${memory.content.length}:${memory.content.slice(0, 256)}`;
+      if (!this.primedPassages.has(passageKey)) {
+        await core.primeEmbedding(memory.content, "passage");
+        this.primedPassages.add(passageKey);
+      }
       core.recordEvent({
         event_id: memory.id,
         platform: "cursor",
@@ -95,8 +111,11 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     const response = core.search({
       query: caseRow.query,
       project,
+      session_id: `bench-${caseRow.case_id}`,
       limit: 10,
       strict_project: true,
+      safe_mode: true,
+      vector_search: false,
       question_kind: "hybrid",
     });
     const latency_ms = performance.now() - started;
@@ -118,8 +137,13 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
   }
 
   async dispose(): Promise<void> {
+    this.core?.shutdown("internal-memory-benchmark");
     this.core = null;
+    if (this.tempDir) {
+      rmSync(this.tempDir, { recursive: true, force: true });
+    }
     this.tempDir = null;
     this.prepared.clear();
+    this.primedPassages.clear();
   }
 }
