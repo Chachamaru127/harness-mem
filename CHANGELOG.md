@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.27.1] - 2026-06-04
+
+### Fixed
+
+- **Large DB degraded search now normalizes `scope.project` consistently with normal search**, preventing scoped fallback queries from returning different or empty results after worker/child failures.
+- **Large DB gate artifacts no longer serialize absolute snapshot or source DB paths**, preserving reproducibility without exposing local usernames or DB locations.
+
+### Verification
+
+- Review: §145 hotfix re-review APPROVE.
+- Tests: `memory-server` §145 focused tests and S145 gate redaction test passed.
+
 ## [0.27.0] - 2026-06-04
 
 ### Added
@@ -2900,7 +2912,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.1...HEAD
+[0.27.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...v0.26.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
