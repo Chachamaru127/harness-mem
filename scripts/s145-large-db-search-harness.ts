@@ -25,8 +25,9 @@ interface HarnessCaseResult {
 export interface LargeDbSearchHarnessManifest {
   schema: "harness_mem.large_db_search_harness.v1";
   generated_at: string;
-  snapshot_path: string;
-  source_path: string;
+  source_path_set: boolean;
+  snapshot_retained: boolean;
+  sidecar_files_copied: string[];
   observation_count: number;
   query_count: number;
   empty_error_count: number;
@@ -73,17 +74,19 @@ function loadQueries(path: string): HarnessQuery[] {
   return raw;
 }
 
-function copySnapshot(sourcePath: string, workDir: string): string {
+function copySnapshot(sourcePath: string, workDir: string): { snapshotPath: string; sidecarFilesCopied: string[] } {
   mkdirSync(workDir, { recursive: true });
   const snapshotPath = join(workDir, "harness-mem.snapshot.db");
   copyFileSync(sourcePath, snapshotPath);
+  const sidecarFilesCopied: string[] = [];
   for (const suffix of ["-wal", "-shm"]) {
     const sidecarPath = `${sourcePath}${suffix}`;
     if (existsSync(sidecarPath)) {
       copyFileSync(sidecarPath, `${snapshotPath}${suffix}`);
+      sidecarFilesCopied.push(suffix);
     }
   }
-  return snapshotPath;
+  return { snapshotPath, sidecarFilesCopied };
 }
 
 export async function runLargeDbSearchHarness(options: {
@@ -97,7 +100,7 @@ export async function runLargeDbSearchHarness(options: {
   }
 
   const workDir = options.workDir ?? join(tmpdir(), `harness-mem-s145-${Date.now()}`);
-  const snapshotPath = copySnapshot(sourcePath, workDir);
+  const { snapshotPath, sidecarFilesCopied } = copySnapshot(sourcePath, workDir);
   const queries = loadQueries(resolve(options.queriesPath ?? DEFAULT_QUERIES));
 
   const core = new HarnessMemCore(config(snapshotPath));
@@ -143,8 +146,9 @@ export async function runLargeDbSearchHarness(options: {
     return {
       schema: "harness_mem.large_db_search_harness.v1",
       generated_at: new Date().toISOString(),
-      snapshot_path: snapshotPath,
-      source_path: sourcePath,
+      source_path_set: true,
+      snapshot_retained: Boolean(options.workDir),
+      sidecar_files_copied: sidecarFilesCopied,
       observation_count: observationCount,
       query_count: cases.length,
       empty_error_count: emptyErrorCount,

@@ -51,6 +51,10 @@ describe("s145-large-db-search-gate", () => {
 
     expect(manifest.harness.empty_error_count).toBe(0);
     expect(manifest.summary.status).toBe("pass");
+    expect(manifest.source_path_set).toBe(true);
+    expect(manifest.harness.source_path_set).toBe(true);
+    expect(JSON.stringify(manifest)).not.toContain(dbPath);
+    expect(JSON.stringify(manifest)).not.toContain(dir);
     rmSync(dir, { recursive: true, force: true });
   });
 });

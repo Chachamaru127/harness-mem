@@ -19,7 +19,7 @@ export interface LargeDbSearchGateManifest {
   task_id: "S145-009";
   generated_at: string;
   mode: GateMode;
-  source_path: string;
+  source_path_set: boolean;
   thresholds: LargeDbSearchGateThresholds;
   harness: LargeDbSearchHarnessManifest;
   metrics: {
@@ -78,7 +78,7 @@ export async function runLargeDbSearchGate(options: {
     task_id: "S145-009",
     generated_at: new Date().toISOString(),
     mode: options.mode ?? "warn",
-    source_path: resolve(options.sourcePath),
+    source_path_set: true,
     thresholds,
     harness,
     metrics: {
