@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Internal Memory Benchmark</title>
+  <style>
+    body { font-family: ui-sans-serif, system-ui, sans-serif; margin: 2rem; color: #111; }
+    h1 { font-size: 1.5rem; }
+    h2 { font-size: 1.15rem; margin-top: 1.75rem; }
+    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+    th, td { border: 1px solid #ddd; padding: 0.5rem 0.75rem; text-align: left; }
+    th { background: #f6f6f6; }
+    .note { margin-top: 1rem; color: #444; font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <h1>Internal Memory Benchmark Dashboard</h1>
+  <p>Run: internal-memory-11e74600-b40a-4076-802e-aa8dbca3802a · Generated: 2026-05-29T17:24:29.673Z</p>
+  <h2>Reproduced (locally measured — same dataset / scorer)</h2>
+  <table>
+    <thead>
+      <tr><th>Competitor</th><th>Layer</th><th>Recall@10</th><th>MRR</th><th>nDCG@10</th><th>P95 ms</th><th>Skipped</th></tr>
+    </thead>
+    <tbody><tr><td>harness-mem</td><td>public_compatible</td><td>0.527</td><td>0.482</td><td>0.494</td><td>183.3</td><td>0</td></tr><tr><td>harness-mem</td><td>ja_coding</td><td>1.000</td><td>0.800</td><td>0.852</td><td>1.8</td><td>0</td></tr><tr><td>harness-mem</td><td>mixed_coding</td><td>0.521</td><td>0.511</td><td>0.514</td><td>3.2</td><td>0</td></tr><tr><td>harness-mem</td><td>isolation</td><td>1.000</td><td>0.750</td><td>0.815</td><td>0.8</td><td>0</td></tr><tr><td>harness-mem</td><td>resume</td><td>1.000</td><td>1.000</td><td>1.000</td><td>0.0</td><td>0</td></tr><tr><td>agentmemory</td><td>public_compatible</td><td>0.200</td><td>0.200</td><td>0.200</td><td>441.7</td><td>0</td></tr><tr><td>agentmemory</td><td>ja_coding</td><td>0.400</td><td>0.400</td><td>0.400</td><td>389.6</td><td>0</td></tr><tr><td>agentmemory</td><td>mixed_coding</td><td>0.113</td><td>0.113</td><td>0.113</td><td>416.9</td><td>0</td></tr><tr><td>agentmemory</td><td>isolation</td><td>1.000</td><td>1.000</td><td>1.000</td><td>358.3</td><td>0</td></tr><tr><td>agentmemory</td><td>resume</td><td>0.000</td><td>0.000</td><td>0.000</td><td>469.3</td><td>0</td></tr></tbody>
+  </table>
+  <h2>Published (reference-only — NOT comparable)</h2>
+  <table>
+    <thead>
+      <tr><th>Competitor</th><th>Domain</th><th>Published R@10</th><th>Source / note</th></tr>
+    </thead>
+    <tbody><tr><td>supermemory</td><td>generic-agent</td><td>n/a</td><td>Vendor docs / marketing — no comparable published retrieval@10 benchmark. Reference only, not reproduced. Run --competitors supermemory with credentials to live-measure.</td></tr><tr><td>claude-mem</td><td>developer-workflow</td><td>n/a</td><td>No published benchmark — community project. Reference only, not reproduced. Run --competitors claude-mem against a compatible /v1/search endpoint to live-measure.</td></tr><tr><td>mem0</td><td>generic-agent</td><td>n/a</td><td>Mem0 LoCoMo / marketing claims. Reference only — no reproduced number recorded here. Domain (generic-agent) differs from developer-workflow.</td></tr><tr><td>mempalace</td><td>general-lifelog</td><td>0.966</td><td>LongMemEval paper claim (96.6%). Reference only, not reproduced. general-lifelog domain mismatch with developer-workflow; not comparable to harness-mem scores.</td></tr></tbody>
+  </table>
+  <div class="note">Internal benchmark only. Do not copy scores into README until reproduced on target hardware.<br/>Published competitor values are reference-only and stay in a separate table from reproduced local runs; never merge them into one ranking.<br/>Only harness-mem is reproduced by default. External competitors are published(reference-only) unless live-measured opt-in via --competitors.<br/>harness-mem seeds its own fixtures and retrieves them in-process, so high scores confirm the runner works end-to-end, NOT external competitive superiority.<br/>Scoring includes a content-substring recall fallback (score-case.ts) that can favor self-seeded adapters like harness-mem; treat reproduced harness-mem scores as implementation sanity, not competitive superiority.<br/>Real-data v2 cases (coding-memory-real-ja-mixed-v2.jsonl) are PII-masked and self-seeded; high scores confirm pipeline health on JA/EN mixed logs at scale, NOT external competitive superiority unless competitors are live-measured on the same masked dataset.<br/>Real-data pilot v1 (coding-memory-real-ja-mixed-v1.jsonl) is archived; runner prefers v2 when present.<br/>Agentmemory live measurement uses official local REST only (AGENTMEMORY_URL default http://127.0.0.1:3111, /agentmemory/remember + /agentmemory/smart-search). Remote URLs are blocked; AGENTMEMORY_SECRET is never logged.<br/>Agentmemory is promoted from published(reference-only) to reproduced only when explicitly passed to --competitors and health/seed/search smoke passes on the same masked dataset/scorer.<br/>LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision.</div>
+</body>
+</html>

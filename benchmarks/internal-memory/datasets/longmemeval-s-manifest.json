@@ -1,0 +1,13 @@
+{
+  "schema_version": "longmemeval-s-manifest-v1",
+  "description": "Reference manifest for LongMemEval-S compatible evaluation. Full corpus is not vendored; use public-retrieval-v1.jsonl for local smoke.",
+  "reference_benchmark": "LongMemEval-S",
+  "local_fixture": "datasets/public-retrieval-v1.jsonl",
+  "notes": [
+    "Do not treat this manifest alone as a reproduced LongMemEval score.",
+    "Import published competitor numbers separately via adapters/import-published.ts."
+  ],
+  "published_baselines_reference_only": {
+    "mempalace_longmemeval_claim": "96.6% (paper/marketing — not reproduced here)"
+  }
+}

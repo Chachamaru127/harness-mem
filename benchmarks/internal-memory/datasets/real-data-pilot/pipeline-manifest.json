@@ -1,0 +1,31 @@
+{
+  "schema_version": "real-data-pipeline-v2",
+  "generated_at": "2026-05-29T07:28:02.770Z",
+  "corpus_rounds": 25198,
+  "candidates_generated": 5600,
+  "filter_stats": {
+    "input": 5600,
+    "passed": 5560,
+    "rejected_leakage": 40,
+    "rejected_shortcut": 0,
+    "rejected_dedup": 0,
+    "rejected_answerability": 0,
+    "rejected_pii": 0
+  },
+  "judge_model": "google/gemini-2.5-flash-lite",
+  "generator_model": "openai/gpt-4o-mini",
+  "golden_agreement_rate": 1,
+  "target_per_competency": 350,
+  "dataset_version": "v2",
+  "review_queue_stats": {
+    "total": 3471,
+    "cr_ttl_full": 2775,
+    "ar_lru_spot": 696
+  },
+  "competency_counts": {
+    "AR": 350,
+    "CR": 350,
+    "TTL": 350,
+    "LRU": 350
+  }
+}

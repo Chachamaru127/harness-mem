@@ -1,0 +1,32 @@
+[
+  {
+    "id": "ja-broad-1",
+    "query": "Harness mem 検索 タイムアウト",
+    "safe_mode": true,
+    "limit": 5
+  },
+  {
+    "id": "ja-broad-2",
+    "query": "Plans.md タスク 進捗",
+    "safe_mode": true,
+    "limit": 5
+  },
+  {
+    "id": "ja-broad-3",
+    "query": "memory-server 実装 変更",
+    "safe_mode": false,
+    "limit": 5
+  },
+  {
+    "id": "en-broad-1",
+    "query": "search fallback worker timeout",
+    "safe_mode": true,
+    "limit": 5
+  },
+  {
+    "id": "en-broad-2",
+    "query": "LoCoMo benchmark adapter",
+    "safe_mode": true,
+    "limit": 5
+  }
+]

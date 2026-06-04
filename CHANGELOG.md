@@ -7,6 +7,30 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-06-04
+
+### Added
+
+- **Real-data JA/EN memory benchmark scale pipeline** with masked v2 dataset generation, review queues, leakage gates, refreshed dashboards, and reproducibility artifacts.
+- **Agentmemory live comparison support** via official localhost REST endpoints, protected-secret handling, live runbook, and adapter contract tests.
+- **LoCoMo common benchmark runner** with shared answer synthesis, Agentmemory adapter support, official dataset documentation, and OpenAI embedding mode.
+
+### Changed
+
+- **LoCoMo answer synthesis now preserves temporal anchors and filters weak extraction candidates**, improving relative-date and short-answer behavior while keeping exact-match claims scoped.
+- **Benchmark reports and Plans/Spec contracts now document claim-safety boundaries** for self-seeded, real-data, Agentmemory, and LoCoMo measurements.
+
+### Fixed
+
+- **Large local DB search no longer returns empty errors when worker and child fallback paths fail**. Search now falls back to bounded in-process degraded results with stable degradation labels, SQLite read tuning, worker timeout hardening, and a 368k snapshot p95 gate.
+- **Internal benchmark harness-mem adapter no longer uses gold `relevant_ids` to order retrieval hits**, with regression coverage preventing answer-key leakage.
+
+### Verification
+
+- Review: harness-review APPROVE after fixing gold-label leakage, TypeScript errors, and LoCoMo smoke stability.
+- Tests: internal-memory benchmark tests, LoCoMo tests, memory-server focused tests, `memory-server` typecheck, and S145 large-DB gate tests passed.
+- Large DB gate: 368,694-observation read-only snapshot, `empty_error_count=0`, p95 approximately 9.6s under the 15s gate.
+
 ## [0.26.0] - 2026-05-28
 
 ### Added
@@ -2876,7 +2900,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.0...HEAD
+[0.27.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...v0.26.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7

@@ -155,6 +155,10 @@ export interface SearchRequest {
    */
   safe_mode?: boolean;
   /**
+   * §145: Skip search_hit/access_count side effects (in-process degraded path).
+   */
+  skip_search_hit?: boolean;
+  /**
    * §89-001 (XR-002 P0): observation_type フィルタ。
    * 単一値（"decision"）または配列（["decision", "summary"]）で指定。
    * 指定された type のみが検索結果に含まれる（AND で他のフィルタと結合）。

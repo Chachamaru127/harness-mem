@@ -7,13 +7,18 @@ import { findModelById } from "../../memory-server/src/embedding/model-catalog";
 import { evaluateLocomoQa, type LocomoMetricSummary } from "./locomo-evaluator";
 import { HarnessMemLocomoAdapter, type HarnessLocomoAnswerTrace } from "./locomo-harness-adapter";
 import { loadLocomoDataset } from "./locomo-loader";
+import {
+  AgentmemoryLocomoAdapter,
+  agentmemoryLocomoHealthCheck,
+  resolveAgentmemoryLocomoConfig,
+} from "./locomo-agentmemory-adapter";
 
-export type BenchmarkSystem = "harness-mem" | "mem0" | "claude-mem";
-export type BenchmarkEmbeddingMode = "onnx" | "fallback" | "adaptive";
+export type BenchmarkSystem = "harness-mem" | "agentmemory" | "mem0" | "claude-mem";
+export type BenchmarkEmbeddingMode = "onnx" | "fallback" | "adaptive" | "openai";
 
 interface EmbeddingProfile {
   mode: BenchmarkEmbeddingMode;
-  provider: "local" | "fallback" | "adaptive";
+  provider: "local" | "fallback" | "adaptive" | "openai";
   model: string;
   vectorDimension: number;
   gateEnabled: boolean;
@@ -117,6 +122,7 @@ export interface LocomoBenchmarkResult {
   cost: {
     search_token_estimate: TokenEstimateSummary;
   };
+  claim_safety: string[];
   records: LocomoBenchmarkRecord[];
 }
 
@@ -132,6 +138,8 @@ export interface RunLocomoBenchmarkOptions {
   primeEmbedding?: boolean;
   /** 評価する最大サンプル数（省略時は全件） */
   maxSamples?: number;
+  /** 評価する最大 QA 数（省略時は全件） */
+  maxQa?: number;
 }
 
 function normalize(value: string): string {
@@ -229,6 +237,7 @@ function normalizeEmbeddingMode(input: string | undefined): BenchmarkEmbeddingMo
   const normalized = (input || "").trim().toLowerCase();
   if (normalized === "onnx") return "onnx";
   if (normalized === "adaptive") return "adaptive";
+  if (normalized === "openai") return "openai";
   return "fallback";
 }
 
@@ -292,6 +301,23 @@ function resolveEmbeddingProfile(options: RunLocomoBenchmarkOptions): EmbeddingP
     };
   }
 
+  if (mode === "openai") {
+    return {
+      mode,
+      provider: "openai",
+      model:
+        (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "text-embedding-3-small").trim() ||
+        "text-embedding-3-small",
+      vectorDimension: normalizeVectorDimension(
+        options.vectorDimension ?? process.env.HARNESS_BENCH_VECTOR_DIM,
+        1536,
+      ),
+      gateEnabled,
+      primeEnabled,
+      adaptive: null,
+    };
+  }
+
   const model =
     (options.embeddingModel || process.env.HARNESS_BENCH_EMBEDDING_MODEL || "multilingual-e5").trim() ||
     "multilingual-e5";
@@ -347,6 +373,13 @@ function evaluateEmbeddingGate(profile: EmbeddingProfile, runtime: EmbeddingRunt
   } else if (profile.mode === "adaptive") {
     if (!runtime.model || runtime.model === "unknown") {
       failures.push("adaptive runtime model is missing");
+    }
+  } else if (profile.mode === "openai") {
+    if (runtime.provider !== "openai") {
+      failures.push(`provider mismatch: expected=openai, actual=${runtime.provider || "unknown"}`);
+    }
+    if (runtime.healthStatus === "degraded") {
+      failures.push(`openai provider degraded: ${runtime.healthDetails || "unknown"}`);
     }
   }
   return {
@@ -446,12 +479,19 @@ function summarizeCacheStats(
 }
 
 function createCore(tempDir: string, profile: EmbeddingProfile): HarnessMemCore {
+  const openaiApiKey =
+    profile.provider === "openai"
+      ? (process.env.HARNESS_MEM_OPENAI_API_KEY || process.env.OPENAI_API_KEY || "").trim() || undefined
+      : undefined;
   const config: Config = {
     dbPath: join(tempDir, "harness-mem.db"),
     bindHost: "127.0.0.1",
     bindPort: 37888,
     vectorDimension: profile.vectorDimension,
     embeddingProvider: profile.provider,
+    embeddingModel: profile.mode === "openai" ? undefined : profile.model,
+    openaiApiKey,
+    openaiEmbedModel: profile.provider === "openai" ? profile.model : undefined,
     adaptiveJaThreshold: profile.adaptive?.jaThreshold,
     adaptiveCodeThreshold: profile.adaptive?.codeThreshold,
     captureEnabled: true,
@@ -469,10 +509,145 @@ function createCore(tempDir: string, profile: EmbeddingProfile): HarnessMemCore 
   return new HarnessMemCore(config);
 }
 
+function buildClaimSafety(system: BenchmarkSystem): string[] {
+  const shared = [
+    "LoCoMo is English general-lifelog domain; harness-mem primary domain is Japanese developer workflow (domain mismatch).",
+    "Same-run reproduced measurement only; not external superiority proof.",
+    "Shared answer synthesis isolates retrieval; self-scored EM/F1 still runs on our pipeline.",
+  ];
+  if (system === "agentmemory") {
+    return [
+      ...shared,
+      "Agentmemory live run uses localhost-only REST per Spec §142.",
+      "Agentmemory daemon should use EMBEDDING_PROVIDER=openai for fair embedding alignment.",
+    ];
+  }
+  return shared;
+}
+
+function limitSamples(samples: ReturnType<typeof loadLocomoDataset>, options: RunLocomoBenchmarkOptions) {
+  const sliced = options.maxSamples != null ? samples.slice(0, options.maxSamples) : samples;
+  if (options.maxQa == null) return sliced;
+  let remaining = options.maxQa;
+  return sliced
+    .map((sample) => {
+      if (remaining <= 0) return { ...sample, qa: [] as typeof sample.qa };
+      const qa = sample.qa.slice(0, remaining);
+      remaining -= qa.length;
+      return { ...sample, qa };
+    })
+    .filter((sample) => sample.qa.length > 0);
+}
+
+async function runAgentmemoryBenchmark(options: RunLocomoBenchmarkOptions): Promise<LocomoBenchmarkResult> {
+  const datasetPath = resolve(options.datasetPath);
+  const allSamples = loadLocomoDataset(datasetPath);
+  const samples = limitSamples(allSamples, options);
+  const config = resolveAgentmemoryLocomoConfig();
+  const healthy = await agentmemoryLocomoHealthCheck({ baseUrl: config.baseUrl, secret: config.secret });
+  if (!healthy) {
+    throw new Error(
+      `[locomo-benchmark] agentmemory health preflight failed for ${config.baseUrl}/agentmemory/health`,
+    );
+  }
+
+  const adapter = new AgentmemoryLocomoAdapter({
+    baseUrl: config.baseUrl,
+    secret: config.secret,
+  });
+  const records: LocomoBenchmarkRecord[] = [];
+
+  for (const sample of samples) {
+    await adapter.ingestSample(sample);
+    for (const qa of sample.qa) {
+      const answered = await adapter.answerQuestion(
+        {
+          sample_id: sample.sample_id,
+          question_id: qa.question_id,
+          question: qa.question,
+          answer: qa.answer,
+          category: qa.category,
+        },
+        sample.sample_id,
+      );
+      const baseRecord = {
+        sample_id: sample.sample_id,
+        question_id: qa.question_id,
+        category: qa.category,
+        question: qa.question,
+        answer: qa.answer,
+        prediction: answered.prediction,
+        question_kind: "unknown",
+        answer_strategy: "agentmemory-smart-search -> shared-synthesis",
+        selected_evidence_ids: [],
+        answer_trace: {
+          query_variants: [qa.question],
+          search_policy: { limit: 12, variant_cap: 1, candidate_limit: 4, quality_floor: 0.14 },
+          extraction: { strategy: "shared-synthesis", raw_answer: answered.prediction, selected_candidates: [] },
+          normalization: { before: answered.prediction, after: answered.prediction, notes: [] },
+          final_short_answer: answered.prediction,
+        } satisfies HarnessLocomoAnswerTrace,
+        search_latency_ms: 0,
+        token_estimate_input_tokens: 0,
+        token_estimate_output_tokens: 0,
+        token_estimate_total_tokens: 0,
+      };
+      records.push({ ...baseRecord, ...computeRecordScore(baseRecord) });
+    }
+  }
+
+  const metrics = evaluateLocomoQa(
+    records.map((record) => ({
+      prediction: record.prediction,
+      answer: record.answer,
+      category: record.category,
+    })),
+  );
+
+  return {
+    schema_version: "locomo-benchmark-v2",
+    generated_at: new Date().toISOString(),
+    system: "agentmemory",
+    pipeline: {
+      embedding: {
+        mode: "openai",
+        provider: "openai",
+        model: "text-embedding-3-small",
+        vector_dimension: 1536,
+        runtime_provider: "agentmemory-daemon",
+        runtime_model: "text-embedding-3-small",
+        runtime_health_status: "healthy",
+        runtime_health_details: "agentmemory health preflight passed",
+        gate: { enabled: false, passed: true, failures: [] },
+      },
+      prime_embedding_enabled: false,
+    },
+    dataset: {
+      path: datasetPath,
+      sample_count: samples.length,
+      qa_count: records.length,
+    },
+    metrics,
+    comparison: {
+      cat_1_to_4: summarizeCategories(records, new Set(["cat-1", "cat-2", "cat-3", "cat-4"])),
+      cat_5: summarizeCategories(records, new Set(["cat-5"])),
+    },
+    performance: {
+      search_latency_ms: summarizeNumbers(records.map((record) => record.search_latency_ms)),
+      cache_stats: summarizeCacheStats(null, null),
+    },
+    cost: {
+      search_token_estimate: summarizeTokenEstimate(records),
+    },
+    claim_safety: buildClaimSafety("agentmemory"),
+    records,
+  };
+}
+
 async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promise<LocomoBenchmarkResult> {
   const datasetPath = resolve(options.datasetPath);
   const allSamples = loadLocomoDataset(datasetPath);
-  const samples = options.maxSamples != null ? allSamples.slice(0, options.maxSamples) : allSamples;
+  const samples = limitSamples(allSamples, options);
   const embeddingProfile = resolveEmbeddingProfile(options);
   const missingAnswers = samples.flatMap((sample) =>
     sample.qa.filter((qa) => !qa.answer.trim()).map((qa) => `${sample.sample_id}:${qa.question_id}`)
@@ -487,10 +662,18 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
   const tempDir = mkdtempSync(join(tmpdir(), "locomo-harness-"));
   const previousProviderEnv = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
   const previousModelEnv = process.env.HARNESS_MEM_EMBEDDING_MODEL;
+  const previousOpenAiKeyEnv = process.env.HARNESS_MEM_OPENAI_API_KEY;
   const previousJaThresholdEnv = process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
   const previousCodeThresholdEnv = process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
   process.env.HARNESS_MEM_EMBEDDING_PROVIDER = embeddingProfile.provider;
-  if (embeddingProfile.mode === "onnx") {
+  if (embeddingProfile.mode === "openai") {
+    process.env.HARNESS_MEM_EMBEDDING_MODEL = embeddingProfile.model;
+    if (!process.env.HARNESS_MEM_OPENAI_API_KEY?.trim() && process.env.OPENAI_API_KEY?.trim()) {
+      process.env.HARNESS_MEM_OPENAI_API_KEY = process.env.OPENAI_API_KEY.trim();
+    }
+    delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
+    delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
+  } else if (embeddingProfile.mode === "onnx") {
     process.env.HARNESS_MEM_EMBEDDING_MODEL = embeddingProfile.model;
     delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
     delete process.env.HARNESS_MEM_ADAPTIVE_CODE_THRESHOLD;
@@ -596,6 +779,7 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
       comparison,
       performance,
       cost,
+      claim_safety: buildClaimSafety("harness-mem"),
       records,
     };
     return result;
@@ -612,6 +796,11 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
     } else {
       process.env.HARNESS_MEM_EMBEDDING_MODEL = previousModelEnv;
     }
+    if (previousOpenAiKeyEnv == null) {
+      delete process.env.HARNESS_MEM_OPENAI_API_KEY;
+    } else {
+      process.env.HARNESS_MEM_OPENAI_API_KEY = previousOpenAiKeyEnv;
+    }
     if (previousJaThresholdEnv == null) {
       delete process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD;
     } else {
@@ -626,11 +815,15 @@ async function runHarnessMemBenchmark(options: RunLocomoBenchmarkOptions): Promi
 }
 
 export async function runLocomoBenchmark(options: RunLocomoBenchmarkOptions): Promise<LocomoBenchmarkResult> {
-  if (options.system !== "harness-mem") {
-    throw new Error(`system ${options.system} is not supported yet`);
-  }
+  const result =
+    options.system === "agentmemory"
+      ? await runAgentmemoryBenchmark(options)
+      : options.system === "harness-mem"
+        ? await runHarnessMemBenchmark(options)
+        : (() => {
+            throw new Error(`system ${options.system} is not supported yet`);
+          })();
 
-  const result = await runHarnessMemBenchmark(options);
   if (options.outputPath) {
     const outputPath = resolve(options.outputPath);
     mkdirSync(dirname(outputPath), { recursive: true });
@@ -685,6 +878,16 @@ function parseArgs(argv: string[]): RunLocomoBenchmarkOptions {
     }
     if (token === "--prime-embedding" && i + 1 < argv.length) {
       parsed.primeEmbedding = parseBooleanFlag(argv[i + 1], true);
+      i += 1;
+      continue;
+    }
+    if (token === "--max-samples" && i + 1 < argv.length) {
+      parsed.maxSamples = Number(argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (token === "--max-qa" && i + 1 < argv.length) {
+      parsed.maxQa = Number(argv[i + 1]);
       i += 1;
     }
   }

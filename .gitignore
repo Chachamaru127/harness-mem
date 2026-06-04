@@ -65,6 +65,7 @@ env.local
 
 # Binary data
 *.traineddata
+data/state_store.db/
 
 # Test artifacts
 test-ruri-v3/

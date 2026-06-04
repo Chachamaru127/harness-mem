@@ -625,6 +625,122 @@ describe("API contract snapshot", () => {
     }
   });
 
+  test("worker and child offload both failing returns in-process degraded results instead of empty_error", async () => {
+    const oldNodeEnv = process.env.NODE_ENV;
+    const oldOffload = process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+    const oldWorker = process.env.HARNESS_MEM_SEARCH_WORKER;
+    const oldWorkerTimeout = process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+    const oldChildTimeout = process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS;
+    const oldStartupTimeout = process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS;
+    const oldWorkerDelay = process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+    const oldChildDelay = process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS;
+    process.env.NODE_ENV = "test";
+    process.env.HARNESS_MEM_SEARCH_OFFLOAD = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER = "1";
+    process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS = "1000";
+    process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = "50";
+    process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS = "50";
+    process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = "300";
+    process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS = "300";
+
+    const runtime = createRuntime("s145-in-process-degraded-fallback");
+    try {
+      runtime.core.recordEvent({
+        platform: "claude",
+        project: "s145-in-process-degraded-fallback",
+        session_id: "session-in-process-degraded",
+        event_type: "user_prompt",
+        ts: "2026-06-02T00:00:00.000Z",
+        payload: { content: "in-process degraded fallback sentinel alpha" },
+      });
+
+      const warmup = await fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "warmup in-process degraded",
+          project: "s145-in-process-degraded-fallback",
+          limit: 1,
+          safe_mode: true,
+          vector_search: false,
+        }),
+      });
+      expect(warmup.status).toBe(200);
+
+      const response = await fetch(`${runtime.baseUrl}/v1/search`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: "in-process degraded fallback sentinel alpha",
+          project: "s145-in-process-degraded-fallback",
+          limit: 3,
+          vector_search: true,
+        }),
+      });
+      expect(response.status).toBe(200);
+      const payload = (await response.json()) as {
+        ok: boolean;
+        items: Array<{ content?: string }>;
+        meta: {
+          search_offload?: Record<string, unknown>;
+          degradation?: string[];
+          warnings?: string[];
+        };
+      };
+      expect(payload.ok).toBe(true);
+      expect(payload.items.length).toBeGreaterThan(0);
+      expect(payload.items.some((item) => String(item.content || "").includes("in-process degraded fallback sentinel"))).toBe(true);
+      expect(payload.meta.search_offload?.fallback).toBe("in_process_degraded");
+      expect(payload.meta.search_offload?.fallback_mode).toBe("in_process");
+      expect(payload.meta.degradation).toEqual(
+        expect.arrayContaining(["safe_lexical_fallback", "in_process_degraded"]),
+      );
+      expect(payload.meta.warnings?.some((warning) => warning.includes("in-process degraded fallback"))).toBe(true);
+    } finally {
+      runtime.stop();
+      if (oldNodeEnv === undefined) {
+        delete process.env.NODE_ENV;
+      } else {
+        process.env.NODE_ENV = oldNodeEnv;
+      }
+      if (oldOffload === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_OFFLOAD;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_OFFLOAD = oldOffload;
+      }
+      if (oldWorker === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER = oldWorker;
+      }
+      if (oldWorkerTimeout === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS = oldWorkerTimeout;
+      }
+      if (oldChildTimeout === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS = oldChildTimeout;
+      }
+      if (oldStartupTimeout === undefined) {
+        delete process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS;
+      } else {
+        process.env.HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS = oldStartupTimeout;
+      }
+      if (oldWorkerDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS = oldWorkerDelay;
+      }
+      if (oldChildDelay === undefined) {
+        delete process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS;
+      } else {
+        process.env.HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS = oldChildDelay;
+      }
+    }
+  });
+
   test("strict project vector search does not fall back to global KNN when lexical candidates lack vectors", async () => {
     const runtime = createRuntime("s129-vector-prefilter-no-global-fallback");
     try {

@@ -14,6 +14,7 @@ describe("LOCOMO runner smoke", () => {
         system: "harness-mem",
         datasetPath: fixturePath,
         outputPath,
+        embeddingMode: "fallback",
         onnxGate: false,
       });
 
@@ -23,6 +24,8 @@ describe("LOCOMO runner smoke", () => {
       expect(result.performance.search_latency_ms.p95).toBeGreaterThanOrEqual(0);
       expect(result.cost.search_token_estimate.total_avg).toBeGreaterThan(0);
       expect(result.records[0]?.answer_trace?.extraction?.selected_candidates?.length || 0).toBeGreaterThan(0);
+      expect(Array.isArray(result.claim_safety)).toBe(true);
+      expect(result.claim_safety.length).toBeGreaterThan(0);
       expect(existsSync(outputPath)).toBe(true);
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
@@ -84,6 +87,7 @@ describe("LOCOMO runner smoke", () => {
       const result = await runLocomoBenchmark({
         system: "harness-mem",
         datasetPath,
+        embeddingMode: "fallback",
         onnxGate: false,
       });
 
@@ -91,6 +95,27 @@ describe("LOCOMO runner smoke", () => {
       const previousPrice = result.records.find((record) => record.sample_id === "sample-b");
       expect(startTime?.prediction).toBe("01:00 JST");
       expect(previousPrice?.prediction).toContain("29 dollars a month");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  test("agentmemory system fails fast when daemon health preflight fails", async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), "locomo-runner-agentmemory-"));
+    const fixturePath = join(process.cwd(), "tests", "benchmarks", "fixtures", "locomo10.sample.json");
+    try {
+      const previousUrl = process.env.AGENTMEMORY_URL;
+      process.env.AGENTMEMORY_URL = "http://127.0.0.1:59999";
+      delete process.env.AGENTMEMORY_SECRET;
+      await expect(
+        runLocomoBenchmark({
+          system: "agentmemory",
+          datasetPath: fixturePath,
+          outputPath: join(tempDir, "agentmemory-result.json"),
+        }),
+      ).rejects.toThrow(/health preflight failed/i);
+      if (previousUrl == null) delete process.env.AGENTMEMORY_URL;
+      else process.env.AGENTMEMORY_URL = previousUrl;
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

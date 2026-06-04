@@ -645,8 +645,16 @@ export function buildFtsQuery(query: string, mode: "hybrid" | "and" = "hybrid"):
     orTokens.push(`"${escaped[i]} ${escaped[i + 1]}"`);
   }
 
+  const maxOrExpansion = clampLimit(
+    Number(process.env.HARNESS_MEM_FTS_OR_MAX || 24),
+    24,
+    4,
+    64,
+  );
+  const uniqueOrTokens = [...new Set(orTokens)].slice(0, maxOrExpansion);
+
   // AND一致 > 個別トークン一致（BM25が自動的にAND一致を高スコアにする）
-  return `(${andClause}) OR ${orTokens.join(" OR ")}`;
+  return `(${andClause}) OR ${uniqueOrTokens.join(" OR ")}`;
 }
 
 // ---------------------------------------------------------------------------

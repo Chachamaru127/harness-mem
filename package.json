@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.26.0",
+  "version": "0.27.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -76,6 +76,14 @@
     "benchmark:recall-runtime:readiness": "bun run scripts/s128-enforce-readiness-pack.ts",
     "benchmark:pilot30": "bash scripts/bench-pilot-30usd.sh",
     "benchmark:pilot30:dry-run": "bash scripts/bench-pilot-30usd.sh --dry-run",
+    "benchmark:internal-memory": "bun run benchmarks/internal-memory/scripts/run-internal-memory-benchmark.ts",
+    "benchmark:internal-memory:openrouter": "bun run benchmarks/internal-memory/scripts/run-internal-memory-benchmark.ts -- --use-openrouter",
+    "benchmark:internal-memory:dashboard": "bun run benchmarks/internal-memory/scripts/render-dashboard.ts",
+    "benchmark:internal-memory:smoke": "bun run benchmarks/internal-memory/scripts/runner-smoke.ts",
+    "benchmark:internal-memory:embedding-smoke": "HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1 bun run benchmarks/internal-memory/scripts/smoke-embedding.ts",
+    "benchmark:internal-memory:test": "bun test benchmarks/internal-memory/tests/",
+    "benchmark:internal-memory:real-data-pipeline": "bun run benchmarks/internal-memory/scripts/run-real-data-pipeline.ts",
+    "benchmark:internal-memory:pii-test": "cd benchmarks/internal-memory/pii && python3 -m pytest",
     "test:ui": "cd harness-mem-ui && bunx vitest",
     "test:e2e": "cd harness-mem-ui && bunx playwright test",
     "poc:graph-sqlite": "bun run scripts/graph-store-poc-sqlite-cte.ts",

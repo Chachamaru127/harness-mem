@@ -1,0 +1,9 @@
+# Bulk masked real-conversation corpus is a large (10s of MB) intermediate
+# artifact regenerable from the local harness-mem DB via run-real-data-pipeline.
+# Privacy: even PII-masked, we do not commit raw masked conversation logs.
+datasets/real-data-pilot/masked-corpus.jsonl
+datasets/real-data-pilot/pipeline-checkpoint.json
+
+# Python caches
+pii/__pycache__/
+pii/.pytest_cache/

@@ -2,7 +2,7 @@
 
 harness-mem で使用する全環境変数の一覧です。
 
-最終更新: 2026-04-01
+最終更新: 2026-06-02
 
 ---
 
@@ -54,6 +54,10 @@ SQLite データベースの設定です。
 | `HARNESS_MEM_SQLITE_VEC_PATH` | macOS: `node_modules/sqlite-vec-darwin-arm64/vec0.dylib` auto-discovery / その他: `""` | No | sqlite-vec 拡張ライブラリ (.so/.dylib) のパス。明示値が最優先。macOS では同梱 optional dependency を自動検出し、見つからない場合だけ JS フォールバック | `vector/providers.ts`, `db/custom-sqlite-preflight.ts` |
 | `HARNESS_MEM_SQLITE_LIB_PATH` | macOS: `/opt/homebrew/opt/sqlite/lib/libsqlite3.dylib` | No | Bun の SQLite を差し替える custom SQLite ライブラリのパス。macOS で sqlite-vec を使う場合、DB 作成前に `Database.setCustomSQLite()` へ渡す | `db/custom-sqlite-preflight.ts` |
 | `HARNESS_MEM_VECTOR_DIM` | `256` | No | ベクターのディメンション数。範囲: 32〜4096 | `core/core-utils.ts` |
+| `HARNESS_MEM_SQLITE_CACHE_SIZE` | 未設定 | No | SQLite `PRAGMA cache_size`（負数=KiB）。大規模 DB 読取向け | `db/schema.ts` |
+| `HARNESS_MEM_SQLITE_MMAP_SIZE` | 未設定 | No | SQLite `PRAGMA mmap_size`（bytes）。過大設定はメモリ圧に注意 | `db/schema.ts` |
+| `HARNESS_MEM_SQLITE_TEMP_STORE` | `MEMORY` | No | SQLite `PRAGMA temp_store`（`MEMORY`/`FILE`/`DEFAULT`） | `db/schema.ts` |
+| `HARNESS_MEM_SEARCH_MAINTENANCE_INTERVAL_MS` | `86400000` | No | `ANALYZE` + FTS `optimize` の最短間隔（ms） | `db/search-maintenance.ts` |
 
 ---
 
@@ -210,6 +214,27 @@ SQLite データベースの設定です。
 | `COHERE_API_KEY` | `""` | No* | Cohere API キー。`HARNESS_MEM_RERANKER_PROVIDER=cohere` の場合に必要 | `rerank/registry.ts` |
 | `HF_TOKEN` | `""` | No* | Hugging Face API トークン。`HARNESS_MEM_RERANKER_PROVIDER=huggingface` の場合に必要 | `rerank/registry.ts` |
 | `SENTENCE_TRANSFORMERS_ENDPOINT` | `http://localhost:8080` | No | Sentence Transformers サーバーエンドポイント。`HARNESS_MEM_RERANKER_PROVIDER=sentence-transformers` の場合に使用 | `rerank/registry.ts`, `rerank/st-reranker.ts` |
+
+### Search offload / Recall Runtime (§115 / §127 / §128 / §145)
+
+| 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
+|--------|-------------|------|------|----------|
+| `HARNESS_MEM_SEARCH_OFFLOAD` | 自動（file DB では有効） | No | 検索を daemon 外プロセスへオフロード。`0`/`false` で無効 | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_WORKER` | 自動（file DB では有効） | No | 永続 search worker を使う。`0`/`false` で one-shot child のみ | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_WORKER_TIMEOUT_MS` | `3000` | No | warm worker 1 リクエスト timeout（ms） | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_WORKER_STARTUP_TIMEOUT_MS` | `20000` | No | worker 起動/warmup timeout（ms） | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_CHILD_TIMEOUT_MS` | `20000` | No | safe lexical child timeout（ms） | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_SCALE_OBS_THRESHOLD` | `100000` | No | この観測数以上で scale-aware timeout を適用 | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_SEARCH_SCALE_TIMEOUT_MS` | `8000` | No | 大規模 DB 向け worker timeout 下限（ms） | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_IN_PROCESS_DEGRADED_ROW_LIMIT` | `200` | No | in-process 劣化フォールバックの recent scan 上限行数 | `core/observation-store.ts` |
+| `HARNESS_MEM_FTS_OR_MAX` | `24` | No | FTS OR 展開の最大トークン数（クエリ膨張ガード） | `core/core-utils.ts` |
+| `HARNESS_MEM_REPEAT_RECALL_CACHE_TTL_MS` | `60000` | No | repeat recall cache TTL（ms、§128） | `core/harness-mem-core.ts` |
+| `HARNESS_MEM_LARGE_DB_SNAPSHOT_PATH` | 未設定 | No* | 大規模 DB 再現ハーネス/gate 用 read-only スナップショット DB パス（live DB 非変更） | `scripts/s145-large-db-search-harness.ts` |
+| `HARNESS_MEM_LARGE_DB_P95_MS` | `15000` | No | 大規模 DB search p95 gate 閾値（ms） | `scripts/s145-large-db-search-gate.ts` |
+| `HARNESS_MEM_TEST_SEARCH_WORKER_DELAY_MS` | `0` | No | テスト専用: worker 人工遅延（ms） | `tools/search-worker.ts` |
+| `HARNESS_MEM_TEST_SEARCH_CHILD_DELAY_MS` | `0` | No | テスト専用: search child 人工遅延（ms） | `tools/search-child.ts` |
+
+> \* 大規模 DB gate/harness 実行時のみ。値は reports に出力せず set/unset のみ記録する。
 
 ---
 
