@@ -4578,7 +4578,7 @@ export class ObservationStore {
             // best effort: access_count 更新に失敗しても検索結果は返す
           }
         };
-        queueMicrotask(recordSearchHits);
+        recordSearchHits();
       }
     } catch {
       // best effort

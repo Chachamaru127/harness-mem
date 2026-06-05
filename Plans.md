@@ -1594,6 +1594,17 @@ Complete only when all of the following are true:
 | S146-004 | **Workflow scope docs / skill guidance** `[tdd:skip:docs-only]` — MCP docs / bundled guidance に workflow tools は caller `cwd` を渡す必要があると明記する | `mcp-server/README.md` 等に、`Plans.md` file operations は explicit `cwd` required と記載される | S146-003 | cc:完了 [local] |
 | S146-005 | **Regression validation closeout** `[tdd:required]` — 対象 TS/Go tests、typecheck/build、diff-check を実行して完了条件を閉じる | relevant `bun test` / `go test` / `bun run typecheck` / MCP build / `git diff --check` が PASS | S146-001, S146-002, S146-003, S146-004 | cc:完了 [local] |
 
+## §147 Release Gate Access Count Sync Fix — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: v0.27.2 release gate の `npm test` で、`memory-server/tests/integration/adaptive-decay-integration.test.ts` の `search 後に access_count がインクリメントされる` が失敗した。検索結果の `access_count` 更新を `queueMicrotask` に逃がしていたため、同期的な連続検索では 2 回目の検索が更新前の値を読むことがあった。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S147-001 | **Search hit side effect sync** `[tdd:required]` — search が返した observation の `access_count` / `last_accessed_at` 更新を、検索呼び出し内で完了させる | adaptive decay integration test が連続検索で `access_count` 増分を観測でき、best-effort error handling と `skip_search_hit` は維持される | - | cc:完了 [local] |
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
