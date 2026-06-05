@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.27.3] - 2026-06-05
+
+### ユーザー向け要約
+
+- **Developer-domain の bilingual release gate を、現在の deterministic ONNX bilingual-50 floor に合わせた**。厳しめの gate は `0.86` に再固定し、50 sample fixture の 1 sample 分（0.02）の揺れを Layer 2 で許容する。一方で `0.82` のような実質的な低下は引き続き fail する。
+
+### 検証
+
+- Review: harness-review APPROVE。
+- Tests: `bun test memory-server/tests/benchmark/run-ci.test.ts tests/benchmarks/s108-code-token-tuning.test.ts`; `npm run benchmark`; `npm run benchmark:developer-domain -- --no-write-manifest --no-write-artifacts`; `bash scripts/check-developer-domain-gate.sh`; `git diff --check`。
+
 ## [0.27.2] - 2026-06-05
 
 ### ユーザー向け要約
