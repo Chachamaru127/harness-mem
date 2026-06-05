@@ -50,6 +50,38 @@ func GetProjectRoot() string {
 	return cwd
 }
 
+// GetProjectRootFrom finds the project root starting from an explicit caller
+// path. It never falls back to the MCP server cwd unless that cwd was passed as
+// startPath.
+func GetProjectRootFrom(startPath string) string {
+	current, err := filepath.Abs(startPath)
+	if err != nil {
+		return startPath
+	}
+	if stat, err := os.Stat(current); err == nil && !stat.IsDir() {
+		current = filepath.Dir(current)
+	}
+
+	root := filepath.VolumeName(current) + string(filepath.Separator)
+
+	for current != root {
+		for _, marker := range projectRootMarkers {
+			p := filepath.Join(current, marker)
+			if _, err := os.Stat(p); err == nil {
+				return current
+			}
+		}
+		parent := filepath.Dir(current)
+		if parent == current {
+			break
+		}
+		current = parent
+	}
+
+	abs, _ := filepath.Abs(startPath)
+	return abs
+}
+
 // EnsureDir creates a directory and all parents if they don't exist.
 func EnsureDir(dirPath string) error {
 	return os.MkdirAll(dirPath, 0o755)

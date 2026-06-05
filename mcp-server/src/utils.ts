@@ -60,6 +60,177 @@ export function getProjectRoot(): string {
 }
 
 /**
+ * Find the project root starting from an explicit caller path.
+ * Unlike getProjectRoot(), this never falls back to the MCP server cwd unless
+ * the caller explicitly passed that cwd.
+ */
+export function getProjectRootFrom(startPath: string): string {
+  const markers = [".git", "package.json", "Plans.md", ".claude"];
+  let current = path.resolve(startPath);
+
+  if (fs.existsSync(current) && fs.statSync(current).isFile()) {
+    current = path.dirname(current);
+  }
+
+  const { root } = path.parse(current);
+
+  while (current !== root) {
+    for (const marker of markers) {
+      if (fs.existsSync(path.join(current, marker))) {
+        return current;
+      }
+    }
+    current = path.dirname(current);
+  }
+
+  return path.resolve(startPath);
+}
+
+export interface PlansScopeArgs {
+  cwd?: string;
+  project?: string;
+  plans_path?: string;
+}
+
+export interface PlansTarget {
+  projectRoot: string;
+  plansPath: string;
+  source: "cwd" | "project" | "plans_path";
+}
+
+export type PlansTargetResolution =
+  | { ok: true; target: PlansTarget }
+  | { ok: false; message: string };
+
+function normalizeScopeValue(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isSubpathOrEqual(child: string, parent: string): boolean {
+  const rel = path.relative(parent, child);
+  return rel === "" || (!!rel && !rel.startsWith("..") && !path.isAbsolute(rel));
+}
+
+function realpathExistingDir(dirPath: string): string | null {
+  if (!fs.existsSync(dirPath)) {
+    return null;
+  }
+  const stat = fs.statSync(dirPath);
+  if (!stat.isDirectory()) {
+    return null;
+  }
+  return fs.realpathSync(dirPath);
+}
+
+function resolveSafePlansPath(plansPath: string, realRoot: string): PlansTargetResolution {
+  const parent = realpathExistingDir(path.dirname(plansPath));
+  if (!parent) {
+    return { ok: false, message: "invalid_scope: Plans.md parent must be an existing directory" };
+  }
+  const normalizedPlansPath = path.join(parent, "Plans.md");
+  if (fs.existsSync(normalizedPlansPath)) {
+    const stat = fs.lstatSync(normalizedPlansPath);
+    if (stat.isDirectory()) {
+      return { ok: false, message: "invalid_scope: Plans.md path must not be a directory" };
+    }
+    const realFile = fs.realpathSync(normalizedPlansPath);
+    if (!isSubpathOrEqual(realFile, realRoot)) {
+      return { ok: false, message: "invalid_scope: Plans.md realpath must stay within the resolved project root" };
+    }
+  } else if (!isSubpathOrEqual(normalizedPlansPath, realRoot)) {
+    return { ok: false, message: "invalid_scope: plans_path must stay within the resolved project root" };
+  }
+  return { ok: true, target: { projectRoot: realRoot, plansPath: normalizedPlansPath, source: "plans_path" } };
+}
+
+/**
+ * Resolve a filesystem-backed Plans.md target from explicit caller scope.
+ * This is intentionally separate from memory project-key normalization:
+ * short project keys are logical memory scopes, not safe filesystem locations.
+ */
+export function resolvePlansTarget(args: PlansScopeArgs | undefined): PlansTargetResolution {
+  const cwd = normalizeScopeValue(args?.cwd);
+  const project = normalizeScopeValue(args?.project);
+  const plansPathArg = normalizeScopeValue(args?.plans_path);
+
+  let scopedRoot: string | null = null;
+  let source: PlansTarget["source"] | null = null;
+
+  if (cwd) {
+    if (!path.isAbsolute(cwd)) {
+      return { ok: false, message: "invalid_scope: cwd must be an absolute path" };
+    }
+    const realCwd = realpathExistingDir(cwd);
+    if (!realCwd) {
+      return { ok: false, message: "invalid_scope: cwd must be an existing directory" };
+    }
+    scopedRoot = getProjectRootFrom(realCwd);
+    source = "cwd";
+  } else if (project) {
+    if (!path.isAbsolute(project)) {
+      return {
+        ok: false,
+        message:
+          "invalid_scope: project must be an absolute filesystem path for Plans.md operations; pass cwd for short project keys",
+      };
+    }
+    const realProject = realpathExistingDir(project);
+    if (!realProject) {
+      return { ok: false, message: "invalid_scope: project must be an existing directory" };
+    }
+    scopedRoot = getProjectRootFrom(realProject);
+    source = "project";
+  }
+
+  if (plansPathArg) {
+    if (!path.isAbsolute(plansPathArg)) {
+      return { ok: false, message: "invalid_scope: plans_path must be an absolute path" };
+    }
+    if (path.basename(plansPathArg) !== "Plans.md") {
+      return { ok: false, message: "invalid_scope: plans_path must point to a Plans.md file" };
+    }
+    const parent = realpathExistingDir(path.dirname(plansPathArg));
+    if (!parent) {
+      return { ok: false, message: "invalid_scope: plans_path parent must be an existing directory" };
+    }
+    const projectRoot = scopedRoot ?? getProjectRootFrom(parent);
+    const realRoot = realpathExistingDir(projectRoot);
+    if (!realRoot) {
+      return { ok: false, message: "invalid_scope: resolved project root must be an existing directory" };
+    }
+    const safePlansPath = resolveSafePlansPath(path.join(parent, "Plans.md"), realRoot);
+    if (!safePlansPath.ok) {
+      return safePlansPath;
+    }
+    return { ok: true, target: { ...safePlansPath.target, source: "plans_path" } };
+  }
+
+  if (!scopedRoot || !source) {
+    return {
+      ok: false,
+      message:
+        "scope_required: pass cwd, an absolute filesystem project path, or plans_path so Plans.md file operations do not use the MCP server cwd",
+    };
+  }
+
+  const realRoot = realpathExistingDir(scopedRoot);
+  if (!realRoot) {
+    return { ok: false, message: "invalid_scope: resolved project root must be an existing directory" };
+  }
+  const safePlansPath = resolveSafePlansPath(path.join(realRoot, "Plans.md"), realRoot);
+  if (!safePlansPath.ok) {
+    return safePlansPath;
+  }
+  return {
+    ok: true,
+    target: {
+      ...safePlansPath.target,
+      source,
+    },
+  };
+}
+
+/**
  * Ensure a directory exists, creating it if necessary.
  *
  * @param dirPath - The directory path to ensure exists

@@ -9,9 +9,33 @@ import { type Tool } from "@modelcontextprotocol/sdk/types.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  getProjectRoot,
   getRecentChangesAsync,
+  type PlansScopeArgs,
+  resolvePlansTarget,
 } from "../utils.js";
+
+type WorkflowResult = {
+  content: Array<{ type: string; text: string }>;
+  isError?: boolean;
+};
+
+const PLANS_SCOPE_SCHEMA = {
+  cwd: {
+    type: "string",
+    description:
+      "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.",
+  },
+  project: {
+    type: "string",
+    description:
+      "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.",
+  },
+  plans_path: {
+    type: "string",
+    description:
+      "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.",
+  },
+} as const;
 
 // Tool definitions
 export const workflowTools: Tool[] = [
@@ -31,6 +55,7 @@ export const workflowTools: Tool[] = [
           enum: ["quick", "detailed"],
           description: "Planning mode: quick (minimal) or detailed (comprehensive)",
         },
+        ...PLANS_SCOPE_SCHEMA,
       },
       required: ["task"],
     },
@@ -54,6 +79,7 @@ export const workflowTools: Tool[] = [
           type: "string",
           description: "Specific task ID to work on (optional)",
         },
+        ...PLANS_SCOPE_SCHEMA,
       },
       required: [],
     },
@@ -86,12 +112,19 @@ export const workflowTools: Tool[] = [
 ];
 
 // Helper functions using shared utilities
-function readPlans(): string | null {
-  const plansPath = path.join(getProjectRoot(), "Plans.md");
-  if (fs.existsSync(plansPath)) {
-    return fs.readFileSync(plansPath, "utf-8");
+function readPlans(args: PlansScopeArgs | undefined): { content: string | null; plansPath: string } | WorkflowResult {
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true,
+    };
   }
-  return null;
+  const { plansPath } = resolved.target;
+  if (fs.existsSync(plansPath)) {
+    return { content: fs.readFileSync(plansPath, "utf-8"), plansPath };
+  }
+  return { content: null, plansPath };
 }
 
 /**
@@ -136,14 +169,14 @@ const REVIEW_PERSPECTIVES = [
 export async function handleWorkflowTool(
   name: string,
   args: Record<string, unknown> | undefined
-): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
+): Promise<WorkflowResult> {
   switch (name) {
     case "harness_workflow_plan":
-      return handlePlan(args as { task: string; mode?: string });
+      return handlePlan(args as unknown as ({ task?: string; mode?: string } & PlansScopeArgs) | undefined);
 
     case "harness_workflow_work":
       return handleWork(
-        args as { parallel?: number; full?: boolean; taskId?: string }
+        args as ({ parallel?: number; full?: boolean; taskId?: string } & PlansScopeArgs) | undefined
       );
 
     case "harness_workflow_review":
@@ -159,10 +192,17 @@ export async function handleWorkflowTool(
   }
 }
 
-function handlePlan(args: { task: string; mode?: string }): {
-  content: Array<{ type: string; text: string }>;
-} {
-  const { task, mode = "quick" } = args;
+function handlePlan(args: ({ task?: string; mode?: string } & PlansScopeArgs) | undefined): WorkflowResult {
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true,
+    };
+  }
+
+  const task = args?.task ?? "";
+  const mode = args?.mode ?? "quick";
 
   if (!task) {
     return {
@@ -175,7 +215,7 @@ function handlePlan(args: { task: string; mode?: string }): {
   const planTemplate = generatePlanTemplate(task, mode);
 
   // Append to Plans.md
-  const plansPath = path.join(getProjectRoot(), "Plans.md");
+  const { plansPath } = resolved.target;
   const existingContent = fs.existsSync(plansPath)
     ? fs.readFileSync(plansPath, "utf-8")
     : "# Plans\n\n";
@@ -186,26 +226,30 @@ function handlePlan(args: { task: string; mode?: string }): {
     content: [
       {
         type: "text",
-        text: `📋 Plan created for: "${task}"\n\nTasks added to Plans.md:\n- Task 1: Analyze requirements\n- Task 2: Implement core functionality\n- Task 3: Add tests\n- Task 4: Documentation\n\n💡 Run harness_workflow_work to start implementation`,
+        text: `📋 Plan created for: "${task}"\n\nPlans.md: ${plansPath}\n\nTasks added to Plans.md:\n- Task 1: Analyze requirements\n- Task 2: Implement core functionality\n- Task 3: Add tests\n- Task 4: Documentation\n\n💡 Run harness_workflow_work with the same cwd/project/plans_path to start implementation`,
       },
     ],
   };
 }
 
-function handleWork(args: {
+function handleWork(args: ({
   parallel?: number;
   full?: boolean;
   taskId?: string;
-}): { content: Array<{ type: string; text: string }> } {
-  const { parallel = 1, full = false, taskId } = args;
+} & PlansScopeArgs) | undefined): WorkflowResult {
+  const { parallel = 1, full = false, taskId } = args ?? {};
 
-  const plans = readPlans();
+  const plansResult = readPlans(args);
+  if ("isError" in plansResult && plansResult.isError) {
+    return plansResult;
+  }
+  const { content: plans, plansPath } = plansResult as { content: string | null; plansPath: string };
   if (!plans) {
     return {
       content: [
         {
           type: "text",
-          text: "❌ Plans.md not found. Use harness_workflow_plan to create a plan first.",
+          text: `❌ Plans.md not found at ${plansPath}. Use harness_workflow_plan with the same cwd/project/plans_path to create a plan first.`,
         },
       ],
     };
@@ -235,6 +279,8 @@ function handleWork(args: {
       {
         type: "text",
         text: `🔧 Work Mode: ${workMode} ${parallelInfo}
+
+📁 Plans.md: ${plansPath}
 
 📊 Task Status:
 - TODO: ${todoCount}

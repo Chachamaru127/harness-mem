@@ -39,11 +39,18 @@ func StatusToolDefs() []ToolDef {
 var statusTool = mcp.NewTool("harness_status",
 	mcp.WithDescription("Get current project status including Plans.md progress, active sessions, and recent activity"),
 	mcp.WithBoolean("verbose", mcp.Description("Include detailed information")),
+	mcp.WithString("cwd", mcp.Description("Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.")),
+	mcp.WithString("project", mcp.Description("Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.")),
+	mcp.WithString("plans_path", mcp.Description("Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.")),
 )
 
 func handleStatus(args map[string]any) types.ToolResult {
 	verbose := argBool(args, "verbose", false)
-	projectRoot := util.GetProjectRoot()
+	target, errText := resolvePlansTarget(args)
+	if errText != "" {
+		return types.ErrorText(errText)
+	}
+	projectRoot := target.ProjectRoot
 
 	var sb strings.Builder
 	sb.WriteString("**Harness Status**\n\n")
@@ -57,7 +64,7 @@ func handleStatus(args map[string]any) types.ToolResult {
 	sb.WriteString("\n")
 
 	// Plans status
-	plansPath := filepath.Join(projectRoot, "Plans.md")
+	plansPath := target.PlansPath
 	if data, err := os.ReadFile(plansPath); err == nil {
 		content := string(data)
 		todo := len(reTODO.FindAllString(content, -1))
@@ -75,7 +82,7 @@ func handleStatus(args map[string]any) types.ToolResult {
 	}
 
 	// Sessions
-	sessionCount := getActiveSessionCount()
+	sessionCount := getActiveSessionCount(projectRoot)
 	unreadCount := getUnreadMessageCount(projectRoot)
 	sb.WriteString("**Sessions**\n")
 	sb.WriteString(fmt.Sprintf("  Active: %d\n  Unread messages: %d\n\n", sessionCount, unreadCount))
@@ -96,13 +103,13 @@ func handleStatus(args map[string]any) types.ToolResult {
 	// Suggestion
 	sb.WriteString("**Suggested Action**: ")
 	if _, err := os.Stat(plansPath); os.IsNotExist(err) {
-		sb.WriteString("Use harness_workflow_plan to create a plan")
+		sb.WriteString("Use harness_workflow_plan with the same cwd/project/plans_path to create a plan")
 	} else if data, err := os.ReadFile(plansPath); err == nil {
 		content := string(data)
 		todo := len(reTODO.FindAllString(content, -1))
 		wip := len(reWIP.FindAllString(content, -1))
 		if todo > 0 {
-			sb.WriteString(fmt.Sprintf("Use harness_workflow_work to implement %d pending task(s)", todo))
+			sb.WriteString(fmt.Sprintf("Use harness_workflow_work with the same cwd/project/plans_path to implement %d pending task(s)", todo))
 		} else if wip > 0 {
 			sb.WriteString(fmt.Sprintf("Continue working on %d in-progress task(s)", wip))
 		} else {
@@ -113,9 +120,9 @@ func handleStatus(args map[string]any) types.ToolResult {
 	return types.SuccessText(sb.String())
 }
 
-func getActiveSessionCount() int {
+func getActiveSessionCount(projectRoot string) int {
 	sessions := util.SafeReadJSON[map[string]Session](
-		filepath.Join(util.GetProjectRoot(), util.ActiveSessionsFile),
+		filepath.Join(projectRoot, util.ActiveSessionsFile),
 		map[string]Session{},
 	)
 	now := float64(time.Now().Unix())

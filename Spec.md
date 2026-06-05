@@ -1,9 +1,9 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-06-02
+Last updated: 2026-06-05
 Owner: harness-mem
-Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix
+Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix / §146 MCP Workflow Plans Scope Fix
 
 ## Purpose
 
@@ -69,8 +69,9 @@ then older reports or memory.
 
 1. Keep local-first as the default. Optional external integrations are allowed
    only when explicitly configured.
-2. Keep project scope explicit. Search, WorkGraph, recall, lease, signal, and
-   telemetry inspection must not infer scope from the daemon launch directory.
+2. Keep project scope explicit. Search, WorkGraph, recall, lease, signal,
+   telemetry inspection, and MCP tools that read or write file-backed
+   `Plans.md` state must not infer scope from the daemon launch directory.
    Existing broad `harness_mem_search` compatibility must not be broken without
    an explicit migration plan and tests.
 3. Keep existing primitives connected, not duplicated. Lease, signal, verify,

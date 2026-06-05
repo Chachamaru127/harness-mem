@@ -8,12 +8,31 @@ import { type Tool } from "@modelcontextprotocol/sdk/types.js";
 import * as fs from "fs";
 import * as path from "path";
 import {
-  getProjectRoot,
   ACTIVE_SESSIONS_FILE,
   BROADCAST_FILE,
   STALE_THRESHOLD_SECONDS,
+  type PlansScopeArgs,
+  resolvePlansTarget,
   safeReadJSON,
 } from "../utils.js";
+
+const PLANS_SCOPE_SCHEMA = {
+  cwd: {
+    type: "string",
+    description:
+      "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.",
+  },
+  project: {
+    type: "string",
+    description:
+      "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.",
+  },
+  plans_path: {
+    type: "string",
+    description:
+      "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.",
+  },
+} as const;
 
 // Types for session and message data
 interface SessionData {
@@ -43,6 +62,7 @@ export const statusTools: Tool[] = [
           type: "boolean",
           description: "Include detailed information",
         },
+        ...PLANS_SCOPE_SCHEMA,
       },
       required: [],
     },
@@ -50,8 +70,7 @@ export const statusTools: Tool[] = [
 ];
 
 // Helper functions using shared utilities
-function getPlansStatus(): { todo: number; wip: number; done: number } | null {
-  const plansPath = path.join(getProjectRoot(), "Plans.md");
+function getPlansStatus(plansPath: string): { todo: number; wip: number; done: number } | null {
   if (!fs.existsSync(plansPath)) {
     return null;
   }
@@ -64,8 +83,11 @@ function getPlansStatus(): { todo: number; wip: number; done: number } | null {
   };
 }
 
-function getSessionCount(): number {
-  const sessions = safeReadJSON<Record<string, SessionData>>(ACTIVE_SESSIONS_FILE, {});
+function getSessionCount(projectRoot: string): number {
+  const sessions = safeReadJSON<Record<string, SessionData>>(
+    path.join(projectRoot, ACTIVE_SESSIONS_FILE),
+    {}
+  );
   const now = Date.now() / 1000;
 
   return Object.values(sessions).filter(
@@ -73,8 +95,8 @@ function getSessionCount(): number {
   ).length;
 }
 
-function getUnreadMessageCount(): number {
-  const messages = safeReadJSON<BroadcastMessage[]>(BROADCAST_FILE, []);
+function getUnreadMessageCount(projectRoot: string): number {
+  const messages = safeReadJSON<BroadcastMessage[]>(path.join(projectRoot, BROADCAST_FILE), []);
   const cutoff = Date.now() - MESSAGE_WINDOW_MS;
 
   return messages.filter(
@@ -82,8 +104,8 @@ function getUnreadMessageCount(): number {
   ).length;
 }
 
-function getHarnessVersion(): string | null {
-  const versionFile = path.join(getProjectRoot(), ".claude-code-harness-version");
+function getHarnessVersion(projectRoot: string): string | null {
+  const versionFile = path.join(projectRoot, ".claude-code-harness-version");
   if (fs.existsSync(versionFile)) {
     return fs.readFileSync(versionFile, "utf-8").trim();
   }
@@ -105,7 +127,7 @@ export async function handleStatusTool(
 ): Promise<{ content: Array<{ type: string; text: string }>; isError?: boolean }> {
   switch (name) {
     case "harness_status":
-      return handleStatus(args as { verbose?: boolean });
+      return handleStatus(args as ({ verbose?: boolean } & PlansScopeArgs) | undefined);
 
     default:
       return {
@@ -115,16 +137,25 @@ export async function handleStatusTool(
   }
 }
 
-function handleStatus(args: { verbose?: boolean }): {
+function handleStatus(args: ({ verbose?: boolean } & PlansScopeArgs) | undefined): {
   content: Array<{ type: string; text: string }>;
+  isError?: boolean;
 } {
-  const { verbose = false } = args;
+  const { verbose = false } = args ?? {};
 
-  const projectRoot = getProjectRoot();
-  const plansStatus = getPlansStatus();
-  const sessionCount = getSessionCount();
-  const unreadCount = getUnreadMessageCount();
-  const harnessVersion = getHarnessVersion();
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true,
+    };
+  }
+
+  const { projectRoot, plansPath } = resolved.target;
+  const plansStatus = getPlansStatus(plansPath);
+  const sessionCount = getSessionCount(projectRoot);
+  const unreadCount = getUnreadMessageCount(projectRoot);
+  const harnessVersion = getHarnessVersion(projectRoot);
 
   let status = `📊 **Harness Status**\n\n`;
 
@@ -169,9 +200,9 @@ function handleStatus(args: { verbose?: boolean }): {
   // Next action suggestion
   status += `\n💡 **Suggested Action**: `;
   if (!plansStatus) {
-    status += `Use harness_workflow_plan to create a plan`;
+    status += `Use harness_workflow_plan with the same cwd/project/plans_path to create a plan`;
   } else if (plansStatus.todo > 0) {
-    status += `Use harness_workflow_work to implement ${plansStatus.todo} pending task(s)`;
+    status += `Use harness_workflow_work with the same cwd/project/plans_path to implement ${plansStatus.todo} pending task(s)`;
   } else if (plansStatus.wip > 0) {
     status += `Continue working on ${plansStatus.wip} in-progress task(s)`;
   } else {

@@ -1578,6 +1578,34 @@ Complete only when all of the following are true:
 - docs: `docs/environment-variables.md` に §115/§127/§128/§145 env 追記（2026-06-02）。
 - tests: api-contract + observation-store + search-maintenance + s145-gate = 62 pass（触达範囲）。
 
+## §146 MCP Workflow Plans Scope Fix — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: Codex Desktop の別プロジェクト session から `harness_workflow_plan` を呼んだ際、MCP frontend の起動 cwd が harness-mem checkout だったため、対象案件ではなく harness-mem 直下の `Plans.md` に汎用4タスクが追記された。`HARNESS_MEM_HOME` / `HARNESS_MEM_DB_PATH` は memory DB の場所を統一するだけで、file-backed `Plans.md` の書き込み先には関与しない。`Spec.md` Rule #2 に従い、workflow/status tools も daemon launch directory から scope を推測してはいけない。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S146-000 | **Spec/Plans scope contract** `[tdd:skip:docs-spec]` — MCP workflow/status tools は `cwd` / path-like `project` / constrained `plans_path` の明示 scope なしに `Plans.md` を read/write しない契約を固定する | `Spec.md` Rule #2 と本 § が、daemon cwd 推測禁止・DB env と file scope の分離を明記する | - | cc:完了 [local] |
+| S146-001 | **TypeScript MCP Plans target resolver** `[tdd:required]` — TS workflow/status handlers を process cwd 非依存にし、scope なしは `scope_required` で no-op にする | `harness_workflow_plan` / `harness_workflow_work` / `harness_status` が explicit `cwd` で対象 repo の `Plans.md` を使い、scope なしでは disk に触らない | S146-000 | cc:完了 [local] |
+| S146-002 | **Go MCP Plans target resolver** `[tdd:required]` — Go workflow/status handlers に TS と同じ schema と validation を実装する | Go tool tests が explicit `cwd` 成功、scope なし no-op、short `project` 拒否、`plans_path` escape 拒否を確認する | S146-001 | cc:完了 [local] |
+| S146-003 | **Schema parity and bundle sync** `[tdd:required]` — Go `expected_tools.json` と TS bundled `dist` を更新し、MCP surface drift を防ぐ | schema parity test PASS。`mcp-server/dist/index.js` が source と同じ scope contract を含む | S146-001, S146-002 | cc:完了 [local] |
+| S146-004 | **Workflow scope docs / skill guidance** `[tdd:skip:docs-only]` — MCP docs / bundled guidance に workflow tools は caller `cwd` を渡す必要があると明記する | `mcp-server/README.md` 等に、`Plans.md` file operations は explicit `cwd` required と記載される | S146-003 | cc:完了 [local] |
+| S146-005 | **Regression validation closeout** `[tdd:required]` — 対象 TS/Go tests、typecheck/build、diff-check を実行して完了条件を閉じる | relevant `bun test` / `go test` / `bun run typecheck` / MCP build / `git diff --check` が PASS | S146-001, S146-002, S146-003, S146-004 | cc:完了 [local] |
+
+## §147 Release Gate Access Count Sync Fix — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: v0.27.2 release gate の `npm test` で、`memory-server/tests/integration/adaptive-decay-integration.test.ts` の `search 後に access_count がインクリメントされる` が失敗した。検索結果の `access_count` 更新を `queueMicrotask` に逃がしていたため、同期的な連続検索では 2 回目の検索が更新前の値を読むことがあった。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S147-001 | **Search hit side effect sync** `[tdd:required]` — search が返した observation の `access_count` / `last_accessed_at` 更新を、検索呼び出し内で完了させる | adaptive decay integration test が連続検索で `access_count` 増分を観測でき、best-effort error handling と `skip_search_hit` は維持される | - | cc:完了 [local] |
+| S147-002 | **Fallback guardrail expectation sync** `[tdd:required]` — safe fallback failure guardrail test を現行の `in_process_degraded` 分岐込みの fallback contract に合わせる | test が `search_fallback_failed` / 503 / fallback_mode / safe lexical failure warning を引き続き検査し、古い二択文字列には依存しない | S147-001 | cc:完了 [local] |
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。

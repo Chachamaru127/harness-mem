@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-06-05
+
+### Fixed
+
+- **MCP workflow/status tools now require explicit `Plans.md` file scope**, preventing daemon launch cwd from being used for `harness_workflow_plan`, `harness_workflow_work`, or `harness_status`.
+- **Plans.md path resolution now rejects short project keys, parent escapes, and symlink escapes**, with TypeScript/Go parity tests, schema snapshot coverage, and bundled MCP updates.
+- **Search hit access counts now update before synchronous search returns**, keeping adaptive decay behavior deterministic for consecutive searches and restoring the release test gate.
+
+### Verification
+
+- Review: harness-review APPROVE.
+- Tests: `bun test tests/mcp-workflow-plans-scope-contract.test.ts tests/harness-status-marker-contract.test.ts`; `bun test memory-server/tests/integration/adaptive-decay-integration.test.ts`; `cd mcp-server && bun run typecheck`; `cd mcp-server-go && go test ./...`; `npm test`; `npm pack --dry-run --json`; `git diff --check`.
+
 ## [0.27.1] - 2026-06-04
 
 ### Fixed
@@ -2912,7 +2925,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.2...HEAD
+[0.27.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...v0.27.0
 [0.26.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.9...v0.26.0
