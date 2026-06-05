@@ -45,6 +45,14 @@ describe("harness_status completion marker contract", () => {
     }
   });
 
+  test("bundled MCP workflow/status tools include explicit Plans scope guard", () => {
+    const bundled = readFileSync(join(root, "mcp-server", "dist", "index.js"), "utf8");
+
+    expect(bundled).toContain("scope_required: pass cwd");
+    expect(bundled).toContain("project must be an absolute filesystem path");
+    expect(bundled).toContain("Plans.md file operations do not use the MCP server cwd");
+  });
+
   test("TypeScript harness_status reports canonical and legacy done markers", async () => {
     const tmp = mkdtempSync(join(tmpdir(), "hmem-status-marker-"));
     mkdirSync(join(tmp, ".claude"), { recursive: true });
@@ -65,7 +73,7 @@ describe("harness_status completion marker contract", () => {
     const previousCwd = process.cwd();
     try {
       process.chdir(tmp);
-      const result = await handleStatusTool("harness_status", {});
+      const result = await handleStatusTool("harness_status", { cwd: tmp });
       const text = result.content[0]?.text ?? "";
       expect(text).toContain("TODO: 1");
       expect(text).toContain("WIP: 1");

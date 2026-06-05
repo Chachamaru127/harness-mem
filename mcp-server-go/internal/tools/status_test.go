@@ -12,9 +12,9 @@ import (
 // TestHandleStatus_NoPlansFile verifies that "Not found" appears in output
 // when Plans.md does not exist.
 func TestHandleStatus_NoPlansFile(t *testing.T) {
-	makeProjectRoot(t)
+	root := makeProjectRoot(t)
 
-	result := handleStatus(map[string]any{})
+	result := handleStatus(map[string]any{"cwd": root})
 
 	if result.IsError {
 		t.Fatalf("handleStatus no Plans.md: unexpected IsError=true")
@@ -22,6 +22,27 @@ func TestHandleStatus_NoPlansFile(t *testing.T) {
 	text := result.Content[0].Text
 	if !strings.Contains(text, "Not found") {
 		t.Errorf("handleStatus no Plans.md: got %q, want 'Not found' in output", text)
+	}
+}
+
+func TestHandleStatus_MissingScopeDoesNotReadServerPlans(t *testing.T) {
+	root := makeProjectRoot(t)
+	plans := "# Plans\n\n- server-only <!-- cc:TODO -->\n"
+	if err := os.WriteFile(filepath.Join(root, "Plans.md"), []byte(plans), 0o644); err != nil {
+		t.Fatalf("WriteFile Plans.md: %v", err)
+	}
+
+	result := handleStatus(map[string]any{})
+
+	if !result.IsError {
+		t.Fatalf("handleStatus missing scope: expected IsError=true")
+	}
+	text := result.Content[0].Text
+	if !strings.Contains(text, "scope_required") {
+		t.Fatalf("handleStatus missing scope: got %q, want scope_required", text)
+	}
+	if strings.Contains(text, "server-only") || strings.Contains(text, "TODO: 1") {
+		t.Fatalf("handleStatus missing scope leaked server Plans.md status: %q", text)
 	}
 }
 
@@ -41,7 +62,7 @@ func TestHandleStatus_WithCounts(t *testing.T) {
 		t.Fatalf("WriteFile Plans.md: %v", err)
 	}
 
-	result := handleStatus(map[string]any{})
+	result := handleStatus(map[string]any{"cwd": root})
 
 	if result.IsError {
 		t.Fatalf("handleStatus counts: unexpected IsError=true")
@@ -64,9 +85,9 @@ func TestHandleStatus_WithCounts(t *testing.T) {
 // TestHandleStatus_VerboseSSOT verifies that verbose=true includes the
 // SSOT Files section.
 func TestHandleStatus_VerboseSSOT(t *testing.T) {
-	makeProjectRoot(t)
+	root := makeProjectRoot(t)
 
-	result := handleStatus(map[string]any{"verbose": true})
+	result := handleStatus(map[string]any{"verbose": true, "cwd": root})
 
 	if result.IsError {
 		t.Fatalf("handleStatus verbose: unexpected IsError=true")
@@ -80,9 +101,9 @@ func TestHandleStatus_VerboseSSOT(t *testing.T) {
 // TestHandleStatus_SuggestedAction_NoPlanFile verifies suggested action when
 // Plans.md is absent.
 func TestHandleStatus_SuggestedAction_NoPlanFile(t *testing.T) {
-	makeProjectRoot(t)
+	root := makeProjectRoot(t)
 
-	result := handleStatus(map[string]any{})
+	result := handleStatus(map[string]any{"cwd": root})
 
 	text := result.Content[0].Text
 	if !strings.Contains(text, "harness_workflow_plan") {
@@ -100,7 +121,7 @@ func TestHandleStatus_SuggestedAction_WithTODO(t *testing.T) {
 		t.Fatalf("WriteFile Plans.md: %v", err)
 	}
 
-	result := handleStatus(map[string]any{})
+	result := handleStatus(map[string]any{"cwd": root})
 
 	text := result.Content[0].Text
 	if !strings.Contains(text, "harness_workflow_work") {
@@ -118,7 +139,7 @@ func TestHandleStatus_SuggestedAction_AllDone(t *testing.T) {
 		t.Fatalf("WriteFile Plans.md: %v", err)
 	}
 
-	result := handleStatus(map[string]any{})
+	result := handleStatus(map[string]any{"cwd": root})
 
 	text := result.Content[0].Text
 	if !strings.Contains(text, "harness_workflow_review") {

@@ -106,6 +106,11 @@ See [`integrations/hermes/`](../integrations/hermes/) for the full allowlist, on
 | `harness_workflow_work` | Execute tasks from Plans.md |
 | `harness_workflow_review` | Multi-perspective code review |
 
+`harness_workflow_plan`, `harness_workflow_work`, and `harness_status` operate on
+the caller project's file-backed `Plans.md`. Pass one of `cwd`, an absolute
+filesystem `project` path, or `plans_path`; these tools intentionally do not
+infer the project from the MCP server process cwd.
+
 ### Status
 
 | Tool | Description |

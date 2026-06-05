@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -48,6 +47,9 @@ var wfToolPlan = mcp.NewTool("harness_workflow_plan",
 	mcp.WithDescription("Create an implementation plan for a task. Generates structured tasks in Plans.md"),
 	mcp.WithString("task", mcp.Required(), mcp.Description("Description of what you want to build or implement")),
 	mcp.WithString("mode", mcp.Description("Planning mode: quick (minimal) or detailed (comprehensive)"), mcp.Enum("quick", "detailed")),
+	mcp.WithString("cwd", mcp.Description("Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.")),
+	mcp.WithString("project", mcp.Description("Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.")),
+	mcp.WithString("plans_path", mcp.Description("Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.")),
 )
 
 var wfToolWork = mcp.NewTool("harness_workflow_work",
@@ -55,6 +57,9 @@ var wfToolWork = mcp.NewTool("harness_workflow_work",
 	mcp.WithNumber("parallel", mcp.Description("Number of parallel workers (1-5)")),
 	mcp.WithBoolean("full", mcp.Description("Run full cycle: implement -> self-review -> fix -> commit")),
 	mcp.WithString("taskId", mcp.Description("Specific task ID to work on (optional)")),
+	mcp.WithString("cwd", mcp.Description("Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.")),
+	mcp.WithString("project", mcp.Description("Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.")),
+	mcp.WithString("plans_path", mcp.Description("Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.")),
 )
 
 var wfToolReview = mcp.NewTool("harness_workflow_review",
@@ -68,6 +73,10 @@ func handlePlan(args map[string]any) types.ToolResult {
 	task := argString(args, "task")
 	if task == "" {
 		return types.ErrorText("Error: task description is required")
+	}
+	target, errText := resolvePlansTarget(args)
+	if errText != "" {
+		return types.ErrorText(errText)
 	}
 	mode := argString(args, "mode")
 	if mode == "" {
@@ -95,7 +104,7 @@ func handlePlan(args map[string]any) types.ToolResult {
 Next Step: Use harness_workflow_work to start implementation
 `, task, mode, time.Now().UTC().Format(time.RFC3339))
 
-	plansPath := filepath.Join(util.GetProjectRoot(), "Plans.md")
+	plansPath := target.PlansPath
 	existing := "# Plans\n\n"
 	if data, err := os.ReadFile(plansPath); err == nil {
 		existing = string(data)
@@ -104,20 +113,26 @@ Next Step: Use harness_workflow_work to start implementation
 
 	return types.SuccessText(fmt.Sprintf(`Plan created for: "%s"
 
+Plans.md: %s
+
 Tasks added to Plans.md:
 - Task 1: Analyze requirements
 - Task 2: Implement core functionality
 - Task 3: Add tests
 - Task 4: Documentation
 
-Run harness_workflow_work to start implementation`, task))
+Run harness_workflow_work with the same cwd/project/plans_path to start implementation`, task, plansPath))
 }
 
 func handleWork(args map[string]any) types.ToolResult {
-	plansPath := filepath.Join(util.GetProjectRoot(), "Plans.md")
+	target, errText := resolvePlansTarget(args)
+	if errText != "" {
+		return types.ErrorText(errText)
+	}
+	plansPath := target.PlansPath
 	data, err := os.ReadFile(plansPath)
 	if err != nil {
-		return types.SuccessText("Plans.md not found. Use harness_workflow_plan to create a plan first.")
+		return types.SuccessText(fmt.Sprintf("Plans.md not found at %s. Use harness_workflow_plan with the same cwd/project/plans_path to create a plan first.", plansPath))
 	}
 
 	content := string(data)
@@ -151,6 +166,8 @@ func handleWork(args map[string]any) types.ToolResult {
 
 	return types.SuccessText(fmt.Sprintf(`Work Mode: %s %s
 
+Plans.md: %s
+
 Task Status:
 - TODO: %d
 - WIP: %d
@@ -164,7 +181,7 @@ To execute, the AI client should:
 4. Mark as cc:完了
 
 This tool provides work instructions. The actual implementation
-should be performed by the AI client using its native capabilities.`, workMode, parallelInfo, todoCount, wipCount, targetInfo))
+should be performed by the AI client using its native capabilities.`, workMode, parallelInfo, plansPath, todoCount, wipCount, targetInfo))
 }
 
 func handleReview(args map[string]any) types.ToolResult {

@@ -397,6 +397,16 @@
     "description": "Run consolidation worker (extract + dedupe) immediately. Optionally accepts a `forget_policy` sub-object (S81-B02) to soft-archive low-value observations, and a `contradiction_scan` sub-object (S81-B03) to detect and mark superseded observations via Jaccard + LLM adjudication.",
     "inputSchema": {
       "properties": {
+        "contradiction_scan": {
+          "description": "Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.",
+          "properties": {},
+          "type": "object"
+        },
+        "forget_policy": {
+          "description": "Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.",
+          "properties": {},
+          "type": "object"
+        },
         "limit": {
           "type": "number"
         },
@@ -408,16 +418,6 @@
         },
         "session_id": {
           "type": "string"
-        },
-        "forget_policy": {
-          "description": "Low-value eviction policy. {dry_run:true (default), score_threshold:0.7, weights:{access, signal, age}, limit, protect_accessed:true}. Wet mode additionally requires HARNESS_MEM_AUTO_FORGET=1.",
-          "type": "object",
-          "properties": {}
-        },
-        "contradiction_scan": {
-          "description": "Contradiction detection (S81-B03). {jaccard_threshold:0.9, min_confidence:0.7, max_pairs_per_group:50}. Requires LLM availability via S81-C02 Claude Agent SDK provider or fallback.",
-          "type": "object",
-          "properties": {}
         }
       },
       "required": [],
@@ -1554,6 +1554,18 @@
     "description": "Get current project status including Plans.md progress, active sessions, and recent activity",
     "inputSchema": {
       "properties": {
+        "cwd": {
+          "description": "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.",
+          "type": "string"
+        },
+        "plans_path": {
+          "description": "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.",
+          "type": "string"
+        },
+        "project": {
+          "description": "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.",
+          "type": "string"
+        },
         "verbose": {
           "description": "Include detailed information",
           "type": "boolean"
@@ -1574,12 +1586,24 @@
     "description": "Create an implementation plan for a task. Generates structured tasks in Plans.md",
     "inputSchema": {
       "properties": {
+        "cwd": {
+          "description": "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.",
+          "type": "string"
+        },
         "mode": {
           "description": "Planning mode: quick (minimal) or detailed (comprehensive)",
           "enum": [
             "quick",
             "detailed"
           ],
+          "type": "string"
+        },
+        "plans_path": {
+          "description": "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.",
+          "type": "string"
+        },
+        "project": {
+          "description": "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.",
           "type": "string"
         },
         "task": {
@@ -1638,6 +1662,10 @@
     "description": "Execute tasks from Plans.md. Implements tasks marked as cc:TODO",
     "inputSchema": {
       "properties": {
+        "cwd": {
+          "description": "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied.",
+          "type": "string"
+        },
         "full": {
           "description": "Run full cycle: implement -> self-review -> fix -> commit",
           "type": "boolean"
@@ -1645,6 +1673,14 @@
         "parallel": {
           "description": "Number of parallel workers (1-5)",
           "type": "number"
+        },
+        "plans_path": {
+          "description": "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md.",
+          "type": "string"
+        },
+        "project": {
+          "description": "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted.",
+          "type": "string"
         },
         "taskId": {
           "description": "Specific task ID to work on (optional)",

@@ -231,10 +231,10 @@ function assignProp(target, prop, value) {
     configurable: true
   });
 }
-function getElementAtPath(obj, path6) {
-  if (!path6)
+function getElementAtPath(obj, path5) {
+  if (!path5)
     return obj;
-  return path6.reduce((acc, key) => acc?.[key], obj);
+  return path5.reduce((acc, key) => acc?.[key], obj);
 }
 function promiseAllObject(promisesObj) {
   const keys = Object.keys(promisesObj);
@@ -483,11 +483,11 @@ function aborted(x, startIndex = 0) {
   }
   return false;
 }
-function prefixIssues(path6, issues) {
+function prefixIssues(path5, issues) {
   return issues.map((iss) => {
     var _a;
     (_a = iss).path ?? (_a.path = []);
-    iss.path.unshift(path6);
+    iss.path.unshift(path5);
     return iss;
   });
 }
@@ -6503,7 +6503,7 @@ var init_protocol = __esm({
               return;
             }
             const pollInterval = task2.pollInterval ?? this._options?.defaultTaskPollInterval ?? 1e3;
-            await new Promise((resolve3) => setTimeout(resolve3, pollInterval));
+            await new Promise((resolve4) => setTimeout(resolve4, pollInterval));
             options?.signal?.throwIfAborted();
           }
         } catch (error2) {
@@ -6520,7 +6520,7 @@ var init_protocol = __esm({
        */
       request(request, resultSchema, options) {
         const { relatedRequestId, resumptionToken, onresumptiontoken, task, relatedTask } = options ?? {};
-        return new Promise((resolve3, reject) => {
+        return new Promise((resolve4, reject) => {
           const earlyReject = (error2) => {
             reject(error2);
           };
@@ -6598,7 +6598,7 @@ var init_protocol = __esm({
               if (!parseResult.success) {
                 reject(parseResult.error);
               } else {
-                resolve3(parseResult.data);
+                resolve4(parseResult.data);
               }
             } catch (error2) {
               reject(error2);
@@ -6859,12 +6859,12 @@ var init_protocol = __esm({
           }
         } catch {
         }
-        return new Promise((resolve3, reject) => {
+        return new Promise((resolve4, reject) => {
           if (signal.aborted) {
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
             return;
           }
-          const timeoutId = setTimeout(resolve3, interval);
+          const timeoutId = setTimeout(resolve4, interval);
           signal.addEventListener("abort", () => {
             clearTimeout(timeoutId);
             reject(new McpError(ErrorCode.InvalidRequest, "Request cancelled"));
@@ -9891,7 +9891,7 @@ var require_compile = __commonJS({
       const schOrFunc = root.refs[ref];
       if (schOrFunc)
         return schOrFunc;
-      let _sch = resolve3.call(this, root, ref);
+      let _sch = resolve4.call(this, root, ref);
       if (_sch === void 0) {
         const schema = (_a = root.localRefs) === null || _a === void 0 ? void 0 : _a[ref];
         const { schemaId } = this.opts;
@@ -9918,7 +9918,7 @@ var require_compile = __commonJS({
     function sameSchemaEnv(s1, s2) {
       return s1.schema === s2.schema && s1.root === s2.root && s1.baseId === s2.baseId;
     }
-    function resolve3(root, ref) {
+    function resolve4(root, ref) {
       let sch;
       while (typeof (sch = this.refs[ref]) == "string")
         ref = sch;
@@ -10133,8 +10133,8 @@ var require_utils = __commonJS({
       }
       return ind;
     }
-    function removeDotSegments(path6) {
-      let input = path6;
+    function removeDotSegments(path5) {
+      let input = path5;
       const output = [];
       let nextSlash = -1;
       let len = 0;
@@ -10333,8 +10333,8 @@ var require_schemes = __commonJS({
         wsComponent.secure = void 0;
       }
       if (wsComponent.resourceName) {
-        const [path6, query] = wsComponent.resourceName.split("?");
-        wsComponent.path = path6 && path6 !== "/" ? path6 : void 0;
+        const [path5, query] = wsComponent.resourceName.split("?");
+        wsComponent.path = path5 && path5 !== "/" ? path5 : void 0;
         wsComponent.query = query;
         wsComponent.resourceName = void 0;
       }
@@ -10493,55 +10493,55 @@ var require_fast_uri = __commonJS({
       }
       return uri;
     }
-    function resolve3(baseURI, relativeURI, options) {
+    function resolve4(baseURI, relativeURI, options) {
       const schemelessOptions = options ? Object.assign({ scheme: "null" }, options) : { scheme: "null" };
       const resolved = resolveComponent(parse4(baseURI, schemelessOptions), parse4(relativeURI, schemelessOptions), schemelessOptions, true);
       schemelessOptions.skipEscape = true;
       return serialize(resolved, schemelessOptions);
     }
-    function resolveComponent(base, relative3, options, skipNormalization) {
+    function resolveComponent(base, relative4, options, skipNormalization) {
       const target = {};
       if (!skipNormalization) {
         base = parse4(serialize(base, options), options);
-        relative3 = parse4(serialize(relative3, options), options);
+        relative4 = parse4(serialize(relative4, options), options);
       }
       options = options || {};
-      if (!options.tolerant && relative3.scheme) {
-        target.scheme = relative3.scheme;
-        target.userinfo = relative3.userinfo;
-        target.host = relative3.host;
-        target.port = relative3.port;
-        target.path = removeDotSegments(relative3.path || "");
-        target.query = relative3.query;
+      if (!options.tolerant && relative4.scheme) {
+        target.scheme = relative4.scheme;
+        target.userinfo = relative4.userinfo;
+        target.host = relative4.host;
+        target.port = relative4.port;
+        target.path = removeDotSegments(relative4.path || "");
+        target.query = relative4.query;
       } else {
-        if (relative3.userinfo !== void 0 || relative3.host !== void 0 || relative3.port !== void 0) {
-          target.userinfo = relative3.userinfo;
-          target.host = relative3.host;
-          target.port = relative3.port;
-          target.path = removeDotSegments(relative3.path || "");
-          target.query = relative3.query;
+        if (relative4.userinfo !== void 0 || relative4.host !== void 0 || relative4.port !== void 0) {
+          target.userinfo = relative4.userinfo;
+          target.host = relative4.host;
+          target.port = relative4.port;
+          target.path = removeDotSegments(relative4.path || "");
+          target.query = relative4.query;
         } else {
-          if (!relative3.path) {
+          if (!relative4.path) {
             target.path = base.path;
-            if (relative3.query !== void 0) {
-              target.query = relative3.query;
+            if (relative4.query !== void 0) {
+              target.query = relative4.query;
             } else {
               target.query = base.query;
             }
           } else {
-            if (relative3.path[0] === "/") {
-              target.path = removeDotSegments(relative3.path);
+            if (relative4.path[0] === "/") {
+              target.path = removeDotSegments(relative4.path);
             } else {
               if ((base.userinfo !== void 0 || base.host !== void 0 || base.port !== void 0) && !base.path) {
-                target.path = "/" + relative3.path;
+                target.path = "/" + relative4.path;
               } else if (!base.path) {
-                target.path = relative3.path;
+                target.path = relative4.path;
               } else {
-                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative3.path;
+                target.path = base.path.slice(0, base.path.lastIndexOf("/") + 1) + relative4.path;
               }
               target.path = removeDotSegments(target.path);
             }
-            target.query = relative3.query;
+            target.query = relative4.query;
           }
           target.userinfo = base.userinfo;
           target.host = base.host;
@@ -10549,7 +10549,7 @@ var require_fast_uri = __commonJS({
         }
         target.scheme = base.scheme;
       }
-      target.fragment = relative3.fragment;
+      target.fragment = relative4.fragment;
       return target;
     }
     function equal(uriA, uriB, options) {
@@ -10720,7 +10720,7 @@ var require_fast_uri = __commonJS({
     var fastUri = {
       SCHEMES,
       normalize: normalize2,
-      resolve: resolve3,
+      resolve: resolve4,
       resolveComponent,
       equal,
       serialize,
@@ -14520,12 +14520,12 @@ var init_stdio2 = __esm({
         this.onclose?.();
       }
       send(message) {
-        return new Promise((resolve3) => {
+        return new Promise((resolve4) => {
           const json = serializeMessage(message);
           if (this._stdout.write(json)) {
-            resolve3();
+            resolve4();
           } else {
-            this._stdout.once("drain", resolve3);
+            this._stdout.once("drain", resolve4);
           }
         });
       }
@@ -14551,6 +14551,134 @@ function getProjectRoot() {
     current = path.dirname(current);
   }
   return process.cwd();
+}
+function getProjectRootFrom(startPath) {
+  const markers = [".git", "package.json", "Plans.md", ".claude"];
+  let current = path.resolve(startPath);
+  if (fs.existsSync(current) && fs.statSync(current).isFile()) {
+    current = path.dirname(current);
+  }
+  const { root } = path.parse(current);
+  while (current !== root) {
+    for (const marker of markers) {
+      if (fs.existsSync(path.join(current, marker))) {
+        return current;
+      }
+    }
+    current = path.dirname(current);
+  }
+  return path.resolve(startPath);
+}
+function normalizeScopeValue(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function isSubpathOrEqual(child, parent) {
+  const rel = path.relative(parent, child);
+  return rel === "" || !!rel && !rel.startsWith("..") && !path.isAbsolute(rel);
+}
+function realpathExistingDir(dirPath) {
+  if (!fs.existsSync(dirPath)) {
+    return null;
+  }
+  const stat = fs.statSync(dirPath);
+  if (!stat.isDirectory()) {
+    return null;
+  }
+  return fs.realpathSync(dirPath);
+}
+function resolveSafePlansPath(plansPath, realRoot) {
+  const parent = realpathExistingDir(path.dirname(plansPath));
+  if (!parent) {
+    return { ok: false, message: "invalid_scope: Plans.md parent must be an existing directory" };
+  }
+  const normalizedPlansPath = path.join(parent, "Plans.md");
+  if (fs.existsSync(normalizedPlansPath)) {
+    const stat = fs.lstatSync(normalizedPlansPath);
+    if (stat.isDirectory()) {
+      return { ok: false, message: "invalid_scope: Plans.md path must not be a directory" };
+    }
+    const realFile = fs.realpathSync(normalizedPlansPath);
+    if (!isSubpathOrEqual(realFile, realRoot)) {
+      return { ok: false, message: "invalid_scope: Plans.md realpath must stay within the resolved project root" };
+    }
+  } else if (!isSubpathOrEqual(normalizedPlansPath, realRoot)) {
+    return { ok: false, message: "invalid_scope: plans_path must stay within the resolved project root" };
+  }
+  return { ok: true, target: { projectRoot: realRoot, plansPath: normalizedPlansPath, source: "plans_path" } };
+}
+function resolvePlansTarget(args) {
+  const cwd = normalizeScopeValue(args?.cwd);
+  const project = normalizeScopeValue(args?.project);
+  const plansPathArg = normalizeScopeValue(args?.plans_path);
+  let scopedRoot = null;
+  let source = null;
+  if (cwd) {
+    if (!path.isAbsolute(cwd)) {
+      return { ok: false, message: "invalid_scope: cwd must be an absolute path" };
+    }
+    const realCwd = realpathExistingDir(cwd);
+    if (!realCwd) {
+      return { ok: false, message: "invalid_scope: cwd must be an existing directory" };
+    }
+    scopedRoot = getProjectRootFrom(realCwd);
+    source = "cwd";
+  } else if (project) {
+    if (!path.isAbsolute(project)) {
+      return {
+        ok: false,
+        message: "invalid_scope: project must be an absolute filesystem path for Plans.md operations; pass cwd for short project keys"
+      };
+    }
+    const realProject = realpathExistingDir(project);
+    if (!realProject) {
+      return { ok: false, message: "invalid_scope: project must be an existing directory" };
+    }
+    scopedRoot = getProjectRootFrom(realProject);
+    source = "project";
+  }
+  if (plansPathArg) {
+    if (!path.isAbsolute(plansPathArg)) {
+      return { ok: false, message: "invalid_scope: plans_path must be an absolute path" };
+    }
+    if (path.basename(plansPathArg) !== "Plans.md") {
+      return { ok: false, message: "invalid_scope: plans_path must point to a Plans.md file" };
+    }
+    const parent = realpathExistingDir(path.dirname(plansPathArg));
+    if (!parent) {
+      return { ok: false, message: "invalid_scope: plans_path parent must be an existing directory" };
+    }
+    const projectRoot = scopedRoot ?? getProjectRootFrom(parent);
+    const realRoot2 = realpathExistingDir(projectRoot);
+    if (!realRoot2) {
+      return { ok: false, message: "invalid_scope: resolved project root must be an existing directory" };
+    }
+    const safePlansPath2 = resolveSafePlansPath(path.join(parent, "Plans.md"), realRoot2);
+    if (!safePlansPath2.ok) {
+      return safePlansPath2;
+    }
+    return { ok: true, target: { ...safePlansPath2.target, source: "plans_path" } };
+  }
+  if (!scopedRoot || !source) {
+    return {
+      ok: false,
+      message: "scope_required: pass cwd, an absolute filesystem project path, or plans_path so Plans.md file operations do not use the MCP server cwd"
+    };
+  }
+  const realRoot = realpathExistingDir(scopedRoot);
+  if (!realRoot) {
+    return { ok: false, message: "invalid_scope: resolved project root must be an existing directory" };
+  }
+  const safePlansPath = resolveSafePlansPath(path.join(realRoot, "Plans.md"), realRoot);
+  if (!safePlansPath.ok) {
+    return safePlansPath;
+  }
+  return {
+    ok: true,
+    target: {
+      ...safePlansPath.target,
+      source
+    }
+  };
 }
 function ensureDir(dirPath) {
   if (!fs.existsSync(dirPath)) {
@@ -14932,13 +15060,19 @@ var init_session = __esm({
 
 // src/tools/workflow.ts
 import * as fs3 from "fs";
-import * as path2 from "path";
-function readPlans() {
-  const plansPath = path2.join(getProjectRoot(), "Plans.md");
-  if (fs3.existsSync(plansPath)) {
-    return fs3.readFileSync(plansPath, "utf-8");
+function readPlans(args) {
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true
+    };
   }
-  return null;
+  const { plansPath } = resolved.target;
+  if (fs3.existsSync(plansPath)) {
+    return { content: fs3.readFileSync(plansPath, "utf-8"), plansPath };
+  }
+  return { content: null, plansPath };
 }
 function generatePlanTemplate(task, mode) {
   return `
@@ -14982,7 +15116,15 @@ async function handleWorkflowTool(name, args) {
   }
 }
 function handlePlan(args) {
-  const { task, mode = "quick" } = args;
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true
+    };
+  }
+  const task = args?.task ?? "";
+  const mode = args?.mode ?? "quick";
   if (!task) {
     return {
       content: [{ type: "text", text: "Error: task description is required" }],
@@ -14990,7 +15132,7 @@ function handlePlan(args) {
     };
   }
   const planTemplate = generatePlanTemplate(task, mode);
-  const plansPath = path2.join(getProjectRoot(), "Plans.md");
+  const { plansPath } = resolved.target;
   const existingContent = fs3.existsSync(plansPath) ? fs3.readFileSync(plansPath, "utf-8") : "# Plans\n\n";
   fs3.writeFileSync(plansPath, existingContent + planTemplate);
   return {
@@ -14999,26 +15141,32 @@ function handlePlan(args) {
         type: "text",
         text: `\u{1F4CB} Plan created for: "${task}"
 
+Plans.md: ${plansPath}
+
 Tasks added to Plans.md:
 - Task 1: Analyze requirements
 - Task 2: Implement core functionality
 - Task 3: Add tests
 - Task 4: Documentation
 
-\u{1F4A1} Run harness_workflow_work to start implementation`
+\u{1F4A1} Run harness_workflow_work with the same cwd/project/plans_path to start implementation`
       }
     ]
   };
 }
 function handleWork(args) {
-  const { parallel = 1, full = false, taskId } = args;
-  const plans = readPlans();
+  const { parallel = 1, full = false, taskId } = args ?? {};
+  const plansResult = readPlans(args);
+  if ("isError" in plansResult && plansResult.isError) {
+    return plansResult;
+  }
+  const { content: plans, plansPath } = plansResult;
   if (!plans) {
     return {
       content: [
         {
           type: "text",
-          text: "\u274C Plans.md not found. Use harness_workflow_plan to create a plan first."
+          text: `\u274C Plans.md not found at ${plansPath}. Use harness_workflow_plan with the same cwd/project/plans_path to create a plan first.`
         }
       ]
     };
@@ -15042,6 +15190,8 @@ function handleWork(args) {
       {
         type: "text",
         text: `\u{1F527} Work Mode: ${workMode} ${parallelInfo}
+
+\u{1F4C1} Plans.md: ${plansPath}
 
 \u{1F4CA} Task Status:
 - TODO: ${todoCount}
@@ -15103,11 +15253,25 @@ ${reviewInstructions}
     content: [{ type: "text", text: output }]
   };
 }
-var workflowTools, REVIEW_PERSPECTIVES;
+var PLANS_SCOPE_SCHEMA, workflowTools, REVIEW_PERSPECTIVES;
 var init_workflow = __esm({
   "src/tools/workflow.ts"() {
     "use strict";
     init_utils();
+    PLANS_SCOPE_SCHEMA = {
+      cwd: {
+        type: "string",
+        description: "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied."
+      },
+      project: {
+        type: "string",
+        description: "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted."
+      },
+      plans_path: {
+        type: "string",
+        description: "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md."
+      }
+    };
     workflowTools = [
       {
         name: "harness_workflow_plan",
@@ -15123,7 +15287,8 @@ var init_workflow = __esm({
               type: "string",
               enum: ["quick", "detailed"],
               description: "Planning mode: quick (minimal) or detailed (comprehensive)"
-            }
+            },
+            ...PLANS_SCOPE_SCHEMA
           },
           required: ["task"]
         }
@@ -15145,7 +15310,8 @@ var init_workflow = __esm({
             taskId: {
               type: "string",
               description: "Specific task ID to work on (optional)"
-            }
+            },
+            ...PLANS_SCOPE_SCHEMA
           },
           required: []
         }
@@ -15190,9 +15356,8 @@ var init_workflow = __esm({
 
 // src/tools/status.ts
 import * as fs4 from "fs";
-import * as path3 from "path";
-function getPlansStatus() {
-  const plansPath = path3.join(getProjectRoot(), "Plans.md");
+import * as path2 from "path";
+function getPlansStatus(plansPath) {
   if (!fs4.existsSync(plansPath)) {
     return null;
   }
@@ -15203,22 +15368,25 @@ function getPlansStatus() {
     done: (content.match(DONE_MARKER_PATTERN) || []).length
   };
 }
-function getSessionCount() {
-  const sessions = safeReadJSON(ACTIVE_SESSIONS_FILE, {});
+function getSessionCount(projectRoot) {
+  const sessions = safeReadJSON(
+    path2.join(projectRoot, ACTIVE_SESSIONS_FILE),
+    {}
+  );
   const now = Date.now() / 1e3;
   return Object.values(sessions).filter(
     (s) => now - s.lastSeen < STALE_THRESHOLD_SECONDS
   ).length;
 }
-function getUnreadMessageCount() {
-  const messages = safeReadJSON(BROADCAST_FILE, []);
+function getUnreadMessageCount(projectRoot) {
+  const messages = safeReadJSON(path2.join(projectRoot, BROADCAST_FILE), []);
   const cutoff = Date.now() - MESSAGE_WINDOW_MS;
   return messages.filter(
     (m) => new Date(m.timestamp).getTime() > cutoff
   ).length;
 }
-function getHarnessVersion() {
-  const versionFile = path3.join(getProjectRoot(), ".claude-code-harness-version");
+function getHarnessVersion(projectRoot) {
+  const versionFile = path2.join(projectRoot, ".claude-code-harness-version");
   if (fs4.existsSync(versionFile)) {
     return fs4.readFileSync(versionFile, "utf-8").trim();
   }
@@ -15236,16 +15404,23 @@ async function handleStatusTool(name, args) {
   }
 }
 function handleStatus(args) {
-  const { verbose = false } = args;
-  const projectRoot = getProjectRoot();
-  const plansStatus = getPlansStatus();
-  const sessionCount = getSessionCount();
-  const unreadCount = getUnreadMessageCount();
-  const harnessVersion = getHarnessVersion();
+  const { verbose = false } = args ?? {};
+  const resolved = resolvePlansTarget(args);
+  if (!resolved.ok) {
+    return {
+      content: [{ type: "text", text: resolved.message }],
+      isError: true
+    };
+  }
+  const { projectRoot, plansPath } = resolved.target;
+  const plansStatus = getPlansStatus(plansPath);
+  const sessionCount = getSessionCount(projectRoot);
+  const unreadCount = getUnreadMessageCount(projectRoot);
+  const harnessVersion = getHarnessVersion(projectRoot);
   let status = `\u{1F4CA} **Harness Status**
 
 `;
-  status += `\u{1F4C1} Project: ${path3.basename(projectRoot)}
+  status += `\u{1F4C1} Project: ${path2.basename(projectRoot)}
 `;
   if (harnessVersion) {
     status += `\u{1F527} Harness: v${harnessVersion}
@@ -15286,7 +15461,7 @@ function handleStatus(args) {
 \u{1F4C4} **SSOT Files**:
 `;
     for (const file of SSOT_FILES) {
-      const exists = fs4.existsSync(path3.join(projectRoot, file));
+      const exists = fs4.existsSync(path2.join(projectRoot, file));
       status += `${exists ? "\u2705" : "\u274C"} ${file}
 `;
     }
@@ -15294,9 +15469,9 @@ function handleStatus(args) {
   status += `
 \u{1F4A1} **Suggested Action**: `;
   if (!plansStatus) {
-    status += `Use harness_workflow_plan to create a plan`;
+    status += `Use harness_workflow_plan with the same cwd/project/plans_path to create a plan`;
   } else if (plansStatus.todo > 0) {
-    status += `Use harness_workflow_work to implement ${plansStatus.todo} pending task(s)`;
+    status += `Use harness_workflow_work with the same cwd/project/plans_path to implement ${plansStatus.todo} pending task(s)`;
   } else if (plansStatus.wip > 0) {
     status += `Continue working on ${plansStatus.wip} in-progress task(s)`;
   } else {
@@ -15306,11 +15481,25 @@ function handleStatus(args) {
     content: [{ type: "text", text: status }]
   };
 }
-var MESSAGE_WINDOW_MS, DONE_MARKER_PATTERN, statusTools, SSOT_FILES;
+var PLANS_SCOPE_SCHEMA2, MESSAGE_WINDOW_MS, DONE_MARKER_PATTERN, statusTools, SSOT_FILES;
 var init_status = __esm({
   "src/tools/status.ts"() {
     "use strict";
     init_utils();
+    PLANS_SCOPE_SCHEMA2 = {
+      cwd: {
+        type: "string",
+        description: "Caller working directory used to locate the client project's Plans.md. Required unless project or plans_path is supplied."
+      },
+      project: {
+        type: "string",
+        description: "Absolute filesystem project path for Plans.md operations. Required unless cwd or plans_path is supplied; short project keys are not accepted."
+      },
+      plans_path: {
+        type: "string",
+        description: "Absolute path to a Plans.md file. Required unless cwd or project is supplied; must point to Plans.md."
+      }
+    };
     MESSAGE_WINDOW_MS = 36e5;
     DONE_MARKER_PATTERN = /cc:(?:完了|[dD][oO][nN][eE])(?:\s|$|\[|\(|<|\|)/g;
     statusTools = [
@@ -15323,7 +15512,8 @@ var init_status = __esm({
             verbose: {
               type: "boolean",
               description: "Include detailed information"
-            }
+            },
+            ...PLANS_SCOPE_SCHEMA2
           },
           required: []
         }
@@ -15341,7 +15531,7 @@ var init_status = __esm({
 // src/tools/code-intelligence.ts
 import { execFile } from "child_process";
 import { promisify as promisify2 } from "util";
-import * as path4 from "path";
+import * as path3 from "path";
 import * as fs5 from "fs";
 function isValidAstSearchArgs(args) {
   return typeof args === "object" && args !== null && "pattern" in args && typeof args.pattern === "string" && "language" in args && typeof args.language === "string";
@@ -15361,8 +15551,8 @@ async function checkCommand(cmd) {
   }
 }
 async function validatePath(searchPath, projectRoot) {
-  const fullPath = path4.resolve(projectRoot, searchPath);
-  const normalizedRoot = projectRoot.endsWith(path4.sep) ? projectRoot : projectRoot + path4.sep;
+  const fullPath = path3.resolve(projectRoot, searchPath);
+  const normalizedRoot = projectRoot.endsWith(path3.sep) ? projectRoot : projectRoot + path3.sep;
   if (fullPath !== projectRoot && !fullPath.startsWith(normalizedRoot)) {
     return {
       valid: false,
@@ -15370,8 +15560,8 @@ async function validatePath(searchPath, projectRoot) {
       error: `Path must be within project root. Got: ${searchPath}`
     };
   }
-  const relativePath = path4.relative(projectRoot, fullPath);
-  if (relativePath.startsWith("..") || path4.isAbsolute(relativePath)) {
+  const relativePath = path3.relative(projectRoot, fullPath);
+  if (relativePath.startsWith("..") || path3.isAbsolute(relativePath)) {
     return {
       valid: false,
       fullPath: "",
@@ -15382,7 +15572,7 @@ async function validatePath(searchPath, projectRoot) {
     if (fs5.existsSync(fullPath)) {
       const realFullPath = await realpathAsync(fullPath);
       const realProjectRoot = await realpathAsync(projectRoot);
-      const normalizedRealRoot = realProjectRoot.endsWith(path4.sep) ? realProjectRoot : realProjectRoot + path4.sep;
+      const normalizedRealRoot = realProjectRoot.endsWith(path3.sep) ? realProjectRoot : realProjectRoot + path3.sep;
       if (realFullPath !== realProjectRoot && !realFullPath.startsWith(normalizedRealRoot)) {
         return {
           valid: false,
@@ -15584,7 +15774,7 @@ async function handleLspDiagnostics(args) {
         ["tsc", "--noEmit", "--pretty", "false"],
         { cwd: projectRoot, maxBuffer: 5 * 1024 * 1024 }
       );
-      const relativePath = path4.relative(projectRoot, pathValidation.fullPath);
+      const relativePath = path3.relative(projectRoot, pathValidation.fullPath);
       const lines = stdout.split("\n");
       const diagnostics = lines.filter((line) => line.startsWith(relativePath)).join("\n").trim();
       if (!diagnostics) {
@@ -16058,7 +16248,7 @@ var init_search_detail_level = __esm({
 
 // src/tools/memory.ts
 import * as fs6 from "fs";
-import * as path5 from "path";
+import * as path4 from "path";
 import { execFile as execFile2 } from "child_process";
 import { promisify as promisify3 } from "util";
 function isRemoteMode() {
@@ -16107,8 +16297,8 @@ async function tryHealthCheck(baseUrl, timeoutMs = healthTimeoutMs()) {
   return false;
 }
 function isWithinPath(root, target) {
-  const relative3 = path5.relative(root, target);
-  return relative3 === "" || !relative3.startsWith("..") && !path5.isAbsolute(relative3);
+  const relative4 = path4.relative(root, target);
+  return relative4 === "" || !relative4.startsWith("..") && !path4.isAbsolute(relative4);
 }
 function validateImportSourcePath(sourceDbPath) {
   const trimmed = sourceDbPath.trim();
@@ -16118,13 +16308,13 @@ function validateImportSourcePath(sourceDbPath) {
   if (trimmed.includes("\0")) {
     return { ok: false, reason: "source_db_path contains invalid characters" };
   }
-  const resolvedPath = path5.resolve(trimmed);
-  const ext = path5.extname(resolvedPath).toLowerCase();
+  const resolvedPath = path4.resolve(trimmed);
+  const ext = path4.extname(resolvedPath).toLowerCase();
   if (![".db", ".sqlite", ".sqlite3"].includes(ext)) {
     return { ok: false, reason: "source_db_path must use .db/.sqlite/.sqlite3 extension" };
   }
-  const homeDir = process.env.HOME ? path5.resolve(process.env.HOME) : "";
-  const projectRoot = path5.resolve(getProjectRoot());
+  const homeDir = process.env.HOME ? path4.resolve(process.env.HOME) : "";
+  const projectRoot = path4.resolve(getProjectRoot());
   const allowed = homeDir && isWithinPath(homeDir, resolvedPath) || isWithinPath(projectRoot, resolvedPath);
   if (!allowed) {
     return { ok: false, reason: "source_db_path must be under HOME or project root" };
@@ -16136,7 +16326,7 @@ function validateImportSourcePath(sourceDbPath) {
 }
 async function tryStartDaemon() {
   const projectRoot = getProjectRoot();
-  const scriptPath = path5.join(projectRoot, "scripts", "harness-memd");
+  const scriptPath = path4.join(projectRoot, "scripts", "harness-memd");
   if (!fs6.existsSync(scriptPath)) {
     return null;
   }
@@ -16188,7 +16378,7 @@ async function ensureDaemon(baseUrl) {
       lastHealthyAt = Date.now();
       return;
     }
-    await new Promise((resolve3) => setTimeout(resolve3, 150));
+    await new Promise((resolve4) => setTimeout(resolve4, 150));
   }
   const alreadyRunning = await tryHealthCheck(baseUrl, startupHealthTimeoutMs());
   if (alreadyRunning) {
