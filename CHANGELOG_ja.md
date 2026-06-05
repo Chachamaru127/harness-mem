@@ -7,6 +7,19 @@
 
 ## [Unreleased]
 
+## [0.27.2] - 2026-06-05
+
+### ユーザー向け要約
+
+- **MCP workflow/status tools が `Plans.md` の file scope を明示必須にした**。`harness_workflow_plan` / `harness_workflow_work` / `harness_status` が daemon 起動 cwd を誤って使い、別プロジェクトから harness-mem 直下の `Plans.md` を read/write する事故を防ぐ。
+- **`Plans.md` の path 解決で short project key、親ディレクトリ escape、symlink escape を拒否するようにした**。TypeScript / Go の schema と挙動を揃え、bundle と回帰テストも同期した。
+- **検索 hit の `access_count` が同期的な連続検索でも増えるようにした**。adaptive decay の release gate が、検索直後の access count 更新を安定して検証できる。
+
+### 検証
+
+- Review: harness-review APPROVE。
+- Tests: `bun test tests/mcp-workflow-plans-scope-contract.test.ts tests/harness-status-marker-contract.test.ts`; `bun test memory-server/tests/integration/adaptive-decay-integration.test.ts`; `cd mcp-server && bun run typecheck`; `cd mcp-server-go && go test ./...`; `npm test`; `npm pack --dry-run --json`; `git diff --check`。
+
 ## [0.26.0] - 2026-05-28
 
 ### ユーザー向け要約
