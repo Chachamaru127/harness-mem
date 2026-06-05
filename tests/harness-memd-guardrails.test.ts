@@ -211,7 +211,8 @@ describe("harness-memd guardrails", () => {
 
     expect(core).toContain('error_code: "search_fallback_failed"');
     expect(core).toContain("http_status: 503");
-    expect(core).toContain('fallback: fallbackFailed ? "none" : "safe_lexical"');
+    expect(core).toContain('fallback: fallbackFailed ? "none" : fallbackMode === "in_process" ? "in_process_degraded" : "safe_lexical"');
+    expect(core).toContain("fallback_mode: fallbackMode");
     expect(core).toContain("safe lexical fallback also failed");
   });
 

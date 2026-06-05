@@ -1604,6 +1604,7 @@ Complete only when all of the following are true:
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | S147-001 | **Search hit side effect sync** `[tdd:required]` — search が返した observation の `access_count` / `last_accessed_at` 更新を、検索呼び出し内で完了させる | adaptive decay integration test が連続検索で `access_count` 増分を観測でき、best-effort error handling と `skip_search_hit` は維持される | - | cc:完了 [local] |
+| S147-002 | **Fallback guardrail expectation sync** `[tdd:required]` — safe fallback failure guardrail test を現行の `in_process_degraded` 分岐込みの fallback contract に合わせる | test が `search_fallback_failed` / 503 / fallback_mode / safe lexical failure warning を引き続き検査し、古い二択文字列には依存しない | S147-001 | cc:完了 [local] |
 
 ## アーカイブ (完了 / 休止セクション)
 
