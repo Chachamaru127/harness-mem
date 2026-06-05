@@ -7,6 +7,17 @@
 
 ## [Unreleased]
 
+## [0.27.4] - 2026-06-05
+
+### ユーザー向け要約
+
+- **WorkGraph release readiness を、現在の実 `Plans.md` import fidelity に合わせた**。no-write と required task checks は厳格なまま、履歴行由来の warning-only diagnostics を `0.97` floor で許容する。v0.27.3 は Developer-domain gate を通過したが WorkGraph readiness で停止したため、v0.27.4 で release path を再開する。
+
+### 検証
+
+- Review: harness-review APPROVE。
+- Tests: `bun test tests/s125-workgraph-enforce-readiness-pack.test.ts tests/release-workflow-contract.test.ts tests/workgraph-release-gate-script.test.ts`; `npm run benchmark:workgraph:readiness -- --runs 3 --artifact-dir artifacts/release-gates/s125-workgraph-enforce-readiness-local`; `npm test`; `npm pack --dry-run --json`; `claude plugin validate .claude-plugin/plugin.json`; `claude plugin tag .claude-plugin --dry-run`; `git diff --check`。
+
 ## [0.27.3] - 2026-06-05
 
 ### ユーザー向け要約

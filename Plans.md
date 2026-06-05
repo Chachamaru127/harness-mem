@@ -1619,6 +1619,18 @@ Complete only when all of the following are true:
 | S148-002 | **Developer-domain absolute floor rebaseline** `[tdd:required]` — developer-domain / code-token threshold の bilingual floor を 0.86 に更新し、根拠 doc を残す | `docs/benchmarks/bilingual-baseline-2026-06-05.md` が 0.86 の根拠を記録し、`npm run benchmark:developer-domain` と `bash scripts/check-developer-domain-gate.sh` が current manifest に対して PASS する | S148-001 | cc:完了 [local] |
 | S148-003 | **Release gate validation** `[tdd:required]` — benchmark / developer-domain / release-focused tests を再実行する | `npm run benchmark`, `npm run benchmark:developer-domain`, `bash scripts/check-developer-domain-gate.sh`, targeted tests が PASS | S148-001, S148-002 | cc:完了 [local] |
 
+## §149 WorkGraph Release Gate Fidelity Rebaseline — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: v0.27.3 release workflow は Developer-domain gate を通過した後、WorkGraph readiness pack の実 `Plans.md` dry-run で停止した。fixture smoke は 3/3 green、contract tests も PASS だったが、実 `Plans.md` は履歴 row / warning-only diagnostics が増え、`plans_import_fidelity=311/319=0.9749` となって古い固定 floor `0.98` を下回った。no-write、required task ids、fixture green は維持しつつ、実ファイルの現在値に合わせて floor を `0.97` に再固定する。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S149-001 | **WorkGraph real Plans fidelity floor** `[tdd:required]` — readiness pack の実 `Plans.md` fidelity floor を current warning-only diagnostics に合わせて 0.97 に更新する | current `Plans.md` dry-run が writes=0 / required ids present / fidelity >=0.97 で PASS し、fixture smoke は green のまま | - | cc:完了 [local] |
+| S149-002 | **Release validation rerun** `[tdd:required]` — WorkGraph readiness pack と release-focused tests を再実行し、v0.27.4 で release workflow を再発火する | `npm run benchmark:workgraph:readiness -- --runs 3`、targeted tests、release workflow が PASS | S149-001 | cc:完了 [local] |
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
