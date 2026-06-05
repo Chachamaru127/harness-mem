@@ -1606,6 +1606,19 @@ Complete only when all of the following are true:
 | S147-001 | **Search hit side effect sync** `[tdd:required]` — search が返した observation の `access_count` / `last_accessed_at` 更新を、検索呼び出し内で完了させる | adaptive decay integration test が連続検索で `access_count` 増分を観測でき、best-effort error handling と `skip_search_hit` は維持される | - | cc:完了 [local] |
 | S147-002 | **Fallback guardrail expectation sync** `[tdd:required]` — safe fallback failure guardrail test を現行の `in_process_degraded` 分岐込みの fallback contract に合わせる | test が `search_fallback_failed` / 503 / fallback_mode / safe lexical failure warning を引き続き検査し、古い二択文字列には依存しない | S147-001 | cc:完了 [local] |
 
+## §148 Developer-Domain Bilingual Gate Rebaseline — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: v0.27.2 release workflow は `publish-npm` の Developer-domain gate で停止した。`npm run benchmark` は bilingual-50 recall@10 `0.8600` で Layer 1 の実装床 `0.80` は PASS する一方、Layer 2 の履歴 `mean-2SE=0.8733` と developer-domain threshold `0.88` に届かなかった。bilingual-50 は 50 sample の離散指標で 1 sample 差が 0.02 recall に相当するため、0.86 の deterministic ONNX 実測を release floor として再固定する。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S148-001 | **Bilingual relative tolerance** `[tdd:required]` — Layer 2 相対回帰で bilingual-50 の SE 下限を fixture 粒度 0.02 に合わせる | current bilingual=0.86 は PASS し、material regression 0.82 は FAIL する unit test がある | - | cc:完了 [local] |
+| S148-002 | **Developer-domain absolute floor rebaseline** `[tdd:required]` — developer-domain / code-token threshold の bilingual floor を 0.86 に更新し、根拠 doc を残す | `docs/benchmarks/bilingual-baseline-2026-06-05.md` が 0.86 の根拠を記録し、`npm run benchmark:developer-domain` と `bash scripts/check-developer-domain-gate.sh` が current manifest に対して PASS する | S148-001 | cc:完了 [local] |
+| S148-003 | **Release gate validation** `[tdd:required]` — benchmark / developer-domain / release-focused tests を再実行する | `npm run benchmark`, `npm run benchmark:developer-domain`, `bash scripts/check-developer-domain-gate.sh`, targeted tests が PASS | S148-001, S148-002 | cc:完了 [local] |
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。

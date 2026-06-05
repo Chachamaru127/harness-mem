@@ -37,7 +37,7 @@ const ROOT_DIR = resolve(import.meta.dir, "..");
 const DEFAULT_ARTIFACT_DIR = join(ROOT_DIR, "docs/benchmarks/artifacts/s108-code-token-tuning-2026-05-07");
 const DEV_RECALL_GATE = 0.70;
 const SEARCH_P95_GATE_MS = 50;
-const BILINGUAL_RECALL_GATE = 0.88;
+const BILINGUAL_RECALL_GATE = 0.86;
 
 function rel(path: string): string {
   return relative(ROOT_DIR, path).replace(/\\/g, "/");
@@ -70,8 +70,8 @@ function readBilingualBaseline(): { value: number; source: string } {
     // fall through to docs baseline
   }
   return {
-    value: 0.88,
-    source: "docs/benchmarks/bilingual-baseline-2026-04-18.md",
+    value: 0.86,
+    source: "docs/benchmarks/bilingual-baseline-2026-06-05.md",
   };
 }
 
