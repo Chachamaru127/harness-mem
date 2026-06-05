@@ -7,6 +7,7 @@ import {
   buildPairedF1Vectors,
   checkJapaneseCompanionGate,
   collectTemporalAnchorReferenceTexts,
+  layer2RelativeRegression,
   layer3WilcoxonImprovement,
   resolveBenchEmbeddingProfile,
 } from "../../src/benchmark/run-ci";
@@ -163,6 +164,63 @@ describe("resolveBenchEmbeddingProfile", () => {
     expect(profile.provider).toBe("fallback");
     expect(profile.model).toBe("local-hash-v3");
     expect(profile.adaptive).toBeNull();
+  });
+});
+
+describe("layer2RelativeRegression", () => {
+  const profile = resolveBenchEmbeddingProfile({});
+  const history = {
+    entries: [
+      {
+        timestamp: "2026-04-10T08:10:51.560Z",
+        f1: 0.591674128340795,
+        freshness: 1,
+        temporal: 0.6458333333333334,
+        bilingual: 0.88,
+        cat1: 0.5897595158464723,
+        embedding: profile,
+      },
+      {
+        timestamp: "2026-04-18T00:00:00.000Z",
+        f1: null,
+        freshness: null,
+        temporal: null,
+        bilingual: 0.88,
+        cat1: null,
+        embedding: profile,
+      },
+      {
+        timestamp: "2026-05-27T07:20:23.739Z",
+        f1: 0.6137539004205671,
+        freshness: 0.99,
+        temporal: 0.7097222222222221,
+        bilingual: 0.9,
+        cat1: 0.6042522694696608,
+        embedding: profile,
+      },
+    ],
+  };
+
+  test("bilingual-50 uses fixture-granularity tolerance for one-sample drift", () => {
+    const result = layer2RelativeRegression(
+      { f1: 0.6081983448650116, freshness: 0.99, temporal: 0.7097222222222221, bilingual: 0.86, cat1: 0.6042522694696608 },
+      history,
+      profile
+    );
+
+    expect(result.passed).toBe(true);
+    expect(result.failures.some((failure) => failure.startsWith("bilingual="))).toBe(false);
+  });
+
+  test("bilingual-50 still fails material relative regression", () => {
+    const result = layer2RelativeRegression(
+      { f1: 0.6081983448650116, freshness: 0.99, temporal: 0.7097222222222221, bilingual: 0.82, cat1: 0.6042522694696608 },
+      history,
+      profile
+    );
+
+    expect(result.passed).toBe(false);
+    expect(result.failures.some((failure) => failure.startsWith("bilingual="))).toBe(true);
   });
 });
 

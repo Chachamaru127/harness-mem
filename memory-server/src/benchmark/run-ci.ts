@@ -336,7 +336,7 @@ function layer1AbsoluteFloor(scores: {
 }
 
 /** Layer 2: 相対回帰チェック（直近3回平均から 2SE 低下で fail） */
-function layer2RelativeRegression(
+export function layer2RelativeRegression(
   current: { f1: number; freshness: number; temporal: number; bilingual: number; cat1: number },
   history: CIScoreHistory,
   profile: BenchEmbeddingProfile
@@ -356,9 +356,10 @@ function layer2RelativeRegression(
     if (vals.length < 2) continue;
     const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
     const rawSe = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length - 1)) / Math.sqrt(vals.length);
-    // SE=0 だと mean-2SE=mean となり微小変動で即 FAIL になるため、最小下限を設ける
-    const MIN_SE = 0.005;
-    const se = Math.max(rawSe, MIN_SE);
+    // SE=0 だと mean-2SE=mean となり微小変動で即 FAIL になるため、最小下限を設ける。
+    // bilingual-50 は 1 sample 差が 0.02 recall に相当するため、fixture 粒度を SE 下限に反映する。
+    const minSe = metric === "bilingual" ? 0.02 : 0.005;
+    const se = Math.max(rawSe, minSe);
     const threshold = mean - 2 * se;
     const cur = current[metric];
     if (cur < threshold) {

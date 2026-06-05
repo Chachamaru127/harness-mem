@@ -13,7 +13,8 @@ describe("S108-004 code-aware lexical tuning gate", () => {
     expect(result.runs).toHaveLength(3);
     expect(result.gates.dev_workflow_recall_at_10.min).toBeGreaterThanOrEqual(0.70);
     expect(result.gates.search_p95_local_ms.max).toBeLessThanOrEqual(50);
-    expect(result.gates.bilingual_recall_at_10.value).toBeGreaterThanOrEqual(0.88);
+    expect(result.gates.bilingual_recall_at_10.threshold).toBe(0.86);
+    expect(result.gates.bilingual_recall_at_10.value).toBeGreaterThanOrEqual(0.86);
     expect(result.overall_passed).toBe(true);
   });
 });

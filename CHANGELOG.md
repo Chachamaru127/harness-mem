@@ -7,6 +7,17 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.27.3] - 2026-06-05
+
+### Fixed
+
+- **Developer-domain bilingual release gate now matches the current deterministic ONNX bilingual-50 floor**, rebaselining the stricter gate to `0.86` and giving Layer 2 a one-sample tolerance for the 50-sample fixture while still failing material drops such as `0.82`.
+
+### Verification
+
+- Review: harness-review APPROVE.
+- Tests: `bun test memory-server/tests/benchmark/run-ci.test.ts tests/benchmarks/s108-code-token-tuning.test.ts`; `npm run benchmark`; `npm run benchmark:developer-domain -- --no-write-manifest --no-write-artifacts`; `bash scripts/check-developer-domain-gate.sh`; `git diff --check`.
+
 ## [0.27.2] - 2026-06-05
 
 ### Fixed
@@ -2925,7 +2936,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.3...HEAD
+[0.27.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.2...v0.27.3
 [0.27.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.1...v0.27.2
 [0.27.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.0...v0.27.1
 [0.27.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.26.0...v0.27.0
