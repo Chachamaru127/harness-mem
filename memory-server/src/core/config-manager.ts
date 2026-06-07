@@ -1232,6 +1232,16 @@ export class ConfigManager {
       )
       .get() as { facts_total?: number; facts_merged?: number } | null;
 
+    // S154-201: expose queue counts by job reason so the dreaming path is
+    // observable as a distinct job type via the admin status endpoint.
+    const reasonRows = this.deps.db
+      .query(`SELECT reason, COUNT(*) AS n FROM mem_consolidation_queue GROUP BY reason`)
+      .all() as Array<{ reason: string | null; n: number }>;
+    const jobs_by_reason: Record<string, number> = {};
+    for (const row of reasonRows) {
+      jobs_by_reason[row.reason ?? "unknown"] = Number(row.n);
+    }
+
     return makeResponse(
       startedAt,
       [
@@ -1242,6 +1252,7 @@ export class ConfigManager {
           completed_jobs: Number(queue?.completed_jobs ?? 0),
           facts_total: Number(facts?.facts_total ?? 0),
           facts_merged: Number(facts?.facts_merged ?? 0),
+          jobs_by_reason,
           enabled: this.deps.isConsolidationEnabled(),
           interval_ms: this.deps.getConsolidationIntervalMs(),
         },

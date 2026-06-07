@@ -24,6 +24,42 @@ interface QueueRow {
   id: number;
   project: string;
   session_id: string;
+  /** S154-201: per-job reason ('finalize' | 'dreaming' | 'manual' | ...). */
+  reason?: string | null;
+}
+
+/** S154-201: the dreaming consolidation job reason. */
+export const DREAMING_REASON = "dreaming";
+
+const EXTERNAL_LLM_PROVIDERS = new Set(["openai", "anthropic", "gemini"]);
+
+/**
+ * S154-201: dreaming consolidation is LOCAL by default. It does NOT inherit the
+ * fact-extractor provider — it reads its own HARNESS_MEM_DREAMING_LLM_PROVIDER and
+ * falls back to local ollama, so memory never leaves the machine unless explicitly
+ * opted in for dreaming specifically.
+ */
+function resolveDreamingProvider(): string {
+  return (process.env.HARNESS_MEM_DREAMING_LLM_PROVIDER || "ollama").trim().toLowerCase();
+}
+
+/** S154-201: warn + audit if dreaming is pointed at an external (off-machine) provider. */
+function auditDreamingProvider(db: Database, project: string, sessionId: string): string {
+  const provider = resolveDreamingProvider();
+  if (EXTERNAL_LLM_PROVIDERS.has(provider)) {
+    process.stderr.write(
+      `[dreaming] WARNING: external LLM provider '${provider}' selected via HARNESS_MEM_DREAMING_LLM_PROVIDER; ` +
+        `dreaming memory content will leave the machine. Default is local ollama.\n`,
+    );
+    writeAudit(
+      db,
+      "consolidation.dreaming.external_provider",
+      { provider },
+      "session",
+      `${project}:${sessionId}`,
+    );
+  }
+  return provider;
 }
 
 function createFactId(project: string, sessionId: string, factKey: string, sourceObservationId: string): string {
@@ -58,6 +94,7 @@ function loadPendingJobs(db: Database, options: ConsolidationRunOptions): QueueR
         id: -1,
         project: options.project,
         session_id: options.session_id,
+        reason: options.reason ?? null,
       },
     ];
   }
@@ -66,7 +103,7 @@ function loadPendingJobs(db: Database, options: ConsolidationRunOptions): QueueR
   const queued = db
     .query(
       `
-        SELECT id, project, session_id
+        SELECT id, project, session_id, reason
         FROM mem_consolidation_queue
         WHERE status = 'pending'
         ORDER BY requested_at ASC, id ASC
@@ -527,6 +564,11 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
       db.query(`UPDATE mem_consolidation_queue SET status = 'running', started_at = ? WHERE id = ?`).run(nowIso(), job.id);
     }
 
+    // S154-201: per-job reason makes the dreaming path distinguishable in audit/status.
+    const jobReason = job.reason || options.reason || "manual";
+    const isDreaming = jobReason === DREAMING_REASON;
+    const dreamingProvider = isDreaming ? auditDreamingProvider(db, job.project, job.session_id) : undefined;
+
     const extracted = await upsertFactsForSession(db, job.project, job.session_id);
     const merged = dedupeSessionFacts(db, job.project, job.session_id);
     // IMP-011: derives リンクの自動生成（heuristic ベース）
@@ -546,11 +588,30 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
         facts_extracted: extracted,
         facts_merged: merged,
         derives_links_created: derivesLinks,
-        reason: options.reason || "manual",
+        reason: jobReason,
       },
       "session",
       `${job.project}:${job.session_id}`
     );
+
+    // S154-201: dreaming jobs get a dedicated, queryable audit row. The dreaming-
+    // specific synthesis (prose current-state 204, tense rewrite 303) layers onto
+    // this branch later; for now the job runs local-default consolidation + dedup.
+    if (isDreaming) {
+      writeAudit(
+        db,
+        "consolidation.dreaming",
+        {
+          project: job.project,
+          session_id: job.session_id,
+          provider: dreamingProvider,
+          facts_extracted: extracted,
+          facts_merged: merged,
+        },
+        "session",
+        `${job.project}:${job.session_id}`
+      );
+    }
 
     if (job.id > 0) {
       db.query(
