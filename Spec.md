@@ -51,6 +51,50 @@ Codex support is scoped:
   setups, but App-specific support must stay a scoped dogfood note until a
   reproducible App smoke exists.
 
+## North Star And Flagship Metric
+
+Harness-mem's flagship metric is **Bilingual Coding-Memory Freshness@k**: in
+Japanese/English mixed developer memory, the rate at which recall returns only
+the current value (not a superseded older value) after a fact has been
+overturned. `Plans.md` §153 CodingMemory Bench is promoted to the flagship
+benchmark; the North Star roadmap of record is `docs/strategy/northstar-2026-06-07.md`.
+
+### Flagship KPI definition (must)
+
+- Freshness@k = for observations whose value has been overturned, the fraction
+  of top-k responses that return only the new current value and not the stale
+  prior value.
+- It is a relative metric on the self-seeded dataset and is not a claim of
+  superiority over competitors (see Self-seeded benchmark non-superiority).
+
+### Shallow vs deep freshness (must)
+
+- Shallow freshness = simple stale regression (current
+  `current_stale_answer_regressions`).
+- Deep freshness = three metrics measured on a held-out slice: tense-rewrite
+  accuracy, supersession precision (rate of not returning the stale value), and
+  freshness lag (time from overturn to no longer returning the stale value).
+- Bi-temporal columns are an implementation mechanism, not a scoring axis
+  (their A/B is neutral; see decisions D25/D26).
+
+### Embedding migration — shadow-first / non-destructive (must)
+
+- A new embedding model (BGE-M3 / Ruri) is built in parallel as a shadow,
+  measurement-only path. The incumbent (multilingual-e5 / 384dim) stays the
+  default. The 14GB incumbent index MUST NOT be destroyed.
+- Switch the default only when shadow metrics clear a deterministic threshold,
+  keeping both vector tables resident so rollback is immediate. If the threshold
+  is not cleared, keep the incumbent.
+- New-model inference defaults to local (ONNX); external embedding APIs are a
+  Risk Gate.
+
+### Hermes business deferral (must)
+
+- Hermes business adoption is deferred until the dev phase (bilingual search /
+  consolidation / freshness KPI) is complete and the flagship KPI is green.
+- Before that evidence exists, Hermes business results MUST NOT be used in
+  external claims, and customer data MUST NOT be sent to external channels.
+
 ## Source-Of-Truth Layers
 
 | Layer | File / surface | Owns | Must not do |
@@ -438,6 +482,32 @@ Benchmark cases and reports SHOULD map to MemoryAgentBench's four capabilities:
   sessions.
 - **Conflict Resolution (CR)**: prefer newer facts over superseded ones.
 
+Official MemoryAgentBench dataset runs MAY be reproduced locally from
+`ai-hyz/MemoryAgentBench`, but raw upstream data MUST NOT be committed. Reports
+MUST record the dataset id, source URL, revision or download timestamp, split,
+sample limit, transform version, and whether results use official metrics,
+internal retrieval metrics, or both. Official MemoryAgentBench compatibility is
+a benchmark-runner capability; superiority claims require reproduced runs under
+the same dataset, scorer, and manifest rules as other competitors. Official
+dataset transforms SHOULD split large upstream context into document/session
+chunks before seeding memory, and `relevant_ids` SHOULD point to chunks that
+contain the accepted answer or keypoint rather than to a whole upstream context
+blob.
+
+Benchmark runs MUST use a three-stage gate before full all-split execution:
+
+1. **Smoke gate** (`--limit N`): bounded chunks (4KB cap, 8 chunks/row max) and
+   trimmed queries for wiring and regression checks.
+2. **Medium gate** (`--mab-row-limit N` without `--limit`): full chunking (64KB
+   cap, all chunks) on a limited number of upstream rows; MUST complete within
+   practical wall-clock and record per-case timing in the manifest.
+3. **Full gate** (`--mab-split all`, no row/case limit): only after medium gate
+   PASS on at least one row per split that includes temporal queries.
+
+Smoke results MUST NOT be treated as proof of full-scale search performance.
+Full runs with LLM judge (`--use-openrouter`) MUST record OpenRouter spend in
+reproducibility artifacts; LLM judge applies to TTL/LRU only.
+
 Companion implementation plan: `Plans.md` §138 Internal Memory Benchmark /
 §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot.
 
@@ -458,8 +528,42 @@ When conversation history is used to build benchmark cases:
 - OpenRouter spend (cap, actual spend, generator/judge model separation) MUST be
   recorded in pipeline manifest and reproducibility artifacts when OpenRouter is
   used.
-- Runner loads `coding-memory-real-ja-mixed-v2.jsonl` when present; v1 pilot is
-  archived and not double-counted.
+- Runner loads `coding-memory-real-ja-mixed-v3.jsonl` when present (v3 → v2 → v1
+  priority); v1 pilot is archived and not double-counted.
+
+### Public CodingMemory Benchmark (must)
+
+CodingMemory Bench is the public developer-domain benchmark for Japanese and
+JA/EN mixed coding-session memory. It complements MemoryAgentBench; it does not
+replace it.
+
+- **Name / dataset id**: `CodingMemory Bench` — `coding-memory-real-ja-mixed-v3`
+  and later v3 revisions.
+- **Scope**: JA / mixed / coding-session memory. English encyclopedic LoCoMo full
+  remains a Non-Goal for the primary public KPI.
+- **Public artifacts**: masked JSONL, dataset card, schema, statistics manifest.
+  Raw logs, PII mapping tables, and checkpoints MUST NOT be committed.
+- **Hugging Face**: public dataset uses a separate LICENSE (for example
+  CC-BY-4.0 with irreversible PII masking note). Record HF revision and pipeline
+  version in reports.
+- **Public claim ceiling**: README and advocacy pages MAY cite reproduced
+  3-system tables (harness-mem, Agentmemory, Supermemory), per-competency
+  breakdown, and reproducibility env (secrets as set/unset only). They MUST NOT
+  cite harness-mem self-seed perfect scores, mixed published/reproduced
+  rankings, or MemoryAgentBench English scores as CodingMemory proxy KPIs.
+- **Reproduced competitor minimum (public)**: harness-mem + Agentmemory +
+  Supermemory on the same v3 dataset, scorer, and manifest. Mem0 live is
+  optional stretch.
+- **Production search profile**: public runs SHOULD set
+  `HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1` (ONNX/adaptive equivalent). Hash
+  fallback profiles MUST be recorded separately and MUST NOT be presented as the
+  public baseline.
+- **Scoring transparency**: public tables treat ID recall@10 as primary; AR
+  substring content fallback is secondary and documented in the charter.
+
+Companion docs: `docs/benchmarks/codingmemory-bench.md`,
+`docs/benchmarks/codingmemory-bench-charter.md`. Implementation plan:
+`Plans.md` §153.
 
 ### Agentmemory live comparison (must)
 

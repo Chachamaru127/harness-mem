@@ -1,6 +1,6 @@
 # Harness-mem 実装マスタープラン
 
-最終更新: 2026-05-28（§131–§133 Cursor Tier 2、v0.26.0 release、PR #116 → main `9f26ab4`）
+最終更新: 2026-06-07（§154 北極星 Bilingual Coding-Memory Freshness 策定。決定 A1/B1/C条件付き1/D-defer を loop自律実行可能なタスクに硬化。正本 `docs/strategy/northstar-2026-06-07.md`）
 実装担当: Codex / Claude（本ファイルを唯一の実装計画ソースとして運用）
 
 > **アーカイブ**: §0-31 → [`docs/archive/`](docs/archive/) | §32-35 → archive | §36-50 → [`Plans-s36-s50-2026-03-15.md`](docs/archive/Plans-s36-s50-2026-03-15.md) | §52-53 → [`Plans-s52-s53-2026-03-16.md`](docs/archive/Plans-s52-s53-2026-03-16.md)（§52 12完了/1未着手, §53 7完了） | §54-55 → [`Plans-s54-s55-2026-03-16.md`](docs/archive/Plans-s54-s55-2026-03-16.md)（§54 14完了, §55 4完了） | §51-§76 → [`Plans-s51-s76-2026-04-13.md`](docs/archive/Plans-s51-s76-2026-04-13.md) | §79-§88 → [`Plans-s79-s88-2026-04-19.md`](docs/archive/Plans-s79-s88-2026-04-19.md)（§79/§80/§81/§82-§87/§88 完了） | §91-§96 → [`Plans-s91-s96-2026-04-23.md`](docs/archive/Plans-s91-s96-2026-04-23.md)（§91/§92/§93/§94/§95/§96 完了、v0.15.0 リリース後） | §77/§98-§107/§S109 → [`Plans-s77-s109-2026-05-10.md`](docs/archive/Plans-s77-s109-2026-05-10.md)（§77 §78-A03 吸収 / §98 §99 §101 §102 §103 §105 §106 §107 §S109 完了、v0.20.0 リリース後）
@@ -1630,6 +1630,175 @@ Complete only when all of the following are true:
 |------|------|-----|---------|--------|
 | S149-001 | **WorkGraph real Plans fidelity floor** `[tdd:required]` — readiness pack の実 `Plans.md` fidelity floor を current warning-only diagnostics に合わせて 0.97 に更新する | current `Plans.md` dry-run が writes=0 / required ids present / fidelity >=0.97 で PASS し、fixture smoke は green のまま | - | cc:完了 [local] |
 | S149-002 | **Release validation rerun** `[tdd:required]` — WorkGraph readiness pack と release-focused tests を再実行し、v0.27.4 で release workflow を再発火する | `npm run benchmark:workgraph:readiness -- --runs 3`、targeted tests、release workflow が PASS | S149-001 | cc:完了 [local] |
+
+## §150 MemoryAgentBench Official Dataset Runner — cc:完了 [local]
+
+策定日: 2026-06-05
+背景: §139 で MemoryAgentBench の4能力（AR / TTL / LRU / CR）を標準語彙として採用済みだが、現在の internal-memory benchmark は repo 内 JSONL のみを読む。公式 Hugging Face dataset `ai-hyz/MemoryAgentBench` を raw data 非コミットで取得・cache・変換し、harness-mem adapter で reproduced run できる runner を追加する。これは「公式 dataset compatible runner」であり、他システムへの優位主張は同一 dataset / scorer / manifest の reproduced run が揃うまで禁止する。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S150-001 | **Official dataset contract + loader fixture** `[tdd:required]` — MemoryAgentBench split / schema / metric mapping を small fixture と loader contract で固定する | official-like fixture を `BenchmarkCase[]` に変換でき、AR/TTL/LRU/CR split が competency へ正しく写る unit test が PASS。raw upstream dataset は commit されない | - | cc:完了 [local] |
+| S150-002 | **Hugging Face fetch/cache adapter** `[tdd:required]` — `ai-hyz/MemoryAgentBench` を cache dir に取得し、revision / split / limit / source URL を manifest 化する | cache path は gitignored、offline cache 再利用が可能、download manifest に dataset id / revision or downloaded_at / split / limit / transform_version が残る | S150-001 | cc:完了 [local] |
+| S150-003 | **Internal-memory runner integration** `[tdd:required]` — `run-internal-memory-benchmark.ts` に `--dataset memoryagentbench` / `--mab-split` / `--cache-dir` / `--revision` を追加する | `npm run benchmark:memoryagentbench:smoke` が small limit で harness-mem reproduced run を完了し、既存 default dataset path は不変 | S150-002 | cc:完了 [local] |
+| S150-004 | **Official metric/report separation** `[tdd:required]` — official metric と internal retrieval metric を report で分離する | scorecard / summary に `official_metric`, `source_split`, `dataset_revision`, `sample_limit` が表示され、published(reference-only) と reproduced rows が混ざらない | S150-003 | cc:完了 [local] |
+| S150-005 | **Docs and release proof** `[tdd:skip:docs-and-smoke]` — docs に smoke/full runbook と claim safety を追記し、pack/test で配布面を確認する | `docs/benchmarks/memory-benchmark-references.md` と `benchmarks/internal-memory/README.md` が更新され、targeted tests / smoke / `npm pack --dry-run --json` が PASS | S150-004 | cc:完了 [local] |
+
+## §151 MemoryAgentBench Chunked Full Benchmark Readiness — cc:完了 [local]
+
+策定日: 2026-06-06
+背景: §150 の smoke は公式 `Accurate_Retrieval --limit 2` を実行できたが、公式 row の `context` が約 986KB の巨大テキストとして 1 つの `MemoryEntry` に seed され、期待回答は context 内に存在する一方で検索ヒット本文と `official_metric` proxy が対応しづらかった。フルベンチを採用値として撮る前に、公式 context を `Document 1:` / `Document 2:` などの document/session chunk に分割し、`relevant_ids` を回答文字列・keypoint を含む chunk に対応させる。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S151-001 | **MemoryAgentBench context chunking** `[tdd:required]` — 公式 row の巨大 `context` / `haystack_sessions` を document/session 単位の複数 `MemoryEntry` に分割する | fixture と実 AR smoke sample で 1 row が複数 memory chunk になり、raw upstream data は commit されない | - | cc:完了 [local] (`memoryagentbench-transform-v3`: marker chunking + 64KB/4KB bound) |
+| S151-002 | **Answer-aware relevant ids** `[tdd:required]` — `relevant_ids` を回答文字列・accepted alias・keypoint を含む chunk に対応させる | multi-question / nested-answer fixture で各 question の `relevant_ids` が他 question の chunk に bleed せず、回答を含む chunk を指す | S151-001 | cc:完了 [local] |
+| S151-003 | **Per-split smoke commands** `[tdd:required]` — AR / TTL / LRU / CR 各 split を `--limit 2` で smoke できる npm script または runner option を追加する | `Accurate_Retrieval`, `Test_Time_Learning`, `Long_Range_Understanding`, `Conflict_Resolution` の各 `--limit 2` smoke が PASS し、tracked `reports/latest/*` は smoke 後 restore する（意図的 baseline 更新時のみ commit） | S151-002 | cc:完了 [local] (8×4KB chunk cap + 2KB query trim; AR/TTL/LRU/CR smoke PASS) |
+| S151-004 | **Full all-split run readiness** `[tdd:skip:benchmark-run]` — `--mab-split all` full run の実行手順・所要時間・出力保全ルールを docs に固定し、必要なら実測を実行する | chunked transform 後に `npm run benchmark:memoryagentbench -- --mab-split all` が実行可能で、full run を実行した場合は summary/scorecard の要点を報告し tracked `reports/latest/*` を意図的に更新するか restore する | S151-003 | cc:完了 [local] (readiness confirmed: 3671 cases / ~68k unique seed ids; per-split smoke PASS; full multi-hour run deferred to operator) |
+| S151-005 | **Review and release proof** `[tdd:skip:review-and-pack]` — 変更を独立レビューし、pack/test と Plans/Spec 整合を確認する | targeted tests、per-split smoke、`npm pack --dry-run --json`、Reviewer APPROVE が揃い、§151 が `cc:完了 [local]` になる | S151-004 | cc:完了 [local] (ReDoS fix in `extractJapaneseListSpan` / temporal span guard; AR/TTL/LRU/CR smoke PASS; pack dry-run OK) |
+
+## §152 MemoryAgentBench Medium Gate And Full-Scale Search — cc:完了 [local]
+
+策定日: 2026-06-06
+背景: §151 smoke（8 chunk / 4KB cap）は PASS したが、full transform（例: AR row 1 = 1,204 chunk / ~983KB）では `When were...` 系 query が 120 秒超で practical にならない。OpenRouter pre-flight（TTL `--limit 2`）は PASS。full all-split run は開始したが case 2 で停滞したため、**smoke → medium（full chunk × 少数 row）→ full** の 3 段ゲートを product contract 化し、full-scale search ボトルネックを先に潰す。
+
+`team_validation_mode`: manual-pass（Product / Architecture / Security / QA / Skeptic を単独評価。Cloudflare 等の外部委託は search 本体には非適用、OpenRouter は LLM judge のみ既存経路を使用）
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S152-001 | **Medium gate runner option** `[tdd:required]` — `--mab-row-limit N` を追加し、full chunking（64KB）のまま upstream row 数だけ制限する。`--limit` は smoke 専用（4KB / 8 chunk cap）のまま維持 | loader/runner tests PASS。`npm run benchmark:memoryagentbench:medium:ar`（row 1）が manifest に row/chunk/case 数を記録して完了する | - | cc:完了 [local] |
+| S152-002 | **Full-scale search fix** `[tdd:required]` — full chunk corpus（1k+ obs）+ temporal query で search が practical 時間内に終わるよう、span extraction 入力上限と benchmark adapter search profile（`graph_weight: 0` 等）を最小修正 | AR row 1 の q2（`When were the Normans in Normandy?`）が 1,204 chunk seed 後 **30 秒以内**に search 完了。既存 smoke tests / observation-store regression PASS | S152-001 | cc:完了 [local] (safe_mode skips expensive rerank/anchor paths; span extraction bounded 8KB; q2 ~10ms after 1204-chunk seed) |
+| S152-003 | **Medium gate per-split smoke** `[tdd:required]` — AR/TTL/LRU/CR 各 split で `--mab-row-limit 1` + OpenRouter optional の medium コマンドを追加し PASS 確認 | 4 split medium（row 1）が PASS。`reports/latest/*` は restore 運用。timing を summary manifest に残す | S152-002 | cc:完了 [local] (AR ~14s/100 cases; TTL/LRU/CR medium PASS) |
+| S152-004 | **Full run with LLM judge** `[tdd:skip:benchmark-run]` — medium gate PASS 後、`--use-openrouter` 付き full all-split run を実行し summary/scorecard を報告 | `npm run benchmark:memoryagentbench:openrouter`（または同等）が完了し、openrouter spend / per-split metrics が reproducibility に記録される | S152-003 | cc:完了 [local] (3671 cases / 44m; OpenRouter $0.20 / 871 req; gate_mode=full; reports/latest updated) |
+| S152-005 | **Docs + review** `[tdd:skip:docs-and-review]` — README / memory-benchmark-references に 3 段ゲートと medium コマンドを追記し、Reviewer APPROVE + pack dry-run | docs 更新、targeted tests PASS、`npm pack --dry-run --json` PASS、§152 `cc:完了 [local]` | S152-004 | cc:完了 [local] (README + memory-benchmark-references + manifest render; 88 targeted tests PASS; pack dry-run OK) |
+
+## §153 CodingMemory Bench 公開提唱 — cc:完了
+
+策定日: 2026-06-06  
+背景: 日英混在 coding memory を主 KPI とする Tier B 公開（HF dataset + 提唱ページ + reproduced 3-system scorecard）。MemoryAgentBench は補完、LoCoMo full は Non-Goal のまま。
+
+`team_validation_mode`: manual-pass
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S153-000 | §150–152 land + developer-domain gate smoke | MAB medium/full コマンド docs 一致、`npm run benchmark:developer-domain` PASS | - | cc:完了 |
+| S153-001 | developer-domain gate smoke | enforce PASS（recall@10 ≈ 0.77 / bilingual ≈ 0.90） | S153-000 | cc:完了 |
+| S153-010 | CodingMemory Bench charter（JA/EN） | charter 2 ファイル + claim 上限が 1 枚で説明可能 | S153-001 | cc:完了 |
+| S153-011 | Advocacy landing page | `docs/benchmarks/codingmemory-bench.md` 第三者向け readable | S153-010 | cc:完了 |
+| S153-012 | Spec + Plans 同期 | Spec Public CodingMemory 節、memory-benchmark-references 更新 | S153-010 | cc:完了 |
+| S153-020 | Corpus refresh + v3 生成 | v3 jsonl ≥1400、PII 0、schema PASS、corpus manifest | S153-012 | cc:完了 |
+| S153-021 | v3 pipeline `--dataset-version v3` | export platform metadata、pipeline v3 対応 | S153-020 | cc:完了 |
+| S153-022 | Dataset card + schema README | datasets/README.md + dataset-card.md | S153-020 | cc:完了 |
+| S153-023 | HF publish pack | script + LICENSE + upload 手順 | S153-022 | cc:完了 |
+| S153-024 | Loader v3 優先 | v3 → v2 → v1、loader tests PASS | S153-020 | cc:完了 |
+| S153-030 | Production search profile script | `HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1` public run | S153-024 | cc:完了 |
+| S153-031 | Agentmemory reproduced refresh | v3 `--competitors harness-mem,agentmemory` | S153-030 | cc:完了 |
+| S153-032 | Supermemory reproduced + ingest | adapter ingest + contract test | S153-030 | cc:完了 |
+| S153-033 | Public scorecard pack | `reports/codingmemory-public/` tracked | S153-030 | cc:完了 |
+| S153-034 | Scorer transparency docs | charter ID recall vs fallback | S153-010 | cc:完了 |
+| S153-040 | readme-claims-ja 更新 | CodingMemory claim 行 + bounded 注記 | S153-033 | cc:完了 |
+| S153-041 | claim ceiling test 拡張 | self-seed / MAB 誤転記検出 | S153-040 | cc:完了 |
+| S153-042 | README_ja 最小追記 | 提唱セクション + docs リンク | S153-040 | cc:完了 |
+| S153-050 | Public benchmark smoke CI | v3 `--limit 20` + schema + PII | S153-024 | cc:完了 |
+| S153-051 | Reproducibility manifest | git sha、HF revision、embedding profile | S153-033 | cc:完了 |
+
+## §154 北極星: Bilingual Coding-Memory Freshness — cc:TODO
+
+策定日: 2026-06-07
+背景: 日英混在の開発記憶で、時制が覆った後に旧値を返さない率(鮮度)を旗艦KPIに据える。検索基盤(BM25/RRF/bi-temporalカラム/shadow-read)は既に実在し、欠けているのは「失効の書込み配線・鮮度の測定軸・日英対称ゲート」。再発明せず既存モジュールを拡張する。
+確定決定(人間判断、事前解消済み): 旗艦KPI=Bilingual Coding-Memory Freshness@k(§153 Bench昇格)。手1(日英検索)と手2(consolidation)は依存なし並列GO。埋め込み新版はshadow計測専用で旧版(multilingual-e5/384dim)をdefault維持・14GB index非破壊、決定的閾値ゲートで切替。Hermesはdevフェーズ完了+旗艦KPI green後にdefer、実証まで宣伝non-use(D2)。
+追加確定(2026-06-08): ローカル生成LLM既定=**Qwen3.5-9B**(MLX, 154-120でセットアップ。配布で動くユーザーを最大化)。取り出しLLM①クエリ書換②top-kリランクは**opt-in/既定OFF**(Phase 7, 手1完了後)。154-205 外部送信は**ゲート維持**(ローカルのみで dev 完走)。git=**feature branch + push 自動**(`feat/s154-northstar`)。
+正本: North Star ロードマップ `docs/strategy/northstar-2026-06-07.md`、product truth は `Spec.md` を優先。
+
+`team_validation_mode: subagent`（Product / Architecture / Security / QA / Skeptic + コード実在性。北極星 deep-research → 5視点で硬化、再発明防止をファイル実読で確認）
+
+> 検証で確定した実在前提(DoDの基礎): `bun run scripts/s108-developer-domain-manifest.ts`(`npm run benchmark:developer-domain`)が `overall_passed` で `process.exit(1)`、gateは dev_workflow(min0.77)/temporal_order(min0.82)/japanese_temporal_slice/current_stale_regressions。BM25は `observation-store.ts:1808 bm25()`、RRFは同 `:4210 RRF_K=60`(lexical/vector/graph融合)。bi-temporalカラム `valid_from/valid_to/observed_at/invalidated_at/supersedes` は event-recorder/observation-store に実在。`contradiction-detector.ts:289` は superseded link を INSERT OR IGNORE で張るのみで `valid_to` 未設定。shadow機構は `projector/shadow-sync.ts` + `observation-store.ts:4616 managedShadowRead`。Sudachi/dreaming/`Route C`/BGE-M3 は不在。日本語分割は `core-utils.tokenize`(Intl.Segmenter + CJKバイグラム)。fact-LLM既定は openai(`extractor.ts:394`)。
+
+### Phase 0: 検証基盤(全A/Bタスクの前提)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-100 | 汎用A/B計測harness新設 `[tdd:required]` — `scripts/s108-temporal-graph-ab-gate.ts` の baseline/candidate 二回回し+margin判定パターンを雛形に、CodingMemory bench(`benchmarks/internal-memory/lib/summarize.ts` の `ja_recall_at_10`/`mixed_recall_at_10`)対象の再利用可能runnerを実装。出力schema `{metric, baseline, candidate, delta}` 固定 | `bun run scripts/<ab-runner>.ts` が baseline/candidate の mixed/JA recall delta を固定schema JSON artifact出力し exit 0/1。runner単体test PASS | - | cc:TODO |
+| 154-110 | 外部LLM/埋め込みegress監査 `[tdd:required]` — 既存 `harness-mem-core.ts` の `writeAuditLog` を流用し外部provider呼出(provider/model/bytes/obs count、本文非記録)を記録。default構成で外部呼出0件を保証 | default構成で external呼出0件をassertするtest PASS。外部provider明示時のみ audit行が出ることをtestで確認 | - | cc:TODO |
+| 154-120 | ローカルLLM生成環境セットアップ `[tdd:skip:env-setup]` — `/Users/tachibanashuuta/LocalWork/mlx`(clone済)を使い mlx-lm をセットアップ、**Qwen3.5-9B(MLX 4bit)** を取得、OpenAI互換ローカルサーバ(`mlx_lm.server`, 127.0.0.1)を起動。harness-mem の local 生成 provider をこの endpoint に向ける(ollama fallback 可)。モデルDLは一回限りの手動可 | `127.0.0.1` の `/v1/chat/completions` が Qwen3.5-9B で応答。harness-mem からローカル生成が通る smoke PASS。外部egress 0件(154-110) | - | cc:TODO |
+| 154-210 | ローカルLLM provider実測ゲート(PoC) `[tdd:required]` — 既定=**Qwen3.5-9B**。`benchmarks/internal-memory/` の4タスク(事実抽出/要約/矛盾裁定/時制書換)で **9B / Qwen3-Swallow-32B / Qwen3.5-27B(+候補 Qwen3.6-27B)** を json_schema 強制でA/B。時制FP率を主指標。fine-tune track の評価土台も兼ねる | 154-100 runner で4タスク×モデルの結果が固定schema出力。**9Bで実用基準(時制FP率閾値)を満たすか**を判定し既定を確定。json_schema valid率100%を test で確認 | 154-100, 154-120 | cc:TODO |
+
+### Phase 1: 手1 日英混在検索(ベット2、並列GO)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-101a | CJK分割強化 `[tdd:required]` — `core-utils.tokenize`/`buildFtsQuery` の日本語正規化を強化し FTS5 `unicode61` のCJK非分割を補う。新FTSテーブル/新bm25を作らない(`observation-store.ts:1803 runFtsQuery` クエリ生成側で吸収)。index再構築時は shadow rebuild→atomic swap | FTS rebuild時は既存index非破壊(rebuild中の読取継続)、rebuild失敗時のrollback path test PASS。CJK fixtureで分割改善を回帰testで固定。形態素解析器(Sudachi等)は導入しない | 154-100 | cc:TODO |
+| 154-101b | lexical寄与強化 `[tdd:required]` — 154-101a の正規化トークンを既存 `observation-store.ts:1793 lexicalSearch` のFTSクエリに注入し既存RRF合成(`:4210 RRF_K=60`)の lexical 寄与を強化。RRF置換でなく入力/係数拡張 | `mixed_recall_at_10 >= baseline + 0.02` を 154-100 runnerが exit 0 判定。`dev_workflow` gate(min0.77)が `npm run benchmark:developer-domain` で passed=true。targeted tests PASS | 154-101a | cc:TODO |
+| 154-102 | 二重クエリ正規化 `[tdd:required]` — 日本語クエリから英語/コードトークン抽出(既存 `core-utils.buildCodeAwareTokens`/`entity-extractor.ts` 流用)し原文+英語強調を両投げRRF。固有表現/コードトークンは翻訳せず保持 | code-token完全一致クエリ(関数名/エラーコード) N件fixtureで RRF統合版の該当doc平均rank ≤ dense単独版 かつ悪化ケース0件。mixed/JA recall は 154-100 margin(+0.02)で判定。fixtureをtdd対象に | 154-101b | cc:TODO |
+| 154-103 | JA R@10 回帰ゲート(現0.000) `[tdd:required]` — 新gate乱立を避け既存 s108 manifest の `japanese_temporal_slice` gate に metric追加(D18 scope-first) | 初回計測値をbaseline記録。閾値2段階: 導入時 `>0` でgate新設、154-102完了後の実測baselineで `baseline - 0.05` 下回りfail(`regression-gate.ts checkRegression` 流用)に引上げ。成果物は指標のみ(原文非保持)。gate passed=true | 154-102 | cc:TODO |
+
+> A/B baseline/candidate は同一 self-seed dataset(coding-memory-real-ja-mixed-v3)上の相対改善であり、対外優位主張ではない(D2継承)。
+
+### Phase 2: 手2 大規模記憶整理(ベット1基盤、並列GO)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-201 | dreaming job配線 `[tdd:required]` — 新ディレクトリ/新APIを作らず `consolidation/worker.ts` の `mem_consolidation_queue` + `runConsolidationOnce` に新 job-type(`reason='dreaming'`)追加。発火は既存 `session-manager.ts:840 enqueueConsolidation`(finalizeSession経由)流用。**LLM呼出は local OpenAI互換endpoint(`mlx_lm.server` もしくは ollama, 127.0.0.1)既定固定(154-120で構築)。外部はenv明示+起動時warn+audit必須、defaultで到達不能** | finalize後にdreaming経路起動を `admin_consolidation_status` job種別で確認するintegration test PASS。既存consolidation unit suite 非回帰。default構成で外部egress0件(154-110) | 154-110, 154-120 | cc:TODO |
+| 154-205 | dreaming/extractor の外部LLM provider有効化(外部送信構成) `[tdd:required]` — Risk Gate(外部送信)として 154-201 から隔離。人間承認後に着手 | (blocked) 外部送信承認後: 外部provider選択時の audit/warn 経路 test PASS | 154-201 | blocked: human-gate 外部送信承認待ち |
+| 154-202 | 空ハンドオフ dedupe吸収 `[tdd:required]` — "No explicit decisions captured" 等の空パターンを既存 `event-recorder.ts` の content dedupe(`normalizeDedupeText`/`buildContentDedupeHash`)に検出ルール追加 | 空ハンドオフ検出fixture(陽性/陰性各N件)で precision/recall ≥ 0.9。decision抽出0の原因(ingester/session)diagnosticを `summarize.ts` diagnostics に数値出力(出力をtestで確認) | 154-201 | cc:TODO |
+| 154-203 | unknown event分類(現16%) `[tdd:required]` — 既存 `event-recorder.ts` の `observationType` 付与パイプ + ingest監査で type付与 | ingester監査fixtureで既知パターン type付与正答率 ≥ 0.95、かつ unknown比率が baseline16%から低下(<12%)。unknown比率diagnostic出力をtestで確認 | 154-201 | cc:TODO |
+| 154-204 | prose現在状態要約 `[tdd:required]` — checkpoint束ねを散文current-stateに畳む。既存 `current-value-compression.ts` + `answer/compiler.ts` の temporal_state集計を拡張。**入力に `redactSecrets`(API key/bearer/PEM/メール/電話の決定的regex)適用後に要約**(`privacy-tags.ts` の `stripPrivateBlocks` は `<private>` のみで不足→拡張) | prose summary生成unit PASS(非空/長さ上限)。要点保持は期待キーフレーズ包含率 ≥ 0.9(決定的文字列マッチ)。redaction漏れ検知fixture(既知secret注入し出力に残らない)PASS | 154-202, 154-203 | cc:TODO |
+
+### Phase 3: 鮮度軸(ベット1本体 + 旗艦A)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-301 | 深い鮮度ベンチ定義 `[tdd:required]` — 3指標 `時制書換正答率 / supersession精度(superseded relationが旧値を返さない率) / 鮮度遅延(覆ってから旧値を返さなくなるlag)` を浅いfreshness(`current_stale_answer_regressions`)と別立てで CodingMemory bench に追加。**bi-temporalは実装手段で測定軸にしない**(neutral evidence、D25/D26整合)。held-out slice測定、self-seed満点をgate値に使わない(D2)。算出定義(分子/分母)明記 | 新freshness scorer単体test(既知の時制書換/supersessionケースで期待スコア)PASS。3指標が `summarize.ts`/manifestにdiagnostic出力 | 154-100 | cc:TODO |
+| 154-302 | temporal anchor retrieval改善 `[tdd:required]` — (草案 bi-temporal migration から差替) D26準拠で previous/以前 status summary retrieval と rerank-only cases の残失敗群を潰す。bi-temporalカラムは既存で migration不要 | anchor retrieval probe が深い鮮度bench(154-301)で improved(hit@10 が baseline 0.8261 比 +margin)。temporal_order gate(`s108-temporal-planner-gate.ts`, min0.82)が passed=true。tests PASS | 154-301 | cc:TODO |
+| 154-302b | superseded link の失効書込み配線 `[tdd:required]` — `contradiction-detector.ts:289`(superseded link を INSERT OR IGNORE で張るのみ)を拡張し検出時に既存 `valid_to`/`invalidated_at` へ失効書込み。**no-mutation維持: 旧observation削除/書換えなし append-only**(`worker.ts buildSupersededDecisions`、in-place UPDATE禁止)。着手は 154-302 green後の決定的ゲート | contradiction検出→該当relationの `valid_to`/`invalidated_at` 書込み unit PASS。既存 `valid_to IS NULL` 現役クエリ非回帰(後方互換test)。既存superseded link(strength1.0)非破壊。temporal_order 0.82非回帰 | 154-302 | cc:TODO |
+| 154-303 | dreaming jobで時制書換 `[tdd:required]` — 「予定」→「実行済み」をbackground更新。**append-only: 旧observation書換えず新observation生成+旧をt_invalidで失効**。background書換は local LLM のみ、外部provider選択時は job起動せず audit に skip記録 | 時制書換正答率 ≥ 154-301 baseline + 0.05 を 154-100 runnerが判定。誤書換(まだ予定の項目を実行済みにしない)陰性fixtureで false-positive 0件。書換対象contentがredactor通過済みの contract test PASS | 154-302b, 154-204 | cc:TODO |
+| 154-304 | 旗艦KPI昇格(表示) `[tdd:skip:benchmark-and-docs]` — Bilingual Coding-Memory Freshness@k を scorecard/manifest先頭化、README/Spec同期。**green閾値を release gate定数として確定**(値とWhyを decisions.md) | 主KPIが scorecard/manifest先頭。README/Spec同期。green閾値定数(Freshness@k ≥ X)が config/定数に確定 | 154-303 | cc:TODO |
+| 154-305 | 旗艦KPI enforce gate化 `[tdd:required]` — 154-304確定の閾値で s108 manifest に process.exit gate追加。**昇格(表示)とenforce(機械判定)を分離** | `npm run benchmark:developer-domain` に Freshness@k ≥ X gate追加、3-run達成で passed=true。dev_workflow 0.77 / temporal 0.82 非回帰 | 154-304 | cc:TODO |
+
+### Phase 4: 埋め込み移行(C=条件付き1、shadow並行)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-400 | 切替閾値定義 `[tdd:required]` — 切替Δと4指標(mixed/JA/bilingual/dev_workflow)の加重平均合成式を config定数化(Whyを decisions.md) | 合成スコア式と切替閾値Δが config定数として確定、定数読込のunit PASS | - | cc:TODO |
+| 154-401 | 新版埋め込み shadow provider `[tdd:required]` — BGE-M3(`model-catalog.ts` 未登録→追加)登録、Ruri(登録済)はshadow有効化のみ。**新ランタイムを作らず `projector/shadow-sync.ts` + `observation-store.ts:4616 managedShadowRead` + `embedding/registry.ts` を拡張**。新版は local推論(ONNX)をassert、外部埋め込みAPIはRisk Gate隔離。旧版(e5/384dim)default維持、14GB旧index非破壊。dim不一致(384 vs 1024 vs 256-768)で別vectorテーブルが要る点を明記 | shadow provider並走、default検索は旧版のまま、shadow計測manifest出力、既存検索非回帰、旧index非破壊確認、新版がlocal推論であるassert。154-102後に残る mixed/JA gap の ablation計測で埋め込み起因が閾値以上残る場合のみ進行 | 154-102 | cc:TODO |
+| 154-402 | shadow A/B計測 `[tdd:skip:benchmark-run]` — 新旧で mixed/JA/bilingual/dev_workflow を同条件比較。出力は 154-403 が読む固定schema `{metric, baseline, candidate, delta}` | 新旧比較数値を固定schemaで manifest/reproducibility出力(集計指標のみ、原文・クエリ・matchbody非含有を lint/testで確認)。出力契約 contract test PASS | 154-401, 154-400 | cc:TODO |
+| 154-403 | 切替判断ゲート `[tdd:required]` — 154-400 config定数で合成スコア比較→ 切替/維持/rollback の3分岐を決定的判定。default切替は `config-manager.ts` のatomic flag(両vectorテーブル並存保持=即時rollback可) | config定数で3分岐するfixture test PASS。切替→rollback往復で検索結果が旧版と一致する可逆性test PASS。rollback path test PASS | 154-402 | cc:TODO |
+
+### Phase 5: Hermes defer milestone
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-900 | Hermes business対応(gate) — 着手条件=devフェーズ完了 + **旗艦KPI green(154-305 gate passed=true を3-run達成、機械判定)**。Hermes応答に渡る memory content は redactor通過必須、privacy_tags=internal/secret 観測は外部チャネル送出から除外(policy test)。実証まで宣伝non-use・実顧客データを外部チャネルに流さない(D2整合) | (blocked) 154-305 gate passed=true + redactor通過 + 外部チャネル送出除外 policy test PASS | 154-103, 154-204, 154-303, 154-305, 154-001 | blocked: depends dev phase + 旗艦KPI green |
+
+### Phase 6: 透明性(手3、即効、並列GO)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-001 | README_ja実測値を manifest最新に同期 `[tdd:skip:docs-sync]` — dev 0.59→0.77, temporal 0.65→0.82, bilingual 0.88→0.90。手作業同期でなく manifest(`ci-run-manifest-latest.json`)の git ref をSSOTとし claim ceiling test が乖離を機械検出するよう拡張(現状 ceiling test は数値非検証)。0.77/0.82 は self-seed/reproduced sanity で外部競合優越でない注記併記(D2) | README数値が manifest最新と一致。`bun test tests/readme-claim-ceiling.test.ts` PASS。数値正しさの真の検証は `npm run benchmark:developer-domain`(ceiling testは数値非検証) | - | cc:TODO |
+
+### Phase 7: 取り出しLLM(opt-in、手1完了後、既定OFF)
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-701 | クエリ書き換え(opt-in) `[tdd:required]` — 日英混在クエリをローカル9B(154-120)で言い換え・日英展開してから検索。**既定OFF**(flag)。回答合成はやらない | flag OFF時は現状経路(LLM不使用)を厳密維持する test PASS。ON時 A/B で mixed recall を 154-100 margin で改善。p95レイテンシ上限内 | 154-103, 154-120 | cc:TODO |
+| 154-702 | top-k LLMリランク(opt-in) `[tdd:required]` — 上位k件のみローカル9Bで関連性再評価。**全件禁止・既定OFF** | OFF時非回帰 test PASS。ON時 top-k限定で precision を 154-100 で改善。p95バウンド超過しない | 154-103, 154-120 | cc:TODO |
+
+> ③回答合成(RAG generation)は入れない: 呼び出し元エージェント(Claude/Codex)が既にLLMのため二重になる(D18 scope-first整合)。
+
+**Reject指摘の除外と理由:**
+- 草案 154-302「bi-temporal 4-timestamp schema migration」を除外 — bi-temporalカラムは既実装で migration不要、bi-temporal の A/B は D25/D26 で一貫 neutral。anchor retrieval改善(154-302)+ 失効書込み配線(154-302b)に縮退。
+- 草案「A/B harness で記録」を無条件DoDにする前提を除外 — 汎用A/B runnerは不在(temporal専用のみ)。154-100で新設し全A/Bタスクの Depends に。
+- 草案 154-201「外部既定LLMをloop自律で発火」を除外 — Risk Gate(外部送信)。dreaming default を local固定、外部は 154-205(human-gate)に隔離。
+
+**loop自律性:** 154-403切替(154-400で閾値config定数化→3分岐決定的判定)と 154-900 Hermes(154-305 gate passed=true 3-runで機械判定)は人間ゲートなし。**残る人間ゲートは 154-205(外部送信承認)のみで意図的隔離**(Risk Gate)。dreaming は local default で動くため dev フェーズ(154-001/1xx/2xx/3xx/4xx)は外部送信なしで loop自律実行可能、154-205 は dev 完走をブロックしない。
 
 ## アーカイブ (完了 / 休止セクション)
 
