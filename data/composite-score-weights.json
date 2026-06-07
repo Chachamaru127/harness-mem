@@ -1,0 +1,10 @@
+{
+  "mixedWeight": 0.25,
+  "jaWeight": 0.25,
+  "bilingualWeight": 0.25,
+  "devWorkflowWeight": 0.25,
+  "switchDeltaThreshold": 0.05,
+  "source": "s154-400-initial",
+  "updatedAt": "2026-06-08T00:00:00.000Z",
+  "notes": "Composite score for the new-vs-legacy embedding switch decision (154-403). composite = weighted average over four developer-domain retrieval metrics (mixed / ja / bilingual / dev_workflow recall@10), each clamped to [0,1]. Switch only when candidate composite - baseline composite >= switchDeltaThreshold. Equal weighting is the evidence-free initial prior; retune from 154-402 shadow A/B artifacts (no code change). switchDeltaThreshold 0.05 is deliberately higher than cheap flag-flip gates (s108 0.02) because swapping embeddings forces a ~14GB re-index, so a switch must clear a clear win."
+}
