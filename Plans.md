@@ -1782,7 +1782,7 @@ Complete only when all of the following are true:
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 154-001 | README_ja実測値を manifest最新に同期 `[tdd:skip:docs-sync]` — dev 0.59→0.77, temporal 0.65→0.82, bilingual 0.88→0.90。手作業同期でなく manifest(`ci-run-manifest-latest.json`)の git ref をSSOTとし claim ceiling test が乖離を機械検出するよう拡張(現状 ceiling test は数値非検証)。0.77/0.82 は self-seed/reproduced sanity で外部競合優越でない注記併記(D2) | README数値が manifest最新と一致。`bun test tests/readme-claim-ceiling.test.ts` PASS。数値正しさの真の検証は `npm run benchmark:developer-domain`(ceiling testは数値非検証) | - | cc:TODO |
+| 154-001 | README_ja実測値を manifest最新に同期 `[tdd:skip:docs-sync]` — dev 0.59→0.77, temporal 0.65→0.82, bilingual 0.88→0.90。手作業同期でなく manifest(`ci-run-manifest-latest.json`)の git ref をSSOTとし claim ceiling test が乖離を機械検出するよう拡張(現状 ceiling test は数値非検証)。0.77/0.82 は self-seed/reproduced sanity で外部競合優越でない注記併記(D2) | README数値が manifest最新と一致。`bun test tests/readme-claim-ceiling.test.ts` PASS。数値正しさの真の検証は `npm run benchmark:developer-domain`(ceiling testは数値非検証) | - | cc:完了 [4e4d5f5] (README_ja table→manifest同期(dev0.77/bilingual0.90/temporal0.82, gate満たし✓)+self-seed注記。ceiling testが `developer_domain_reconciliation.metrics` を読み README一致を機械検証=乖離でfail。8/8 PASS。§153 CodingMemory節は別owner未コミット分なので hunk分離してstageせず) |
 
 ### Phase 7: 取り出しLLM(opt-in、手1完了後、既定OFF)
 
