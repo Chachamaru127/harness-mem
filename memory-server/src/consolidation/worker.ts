@@ -154,6 +154,25 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         existingFacts
       );
 
+      // S154-110: an external (off-machine) provider call is auditable egress.
+      // Record metrics only (provider/model/bytes/obs) — never the prompt/response
+      // body. Local ollama leaves egress undefined, so default config emits no rows.
+      if (diffResult.egress) {
+        writeAudit(
+          db,
+          "external.llm.call",
+          {
+            provider: diffResult.egress.provider,
+            model: diffResult.egress.model,
+            input_bytes: diffResult.egress.input_bytes,
+            output_bytes: diffResult.egress.output_bytes,
+            observation_count: 1,
+          },
+          "session",
+          `${project}:${sessionId}`
+        );
+      }
+
       // 差分で削除が指定されたファクトに superseded_by を暫定設定（後で新 factId で上書き）
       // まず新ファクトを INSERT してから superseded_by を紐付ける
       const newFactIds: string[] = [];

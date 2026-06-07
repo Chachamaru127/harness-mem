@@ -22,6 +22,19 @@ export interface ExistingFact {
   fact_value: string;
 }
 
+/**
+ * S154-110: external egress descriptor. Present ONLY when an off-machine LLM
+ * provider (openai/anthropic/gemini) was actually called. Local ollama
+ * (127.0.0.1) is NOT external egress and never sets this. Records metrics only —
+ * never the prompt/response body.
+ */
+export interface LlmEgress {
+  provider: string;
+  model: string;
+  input_bytes: number;
+  output_bytes: number;
+}
+
 /** LLM 差分抽出の結果 */
 export interface FactDiffResult {
   new_facts: FactCandidate[];
@@ -29,6 +42,28 @@ export interface FactDiffResult {
   supersedes: (string | undefined)[];
   /** 削除すべきファクトの fact_id 一覧（矛盾で無効化） */
   deleted_fact_ids: string[];
+  /** S154-110: set only when an external provider made a network call. */
+  egress?: LlmEgress;
+}
+
+/** S154-110: which fact-LLM providers leave the machine (network egress). */
+export function isExternalLlmProvider(provider: string): boolean {
+  return provider === "openai" || provider === "anthropic" || provider === "gemini";
+}
+
+function makeEgress(
+  provider: string,
+  model: string,
+  systemPrompt: string,
+  prompt: string,
+  content: string | null,
+): LlmEgress {
+  return {
+    provider,
+    model,
+    input_bytes: Buffer.byteLength(systemPrompt, "utf8") + Buffer.byteLength(prompt, "utf8"),
+    output_bytes: content ? Buffer.byteLength(content, "utf8") : 0,
+  };
 }
 
 function normalizeFactKey(value: string): string {
@@ -488,10 +523,13 @@ export async function llmExtractWithDiff(
   ].join("\n");
 
   let content: string | null = null;
+  // S154-110: set only when an external provider actually makes a network call.
+  let egress: LlmEgress | undefined;
 
   if (provider === "ollama") {
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "llama3.2").trim();
     content = await callOllama(prompt, systemPrompt, model);
+    // ollama is local (127.0.0.1) — not external egress, no audit.
   } else if (provider === "anthropic") {
     const apiKey = (process.env.HARNESS_MEM_ANTHROPIC_API_KEY || "").trim();
     if (!apiKey) {
@@ -499,6 +537,7 @@ export async function llmExtractWithDiff(
     }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "claude-haiku-4-5-20251001").trim();
     content = await callAnthropic(prompt, systemPrompt, apiKey, model);
+    egress = makeEgress(provider, model, systemPrompt, prompt, content);
   } else if (provider === "gemini") {
     const apiKey = (process.env.HARNESS_MEM_GEMINI_API_KEY || "").trim();
     if (!apiKey) {
@@ -506,6 +545,7 @@ export async function llmExtractWithDiff(
     }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gemini-2.0-flash").trim();
     content = await callGemini(prompt, systemPrompt, apiKey, model);
+    egress = makeEgress(provider, model, systemPrompt, prompt, content);
   } else if (provider === "openai") {
     const apiKey = (process.env.HARNESS_MEM_OPENAI_API_KEY || "").trim();
     if (!apiKey) {
@@ -513,21 +553,22 @@ export async function llmExtractWithDiff(
     }
     const model = (process.env.HARNESS_MEM_FACT_LLM_MODEL || "gpt-4o-mini").trim();
     content = await callOpenAI(prompt, systemPrompt, apiKey, model);
+    egress = makeEgress(provider, model, systemPrompt, prompt, content);
   } else {
     // 不明なプロバイダーは graceful に空を返す
     return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
   }
 
   if (!content) {
-    return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+    return { new_facts: [], supersedes: [], deleted_fact_ids: [], egress };
   }
 
   try {
     const newFacts = parseFactsFromContent(content);
     const { supersedes, deleted_fact_ids } = parseDiffFromContent(content, newFacts, existingFacts);
-    return { new_facts: newFacts, supersedes, deleted_fact_ids };
+    return { new_facts: newFacts, supersedes, deleted_fact_ids, egress };
   } catch {
-    return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+    return { new_facts: [], supersedes: [], deleted_fact_ids: [], egress };
   }
 }
 
