@@ -132,10 +132,12 @@ harness-mem のリリースゲートは `ci-run-manifest-latest.json` の develo
 
 | 指標 | 現状 | 目標（main gate） | 何を測っている |
 |---|---:|---:|---|
-| `dev-workflow` recall@10 | 0.59 | ≥ 0.70 | 開発者的なファイル / 判断ジャンプのクエリ |
-| `bilingual` recall@10 | **0.88** | ≥ 0.90 | 日本語 / 英語 / コード混在の検索 |
+| `dev-workflow` recall@10 | 0.77 | ≥ 0.70 ✓ | 開発者的なファイル / 判断ジャンプのクエリ |
+| `bilingual` recall@10 | **0.90** | ≥ 0.90 ✓ | 日本語 / 英語 / コード混在の検索 |
 | `knowledge-update` freshness@K | **1.00** | ≥ 0.95 ✓ | 情報が更新された時に古い事実を外せるか |
-| `temporal` ordering score | 0.65 | ≥ 0.70 | 「X の後に Y があったか？」的な時系列推論 |
+| `temporal` ordering score | 0.82 | ≥ 0.70 ✓ | 「X の後に Y があったか？」的な時系列推論 |
+
+数値は自己シードのデータセットを同一ランナーで再現測定したもので、外部競合に対する優位を示すものではありません。
 
 general-lifelog 系のベンチ (LoCoMo / LongMemEval 等) の比較は、それぞれの競合自身が公開している数値を各社サイトで参照してください。harness-mem はそちらの domain を target にしていません。
 

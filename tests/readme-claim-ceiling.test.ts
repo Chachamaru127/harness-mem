@@ -133,4 +133,30 @@ describe("S108-012 README claim ceiling", () => {
     expect(claimsEn).toContain("Codex App is local-dogfood green in this maintainer setup.");
     expect(claimsJa).toContain("Codex App はこのメンテナ環境で local dogfood green。");
   });
+
+  test("README_ja dev-domain benchmark claims stay in sync with the manifest SSOT", () => {
+    // S154-001: the developer-domain numbers in README_ja must equal the latest
+    // CI manifest (ci-run-manifest-latest.json). The manifest git ref is the SSOT;
+    // this guard fails the build if the public copy drifts from measured values.
+    // (The manifest itself is verified by `npm run benchmark:developer-domain`;
+    // this test only enforces README↔manifest agreement, not the numbers' truth.)
+    const manifest = JSON.parse(
+      read("memory-server/src/benchmark/results/ci-run-manifest-latest.json"),
+    ) as {
+      developer_domain_reconciliation: {
+        metrics: {
+          dev_workflow_recall_at_10: number;
+          temporal_order_score: number;
+          bilingual_recall_at_10: number;
+        };
+      };
+    };
+    const m = manifest.developer_domain_reconciliation.metrics;
+    const fmt = (n: number): string => n.toFixed(2);
+    // Strip bold markers so the row assertion tolerates **0.90** vs 0.90.
+    const jaPlain = readmeJa.replace(/\*\*/g, "");
+    expect(jaPlain).toContain(`\`dev-workflow\` recall@10 | ${fmt(m.dev_workflow_recall_at_10)} `);
+    expect(jaPlain).toContain(`\`bilingual\` recall@10 | ${fmt(m.bilingual_recall_at_10)} `);
+    expect(jaPlain).toContain(`\`temporal\` ordering score | ${fmt(m.temporal_order_score)} `);
+  });
 });
