@@ -189,14 +189,19 @@ const TASKS: TaskSpec[] = [
   },
   {
     id: "tense_rewrite",
-    systemPrompt: OBJECT_ONLY,
+    systemPrompt: [
+      OBJECT_ONLY,
+      "You are a conservative temporal rewrite judge.",
+      "Never mark a planned item completed unless explicit completion evidence is present.",
+    ].join(" "),
     prompt: [
       "Return exactly this JSON shape:",
       "{\"rewritten\":\"We will submit the GearChange API spec on Friday.\",\"changed\":false,\"false_positive\":false,\"reason\":\"No completion evidence is present.\"}",
-      "Decide if this planned item should be rewritten as completed.",
-      "planned: We will submit the GearChange API spec on Friday.",
-      "evidence: There is no observation that the submission happened.",
-      "If there is no completion evidence, changed must be false.",
+      "Task: decide whether to rewrite the planned statement as completed.",
+      "Original planned statement: We will submit the GearChange API spec on Friday.",
+      "Evidence observed after the plan: There is no observation, log, message, or artifact showing the submission happened.",
+      "Rule: absence of completion evidence means changed=false and false_positive=false.",
+      "Do not infer completion from the date or from the plan itself.",
     ].join("\n"),
     schema: {
       type: "object",

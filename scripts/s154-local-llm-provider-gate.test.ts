@@ -117,7 +117,7 @@ describe("S154-210 local LLM provider gate", () => {
       const body = JSON.parse(init?.body as string) as Record<string, unknown>;
       const messages = body.messages as Array<{ role: string; content: string }>;
       const prompt = messages.at(-1)?.content ?? "";
-      const payload = prompt.includes("Decide if this planned item")
+      const payload = prompt.includes("Task: decide whether to rewrite")
         ? { rewritten: "We submitted the GearChange API spec on Friday.", changed: true, false_positive: true, reason: "Assumed completion." }
         : responseForTask(prompt);
       return {
