@@ -141,17 +141,21 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     const project = this.scopedProject(caseRow, context);
     await core.primeEmbedding(caseRow.query, "query");
     const started = performance.now();
-    const response = core.search({
+    const useLlmRerank = process.env.HARNESS_MEM_LLM_RERANK === "1";
+    const request = {
       query: caseRow.query,
       project,
       session_id: this.benchSessionId(caseRow),
       limit: 10,
       strict_project: true,
-      safe_mode: true,
+      safe_mode: !useLlmRerank,
       vector_search: false,
       graph_weight: 0,
       question_kind: "hybrid",
-    });
+    } as const;
+    const response = useLlmRerank
+      ? await core.searchPrepared(request)
+      : core.search(request);
     const latency_ms = performance.now() - started;
     const items = ((response.items ?? []) as Array<Record<string, unknown>>);
     const hits = items.map((item, index) => ({

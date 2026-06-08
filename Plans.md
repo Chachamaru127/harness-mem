@@ -1770,9 +1770,10 @@ Complete only when all of the following are true:
 | 順 | Task | 進め方 | なぜ |
 |----|------|--------|------|
 | 1 | 154-701 クエリ書き換え(opt-in) | cc:完了。次は 154-702 | 既定OFF・local Ollama only・safe_mode skip・loopback host guard で外部送信なしに閉じた。実機 qwen3.5:9b smoke p95≈3.29s(5s timeout内) |
-| 2 | 154-702 top-k LLMリランク(opt-in) | 154-701 の結果を見て top-k 限定で precision A/B。全件rerankは禁止 | 154-701 と同じ local-only/既定OFFで進められるが、latency risk が高いので二番手 |
-| 3 | 154-210 ローカルLLM provider実測ゲート | 長時間実行前に 4タスク×1モデルの smoke で schema / latency を確認し、通ったら model matrix へ拡張 | model download / warmup / json_schema 失敗で時間を溶かしやすい。先に小さく測る |
-| 4 | 154-401 新版埋め込み shadow provider | 154-103 後の mixed/JA gap が残る場合だけ着手。旧 e5/384dim default と 14GB index は触らない | dim 不一致・別vector table・local ONNX assert が重く、検索改善の帰属も 154-701/702 後に見る方が安全 |
+| 2 | 154-702 top-k LLMリランク(opt-in) | cc:完了。次は 154-210 | 既定OFF・local Ollama only・safe_mode skip・topK default 10 / max 20・loopback host guard。`think:false` で実機 qwen3.5:9b smoke p95≈0.96s。fake local Ollama integration で top-k のみ再順位付けを確認。S154-100 `limit=5` 実経路 smoke は regressed のため採用判定を 154-703 へ隔離 |
+| 3 | 154-210 ローカルLLM provider実測ゲート | **次に長時間走らせる先頭候補**。4タスク×1モデルの smoke で schema / latency を確認し、通ったら model matrix へ拡張 | model download / warmup / json_schema 失敗で時間を溶かしやすい。まず qwen3.5:9b の小さい matrix から始める |
+| 4 | 154-703 LLM rerank 代表A/B・重み調整 | 154-210 の provider 実測後に、S154-100 代表limit/fullで `HARNESS_MEM_LLM_RERANK=1` の regression を潰すか default OFF 維持を確定 | 154-702 は機能経路完了。実測改善は dataset / score weight / latency budget の三点が絡むので provider gate 後に分離 |
+| 5 | 154-401 新版埋め込み shadow provider | 154-210/154-703 後に判断。旧 e5/384dim default と 14GB index は触らない | dim 不一致・別vector table・local ONNX assert が重く、検索改善の帰属も 154-701/702 後に見る方が安全 |
 
 **着手しないもの**: 154-205 は外部送信 Risk Gate のため human approval まで blocked。154-900 は 154-305 green 3-run まで blocked。`out/progress-snapshot.html` の timestamp 差分は生成物扱いで、意図的 snapshot 更新時だけ commit する。
 
@@ -1825,7 +1826,8 @@ Complete only when all of the following are true:
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | 154-701 | クエリ書き換え(opt-in) `[tdd:required]` — 日英混在クエリをローカル9B(154-120)で言い換え・日英展開してから検索。**既定OFF**(flag)。回答合成はやらない | flag OFF時は現状経路(LLM不使用)を厳密維持する test PASS。ON時 A/B で mixed recall を 154-100 margin で改善。p95レイテンシ上限内 | 154-103, 154-120 | cc:完了 [local] (`HARNESS_MEM_QUERY_REWRITE=1` で `searchPrepared()` が local Ollama(`/api/chat`) query rewrite を先に実行し、元query+追加tokenを既存検索へ渡す。default OFF は fetch非実行、safe_mode は skip。`HARNESS_MEM_QUERY_REWRITE_OLLAMA_HOST` は loopback のみ許可し外部egressを拒否。meta は raw query を出さず hash/token count のみ。fake local Ollama integration で rewrite added terms により検索到達、actual `qwen3.5:9b` smoke 3件 applied=true / p95≈3.29s(5s timeout内)、unit/integration 7/7、focused 24/24、`memory-server` typecheck、developer-domain overall_passed=true) |
-| 154-702 | top-k LLMリランク(opt-in) `[tdd:required]` — 上位k件のみローカル9Bで関連性再評価。**全件禁止・既定OFF** | OFF時非回帰 test PASS。ON時 top-k限定で precision を 154-100 で改善。p95バウンド超過しない | 154-103, 154-120 | cc:TODO |
+| 154-702 | top-k LLMリランク(opt-in) `[tdd:required]` — 上位k件のみローカル9Bで関連性再評価。**全件禁止・既定OFF** | OFF時非回帰 test PASS。ON時 top-k限定の deterministic precision fixture が改善。safe_mode は LLM 呼び出しを skip。S154-100 は opt-in 経路を実際に通す smoke を持ち、代表/full の改善判定は 154-703 へ分離。p95バウンド超過しない | 154-103, 154-120 | cc:完了 [local] (`HARNESS_MEM_LLM_RERANK=1` で `searchPrepared()` が検索後 top-k のみ local Ollama(`/api/chat`)へ渡して再スコア。default OFF と safe_mode は fetch 非実行、legacy `HARNESS_MEM_LLM_ENHANCE` は no-memory 含め互換維持。new path は provider `ollama` 固定、`HARNESS_MEM_LLM_RERANK_OLLAMA_HOST`/`HARNESS_MEM_OLLAMA_HOST` は loopback のみ許可、topK default 10 / max 20。`think:false` + `num_predict:128` で qwen3.5:9b 実機 smoke 3件 p95≈0.96s。fake local Ollama integration で top-k のみ prompt 送信・並べ替え、precision@1 0→1、non-loopback fetch 0、safe_mode fetch 0。S154-100 adapter は opt-in時 `searchPrepared()` を通すよう更新し、`limit=5` 実経路 smoke は mixed_recall baseline=0.6667/candidate=0.0000 の regressed。よって採用判断・重み調整は 154-703 に隔離し、154-702 は default OFF の機能経路として閉じる。unit/integration 75/75、`memory-server` typecheck、developer-domain overall_passed=true) |
+| 154-703 | LLM rerank 代表A/B・重み調整 `[tdd:skip:benchmark-run]` — 154-702 は機能経路完了、S154-100 `limit=5` では regressed。代表limit/full改善判定は別taskで実測し、必要なら `combineScores` 重み、topK、prompt、対象slice を調整し、default OFF維持のまま採否を決める | S154-100 representative/full で `{metric, baseline, candidate, delta}` を出力。mixed_recall_at_10 が +0.02 以上なら採用候補、neutralなら default OFF維持、regressionなら rollback/disable。latency p95 と JSON parse failure rate を併記 | 154-702, 154-210 | cc:TODO |
 
 > ③回答合成(RAG generation)は入れない: 呼び出し元エージェント(Claude/Codex)が既にLLMのため二重になる(D18 scope-first整合)。
 

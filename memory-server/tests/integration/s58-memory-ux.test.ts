@@ -5,7 +5,7 @@
  * 回帰テストを網羅する。
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
 import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -387,7 +387,9 @@ describe("S58: LLM enhance スキップ確認テスト", () => {
     try {
       // HARNESS_MEM_LLM_ENHANCE が設定されていないことを前提とする
       const originalEnv = process.env.HARNESS_MEM_LLM_ENHANCE;
+      const originalRerankEnv = process.env.HARNESS_MEM_LLM_RERANK;
       delete process.env.HARNESS_MEM_LLM_ENHANCE;
+      delete process.env.HARNESS_MEM_LLM_RERANK;
 
       try {
         core.recordEvent(
@@ -413,6 +415,9 @@ describe("S58: LLM enhance スキップ確認テスト", () => {
       } finally {
         if (originalEnv !== undefined) {
           process.env.HARNESS_MEM_LLM_ENHANCE = originalEnv;
+        }
+        if (originalRerankEnv !== undefined) {
+          process.env.HARNESS_MEM_LLM_RERANK = originalRerankEnv;
         }
       }
     } finally {
@@ -443,6 +448,151 @@ describe("S58: LLM enhance スキップ確認テスト", () => {
       // 通常 search では llm_rerank は設定されない
       const meta = result.meta as Record<string, unknown>;
       expect(meta.llm_rerank).toBeUndefined();
+    } finally {
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("S154-702: local LLM rerank integration", () => {
+  let originalFetch: typeof globalThis.fetch;
+  let originalEnv: Record<string, string | undefined>;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+    originalEnv = {
+      HARNESS_MEM_LLM_RERANK: process.env.HARNESS_MEM_LLM_RERANK,
+      HARNESS_MEM_LLM_RERANK_TOP_K: process.env.HARNESS_MEM_LLM_RERANK_TOP_K,
+      HARNESS_MEM_LLM_RERANK_OLLAMA_HOST: process.env.HARNESS_MEM_LLM_RERANK_OLLAMA_HOST,
+      HARNESS_MEM_LLM_ENHANCE: process.env.HARNESS_MEM_LLM_ENHANCE,
+    };
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  });
+
+  test("HARNESS_MEM_LLM_RERANK=1 で searchPrepared が top-k のみ local Ollama に渡して並べ替える", async () => {
+    const { core, dir } = createCore("local-rerank");
+    try {
+      delete process.env.HARNESS_MEM_LLM_ENHANCE;
+      process.env.HARNESS_MEM_LLM_RERANK = "1";
+      process.env.HARNESS_MEM_LLM_RERANK_TOP_K = "2";
+      process.env.HARNESS_MEM_LLM_RERANK_OLLAMA_HOST = "http://127.0.0.1:11434";
+
+      let prompt = "";
+      globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
+        const body = JSON.parse(init?.body as string) as { messages: Array<{ content: string }> };
+        prompt = body.messages.at(-1)?.content ?? "";
+        return {
+          ok: true,
+          json: async () => ({
+            message: {
+              content: JSON.stringify([
+                { index: 0, score: 0.1 },
+                { index: 1, score: 0.99 },
+              ]),
+            },
+          }),
+        } as Response;
+      });
+
+      core.recordEvent(
+        makeEvent({
+          event_id: "rerank-a",
+          payload: { content: "alpha rerank candidate A parser note" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "rerank-b",
+          payload: { content: "alpha rerank candidate B parser note" },
+        })
+      );
+      core.recordEvent(
+        makeEvent({
+          event_id: "rerank-c",
+          payload: { content: "alpha rerank candidate C parser note" },
+        })
+      );
+
+      delete process.env.HARNESS_MEM_LLM_RERANK;
+      const baseline = core.search({
+        query: "alpha rerank parser",
+        project: "s58-test",
+        limit: 3,
+        vector_search: false,
+        include_private: true,
+        strict_project: true,
+      });
+      const baselineTop1Hit = asItems(baseline)[0]?.id === "obs_rerank-b" ? 1 : 0;
+      expect(baselineTop1Hit).toBe(0);
+
+      process.env.HARNESS_MEM_LLM_RERANK = "1";
+      const result = await core.searchPrepared({
+        query: "alpha rerank parser",
+        project: "s58-test",
+        limit: 3,
+        vector_search: false,
+        include_private: true,
+        strict_project: true,
+      });
+
+      expect(result.ok).toBe(true);
+      const rerankedTop1Hit = asItems(result)[0]?.id === "obs_rerank-b" ? 1 : 0;
+      expect(rerankedTop1Hit).toBe(1);
+      expect((result.meta as Record<string, unknown>).llm_rerank).toBe(true);
+      expect((result.meta as Record<string, unknown>).llm_rerank_provider).toBe("ollama");
+      expect((result.meta as Record<string, unknown>).llm_rerank_top_k).toBe(2);
+      expect(prompt).toContain("[0]");
+      expect(prompt).toContain("[1]");
+      expect(prompt).not.toContain("[2]");
+      const items = asItems(result);
+      expect(items[0]?.id).toBe("obs_rerank-b");
+    } finally {
+      core.shutdown("test");
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("safe_mode=true では HARNESS_MEM_LLM_RERANK=1 でも local LLM を呼ばない", async () => {
+    const { core, dir } = createCore("local-rerank-safe-mode");
+    try {
+      process.env.HARNESS_MEM_LLM_RERANK = "1";
+      process.env.HARNESS_MEM_LLM_RERANK_TOP_K = "2";
+      process.env.HARNESS_MEM_LLM_RERANK_OLLAMA_HOST = "http://127.0.0.1:11434";
+      globalThis.fetch = mock(async () => {
+        throw new Error("safe_mode should skip local LLM rerank");
+      });
+
+      core.recordEvent(
+        makeEvent({
+          event_id: "safe-rerank-a",
+          payload: { content: "safe mode rerank candidate A parser note" },
+        })
+      );
+
+      const result = await core.searchPrepared({
+        query: "safe mode rerank parser",
+        project: "s58-test",
+        limit: 3,
+        vector_search: false,
+        include_private: true,
+        strict_project: true,
+        safe_mode: true,
+      });
+
+      expect(result.ok).toBe(true);
+      expect((result.meta as Record<string, unknown>).llm_rerank).toBe(false);
+      expect((globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(0);
     } finally {
       core.shutdown("test");
       rmSync(dir, { recursive: true, force: true });

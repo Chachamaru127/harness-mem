@@ -37,7 +37,12 @@ import { createRerankerRegistry } from "../rerank/registry";
 import {
   type Reranker,
 } from "../rerank/types";
-import { llmRerank, llmNoMemoryCheck, buildLlmRerankerConfigFromEnv } from "../rerank/llm-reranker.js";
+import {
+  llmRerank,
+  llmNoMemoryCheck,
+  buildLlmRerankerConfigFromEnv,
+  buildSearchLlmRerankerConfigFromEnv,
+} from "../rerank/llm-reranker.js";
 import { queryRewriteMeta, rewriteSearchQueryIfEnabled } from "../retrieval/query-rewrite.js";
 import {
   enqueueConsolidationJob,
@@ -5526,9 +5531,15 @@ export class HarnessMemCore {
     }
     response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
 
-    // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）
-    const llmConfig = buildLlmRerankerConfigFromEnv();
-    if (llmConfig.enabled && response.ok && Array.isArray(response.items) && response.items.length > 0) {
+    // S58-008 legacy / S154-702 local opt-in LLM rerank.
+    const searchLlmConfig = buildSearchLlmRerankerConfigFromEnv();
+    if (
+      effectiveRequest.safe_mode !== true &&
+      searchLlmConfig.enabled &&
+      response.ok &&
+      Array.isArray(response.items) &&
+      response.items.length > 0
+    ) {
       try {
         const candidates = (response.items as Array<Record<string, unknown>>)
           .filter((item) => typeof item.id === "string")
@@ -5541,7 +5552,7 @@ export class HarnessMemCore {
               : 0,
           }));
 
-        const reranked = await llmRerank(effectiveRequest.query || "", candidates, llmConfig);
+        const reranked = await llmRerank(effectiveRequest.query || "", candidates, searchLlmConfig);
         const scoreById = new Map(reranked.map((r) => [r.id, r.score]));
 
         (response.items as Array<Record<string, unknown>>).sort((a, b) => {
@@ -5552,6 +5563,8 @@ export class HarnessMemCore {
 
         // metadata に llm_rerank フラグを追記
         (response.meta as Record<string, unknown>).llm_rerank = true;
+        (response.meta as Record<string, unknown>).llm_rerank_provider = searchLlmConfig.provider;
+        (response.meta as Record<string, unknown>).llm_rerank_top_k = searchLlmConfig.topK ?? 20;
       } catch {
         // graceful degradation: LLM リランク失敗時は元の順序を維持
         (response.meta as Record<string, unknown>).llm_rerank = false;
@@ -5561,8 +5574,9 @@ export class HarnessMemCore {
     }
 
     // S58-009: LLM 不在判定（HARNESS_MEM_LLM_ENHANCE=true かつ no_memory=true のときのみ）
+    const legacyLlmConfig = buildLlmRerankerConfigFromEnv();
     if (
-      llmConfig.enabled &&
+      legacyLlmConfig.enabled &&
       response.no_memory === true &&
       Array.isArray(response.items) &&
       response.items.length > 0
@@ -5578,14 +5592,14 @@ export class HarnessMemCore {
               : 0,
         };
         const apiKey =
-          llmConfig.apiKey ??
-          (llmConfig.provider === "anthropic"
+          legacyLlmConfig.apiKey ??
+          (legacyLlmConfig.provider === "anthropic"
             ? process.env.ANTHROPIC_API_KEY
             : process.env.OPENAI_API_KEY) ??
           "";
         const checkResult = await llmNoMemoryCheck(effectiveRequest.query || "", topCandidate, {
-          provider: llmConfig.provider,
-          model: llmConfig.model,
+          provider: legacyLlmConfig.provider,
+          model: legacyLlmConfig.model,
           apiKey,
         });
         if (checkResult.has_memory) {
