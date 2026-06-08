@@ -24,6 +24,7 @@ import {
 } from "../vector/providers";
 import {
   createEmbeddingProviderRegistry,
+  resolveEmbeddingShadowProviders,
 } from "../embedding/registry";
 import { expandQuery } from "../embedding/query-expander";
 import {
@@ -63,6 +64,7 @@ import {
 import { recordContradictionEnvelopes } from "../inject/contradiction-envelope";
 import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
+import { buildEmbeddingShadowManifest, type EmbeddingShadowManifest } from "../projector/shadow-sync";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
 import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
@@ -1827,6 +1829,7 @@ export class HarnessMemCore {
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       getRerankerEnabled: () => this.rerankerEnabled,
       getReranker: () => this.reranker,
+      getEmbeddingShadowManifest: () => this.getEmbeddingShadowManifest(),
       managedShadowRead: this.managedBackend
         ? (query, ids, opts) => this.managedBackend!.shadowRead(query, ids, opts)
         : null,
@@ -2972,6 +2975,37 @@ export class HarnessMemCore {
 
   private embeddingProviderUsesLocalModels(): boolean {
     return this.embeddingProvider.name === "local" || this.embeddingProvider.usesLocalModels === true;
+  }
+
+  private getEmbeddingShadowManifest(): EmbeddingShadowManifest | null {
+    if ((process.env.HARNESS_MEM_EMBEDDING_SHADOW || "").trim() !== "1") {
+      return null;
+    }
+
+    const modelIds = (process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS || "")
+      .split(",")
+      .map((model) => model.trim())
+      .filter(Boolean);
+    const row = this.db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) AS count
+         FROM mem_vectors v
+         JOIN mem_observations o ON o.id = v.observation_id
+         WHERE v.model = ? AND o.archived_at IS NULL`
+      )
+      .get(this.vectorModelVersion);
+
+    return buildEmbeddingShadowManifest({
+      defaultVectorModel: this.vectorModelVersion,
+      defaultVectorDimension: this.config.vectorDimension,
+      activeDefaultVectorRows: Number(row?.count ?? 0),
+      candidates: resolveEmbeddingShadowProviders({
+        modelIds,
+        currentVectorModel: this.vectorModelVersion,
+        currentVectorDimension: this.config.vectorDimension,
+        localModelsDir: this.config.localModelsDir,
+      }),
+    });
   }
 
   private getEmbeddingReadiness(): EmbeddingReadiness {

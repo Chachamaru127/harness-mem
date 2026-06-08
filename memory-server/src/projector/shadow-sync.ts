@@ -12,6 +12,9 @@
  *   At any point: managed → local (rollback)
  */
 
+import type { EmbeddingShadowProviderCandidate } from "../embedding/registry";
+export type { EmbeddingShadowProviderCandidate } from "../embedding/registry";
+
 export type ShadowPhase = "off" | "shadow" | "verified" | "promoted";
 
 export interface ShadowConfig {
@@ -42,6 +45,37 @@ export interface ShadowMetrics {
   shadow_divergences: number;
   /** Shadow read match rate (0-1). */
   shadow_match_rate: number;
+}
+
+export interface EmbeddingShadowManifest {
+  schema_version: "s154-401-embedding-shadow.v1";
+  default_vector_model: string;
+  default_vector_dimension: number;
+  default_model_unchanged: true;
+  legacy_index_preserved: true;
+  write_policy: "shadow-only";
+  prompt_or_response_body_recorded: false;
+  active_default_vector_rows: number;
+  candidates: EmbeddingShadowProviderCandidate[];
+}
+
+export function buildEmbeddingShadowManifest(options: {
+  defaultVectorModel: string;
+  defaultVectorDimension: number;
+  activeDefaultVectorRows?: number;
+  candidates: EmbeddingShadowProviderCandidate[];
+}): EmbeddingShadowManifest {
+  return {
+    schema_version: "s154-401-embedding-shadow.v1",
+    default_vector_model: options.defaultVectorModel,
+    default_vector_dimension: options.defaultVectorDimension,
+    default_model_unchanged: true,
+    legacy_index_preserved: true,
+    write_policy: "shadow-only",
+    prompt_or_response_body_recorded: false,
+    active_default_vector_rows: Math.max(0, Math.floor(options.activeDefaultVectorRows ?? 0)),
+    candidates: options.candidates.map((candidate) => ({ ...candidate })),
+  };
 }
 
 /**

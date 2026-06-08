@@ -20,6 +20,7 @@ import {
   getSqliteVecMapTableName,
   getSqliteVecTableName,
 } from "../../src/vector/providers";
+import type { EmbeddingShadowManifest } from "../../src/projector/shadow-sync";
 
 // ---------------------------------------------------------------------------
 // ヘルパー
@@ -413,6 +414,55 @@ describe("observation-store: search", () => {
     const res = store.search({ query: "debug test", project: "proj-obs", debug: true });
     expect(res.ok).toBe(true);
     expect(res.meta).toBeTruthy();
+  });
+
+  test("embedding shadow manifest is exposed in meta and passed to shadow read without changing results", () => {
+    const manifest: EmbeddingShadowManifest = {
+      schema_version: "s154-401-embedding-shadow.v1",
+      default_vector_model: "local:multilingual-e5",
+      default_vector_dimension: 384,
+      default_model_unchanged: true,
+      legacy_index_preserved: true,
+      write_policy: "shadow-only",
+      prompt_or_response_body_recorded: false,
+      active_default_vector_rows: 1,
+      candidates: [
+        {
+          model_id: "bge-m3",
+          vector_model: "local:bge-m3",
+          provider: "local",
+          inference: "onnx",
+          dimension: 1024,
+          installed: false,
+          local_only: true,
+          separate_vector_table_required: true,
+          status: "not_installed",
+          skip_reason: "model_not_installed:bge-m3",
+        },
+      ],
+    };
+    let shadowOpts: { embeddingShadowManifest?: EmbeddingShadowManifest | null } | null = null;
+    const { store, db } = makeStore(
+      {},
+      {
+        getEmbeddingShadowManifest: () => manifest,
+        managedShadowRead: async (_query, _ids, opts) => {
+          shadowOpts = opts;
+        },
+      },
+    );
+    insertTestObservation(db, {
+      title: "shadow provider search",
+      content: "shadow provider search keeps the default index unchanged",
+      project: "proj-obs",
+    });
+
+    const res = store.search({ query: "shadow provider", project: "proj-obs", limit: 5 });
+
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeGreaterThan(0);
+    expect((res.meta as Record<string, unknown>).embedding_shadow_manifest).toEqual(manifest);
+    expect(shadowOpts?.embeddingShadowManifest).toEqual(manifest);
   });
 
   test("adaptive ensemble query は primary / secondary の両モデル結果を融合する", () => {

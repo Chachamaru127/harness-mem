@@ -76,6 +76,16 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     queryPrefix: "Represent this sentence for searching relevant passages: ",
   },
   {
+    id: "bge-m3",
+    displayName: "BGE-M3 (Multilingual)",
+    onnxRepo: "Xenova/bge-m3",
+    tokenizerRepo: "Xenova/bge-m3",
+    dimension: 1024,
+    sizeBytes: 2_270_000_000,
+    language: "multilingual",
+    queryPrefix: "Represent this sentence for searching relevant passages: ",
+  },
+  {
     id: "multilingual-e5",
     displayName: "Multilingual E5 Small (100+ languages)",
     onnxRepo: "Xenova/multilingual-e5-small",

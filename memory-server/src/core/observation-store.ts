@@ -48,6 +48,7 @@ import { InjectTraceStore } from "../inject/trace-store";
 import { detectConsumed } from "../inject/consume-detector";
 import type { InjectEnvelope } from "../inject/envelope";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
+import type { EmbeddingShadowManifest } from "../projector/shadow-sync";
 import type {
   ApiResponse,
   Config,
@@ -147,9 +148,10 @@ export interface ObservationStoreDeps {
     | ((
         query: string,
         ids: string[],
-        opts: { project: string | undefined; limit: number }
+        opts: { project: string | undefined; limit: number; embeddingShadowManifest?: EmbeddingShadowManifest | null }
       ) => Promise<void>)
     | null;
+  getEmbeddingShadowManifest?: () => EmbeddingShadowManifest | null;
   // ---- search config ----
   searchRanking: string;
   searchExpandLinks: boolean;
@@ -4612,12 +4614,18 @@ export class ObservationStore {
       // best effort
     }
 
+    const embeddingShadowManifest = this.deps.getEmbeddingShadowManifest?.() ?? null;
+    if (embeddingShadowManifest) {
+      meta.embedding_shadow_manifest = embeddingShadowManifest;
+    }
+
     // Shadow-read: compare results with managed backend (fire-and-forget)
     if (this.deps.managedShadowRead) {
       const resultIds = items.map((item) => item.id as string);
       this.deps.managedShadowRead(request.query, resultIds, {
         project: normalizedProject,
         limit,
+        embeddingShadowManifest,
       }).catch(() => {
         // fire-and-forget, errors tracked in shadow metrics
       });

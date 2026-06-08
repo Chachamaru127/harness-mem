@@ -7112,6 +7112,7 @@ MODEL_CATALOG_IDS=(
   "gte-small"
   "e5-small-v2"
   "bge-small"
+  "bge-m3"
   "multilingual-e5"
   "nomic-embed"
 )
@@ -7120,6 +7121,7 @@ MODEL_CATALOG_DISPLAY_NAMES=(
   "GTE Small (English)"
   "E5 Small v2 (English)"
   "BGE Small v1.5 (English/Chinese)"
+  "BGE-M3 (Multilingual)"
   "Multilingual E5 Small (100+ languages)"
   "Nomic Embed Text v1 (English)"
 )
@@ -7128,6 +7130,7 @@ MODEL_CATALOG_SIZES=(
   "~67MB"
   "~67MB"
   "~67MB"
+  "~2.3GB"
   "~117MB"
   "~274MB"
 )
@@ -7137,6 +7140,7 @@ MODEL_CATALOG_LANGS=(
   "en"
   "en"
   "multilingual"
+  "multilingual"
   "en"
 )
 MODEL_CATALOG_DIMS=(
@@ -7144,6 +7148,7 @@ MODEL_CATALOG_DIMS=(
   "384"
   "384"
   "384"
+  "1024"
   "384"
   "768"
 )

@@ -234,6 +234,78 @@ describe("embedding provider integration", () => {
     }
   });
 
+  test("embedding shadow env exposes manifest without changing vector rows", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-embedding-shadow-"));
+    const previousProvider = process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+    const previousShadow = process.env.HARNESS_MEM_EMBEDDING_SHADOW;
+    const previousShadowModels = process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS;
+    process.env.HARNESS_MEM_EMBEDDING_PROVIDER = "fallback";
+    process.env.HARNESS_MEM_EMBEDDING_SHADOW = "1";
+    process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS = "ruri-v3-30m,bge-m3";
+
+    const config = makeConfig(dir);
+    config.embeddingProvider = "fallback";
+    const core = new HarnessMemCore(config);
+    try {
+      const record = core.recordEvent({
+        event_id: "embedding-shadow-001",
+        platform: "codex",
+        project: "embedding-shadow",
+        session_id: "embedding-shadow-session",
+        event_type: "user_prompt",
+        payload: { content: "shadow provider search keeps the default vector index unchanged" },
+        tags: [],
+        privacy_tags: [],
+      });
+      expect(record.ok).toBe(true);
+
+      const countVectors = () => {
+        const db = new Database(config.dbPath, { readonly: true });
+        const row = db.query<{ count: number }, []>("SELECT COUNT(*) AS count FROM mem_vectors").get();
+        db.close(false);
+        return Number(row?.count ?? 0);
+      };
+      const before = countVectors();
+      const result = core.search({
+        query: "shadow provider",
+        project: "embedding-shadow",
+        limit: 5,
+        include_private: true,
+        vector_search: false,
+      });
+      const after = countVectors();
+
+      expect(result.ok).toBe(true);
+      expect(after).toBe(before);
+      const manifest = (result.meta as Record<string, unknown>).embedding_shadow_manifest as Record<string, unknown>;
+      expect(manifest?.schema_version).toBe("s154-401-embedding-shadow.v1");
+      expect(manifest?.default_model_unchanged).toBe(true);
+      expect(manifest?.legacy_index_preserved).toBe(true);
+      expect(manifest?.write_policy).toBe("shadow-only");
+      const candidates = manifest?.candidates as Array<Record<string, unknown>>;
+      expect(candidates.map((candidate) => candidate.model_id)).toEqual(["ruri-v3-30m", "bge-m3"]);
+      expect(candidates.every((candidate) => candidate.provider === "local")).toBe(true);
+    } finally {
+      core.shutdown("test");
+      if (previousProvider === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_PROVIDER;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_PROVIDER = previousProvider;
+      }
+      if (previousShadow === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_SHADOW;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_SHADOW = previousShadow;
+      }
+      if (previousShadowModels === undefined) {
+        delete process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS;
+      } else {
+        process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS = previousShadowModels;
+      }
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("adaptive provider stores pro-api model labels when Pro API route succeeds", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-pro-success-"));
     const modelsDir = join(dir, "empty-models");

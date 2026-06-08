@@ -21,6 +21,28 @@ import {
 
 type NormalizedProviderName = Exclude<EmbeddingProviderName, "pro-api"> | "auto";
 
+export interface EmbeddingShadowProviderCandidate {
+  model_id: string;
+  vector_model: string;
+  provider: "local";
+  inference: "onnx";
+  dimension: number;
+  installed: boolean;
+  local_only: true;
+  separate_vector_table_required: boolean;
+  status: "ready" | "not_installed" | "unknown_model";
+  skip_reason?: string;
+}
+
+export interface EmbeddingShadowProviderOptions {
+  modelIds?: string[];
+  currentVectorModel?: string;
+  currentVectorDimension: number;
+  localModelsDir?: string;
+}
+
+const DEFAULT_EMBEDDING_SHADOW_MODEL_IDS = ["ruri-v3-30m", "bge-m3"] as const;
+
 function normalizeProviderName(name: string | undefined): NormalizedProviderName | null {
   if (!name || !name.trim()) {
     return "fallback";
@@ -70,6 +92,63 @@ function createLocalOrFallbackProvider(
     passagePrefix: catalogEntry.passagePrefix,
     fallback,
   });
+}
+
+export function resolveEmbeddingShadowProviders(
+  options: EmbeddingShadowProviderOptions
+): EmbeddingShadowProviderCandidate[] {
+  const modelIds =
+    options.modelIds && options.modelIds.length > 0
+      ? options.modelIds
+      : [...DEFAULT_EMBEDDING_SHADOW_MODEL_IDS];
+  const manager = new ModelManager(options.localModelsDir || process.env.HARNESS_MEM_LOCAL_MODELS_DIR);
+  const currentVectorModel = options.currentVectorModel ?? "";
+  const seen = new Set<string>();
+  const candidates: EmbeddingShadowProviderCandidate[] = [];
+
+  for (const rawId of modelIds) {
+    const modelId = rawId.trim();
+    if (!modelId || seen.has(modelId)) {
+      continue;
+    }
+    seen.add(modelId);
+
+    const catalogEntry = findModelById(modelId);
+    if (!catalogEntry) {
+      candidates.push({
+        model_id: modelId,
+        vector_model: `local:${modelId}`,
+        provider: "local",
+        inference: "onnx",
+        dimension: 0,
+        installed: false,
+        local_only: true,
+        separate_vector_table_required: true,
+        status: "unknown_model",
+        skip_reason: "unknown_model",
+      });
+      continue;
+    }
+
+    const vectorModel = `local:${modelId}`;
+    const installed = Boolean(manager.getModelPath(modelId));
+    candidates.push({
+      model_id: modelId,
+      vector_model: vectorModel,
+      provider: "local",
+      inference: "onnx",
+      dimension: catalogEntry.dimension,
+      installed,
+      local_only: true,
+      separate_vector_table_required:
+        catalogEntry.dimension !== options.currentVectorDimension ||
+        (currentVectorModel !== "" && currentVectorModel !== vectorModel),
+      status: installed ? "ready" : "not_installed",
+      ...(installed ? {} : { skip_reason: `model_not_installed:${modelId}` }),
+    });
+  }
+
+  return candidates;
 }
 
 export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOptions): EmbeddingRegistryResult {

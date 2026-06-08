@@ -24,6 +24,15 @@ describe("COMP-005: 埋め込みカタログ拡張", () => {
     expect(entry?.onnxRepo).toBeTruthy();
   });
 
+  test("正常: bge-m3 が shadow provider 候補として登録されている", () => {
+    const entry = findModelById("bge-m3");
+    expect(entry).toBeDefined();
+    expect(entry?.id).toBe("bge-m3");
+    expect(entry?.dimension).toBe(1024);
+    expect(entry?.language).toBe("multilingual");
+    expect(entry?.onnxRepo).toBe("Xenova/bge-m3");
+  });
+
   test("正常: multilingual-e5 が MODEL_CATALOG に登録されている", () => {
     const entry = findModelById("multilingual-e5");
     expect(entry).toBeDefined();
@@ -41,8 +50,8 @@ describe("COMP-005: 埋め込みカタログ拡張", () => {
     expect(entry?.onnxRepo).toBeTruthy();
   });
 
-  test("正常: MODEL_CATALOG に合計6モデル以上が登録されている", () => {
-    expect(MODEL_CATALOG.length).toBeGreaterThanOrEqual(6);
+  test("正常: MODEL_CATALOG に合計7モデル以上が登録されている", () => {
+    expect(MODEL_CATALOG.length).toBeGreaterThanOrEqual(7);
   });
 
   test("正常: 多言語テキスト（韓国語/中国語）で multilingual モデルが自動選択される", () => {
