@@ -234,6 +234,65 @@ export function countEmptyHandoffs(contents: string[]): number {
   return contents.reduce((n, content) => n + (isEmptyHandoff(content) ? 1 : 0), 0);
 }
 
+/**
+ * S154-203: classify an observation into a memory type. Extracted as a pure,
+ * exported function (the private method delegates) so the classifier — and the
+ * "context" catch-all rate — is directly testable. Patterns are expanded
+ * conservatively over the original set to catch common dev-log content that
+ * previously fell through to "context": bugfix / root-cause → lesson, and
+ * needed/next-action phrasing → action.
+ */
+export function classifyObservationType(eventType: string, title: string, content: string): string {
+  if (eventType === "session_end") return "summary";
+  if (eventType === "session_start") return "context";
+  if (eventType === "tool_use") return "action";
+
+  const text = `${title} ${content}`.toLowerCase();
+
+  if (
+    /(decided|decide to|chose|choose|picked|switch(ed)? to|adopt(ed)?|going with|settled on|will use|let's use|方針|決定|決めた|することにし|採用|選定|選択)/.test(
+      text,
+    )
+  )
+    return "decision";
+  if (/(pattern|usually|consistently|repeatedly|every time|always|傾向|パターン|毎回|常に|いつも)/.test(text))
+    return "pattern";
+  if (/(prefer|dislike|avoid|rather|preference|好み|希望|避けたい|したくない)/.test(text)) return "preference";
+  if (
+    /(learned|lesson|realized|gotcha|mistake|fixed|bug\b|root cause|caused by|turned out|culprit|debug|crash(ed)?|学び|反省|気づき|教訓|修正|原因|不具合|判明|ハマっ|つまづ|つまず)/.test(
+      text,
+    )
+  )
+    return "lesson";
+  if (
+    /(next step|todo|next action|need(s)? to|should|plan to|will (add|implement|do|fix)|次対応|次の対応|アクション|やる|対応する|する予定|すべき|べき|予定)/.test(
+      text,
+    )
+  )
+    return "action";
+  return "context";
+}
+
+export interface ClassificationStats {
+  total: number;
+  by_type: Record<string, number>;
+  /** S154-203: fraction classified as the uninformative "context" catch-all. */
+  context_ratio: number;
+}
+
+/** S154-203: diagnostic — type distribution + context catch-all ratio over a batch. */
+export function classificationStats(
+  items: Array<{ eventType: string; title: string; content: string }>,
+): ClassificationStats {
+  const by_type: Record<string, number> = {};
+  for (const item of items) {
+    const type = classifyObservationType(item.eventType, item.title, item.content);
+    by_type[type] = (by_type[type] ?? 0) + 1;
+  }
+  const total = items.length;
+  return { total, by_type, context_ratio: total > 0 ? (by_type.context ?? 0) / total : 0 };
+}
+
 function buildContentDedupeHash(event: EventEnvelope, observationType: string, content: string): string | null {
   const normalizedContent = normalizeDedupeText(content);
   if (!normalizedContent) {
@@ -550,18 +609,8 @@ export class EventRecorder {
   }
 
   private classifyObservation(eventType: string, title: string, content: string): string {
-    if (eventType === "session_end") return "summary";
-    if (eventType === "session_start") return "context";
-    if (eventType === "tool_use") return "action";
-
-    const text = `${title} ${content}`.toLowerCase();
-
-    if (/(decided|chose|picked|switched to|方針|決定|採用|選択)/.test(text)) return "decision";
-    if (/(pattern|usually|consistently|repeatedly|傾向|パターン|毎回|常に)/.test(text)) return "pattern";
-    if (/(prefer|dislike|avoid|rather|preference|好み|希望|避けたい)/.test(text)) return "preference";
-    if (/(learned|lesson|realized|gotcha|mistake|学び|反省|気づき|教訓)/.test(text)) return "lesson";
-    if (/(next step|todo|next action|次対応|次の対応|アクション)/.test(text)) return "action";
-    return "context";
+    // S154-203: delegate to the exported, testable classifier.
+    return classifyObservationType(eventType, title, content);
   }
 
   /**
