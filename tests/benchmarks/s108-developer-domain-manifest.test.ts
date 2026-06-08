@@ -37,8 +37,20 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
       expect(report.overall_passed).toBe(true);
       expect(manifest.results.dev_workflow_recall).toBeGreaterThanOrEqual(0.70);
       expect(manifest.results.temporal).toBeGreaterThanOrEqual(0.70);
+      expect(manifest.results.cjk_discrimination_min_top1).toBe(1);
       expect(manifest.developer_domain_reconciliation.task_id).toBe("S108-005b");
       expect(manifest.developer_domain_reconciliation.metrics.temporal_order_score).toBe(manifest.results.temporal);
+      expect(manifest.developer_domain_reconciliation.gates.cjk_discrimination).toBe(true);
+      expect(manifest.developer_domain_reconciliation.metrics.cjk_discrimination_regressions).toBe(0);
+      expect(manifest.developer_domain_reconciliation.cjk_discrimination_baseline).toEqual({
+        schema_version: "s154-103-cjk-baseline.v1",
+        per_slice_top1: {
+          nfkc_fixable: 1,
+          non_nfkc_orthographic: 1,
+          mixed_en_ja: 1,
+        },
+        recorded_at: "2026-05-27T00:00:00.000Z",
+      });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
