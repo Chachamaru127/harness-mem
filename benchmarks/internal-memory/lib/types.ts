@@ -104,6 +104,21 @@ export interface ScoredCaseResult {
   source_split?: string;
   dataset_revision?: string;
   sample_limit?: number;
+  /** S154-301: per-case deep-freshness ground truth (from memory metadata). */
+  freshness_truth?: FreshnessGroundTruth;
+}
+
+/** S154-301: per-case temporal ground truth for the deep-freshness scorers. */
+export interface FreshnessGroundTruth {
+  /** memory ids that have been superseded — must NOT appear in retrieved results. */
+  superseded_ids?: string[];
+  /** old-tense memory ids (e.g. "planned" before "done") — must be excluded. */
+  stale_tense_ids?: string[];
+  /** memory id -> ISO time the value was invalidated/superseded. */
+  invalidated_at?: Record<string, string>;
+  /** memory id -> ISO time the system was first observed to stop returning it
+   *  (populated by 154-303 longitudinal runs; absent in a static snapshot). */
+  stale_cleared_at?: Record<string, string>;
 }
 
 export interface OfficialMetricResult {
@@ -126,6 +141,10 @@ export interface LayerSummary {
   latency_p95_ms: number;
   ja_recall_at_10?: number;
   mixed_recall_at_10?: number;
+  /** S154-301 deep-freshness diagnostics (null when no eligible ground-truth cases). */
+  tense_rewrite_accuracy?: number;
+  supersession_precision?: number;
+  freshness_delay_ms?: number;
 }
 
 export interface CompetitorSummary {

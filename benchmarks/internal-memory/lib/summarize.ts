@@ -1,5 +1,6 @@
 import { getPublishedReference } from "../adapters/import-published";
 import { japaneseMixedScore, meanRecallForProfile } from "../scorers/multilingual";
+import { freshnessDelayMs, supersessionPrecision, tenseRewriteAccuracy } from "../scorers/freshness";
 import { mean, percentile } from "../scorers/operational";
 import type {
   BenchmarkLayer,
@@ -27,6 +28,10 @@ function summarizeLayer(layer: BenchmarkLayer, rows: ScoredCaseResult[]): LayerS
     latency_p95_ms: percentile(latencies, 95),
     ja_recall_at_10: meanRecallForProfile(okRows, "ja"),
     mixed_recall_at_10: meanRecallForProfile(okRows, "mixed"),
+    // S154-301: deep-freshness diagnostics (undefined unless cases carry ground truth).
+    tense_rewrite_accuracy: tenseRewriteAccuracy(okRows),
+    supersession_precision: supersessionPrecision(okRows),
+    freshness_delay_ms: freshnessDelayMs(okRows),
   };
 }
 
