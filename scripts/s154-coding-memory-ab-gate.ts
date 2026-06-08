@@ -58,24 +58,31 @@ export interface AbReport {
 
 export type RecallByMetric = Record<AbMetricName, number>;
 
+export interface MetricDeltaRow<M extends string = string> {
+  metric: M;
+  baseline: number;
+  candidate: number;
+  delta: number;
+}
+
 /**
- * Pure decision core — unit-tested without running the benchmark.
+ * Pure A/B decision core for arbitrary metric names — unit-tested without running benchmarks.
  *
  * - "regressed": any targeted metric drops by >= regressionDelta
  * - "improved":  every targeted metric rises by >= minDelta
  * - "neutral":   anything in between
  */
-export function decideAb(
-  baseline: RecallByMetric,
-  candidate: RecallByMetric,
-  metrics: AbMetricName[],
+export function decideAbGeneric<M extends string>(
+  baseline: Record<M, number>,
+  candidate: Record<M, number>,
+  metrics: M[],
   minDelta: number,
   regressionDelta: number,
-): { metrics: AbMetricDelta[]; decision: AbDecision; reason: string } {
+): { metrics: MetricDeltaRow<M>[]; decision: AbDecision; reason: string } {
   // Float-point epsilon so a delta numerically equal to the threshold counts as
   // inclusive (e.g. 0.12 - 0.10 = 0.01999…9 must still clear a +0.02 margin).
   const EPS = 1e-9;
-  const rows: AbMetricDelta[] = metrics.map((metric) => ({
+  const rows: MetricDeltaRow<M>[] = metrics.map((metric) => ({
     metric,
     baseline: baseline[metric],
     candidate: candidate[metric],
@@ -107,6 +114,19 @@ export function decideAb(
     decision: "neutral",
     reason: `no regression but improvement below +${(minDelta * 100).toFixed(0)}%pt on at least one metric`,
   };
+}
+
+/**
+ * CodingMemory-specific wrapper over {@link decideAbGeneric}.
+ */
+export function decideAb(
+  baseline: RecallByMetric,
+  candidate: RecallByMetric,
+  metrics: AbMetricName[],
+  minDelta: number,
+  regressionDelta: number,
+): { metrics: AbMetricDelta[]; decision: AbDecision; reason: string } {
+  return decideAbGeneric(baseline, candidate, metrics, minDelta, regressionDelta);
 }
 
 /**

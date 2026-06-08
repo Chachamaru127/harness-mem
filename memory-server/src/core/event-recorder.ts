@@ -32,6 +32,7 @@ import {
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
+  segmentJapaneseForFts,
   tokenize,
 } from "./core-utils.js";
 import {
@@ -1315,6 +1316,8 @@ export class EventRecorder {
         const branch = typeof event.branch === "string" && event.branch.trim()
           ? event.branch.trim()
           : null;
+        const titleFts = observationBase.title ? segmentJapaneseForFts(observationBase.title) : null;
+        const contentFts = segmentJapaneseForFts(redactedContent);
 
         this.deps.db
           .query(`
@@ -1325,12 +1328,15 @@ export class EventRecorder {
               signal_score, user_id, team_id,
               event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
               thread_id, topic, expires_at, branch,
+              title_fts, content_fts,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              title_fts = excluded.title_fts,
+              content_fts = excluded.content_fts,
               content_dedupe_hash = excluded.content_dedupe_hash,
               raw_text = excluded.raw_text,
               observation_type = excluded.observation_type,
@@ -1378,6 +1384,8 @@ export class EventRecorder {
             topic,
             expiresAt,
             branch,
+            titleFts,
+            contentFts,
             timestamp,
             current
           );
