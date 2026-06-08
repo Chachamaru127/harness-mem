@@ -377,6 +377,19 @@ const KANJI_KATAKANA_MIX = /[\u4E00-\u9FFF].*[\u30A0-\u30FF]|[\u30A0-\u30FF].*[\
 const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
 
 /**
+ * S154-101a: Unicode NFKC normalization to canonicalize CJK variant forms before
+ * segmentation / FTS query building. Folds halfwidth katakana (\uFF76\uFF80\uFF76\uFF85 \u2192 \u30AB\u30BF\u30AB\u30CA),
+ * fullwidth ASCII/digits (\uFF21\uFF11 \u2192 A1), and compatibility forms so the index and the
+ * query agree on one representation. Applied to BOTH content and query sides; must
+ * be called before HAS_CJK checks because halfwidth katakana (U+FF61\u2013FF9F) is
+ * outside the HAS_CJK range until it is folded. No morphological analyzer added.
+ */
+export function normalizeCjkText(text: string): string {
+  if (!text) return text;
+  return text.normalize("NFKC");
+}
+
+/**
  * Intl.Segmenter で日本語テキストを単語分割し、FTS5 用のスペース区切り文字列を返す。
  * カタカナ複合語（4文字以上）はサブワード（2-3gram）も追加して部分一致を可能にする。
  * 漢字+カタカナ混在語は構成要素に分離する。
@@ -385,6 +398,9 @@ const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
  */
 export function segmentJapaneseForFts(text: string): string {
   if (!text || !jaSegmenter) return text;
+  // S154-101a: NFKC first — folds halfwidth katakana into the HAS_CJK range so it
+  // is segmented and matches the (normalized) query side.
+  text = normalizeCjkText(text);
   // CJK 文字を含まないテキストはそのまま返す（英語のみの場合）
   if (!HAS_CJK.test(text)) return text;
 
@@ -443,6 +459,9 @@ function expandCjkBigrams(tokens: string[]): string[] {
 }
 
 export function tokenize(text: string): string[] {
+  // S154-101a: normalize CJK variants once so rawTokens, code tokens, and the
+  // segmented path all agree on one form (idempotent with segmentJapaneseForFts).
+  text = normalizeCjkText(text);
   const codeTokens = buildCodeAwareTokens(text);
   // §45: Intl.Segmenter で日本語部分を単語分割してからトークン化
   // segmentJapaneseForFts はスペースで分割するので、元の英数字トークンも保持される

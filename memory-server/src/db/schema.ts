@@ -1393,36 +1393,45 @@ export function reindexFtsWithSegmentation(
   db: Database,
   segmentFn: (text: string) => string,
 ): number {
-  // Step 1: mem_observations の title_fts / content_fts を更新
-  const rows = db
-    .query<{ rowid: number; id: string; title: string | null; content_redacted: string }, []>(
-      `SELECT rowid, id, title, content_redacted FROM mem_observations`
-    )
-    .all();
+  // S154-101a: the whole re-segment + FTS rebuild runs inside one transaction.
+  // In WAL mode (PRAGMA journal_mode=WAL) concurrent readers keep seeing the old
+  // index via snapshot isolation until COMMIT — there is no empty-index window —
+  // and any failure (e.g. segmentFn throws) rolls the whole rebuild back, leaving
+  // the original title_fts / content_fts and FTS rows intact.
+  const rebuild = db.transaction((): number => {
+    // Step 1: mem_observations の title_fts / content_fts を更新
+    const rows = db
+      .query<{ rowid: number; id: string; title: string | null; content_redacted: string }, []>(
+        `SELECT rowid, id, title, content_redacted FROM mem_observations`
+      )
+      .all();
 
-  const updateStmt = db.query(
-    `UPDATE mem_observations SET title_fts = ?, content_fts = ? WHERE id = ?`
-  );
+    const updateStmt = db.query(
+      `UPDATE mem_observations SET title_fts = ?, content_fts = ? WHERE id = ?`
+    );
 
-  let updated = 0;
-  for (const row of rows) {
-    const titleFts = row.title ? segmentFn(row.title) : null;
-    const contentFts = segmentFn(row.content_redacted);
-    updateStmt.run(titleFts, contentFts, row.id);
-    updated++;
-  }
+    let updated = 0;
+    for (const row of rows) {
+      const titleFts = row.title ? segmentFn(row.title) : null;
+      const contentFts = segmentFn(row.content_redacted);
+      updateStmt.run(titleFts, contentFts, row.id);
+      updated++;
+    }
 
-  // Step 2: FTS テーブルを再構築
-  db.exec(`DELETE FROM mem_observations_fts`);
-  db.exec(`
-    INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
-    SELECT rowid, id,
-           COALESCE(title_fts, title),
-           COALESCE(content_fts, content_redacted)
-    FROM mem_observations;
-  `);
+    // Step 2: FTS テーブルを再構築
+    db.exec(`DELETE FROM mem_observations_fts`);
+    db.exec(`
+      INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
+      SELECT rowid, id,
+             COALESCE(title_fts, title),
+             COALESCE(content_fts, content_redacted)
+      FROM mem_observations;
+    `);
 
-  return updated;
+    return updated;
+  });
+
+  return rebuild();
 }
 
 export function initVecTable(db: Database, vectorDimension: number): boolean {
