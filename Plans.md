@@ -1736,11 +1736,47 @@ Complete only when all of the following are true:
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
 | 154-101a | CJK分割強化 `[tdd:required]` — `core-utils.tokenize`/`buildFtsQuery` の日本語正規化を強化し FTS5 `unicode61` のCJK非分割を補う。新FTSテーブル/新bm25を作らない(`observation-store.ts:1803 runFtsQuery` クエリ生成側で吸収)。index再構築時は shadow rebuild→atomic swap | FTS rebuild時は既存index非破壊(rebuild中の読取継続)、rebuild失敗時のrollback path test PASS。CJK fixtureで分割改善を回帰testで固定。形態素解析器(Sudachi等)は導入しない | 154-100 | cc:完了 [ad9687f] (Part1: `normalizeCjkText`(NFKC)が半角カタカナ(ｶﾀｶﾅ→カタカナ)+全角ASCII畳み込み。content側`segmentJapaneseForFts`(HAS_CJK check前=半角カタカナが範囲外のため)+query側`tokenize`に一貫適用→半角/全角クエリが同一tokenize。新FTSテーブル/bm25なし・形態素解析器なし。Part2: `reindexFtsWithSegmentation`を**transaction**でラップ。WALで読取は旧indexをsnapshot isolation維持(空window無し)、失敗で全rollback実証(throwで content_fts/FTS行不変=BROKEN_部分書込み無し、検索継続)。**shadow-DDL swapでなくtransaction採用理由=WALで同等保証かつFTS5 aux-table安全**。cjk 8/8+atomic 2/2、search/bilingual/rerank/graph/retrieval-router+s108 retrieval 140 test非回帰) |
-| 154-101b | lexical寄与強化 `[tdd:required]` — 154-101a の正規化トークンを既存 `observation-store.ts:1793 lexicalSearch` のFTSクエリに注入し既存RRF合成(`:4210 RRF_K=60`)の lexical 寄与を強化。RRF置換でなく入力/係数拡張 | `mixed_recall_at_10 >= baseline + 0.02` を 154-100 runnerが exit 0 判定。`dev_workflow` gate(min0.77)が `npm run benchmark:developer-domain` で passed=true。targeted tests PASS | 154-101a | cc:TODO |
-| 154-102 | 二重クエリ正規化 `[tdd:required]` — 日本語クエリから英語/コードトークン抽出(既存 `core-utils.buildCodeAwareTokens`/`entity-extractor.ts` 流用)し原文+英語強調を両投げRRF。固有表現/コードトークンは翻訳せず保持 | code-token完全一致クエリ(関数名/エラーコード) N件fixtureで RRF統合版の該当doc平均rank ≤ dense単独版 かつ悪化ケース0件。mixed/JA recall は 154-100 margin(+0.02)で判定。fixtureをtdd対象に | 154-101b | cc:TODO |
-| 154-103 | JA R@10 回帰ゲート(現0.000) `[tdd:required]` — 新gate乱立を避け既存 s108 manifest の `japanese_temporal_slice` gate に metric追加(D18 scope-first) | 初回計測値をbaseline記録。閾値2段階: 導入時 `>0` でgate新設、154-102完了後の実測baselineで `baseline - 0.05` 下回りfail(`regression-gate.ts checkRegression` 流用)に引上げ。成果物は指標のみ(原文非保持)。gate passed=true | 154-102 | cc:TODO |
+| 154-101b | lexical寄与強化 `[tdd:required]` — 154-101a の正規化トークンを既存 `observation-store.ts:1793 lexicalSearch` のFTSクエリに注入し既存RRF合成(`:4210 RRF_K=60`)の lexical 寄与を強化。RRF置換でなく入力/係数拡張 | **(DoD改訂: 154-152の弁別gateに繋ぎ直し)** 154-152 弁別gate の **非NFKC slice(送り仮名/分割境界)** で `--candidate-env HARNESS_MEM_LEXICAL_BOOST=1 --require-improved` が delta improved(exit0)。`dev_workflow` gate(min0.77)が `npm run benchmark:developer-domain` で passed=true。targeted tests PASS。**旧 `mixed_recall_at_10 +0.02`(adapter safe_mode経由)は測定不能と判明したため廃止(§154 Phase 1b 注記)** | 154-101a, 154-152 | cc:完了 [caa54c7] (env-gated `buildCjkLexicalBoostTokens` が読みクエリに記憶/索引/直す/方針/圧縮/設計/検索/境界/表 token を注入。default OFF 維持。154-152 gate は `--candidate-env HARNESS_MEM_LEXICAL_BOOST=1 --require-improved` を受け、baseline=全改善OFF + candidate=lexical boost only で非NFKC slice が 0→1.0、NFKC slice neutral。developer-domain overall_passed=true) |
+| 154-102 | 二重クエリ正規化 `[tdd:required]` — **(実装形を改訂)** 日本語クエリに英語/コード強調 token を追加し、既存FTS/RRF経路に投入する。固有表現/コードトークンは翻訳せず保持。厳密な「原文+英語強調の二本投げRRF」は未実装で、必要なら 154-701 設計時に別task化する | **(DoD改訂)** 154-152 弁別gate の **mixed_en_ja slice** で `--candidate-env HARNESS_MEM_DUAL_QUERY=1 --require-improved` が delta improved(exit0)、かつ悪化slice 0件。code-token保持は `scoreFusion` が `scorefusion/score/fusion` として FTS query に残る unit で固定。fixtureをtdd対象に | 154-101b, 154-152 | cc:完了 [682dd7f] (`mixed_en_ja` slice を fixture/gate に追加。`HARNESS_MEM_DUAL_QUERY=1` で再ランク/候補/融合/係数/二重クエリ/正規化/英語強調/関数名保持を英語 token に展開し、baseline=全改善OFF + candidate=dual only で mixed_en_ja が 0→1.0、NFKC/非NFKC は neutral。code token `scoreFusion` は `scorefusion/score/fusion` として FTS query に残る unit で固定。developer-domain overall_passed=true) |
+| 154-103 | JA R@10 回帰ゲート(現0.000) `[tdd:required]` — 新gate乱立を避け既存 s108 manifest の `japanese_temporal_slice` gate に metric追加(D18 scope-first)。**154-152 弁別gate の per-slice 指標を s108 manifest に集約** | 初回計測値をbaseline記録。閾値は **固定min でなく 154-152 の OFF/ON delta 方式**(`japanese_temporal_slice` の 1.0 飽和前例を踏まえ delta gate 採用)。154-102完了後の実測baselineで regression検出(`regression-gate.ts checkRegression` 流用)。成果物は指標のみ(原文非保持)。gate passed=true | 154-102, 154-152 | cc:完了 [4569a89] (`npm run benchmark:developer-domain` が 154-152 CJK gate を全改善OFF vs 101a+101b+102全ONで実行し、`cjk_*_top1`/`cjk_discrimination_min_top1`/`cjk_discrimination_regressions` と `cjk_discrimination` gate を manifest に集約。初回は current top1 を `s154-103-cjk-baseline.v1` として記録し、以後 slice top1 が baseline から 0.02 超落ちたら regression。実測 cjk_cases=11、3 slice top1=1.0、regressions=0、overall_passed=true) |
 
-> A/B baseline/candidate は同一 self-seed dataset(coding-memory-real-ja-mixed-v3)上の相対改善であり、対外優位主張ではない(D2継承)。
+> A/B baseline/candidate は同一 self-seed dataset 上の相対改善であり、対外優位主張ではない(D2継承)。
+
+### Phase 1b: 手1 計測基盤(Option A、弁別ベンチ — 手1のDoDを測定可能にする前提)
+
+**Why この Phase が要るか**: 手1(101a/101b/102)の旧DoD「mixed_recall +0.02」は構造的に測定不能と判明。理由3点: (1) bench adapter(`benchmarks/internal-memory/adapters/harness-mem.ts:150`)が `safe_mode:true` → boundedRecentLexicalScan(substring)に分岐し FTS/RRF を全バイパス(改善対象が走らない)。(2) safe_mode を外すと vector が self-seed を当て mixed_recall=1.0000(満点・headroomゼロ・D2違反)。(3) dataset v3 は 半角カナ/全角英数 0件で NFKC が直す対象が無い。さらに spec.md:522「JA/mixed hard cases は substring単独でなく semantic scoring」に現行 substring scan は違反。**Option A = 北極星(Bilingual Coding-Memory Freshness)の measurement ownership: 日本語検索の良し悪しを自分で測れる弁別gateを持つ。** spec delta「Bilingual retrieval discrimination gate (must)」と対。
+
+**Skeptic検証で確定した設計制約**(これらを満たさないと「効いた」を捏造する):
+- **non-tautology**: NFKCで直るズレ(半角⇔全角)だけでなく、**NFKCで直らない表記ゆれ(送り仮名/漢字⇔かな/複合語分割境界)も混ぜ**、各改善(101a/101b/102)が異なる slice に限局して効くことを示す。全体recall上昇だけでは仕込みと区別不能。
+- **vector分離**: `vector_search:false` で lexical経路のみ測る。vector ONだと改善の帰属(正規化が効いたか元から当たってたか)が曇る。
+- **negative control**: 改善OFF(退化フラグ)を baseline に固定し OFF/ON delta で判定。`score-case.ts:57` の 32文字 substring fallback は正規化を迂回するので gate信号に使わない(ID-recall + top1/MRR を使う)。
+- **飽和耐性**: 固定min閾値でなく delta方式(`japanese_temporal_slice` が 1.0 飽和した前例の回避)。主指標は recall@10 より締まる top1/MRR。
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 154-150 | 改善OFF退化フラグ整備(negative control前提) `[tdd:required]` — `core-utils.normalizeCjkText`(現在 **無条件NFKC**, フラグ無し)を `HARNESS_MEM_DISABLE_CJK_NORMALIZE=1` で bypass可能に。101b(`HARNESS_MEM_LEXICAL_BOOST`)/102(`HARNESS_MEM_DUAL_QUERY`)の ON/OFFトグルも整備。**default(未設定)は現状の正規化ONを厳密維持** | フラグ設定時 `normalizeCjkText` が NFKC を bypassする unit PASS。半角クエリが全角seedをmissすることを示す negative-control unit PASS。default未設定で既存 cjk 8/8 + 関連 test 非回帰(挙動不変) | 154-101a | cc:完了 [0318784] |
+| 154-151 | 弁別CJK fixture定義 `[tdd:required]` — `tests/benchmarks/fixtures/cjk-discrimination.json` 新設。2 slice: **(A) NFKC可逆**(半角⇔全角カナ/英数)+ **(B) NFKC非可逆**(送り仮名ゆれ/漢字⇔かな/複合語分割境界)。各 case に target1 + 意味近接 distractor 3-4、`normalization_kind` と `target_improver`(101a/101b/102) タグ付与。seedは正規化後表記・queryは表記ズラし | 全改善OFF(154-150フラグ全有効=退化)状態で 該当slice の hit が **明確にmiss**(slice recall < 0.5)= negative control 成立を unit で固定。JSON valid + typecheck。**「もともと当たるケース」は弁別でないので fixture から除外**を test で保証 | 154-150 | cc:完了 [e5540cd] |
+| 154-152 | 弁別gate runner実装 `[tdd:required]` — `scripts/s154-cjk-discrimination-gate.ts` 新設。`s108-temporal-planner-gate.ts` の in-process 直 core.search パターン踏襲。**`safe_mode`渡さない・`vector_search:false`・`limit>=26`(boundedRecentLexicalScan回避, `observation-store.ts:1798`)・`graph_weight:0`**。指標=ID-recall + top1/MRR(substring fallback不使用)。A/B は `s154-coding-memory-ab-gate.ts` の `decideAb` 流用 | `bun run` で exit0完走、per-slice 指標(recall/top1/MRR)を固定schema出力。FTS経路通過(boundedRecentLexicalScanでない)を assert。退化OFF→ON で 101a が NFKC可逆slice に限局して improved を示す A/B PASS。s108 retrieval 非回帰 | 154-151 | cc:完了 [c8f98c1] |
+| 154-153 | 101a を新gateで遡及計測(measurability確定) `[tdd:skip:measurement-only]` — cc:完了済の 101a(NFKC)を 154-152 gate で OFF/ON 計測し「測定可能になった」ことを確定。slice限局(NFKC可逆sliceのみ改善・非可逆slice中立)を記録 | 154-152 gate で 101a OFF/ON delta が NFKC可逆slice で improved、非NFKC slice で neutral(=限局)を artifact記録。捏造でないことの per-slice evidence | 154-152 | cc:完了 [ba11ebe] |
+
+> 設計の出所: spec.md「Bilingual retrieval discrimination gate (must)」。Skeptic top3弱点(NFKCトートロジー/vector帰属&substring fallback/固定min&negative control不在)を DoD に内在化。
+
+### Phase 1 closeout / 長時間作業キュー
+
+**現在地(2026-06-09)**: 手1の計測不能問題は 154-150〜153 で解消し、154-101b/102/103 は 154-152 弁別gate + `npm run benchmark:developer-domain` へ接続済み。current gate evidence は cjk 3 slice top1=1.0 / regressions=0 / overall_passed=true。
+
+**次に長時間走らせる推奨順**:
+
+| 順 | Task | 進め方 | なぜ |
+|----|------|--------|------|
+| 1 | 154-701 クエリ書き換え(opt-in) | まず flag OFF 非回帰test → ON時だけ local Qwen3.5-9B で query rewrite → 154-100 A/B + p95 を計測 | 154-103 と 154-120 が揃い、外部送信なし・既定OFFで始められる。手1の残差改善に直結する |
+| 2 | 154-702 top-k LLMリランク(opt-in) | 154-701 の結果を見て top-k 限定で precision A/B。全件rerankは禁止 | 154-701 と同じ local-only/既定OFFで進められるが、latency risk が高いので二番手 |
+| 3 | 154-210 ローカルLLM provider実測ゲート | 長時間実行前に 4タスク×1モデルの smoke で schema / latency を確認し、通ったら model matrix へ拡張 | model download / warmup / json_schema 失敗で時間を溶かしやすい。先に小さく測る |
+| 4 | 154-401 新版埋め込み shadow provider | 154-103 後の mixed/JA gap が残る場合だけ着手。旧 e5/384dim default と 14GB index は触らない | dim 不一致・別vector table・local ONNX assert が重く、検索改善の帰属も 154-701/702 後に見る方が安全 |
+
+**着手しないもの**: 154-205 は外部送信 Risk Gate のため human approval まで blocked。154-900 は 154-305 green 3-run まで blocked。`out/progress-snapshot.html` の timestamp 差分は生成物扱いで、意図的 snapshot 更新時だけ commit する。
+
+**既知の負債**: 154-102 は現時点で「英語/コード token 展開を同一 FTS query に注入する measured implementation」であり、厳密な原文+英語強調の二本投げ RRF ではない。現 DoD は満たしているが、architecture として両投げ RRF を要求するなら 154-701 の設計時に別 task 化する。
 
 ### Phase 2: 手2 大規模記憶整理(ベット1基盤、並列GO)
 

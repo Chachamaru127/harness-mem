@@ -565,6 +565,35 @@ Companion docs: `docs/benchmarks/codingmemory-bench.md`,
 `docs/benchmarks/codingmemory-bench-charter.md`. Implementation plan:
 `Plans.md` §153.
 
+### Bilingual retrieval discrimination gate (must)
+
+Bilingual / CJK retrieval improvements (CJK normalization, lexical fusion,
+dual-query) MUST be validated by a discrimination gate, not by the default
+internal benchmark adapter. The default adapter runs `safe_mode` (bounded
+substring scan) and bypasses the FTS/RRF path these improvements target, so its
+recall cannot move when they change. The discrimination gate MUST:
+
+- Run the real lexical/FTS path with vector retrieval disabled
+  (`vector_search: false`) so the lexical contribution is isolated and a dense
+  self-seed match cannot mask or inflate the measured delta.
+- Use an improvement-OFF negative control as the A/B baseline and report the
+  ON/OFF delta (per `decideAb`), not an absolute self-seed score. Each measured
+  improvement MUST have a deterministic OFF switch (e.g. a regression env flag).
+- Include 表記ゆれ (orthographic-variation) cases that are NOT NFKC-fixable
+  (送り仮名, 漢字⇔かな, 複合語分割境界) alongside NFKC-fixable ones, with
+  per-improver slice tags, so each improvement is shown to be slice-localized
+  rather than tautological (NFKC fixing only NFKC-shaped shifts).
+- Use ID recall and top1/MRR as the gate signal. Raw-substring content fallback
+  MUST NOT be the gate signal (it bypasses normalization and fabricates delta).
+- Prefer delta thresholds over fixed `min` values so the gate stays meaningful
+  as absolute scores saturate (see the `japanese_temporal_slice` saturation at
+  1.0).
+
+Self-seed-perfect absolute scores and raw-substring fallback MUST NOT be cited
+as the gate signal (Self-seeded benchmark non-superiority; semantic-scoring
+requirement for JA/mixed hard cases above). Implementation plan: `Plans.md`
+§154 Phase 1b.
+
 ### Agentmemory live comparison (must)
 
 When Agentmemory is live-measured via `--competitors agentmemory`:
