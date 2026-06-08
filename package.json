@@ -64,6 +64,7 @@
     "test": "(cd memory-server && bun run test) && bash scripts/run-bun-test-batches.sh tests sdk/tests mcp-server/tests",
     "benchmark": "cd memory-server && bun run src/benchmark/run-ci.ts",
     "benchmark:developer-domain": "bun run scripts/s108-developer-domain-manifest.ts",
+    "benchmark:s154-local-llm": "bun run scripts/s154-local-llm-provider-gate.ts",
     "benchmark:workgraph:readiness": "bun run scripts/s125-workgraph-enforce-readiness-pack.ts",
     "benchmark:tune-adaptive": "cd memory-server && bun run src/benchmark/adaptive-tuning.ts",
     "benchmark:tau3": "bash scripts/bench-tau3.sh",
