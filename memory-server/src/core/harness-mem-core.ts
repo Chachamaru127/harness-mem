@@ -38,6 +38,7 @@ import {
   type Reranker,
 } from "../rerank/types";
 import { llmRerank, llmNoMemoryCheck, buildLlmRerankerConfigFromEnv } from "../rerank/llm-reranker.js";
+import { queryRewriteMeta, rewriteSearchQueryIfEnabled } from "../retrieval/query-rewrite.js";
 import {
   enqueueConsolidationJob,
   runConsolidationOnce,
@@ -5456,13 +5457,20 @@ export class HarnessMemCore {
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
-    const cacheLookup = this.lookupRepeatRecallCache(request, startedAt);
+    const rewriteResult = await rewriteSearchQueryIfEnabled(request.query || "", {
+      safeMode: request.safe_mode === true,
+    });
+    const effectiveRequest = rewriteResult.query === request.query
+      ? request
+      : { ...request, query: rewriteResult.query };
+    const cacheLookup = this.lookupRepeatRecallCache(effectiveRequest, startedAt);
     if (cacheLookup?.response) {
-      this.recordRecallSearchTelemetry(startedAt, request, cacheLookup.response);
+      cacheLookup.response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+      this.recordRecallSearchTelemetry(startedAt, effectiveRequest, cacheLookup.response);
       return cacheLookup.response;
     }
     const cacheCandidate = cacheLookup?.candidate ?? null;
-    const shouldOffloadSearch = shouldRunSearchOutOfProcess(request, {
+    const shouldOffloadSearch = shouldRunSearchOutOfProcess(effectiveRequest, {
       vectorEngine: this.vectorEngine,
       dbPath: this.config.dbPath,
     });
@@ -5472,25 +5480,27 @@ export class HarnessMemCore {
     })
       ? "persistent_worker"
       : "child_process";
-    if (request.safe_mode !== true && request.vector_search !== false && !shouldOffloadSearch) {
-      await this.prepareSearchEmbedding(request.query || "");
+    if (effectiveRequest.safe_mode !== true && effectiveRequest.vector_search !== false && !shouldOffloadSearch) {
+      await this.prepareSearchEmbedding(effectiveRequest.query || "");
     }
     let response: ApiResponse;
     if (shouldOffloadSearch) {
       try {
-        response = await this.runSearchOutOfProcess(request);
+        response = await this.runSearchOutOfProcess(effectiveRequest);
       } catch (error) {
         if (isSearchOffloadQueueFull(error)) {
-          const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
-          this.recordRecallSearchTelemetry(startedAt, request, rejected);
+          const rejected = this.makeSearchOffloadRejectedResponse(startedAt, effectiveRequest, error, offloadMode);
+          rejected.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+          this.recordRecallSearchTelemetry(startedAt, effectiveRequest, rejected);
           return rejected;
         }
         if (isSearchOffloadUnavailable(error)) {
           if (error.reason === "timeout") {
-            response = await this.searchWithSafeFallback(request, `${error.queueName} unavailable: ${error.reason}`, offloadMode);
+            response = await this.searchWithSafeFallback(effectiveRequest, `${error.queueName} unavailable: ${error.reason}`, offloadMode);
           } else {
-            const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
-            this.recordRecallSearchTelemetry(startedAt, request, rejected);
+            const rejected = this.makeSearchOffloadRejectedResponse(startedAt, effectiveRequest, error, offloadMode);
+            rejected.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+            this.recordRecallSearchTelemetry(startedAt, effectiveRequest, rejected);
             return rejected;
           }
         } else if (
@@ -5499,21 +5509,22 @@ export class HarnessMemCore {
           error.message.includes("search worker request timed out")
         ) {
           response = await this.searchWithSafeFallback(
-            request,
+            effectiveRequest,
             error.message,
             offloadMode,
           );
         } else {
           response = await this.searchWithSafeFallback(
-            request,
+            effectiveRequest,
             error instanceof Error ? error.message : String(error),
             offloadMode,
           );
         }
       }
     } else {
-      response = this.search(request);
+      response = this.search(effectiveRequest);
     }
+    response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
 
     // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）
     const llmConfig = buildLlmRerankerConfigFromEnv();
@@ -5530,7 +5541,7 @@ export class HarnessMemCore {
               : 0,
           }));
 
-        const reranked = await llmRerank(request.query || "", candidates, llmConfig);
+        const reranked = await llmRerank(effectiveRequest.query || "", candidates, llmConfig);
         const scoreById = new Map(reranked.map((r) => [r.id, r.score]));
 
         (response.items as Array<Record<string, unknown>>).sort((a, b) => {
@@ -5572,7 +5583,7 @@ export class HarnessMemCore {
             ? process.env.ANTHROPIC_API_KEY
             : process.env.OPENAI_API_KEY) ??
           "";
-        const checkResult = await llmNoMemoryCheck(request.query || "", topCandidate, {
+        const checkResult = await llmNoMemoryCheck(effectiveRequest.query || "", topCandidate, {
           provider: llmConfig.provider,
           model: llmConfig.model,
           apiKey,
@@ -5587,7 +5598,7 @@ export class HarnessMemCore {
     }
 
     const finalResponse = this.storeRepeatRecallCache(cacheCandidate, response);
-    this.recordRecallSearchTelemetry(startedAt, request, finalResponse);
+    this.recordRecallSearchTelemetry(startedAt, effectiveRequest, finalResponse);
     return finalResponse;
   }
 

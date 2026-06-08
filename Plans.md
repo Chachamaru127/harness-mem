@@ -1769,7 +1769,7 @@ Complete only when all of the following are true:
 
 | 順 | Task | 進め方 | なぜ |
 |----|------|--------|------|
-| 1 | 154-701 クエリ書き換え(opt-in) | まず flag OFF 非回帰test → ON時だけ local Qwen3.5-9B で query rewrite → 154-100 A/B + p95 を計測 | 154-103 と 154-120 が揃い、外部送信なし・既定OFFで始められる。手1の残差改善に直結する |
+| 1 | 154-701 クエリ書き換え(opt-in) | cc:完了。次は 154-702 | 既定OFF・local Ollama only・safe_mode skip・loopback host guard で外部送信なしに閉じた。実機 qwen3.5:9b smoke p95≈3.29s(5s timeout内) |
 | 2 | 154-702 top-k LLMリランク(opt-in) | 154-701 の結果を見て top-k 限定で precision A/B。全件rerankは禁止 | 154-701 と同じ local-only/既定OFFで進められるが、latency risk が高いので二番手 |
 | 3 | 154-210 ローカルLLM provider実測ゲート | 長時間実行前に 4タスク×1モデルの smoke で schema / latency を確認し、通ったら model matrix へ拡張 | model download / warmup / json_schema 失敗で時間を溶かしやすい。先に小さく測る |
 | 4 | 154-401 新版埋め込み shadow provider | 154-103 後の mixed/JA gap が残る場合だけ着手。旧 e5/384dim default と 14GB index は触らない | dim 不一致・別vector table・local ONNX assert が重く、検索改善の帰属も 154-701/702 後に見る方が安全 |
@@ -1824,7 +1824,7 @@ Complete only when all of the following are true:
 
 | Task | 内容 | DoD | Depends | Status |
 |------|------|-----|---------|--------|
-| 154-701 | クエリ書き換え(opt-in) `[tdd:required]` — 日英混在クエリをローカル9B(154-120)で言い換え・日英展開してから検索。**既定OFF**(flag)。回答合成はやらない | flag OFF時は現状経路(LLM不使用)を厳密維持する test PASS。ON時 A/B で mixed recall を 154-100 margin で改善。p95レイテンシ上限内 | 154-103, 154-120 | cc:TODO |
+| 154-701 | クエリ書き換え(opt-in) `[tdd:required]` — 日英混在クエリをローカル9B(154-120)で言い換え・日英展開してから検索。**既定OFF**(flag)。回答合成はやらない | flag OFF時は現状経路(LLM不使用)を厳密維持する test PASS。ON時 A/B で mixed recall を 154-100 margin で改善。p95レイテンシ上限内 | 154-103, 154-120 | cc:完了 [local] (`HARNESS_MEM_QUERY_REWRITE=1` で `searchPrepared()` が local Ollama(`/api/chat`) query rewrite を先に実行し、元query+追加tokenを既存検索へ渡す。default OFF は fetch非実行、safe_mode は skip。`HARNESS_MEM_QUERY_REWRITE_OLLAMA_HOST` は loopback のみ許可し外部egressを拒否。meta は raw query を出さず hash/token count のみ。fake local Ollama integration で rewrite added terms により検索到達、actual `qwen3.5:9b` smoke 3件 applied=true / p95≈3.29s(5s timeout内)、unit/integration 7/7、focused 24/24、`memory-server` typecheck、developer-domain overall_passed=true) |
 | 154-702 | top-k LLMリランク(opt-in) `[tdd:required]` — 上位k件のみローカル9Bで関連性再評価。**全件禁止・既定OFF** | OFF時非回帰 test PASS。ON時 top-k限定で precision を 154-100 で改善。p95バウンド超過しない | 154-103, 154-120 | cc:TODO |
 
 > ③回答合成(RAG generation)は入れない: 呼び出し元エージェント(Claude/Codex)が既にLLMのため二重になる(D18 scope-first整合)。
