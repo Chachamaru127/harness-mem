@@ -129,6 +129,7 @@ describe("S154-152 runCjkDiscriminationGate() e2e", () => {
       });
       expect(result.decision.nfkc_fixable).toBe("improved");
       expect(result.decision.non_nfkc_orthographic).toBe("neutral");
+      expect(result.decision.mixed_en_ja).toBe("neutral");
       expect(result.variants.baseline.search_request.vector_search).toBe(false);
       expect(result.variants.candidate.search_request.vector_search).toBe(false);
       expect(result.fts_path_asserted).toBe(true);
@@ -175,12 +176,43 @@ describe("S154-152 runCjkDiscriminationGate() e2e", () => {
       expect(result.overall_passed).toBe(true);
       expect(result.decision.nfkc_fixable).toBe("neutral");
       expect(result.decision.non_nfkc_orthographic).toBe("improved");
+      expect(result.decision.mixed_en_ja).toBe("neutral");
       expect(result.variants.candidate.env).toEqual({
         HARNESS_MEM_DISABLE_CJK_NORMALIZE: "1",
         HARNESS_MEM_LEXICAL_BOOST: "1",
         HARNESS_MEM_DUAL_QUERY: null,
       });
       expect(result.variants.candidate.per_slice.non_nfkc_orthographic).toEqual({
+        recall: 1,
+        top1: 1,
+        mrr: 1,
+      });
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+    }
+  }, 120_000);
+
+  test("candidate-env dual query improves only the mixed English/Japanese slice", async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), "s154-cjk-gate-"));
+    try {
+      const result = await runCjkDiscriminationGate({
+        fixturePath: FIXTURE,
+        artifactDir,
+        writeArtifacts: false,
+        candidateEnv: { HARNESS_MEM_DUAL_QUERY: "1" },
+        requireImproved: true,
+      });
+
+      expect(result.overall_passed).toBe(true);
+      expect(result.decision.nfkc_fixable).toBe("neutral");
+      expect(result.decision.non_nfkc_orthographic).toBe("neutral");
+      expect(result.decision.mixed_en_ja).toBe("improved");
+      expect(result.variants.candidate.env).toEqual({
+        HARNESS_MEM_DISABLE_CJK_NORMALIZE: "1",
+        HARNESS_MEM_LEXICAL_BOOST: null,
+        HARNESS_MEM_DUAL_QUERY: "1",
+      });
+      expect(result.variants.candidate.per_slice.mixed_en_ja).toEqual({
         recall: 1,
         top1: 1,
         mrr: 1,
@@ -200,6 +232,7 @@ describe("S154-152 evaluateOverallPassed()", () => {
       per_slice: {
         nfkc_fixable: { recall: 0, top1: 0, mrr: 0 },
         non_nfkc_orthographic: { recall: 0.25, top1: 0.25, mrr: 0.25 },
+        mixed_en_ja: { recall: 0, top1: 0, mrr: 0 },
       },
       fts_path_asserted: true,
       search_request: {
@@ -221,6 +254,7 @@ describe("S154-152 evaluateOverallPassed()", () => {
       per_slice: {
         nfkc_fixable: { recall: 1, top1: 1, mrr: 1 },
         non_nfkc_orthographic: { recall: 0.25, top1: 0.25, mrr: 0.25 },
+        mixed_en_ja: { recall: 0, top1: 0, mrr: 0 },
       },
     });
     const sliceDecisions = {
@@ -232,6 +266,12 @@ describe("S154-152 evaluateOverallPassed()", () => {
       },
       non_nfkc_orthographic: {
         slice: "non_nfkc_orthographic" as const,
+        metrics: [],
+        decision: "neutral" as const,
+        decision_reason: "ok",
+      },
+      mixed_en_ja: {
+        slice: "mixed_en_ja" as const,
         metrics: [],
         decision: "neutral" as const,
         decision_reason: "ok",

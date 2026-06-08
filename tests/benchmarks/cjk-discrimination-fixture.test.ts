@@ -9,7 +9,7 @@ import {
 
 const FIXTURE_PATH = join(process.cwd(), "tests/benchmarks/fixtures/cjk-discrimination.json");
 
-const SLICES = ["nfkc_fixable", "non_nfkc_orthographic"] as const;
+const SLICES = ["nfkc_fixable", "non_nfkc_orthographic", "mixed_en_ja"] as const;
 const IMPROVERS = ["101a", "101b", "102"] as const;
 const REQUIRED_ENTRY_TAGS = ["developer-memory", "synthetic"] as const;
 const IMPROVEMENT_TOGGLE_ENVS = [
@@ -125,7 +125,7 @@ describe("S154-151 cjk-discrimination fixture", () => {
     }
   });
 
-  test("slice coverage assigns nfkc_fixable to 101a and orthographic cases to 101b/102", () => {
+  test("slice coverage assigns each improver to its intended slice", () => {
     const bySlice = Object.fromEntries(SLICES.map((slice) => [slice, fixture.cases.filter((c) => c.slice === slice)])) as Record<
       (typeof SLICES)[number],
       FixtureCase[]
@@ -133,8 +133,10 @@ describe("S154-151 cjk-discrimination fixture", () => {
 
     expect(bySlice.nfkc_fixable.length).toBeGreaterThanOrEqual(3);
     expect(bySlice.non_nfkc_orthographic.length).toBeGreaterThanOrEqual(3);
+    expect(bySlice.mixed_en_ja.length).toBeGreaterThanOrEqual(3);
     expect(bySlice.nfkc_fixable.every((c) => c.target_improver === "101a")).toBe(true);
     expect(bySlice.non_nfkc_orthographic.every((c) => c.target_improver === "101b" || c.target_improver === "102")).toBe(true);
+    expect(bySlice.mixed_en_ja.every((c) => c.target_improver === "102")).toBe(true);
   });
 
   test("nfkc_fixable cases hit only the target when normalization is enabled", () => {

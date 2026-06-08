@@ -273,6 +273,108 @@
           "content": "境界表の整備は temporal fixture 拡張の話で、CJK 正規化とは別タスク。"
         }
       ]
+    },
+    {
+      "id": "cjk-mixed-001",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "再ランク候補の融合係数",
+      "target_id": "cjk-mixed-001-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Candidate rerank fusion weights tune the lexical and vector blend for the bilingual retrieval gate."
+        },
+        {
+          "id": "cjk-mixed-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Temporal planner thresholds tune answer ordering and current stale regression checks."
+        },
+        {
+          "id": "cjk-mixed-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Vector coverage reports summarize embedding availability for maintenance dashboards."
+        },
+        {
+          "id": "cjk-mixed-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Archive dry-run candidates are sorted by safety score before any deletion policy runs."
+        }
+      ]
+    },
+    {
+      "id": "cjk-mixed-002",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "二重クエリ正規化で英語強調",
+      "target_id": "cjk-mixed-002-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Dual query normalization adds English emphasis while preserving the original Japanese query terms."
+        },
+        {
+          "id": "cjk-mixed-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "CJK normalization folds halfwidth katakana into fullwidth index tokens."
+        },
+        {
+          "id": "cjk-mixed-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Safe mode disables vector search and returns bounded recent lexical candidates."
+        },
+        {
+          "id": "cjk-mixed-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Developer-domain manifests record dev workflow recall and temporal order scores."
+        }
+      ]
+    },
+    {
+      "id": "cjk-mixed-003",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "関数名を保持して二重取得",
+      "target_id": "cjk-mixed-003-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Function name preservation keeps code tokens while dual query retrieval adds translated context."
+        },
+        {
+          "id": "cjk-mixed-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Archive compaction metrics are not part of retrieval query expansion."
+        },
+        {
+          "id": "cjk-mixed-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Function names in event payloads are redacted only when privacy filters match."
+        },
+        {
+          "id": "cjk-mixed-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Dual writer prevention belongs to the event recorder dedupe path."
+        }
+      ]
     }
   ]
 }

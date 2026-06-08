@@ -376,6 +376,18 @@ const CJK_LEXICAL_READING_RULES: Array<{ pattern: RegExp; tokens: string[] }> = 
   { pattern: /ひょう/u, tokens: ["表"] },
 ];
 
+const CJK_DUAL_QUERY_RULES: Array<{ pattern: RegExp; tokens: string[] }> = [
+  { pattern: /再ランク|さいらんく|再順位/u, tokens: ["rerank", "ranking"] },
+  { pattern: /候補/u, tokens: ["candidate", "candidates"] },
+  { pattern: /融合|合成/u, tokens: ["fusion", "blend"] },
+  { pattern: /係数|重み/u, tokens: ["weight", "weights"] },
+  { pattern: /二重クエリ|二重検索|二重取得/u, tokens: ["dual", "query", "retrieval"] },
+  { pattern: /正規化/u, tokens: ["normalization", "normalize"] },
+  { pattern: /英語強調|英語/u, tokens: ["english", "emphasis"] },
+  { pattern: /関数名|コードトークン/u, tokens: ["function", "code", "token"] },
+  { pattern: /保持/u, tokens: ["preserve", "keep"] },
+];
+
 export function buildCjkLexicalBoostTokens(query: string): string[] {
   if (!isCjkLexicalBoostEnabled()) return [];
   const normalized = normalizeCjkText(query).toLowerCase();
@@ -383,6 +395,20 @@ export function buildCjkLexicalBoostTokens(query: string): string[] {
 
   const tokens: string[] = [];
   for (const rule of CJK_LEXICAL_READING_RULES) {
+    if (rule.pattern.test(normalized)) {
+      tokens.push(...rule.tokens);
+    }
+  }
+  return dedupePreserveOrder(tokens);
+}
+
+export function buildCjkDualQueryTokens(query: string): string[] {
+  if (!isDualQueryNormalizationEnabled()) return [];
+  const normalized = normalizeCjkText(query).toLowerCase();
+  if (!HAS_CJK.test(normalized)) return [];
+
+  const tokens: string[] = [];
+  for (const rule of CJK_DUAL_QUERY_RULES) {
     if (rule.pattern.test(normalized)) {
       tokens.push(...rule.tokens);
     }
@@ -664,6 +690,7 @@ export function buildSearchTokens(query: string): string[] {
   const expandedQuery = expandSearchQuery(query);
   return dedupePreserveOrder([
     ...buildCjkLexicalBoostTokens(expandedQuery),
+    ...buildCjkDualQueryTokens(expandedQuery),
     ...tokenize(expandedQuery),
   ]);
 }

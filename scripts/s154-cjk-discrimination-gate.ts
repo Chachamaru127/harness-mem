@@ -21,7 +21,7 @@ export const CJK_GATE_METRICS = ["recall", "top1", "mrr"] as const;
 export type CjkGateMetric = (typeof CJK_GATE_METRICS)[number];
 export type CjkMetricsByName = Record<CjkGateMetric, number>;
 
-const SLICES = ["nfkc_fixable", "non_nfkc_orthographic"] as const;
+const SLICES = ["nfkc_fixable", "non_nfkc_orthographic", "mixed_en_ja"] as const;
 export type CjkSlice = (typeof SLICES)[number];
 
 const SEARCH_LIMIT = 26;
@@ -104,6 +104,7 @@ export interface CjkDiscriminationGateResult {
   decision: {
     nfkc_fixable: AbDecision;
     non_nfkc_orthographic: AbDecision;
+    mixed_en_ja: AbDecision;
     overall: AbDecision;
     reasons: Record<CjkSlice, string>;
   };
@@ -352,10 +353,13 @@ export function evaluateOverallPassed(
 
   const nfkcBaseline = baseline.per_slice.nfkc_fixable;
   const baselineZero = nfkcBaseline.recall === 0 && nfkcBaseline.top1 === 0 && nfkcBaseline.mrr === 0;
+  const nonNfkcNeutral = Object.entries(sliceDecisions)
+    .filter(([slice]) => slice !== "nfkc_fixable")
+    .every(([, entry]) => entry.decision === "neutral");
   return (
     baselineZero
     && sliceDecisions.nfkc_fixable.decision === "improved"
-    && sliceDecisions.non_nfkc_orthographic.decision === "neutral"
+    && nonNfkcNeutral
     && baseline.fts_path_asserted
     && candidate.fts_path_asserted
     && baseline.search_request.vector_search === false
@@ -455,10 +459,12 @@ export async function runCjkDiscriminationGate(
     decision: {
       nfkc_fixable: sliceDecisions.nfkc_fixable.decision,
       non_nfkc_orthographic: sliceDecisions.non_nfkc_orthographic.decision,
+      mixed_en_ja: sliceDecisions.mixed_en_ja.decision,
       overall: overallDecision,
       reasons: {
         nfkc_fixable: sliceDecisions.nfkc_fixable.decision_reason,
         non_nfkc_orthographic: sliceDecisions.non_nfkc_orthographic.decision_reason,
+        mixed_en_ja: sliceDecisions.mixed_en_ja.decision_reason,
       },
     },
     fts_path_asserted: ftsPathAsserted,

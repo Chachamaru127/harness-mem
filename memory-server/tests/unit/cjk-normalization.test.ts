@@ -175,4 +175,23 @@ describe("S154-150 CJK normalization off switch", () => {
     expect(ftsQuery).toContain("\"直す\"");
     expect(ftsQuery).toContain("\"方針\"");
   });
+
+  test("HARNESS_MEM_DUAL_QUERY=1 adds English emphasis without dropping code tokens", () => {
+    delete process.env.HARNESS_MEM_DUAL_QUERY;
+    expect(buildSearchTokens("関数名 scoreFusion を保持して二重検索")).not.toContain("retrieval");
+
+    process.env.HARNESS_MEM_DUAL_QUERY = "1";
+    const tokens = buildSearchTokens("関数名 scoreFusion を保持して二重検索");
+    expect(tokens).toContain("function");
+    expect(tokens).toContain("preserve");
+    expect(tokens).toContain("retrieval");
+    expect(tokens).toContain("score");
+    expect(tokens).toContain("fusion");
+    expect(tokens).toContain("scorefusion");
+
+    const ftsQuery = buildFtsQuery("関数名 scoreFusion を保持して二重検索");
+    expect(ftsQuery).toContain("\"scorefusion\"");
+    expect(ftsQuery).toContain("\"score\"");
+    expect(ftsQuery).toContain("\"fusion\"");
+  });
 });
