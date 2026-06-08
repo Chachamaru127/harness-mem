@@ -5,7 +5,10 @@
  * - extractCurrentValueSpan: extract the shortest answer span for current-value queries
  * - compressCurrentValueResponse: strip filler text from a response
  * - measureOverAnswerRate: compute over-answer rate for a batch of (query, response) pairs
+ * - summarizeCurrentState (S154-204): fold current checkpoints into a redacted prose summary
  */
+
+import { redactSecrets, stripPrivateBlocks } from "./privacy-tags";
 
 // ---------------------------------------------------------------------------
 // Span extraction patterns
@@ -193,4 +196,54 @@ export function measureOverAnswerRate(
     total: samples.length,
     overAnswerCount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// S154-204: current-state prose summary
+// ---------------------------------------------------------------------------
+
+export interface CurrentStateEntry {
+  content: string;
+  /** Defaults to "current". historical/superseded entries are dropped. */
+  temporal_state?: "current" | "historical" | "superseded";
+}
+
+/** Default length cap for a current-state prose summary. */
+export const CURRENT_STATE_MAX_CHARS = 2_000;
+
+/**
+ * S154-204: fold a bundle of checkpoints into a single current-state prose summary.
+ *
+ * Deterministic (no LLM — that is the dreaming path, 154-303): drops superseded /
+ * historical entries, then for EACH kept entry strips <private> blocks and applies
+ * `redactSecrets` BEFORE anything is concatenated, dedupes, joins into prose, and
+ * caps the length. Secrets are redacted at the per-entry level so nothing un-redacted
+ * can reach the output even transiently. Key phrases are preserved (no aggressive
+ * span compression) so the summary stays faithful to the current state.
+ */
+export function summarizeCurrentState(
+  entries: CurrentStateEntry[],
+  options: { maxChars?: number } = {},
+): string {
+  const maxChars = options.maxChars ?? CURRENT_STATE_MAX_CHARS;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+
+  for (const entry of entries) {
+    const state = entry.temporal_state ?? "current";
+    if (state !== "current") continue;
+    const stripped = stripPrivateBlocks(entry.content) ?? "";
+    const safe = redactSecrets(stripped).replace(/\s+/g, " ").trim();
+    if (!safe) continue;
+    const key = safe.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(safe);
+  }
+
+  let prose = parts.join(" ");
+  if (prose.length > maxChars) {
+    prose = `${prose.slice(0, maxChars).trimEnd()}…`;
+  }
+  return prose;
 }
