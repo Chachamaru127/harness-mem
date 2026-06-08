@@ -377,6 +377,24 @@ const KANJI_KATAKANA_MIX = /[\u4E00-\u9FFF].*[\u30A0-\u30FF]|[\u30A0-\u30FF].*[\
 const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
 
 /**
+ * S154-150: deterministic NFKC off switch. Default/unset keeps normalization ON.
+ * Set HARNESS_MEM_DISABLE_CJK_NORMALIZE=1 to bypass NFKC and return original text.
+ */
+export function isCjkNormalizationEnabled(): boolean {
+  return !envFlag("HARNESS_MEM_DISABLE_CJK_NORMALIZE", false);
+}
+
+/** S154-101b: lexical boost toggle (default OFF). Behavior wired in 101b. */
+export function isCjkLexicalBoostEnabled(): boolean {
+  return envFlag("HARNESS_MEM_LEXICAL_BOOST", false);
+}
+
+/** S154-102: dual-query normalization toggle (default OFF). Behavior wired in 102. */
+export function isDualQueryNormalizationEnabled(): boolean {
+  return envFlag("HARNESS_MEM_DUAL_QUERY", false);
+}
+
+/**
  * S154-101a: Unicode NFKC normalization to canonicalize CJK variant forms before
  * segmentation / FTS query building. Folds halfwidth katakana (\uFF76\uFF80\uFF76\uFF85 \u2192 \u30AB\u30BF\u30AB\u30CA),
  * fullwidth ASCII/digits (\uFF21\uFF11 \u2192 A1), and compatibility forms so the index and the
@@ -386,6 +404,7 @@ const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
  */
 export function normalizeCjkText(text: string): string {
   if (!text) return text;
+  if (!isCjkNormalizationEnabled()) return text;
   return text.normalize("NFKC");
 }
 
