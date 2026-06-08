@@ -1,13 +1,29 @@
 {
   "schema_version": "internal-memory-summary-v1",
-  "generated_at": "2026-05-29T17:24:29.673Z",
-  "run_id": "internal-memory-11e74600-b40a-4076-802e-aa8dbca3802a",
-  "git_sha": "82d457c",
+  "generated_at": "2026-06-06T09:09:21.205Z",
+  "run_id": "internal-memory-eef4a13e-edfb-4eb8-b6df-4dccc4f14f9e",
+  "git_sha": "f70d9e4",
   "dataset_ids": [
-    "public-retrieval-v1.jsonl",
-    "coding-memory-ja-mixed-v1.jsonl",
-    "coding-memory-real-ja-mixed-v2.jsonl"
+    "ai-hyz/MemoryAgentBench:Accurate_Retrieval+Test_Time_Learning+Long_Range_Understanding+Conflict_Resolution"
   ],
+  "dataset_manifest": {
+    "dataset": "memoryagentbench",
+    "dataset_id": "ai-hyz/MemoryAgentBench",
+    "source_url": "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench",
+    "revision": "00d1946269e29b41eed74511997afa8171b91e08",
+    "splits": [
+      "Accurate_Retrieval",
+      "Test_Time_Learning",
+      "Long_Range_Understanding",
+      "Conflict_Resolution"
+    ],
+    "gate_mode": "full",
+    "upstream_row_count": 146,
+    "memory_chunk_count": 8928,
+    "transform_version": "memoryagentbench-transform-v3",
+    "cache_dir": "/Users/tachibanashuuta/.cursor/worktrees/harness-mem-9f3a2c7b/harness-mem-fdb8d9303044/benchmarks/internal-memory/.cache/memoryagentbench",
+    "downloaded_at": "2026-06-06T08:25:10.305Z"
+  },
   "competitors": [
     {
       "competitor_id": "harness-mem",
@@ -16,136 +32,81 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
-          "ran_count": 55,
+          "case_count": 2000,
+          "ran_count": 2000,
           "skipped_count": 0,
-          "recall_at_10_mean": 0.5272727272727272,
-          "mrr_mean": 0.4818181818181818,
-          "ndcg_at_10_mean": 0.4937208866883143,
-          "latency_p50_ms": 0.5546659999999974,
-          "latency_p95_ms": 183.2568339999998
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 5,
-          "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 0.8,
-          "ndcg_at_10_mean": 0.8523719014285831,
-          "latency_p50_ms": 1.0138340000000028,
-          "latency_p95_ms": 1.8175409999999772,
-          "ja_recall_at_10": 1
+          "recall_at_10_mean": 0.1472877717544396,
+          "mrr_mean": 0.12049384920634891,
+          "ndcg_at_10_mean": 0.11570684476390576,
+          "latency_p50_ms": 68.38341700000456,
+          "latency_p95_ms": 338.13375000000815
         },
         {
           "layer": "mixed_coding",
-          "case_count": 1006,
-          "ran_count": 1006,
+          "case_count": 1500,
+          "ran_count": 1500,
           "skipped_count": 0,
-          "recall_at_10_mean": 0.5208747514910537,
-          "mrr_mean": 0.510934393638171,
-          "ndcg_at_10_mean": 0.5135373708463509,
-          "latency_p50_ms": 0.552082999999925,
-          "latency_p95_ms": 3.1897079999998823,
-          "mixed_recall_at_10": 0.5208747514910537
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 2,
-          "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 0.75,
-          "ndcg_at_10_mean": 0.8154648767857288,
-          "latency_p50_ms": 0.7668329999999912,
-          "latency_p95_ms": 0.8461670000000083,
-          "ja_recall_at_10": 1,
-          "mixed_recall_at_10": 1
+          "recall_at_10_mean": 0.37244256645460905,
+          "mrr_mean": 0.42285000000000034,
+          "ndcg_at_10_mean": 0.38119417135214134,
+          "latency_p50_ms": 3.300499999895692,
+          "latency_p95_ms": 77.72999999998137
         },
         {
           "layer": "resume",
-          "case_count": 352,
-          "ran_count": 352,
+          "case_count": 171,
+          "ran_count": 171,
           "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 1,
-          "ndcg_at_10_mean": 1,
-          "latency_p50_ms": 0.006999999997788109,
-          "latency_p95_ms": 0.010666999998647952,
-          "ja_recall_at_10": 1,
-          "mixed_recall_at_10": 1
+          "recall_at_10_mean": 0.8538011695906432,
+          "mrr_mean": 0.29045994616170073,
+          "ndcg_at_10_mean": 0.4225754358927943,
+          "latency_p50_ms": 299.5119579997845,
+          "latency_p95_ms": 1251.9650000000838
         }
-      ],
-      "japanese_mixed_score": 0.6432272390821614
+      ]
     },
     {
       "competitor_id": "agentmemory",
-      "measurement": "reproduced",
-      "status": "completed",
+      "measurement": "published",
+      "status": "skipped",
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
-          "ran_count": 55,
-          "skipped_count": 0,
-          "recall_at_10_mean": 0.2,
-          "mrr_mean": 0.2,
-          "ndcg_at_10_mean": 0.2,
-          "latency_p50_ms": 332.41466700000456,
-          "latency_p95_ms": 441.73762499995064
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 5,
-          "skipped_count": 0,
-          "recall_at_10_mean": 0.4,
-          "mrr_mean": 0.4,
-          "ndcg_at_10_mean": 0.4,
-          "latency_p50_ms": 322.9221670000006,
-          "latency_p95_ms": 389.5709999999963,
-          "ja_recall_at_10": 0.4
-        },
-        {
-          "layer": "mixed_coding",
-          "case_count": 1006,
-          "ran_count": 1006,
-          "skipped_count": 0,
-          "recall_at_10_mean": 0.11332007952286283,
-          "mrr_mean": 0.11332007952286283,
-          "ndcg_at_10_mean": 0.11332007952286283,
-          "latency_p50_ms": 338.0769169999985,
-          "latency_p95_ms": 416.92316700005904,
-          "mixed_recall_at_10": 0.11332007952286283
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 2,
-          "skipped_count": 0,
-          "recall_at_10_mean": 1,
-          "mrr_mean": 1,
-          "ndcg_at_10_mean": 1,
-          "latency_p50_ms": 339.56445800000074,
-          "latency_p95_ms": 358.2754580000037,
-          "ja_recall_at_10": 1,
-          "mixed_recall_at_10": 1
-        },
-        {
-          "layer": "resume",
-          "case_count": 352,
-          "ran_count": 352,
-          "skipped_count": 0,
+          "case_count": 2000,
+          "ran_count": 0,
+          "skipped_count": 2000,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 364.00570900016464,
-          "latency_p95_ms": 469.26679200003855,
-          "ja_recall_at_10": 0,
-          "mixed_recall_at_10": 0
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
+        },
+        {
+          "layer": "mixed_coding",
+          "case_count": 1500,
+          "ran_count": 0,
+          "skipped_count": 1500,
+          "recall_at_10_mean": 0,
+          "mrr_mean": 0,
+          "ndcg_at_10_mean": 0,
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
+        },
+        {
+          "layer": "resume",
+          "case_count": 171,
+          "ran_count": 0,
+          "skipped_count": 171,
+          "recall_at_10_mean": 0,
+          "mrr_mean": 0,
+          "ndcg_at_10_mean": 0,
+          "latency_p50_ms": 0,
+          "latency_p95_ms": 0
         }
       ],
-      "japanese_mixed_score": 0.08734270910436713
+      "published_recall_at_10": null,
+      "published_source": "Vendor docs / marketing — no comparable published retrieval@10 benchmark.",
+      "published_note": "Reference only, not reproduced. Run --competitors agentmemory with credentials to live-measure."
     },
     {
       "competitor_id": "supermemory",
@@ -154,20 +115,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
+          "case_count": 2000,
           "ran_count": 0,
-          "skipped_count": 55,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 2000,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -176,20 +126,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 1006,
+          "case_count": 1500,
           "ran_count": 0,
-          "skipped_count": 1006,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 1500,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -198,9 +137,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 352,
+          "case_count": 171,
           "ran_count": 0,
-          "skipped_count": 352,
+          "skipped_count": 171,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -219,20 +158,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
+          "case_count": 2000,
           "ran_count": 0,
-          "skipped_count": 55,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 2000,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -241,20 +169,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 1006,
+          "case_count": 1500,
           "ran_count": 0,
-          "skipped_count": 1006,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 1500,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -263,9 +180,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 352,
+          "case_count": 171,
           "ran_count": 0,
-          "skipped_count": 352,
+          "skipped_count": 171,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -284,20 +201,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
+          "case_count": 2000,
           "ran_count": 0,
-          "skipped_count": 55,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 2000,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -306,20 +212,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 1006,
+          "case_count": 1500,
           "ran_count": 0,
-          "skipped_count": 1006,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 1500,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -328,9 +223,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 352,
+          "case_count": 171,
           "ran_count": 0,
-          "skipped_count": 352,
+          "skipped_count": 171,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -349,20 +244,9 @@
       "layers": [
         {
           "layer": "public_compatible",
-          "case_count": 55,
+          "case_count": 2000,
           "ran_count": 0,
-          "skipped_count": 55,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "ja_coding",
-          "case_count": 5,
-          "ran_count": 0,
-          "skipped_count": 5,
+          "skipped_count": 2000,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -371,20 +255,9 @@
         },
         {
           "layer": "mixed_coding",
-          "case_count": 1006,
+          "case_count": 1500,
           "ran_count": 0,
-          "skipped_count": 1006,
-          "recall_at_10_mean": 0,
-          "mrr_mean": 0,
-          "ndcg_at_10_mean": 0,
-          "latency_p50_ms": 0,
-          "latency_p95_ms": 0
-        },
-        {
-          "layer": "isolation",
-          "case_count": 2,
-          "ran_count": 0,
-          "skipped_count": 2,
+          "skipped_count": 1500,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -393,9 +266,9 @@
         },
         {
           "layer": "resume",
-          "case_count": 352,
+          "case_count": 171,
           "ran_count": 0,
-          "skipped_count": 352,
+          "skipped_count": 171,
           "recall_at_10_mean": 0,
           "mrr_mean": 0,
           "ndcg_at_10_mean": 0,
@@ -408,6 +281,13 @@
       "published_note": "Reference only, not reproduced. general-lifelog domain mismatch with developer-workflow; not comparable to harness-mem scores."
     }
   ],
+  "openrouter_budget": {
+    "cap_usd": 50,
+    "spent_usd": 0.20016854999999992,
+    "remaining_usd": 49.79983145,
+    "request_count": 871,
+    "enabled": true
+  },
   "env_files_loaded": [
     "~/LocalWork/Code/CC-harness/harness-mem/.env"
   ],
@@ -421,6 +301,7 @@
     "Real-data pilot v1 (coding-memory-real-ja-mixed-v1.jsonl) is archived; runner prefers v2 when present.",
     "Agentmemory live measurement uses official local REST only (AGENTMEMORY_URL default http://127.0.0.1:3111, /agentmemory/remember + /agentmemory/smart-search). Remote URLs are blocked; AGENTMEMORY_SECRET is never logged.",
     "Agentmemory is promoted from published(reference-only) to reproduced only when explicitly passed to --competitors and health/seed/search smoke passes on the same masked dataset/scorer.",
-    "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision."
+    "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision.",
+    "Official MemoryAgentBench support is a dataset-compatible runner only. Keep official_metric separate from internal retrieval metrics and do not claim superiority until comparable reproduced runs share the same dataset, scorer, and manifest."
   ]
 }

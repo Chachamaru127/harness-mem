@@ -47,6 +47,12 @@ bun run benchmark:internal-memory:embedding-smoke
 # 全実測対象（credential なしは skip 記録）
 bun run benchmark:internal-memory
 
+# Official MemoryAgentBench smoke（small limit / OpenRouter 不要）
+bun run benchmark:memoryagentbench:smoke
+
+# Official MemoryAgentBench full compatible runner（raw は .cache に保存、commit 禁止）
+bun run benchmark:memoryagentbench
+
 # OpenRouter LLM judge 付き（20 USD cap、.env 自動読込）
 bun run benchmark:internal-memory:openrouter
 
@@ -59,13 +65,15 @@ bun run benchmark:internal-memory:dashboard
 
 ## 出力
 
-`benchmarks/internal-memory/reports/latest/`:
+`benchmarks/internal-memory/reports/latest/`（**tracked baseline**）:
 
 - `summary.json` — レイヤー別集計
 - `raw-results.jsonl` — ケース単位の生結果
 - `scorecard.md` — 人間向け比較表
 - `dashboard.html` — 内部閲覧用 HTML
 - `reproducibility.md` — manifest / git / env スナップショット
+
+Raw upstream fetch は `benchmarks/internal-memory/.cache/`（gitignored）に保存する。smoke / full run は `writeReportPack` で `reports/latest/*` を上書きする。意図しない差分は restore し、baseline を更新するときだけ commit する。
 
 ## データセット
 
@@ -74,6 +82,7 @@ bun run benchmark:internal-memory:dashboard
 - `datasets/longmemeval-s-manifest.json` — 外部データ参照用マニフェスト（fixture のみ）
 - `datasets/coding-memory-real-ja-mixed-v1.jsonl` — 実データ由来パイロット（§140、PII マスク済み）
 - `datasets/coding-memory-real-ja-mixed-v2.jsonl` — 実データ本格スケール（§141、350/能力、runner は v2 優先）
+- Official MemoryAgentBench — Hugging Face `ai-hyz/MemoryAgentBench` を datasets-server rows API から取得し、`benchmarks/internal-memory/.cache/` に保存する（raw upstream data は commit 禁止）
 
 ## Real-data pipeline (§140)
 
@@ -118,6 +127,57 @@ See `docs/benchmarks/agentmemory-live-runbook.md` for preflight, localhost-only 
 - **AR / CR**: `expected_keywords` に対する substring match を `substring_grounding_score` に記録（`grounding_score` は後方互換エイリアス）
 - **TTL / LRU**: OpenRouter LLM judge を `--use-openrouter` 時のみ実行し、`llm_grounding_score` に別記録
 - `contentRecallFallback`（本文先頭 32 文字の substring 救済）は **AR のみ** に限定し、CR/TTL/LRU では旧事実への誤マッチを防ぐ
+
+### Official MemoryAgentBench runner（§150 / §151）
+
+Official dataset compatible runs are opt-in. The loader (`memoryagentbench-transform-v3`) splits large upstream `context` into document/session chunks before seeding memory:
+
+- `Document N:` markers (Accurate_Retrieval)
+- `Dialogue N:` markers (Test_Time_Learning)
+- `Session N:` markers (fixture / session-style rows)
+- numbered facts after `Here is a list of facts:` (Conflict_Resolution)
+- paragraph-bounded fallback for very large single blobs (Long_Range_Understanding)
+- every chunk is bounded to 64,000 chars (full) or 4,000 chars (smoke) even after marker splitting
+
+`relevant_ids` point to chunks that contain the accepted answer alias or keypoint for each question. Three gates apply before publishing full results:
+
+1. **Smoke** (`--limit N`): 4,000-char chunks, max 8 chunks/row, trimmed queries.
+2. **Medium** (`--mab-row-limit N` without `--limit`): full 64KB chunking on N upstream rows (validates search at corpus scale).
+3. **Full** (`--mab-split all`): all rows/chunks; run only after medium gate PASS.
+
+`HarnessMemAdapter` uses `safe_mode` + `graph_weight: 0` for bounded in-process search on large MAB corpora. It dedupes ingest by scoped project + `memory.id` so multi-question rows do not re-record the same corpus across cases. Raw upstream rows stay in `benchmarks/internal-memory/.cache/` and must not be committed.
+
+Full all-split transform (3,671 cases) still lists ~7.6M memory entries across cases, but only ~68k unique `memory.id` values are ingested after adapter dedupe; listed char volume remains ~4.3GB. Full run remains deferred until a dedicated benchmark window is available.
+
+```bash
+# default smoke (AR, limit 2)
+bun run benchmark:memoryagentbench:smoke
+
+# Per-split smoke (limit 2, harness-mem only)
+bun run benchmark:memoryagentbench:smoke:ar
+bun run benchmark:memoryagentbench:smoke:ttl
+bun run benchmark:memoryagentbench:smoke:lru
+bun run benchmark:memoryagentbench:smoke:cr
+
+# Medium gate (full 64KB chunking, row 1 only — validates full-scale search)
+bun run benchmark:memoryagentbench:medium:ar
+bun run benchmark:memoryagentbench:medium:ttl
+bun run benchmark:memoryagentbench:medium:lru
+bun run benchmark:memoryagentbench:medium:cr
+
+# Full all-split run with LLM judge (after medium gate PASS)
+INTERNAL_BENCH_BUDGET_USD=50 bun run benchmark:memoryagentbench:openrouter -- --env-file /path/to/.env
+
+# one split with custom limit
+bun run benchmark:internal-memory -- --dataset memoryagentbench --mab-split Conflict_Resolution --limit 20 --competitors harness-mem
+
+# full all-split run (downloads all splits; overwrites tracked reports/latest)
+bun run benchmark:memoryagentbench
+```
+
+Raw upstream rows stay in `benchmarks/internal-memory/.cache/` (gitignored). `benchmarks/internal-memory/reports/latest/*` are tracked baseline artifacts: smoke/full runs overwrite them via `writeReportPack`. Review `git diff` after runs and restore the prior pack unless intentionally updating the baseline.
+
+The loader records `dataset_id`, Hugging Face source URL, split, revision, sample limit, transform version, and cache directory in the report manifest. Official metric proxy output is written as `official_metric` and rendered in its own scorecard section; it must not be merged into internal `recall_at_10`, MRR, or nDCG. This support means "official dataset compatible runner", not a public superiority claim.
 
 ### 2026-05-28 時点の未カバー（S139-001 調査）
 

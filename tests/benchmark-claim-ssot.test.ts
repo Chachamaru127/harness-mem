@@ -219,6 +219,18 @@ describe("benchmark / claim SSOT", () => {
     expect(readmeJa).toContain("NOASSERTION");
   });
 
+  test("CodingMemory advocacy copy avoids forbidden superiority claims", () => {
+    const claimsJa = readText("docs", "readme-claims-ja.md");
+
+    for (const doc of [readme, readmeJa]) {
+      expect(doc).not.toMatch(/CodingMemory.{0,120}(?:業界最高|beats MemoryAgentBench|superior to)/i);
+    }
+
+    expect(readmeJa).toContain("docs/benchmarks/codingmemory-bench.md");
+    expect(readmeJa).toContain("benchmarks/internal-memory/reports/codingmemory-public/");
+    expect(claimsJa).toContain("CodingMemory Bench");
+  });
+
   test("current, historical, and shadow failure backlog artifacts use generic review evidence names", () => {
     for (const artifact of [currentFailureBacklog, baselineFailureBacklog, shadowFailureBacklog]) {
       expect(artifact).toContain("benchmark.runX.score-report.full.json");

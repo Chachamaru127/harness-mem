@@ -58,6 +58,15 @@ describe("extractCurrentValueSpan: English patterns", () => {
   test("returns null for empty input", () => {
     expect(extractCurrentValueSpan("")).toBeNull();
   });
+
+  test("completes quickly on multi-KB English corpus without backtracking hang", () => {
+    const huge = `${"The Normans were in Normandy. ".repeat(4000)}When were the Normans in Normandy?`;
+    const started = performance.now();
+    const span = extractCurrentValueSpan(huge);
+    const elapsed = performance.now() - started;
+    expect(elapsed).toBeLessThan(500);
+    expect(span === null || typeof span === "string").toBe(true);
+  });
 });
 
 describe("extractCurrentValueSpan: Japanese patterns (existing behavior preserved)", () => {

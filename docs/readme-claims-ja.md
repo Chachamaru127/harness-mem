@@ -27,6 +27,7 @@
 | Cursor は Tier 2 supported local client として対応している。 | `Spec.md` の Cursor Conversation Capture / MCP Transport Defaults、`Plans.md` §131/§132、`docs/harness-mem-setup.md`、README の supported tools セクション | bounded | Cursor support は user-scoped `~/.cursor/hooks.json`、`~/.cursor/mcp.json` の `mcpServers.harness-mem`、hook spool ingest、MCP search、`harness-mem setup --platform cursor` / `harness-mem doctor --platform cursor` による検証を意味する。Tier 1 continuity parity claim ではない。設定後、Cursor 側で MCP reload/restart または新 session が必要な場合がある。 |
 | 日本語 / 英語 / code の adaptive routing がある。 | adaptive retrieval docs と benchmark docs | measured | 言語ルーティングの主張は、それを定義している benchmark / design docs に紐づける。 |
 | main gate / Japanese companion / historical baseline は別物。 | SSOT matrix | strict | 歴史的な日本語 baseline を現行 companion と混同しない。 |
+| CodingMemory Bench 提唱（日本語・混在 coding memory） | `docs/benchmarks/codingmemory-bench.md`、charter、`benchmarks/internal-memory/reports/codingmemory-public/` | bounded | 数値 claim は public scorecard の reproduced 表のみ。self-seed 満点・MAB 英語スコア・hash fallback baseline は不可。 |
 
 ## 更新ルール
 

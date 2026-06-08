@@ -25,7 +25,7 @@ import {
 } from "./temporal-graph-signal.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
-import { extractCurrentValueSpan } from "./current-value-compression";
+import { extractCurrentValueSpan, SPAN_EXTRACTION_MAX_CHARS } from "./current-value-compression";
 import {
   buildVisibleInteractionText,
   hasIgnoredVisibleTag,
@@ -772,9 +772,14 @@ function temporalAnchorForObservation(observation: Record<string, unknown> | und
   return "";
 }
 
+function boundRerankText(value: string): string {
+  return value.length > SPAN_EXTRACTION_MAX_CHARS ? value.slice(0, SPAN_EXTRACTION_MAX_CHARS) : value;
+}
+
 function observationTemporalText(observation: Record<string, unknown> | undefined): string {
   if (!observation) return "";
-  return `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`.toLowerCase();
+  const raw = `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`;
+  return boundRerankText(raw).toLowerCase();
 }
 
 type TemporalPlannerMode = "current" | "previous" | "previous_current" | "no_longer" | "after" | "before" | "first" | "latest" | "chronology";
@@ -2698,7 +2703,12 @@ export class ObservationStore {
     return null;
   }
 
+  private hasJapaneseScript(text: string): boolean {
+    return /[\u3040-\u30FF\u4E00-\u9FFF]/u.test(text);
+  }
+
   private extractJapaneseListSpan(text: string): string | null {
+    if (!this.hasJapaneseScript(text)) return null;
     const source = this.normalizeCompactText(text);
     const patterns = [
       /(?:には|は)\s*([^。!?]+?)\s*を(?:出しました|追加しました|導入しました|含めました)/u,
@@ -2722,13 +2732,15 @@ export class ObservationStore {
         return this.extractJapaneseReasonSpan(text);
       case "list_value":
         return this.extractJapaneseListSpan(text);
-      case "temporal_value":
+      case "temporal_value": {
+        const hasJapanese = this.hasJapaneseScript(text);
         return (
-          this.extractJapaneseTemporalOrderSpan(query, text) ||
+          (hasJapanese ? this.extractJapaneseTemporalOrderSpan(query, text) : null) ||
           extractCurrentValueSpan(text) ||
-          this.extractJapanesePreviousValueSpan(text) ||
-          this.extractJapaneseListSpan(text)
+          (hasJapanese ? this.extractJapanesePreviousValueSpan(text) : null) ||
+          (hasJapanese ? this.extractJapaneseListSpan(text) : null)
         );
+      }
       case "location": {
         const location =
           /\b(?:in|at|from|to|near|based in|live in|located in)\s+([A-Z][\w.-]+(?:\s+[A-Z][\w.-]+){0,2})\b/u.exec(text) ||
@@ -2814,7 +2826,7 @@ export class ObservationStore {
 
     const title = typeof observation.title === "string" ? observation.title : "";
     const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-    const text = `${title} ${content}`.trim();
+    const text = boundRerankText(`${title} ${content}`.trim());
     if (!text) return 0;
 
     const queryLower = query.toLowerCase();
@@ -3048,7 +3060,7 @@ export class ObservationStore {
       const observation = observations.get(candidate.id) ?? {};
       const title = typeof observation.title === "string" ? observation.title : "";
       const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-      const text = `${title} ${content}`.trim();
+      const text = boundRerankText(`${title} ${content}`.trim());
       const lower = text.toLowerCase();
       const contextHits = this.countKeywordHits(lower, contextFocusKeywords);
       const contextSatisfied = contextFocusKeywords.length === 0 || contextHits > 0 ? 1 : 0;
@@ -3122,7 +3134,7 @@ export class ObservationStore {
       const observation = observations.get(candidate.id) ?? {};
       const title = typeof observation.title === "string" ? observation.title : "";
       const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-      const text = `${title} ${content}`.trim();
+      const text = boundRerankText(`${title} ${content}`.trim());
       const lower = text.toLowerCase();
       const conciseSpan = this.extractConciseAnswerSpan(query, answerHints, text);
       const sentenceCount = this.countAnswerSentences(text);
@@ -3222,9 +3234,10 @@ export class ObservationStore {
       if (!observation) continue;
       const sessionId = typeof observation.session_id === "string" ? observation.session_id : "";
       if (!sessionId) continue;
-      const text = `${typeof observation.title === "string" ? observation.title : ""} ${
+      const rawText = `${typeof observation.title === "string" ? observation.title : ""} ${
         typeof observation.content_redacted === "string" ? observation.content_redacted : ""
-      }`.trim().toLowerCase();
+      }`.trim();
+      const text = boundRerankText(rawText).toLowerCase();
       const focusHits = this.countKeywordHits(text, focusKeywords);
       const signal = Math.max(
         candidate.lexical,
@@ -4084,12 +4097,16 @@ export class ObservationStore {
       const nuggetAdj = Math.min(0.15, (nuggetScores.get(id) ?? 0) * 0.15);
       const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj + nuggetAdj));
       const graphScore = graph.get(id) ?? 0;
-      const factBoost = this.computeActiveFactBoost(
-        request.query,
-        routeDecision.answerHints,
-        activeFactsByObservation.get(id) ?? []
-      );
-      const precisionBoost = this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
+      const factBoost = latencySafeMode
+        ? 0
+        : this.computeActiveFactBoost(
+            request.query,
+            routeDecision.answerHints,
+            activeFactsByObservation.get(id) ?? []
+          );
+      const precisionBoost = latencySafeMode
+        ? 0
+        : this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
 
       ranked.push({
         id,
@@ -4146,7 +4163,9 @@ export class ObservationStore {
     // §34 FD-006: TIMELINE かつ temporalAnchors が存在する場合は Anchor-Pivoted Search を優先
     // §35 SD-003: freshness クエリも temporal anchor 検索を使用する
     // router.ts L419 は既に freshness に temporalAnchors を付与済み
+    // safe_mode では vector/anchor 探索を抑止し bounded lexical 経路に留める。
     if (
+      !latencySafeMode &&
       (routeDecision.kind === "timeline" || routeDecision.kind === "freshness") &&
       routeDecision.temporalAnchors &&
       routeDecision.temporalAnchors.length > 0
@@ -4275,7 +4294,9 @@ export class ObservationStore {
       }
     }
 
-    this.applySessionProgressBoost(request.query, routeDecision, ranked, observations);
+    if (!latencySafeMode) {
+      this.applySessionProgressBoost(request.query, routeDecision, ranked, observations);
+    }
 
     ranked.sort((lhs, rhs) => {
       if (rhs.final !== lhs.final) return rhs.final - lhs.final;
@@ -4289,7 +4310,10 @@ export class ObservationStore {
     // Phase 1: RRF で上位候補確保（recall 保護: top-30 以上）
     // Phase 2: 候補内を query の向きに合わせて時系列ソートする。
     // デフォルトは古い順。latest/most recent 系のみ新しい順にする。
-    if (this.shouldApplyTemporalTwoStageRerank(request, routeDecision)) {
+    if (
+      !latencySafeMode &&
+      this.shouldApplyTemporalTwoStageRerank(request, routeDecision)
+    ) {
       const TEMPORAL_CANDIDATE_K = Math.max(90, limit * 8);
       const temporalCandidates = ranked.slice(0, TEMPORAL_CANDIDATE_K);
       const descending = prefersDescendingTemporalOrder(request.query);
@@ -4304,7 +4328,9 @@ export class ObservationStore {
       ranked.push(...temporalCandidates, ...remaining);
     }
 
-    this.applyTemporalQueryPlannerRerank(request, routeDecision, ranked, observations, limit);
+    if (!latencySafeMode) {
+      this.applyTemporalQueryPlannerRerank(request, routeDecision, ranked, observations, limit);
+    }
 
     const rerankResult = this.applyRerank(request.query, ranked, observations, {
       // Timeline / freshness questions are order-sensitive, so preserve the
@@ -4312,9 +4338,11 @@ export class ObservationStore {
       skipSemanticRerank: routeDecision.kind === "timeline" || routeDecision.kind === "freshness",
     });
     const rankedAfterRerank = rerankResult.ranked;
-    this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
-    this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
-    this.applyTemporalQueryPlannerRerank(request, routeDecision, rankedAfterRerank, observations, limit);
+    if (!latencySafeMode) {
+      this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
+      this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
+      this.applyTemporalQueryPlannerRerank(request, routeDecision, rankedAfterRerank, observations, limit);
+    }
 
     // S43-SEARCH: sort_by override — date_desc / date_asc は created_at でソート
     if (request.sort_by === "date_desc" || request.sort_by === "date_asc") {

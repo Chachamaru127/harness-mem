@@ -27,6 +27,33 @@ function contentRecallFallback(caseRow: BenchmarkCase, retrievedContents: string
   return hits / relevantMemories.length;
 }
 
+function scoreOfficialMetric(
+  caseRow: BenchmarkCase,
+  retrievedContents: string[],
+): ScoredCaseResult["official_metric"] {
+  const spec = caseRow.official_metric;
+  if (!spec) return undefined;
+  if (spec.expected_answers.length === 0) {
+    return {
+      family: spec.family,
+      name: spec.name,
+      score: null,
+      status: "not_applicable",
+      evidence: "no expected answers available in transformed row",
+    };
+  }
+  const corpus = retrievedContents.join("\n").toLowerCase();
+  const hits = spec.expected_answers.filter((answer) => corpus.includes(answer.toLowerCase())).length;
+  const score = hits / spec.expected_answers.length;
+  return {
+    family: spec.family,
+    name: spec.name,
+    score,
+    status: spec.family === "llm_judge_opt_in" ? "requires_llm_judge" : "computed",
+    evidence: `${hits}/${spec.expected_answers.length} expected answers found in retrieved contents`,
+  };
+}
+
 export function scoreCase(
   caseRow: BenchmarkCase,
   competitorId: string,
@@ -52,6 +79,10 @@ export function scoreCase(
       latency_ms: queryResult.latency_ms,
       skip_reason: queryResult.skip_reason ?? queryResult.error,
       retrieved_ids: [],
+      source_dataset: caseRow.source_dataset,
+      source_split: caseRow.source_split,
+      dataset_revision: caseRow.dataset_revision,
+      sample_limit: caseRow.sample_limit,
     };
   }
 
@@ -85,6 +116,11 @@ export function scoreCase(
     ndcg_at_10: ndcg,
     latency_ms: queryResult.latency_ms,
     retrieved_ids: retrievedIds,
+    official_metric: scoreOfficialMetric(caseRow, retrievedContents),
+    source_dataset: caseRow.source_dataset,
+    source_split: caseRow.source_split,
+    dataset_revision: caseRow.dataset_revision,
+    sample_limit: caseRow.sample_limit,
   };
 
   if (caseRow.expected_keywords?.length && usesSubstringGrounding(competency)) {

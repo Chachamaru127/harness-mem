@@ -47,6 +47,39 @@ export function renderScorecard(summary: BenchmarkSummary, results: ScoredCaseRe
     `Run ID: ${summary.run_id}`,
     summary.git_sha ? `Git SHA: ${summary.git_sha}` : "",
     "",
+    ...(summary.dataset_manifest?.dataset === "memoryagentbench"
+      ? [
+          "## MemoryAgentBench dataset manifest",
+          "",
+          `- dataset_id: ${summary.dataset_manifest.dataset_id ?? "unknown"}`,
+          `- source_url: ${summary.dataset_manifest.source_url ?? "unknown"}`,
+          `- source_split: ${(summary.dataset_manifest.splits ?? []).join(", ") || "unknown"}`,
+          `- dataset_revision: ${summary.dataset_manifest.revision ?? "unknown"}`,
+          `- sample_limit: ${summary.dataset_manifest.sample_limit ?? "all"}`,
+          `- row_limit: ${summary.dataset_manifest.row_limit ?? "all"}`,
+          `- gate_mode: ${summary.dataset_manifest.gate_mode ?? "full"}`,
+          `- memory_chunk_count: ${summary.dataset_manifest.memory_chunk_count ?? "unknown"}`,
+          `- transform_version: ${summary.dataset_manifest.transform_version ?? "unknown"}`,
+          "",
+        ]
+      : []),
+    ...(summary.dataset_manifest?.dataset === "codingmemory"
+      ? [
+          "## CodingMemory Bench dataset manifest",
+          "",
+          `- dataset_id: ${summary.dataset_manifest.dataset_id ?? "unknown"}`,
+          `- source_url: ${summary.dataset_manifest.source_url ?? "unknown"}`,
+          `- gate_mode: ${summary.dataset_manifest.gate_mode ?? "public"}`,
+          `- sample_limit: ${summary.dataset_manifest.sample_limit ?? "all"}`,
+          `- embedding_profile: ${summary.dataset_manifest.embedding_profile ?? "unknown"}`,
+          `- hf_revision: ${summary.dataset_manifest.hf_revision ?? "not_published"}`,
+          `- transform_version: ${summary.dataset_manifest.transform_version ?? "unknown"}`,
+          `- language_profile: ${JSON.stringify(summary.dataset_manifest.language_profile ?? {})}`,
+          `- competency: ${JSON.stringify(summary.dataset_manifest.competency ?? {})}`,
+          `- source_platform: ${JSON.stringify(summary.dataset_manifest.source_platform ?? {})}`,
+          "",
+        ]
+      : []),
     "## Reproduced (locally measured — same dataset / scorer / manifest)",
     "",
     "| Competitor | Status | JA+Mixed score | Public R@10 | JA R@10 | Mixed R@10 | P95 latency (ms) |",
@@ -90,6 +123,35 @@ export function renderScorecard(summary: BenchmarkSummary, results: ScoredCaseRe
         .filter((value): value is number => typeof value === "number");
       lines.push(
         `| ${competency} | ${tier} | ${rows.length} | ${meanOf(substringScores)} | ${meanOf(llmScores)} |`,
+      );
+    }
+  }
+
+  const officialRows = tierRows.filter((row) => row.official_metric);
+  if (officialRows.length > 0) {
+    lines.push(
+      "",
+      "## Official MemoryAgentBench metric proxy",
+      "",
+      "Official metric proxy values stay separate from internal Recall@10/MRR/nDCG. They are retrieval-output checks over transformed official answers, not the official agent interaction scorer.",
+      "",
+      "| Split | Metric | Family | Cases | Mean official_metric | Dataset revision | Sample limit |",
+      "|---|---|---|---:|---:|---|---:|",
+    );
+    const groups = new Map<string, ScoredCaseResult[]>();
+    for (const row of officialRows) {
+      const metric = row.official_metric;
+      if (!metric) continue;
+      const key = `${row.source_split ?? "unknown"}\t${metric.name}\t${metric.family}`;
+      groups.set(key, [...(groups.get(key) ?? []), row]);
+    }
+    for (const [key, rows] of groups) {
+      const [split, metricName, family] = key.split("\t");
+      const scores = rows
+        .map((row) => row.official_metric?.score)
+        .filter((value): value is number => typeof value === "number");
+      lines.push(
+        `| ${split} | ${metricName} | ${family} | ${rows.length} | ${meanOf(scores)} | ${rows[0]?.dataset_revision ?? "unknown"} | ${rows[0]?.sample_limit ?? "all"} |`,
       );
     }
   }
@@ -214,6 +276,22 @@ export function renderDashboardHtml(summary: BenchmarkSummary): string {
   </table>`
     : "";
 
+  const datasetManifest =
+    summary.dataset_manifest?.dataset === "memoryagentbench"
+      ? `<h2>MemoryAgentBench dataset manifest</h2>
+  <table>
+    <tbody>
+      <tr><th>Dataset</th><td>${escapeHtml(summary.dataset_manifest.dataset_id ?? "unknown")}</td></tr>
+      <tr><th>Source split</th><td>${escapeHtml((summary.dataset_manifest.splits ?? []).join(", ") || "unknown")}</td></tr>
+      <tr><th>Dataset revision</th><td>${escapeHtml(summary.dataset_manifest.revision ?? "unknown")}</td></tr>
+      <tr><th>Sample limit</th><td>${escapeHtml(String(summary.dataset_manifest.sample_limit ?? "all"))}</td></tr>
+      <tr><th>Row limit</th><td>${escapeHtml(String(summary.dataset_manifest.row_limit ?? "all"))}</td></tr>
+      <tr><th>Gate mode</th><td>${escapeHtml(String(summary.dataset_manifest.gate_mode ?? "full"))}</td></tr>
+      <tr><th>Memory chunks (row 1)</th><td>${escapeHtml(String(summary.dataset_manifest.memory_chunk_count ?? "unknown"))}</td></tr>
+    </tbody>
+  </table>`
+      : "";
+
   return `<!doctype html>
 <html lang="ja">
 <head>
@@ -232,6 +310,7 @@ export function renderDashboardHtml(summary: BenchmarkSummary): string {
 <body>
   <h1>Internal Memory Benchmark Dashboard</h1>
   <p>Run: ${escapeHtml(summary.run_id)} · Generated: ${escapeHtml(summary.generated_at)}</p>
+  ${datasetManifest}
   <h2>Reproduced (locally measured — same dataset / scorer)</h2>
   <table>
     <thead>
@@ -253,6 +332,9 @@ export function renderReproducibility(summary: BenchmarkSummary, competitors: st
     `- generated_at: ${summary.generated_at}`,
     `- git_sha: ${summary.git_sha ?? "unknown"}`,
     `- datasets: ${summary.dataset_ids.join(", ")}`,
+    summary.dataset_manifest
+      ? `- dataset_manifest: ${JSON.stringify(summary.dataset_manifest)}`
+      : "",
     `- competitors: ${competitors.join(", ")}`,
     `- node: ${process.version}`,
     `- platform: ${process.platform}`,

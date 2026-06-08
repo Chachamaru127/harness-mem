@@ -48,6 +48,9 @@ const JAPANESE_CURRENT_VALUE_PATTERNS: RegExp[] = [
 /** Filler cue pattern: sentences starting with these are deprioritized. */
 const FILLER_LEAD_PATTERN = /^(?:ちなみに|なお|ただ|実際には|現時点では|まず|最初に|最後に|That said|Actually|Currently,|Right now,|At the moment)[,、\s]*/iu;
 
+/** Regex span extraction is bounded to avoid ReDoS on multi-KB benchmark chunks. */
+export const SPAN_EXTRACTION_MAX_CHARS = 8_192;
+
 // ---------------------------------------------------------------------------
 // Helper: clean extracted span
 // ---------------------------------------------------------------------------
@@ -70,7 +73,9 @@ function cleanSpan(value: string): string {
  */
 export function extractCurrentValueSpan(text: string): string | null {
   if (!text) return null;
-  const source = text.trim().replace(/\s+/g, " ");
+  const bounded =
+    text.length > SPAN_EXTRACTION_MAX_CHARS ? text.slice(0, SPAN_EXTRACTION_MAX_CHARS) : text;
+  const source = bounded.trim().replace(/\s+/g, " ");
 
   for (const pattern of ENGLISH_CURRENT_VALUE_PATTERNS) {
     const match = pattern.exec(source);

@@ -309,6 +309,32 @@ describe("observation-store: search", () => {
     expect((noLonger.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-migration");
   });
 
+  test("temporal when-query on comma-heavy English prose completes without span-extraction hang", () => {
+    const { store, db } = makeStore();
+    const commaHeavy = Array.from({ length: 120 }, (_, index) => `clause-${index}`).join(", ");
+    insertTestObservation(db, {
+      id: "obs-mab-normans",
+      title: "Normandy history",
+      content: `The Normans were in Normandy during the 10th century. ${commaHeavy}.`,
+      project: "proj-mab",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+
+    const started = performance.now();
+    const res = store.search({
+      query: "When were the Normans in Normandy?",
+      project: "proj-mab",
+      strict_project: true,
+      safe_mode: true,
+      vector_search: false,
+      question_kind: "hybrid",
+      limit: 5,
+    });
+    expect(performance.now() - started).toBeLessThan(500);
+    expect(res.ok).toBe(true);
+    expect(res.items.length).toBeGreaterThan(0);
+  });
+
   test("point-in-time evidence contract labels current, historical, superseded, and unknown rows", async () => {
     const { store, db } = makeStore();
     insertTestObservation(db, {

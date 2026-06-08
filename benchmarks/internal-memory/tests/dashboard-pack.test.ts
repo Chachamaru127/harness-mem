@@ -78,6 +78,32 @@ const fixtureResults: ScoredCaseResult[] = [
     llm_judge_model: "google/gemini-2.5-flash-lite",
   },
   {
+    case_id: "mab-Accurate_Retrieval-1-1",
+    layer: "public_compatible",
+    category: "memoryagentbench_accurate_retrieval",
+    competency: "AR",
+    language_profile: "en",
+    competitor_id: "harness-mem",
+    status: "ok",
+    recall_at_5: 0,
+    recall_at_10: 0,
+    mrr: 0,
+    ndcg_at_10: 0,
+    latency_ms: 12,
+    retrieved_ids: ["obs_mab-Accurate_Retrieval-1-m1"],
+    source_dataset: "ai-hyz/MemoryAgentBench",
+    source_split: "Accurate_Retrieval",
+    dataset_revision: "00d1946269e29b41eed74511997afa8171b91e08",
+    sample_limit: 1,
+    official_metric: {
+      family: "substring_exact_match",
+      name: "memoryagentbench_retrieval_proxy_substring_exact_match",
+      score: 1,
+      status: "computed",
+      evidence: "1/1 expected answers found in retrieved contents",
+    },
+  },
+  {
     case_id: "pub-001",
     layer: "public_compatible",
     category: "english_fact",
@@ -101,6 +127,15 @@ describe("internal-memory dashboard pack", () => {
       git_sha: "fixture",
       dataset_ids: ["coding-memory-ja-mixed-v1.jsonl"],
       results: fixtureResults,
+      dataset_manifest: {
+        dataset: "memoryagentbench",
+        dataset_id: "ai-hyz/MemoryAgentBench",
+        source_url: "https://huggingface.co/datasets/ai-hyz/MemoryAgentBench",
+        revision: "00d1946269e29b41eed74511997afa8171b91e08",
+        splits: ["Accurate_Retrieval"],
+        sample_limit: 1,
+        transform_version: "memoryagentbench-transform-v1",
+      },
     });
     writeReportPack(summary, fixtureResults, REPORT);
 
@@ -112,6 +147,8 @@ describe("internal-memory dashboard pack", () => {
     const scorecard = readFileSync(join(REPORT, "scorecard.md"), "utf8");
     expect(scorecard).toContain("harness-mem");
     expect(scorecard).toContain("Claim safety");
+    expect(scorecard).toContain("MemoryAgentBench dataset manifest");
+    expect(scorecard).toContain("Official MemoryAgentBench metric proxy");
   });
 
   test("scorecard separates AR/CR substring from TTL/LRU llm grounding", () => {

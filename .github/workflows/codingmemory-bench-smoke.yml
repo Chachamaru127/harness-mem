@@ -1,0 +1,51 @@
+name: CodingMemory Bench Smoke
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/internal-memory/**"
+      - "tests/benchmark-claim-ssot.test.ts"
+      - "docs/readme-claims-ja.md"
+      - ".github/workflows/codingmemory-bench-smoke.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "benchmarks/internal-memory/**"
+      - "tests/benchmark-claim-ssot.test.ts"
+      - ".github/workflows/codingmemory-bench-smoke.yml"
+
+jobs:
+  codingmemory-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.6"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build CodingMemory v3 when v2 exists
+        run: |
+          set -euo pipefail
+          if [ -f benchmarks/internal-memory/datasets/coding-memory-real-ja-mixed-v2.jsonl ]; then
+            npm run benchmark:codingmemory:build-v3
+          fi
+
+      - name: Internal memory tests + PII scan
+        run: |
+          set -euo pipefail
+          bun test benchmarks/internal-memory/tests/
+          npm run benchmark:internal-memory:pii-test
+
+      - name: CodingMemory public smoke (limit 20)
+        run: npm run benchmark:codingmemory:smoke
+
+      - name: Claim SSOT tests
+        run: bun test tests/benchmark-claim-ssot.test.ts

@@ -7,6 +7,9 @@ export type BenchmarkLayer =
 
 export type LanguageProfile = "ja" | "en" | "mixed";
 
+/** Primary ingest platform for real-data cases (§153 optional metadata). */
+export type SourcePlatform = "claude" | "codex" | "cursor" | "mixed" | "unknown";
+
 /** MemoryAgentBench four-capability vocabulary (Spec.md §139). */
 export type Competency = "AR" | "TTL" | "LRU" | "CR";
 
@@ -32,6 +35,19 @@ export interface BenchmarkCase {
   relevant_ids: string[];
   expected_keywords?: string[];
   resume_must_include?: string[];
+  source_platform?: SourcePlatform;
+  source_dataset?: string;
+  source_split?: string;
+  dataset_revision?: string;
+  sample_limit?: number;
+  official_metric?: OfficialMetricSpec;
+}
+
+export interface OfficialMetricSpec {
+  family: "substring_exact_match" | "exact_match" | "llm_judge_opt_in";
+  name: string;
+  expected_answers: string[];
+  source_url?: string;
 }
 
 export interface RetrievalHit {
@@ -83,6 +99,19 @@ export interface ScoredCaseResult {
   latency_ms: number;
   skip_reason?: string;
   retrieved_ids: string[];
+  official_metric?: OfficialMetricResult;
+  source_dataset?: string;
+  source_split?: string;
+  dataset_revision?: string;
+  sample_limit?: number;
+}
+
+export interface OfficialMetricResult {
+  family: OfficialMetricSpec["family"];
+  name: string;
+  score: number | null;
+  status: "computed" | "not_applicable" | "requires_llm_judge";
+  evidence: string;
 }
 
 export interface LayerSummary {
@@ -124,8 +153,30 @@ export interface BenchmarkSummary {
   run_id: string;
   git_sha?: string;
   dataset_ids: string[];
+  dataset_manifest?: BenchmarkDatasetManifest;
   competitors: CompetitorSummary[];
   openrouter_budget?: OpenRouterBudgetSummary;
   env_files_loaded?: string[];
   claim_safety: string[];
+}
+
+export interface BenchmarkDatasetManifest {
+  dataset: "default" | "memoryagentbench" | "codingmemory";
+  dataset_id?: string;
+  source_url?: string;
+  revision?: string;
+  splits?: string[];
+  sample_limit?: number;
+  row_limit?: number;
+  gate_mode?: "smoke" | "medium" | "full" | "public";
+  upstream_row_count?: number;
+  memory_chunk_count?: number;
+  transform_version?: string;
+  cache_dir?: string;
+  downloaded_at?: string;
+  embedding_profile?: "production_onnx" | "hash_fallback";
+  language_profile?: Record<string, number>;
+  competency?: Record<string, number>;
+  source_platform?: Record<string, number>;
+  hf_revision?: string;
 }
