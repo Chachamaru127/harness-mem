@@ -206,6 +206,34 @@ function extractFirstUrl(value: string): string | null {
   return match[0].replace(/[.,;:!?]+$/, "");
 }
 
+/**
+ * S154-202: empty / boilerplate handoff patterns — checkpoints and session summaries
+ * that carry no substantive decision ("No explicit decisions captured", "決定事項なし",
+ * "特になし", "(none)"). Patterns are specific so substantive content that merely
+ * contains "なし" (e.g. "問題なし、修正済み") is NOT matched.
+ */
+const EMPTY_HANDOFF_PATTERNS: RegExp[] = [
+  /\bno (explicit )?decisions?\b.{0,24}\b(captured|recorded|made|noted|found|taken)\b/i,
+  /\bnothing (to (report|note|capture)|notable|significant)\b/i,
+  /^\s*\(?\s*(none|n\/?a|no decisions?|no notes?)\s*\.?\s*\)?\s*$/i,
+  /(決定事項|決定|変更点|主な決定)\s*(は\s*)?(特に\s*)?(なし|ありません|無し|無かった|なかった)/,
+  /特記事項\s*(は\s*)?(特に\s*)?(なし|ありません|無し)/,
+  /^\s*特に\s*(なし|ありません)\s*[。.]?\s*$/,
+  /^\s*（?\s*なし\s*）?\s*[。.]?\s*$/,
+];
+
+/** S154-202: true when a handoff/checkpoint content carries no substantive decision. */
+export function isEmptyHandoff(content: string): boolean {
+  const trimmed = (content ?? "").trim();
+  if (!trimmed) return true;
+  return EMPTY_HANDOFF_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+/** S154-202: diagnostic — count empty handoffs in a batch of contents. */
+export function countEmptyHandoffs(contents: string[]): number {
+  return contents.reduce((n, content) => n + (isEmptyHandoff(content) ? 1 : 0), 0);
+}
+
 function buildContentDedupeHash(event: EventEnvelope, observationType: string, content: string): string | null {
   const normalizedContent = normalizeDedupeText(content);
   if (!normalizedContent) {
@@ -213,6 +241,21 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   }
 
   const eventType = (event.event_type || "unknown").toString().trim().toLowerCase();
+
+  // S154-202: collapse all empty handoffs in a session onto one canonical hash so the
+  // existing content-dedupe path suppresses the 2nd+ — they never accumulate as memory.
+  // observation_type is canonicalized here because boilerplate text can trip the
+  // keyword classifier (e.g. "決定事項なし" → "decision"); empty handoffs of any
+  // induced type must still collapse together.
+  if (isEmptyHandoff(content)) {
+    return hashJsonBasis({
+      session_id: (event.session_id || "unknown").toString().trim(),
+      event_type: eventType,
+      observation_type: "empty_handoff",
+      basis_kind: "empty_handoff",
+      basis_value: "",
+    });
+  }
   let basisValue = normalizedContent;
   let basisKind = "content";
   const payload = event.payload ?? {};
