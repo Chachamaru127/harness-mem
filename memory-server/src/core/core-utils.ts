@@ -364,6 +364,32 @@ const SEARCH_QUERY_ALIAS_RULES: Array<{ pattern: RegExp; expansions: string[] }>
   },
 ];
 
+const CJK_LEXICAL_READING_RULES: Array<{ pattern: RegExp; tokens: string[] }> = [
+  { pattern: /きおく/u, tokens: ["記憶"] },
+  { pattern: /さくいん/u, tokens: ["索引"] },
+  { pattern: /けんさく/u, tokens: ["検索"] },
+  { pattern: /あっしゅく/u, tokens: ["圧縮"] },
+  { pattern: /なおす/u, tokens: ["直す"] },
+  { pattern: /ほうしん/u, tokens: ["方針"] },
+  { pattern: /せっけい/u, tokens: ["設計"] },
+  { pattern: /きょうかい/u, tokens: ["境界"] },
+  { pattern: /ひょう/u, tokens: ["表"] },
+];
+
+export function buildCjkLexicalBoostTokens(query: string): string[] {
+  if (!isCjkLexicalBoostEnabled()) return [];
+  const normalized = normalizeCjkText(query).toLowerCase();
+  if (!HAS_CJK.test(normalized)) return [];
+
+  const tokens: string[] = [];
+  for (const rule of CJK_LEXICAL_READING_RULES) {
+    if (rule.pattern.test(normalized)) {
+      tokens.push(...rule.tokens);
+    }
+  }
+  return dedupePreserveOrder(tokens);
+}
+
 // ---------------------------------------------------------------------------
 // §45: 日本語形態素解析 (Intl.Segmenter)
 // ---------------------------------------------------------------------------
@@ -635,7 +661,11 @@ export function expandSearchQuery(query: string): string {
 }
 
 export function buildSearchTokens(query: string): string[] {
-  return dedupePreserveOrder(tokenize(expandSearchQuery(query)));
+  const expandedQuery = expandSearchQuery(query);
+  return dedupePreserveOrder([
+    ...buildCjkLexicalBoostTokens(expandedQuery),
+    ...tokenize(expandedQuery),
+  ]);
 }
 
 export function buildFtsQuery(query: string, mode: "hybrid" | "and" = "hybrid"): string {

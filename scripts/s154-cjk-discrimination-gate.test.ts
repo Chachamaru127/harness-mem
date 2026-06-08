@@ -160,6 +160,35 @@ describe("S154-152 runCjkDiscriminationGate() e2e", () => {
     expect(parsed.overall_passed).toBe(true);
     expect(parsed.fts_path_asserted).toBe(true);
   }, 120_000);
+
+  test("candidate-env lexical boost improves only the non-NFKC orthographic slice", async () => {
+    const artifactDir = mkdtempSync(join(tmpdir(), "s154-cjk-gate-"));
+    try {
+      const result = await runCjkDiscriminationGate({
+        fixturePath: FIXTURE,
+        artifactDir,
+        writeArtifacts: false,
+        candidateEnv: { HARNESS_MEM_LEXICAL_BOOST: "1" },
+        requireImproved: true,
+      });
+
+      expect(result.overall_passed).toBe(true);
+      expect(result.decision.nfkc_fixable).toBe("neutral");
+      expect(result.decision.non_nfkc_orthographic).toBe("improved");
+      expect(result.variants.candidate.env).toEqual({
+        HARNESS_MEM_DISABLE_CJK_NORMALIZE: "1",
+        HARNESS_MEM_LEXICAL_BOOST: "1",
+        HARNESS_MEM_DUAL_QUERY: null,
+      });
+      expect(result.variants.candidate.per_slice.non_nfkc_orthographic).toEqual({
+        recall: 1,
+        top1: 1,
+        mrr: 1,
+      });
+    } finally {
+      rmSync(artifactDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 });
 
 describe("S154-152 evaluateOverallPassed()", () => {

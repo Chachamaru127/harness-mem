@@ -160,4 +160,19 @@ describe("S154-150 CJK normalization off switch", () => {
       expect(isDualQueryNormalizationEnabled()).toBe(true);
     });
   });
+
+  test("HARNESS_MEM_LEXICAL_BOOST=1 adds CJK reading tokens to FTS queries", () => {
+    delete process.env.HARNESS_MEM_LEXICAL_BOOST;
+    expect(buildSearchTokens("きおくさくいんなおすほうしん")).not.toContain("記憶");
+
+    process.env.HARNESS_MEM_LEXICAL_BOOST = "1";
+    const tokens = buildSearchTokens("きおくさくいんなおすほうしん");
+    expect(tokens.slice(0, 4)).toEqual(["記憶", "索引", "直す", "方針"]);
+
+    const ftsQuery = buildFtsQuery("きおくさくいんなおすほうしん");
+    expect(ftsQuery).toContain("\"記憶\"");
+    expect(ftsQuery).toContain("\"索引\"");
+    expect(ftsQuery).toContain("\"直す\"");
+    expect(ftsQuery).toContain("\"方針\"");
+  });
 });

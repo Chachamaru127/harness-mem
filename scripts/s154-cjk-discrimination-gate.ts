@@ -136,6 +136,8 @@ export interface GateOptions {
   writeArtifacts?: boolean;
   minDelta?: number;
   regressionDelta?: number;
+  candidateEnv?: Record<string, string | null>;
+  requireImproved?: boolean;
   now?: Date;
 }
 
@@ -333,7 +335,21 @@ export function evaluateOverallPassed(
   baseline: VariantResult,
   candidate: VariantResult,
   sliceDecisions: Record<CjkSlice, SliceDecision>,
+  options: { requireImproved?: boolean } = {},
 ): boolean {
+  if (options.requireImproved) {
+    const noRegression = Object.values(sliceDecisions).every((entry) => entry.decision !== "regressed");
+    const anyImproved = Object.values(sliceDecisions).some((entry) => entry.decision === "improved");
+    return (
+      noRegression
+      && anyImproved
+      && baseline.fts_path_asserted
+      && candidate.fts_path_asserted
+      && baseline.search_request.vector_search === false
+      && candidate.search_request.vector_search === false
+    );
+  }
+
   const nfkcBaseline = baseline.per_slice.nfkc_fixable;
   const baselineZero = nfkcBaseline.recall === 0 && nfkcBaseline.top1 === 0 && nfkcBaseline.mrr === 0;
   return (
@@ -355,9 +371,12 @@ export async function runCjkDiscriminationGate(
   const cases = fixture.cases;
   const minDelta = options.minDelta ?? 0.02;
   const regressionDelta = options.regressionDelta ?? minDelta;
+  const candidateEnv = options.candidateEnv
+    ? { ...BASELINE_ENV, ...options.candidateEnv }
+    : CANDIDATE_ENV;
 
   const baseline = await runVariant("baseline", cases, BASELINE_ENV);
-  const candidate = await runVariant("candidate", cases, CANDIDATE_ENV);
+  const candidate = await runVariant("candidate", cases, candidateEnv);
 
   const perSlice = Object.fromEntries(
     SLICES.map((slice) => [
@@ -401,17 +420,17 @@ export async function runCjkDiscriminationGate(
     }),
   ) as Record<CjkSlice, SliceDecision>;
 
-  const overallDecision: AbDecision =
-    sliceDecisions.nfkc_fixable.decision === "regressed"
-    || sliceDecisions.non_nfkc_orthographic.decision === "regressed"
-      ? "regressed"
-      : sliceDecisions.nfkc_fixable.decision === "improved"
-        && sliceDecisions.non_nfkc_orthographic.decision === "neutral"
-        ? "improved"
-        : "neutral";
+  const decisionValues = Object.values(sliceDecisions).map((entry) => entry.decision);
+  const overallDecision: AbDecision = decisionValues.includes("regressed")
+    ? "regressed"
+    : decisionValues.includes("improved")
+      ? "improved"
+      : "neutral";
 
   const ftsPathAsserted = baseline.fts_path_asserted && candidate.fts_path_asserted;
-  const overallPassed = evaluateOverallPassed(baseline, candidate, sliceDecisions);
+  const overallPassed = evaluateOverallPassed(baseline, candidate, sliceDecisions, {
+    requireImproved: options.requireImproved,
+  });
 
   const artifactDir = options.artifactDir ?? DEFAULT_ARTIFACT_DIR;
   const summaryJsonPath = join(artifactDir, "summary.json");
@@ -469,11 +488,28 @@ function parseArgs(argv: string[]): GateOptions {
       options.minDelta = Number(argv[++i]);
     } else if (token === "--regression-delta" && argv[i + 1]) {
       options.regressionDelta = Number(argv[++i]);
+    } else if (token === "--candidate-env" && argv[i + 1]) {
+      const assignment = argv[++i];
+      const eq = assignment.indexOf("=");
+      if (eq <= 0) {
+        throw new Error(`--candidate-env expects NAME=VALUE, got: ${assignment}`);
+      }
+      const name = assignment.slice(0, eq).trim();
+      const value = assignment.slice(eq + 1);
+      if (!/^[A-Z_][A-Z0-9_]*$/.test(name)) {
+        throw new Error(`invalid env name for --candidate-env: ${name}`);
+      }
+      options.candidateEnv = {
+        ...(options.candidateEnv ?? {}),
+        [name]: value.length === 0 ? null : value,
+      };
+    } else if (token === "--require-improved") {
+      options.requireImproved = true;
     } else if (token === "--no-write") {
       options.writeArtifacts = false;
     } else if (token === "--help" || token === "-h") {
       process.stdout.write(
-        "Usage: bun run scripts/s154-cjk-discrimination-gate.ts [--artifact-dir DIR] [--fixture PATH] [--min-delta N] [--regression-delta N] [--no-write]\n",
+        "Usage: bun run scripts/s154-cjk-discrimination-gate.ts [--artifact-dir DIR] [--fixture PATH] [--candidate-env NAME=VALUE] [--require-improved] [--min-delta N] [--regression-delta N] [--no-write]\n",
       );
       process.exit(0);
     } else {
