@@ -8558,7 +8558,12 @@ export class HarnessMemCore {
       limit: request.limit,
     };
 
-    const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options);
+    const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options, {
+      allowLocalDreamingObservationWrites:
+        this.config.backendMode !== "hybrid" && this.config.backendMode !== "managed",
+      materializeObservationDerivedData: (observationId) =>
+        this.eventRec.materializeObservationDerivedData(observationId),
+    });
     this.maybeRunSearchDbMaintenance();
     try {
       this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
