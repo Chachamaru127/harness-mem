@@ -852,21 +852,30 @@ function temporalContractForObservation(
 
   const text = observationTemporalText(observation);
   const id = typeof observation.id === "string" ? observation.id : "";
+  const asOfMs = options.asOf ? Date.parse(options.asOf) : Date.now();
+  const invalidatedAtMs = typeof observation.invalidated_at === "string" && observation.invalidated_at.trim()
+    ? Date.parse(observation.invalidated_at)
+    : NaN;
   const explicitlySuperseded =
     Boolean(id && options.supersededIds?.has(id)) ||
-    Boolean(observation.invalidated_at) ||
+    (Number.isFinite(asOfMs) && Number.isFinite(invalidatedAtMs) && invalidatedAtMs <= asOfMs) ||
     NO_LONGER_CUE_PATTERN.test(text) ||
     JAPANESE_NO_LONGER_PATTERN.test(text);
   if (explicitlySuperseded) {
     return { state: "superseded", anchor, anchor_kind: anchorKind };
   }
 
-  const asOfMs = options.asOf ? Date.parse(options.asOf) : Date.now();
   const validToMs = typeof observation.valid_to === "string" && observation.valid_to.trim()
     ? Date.parse(observation.valid_to)
     : NaN;
   if (Number.isFinite(asOfMs) && Number.isFinite(validToMs) && validToMs <= asOfMs) {
     return { state: "historical", anchor, anchor_kind: anchorKind };
+  }
+  const validFromMs = typeof observation.valid_from === "string" && observation.valid_from.trim()
+    ? Date.parse(observation.valid_from)
+    : NaN;
+  if (Number.isFinite(asOfMs) && Number.isFinite(validFromMs) && validFromMs > asOfMs) {
+    return { state: "unknown", anchor, anchor_kind: anchorKind };
   }
 
   const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) ||
@@ -930,13 +939,30 @@ function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   return "chronology";
 }
 
+function temporalTimestampReached(value: unknown, asOfMs: number): boolean {
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(asOfMs)) return false;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) && timestampMs <= asOfMs;
+}
+
+function temporalTimestampPending(value: unknown, asOfMs: number): boolean {
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(asOfMs)) return false;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) && timestampMs > asOfMs;
+}
+
 function temporalStateScore(
   query: string,
   mode: TemporalPlannerMode,
-  observation: Record<string, unknown> | undefined
+  observation: Record<string, unknown> | undefined,
+  asOf?: string
 ): number {
   const text = observationTemporalText(observation);
-  const invalidated = Boolean(observation?.invalidated_at || observation?.valid_to);
+  const asOfMs = asOf ? Date.parse(asOf) : Date.now();
+  const invalidated =
+    temporalTimestampReached(observation?.invalidated_at, asOfMs) ||
+    temporalTimestampReached(observation?.valid_to, asOfMs);
+  const notYetActive = temporalTimestampPending(observation?.valid_from, asOfMs);
   const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text) || STILL_CUE_PATTERN.test(text) || JAPANESE_STILL_PATTERN.test(text);
   const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
   const hasStrongPreviousCue = hasStrongPreviousValueCue(text);
@@ -947,14 +973,14 @@ function temporalStateScore(
   const hasBeforeCue = BEFORE_CUE_PATTERN.test(text) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(text);
 
   if (mode === "current") {
-    return (invalidated ? -2 : 2) + (hasCurrentCue ? 3 : 0);
+    return (invalidated || notYetActive ? -2 : 2) + (hasCurrentCue ? 3 : 0);
   }
   if (mode === "previous") {
     return (hasStrongPreviousCue ? 4 : 0) + (hasPreviousCue ? 1 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
   }
   if (mode === "previous_current") {
     const currentCue = hasCurrentCue && !hasStrongPreviousCue;
-    return (currentCue ? 4 : 0) + (hasLatestCue ? -2 : 0) + (hasNoLongerCue ? -1 : 0) + (invalidated ? -1 : 0);
+    return (currentCue ? 4 : 0) + (hasLatestCue ? -2 : 0) + (hasNoLongerCue ? -1 : 0) + (invalidated || notYetActive ? -1 : 0);
   }
   if (mode === "no_longer") {
     return (hasNoLongerCue ? 4 : 0) + (invalidated ? 2 : 0) + (hasCurrentCue ? -1 : 0);
@@ -972,6 +998,16 @@ function temporalStateScore(
     return (hasLatestCue ? 5 : 0) + (hasCurrentCue ? 2 : 0);
   }
   return hasSpecificTemporalAnswerCue(query) ? (hasCurrentCue || hasPreviousCue || hasNoLongerCue ? 1 : 0) : 0;
+}
+
+function temporalTopicOverlapScore(query: string, observation: Record<string, unknown> | undefined): number {
+  const text = observationTemporalText(observation);
+  if (!text) return 0;
+  const tokens = [...new Set(buildSearchTokens(query)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 3 && !STATUS_SUMMARY_STOPWORDS.has(token)))];
+  if (tokens.length === 0) return 0;
+  return tokens.filter((token) => text.includes(token)).length / tokens.length;
 }
 
 function isLatestInteractionIntent(query: string): boolean {
@@ -1732,9 +1768,10 @@ export class ObservationStore {
     return nextSql;
   }
 
-  private loadSupersededObservationIds(ids: string[]): Set<string> {
+  private loadSupersededObservationIds(ids: string[], asOf?: string): Set<string> {
     const superseded = new Set<string>();
     if (ids.length === 0) return superseded;
+    const effectiveAt = asOf ?? new Date().toISOString();
 
     try {
       const MAX_BATCH = 500;
@@ -1744,9 +1781,12 @@ export class ObservationStore {
         const rows = this.deps.db
           .query(
             `SELECT to_observation_id FROM mem_links
-             WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
+             WHERE relation IN ('supersedes', 'superseded')
+               AND to_observation_id IN (${placeholders})
+               AND (valid_from IS NULL OR julianday(valid_from) <= julianday(?))
+               AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))`
           )
-          .all(...batch) as Array<{ to_observation_id: string }>;
+          .all(...batch, effectiveAt, effectiveAt) as Array<{ to_observation_id: string }>;
         for (const row of rows) {
           if (typeof row.to_observation_id === "string" && row.to_observation_id) {
             superseded.add(row.to_observation_id);
@@ -3375,7 +3415,7 @@ export class ObservationStore {
     // mode, so e.g. `previous` queries with no cue match were re-sorted by
     // anchor time alone, pushing the actually-relevant obs out of the top-K.
     if (
-      temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id)) === 0)
+      temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id), request.as_of) === 0)
     ) {
       return;
     }
@@ -3383,9 +3423,15 @@ export class ObservationStore {
     temporalCandidates.sort((lhs, rhs) => {
       const lhsObs = observations.get(lhs.id);
       const rhsObs = observations.get(rhs.id);
-      const lhsState = temporalStateScore(request.query, mode, lhsObs);
-      const rhsState = temporalStateScore(request.query, mode, rhsObs);
+      const lhsState = temporalStateScore(request.query, mode, lhsObs, request.as_of);
+      const rhsState = temporalStateScore(request.query, mode, rhsObs, request.as_of);
       if (rhsState !== lhsState) return rhsState - lhsState;
+
+      if (request.as_of && (mode === "current" || mode === "previous_current")) {
+        const lhsTopic = temporalTopicOverlapScore(request.query, lhsObs);
+        const rhsTopic = temporalTopicOverlapScore(request.query, rhsObs);
+        if (rhsTopic !== lhsTopic) return rhsTopic - lhsTopic;
+      }
 
       const lhsAnchor = temporalAnchorForObservation(lhsObs) || lhs.created_at;
       const rhsAnchor = temporalAnchorForObservation(rhsObs) || rhs.created_at;
@@ -3673,7 +3719,7 @@ export class ObservationStore {
           )
           .some((token) => combined.includes(token));
         const previousStatusSummary = this.isPreviousStatusSummaryAnswer(request, anchor, row);
-        let anchorScore = temporalStateScore(request.query, anchorMode, row);
+        let anchorScore = temporalStateScore(request.query, anchorMode, row, request.as_of);
         if (anchor.direction === "desc") {
           if (previousStatusSummary) anchorScore += 8;
           if (anchorMode === "previous_current" && hasStrongPreviousCue) anchorScore += 5;
@@ -4170,15 +4216,19 @@ export class ObservationStore {
       try {
         const MAX_BATCH = 500;
         const allCandidates = [...candidateIds];
+        const effectiveAt = request.as_of ?? new Date().toISOString();
         for (let i = 0; i < allCandidates.length; i += MAX_BATCH) {
           const batch = allCandidates.slice(i, i + MAX_BATCH);
           const placeholders = batch.map(() => "?").join(", ");
           const updatedRows = this.deps.db
             .query(
               `SELECT to_observation_id FROM mem_links
-               WHERE relation IN ('updates', 'superseded') AND to_observation_id IN (${placeholders})`
+               WHERE relation IN ('updates', 'superseded')
+                 AND to_observation_id IN (${placeholders})
+                 AND (valid_from IS NULL OR julianday(valid_from) <= julianday(?))
+                 AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))`
             )
-            .all(...batch) as Array<{ to_observation_id: string }>;
+            .all(...batch, effectiveAt, effectiveAt) as Array<{ to_observation_id: string }>;
           for (const row of updatedRows) {
             updatedObsIds.add(row.to_observation_id);
           }
@@ -4495,7 +4545,7 @@ export class ObservationStore {
     // superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
     // include_superseded=false → 除外。デフォルト(true) → rank を 0.5 倍に下げ、後方に沈める。
     const includeSuperseeded = request.include_superseded !== false; // default: true
-    const supersededObsIds = this.loadSupersededObservationIds(rankedAfterRerank.map((r) => r.id));
+    const supersededObsIds = this.loadSupersededObservationIds(rankedAfterRerank.map((r) => r.id), request.as_of);
 
     // superseded 観察を除外 or rank 下げ
     let finalRanked = rankedAfterRerank;

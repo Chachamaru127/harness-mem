@@ -20,9 +20,9 @@
  *     contradiction adjudication is the first real caller of that path.
  *
  * Design constraints:
- *   - No mutation outside adding mem_links rows. We never delete or rewrite
- *     the older observation; downstream ranking is expected to prefer the
- *     newer row via the existing link-aware logic.
+ *   - We never delete or rewrite the older observation content. Confirmed
+ *     contradictions add a mem_links row and fill only temporal invalidation
+ *     metadata (`valid_to` / `invalidated_at`) on the older observation.
  *   - `INSERT OR IGNORE` on mem_links means re-running the detector is
  *     idempotent. The uniqueness of (from, to, relation) is already a
  *     schema-level unique index.
@@ -105,6 +105,28 @@ interface GroupRow {
   observation_id: string;
   content: string;
   created_at: string;
+}
+
+interface ObservationRow {
+  id?: string;
+  content_redacted?: string;
+  event_time?: string | null;
+  observed_at?: string | null;
+  valid_from?: string | null;
+  created_at?: string;
+}
+
+function supersessionValidTo(row: ObservationRow): string {
+  return row.valid_from || row.event_time || row.observed_at || row.created_at || new Date().toISOString();
+}
+
+function isBackdatedSupersession(expiringRow: ObservationRow, replacementStart: string): boolean {
+  const expiringStart = supersessionValidTo(expiringRow);
+  const expiringStartMs = Date.parse(expiringStart);
+  const replacementStartMs = Date.parse(replacementStart);
+  return Number.isFinite(expiringStartMs) &&
+    Number.isFinite(replacementStartMs) &&
+    replacementStartMs < expiringStartMs;
 }
 
 /**
@@ -257,11 +279,11 @@ export async function detectContradictions(
 
   for (const pair of pending) {
     const aRow = (db
-      .query(`SELECT id, content_redacted, created_at FROM mem_observations WHERE id = ?`)
-      .get(pair.older_id) as { id?: string; content_redacted?: string; created_at?: string } | null);
+      .query(`SELECT id, content_redacted, event_time, observed_at, valid_from, created_at FROM mem_observations WHERE id = ?`)
+      .get(pair.older_id) as ObservationRow | null);
     const bRow = (db
-      .query(`SELECT id, content_redacted, created_at FROM mem_observations WHERE id = ?`)
-      .get(pair.newer_id) as { id?: string; content_redacted?: string; created_at?: string } | null);
+      .query(`SELECT id, content_redacted, event_time, observed_at, valid_from, created_at FROM mem_observations WHERE id = ?`)
+      .get(pair.newer_id) as ObservationRow | null);
     if (!aRow || !bRow) continue;
 
     const verdict = await adjudicate(
@@ -286,12 +308,59 @@ export async function detectContradictions(
   if (confirmed.length > 0) {
     const nowIso = new Date().toISOString();
     const stmt = db.prepare(
-      `INSERT OR IGNORE INTO mem_links(from_observation_id, to_observation_id, relation, weight, created_at)
-       VALUES (?, ?, 'superseded', 1.0, ?)`
+      `INSERT OR IGNORE INTO mem_links(
+         from_observation_id, to_observation_id, relation, weight,
+         event_time, observed_at, valid_from, supersedes, created_at
+       )
+       VALUES (?, ?, 'superseded', 1.0, ?, ?, ?, ?, ?)`
+    );
+    const expireStmt = db.prepare(
+      `UPDATE mem_observations
+          SET valid_to = CASE
+                WHEN valid_to IS NULL OR julianday(valid_to) IS NULL OR julianday(?) < julianday(valid_to) THEN ?
+                ELSE valid_to
+              END,
+              updated_at = ?
+        WHERE id = ?
+          AND (valid_to IS NULL OR julianday(valid_to) IS NULL OR julianday(?) < julianday(valid_to))`
+    );
+    const invalidateStmt = db.prepare(
+      `UPDATE mem_observations
+          SET valid_to = CASE
+                WHEN valid_to IS NULL OR julianday(valid_to) IS NULL OR julianday(?) < julianday(valid_to) THEN ?
+                ELSE valid_to
+              END,
+              invalidated_at = COALESCE(invalidated_at, ?),
+              updated_at = ?
+        WHERE id = ?
+          AND (
+            valid_to IS NULL
+            OR julianday(valid_to) IS NULL
+            OR julianday(?) < julianday(valid_to)
+            OR invalidated_at IS NULL
+          )`
     );
     for (const pair of confirmed) {
-      const res = stmt.run(pair.newer_id, pair.older_id, nowIso) as { changes?: number };
+      const expiringRow = db
+        .query(`SELECT event_time, observed_at, valid_from, created_at FROM mem_observations WHERE id = ?`)
+        .get(pair.older_id) as ObservationRow | null;
+      const newerRow = db
+        .query(`SELECT event_time, observed_at, valid_from, created_at FROM mem_observations WHERE id = ?`)
+        .get(pair.newer_id) as ObservationRow | null;
+      const validTo = newerRow ? supersessionValidTo(newerRow) : nowIso;
+      if (expiringRow && isBackdatedSupersession(expiringRow, validTo)) {
+        continue;
+      }
+      const validToMs = Date.parse(validTo);
+      const nowMs = Date.parse(nowIso);
+      const isEffective = !Number.isFinite(validToMs) || !Number.isFinite(nowMs) || validToMs <= nowMs;
+      const res = stmt.run(pair.newer_id, pair.older_id, validTo, nowIso, validTo, pair.older_id, nowIso) as { changes?: number };
       if ((res.changes ?? 0) > 0) linksCreated += 1;
+      if (!isEffective) {
+        expireStmt.run(validTo, validTo, nowIso, pair.older_id, validTo);
+        continue;
+      }
+      invalidateStmt.run(validTo, validTo, nowIso, nowIso, pair.older_id, validTo);
     }
   }
 

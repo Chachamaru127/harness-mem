@@ -848,6 +848,68 @@ describe("observation-store: search", () => {
     expect((timeline.meta.temporal_state_counts as Record<string, number>).current).toBeGreaterThanOrEqual(1);
   });
 
+  test("temporal current rerank treats future valid_to as still active for as_of", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-db-current-before-cutover",
+      title: "database current value",
+      content: "Current database engine is MySQL.",
+      project: "proj-temporal-asof-current",
+      event_time: "2026-01-01T00:00:00.000Z",
+      observed_at: "2026-01-01T00:00:00.000Z",
+      valid_to: "2026-01-10T00:00:00.000Z",
+      created_at: "2026-01-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-roadmap-current-asof",
+      title: "roadmap current value",
+      content: "Current roadmap status is active.",
+      project: "proj-temporal-asof-current",
+      event_time: "2026-01-02T00:00:00.000Z",
+      observed_at: "2026-01-02T00:00:00.000Z",
+      created_at: "2026-01-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-db-future-cutover",
+      title: "database future current value",
+      content: "Current database engine is PostgreSQL.",
+      project: "proj-temporal-asof-current",
+      event_time: "2026-01-10T00:00:00.000Z",
+      observed_at: "2026-01-03T00:00:00.000Z",
+      valid_from: "2026-01-10T00:00:00.000Z",
+      created_at: "2026-01-03T00:00:00.000Z",
+    });
+
+    const beforeCutover = store.search({
+      query: "What is the current database engine?",
+      project: "proj-temporal-asof-current",
+      strict_project: true,
+      question_kind: "timeline",
+      as_of: "2026-01-05T00:00:00.000Z",
+      limit: 5,
+    });
+
+    expect(beforeCutover.ok).toBe(true);
+    expect((beforeCutover.items[0] as Record<string, unknown>).id).toBe("obs-temporal-db-current-before-cutover");
+    expect((beforeCutover.items[0] as Record<string, unknown>).temporal_state).not.toBe("superseded");
+    const futureBeforeCutover = (beforeCutover.items as Array<Record<string, unknown>>)
+      .find((item) => item.id === "obs-temporal-db-future-cutover");
+    expect(futureBeforeCutover?.temporal_state).toBe("unknown");
+
+    const afterCutover = store.search({
+      query: "What is the current database engine?",
+      project: "proj-temporal-asof-current",
+      strict_project: true,
+      question_kind: "timeline",
+      as_of: "2026-01-15T00:00:00.000Z",
+      limit: 5,
+    });
+
+    expect(afterCutover.ok).toBe(true);
+    expect((afterCutover.items[0] as Record<string, unknown>).id).toBe("obs-temporal-db-future-cutover");
+    expect((afterCutover.items[0] as Record<string, unknown>).temporal_state).toBe("current");
+  });
+
   test("空クエリでもエラーにならない（ok=false）", () => {
     const { store } = makeStore();
     const res = store.search({ query: "", project: "proj-obs" });
