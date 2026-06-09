@@ -141,12 +141,12 @@ function parseTimeMs(value: string | null | undefined): number | null {
 }
 
 function temporalAnchorMs(row: { event_time: string | null; observed_at: string | null; valid_from: string | null; created_at: string }): number {
-  return parseTimeMs(row.event_time ?? row.valid_from ?? row.observed_at ?? row.created_at) ?? parseTimeMs(row.created_at) ?? 0;
+  return parseTimeMs(row.valid_from ?? row.event_time ?? row.observed_at ?? row.created_at) ?? parseTimeMs(row.created_at) ?? 0;
 }
 
 function isLikelySinglePlannedStatement(text: string): boolean {
   const parts = text
-    .split(/[\n。.!?;；,、，・/／]+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+/i)
+    .split(/[\n。.!?;；,、，・]+|\s+[\/／]\s+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+/i)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   return parts.length <= 1;
@@ -1010,8 +1010,8 @@ async function runDreamingTenseRewrite(
       if (!rewrite?.changed || rewrite.false_positive || rewrite.mixed || !rewrite.rewritten.trim()) continue;
 
       const current = nowIso();
-      const plannedAnchor = planned.event_time ?? planned.valid_from ?? planned.observed_at ?? planned.created_at ?? current;
-      const evidenceAnchor = evidence.event_time ?? evidence.valid_from ?? evidence.observed_at ?? evidence.created_at ?? current;
+      const plannedAnchor = planned.valid_from ?? planned.event_time ?? planned.observed_at ?? planned.created_at ?? current;
+      const evidenceAnchor = evidence.valid_from ?? evidence.event_time ?? evidence.observed_at ?? evidence.created_at ?? current;
       const plannedMs = parseTimeMs(plannedAnchor) ?? Number.NEGATIVE_INFINITY;
       const evidenceMs = parseTimeMs(evidenceAnchor) ?? Date.parse(current);
       const candidateMs = parseTimeMs(rewrite.completed_at);

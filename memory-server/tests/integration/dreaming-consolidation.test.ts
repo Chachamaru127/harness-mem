@@ -433,6 +433,46 @@ describe("S154-201 dreaming consolidation job", () => {
     }
   });
 
+  test("dreaming tense rewrite accepts a single planned action containing an API path", async () => {
+    mockOllamaRewrite({
+      changed: true,
+      false_positive: false,
+      rewritten: "The /api/search route was updated.",
+      completed_at: "2026-06-09T10:00:00.000Z",
+      reason: "Evidence says updated.",
+    });
+
+    const core = new HarnessMemCore(createConfig("tense-path-single"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-path-single",
+        session_id: "s-path-single",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will update /api/search tomorrow." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-path-single",
+        session_id: "s-path-single",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "Updated /api/search. completed." },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-path-single", session_id: "s-path-single", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("dreaming tense rewrite keeps current-session rows even when project-wide recency cap is full", async () => {
     mockOllamaRewrite({
       changed: true,
@@ -1245,6 +1285,44 @@ describe("S154-201 dreaming consolidation job", () => {
         .get() as { valid_to: string | null; invalidated_at: string | null };
       expect(source.valid_to).toBeNull();
       expect(source.invalidated_at).toBeNull();
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("dreaming tense rewrite treats future valid_from as effective time even when event_time is present", async () => {
+    globalThis.fetch = async (): Promise<Response> => {
+      throw new Error("future-effective completion with event_time should not be sent to tense rewrite");
+    };
+
+    const core = new HarnessMemCore(createConfig("tense-future-valid-from-event-time"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-future-valid-from-event-time",
+        session_id: "s-future-valid-from-event-time",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will submit the GearChange API spec on Friday." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-future-valid-from-event-time",
+        session_id: "s-future-valid-from-event-time",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        event_time: "2026-06-09T10:00:00.000Z",
+        valid_from: "2030-06-12T10:00:00.000Z",
+        payload: { prompt: "Submitted the GearChange API spec. 完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-future-valid-from-event-time", session_id: "s-future-valid-from-event-time", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
     } finally {
       core.shutdown("test");
     }
