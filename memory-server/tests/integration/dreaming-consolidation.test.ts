@@ -388,6 +388,51 @@ describe("S154-201 dreaming consolidation job", () => {
     }
   });
 
+  test("dreaming tense rewrite accepts a Japanese single planned statement with particle de", async () => {
+    mockOllamaRewrite({
+      changed: true,
+      false_positive: false,
+      rewritten: "本番環境APIを提出済みです。",
+      completed_at: "2026-06-09T10:00:00.000Z",
+      reason: "Evidence says submitted.",
+    });
+
+    const core = new HarnessMemCore(createConfig("tense-ja-single-de"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-ja-single-de",
+        session_id: "s-ja-single-de",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "本番環境でAPIを提出する予定です" },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-ja-single-de",
+        session_id: "s-ja-single-de",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "本番環境のAPIを提出済み。完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-ja-single-de", session_id: "s-ja-single-de", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
+
+      const row = core.getRawDb()
+        .query(`SELECT content_redacted FROM mem_observations WHERE platform = 'dreaming'`)
+        .get() as { content_redacted: string };
+      expect(row.content_redacted).toContain("提出済み");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("dreaming tense rewrite keeps current-session rows even when project-wide recency cap is full", async () => {
     mockOllamaRewrite({
       changed: true,

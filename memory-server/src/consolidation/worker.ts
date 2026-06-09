@@ -146,7 +146,7 @@ function temporalAnchorMs(row: { event_time: string | null; observed_at: string 
 
 function isLikelySinglePlannedStatement(text: string): boolean {
   const parts = text
-    .split(/[\n。.!?;；,、，・/／]+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+|で/i)
+    .split(/[\n。.!?;；,、，・/／]+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+/i)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   return parts.length <= 1;
