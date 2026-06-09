@@ -683,14 +683,15 @@ describe("S154-201 dreaming consolidation job", () => {
         .query(`SELECT id FROM mem_observations WHERE content_redacted LIKE '%will submit%' LIMIT 1`)
         .get() as { id: string };
       const createdAt = "2026-06-08T10:00:00.000Z";
+      const futureValidTo = "2030-01-01T00:00:00.000Z";
       db.query(`
         INSERT INTO mem_facts(
           fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value,
-          confidence, created_at, updated_at
+          confidence, valid_to, created_at, updated_at
         ) VALUES
-          ('fact_action_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'action', 'GearChange API spec', 'submit on Friday', 0.9, ?, ?),
-          ('fact_unrelated_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'decision', 'database engine', 'PostgreSQL', 0.9, ?, ?)
-      `).run(planned.id, createdAt, createdAt, planned.id, createdAt, createdAt);
+          ('fact_action_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'action', 'GearChange API spec', 'submit on Friday', 0.9, ?, ?, ?),
+          ('fact_unrelated_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'decision', 'database engine', 'PostgreSQL', 0.9, ?, ?, ?)
+      `).run(planned.id, futureValidTo, createdAt, createdAt, planned.id, futureValidTo, createdAt, createdAt);
 
       const stats = await core.runConsolidation({ project: "dream-fact-mixed", session_id: "s-fact-mixed", reason: "dreaming" });
       expect(stats.ok).toBe(true);
@@ -701,7 +702,7 @@ describe("S154-201 dreaming consolidation job", () => {
         .query(`SELECT fact_id, valid_to, invalidated_at FROM mem_facts WHERE observation_id = ? ORDER BY fact_id`)
         .all(planned.id) as Array<{ fact_id: string; valid_to: string | null; invalidated_at: string | null }>;
       expect(facts).toHaveLength(2);
-      expect(facts.every((fact) => fact.valid_to === null && fact.invalidated_at === null)).toBe(true);
+      expect(facts.every((fact) => fact.valid_to === futureValidTo && fact.invalidated_at === null)).toBe(true);
     } finally {
       core.shutdown("test");
     }

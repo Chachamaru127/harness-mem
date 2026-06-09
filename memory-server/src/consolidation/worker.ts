@@ -370,7 +370,7 @@ function loadActiveFactsForObservation(db: Database, observationId: string): Dre
           AND merged_into_fact_id IS NULL
           AND superseded_by IS NULL
           AND invalidated_at IS NULL
-          AND valid_to IS NULL
+          AND (valid_to IS NULL OR julianday(valid_to) > julianday('now'))
       `
     )
     .all(observationId) as DreamingFactRow[];
