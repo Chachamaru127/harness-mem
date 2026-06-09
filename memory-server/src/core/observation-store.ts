@@ -670,6 +670,8 @@ const AFTER_CUE_PATTERN = /\b(after|right after|following|since)\b/i;
 const BEFORE_CUE_PATTERN = /\b(before|prior to|until)\b/i;
 const CURRENT_SLOT_ONLY_PATTERN = /\b(default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
+const STRONG_PREVIOUS_VALUE_CUE_PATTERN =
+  /\b(previous|previously|former|formerly|prior|earlier|used to|old)\b|(以前|前の|前回|前は|もともと|元は|当初|当時)/;
 const EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old)\b/i;
 const PREVIOUS_STATUS_TEXT_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old|before)\b/i;
 const STATUS_SUMMARY_CUE_PATTERN = /\b(status|latest|current)\b/i;
@@ -722,6 +724,10 @@ function hasPreviousValueIntent(query: string): boolean {
   return PREVIOUS_CUE_PATTERN.test(query) || JAPANESE_PREVIOUS_PATTERN.test(query);
 }
 
+function hasStrongPreviousValueCue(text: string): boolean {
+  return STRONG_PREVIOUS_VALUE_CUE_PATTERN.test(text);
+}
+
 function hasExplicitPreviousStatusIntent(query: string): boolean {
   return EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN.test(query) ||
     /(以前|前の|前回|前は|もともと|元は|当初|当時)/.test(query);
@@ -741,6 +747,11 @@ function hasSpecificTemporalAnswerCue(query: string): boolean {
   }
   return /\b(first|last|before|after|since|until|when|what year|what month|what date|earliest|latest)\b/i.test(query) ||
     /(どちらが先|先に|最後|最初|いつ|何時|その後|あとで|後で|直後|の前|の後|以前|以降)/.test(query);
+}
+
+function hasGenericTemporalEventIntent(query: string): boolean {
+  return /\b(what happened|what occurred|what came|what was done)\b/i.test(query) ||
+    /(何が起き|何があ|何を確認|どうなった)/.test(query);
 }
 
 function prefersDescendingTemporalOrder(query: string): boolean {
@@ -782,6 +793,32 @@ function observationTemporalText(observation: Record<string, unknown> | undefine
   if (!observation) return "";
   const raw = `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`;
   return boundRerankText(raw).toLowerCase();
+}
+
+function anchorReferenceOverlap(anchor: TemporalAnchor, text: string): number {
+  const simpleTokens = (anchor.referenceText.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((token) => (token.length >= 2 || /\d/.test(token)) && !STATUS_SUMMARY_STOPWORDS.has(token));
+  const versionTokens = simpleTokens.filter((token) => /\d/.test(token));
+  const nonNumericTokens = simpleTokens.filter((token) => !/\d/.test(token));
+  if (versionTokens.length > 0) {
+    const textTokenSet = new Set(text.match(/[a-z0-9]+/g) ?? []);
+    const numericHit = versionTokens.some((token) => textTokenSet.has(token));
+    if (!numericHit) return 0;
+    const nonNumericHits = nonNumericTokens.filter((token) => textTokenSet.has(token)).length;
+    if (nonNumericTokens.length > 0 && nonNumericHits === 0) return 0;
+    return (1 + nonNumericHits) / (1 + nonNumericTokens.length);
+  }
+  if (simpleTokens.length >= 2) {
+    const phrase = simpleTokens.slice(0, 2).join(" ");
+    if (text.includes(phrase)) return 1;
+  }
+  const tokens = buildSearchTokens(anchor.referenceText)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 3 && !STATUS_SUMMARY_STOPWORDS.has(token));
+  const uniqueTokens = [...new Set(tokens)];
+  if (uniqueTokens.length === 0) return 0;
+  const hits = uniqueTokens.filter((token) => text.includes(token)).length;
+  return hits / uniqueTokens.length;
 }
 
 type TemporalPlannerMode = "current" | "previous" | "previous_current" | "no_longer" | "after" | "before" | "first" | "latest" | "chronology";
@@ -880,10 +917,10 @@ function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   // duration 系は chronology にフォールバックさせる。
   const isDurationQuestion = /\bhow long\b[\s\S]*\blast(ed|s|ing)?\b/.test(normalized);
   if (hasNoLongerIntent(query)) return "no_longer";
-  if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\b(now|before)\b/i.test(query) || /(現在|今)/.test(query))) {
+  if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\bnow\b/i.test(query) || /(現在|今)/.test(query))) {
     return "previous_current";
   }
-  if (hasPreviousValueIntent(query)) return "previous";
+  if (hasPreviousValueIntent(query) && !hasGenericTemporalEventIntent(query)) return "previous";
   if (AFTER_CUE_PATTERN.test(query) || /(直後|その後|以降|の後|後で|あとで)/.test(query)) return "after";
   if (BEFORE_CUE_PATTERN.test(query) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(query)) return "before";
   if (FIRST_CUE_PATTERN.test(query) || /(最初|初回|当初)/.test(query)) return "first";
@@ -902,6 +939,7 @@ function temporalStateScore(
   const invalidated = Boolean(observation?.invalidated_at || observation?.valid_to);
   const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text) || STILL_CUE_PATTERN.test(text) || JAPANESE_STILL_PATTERN.test(text);
   const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
+  const hasStrongPreviousCue = hasStrongPreviousValueCue(text);
   const hasNoLongerCue = NO_LONGER_CUE_PATTERN.test(text) || JAPANESE_NO_LONGER_PATTERN.test(text);
   const hasFirstCue = FIRST_CUE_PATTERN.test(text) || /(最初|初回|当初)/.test(text);
   const hasLatestCue = LATEST_CUE_PATTERN.test(text) || /(最後|最新|直近|最近)/.test(text);
@@ -912,10 +950,11 @@ function temporalStateScore(
     return (invalidated ? -2 : 2) + (hasCurrentCue ? 3 : 0);
   }
   if (mode === "previous") {
-    return (hasPreviousCue ? 3 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
+    return (hasStrongPreviousCue ? 4 : 0) + (hasPreviousCue ? 1 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
   }
   if (mode === "previous_current") {
-    return (hasPreviousCue ? 3 : 0) + (hasCurrentCue || hasLatestCue ? 2 : 0) + (invalidated ? -1 : 0);
+    const currentCue = hasCurrentCue && !hasStrongPreviousCue;
+    return (currentCue ? 4 : 0) + (hasLatestCue ? -2 : 0) + (hasNoLongerCue ? -1 : 0) + (invalidated ? -1 : 0);
   }
   if (mode === "no_longer") {
     return (hasNoLongerCue ? 4 : 0) + (invalidated ? 2 : 0) + (hasCurrentCue ? -1 : 0);
@@ -3426,8 +3465,49 @@ export class ObservationStore {
       }
 
       if (!anchorId) {
-        anchorId = rankedAnchorIds[0] ?? null;
-        anchorObs = anchorId ? this.loadTemporalAnchorObservation(anchorId) : null;
+        const anchorModeForSelection = resolveTemporalPlannerMode(request.query);
+        const preferLatestReferenceAnchor =
+          anchor.direction === "desc" &&
+          !hasGenericTemporalEventIntent(request.query) &&
+          (anchorModeForSelection === "previous" ||
+            anchorModeForSelection === "previous_current" ||
+            hasExplicitPreviousStatusIntent(request.query));
+        const anchorRows = rankedAnchorIds
+          .slice(0, ANCHOR_SEARCH_LIMIT)
+          .map((id) => {
+            const row = this.loadTemporalAnchorObservation(id);
+            const text = observationTemporalText(row ?? undefined);
+            const normalizedReference = anchor.referenceText.toLowerCase().replace(/\s+/g, " ").trim();
+            const normalizedTitle = String(row?.title ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+            return {
+              id,
+              row,
+              referenceOverlap: anchorReferenceOverlap(anchor, text),
+              referenceTitleScore: normalizedTitle === normalizedReference
+                ? 3
+                : normalizedTitle.includes(normalizedReference)
+                  ? 2
+                  : 0,
+              anchorTime: String(row?.temporal_anchor ?? row?.created_at ?? ""),
+            };
+          })
+          .filter((entry) => entry.row);
+        const bestReferenceMatch = anchorRows
+          .filter((entry) => entry.referenceOverlap > 0)
+          .sort((lhs, rhs) => {
+            if (anchor.direction === "desc" && preferLatestReferenceAnchor) {
+              if (rhs.referenceOverlap !== lhs.referenceOverlap) return rhs.referenceOverlap - lhs.referenceOverlap;
+              return rhs.anchorTime.localeCompare(lhs.anchorTime);
+            }
+            if (rhs.referenceTitleScore !== lhs.referenceTitleScore) {
+              return rhs.referenceTitleScore - lhs.referenceTitleScore;
+            }
+            const timeCmp = lhs.anchorTime.localeCompare(rhs.anchorTime);
+            if (timeCmp !== 0) return timeCmp;
+            return rhs.referenceOverlap - lhs.referenceOverlap;
+          })[0];
+        anchorId = bestReferenceMatch?.id ?? rankedAnchorIds[0] ?? null;
+        anchorObs = bestReferenceMatch?.row ?? (anchorId ? this.loadTemporalAnchorObservation(anchorId) : null);
       }
 
       // §35 SD-005: anchor 未検出時フォールバック — direction ベースの時間軸ソートで結果を返す
@@ -3567,6 +3647,7 @@ export class ObservationStore {
 
       // S43-005: query との lexical 関連性でスコアリングして top-3 quality candidate を保証する
       const queryTokens = buildSearchTokens(request.query);
+      const anchorMode = resolveTemporalPlannerMode(request.query);
       const scored = candidateRows.map((row) => {
         const titleText = typeof row.title === "string" ? row.title.toLowerCase() : "";
         const contentText =
@@ -3576,21 +3657,72 @@ export class ObservationStore {
         for (const token of queryTokens) {
           if (combined.includes(token.toLowerCase())) relevanceScore += 1;
         }
-        return { row, relevanceScore, created_at: String(row.temporal_anchor ?? row.created_at ?? "") };
+        const hasCurrentCue = CURRENT_CUE_PATTERN.test(combined) || JAPANESE_CURRENT_PATTERN.test(combined);
+        const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(combined) || JAPANESE_PREVIOUS_PATTERN.test(combined);
+        const hasStrongPreviousCue = hasStrongPreviousValueCue(combined);
+        const hasAfterCue = AFTER_CUE_PATTERN.test(combined) || /(直後|その後|以降|の後|後で|あとで)/.test(combined);
+        const hasBeforeCue = BEFORE_CUE_PATTERN.test(combined) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(combined);
+        const referenceOverlap = anchorReferenceOverlap(anchor, combined);
+        const topicalQueryOverlap = queryTokens
+          .map((token) => token.toLowerCase())
+          .filter(
+            (token) =>
+              token.length >= 3 &&
+              !STATUS_SUMMARY_STOPWORDS.has(token) &&
+              !["before", "after", "current", "previous", "previously", "happened", "occurred", "became"].includes(token),
+          )
+          .some((token) => combined.includes(token));
+        const previousStatusSummary = this.isPreviousStatusSummaryAnswer(request, anchor, row);
+        let anchorScore = temporalStateScore(request.query, anchorMode, row);
+        if (anchor.direction === "desc") {
+          if (previousStatusSummary) anchorScore += 8;
+          if (anchorMode === "previous_current" && hasStrongPreviousCue) anchorScore += 5;
+          else if (anchorMode !== "previous_current" && hasStrongPreviousCue) anchorScore += 4;
+          else if (hasPreviousCue) anchorScore += 1;
+          if (anchorMode === "previous_current" && hasCurrentCue && !hasStrongPreviousCue && referenceOverlap < 0.5 && topicalQueryOverlap) {
+            anchorScore += 6;
+          }
+          if (referenceOverlap >= 0.5 && !hasStrongPreviousCue && !previousStatusSummary) anchorScore -= 4;
+          if (hasAfterCue) anchorScore -= 3;
+        } else if (anchor.direction === "asc") {
+          if (hasAfterCue) anchorScore += 6;
+          if (hasBeforeCue) anchorScore -= 4;
+          if (referenceOverlap >= 0.5) anchorScore += 1;
+        }
+        return {
+          row,
+          relevanceScore,
+          anchorScore,
+          created_at: String(row.temporal_anchor ?? row.created_at ?? ""),
+        };
       });
 
       const withRelevance = scored.filter((s) => s.relevanceScore > 0);
       const withoutRelevance = scored.filter((s) => s.relevanceScore === 0);
       const directionMultiplier = anchor.direction === "desc" ? -1 : 1;
+      const preferCueScoreOverChronology =
+        anchor.direction === "desc" &&
+        !hasGenericTemporalEventIntent(request.query) &&
+        (anchorMode === "previous" ||
+          anchorMode === "previous_current" ||
+          hasExplicitPreviousStatusIntent(request.query));
       // S43-FIX: temporal ordering では created_at を主キーにし、
       // relevanceScore は tie-breaking に留める（時系列順序を保護）
       withRelevance.sort((a, b) => {
+        if (preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
         const timeCmp = directionMultiplier * a.created_at.localeCompare(b.created_at);
         if (timeCmp !== 0) return timeCmp;
+        if (!preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
         return b.relevanceScore - a.relevanceScore;
       });
       withoutRelevance.sort(
-        (a, b) => directionMultiplier * a.created_at.localeCompare(b.created_at)
+        (a, b) => {
+          if (preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
+          const timeCmp = directionMultiplier * a.created_at.localeCompare(b.created_at);
+          if (timeCmp !== 0) return timeCmp;
+          if (!preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
+          return 0;
+        }
       );
       const anchorSelf = includeAnchorSelf
         ? [{
@@ -3753,6 +3885,9 @@ export class ObservationStore {
     }
 
     if (anchor.direction === "desc") {
+      if (hasPreviousValueIntent(request.query) && !hasGenericTemporalEventIntent(request.query)) {
+        return false;
+      }
       return (
         combined.includes("before ") ||
         combined.includes("以前") ||

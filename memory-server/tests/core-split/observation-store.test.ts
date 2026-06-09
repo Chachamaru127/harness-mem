@@ -310,6 +310,457 @@ describe("observation-store: search", () => {
     expect((noLonger.items[0] as Record<string, unknown>).id).toBe("obs-temporal-ci-migration");
   });
 
+  test("temporal previous status prefers explicit prior value over cutover prep", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-db-old",
+      title: "previous database engine",
+      content: "Previous database engine was MySQL. The first production database used MySQL with nightly backups.",
+      project: "proj-temporal-db",
+      event_time: "2024-02-01T08:00:00.000Z",
+      observed_at: "2024-02-01T08:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-db-cutover",
+      title: "database cutover prep",
+      content: "Before the PostgreSQL cutover, the team froze writes and verified a full MySQL backup.",
+      project: "proj-temporal-db",
+      event_time: "2024-02-12T10:00:00.000Z",
+      observed_at: "2024-02-12T10:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+
+    const previous = store.search({
+      query: "What database engine was used previously?",
+      project: "proj-temporal-db",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 3,
+    });
+    expect(previous.ok).toBe(true);
+    expect((previous.items[0] as Record<string, unknown>).id).toBe("obs-temporal-db-old");
+  });
+
+  test("anchored previous-value query keeps previous intent over before cue", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-mysql-previous",
+      title: "previous database engine",
+      content: "Previous database engine was MySQL.",
+      project: "proj-temporal-previous-before",
+      event_time: "2024-02-01T08:00:00.000Z",
+      observed_at: "2024-02-01T08:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-migration-prep",
+      title: "database migration prep",
+      content: "Before the migration, the team froze writes and verified a backup.",
+      project: "proj-temporal-previous-before",
+      event_time: "2024-02-12T10:00:00.000Z",
+      observed_at: "2024-02-12T10:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+
+    const previous = store.search({
+      query: "What was the previous database before the migration?",
+      project: "proj-temporal-previous-before",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(previous.ok).toBe(true);
+    expect((previous.items[0] as Record<string, unknown>).id).toBe("obs-temporal-mysql-previous");
+  });
+
+  test("temporal before-anchor query prefers the prior current value over anchor-transition rows", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-api-v1",
+      title: "first API version",
+      content: "The first public API version was API v1. Previous clients still used v1 at launch.",
+      project: "proj-temporal-api",
+      event_time: "2023-11-20T09:00:00.000Z",
+      observed_at: "2023-11-20T09:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-api-v2",
+      title: "API v2 current",
+      content: "API v2 became current after adding pagination and idempotency keys.",
+      project: "proj-temporal-api",
+      event_time: "2024-01-22T13:00:00.000Z",
+      observed_at: "2024-01-22T13:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-api-v3-transition",
+      title: "API v3 beta",
+      content: "Right after API v3 beta opened, partners validated webhook signatures and retry headers.",
+      project: "proj-temporal-api",
+      event_time: "2024-03-18T16:00:00.000Z",
+      observed_at: "2024-03-18T16:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-api-v3-latest",
+      title: "latest API status",
+      content: "Latest API status: API v3 is current, API v2 is previous, and API v1 is no longer supported.",
+      project: "proj-temporal-api",
+      event_time: "2024-04-30T18:00:00.000Z",
+      observed_at: "2024-04-30T18:00:00.000Z",
+      created_at: "2026-05-04T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What was current before API v3 became current?",
+      project: "proj-temporal-api",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-api-v2");
+  });
+
+  test("generic before-anchor query keeps the immediate predecessor chronological", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-roadmap",
+      title: "roadmap status",
+      content: "Current roadmap is active and tracked in the planning board.",
+      project: "proj-temporal-before",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-build",
+      title: "build completed",
+      content: "Build completed immediately before deployment.",
+      project: "proj-temporal-before",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-deploy",
+      title: "deployment",
+      content: "Deployment finished successfully.",
+      project: "proj-temporal-before",
+      event_time: "2024-02-02T00:00:00.000Z",
+      observed_at: "2024-02-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What happened before deployment?",
+      project: "proj-temporal-before",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-build");
+  });
+
+  test("generic before-anchor selection uses the original event instead of later mentions", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-predeploy",
+      title: "predeployment readiness",
+      content: "Readiness checks completed.",
+      project: "proj-temporal-before-mentions",
+      event_time: "2023-12-31T00:00:00.000Z",
+      observed_at: "2023-12-31T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-deployment-event",
+      title: "deployment",
+      content: "Deployment completed.",
+      project: "proj-temporal-before-mentions",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-smoke-after-deploy",
+      title: "smoke tests",
+      content: "Smoke tests passed after deployment.",
+      project: "proj-temporal-before-mentions",
+      event_time: "2024-01-02T00:00:00.000Z",
+      observed_at: "2024-01-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-deployment-postmortem",
+      title: "deployment postmortem",
+      content: "Deployment postmortem mentioned the smoke-test follow-up.",
+      project: "proj-temporal-before-mentions",
+      event_time: "2024-01-03T00:00:00.000Z",
+      observed_at: "2024-01-03T00:00:00.000Z",
+      created_at: "2026-05-04T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What happened before deployment?",
+      project: "proj-temporal-before-mentions",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-predeploy");
+  });
+
+  test("numeric anchor reference also requires a topical token match", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-2024-roadmap",
+      title: "2024 roadmap",
+      content: "The 2024 roadmap stayed active for the planning board.",
+      project: "proj-temporal-numeric-anchor",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-migration-prep",
+      title: "migration prep",
+      content: "Backup verification completed before the migration.",
+      project: "proj-temporal-numeric-anchor",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-migration",
+      title: "migration completed",
+      content: "Migration completed successfully.",
+      project: "proj-temporal-numeric-anchor",
+      event_time: "2024-03-01T00:00:00.000Z",
+      observed_at: "2024-03-01T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What happened before the 2024 migration?",
+      project: "proj-temporal-numeric-anchor",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-migration-prep");
+  });
+
+  test("generic before-anchor with previous in the anchor text stays chronological", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-old-previous-note",
+      title: "old previous note",
+      content: "Previous rollout notes stayed archived for reference.",
+      project: "proj-temporal-previous-anchor",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-build-before-previous-deploy",
+      title: "build before deployment",
+      content: "Build completed right before the previous deployment.",
+      project: "proj-temporal-previous-anchor",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-previous-deploy",
+      title: "previous deployment",
+      content: "The previous deployment finished successfully.",
+      project: "proj-temporal-previous-anchor",
+      event_time: "2024-02-02T00:00:00.000Z",
+      observed_at: "2024-02-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What happened before the previous deployment?",
+      project: "proj-temporal-previous-anchor",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-build-before-previous-deploy");
+  });
+
+  test("current-before anchor does not boost unrelated current rows", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-roadmap-current",
+      title: "roadmap current",
+      content: "Current roadmap is active for the planning board.",
+      project: "proj-temporal-current-before",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-db-prior",
+      title: "previous database before migration",
+      content: "Previous database was MySQL before the migration.",
+      project: "proj-temporal-current-before",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-db-migration",
+      title: "database migration",
+      content: "Migration completed and PostgreSQL became current.",
+      project: "proj-temporal-current-before",
+      event_time: "2024-02-02T00:00:00.000Z",
+      observed_at: "2024-02-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const before = store.search({
+      query: "What was current before the migration?",
+      project: "proj-temporal-current-before",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(before.ok).toBe(true);
+    expect((before.items[0] as Record<string, unknown>).id).toBe("obs-temporal-db-prior");
+  });
+
+  test("after-anchor selection uses the original event instead of later mentions", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-deploy",
+      title: "deployment",
+      content: "Deployment completed.",
+      project: "proj-temporal-after-anchor",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-smoke",
+      title: "smoke test",
+      content: "Smoke tests passed after deployment.",
+      project: "proj-temporal-after-anchor",
+      event_time: "2024-01-02T00:00:00.000Z",
+      observed_at: "2024-01-02T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-postmortem",
+      title: "deployment postmortem",
+      content: "Deployment postmortem mentioned the smoke-test follow-up.",
+      project: "proj-temporal-after-anchor",
+      event_time: "2024-01-03T00:00:00.000Z",
+      observed_at: "2024-01-03T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const after = store.search({
+      query: "What happened after deployment?",
+      project: "proj-temporal-after-anchor",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(after.ok).toBe(true);
+    expect((after.items[0] as Record<string, unknown>).id).toBe("obs-temporal-smoke");
+  });
+
+  test("single-digit numeric anchors distinguish adjacent phases", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-phase1",
+      title: "phase 1 migration",
+      content: "Phase 1 migration completed.",
+      project: "proj-temporal-phase-anchor",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-phase2",
+      title: "phase 2 migration",
+      content: "Phase 2 migration completed.",
+      project: "proj-temporal-phase-anchor",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-phase2-verify",
+      title: "phase 2 verification",
+      content: "Verification passed after Phase 2 migration.",
+      project: "proj-temporal-phase-anchor",
+      event_time: "2024-02-02T00:00:00.000Z",
+      observed_at: "2024-02-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const after = store.search({
+      query: "What happened after Phase 2 migration?",
+      project: "proj-temporal-phase-anchor",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(after.ok).toBe(true);
+    expect((after.items[0] as Record<string, unknown>).id).toBe("obs-temporal-phase2-verify");
+  });
+
+  test("standalone numeric anchors do not match adjacent larger numbers", () => {
+    const { store, db } = makeStore();
+    insertTestObservation(db, {
+      id: "obs-temporal-phase12",
+      title: "migration phase 12",
+      content: "Migration phase 12 completed.",
+      project: "proj-temporal-token-anchor",
+      event_time: "2024-01-01T00:00:00.000Z",
+      observed_at: "2024-01-01T00:00:00.000Z",
+      created_at: "2026-05-01T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-token-phase2",
+      title: "second migration phase",
+      content: "Phase 2 migration completed.",
+      project: "proj-temporal-token-anchor",
+      event_time: "2024-02-01T00:00:00.000Z",
+      observed_at: "2024-02-01T00:00:00.000Z",
+      created_at: "2026-05-02T00:00:00.000Z",
+    });
+    insertTestObservation(db, {
+      id: "obs-temporal-token-phase2-verify",
+      title: "phase 2 verification",
+      content: "Verification passed after the second migration phase.",
+      project: "proj-temporal-token-anchor",
+      event_time: "2024-02-02T00:00:00.000Z",
+      observed_at: "2024-02-02T00:00:00.000Z",
+      created_at: "2026-05-03T00:00:00.000Z",
+    });
+
+    const after = store.search({
+      query: "What happened after Phase 2 migration?",
+      project: "proj-temporal-token-anchor",
+      strict_project: true,
+      question_kind: "timeline",
+      limit: 5,
+    });
+    expect(after.ok).toBe(true);
+    expect((after.items[0] as Record<string, unknown>).id).toBe("obs-temporal-token-phase2-verify");
+  });
+
   test("temporal when-query on comma-heavy English prose completes without span-extraction hang", () => {
     const { store, db } = makeStore();
     const commaHeavy = Array.from({ length: 120 }, (_, index) => `clause-${index}`).join(", ");
