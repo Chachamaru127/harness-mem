@@ -55,6 +55,21 @@ interface DreamingObservationRow {
   branch: string | null;
 }
 
+interface DreamingFactRow {
+  fact_id: string;
+  fact_key: string;
+  fact_value: string;
+}
+
+interface DreamingTenseRewriteResult {
+  changed: boolean;
+  false_positive: boolean;
+  mixed: boolean;
+  rewritten: string;
+  completed_at?: string;
+  reason?: string;
+}
+
 /** S154-201: the dreaming consolidation job reason. */
 export const DREAMING_REASON = "dreaming";
 
@@ -131,10 +146,82 @@ function temporalAnchorMs(row: { event_time: string | null; observed_at: string 
 
 function isLikelySinglePlannedStatement(text: string): boolean {
   const parts = text
-    .split(/[\n。.!?;；,、，]+|\s+and\s+|\s+そして\s+|\s+かつ\s+/i)
+    .split(/[\n。.!?;；,、，・/／]+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+|で/i)
     .map((part) => part.trim())
     .filter((part) => part.length > 0);
   return parts.length <= 1;
+}
+
+const DREAMING_TOKEN_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "will",
+  "plan",
+  "planned",
+  "going",
+  "todo",
+  "next",
+  "action",
+  "need",
+  "needs",
+  "should",
+  "done",
+  "completed",
+  "submitted",
+  "shipped",
+  "implemented",
+  "merged",
+  "finished",
+  "resolved",
+  "予定",
+  "完了",
+  "対応",
+  "実装",
+  "提出",
+]);
+
+function significantTokens(text: string): Set<string> {
+  const segmented = segmentJapaneseForFts(text)
+    .normalize("NFKC")
+    .toLowerCase();
+  const tokens = segmented.match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  return new Set(tokens.filter((token) => {
+    if (DREAMING_TOKEN_STOPWORDS.has(token)) return false;
+    if (/^[a-z0-9_-]+$/i.test(token)) return token.length >= 3;
+    return token.length >= 2;
+  }));
+}
+
+function sharedSignificantTokens(left: string, right: string): Set<string> {
+  const leftTokens = significantTokens(left);
+  const rightTokens = significantTokens(right);
+  const shared = new Set<string>();
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) shared.add(token);
+  }
+  return shared;
+}
+
+function hasSharedSignificantToken(left: string, right: string): boolean {
+  return sharedSignificantTokens(left, right).size > 0;
+}
+
+function textSharesAnyToken(text: string, tokens: Set<string>): boolean {
+  if (tokens.size === 0) return false;
+  const textTokens = significantTokens(text);
+  for (const token of tokens) {
+    if (textTokens.has(token)) return true;
+  }
+  return false;
+}
+
+function isAcceptableDreamingRewrite(plannedText: string, rewritten: string): boolean {
+  if (!isLikelySinglePlannedStatement(rewritten)) return false;
+  if (PLANNED_TENSE_PATTERN.test(rewritten)) return false;
+  if (!hasSharedSignificantToken(plannedText, rewritten)) return false;
+  return rewritten.length <= plannedText.length * 2 + 100;
 }
 
 function parsePrivacyTagsJson(value: string | null | undefined): string[] {
@@ -220,17 +307,19 @@ async function callLocalDreamingTenseRewrite(
   evidence: string,
   host: string,
   model: string,
-): Promise<{ changed: boolean; false_positive: boolean; rewritten: string; completed_at?: string; reason?: string } | null> {
+): Promise<DreamingTenseRewriteResult | null> {
   if (!isLoopbackHost(host)) return null;
   const system = [
     "Return JSON only.",
     "You are a conservative temporal rewrite judge.",
     "Rewrite a planned statement as completed only when explicit completion evidence is present.",
+    "If the planned text mixes an unrelated fact with the planned action, return changed=false and mixed=true.",
+    "If evidence does not refer to the same action/object as the planned text, return changed=false and false_positive=false.",
     "If evidence is missing or ambiguous, return changed=false and false_positive=false.",
   ].join(" ");
   const prompt = [
     "Return exactly this JSON shape:",
-    "{\"changed\":true,\"false_positive\":false,\"rewritten\":\"Completed statement.\",\"completed_at\":\"2026-06-09T00:00:00.000Z\",\"reason\":\"short reason\"}",
+    "{\"changed\":true,\"false_positive\":false,\"mixed\":false,\"rewritten\":\"Completed statement.\",\"completed_at\":\"2026-06-09T00:00:00.000Z\",\"reason\":\"short reason\"}",
     `planned: ${redactSecrets(stripPrivateBlocks(planned) ?? "").slice(0, 1200)}`,
     `evidence: ${redactSecrets(stripPrivateBlocks(evidence) ?? "").slice(0, 1200)}`,
   ].join("\n");
@@ -259,6 +348,7 @@ async function callLocalDreamingTenseRewrite(
     return {
       changed: json.changed === true,
       false_positive: json.false_positive === true,
+      mixed: json.mixed === true,
       rewritten: typeof json.rewritten === "string" ? json.rewritten : "",
       completed_at: typeof json.completed_at === "string" ? json.completed_at : undefined,
       reason: typeof json.reason === "string" ? json.reason : undefined,
@@ -268,6 +358,28 @@ async function callLocalDreamingTenseRewrite(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function loadActiveFactsForObservation(db: Database, observationId: string): DreamingFactRow[] {
+  return db
+    .query(
+      `
+        SELECT fact_id, fact_key, fact_value
+        FROM mem_facts
+        WHERE observation_id = ?
+          AND merged_into_fact_id IS NULL
+          AND superseded_by IS NULL
+          AND invalidated_at IS NULL
+          AND valid_to IS NULL
+      `
+    )
+    .all(observationId) as DreamingFactRow[];
+}
+
+function relatedFactIdsForSharedTokens(facts: DreamingFactRow[], sharedTokens: Set<string>): string[] {
+  return facts
+    .filter((fact) => textSharesAnyToken(`${fact.fact_key} ${fact.fact_value}`, sharedTokens))
+    .map((fact) => fact.fact_id);
 }
 
 function writeAudit(
@@ -854,10 +966,11 @@ async function runDreamingTenseRewrite(
     const plannedText = observationText(planned);
     if (!PLANNED_TENSE_PATTERN.test(plannedText)) continue;
     if (!isLikelySinglePlannedStatement(plannedText)) continue;
+    const plannedFacts = loadActiveFactsForObservation(db, planned.id);
 
     const plannedTime = temporalAnchorMs(planned);
     const evidenceCandidates = rows
-    .filter((row) => {
+      .filter((row) => {
         if (row.id === planned.id) return false;
         if (row.session_id !== sessionId) return false;
         if (!isBranchCompatible(planned.branch, row.branch)) return false;
@@ -865,7 +978,9 @@ async function runDreamingTenseRewrite(
         const evidenceTime = temporalAnchorMs(row);
         if (evidenceTime <= plannedTime) return false;
         if (evidenceTime > currentMs) return false;
-        return COMPLETION_EVIDENCE_PATTERN.test(observationText(row));
+        const evidenceText = observationText(row);
+        if (!COMPLETION_EVIDENCE_PATTERN.test(evidenceText)) return false;
+        return hasSharedSignificantToken(plannedText, evidenceText);
       })
       .sort((left, right) => temporalAnchorMs(left) - temporalAnchorMs(right));
     if (evidenceCandidates.length === 0) continue;
@@ -886,13 +1001,17 @@ async function runDreamingTenseRewrite(
         }
       }
       const evidenceText = observationText(evidence);
+      const sharedActionTokens = sharedSignificantTokens(plannedText, evidenceText);
+      const relatedFactIds = relatedFactIdsForSharedTokens(plannedFacts, sharedActionTokens);
+      if (plannedFacts.length > 0 && relatedFactIds.length !== plannedFacts.length) continue;
+
       attempts += 1;
       const rewrite = await callLocalDreamingTenseRewrite(plannedText, evidenceText, ollamaHost, ollamaModel);
-      if (!rewrite?.changed || rewrite.false_positive || !rewrite.rewritten.trim()) continue;
+      if (!rewrite?.changed || rewrite.false_positive || rewrite.mixed || !rewrite.rewritten.trim()) continue;
 
       const current = nowIso();
-      const plannedAnchor = planned.event_time ?? planned.observed_at ?? planned.valid_from ?? planned.created_at ?? current;
-      const evidenceAnchor = evidence.event_time ?? evidence.observed_at ?? evidence.valid_from ?? evidence.created_at ?? current;
+      const plannedAnchor = planned.event_time ?? planned.valid_from ?? planned.observed_at ?? planned.created_at ?? current;
+      const evidenceAnchor = evidence.event_time ?? evidence.valid_from ?? evidence.observed_at ?? evidence.created_at ?? current;
       const plannedMs = parseTimeMs(plannedAnchor) ?? Number.NEGATIVE_INFINITY;
       const evidenceMs = parseTimeMs(evidenceAnchor) ?? Date.parse(current);
       const candidateMs = parseTimeMs(rewrite.completed_at);
@@ -904,6 +1023,7 @@ async function runDreamingTenseRewrite(
       if (completedMs !== null && completedMs > parseTimeMs(current)!) continue;
       const redacted = redactSecrets(stripPrivateBlocks(rewrite.rewritten) ?? "").trim();
       if (redacted.length < 8) continue;
+      if (!isAcceptableDreamingRewrite(plannedText, redacted)) continue;
       const observationId = createDreamingObservationId(project, sessionId, planned.id, redacted);
       const contentHash = hashContent(project, sessionId, planned.id, redacted);
       const title = "Dreaming tense rewrite";
@@ -947,7 +1067,7 @@ async function runDreamingTenseRewrite(
             current,
             completedAt,
             planned.id,
-            completedAt,
+            current,
             current,
             planned.thread_id,
             planned.topic,
@@ -970,19 +1090,37 @@ async function runDreamingTenseRewrite(
             WHERE id = ?
           `
         ).run(completedAt, completedAt, current, current, planned.id);
-        db.query(
-          `
-            UPDATE mem_facts
-            SET valid_to = CASE
-                  WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
-                  ELSE valid_to
-                END,
-                invalidated_at = COALESCE(invalidated_at, ?),
-                updated_at = ?
-            WHERE observation_id = ?
-              AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
-          `
-        ).run(completedAt, completedAt, current, current, planned.id, completedAt);
+        if (relatedFactIds.length > 0) {
+          const placeholders = relatedFactIds.map(() => "?").join(", ");
+          db.query(
+            `
+              UPDATE mem_facts
+              SET valid_to = CASE
+                    WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
+                    ELSE valid_to
+                  END,
+                  invalidated_at = COALESCE(invalidated_at, ?),
+                  updated_at = ?
+              WHERE observation_id = ?
+                AND fact_id IN (${placeholders})
+                AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+            `
+          ).run(completedAt, completedAt, current, current, planned.id, ...relatedFactIds, completedAt);
+        } else {
+          db.query(
+            `
+              UPDATE mem_facts
+              SET valid_to = CASE
+                    WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
+                    ELSE valid_to
+                  END,
+                  invalidated_at = COALESCE(invalidated_at, ?),
+                  updated_at = ?
+              WHERE observation_id = ?
+                AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+            `
+          ).run(completedAt, completedAt, current, current, planned.id, completedAt);
+        }
         db.query(
           `
             INSERT OR IGNORE INTO mem_links(

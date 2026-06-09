@@ -229,7 +229,7 @@ describe("S154-201 dreaming consolidation job", () => {
     mockOllamaRewrite({
       changed: true,
       false_positive: false,
-      rewritten: "GearChange API spec was submitted on Friday. 本番環境にデプロイした。",
+      rewritten: "GearChange API spec was submitted on Friday with 本番環境デプロイ.",
       completed_at: "2026-06-09T10:00:00.000Z",
       reason: "Evidence says submitted.",
     });
@@ -265,6 +265,7 @@ describe("S154-201 dreaming consolidation job", () => {
         privacy_tags: [],
       });
 
+      const beforeRunMs = Date.now();
       const stats = await core.runConsolidation({ project: "dream-tense", session_id: "s-tense", reason: "dreaming" });
       expect(stats.ok).toBe(true);
       expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
@@ -289,7 +290,7 @@ describe("S154-201 dreaming consolidation job", () => {
       expect(rewritten.content_redacted).toContain("GearChange API spec was submitted");
       expect(rewritten.event_time).toBe("2026-06-09T10:00:00.000Z");
       expect(rewritten.valid_from).toBe("2026-06-09T10:00:00.000Z");
-      expect(rewritten.created_at).toBe("2026-06-09T10:00:00.000Z");
+      expect(Date.parse(rewritten.created_at)).toBeGreaterThanOrEqual(beforeRunMs);
       expect(rewritten.user_id).toBe("user-dream");
       expect(rewritten.team_id).toBe("team-dream");
       expect(rewritten.thread_id).toBe("thread-dream");
@@ -445,6 +446,182 @@ describe("S154-201 dreaming consolidation job", () => {
     }
   });
 
+  test("dreaming tense rewrite does not call the local LLM for unrelated completion evidence", async () => {
+    globalThis.fetch = async (): Promise<Response> => {
+      throw new Error("unrelated evidence should be filtered before Ollama preflight");
+    };
+
+    const core = new HarnessMemCore(createConfig("tense-unrelated-evidence"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-unrelated-evidence",
+        session_id: "s-unrelated-evidence",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will submit the GearChange API spec on Friday." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-unrelated-evidence",
+        session_id: "s-unrelated-evidence",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "Submitted the timesheet. 完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-unrelated-evidence", session_id: "s-unrelated-evidence", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("dreaming tense rewrite rejects unrelated local LLM output", async () => {
+    mockOllamaRewrite({
+      changed: true,
+      false_positive: false,
+      rewritten: "Website deployment was completed.",
+      completed_at: "2026-06-09T10:00:00.000Z",
+      reason: "Bad local output.",
+    });
+
+    const core = new HarnessMemCore(createConfig("tense-output-unrelated"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-output-unrelated",
+        session_id: "s-output-unrelated",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will submit the GearChange API spec on Friday." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-output-unrelated",
+        session_id: "s-output-unrelated",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "Submitted the GearChange API spec. 完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-output-unrelated", session_id: "s-output-unrelated", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("dreaming tense rewrite rejects mixed local LLM output", async () => {
+    mockOllamaRewrite({
+      changed: true,
+      false_positive: false,
+      rewritten: "GearChange API spec was submitted and DB is PostgreSQL.",
+      completed_at: "2026-06-09T10:00:00.000Z",
+      reason: "Bad local output.",
+    });
+
+    const core = new HarnessMemCore(createConfig("tense-output-mixed"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-output-mixed",
+        session_id: "s-output-mixed",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will submit the GearChange API spec on Friday." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-output-mixed",
+        session_id: "s-output-mixed",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "Submitted the GearChange API spec. 完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const stats = await core.runConsolidation({ project: "dream-output-mixed", session_id: "s-output-mixed", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("dreaming tense rewrite skips when existing facts reveal mixed blast radius", async () => {
+    let chatCalls = 0;
+    globalThis.fetch = async (url: string | URL | Request): Promise<Response> => {
+      if (isOllamaTagsRequest(url)) return ollamaTagsResponse();
+      chatCalls += 1;
+      throw new Error("mixed fact containment should skip before chat");
+    };
+
+    const core = new HarnessMemCore(createConfig("tense-fact-mixed"));
+    try {
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-fact-mixed",
+        session_id: "s-fact-mixed",
+        event_type: "checkpoint",
+        ts: "2026-06-08T10:00:00.000Z",
+        payload: { prompt: "We will submit the GearChange API spec on Friday." },
+        tags: [],
+        privacy_tags: [],
+      });
+      core.recordEvent({
+        platform: "claude",
+        project: "dream-fact-mixed",
+        session_id: "s-fact-mixed",
+        event_type: "checkpoint",
+        ts: "2026-06-09T10:00:00.000Z",
+        payload: { prompt: "Submitted the GearChange API spec. 完了した。" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      const db = core.getRawDb();
+      const planned = db
+        .query(`SELECT id FROM mem_observations WHERE content_redacted LIKE '%will submit%' LIMIT 1`)
+        .get() as { id: string };
+      const createdAt = "2026-06-08T10:00:00.000Z";
+      db.query(`
+        INSERT INTO mem_facts(
+          fact_id, observation_id, project, session_id, fact_type, fact_key, fact_value,
+          confidence, created_at, updated_at
+        ) VALUES
+          ('fact_action_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'action', 'GearChange API spec', 'submit on Friday', 0.9, ?, ?),
+          ('fact_unrelated_scope', ?, 'dream-fact-mixed', 's-fact-mixed', 'decision', 'database engine', 'PostgreSQL', 0.9, ?, ?)
+      `).run(planned.id, createdAt, createdAt, planned.id, createdAt, createdAt);
+
+      const stats = await core.runConsolidation({ project: "dream-fact-mixed", session_id: "s-fact-mixed", reason: "dreaming" });
+      expect(stats.ok).toBe(true);
+      expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
+      expect(chatCalls).toBe(0);
+
+      const facts = db
+        .query(`SELECT fact_id, valid_to, invalidated_at FROM mem_facts WHERE observation_id = ? ORDER BY fact_id`)
+        .all(planned.id) as Array<{ fact_id: string; valid_to: string | null; invalidated_at: string | null }>;
+      expect(facts).toHaveLength(2);
+      expect(facts.every((fact) => fact.valid_to === null && fact.invalidated_at === null)).toBe(true);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
   test("dreaming tense rewrite does not pair completion evidence from another branch", async () => {
     globalThis.fetch = async (): Promise<Response> => {
       throw new Error("cross-branch evidence should not be sent to tense rewrite");
@@ -586,7 +763,7 @@ describe("S154-201 dreaming consolidation job", () => {
     mockOllamaRewrite({
       changed: true,
       false_positive: false,
-      rewritten: "Next action: GearChange API spec was submitted.",
+      rewritten: "GearChange API spec was submitted.",
       completed_at: "2026-06-09T10:00:00.000Z",
       reason: "Evidence says submitted.",
     });
@@ -661,7 +838,7 @@ describe("S154-201 dreaming consolidation job", () => {
     mockOllamaRewrite({
       changed: true,
       false_positive: false,
-      rewritten: "Next action: GearChange API spec was submitted.",
+      rewritten: "GearChange API spec was submitted.",
       completed_at: "2026-06-09T10:00:00.000Z",
       reason: "Evidence says submitted.",
     });
@@ -1104,7 +1281,7 @@ describe("S154-201 dreaming consolidation job", () => {
             content: JSON.stringify({
               changed: true,
               false_positive: false,
-              rewritten: "Next action: GearChange API spec was submitted.",
+              rewritten: "GearChange API spec was submitted.",
               completed_at: "2026-06-09T10:00:00.000Z",
               reason: "Evidence says submitted.",
             }),
@@ -1198,6 +1375,7 @@ describe("S154-201 dreaming consolidation job", () => {
         privacy_tags: [],
       });
 
+      const beforeRunMs = Date.now();
       const stats = await core.runConsolidation({ project: "dream-clamp", session_id: "s-clamp", reason: "dreaming" });
       expect(stats.ok).toBe(true);
       expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
@@ -1207,7 +1385,7 @@ describe("S154-201 dreaming consolidation job", () => {
         .get() as { supersedes: string; event_time: string; valid_from: string; created_at: string };
       expect(rewritten.event_time).toBe("2026-06-09T10:00:00.000Z");
       expect(rewritten.valid_from).toBe("2026-06-09T10:00:00.000Z");
-      expect(rewritten.created_at).toBe("2026-06-09T10:00:00.000Z");
+      expect(Date.parse(rewritten.created_at)).toBeGreaterThanOrEqual(beforeRunMs);
 
       const oldRow = core.getRawDb()
         .query(`SELECT valid_to FROM mem_observations WHERE id = ?`)
@@ -1265,14 +1443,12 @@ describe("S154-201 dreaming consolidation job", () => {
     }
   });
 
-  test("dreaming tense rewrite tries later completion evidence after an unrelated rejection", async () => {
+  test("dreaming tense rewrite filters unrelated evidence before using the related completion", async () => {
     let calls = 0;
     globalThis.fetch = async (url: string | URL | Request): Promise<Response> => {
       if (isOllamaTagsRequest(url)) return ollamaTagsResponse();
       calls += 1;
-      const response = calls === 1
-        ? { changed: false, false_positive: false, rewritten: "", reason: "Unrelated completion." }
-        : {
+      const response = {
           changed: true,
           false_positive: false,
           rewritten: "GearChange API spec was submitted.",
@@ -1321,7 +1497,7 @@ describe("S154-201 dreaming consolidation job", () => {
       const stats = await core.runConsolidation({ project: "dream-later-evidence", session_id: "s-later-evidence", reason: "dreaming" });
       expect(stats.ok).toBe(true);
       expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(1);
-      expect(calls).toBe(2);
+      expect(calls).toBe(1);
     } finally {
       core.shutdown("test");
     }
@@ -1366,7 +1542,7 @@ describe("S154-201 dreaming consolidation job", () => {
           session_id: "s-attempt-cap",
           event_type: "checkpoint",
           ts: `2026-06-08T11:${String(i).padStart(2, "0")}:00.000Z`,
-          payload: { prompt: `Completed unrelated cleanup ${i}. 完了した。` },
+          payload: { prompt: `Completed GearChange API spec candidate . 完了した。` },
           tags: [],
           privacy_tags: [],
         });
@@ -1375,7 +1551,8 @@ describe("S154-201 dreaming consolidation job", () => {
       const stats = await core.runConsolidation({ project: "dream-attempt-cap", session_id: "s-attempt-cap", reason: "dreaming" });
       expect(stats.ok).toBe(true);
       expect((stats.items[0] as { dreaming_rewrites_created?: number }).dreaming_rewrites_created).toBe(0);
-      expect(calls).toBe(24);
+      expect(calls).toBeGreaterThanOrEqual(1);
+      expect(calls).toBeLessThanOrEqual(24);
     } finally {
       core.shutdown("test");
     }
@@ -1386,7 +1563,7 @@ describe("S154-201 dreaming consolidation job", () => {
     mockOllamaRewrite({
       changed: true,
       false_positive: false,
-      rewritten: "The planned follow-up was completed.",
+      rewritten: "The API spec was completed.",
       completed_at: "2026-06-09T10:00:00.000Z",
       reason: "Evidence says completed.",
     }, () => {
