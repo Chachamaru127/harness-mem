@@ -1,0 +1,69 @@
+{
+  "schema_version": "s154-402-embedding-shadow-ab.v1",
+  "generated_at": "2026-06-11T08:41:44.276Z",
+  "baseline_model": "multilingual-e5",
+  "baseline_dimension": 384,
+  "measurement_path": "vector-isolated cosine recall@10 via local ONNX provider primeBatch/primeQuery (no FTS/RRF; fail-closed on fallback)",
+  "hybrid_sensitivity_note": "hybrid end-to-end recall@10 on these fixtures is per-sample identical across multilingual-e5, ruri-v3-30m and the hash fallback (FTS dominates top-10 membership), so it cannot discriminate embedding models and is not used as the A/B measurand",
+  "fixtures": {
+    "bilingual_cases": 50,
+    "dev_workflow_cases": 20
+  },
+  "slice_definitions": {
+    "mixed": "bilingual-50 pattern mixed-content_mixed-query vector recall@10 mean",
+    "ja": "bilingual-50 patterns ja-content_en-query + en-content_ja-query vector recall@10 mean",
+    "bilingual": "bilingual-50 overall vector recall@10",
+    "dev_workflow": "dev-workflow-20 vector recall@10 (shared 60-entry pool)",
+    "composite": "s154-400 weighted average (data/composite-score-weights.json)"
+  },
+  "switch_delta_threshold": 0.05,
+  "aggregate_only": true,
+  "candidates": [
+    {
+      "model_id": "ruri-v3-30m",
+      "dimension": 256,
+      "status": "measured",
+      "skip_reason": null,
+      "comparisons": [
+        {
+          "metric": "mixed",
+          "baseline": 1,
+          "candidate": 1,
+          "delta": 0
+        },
+        {
+          "metric": "ja",
+          "baseline": 1,
+          "candidate": 0.6,
+          "delta": -0.4
+        },
+        {
+          "metric": "bilingual",
+          "baseline": 0.94,
+          "candidate": 0.66,
+          "delta": -0.28
+        },
+        {
+          "metric": "dev_workflow",
+          "baseline": 0.9,
+          "candidate": 0.65,
+          "delta": -0.25
+        },
+        {
+          "metric": "composite",
+          "baseline": 0.96,
+          "candidate": 0.7275,
+          "delta": -0.2325
+        }
+      ]
+    },
+    {
+      "model_id": "bge-m3",
+      "dimension": 1024,
+      "status": "skipped",
+      "skip_reason": "model_not_installed:bge-m3",
+      "comparisons": []
+    }
+  ],
+  "reproducibility": "bun run scripts/s154-embedding-shadow-ab.ts (requires local ONNX models; uninstalled candidates are recorded as skipped)"
+}
