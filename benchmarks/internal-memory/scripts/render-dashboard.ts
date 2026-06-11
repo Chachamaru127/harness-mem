@@ -2,6 +2,11 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { getPublishedReference } from "../adapters/import-published";
+import {
+  FLAGSHIP_FRESHNESS_GREEN_THRESHOLD,
+  FLAGSHIP_KPI_LABEL,
+  FLAGSHIP_KPI_SCOPE_NOTE,
+} from "../../../memory-server/src/benchmark/flagship-kpi";
 import { inferCompetency, usesLlmJudge } from "../scorers/competency";
 import type { BenchmarkCase, BenchmarkSummary, Competency, ScoredCaseResult } from "../lib/types";
 
@@ -46,6 +51,12 @@ export function renderScorecard(summary: BenchmarkSummary, results: ScoredCaseRe
     `Generated: ${summary.generated_at}`,
     `Run ID: ${summary.run_id}`,
     summary.git_sha ? `Git SHA: ${summary.git_sha}` : "",
+    "",
+    // S154-304: flagship KPI leads the scorecard (display promotion; measured value
+    // lives in the internal CI manifest, not in this comparative report).
+    "## Flagship KPI",
+    "",
+    `- ${FLAGSHIP_KPI_LABEL} — green threshold >= ${FLAGSHIP_FRESHNESS_GREEN_THRESHOLD}, measured as knowledge-update freshness@10 in memory-server/src/benchmark/results/ci-run-manifest-latest.json (${FLAGSHIP_KPI_SCOPE_NOTE})`,
     "",
     ...(summary.dataset_manifest?.dataset === "memoryagentbench"
       ? [

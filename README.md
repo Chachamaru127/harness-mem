@@ -115,7 +115,7 @@ The MCP frontend is the layer Claude Code and Codex actually talk to. The Go bin
 
 - **~5ms cold start** means the memory layer should feel instant when you open or resume work.
 - **Bilingual recall@10** means mixed Japanese, English, and code notes are still findable instead of splitting into separate piles.
-- **Freshness@K = 1.00** means updated facts should replace stale ones instead of competing with them.
+- **Freshness@K = 0.99** means updated facts should replace stale ones instead of competing with them. This is the flagship KPI (Bilingual Coding-Memory Freshness@k); its green threshold is fixed at ≥ 0.95.
 - **Developer-workflow recall** is the real user value: yesterday's migration, bug fix, or deployment decision should be recoverable when you need it again.
 
 ### harness-mem's target domain is developer workflow memory
@@ -133,10 +133,12 @@ Our release gate lives in `ci-run-manifest-latest.json` on the developer-workflo
 
 | Metric | Current | Target (main gate) | Measures |
 |---|---:|---:|---|
-| `dev-workflow` recall@10 | 0.59 | ≥ 0.70 | Developer-style file/decision jump queries |
-| `bilingual` recall@10 | **0.88** | ≥ 0.90 | Mixed JA/EN/code retrieval |
-| `knowledge-update` freshness@K | **1.00** | ≥ 0.95 ✓ | Supersede stale facts when content is updated |
-| `temporal` ordering score | 0.65 | ≥ 0.70 | "When did X happen relative to Y?" on project history |
+| `knowledge-update` freshness@K — flagship: Bilingual Coding-Memory Freshness@k | **0.99** | ≥ 0.95 ✓ | Supersede stale facts when content is updated |
+| `dev-workflow` recall@10 | 0.77 | ≥ 0.70 ✓ | Developer-style file/decision jump queries |
+| `bilingual` recall@10 | **0.90** | ≥ 0.90 ✓ | Mixed JA/EN/code retrieval |
+| `temporal` ordering score | 0.82 | ≥ 0.70 ✓ | "When did X happen relative to Y?" on project history |
+
+These are self-seeded measurements reproduced with the same runner — they confirm implementation health, not superiority over competitors.
 
 For general-lifelog comparisons (LoCoMo, LongMemEval, etc.), see each competitor's own published numbers — they target that domain and we do not.
 
@@ -474,7 +476,7 @@ Current latest run:
 | LoCoMo F1 | 0.6138 |
 | Bilingual recall@10 | 0.9000 |
 | Freshness | 0.9900 |
-| Temporal | 0.7464 |
+| Temporal | 0.8213 |
 | Search p95 | 38.35ms |
 | Token avg | 462.98 |
 

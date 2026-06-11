@@ -18,6 +18,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import { runLocomoBenchmark, type LocomoBenchmarkResult } from "../../../tests/benchmarks/run-locomo-benchmark";
 import { HarnessMemCore, type Config } from "../core/harness-mem-core";
+import { buildFlagshipKpi, type FlagshipKpi } from "./flagship-kpi";
 import { loadAdaptiveThresholdDefaults } from "../embedding/adaptive-config";
 import { findModelById } from "../embedding/model-catalog";
 import { extractTemporalAnchors } from "../retrieval/router";
@@ -232,6 +233,8 @@ interface BenchEventInput {
 }
 
 interface CIRunManifest {
+  // S154-304: flagship KPI leads the manifest (display promotion; enforcement is S154-305).
+  flagship_kpi: FlagshipKpi;
   generated_at: string;
   git_sha: string;
   strict_mode: boolean;
@@ -1877,6 +1880,7 @@ async function main(): Promise<void> {
   }
 
   const manifest: CIRunManifest = {
+    flagship_kpi: buildFlagshipKpi(ciScores.freshness),
     generated_at: new Date().toISOString(),
     git_sha: readGitSha(),
     strict_mode: BENCH_STRICT_MODE,
