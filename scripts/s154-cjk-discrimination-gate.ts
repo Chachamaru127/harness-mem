@@ -221,6 +221,8 @@ export function assertFtsPath(
     && searchRequest.limit >= 26
     && searchRequest.vector_search === false
     && searchRequest.graph_weight === 0
+    && searchRequest.expand_links === false
+    && searchRequest.strict_project === true
     && ftsEnabled === true
   );
 }

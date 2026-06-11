@@ -84,6 +84,26 @@ function sliceRecall(cases: FixtureCase[], hit: (fixtureCase: FixtureCase) => bo
 describe("S154-151 cjk-discrimination fixture", () => {
   const fixture = readFixture();
 
+  // Positive tests assume the default state (normalization ON, boosts OFF);
+  // pin it so flags leaking from the CI environment cannot flip outcomes.
+  let savedEnv: Partial<Record<(typeof IMPROVEMENT_TOGGLE_ENVS)[number], string | undefined>>;
+
+  beforeEach(() => {
+    savedEnv = {};
+    for (const name of IMPROVEMENT_TOGGLE_ENVS) {
+      savedEnv[name] = process.env[name];
+      delete process.env[name];
+    }
+  });
+
+  afterEach(() => {
+    for (const name of IMPROVEMENT_TOGGLE_ENVS) {
+      const saved = savedEnv[name];
+      if (saved === undefined) delete process.env[name];
+      else process.env[name] = saved;
+    }
+  });
+
   test("fixture JSON shape and required metadata", () => {
     expect(fixture.schema_version).toBe("cjk-discrimination.v1");
     expect(typeof fixture.description).toBe("string");
@@ -135,7 +155,7 @@ describe("S154-151 cjk-discrimination fixture", () => {
     expect(bySlice.non_nfkc_orthographic.length).toBeGreaterThanOrEqual(3);
     expect(bySlice.mixed_en_ja.length).toBeGreaterThanOrEqual(3);
     expect(bySlice.nfkc_fixable.every((c) => c.target_improver === "101a")).toBe(true);
-    expect(bySlice.non_nfkc_orthographic.every((c) => c.target_improver === "101b" || c.target_improver === "102")).toBe(true);
+    expect(bySlice.non_nfkc_orthographic.every((c) => c.target_improver === "101b")).toBe(true);
     expect(bySlice.mixed_en_ja.every((c) => c.target_improver === "102")).toBe(true);
   });
 
@@ -146,24 +166,9 @@ describe("S154-151 cjk-discrimination fixture", () => {
   });
 
   describe("negative control with all improvements off", () => {
-    let savedEnv: Partial<Record<(typeof IMPROVEMENT_TOGGLE_ENVS)[number], string | undefined>>;
-
+    // Outer beforeEach already clears all toggles; degrade normalization on top.
     beforeEach(() => {
-      savedEnv = {};
-      for (const name of IMPROVEMENT_TOGGLE_ENVS) {
-        savedEnv[name] = process.env[name];
-      }
       process.env.HARNESS_MEM_DISABLE_CJK_NORMALIZE = "1";
-      delete process.env.HARNESS_MEM_LEXICAL_BOOST;
-      delete process.env.HARNESS_MEM_DUAL_QUERY;
-    });
-
-    afterEach(() => {
-      for (const name of IMPROVEMENT_TOGGLE_ENVS) {
-        const saved = savedEnv[name];
-        if (saved === undefined) delete process.env[name];
-        else process.env[name] = saved;
-      }
     });
 
     test("no case trivially hits its target under all-improvements-off", () => {

@@ -59,7 +59,7 @@ interface ReconciliationReport {
     schema_version: "s154-103-cjk-baseline.v1";
     per_slice_top1: Record<CjkSlice, number>;
     recorded_at: string;
-  };
+  } | null;
   cjk_discrimination_current: {
     per_slice_top1: Record<CjkSlice, number>;
     per_slice_mrr: Record<CjkSlice, number>;
@@ -89,6 +89,24 @@ function cjkBaselineFromManifest(manifest: Record<string, unknown>): Reconciliat
   const baseline = reconciliation?.cjk_discrimination_baseline as ReconciliationReport["cjk_discrimination_baseline"] | undefined;
   if (!baseline || baseline.schema_version !== "s154-103-cjk-baseline.v1") return null;
   return baseline;
+}
+
+// A frozen baseline becomes the permanent regression reference; refuse to freeze
+// from a degraded run so a bad first measurement cannot become the bar forever.
+export const CJK_BASELINE_FREEZE_MIN_TOP1 = 0.6;
+
+export function resolveCjkBaseline(
+  existing: ReconciliationReport["cjk_discrimination_baseline"],
+  currentTop1: Record<CjkSlice, number>,
+  recordedAt: string,
+): ReconciliationReport["cjk_discrimination_baseline"] {
+  if (existing) return existing;
+  if (Math.min(...Object.values(currentTop1)) < CJK_BASELINE_FREEZE_MIN_TOP1) return null;
+  return {
+    schema_version: "s154-103-cjk-baseline.v1",
+    per_slice_top1: currentTop1,
+    recorded_at: recordedAt,
+  };
 }
 
 export async function reconcileDeveloperDomainManifest(options: Options = {}): Promise<ReconciliationReport> {
@@ -134,16 +152,14 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
     Object.entries(cjk.variants.candidate.per_slice).map(([slice, metrics]) => [slice, metrics.mrr]),
   ) as Record<CjkSlice, number>;
   const existingCjkBaseline = cjkBaselineFromManifest(manifest);
-  const cjkBaseline = existingCjkBaseline ?? {
-    schema_version: "s154-103-cjk-baseline.v1" as const,
-    per_slice_top1: cjkCurrentTop1,
-    recorded_at: now.toISOString(),
-  };
+  const cjkBaseline = resolveCjkBaseline(existingCjkBaseline, cjkCurrentTop1, now.toISOString());
   const cjkRegressionTolerance = 0.02;
-  const cjkRegressions = Object.entries(cjkCurrentTop1).filter(([slice, current]) => {
-    const baseline = cjkBaseline.per_slice_top1[slice as CjkSlice] ?? current;
-    return current + cjkRegressionTolerance < baseline;
-  }).length;
+  const cjkRegressions = cjkBaseline === null
+    ? 0
+    : Object.entries(cjkCurrentTop1).filter(([slice, current]) => {
+      const baseline = cjkBaseline.per_slice_top1[slice as CjkSlice] ?? current;
+      return current + cjkRegressionTolerance < baseline;
+    }).length;
 
   const reportPath = join(artifactDir, "summary.json");
   const report: ReconciliationReport = {
@@ -177,7 +193,7 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       temporal_order: temporal.gates.temporal_order_score.passed,
       japanese_temporal: temporal.gates.japanese_temporal_slice.passed,
       current_stale_regressions: temporal.gates.current_stale_answer_regressions.passed,
-      cjk_discrimination: cjk.overall_passed && cjkRegressions === 0,
+      cjk_discrimination: cjk.overall_passed && cjkRegressions === 0 && cjkBaseline !== null,
     },
     artifacts: {
       report_json: writeArtifacts ? rel(reportPath) : null,

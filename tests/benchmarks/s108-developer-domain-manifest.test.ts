@@ -2,7 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { reconcileDeveloperDomainManifest } from "../../scripts/s108-developer-domain-manifest";
+import {
+  CJK_BASELINE_FREEZE_MIN_TOP1,
+  reconcileDeveloperDomainManifest,
+  resolveCjkBaseline,
+} from "../../scripts/s108-developer-domain-manifest";
 
 describe("S108-005b developer-domain manifest reconciliation", () => {
   test("writes S108 dev-workflow and temporal planner metrics into the CI manifest", async () => {
@@ -54,5 +58,37 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  describe("resolveCjkBaseline freeze quality bar", () => {
+    const healthyTop1 = { nfkc_fixable: 1, non_nfkc_orthographic: 1, mixed_en_ja: 1 };
+
+    test("freezes a new baseline from a healthy run", () => {
+      const baseline = resolveCjkBaseline(null, healthyTop1, "2026-06-11T00:00:00.000Z");
+      expect(baseline).toEqual({
+        schema_version: "s154-103-cjk-baseline.v1",
+        per_slice_top1: healthyTop1,
+        recorded_at: "2026-06-11T00:00:00.000Z",
+      });
+    });
+
+    test("refuses to freeze when any slice top1 is below the floor", () => {
+      const degradedTop1 = {
+        nfkc_fixable: 1,
+        non_nfkc_orthographic: CJK_BASELINE_FREEZE_MIN_TOP1 - 0.1,
+        mixed_en_ja: 1,
+      };
+      expect(resolveCjkBaseline(null, degradedTop1, "2026-06-11T00:00:00.000Z")).toBeNull();
+    });
+
+    test("keeps an existing frozen baseline regardless of the current run", () => {
+      const frozen = {
+        schema_version: "s154-103-cjk-baseline.v1" as const,
+        per_slice_top1: healthyTop1,
+        recorded_at: "2026-05-27T00:00:00.000Z",
+      };
+      const degradedTop1 = { nfkc_fixable: 0, non_nfkc_orthographic: 0, mixed_en_ja: 0 };
+      expect(resolveCjkBaseline(frozen, degradedTop1, "2026-06-11T00:00:00.000Z")).toBe(frozen);
+    });
   });
 });

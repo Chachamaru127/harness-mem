@@ -210,7 +210,7 @@
       "id": "cjk-ortho-003",
       "slice": "non_nfkc_orthographic",
       "normalization_kind": "kanji_to_kana",
-      "target_improver": "102",
+      "target_improver": "101b",
       "query": "にちえいこんざいてんかいせっけい",
       "target_id": "cjk-ortho-003-e-target",
       "entries": [
