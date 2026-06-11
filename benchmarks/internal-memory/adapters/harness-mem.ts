@@ -142,18 +142,22 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     await core.primeEmbedding(caseRow.query, "query");
     const started = performance.now();
     const useLlmRerank = process.env.HARNESS_MEM_LLM_RERANK === "1";
+    // S154-703: HARNESS_MEM_BENCH_REAL_PATH=1 runs the real prepared-search path
+    // WITHOUT the reranker, so rerank A/Bs can separate "leaving the safe_mode
+    // substring scan" from the reranker's own contribution.
+    const useRealPath = useLlmRerank || process.env.HARNESS_MEM_BENCH_REAL_PATH === "1";
     const request = {
       query: caseRow.query,
       project,
       session_id: this.benchSessionId(caseRow),
       limit: 10,
       strict_project: true,
-      safe_mode: !useLlmRerank,
+      safe_mode: !useRealPath,
       vector_search: false,
       graph_weight: 0,
       question_kind: "hybrid",
     } as const;
-    const response = useLlmRerank
+    const response = useRealPath
       ? await core.searchPrepared(request)
       : core.search(request);
     const latency_ms = performance.now() - started;

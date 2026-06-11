@@ -1,0 +1,21 @@
+{
+  "schema_version": "s154-coding-memory-ab.v1",
+  "generated_at": "2026-06-11T09:39:07.019Z",
+  "task_id": "S154-703-path-only",
+  "candidate_env": {
+    "HARNESS_MEM_BENCH_REAL_PATH": "1"
+  },
+  "metrics": [
+    {
+      "metric": "mixed_recall_at_10",
+      "baseline": 0.40298507462686567,
+      "candidate": 0.22388059701492538,
+      "delta": -0.1791044776119403
+    }
+  ],
+  "min_delta": 0.02,
+  "regression_delta": 0.02,
+  "require_improved": false,
+  "decision": "regressed",
+  "decision_reason": "mixed_recall_at_10 regressed by 17.91%pt (>= 2%pt regression band)"
+}
