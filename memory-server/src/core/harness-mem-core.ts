@@ -71,6 +71,11 @@ import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from ".
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
+import {
+  EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS,
+  sanitizeItemsForExternalChannel,
+  type ExternalChannelItem,
+} from "./external-channel-policy";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
@@ -8222,6 +8227,34 @@ export class HarnessMemCore {
 
   resumePack(request: ResumePackRequest): ApiResponse {
     return this.obsStore.resumePack(request);
+  }
+
+  /**
+   * S154-900: External-channel (Hermes business) read surface.
+   *
+   * Forces include_private=false / include_archived=false, then applies the
+   * external-channel egress policy: observations tagged
+   * private/internal/secret (or with malformed privacy_tags — fail-closed)
+   * are excluded, and surviving title/content pass the deterministic
+   * redactor (stripPrivateBlocks + redactSecrets). All memory reads bound
+   * for an external channel MUST go through this method — resume_pack is
+   * not an external-channel surface (see external-channel-policy.ts).
+   */
+  async searchForExternalChannel(request: SearchRequest): Promise<ApiResponse> {
+    const response = await this.searchPrepared({
+      ...request,
+      include_private: false,
+      include_archived: false,
+    });
+    if (!response.ok || !Array.isArray(response.items)) return response;
+    const sanitized = sanitizeItemsForExternalChannel(response.items as ExternalChannelItem[]);
+    response.items = sanitized.items;
+    (response.meta as Record<string, unknown>).external_channel = {
+      policy: "exclude+redact",
+      blocked_privacy_tags: [...EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS],
+      excluded_count: sanitized.excluded_count,
+    };
+    return response;
   }
 
   health(options: { includeCounts?: boolean } = {}): ApiResponse {

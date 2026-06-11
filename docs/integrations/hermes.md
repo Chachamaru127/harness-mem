@@ -406,6 +406,17 @@ pytest
 - **Hermes の HTTP MCP transport は opt-in**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし Hermes は Claude/Codex の HTTP default 対象ではなく、既定案内は stdio fallback を維持する。
 - **on-demand spawn と複数クライアント**: 方式 B（`bunx` で Hermes 起動時に spawn）を選ぶと、Hermes セッション間でも独立 daemon になる場合がある。複数ツールでメモリ共有する用途では方式 A（別プロセス常駐）を推奨。
 
+## 外部チャネル送出ポリシー (S154-900)
+
+Hermes の応答が外部チャネル (Telegram / Slack / Discord / WhatsApp 等) に中継される構成では、memory content の読み出しは **external-channel egress policy** を通すこと:
+
+- 読み出しは `HarnessMemCore.searchForExternalChannel()` (`memory-server/src/core/external-channel-policy.ts`) 経由が必須。`include_private` を強制 OFF した上で、
+  - `privacy_tags` に `private` / `internal` / `secret` を含む観測は**送出から除外**（redact ではなく drop。malformed な privacy_tags も fail-closed で除外）
+  - 残る title/content は決定的 redactor (`stripPrivateBlocks` + `redactSecrets`) を**必ず通過**
+- `resume_pack` は pack 形状のため item 単位の除外ができず、**外部チャネル送出面として使用禁止**（tool-internal 専用）。
+- policy test: `memory-server/tests/unit/external-channel-policy.test.ts`。
+- 実証まで宣伝 non-use・実顧客データを外部チャネルに流さない (decisions.md D2 整合)。
+
 ## 関連リソース
 
 - [`integrations/hermes/README.md`](../../integrations/hermes/README.md) — Quickstart
