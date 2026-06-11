@@ -1761,6 +1761,8 @@ Complete only when all of the following are true:
 | 154-153 | 101a を新gateで遡及計測(measurability確定) `[tdd:skip:measurement-only]` — cc:完了済の 101a(NFKC)を 154-152 gate で OFF/ON 計測し「測定可能になった」ことを確定。slice限局(NFKC可逆sliceのみ改善・非可逆slice中立)を記録 | 154-152 gate で 101a OFF/ON delta が NFKC可逆slice で improved、非NFKC slice で neutral(=限局)を artifact記録。捏造でないことの per-slice evidence | 154-152 | cc:完了 [ba11ebe] |
 
 > 設計の出所: spec.md「Bilingual retrieval discrimination gate (must)」。Skeptic top3弱点(NFKCトートロジー/vector帰属&substring fallback/固定min&negative control不在)を DoD に内在化。
+>
+> 2026-06-11 harness-review(APPROVE, critical/major 0)+ cursor advisory 後の修正 5点: (1) `cjk-ortho-003` の `target_improver` を実測帰属どおり 102→101b に修正、fixture test で non_nfkc slice=101b 固定 (2) fixture positive test の env 隔離(CI に boost flag が残留しても偽陽性化しない) (3) `assertFtsPath` の契約に `expand_links:false`/`strict_project:true` を追加 (4) manifest baseline 凍結に品質バー: min slice top1 < `CJK_BASELINE_FREEZE_MIN_TOP1`(0.6) では凍結拒否+gate fail(悪い初回値の永久baseline化防止、`resolveCjkBaseline` unit 3本) (5) recordEvent→segmented FTS write-path を `memory-server/tests/integration/event-recorder-fts.test.ts` で固定(c8f98c1 同梱の default挙動変更に専用unitが無かった)
 
 ### Phase 1 closeout / 長時間作業キュー
 
@@ -1779,7 +1781,7 @@ Complete only when all of the following are true:
 
 **着手しないもの**: 154-205 は外部送信 Risk Gate のため human approval まで blocked。154-900 は 154-305 green 3-run まで blocked。`out/progress-snapshot.html` の timestamp 差分は生成物扱いで、意図的 snapshot 更新時だけ commit する。
 
-**既知の負債**: 154-102 は現時点で「英語/コード token 展開を同一 FTS query に注入する measured implementation」であり、厳密な原文+英語強調の二本投げ RRF ではない。現 DoD は満たしているが、architecture として両投げ RRF を要求するなら 154-701 の設計時に別 task 化する。
+**既知の負債**: 154-102 は現時点で「英語/コード token 展開を同一 FTS query に注入する measured implementation」であり、厳密な原文+英語強調の二本投げ RRF ではない。現 DoD は満たしているが、architecture として両投げ RRF を要求するなら 154-701 の設計時に別 task 化する。また 101b(`CJK_LEXICAL_READING_RULES` 9 entry)/102(`CJK_DUAL_QUERY_RULES`)の辞書語彙は 154-151 fixture のクエリと 1:1 で共設計されており、154-152 gate が証明するのは「toggle が FTS 経路で因果的に効くメカニズム」までで、日本語検索能力の一般改善ではない(2026-06-11 review observation)。北極星 KPI の根拠にこの gate の数値を引用する段では、語彙非依存 evidence(実 reading 展開 or held-out fixture)を別 task で要求する。default OFF のため production 影響なし。
 
 ### Phase 2: 手2 大規模記憶整理(ベット1基盤、並列GO)
 
