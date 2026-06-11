@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>harness-mem 記憶アーキテクチャ — 保存・取り出し・LLMの入れどころ</title>
+<style>
+  :root{
+    --bg:#F8F7F4; --ink:#2D2D2A; --sub:#52524C; --line:#D4D4D0; --card:#FAF9F6;
+    --data:#2C5A7A;     /* 保存・データ = 藍 */
+    --embed:#3D7A5A;    /* 埋め込み・ベクトル = 翠 */
+    --llm:#A0703A;      /* LLM(生成) = 金茶 */
+    --graph:#78286E;    /* グラフ・関係 = 紫 */
+    --warn:#C14B2A;     /* 注意・鮮度 = 朱 */
+  }
+  *{box-sizing:border-box; word-break:keep-all; overflow-wrap:normal;}
+  body{margin:0; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,"Hiragino Kaku Gothic ProN","Noto Sans JP",sans-serif;
+    line-height:1.7; padding:32px 20px 64px;}
+  .wrap{max-width:1080px; margin:0 auto;}
+  h1{font-size:26px; font-weight:700; letter-spacing:.02em; margin:0 0 4px;}
+  .lede{color:var(--sub); font-size:14px; margin:0 0 28px;}
+  h2{font-size:18px; margin:40px 0 6px; padding-left:12px; border-left:4px solid var(--ink);}
+  .note{color:var(--sub); font-size:13px; margin:0 0 16px;}
+  .legend{display:flex; flex-wrap:wrap; gap:14px; margin:18px 0 8px; font-size:12.5px;}
+  .legend span{display:inline-flex; align-items:center; gap:6px;}
+  .dot{width:12px;height:12px;border-radius:3px;display:inline-block;}
+  .flow{display:flex; flex-direction:column; gap:0; margin:10px 0;}
+  .row{display:flex; gap:14px; flex-wrap:wrap; align-items:stretch;}
+  .box{background:var(--card); border:1px solid var(--line); border-radius:8px;
+    padding:12px 14px; flex:1; min-width:150px; box-shadow:0 1px 2px rgba(26,26,24,.04);}
+  .box .t{font-weight:700; font-size:14px; margin-bottom:3px;}
+  .box .d{font-size:12.5px; color:var(--sub);}
+  .box code{background:#ECECEA; padding:1px 5px; border-radius:4px; font-size:11.5px;}
+  .tag{display:inline-block; font-size:11px; font-weight:700; padding:1px 7px;
+    border-radius:20px; color:#fff; margin-right:6px;}
+  .b-data{border-top:3px solid var(--data);} .t-data{background:var(--data);}
+  .b-embed{border-top:3px solid var(--embed);} .t-embed{background:var(--embed);}
+  .b-llm{border-top:3px solid var(--llm);} .t-llm{background:var(--llm);}
+  .b-graph{border-top:3px solid var(--graph);} .t-graph{background:var(--graph);}
+  .arrow{text-align:center; color:var(--sub); font-size:20px; line-height:1; margin:8px 0;}
+  .arrow.small{font-size:15px; margin:5px 0;}
+  .stage{font-size:11px; font-weight:700; color:var(--sub); letter-spacing:.08em;
+    text-transform:uppercase; margin:0 0 6px;}
+  .insight{background:#FFF; border:1px solid var(--line); border-left:5px solid var(--warn);
+    border-radius:8px; padding:16px 18px; margin:14px 0;}
+  .insight .t{font-weight:700; color:var(--warn); margin-bottom:6px; font-size:15px;}
+  .insight b{color:var(--ink);}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+  @media(max-width:680px){.two{grid-template-columns:1fr;}}
+  .pill{display:inline-block; font-size:11.5px; background:#ECECEA; color:var(--sub);
+    border-radius:6px; padding:2px 8px; margin:2px 0;}
+  .kv{font-size:12.5px; color:var(--sub);}
+  .now{color:var(--llm); font-weight:700;}
+  .none{color:var(--embed); font-weight:700;}
+  table{width:100%; border-collapse:collapse; font-size:12.5px; margin:8px 0;}
+  th,td{border:1px solid var(--line); padding:7px 9px; text-align:left; vertical-align:top;}
+  th{background:#ECECEA; font-weight:700;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>harness-mem の記憶アーキテクチャ</h1>
+  <p class="lede">記憶をどう保存し、どう取り出すか。そして LLM(=文章を理解・生成する AI)を、今どこで使い、他プロダクトはどこに足すのか。コードで確認した実態ベース。</p>
+
+  <div class="legend">
+    <span><i class="dot" style="background:var(--data)"></i>データ・保存</span>
+    <span><i class="dot" style="background:var(--embed)"></i>埋め込み・ベクトル検索</span>
+    <span><i class="dot" style="background:var(--graph)"></i>グラフ・関係(鮮度)</span>
+    <span><i class="dot" style="background:var(--llm)"></i>LLM(生成AI)</span>
+    <span><i class="dot" style="background:var(--warn)"></i>注意・要点</span>
+  </div>
+
+  <!-- ============ 書き込み ============ -->
+  <h2>① 書き込み（Ingest＝記憶を保存する）</h2>
+  <p class="note">埋め込み(=文の意味を数字の列に変換)は、ここ＝<b>保存時</b>に1回だけ行われる。後述の「鮮度」の鍵。</p>
+  <div class="flow">
+    <div class="stage">入口</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">13種の取込口</div><div class="d">Claude Code / Codex / Cursor / Hermes 等の会話・操作ログ</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="stage">意味を数字に（保存時に1回）</div>
+    <div class="row">
+      <div class="box b-embed"><div class="t"><span class="tag t-embed">embed</span>adaptive 埋め込み</div><div class="d">日本語/英語/コードを見て経路を選ぶ <code>ruri | openai | ensemble</code>。文の意味をベクトル(数字列)化</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="stage">4つの形で保存</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">生ログ</div><div class="d"><code>mem_observations</code> = 正本。消さない監査記録</div></div>
+      <div class="box b-embed"><div class="t">ベクトル索引</div><div class="d"><code>sqlite-vec</code>。意味が近い記憶を探すための数字</div></div>
+      <div class="box b-data"><div class="t">全文索引</div><div class="d"><code>FTS5 / bm25()</code>。単語の一致で探す(関数名・型番に強い)</div></div>
+      <div class="box b-graph"><div class="t">関係グラフ</div><div class="d"><code>mem_relations</code> + 時間列<code>valid_from/valid_to</code>。記憶どうしの繋がり</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 裏の整理 ============ -->
+  <h2>② 裏の整理（Consolidation＝今 LLM がいる唯一の場所）</h2>
+  <p class="note">バックグラウンドのジョブ。ここだけ<span class="now">生成 LLM</span>を使う(既定 openai → 計画でローカル化)。</p>
+  <div class="flow">
+    <div class="row">
+      <div class="box b-data"><div class="t">重複まとめ</div><div class="d">同じ事実を畳む <code>deduper</code></div></div>
+      <div class="arrow small" style="align-self:center">→</div>
+      <div class="box b-llm"><div class="t"><span class="tag t-llm">LLM</span>事実抽出</div><div class="d">会話から要点を抜く <code>extractor.ts</code>。既定 openai</div></div>
+      <div class="arrow small" style="align-self:center">→</div>
+      <div class="box b-llm"><div class="t"><span class="tag t-llm">LLM</span>矛盾の裁定</div><div class="d"><code>adjudicate()</code>。どちらが今の値か判定</div></div>
+      <div class="arrow small" style="align-self:center">→</div>
+      <div class="box b-graph"><div class="t">superseded リンク</div><div class="d">古い側に「上書きされた」印。<b>消さずに</b>降格</div></div>
+    </div>
+    <div class="arrow small">↓ 計画(§154)</div>
+    <div class="row">
+      <div class="box b-graph" style="border-left:3px solid var(--warn)"><div class="t">dreaming：時制の書き換え</div><div class="d">「予定」→「実行済み」を裏で更新。<b>旧を消さず失効(valid_to)、新 observation を追加</b>(append-only)</div></div>
+    </div>
+  </div>
+
+  <!-- ============ 取り出し ============ -->
+  <h2>③ 取り出し（Recall＝今は生成 LLM なし）</h2>
+  <p class="note">毎回走る速い経路(~5ms目標)。<span class="none">生成 LLM は通らない</span>。並べ替え(rerank)は専用モデルで生成 AI ではない。</p>
+  <div class="flow">
+    <div class="stage">質問</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">クエリ</div><div class="d">「あのデプロイ手順は？」等</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="stage">軽い前処理(ルールベース・LLMなし)</div>
+    <div class="row">
+      <div class="box b-embed"><div class="t">クエリ解析・拡張</div><div class="d"><code>query-analyzer / expander</code>。<code>本番反映↔deploy</code> など辞書で補う</div></div>
+    </div>
+    <div class="arrow">↓ 3つを並列で探す</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">単語一致</div><div class="d">BM25。関数名・型番・エラー番号に強い</div></div>
+      <div class="box b-embed"><div class="t">意味の近傍</div><div class="d">ベクトル KNN。言い換えに強い</div></div>
+      <div class="box b-graph"><div class="t">関係の近傍</div><div class="d">グラフ BFS。繋がった記憶をたぐる</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="stage">合流して並べ替え</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">RRF 融合</div><div class="d">3つの順位を1つに合成 <code>RRF_K=60</code></div></div>
+      <div class="arrow small" style="align-self:center">→</div>
+      <div class="box b-embed"><div class="t">rerank</div><div class="d">並べ替え専用モデル(<b>生成 AI ではない</b>)</div></div>
+      <div class="arrow small" style="align-self:center">→</div>
+      <div class="box b-graph"><div class="t">compileAnswer</div><div class="d"><code>temporal_state</code>=current/historical/<b>superseded</b> を付けて返す</div></div>
+    </div>
+    <div class="arrow">↓</div>
+    <div class="row">
+      <div class="box b-data"><div class="t">呼び出し元エージェントへ</div><div class="d">Claude / Codex に「証拠」を渡す。<b>合成・要約はエージェント側の LLM がやる</b></div></div>
+    </div>
+  </div>
+
+  <!-- ============ LLMの入れどころ ============ -->
+  <h2>④ 他プロダクト／選択肢で LLM を足す「3箇所」</h2>
+  <p class="note">取り出し精度を上げたいとき、LLM を入れられる場所は3つ。harness-mem が今どうしているかを併記。</p>
+  <table>
+    <tr><th>入れる場所</th><th>何をする</th><th>harness-mem の今</th><th>足す価値</th></tr>
+    <tr><td><b>① クエリ書き換え</b></td><td>質問を LLM が言い換え・日英展開してから検索</td><td>ルールベースのみ(LLMなし)</td><td>日英混在クエリに効く。<b>狙い目</b></td></tr>
+    <tr><td><b>② LLM リランク</b></td><td>上位k件だけ LLM で「本当に関係あるか」並べ替え</td><td>専用 reranker(非生成)</td><td>精度↑。ただし遅くなる。top-k限定なら可</td></tr>
+    <tr><td><b>③ 回答合成(RAG)</b></td><td>上位を読んで LLM が答えを作文</td><td><b>やらない</b></td><td>呼ぶ側が既に LLM。<b>二重になるので不要</b></td></tr>
+  </table>
+
+  <!-- ============ 鮮度の核心 ============ -->
+  <h2>⑤ いちばんの肝：埋め込みは「保存時に固定」される</h2>
+  <div class="insight">
+    <div class="t">あなたの問い2への答え：その通り。だから「再embedding」では直さない。</div>
+    <p style="margin:6px 0 10px; font-size:13.5px;">
+      埋め込み(ベクトル)は<b>保存した瞬間</b>に作られ、その後<b>変わらない</b>。
+      だから後で事実が覆っても、古い記憶のベクトルは「古い意味のまま」検索に当たり続ける。
+      全部を作り直す(再embedding)のは重すぎる。
+    </p>
+    <div class="two">
+      <div class="box b-embed"><div class="t">ベクトル(埋め込み)の役割</div><div class="d"><b>候補を見つける</b>係。保存時に固定。時制では更新しない</div></div>
+      <div class="box b-graph"><div class="t">グラフ(関係)の役割</div><div class="d"><b>どれが「今」か決める</b>係。<code>superseded</code> + <code>valid_to</code> で後からいつでも更新できる</div></div>
+    </div>
+    <p style="margin:12px 0 0; font-size:13.5px;">
+      → 鮮度は<b>埋め込みの領域ではなく、関係グラフ(bi-temporal)の領域</b>。あなたの直感どおり。
+      具体的には3手で解く：<br>
+      <span class="pill">① superseded に valid_to を書く (154-302b)</span>
+      <span class="pill">② 時制が覆ったら新 observation を追加し旧を失効 (154-303 dreaming)</span>
+      <span class="pill">③ anchor retrieval で「前の状態」も引けるように (154-302)</span>
+    </p>
+  </div>
+
+  <p class="note" style="margin-top:28px">出典: 実コード確認 — <code>observation-store.ts</code>(bm25:1808 / RRF:4210 / rerank:3009) / <code>embedding/adaptive-provider.ts</code> / <code>consolidation/extractor.ts:394</code> / <code>contradiction-detector.ts</code> / <code>answer/compiler.ts</code>(temporal_state)。計画: Plans.md §154 / Spec.md North Star節。</p>
+
+</div>
+</body>
+</html>
