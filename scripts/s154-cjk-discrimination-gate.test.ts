@@ -92,6 +92,34 @@ describe("S154-152 decideAbGeneric() for CJK metrics", () => {
         true,
       ),
     ).toBe(false);
+    // Negative controls for the contract fields added after review: a request
+    // that expands links or crosses projects is not the measured lexical path.
+    expect(
+      assertFtsPath(
+        {
+          limit: 26,
+          vector_search: false,
+          graph_weight: 0,
+          expand_links: true,
+          include_private: true,
+          strict_project: true,
+        },
+        true,
+      ),
+    ).toBe(false);
+    expect(
+      assertFtsPath(
+        {
+          limit: 26,
+          vector_search: false,
+          graph_weight: 0,
+          expand_links: false,
+          include_private: true,
+          strict_project: false,
+        },
+        true,
+      ),
+    ).toBe(false);
   });
 });
 

@@ -288,7 +288,7 @@ async function runVariant(
         const ftsPathOk = assertFtsPath(searchRequest, ftsEnabled);
         if (!ftsPathOk) {
           throw new Error(
-            `[s154-152] FTS path assertion failed for ${label}: safe_mode=${String(searchRequest.safe_mode)} limit=${searchRequest.limit} vector_search=${searchRequest.vector_search} graph_weight=${searchRequest.graph_weight} fts_enabled=${String(meta.fts_enabled)}`,
+            `[s154-152] FTS path assertion failed for ${label}: safe_mode=${String(searchRequest.safe_mode)} limit=${searchRequest.limit} vector_search=${searchRequest.vector_search} graph_weight=${searchRequest.graph_weight} expand_links=${searchRequest.expand_links} strict_project=${searchRequest.strict_project} fts_enabled=${String(meta.fts_enabled)}`,
           );
         }
       }

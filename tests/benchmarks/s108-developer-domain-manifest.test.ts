@@ -39,6 +39,14 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
 
       expect(report.schema_version).toBe("s108-developer-domain-manifest.v1");
       expect(report.overall_passed).toBe(true);
+      // S154-305: flagship KPI leads the report and is enforced as a gate.
+      expect(Object.keys(report)[0]).toBe("flagship_kpi");
+      expect(report.flagship_kpi.name).toBe("bilingual_coding_memory_freshness_at_k");
+      expect(report.flagship_kpi.value).toBe(1);
+      expect(report.flagship_kpi.green).toBe(true);
+      expect(report.flagship_kpi.freshness_source).toBe("ci-run-manifest results.freshness");
+      expect(report.flagship_kpi.evidence.current_stale_answer_regressions).toBe(0);
+      expect(report.gates.flagship_freshness).toBe(true);
       expect(manifest.results.dev_workflow_recall).toBeGreaterThanOrEqual(0.70);
       expect(manifest.results.temporal).toBeGreaterThanOrEqual(0.70);
       expect(manifest.results.cjk_discrimination_min_top1).toBe(1);
@@ -55,6 +63,42 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
         },
         recorded_at: "2026-05-27T00:00:00.000Z",
       });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("flagship freshness below the green threshold fails the gate", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-s108-manifest-red-"));
+    const manifestPath = join(dir, "ci-run-manifest-latest.json");
+    try {
+      writeFileSync(
+        manifestPath,
+        `${JSON.stringify({
+          generated_at: "2026-04-10T08:10:51.561Z",
+          git_sha: "test",
+          results: {
+            all_passed: true,
+            bilingual_recall: 0.88,
+            freshness: 0.5,
+            temporal: 0.6458,
+          },
+        }, null, 2)}\n`,
+        "utf8",
+      );
+
+      const report = await reconcileDeveloperDomainManifest({
+        manifestPath,
+        codeTokenRuns: 1,
+        temporalMaxCases: 12,
+        writeArtifacts: false,
+        now: new Date("2026-06-11T00:00:00.000Z"),
+      });
+
+      expect(report.flagship_kpi.value).toBe(0.5);
+      expect(report.flagship_kpi.green).toBe(false);
+      expect(report.gates.flagship_freshness).toBe(false);
+      expect(report.overall_passed).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

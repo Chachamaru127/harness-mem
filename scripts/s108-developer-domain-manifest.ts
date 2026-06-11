@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { runCodeTokenTuningGate } from "./s108-code-token-tuning";
 import { runTemporalPlannerGate } from "./s108-temporal-planner-gate";
 import { runCjkDiscriminationGate, type CjkSlice } from "./s154-cjk-discrimination-gate";
+import { buildFlagshipKpi, type FlagshipKpi } from "../memory-server/src/benchmark/flagship-kpi";
 
 interface Options {
   manifestPath?: string;
@@ -17,6 +18,18 @@ interface Options {
 }
 
 interface ReconciliationReport {
+  // S154-305: flagship KPI leads the report and is enforced via gates.flagship_freshness.
+  flagship_kpi: FlagshipKpi & {
+    freshness_source: string;
+    evidence: {
+      // Shallow freshness per spec.md: stale answers must not regress (measured live below).
+      current_stale_answer_regressions: number;
+      // S154-303 dreaming tense-rewrite machinery: rewrite counts and false-positive
+      // negatives are pinned by this integration suite (D38 review condition).
+      dreaming_rewrite_evidence: string;
+      deep_freshness: string;
+    };
+  };
   schema_version: "s108-developer-domain-manifest.v1";
   task_id: "S108-005b";
   generated_at: string;
@@ -42,6 +55,7 @@ interface ReconciliationReport {
     cjk_discrimination_regressions: number;
   };
   gates: {
+    flagship_freshness: boolean;
     dev_workflow: boolean;
     bilingual: boolean;
     temporal_order: boolean;
@@ -161,8 +175,30 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       return current + cjkRegressionTolerance < baseline;
     }).length;
 
+  // S154-305: enforce the flagship KPI threshold on the recorded full-CI measurement.
+  // The freshness value is produced by run-ci's knowledge-update benchmark and recorded
+  // in the CI manifest; this reconciliation gate fails when that recorded value is
+  // missing or below FLAGSHIP_FRESHNESS_GREEN_THRESHOLD (fail-closed).
+  const manifestResults = manifest.results as Record<string, unknown> | undefined;
+  const rawFreshness = Number(manifestResults?.freshness);
+  const flagshipFreshness = Number.isFinite(rawFreshness) ? rawFreshness : 0;
+  const flagshipKpi = {
+    ...buildFlagshipKpi(flagshipFreshness),
+    freshness_source: Number.isFinite(rawFreshness)
+      ? "ci-run-manifest results.freshness"
+      : "missing (treated as 0, fail-closed)",
+    evidence: {
+      current_stale_answer_regressions: temporal.metrics.current_stale_answer_regressions,
+      dreaming_rewrite_evidence:
+        "memory-server/tests/integration/dreaming-consolidation.test.ts (S154-303 rewrite counts + false-positive negatives)",
+      deep_freshness:
+        "not_yet_measured (tense-rewrite accuracy / supersession precision / freshness lag per spec Shallow vs deep freshness)",
+    },
+  };
+
   const reportPath = join(artifactDir, "summary.json");
   const report: ReconciliationReport = {
+    flagship_kpi: flagshipKpi,
     schema_version: "s108-developer-domain-manifest.v1",
     task_id: "S108-005b",
     generated_at: now.toISOString(),
@@ -188,6 +224,7 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       cjk_discrimination_regressions: cjkRegressions,
     },
     gates: {
+      flagship_freshness: flagshipKpi.green,
       dev_workflow: codeToken.gates.dev_workflow_recall_at_10.passed,
       bilingual: codeToken.gates.bilingual_recall_at_10.passed,
       temporal_order: temporal.gates.temporal_order_score.passed,
@@ -272,6 +309,7 @@ if (import.meta.main) {
     } else {
       process.stdout.write(
         `[s108-005b] status=${report.overall_passed ? "pass" : "fail"} ` +
+          `flagship_freshness=${round(report.flagship_kpi.value).toFixed(4)}(gate>=${report.flagship_kpi.green_threshold}) ` +
           `dev=${round(report.metrics.dev_workflow_recall_at_10).toFixed(4)} ` +
           `temporal=${round(report.metrics.temporal_order_score).toFixed(4)} ` +
           `artifact=${report.artifacts.report_json ?? "none"}\n`,

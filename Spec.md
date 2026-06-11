@@ -66,6 +66,11 @@ benchmark; the North Star roadmap of record is `docs/strategy/northstar-2026-06-
   prior value.
 - It is a relative metric on the self-seeded dataset and is not a claim of
   superiority over competitors (see Self-seeded benchmark non-superiority).
+- The green threshold is a release-gate constant: Freshness@k >= 0.95
+  (`FLAGSHIP_FRESHNESS_GREEN_THRESHOLD` in
+  `memory-server/src/benchmark/flagship-kpi.ts`). The flagship KPI leads the CI
+  run manifest and the benchmark scorecard (display promotion); enforcement
+  (process-exit gating) is a separate step tracked as Plans.md §154-305.
 
 ### Shallow vs deep freshness (must)
 
