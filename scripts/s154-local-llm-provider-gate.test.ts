@@ -77,6 +77,7 @@ describe("S154-210 local LLM provider gate", () => {
       models: ["qwen3.5:9b"],
       host: "http://127.0.0.1:11434",
       writeArtifacts: false,
+      installedModels: ["qwen3.5:9b"],
     });
 
     expect(report.schema_version).toBe("s154-local-llm-provider-gate.v1");
@@ -130,10 +131,45 @@ describe("S154-210 local LLM provider gate", () => {
       models: ["qwen3.5:9b"],
       host: "http://127.0.0.1:11434",
       writeArtifacts: false,
+      installedModels: ["qwen3.5:9b"],
     });
 
     expect(report.models[0]?.metrics.json_schema_valid_rate).toBe(1);
     expect(report.models[0]?.metrics.tense_false_positive_rate).toBe(1);
     expect(report.overall_passed).toBe(false);
+  });
+
+  test("S154-211: uninstalled matrix models are recorded as skipped, not failed", async () => {
+    globalThis.fetch = mock(async (_url: string | URL | Request, init?: RequestInit) => {
+      const body = JSON.parse(init?.body as string) as Record<string, unknown>;
+      const messages = body.messages as Array<{ role: string; content: string }>;
+      const prompt = messages.at(-1)?.content ?? "";
+      return {
+        ok: true,
+        json: async () => ({ message: { content: JSON.stringify(responseForTask(prompt)) } }),
+      } as Response;
+    });
+
+    const report = await runLocalLlmProviderGate({
+      models: ["qwen3.5:9b", "qwen3.5:27b", "qwen3-swallow:32b"],
+      host: "http://127.0.0.1:11434",
+      writeArtifacts: false,
+      installedModels: ["qwen3.5:9b"],
+    });
+
+    expect(report.models).toHaveLength(3);
+    const measured = report.models.find((m) => m.model === "qwen3.5:9b");
+    expect(measured?.status).toBe("measured");
+    expect(measured?.passed).toBe(true);
+    const skipped = report.models.filter((m) => m.status === "skipped");
+    expect(skipped).toHaveLength(2);
+    for (const entry of skipped) {
+      expect(entry.skip_reason).toBe(`model_not_installed:${entry.model}`);
+      expect(entry.tasks).toEqual([]);
+      expect(entry.metrics).toBeNull();
+      expect(entry.passed).toBeNull();
+    }
+    // skips must not fail the matrix; only measured models gate overall_passed
+    expect(report.overall_passed).toBe(true);
   });
 });

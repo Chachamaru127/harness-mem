@@ -20,6 +20,12 @@ export interface LocalLlmProviderGateOptions {
   tenseFalsePositiveMax?: number;
   artifactDir?: string;
   writeArtifacts?: boolean;
+  /**
+   * S154-211: installed-model override for tests. When unset, the gate asks the
+   * Ollama host (/api/tags) and records uninstalled models as skipped instead
+   * of failing the whole matrix run.
+   */
+  installedModels?: string[];
 }
 
 export interface LocalLlmTaskResult {
@@ -33,6 +39,9 @@ export interface LocalLlmTaskResult {
 
 export interface LocalLlmModelResult {
   model: string;
+  // S154-211: uninstalled matrix models are recorded, not failed.
+  status: "measured" | "skipped";
+  skip_reason: string | null;
   tasks: LocalLlmTaskResult[];
   metrics: {
     json_schema_valid_rate: number;
@@ -40,8 +49,8 @@ export interface LocalLlmModelResult {
     tense_false_positive_rate: number;
     p50_latency_ms: number;
     p95_latency_ms: number;
-  };
-  passed: boolean;
+  } | null;
+  passed: boolean | null;
 }
 
 export interface LocalLlmProviderGateReport {
@@ -285,6 +294,18 @@ async function callOllamaJson(task: TaskSpec, model: string, host: string, timeo
   }
 }
 
+async function listInstalledModels(host: string): Promise<string[]> {
+  if (!isLoopbackHost(host)) {
+    throw new Error(`non_loopback_ollama_host: ${host}`);
+  }
+  const response = await fetch(new URL("/api/tags", host));
+  if (!response.ok) {
+    throw new Error(`ollama_tags_http_${response.status}`);
+  }
+  const data = (await response.json()) as { models?: Array<{ name?: string }> };
+  return (data.models ?? []).map((model) => String(model.name ?? "")).filter(Boolean);
+}
+
 async function runTask(task: TaskSpec, model: string, host: string, timeoutMs: number): Promise<LocalLlmTaskResult> {
   const started = performance.now();
   try {
@@ -331,8 +352,23 @@ export async function runLocalLlmProviderGate(
   const timeoutMs = options.timeoutMs ?? (Number.isFinite(envTimeoutMs) && envTimeoutMs > 0 ? envTimeoutMs : DEFAULT_TIMEOUT_MS);
   const tenseFpMax = options.tenseFalsePositiveMax ?? DEFAULT_TENSE_FP_MAX;
   const modelResults: LocalLlmModelResult[] = [];
+  // Non-loopback hosts are rejected per-task (existing guard); only consult
+  // /api/tags when the host is a valid loopback target.
+  const installedModels =
+    options.installedModels ?? (isLoopbackHost(host) ? await listInstalledModels(host) : null);
 
   for (const model of models) {
+    if (installedModels !== null && !installedModels.includes(model)) {
+      modelResults.push({
+        model,
+        status: "skipped",
+        skip_reason: `model_not_installed:${model}`,
+        tasks: [],
+        metrics: null,
+        passed: null,
+      });
+      continue;
+    }
     const tasks: LocalLlmTaskResult[] = [];
     for (const task of TASKS) {
       tasks.push(await runTask(task, model, host, timeoutMs));
@@ -350,6 +386,8 @@ export async function runLocalLlmProviderGate(
     };
     modelResults.push({
       model,
+      status: "measured",
+      skip_reason: null,
       tasks,
       metrics,
       passed: metrics.json_schema_valid_rate === 1 && metrics.tense_false_positive_rate <= tenseFpMax,
@@ -367,7 +405,9 @@ export async function runLocalLlmProviderGate(
       tense_false_positive_rate_max: tenseFpMax,
     },
     models: modelResults,
-    overall_passed: modelResults.every((model) => model.passed),
+    overall_passed: modelResults
+      .filter((model) => model.status === "measured")
+      .every((model) => model.passed === true),
   };
 
   if (options.writeArtifacts !== false) {

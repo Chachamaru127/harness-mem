@@ -1,0 +1,78 @@
+{
+  "schema_version": "s154-local-llm-provider-gate.v1",
+  "generated_at": "2026-06-11T09:04:15.058Z",
+  "task_id": "S154-210",
+  "provider": "ollama",
+  "host": "http://127.0.0.1:11434",
+  "thresholds": {
+    "json_schema_valid_rate": 1,
+    "tense_false_positive_rate_max": 0
+  },
+  "models": [
+    {
+      "model": "qwen3.5:9b",
+      "status": "measured",
+      "skip_reason": null,
+      "tasks": [
+        {
+          "task_id": "fact_extraction",
+          "schema_valid": true,
+          "task_passed": true,
+          "latency_ms": 2546.1
+        },
+        {
+          "task_id": "summary",
+          "schema_valid": true,
+          "task_passed": true,
+          "latency_ms": 1920.4
+        },
+        {
+          "task_id": "contradiction",
+          "schema_valid": true,
+          "task_passed": true,
+          "latency_ms": 1651.1
+        },
+        {
+          "task_id": "tense_rewrite",
+          "schema_valid": true,
+          "task_passed": true,
+          "latency_ms": 1308.9,
+          "tense_false_positive": false
+        }
+      ],
+      "metrics": {
+        "json_schema_valid_rate": 1,
+        "task_pass_rate": 1,
+        "tense_false_positive_rate": 0,
+        "p50_latency_ms": 1651.1,
+        "p95_latency_ms": 2546.1
+      },
+      "passed": true
+    },
+    {
+      "model": "qwen3.5:27b",
+      "status": "skipped",
+      "skip_reason": "model_not_installed:qwen3.5:27b",
+      "tasks": [],
+      "metrics": null,
+      "passed": null
+    },
+    {
+      "model": "qwen3-swallow:32b",
+      "status": "skipped",
+      "skip_reason": "model_not_installed:qwen3-swallow:32b",
+      "tasks": [],
+      "metrics": null,
+      "passed": null
+    },
+    {
+      "model": "qwen3.6:27b",
+      "status": "skipped",
+      "skip_reason": "model_not_installed:qwen3.6:27b",
+      "tasks": [],
+      "metrics": null,
+      "passed": null
+    }
+  ],
+  "overall_passed": true
+}
