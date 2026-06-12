@@ -22,7 +22,7 @@ import { dirname, join } from "node:path";
 import { statSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import type { ManagedBackendStatus } from "../projector/managed-backend";
-import { findModelById } from "../embedding/model-catalog";
+import { parseEmbeddingDefaultModelFlag } from "../embedding/model-catalog";
 import {
   ensureSqliteVecTableForModel,
   getSqliteVecMapTableName,
@@ -64,14 +64,25 @@ export function getEmbeddingDefaultModel(db: Database): string {
   return value ? value : INCUMBENT_EMBEDDING_MODEL;
 }
 
-/** Atomically set the embedding default-model flag. Returns the previous value. */
+/**
+ * Atomically set the embedding default-model flag. Returns the previous value.
+ *
+ * The writer (this setter) and the reader (registry flag parse) accept the same
+ * `<modelId>[@<dimension>]` format via parseEmbeddingDefaultModelFlag, so the
+ * Granite MRL target `granite-embedding-311m-r2@384` is writable through this
+ * audited API. Validates flag *format* only: store-dimension agreement is
+ * intentionally not checked here because the flag may be written before the
+ * S154-511 backfill changes the store dimension — that mismatch is the reader's
+ * fail-safe (registry), not the writer's concern.
+ */
 export function setEmbeddingDefaultModel(db: Database, modelId: string): string {
   const normalized = modelId.trim();
   if (!normalized) {
     throw new Error("[s154-403] embedding default model id must be non-empty");
   }
-  if (!findModelById(normalized)) {
-    throw new Error(`[s154-403] unknown embedding model id: ${normalized}`);
+  const parsed = parseEmbeddingDefaultModelFlag(normalized);
+  if (!parsed.ok) {
+    throw new Error(`[s154-403] invalid embedding model flag "${normalized}": ${parsed.reason}`);
   }
   const previous = getEmbeddingDefaultModel(db);
   db.query(

@@ -184,6 +184,69 @@ export function findModelById(id: string): ModelCatalogEntry | undefined {
   return MODEL_CATALOG.find((entry) => entry.id === id);
 }
 
+export type EmbeddingDefaultModelFlag =
+  | { ok: true; modelId: string; dimension: number }
+  | { ok: false; reason: string };
+
+/**
+ * Parse the `embedding_default_model` flag value (`<modelId>[@<dimension>]`).
+ *
+ *   - bare `<modelId>` (e.g. `granite-embedding-311m-r2`) → native catalog dimension.
+ *   - `<modelId>@<dimension>` (e.g. `granite-embedding-311m-r2@384`) → MRL-truncated dimension.
+ *
+ * Validation (any failure returns `{ ok: false }`):
+ *   - modelId must exist in the model catalog.
+ *   - dimension must be a positive integer ≤ the model's nativeDimension.
+ *   - a dimension below nativeDimension is only allowed when the catalog entry
+ *     declares `matryoshka: true` (MRL truncate + re-normalize).
+ *
+ * This validates flag *format* only. The registry additionally rejects a parsed
+ * result whose dimension differs from the vector store's effective dimension;
+ * the setter intentionally does not, because the flag may be written before the
+ * backfill that changes the store dimension (the reader fail-safes on mismatch).
+ *
+ * Lives in model-catalog (pure, dependency-free) so both the writer
+ * (config-manager setter) and the reader (registry) validate the same format
+ * without an import cycle.
+ */
+export function parseEmbeddingDefaultModelFlag(raw: string | undefined): EmbeddingDefaultModelFlag {
+  const value = (raw ?? "").trim();
+  if (!value) {
+    return { ok: false, reason: "empty" };
+  }
+  const atIndex = value.indexOf("@");
+  const hasSuffix = atIndex !== -1;
+  const modelId = (hasSuffix ? value.slice(0, atIndex) : value).trim();
+  const dimensionPart = hasSuffix ? value.slice(atIndex + 1).trim() : "";
+
+  const entry = findModelById(modelId);
+  if (!entry) {
+    return { ok: false, reason: `unknown model id "${modelId}"` };
+  }
+  const nativeDimension = entry.nativeDimension ?? entry.dimension;
+
+  // No `@` → bare model resolves to native dimension. A trailing `@` with an
+  // empty suffix is malformed and must be rejected (not treated as bare).
+  if (!hasSuffix) {
+    return { ok: true, modelId, dimension: nativeDimension };
+  }
+  if (dimensionPart === "") {
+    return { ok: false, reason: `empty dimension after "@" in "${value}"` };
+  }
+
+  if (!/^\d+$/.test(dimensionPart)) {
+    return { ok: false, reason: `non-numeric dimension "${dimensionPart}"` };
+  }
+  const dimension = Number(dimensionPart);
+  if (dimension <= 0 || dimension > nativeDimension) {
+    return { ok: false, reason: `dimension ${dimension} out of range (1..${nativeDimension})` };
+  }
+  if (dimension < nativeDimension && entry.matryoshka !== true) {
+    return { ok: false, reason: `${modelId} is not matryoshka; cannot truncate to ${dimension}` };
+  }
+  return { ok: true, modelId, dimension };
+}
+
 export function formatSize(bytes: number): string {
   if (bytes >= 1_000_000_000) {
     return `${(bytes / 1_000_000_000).toFixed(1)}GB`;

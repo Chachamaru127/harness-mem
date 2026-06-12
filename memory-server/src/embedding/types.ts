@@ -61,6 +61,13 @@ export interface EmbeddingRegistryOptions {
   adaptiveCodeThreshold?: number;
   /** IMP-008: 言語自動選択時のデフォルト言語 ("ja" | "en") */
   defaultLanguage?: "ja" | "en";
+  /**
+   * S154-510: when present and no explicit model is pinned via
+   * HARNESS_MEM_EMBEDDING_MODEL, the registry consults the
+   * `embedding_default_model` mem_meta flag through this handle to pick the
+   * default local model/dimension. Absent → behaviour is unchanged.
+   */
+  db?: import("bun:sqlite").Database;
 }
 
 export interface EmbeddingRegistryResult {

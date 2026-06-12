@@ -2952,6 +2952,7 @@ export class HarnessMemCore {
       localModelId: this.config.embeddingModel,
       localModelsDir: this.config.localModelsDir,
       dimension: this.config.vectorDimension,
+      db: this.db,
       openaiApiKey: this.config.openaiApiKey,
       openaiEmbedModel: this.config.openaiEmbedModel,
       ollamaBaseUrl: this.config.ollamaBaseUrl,

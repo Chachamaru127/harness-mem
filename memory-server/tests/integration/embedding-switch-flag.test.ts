@@ -119,4 +119,47 @@ describe("S154-403 embedding default-model atomic flag", () => {
       core.shutdown("test");
     }
   });
+
+  test("setter accepts the dimension-qualified MRL form the registry expects", () => {
+    // P2 fix: the writer (setter) and reader (registry flag parse) must accept
+    // the same `<modelId>@<dimension>` format. The Granite MRL rollout target
+    // granite-embedding-311m-r2@384 has to be writable through the audited API.
+    const core = new HarnessMemCore(createConfig("qualified"));
+    try {
+      const db = (core as unknown as { db: Database }).db;
+      const previous = setEmbeddingDefaultModel(db, "granite-embedding-311m-r2@384");
+      expect(previous).toBe(INCUMBENT_EMBEDDING_MODEL);
+      // the qualified value round-trips verbatim so the registry can re-parse it
+      expect(getEmbeddingDefaultModel(db)).toBe("granite-embedding-311m-r2@384");
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("setter rejects qualified values that fail format validation", () => {
+    const core = new HarnessMemCore(createConfig("qualified-invalid"));
+    try {
+      const db = (core as unknown as { db: Database }).db;
+      // dimension above nativeDimension
+      expect(() => setEmbeddingDefaultModel(db, "granite-embedding-311m-r2@9999")).toThrow();
+      // unknown model id with a dimension suffix
+      expect(() => setEmbeddingDefaultModel(db, "unknown-model@384")).toThrow();
+      // sub-native truncation of a non-matryoshka model
+      expect(() => setEmbeddingDefaultModel(db, "multilingual-e5@128")).toThrow();
+      expect(getEmbeddingDefaultModel(db)).toBe(INCUMBENT_EMBEDDING_MODEL);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("setter still accepts a bare incumbent model id (backward compat)", () => {
+    const core = new HarnessMemCore(createConfig("bare-compat"));
+    try {
+      const db = (core as unknown as { db: Database }).db;
+      expect(setEmbeddingDefaultModel(db, "multilingual-e5")).toBe(INCUMBENT_EMBEDDING_MODEL);
+      expect(getEmbeddingDefaultModel(db)).toBe("multilingual-e5");
+    } finally {
+      core.shutdown("test");
+    }
+  });
 });
