@@ -9,7 +9,7 @@
       "skip_reason": null,
       "composite_delta": 0.1979,
       "switch_delta_threshold": 0.05,
-      "effective_threshold": 0.05,
+      "effective_threshold": 0.0936,
       "ci95_width": 0.0936
     },
     {
@@ -19,7 +19,7 @@
       "skip_reason": null,
       "composite_delta": 0.1975,
       "switch_delta_threshold": 0.05,
-      "effective_threshold": 0.05,
+      "effective_threshold": 0.0971,
       "ci95_width": 0.0971
     },
     {
@@ -29,7 +29,7 @@
       "skip_reason": null,
       "composite_delta": 0.2043,
       "switch_delta_threshold": 0.05,
-      "effective_threshold": 0.05,
+      "effective_threshold": 0.0879,
       "ci95_width": 0.0879
     },
     {
@@ -39,7 +39,7 @@
       "skip_reason": null,
       "composite_delta": 0.2015,
       "switch_delta_threshold": 0.05,
-      "effective_threshold": 0.05,
+      "effective_threshold": 0.0885,
       "ci95_width": 0.0885
     }
   ]
