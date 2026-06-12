@@ -41,7 +41,10 @@ export interface EmbeddingShadowProviderOptions {
   localModelsDir?: string;
 }
 
-const DEFAULT_EMBEDDING_SHADOW_MODEL_IDS = ["ruri-v3-30m", "bge-m3"] as const;
+// S154-502: 2026-generation candidates. ruri-v3-30m is already judged
+// (composite -0.2325, keep) and bge-m3 is demoted to opportunistic
+// measurement via --models (MMTEB 59.56, superseded generation).
+const DEFAULT_EMBEDDING_SHADOW_MODEL_IDS = ["qwen3-embedding-0.6b", "granite-embedding-311m-r2"] as const;
 
 function normalizeProviderName(name: string | undefined): NormalizedProviderName | null {
   if (!name || !name.trim()) {
@@ -88,6 +91,11 @@ function createLocalOrFallbackProvider(
     modelId,
     modelPath,
     dimension: catalogEntry.dimension,
+    nativeDimension: catalogEntry.nativeDimension,
+    matryoshka: catalogEntry.matryoshka,
+    pooling: catalogEntry.pooling,
+    appendText: catalogEntry.appendText,
+    maxSeqLength: catalogEntry.maxSeqLength,
     queryPrefix: catalogEntry.queryPrefix,
     passagePrefix: catalogEntry.passagePrefix,
     fallback,
@@ -238,6 +246,11 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         modelId,
         modelPath,
         dimension: catalogEntry.dimension,
+        nativeDimension: catalogEntry.nativeDimension,
+        matryoshka: catalogEntry.matryoshka,
+        pooling: catalogEntry.pooling,
+        appendText: catalogEntry.appendText,
+        maxSeqLength: catalogEntry.maxSeqLength,
         queryPrefix: catalogEntry.queryPrefix,
         passagePrefix: catalogEntry.passagePrefix,
         fallback,
@@ -258,6 +271,11 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         modelId,
         modelPath,
         dimension: catalogEntry.dimension,
+        nativeDimension: catalogEntry.nativeDimension,
+        matryoshka: catalogEntry.matryoshka,
+        pooling: catalogEntry.pooling,
+        appendText: catalogEntry.appendText,
+        maxSeqLength: catalogEntry.maxSeqLength,
         queryPrefix: catalogEntry.queryPrefix,
         passagePrefix: catalogEntry.passagePrefix,
         fallback,

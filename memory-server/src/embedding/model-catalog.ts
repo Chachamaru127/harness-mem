@@ -1,9 +1,38 @@
+export type ModelPooling = "mean" | "last_token" | "cls";
+export type ModelType = "embedding" | "reranker";
+
 export interface ModelCatalogEntry {
   id: string;
   displayName: string;
   onnxRepo: string;
   tokenizerRepo: string;
+  /** Output vector dimension (what gets stored/compared). */
   dimension: number;
+  /**
+   * Model hidden size as produced by the ONNX graph. Defaults to `dimension`.
+   * The local provider fail-closes when the runtime hidden size differs
+   * (S154-503: no silent truncate/pad — that would measure a different model).
+   */
+  nativeDimension?: number;
+  /**
+   * Matryoshka (MRL) models may be truncated below nativeDimension and
+   * re-normalized. Without this flag, dimension !== nativeDimension throws.
+   */
+  matryoshka?: boolean;
+  /** Token pooling strategy. Defaults to "mean". */
+  pooling?: ModelPooling;
+  /**
+   * Literal text appended after prefix+content before tokenization.
+   * Qwen3-Embedding requires a trailing <|endoftext|> for last-token pooling
+   * (the official usage appends the EOD id manually).
+   */
+  appendText?: string;
+  /** Tokenizer truncation cap. Recorded per model so A/B input conditions are visible. */
+  maxSeqLength?: number;
+  /** ONNX filename under onnx/ on the repo (default "model.onnx"). */
+  onnxFile?: string;
+  /** Catalog entry kind (default "embedding"). Rerankers share the pull pipeline. */
+  modelType?: ModelType;
   sizeBytes: number;
   language: "ja" | "en" | "multilingual";
   queryPrefix?: string;
@@ -71,6 +100,8 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     onnxRepo: "Xenova/bge-small-en-v1.5",
     tokenizerRepo: "Xenova/bge-small-en-v1.5",
     dimension: 384,
+    // BGE family pools the CLS token (S154-503: was implicitly mean-pooled).
+    pooling: "cls",
     sizeBytes: 67_000_000,
     language: "en",
     queryPrefix: "Represent this sentence for searching relevant passages: ",
@@ -81,9 +112,12 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     onnxRepo: "Xenova/bge-m3",
     tokenizerRepo: "Xenova/bge-m3",
     dimension: 1024,
+    // S154-502: BGE-M3 officially needs no instruction prefix; the previous
+    // queryPrefix here was the bge-small v1.5 instruction leaking in, which
+    // would bias any A/B against it. Official dense pooling is CLS.
+    pooling: "cls",
     sizeBytes: 2_270_000_000,
     language: "multilingual",
-    queryPrefix: "Represent this sentence for searching relevant passages: ",
   },
   {
     id: "multilingual-e5",
@@ -106,6 +140,43 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     language: "en",
     queryPrefix: "search_query: ",
     passagePrefix: "search_document: ",
+  },
+  // S154-502: 2026-generation multilingual shadow candidates.
+  {
+    id: "qwen3-embedding-0.6b",
+    displayName: "Qwen3 Embedding 0.6B (Multilingual)",
+    onnxRepo: "onnx-community/Qwen3-Embedding-0.6B-ONNX",
+    tokenizerRepo: "onnx-community/Qwen3-Embedding-0.6B-ONNX",
+    dimension: 1024,
+    nativeDimension: 1024,
+    matryoshka: true,
+    // Decoder-family model: official usage is last-token pooling with a
+    // manually appended <|endoftext|> (config.json eos_token_id 151643).
+    pooling: "last_token",
+    appendText: "<|endoftext|>",
+    // Cap to the incumbent e5-small window (512) so the A/B compares models
+    // under identical input conditions; the model itself supports 32k.
+    maxSeqLength: 512,
+    // fp32 is external-data format: onnx/model.onnx (307MB) + onnx/model.onnx_data (2.09GB).
+    sizeBytes: 2_400_000_000,
+    language: "multilingual",
+    queryPrefix:
+      "Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:",
+  },
+  {
+    id: "granite-embedding-311m-r2",
+    displayName: "Granite Embedding 311M Multilingual R2",
+    onnxRepo: "ibm-granite/granite-embedding-311m-multilingual-r2",
+    tokenizerRepo: "ibm-granite/granite-embedding-311m-multilingual-r2",
+    dimension: 768,
+    nativeDimension: 768,
+    matryoshka: true,
+    // 1_Pooling/config.json: pooling_mode_cls_token=true. No prompts
+    // (config_sentence_transformers.json prompts are empty strings).
+    pooling: "cls",
+    maxSeqLength: 512,
+    sizeBytes: 1_250_000_000,
+    language: "multilingual",
   },
 ];
 

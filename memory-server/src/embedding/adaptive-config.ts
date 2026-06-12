@@ -36,6 +36,14 @@ export interface CompositeScoreWeights {
   bilingualWeight: number;
   devWorkflowWeight: number;
   switchDeltaThreshold: number;
+  /**
+   * S154-501: when true, the switch decision requires
+   * delta >= max(switchDeltaThreshold, paired-bootstrap CI95 width) so a
+   * noise-driven delta can never trigger a ~14GB re-index. Tightening only —
+   * the 0.05 floor never loosens. Default off until the D29 amendment is
+   * accepted (human judgment); the measurement artifact records the CI either way.
+   */
+  ciLowerBoundEnabled: boolean;
   source?: string;
   updatedAt?: string;
   notes?: string;
@@ -62,6 +70,7 @@ const DEFAULT_COMPOSITE_SCORE_WEIGHTS: CompositeScoreWeights = {
   bilingualWeight: 0.25,
   devWorkflowWeight: 0.25,
   switchDeltaThreshold: 0.05,
+  ciLowerBoundEnabled: false,
   source: "built-in-defaults",
 };
 
@@ -121,6 +130,7 @@ export function loadCompositeScoreWeights(): CompositeScoreWeights {
     switchDeltaThreshold: Number.isFinite(threshold)
       ? Math.max(0, threshold)
       : DEFAULT_COMPOSITE_SCORE_WEIGHTS.switchDeltaThreshold,
+    ciLowerBoundEnabled: raw?.ci_lower_bound_enabled === true,
     source: typeof raw?.source === "string" ? raw.source : DEFAULT_COMPOSITE_SCORE_WEIGHTS.source,
     updatedAt: typeof raw?.updatedAt === "string" ? raw.updatedAt : undefined,
     notes: typeof raw?.notes === "string" ? raw.notes : undefined,

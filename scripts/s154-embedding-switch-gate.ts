@@ -32,6 +32,6 @@ if (import.meta.main) {
   const artifact = JSON.parse(readFileSync(artifactPath, "utf8"));
   const decisions = decideFromShadowAbArtifact(artifact, activeModel);
   process.stdout.write(
-    `${JSON.stringify({ schema_version: "s154-403-switch-decision.v1", active_model: activeModel, decisions }, null, 2)}\n`,
+    `${JSON.stringify({ schema_version: "s154-403-switch-decision.v2", active_model: activeModel, decisions }, null, 2)}\n`,
   );
 }

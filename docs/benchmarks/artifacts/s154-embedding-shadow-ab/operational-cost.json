@@ -1,0 +1,63 @@
+{
+  "schema_version": "s154-505-operational-cost.v1",
+  "note": "aggregate operational-cost evidence for the switch decision (S154-505). index_size is a dimension-ratio extrapolation from the current ~14GB/384dim index; reembed time extrapolates the measured passage throughput (short observations, CPU/Apple Silicon, fp32 ONNX).",
+  "baseline": {
+    "model": "multilingual-e5",
+    "dimension": 384,
+    "query_p50_ms": 5.2206,
+    "query_p95_ms": 6.4521,
+    "passage_throughput_per_s": 302.7636,
+    "index_size_projection_gb": 14.0
+  },
+  "candidates": [
+    {
+      "model": "qwen3-embedding-0.6b",
+      "config": "native",
+      "dimension": 1024,
+      "query_p50_ms": 73.6669,
+      "query_p95_ms": 82.0572,
+      "passage_throughput_per_s": 15.2655,
+      "index_size_projection_gb": 37.3,
+      "reembed_minutes_per_100k_obs": 109.2
+    },
+    {
+      "model": "qwen3-embedding-0.6b",
+      "config": "mrl-384",
+      "dimension": 384,
+      "query_p50_ms": 92.6831,
+      "query_p95_ms": 136.3609,
+      "passage_throughput_per_s": 16.0093,
+      "index_size_projection_gb": 14.0,
+      "reembed_minutes_per_100k_obs": 104.1
+    },
+    {
+      "model": "granite-embedding-311m-r2",
+      "config": "native",
+      "dimension": 768,
+      "query_p50_ms": 12.3257,
+      "query_p95_ms": 18.9672,
+      "passage_throughput_per_s": 67.5097,
+      "index_size_projection_gb": 28.0,
+      "reembed_minutes_per_100k_obs": 24.7
+    },
+    {
+      "model": "granite-embedding-311m-r2",
+      "config": "mrl-384",
+      "dimension": 384,
+      "query_p50_ms": 10.3735,
+      "query_p95_ms": 14.6317,
+      "passage_throughput_per_s": 73.1165,
+      "index_size_projection_gb": 14.0,
+      "reembed_minutes_per_100k_obs": 22.8
+    }
+  ],
+  "effective_truncation": {
+    "multilingual-e5": "model config max (512)",
+    "qwen3-embedding-0.6b": "maxSeqLength 512 (catalog; matches incumbent window for input-condition parity)",
+    "granite-embedding-311m-r2": "maxSeqLength 512 (catalog)"
+  },
+  "pull_pipeline": {
+    "streaming": "chunked reader + FileSink (4MB highWaterMark); Bun.write(path, Response) hangs against the HF CDN and is not used",
+    "external_data_sidecar_verified": "qwen3 fp32 onnx/model.onnx 307,161,415 B + onnx/model.onnx_data 2,093,436,928 B byte-exact vs HF tree"
+  }
+}

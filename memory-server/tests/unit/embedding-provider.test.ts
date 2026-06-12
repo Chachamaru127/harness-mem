@@ -283,18 +283,30 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     installModel("ruri-v3-30m");
 
     try {
+      // S154-502: the default shadow set is the 2026 generation; judged or
+      // demoted models (ruri / bge-m3) remain reachable via explicit modelIds.
       const candidates = resolveEmbeddingShadowProviders({
         currentVectorModel: "local:multilingual-e5",
         currentVectorDimension: 384,
         localModelsDir: modelsDir,
       });
-      expect(candidates.map((candidate) => candidate.model_id)).toEqual(["ruri-v3-30m", "bge-m3"]);
+      expect(candidates.map((candidate) => candidate.model_id)).toEqual([
+        "qwen3-embedding-0.6b",
+        "granite-embedding-311m-r2",
+      ]);
       expect(candidates.every((candidate) => candidate.provider === "local")).toBe(true);
       expect(candidates.every((candidate) => candidate.inference === "onnx")).toBe(true);
       expect(candidates.every((candidate) => candidate.local_only === true)).toBe(true);
       expect(candidates.every((candidate) => candidate.separate_vector_table_required === true)).toBe(true);
-      expect(candidates.find((candidate) => candidate.model_id === "ruri-v3-30m")?.status).toBe("ready");
-      expect(candidates.find((candidate) => candidate.model_id === "bge-m3")?.status).toBe("not_installed");
+
+      const explicit = resolveEmbeddingShadowProviders({
+        currentVectorModel: "local:multilingual-e5",
+        currentVectorDimension: 384,
+        localModelsDir: modelsDir,
+        modelIds: ["ruri-v3-30m", "bge-m3"],
+      });
+      expect(explicit.find((candidate) => candidate.model_id === "ruri-v3-30m")?.status).toBe("ready");
+      expect(explicit.find((candidate) => candidate.model_id === "bge-m3")?.status).toBe("not_installed");
     } finally {
       rmSync(modelsDir, { recursive: true, force: true });
     }
