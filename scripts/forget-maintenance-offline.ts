@@ -5,6 +5,7 @@ import { dirname, resolve } from "node:path";
 import { Database } from "bun:sqlite";
 import { HarnessMemCore, getConfig, type ApiResponse, type Config } from "../memory-server/src/core/harness-mem-core";
 import { resolveHomePath } from "../memory-server/src/core/core-utils";
+import { configureBunCustomSqliteForSqliteVec } from "../memory-server/src/db/custom-sqlite-preflight";
 
 type Args = {
   dbPath?: string;
@@ -225,6 +226,10 @@ function firstItem(response: ApiResponse): Record<string, unknown> {
 function stringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is string => typeof item === "string" && item.length > 0);
+}
+
+function executeTouchesVec0Sidecar(args: Args): boolean {
+  return args.execute && !args.archiveOnly && !args.pruneStaleVectors;
 }
 
 function buildOfflineConfig(args: Args): Config {
@@ -620,9 +625,38 @@ async function main(): Promise<void> {
     backupStat = statSync(args.backupPath!);
   }
   const config = buildOfflineConfig(args);
+  // Hard-purge execute deletes sqlite-vec sidecar rows (mem_vectors_vec_map_* /
+  // mem_vectors_vec_*) through HarnessMemCore.deleteSqliteVecRowsForHardPurge.
+  // A bare bun sqlite without loadExtension leaves those DELETEs as silent no-ops
+  // and stale vec0 entries until repair. --archive-only and --prune-stale-vectors
+  // only touch mem_archive_* or mem_vectors JSON cache, not vec0 sidecar tables,
+  // so vec0 loadability is not required on those paths (no explicit preflight).
+  // SqliteStorageAdapter also calls configureBunCustomSqliteForSqliteVec before
+  // opening the DB; this call documents the hard-purge sidecar dependency and is
+  // idempotent when the adapter already switched to Homebrew sqlite.
+  if (executeTouchesVec0Sidecar(args)) {
+    const preflight = configureBunCustomSqliteForSqliteVec();
+    if (!preflight.configured) {
+      process.stderr.write(
+        `[forget-maintenance-offline] custom sqlite not configured (${preflight.reason}); ` +
+          `hard-purge vec0 sidecar deletes may be no-ops\n`,
+      );
+    }
+  }
   const daemonGuard = await checkDaemonStoppedForExecute(args, config);
   const checkpointPath = checkpointPathFor(args, config.dbPath);
   const core = new HarnessMemCore(config);
+  // Default execute assumes the daemon is stopped (see checkDaemonStoppedForExecute).
+  // HarnessMemCore.configureDatabase already sets busy_timeout=5000, which is enough
+  // when this script holds exclusive write access. --allow-running-daemon is the
+  // explicit opt-in to co-run with the live daemon (ingest/consolidation hold short
+  // write transactions every ~60s). Maintenance batches use BEGIN IMMEDIATE, hard-
+  // purge cascades, and optional VACUUM; with busy_timeout=0 or 5000ms those can
+  // error SQLITE_BUSY the instant they collide. Raise to 30000ms only for that opt-in,
+  // matching scripts/s154-granite-backfill.ts daemon coexistence tuning.
+  if (args.allowRunningDaemon && args.execute) {
+    core.getRawDb().exec("PRAGMA busy_timeout = 30000");
+  }
   try {
     const before = {
       active_observations: count(core, `SELECT COUNT(*) AS count FROM mem_observations WHERE archived_at IS NULL`),
