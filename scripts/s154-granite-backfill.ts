@@ -33,7 +33,10 @@ import { createLocalOnnxEmbeddingProvider } from "../memory-server/src/embedding
 import { ModelManager } from "../memory-server/src/embedding/model-manager";
 import { findModelById } from "../memory-server/src/embedding/model-catalog";
 import type { EmbeddingProvider } from "../memory-server/src/embedding/types";
-import { resolveSqliteVecExtensionPath } from "../memory-server/src/db/custom-sqlite-preflight";
+import {
+  configureBunCustomSqliteForSqliteVec,
+  resolveSqliteVecExtensionPath,
+} from "../memory-server/src/db/custom-sqlite-preflight";
 
 const MODEL_ID = "granite-embedding-311m-r2";
 const DEFAULT_DB_PATH = "~/.harness-mem/harness-mem.db";
@@ -160,7 +163,28 @@ function formatEta(seconds: number | null): string {
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const resolvedDbPath = args.dbPath === ":memory:" ? ":memory:" : resolve(resolveHomePath(args.dbPath));
+  // The live daemon configures bun's custom (Homebrew) sqlite *before* opening the DB
+  // so vec0 (sqlite-vec) is loadable. A bare `new Database` uses bun's bundled sqlite,
+  // which cannot load extensions, leaving every sidecar write a silent no-op and the
+  // granite vec0 index empty — which would degrade post-flip vector search to a bounded
+  // JS scan. Mirror the daemon here (static: applies to Databases opened afterward).
+  if (!args.dryRun) {
+    const preflight = configureBunCustomSqliteForSqliteVec();
+    if (!preflight.configured) {
+      process.stderr.write(
+        `[s154-511] custom sqlite not configured (${preflight.reason}); vec0 sidecar will be a no-op ` +
+          `and sidecar parity will NOT be enforced\n`,
+      );
+    }
+  }
   const db = new Database(resolvedDbPath, { readwrite: !args.dryRun, readonly: args.dryRun });
+  // The live daemon is a concurrent writer (ingest/consolidation hold short write
+  // transactions every ~60s). With the default busy_timeout=0 the backfill's per-batch
+  // BEGIN IMMEDIATE errors SQLITE_BUSY the instant it collides; a timeout makes it wait
+  // out the daemon's brief commit and retry. WAL lets the backfill read concurrently
+  // throughout, and the missing-or-stale selection re-covers any row the daemon ingests
+  // mid-run, so co-running with the daemon needs no downtime.
+  db.exec("PRAGMA busy_timeout = 30000");
 
   let result: GraniteBackfillResult;
   try {
