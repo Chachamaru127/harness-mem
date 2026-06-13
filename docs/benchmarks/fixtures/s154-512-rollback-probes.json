@@ -1,0 +1,24 @@
+{
+  "schema_version": "s154-512-rollback-probes.v1",
+  "description": "Probe queries for D29 rollback drill. Replace project values with live project keys before execution.",
+  "probes": [
+    {
+      "label": "ja-deployment",
+      "project": "__REPLACE_WITH_PROJECT__",
+      "query": "本番環境 デプロイ",
+      "limit": 10
+    },
+    {
+      "label": "ja-embedding-decision",
+      "project": "__REPLACE_WITH_PROJECT__",
+      "query": "embedding 切替",
+      "limit": 10
+    },
+    {
+      "label": "mixed-code-token",
+      "project": "__REPLACE_WITH_PROJECT__",
+      "query": "scoreFusion rerank",
+      "limit": 10
+    }
+  ]
+}
