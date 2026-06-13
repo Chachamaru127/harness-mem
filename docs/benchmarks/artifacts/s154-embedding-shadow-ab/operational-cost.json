@@ -37,8 +37,10 @@
       "query_p50_ms": 12.3257,
       "query_p95_ms": 18.9672,
       "passage_throughput_per_s": 67.5097,
+      "passage_throughput_per_s_note": "short-observation shadow A/B extrapolation; real full-corpus backfill (maxSeqLength=512 raw_text) measured ~5/s for granite mrl-384 — do not use this native-config benchmark rate for live reembed ETA",
       "index_size_projection_gb": 28.0,
-      "reembed_minutes_per_100k_obs": 24.7
+      "reembed_minutes_per_100k_obs": 24.7,
+      "reembed_minutes_per_100k_obs_note": "short-observation extrapolation; at ~5/s real throughput ≈333 min/100k obs (374,660 obs → ~21h vs ~85 min from 73/s-class estimate)"
     },
     {
       "model": "granite-embedding-311m-r2",
@@ -47,8 +49,10 @@
       "query_p50_ms": 10.3735,
       "query_p95_ms": 14.6317,
       "passage_throughput_per_s": 73.1165,
+      "passage_throughput_per_s_note": "short-observation shadow A/B extrapolation; live full-corpus backfill (maxSeqLength=512 raw_text) measured ~5/s (374,660 obs, ETA ~21h)",
       "index_size_projection_gb": 14.0,
-      "reembed_minutes_per_100k_obs": 22.8
+      "reembed_minutes_per_100k_obs": 22.8,
+      "reembed_minutes_per_100k_obs_note": "short-observation extrapolation; at ~5/s real throughput ≈333 min/100k obs (374,660 obs → ~21h vs ~85 min from 73.1/s estimate)"
     }
   ],
   "effective_truncation": {
