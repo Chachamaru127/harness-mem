@@ -24,6 +24,7 @@ function makeDb(): Database {
     CREATE TABLE mem_observations (
       id TEXT PRIMARY KEY,
       content_redacted TEXT NOT NULL,
+      raw_text TEXT DEFAULT NULL,
       archived_at TEXT DEFAULT NULL,
       expires_at TEXT DEFAULT NULL,
       created_at TEXT NOT NULL,
@@ -49,10 +50,11 @@ function seedObservation(
   content: string,
   createdAt: string,
   updatedAt?: string,
+  rawText?: string,
 ): void {
   db.query(
-    "INSERT INTO mem_observations(id, content_redacted, created_at, updated_at) VALUES (?, ?, ?, ?)",
-  ).run(id, content, createdAt, updatedAt ?? createdAt);
+    "INSERT INTO mem_observations(id, content_redacted, raw_text, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+  ).run(id, content, rawText ?? null, createdAt, updatedAt ?? createdAt);
 }
 
 /** Existing e5 vector (a different model space) — backfill must never touch it. */
@@ -137,6 +139,24 @@ describe("S154-511 granite backfill core", () => {
       .query("SELECT DISTINCT dimension AS d FROM mem_vectors WHERE model = ?")
       .all(GRANITE_BACKFILL_MODEL) as Array<{ d: number }>;
     expect(dims).toEqual([{ d: GRANITE_BACKFILL_DIMENSION }]);
+  });
+
+  test("embeds raw_text when present, falling back to content_redacted (live parity)", async () => {
+    const db = makeDb();
+    // o0 has raw_text → it must be embedded, NOT content_redacted.
+    seedObservation(db, "o0", "REDACTED placeholder", "2026-06-10T00:00:00.000Z", undefined, "verbatim raw passage 日本語");
+    // o1 has no raw_text → falls back to content_redacted, exactly like live.
+    seedObservation(db, "o1", "redacted only content", "2026-06-10T00:00:01.000Z");
+    const { embed, calls } = makeFakeEmbed();
+
+    const result = await runGraniteBackfill({ db, embedBatch: embed, batchSize: 8 });
+
+    // Verification re-embeds the sample too; the run-phase embed is calls[0].
+    const embeddedTexts = calls[0];
+    expect(embeddedTexts).toContain("verbatim raw passage 日本語");
+    expect(embeddedTexts).toContain("redacted only content");
+    expect(embeddedTexts).not.toContain("REDACTED placeholder");
+    expect(result.verification.passed).toBe(true);
   });
 
   test("does not modify or delete existing e5 vectors (non-destructive)", async () => {

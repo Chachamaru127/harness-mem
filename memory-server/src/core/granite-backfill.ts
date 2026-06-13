@@ -14,6 +14,11 @@
  *     was backfilled (observations are processed in a stable id order). A fresh
  *     call skips everything already covered, so an interrupted run resumes
  *     instead of restarting.
+ *   - Live-faithful: the embedded text is `raw_text ?? content_redacted` with no
+ *     char cap — byte-for-byte what the live materialization path feeds the model
+ *     (see embeddingSource) and at the same "passage" mode. If the backfill embedded
+ *     a different string (e.g. a 2000-char slice), a post-flip live re-ingest of the
+ *     same observation would produce a divergent vector and the index would drift.
  *   - Verified: completion is gated on row-count parity (active observations ==
  *     Granite rows) plus a random-sample cosine check (re-embed the sample, take
  *     the worst cosine against the stored vector). The returned verification
@@ -114,7 +119,6 @@ export interface GraniteBackfillOptions {
   /** Random-sample cosine verification size. */
   verifySampleSize?: number;
   cosineThreshold?: number;
-  maxContentChars?: number;
   now?: string;
   onProgress?: (progress: BackfillProgress) => void;
   /** Deterministic RNG seed for the verification sample (defaults to a fixed seed). */
@@ -134,6 +138,7 @@ export interface GraniteBackfillOptions {
 interface ObservationRow {
   id: string;
   content_redacted: string;
+  raw_text: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -141,7 +146,20 @@ interface ObservationRow {
 const DEFAULT_BATCH_SIZE = 64;
 const DEFAULT_VERIFY_SAMPLE = 16;
 const DEFAULT_COSINE_THRESHOLD = 0.999;
-const DEFAULT_MAX_CONTENT_CHARS = 2000;
+
+/**
+ * The exact text the live materialization path embeds
+ * (event-recorder.materializeObservationDerivedData): `raw_text ?? content_redacted`,
+ * with NO character cap. Length is bounded by the provider tokenizer's maxSeqLength,
+ * identically to live (which passes the full string into `embedContent`). A standalone
+ * char slice here would embed a *different* string than live, so a post-flip live
+ * re-ingest of the same observation would produce a vector that diverges from the
+ * backfilled one. Keeping a single source-of-truth function for both the embed and the
+ * cosine-verify path guarantees they never drift apart.
+ */
+function embeddingSource(row: { raw_text: string | null; content_redacted: string }): string {
+  return row.raw_text || row.content_redacted || "";
+}
 
 function activeFilterSql(now: string): string {
   // archived rows and rows past expiry are out of scope (mirrors the read path).
@@ -334,7 +352,6 @@ export async function runGraniteBackfill(
     dryRun = false,
     verifySampleSize = DEFAULT_VERIFY_SAMPLE,
     cosineThreshold = DEFAULT_COSINE_THRESHOLD,
-    maxContentChars = DEFAULT_MAX_CONTENT_CHARS,
     now = nowIso(),
     onProgress,
     sampleSeed = 154_511,
@@ -351,28 +368,29 @@ export async function runGraniteBackfill(
       .get() as { n: number }
   ).n;
 
-  const truncateContent = (content: string): string => {
-    const normalized = content || "";
-    return normalized.length > maxContentChars ? normalized.slice(0, maxContentChars) : normalized;
-  };
-
   if (dryRun) {
     const graniteRows = countActiveGraniteRows(db, activeFilter);
+    // "completed" must use the same missing-or-stale gap the real run and the
+    // verification gate use — not `graniteRows >= target`. A stale row (live edit
+    // after embed) or a row added after the start snapshot satisfies `>= target`
+    // while still leaving the active set uncovered; the dry-run would then report
+    // completion over a gap that the real run correctly refuses to close.
+    const missingRows = countMissingActiveGraniteRows(db, activeFilter);
     return {
       target_model: GRANITE_BACKFILL_MODEL,
       dimension: GRANITE_BACKFILL_DIMENSION,
       target_observations: target,
       granite_rows: graniteRows,
       embedded_this_run: 0,
-      completed: graniteRows >= target,
+      completed: missingRows === 0,
       dry_run: true,
       elapsed_seconds: (performance.now() - startedAt) / 1000,
       throughput_per_s: null,
       verification: {
-        row_count_match: countMissingActiveGraniteRows(db, activeFilter) === 0,
+        row_count_match: missingRows === 0,
         target_observations: target,
         granite_rows: graniteRows,
-        missing_rows: countMissingActiveGraniteRows(db, activeFilter),
+        missing_rows: missingRows,
         sample_size: 0,
         min_cosine: null,
         cosine_threshold: cosineThreshold,
@@ -401,7 +419,7 @@ export async function runGraniteBackfill(
   const fetchBatch = (): ObservationRow[] =>
     db
       .query(
-        `SELECT o.id, o.content_redacted, o.created_at, o.updated_at
+        `SELECT o.id, o.content_redacted, o.raw_text, o.created_at, o.updated_at
          FROM mem_observations o
          WHERE ${activeFilter}
            AND NOT EXISTS (
@@ -453,7 +471,7 @@ export async function runGraniteBackfill(
     batches += 1;
 
     const batchStart = performance.now();
-    const vectors = await embedBatch(rows.map((row) => truncateContent(row.content_redacted)));
+    const vectors = await embedBatch(rows.map((row) => embeddingSource(row)));
     embedElapsedS += (performance.now() - batchStart) / 1000;
 
     if (vectors.length !== rows.length) {
@@ -556,7 +574,6 @@ export async function runGraniteBackfill(
     verifySampleSize,
     cosineThreshold,
     activeFilter,
-    truncateContent,
     sampleSeed,
     sqliteVecAvailable,
   });
@@ -585,7 +602,6 @@ async function verifyBackfill(args: {
   verifySampleSize: number;
   cosineThreshold: number;
   activeFilter: string;
-  truncateContent: (content: string) => string;
   sampleSeed: number;
   sqliteVecAvailable: boolean;
 }): Promise<GraniteBackfillVerification> {
@@ -598,7 +614,6 @@ async function verifyBackfill(args: {
     verifySampleSize,
     cosineThreshold,
     activeFilter,
-    truncateContent,
     sampleSeed,
     sqliteVecAvailable,
   } = args;
@@ -636,7 +651,8 @@ async function verifyBackfill(args: {
   if (sample.length > 0) {
     const rows = db
       .query(
-        `SELECT o.id AS id, o.content_redacted AS content_redacted, v.vector_json AS vector_json
+        `SELECT o.id AS id, o.content_redacted AS content_redacted, o.raw_text AS raw_text,
+                v.vector_json AS vector_json
          FROM mem_observations o
          JOIN mem_vectors v ON v.observation_id = o.id AND v.model = ? AND v.dimension = ?
          WHERE o.id IN (${sample.map(() => "?").join(",")})`,
@@ -644,10 +660,13 @@ async function verifyBackfill(args: {
       .all(GRANITE_BACKFILL_MODEL, GRANITE_BACKFILL_DIMENSION, ...sample) as Array<{
       id: string;
       content_redacted: string;
+      raw_text: string | null;
       vector_json: string;
     }>;
 
-    const reembedded = await embedBatch(rows.map((row) => truncateContent(row.content_redacted)));
+    // Re-embed from the *same* source the run embedded from, or the cosine check
+    // compares vectors built from different text and falsely fails on raw_text rows.
+    const reembedded = await embedBatch(rows.map((row) => embeddingSource(row)));
     minCosine = 1;
     for (let i = 0; i < rows.length; i += 1) {
       const stored = JSON.parse(rows[i].vector_json) as number[];
