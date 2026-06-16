@@ -4,7 +4,16 @@ import { dirname, join, relative, resolve } from "node:path";
 import { runCodeTokenTuningGate } from "./s108-code-token-tuning";
 import { runTemporalPlannerGate } from "./s108-temporal-planner-gate";
 import { runCjkDiscriminationGate, type CjkSlice } from "./s154-cjk-discrimination-gate";
-import { buildFlagshipKpi, type FlagshipKpi } from "../memory-server/src/benchmark/flagship-kpi";
+import { buildFlagshipKpi, buildDeepFreshnessSubBlock, type FlagshipKpi, type DeepFreshnessSubBlock } from "../memory-server/src/benchmark/flagship-kpi";
+import {
+  computeFreshnessLagReal,
+  computeSupersessionReal,
+  computeTenseRewriteReal,
+  buildOllamaAdjudicator,
+  type LagContradictionInput,
+  type SupersessionInput,
+  type TenseRewriteInput,
+} from "../memory-server/src/benchmark/deep-freshness-bench";
 
 interface Options {
   manifestPath?: string;
@@ -27,7 +36,7 @@ interface ReconciliationReport {
       // S154-303 dreaming tense-rewrite machinery: rewrite counts and false-positive
       // negatives are pinned by this integration suite (D38 review condition).
       dreaming_rewrite_evidence: string;
-      deep_freshness: string;
+      deep_freshness: DeepFreshnessSubBlock;
     };
   };
   schema_version: "s108-developer-domain-manifest.v1";
@@ -175,6 +184,32 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       return current + cjkRegressionTolerance < baseline;
     }).length;
 
+  // S154-310: deep freshness 3-metric bench (report-only). Run real system bench.
+  // Fixtures provide input+labels only; LLM outputs and DB values come from live execution.
+  const dfbFixtureBase = resolve(import.meta.dir, "../tests/benchmarks/fixtures");
+  const ollamaOpts = {
+    ollamaHost: process.env["HARNESS_MEM_OLLAMA_HOST"] ?? "http://127.0.0.1:11434",
+    model: process.env["HARNESS_MEM_FACT_LLM_MODEL"] ?? "qwen3.5:9b",
+    timeoutMs: 30_000,
+  };
+  const dfbAdjudicator = buildOllamaAdjudicator(ollamaOpts);
+  let lagInputs: LagContradictionInput[] = [];
+  let supInputs: SupersessionInput[] = [];
+  let trInputs: TenseRewriteInput[] = [];
+  try { lagInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-lag.json"), "utf8")) as LagContradictionInput[]; } catch { /* no fixture */ }
+  try { supInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-supersession.json"), "utf8")) as SupersessionInput[]; } catch { /* no fixture */ }
+  try { trInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-tense-rewrite.json"), "utf8")) as TenseRewriteInput[]; } catch { /* no fixture */ }
+  const [dfbLag, dfbSup, dfbTr] = await Promise.all([
+    computeFreshnessLagReal(lagInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+    computeSupersessionReal(supInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+    computeTenseRewriteReal(trInputs, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+  ]);
+  const deepFreshnessSubBlock = buildDeepFreshnessSubBlock({
+    freshness_lag: dfbLag,
+    supersession: dfbSup,
+    tense_rewrite: dfbTr,
+  });
+
   // S154-305: enforce the flagship KPI threshold on the recorded full-CI measurement.
   // The freshness value is produced by run-ci's knowledge-update benchmark and recorded
   // in the CI manifest; this reconciliation gate fails when that recorded value is
@@ -191,8 +226,7 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       current_stale_answer_regressions: temporal.metrics.current_stale_answer_regressions,
       dreaming_rewrite_evidence:
         "memory-server/tests/integration/dreaming-consolidation.test.ts (S154-303 rewrite counts + false-positive negatives)",
-      deep_freshness:
-        "not_yet_measured (tense-rewrite accuracy / supersession precision / freshness lag per spec Shallow vs deep freshness)",
+      deep_freshness: deepFreshnessSubBlock,
     },
   };
 

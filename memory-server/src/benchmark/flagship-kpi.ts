@@ -41,3 +41,36 @@ export function buildFlagshipKpi(freshnessAtK: number): FlagshipKpi {
     scope_note: FLAGSHIP_KPI_SCOPE_NOTE,
   };
 }
+
+// --------------------------------------------------------------------------
+// S154-310: deep freshness sub-block (report-only, depth:"deep")
+// IMPORTANT: does NOT affect `depth: "shallow"` on FlagshipKpi (D39 preserved).
+// --------------------------------------------------------------------------
+
+import type { FreshnessLagResult, SupersessionResult, TenseRewriteResult } from "./deep-freshness-bench.js";
+
+export interface DeepFreshnessSubBlock {
+  /** Distinguishes this from the shallow flagship metric. */
+  depth: "deep";
+  /** report-only: does not gate the release pipeline. */
+  report_only: true;
+  tense_rewrite: TenseRewriteResult;
+  supersession: SupersessionResult;
+  freshness_lag: FreshnessLagResult;
+  measured_by: "scripts/s154-deep-freshness-bench.ts";
+}
+
+export function buildDeepFreshnessSubBlock(params: {
+  tense_rewrite: TenseRewriteResult;
+  supersession: SupersessionResult;
+  freshness_lag: FreshnessLagResult;
+}): DeepFreshnessSubBlock {
+  return {
+    depth: "deep",
+    report_only: true,
+    tense_rewrite: params.tense_rewrite,
+    supersession: params.supersession,
+    freshness_lag: params.freshness_lag,
+    measured_by: "scripts/s154-deep-freshness-bench.ts",
+  };
+}
