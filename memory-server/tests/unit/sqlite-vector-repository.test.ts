@@ -221,7 +221,7 @@ describe("sqlite-vec fast path helpers", () => {
       "mem_vectors_vec_map_model",
     );
 
-    expect(sql).toContain("v.embedding MATCH ? AND k = ?");
+    expect(sql).toContain("v.embedding MATCH vec_f32(?) AND k = ?");
     expect(sql).toContain("JOIN mem_vectors_vec_map_model m ON m.rowid = v.rowid");
     expect(sql).toContain("JOIN mem_observations o ON o.id = c.id");
     expect(sql).not.toContain("JOIN mem_vectors mv");
@@ -262,7 +262,7 @@ describe("sqlite-vec fast path helpers", () => {
     expect(ok).toBe(true);
     expect(statements.some((entry) => /INSERT OR REPLACE INTO .*embedding/.test(entry.sql))).toBe(false);
     const vecUpdate = statements.find((entry) =>
-      /UPDATE mem_vectors_vec_test_model SET embedding = \? WHERE rowid = \?/.test(entry.sql)
+      /UPDATE mem_vectors_vec_test_model SET embedding = vec_f32\(\?\) WHERE rowid = \?/.test(entry.sql)
     );
     expect(vecUpdate).toBeDefined();
     expect(vecUpdate?.args[0]).toBeInstanceOf(Float32Array);

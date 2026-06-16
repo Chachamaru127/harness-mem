@@ -915,11 +915,13 @@ export interface VectorSearchResult {
   migrationWarning?: string;
   degradedReasons?: string[];
   prefilter?: {
-    mode: "lexical_candidate_rerank";
+    mode: "lexical_candidate_rerank" | "binary_hamming_prefilter";
     candidates: number;
     matched_rows: number;
     variant_count: number;
   };
+  /** s154-B: true when HARNESS_MEM_BINARY_PREFILTER=1 and 2-pass fired */
+  binary_prefilter_active?: boolean;
 }
 
 export interface SearchCandidate {

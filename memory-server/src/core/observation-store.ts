@@ -39,6 +39,9 @@ import {
   getSqliteVecMapTableName,
   getSqliteVecTableName,
   serializeSqliteVecFloat32,
+  quantizeToBits,
+  getBitTableName,
+  getBitMapTableName,
   type VectorEngine,
 } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
@@ -2132,6 +2135,11 @@ export class ObservationStore {
       });
     };
 
+    // s154-B: binary prefilter flag (default-OFF, DENSE leg only)
+    // When ON: Pass1=Hamming KNN on bit table → Pass2=float KNN on candidate subset
+    // BM25/graph legs are NOT affected — they contribute via union at :4106
+    const binaryPrefilterEnabled = process.env.HARNESS_MEM_BINARY_PREFILTER === "1";
+
     const runVariantSearch = (
       plan: ReturnType<typeof resolveEmbeddingPlan>,
       variantWeight: number
@@ -2141,6 +2149,7 @@ export class ObservationStore {
         let sqliteFallbackReason: string | null = null;
         try {
           const sqliteScoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }> = [];
+          let binaryPrefilterFired = false;
 
           for (const target of searchTargets) {
             const tableName = getSqliteVecTableName(target.model);
@@ -2167,11 +2176,78 @@ export class ObservationStore {
                 internalLimit,
               ),
             );
-            const params: unknown[] = [
-              serializeSqliteVecFloat32(target.vector),
-              sqliteVecK,
-            ];
-            let sql = buildSqliteVecKnnCandidateSql(tableName, mapTableName);
+
+            // s154-B Pass 1: Hamming KNN on bit companion table (flag ON only)
+            // Narrows float search space to ~4x wider than sqliteVecK to preserve recall
+            let candidateObservationIds: string[] | null = null;
+            if (binaryPrefilterEnabled) {
+              try {
+                const bitTableName = getBitTableName(target.model);
+                const bitMapTableName = getBitMapTableName(target.model);
+                const bitTableCount = this.deps.db
+                  .query<{ count: number }, [string, string]>(
+                    `SELECT COUNT(*) AS count FROM sqlite_master WHERE type IN ('table','shadow') AND name IN (?,?)`
+                  )
+                  .get(bitTableName, bitMapTableName);
+
+                if (Number(bitTableCount?.count ?? 0) >= 2) {
+                  // bitK ≥ 8x of float k to satisfy recall@10 ≥ 0.95 (Lead verified: 4x=0.69, 8x=0.95)
+                  const bitK = Math.min(sqliteVecKMax * 8, Math.max(internalLimit * 16, 200));
+                  const queryBits = quantizeToBits(target.vector);
+                  const bitRows = this.deps.db
+                    .query<{ observation_id: string }, [Uint8Array, number]>(
+                      `SELECT m.observation_id
+                       FROM ${bitTableName} v
+                       JOIN ${bitMapTableName} m ON m.rowid = v.rowid
+                       WHERE v.embedding MATCH vec_bit(?) AND k = ?`
+                    )
+                    .all(queryBits, bitK);
+
+                  if (bitRows.length > 0) {
+                    candidateObservationIds = bitRows.map((r) => r.observation_id);
+                    binaryPrefilterFired = true;
+                  }
+                  // bit table empty → fall through to float single-pass
+                }
+              } catch {
+                // bit prefilter failed → graceful fallback to float single-pass
+                candidateObservationIds = null;
+              }
+            }
+
+            // s154-B Pass 2 (or single-pass when flag OFF / bit table absent):
+            // float KNN restricted to Hamming-prefiltered rowids when candidateObservationIds is set
+            let sql: string;
+            const params: unknown[] = [];
+            if (candidateObservationIds && candidateObservationIds.length > 0) {
+              // Build float KNN with IN-clause restriction on observation_id
+              // Table names are validated via normalizeSqliteIdentifierPart ([a-z0-9_] only)
+              const placeholders = candidateObservationIds.map(() => "?").join(",");
+              sql = `
+                SELECT
+                  c.id AS id,
+                  c.distance AS distance,
+                  o.created_at AS created_at
+                FROM (
+                  SELECT
+                    m.observation_id AS id,
+                    v.distance AS distance
+                  FROM ${tableName} v
+                  JOIN ${mapTableName} m ON m.rowid = v.rowid
+                  WHERE m.observation_id IN (${placeholders})
+                    AND v.embedding MATCH vec_f32(?) AND k = ?
+                ) c
+                JOIN mem_observations o ON o.id = c.id
+                WHERE 1 = 1
+              `;
+              for (const id of candidateObservationIds) params.push(id);
+              // vec_f32() wrapper required for reliable float binding (Lead verified)
+              params.push(serializeSqliteVecFloat32(target.vector));
+              params.push(sqliteVecK);
+            } else {
+              params.push(serializeSqliteVecFloat32(target.vector), sqliteVecK);
+              sql = buildSqliteVecKnnCandidateSql(tableName, mapTableName);
+            }
             sql = this.applyCommonFilters(sql, params, "o", request);
             sql += " ORDER BY c.distance ASC LIMIT ?";
             params.push(internalLimit);
@@ -2198,7 +2274,22 @@ export class ObservationStore {
           }
 
           if (sqliteScoreSets.length > 0) {
-            return mergeScoreSets(sqliteScoreSets, selectMigrationModel(searchTargets.map((target) => target.model)));
+            const result = mergeScoreSets(
+              sqliteScoreSets,
+              selectMigrationModel(searchTargets.map((target) => target.model)),
+              binaryPrefilterFired
+                ? {
+                    mode: "binary_hamming_prefilter" as const,
+                    candidates: sqliteScoreSets.reduce((s, ss) => s + ss.matchedRows, 0),
+                    matched_rows: sqliteScoreSets.reduce((s, ss) => s + ss.matchedRows, 0),
+                    variant_count: sqliteScoreSets.length,
+                  }
+                : undefined,
+            );
+            if (binaryPrefilterFired) {
+              result.binary_prefilter_active = true;
+            }
+            return result;
           }
           sqliteFallbackReason ||= "sqlite-vec returned no usable target";
         } catch {
@@ -4708,6 +4799,7 @@ export class ObservationStore {
         vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
         vector_degraded_reasons: vectorResult.degradedReasons ?? [],
         vector_search_enabled: vectorSearchEnabled,
+        binary_prefilter_active: vectorResult.binary_prefilter_active ?? false,
         embedding_provider: this.deps.getEmbeddingProviderName(),
         embedding_model: this.deps.embeddingProviderModel,
         reranker: {

@@ -37,6 +37,9 @@ import {
 } from "./core-utils.js";
 import {
   upsertSqliteVecRow,
+  quantizeToBits,
+  ensureBitVecTableForModel,
+  upsertBitVecRow,
   type VectorEngine,
 } from "../vector/providers";
 import type { StoredEvent } from "../projector/types";
@@ -693,6 +696,26 @@ export class EventRecorder {
         });
         if (!ok) {
           this.deps.setVecTableReady(false);
+        }
+
+        // s154-B: binary companion upsert (HARNESS_MEM_BINARY_PREFILTER=1, default-OFF)
+        if (process.env.HARNESS_MEM_BINARY_PREFILTER === "1" && ok) {
+          try {
+            const floatVec = JSON.parse(vectorJson) as number[];
+            const bits = quantizeToBits(floatVec);
+            // Ensure bit tables exist (idempotent DDL)
+            ensureBitVecTableForModel(
+              this.deps.db,
+              variant.model,
+              this.deps.config.vectorDimension,
+            );
+            upsertBitVecRow(this.deps.db, observationId, bits, updatedAt, {
+              model: variant.model,
+              vectorDimension: this.deps.config.vectorDimension,
+            });
+          } catch {
+            // Bit companion is best-effort; float path already succeeded
+          }
         }
       }
     }
