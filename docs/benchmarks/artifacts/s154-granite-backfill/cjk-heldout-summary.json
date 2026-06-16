@@ -1,0 +1,742 @@
+{
+  "schema_version": "s154-cjk-heldout-generalization.v1",
+  "generated_at": "2026-06-16T10:26:38.763Z",
+  "task_id": "S154-C",
+  "fixture": {
+    "path": "tests/benchmarks/fixtures/cjk-heldout-generalization.json",
+    "count": 11,
+    "vocabulary_disjoint_from_dict": true,
+    "lexical_dict_patterns": [
+      "きおく",
+      "さくいん",
+      "けんさく",
+      "あっしゅく",
+      "なおす",
+      "ほうしん",
+      "せっけい",
+      "きょうかい",
+      "ひょう"
+    ],
+    "dual_dict_patterns": [
+      "再ランク",
+      "さいらんく",
+      "再順位",
+      "候補",
+      "融合",
+      "合成",
+      "係数",
+      "重み",
+      "二重クエリ",
+      "二重検索",
+      "二重取得",
+      "正規化",
+      "英語強調",
+      "英語",
+      "関数名",
+      "コードトークン",
+      "保持"
+    ]
+  },
+  "min_delta": 0.02,
+  "regression_delta": 0.02,
+  "variants": {
+    "baseline": {
+      "label": "baseline",
+      "env": {
+        "HARNESS_MEM_DISABLE_CJK_NORMALIZE": "1",
+        "HARNESS_MEM_LEXICAL_BOOST": null,
+        "HARNESS_MEM_DUAL_QUERY": null
+      },
+      "per_case": [
+        {
+          "case_id": "heldout-nfkc-001",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 2.9949
+        },
+        {
+          "case_id": "heldout-nfkc-002",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-002-heldout-nfkc-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3742
+        },
+        {
+          "case_id": "heldout-nfkc-003",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.2362
+        },
+        {
+          "case_id": "heldout-nfkc-004",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-004-heldout-nfkc-004-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.2457
+        },
+        {
+          "case_id": "heldout-ortho-001",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-001-heldout-ortho-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.5292
+        },
+        {
+          "case_id": "heldout-ortho-002",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+          "retrieved_ids": [
+            "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+            "obs_heldout-ortho-002-heldout-ortho-002-e-d2",
+            "obs_heldout-ortho-002-heldout-ortho-002-e-d1"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.3909
+        },
+        {
+          "case_id": "heldout-ortho-003",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-003-heldout-ortho-003-e-target",
+          "retrieved_ids": [
+            "obs_heldout-ortho-003-heldout-ortho-003-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.9546
+        },
+        {
+          "case_id": "heldout-ortho-004",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-004-heldout-ortho-004-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.4616
+        },
+        {
+          "case_id": "heldout-mixed-001",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-001-heldout-mixed-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.8072
+        },
+        {
+          "case_id": "heldout-mixed-002",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-002-heldout-mixed-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.549
+        },
+        {
+          "case_id": "heldout-mixed-003",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-003-heldout-mixed-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.7666
+        }
+      ],
+      "per_slice": {
+        "nfkc_fixable": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        },
+        "non_nfkc_orthographic": {
+          "recall": 0.5,
+          "top1": 0.5,
+          "mrr": 0.5
+        },
+        "mixed_en_ja": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        }
+      },
+      "fts_path_asserted": true,
+      "search_request": {
+        "limit": 26,
+        "vector_search": false,
+        "graph_weight": 0,
+        "expand_links": false,
+        "include_private": true,
+        "strict_project": true
+      }
+    },
+    "candidate": {
+      "label": "candidate",
+      "env": {
+        "HARNESS_MEM_DISABLE_CJK_NORMALIZE": null,
+        "HARNESS_MEM_LEXICAL_BOOST": "1",
+        "HARNESS_MEM_DUAL_QUERY": "1"
+      },
+      "per_case": [
+        {
+          "case_id": "heldout-nfkc-001",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+          "retrieved_ids": [
+            "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+            "obs_heldout-nfkc-001-heldout-nfkc-001-e-d1"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.6287
+        },
+        {
+          "case_id": "heldout-nfkc-002",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-002-heldout-nfkc-002-e-target",
+          "retrieved_ids": [
+            "obs_heldout-nfkc-002-heldout-nfkc-002-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.4273
+        },
+        {
+          "case_id": "heldout-nfkc-003",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+          "retrieved_ids": [
+            "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+            "obs_heldout-nfkc-003-heldout-nfkc-003-e-d2"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 1.2253
+        },
+        {
+          "case_id": "heldout-nfkc-004",
+          "slice": "nfkc_fixable",
+          "expected_observation_id": "obs_heldout-nfkc-004-heldout-nfkc-004-e-target",
+          "retrieved_ids": [
+            "obs_heldout-nfkc-004-heldout-nfkc-004-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.5283
+        },
+        {
+          "case_id": "heldout-ortho-001",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-001-heldout-ortho-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3227
+        },
+        {
+          "case_id": "heldout-ortho-002",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+          "retrieved_ids": [
+            "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+            "obs_heldout-ortho-002-heldout-ortho-002-e-d2",
+            "obs_heldout-ortho-002-heldout-ortho-002-e-d1"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.6293
+        },
+        {
+          "case_id": "heldout-ortho-003",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-003-heldout-ortho-003-e-target",
+          "retrieved_ids": [
+            "obs_heldout-ortho-003-heldout-ortho-003-e-target"
+          ],
+          "recall": true,
+          "top1": true,
+          "mrr": 1,
+          "latency_ms": 0.6338
+        },
+        {
+          "case_id": "heldout-ortho-004",
+          "slice": "non_nfkc_orthographic",
+          "expected_observation_id": "obs_heldout-ortho-004-heldout-ortho-004-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3495
+        },
+        {
+          "case_id": "heldout-mixed-001",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-001-heldout-mixed-001-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.541
+        },
+        {
+          "case_id": "heldout-mixed-002",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-002-heldout-mixed-002-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.3939
+        },
+        {
+          "case_id": "heldout-mixed-003",
+          "slice": "mixed_en_ja",
+          "expected_observation_id": "obs_heldout-mixed-003-heldout-mixed-003-e-target",
+          "retrieved_ids": [],
+          "recall": false,
+          "top1": false,
+          "mrr": 0,
+          "latency_ms": 0.4625
+        }
+      ],
+      "per_slice": {
+        "nfkc_fixable": {
+          "recall": 1,
+          "top1": 1,
+          "mrr": 1
+        },
+        "non_nfkc_orthographic": {
+          "recall": 0.5,
+          "top1": 0.5,
+          "mrr": 0.5
+        },
+        "mixed_en_ja": {
+          "recall": 0,
+          "top1": 0,
+          "mrr": 0
+        }
+      },
+      "fts_path_asserted": true,
+      "search_request": {
+        "limit": 26,
+        "vector_search": false,
+        "graph_weight": 0,
+        "expand_links": false,
+        "include_private": true,
+        "strict_project": true
+      }
+    }
+  },
+  "per_case": [
+    {
+      "case_id": "heldout-nfkc-001",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 2.9949,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-nfkc-002",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-002-heldout-nfkc-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3742,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-nfkc-003",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.2362,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-nfkc-004",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-004-heldout-nfkc-004-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.2457,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-001-heldout-ortho-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.5292,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+      "retrieved_ids": [
+        "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+        "obs_heldout-ortho-002-heldout-ortho-002-e-d2",
+        "obs_heldout-ortho-002-heldout-ortho-002-e-d1"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.3909,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-003-heldout-ortho-003-e-target",
+      "retrieved_ids": [
+        "obs_heldout-ortho-003-heldout-ortho-003-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.9546,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-004-heldout-ortho-004-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.4616,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-mixed-001",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-001-heldout-mixed-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.8072,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-mixed-002",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-002-heldout-mixed-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.549,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-mixed-003",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-003-heldout-mixed-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.7666,
+      "variant": "baseline"
+    },
+    {
+      "case_id": "heldout-nfkc-001",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+      "retrieved_ids": [
+        "obs_heldout-nfkc-001-heldout-nfkc-001-e-target",
+        "obs_heldout-nfkc-001-heldout-nfkc-001-e-d1"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.6287,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-nfkc-002",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-002-heldout-nfkc-002-e-target",
+      "retrieved_ids": [
+        "obs_heldout-nfkc-002-heldout-nfkc-002-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.4273,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-nfkc-003",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+      "retrieved_ids": [
+        "obs_heldout-nfkc-003-heldout-nfkc-003-e-target",
+        "obs_heldout-nfkc-003-heldout-nfkc-003-e-d2"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 1.2253,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-nfkc-004",
+      "slice": "nfkc_fixable",
+      "expected_observation_id": "obs_heldout-nfkc-004-heldout-nfkc-004-e-target",
+      "retrieved_ids": [
+        "obs_heldout-nfkc-004-heldout-nfkc-004-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.5283,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-001-heldout-ortho-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3227,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+      "retrieved_ids": [
+        "obs_heldout-ortho-002-heldout-ortho-002-e-target",
+        "obs_heldout-ortho-002-heldout-ortho-002-e-d2",
+        "obs_heldout-ortho-002-heldout-ortho-002-e-d1"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.6293,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-003-heldout-ortho-003-e-target",
+      "retrieved_ids": [
+        "obs_heldout-ortho-003-heldout-ortho-003-e-target"
+      ],
+      "recall": true,
+      "top1": true,
+      "mrr": 1,
+      "latency_ms": 0.6338,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "expected_observation_id": "obs_heldout-ortho-004-heldout-ortho-004-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3495,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-mixed-001",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-001-heldout-mixed-001-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.541,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-mixed-002",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-002-heldout-mixed-002-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.3939,
+      "variant": "candidate"
+    },
+    {
+      "case_id": "heldout-mixed-003",
+      "slice": "mixed_en_ja",
+      "expected_observation_id": "obs_heldout-mixed-003-heldout-mixed-003-e-target",
+      "retrieved_ids": [],
+      "recall": false,
+      "top1": false,
+      "mrr": 0,
+      "latency_ms": 0.4625,
+      "variant": "candidate"
+    }
+  ],
+  "per_slice": {
+    "nfkc_fixable": {
+      "baseline": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      },
+      "candidate": {
+        "recall": 1,
+        "top1": 1,
+        "mrr": 1
+      }
+    },
+    "non_nfkc_orthographic": {
+      "baseline": {
+        "recall": 0.5,
+        "top1": 0.5,
+        "mrr": 0.5
+      },
+      "candidate": {
+        "recall": 0.5,
+        "top1": 0.5,
+        "mrr": 0.5
+      }
+    },
+    "mixed_en_ja": {
+      "baseline": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      },
+      "candidate": {
+        "recall": 0,
+        "top1": 0,
+        "mrr": 0
+      }
+    }
+  },
+  "deltas": {
+    "nfkc_fixable": [
+      {
+        "metric": "recall",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "top1",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0,
+        "candidate": 1,
+        "delta": 1
+      }
+    ],
+    "non_nfkc_orthographic": [
+      {
+        "metric": "recall",
+        "baseline": 0.5,
+        "candidate": 0.5,
+        "delta": 0
+      },
+      {
+        "metric": "top1",
+        "baseline": 0.5,
+        "candidate": 0.5,
+        "delta": 0
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0.5,
+        "candidate": 0.5,
+        "delta": 0
+      }
+    ],
+    "mixed_en_ja": [
+      {
+        "metric": "recall",
+        "baseline": 0,
+        "candidate": 0,
+        "delta": 0
+      },
+      {
+        "metric": "top1",
+        "baseline": 0,
+        "candidate": 0,
+        "delta": 0
+      },
+      {
+        "metric": "mrr",
+        "baseline": 0,
+        "candidate": 0,
+        "delta": 0
+      }
+    ]
+  },
+  "decision": {
+    "nfkc_fixable": "improved",
+    "non_nfkc_orthographic": "neutral",
+    "mixed_en_ja": "neutral",
+    "overall": "improved",
+    "reasons": {
+      "nfkc_fixable": "all metrics improved by >= 2%pt (weakest mrr +100.00%pt)",
+      "non_nfkc_orthographic": "no regression but improvement below +2%pt on at least one metric",
+      "mixed_en_ja": "no regression but improvement below +2%pt on at least one metric"
+    }
+  },
+  "generalization_verdict": "improved",
+  "generalization_note": "Held-out delta positive: CJK improvements generalize beyond training dictionary. NFKC normalization provides structural generalization even for unseen vocabulary.",
+  "fts_path_asserted": true,
+  "overall_passed": true,
+  "artifacts": {
+    "summary_json": "docs/benchmarks/artifacts/s154-granite-backfill/cjk-heldout-summary.json"
+  }
+}
