@@ -2959,6 +2959,8 @@ export class HarnessMemCore {
       ollamaEmbedModel: this.config.ollamaEmbedModel,
       proApiKey: this.config.proApiKey,
       proApiUrl: this.config.proApiUrl,
+      proApiModel: this.config.proApiModel,
+      proApiZdrEnforced: this.config.proApiZdrEnforced,
       adaptiveJaThreshold: this.config.adaptiveJaThreshold,
       adaptiveCodeThreshold: this.config.adaptiveCodeThreshold,
     });

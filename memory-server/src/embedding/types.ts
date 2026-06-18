@@ -57,6 +57,18 @@ export interface EmbeddingRegistryOptions {
   localModelsDir?: string;
   proApiKey?: string;
   proApiUrl?: string;
+  /**
+   * Pro=C decision: model name passed to the self-hosted Pro embedding
+   * endpoint. Defaults to "granite-embedding-311m-r2" inside the provider so
+   * the Pro leg stays on the same model family as the free local granite.
+   */
+  proApiModel?: string;
+  /**
+   * Codex must-fix #4 (2026-06-19): when true, the Pro provider treats
+   * retention=0 as executable — no in-memory cache, no payload in errors,
+   * no payload in metrics. Independent of the data-policy doc.
+   */
+  proApiZdrEnforced?: boolean;
   adaptiveJaThreshold?: number;
   adaptiveCodeThreshold?: number;
   /** IMP-008: 言語自動選択時のデフォルト言語 ("ja" | "en") */
