@@ -390,6 +390,50 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(provider.health().status).toBe("healthy");
   });
 
+  test("pro api provider は zdrEnforced=true で in-memory cache を作らない (at-rest で content が残らない)", async () => {
+    let calls = 0;
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      zdrEnforced: true,
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ embedding: [0.1, 0.2, 0.3, 0.4] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    // Two prime calls with the same input — without ZDR, the second call hits
+    // the cache. With ZDR enforced, every call goes through and nothing
+    // accumulates: entries stays 0, hits stays 0.
+    await provider.primeQuery?.("incident postmortem text");
+    await provider.primeQuery?.("incident postmortem text");
+    const stats = provider.cacheStats?.();
+
+    expect(calls).toBe(2);
+    expect(stats?.entries).toBe(0);
+    expect(stats?.hits).toBe(0);
+    expect(provider.health().details).toContain("zdr=enforced");
+  });
+
+  test("pro api provider は zdrEnforced=true でも error message に入力テキストを混入させない", async () => {
+    const secret = "ZDR_INPUT_TEXT_THAT_MUST_NOT_LEAK_5b7c9";
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      zdrEnforced: true,
+      fetchImpl: async () => new Response("boom", { status: 503 }),
+    });
+
+    await expect(provider.prime?.(secret)).rejects.toThrow();
+    expect(provider.health().details).not.toContain(secret);
+    expect(provider.health().details).not.toContain("ZDR_INPUT_TEXT");
+  });
+
   test("pro api provider は障害時に degraded を返す", async () => {
     const provider = createProApiEmbeddingProvider({
       dimension: 4,

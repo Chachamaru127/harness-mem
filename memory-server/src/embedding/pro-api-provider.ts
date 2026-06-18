@@ -220,7 +220,7 @@ export function createProApiEmbeddingProvider(options: ProApiProviderOptions): E
 
     lastHealth = {
       status: "healthy",
-      details: `pro api embeddings: ${model}`,
+      details: `pro api embeddings: ${model}${zdrEnforced ? " [zdr=enforced]" : ""}`,
     };
     return normalizeVector(embedding, dimension);
   }
