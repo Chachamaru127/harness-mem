@@ -1,7 +1,7 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-06-05
+Last updated: 2026-06-15
 Owner: harness-mem
 Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix / §146 MCP Workflow Plans Scope Fix
 
@@ -50,6 +50,29 @@ Codex support is scoped:
 - Codex App may use the same user-scoped Codex config path in local dogfood
   setups, but App-specific support must stay a scoped dogfood note until a
   reproducible App smoke exists.
+
+### Managed / Enterprise extensions (scope boundary)
+
+A managed/server tier — remote sync, VPS/BigQuery storage, OpenTelemetry egress,
+and a Pro/ZDR embedding endpoint — is permitted, but only as a **customer-owned,
+opt-in extension** of the local-first runtime, never as a redefinition of the
+default. To stay inside this spec, any managed or cloud path MUST:
+
+- Keep local-first the default: the OSS local runtime stays fully functional with
+  no account, no API key, and no cloud dependency. The managed tier is additive,
+  never required.
+- Be opt-in and customer-owned: memory and telemetry land in the customer's own
+  VPS / BigQuery / embedding endpoint, not a harness-mem-operated store-of-record.
+  Nothing is exported by default (consistent with the Adoption Gate).
+- Not become a generic cloud memory API: the managed tier serves the same
+  coding-continuity purpose (continuity, data residency, team continuity), not
+  general-purpose lifelog or memory-as-a-service.
+- Carry only spans/metadata in telemetry, never raw memory or prompt text
+  (the ZDR seam).
+
+This clause makes the enterprise direction in
+`docs/strategy/server-product-strategy-2026-06-15.md` spec-consistent without
+weakening the local-first default. (Added 2026-06-15, per independent review.)
 
 ## North Star And Flagship Metric
 
