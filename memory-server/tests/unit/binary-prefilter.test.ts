@@ -628,6 +628,64 @@ describe("DENSE-leg isolation: lexical candidates not clipped by binary prefilte
     }
   });
 
+  test("Codex W3 must-fix: tight bitK (pool < internalLimit) skips prefilter to avoid silent truncation", () => {
+    // Codex repro: HARNESS_MEM_SQLITE_VEC_K_MAX=1 → bitK <= 8 while a normal
+    // search with limit=20 has internalLimit≈100. Without the safety guard,
+    // the global Hamming top-8 feeds the float KNN, and project/privacy
+    // filters can silently truncate below limit. With the guard, the
+    // prefilter falls through to float single-pass.
+    const savedFlag = process.env.HARNESS_MEM_BINARY_PREFILTER;
+    const savedKMax = process.env.HARNESS_MEM_SQLITE_VEC_K_MAX;
+    const savedVecPath = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+    process.env.HARNESS_MEM_BINARY_PREFILTER = "1";
+    process.env.HARNESS_MEM_SQLITE_VEC_K_MAX = "1";
+    if (canRunRealSqliteVec) {
+      process.env.HARNESS_MEM_SQLITE_VEC_PATH = VEC0_PATH!;
+    }
+
+    const config = createConfig("tight-bitk-guard");
+    const core = new HarnessMemCore(config);
+    try {
+      for (let i = 0; i < 50; i++) {
+        core.recordEvent({
+          platform: "claude",
+          project: "test-project",
+          session_id: "s1",
+          event_type: "user_prompt",
+          ts: new Date().toISOString(),
+          payload: { prompt: `tight pool guard target observation number ${i}` },
+          tags: [],
+          privacy_tags: [],
+        });
+      }
+
+      const result = core.search({
+        query: "tight pool guard target",
+        project: "test-project",
+        limit: 20,
+        debug: true,
+        strict_project: false,
+      });
+      expect(result.ok).toBe(true);
+
+      const debug = result.meta?.debug as Record<string, unknown> | undefined;
+      // Guard fires → binary_prefilter_active must NOT be true.
+      expect(debug?.binary_prefilter_active).not.toBe(true);
+      // Float single-pass still returns hits.
+      expect((result.items as unknown[]).length).toBeGreaterThan(0);
+    } finally {
+      if (savedFlag !== undefined) process.env.HARNESS_MEM_BINARY_PREFILTER = savedFlag;
+      else delete process.env.HARNESS_MEM_BINARY_PREFILTER;
+      if (savedKMax !== undefined) process.env.HARNESS_MEM_SQLITE_VEC_K_MAX = savedKMax;
+      else delete process.env.HARNESS_MEM_SQLITE_VEC_K_MAX;
+      if (canRunRealSqliteVec) {
+        if (savedVecPath !== undefined) process.env.HARNESS_MEM_SQLITE_VEC_PATH = savedVecPath;
+        else delete process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+      }
+      core.shutdown("test");
+    }
+  });
+
   test("lexical-only hits appear in results even when binary prefilter is ON", () => {
     const savedFlag = process.env.HARNESS_MEM_BINARY_PREFILTER;
     process.env.HARNESS_MEM_BINARY_PREFILTER = "1";
