@@ -6,6 +6,9 @@
  *   ② supersession precision/recall — directly inserts observations into DB,
  *      runs detectContradictions with adjudicator, reads DB valid_to
  *   ③ freshness lag — same as ②, measures wall-clock detect→valid_to-write latency
+ *      (= LLM round-trip + adjudication + DB INSERT 全体の wall time。
+ *       INSERT 単体ではなく detectContradictions の全行程を ms で測る — 154-311 で
+ *       3-run 安定の前提として LLM 呼び出しの決定論 options を固定する)
  *
  * FIXTURE RULE: fixture files supply ONLY `id`, `older_content`/`newer_content`,
  * `concept_tag`, and ground-truth label fields.
@@ -419,6 +422,11 @@ async function callOllamaTenseRewrite(
         stream: false,
         format: TENSE_REWRITE_SCHEMA,
         think: false,
+        // §154-311 Skeptic: temperature/seed/num_predict を固定して LLM 出力を
+        // 決定論的にし、3-run 安定 (run 間分散 <0.05) の前提を成立させる。
+        // 固定なしでは Ollama default で temperature が 0 ではなく run 毎に
+        // ばらつくため「3-run 安定」が嘘になる。
+        options: { temperature: 0, seed: 42, num_predict: 256 },
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -550,6 +558,10 @@ export function buildOllamaAdjudicator(opts: OllamaOptions): ContradictionAdjudi
           stream: false,
           format: CONTRADICTION_SCHEMA,
           think: false,
+          // §154-311 Skeptic: callOllamaTenseRewrite と同じ理由で temperature/seed/
+          // num_predict を固定。adjudicator は detectContradictions 経由で全 input
+          // ペアに対して呼ばれ、3-run 安定の前提を担う。
+          options: { temperature: 0, seed: 42, num_predict: 256 },
           messages: [
             { role: "system", content: "Return JSON only. No markdown. No explanation." },
             { role: "user", content: userPrompt },
