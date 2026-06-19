@@ -448,6 +448,11 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
   return Bun.serve({
     hostname: config.bindHost,
     port: config.bindPort,
+    // Bun default idleTimeout is 10s. MCP search/embed paths (granite warm-up,
+    // hybrid_v3 ranking, SQLite consolidation contention) can exceed 10s and
+    // cause client-side hangs because the server closes mid-stream. Raise to
+    // 255 (Bun uint8 max) so slow tool calls drain instead of silently disconnecting.
+    idleTimeout: 255,
     fetch: async (request: Request, server): Promise<Response> => {
       try {
         const url = new URL(request.url);
