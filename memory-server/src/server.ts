@@ -1591,6 +1591,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        // §F-2 (S78-E02b): branch merge workflow — promote feature-branch observations to target
+        if (request.method === "POST" && url.pathname === "/v1/admin/branch-merge") {
+          const body = await parseRequestJson(request);
+          const sourceBranch = typeof body.source_branch === "string" ? body.source_branch : "";
+          const targetBranch = typeof body.target_branch === "string" ? body.target_branch : "";
+          const mode = typeof body.mode === "string" ? body.mode : "";
+          const { branchMerge } = await import("./admin/branch-merge.js");
+          const db = (core as unknown as { db: import("bun:sqlite").Database }).db;
+          const result = await branchMerge(db, {
+            source_branch: sourceBranch,
+            target_branch: targetBranch,
+            mode: mode as "overwrite" | "append" | "skip",
+            dry_run: parseBooleanLike(body.dry_run, true),
+            apply: parseBooleanLike(body.apply, false),
+            project: typeof body.project === "string" ? body.project : undefined,
+            actor: typeof body.actor === "string" ? body.actor : undefined,
+          });
+          return rawJsonResponse(result, result.ok ? 200 : 400);
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
           const body = await parseRequestJson(request);
           const targetIds = toStringArray(body.target_ids).length > 0
