@@ -35,7 +35,7 @@
  */
 
 import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import {
   createEmbeddingProviderRegistry,
   type EmbeddingProvider,
@@ -48,7 +48,8 @@ import {
 const ROOT_DIR = resolve(import.meta.dir, "..");
 const DEFAULT_ARTIFACT_DIR = join(ROOT_DIR, "docs/benchmarks/artifacts/s154-rerank-order-gate");
 const BILINGUAL_V2_PATH = join(ROOT_DIR, "tests/benchmarks/fixtures/bilingual-v2.json");
-const DEV_WORKFLOW_V2_PATH = join(ROOT_DIR, "tests/benchmarks/fixtures/dev-workflow-v2.json");
+// dev-workflow-v2 fixture は本 gate の scope 外 (DoD は bilingual-only)。
+// 必要になったら 154-711 で取り込む。
 
 const TOP_K = 10;
 const PRECONDITION_MIN_RANK_BELOW_TOP1 = 20;
@@ -77,21 +78,6 @@ interface BilingualFixture {
   schema_version: string;
   samples: BilingualSample[];
   distractors: Array<{ id: string; content: string }>;
-}
-
-interface DevWorkflowCase {
-  id: string;
-  description: string;
-  difficulty: string;
-  entries: Array<{ id: string; content: string }>;
-  query: string;
-  expected_answer: string;
-  relevant_ids: string[];
-}
-
-interface DevWorkflowFixture {
-  schema_version: string;
-  cases: DevWorkflowCase[];
 }
 
 interface QueryScore {
@@ -223,6 +209,12 @@ interface LlmRerankResponse {
   ranking: string[]; // ordered ids, most relevant first
 }
 
+/**
+ * §154-710 Codex review fix: fail-closed (silent fallback 禁止)。
+ * LLM call が失敗 (HTTP / parse / empty / abort) すると caller は exit 1。
+ * silent に baseline 順序を返して exit 0 を blessing するのは Skeptic [3] と
+ * D40 規律 (測定時の fallback 混入禁止) に反する。
+ */
 async function llmRerankTop10(query: string, top10: Array<{ id: string; content: string }>): Promise<string[]> {
   const itemsText = top10.map((it, i) => `[${i + 1}] id=${it.id}: ${it.content.slice(0, 280)}`).join("\n");
   const systemPrompt = "Return JSON only. No markdown. No explanation.";
@@ -257,12 +249,12 @@ async function llmRerankTop10(query: string, top10: Array<{ id: string; content:
         ],
       }),
     });
-    if (!resp.ok) return top10.map((t) => t.id);
+    if (!resp.ok) throw new Error(`llm_rerank_http_${resp.status}`);
     const body = await resp.json() as { message?: { content?: string } };
     const raw = body?.message?.content;
-    if (!raw) return top10.map((t) => t.id);
+    if (!raw) throw new Error("llm_rerank_empty_response");
     const parsed = JSON.parse(raw) as LlmRerankResponse;
-    if (!Array.isArray(parsed.ranking)) return top10.map((t) => t.id);
+    if (!Array.isArray(parsed.ranking)) throw new Error("llm_rerank_malformed_ranking");
     // Restore any missing ids at the tail (caller may sort partial output)
     const seen = new Set<string>();
     const ordered: string[] = [];
@@ -272,12 +264,21 @@ async function llmRerankTop10(query: string, top10: Array<{ id: string; content:
       }
     }
     for (const t of top10) if (!seen.has(t.id)) ordered.push(t.id);
+    if (ordered.length !== top10.length) throw new Error("llm_rerank_partial_coverage");
     return ordered;
-  } catch {
-    return top10.map((t) => t.id);
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * §154-710 Codex fix: HARNESS_MEM_LLM_RERANK の presence-only から enabled パースへ。
+ * production の llm-reranker.ts:42 と同じセマンティクスを使用 (drift 防止)。
+ */
+function parseEnabled(raw: string | undefined): boolean {
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase();
+  return ["1", "true", "yes", "on"].includes(v);
 }
 
 async function ollamaReachable(): Promise<boolean> {
@@ -315,23 +316,23 @@ async function main(): Promise<void> {
     return i !== -1 && argv[i + 1] ? resolve(argv[i + 1]) : DEFAULT_ARTIFACT_DIR;
   })();
 
-  // 1. Load fixtures
+  // 1. Load fixtures (bilingual-v2 のみ — dev-workflow は本 gate scope 外)
   const bilingual = JSON.parse(readFileSync(BILINGUAL_V2_PATH, "utf8")) as BilingualFixture;
-  const devFx = JSON.parse(readFileSync(DEV_WORKFLOW_V2_PATH, "utf8")) as DevWorkflowFixture;
-  process.stderr.write(`[rerank-order-gate] fixtures loaded: bilingual=${bilingual.samples.length} dev=${devFx.cases.length}\n`);
+  process.stderr.write(`[rerank-order-gate] fixtures loaded: bilingual=${bilingual.samples.length}\n`);
 
   // 2. Provider identity assert (LLM rerank candidate path)
-  if (!process.env["HARNESS_MEM_LLM_RERANK"]) {
+  // §154-710 Codex fix: presence-only ではなく enabled パース (production parity)
+  if (!parseEnabled(process.env["HARNESS_MEM_LLM_RERANK"])) {
     const report: OrderGateReport = {
       schema_version: "s154-rerank-order-gate.v1",
       task_id: "S154-710",
       generated_at: new Date().toISOString(),
       fixtures: [{ name: bilingual.schema_version ?? "bilingual-v2", schema_version: bilingual.schema_version ?? "?", samples_count: bilingual.samples.length }],
       retrieval_stage: { baseline_path: "embedding-only", embedding_model: BASELINE_EMBEDDING_MODEL, per_slice: {} },
-      rerank_stage: { status: "skipped", skip_reason: "HARNESS_MEM_LLM_RERANK not set (provider identity assert)" },
+      rerank_stage: { status: "skipped", skip_reason: "HARNESS_MEM_LLM_RERANK not enabled (parseEnabled: 1/true/yes/on のいずれかが必要)" },
       precondition: { rank_below_top1_count: 0, required_min: PRECONDITION_MIN_RANK_BELOW_TOP1, passed: false },
       exit_code: 1,
-      exit_reason: "HARNESS_MEM_LLM_RERANK env not set — provider identity assert failed",
+      exit_reason: "HARNESS_MEM_LLM_RERANK not enabled (set 1/true/yes/on) — provider identity assert failed",
     };
     if (!noWrite) writeArtifact(artifactDir, report);
     process.stderr.write(`[rerank-order-gate] exit 1: ${report.exit_reason}\n`);
@@ -402,7 +403,16 @@ async function main(): Promise<void> {
   for (let i = 0; i < bilingual.samples.length; i += 1) {
     const sample = bilingual.samples[i];
     const entry = baselineRanked[i];
-    const rerankedIds = await llmRerankTop10(sample.query, entry.top10);
+    let rerankedIds: string[];
+    try {
+      rerankedIds = await llmRerankTop10(sample.query, entry.top10);
+    } catch (err) {
+      // §154-710 Codex fix: silent fallback 禁止。LLM call 失敗 = exit 1 で
+      // measurement の汚染を防ぐ (D40 規律: silent fallback は帰属汚染源)。
+      const msg = err instanceof Error ? err.message : String(err);
+      process.stderr.write(`[rerank-order-gate] exit 1: LLM rerank failed at sample=${sample.id} (${msg}) — fail-closed (no silent baseline fallback)\n`);
+      process.exit(1);
+    }
     // Build a ranked list with rerank order then the rest (rank > 10 unchanged)
     const top10Set = new Set(rerankedIds);
     const tail = entry.ranked.slice(TOP_K).filter((r) => !top10Set.has(r.id));
