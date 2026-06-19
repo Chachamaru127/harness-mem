@@ -1,0 +1,42 @@
+{
+  "schema_version": "s154-deep-freshness-thresholds.v1",
+  "task_id": "S154-311",
+  "generated_at": "2026-06-19",
+  "baseline_method": "3-run worst-of-min for deterministic metrics + absolute ceiling for environment-dependent lag",
+  "runs_used": 3,
+  "run_evidence": "docs/benchmarks/artifacts/s154-deep-freshness/run-{1,2,3}/report.json",
+  "deterministic_observed": {
+    "tense_rewrite": { "accuracy": 0.969, "fp_rate": 0.0, "n": 32, "spread_across_3_runs": 0 },
+    "supersession": { "precision": 1.0, "recall": 0.6, "f1": 0.75, "n": 21, "spread_across_3_runs": 0 }
+  },
+  "non_deterministic_observed": {
+    "freshness_lag": {
+      "p50_ms_range": [1343, 1736],
+      "p95_ms_range": [1660, 13870],
+      "note": "lag は LLM round-trip + adjudication + DB INSERT 全体の wall time。Ollama qwen3.5:9b の応答速度は環境負荷 (CPU/GPU) 依存で 3-run で大きく揺れる (p95 spread 12210ms)。worst-of-3 や mean-σ は意味を成さないため absolute ceiling を採用 (Skeptic 提案 4 整合)。"
+    }
+  },
+  "thresholds": {
+    "tense_rewrite": {
+      "accuracy_min": 0.92,
+      "accuracy_min_derivation": "worst-of-3 (0.969) - 0.05 headroom = 0.919 → 0.92",
+      "fp_rate_max": 0.05,
+      "fp_rate_max_derivation": "worst-of-3 (0.0) + 0.05 headroom"
+    },
+    "supersession": {
+      "precision_min": 0.95,
+      "precision_min_derivation": "worst-of-3 (1.0) - 0.05 headroom = 0.95",
+      "recall_min": 0.55,
+      "recall_min_derivation": "worst-of-3 (0.6) - 0.05 headroom = 0.55 (recall=0.6 は実測 baseline、上昇余地は別 task で別途追求)",
+      "f1_min": 0.70,
+      "f1_min_derivation": "worst-of-3 (0.75) - 0.05 headroom = 0.70"
+    },
+    "freshness_lag": {
+      "p50_ms_ceiling": 3000,
+      "p50_ms_ceiling_derivation": "observed mean 1486 + 2σ ≈ 1920、3000 で 1.5x 余裕 (環境負荷急増を吸収)",
+      "p95_ms_ceiling": 30000,
+      "p95_ms_ceiling_derivation": "observed worst 13870 * 1.5 = 20805、30000 で 1.5x 余裕 (Ollama unreachable は別 metric の skip_reason で扱う)"
+    }
+  },
+  "note": "tense/sup は決定的 metric (Ollama temperature/seed/num_predict 固定) のため worst-of-3 - 0.05 headroom (Skeptic 案 A simplified)。lag は LLM round-trip 込み wall time = 非決定的、Skeptic 案 A 'ms スケール absolute ceiling' を採用。data/composite-score-weights.json と同様の外部 config 化 (コード固定値禁止 = 捏造防止)。enforce gate (s108 manifest 追加) は本 config を消費する別タスク (S154-FU02) で実施 — 人間 Risk Gate のため分離。"
+}
