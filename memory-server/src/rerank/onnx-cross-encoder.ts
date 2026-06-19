@@ -95,6 +95,13 @@ function extractLogit(logits: unknown): number | null {
 export interface OnnxCrossEncoderReranker extends Reranker {
   /** モデルのロード完了を待機する (テスト・ウォームアップ用) */
   readonly initPromise: Promise<void>;
+  /**
+   * §154-710: モデルが正常にロード済みで ONNX スコアリングが可能か。
+   * 測定経路 (rerank gate 等) は `await initPromise` 後に `isReady() === false`
+   * なら silent simple-v1 fallback への混入を防ぐため fail-closed throw を
+   * 行うべき (D40 primeBatch/primeQuery 規律と同型)。
+   */
+  readonly isReady: () => boolean;
 }
 
 /**
@@ -250,6 +257,10 @@ export function createOnnxCrossEncoderReranker(options: OnnxCrossEncoderOptions 
   return {
     name: "onnx-cross-encoder-v1",
     initPromise,
+    // §154-710: 測定経路 (rerank gate) で silent fallback 混入を検知するため expose。
+    // closure 内 `isReady` 変数の現在値を返す。await initPromise 後に false なら
+    // モデル load 失敗 = caller は fail-closed throw すべし。
+    isReady: () => isReady,
 
     rerank(input: RerankInput): RerankOutputItem[] {
       if (input.items.length === 0) return [];
