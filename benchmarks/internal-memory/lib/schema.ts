@@ -10,6 +10,7 @@ const LAYERS = new Set([
 
 const LANG = new Set(["ja", "en", "mixed"]);
 const COMPETENCIES = new Set(["AR", "TTL", "LRU", "CR"]);
+const SOURCE_PLATFORMS = new Set(["claude", "codex", "cursor", "mixed", "unknown"]);
 
 export function assertBenchmarkCase(raw: unknown, lineNumber: number): BenchmarkCase {
   if (!raw || typeof raw !== "object") {
@@ -30,6 +31,9 @@ export function assertBenchmarkCase(raw: unknown, lineNumber: number): Benchmark
   }
   if (row.competency !== undefined && !COMPETENCIES.has(String(row.competency))) {
     throw new Error(`dataset line ${lineNumber}: invalid competency ${String(row.competency)}`);
+  }
+  if (row.source_platform !== undefined && !SOURCE_PLATFORMS.has(String(row.source_platform))) {
+    throw new Error(`dataset line ${lineNumber}: invalid source_platform ${String(row.source_platform)}`);
   }
   if (!Array.isArray(row.memories) || row.memories.length === 0) {
     throw new Error(`dataset line ${lineNumber}: memories must be non-empty array`);
@@ -73,5 +77,12 @@ export function assertBenchmarkCase(raw: unknown, lineNumber: number): Benchmark
     resume_must_include: Array.isArray(row.resume_must_include)
       ? row.resume_must_include.map((k) => String(k))
       : undefined,
+    source_platform: row.source_platform
+      ? (String(row.source_platform) as BenchmarkCase["source_platform"])
+      : undefined,
+    source_dataset: row.source_dataset ? String(row.source_dataset) : undefined,
+    source_split: row.source_split ? String(row.source_split) : undefined,
+    dataset_revision: row.dataset_revision ? String(row.dataset_revision) : undefined,
+    sample_limit: typeof row.sample_limit === "number" ? row.sample_limit : undefined,
   };
 }

@@ -18,7 +18,7 @@ import { PostgresStorageAdapter, type PgClientLike } from "../db/postgres-adapte
 import { POSTGRES_INIT_SQL } from "../db/postgres-schema";
 import { PostgresEventStore } from "./event-store";
 import { ObservationProjector } from "./observation-projector";
-import { ShadowSyncManager, type ShadowMetrics, type ShadowPhase } from "./shadow-sync";
+import { ShadowSyncManager, type EmbeddingShadowManifest, type ShadowMetrics, type ShadowPhase } from "./shadow-sync";
 import type { StoredEvent } from "./types";
 
 export type ManagedConnectionState = "connecting" | "connected" | "degraded" | "disconnected";
@@ -170,7 +170,7 @@ export class ManagedBackend {
   async shadowRead(
     query: string,
     localResultIds: string[],
-    options: { project?: string; limit?: number } = {}
+    options: { project?: string; limit?: number; embeddingShadowManifest?: EmbeddingShadowManifest | null } = {}
   ): Promise<void> {
     if (!this.isConnected() || !this.adapter || this.shadow.getPhase() === "off") {
       return;

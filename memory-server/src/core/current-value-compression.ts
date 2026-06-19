@@ -5,7 +5,10 @@
  * - extractCurrentValueSpan: extract the shortest answer span for current-value queries
  * - compressCurrentValueResponse: strip filler text from a response
  * - measureOverAnswerRate: compute over-answer rate for a batch of (query, response) pairs
+ * - summarizeCurrentState (S154-204): fold current checkpoints into a redacted prose summary
  */
+
+import { redactSecrets, stripPrivateBlocks } from "./privacy-tags";
 
 // ---------------------------------------------------------------------------
 // Span extraction patterns
@@ -48,6 +51,9 @@ const JAPANESE_CURRENT_VALUE_PATTERNS: RegExp[] = [
 /** Filler cue pattern: sentences starting with these are deprioritized. */
 const FILLER_LEAD_PATTERN = /^(?:ちなみに|なお|ただ|実際には|現時点では|まず|最初に|最後に|That said|Actually|Currently,|Right now,|At the moment)[,、\s]*/iu;
 
+/** Regex span extraction is bounded to avoid ReDoS on multi-KB benchmark chunks. */
+export const SPAN_EXTRACTION_MAX_CHARS = 8_192;
+
 // ---------------------------------------------------------------------------
 // Helper: clean extracted span
 // ---------------------------------------------------------------------------
@@ -70,7 +76,9 @@ function cleanSpan(value: string): string {
  */
 export function extractCurrentValueSpan(text: string): string | null {
   if (!text) return null;
-  const source = text.trim().replace(/\s+/g, " ");
+  const bounded =
+    text.length > SPAN_EXTRACTION_MAX_CHARS ? text.slice(0, SPAN_EXTRACTION_MAX_CHARS) : text;
+  const source = bounded.trim().replace(/\s+/g, " ");
 
   for (const pattern of ENGLISH_CURRENT_VALUE_PATTERNS) {
     const match = pattern.exec(source);
@@ -188,4 +196,54 @@ export function measureOverAnswerRate(
     total: samples.length,
     overAnswerCount,
   };
+}
+
+// ---------------------------------------------------------------------------
+// S154-204: current-state prose summary
+// ---------------------------------------------------------------------------
+
+export interface CurrentStateEntry {
+  content: string;
+  /** Defaults to "current". historical/superseded entries are dropped. */
+  temporal_state?: "current" | "historical" | "superseded";
+}
+
+/** Default length cap for a current-state prose summary. */
+export const CURRENT_STATE_MAX_CHARS = 2_000;
+
+/**
+ * S154-204: fold a bundle of checkpoints into a single current-state prose summary.
+ *
+ * Deterministic (no LLM — that is the dreaming path, 154-303): drops superseded /
+ * historical entries, then for EACH kept entry strips <private> blocks and applies
+ * `redactSecrets` BEFORE anything is concatenated, dedupes, joins into prose, and
+ * caps the length. Secrets are redacted at the per-entry level so nothing un-redacted
+ * can reach the output even transiently. Key phrases are preserved (no aggressive
+ * span compression) so the summary stays faithful to the current state.
+ */
+export function summarizeCurrentState(
+  entries: CurrentStateEntry[],
+  options: { maxChars?: number } = {},
+): string {
+  const maxChars = options.maxChars ?? CURRENT_STATE_MAX_CHARS;
+  const seen = new Set<string>();
+  const parts: string[] = [];
+
+  for (const entry of entries) {
+    const state = entry.temporal_state ?? "current";
+    if (state !== "current") continue;
+    const stripped = stripPrivateBlocks(entry.content) ?? "";
+    const safe = redactSecrets(stripped).replace(/\s+/g, " ").trim();
+    if (!safe) continue;
+    const key = safe.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    parts.push(safe);
+  }
+
+  let prose = parts.join(" ");
+  if (prose.length > maxChars) {
+    prose = `${prose.slice(0, maxChars).trimEnd()}…`;
+  }
+  return prose;
 }

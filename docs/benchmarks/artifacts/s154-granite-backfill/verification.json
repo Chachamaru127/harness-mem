@@ -1,0 +1,25 @@
+{
+  "target_model": "local:granite-embedding-311m-r2",
+  "dimension": 384,
+  "target_observations": 375603,
+  "granite_rows": 375606,
+  "embedded_this_run": 494,
+  "completed": true,
+  "dry_run": false,
+  "elapsed_seconds": 213.429757833,
+  "throughput_per_s": 3.705557418915147,
+  "verification": {
+    "row_count_match": true,
+    "target_observations": 375603,
+    "granite_rows": 375606,
+    "missing_rows": 0,
+    "sample_size": 32,
+    "min_cosine": 0.9999999999999442,
+    "cosine_threshold": 0.999,
+    "stale_rows": 0,
+    "sqlite_vec_available": true,
+    "sidecar_rows": 375606,
+    "passed": true
+  },
+  "generated_at": "2026-06-15T10:16:44.599Z"
+}

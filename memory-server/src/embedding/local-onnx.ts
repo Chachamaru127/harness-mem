@@ -1,4 +1,5 @@
 import type { EmbeddingProvider, EmbeddingHealth, EmbeddingCacheStats } from "./types";
+import type { ModelPooling } from "./model-catalog";
 
 // Lazy import to avoid loading Transformers.js at startup when not needed
 type TransformersModule = typeof import("@huggingface/transformers");
@@ -8,7 +9,22 @@ type AutoModelInstance = Awaited<ReturnType<TransformersModule["AutoModel"]["fro
 export interface LocalOnnxOptions {
   modelId: string;
   modelPath: string;
+  /** Output vector dimension (what callers receive). */
   dimension: number;
+  /**
+   * Hidden size the ONNX graph must produce. Defaults to `dimension`.
+   * A runtime mismatch throws (S154-503) instead of silently truncating or
+   * zero-padding — that would measure a different model than declared.
+   */
+  nativeDimension?: number;
+  /** Allow Matryoshka truncation (dimension < nativeDimension) with re-normalize. */
+  matryoshka?: boolean;
+  /** Token pooling strategy (default "mean"). */
+  pooling?: ModelPooling;
+  /** Literal text appended after prefix+content (e.g. Qwen3 trailing <|endoftext|>). */
+  appendText?: string;
+  /** Tokenizer truncation cap (max_length). */
+  maxSeqLength?: number;
   queryPrefix?: string;
   passagePrefix?: string;
   fallback?: EmbeddingProvider;
@@ -63,6 +79,34 @@ function meanPooling(embeddings: number[][], attentionMask: number[]): number[] 
   return result;
 }
 
+// Attention-mask aware token picking: works for both left- and right-padded
+// batches (S154-503). A naive "row 0" / "last row" pick would read pad-token
+// hidden states whenever batched inputs have different lengths.
+/** @internal exported for unit tests */
+export function pickTokenIndex(attentionMask: number[], which: "first" | "last"): number {
+  if (which === "first") {
+    for (let i = 0; i < attentionMask.length; i++) {
+      if (attentionMask[i] === 1) return i;
+    }
+    return 0;
+  }
+  for (let i = attentionMask.length - 1; i >= 0; i--) {
+    if (attentionMask[i] === 1) return i;
+  }
+  return attentionMask.length - 1;
+}
+
+/** @internal exported for unit tests */
+export function poolTokens(embeddings: number[][], attentionMask: number[], pooling: ModelPooling): number[] {
+  if (pooling === "last_token") {
+    return embeddings[pickTokenIndex(attentionMask, "last")];
+  }
+  if (pooling === "cls") {
+    return embeddings[pickTokenIndex(attentionMask, "first")];
+  }
+  return meanPooling(embeddings, attentionMask);
+}
+
 function l2Normalize(vector: number[]): number[] {
   let norm = 0;
   for (const v of vector) {
@@ -75,14 +119,40 @@ function l2Normalize(vector: number[]): number[] {
   return vector.map((v) => v / norm);
 }
 
-function fitDimension(vector: number[], dimension: number): number[] {
-  if (vector.length === dimension) {
-    return vector;
+export interface VectorProjection {
+  modelId: string;
+  dimension: number;
+  nativeDimension: number;
+  matryoshka: boolean;
+}
+
+// S154-503: fail-closed dimension handling. The previous fitDimension()
+// silently truncated/zero-padded any mismatch, so a wrong catalog dimension
+// would still "measure" — just not the declared model. Only an explicit
+// Matryoshka declaration may truncate, and the result is re-normalized.
+/** @internal exported for unit tests */
+export function projectVector(pooled: number[], projection: VectorProjection): number[] {
+  if (pooled.length !== projection.nativeDimension) {
+    throw createLocalOnnxError(
+      projection.modelId,
+      "inference_failed",
+      `local ONNX model ${projection.modelId} produced hidden size ${pooled.length}, expected nativeDimension ${projection.nativeDimension} (catalog mismatch — refusing silent truncate/pad)`,
+      false
+    );
   }
-  if (vector.length > dimension) {
-    return vector.slice(0, dimension);
+  const normalized = l2Normalize(pooled);
+  if (projection.dimension === projection.nativeDimension) {
+    return normalized;
   }
-  return [...vector, ...new Array<number>(dimension - vector.length).fill(0)];
+  if (projection.matryoshka && projection.dimension < projection.nativeDimension) {
+    return l2Normalize(normalized.slice(0, projection.dimension));
+  }
+  throw createLocalOnnxError(
+    projection.modelId,
+    "inference_failed",
+    `local ONNX model ${projection.modelId} cannot project nativeDimension ${projection.nativeDimension} to ${projection.dimension}: not declared matryoshka in the catalog`,
+    false
+  );
 }
 
 // Extract a 2D number[][] from Transformers.js tensor output.
@@ -126,11 +196,13 @@ function extractHiddenStates(output: unknown): number[][] | null {
   return rows;
 }
 
-function extractBatchVectors(
+/** @internal exported for unit tests */
+export function extractBatchVectors(
   output: unknown,
   attentionMask: number[],
   attentionDims: number[],
-  dimension: number
+  projection: VectorProjection,
+  pooling: ModelPooling
 ): number[][] | null {
   const tensor = output as { data?: Float32Array | number[]; dims?: number[] } | null;
   if (!tensor || !tensor.data || !tensor.dims) {
@@ -139,7 +211,9 @@ function extractBatchVectors(
 
   if (tensor.dims.length === 2) {
     const hiddenStates = extractHiddenStates(output);
-    return hiddenStates ? [fitDimension(l2Normalize(meanPooling(hiddenStates, attentionMask)), dimension)] : null;
+    return hiddenStates
+      ? [projectVector(poolTokens(hiddenStates, attentionMask, pooling), projection)]
+      : null;
   }
 
   if (tensor.dims.length !== 3) {
@@ -158,25 +232,20 @@ function extractBatchVectors(
   const vectors: number[][] = [];
 
   for (let batch = 0; batch < batchSize; batch++) {
-    const pooled = new Array<number>(hiddenSize).fill(0);
-    let validTokenCount = 0;
+    const rowMask: number[] = new Array<number>(seqLen);
     for (let token = 0; token < seqLen; token++) {
-      const maskValue = attentionMask[batch * maskSeqLen + token] ?? 0;
-      if (maskValue !== 1) {
-        continue;
-      }
+      rowMask[token] = attentionMask[batch * maskSeqLen + token] ?? 0;
+    }
+    const rows: number[][] = new Array(seqLen);
+    for (let token = 0; token < seqLen; token++) {
       const base = (batch * seqLen + token) * hiddenSize;
+      const row: number[] = new Array<number>(hiddenSize);
       for (let dim = 0; dim < hiddenSize; dim++) {
-        pooled[dim] += data[base + dim];
+        row[dim] = data[base + dim];
       }
-      validTokenCount += 1;
+      rows[token] = row;
     }
-    if (validTokenCount > 0) {
-      for (let dim = 0; dim < hiddenSize; dim++) {
-        pooled[dim] /= validTokenCount;
-      }
-    }
-    vectors.push(fitDimension(l2Normalize(pooled), dimension));
+    vectors.push(projectVector(poolTokens(rows, rowMask, pooling), projection));
   }
 
   return vectors;
@@ -186,6 +255,15 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
   const { modelId, modelPath, dimension } = options;
   const queryPrefix = options.queryPrefix ?? "";
   const passagePrefix = options.passagePrefix ?? "";
+  const pooling: ModelPooling = options.pooling ?? "mean";
+  const appendSuffix = options.appendText ?? "";
+  const maxSeqLength = options.maxSeqLength;
+  const projection: VectorProjection = {
+    modelId,
+    dimension,
+    nativeDimension: options.nativeDimension ?? dimension,
+    matryoshka: options.matryoshka === true,
+  };
   const configuredCacheSize = Number.isFinite(options.cacheSize)
     ? Number(options.cacheSize)
     : DEFAULT_LOCAL_ONNX_CACHE_SIZE;
@@ -331,16 +409,17 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     }
 
     const normalizedTexts = texts.map((text) => text || "");
-    const prefixedTexts = normalizedTexts.map((text) => prefix + text);
+    const prefixedTexts = normalizedTexts.map((text) => prefix + text + appendSuffix);
 
     const encoded = (tokenizer as unknown as {
-      (text: string | string[], opts: { padding: boolean; truncation: boolean; return_tensors: string }): {
+      (text: string | string[], opts: { padding: boolean; truncation: boolean; max_length?: number; return_tensors: string }): {
         input_ids: { data: number[] | BigInt64Array; dims: number[] };
         attention_mask: { data: number[] | BigInt64Array; dims: number[] };
       };
     })(prefixedTexts.length === 1 ? prefixedTexts[0] : prefixedTexts, {
       padding: true,
       truncation: true,
+      ...(maxSeqLength ? { max_length: maxSeqLength } : {}),
       return_tensors: "pt",
     });
 
@@ -358,7 +437,7 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
     // output (Ruri), or token_embeddings. Try each in priority order.
     const outputObj = output as Record<string, unknown>;
     const hiddenStateTensor = outputObj.last_hidden_state ?? outputObj.output ?? outputObj.token_embeddings;
-    const vectors = extractBatchVectors(hiddenStateTensor, attentionMask, encoded.attention_mask.dims, dimension);
+    const vectors = extractBatchVectors(hiddenStateTensor, attentionMask, encoded.attention_mask.dims, projection, pooling);
     if (vectors && vectors.length === normalizedTexts.length) {
       return vectors;
     }

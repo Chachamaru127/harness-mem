@@ -536,9 +536,22 @@ export class IngestCoordinator {
         if (this.deps.isShuttingDown()) return;
         if (consolidationRunning) return;
         consolidationRunning = true;
-        void this.deps.runConsolidation({ reason: "scheduler", limit: 10 }).finally(() => {
-          consolidationRunning = false;
-        });
+        // §155-A04: 元コードは .catch() を持たず、SQLITE_BUSY 等の rejection が
+        // Bun の uncaughtException 扱いで daemon プロセスを殺し、launchd が
+        // 再起動を繰り返す crashloop を引き起こしていた。次サイクル (60s 後) で
+        // 自然に再試行されるので、ここでは WARN ログだけ残して swallow する。
+        void this.deps
+          .runConsolidation({ reason: "scheduler", limit: 10 })
+          .catch((err: unknown) => {
+            const code = (err as { code?: string } | null)?.code;
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(
+              `[consolidation-scheduler] swallowed error (code=${code ?? "n/a"}): ${message} — will retry on next interval`,
+            );
+          })
+          .finally(() => {
+            consolidationRunning = false;
+          });
       }, clampLimit(Number(config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
     }
 

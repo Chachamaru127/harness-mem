@@ -25,7 +25,7 @@ import {
 } from "./temporal-graph-signal.js";
 import { routeQuery, type AnswerHints, type RouteDecision, type TemporalAnchor } from "../retrieval/router";
 import { compileAnswer } from "../answer/compiler";
-import { extractCurrentValueSpan } from "./current-value-compression";
+import { extractCurrentValueSpan, SPAN_EXTRACTION_MAX_CHARS } from "./current-value-compression";
 import {
   buildVisibleInteractionText,
   hasIgnoredVisibleTag,
@@ -39,6 +39,9 @@ import {
   getSqliteVecMapTableName,
   getSqliteVecTableName,
   serializeSqliteVecFloat32,
+  quantizeToBits,
+  getBitTableName,
+  getBitMapTableName,
   type VectorEngine,
 } from "../vector/providers";
 import { type AccessFilter } from "../auth/access-control";
@@ -48,6 +51,7 @@ import { InjectTraceStore } from "../inject/trace-store";
 import { detectConsumed } from "../inject/consume-detector";
 import type { InjectEnvelope } from "../inject/envelope";
 import type { IObservationRepository } from "../db/repositories/IObservationRepository.js";
+import type { EmbeddingShadowManifest } from "../projector/shadow-sync";
 import type {
   ApiResponse,
   Config,
@@ -147,9 +151,10 @@ export interface ObservationStoreDeps {
     | ((
         query: string,
         ids: string[],
-        opts: { project: string | undefined; limit: number }
+        opts: { project: string | undefined; limit: number; embeddingShadowManifest?: EmbeddingShadowManifest | null }
       ) => Promise<void>)
     | null;
+  getEmbeddingShadowManifest?: () => EmbeddingShadowManifest | null;
   // ---- search config ----
   searchRanking: string;
   searchExpandLinks: boolean;
@@ -668,6 +673,8 @@ const AFTER_CUE_PATTERN = /\b(after|right after|following|since)\b/i;
 const BEFORE_CUE_PATTERN = /\b(before|prior to|until)\b/i;
 const CURRENT_SLOT_ONLY_PATTERN = /\b(default|primary)\b/i;
 const PREVIOUS_CUE_PATTERN = /\b(previously|formerly|used to|prior|earlier|before)\b/i;
+const STRONG_PREVIOUS_VALUE_CUE_PATTERN =
+  /\b(previous|previously|former|formerly|prior|earlier|used to|old)\b|(以前|前の|前回|前は|もともと|元は|当初|当時)/;
 const EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old)\b/i;
 const PREVIOUS_STATUS_TEXT_PATTERN = /\b(previous|previously|former|formerly|prior|earlier|old|before)\b/i;
 const STATUS_SUMMARY_CUE_PATTERN = /\b(status|latest|current)\b/i;
@@ -720,6 +727,10 @@ function hasPreviousValueIntent(query: string): boolean {
   return PREVIOUS_CUE_PATTERN.test(query) || JAPANESE_PREVIOUS_PATTERN.test(query);
 }
 
+function hasStrongPreviousValueCue(text: string): boolean {
+  return STRONG_PREVIOUS_VALUE_CUE_PATTERN.test(text);
+}
+
 function hasExplicitPreviousStatusIntent(query: string): boolean {
   return EXPLICIT_PREVIOUS_STATUS_QUERY_PATTERN.test(query) ||
     /(以前|前の|前回|前は|もともと|元は|当初|当時)/.test(query);
@@ -739,6 +750,11 @@ function hasSpecificTemporalAnswerCue(query: string): boolean {
   }
   return /\b(first|last|before|after|since|until|when|what year|what month|what date|earliest|latest)\b/i.test(query) ||
     /(どちらが先|先に|最後|最初|いつ|何時|その後|あとで|後で|直後|の前|の後|以前|以降)/.test(query);
+}
+
+function hasGenericTemporalEventIntent(query: string): boolean {
+  return /\b(what happened|what occurred|what came|what was done)\b/i.test(query) ||
+    /(何が起き|何があ|何を確認|どうなった)/.test(query);
 }
 
 function prefersDescendingTemporalOrder(query: string): boolean {
@@ -772,9 +788,40 @@ function temporalAnchorForObservation(observation: Record<string, unknown> | und
   return "";
 }
 
+function boundRerankText(value: string): string {
+  return value.length > SPAN_EXTRACTION_MAX_CHARS ? value.slice(0, SPAN_EXTRACTION_MAX_CHARS) : value;
+}
+
 function observationTemporalText(observation: Record<string, unknown> | undefined): string {
   if (!observation) return "";
-  return `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`.toLowerCase();
+  const raw = `${String(observation.title ?? "")} ${String(observation.content_redacted ?? "")}`;
+  return boundRerankText(raw).toLowerCase();
+}
+
+function anchorReferenceOverlap(anchor: TemporalAnchor, text: string): number {
+  const simpleTokens = (anchor.referenceText.toLowerCase().match(/[a-z0-9]+/g) ?? [])
+    .filter((token) => (token.length >= 2 || /\d/.test(token)) && !STATUS_SUMMARY_STOPWORDS.has(token));
+  const versionTokens = simpleTokens.filter((token) => /\d/.test(token));
+  const nonNumericTokens = simpleTokens.filter((token) => !/\d/.test(token));
+  if (versionTokens.length > 0) {
+    const textTokenSet = new Set(text.match(/[a-z0-9]+/g) ?? []);
+    const numericHit = versionTokens.some((token) => textTokenSet.has(token));
+    if (!numericHit) return 0;
+    const nonNumericHits = nonNumericTokens.filter((token) => textTokenSet.has(token)).length;
+    if (nonNumericTokens.length > 0 && nonNumericHits === 0) return 0;
+    return (1 + nonNumericHits) / (1 + nonNumericTokens.length);
+  }
+  if (simpleTokens.length >= 2) {
+    const phrase = simpleTokens.slice(0, 2).join(" ");
+    if (text.includes(phrase)) return 1;
+  }
+  const tokens = buildSearchTokens(anchor.referenceText)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 3 && !STATUS_SUMMARY_STOPWORDS.has(token));
+  const uniqueTokens = [...new Set(tokens)];
+  if (uniqueTokens.length === 0) return 0;
+  const hits = uniqueTokens.filter((token) => text.includes(token)).length;
+  return hits / uniqueTokens.length;
 }
 
 type TemporalPlannerMode = "current" | "previous" | "previous_current" | "no_longer" | "after" | "before" | "first" | "latest" | "chronology";
@@ -808,21 +855,30 @@ function temporalContractForObservation(
 
   const text = observationTemporalText(observation);
   const id = typeof observation.id === "string" ? observation.id : "";
+  const asOfMs = options.asOf ? Date.parse(options.asOf) : Date.now();
+  const invalidatedAtMs = typeof observation.invalidated_at === "string" && observation.invalidated_at.trim()
+    ? Date.parse(observation.invalidated_at)
+    : NaN;
   const explicitlySuperseded =
     Boolean(id && options.supersededIds?.has(id)) ||
-    Boolean(observation.invalidated_at) ||
+    (Number.isFinite(asOfMs) && Number.isFinite(invalidatedAtMs) && invalidatedAtMs <= asOfMs) ||
     NO_LONGER_CUE_PATTERN.test(text) ||
     JAPANESE_NO_LONGER_PATTERN.test(text);
   if (explicitlySuperseded) {
     return { state: "superseded", anchor, anchor_kind: anchorKind };
   }
 
-  const asOfMs = options.asOf ? Date.parse(options.asOf) : Date.now();
   const validToMs = typeof observation.valid_to === "string" && observation.valid_to.trim()
     ? Date.parse(observation.valid_to)
     : NaN;
   if (Number.isFinite(asOfMs) && Number.isFinite(validToMs) && validToMs <= asOfMs) {
     return { state: "historical", anchor, anchor_kind: anchorKind };
+  }
+  const validFromMs = typeof observation.valid_from === "string" && observation.valid_from.trim()
+    ? Date.parse(observation.valid_from)
+    : NaN;
+  if (Number.isFinite(asOfMs) && Number.isFinite(validFromMs) && validFromMs > asOfMs) {
+    return { state: "unknown", anchor, anchor_kind: anchorKind };
   }
 
   const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) ||
@@ -873,10 +929,10 @@ function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   // duration 系は chronology にフォールバックさせる。
   const isDurationQuestion = /\bhow long\b[\s\S]*\blast(ed|s|ing)?\b/.test(normalized);
   if (hasNoLongerIntent(query)) return "no_longer";
-  if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\b(now|before)\b/i.test(query) || /(現在|今)/.test(query))) {
+  if (hasPreviousValueIntent(query) && (hasCurrentValueIntent(query) || /\bnow\b/i.test(query) || /(現在|今)/.test(query))) {
     return "previous_current";
   }
-  if (hasPreviousValueIntent(query)) return "previous";
+  if (hasPreviousValueIntent(query) && !hasGenericTemporalEventIntent(query)) return "previous";
   if (AFTER_CUE_PATTERN.test(query) || /(直後|その後|以降|の後|後で|あとで)/.test(query)) return "after";
   if (BEFORE_CUE_PATTERN.test(query) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(query)) return "before";
   if (FIRST_CUE_PATTERN.test(query) || /(最初|初回|当初)/.test(query)) return "first";
@@ -886,15 +942,33 @@ function resolveTemporalPlannerMode(query: string): TemporalPlannerMode {
   return "chronology";
 }
 
+function temporalTimestampReached(value: unknown, asOfMs: number): boolean {
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(asOfMs)) return false;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) && timestampMs <= asOfMs;
+}
+
+function temporalTimestampPending(value: unknown, asOfMs: number): boolean {
+  if (typeof value !== "string" || !value.trim() || !Number.isFinite(asOfMs)) return false;
+  const timestampMs = Date.parse(value);
+  return Number.isFinite(timestampMs) && timestampMs > asOfMs;
+}
+
 function temporalStateScore(
   query: string,
   mode: TemporalPlannerMode,
-  observation: Record<string, unknown> | undefined
+  observation: Record<string, unknown> | undefined,
+  asOf?: string
 ): number {
   const text = observationTemporalText(observation);
-  const invalidated = Boolean(observation?.invalidated_at || observation?.valid_to);
+  const asOfMs = asOf ? Date.parse(asOf) : Date.now();
+  const invalidated =
+    temporalTimestampReached(observation?.invalidated_at, asOfMs) ||
+    temporalTimestampReached(observation?.valid_to, asOfMs);
+  const notYetActive = temporalTimestampPending(observation?.valid_from, asOfMs);
   const hasCurrentCue = CURRENT_CUE_PATTERN.test(text) || JAPANESE_CURRENT_PATTERN.test(text) || STILL_CUE_PATTERN.test(text) || JAPANESE_STILL_PATTERN.test(text);
   const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(text) || JAPANESE_PREVIOUS_PATTERN.test(text);
+  const hasStrongPreviousCue = hasStrongPreviousValueCue(text);
   const hasNoLongerCue = NO_LONGER_CUE_PATTERN.test(text) || JAPANESE_NO_LONGER_PATTERN.test(text);
   const hasFirstCue = FIRST_CUE_PATTERN.test(text) || /(最初|初回|当初)/.test(text);
   const hasLatestCue = LATEST_CUE_PATTERN.test(text) || /(最後|最新|直近|最近)/.test(text);
@@ -902,13 +976,14 @@ function temporalStateScore(
   const hasBeforeCue = BEFORE_CUE_PATTERN.test(text) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(text);
 
   if (mode === "current") {
-    return (invalidated ? -2 : 2) + (hasCurrentCue ? 3 : 0);
+    return (invalidated || notYetActive ? -2 : 2) + (hasCurrentCue ? 3 : 0);
   }
   if (mode === "previous") {
-    return (hasPreviousCue ? 3 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
+    return (hasStrongPreviousCue ? 4 : 0) + (hasPreviousCue ? 1 : 0) + (invalidated ? 1 : 0) + (hasCurrentCue ? -1 : 0);
   }
   if (mode === "previous_current") {
-    return (hasPreviousCue ? 3 : 0) + (hasCurrentCue || hasLatestCue ? 2 : 0) + (invalidated ? -1 : 0);
+    const currentCue = hasCurrentCue && !hasStrongPreviousCue;
+    return (currentCue ? 4 : 0) + (hasLatestCue ? -2 : 0) + (hasNoLongerCue ? -1 : 0) + (invalidated || notYetActive ? -1 : 0);
   }
   if (mode === "no_longer") {
     return (hasNoLongerCue ? 4 : 0) + (invalidated ? 2 : 0) + (hasCurrentCue ? -1 : 0);
@@ -926,6 +1001,16 @@ function temporalStateScore(
     return (hasLatestCue ? 5 : 0) + (hasCurrentCue ? 2 : 0);
   }
   return hasSpecificTemporalAnswerCue(query) ? (hasCurrentCue || hasPreviousCue || hasNoLongerCue ? 1 : 0) : 0;
+}
+
+function temporalTopicOverlapScore(query: string, observation: Record<string, unknown> | undefined): number {
+  const text = observationTemporalText(observation);
+  if (!text) return 0;
+  const tokens = [...new Set(buildSearchTokens(query)
+    .map((token) => token.toLowerCase())
+    .filter((token) => token.length >= 3 && !STATUS_SUMMARY_STOPWORDS.has(token)))];
+  if (tokens.length === 0) return 0;
+  return tokens.filter((token) => text.includes(token)).length / tokens.length;
 }
 
 function isLatestInteractionIntent(query: string): boolean {
@@ -1686,9 +1771,10 @@ export class ObservationStore {
     return nextSql;
   }
 
-  private loadSupersededObservationIds(ids: string[]): Set<string> {
+  private loadSupersededObservationIds(ids: string[], asOf?: string): Set<string> {
     const superseded = new Set<string>();
     if (ids.length === 0) return superseded;
+    const effectiveAt = asOf ?? new Date().toISOString();
 
     try {
       const MAX_BATCH = 500;
@@ -1698,9 +1784,12 @@ export class ObservationStore {
         const rows = this.deps.db
           .query(
             `SELECT to_observation_id FROM mem_links
-             WHERE relation = 'supersedes' AND to_observation_id IN (${placeholders})`
+             WHERE relation IN ('supersedes', 'superseded')
+               AND to_observation_id IN (${placeholders})
+               AND (valid_from IS NULL OR julianday(valid_from) <= julianday(?))
+               AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))`
           )
-          .all(...batch) as Array<{ to_observation_id: string }>;
+          .all(...batch, effectiveAt, effectiveAt) as Array<{ to_observation_id: string }>;
         for (const row of rows) {
           if (typeof row.to_observation_id === "string" && row.to_observation_id) {
             superseded.add(row.to_observation_id);
@@ -2046,6 +2135,11 @@ export class ObservationStore {
       });
     };
 
+    // s154-B: binary prefilter flag (default-OFF, DENSE leg only)
+    // When ON: Pass1=Hamming KNN on bit table → Pass2=float KNN on candidate subset
+    // BM25/graph legs are NOT affected — they contribute via union at :4106
+    const binaryPrefilterEnabled = process.env.HARNESS_MEM_BINARY_PREFILTER === "1";
+
     const runVariantSearch = (
       plan: ReturnType<typeof resolveEmbeddingPlan>,
       variantWeight: number
@@ -2055,6 +2149,7 @@ export class ObservationStore {
         let sqliteFallbackReason: string | null = null;
         try {
           const sqliteScoreSets: Array<{ weight: number; scores: Map<string, number>; matchedRows: number }> = [];
+          let binaryPrefilterFired = false;
 
           for (const target of searchTargets) {
             const tableName = getSqliteVecTableName(target.model);
@@ -2081,11 +2176,78 @@ export class ObservationStore {
                 internalLimit,
               ),
             );
-            const params: unknown[] = [
-              serializeSqliteVecFloat32(target.vector),
-              sqliteVecK,
-            ];
-            let sql = buildSqliteVecKnnCandidateSql(tableName, mapTableName);
+
+            // s154-B Pass 1: Hamming KNN on bit companion table (flag ON only)
+            // Narrows float search space to ~4x wider than sqliteVecK to preserve recall
+            let candidateObservationIds: string[] | null = null;
+            if (binaryPrefilterEnabled) {
+              try {
+                const bitTableName = getBitTableName(target.model);
+                const bitMapTableName = getBitMapTableName(target.model);
+                const bitTableCount = this.deps.db
+                  .query<{ count: number }, [string, string]>(
+                    `SELECT COUNT(*) AS count FROM sqlite_master WHERE type IN ('table','shadow') AND name IN (?,?)`
+                  )
+                  .get(bitTableName, bitMapTableName);
+
+                if (Number(bitTableCount?.count ?? 0) >= 2) {
+                  // bitK ≥ 8x of float k to satisfy recall@10 ≥ 0.95 (Lead verified: 4x=0.69, 8x=0.95)
+                  const bitK = Math.min(sqliteVecKMax * 8, Math.max(internalLimit * 16, 200));
+                  const queryBits = quantizeToBits(target.vector);
+                  const bitRows = this.deps.db
+                    .query<{ observation_id: string }, [Uint8Array, number]>(
+                      `SELECT m.observation_id
+                       FROM ${bitTableName} v
+                       JOIN ${bitMapTableName} m ON m.rowid = v.rowid
+                       WHERE v.embedding MATCH vec_bit(?) AND k = ?`
+                    )
+                    .all(queryBits, bitK);
+
+                  if (bitRows.length > 0) {
+                    candidateObservationIds = bitRows.map((r) => r.observation_id);
+                    binaryPrefilterFired = true;
+                  }
+                  // bit table empty → fall through to float single-pass
+                }
+              } catch {
+                // bit prefilter failed → graceful fallback to float single-pass
+                candidateObservationIds = null;
+              }
+            }
+
+            // s154-B Pass 2 (or single-pass when flag OFF / bit table absent):
+            // float KNN restricted to Hamming-prefiltered rowids when candidateObservationIds is set
+            let sql: string;
+            const params: unknown[] = [];
+            if (candidateObservationIds && candidateObservationIds.length > 0) {
+              // Build float KNN with IN-clause restriction on observation_id
+              // Table names are validated via normalizeSqliteIdentifierPart ([a-z0-9_] only)
+              const placeholders = candidateObservationIds.map(() => "?").join(",");
+              sql = `
+                SELECT
+                  c.id AS id,
+                  c.distance AS distance,
+                  o.created_at AS created_at
+                FROM (
+                  SELECT
+                    m.observation_id AS id,
+                    v.distance AS distance
+                  FROM ${tableName} v
+                  JOIN ${mapTableName} m ON m.rowid = v.rowid
+                  WHERE m.observation_id IN (${placeholders})
+                    AND v.embedding MATCH vec_f32(?) AND k = ?
+                ) c
+                JOIN mem_observations o ON o.id = c.id
+                WHERE 1 = 1
+              `;
+              for (const id of candidateObservationIds) params.push(id);
+              // vec_f32() wrapper required for reliable float binding (Lead verified)
+              params.push(serializeSqliteVecFloat32(target.vector));
+              params.push(sqliteVecK);
+            } else {
+              params.push(serializeSqliteVecFloat32(target.vector), sqliteVecK);
+              sql = buildSqliteVecKnnCandidateSql(tableName, mapTableName);
+            }
             sql = this.applyCommonFilters(sql, params, "o", request);
             sql += " ORDER BY c.distance ASC LIMIT ?";
             params.push(internalLimit);
@@ -2112,7 +2274,22 @@ export class ObservationStore {
           }
 
           if (sqliteScoreSets.length > 0) {
-            return mergeScoreSets(sqliteScoreSets, selectMigrationModel(searchTargets.map((target) => target.model)));
+            const result = mergeScoreSets(
+              sqliteScoreSets,
+              selectMigrationModel(searchTargets.map((target) => target.model)),
+              binaryPrefilterFired
+                ? {
+                    mode: "binary_hamming_prefilter" as const,
+                    candidates: sqliteScoreSets.reduce((s, ss) => s + ss.matchedRows, 0),
+                    matched_rows: sqliteScoreSets.reduce((s, ss) => s + ss.matchedRows, 0),
+                    variant_count: sqliteScoreSets.length,
+                  }
+                : undefined,
+            );
+            if (binaryPrefilterFired) {
+              result.binary_prefilter_active = true;
+            }
+            return result;
           }
           sqliteFallbackReason ||= "sqlite-vec returned no usable target";
         } catch {
@@ -2698,7 +2875,12 @@ export class ObservationStore {
     return null;
   }
 
+  private hasJapaneseScript(text: string): boolean {
+    return /[\u3040-\u30FF\u4E00-\u9FFF]/u.test(text);
+  }
+
   private extractJapaneseListSpan(text: string): string | null {
+    if (!this.hasJapaneseScript(text)) return null;
     const source = this.normalizeCompactText(text);
     const patterns = [
       /(?:には|は)\s*([^。!?]+?)\s*を(?:出しました|追加しました|導入しました|含めました)/u,
@@ -2722,13 +2904,15 @@ export class ObservationStore {
         return this.extractJapaneseReasonSpan(text);
       case "list_value":
         return this.extractJapaneseListSpan(text);
-      case "temporal_value":
+      case "temporal_value": {
+        const hasJapanese = this.hasJapaneseScript(text);
         return (
-          this.extractJapaneseTemporalOrderSpan(query, text) ||
+          (hasJapanese ? this.extractJapaneseTemporalOrderSpan(query, text) : null) ||
           extractCurrentValueSpan(text) ||
-          this.extractJapanesePreviousValueSpan(text) ||
-          this.extractJapaneseListSpan(text)
+          (hasJapanese ? this.extractJapanesePreviousValueSpan(text) : null) ||
+          (hasJapanese ? this.extractJapaneseListSpan(text) : null)
         );
+      }
       case "location": {
         const location =
           /\b(?:in|at|from|to|near|based in|live in|located in)\s+([A-Z][\w.-]+(?:\s+[A-Z][\w.-]+){0,2})\b/u.exec(text) ||
@@ -2814,7 +2998,7 @@ export class ObservationStore {
 
     const title = typeof observation.title === "string" ? observation.title : "";
     const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-    const text = `${title} ${content}`.trim();
+    const text = boundRerankText(`${title} ${content}`.trim());
     if (!text) return 0;
 
     const queryLower = query.toLowerCase();
@@ -3048,7 +3232,7 @@ export class ObservationStore {
       const observation = observations.get(candidate.id) ?? {};
       const title = typeof observation.title === "string" ? observation.title : "";
       const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-      const text = `${title} ${content}`.trim();
+      const text = boundRerankText(`${title} ${content}`.trim());
       const lower = text.toLowerCase();
       const contextHits = this.countKeywordHits(lower, contextFocusKeywords);
       const contextSatisfied = contextFocusKeywords.length === 0 || contextHits > 0 ? 1 : 0;
@@ -3122,7 +3306,7 @@ export class ObservationStore {
       const observation = observations.get(candidate.id) ?? {};
       const title = typeof observation.title === "string" ? observation.title : "";
       const content = typeof observation.content_redacted === "string" ? observation.content_redacted : "";
-      const text = `${title} ${content}`.trim();
+      const text = boundRerankText(`${title} ${content}`.trim());
       const lower = text.toLowerCase();
       const conciseSpan = this.extractConciseAnswerSpan(query, answerHints, text);
       const sentenceCount = this.countAnswerSentences(text);
@@ -3222,9 +3406,10 @@ export class ObservationStore {
       if (!observation) continue;
       const sessionId = typeof observation.session_id === "string" ? observation.session_id : "";
       if (!sessionId) continue;
-      const text = `${typeof observation.title === "string" ? observation.title : ""} ${
+      const rawText = `${typeof observation.title === "string" ? observation.title : ""} ${
         typeof observation.content_redacted === "string" ? observation.content_redacted : ""
-      }`.trim().toLowerCase();
+      }`.trim();
+      const text = boundRerankText(rawText).toLowerCase();
       const focusHits = this.countKeywordHits(text, focusKeywords);
       const signal = Math.max(
         candidate.lexical,
@@ -3321,7 +3506,7 @@ export class ObservationStore {
     // mode, so e.g. `previous` queries with no cue match were re-sorted by
     // anchor time alone, pushing the actually-relevant obs out of the top-K.
     if (
-      temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id)) === 0)
+      temporalCandidates.every((candidate) => temporalStateScore(request.query, mode, observations.get(candidate.id), request.as_of) === 0)
     ) {
       return;
     }
@@ -3329,9 +3514,15 @@ export class ObservationStore {
     temporalCandidates.sort((lhs, rhs) => {
       const lhsObs = observations.get(lhs.id);
       const rhsObs = observations.get(rhs.id);
-      const lhsState = temporalStateScore(request.query, mode, lhsObs);
-      const rhsState = temporalStateScore(request.query, mode, rhsObs);
+      const lhsState = temporalStateScore(request.query, mode, lhsObs, request.as_of);
+      const rhsState = temporalStateScore(request.query, mode, rhsObs, request.as_of);
       if (rhsState !== lhsState) return rhsState - lhsState;
+
+      if (request.as_of && (mode === "current" || mode === "previous_current")) {
+        const lhsTopic = temporalTopicOverlapScore(request.query, lhsObs);
+        const rhsTopic = temporalTopicOverlapScore(request.query, rhsObs);
+        if (rhsTopic !== lhsTopic) return rhsTopic - lhsTopic;
+      }
 
       const lhsAnchor = temporalAnchorForObservation(lhsObs) || lhs.created_at;
       const rhsAnchor = temporalAnchorForObservation(rhsObs) || rhs.created_at;
@@ -3411,8 +3602,49 @@ export class ObservationStore {
       }
 
       if (!anchorId) {
-        anchorId = rankedAnchorIds[0] ?? null;
-        anchorObs = anchorId ? this.loadTemporalAnchorObservation(anchorId) : null;
+        const anchorModeForSelection = resolveTemporalPlannerMode(request.query);
+        const preferLatestReferenceAnchor =
+          anchor.direction === "desc" &&
+          !hasGenericTemporalEventIntent(request.query) &&
+          (anchorModeForSelection === "previous" ||
+            anchorModeForSelection === "previous_current" ||
+            hasExplicitPreviousStatusIntent(request.query));
+        const anchorRows = rankedAnchorIds
+          .slice(0, ANCHOR_SEARCH_LIMIT)
+          .map((id) => {
+            const row = this.loadTemporalAnchorObservation(id);
+            const text = observationTemporalText(row ?? undefined);
+            const normalizedReference = anchor.referenceText.toLowerCase().replace(/\s+/g, " ").trim();
+            const normalizedTitle = String(row?.title ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+            return {
+              id,
+              row,
+              referenceOverlap: anchorReferenceOverlap(anchor, text),
+              referenceTitleScore: normalizedTitle === normalizedReference
+                ? 3
+                : normalizedTitle.includes(normalizedReference)
+                  ? 2
+                  : 0,
+              anchorTime: String(row?.temporal_anchor ?? row?.created_at ?? ""),
+            };
+          })
+          .filter((entry) => entry.row);
+        const bestReferenceMatch = anchorRows
+          .filter((entry) => entry.referenceOverlap > 0)
+          .sort((lhs, rhs) => {
+            if (anchor.direction === "desc" && preferLatestReferenceAnchor) {
+              if (rhs.referenceOverlap !== lhs.referenceOverlap) return rhs.referenceOverlap - lhs.referenceOverlap;
+              return rhs.anchorTime.localeCompare(lhs.anchorTime);
+            }
+            if (rhs.referenceTitleScore !== lhs.referenceTitleScore) {
+              return rhs.referenceTitleScore - lhs.referenceTitleScore;
+            }
+            const timeCmp = lhs.anchorTime.localeCompare(rhs.anchorTime);
+            if (timeCmp !== 0) return timeCmp;
+            return rhs.referenceOverlap - lhs.referenceOverlap;
+          })[0];
+        anchorId = bestReferenceMatch?.id ?? rankedAnchorIds[0] ?? null;
+        anchorObs = bestReferenceMatch?.row ?? (anchorId ? this.loadTemporalAnchorObservation(anchorId) : null);
       }
 
       // §35 SD-005: anchor 未検出時フォールバック — direction ベースの時間軸ソートで結果を返す
@@ -3552,6 +3784,7 @@ export class ObservationStore {
 
       // S43-005: query との lexical 関連性でスコアリングして top-3 quality candidate を保証する
       const queryTokens = buildSearchTokens(request.query);
+      const anchorMode = resolveTemporalPlannerMode(request.query);
       const scored = candidateRows.map((row) => {
         const titleText = typeof row.title === "string" ? row.title.toLowerCase() : "";
         const contentText =
@@ -3561,21 +3794,72 @@ export class ObservationStore {
         for (const token of queryTokens) {
           if (combined.includes(token.toLowerCase())) relevanceScore += 1;
         }
-        return { row, relevanceScore, created_at: String(row.temporal_anchor ?? row.created_at ?? "") };
+        const hasCurrentCue = CURRENT_CUE_PATTERN.test(combined) || JAPANESE_CURRENT_PATTERN.test(combined);
+        const hasPreviousCue = PREVIOUS_CUE_PATTERN.test(combined) || JAPANESE_PREVIOUS_PATTERN.test(combined);
+        const hasStrongPreviousCue = hasStrongPreviousValueCue(combined);
+        const hasAfterCue = AFTER_CUE_PATTERN.test(combined) || /(直後|その後|以降|の後|後で|あとで)/.test(combined);
+        const hasBeforeCue = BEFORE_CUE_PATTERN.test(combined) || /(以前|の前|より前|変更前|切り替える前|見直す前)/.test(combined);
+        const referenceOverlap = anchorReferenceOverlap(anchor, combined);
+        const topicalQueryOverlap = queryTokens
+          .map((token) => token.toLowerCase())
+          .filter(
+            (token) =>
+              token.length >= 3 &&
+              !STATUS_SUMMARY_STOPWORDS.has(token) &&
+              !["before", "after", "current", "previous", "previously", "happened", "occurred", "became"].includes(token),
+          )
+          .some((token) => combined.includes(token));
+        const previousStatusSummary = this.isPreviousStatusSummaryAnswer(request, anchor, row);
+        let anchorScore = temporalStateScore(request.query, anchorMode, row, request.as_of);
+        if (anchor.direction === "desc") {
+          if (previousStatusSummary) anchorScore += 8;
+          if (anchorMode === "previous_current" && hasStrongPreviousCue) anchorScore += 5;
+          else if (anchorMode !== "previous_current" && hasStrongPreviousCue) anchorScore += 4;
+          else if (hasPreviousCue) anchorScore += 1;
+          if (anchorMode === "previous_current" && hasCurrentCue && !hasStrongPreviousCue && referenceOverlap < 0.5 && topicalQueryOverlap) {
+            anchorScore += 6;
+          }
+          if (referenceOverlap >= 0.5 && !hasStrongPreviousCue && !previousStatusSummary) anchorScore -= 4;
+          if (hasAfterCue) anchorScore -= 3;
+        } else if (anchor.direction === "asc") {
+          if (hasAfterCue) anchorScore += 6;
+          if (hasBeforeCue) anchorScore -= 4;
+          if (referenceOverlap >= 0.5) anchorScore += 1;
+        }
+        return {
+          row,
+          relevanceScore,
+          anchorScore,
+          created_at: String(row.temporal_anchor ?? row.created_at ?? ""),
+        };
       });
 
       const withRelevance = scored.filter((s) => s.relevanceScore > 0);
       const withoutRelevance = scored.filter((s) => s.relevanceScore === 0);
       const directionMultiplier = anchor.direction === "desc" ? -1 : 1;
+      const preferCueScoreOverChronology =
+        anchor.direction === "desc" &&
+        !hasGenericTemporalEventIntent(request.query) &&
+        (anchorMode === "previous" ||
+          anchorMode === "previous_current" ||
+          hasExplicitPreviousStatusIntent(request.query));
       // S43-FIX: temporal ordering では created_at を主キーにし、
       // relevanceScore は tie-breaking に留める（時系列順序を保護）
       withRelevance.sort((a, b) => {
+        if (preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
         const timeCmp = directionMultiplier * a.created_at.localeCompare(b.created_at);
         if (timeCmp !== 0) return timeCmp;
+        if (!preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
         return b.relevanceScore - a.relevanceScore;
       });
       withoutRelevance.sort(
-        (a, b) => directionMultiplier * a.created_at.localeCompare(b.created_at)
+        (a, b) => {
+          if (preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
+          const timeCmp = directionMultiplier * a.created_at.localeCompare(b.created_at);
+          if (timeCmp !== 0) return timeCmp;
+          if (!preferCueScoreOverChronology && b.anchorScore !== a.anchorScore) return b.anchorScore - a.anchorScore;
+          return 0;
+        }
       );
       const anchorSelf = includeAnchorSelf
         ? [{
@@ -3738,6 +4022,9 @@ export class ObservationStore {
     }
 
     if (anchor.direction === "desc") {
+      if (hasPreviousValueIntent(request.query) && !hasGenericTemporalEventIntent(request.query)) {
+        return false;
+      }
       return (
         combined.includes("before ") ||
         combined.includes("以前") ||
@@ -4020,15 +4307,19 @@ export class ObservationStore {
       try {
         const MAX_BATCH = 500;
         const allCandidates = [...candidateIds];
+        const effectiveAt = request.as_of ?? new Date().toISOString();
         for (let i = 0; i < allCandidates.length; i += MAX_BATCH) {
           const batch = allCandidates.slice(i, i + MAX_BATCH);
           const placeholders = batch.map(() => "?").join(", ");
           const updatedRows = this.deps.db
             .query(
               `SELECT to_observation_id FROM mem_links
-               WHERE relation IN ('updates', 'superseded') AND to_observation_id IN (${placeholders})`
+               WHERE relation IN ('updates', 'superseded')
+                 AND to_observation_id IN (${placeholders})
+                 AND (valid_from IS NULL OR julianday(valid_from) <= julianday(?))
+                 AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))`
             )
-            .all(...batch) as Array<{ to_observation_id: string }>;
+            .all(...batch, effectiveAt, effectiveAt) as Array<{ to_observation_id: string }>;
           for (const row of updatedRows) {
             updatedObsIds.add(row.to_observation_id);
           }
@@ -4084,12 +4375,16 @@ export class ObservationStore {
       const nuggetAdj = Math.min(0.15, (nuggetScores.get(id) ?? 0) * 0.15);
       const importance = Math.min(1.0, Math.max(0.0, baseImportance + signalAdj + nuggetAdj));
       const graphScore = graph.get(id) ?? 0;
-      const factBoost = this.computeActiveFactBoost(
-        request.query,
-        routeDecision.answerHints,
-        activeFactsByObservation.get(id) ?? []
-      );
-      const precisionBoost = this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
+      const factBoost = latencySafeMode
+        ? 0
+        : this.computeActiveFactBoost(
+            request.query,
+            routeDecision.answerHints,
+            activeFactsByObservation.get(id) ?? []
+          );
+      const precisionBoost = latencySafeMode
+        ? 0
+        : this.computePrecisionBoost(request.query, routeDecision.answerHints, observation);
 
       ranked.push({
         id,
@@ -4146,7 +4441,9 @@ export class ObservationStore {
     // §34 FD-006: TIMELINE かつ temporalAnchors が存在する場合は Anchor-Pivoted Search を優先
     // §35 SD-003: freshness クエリも temporal anchor 検索を使用する
     // router.ts L419 は既に freshness に temporalAnchors を付与済み
+    // safe_mode では vector/anchor 探索を抑止し bounded lexical 経路に留める。
     if (
+      !latencySafeMode &&
       (routeDecision.kind === "timeline" || routeDecision.kind === "freshness") &&
       routeDecision.temporalAnchors &&
       routeDecision.temporalAnchors.length > 0
@@ -4275,7 +4572,9 @@ export class ObservationStore {
       }
     }
 
-    this.applySessionProgressBoost(request.query, routeDecision, ranked, observations);
+    if (!latencySafeMode) {
+      this.applySessionProgressBoost(request.query, routeDecision, ranked, observations);
+    }
 
     ranked.sort((lhs, rhs) => {
       if (rhs.final !== lhs.final) return rhs.final - lhs.final;
@@ -4289,7 +4588,10 @@ export class ObservationStore {
     // Phase 1: RRF で上位候補確保（recall 保護: top-30 以上）
     // Phase 2: 候補内を query の向きに合わせて時系列ソートする。
     // デフォルトは古い順。latest/most recent 系のみ新しい順にする。
-    if (this.shouldApplyTemporalTwoStageRerank(request, routeDecision)) {
+    if (
+      !latencySafeMode &&
+      this.shouldApplyTemporalTwoStageRerank(request, routeDecision)
+    ) {
       const TEMPORAL_CANDIDATE_K = Math.max(90, limit * 8);
       const temporalCandidates = ranked.slice(0, TEMPORAL_CANDIDATE_K);
       const descending = prefersDescendingTemporalOrder(request.query);
@@ -4304,7 +4606,9 @@ export class ObservationStore {
       ranked.push(...temporalCandidates, ...remaining);
     }
 
-    this.applyTemporalQueryPlannerRerank(request, routeDecision, ranked, observations, limit);
+    if (!latencySafeMode) {
+      this.applyTemporalQueryPlannerRerank(request, routeDecision, ranked, observations, limit);
+    }
 
     const rerankResult = this.applyRerank(request.query, ranked, observations, {
       // Timeline / freshness questions are order-sensitive, so preserve the
@@ -4312,9 +4616,11 @@ export class ObservationStore {
       skipSemanticRerank: routeDecision.kind === "timeline" || routeDecision.kind === "freshness",
     });
     const rankedAfterRerank = rerankResult.ranked;
-    this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
-    this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
-    this.applyTemporalQueryPlannerRerank(request, routeDecision, rankedAfterRerank, observations, limit);
+    if (!latencySafeMode) {
+      this.applyExactValuePriorityRerank(rankedAfterRerank, routeDecision, observations);
+      this.applyAnswerHintPriorityRerank(request.query, rankedAfterRerank, routeDecision, observations);
+      this.applyTemporalQueryPlannerRerank(request, routeDecision, rankedAfterRerank, observations, limit);
+    }
 
     // S43-SEARCH: sort_by override — date_desc / date_asc は created_at でソート
     if (request.sort_by === "date_desc" || request.sort_by === "date_asc") {
@@ -4330,7 +4636,7 @@ export class ObservationStore {
     // superseded 観察 = mem_links に (A, B, 'supersedes') が存在する B。
     // include_superseded=false → 除外。デフォルト(true) → rank を 0.5 倍に下げ、後方に沈める。
     const includeSuperseeded = request.include_superseded !== false; // default: true
-    const supersededObsIds = this.loadSupersededObservationIds(rankedAfterRerank.map((r) => r.id));
+    const supersededObsIds = this.loadSupersededObservationIds(rankedAfterRerank.map((r) => r.id), request.as_of);
 
     // superseded 観察を除外 or rank 下げ
     let finalRanked = rankedAfterRerank;
@@ -4493,6 +4799,7 @@ export class ObservationStore {
         vector_backend_coverage: Number(vectorResult.coverage.toFixed(6)),
         vector_degraded_reasons: vectorResult.degradedReasons ?? [],
         vector_search_enabled: vectorSearchEnabled,
+        binary_prefilter_active: vectorResult.binary_prefilter_active ?? false,
         embedding_provider: this.deps.getEmbeddingProviderName(),
         embedding_model: this.deps.embeddingProviderModel,
         reranker: {
@@ -4584,12 +4891,18 @@ export class ObservationStore {
       // best effort
     }
 
+    const embeddingShadowManifest = this.deps.getEmbeddingShadowManifest?.() ?? null;
+    if (embeddingShadowManifest) {
+      meta.embedding_shadow_manifest = embeddingShadowManifest;
+    }
+
     // Shadow-read: compare results with managed backend (fire-and-forget)
     if (this.deps.managedShadowRead) {
       const resultIds = items.map((item) => item.id as string);
       this.deps.managedShadowRead(request.query, resultIds, {
         project: normalizedProject,
         limit,
+        embeddingShadowManifest,
       }).catch(() => {
         // fire-and-forget, errors tracked in shadow metrics
       });

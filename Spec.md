@@ -1,7 +1,7 @@
 # Harness-mem Product Spec
 
 Status: active SSOT
-Last updated: 2026-06-05
+Last updated: 2026-06-15
 Owner: harness-mem
 Companion plan: `Plans.md` §128 Recall Runtime Architecture / §130 Local Streamable HTTP MCP Default Migration / §138 Internal Memory Benchmark / §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot / §141 Real-Data Benchmark Scale / §142 Agentmemory Live Comparison Benchmark / §143 LoCoMo Common Benchmark / §145 Large DB Search Timeout Fix / §146 MCP Workflow Plans Scope Fix
 
@@ -50,6 +50,78 @@ Codex support is scoped:
 - Codex App may use the same user-scoped Codex config path in local dogfood
   setups, but App-specific support must stay a scoped dogfood note until a
   reproducible App smoke exists.
+
+### Managed / Enterprise extensions (scope boundary)
+
+A managed/server tier — remote sync, VPS/BigQuery storage, OpenTelemetry egress,
+and a Pro/ZDR embedding endpoint — is permitted, but only as a **customer-owned,
+opt-in extension** of the local-first runtime, never as a redefinition of the
+default. To stay inside this spec, any managed or cloud path MUST:
+
+- Keep local-first the default: the OSS local runtime stays fully functional with
+  no account, no API key, and no cloud dependency. The managed tier is additive,
+  never required.
+- Be opt-in and customer-owned: memory and telemetry land in the customer's own
+  VPS / BigQuery / embedding endpoint, not a harness-mem-operated store-of-record.
+  Nothing is exported by default (consistent with the Adoption Gate).
+- Not become a generic cloud memory API: the managed tier serves the same
+  coding-continuity purpose (continuity, data residency, team continuity), not
+  general-purpose lifelog or memory-as-a-service.
+- Carry only spans/metadata in telemetry, never raw memory or prompt text
+  (the ZDR seam).
+
+This clause makes the enterprise direction in
+`docs/strategy/server-product-strategy-2026-06-15.md` spec-consistent without
+weakening the local-first default. (Added 2026-06-15, per independent review.)
+
+## North Star And Flagship Metric
+
+Harness-mem's flagship metric is **Bilingual Coding-Memory Freshness@k**: in
+Japanese/English mixed developer memory, the rate at which recall returns only
+the current value (not a superseded older value) after a fact has been
+overturned. `Plans.md` §153 CodingMemory Bench is promoted to the flagship
+benchmark; the North Star roadmap of record is `docs/strategy/northstar-2026-06-07.md`.
+
+### Flagship KPI definition (must)
+
+- Freshness@k = for observations whose value has been overturned, the fraction
+  of top-k responses that return only the new current value and not the stale
+  prior value.
+- It is a relative metric on the self-seeded dataset and is not a claim of
+  superiority over competitors (see Self-seeded benchmark non-superiority).
+- The green threshold is a release-gate constant: Freshness@k >= 0.95
+  (`FLAGSHIP_FRESHNESS_GREEN_THRESHOLD` in
+  `memory-server/src/benchmark/flagship-kpi.ts`). The flagship KPI leads the CI
+  run manifest and the benchmark scorecard (display promotion); enforcement
+  (process-exit gating) is a separate step tracked as Plans.md §154-305.
+
+### Shallow vs deep freshness (must)
+
+- Shallow freshness = simple stale regression (current
+  `current_stale_answer_regressions`).
+- Deep freshness = three metrics measured on a held-out slice: tense-rewrite
+  accuracy, supersession precision (rate of not returning the stale value), and
+  freshness lag (time from overturn to no longer returning the stale value).
+- Bi-temporal columns are an implementation mechanism, not a scoring axis
+  (their A/B is neutral; see decisions D25/D26).
+
+### Embedding migration — shadow-first / non-destructive (must)
+
+- A new embedding model (BGE-M3 / Ruri) is built in parallel as a shadow,
+  measurement-only path. The incumbent (multilingual-e5 / 384dim) stays the
+  default. The 14GB incumbent index MUST NOT be destroyed.
+- Switch the default only when shadow metrics clear a deterministic threshold,
+  keeping both vector tables resident so rollback is immediate. If the threshold
+  is not cleared, keep the incumbent.
+- New-model inference defaults to local (ONNX); external embedding APIs are a
+  Risk Gate.
+
+### Hermes business deferral (must)
+
+- Hermes business adoption is deferred until the dev phase (bilingual search /
+  consolidation / freshness KPI) is complete and the flagship KPI is green.
+- Before that evidence exists, Hermes business results MUST NOT be used in
+  external claims, and customer data MUST NOT be sent to external channels.
 
 ## Source-Of-Truth Layers
 
@@ -438,6 +510,32 @@ Benchmark cases and reports SHOULD map to MemoryAgentBench's four capabilities:
   sessions.
 - **Conflict Resolution (CR)**: prefer newer facts over superseded ones.
 
+Official MemoryAgentBench dataset runs MAY be reproduced locally from
+`ai-hyz/MemoryAgentBench`, but raw upstream data MUST NOT be committed. Reports
+MUST record the dataset id, source URL, revision or download timestamp, split,
+sample limit, transform version, and whether results use official metrics,
+internal retrieval metrics, or both. Official MemoryAgentBench compatibility is
+a benchmark-runner capability; superiority claims require reproduced runs under
+the same dataset, scorer, and manifest rules as other competitors. Official
+dataset transforms SHOULD split large upstream context into document/session
+chunks before seeding memory, and `relevant_ids` SHOULD point to chunks that
+contain the accepted answer or keypoint rather than to a whole upstream context
+blob.
+
+Benchmark runs MUST use a three-stage gate before full all-split execution:
+
+1. **Smoke gate** (`--limit N`): bounded chunks (4KB cap, 8 chunks/row max) and
+   trimmed queries for wiring and regression checks.
+2. **Medium gate** (`--mab-row-limit N` without `--limit`): full chunking (64KB
+   cap, all chunks) on a limited number of upstream rows; MUST complete within
+   practical wall-clock and record per-case timing in the manifest.
+3. **Full gate** (`--mab-split all`, no row/case limit): only after medium gate
+   PASS on at least one row per split that includes temporal queries.
+
+Smoke results MUST NOT be treated as proof of full-scale search performance.
+Full runs with LLM judge (`--use-openrouter`) MUST record OpenRouter spend in
+reproducibility artifacts; LLM judge applies to TTL/LRU only.
+
 Companion implementation plan: `Plans.md` §138 Internal Memory Benchmark /
 §139 Benchmark Competency Mapping / §140 Real-Data Benchmark Pilot.
 
@@ -458,8 +556,71 @@ When conversation history is used to build benchmark cases:
 - OpenRouter spend (cap, actual spend, generator/judge model separation) MUST be
   recorded in pipeline manifest and reproducibility artifacts when OpenRouter is
   used.
-- Runner loads `coding-memory-real-ja-mixed-v2.jsonl` when present; v1 pilot is
-  archived and not double-counted.
+- Runner loads `coding-memory-real-ja-mixed-v3.jsonl` when present (v3 → v2 → v1
+  priority); v1 pilot is archived and not double-counted.
+
+### Public CodingMemory Benchmark (must)
+
+CodingMemory Bench is the public developer-domain benchmark for Japanese and
+JA/EN mixed coding-session memory. It complements MemoryAgentBench; it does not
+replace it.
+
+- **Name / dataset id**: `CodingMemory Bench` — `coding-memory-real-ja-mixed-v3`
+  and later v3 revisions.
+- **Scope**: JA / mixed / coding-session memory. English encyclopedic LoCoMo full
+  remains a Non-Goal for the primary public KPI.
+- **Public artifacts**: masked JSONL, dataset card, schema, statistics manifest.
+  Raw logs, PII mapping tables, and checkpoints MUST NOT be committed.
+- **Hugging Face**: public dataset uses a separate LICENSE (for example
+  CC-BY-4.0 with irreversible PII masking note). Record HF revision and pipeline
+  version in reports.
+- **Public claim ceiling**: README and advocacy pages MAY cite reproduced
+  3-system tables (harness-mem, Agentmemory, Supermemory), per-competency
+  breakdown, and reproducibility env (secrets as set/unset only). They MUST NOT
+  cite harness-mem self-seed perfect scores, mixed published/reproduced
+  rankings, or MemoryAgentBench English scores as CodingMemory proxy KPIs.
+- **Reproduced competitor minimum (public)**: harness-mem + Agentmemory +
+  Supermemory on the same v3 dataset, scorer, and manifest. Mem0 live is
+  optional stretch.
+- **Production search profile**: public runs SHOULD set
+  `HARNESS_MEM_INTERNAL_BENCH_EMBEDDING=1` (ONNX/adaptive equivalent). Hash
+  fallback profiles MUST be recorded separately and MUST NOT be presented as the
+  public baseline.
+- **Scoring transparency**: public tables treat ID recall@10 as primary; AR
+  substring content fallback is secondary and documented in the charter.
+
+Companion docs: `docs/benchmarks/codingmemory-bench.md`,
+`docs/benchmarks/codingmemory-bench-charter.md`. Implementation plan:
+`Plans.md` §153.
+
+### Bilingual retrieval discrimination gate (must)
+
+Bilingual / CJK retrieval improvements (CJK normalization, lexical fusion,
+dual-query) MUST be validated by a discrimination gate, not by the default
+internal benchmark adapter. The default adapter runs `safe_mode` (bounded
+substring scan) and bypasses the FTS/RRF path these improvements target, so its
+recall cannot move when they change. The discrimination gate MUST:
+
+- Run the real lexical/FTS path with vector retrieval disabled
+  (`vector_search: false`) so the lexical contribution is isolated and a dense
+  self-seed match cannot mask or inflate the measured delta.
+- Use an improvement-OFF negative control as the A/B baseline and report the
+  ON/OFF delta (per `decideAb`), not an absolute self-seed score. Each measured
+  improvement MUST have a deterministic OFF switch (e.g. a regression env flag).
+- Include 表記ゆれ (orthographic-variation) cases that are NOT NFKC-fixable
+  (送り仮名, 漢字⇔かな, 複合語分割境界) alongside NFKC-fixable ones, with
+  per-improver slice tags, so each improvement is shown to be slice-localized
+  rather than tautological (NFKC fixing only NFKC-shaped shifts).
+- Use ID recall and top1/MRR as the gate signal. Raw-substring content fallback
+  MUST NOT be the gate signal (it bypasses normalization and fabricates delta).
+- Prefer delta thresholds over fixed `min` values so the gate stays meaningful
+  as absolute scores saturate (see the `japanese_temporal_slice` saturation at
+  1.0).
+
+Self-seed-perfect absolute scores and raw-substring fallback MUST NOT be cited
+as the gate signal (Self-seeded benchmark non-superiority; semantic-scoring
+requirement for JA/mixed hard cases above). Implementation plan: `Plans.md`
+§154 Phase 1b.
 
 ### Agentmemory live comparison (must)
 

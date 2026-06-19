@@ -1,10 +1,17 @@
+import type { Database } from "bun:sqlite";
 import { createFallbackEmbeddingProvider, withCircuitBreaker } from "./fallback";
 import { createOllamaEmbeddingProvider } from "./ollama";
 import { createOpenAiEmbeddingProvider } from "./openai";
 import { createProApiEmbeddingProvider } from "./pro-api-provider";
 import { createLocalOnnxEmbeddingProvider } from "./local-onnx";
 import { ModelManager } from "./model-manager";
-import { findModelById, formatSize } from "./model-catalog";
+import {
+  findModelById,
+  formatSize,
+  parseEmbeddingDefaultModelFlag,
+  type EmbeddingDefaultModelFlag,
+} from "./model-catalog";
+import { EMBEDDING_DEFAULT_MODEL_KEY, INCUMBENT_EMBEDDING_MODEL } from "../core/config-manager";
 import { createAdaptiveEmbeddingProvider } from "./adaptive-provider";
 import {
   DEFAULT_ADAPTIVE_CODE_THRESHOLD,
@@ -20,6 +27,44 @@ import {
 } from "./types";
 
 type NormalizedProviderName = Exclude<EmbeddingProviderName, "pro-api"> | "auto";
+
+export interface EmbeddingShadowProviderCandidate {
+  model_id: string;
+  vector_model: string;
+  provider: "local";
+  inference: "onnx";
+  dimension: number;
+  installed: boolean;
+  local_only: true;
+  separate_vector_table_required: boolean;
+  status: "ready" | "not_installed" | "unknown_model";
+  skip_reason?: string;
+}
+
+export interface EmbeddingShadowProviderOptions {
+  modelIds?: string[];
+  currentVectorModel?: string;
+  currentVectorDimension: number;
+  localModelsDir?: string;
+}
+
+// S154-502: 2026-generation candidates. ruri-v3-30m is already judged
+// (composite -0.2325, keep) and bge-m3 is demoted to opportunistic
+// measurement via --models (MMTEB 59.56, superseded generation).
+const DEFAULT_EMBEDDING_SHADOW_MODEL_IDS = ["qwen3-embedding-0.6b", "granite-embedding-311m-r2"] as const;
+
+// parseEmbeddingDefaultModelFlag + EmbeddingDefaultModelFlag now live in
+// model-catalog (pure) so the config-manager setter can validate the same
+// format without an import cycle. Re-exported here for existing callers.
+export { parseEmbeddingDefaultModelFlag };
+export type { EmbeddingDefaultModelFlag };
+
+function readEmbeddingDefaultModelFlagRaw(db: Database): string {
+  const row = db
+    .query("SELECT value FROM mem_meta WHERE key = ?")
+    .get(EMBEDDING_DEFAULT_MODEL_KEY) as { value: string } | null;
+  return row?.value?.trim() ?? "";
+}
 
 function normalizeProviderName(name: string | undefined): NormalizedProviderName | null {
   if (!name || !name.trim()) {
@@ -66,10 +111,72 @@ function createLocalOrFallbackProvider(
     modelId,
     modelPath,
     dimension: catalogEntry.dimension,
+    nativeDimension: catalogEntry.nativeDimension,
+    matryoshka: catalogEntry.matryoshka,
+    pooling: catalogEntry.pooling,
+    appendText: catalogEntry.appendText,
+    maxSeqLength: catalogEntry.maxSeqLength,
     queryPrefix: catalogEntry.queryPrefix,
     passagePrefix: catalogEntry.passagePrefix,
     fallback,
   });
+}
+
+export function resolveEmbeddingShadowProviders(
+  options: EmbeddingShadowProviderOptions
+): EmbeddingShadowProviderCandidate[] {
+  const modelIds =
+    options.modelIds && options.modelIds.length > 0
+      ? options.modelIds
+      : [...DEFAULT_EMBEDDING_SHADOW_MODEL_IDS];
+  const manager = new ModelManager(options.localModelsDir || process.env.HARNESS_MEM_LOCAL_MODELS_DIR);
+  const currentVectorModel = options.currentVectorModel ?? "";
+  const seen = new Set<string>();
+  const candidates: EmbeddingShadowProviderCandidate[] = [];
+
+  for (const rawId of modelIds) {
+    const modelId = rawId.trim();
+    if (!modelId || seen.has(modelId)) {
+      continue;
+    }
+    seen.add(modelId);
+
+    const catalogEntry = findModelById(modelId);
+    if (!catalogEntry) {
+      candidates.push({
+        model_id: modelId,
+        vector_model: `local:${modelId}`,
+        provider: "local",
+        inference: "onnx",
+        dimension: 0,
+        installed: false,
+        local_only: true,
+        separate_vector_table_required: true,
+        status: "unknown_model",
+        skip_reason: "unknown_model",
+      });
+      continue;
+    }
+
+    const vectorModel = `local:${modelId}`;
+    const installed = Boolean(manager.getModelPath(modelId));
+    candidates.push({
+      model_id: modelId,
+      vector_model: vectorModel,
+      provider: "local",
+      inference: "onnx",
+      dimension: catalogEntry.dimension,
+      installed,
+      local_only: true,
+      separate_vector_table_required:
+        catalogEntry.dimension !== options.currentVectorDimension ||
+        (currentVectorModel !== "" && currentVectorModel !== vectorModel),
+      status: installed ? "ready" : "not_installed",
+      ...(installed ? {} : { skip_reason: `model_not_installed:${modelId}` }),
+    });
+  }
+
+  return candidates;
 }
 
 export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOptions): EmbeddingRegistryResult {
@@ -90,12 +197,67 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
   }
 
   let provider: EmbeddingProvider = fallback;
-  const rawModelId = (options.localModelId || process.env.HARNESS_MEM_EMBEDDING_MODEL || "multilingual-e5").trim();
+  const explicitEnvModel = (process.env.HARNESS_MEM_EMBEDDING_MODEL || "").trim();
+  const explicitOptionModel = (options.localModelId || "").trim();
+  // Explicit env / non-incumbent option pin wins over the mem_meta flag so the
+  // S154-510 wiring never overrides an operator's deliberate choice.
+  const modelPinned =
+    explicitEnvModel !== "" ||
+    (explicitOptionModel !== "" && explicitOptionModel !== INCUMBENT_EMBEDDING_MODEL);
+
+  const manager = new ModelManager(options.localModelsDir || process.env.HARNESS_MEM_LOCAL_MODELS_DIR);
+
+  let flagDimension: number | undefined;
+  let flagModelId: string | undefined;
+  if (!modelPinned && options.db) {
+    const rawFlag = readEmbeddingDefaultModelFlagRaw(options.db);
+    if (rawFlag) {
+      const parsed = parseEmbeddingDefaultModelFlag(rawFlag);
+      if (!parsed.ok) {
+        warnings.push(
+          `Invalid embedding_default_model flag "${rawFlag}" (${parsed.reason}). ` +
+            `Falling back to incumbent "${INCUMBENT_EMBEDDING_MODEL}".`,
+        );
+      } else if (parsed.dimension !== options.dimension) {
+        // P2 fix: the store normalizes/stores/searches options.dimension (the
+        // vector engine's effective dimension). A resolved flag dimension that
+        // differs would be padded/sliced outside the local provider's Matryoshka
+        // truncate+renormalize path, producing vectors incompatible with the
+        // index. Reject and fail-safe instead of silently corrupting embeddings.
+        warnings.push(
+          `Invalid embedding_default_model flag "${rawFlag}" (dimension mismatch: ` +
+            `flag resolved ${parsed.dimension} but vector store is ${options.dimension}; ` +
+            `use ${parsed.modelId}@${options.dimension} or rebuild the index). ` +
+            `Falling back to incumbent "${INCUMBENT_EMBEDDING_MODEL}".`,
+        );
+      } else if (!manager.getModelPath(parsed.modelId)) {
+        // P2 (round 3): the flag passes catalog + dimension validation but the
+        // model is not installed yet (e.g. granite-embedding-311m-r2@384 before
+        // `model pull` completes). Accepting it would make the local/auto path
+        // see modelPath === null and leave the synthetic hash fallback as the
+        // provider, so searches would ignore existing local:multilingual-e5
+        // vectors until the candidate lands. Treat uninstalled as a flag failure
+        // and keep the incumbent provider instead.
+        warnings.push(
+          `embedding_default_model flag "${rawFlag}" points at a model that is not installed. ` +
+            `Run 'harness-mem model pull ${parsed.modelId}' to download it. ` +
+            `Falling back to incumbent "${INCUMBENT_EMBEDDING_MODEL}".`,
+        );
+      } else {
+        flagModelId = parsed.modelId;
+        flagDimension = parsed.dimension;
+      }
+    }
+  }
+
+  const rawModelId = (
+    flagModelId || options.localModelId || explicitEnvModel || INCUMBENT_EMBEDDING_MODEL
+  ).trim();
   const modelId = rawModelId === "auto"
     ? selectModelByLanguage(options.defaultLanguage ?? "ja")
     : rawModelId;
   const catalogEntry = findModelById(modelId);
-  const manager = new ModelManager(options.localModelsDir || process.env.HARNESS_MEM_LOCAL_MODELS_DIR);
+  const localDimension = flagDimension ?? catalogEntry?.dimension ?? options.dimension;
   const modelPath = catalogEntry ? manager.getModelPath(modelId) : null;
 
   if (providerName === "openai") {
@@ -158,7 +320,12 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       provider = createLocalOnnxEmbeddingProvider({
         modelId,
         modelPath,
-        dimension: catalogEntry.dimension,
+        dimension: localDimension,
+        nativeDimension: catalogEntry.nativeDimension,
+        matryoshka: catalogEntry.matryoshka,
+        pooling: catalogEntry.pooling,
+        appendText: catalogEntry.appendText,
+        maxSeqLength: catalogEntry.maxSeqLength,
         queryPrefix: catalogEntry.queryPrefix,
         passagePrefix: catalogEntry.passagePrefix,
         fallback,
@@ -178,7 +345,12 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       provider = createLocalOnnxEmbeddingProvider({
         modelId,
         modelPath,
-        dimension: catalogEntry.dimension,
+        dimension: localDimension,
+        nativeDimension: catalogEntry.nativeDimension,
+        matryoshka: catalogEntry.matryoshka,
+        pooling: catalogEntry.pooling,
+        appendText: catalogEntry.appendText,
+        maxSeqLength: catalogEntry.maxSeqLength,
         queryPrefix: catalogEntry.queryPrefix,
         passagePrefix: catalogEntry.passagePrefix,
         fallback,

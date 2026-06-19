@@ -1,0 +1,29 @@
+{
+  "schema_version": "s154-703-llm-rerank-decision.v1",
+  "task_id": "S154-703",
+  "decision": "default_off_retained",
+  "measurements": {
+    "representative_ab_limit_80": {
+      "baseline_safe_mode_substring": { "mixed_recall_at_10": 0.4030, "p95_latency_ms": 1.6 },
+      "real_path_no_rerank": { "mixed_recall_at_10": 0.2239, "p95_latency_ms": 2.4 },
+      "real_path_with_rerank": { "mixed_recall_at_10": 0.2239, "p95_latency_ms": 1002.3, "rerank_engaged_queries": 15, "total_queries": 80 }
+    },
+    "rerank_isolated_delta_recall_at_10": 0.0,
+    "forced_engagement_probe": {
+      "attempts": 15,
+      "engaged": 15,
+      "json_parse_or_call_failure_rate": 0.0,
+      "p50_latency_ms": 1468,
+      "p95_latency_ms": 3559,
+      "model": "qwen3.5:9b"
+    }
+  },
+  "findings": [
+    "the -17.91%pt regression in the flag-bundled A/B is fully attributable to leaving the bench adapter's safe_mode substring path; the reranker itself changed recall by exactly 0",
+    "recall@10 with limit=10 and rerank topK=10 is structurally blind to reranking: reordering the same top-10 set cannot change set membership; adoption judgments need an order-sensitive metric (top1/MRR)",
+    "when engaged, the reranker costs ~1.5-3.6s per query on qwen3.5:9b, which rules out default-on for interactive search latency budgets",
+    "JSON parse failure rate was 0/15 on the forced-engagement probe (fail-open design returns the original order on failure)"
+  ],
+  "follow_up": "if adoption is ever pursued, measure top1/MRR on the real path with a latency budget; recall@10 artifacts cannot decide this",
+  "reproducibility": "bun run scripts/s154-coding-memory-ab-gate.ts --candidate-env HARNESS_MEM_LLM_RERANK=1 --metric mixed_recall_at_10 --limit 80 (and --candidate-env HARNESS_MEM_BENCH_REAL_PATH=1 for the path-only decomposition)"
+}

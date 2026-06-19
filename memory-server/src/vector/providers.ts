@@ -143,6 +143,131 @@ export function getSqliteVecMapTableName(model: string): string {
   return `mem_vectors_vec_map_${normalizeSqliteIdentifierPart(model)}`;
 }
 
+// ---- s154-B: binary coarse prefilter (DENSE leg only, default-OFF) ----
+
+/**
+ * Sign-based quantization: dim_i > 0 → bit=1, otherwise bit=0.
+ * Packs bits into bytes: 384-dim float → 48-byte Uint8Array (8 bits/byte, MSB first).
+ * vec0(bit[384]) requires exactly ceil(N/8) bytes — NOT N bytes.
+ */
+export function quantizeToBits(vector: number[] | Float32Array): Uint8Array {
+  const out = new Uint8Array(Math.ceil(vector.length / 8));
+  for (let i = 0; i < vector.length; i++) {
+    if ((vector as number[])[i] > 0) out[i >> 3] |= (1 << (7 - (i & 7)));
+  }
+  return out;
+}
+
+export function getBitTableName(model: string): string {
+  return `mem_vectors_bit_${normalizeSqliteIdentifierPart(model)}`;
+}
+
+export function getBitMapTableName(model: string): string {
+  return `mem_vectors_bit_map_${normalizeSqliteIdentifierPart(model)}`;
+}
+
+export interface BitVecTableNames {
+  tableName: string;
+  mapTableName: string;
+}
+
+/**
+ * Create (if not exists) a vec0(bit[N]) virtual table + companion map table.
+ * Only valid when the sqlite-vec extension is already loaded.
+ */
+export function ensureBitVecTableForModel(
+  db: Database,
+  model: string,
+  vectorDimension: number,
+): BitVecTableNames {
+  const safeDimension = Math.max(1, Math.trunc(vectorDimension));
+  const tableName = getBitTableName(model);
+  const mapTableName = getBitMapTableName(model);
+
+  db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS ${tableName} USING vec0(embedding bit[${safeDimension}]);`);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS ${mapTableName} (
+      rowid INTEGER PRIMARY KEY,
+      observation_id TEXT NOT NULL UNIQUE,
+      updated_at TEXT NOT NULL,
+      FOREIGN KEY(observation_id) REFERENCES mem_observations(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_${mapTableName}_observation
+      ON ${mapTableName}(observation_id);
+  `);
+
+  return { tableName, mapTableName };
+}
+
+export interface BitVecUpsertOptions {
+  model?: string;
+  vectorDimension?: number;
+}
+
+/**
+ * Upsert a bit-quantized companion row.
+ * Returns true on success, false on any failure (graceful degradation).
+ */
+export function upsertBitVecRow(
+  db: Database,
+  observationId: string,
+  bits: Uint8Array,
+  updatedAt: string,
+  options: BitVecUpsertOptions = {},
+): boolean {
+  try {
+    const hasModelSpecificTarget =
+      typeof options.model === "string" &&
+      options.model.length > 0 &&
+      typeof options.vectorDimension === "number" &&
+      Number.isFinite(options.vectorDimension);
+
+    if (!hasModelSpecificTarget) {
+      return false;
+    }
+
+    const tableName = getBitTableName(options.model!);
+    const mapTableName = getBitMapTableName(options.model!);
+
+    // Check tables exist (may not be created if extension failed to load)
+    const tableCount = db
+      .query<{ count: number }, [string, string]>(
+        `SELECT COUNT(*) AS count FROM sqlite_master WHERE type IN ('table', 'shadow') AND name IN (?, ?)`
+      )
+      .get(tableName, mapTableName);
+    if (Number(tableCount?.count ?? 0) < 2) {
+      return false;
+    }
+
+    const mapRow = db
+      .query<{ rowid: number }, [string]>(`SELECT rowid FROM ${mapTableName} WHERE observation_id = ?`)
+      .get(observationId);
+
+    if (typeof mapRow?.rowid === "number") {
+      // vec0(bit[N]) virtual tables do not support UPDATE SET embedding — must delete+reinsert.
+      // The rowid is preserved via the companion map table.
+      db.query(`DELETE FROM ${tableName} WHERE rowid = ?`).run(mapRow.rowid);
+      db.query(`INSERT INTO ${tableName}(rowid, embedding) VALUES (?, vec_bit(?))`).run(mapRow.rowid, bits);
+      db.query(`UPDATE ${mapTableName} SET updated_at = ? WHERE rowid = ?`).run(updatedAt, mapRow.rowid);
+      return true;
+    }
+
+    db.query(`INSERT INTO ${tableName}(embedding) VALUES (vec_bit(?))`).run(bits);
+    const lastRow = db.query<{ rowid: number }, []>(`SELECT last_insert_rowid() AS rowid`).get();
+    if (typeof lastRow?.rowid !== "number") {
+      return false;
+    }
+
+    db.query(`
+      INSERT OR REPLACE INTO ${mapTableName}(rowid, observation_id, updated_at)
+      VALUES (?, ?, ?)
+    `).run(lastRow.rowid, observationId, updatedAt);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export type SqliteVecPayload = Float32Array | string;
 
 function coerceFiniteVector(input: string | number[] | Float32Array): number[] | Float32Array | null {
@@ -189,7 +314,7 @@ export function buildSqliteVecKnnCandidateSql(tableName: string, mapTableName: s
         v.distance AS distance
       FROM ${tableName} v
       JOIN ${mapTableName} m ON m.rowid = v.rowid
-      WHERE v.embedding MATCH ? AND k = ?
+      WHERE v.embedding MATCH vec_f32(?) AND k = ?
     ) c
     JOIN mem_observations o ON o.id = c.id
     WHERE 1 = 1
@@ -276,14 +401,15 @@ export function upsertSqliteVecRow(
       .get(observationId) as { rowid?: number } | null;
 
     if (typeof mapRow?.rowid === "number") {
-      db.query(`UPDATE ${target.tableName} SET embedding = ? WHERE rowid = ?`)
+      // vec_f32() wrapper required for reliable float binding (Lead verified)
+      db.query(`UPDATE ${target.tableName} SET embedding = vec_f32(?) WHERE rowid = ?`)
         .run(serializeSqliteVecFloat32(vectorJson), mapRow.rowid);
       db.query(`UPDATE ${target.mapTableName} SET updated_at = ? WHERE rowid = ?`)
         .run(updatedAt, mapRow.rowid);
       return true;
     }
 
-    db.query(`INSERT INTO ${target.tableName}(embedding) VALUES (?)`).run(serializeSqliteVecFloat32(vectorJson));
+    db.query(`INSERT INTO ${target.tableName}(embedding) VALUES (vec_f32(?))`).run(serializeSqliteVecFloat32(vectorJson));
     const lastRow = db.query(`SELECT last_insert_rowid() AS rowid`).get() as { rowid?: number } | null;
     if (typeof lastRow?.rowid !== "number") {
       return false;

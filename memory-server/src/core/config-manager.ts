@@ -22,6 +22,7 @@ import { dirname, join } from "node:path";
 import { statSync } from "node:fs";
 import type { Database } from "bun:sqlite";
 import type { ManagedBackendStatus } from "../projector/managed-backend";
+import { parseEmbeddingDefaultModelFlag } from "../embedding/model-catalog";
 import {
   ensureSqliteVecTableForModel,
   getSqliteVecMapTableName,
@@ -48,6 +49,48 @@ import {
   parseJsonSafe,
   resolveHomePath,
 } from "./core-utils.js";
+
+// S154-403: embedding default-model atomic flag.
+// The flag is a single mem_meta upsert; flipping it never touches vector
+// tables (both stay resident per S154-401), so rollback is one atomic write.
+export const EMBEDDING_DEFAULT_MODEL_KEY = "embedding_default_model";
+export const INCUMBENT_EMBEDDING_MODEL = "multilingual-e5";
+
+export function getEmbeddingDefaultModel(db: Database): string {
+  const row = db
+    .query("SELECT value FROM mem_meta WHERE key = ?")
+    .get(EMBEDDING_DEFAULT_MODEL_KEY) as { value: string } | null;
+  const value = row?.value?.trim();
+  return value ? value : INCUMBENT_EMBEDDING_MODEL;
+}
+
+/**
+ * Atomically set the embedding default-model flag. Returns the previous value.
+ *
+ * The writer (this setter) and the reader (registry flag parse) accept the same
+ * `<modelId>[@<dimension>]` format via parseEmbeddingDefaultModelFlag, so the
+ * Granite MRL target `granite-embedding-311m-r2@384` is writable through this
+ * audited API. Validates flag *format* only: store-dimension agreement is
+ * intentionally not checked here because the flag may be written before the
+ * S154-511 backfill changes the store dimension — that mismatch is the reader's
+ * fail-safe (registry), not the writer's concern.
+ */
+export function setEmbeddingDefaultModel(db: Database, modelId: string): string {
+  const normalized = modelId.trim();
+  if (!normalized) {
+    throw new Error("[s154-403] embedding default model id must be non-empty");
+  }
+  const parsed = parseEmbeddingDefaultModelFlag(normalized);
+  if (!parsed.ok) {
+    throw new Error(`[s154-403] invalid embedding model flag "${normalized}": ${parsed.reason}`);
+  }
+  const previous = getEmbeddingDefaultModel(db);
+  db.query(
+    `INSERT INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at`,
+  ).run(EMBEDDING_DEFAULT_MODEL_KEY, normalized, nowIso());
+  return previous;
+}
 
 export interface RepairSqliteVecMapOptions {
   model?: string;
@@ -467,6 +510,22 @@ function summarizeRetryableEmbeddingWarmup(error: unknown): string {
 
 export class ConfigManager {
   constructor(private readonly deps: ConfigManagerDeps) {}
+
+  // ---------------------------------------------------------------------------
+  // S154-403: embedding default-model atomic flag (audited)
+  // ---------------------------------------------------------------------------
+
+  getEmbeddingDefaultModel(): string {
+    return getEmbeddingDefaultModel(this.deps.db);
+  }
+
+  setEmbeddingDefaultModel(modelId: string): string {
+    const previous = setEmbeddingDefaultModel(this.deps.db, modelId);
+    this.deps.writeAuditLog("admin.embedding_default_model", "mem_meta", modelId.trim(), {
+      previous,
+    });
+    return previous;
+  }
 
   // ---------------------------------------------------------------------------
   // 委譲メソッド
@@ -1232,6 +1291,16 @@ export class ConfigManager {
       )
       .get() as { facts_total?: number; facts_merged?: number } | null;
 
+    // S154-201: expose queue counts by job reason so the dreaming path is
+    // observable as a distinct job type via the admin status endpoint.
+    const reasonRows = this.deps.db
+      .query(`SELECT reason, COUNT(*) AS n FROM mem_consolidation_queue GROUP BY reason`)
+      .all() as Array<{ reason: string | null; n: number }>;
+    const jobs_by_reason: Record<string, number> = {};
+    for (const row of reasonRows) {
+      jobs_by_reason[row.reason ?? "unknown"] = Number(row.n);
+    }
+
     return makeResponse(
       startedAt,
       [
@@ -1242,6 +1311,7 @@ export class ConfigManager {
           completed_jobs: Number(queue?.completed_jobs ?? 0),
           facts_total: Number(facts?.facts_total ?? 0),
           facts_merged: Number(facts?.facts_merged ?? 0),
+          jobs_by_reason,
           enabled: this.deps.isConsolidationEnabled(),
           interval_ms: this.deps.getConsolidationIntervalMs(),
         },

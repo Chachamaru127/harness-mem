@@ -27,3 +27,39 @@ export function stripPrivateBlocks(text: string | null | undefined): string | nu
   if (!text) return text;
   return text.replace(PRIVATE_TAG_RE, "");
 }
+
+/**
+ * S154-204: deterministic secret redaction, applied UNCONDITIONALLY before a
+ * current-state prose summary is produced (`summarizeCurrentState`). Unlike the
+ * tag-gated ingest redactor in event-recorder, this always runs and additionally
+ * covers PEM private-key blocks, Bearer tokens, and phone numbers. Order matters
+ * (multi-line PEM first). Over-redaction is acceptable; leakage is not.
+ *
+ * Phone patterns are intentionally narrow (JP 0-prefixed or intl +-prefixed with
+ * separators) so ISO dates like 2026-06-08 are NOT redacted as phone numbers.
+ */
+const SECRET_RULES: Array<[RegExp, string]> = [
+  [/-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z0-9 ]*PRIVATE KEY-----/g, "[REDACTED_PEM]"],
+  [/\bBearer\s+[A-Za-z0-9._~+/-]+=*/gi, "[REDACTED_BEARER]"],
+  [/\b(?:sk|rk|pk)[-_][A-Za-z0-9]{16,}\b/g, "[REDACTED_KEY]"],
+  [/\bgh[posru]_[A-Za-z0-9]{20,}\b/g, "[REDACTED_KEY]"],
+  [/\bxox[baprs]-[A-Za-z0-9-]{10,}\b/g, "[REDACTED_KEY]"],
+  [
+    /\b(?:api[-_ ]?key|access[-_ ]?token|secret|password|passwd|pwd|client[-_ ]?secret|private[-_ ]?key)\s*[:=]\s*['"]?[^\s'"]{6,}/gi,
+    "[REDACTED_SECRET]",
+  ],
+  [/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[REDACTED_EMAIL]"],
+  [/\b[0-9a-f]{32,}\b/gi, "[REDACTED_HEX]"],
+  [/\b0\d{1,4}[-.\s]\d{1,4}[-.\s]\d{3,4}\b/g, "[REDACTED_PHONE]"],
+  [/\+\d{1,3}[-.\s]?\d{1,4}[-.\s]\d{1,4}[-.\s]\d{2,4}\b/g, "[REDACTED_PHONE]"],
+];
+
+/** S154-204: redact secrets from free text. Always returns a string (never null). */
+export function redactSecrets(text: string | null | undefined): string {
+  if (!text) return "";
+  let out = text;
+  for (const [pattern, replacement] of SECRET_RULES) {
+    out = out.replace(pattern, replacement);
+  }
+  return out;
+}

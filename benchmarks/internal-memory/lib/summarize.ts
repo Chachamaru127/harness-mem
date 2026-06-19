@@ -1,8 +1,10 @@
 import { getPublishedReference } from "../adapters/import-published";
 import { japaneseMixedScore, meanRecallForProfile } from "../scorers/multilingual";
+import { freshnessDelayMs, supersessionPrecision, tenseRewriteAccuracy } from "../scorers/freshness";
 import { mean, percentile } from "../scorers/operational";
 import type {
   BenchmarkLayer,
+  BenchmarkDatasetManifest,
   BenchmarkSummary,
   CompetitorSummary,
   LayerSummary,
@@ -26,6 +28,10 @@ function summarizeLayer(layer: BenchmarkLayer, rows: ScoredCaseResult[]): LayerS
     latency_p95_ms: percentile(latencies, 95),
     ja_recall_at_10: meanRecallForProfile(okRows, "ja"),
     mixed_recall_at_10: meanRecallForProfile(okRows, "mixed"),
+    // S154-301: deep-freshness diagnostics (undefined unless cases carry ground truth).
+    tense_rewrite_accuracy: tenseRewriteAccuracy(okRows),
+    supersession_precision: supersessionPrecision(okRows),
+    freshness_delay_ms: freshnessDelayMs(okRows),
   };
 }
 
@@ -49,6 +55,7 @@ export function buildSummary(input: {
   openrouter_budget?: OpenRouterBudget | null;
   env_files_loaded?: string[];
   reproduced_ids?: string[];
+  dataset_manifest?: BenchmarkDatasetManifest;
 }): BenchmarkSummary {
   const competitorIds = [...new Set(input.results.map((row) => row.competitor_id))];
   // A competitor is published (reference-only) unless it was explicitly
@@ -88,6 +95,7 @@ export function buildSummary(input: {
     run_id: input.run_id,
     git_sha: input.git_sha,
     dataset_ids: input.dataset_ids,
+    dataset_manifest: input.dataset_manifest,
     competitors,
     openrouter_budget: summarizeOpenRouterBudget(input.openrouter_budget ?? null),
     env_files_loaded: input.env_files_loaded,
@@ -102,6 +110,7 @@ export function buildSummary(input: {
       "Agentmemory live measurement uses official local REST only (AGENTMEMORY_URL default http://127.0.0.1:3111, /agentmemory/remember + /agentmemory/smart-search). Remote URLs are blocked; AGENTMEMORY_SECRET is never logged.",
       "Agentmemory is promoted from published(reference-only) to reproduced only when explicitly passed to --competitors and health/seed/search smoke passes on the same masked dataset/scorer.",
       "LoCoMo full is not the primary gate; see Plans.md section 78 domain mismatch decision.",
+      "Official MemoryAgentBench support is a dataset-compatible runner only. Keep official_metric separate from internal retrieval metrics and do not claim superiority until comparable reproduced runs share the same dataset, scorer, and manifest.",
     ],
   };
 }

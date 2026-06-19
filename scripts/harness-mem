@@ -7112,24 +7112,33 @@ MODEL_CATALOG_IDS=(
   "gte-small"
   "e5-small-v2"
   "bge-small"
+  "bge-m3"
   "multilingual-e5"
   "nomic-embed"
+  "qwen3-embedding-0.6b"
+  "granite-embedding-311m-r2"
 )
 MODEL_CATALOG_DISPLAY_NAMES=(
   "Ruri V3 30M (Japanese)"
   "GTE Small (English)"
   "E5 Small v2 (English)"
   "BGE Small v1.5 (English/Chinese)"
+  "BGE-M3 (Multilingual)"
   "Multilingual E5 Small (100+ languages)"
   "Nomic Embed Text v1 (English)"
+  "Qwen3 Embedding 0.6B (Multilingual)"
+  "Granite Embedding 311M Multilingual R2"
 )
 MODEL_CATALOG_SIZES=(
   "~153MB"
   "~67MB"
   "~67MB"
   "~67MB"
+  "~2.3GB"
   "~117MB"
   "~274MB"
+  "~2.4GB"
+  "~1.2GB"
 )
 MODEL_CATALOG_LANGS=(
   "ja"
@@ -7137,14 +7146,20 @@ MODEL_CATALOG_LANGS=(
   "en"
   "en"
   "multilingual"
+  "multilingual"
   "en"
+  "multilingual"
+  "multilingual"
 )
 MODEL_CATALOG_DIMS=(
   "256"
   "384"
   "384"
   "384"
+  "1024"
   "384"
+  "768"
+  "1024"
   "768"
 )
 

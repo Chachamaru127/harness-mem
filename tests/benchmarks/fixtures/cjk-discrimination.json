@@ -1,0 +1,380 @@
+{
+  "schema_version": "cjk-discrimination.v1",
+  "description": "Synthetic developer-memory CJK orthographic discrimination cases for S154 Phase 1b. Seeds use canonical/normalized notation; queries use shifted notation.",
+  "cases": [
+    {
+      "id": "cjk-nfkc-001",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "halfwidth_katakana",
+      "target_improver": "101a",
+      "query": "ﾎｯﾄﾊﾟｽｾﾞｯﾄ",
+      "target_id": "cjk-nfkc-001-e-target",
+      "entries": [
+        {
+          "id": "cjk-nfkc-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "halfwidth_katakana"],
+          "content": "ホットパスゼットの半角カタカナ正規化は154-101aでNFKC畳み込みし、クエリと索引の表記を一致させる。"
+        },
+        {
+          "id": "cjk-nfkc-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "検索ランタイムのベクトル索引は384次元のまま維持し、154-401のshadow計測まで触らない。"
+        },
+        {
+          "id": "cjk-nfkc-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "半角ASCIIの畳み込みは101aの副次効果で、154-150のオフスイッチで無効化できる。"
+        },
+        {
+          "id": "cjk-nfkc-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "カタカナ複合語のサブワード展開は既存segmentJapaneseForFtsで行い、形態素解析器は導入しない。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-nfkc-002",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "fullwidth_ascii",
+      "target_improver": "101a",
+      "query": "ＳＨＡＤＯＷＲＥＡＤ",
+      "target_id": "cjk-nfkc-002-e-target",
+      "entries": [
+        {
+          "id": "cjk-nfkc-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "fullwidth_ascii"],
+          "content": "SHADOWREAD 修正メモを core-utils に反映し、tokenize と buildFtsQuery の NFKC 正規化を固定した。"
+        },
+        {
+          "id": "cjk-nfkc-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "GRAPHWRITE schema.ts の FTS rebuild を transaction でラップした。"
+        },
+        {
+          "id": "cjk-nfkc-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "core-utils の buildCodeAwareTokens は154-102で二重クエリ展開に再利用する。"
+        },
+        {
+          "id": "cjk-nfkc-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "修正メモの圧縮は consolidation worker 側で行い、lexical 索引は触らない。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-nfkc-003",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "halfwidth_katakana_compound",
+      "target_improver": "101a",
+      "query": "ｶﾅﾊﾟｯﾁｹﾞｰﾄ",
+      "target_id": "cjk-nfkc-003-e-target",
+      "entries": [
+        {
+          "id": "cjk-nfkc-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "halfwidth_katakana_compound"],
+          "content": "カナパッチゲートの索引再構築は reindexFtsWithSegmentation で原子的に実行する。"
+        },
+        {
+          "id": "cjk-nfkc-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "ひらがな中心の観測は Intl.Segmenter だけで分割し、Sudachi は導入しない。"
+        },
+        {
+          "id": "cjk-nfkc-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "索引圧縮の診断は summarize.ts に出力し、原文はmanifestに残さない。"
+        },
+        {
+          "id": "cjk-nfkc-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "辞書更新は154-101bのlexical寄与強化後に再計測する。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-nfkc-004",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "fullwidth_ascii_digits",
+      "target_improver": "101a",
+      "query": "ＲＵＮ４２",
+      "target_id": "cjk-nfkc-004-e-target",
+      "entries": [
+        {
+          "id": "cjk-nfkc-004-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "fullwidth_ascii_digits"],
+          "content": "RUN42 release gate numeric id maps to the CJK normalization smoke target."
+        },
+        {
+          "id": "cjk-nfkc-004-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "RUN43 release gate numeric id maps to the temporal fixture manifest."
+        },
+        {
+          "id": "cjk-nfkc-004-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "release gate thresholds are managed by the s108 manifest and do not mention the target marker."
+        },
+        {
+          "id": "cjk-nfkc-004-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "numeric id allocation belongs to the dev-workflow fixture expansion lane."
+        }
+      ]
+    },
+    {
+      "id": "cjk-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "okurigana_variation",
+      "target_improver": "101b",
+      "query": "きおくさくいんなおすほうしん",
+      "target_id": "cjk-ortho-001-e-target",
+      "entries": [
+        {
+          "id": "cjk-ortho-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "okurigana_variation"],
+          "content": "記憶索引直す方針を154-101bのlexical寄与強化で改善する。"
+        },
+        {
+          "id": "cjk-ortho-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "記録索引直す方針は consolidation 圧縮の話で、検索トークンとは別軸。"
+        },
+        {
+          "id": "cjk-ortho-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "記憶検索直す設計は UI 側の表記統一で、FTS 索引は触らない。"
+        },
+        {
+          "id": "cjk-ortho-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "索引圧縮方針は dreaming job の prose 要約に関する話。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "okurigana_variation",
+      "target_improver": "101b",
+      "query": "さくいんあっしゅくなおすせっけい",
+      "target_id": "cjk-ortho-002-e-target",
+      "entries": [
+        {
+          "id": "cjk-ortho-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "okurigana_variation"],
+          "content": "索引圧縮直す設計を154-101bで見直し、RRF の lexical 重みを上げる。"
+        },
+        {
+          "id": "cjk-ortho-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "索引圧縮直す手順は consolidate worker の queue 設計の話。"
+        },
+        {
+          "id": "cjk-ortho-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "圧縮設計の見直しは vector 次元削減の議論で、lexical とは無関係。"
+        },
+        {
+          "id": "cjk-ortho-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "設計ドキュメント直す作業は README 更新のみ。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "kanji_to_kana",
+      "target_improver": "101b",
+      "query": "にちえいこんざいてんかいせっけい",
+      "target_id": "cjk-ortho-003-e-target",
+      "entries": [
+        {
+          "id": "cjk-ortho-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "kanji_to_kana"],
+          "content": "日英混在展開設計を154-102の二重クエリ正規化で実装する。"
+        },
+        {
+          "id": "cjk-ortho-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "日英混在データ整形は ingest 側の redactor 強化で、検索クエリは触らない。"
+        },
+        {
+          "id": "cjk-ortho-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "二重書き込み防止は event-recorder の dedupe 話。"
+        },
+        {
+          "id": "cjk-ortho-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "混在クエリ分割は bilingual fixture 拡張の話で、102 実装前の準備。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "compound_word_boundary",
+      "target_improver": "101b",
+      "query": "きおくけんさくきょうかいひょう",
+      "target_id": "cjk-ortho-004-e-target",
+      "entries": [
+        {
+          "id": "cjk-ortho-004-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "compound_word_boundary"],
+          "content": "記憶検索境界表を154-101bで整備し、compound 分割の lexical 寄与を上げる。"
+        },
+        {
+          "id": "cjk-ortho-004-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "記憶検索品質表は japanese-release-pack の slice 分布メモ。"
+        },
+        {
+          "id": "cjk-ortho-004-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "検索境界の可視化は harness-mem-ui のみで、FTS トークンは変更しない。"
+        },
+        {
+          "id": "cjk-ortho-004-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "境界表の整備は temporal fixture 拡張の話で、CJK 正規化とは別タスク。"
+        }
+      ]
+    },
+    {
+      "id": "cjk-mixed-001",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "再ランク候補の融合係数",
+      "target_id": "cjk-mixed-001-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Candidate rerank fusion weights tune the lexical and vector blend for the bilingual retrieval gate."
+        },
+        {
+          "id": "cjk-mixed-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Temporal planner thresholds tune answer ordering and current stale regression checks."
+        },
+        {
+          "id": "cjk-mixed-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Vector coverage reports summarize embedding availability for maintenance dashboards."
+        },
+        {
+          "id": "cjk-mixed-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Archive dry-run candidates are sorted by safety score before any deletion policy runs."
+        }
+      ]
+    },
+    {
+      "id": "cjk-mixed-002",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "二重クエリ正規化で英語強調",
+      "target_id": "cjk-mixed-002-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Dual query normalization adds English emphasis while preserving the original Japanese query terms."
+        },
+        {
+          "id": "cjk-mixed-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "CJK normalization folds halfwidth katakana into fullwidth index tokens."
+        },
+        {
+          "id": "cjk-mixed-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Safe mode disables vector search and returns bounded recent lexical candidates."
+        },
+        {
+          "id": "cjk-mixed-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Developer-domain manifests record dev workflow recall and temporal order scores."
+        }
+      ]
+    },
+    {
+      "id": "cjk-mixed-003",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "target_improver": "102",
+      "query": "関数名を保持して二重取得",
+      "target_id": "cjk-mixed-003-e-target",
+      "entries": [
+        {
+          "id": "cjk-mixed-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Function name preservation keeps code tokens while dual query retrieval adds translated context."
+        },
+        {
+          "id": "cjk-mixed-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Archive compaction metrics are not part of retrieval query expansion."
+        },
+        {
+          "id": "cjk-mixed-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Function names in event payloads are redacted only when privacy filters match."
+        },
+        {
+          "id": "cjk-mixed-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Dual writer prevention belongs to the event recorder dedupe path."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "schema_version": "codingmemory-corpus-v3",
+  "generated_at": "2026-06-06T11:36:35.401Z",
+  "source_dataset": "coding-memory-real-ja-mixed-v3",
+  "case_count": 1400,
+  "language_profile": {
+    "en": 64,
+    "mixed": 1336
+  },
+  "competency": {
+    "AR": 350,
+    "CR": 350,
+    "TTL": 350,
+    "LRU": 350
+  },
+  "source_platform": {
+    "unknown": 1163,
+    "claude": 147,
+    "codex": 80,
+    "cursor": 6,
+    "mixed": 4
+  },
+  "v2_diff": {
+    "case_count_delta": 0,
+    "added_platform_metadata": true
+  }
+}

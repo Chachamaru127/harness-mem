@@ -2,7 +2,8 @@ import { type Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
 import { dedupeFacts, buildSupersededDecisions, type ConsolidationFact } from "./deduper";
 import { extractFacts, llmExtractWithDiff, type ExistingFact } from "./extractor";
-import { expiredFilterSql } from "../core/core-utils";
+import { expiredFilterSql, segmentJapaneseForFts, tokenize as tokenizeText } from "../core/core-utils";
+import { redactSecrets, stripPrivateBlocks } from "../core/privacy-tags";
 
 export interface ConsolidationRunOptions {
   reason?: string;
@@ -18,12 +19,99 @@ export interface ConsolidationRunStats {
   pending_jobs: number;
   /** IMP-011: derives リンクとして生成されたリンク数 */
   derives_links_created?: number;
+  /** S154-303: append-only tense rewrite observations created by dreaming. */
+  dreaming_rewrites_created?: number;
+}
+
+export interface ConsolidationRunDeps {
+  materializeObservationDerivedData?: (observationId: string) => Record<string, unknown>;
+  allowLocalDreamingObservationWrites?: boolean;
 }
 
 interface QueueRow {
   id: number;
   project: string;
   session_id: string;
+  /** S154-201: per-job reason ('finalize' | 'dreaming' | 'manual' | ...). */
+  reason?: string | null;
+}
+
+interface DreamingObservationRow {
+  id: string;
+  session_id: string;
+  title: string | null;
+  content_redacted: string;
+  observation_type: string;
+  privacy_tags_json: string;
+  user_id: string;
+  team_id: string | null;
+  event_time: string | null;
+  observed_at: string | null;
+  valid_from: string | null;
+  created_at: string;
+  thread_id: string | null;
+  topic: string | null;
+  expires_at: string | null;
+  branch: string | null;
+}
+
+interface DreamingFactRow {
+  fact_id: string;
+  fact_key: string;
+  fact_value: string;
+}
+
+interface DreamingTenseRewriteResult {
+  changed: boolean;
+  false_positive: boolean;
+  mixed: boolean;
+  rewritten: string;
+  completed_at?: string;
+  reason?: string;
+}
+
+/** S154-201: the dreaming consolidation job reason. */
+export const DREAMING_REASON = "dreaming";
+
+const EXTERNAL_LLM_PROVIDERS = new Set(["openai", "anthropic", "gemini"]);
+const PLANNED_TENSE_PATTERN =
+  /\b(will|plan to|planned to|going to|todo|next action|need to|needs to|should)\b|(予定|する予定|やる|対応する|すべき|次対応|次の対応)/i;
+const COMPLETION_EVIDENCE_PATTERN =
+  /\b(completed|done|submitted|shipped|implemented|merged|finished|resolved)\b|(完了|実行済|提出済|対応済|実装済|完了した|終わった)/i;
+const MAX_DREAMING_TENSE_REWRITE_ATTEMPTS_PER_JOB = 24;
+const DREAMING_OLLAMA_PREFLIGHT_TIMEOUT_MS = 500;
+const DREAMING_OLLAMA_AVAILABILITY_CACHE_MS = 60_000;
+let dreamingOllamaAvailableUntilMs = 0;
+let dreamingOllamaUnavailableUntilMs = 0;
+let dreamingOllamaAvailabilityHost: string | null = null;
+
+/**
+ * S154-201: dreaming consolidation is LOCAL by default. It does NOT inherit the
+ * fact-extractor provider — it reads its own HARNESS_MEM_DREAMING_LLM_PROVIDER and
+ * falls back to local ollama, so memory never leaves the machine unless explicitly
+ * opted in for dreaming specifically.
+ */
+function resolveDreamingProvider(): string {
+  return (process.env.HARNESS_MEM_DREAMING_LLM_PROVIDER || "ollama").trim().toLowerCase();
+}
+
+/** S154-201: warn + audit if dreaming is pointed at an external (off-machine) provider. */
+function auditDreamingProvider(db: Database, project: string, sessionId: string): string {
+  const provider = resolveDreamingProvider();
+  if (EXTERNAL_LLM_PROVIDERS.has(provider)) {
+    process.stderr.write(
+      `[dreaming] WARNING: external LLM provider '${provider}' selected via HARNESS_MEM_DREAMING_LLM_PROVIDER; ` +
+        `dreaming tense rewrite will be skipped unless local ollama is selected. Default is local ollama.\n`,
+    );
+    writeAudit(
+      db,
+      "consolidation.dreaming.external_provider",
+      { provider },
+      "session",
+      `${project}:${sessionId}`,
+    );
+  }
+  return provider;
 }
 
 function createFactId(project: string, sessionId: string, factKey: string, sourceObservationId: string): string {
@@ -32,8 +120,266 @@ function createFactId(project: string, sessionId: string, factKey: string, sourc
   return `fact_${hash.digest("hex").slice(0, 24)}`;
 }
 
+function createDreamingObservationId(project: string, sessionId: string, sourceObservationId: string, content: string): string {
+  const hash = createHash("sha1");
+  hash.update(`${project}:${sessionId}:${sourceObservationId}:${content}`);
+  return `obs_dream_${hash.digest("hex").slice(0, 24)}`;
+}
+
+function hashContent(...parts: string[]): string {
+  return createHash("sha256").update(parts.join("\0")).digest("hex");
+}
+
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function parseTimeMs(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+function temporalAnchorMs(row: { event_time: string | null; observed_at: string | null; valid_from: string | null; created_at: string }): number {
+  return parseTimeMs(row.valid_from ?? row.event_time ?? row.observed_at ?? row.created_at) ?? parseTimeMs(row.created_at) ?? 0;
+}
+
+function isLikelySinglePlannedStatement(text: string): boolean {
+  const parts = text
+    .split(/[\n。.!?;；,、，・]+|\s+[\/／]\s+|\s+and\s+|\s+while\s+|\s+そして\s+|\s+かつ\s+|\s+また\s+|\s+なお\s+/i)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+  return parts.length <= 1;
+}
+
+const DREAMING_TOKEN_STOPWORDS = new Set([
+  "the",
+  "and",
+  "for",
+  "with",
+  "will",
+  "plan",
+  "planned",
+  "going",
+  "todo",
+  "next",
+  "action",
+  "need",
+  "needs",
+  "should",
+  "done",
+  "completed",
+  "submitted",
+  "shipped",
+  "implemented",
+  "merged",
+  "finished",
+  "resolved",
+  "予定",
+  "完了",
+  "対応",
+  "実装",
+  "提出",
+]);
+
+function significantTokens(text: string): Set<string> {
+  const segmented = segmentJapaneseForFts(text)
+    .normalize("NFKC")
+    .toLowerCase();
+  const tokens = segmented.match(/[\p{L}\p{N}_-]+/gu) ?? [];
+  return new Set(tokens.filter((token) => {
+    if (DREAMING_TOKEN_STOPWORDS.has(token)) return false;
+    if (/^[a-z0-9_-]+$/i.test(token)) return token.length >= 3;
+    return token.length >= 2;
+  }));
+}
+
+function sharedSignificantTokens(left: string, right: string): Set<string> {
+  const leftTokens = significantTokens(left);
+  const rightTokens = significantTokens(right);
+  const shared = new Set<string>();
+  for (const token of leftTokens) {
+    if (rightTokens.has(token)) shared.add(token);
+  }
+  return shared;
+}
+
+function hasSharedSignificantToken(left: string, right: string): boolean {
+  return sharedSignificantTokens(left, right).size > 0;
+}
+
+function textSharesAnyToken(text: string, tokens: Set<string>): boolean {
+  if (tokens.size === 0) return false;
+  const textTokens = significantTokens(text);
+  for (const token of tokens) {
+    if (textTokens.has(token)) return true;
+  }
+  return false;
+}
+
+function isAcceptableDreamingRewrite(plannedText: string, rewritten: string): boolean {
+  if (!isLikelySinglePlannedStatement(rewritten)) return false;
+  if (PLANNED_TENSE_PATTERN.test(rewritten)) return false;
+  if (!hasSharedSignificantToken(plannedText, rewritten)) return false;
+  return rewritten.length <= plannedText.length * 2 + 100;
+}
+
+function parsePrivacyTagsJson(value: string | null | undefined): string[] {
+  try {
+    const parsed = JSON.parse(value ?? "[]");
+    if (!Array.isArray(parsed)) return ["private"];
+    if (!parsed.every((item) => typeof item === "string")) return ["private"];
+    return parsed;
+  } catch {
+    return ["private"];
+  }
+}
+
+function observationText(row: { title: string | null; content_redacted: string | null }): string {
+  const title = (row.title ?? "").trim();
+  const content = (row.content_redacted ?? "").trim();
+  if (!title) return content;
+  if (!content || title === content) return title;
+  return `${title} ${content}`.trim();
+}
+
+function isBranchCompatible(plannedBranch: string | null, evidenceBranch: string | null): boolean {
+  if (plannedBranch === evidenceBranch) return true;
+  if (plannedBranch && !evidenceBranch) return true;
+  return false;
+}
+
+function isVisibilityCompatible(
+  planned: { user_id: string; team_id: string | null },
+  evidence: { user_id: string; team_id: string | null },
+): boolean {
+  if (planned.user_id === evidence.user_id) return true;
+  if (planned.team_id && evidence.team_id && planned.team_id === evidence.team_id) return true;
+  return false;
+}
+
+function isLoopbackHost(rawHost: string): boolean {
+  try {
+    const url = new URL(rawHost);
+    const hostname = url.hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+function resolveDreamingOllamaHost(): string {
+  return (process.env.HARNESS_MEM_DREAMING_OLLAMA_HOST || process.env.HARNESS_MEM_OLLAMA_HOST || "http://127.0.0.1:11434").trim();
+}
+
+function resolveDreamingOllamaModel(): string {
+  return (process.env.HARNESS_MEM_DREAMING_LLM_MODEL || "qwen3.5:9b").trim();
+}
+
+async function isLocalDreamingOllamaAvailable(host: string): Promise<boolean> {
+  if (!isLoopbackHost(host)) return false;
+  const now = Date.now();
+  if (dreamingOllamaAvailabilityHost === host && now < dreamingOllamaAvailableUntilMs) return true;
+  if (dreamingOllamaAvailabilityHost === host && now < dreamingOllamaUnavailableUntilMs) return false;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DREAMING_OLLAMA_PREFLIGHT_TIMEOUT_MS);
+  try {
+    const response = await fetch(new URL("/api/tags", host), { method: "GET", signal: controller.signal });
+    if (response.ok) {
+      dreamingOllamaAvailabilityHost = host;
+      dreamingOllamaAvailableUntilMs = now + DREAMING_OLLAMA_AVAILABILITY_CACHE_MS;
+      dreamingOllamaUnavailableUntilMs = 0;
+      return true;
+    }
+  } catch {
+    // cached below
+  } finally {
+    clearTimeout(timeout);
+  }
+  dreamingOllamaAvailabilityHost = host;
+  dreamingOllamaUnavailableUntilMs = now + DREAMING_OLLAMA_AVAILABILITY_CACHE_MS;
+  return false;
+}
+
+async function callLocalDreamingTenseRewrite(
+  planned: string,
+  evidence: string,
+  host: string,
+  model: string,
+): Promise<DreamingTenseRewriteResult | null> {
+  if (!isLoopbackHost(host)) return null;
+  const system = [
+    "Return JSON only.",
+    "You are a conservative temporal rewrite judge.",
+    "Rewrite a planned statement as completed only when explicit completion evidence is present.",
+    "If the planned text mixes an unrelated fact with the planned action, return changed=false and mixed=true.",
+    "If evidence does not refer to the same action/object as the planned text, return changed=false and false_positive=false.",
+    "If evidence is missing or ambiguous, return changed=false and false_positive=false.",
+  ].join(" ");
+  const prompt = [
+    "Return exactly this JSON shape:",
+    "{\"changed\":true,\"false_positive\":false,\"mixed\":false,\"rewritten\":\"Completed statement.\",\"completed_at\":\"2026-06-09T00:00:00.000Z\",\"reason\":\"short reason\"}",
+    `planned: ${redactSecrets(stripPrivateBlocks(planned) ?? "").slice(0, 1200)}`,
+    `evidence: ${redactSecrets(stripPrivateBlocks(evidence) ?? "").slice(0, 1200)}`,
+  ].join("\n");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(new URL("/api/chat", host), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: "json",
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content: prompt },
+        ],
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) return null;
+    const parsed = await response.json() as { message?: { content?: unknown } };
+    const content = parsed.message?.content;
+    if (typeof content !== "string") return null;
+    const json = JSON.parse(content) as Record<string, unknown>;
+    return {
+      changed: json.changed === true,
+      false_positive: json.false_positive === true,
+      mixed: json.mixed === true,
+      rewritten: typeof json.rewritten === "string" ? json.rewritten : "",
+      completed_at: typeof json.completed_at === "string" ? json.completed_at : undefined,
+      reason: typeof json.reason === "string" ? json.reason : undefined,
+    };
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function loadActiveFactsForObservation(db: Database, observationId: string): DreamingFactRow[] {
+  return db
+    .query(
+      `
+        SELECT fact_id, fact_key, fact_value
+        FROM mem_facts
+        WHERE observation_id = ?
+          AND merged_into_fact_id IS NULL
+          AND superseded_by IS NULL
+          AND invalidated_at IS NULL
+          AND (valid_to IS NULL OR julianday(valid_to) > julianday('now'))
+      `
+    )
+    .all(observationId) as DreamingFactRow[];
+}
+
+function relatedFactIdsForSharedTokens(facts: DreamingFactRow[], sharedTokens: Set<string>): string[] {
+  return facts
+    .filter((fact) => textSharesAnyToken(`${fact.fact_key} ${fact.fact_value}`, sharedTokens))
+    .map((fact) => fact.fact_id);
 }
 
 function writeAudit(
@@ -58,6 +404,7 @@ function loadPendingJobs(db: Database, options: ConsolidationRunOptions): QueueR
         id: -1,
         project: options.project,
         session_id: options.session_id,
+        reason: options.reason ?? null,
       },
     ];
   }
@@ -66,7 +413,7 @@ function loadPendingJobs(db: Database, options: ConsolidationRunOptions): QueueR
   const queued = db
     .query(
       `
-        SELECT id, project, session_id
+        SELECT id, project, session_id, reason
         FROM mem_consolidation_queue
         WHERE status = 'pending'
         ORDER BY requested_at ASC, id ASC
@@ -121,6 +468,14 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         FROM mem_observations o
         WHERE o.project = ? AND o.session_id = ?
           AND o.archived_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mem_links l
+            JOIN mem_observations rewrite ON rewrite.id = l.from_observation_id
+            WHERE l.to_observation_id = o.id
+              AND l.relation = 'superseded'
+              AND rewrite.platform = 'dreaming'
+          )
           ${expiredFilterSql("o")}
         ORDER BY o.created_at ASC
       `
@@ -153,6 +508,25 @@ async function upsertFactsForSession(db: Database, project: string, sessionId: s
         },
         existingFacts
       );
+
+      // S154-110: an external (off-machine) provider call is auditable egress.
+      // Record metrics only (provider/model/bytes/obs) — never the prompt/response
+      // body. Local ollama leaves egress undefined, so default config emits no rows.
+      if (diffResult.egress) {
+        writeAudit(
+          db,
+          "external.llm.call",
+          {
+            provider: diffResult.egress.provider,
+            model: diffResult.egress.model,
+            input_bytes: diffResult.egress.input_bytes,
+            output_bytes: diffResult.egress.output_bytes,
+            observation_count: 1,
+          },
+          "session",
+          `${project}:${sessionId}`
+        );
+      }
 
       // 差分で削除が指定されたファクトに superseded_by を暫定設定（後で新 factId で上書き）
       // まず新ファクトを INSERT してから superseded_by を紐付ける
@@ -477,6 +851,9 @@ function dedupeSessionFacts(db: Database, project: string, sessionId: string): n
         WHERE project = ?
           AND session_id = ?
           AND merged_into_fact_id IS NULL
+          AND superseded_by IS NULL
+          AND valid_to IS NULL
+          AND invalidated_at IS NULL
         ORDER BY created_at ASC
       `
     )
@@ -496,18 +873,318 @@ function dedupeSessionFacts(db: Database, project: string, sessionId: string): n
   return merges.length;
 }
 
-export async function runConsolidationOnce(db: Database, options: ConsolidationRunOptions = {}): Promise<ConsolidationRunStats> {
+async function runDreamingTenseRewrite(
+  db: Database,
+  project: string,
+  sessionId: string,
+  provider: string,
+  deps: ConsolidationRunDeps,
+): Promise<number> {
+  if (EXTERNAL_LLM_PROVIDERS.has(provider)) {
+    writeAudit(
+      db,
+      "consolidation.dreaming.tense_rewrite_skipped",
+      { provider, reason: "external_provider" },
+      "session",
+      `${project}:${sessionId}`,
+    );
+    return 0;
+  }
+  if (provider !== "ollama") {
+    writeAudit(
+      db,
+      "consolidation.dreaming.tense_rewrite_skipped",
+      { provider, reason: "unsupported_provider" },
+      "session",
+      `${project}:${sessionId}`,
+    );
+    return 0;
+  }
+  if (deps.allowLocalDreamingObservationWrites === false) {
+    writeAudit(
+      db,
+      "consolidation.dreaming.tense_rewrite_skipped",
+      { provider, reason: "managed_backend" },
+      "session",
+      `${project}:${sessionId}`,
+    );
+    return 0;
+  }
+
+  const activeObservationSql = `
+        SELECT o.id, o.session_id, o.title, o.content_redacted, o.observation_type, o.privacy_tags_json,
+               o.user_id, o.team_id,
+               o.event_time, o.observed_at, o.valid_from, o.created_at,
+               o.thread_id, o.topic, o.expires_at, o.branch
+        FROM mem_observations o
+        WHERE o.project = ?
+          AND o.platform != 'dreaming'
+          AND o.archived_at IS NULL
+          AND o.invalidated_at IS NULL
+          AND (o.valid_to IS NULL OR julianday(o.valid_to) > julianday('now'))
+          AND NOT EXISTS (
+            SELECT 1
+            FROM mem_links l
+            JOIN mem_observations rewrite ON rewrite.id = l.from_observation_id
+            WHERE l.to_observation_id = o.id
+              AND l.relation = 'superseded'
+              AND rewrite.platform = 'dreaming'
+          )
+          ${expiredFilterSql("o")}
+  `;
+  const recentRows = db
+    .query(
+      `
+        ${activeObservationSql}
+        ORDER BY created_at DESC
+        LIMIT 500
+      `
+    )
+    .all(project) as DreamingObservationRow[];
+  const sessionRows = db
+    .query(
+      `
+        ${activeObservationSql}
+          AND o.session_id = ?
+        ORDER BY created_at DESC
+      `
+    )
+    .all(project, sessionId) as DreamingObservationRow[];
+  const rowsById = new Map<string, DreamingObservationRow>();
+  for (const row of recentRows) rowsById.set(row.id, row);
+  for (const row of sessionRows) rowsById.set(row.id, row);
+  const rows = Array.from(rowsById.values());
+
+  let created = 0;
+  let attempts = 0;
+  let availabilityChecked = false;
+  const ollamaHost = resolveDreamingOllamaHost();
+  const ollamaModel = resolveDreamingOllamaModel();
+  const currentMs = Date.now();
+  plannedLoop:
+  for (const planned of rows) {
+    const plannedText = observationText(planned);
+    if (!PLANNED_TENSE_PATTERN.test(plannedText)) continue;
+    if (!isLikelySinglePlannedStatement(plannedText)) continue;
+    const plannedFacts = loadActiveFactsForObservation(db, planned.id);
+
+    const plannedTime = temporalAnchorMs(planned);
+    const evidenceCandidates = rows
+      .filter((row) => {
+        if (row.id === planned.id) return false;
+        if (row.session_id !== sessionId) return false;
+        if (!isBranchCompatible(planned.branch, row.branch)) return false;
+        if (!isVisibilityCompatible(planned, row)) return false;
+        const evidenceTime = temporalAnchorMs(row);
+        if (evidenceTime <= plannedTime) return false;
+        if (evidenceTime > currentMs) return false;
+        const evidenceText = observationText(row);
+        if (!COMPLETION_EVIDENCE_PATTERN.test(evidenceText)) return false;
+        return hasSharedSignificantToken(plannedText, evidenceText);
+      })
+      .sort((left, right) => temporalAnchorMs(left) - temporalAnchorMs(right));
+    if (evidenceCandidates.length === 0) continue;
+
+    for (const evidence of evidenceCandidates) {
+      if (attempts >= MAX_DREAMING_TENSE_REWRITE_ATTEMPTS_PER_JOB) break plannedLoop;
+      if (!availabilityChecked) {
+        availabilityChecked = true;
+        if (!(await isLocalDreamingOllamaAvailable(ollamaHost))) {
+          writeAudit(
+            db,
+            "consolidation.dreaming.tense_rewrite_skipped",
+            { provider, reason: "ollama_unavailable" },
+            "session",
+            `${project}:${sessionId}`,
+          );
+          break plannedLoop;
+        }
+      }
+      const evidenceText = observationText(evidence);
+      const sharedActionTokens = sharedSignificantTokens(plannedText, evidenceText);
+      const relatedFactIds = relatedFactIdsForSharedTokens(plannedFacts, sharedActionTokens);
+      if (plannedFacts.length > 0 && relatedFactIds.length !== plannedFacts.length) continue;
+
+      attempts += 1;
+      const rewrite = await callLocalDreamingTenseRewrite(plannedText, evidenceText, ollamaHost, ollamaModel);
+      if (!rewrite?.changed || rewrite.false_positive || rewrite.mixed || !rewrite.rewritten.trim()) continue;
+
+      const current = nowIso();
+      const plannedAnchor = planned.valid_from ?? planned.event_time ?? planned.observed_at ?? planned.created_at ?? current;
+      const evidenceAnchor = evidence.valid_from ?? evidence.event_time ?? evidence.observed_at ?? evidence.created_at ?? current;
+      const plannedMs = parseTimeMs(plannedAnchor) ?? Number.NEGATIVE_INFINITY;
+      const evidenceMs = parseTimeMs(evidenceAnchor) ?? Date.parse(current);
+      const candidateMs = parseTimeMs(rewrite.completed_at);
+      const fallbackCompletedAt = evidenceMs >= plannedMs ? evidenceAnchor : plannedAnchor;
+      const completedAt = candidateMs !== null && candidateMs >= plannedMs && candidateMs <= evidenceMs
+        ? rewrite.completed_at!
+        : fallbackCompletedAt;
+      const completedMs = parseTimeMs(completedAt);
+      if (completedMs !== null && completedMs > parseTimeMs(current)!) continue;
+      const redacted = redactSecrets(stripPrivateBlocks(rewrite.rewritten) ?? "").trim();
+      if (redacted.length < 8) continue;
+      if (!isAcceptableDreamingRewrite(plannedText, redacted)) continue;
+      const observationId = createDreamingObservationId(project, sessionId, planned.id, redacted);
+      const contentHash = hashContent(project, sessionId, planned.id, redacted);
+      const title = "Dreaming tense rewrite";
+      const titleFts = segmentJapaneseForFts(title);
+      const contentFts = segmentJapaneseForFts(redacted);
+      const privacyTags = Array.from(new Set([
+        ...parsePrivacyTagsJson(planned.privacy_tags_json),
+        ...parsePrivacyTagsJson(evidence.privacy_tags_json),
+      ]));
+
+      const transaction = db.transaction(() => {
+        const inserted = db
+          .query(
+            `
+              INSERT OR IGNORE INTO mem_observations(
+                id, event_id, platform, project, session_id,
+                title, content, content_redacted, content_dedupe_hash, raw_text,
+                observation_type, memory_type, tags_json, privacy_tags_json,
+                user_id, team_id, event_time, observed_at, valid_from, valid_to,
+                supersedes, invalidated_at, created_at, updated_at,
+                thread_id, topic, expires_at, branch,
+                title_fts, content_fts
+              ) VALUES (?, NULL, 'dreaming', ?, ?, ?, ?, ?, ?, NULL,
+                'action', 'semantic', ?, ?, ?, ?, ?, ?, ?, NULL,
+                ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)
+            `
+          )
+          .run(
+            observationId,
+            project,
+            sessionId,
+            title,
+            redacted,
+            redacted,
+            contentHash,
+            JSON.stringify(["dreaming", "tense_rewrite"]),
+            JSON.stringify(privacyTags),
+            planned.user_id,
+            planned.team_id,
+            completedAt,
+            current,
+            completedAt,
+            planned.id,
+            current,
+            current,
+            planned.thread_id,
+            planned.topic,
+            planned.expires_at,
+            planned.branch,
+            titleFts,
+            contentFts,
+          ) as { changes?: number };
+        if (Number(inserted.changes ?? 0) === 0) return 0;
+
+        db.query(
+          `
+            UPDATE mem_observations
+            SET valid_to = CASE
+                  WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
+                  ELSE valid_to
+                END,
+                invalidated_at = COALESCE(invalidated_at, ?),
+                updated_at = ?
+            WHERE id = ?
+          `
+        ).run(completedAt, completedAt, current, current, planned.id);
+        if (relatedFactIds.length > 0) {
+          const placeholders = relatedFactIds.map(() => "?").join(", ");
+          db.query(
+            `
+              UPDATE mem_facts
+              SET valid_to = CASE
+                    WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
+                    ELSE valid_to
+                  END,
+                  invalidated_at = COALESCE(invalidated_at, ?),
+                  updated_at = ?
+              WHERE observation_id = ?
+                AND fact_id IN (${placeholders})
+                AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+            `
+          ).run(completedAt, completedAt, current, current, planned.id, ...relatedFactIds, completedAt);
+        } else {
+          db.query(
+            `
+              UPDATE mem_facts
+              SET valid_to = CASE
+                    WHEN valid_to IS NULL OR julianday(valid_to) > julianday(?) THEN ?
+                    ELSE valid_to
+                  END,
+                  invalidated_at = COALESCE(invalidated_at, ?),
+                  updated_at = ?
+              WHERE observation_id = ?
+                AND (valid_to IS NULL OR julianday(valid_to) > julianday(?))
+            `
+          ).run(completedAt, completedAt, current, current, planned.id, completedAt);
+        }
+        db.query(
+          `
+            INSERT OR IGNORE INTO mem_links(
+              from_observation_id, to_observation_id, relation, weight,
+              event_time, observed_at, valid_from, supersedes, created_at
+            )
+            VALUES (?, ?, 'superseded', 1.0, ?, ?, ?, ?, ?)
+          `
+        ).run(observationId, planned.id, completedAt, current, completedAt, planned.id, current);
+        db.query(
+          `INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at) VALUES (?, 'dreaming', 'auto', ?)`
+        ).run(observationId, current);
+        db.query(
+          `INSERT OR IGNORE INTO mem_tags(observation_id, tag, tag_type, created_at) VALUES (?, 'tense_rewrite', 'auto', ?)`
+        ).run(observationId, current);
+        return 1;
+      });
+
+      const insertedCount = Number(transaction());
+      if (insertedCount > 0 && deps.materializeObservationDerivedData) {
+        try {
+          deps.materializeObservationDerivedData(observationId);
+        } catch (error) {
+          writeAudit(
+            db,
+            "consolidation.dreaming.derived_data_failed",
+            { observation_id: observationId, error: error instanceof Error ? error.message : String(error) },
+            "observation",
+            observationId,
+          );
+        }
+      }
+      created += insertedCount;
+      if (insertedCount > 0) break;
+    }
+  }
+  return created;
+}
+
+export async function runConsolidationOnce(
+  db: Database,
+  options: ConsolidationRunOptions = {},
+  deps: ConsolidationRunDeps = {},
+): Promise<ConsolidationRunStats> {
   const jobs = loadPendingJobs(db, options);
   let jobsProcessed = 0;
   let factsExtracted = 0;
   let factsMerged = 0;
   let derivesLinksTotal = 0;
+  let dreamingRewritesTotal = 0;
 
   for (const job of jobs) {
     if (job.id > 0) {
       db.query(`UPDATE mem_consolidation_queue SET status = 'running', started_at = ? WHERE id = ?`).run(nowIso(), job.id);
     }
 
+    // S154-201: per-job reason makes the dreaming path distinguishable in audit/status.
+    const jobReason = job.reason || options.reason || "manual";
+    const isDreaming = jobReason === DREAMING_REASON;
+    const dreamingProvider = isDreaming ? auditDreamingProvider(db, job.project, job.session_id) : undefined;
+
+    const dreamingRewrites = isDreaming && dreamingProvider
+      ? await runDreamingTenseRewrite(db, job.project, job.session_id, dreamingProvider, deps)
+      : 0;
     const extracted = await upsertFactsForSession(db, job.project, job.session_id);
     const merged = dedupeSessionFacts(db, job.project, job.session_id);
     // IMP-011: derives リンクの自動生成（heuristic ベース）
@@ -516,6 +1193,7 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
     factsExtracted += extracted;
     factsMerged += merged;
     derivesLinksTotal += derivesLinks;
+    dreamingRewritesTotal += dreamingRewrites;
     jobsProcessed += 1;
 
     writeAudit(
@@ -527,11 +1205,32 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
         facts_extracted: extracted,
         facts_merged: merged,
         derives_links_created: derivesLinks,
-        reason: options.reason || "manual",
+        dreaming_rewrites_created: dreamingRewrites,
+        reason: jobReason,
       },
       "session",
       `${job.project}:${job.session_id}`
     );
+
+    // S154-201: dreaming jobs get a dedicated, queryable audit row. The dreaming-
+    // specific synthesis (prose current-state 204, tense rewrite 303) layers onto
+    // this branch later; for now the job runs local-default consolidation + dedup.
+    if (isDreaming) {
+      writeAudit(
+        db,
+        "consolidation.dreaming",
+        {
+          project: job.project,
+          session_id: job.session_id,
+          provider: dreamingProvider,
+          facts_extracted: extracted,
+          facts_merged: merged,
+          tense_rewrites_created: dreamingRewrites,
+        },
+        "session",
+        `${job.project}:${job.session_id}`
+      );
+    }
 
     if (job.id > 0) {
       db.query(
@@ -554,6 +1253,7 @@ export async function runConsolidationOnce(db: Database, options: ConsolidationR
     facts_merged: factsMerged,
     pending_jobs: Number(pendingRow?.count ?? 0),
     derives_links_created: derivesLinksTotal,
+    dreaming_rewrites_created: dreamingRewritesTotal,
   };
 }
 

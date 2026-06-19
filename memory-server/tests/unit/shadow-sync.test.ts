@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { ShadowSyncManager } from "../../src/projector/shadow-sync";
+import { buildEmbeddingShadowManifest, ShadowSyncManager } from "../../src/projector/shadow-sync";
 
 describe("ShadowSyncManager", () => {
   test("starts in 'off' phase by default", () => {
@@ -112,5 +112,47 @@ describe("ShadowSyncManager", () => {
     const json = mgr.toJSON();
     expect(json.phase).toBe("shadow");
     expect(json.managedEndpoint).toBe("pg://localhost");
+  });
+
+  test("builds S154-401 embedding shadow manifest without prompt or response bodies", () => {
+    const manifest = buildEmbeddingShadowManifest({
+      defaultVectorModel: "local:multilingual-e5",
+      defaultVectorDimension: 384,
+      activeDefaultVectorRows: 140_000,
+      candidates: [
+        {
+          model_id: "ruri-v3-30m",
+          vector_model: "local:ruri-v3-30m",
+          provider: "local",
+          inference: "onnx",
+          dimension: 256,
+          installed: true,
+          local_only: true,
+          separate_vector_table_required: true,
+          status: "ready",
+        },
+        {
+          model_id: "bge-m3",
+          vector_model: "local:bge-m3",
+          provider: "local",
+          inference: "onnx",
+          dimension: 1024,
+          installed: false,
+          local_only: true,
+          separate_vector_table_required: true,
+          status: "not_installed",
+          skip_reason: "model_not_installed:bge-m3",
+        },
+      ],
+    });
+
+    expect(manifest.schema_version).toBe("s154-401-embedding-shadow.v1");
+    expect(manifest.default_model_unchanged).toBe(true);
+    expect(manifest.legacy_index_preserved).toBe(true);
+    expect(manifest.write_policy).toBe("shadow-only");
+    expect(manifest.prompt_or_response_body_recorded).toBe(false);
+    expect(manifest.candidates.map((candidate) => candidate.model_id)).toEqual(["ruri-v3-30m", "bge-m3"]);
+    expect(JSON.stringify(manifest)).not.toContain("GearChange");
+    expect(JSON.stringify(manifest)).not.toContain("raw_text");
   });
 });

@@ -1,0 +1,646 @@
+{
+  "schema_version": "s154-402-embedding-shadow-ab.v2",
+  "generated_at": "2026-06-12T08:49:15.059Z",
+  "baseline_model": "multilingual-e5",
+  "baseline_dimension": 384,
+  "measurement_path": "vector-isolated cosine recall@10 + top1/MRR via local ONNX provider primeBatch/primeQuery (no FTS/RRF; fail-closed on fallback)",
+  "hybrid_sensitivity_note": "hybrid end-to-end recall@10 is per-sample identical across multilingual-e5, ruri-v3-30m and the hash fallback (FTS dominates top-10 membership), so it cannot discriminate embedding models and is not used as the A/B measurand",
+  "fixtures": {
+    "bilingual_pool": 156,
+    "bilingual_queries": 104,
+    "dev_workflow_cases": 92,
+    "dev_workflow_pool": 270
+  },
+  "fixture_files": {
+    "bilingual": "tests/benchmarks/fixtures/bilingual-v2.json (s154-500-bilingual.v2)",
+    "dev_workflow": "tests/benchmarks/fixtures/dev-workflow-v2.json (s154-500-dev-workflow.v2)"
+  },
+  "slice_definitions": {
+    "mixed": "bilingual-v2 pattern mixed-content_mixed-query vector recall@10 mean (52 queries)",
+    "ja": "bilingual-v2 patterns ja-content_en-query + en-content_ja-query vector recall@10 mean (52 queries)",
+    "bilingual": "bilingual-v2 overall vector recall@10 (104 queries, 156-entry shared pool)",
+    "dev_workflow": "dev-workflow-v2 vector recall@10 (92 queries, 270-entry shared pool)",
+    "composite": "s154-400 weighted average (data/composite-score-weights.json)"
+  },
+  "switch_delta_threshold": 0.05,
+  "ci_lower_bound_enabled": false,
+  "baseline_band": {
+    "min": 0.5,
+    "max": 0.85,
+    "composite": 0.7496,
+    "within": true
+  },
+  "baseline_latency": {
+    "query_p50_ms": 5.2206,
+    "query_p95_ms": 6.4521,
+    "probe_queries": 24,
+    "passage_throughput_per_s": 302.7636,
+    "passage_count": 156
+  },
+  "aggregate_only": true,
+  "candidates": [
+    {
+      "model_id": "qwen3-embedding-0.6b",
+      "config": "native",
+      "dimension": 1024,
+      "status": "measured",
+      "skip_reason": null,
+      "comparisons": [
+        {
+          "metric": "mixed",
+          "baseline": 0.9231,
+          "candidate": 0.9615,
+          "delta": 0.0385
+        },
+        {
+          "metric": "ja",
+          "baseline": 0.5385,
+          "candidate": 1,
+          "delta": 0.4615
+        },
+        {
+          "metric": "bilingual",
+          "baseline": 0.7308,
+          "candidate": 0.9808,
+          "delta": 0.25
+        },
+        {
+          "metric": "dev_workflow",
+          "baseline": 0.8062,
+          "candidate": 0.8478,
+          "delta": 0.0417
+        },
+        {
+          "metric": "composite",
+          "baseline": 0.7496,
+          "candidate": 0.9475,
+          "delta": 0.1979
+        }
+      ],
+      "order_metrics": [
+        {
+          "slice": "mixed",
+          "metric": "top1",
+          "baseline": 0.5962,
+          "candidate": 0.7692,
+          "delta": 0.1731
+        },
+        {
+          "slice": "mixed",
+          "metric": "mrr",
+          "baseline": 0.7069,
+          "candidate": 0.8636,
+          "delta": 0.1567
+        },
+        {
+          "slice": "ja",
+          "metric": "top1",
+          "baseline": 0.1923,
+          "candidate": 0.75,
+          "delta": 0.5577
+        },
+        {
+          "slice": "ja",
+          "metric": "mrr",
+          "baseline": 0.298,
+          "candidate": 0.8585,
+          "delta": 0.5605
+        },
+        {
+          "slice": "bilingual",
+          "metric": "top1",
+          "baseline": 0.3942,
+          "candidate": 0.7596,
+          "delta": 0.3654
+        },
+        {
+          "slice": "bilingual",
+          "metric": "mrr",
+          "baseline": 0.5025,
+          "candidate": 0.8611,
+          "delta": 0.3586
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "top1",
+          "baseline": 0.6522,
+          "candidate": 0.663,
+          "delta": 0.0109
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "mrr",
+          "baseline": 0.7782,
+          "candidate": 0.7651,
+          "delta": -0.0131
+        }
+      ],
+      "composite_delta_ci95": {
+        "lower": 0.1519,
+        "upper": 0.2455,
+        "width": 0.0936,
+        "resamples": 1000,
+        "method": "paired bootstrap over per-query recall@10 deltas (seeded, deterministic)"
+      },
+      "latency": {
+        "query_p50_ms": 73.6669,
+        "query_p95_ms": 82.0572,
+        "probe_queries": 24,
+        "passage_throughput_per_s": 15.2655,
+        "passage_count": 156
+      }
+    },
+    {
+      "model_id": "qwen3-embedding-0.6b",
+      "config": "mrl-384",
+      "dimension": 384,
+      "status": "measured",
+      "skip_reason": null,
+      "comparisons": [
+        {
+          "metric": "mixed",
+          "baseline": 0.9231,
+          "candidate": 0.9808,
+          "delta": 0.0577
+        },
+        {
+          "metric": "ja",
+          "baseline": 0.5385,
+          "candidate": 0.9808,
+          "delta": 0.4423
+        },
+        {
+          "metric": "bilingual",
+          "baseline": 0.7308,
+          "candidate": 0.9808,
+          "delta": 0.25
+        },
+        {
+          "metric": "dev_workflow",
+          "baseline": 0.8062,
+          "candidate": 0.846,
+          "delta": 0.0399
+        },
+        {
+          "metric": "composite",
+          "baseline": 0.7496,
+          "candidate": 0.9471,
+          "delta": 0.1975
+        }
+      ],
+      "order_metrics": [
+        {
+          "slice": "mixed",
+          "metric": "top1",
+          "baseline": 0.5962,
+          "candidate": 0.7115,
+          "delta": 0.1154
+        },
+        {
+          "slice": "mixed",
+          "metric": "mrr",
+          "baseline": 0.7069,
+          "candidate": 0.8128,
+          "delta": 0.1058
+        },
+        {
+          "slice": "ja",
+          "metric": "top1",
+          "baseline": 0.1923,
+          "candidate": 0.7308,
+          "delta": 0.5385
+        },
+        {
+          "slice": "ja",
+          "metric": "mrr",
+          "baseline": 0.298,
+          "candidate": 0.8347,
+          "delta": 0.5367
+        },
+        {
+          "slice": "bilingual",
+          "metric": "top1",
+          "baseline": 0.3942,
+          "candidate": 0.7212,
+          "delta": 0.3269
+        },
+        {
+          "slice": "bilingual",
+          "metric": "mrr",
+          "baseline": 0.5025,
+          "candidate": 0.8237,
+          "delta": 0.3213
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "top1",
+          "baseline": 0.6522,
+          "candidate": 0.6304,
+          "delta": -0.0217
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "mrr",
+          "baseline": 0.7782,
+          "candidate": 0.7489,
+          "delta": -0.0292
+        }
+      ],
+      "composite_delta_ci95": {
+        "lower": 0.148,
+        "upper": 0.2451,
+        "width": 0.0971,
+        "resamples": 1000,
+        "method": "paired bootstrap over per-query recall@10 deltas (seeded, deterministic)"
+      },
+      "latency": {
+        "query_p50_ms": 92.6831,
+        "query_p95_ms": 136.3609,
+        "probe_queries": 24,
+        "passage_throughput_per_s": 16.0093,
+        "passage_count": 156
+      }
+    },
+    {
+      "model_id": "granite-embedding-311m-r2",
+      "config": "native",
+      "dimension": 768,
+      "status": "measured",
+      "skip_reason": null,
+      "comparisons": [
+        {
+          "metric": "mixed",
+          "baseline": 0.9231,
+          "candidate": 1,
+          "delta": 0.0769
+        },
+        {
+          "metric": "ja",
+          "baseline": 0.5385,
+          "candidate": 0.9615,
+          "delta": 0.4231
+        },
+        {
+          "metric": "bilingual",
+          "baseline": 0.7308,
+          "candidate": 0.9808,
+          "delta": 0.25
+        },
+        {
+          "metric": "dev_workflow",
+          "baseline": 0.8062,
+          "candidate": 0.8732,
+          "delta": 0.067
+        },
+        {
+          "metric": "composite",
+          "baseline": 0.7496,
+          "candidate": 0.9539,
+          "delta": 0.2043
+        }
+      ],
+      "order_metrics": [
+        {
+          "slice": "mixed",
+          "metric": "top1",
+          "baseline": 0.5962,
+          "candidate": 0.7885,
+          "delta": 0.1923
+        },
+        {
+          "slice": "mixed",
+          "metric": "mrr",
+          "baseline": 0.7069,
+          "candidate": 0.8438,
+          "delta": 0.1369
+        },
+        {
+          "slice": "ja",
+          "metric": "top1",
+          "baseline": 0.1923,
+          "candidate": 0.7308,
+          "delta": 0.5385
+        },
+        {
+          "slice": "ja",
+          "metric": "mrr",
+          "baseline": 0.298,
+          "candidate": 0.8365,
+          "delta": 0.5384
+        },
+        {
+          "slice": "bilingual",
+          "metric": "top1",
+          "baseline": 0.3942,
+          "candidate": 0.7596,
+          "delta": 0.3654
+        },
+        {
+          "slice": "bilingual",
+          "metric": "mrr",
+          "baseline": 0.5025,
+          "candidate": 0.8401,
+          "delta": 0.3377
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "top1",
+          "baseline": 0.6522,
+          "candidate": 0.6196,
+          "delta": -0.0326
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "mrr",
+          "baseline": 0.7782,
+          "candidate": 0.7451,
+          "delta": -0.0331
+        }
+      ],
+      "composite_delta_ci95": {
+        "lower": 0.1598,
+        "upper": 0.2477,
+        "width": 0.0879,
+        "resamples": 1000,
+        "method": "paired bootstrap over per-query recall@10 deltas (seeded, deterministic)"
+      },
+      "latency": {
+        "query_p50_ms": 12.3257,
+        "query_p95_ms": 18.9672,
+        "probe_queries": 24,
+        "passage_throughput_per_s": 67.5097,
+        "passage_count": 156
+      }
+    },
+    {
+      "model_id": "granite-embedding-311m-r2",
+      "config": "mrl-384",
+      "dimension": 384,
+      "status": "measured",
+      "skip_reason": null,
+      "comparisons": [
+        {
+          "metric": "mixed",
+          "baseline": 0.9231,
+          "candidate": 0.9808,
+          "delta": 0.0577
+        },
+        {
+          "metric": "ja",
+          "baseline": 0.5385,
+          "candidate": 0.9808,
+          "delta": 0.4423
+        },
+        {
+          "metric": "bilingual",
+          "baseline": 0.7308,
+          "candidate": 0.9808,
+          "delta": 0.25
+        },
+        {
+          "metric": "dev_workflow",
+          "baseline": 0.8062,
+          "candidate": 0.8623,
+          "delta": 0.0562
+        },
+        {
+          "metric": "composite",
+          "baseline": 0.7496,
+          "candidate": 0.9512,
+          "delta": 0.2015
+        }
+      ],
+      "order_metrics": [
+        {
+          "slice": "mixed",
+          "metric": "top1",
+          "baseline": 0.5962,
+          "candidate": 0.7885,
+          "delta": 0.1923
+        },
+        {
+          "slice": "mixed",
+          "metric": "mrr",
+          "baseline": 0.7069,
+          "candidate": 0.8466,
+          "delta": 0.1396
+        },
+        {
+          "slice": "ja",
+          "metric": "top1",
+          "baseline": 0.1923,
+          "candidate": 0.75,
+          "delta": 0.5577
+        },
+        {
+          "slice": "ja",
+          "metric": "mrr",
+          "baseline": 0.298,
+          "candidate": 0.8501,
+          "delta": 0.552
+        },
+        {
+          "slice": "bilingual",
+          "metric": "top1",
+          "baseline": 0.3942,
+          "candidate": 0.7692,
+          "delta": 0.375
+        },
+        {
+          "slice": "bilingual",
+          "metric": "mrr",
+          "baseline": 0.5025,
+          "candidate": 0.8483,
+          "delta": 0.3458
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "top1",
+          "baseline": 0.6522,
+          "candidate": 0.6413,
+          "delta": -0.0109
+        },
+        {
+          "slice": "dev_workflow",
+          "metric": "mrr",
+          "baseline": 0.7782,
+          "candidate": 0.7634,
+          "delta": -0.0147
+        }
+      ],
+      "composite_delta_ci95": {
+        "lower": 0.1569,
+        "upper": 0.2455,
+        "width": 0.0885,
+        "resamples": 1000,
+        "method": "paired bootstrap over per-query recall@10 deltas (seeded, deterministic)"
+      },
+      "latency": {
+        "query_p50_ms": 10.3735,
+        "query_p95_ms": 14.6317,
+        "probe_queries": 24,
+        "passage_throughput_per_s": 73.1165,
+        "passage_count": 156
+      }
+    }
+  ],
+  "negative_control_v1": {
+    "note": "v1 fixtures (ceiling-saturated: baseline composite 0.96) kept as a negative control for the v2 difficulty change; not used for the switch decision",
+    "fixtures": {
+      "bilingual_cases": 50,
+      "dev_workflow_cases": 20
+    },
+    "baseline_composite": 0.96,
+    "candidates": [
+      {
+        "model_id": "qwen3-embedding-0.6b",
+        "config": "native",
+        "comparisons": [
+          {
+            "metric": "mixed",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "ja",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "bilingual",
+            "baseline": 0.94,
+            "candidate": 1,
+            "delta": 0.06
+          },
+          {
+            "metric": "dev_workflow",
+            "baseline": 0.9,
+            "candidate": 0.8667,
+            "delta": -0.0333
+          },
+          {
+            "metric": "composite",
+            "baseline": 0.96,
+            "candidate": 0.9667,
+            "delta": 0.0067
+          }
+        ]
+      },
+      {
+        "model_id": "qwen3-embedding-0.6b",
+        "config": "mrl-384",
+        "comparisons": [
+          {
+            "metric": "mixed",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "ja",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "bilingual",
+            "baseline": 0.94,
+            "candidate": 1,
+            "delta": 0.06
+          },
+          {
+            "metric": "dev_workflow",
+            "baseline": 0.9,
+            "candidate": 0.8667,
+            "delta": -0.0333
+          },
+          {
+            "metric": "composite",
+            "baseline": 0.96,
+            "candidate": 0.9667,
+            "delta": 0.0067
+          }
+        ]
+      },
+      {
+        "model_id": "granite-embedding-311m-r2",
+        "config": "native",
+        "comparisons": [
+          {
+            "metric": "mixed",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "ja",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "bilingual",
+            "baseline": 0.94,
+            "candidate": 0.98,
+            "delta": 0.04
+          },
+          {
+            "metric": "dev_workflow",
+            "baseline": 0.9,
+            "candidate": 0.8167,
+            "delta": -0.0833
+          },
+          {
+            "metric": "composite",
+            "baseline": 0.96,
+            "candidate": 0.9492,
+            "delta": -0.0108
+          }
+        ]
+      },
+      {
+        "model_id": "granite-embedding-311m-r2",
+        "config": "mrl-384",
+        "comparisons": [
+          {
+            "metric": "mixed",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "ja",
+            "baseline": 1,
+            "candidate": 1,
+            "delta": 0
+          },
+          {
+            "metric": "bilingual",
+            "baseline": 0.94,
+            "candidate": 1,
+            "delta": 0.06
+          },
+          {
+            "metric": "dev_workflow",
+            "baseline": 0.9,
+            "candidate": 0.8167,
+            "delta": -0.0833
+          },
+          {
+            "metric": "composite",
+            "baseline": 0.96,
+            "candidate": 0.9542,
+            "delta": -0.0058
+          }
+        ]
+      }
+    ]
+  },
+  "determinism": {
+    "runs": 5,
+    "identical": true
+  },
+  "reproducibility": "bun run scripts/s154-embedding-shadow-ab.ts [--models a,b] [--runs N] (requires local ONNX models; uninstalled candidates are recorded as skipped)"
+}

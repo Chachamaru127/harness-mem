@@ -1,9 +1,21 @@
 #!/usr/bin/env bun
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { loadDefaultDatasets } from "../lib/dataset-loader";
+import {
+  loadDefaultDatasets,
+  loadCodingMemoryDataset,
+  resolveRealDataDatasetFile,
+  CODINGMEMORY_V3_DATASET_ID,
+} from "../lib/dataset-loader";
+import {
+  loadMemoryAgentBenchDataset,
+  MEMORY_AGENT_BENCH_DATASET_ID,
+  MEMORY_AGENT_BENCH_REVISION,
+  MEMORY_AGENT_BENCH_SPLITS,
+  parseMemoryAgentBenchSplit,
+  type MemoryAgentBenchSplit,
+} from "../lib/memoryagentbench-loader";
 import { loadBenchmarkEnvFiles } from "../lib/load-env";
 import { judgeRetrievalGrounding } from "../lib/openrouter-judge";
 import { getSharedOpenRouterBudget, resetSharedOpenRouterBudget } from "../lib/openrouter-budget";
@@ -16,21 +28,33 @@ import {
 import { scoreCase } from "../lib/score-case";
 import { inferCompetency, usesLlmJudge } from "../scorers/competency";
 import { buildSummary } from "../lib/summarize";
-import type { AdapterQueryResult, ScoredCaseResult } from "../lib/types";
+import type { AdapterQueryResult, BenchmarkCase, BenchmarkDatasetManifest, ScoredCaseResult } from "../lib/types";
 import { writeReportPack } from "./render-dashboard";
 
 export interface RunBenchmarkOptions {
   competitors?: string[];
   limit?: number;
+  mabRowLimit?: number;
   useOpenRouter?: boolean;
   envFiles?: string[];
+  dataset?: "default" | "memoryagentbench" | "codingmemory";
+  mabSplit?: MemoryAgentBenchSplit | "all";
+  cacheDir?: string;
+  revision?: string;
+  reportsDir?: string;
 }
 
-function parseArgs(argv: string[]): RunBenchmarkOptions {
+export function parseArgs(argv: string[]): RunBenchmarkOptions {
   const competitors: string[] = [];
   let limit: number | undefined;
+  let mabRowLimit: number | undefined;
   let useOpenRouter = process.env.INTERNAL_BENCH_USE_OPENROUTER === "1";
   const envFiles: string[] = [];
+  let dataset: RunBenchmarkOptions["dataset"] = "default";
+  let mabSplit: RunBenchmarkOptions["mabSplit"] = "Accurate_Retrieval";
+  let cacheDir: string | undefined;
+  let revision: string | undefined;
+  let reportsDir: string | undefined;
 
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i];
@@ -49,6 +73,11 @@ function parseArgs(argv: string[]): RunBenchmarkOptions {
       i += 1;
       continue;
     }
+    if (token === "--mab-row-limit" && i + 1 < argv.length) {
+      mabRowLimit = Number(argv[i + 1]);
+      i += 1;
+      continue;
+    }
     if (token === "--use-openrouter") {
       useOpenRouter = true;
       continue;
@@ -56,14 +85,50 @@ function parseArgs(argv: string[]): RunBenchmarkOptions {
     if (token === "--env-file" && i + 1 < argv.length) {
       envFiles.push(argv[i + 1]);
       i += 1;
+      continue;
+    }
+    if (token === "--dataset" && i + 1 < argv.length) {
+      const value = argv[i + 1];
+      if (value !== "default" && value !== "memoryagentbench" && value !== "codingmemory") {
+        throw new Error(`invalid --dataset ${value}; expected default, memoryagentbench, or codingmemory`);
+      }
+      dataset = value;
+      i += 1;
+      continue;
+    }
+    if (token === "--mab-split" && i + 1 < argv.length) {
+      const value = argv[i + 1];
+      mabSplit = value === "all" ? "all" : parseMemoryAgentBenchSplit(value);
+      i += 1;
+      continue;
+    }
+    if (token === "--cache-dir" && i + 1 < argv.length) {
+      cacheDir = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === "--revision" && i + 1 < argv.length) {
+      revision = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (token === "--reports-dir" && i + 1 < argv.length) {
+      reportsDir = argv[i + 1];
+      i += 1;
     }
   }
 
   return {
     competitors: competitors.length > 0 ? competitors : [...DEFAULT_REPRODUCED_COMPETITORS],
     limit: Number.isFinite(limit) ? limit : undefined,
+    mabRowLimit: Number.isFinite(mabRowLimit) ? mabRowLimit : undefined,
     useOpenRouter,
     envFiles: envFiles.length > 0 ? envFiles : undefined,
+    dataset,
+    mabSplit,
+    cacheDir,
+    revision,
+    reportsDir,
   };
 }
 
@@ -73,6 +138,78 @@ function gitSha(): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+async function loadSelectedDataset(options: RunBenchmarkOptions): Promise<{
+  cases: BenchmarkCase[];
+  dataset_ids: string[];
+  dataset_manifest?: BenchmarkDatasetManifest;
+}> {
+  if (options.dataset === "codingmemory") {
+    const cases = loadCodingMemoryDataset("auto").slice(0, options.limit);
+    const realFile = resolveRealDataDatasetFile() ?? "coding-memory-real-ja-mixed-v3.jsonl";
+    const language_profile: Record<string, number> = {};
+    const competency: Record<string, number> = {};
+    const source_platform: Record<string, number> = {};
+    for (const row of cases) {
+      language_profile[row.language_profile] = (language_profile[row.language_profile] ?? 0) + 1;
+      const comp = row.competency ?? "AR";
+      competency[comp] = (competency[comp] ?? 0) + 1;
+      const platform = row.source_platform ?? "unknown";
+      source_platform[platform] = (source_platform[platform] ?? 0) + 1;
+    }
+    return {
+      cases,
+      dataset_ids: [realFile],
+      dataset_manifest: {
+        dataset: "codingmemory",
+        dataset_id: CODINGMEMORY_V3_DATASET_ID,
+        source_url: "benchmarks/internal-memory/datasets/coding-memory-real-ja-mixed-v3.jsonl",
+        gate_mode: options.limit ? "smoke" : "public",
+        sample_limit: options.limit,
+        embedding_profile:
+          process.env.HARNESS_MEM_INTERNAL_BENCH_EMBEDDING === "1"
+            ? "production_onnx"
+            : "hash_fallback",
+        language_profile,
+        competency,
+        source_platform,
+        hf_revision: process.env.CODINGMEMORY_HF_REVISION?.trim() || undefined,
+        transform_version: "codingmemory-v3-platform-metadata",
+      },
+    };
+  }
+
+  if (options.dataset === "memoryagentbench") {
+    const splits =
+      options.mabSplit === "all"
+        ? [...MEMORY_AGENT_BENCH_SPLITS]
+        : [options.mabSplit ?? "Accurate_Retrieval"];
+    const loaded = await loadMemoryAgentBenchDataset({
+      datasetId: MEMORY_AGENT_BENCH_DATASET_ID,
+      splits,
+      limit: options.limit,
+      rowLimit: options.mabRowLimit,
+      cacheDir: options.cacheDir,
+      revision: options.revision ?? MEMORY_AGENT_BENCH_REVISION,
+    });
+    return {
+      cases: loaded.cases,
+      dataset_ids: [`${MEMORY_AGENT_BENCH_DATASET_ID}:${splits.join("+")}`],
+      dataset_manifest: loaded.manifest,
+    };
+  }
+
+  const cases = loadDefaultDatasets().slice(0, options.limit);
+  const realDatasetId = resolveRealDataDatasetFile() ?? "coding-memory-real-ja-mixed-v1.jsonl";
+  return {
+    cases,
+    dataset_ids: [
+      "public-retrieval-v1.jsonl",
+      "coding-memory-ja-mixed-v1.jsonl",
+      ...(cases.some((row) => row.case_id.startsWith("real-")) ? [realDatasetId] : []),
+    ],
+  };
 }
 
 export async function runInternalMemoryBenchmark(
@@ -96,17 +233,7 @@ export async function runInternalMemoryBenchmark(
     ...reproducedTargets.map((id) => ({ id, published: false })),
     ...publishedTargets.map((id) => ({ id, published: true })),
   ];
-  const cases = loadDefaultDatasets().slice(0, options.limit);
-  const realDatasetId = existsSync(
-    join(import.meta.dir, "../datasets/coding-memory-real-ja-mixed-v2.jsonl"),
-  )
-    ? "coding-memory-real-ja-mixed-v2.jsonl"
-    : "coding-memory-real-ja-mixed-v1.jsonl";
-  const dataset_ids = [
-    "public-retrieval-v1.jsonl",
-    "coding-memory-ja-mixed-v1.jsonl",
-    ...(cases.some((row) => row.case_id.startsWith("real-")) ? [realDatasetId] : []),
-  ];
+  const { cases, dataset_ids, dataset_manifest } = await loadSelectedDataset(options);
   const runId = `internal-memory-${randomUUID()}`;
   const results: ScoredCaseResult[] = [];
 
@@ -192,9 +319,15 @@ export async function runInternalMemoryBenchmark(
     openrouter_budget: budget,
     env_files_loaded: loadedEnvFiles,
     reproduced_ids: reproducedTargets,
+    dataset_manifest,
   });
-  writeReportPack(summary, results);
-  return { summaryPath: "benchmarks/internal-memory/reports/latest/summary.json", results };
+  writeReportPack(
+    summary,
+    results,
+    options.reportsDir ?? join(import.meta.dir, "../reports/latest"),
+  );
+  const reportRoot = options.reportsDir ?? "benchmarks/internal-memory/reports/latest";
+  return { summaryPath: `${reportRoot}/summary.json`, results };
 }
 
 if (import.meta.main) {

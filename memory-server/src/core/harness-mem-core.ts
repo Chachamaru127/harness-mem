@@ -24,6 +24,7 @@ import {
 } from "../vector/providers";
 import {
   createEmbeddingProviderRegistry,
+  resolveEmbeddingShadowProviders,
 } from "../embedding/registry";
 import { expandQuery } from "../embedding/query-expander";
 import {
@@ -37,7 +38,13 @@ import { createRerankerRegistry } from "../rerank/registry";
 import {
   type Reranker,
 } from "../rerank/types";
-import { llmRerank, llmNoMemoryCheck, buildLlmRerankerConfigFromEnv } from "../rerank/llm-reranker.js";
+import {
+  llmRerank,
+  llmNoMemoryCheck,
+  buildLlmRerankerConfigFromEnv,
+  buildSearchLlmRerankerConfigFromEnv,
+} from "../rerank/llm-reranker.js";
+import { queryRewriteMeta, rewriteSearchQueryIfEnabled } from "../retrieval/query-rewrite.js";
 import {
   enqueueConsolidationJob,
   runConsolidationOnce,
@@ -57,12 +64,18 @@ import {
 import { recordContradictionEnvelopes } from "../inject/contradiction-envelope";
 import { createClaudeProviderAsync, createLLMProvider } from "../llm/registry";
 import { ManagedBackend, type ManagedBackendStatus } from "../projector/managed-backend";
+import { buildEmbeddingShadowManifest, type EmbeddingShadowManifest } from "../projector/shadow-sync";
 import { collectEnvironmentSnapshot, type EnvironmentSnapshot } from "../system-environment/collector";
 import { TtlCache } from "../system-environment/cache";
 import { getTelemetryStatus, hashTelemetryValue, recordRecallTelemetry } from "../telemetry/otel";
 import { SessionManager, buildCheckpointEvent } from "./session-manager";
 import { EventRecorder } from "./event-recorder";
 import { ObservationStore } from "./observation-store";
+import {
+  EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS,
+  sanitizeItemsForExternalChannel,
+  type ExternalChannelItem,
+} from "./external-channel-policy";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
@@ -1821,6 +1834,7 @@ export class HarnessMemCore {
       getEmbeddingHealthStatus: () => this.embeddingHealth.status,
       getRerankerEnabled: () => this.rerankerEnabled,
       getReranker: () => this.reranker,
+      getEmbeddingShadowManifest: () => this.getEmbeddingShadowManifest(),
       managedShadowRead: this.managedBackend
         ? (query, ids, opts) => this.managedBackend!.shadowRead(query, ids, opts)
         : null,
@@ -2938,6 +2952,7 @@ export class HarnessMemCore {
       localModelId: this.config.embeddingModel,
       localModelsDir: this.config.localModelsDir,
       dimension: this.config.vectorDimension,
+      db: this.db,
       openaiApiKey: this.config.openaiApiKey,
       openaiEmbedModel: this.config.openaiEmbedModel,
       ollamaBaseUrl: this.config.ollamaBaseUrl,
@@ -2968,6 +2983,37 @@ export class HarnessMemCore {
     return this.embeddingProvider.name === "local" || this.embeddingProvider.usesLocalModels === true;
   }
 
+  private getEmbeddingShadowManifest(): EmbeddingShadowManifest | null {
+    if ((process.env.HARNESS_MEM_EMBEDDING_SHADOW || "").trim() !== "1") {
+      return null;
+    }
+
+    const modelIds = (process.env.HARNESS_MEM_EMBEDDING_SHADOW_MODELS || "")
+      .split(",")
+      .map((model) => model.trim())
+      .filter(Boolean);
+    const row = this.db
+      .query<{ count: number }, [string]>(
+        `SELECT COUNT(*) AS count
+         FROM mem_vectors v
+         JOIN mem_observations o ON o.id = v.observation_id
+         WHERE v.model = ? AND o.archived_at IS NULL`
+      )
+      .get(this.vectorModelVersion);
+
+    return buildEmbeddingShadowManifest({
+      defaultVectorModel: this.vectorModelVersion,
+      defaultVectorDimension: this.config.vectorDimension,
+      activeDefaultVectorRows: Number(row?.count ?? 0),
+      candidates: resolveEmbeddingShadowProviders({
+        modelIds,
+        currentVectorModel: this.vectorModelVersion,
+        currentVectorDimension: this.config.vectorDimension,
+        localModelsDir: this.config.localModelsDir,
+      }),
+    });
+  }
+
   private getEmbeddingReadiness(): EmbeddingReadiness {
     this.refreshEmbeddingHealth();
 
@@ -2986,7 +3032,18 @@ export class HarnessMemCore {
       };
     }
 
-    if (this.embeddingHealth.status === "healthy") {
+    // §155-A03: 嘘 ready の修正。local ONNX provider は init 前から
+    // status: "healthy" を返すが details は "lazy initialization pending" のまま、
+    // という設計だった。details が warming/lazy/prime-required を示している間は
+    // ready=false に倒し、health/readiness の契約を正直化する。
+    const detailsRaw = this.embeddingHealth.details || "";
+    const detailsLowered = detailsRaw.toLowerCase();
+    const isWarmingFromDetails =
+      detailsLowered.includes("lazy initialization pending") ||
+      detailsLowered.includes("is still warming up") ||
+      detailsLowered.includes("requires async prime");
+
+    if (this.embeddingHealth.status === "healthy" && !isWarmingFromDetails) {
       return {
         required: true,
         ready: true,
@@ -2997,8 +3054,8 @@ export class HarnessMemCore {
       };
     }
 
-    const details = this.embeddingHealth.details || "local embedding provider is not ready";
-    const lowered = details.toLowerCase();
+    const details = detailsRaw || "local embedding provider is not ready";
+    const lowered = detailsLowered;
     const failed =
       lowered.includes("failed to load") ||
       lowered.includes("failed to initialize") ||
@@ -5456,13 +5513,20 @@ export class HarnessMemCore {
 
   async searchPrepared(request: SearchRequest): Promise<ApiResponse> {
     const startedAt = performance.now();
-    const cacheLookup = this.lookupRepeatRecallCache(request, startedAt);
+    const rewriteResult = await rewriteSearchQueryIfEnabled(request.query || "", {
+      safeMode: request.safe_mode === true,
+    });
+    const effectiveRequest = rewriteResult.query === request.query
+      ? request
+      : { ...request, query: rewriteResult.query };
+    const cacheLookup = this.lookupRepeatRecallCache(effectiveRequest, startedAt);
     if (cacheLookup?.response) {
-      this.recordRecallSearchTelemetry(startedAt, request, cacheLookup.response);
+      cacheLookup.response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+      this.recordRecallSearchTelemetry(startedAt, effectiveRequest, cacheLookup.response);
       return cacheLookup.response;
     }
     const cacheCandidate = cacheLookup?.candidate ?? null;
-    const shouldOffloadSearch = shouldRunSearchOutOfProcess(request, {
+    const shouldOffloadSearch = shouldRunSearchOutOfProcess(effectiveRequest, {
       vectorEngine: this.vectorEngine,
       dbPath: this.config.dbPath,
     });
@@ -5472,25 +5536,27 @@ export class HarnessMemCore {
     })
       ? "persistent_worker"
       : "child_process";
-    if (request.safe_mode !== true && request.vector_search !== false && !shouldOffloadSearch) {
-      await this.prepareSearchEmbedding(request.query || "");
+    if (effectiveRequest.safe_mode !== true && effectiveRequest.vector_search !== false && !shouldOffloadSearch) {
+      await this.prepareSearchEmbedding(effectiveRequest.query || "");
     }
     let response: ApiResponse;
     if (shouldOffloadSearch) {
       try {
-        response = await this.runSearchOutOfProcess(request);
+        response = await this.runSearchOutOfProcess(effectiveRequest);
       } catch (error) {
         if (isSearchOffloadQueueFull(error)) {
-          const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
-          this.recordRecallSearchTelemetry(startedAt, request, rejected);
+          const rejected = this.makeSearchOffloadRejectedResponse(startedAt, effectiveRequest, error, offloadMode);
+          rejected.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+          this.recordRecallSearchTelemetry(startedAt, effectiveRequest, rejected);
           return rejected;
         }
         if (isSearchOffloadUnavailable(error)) {
           if (error.reason === "timeout") {
-            response = await this.searchWithSafeFallback(request, `${error.queueName} unavailable: ${error.reason}`, offloadMode);
+            response = await this.searchWithSafeFallback(effectiveRequest, `${error.queueName} unavailable: ${error.reason}`, offloadMode);
           } else {
-            const rejected = this.makeSearchOffloadRejectedResponse(startedAt, request, error, offloadMode);
-            this.recordRecallSearchTelemetry(startedAt, request, rejected);
+            const rejected = this.makeSearchOffloadRejectedResponse(startedAt, effectiveRequest, error, offloadMode);
+            rejected.meta.query_rewrite = queryRewriteMeta(rewriteResult);
+            this.recordRecallSearchTelemetry(startedAt, effectiveRequest, rejected);
             return rejected;
           }
         } else if (
@@ -5499,25 +5565,32 @@ export class HarnessMemCore {
           error.message.includes("search worker request timed out")
         ) {
           response = await this.searchWithSafeFallback(
-            request,
+            effectiveRequest,
             error.message,
             offloadMode,
           );
         } else {
           response = await this.searchWithSafeFallback(
-            request,
+            effectiveRequest,
             error instanceof Error ? error.message : String(error),
             offloadMode,
           );
         }
       }
     } else {
-      response = this.search(request);
+      response = this.search(effectiveRequest);
     }
+    response.meta.query_rewrite = queryRewriteMeta(rewriteResult);
 
-    // S58-008: LLM リランク（HARNESS_MEM_LLM_ENHANCE=true の場合のみ）
-    const llmConfig = buildLlmRerankerConfigFromEnv();
-    if (llmConfig.enabled && response.ok && Array.isArray(response.items) && response.items.length > 0) {
+    // S58-008 legacy / S154-702 local opt-in LLM rerank.
+    const searchLlmConfig = buildSearchLlmRerankerConfigFromEnv();
+    if (
+      effectiveRequest.safe_mode !== true &&
+      searchLlmConfig.enabled &&
+      response.ok &&
+      Array.isArray(response.items) &&
+      response.items.length > 0
+    ) {
       try {
         const candidates = (response.items as Array<Record<string, unknown>>)
           .filter((item) => typeof item.id === "string")
@@ -5530,7 +5603,7 @@ export class HarnessMemCore {
               : 0,
           }));
 
-        const reranked = await llmRerank(request.query || "", candidates, llmConfig);
+        const reranked = await llmRerank(effectiveRequest.query || "", candidates, searchLlmConfig);
         const scoreById = new Map(reranked.map((r) => [r.id, r.score]));
 
         (response.items as Array<Record<string, unknown>>).sort((a, b) => {
@@ -5541,6 +5614,8 @@ export class HarnessMemCore {
 
         // metadata に llm_rerank フラグを追記
         (response.meta as Record<string, unknown>).llm_rerank = true;
+        (response.meta as Record<string, unknown>).llm_rerank_provider = searchLlmConfig.provider;
+        (response.meta as Record<string, unknown>).llm_rerank_top_k = searchLlmConfig.topK ?? 20;
       } catch {
         // graceful degradation: LLM リランク失敗時は元の順序を維持
         (response.meta as Record<string, unknown>).llm_rerank = false;
@@ -5550,8 +5625,9 @@ export class HarnessMemCore {
     }
 
     // S58-009: LLM 不在判定（HARNESS_MEM_LLM_ENHANCE=true かつ no_memory=true のときのみ）
+    const legacyLlmConfig = buildLlmRerankerConfigFromEnv();
     if (
-      llmConfig.enabled &&
+      legacyLlmConfig.enabled &&
       response.no_memory === true &&
       Array.isArray(response.items) &&
       response.items.length > 0
@@ -5567,14 +5643,14 @@ export class HarnessMemCore {
               : 0,
         };
         const apiKey =
-          llmConfig.apiKey ??
-          (llmConfig.provider === "anthropic"
+          legacyLlmConfig.apiKey ??
+          (legacyLlmConfig.provider === "anthropic"
             ? process.env.ANTHROPIC_API_KEY
             : process.env.OPENAI_API_KEY) ??
           "";
-        const checkResult = await llmNoMemoryCheck(request.query || "", topCandidate, {
-          provider: llmConfig.provider,
-          model: llmConfig.model,
+        const checkResult = await llmNoMemoryCheck(effectiveRequest.query || "", topCandidate, {
+          provider: legacyLlmConfig.provider,
+          model: legacyLlmConfig.model,
           apiKey,
         });
         if (checkResult.has_memory) {
@@ -5587,7 +5663,7 @@ export class HarnessMemCore {
     }
 
     const finalResponse = this.storeRepeatRecallCache(cacheCandidate, response);
-    this.recordRecallSearchTelemetry(startedAt, request, finalResponse);
+    this.recordRecallSearchTelemetry(startedAt, effectiveRequest, finalResponse);
     return finalResponse;
   }
 
@@ -8165,6 +8241,34 @@ export class HarnessMemCore {
     return this.obsStore.resumePack(request);
   }
 
+  /**
+   * S154-900: External-channel (Hermes business) read surface.
+   *
+   * Forces include_private=false / include_archived=false, then applies the
+   * external-channel egress policy: observations tagged
+   * private/internal/secret (or with malformed privacy_tags — fail-closed)
+   * are excluded, and surviving title/content pass the deterministic
+   * redactor (stripPrivateBlocks + redactSecrets). All memory reads bound
+   * for an external channel MUST go through this method — resume_pack is
+   * not an external-channel surface (see external-channel-policy.ts).
+   */
+  async searchForExternalChannel(request: SearchRequest): Promise<ApiResponse> {
+    const response = await this.searchPrepared({
+      ...request,
+      include_private: false,
+      include_archived: false,
+    });
+    if (!response.ok || !Array.isArray(response.items)) return response;
+    const sanitized = sanitizeItemsForExternalChannel(response.items as ExternalChannelItem[]);
+    response.items = sanitized.items;
+    (response.meta as Record<string, unknown>).external_channel = {
+      policy: "exclude+redact",
+      blocked_privacy_tags: [...EXTERNAL_CHANNEL_BLOCKED_PRIVACY_TAGS],
+      excluded_count: sanitized.excluded_count,
+    };
+    return response;
+  }
+
   health(options: { includeCounts?: boolean } = {}): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
@@ -8499,7 +8603,12 @@ export class HarnessMemCore {
       limit: request.limit,
     };
 
-    const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options);
+    const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options, {
+      allowLocalDreamingObservationWrites:
+        this.config.backendMode !== "hybrid" && this.config.backendMode !== "managed",
+      materializeObservationDerivedData: (observationId) =>
+        this.eventRec.materializeObservationDerivedData(observationId),
+    });
     this.maybeRunSearchDbMaintenance();
     try {
       this.writeAuditLog("admin.consolidation.run", "consolidation", "", {

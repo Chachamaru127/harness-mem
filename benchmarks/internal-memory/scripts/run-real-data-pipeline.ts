@@ -48,7 +48,7 @@ export interface PipelineArgs {
   dryRun: boolean;
   checkpointPath: string;
   resume: boolean;
-  datasetVersion: "v1" | "v2";
+  datasetVersion: "v1" | "v2" | "v3";
   judgeK: number;
 }
 
@@ -64,7 +64,7 @@ export function parseArgs(argv: string[]): PipelineArgs {
   let dryRun = false;
   let checkpointPath = DEFAULT_CHECKPOINT;
   let resume = false;
-  let datasetVersion: "v1" | "v2" = "v2";
+  let datasetVersion: "v1" | "v2" | "v3" = "v2";
   let judgeK = 5;
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -106,10 +106,20 @@ export function parseArgs(argv: string[]): PipelineArgs {
       i += 1;
     } else if (t === "--dry-run") {
       dryRun = true;
+    } else if (t === "--dataset-version" && i + 1 < argv.length) {
+      const value = argv[i + 1];
+      if (value !== "v1" && value !== "v2" && value !== "v3") {
+        throw new Error(`invalid --dataset-version ${value}`);
+      }
+      datasetVersion = value;
+      i += 1;
     }
   }
 
-  if (datasetVersion === "v2" && !argv.includes("--pilot")) {
+  if (datasetVersion === "v3" && !argv.includes("--pilot")) {
+    useLlmGenerate = argv.includes("--no-llm-generate") ? false : true;
+    if (!argv.includes("--per-competency")) perCompetency = targetPerCompetency;
+  } else if (datasetVersion === "v2" && !argv.includes("--pilot")) {
     useLlmGenerate = argv.includes("--no-llm-generate") ? false : true;
     if (!argv.includes("--per-competency")) perCompetency = targetPerCompetency;
   }
@@ -259,7 +269,7 @@ export async function runRealDataPipeline(args: PipelineArgs): Promise<void> {
 
   const maxCases = args.datasetVersion === "v1" ? 100 : args.targetPerCompetency * 4;
   const capped =
-    args.datasetVersion === "v2"
+    args.datasetVersion === "v2" || args.datasetVersion === "v3"
       ? capByCompetency(accepted, args.targetPerCompetency)
       : accepted.slice(0, maxCases);
 
@@ -268,9 +278,11 @@ export async function runRealDataPipeline(args: PipelineArgs): Promise<void> {
   }
 
   const outName =
-    args.datasetVersion === "v2"
-      ? "coding-memory-real-ja-mixed-v2.jsonl"
-      : "coding-memory-real-ja-mixed-v1.jsonl";
+    args.datasetVersion === "v3"
+      ? "coding-memory-real-ja-mixed-v3.jsonl"
+      : args.datasetVersion === "v2"
+        ? "coding-memory-real-ja-mixed-v2.jsonl"
+        : "coding-memory-real-ja-mixed-v1.jsonl";
   const outPath = join(DATASETS, outName);
   const jsonl = capped.map((c) => JSON.stringify(toBenchmarkCase(c))).join("\n") + "\n";
   const piiLeaks = scanJsonlForPii(jsonl);
@@ -284,7 +296,12 @@ export async function runRealDataPipeline(args: PipelineArgs): Promise<void> {
 
   const counts = competencyCounts(capped);
   const manifest: PipelineManifest = {
-    schema_version: args.datasetVersion === "v2" ? "real-data-pipeline-v2" : "real-data-pipeline-v1",
+    schema_version:
+      args.datasetVersion === "v3"
+        ? "real-data-pipeline-v2"
+        : args.datasetVersion === "v2"
+          ? "real-data-pipeline-v2"
+          : "real-data-pipeline-v1",
     generated_at: new Date().toISOString(),
     corpus_rounds: roundsCount,
     candidates_generated: candidates.length,

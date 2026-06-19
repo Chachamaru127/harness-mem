@@ -13,7 +13,12 @@ export function configureDatabase(
   db.exec("PRAGMA journal_mode=WAL;");
   db.exec("PRAGMA synchronous=NORMAL;");
   db.exec("PRAGMA foreign_keys=ON;");
-  db.exec("PRAGMA busy_timeout=5000;");
+  // §155-A01: consolidation worker と search-worker の SQLITE_BUSY 衝突で
+  // daemon が SIGTERM サイクルに入る事象に対応。busy_timeout を 5s → 30s に拡大し、
+  // env で override 可能に。consolidation の長い transaction (~数秒) 中の search を
+  // 切断ではなく待機に倒す。
+  const busyTimeout = parsePragmaInt(env.HARNESS_MEM_SQLITE_BUSY_TIMEOUT) ?? 30000;
+  db.exec(`PRAGMA busy_timeout=${busyTimeout};`);
 
   const cacheSize = parsePragmaInt(env.HARNESS_MEM_SQLITE_CACHE_SIZE);
   if (cacheSize !== null) {
@@ -1393,36 +1398,45 @@ export function reindexFtsWithSegmentation(
   db: Database,
   segmentFn: (text: string) => string,
 ): number {
-  // Step 1: mem_observations の title_fts / content_fts を更新
-  const rows = db
-    .query<{ rowid: number; id: string; title: string | null; content_redacted: string }, []>(
-      `SELECT rowid, id, title, content_redacted FROM mem_observations`
-    )
-    .all();
+  // S154-101a: the whole re-segment + FTS rebuild runs inside one transaction.
+  // In WAL mode (PRAGMA journal_mode=WAL) concurrent readers keep seeing the old
+  // index via snapshot isolation until COMMIT — there is no empty-index window —
+  // and any failure (e.g. segmentFn throws) rolls the whole rebuild back, leaving
+  // the original title_fts / content_fts and FTS rows intact.
+  const rebuild = db.transaction((): number => {
+    // Step 1: mem_observations の title_fts / content_fts を更新
+    const rows = db
+      .query<{ rowid: number; id: string; title: string | null; content_redacted: string }, []>(
+        `SELECT rowid, id, title, content_redacted FROM mem_observations`
+      )
+      .all();
 
-  const updateStmt = db.query(
-    `UPDATE mem_observations SET title_fts = ?, content_fts = ? WHERE id = ?`
-  );
+    const updateStmt = db.query(
+      `UPDATE mem_observations SET title_fts = ?, content_fts = ? WHERE id = ?`
+    );
 
-  let updated = 0;
-  for (const row of rows) {
-    const titleFts = row.title ? segmentFn(row.title) : null;
-    const contentFts = segmentFn(row.content_redacted);
-    updateStmt.run(titleFts, contentFts, row.id);
-    updated++;
-  }
+    let updated = 0;
+    for (const row of rows) {
+      const titleFts = row.title ? segmentFn(row.title) : null;
+      const contentFts = segmentFn(row.content_redacted);
+      updateStmt.run(titleFts, contentFts, row.id);
+      updated++;
+    }
 
-  // Step 2: FTS テーブルを再構築
-  db.exec(`DELETE FROM mem_observations_fts`);
-  db.exec(`
-    INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
-    SELECT rowid, id,
-           COALESCE(title_fts, title),
-           COALESCE(content_fts, content_redacted)
-    FROM mem_observations;
-  `);
+    // Step 2: FTS テーブルを再構築
+    db.exec(`DELETE FROM mem_observations_fts`);
+    db.exec(`
+      INSERT INTO mem_observations_fts(rowid, observation_id, title, content)
+      SELECT rowid, id,
+             COALESCE(title_fts, title),
+             COALESCE(content_fts, content_redacted)
+      FROM mem_observations;
+    `);
 
-  return updated;
+    return updated;
+  });
+
+  return rebuild();
 }
 
 export function initVecTable(db: Database, vectorDimension: number): boolean {

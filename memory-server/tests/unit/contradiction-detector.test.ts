@@ -204,11 +204,221 @@ describe("contradiction-detector S81-B03", () => {
     expect(result.links_created).toBeGreaterThanOrEqual(3);
     const links = db
       .query(
-        `SELECT from_observation_id, to_observation_id FROM mem_links WHERE relation = 'superseded'`
+        `SELECT from_observation_id, to_observation_id, weight, valid_from, supersedes, invalidated_at
+           FROM mem_links WHERE relation = 'superseded'`
       )
-      .all() as Array<{ from_observation_id: string; to_observation_id: string }>;
+      .all() as Array<{
+        from_observation_id: string;
+        to_observation_id: string;
+        weight: number;
+        valid_from: string | null;
+        supersedes: string | null;
+        invalidated_at: string | null;
+      }>;
     const keys = links.map((l) => pairKey(l.from_observation_id, l.to_observation_id));
-    for (const k of GROUND_TRUTH_PAIRS) expect(keys).toContain(k);
+    for (const k of GROUND_TRUTH_PAIRS) {
+      expect(keys).toContain(k);
+    }
+    for (const link of links) {
+      expect(link.weight).toBe(1);
+      expect(link.valid_from).toBeTruthy();
+      expect(link.supersedes).toBe(link.to_observation_id);
+      expect(link.invalidated_at).toBeNull();
+    }
+  });
+
+  test("writes valid_to and invalidated_at to older observations without rewriting content", async () => {
+    const deployEventTime = "2026-01-20T12:00:00Z";
+    const deployValidFrom = "2026-01-25T09:00:00Z";
+    db.query(`UPDATE mem_observations SET event_time = ?, valid_from = ? WHERE id = 'deploy-b'`).run(
+      deployEventTime,
+      deployValidFrom
+    );
+
+    const contentBefore = new Map<string, string>();
+    for (const id of ["deploy-a", "db-postgres", "rate-v1"]) {
+      const row = db
+        .query(`SELECT content_redacted FROM mem_observations WHERE id = ?`)
+        .get(id) as { content_redacted: string };
+      contentBefore.set(id, row.content_redacted);
+    }
+
+    const result = await detectContradictions(db, { adjudicator: stubAdjudicator() });
+    expect(result.contradictions.length).toBeGreaterThanOrEqual(3);
+
+    for (const pair of result.contradictions) {
+      const newer = db
+        .query(`SELECT event_time, valid_from, observed_at, created_at FROM mem_observations WHERE id = ?`)
+        .get(pair.newer_id) as {
+          event_time: string | null;
+          valid_from: string | null;
+          observed_at: string | null;
+          created_at: string;
+        };
+      const expectedValidTo = newer.valid_from ?? newer.event_time ?? newer.observed_at ?? newer.created_at;
+      const row = db
+        .query(`SELECT content_redacted, valid_to, invalidated_at FROM mem_observations WHERE id = ?`)
+        .get(pair.older_id) as { content_redacted: string; valid_to: string | null; invalidated_at: string | null };
+      expect(row.content_redacted).toBe(contentBefore.get(pair.older_id));
+      expect(row.valid_to).toBe(expectedValidTo);
+      expect(row.invalidated_at).toBeTruthy();
+      expect(row.invalidated_at).not.toBe(row.valid_to);
+    }
+  });
+
+  test("future-effective replacements set valid_to and deferred link but defer invalidated_at", async () => {
+    const fresh = makeDb();
+    insertSession(fresh, "s-future");
+    const common =
+      "scheduled deploy target runs on kubernetes cluster with four replicas autoscaling behind load balancer using rollout strategy";
+    insertObservation(fresh, {
+      id: "future-old",
+      session_id: "s-future",
+      concept: "future-deploy",
+      content: common + " provider aws",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    insertObservation(fresh, {
+      id: "future-new",
+      session_id: "s-future",
+      concept: "future-deploy",
+      content: common + " provider gcp",
+      created_at: "2026-02-01T00:00:00Z",
+    });
+    const futureValidFrom = "2999-01-01T00:00:00Z";
+    fresh.query(`UPDATE mem_observations SET valid_from = ? WHERE id = 'future-new'`).run(futureValidFrom);
+
+    const result = await detectContradictions(fresh, {
+      adjudicator: () => ({ contradiction: true, confidence: 0.95 }),
+      jaccard_threshold: 0.9,
+    });
+
+    expect(result.contradictions).toHaveLength(1);
+    expect(result.links_created).toBe(1);
+    const oldRow = fresh
+      .query(`SELECT valid_to, invalidated_at FROM mem_observations WHERE id = 'future-old'`)
+      .get() as { valid_to: string | null; invalidated_at: string | null };
+    expect(oldRow.valid_to).toBe(futureValidFrom);
+    expect(oldRow.invalidated_at).toBeNull();
+    const link = fresh
+      .query(`SELECT valid_from, invalidated_at FROM mem_links WHERE relation = 'superseded'`)
+      .get() as { valid_from: string | null; invalidated_at: string | null };
+    expect(link.valid_from).toBe(futureValidFrom);
+    expect(link.invalidated_at).toBeNull();
+  });
+
+  test("multiple replacements keep the earliest valid_to cutoff on the older observation", async () => {
+    const fresh = makeDb();
+    insertSession(fresh, "s-earliest-cutoff");
+    const common =
+      "database engine runs production workloads with backups read replicas migration checks failover drills and connection pooling";
+    insertObservation(fresh, {
+      id: "cutoff-old",
+      session_id: "s-earliest-cutoff",
+      concept: "cutoff-db",
+      content: common + " provider mysql",
+      created_at: "2026-01-01T00:00:00Z",
+    });
+    insertObservation(fresh, {
+      id: "cutoff-late",
+      session_id: "s-earliest-cutoff",
+      concept: "cutoff-db",
+      content: common + " provider postgres",
+      created_at: "2026-01-02T00:00:00Z",
+    });
+    insertObservation(fresh, {
+      id: "cutoff-early",
+      session_id: "s-earliest-cutoff",
+      concept: "cutoff-db",
+      content: common + " provider sqlite",
+      created_at: "2026-01-03T00:00:00Z",
+    });
+    fresh.query(`UPDATE mem_observations SET valid_from = ? WHERE id = 'cutoff-late'`).run("2999-02-01T00:00:00Z");
+    fresh.query(`UPDATE mem_observations SET valid_from = ? WHERE id = 'cutoff-early'`).run("2999-01-01T00:00:00Z");
+
+    const result = await detectContradictions(fresh, {
+      adjudicator: () => ({ contradiction: true, confidence: 0.95 }),
+      jaccard_threshold: 0.85,
+    });
+
+    expect(result.contradictions.length).toBeGreaterThanOrEqual(2);
+    const oldRow = fresh
+      .query(`SELECT valid_to, invalidated_at FROM mem_observations WHERE id = 'cutoff-old'`)
+      .get() as { valid_to: string | null; invalidated_at: string | null };
+    expect(oldRow.valid_to).toBe("2999-01-01T00:00:00Z");
+    expect(oldRow.invalidated_at).toBeNull();
+  });
+
+  test("backfilled historical observations do not expire temporally newer current observations", async () => {
+    const fresh = makeDb();
+    insertSession(fresh, "s-backfill");
+    const common =
+      "database engine runs production workloads with backups read replicas migration checks failover drills and connection pooling";
+    insertObservation(fresh, {
+      id: "backfill-current",
+      session_id: "s-backfill",
+      concept: "backfill-db",
+      content: common + " provider postgres",
+      created_at: "2026-03-01T00:00:00Z",
+    });
+    insertObservation(fresh, {
+      id: "backfill-history",
+      session_id: "s-backfill",
+      concept: "backfill-db",
+      content: common + " provider mysql",
+      created_at: "2026-04-01T00:00:00Z",
+    });
+    fresh.query(`UPDATE mem_observations SET event_time = ? WHERE id = 'backfill-current'`).run("2026-03-01T00:00:00Z");
+    fresh.query(`UPDATE mem_observations SET event_time = ? WHERE id = 'backfill-history'`).run("2025-01-01T00:00:00Z");
+
+    const result = await detectContradictions(fresh, {
+      adjudicator: () => ({ contradiction: true, confidence: 0.95 }),
+      jaccard_threshold: 0.85,
+    });
+
+    expect(result.contradictions).toHaveLength(1);
+    expect(result.links_created).toBe(0);
+    const currentRow = fresh
+      .query(`SELECT valid_to, invalidated_at FROM mem_observations WHERE id = 'backfill-current'`)
+      .get() as { valid_to: string | null; invalidated_at: string | null };
+    expect(currentRow.valid_to).toBeNull();
+    expect(currentRow.invalidated_at).toBeNull();
+  });
+
+  test("same-effective-time corrections still supersede the earlier ingested observation", async () => {
+    const fresh = makeDb();
+    insertSession(fresh, "s-same-effective");
+    const common =
+      "database engine runs production workloads with backups read replicas migration checks failover drills and connection pooling";
+    insertObservation(fresh, {
+      id: "same-effective-old",
+      session_id: "s-same-effective",
+      concept: "same-effective-db",
+      content: common + " provider mysql",
+      created_at: "2026-03-01T00:00:00Z",
+    });
+    insertObservation(fresh, {
+      id: "same-effective-correction",
+      session_id: "s-same-effective",
+      concept: "same-effective-db",
+      content: common + " provider postgres",
+      created_at: "2026-03-02T00:00:00Z",
+    });
+    const effectiveAt = "2026-03-01T00:00:00Z";
+    fresh.query(`UPDATE mem_observations SET event_time = ? WHERE id IN ('same-effective-old', 'same-effective-correction')`).run(effectiveAt);
+
+    const result = await detectContradictions(fresh, {
+      adjudicator: () => ({ contradiction: true, confidence: 0.95 }),
+      jaccard_threshold: 0.85,
+    });
+
+    expect(result.contradictions).toHaveLength(1);
+    expect(result.links_created).toBe(1);
+    const oldRow = fresh
+      .query(`SELECT valid_to, invalidated_at FROM mem_observations WHERE id = 'same-effective-old'`)
+      .get() as { valid_to: string | null; invalidated_at: string | null };
+    expect(oldRow.valid_to).toBe(effectiveAt);
+    expect(oldRow.invalidated_at).toBeTruthy();
   });
 
   test("no contradictions / no links when adjudicator always disagrees", async () => {
@@ -221,6 +431,10 @@ describe("contradiction-detector S81-B03", () => {
       .query(`SELECT COUNT(*) AS c FROM mem_links WHERE relation = 'superseded'`)
       .get() as { c: number };
     expect(links.c).toBe(0);
+    const invalidated = db
+      .query(`SELECT COUNT(*) AS c FROM mem_observations WHERE valid_to IS NOT NULL OR invalidated_at IS NOT NULL`)
+      .get() as { c: number };
+    expect(invalidated.c).toBe(0);
   });
 
   test("rejects verdicts below min_confidence", async () => {

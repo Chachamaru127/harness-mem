@@ -1,6 +1,6 @@
 import type { BenchmarkCase } from "../lib/types";
 import type { AdapterQueryResult, AdapterRunContext } from "../lib/types";
-import { httpSearchQuery } from "./http-search";
+import { httpIngestMemories, httpSearchQuery } from "./http-search";
 import type { MemoryBenchmarkAdapter } from "./types";
 
 export class SupermemoryAdapter implements MemoryBenchmarkAdapter {
@@ -9,6 +9,7 @@ export class SupermemoryAdapter implements MemoryBenchmarkAdapter {
   private readonly apiKey = process.env.SUPERMEMORY_API_KEY?.trim() ?? "";
   private readonly baseUrl =
     process.env.SUPERMEMORY_BASE_URL?.trim() ?? "https://api.supermemory.ai";
+  private readonly ingestPath = process.env.SUPERMEMORY_INGEST_PATH?.trim() ?? "/v3/documents";
 
   private missingCredentials(): AdapterQueryResult {
     return {
@@ -19,8 +20,19 @@ export class SupermemoryAdapter implements MemoryBenchmarkAdapter {
     };
   }
 
-  async prepareCase(): Promise<void> {
-    // Supermemory ingest is account-scoped; benchmark assumes pre-seeded or API search-only for Phase 1.
+  async prepareCase(caseRow: BenchmarkCase, context: AdapterRunContext): Promise<void> {
+    if (!this.apiKey) return;
+    await httpIngestMemories(
+      {
+        competitorId: this.id,
+        baseUrl: this.baseUrl,
+        token: this.apiKey,
+        ingestPath: this.ingestPath,
+        projectField: "containerTag",
+      },
+      caseRow,
+      `${context.project_prefix}:${caseRow.project}`,
+    );
   }
 
   async query(caseRow: BenchmarkCase, context: AdapterRunContext): Promise<AdapterQueryResult> {
@@ -42,6 +54,7 @@ export class SupermemoryAdapter implements MemoryBenchmarkAdapter {
         ...(result.metadata ?? {}),
         external_api_required: true,
         cost_proxy: "per_request",
+        ingest_path: this.ingestPath,
       },
     };
   }

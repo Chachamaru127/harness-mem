@@ -1,0 +1,15 @@
+Creative Commons Attribution 4.0 International (CC-BY-4.0)
+
+CodingMemory Bench dataset (coding-memory-real-ja-mixed-v3)
+
+PII NOTICE: All personal identifiers in this dataset were irreversibly masked
+before publication. Mapping tables were not retained. Do not attempt
+re-identification.
+
+You are free to share and adapt this dataset under CC-BY-4.0 with attribution:
+
+  CodingMemory Bench — harness-mem project
+  https://github.com/tachibanashuuta/harness-mem
+
+The harness-mem application source code remains under BUSL-1.1. This LICENSE
+applies to the masked JSONL dataset files and dataset card only.

@@ -364,6 +364,58 @@ const SEARCH_QUERY_ALIAS_RULES: Array<{ pattern: RegExp; expansions: string[] }>
   },
 ];
 
+const CJK_LEXICAL_READING_RULES: Array<{ pattern: RegExp; tokens: string[] }> = [
+  { pattern: /きおく/u, tokens: ["記憶"] },
+  { pattern: /さくいん/u, tokens: ["索引"] },
+  { pattern: /けんさく/u, tokens: ["検索"] },
+  { pattern: /あっしゅく/u, tokens: ["圧縮"] },
+  { pattern: /なおす/u, tokens: ["直す"] },
+  { pattern: /ほうしん/u, tokens: ["方針"] },
+  { pattern: /せっけい/u, tokens: ["設計"] },
+  { pattern: /きょうかい/u, tokens: ["境界"] },
+  { pattern: /ひょう/u, tokens: ["表"] },
+];
+
+const CJK_DUAL_QUERY_RULES: Array<{ pattern: RegExp; tokens: string[] }> = [
+  { pattern: /再ランク|さいらんく|再順位/u, tokens: ["rerank", "ranking"] },
+  { pattern: /候補/u, tokens: ["candidate", "candidates"] },
+  { pattern: /融合|合成/u, tokens: ["fusion", "blend"] },
+  { pattern: /係数|重み/u, tokens: ["weight", "weights"] },
+  { pattern: /二重クエリ|二重検索|二重取得/u, tokens: ["dual", "query", "retrieval"] },
+  { pattern: /正規化/u, tokens: ["normalization", "normalize"] },
+  { pattern: /英語強調|英語/u, tokens: ["english", "emphasis"] },
+  { pattern: /関数名|コードトークン/u, tokens: ["function", "code", "token"] },
+  { pattern: /保持/u, tokens: ["preserve", "keep"] },
+];
+
+export function buildCjkLexicalBoostTokens(query: string): string[] {
+  if (!isCjkLexicalBoostEnabled()) return [];
+  const normalized = normalizeCjkText(query).toLowerCase();
+  if (!HAS_CJK.test(normalized)) return [];
+
+  const tokens: string[] = [];
+  for (const rule of CJK_LEXICAL_READING_RULES) {
+    if (rule.pattern.test(normalized)) {
+      tokens.push(...rule.tokens);
+    }
+  }
+  return dedupePreserveOrder(tokens);
+}
+
+export function buildCjkDualQueryTokens(query: string): string[] {
+  if (!isDualQueryNormalizationEnabled()) return [];
+  const normalized = normalizeCjkText(query).toLowerCase();
+  if (!HAS_CJK.test(normalized)) return [];
+
+  const tokens: string[] = [];
+  for (const rule of CJK_DUAL_QUERY_RULES) {
+    if (rule.pattern.test(normalized)) {
+      tokens.push(...rule.tokens);
+    }
+  }
+  return dedupePreserveOrder(tokens);
+}
+
 // ---------------------------------------------------------------------------
 // §45: 日本語形態素解析 (Intl.Segmenter)
 // ---------------------------------------------------------------------------
@@ -377,6 +429,38 @@ const KANJI_KATAKANA_MIX = /[\u4E00-\u9FFF].*[\u30A0-\u30FF]|[\u30A0-\u30FF].*[\
 const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
 
 /**
+ * S154-150: deterministic NFKC off switch. Default/unset keeps normalization ON.
+ * Set HARNESS_MEM_DISABLE_CJK_NORMALIZE=1 to bypass NFKC and return original text.
+ */
+export function isCjkNormalizationEnabled(): boolean {
+  return !envFlag("HARNESS_MEM_DISABLE_CJK_NORMALIZE", false);
+}
+
+/** S154-101b: lexical boost toggle (default OFF). Behavior wired in 101b. */
+export function isCjkLexicalBoostEnabled(): boolean {
+  return envFlag("HARNESS_MEM_LEXICAL_BOOST", false);
+}
+
+/** S154-102: dual-query normalization toggle (default OFF). Behavior wired in 102. */
+export function isDualQueryNormalizationEnabled(): boolean {
+  return envFlag("HARNESS_MEM_DUAL_QUERY", false);
+}
+
+/**
+ * S154-101a: Unicode NFKC normalization to canonicalize CJK variant forms before
+ * segmentation / FTS query building. Folds halfwidth katakana (\uFF76\uFF80\uFF76\uFF85 \u2192 \u30AB\u30BF\u30AB\u30CA),
+ * fullwidth ASCII/digits (\uFF21\uFF11 \u2192 A1), and compatibility forms so the index and the
+ * query agree on one representation. Applied to BOTH content and query sides; must
+ * be called before HAS_CJK checks because halfwidth katakana (U+FF61\u2013FF9F) is
+ * outside the HAS_CJK range until it is folded. No morphological analyzer added.
+ */
+export function normalizeCjkText(text: string): string {
+  if (!text) return text;
+  if (!isCjkNormalizationEnabled()) return text;
+  return text.normalize("NFKC");
+}
+
+/**
  * Intl.Segmenter で日本語テキストを単語分割し、FTS5 用のスペース区切り文字列を返す。
  * カタカナ複合語（4文字以上）はサブワード（2-3gram）も追加して部分一致を可能にする。
  * 漢字+カタカナ混在語は構成要素に分離する。
@@ -385,6 +469,9 @@ const HAS_CJK = /[\u3040-\u30FF\u3400-\u9FFF]/;
  */
 export function segmentJapaneseForFts(text: string): string {
   if (!text || !jaSegmenter) return text;
+  // S154-101a: NFKC first — folds halfwidth katakana into the HAS_CJK range so it
+  // is segmented and matches the (normalized) query side.
+  text = normalizeCjkText(text);
   // CJK 文字を含まないテキストはそのまま返す（英語のみの場合）
   if (!HAS_CJK.test(text)) return text;
 
@@ -443,6 +530,9 @@ function expandCjkBigrams(tokens: string[]): string[] {
 }
 
 export function tokenize(text: string): string[] {
+  // S154-101a: normalize CJK variants once so rawTokens, code tokens, and the
+  // segmented path all agree on one form (idempotent with segmentJapaneseForFts).
+  text = normalizeCjkText(text);
   const codeTokens = buildCodeAwareTokens(text);
   // §45: Intl.Segmenter で日本語部分を単語分割してからトークン化
   // segmentJapaneseForFts はスペースで分割するので、元の英数字トークンも保持される
@@ -597,7 +687,12 @@ export function expandSearchQuery(query: string): string {
 }
 
 export function buildSearchTokens(query: string): string[] {
-  return dedupePreserveOrder(tokenize(expandSearchQuery(query)));
+  const expandedQuery = expandSearchQuery(query);
+  return dedupePreserveOrder([
+    ...buildCjkLexicalBoostTokens(expandedQuery),
+    ...buildCjkDualQueryTokens(expandedQuery),
+    ...tokenize(expandedQuery),
+  ]);
 }
 
 export function buildFtsQuery(query: string, mode: "hybrid" | "and" = "hybrid"): string {
@@ -820,11 +915,13 @@ export interface VectorSearchResult {
   migrationWarning?: string;
   degradedReasons?: string[];
   prefilter?: {
-    mode: "lexical_candidate_rerank";
+    mode: "lexical_candidate_rerank" | "binary_hamming_prefilter";
     candidates: number;
     matched_rows: number;
     variant_count: number;
   };
+  /** s154-B: true when HARNESS_MEM_BINARY_PREFILTER=1 and 2-pass fired */
+  binary_prefilter_active?: boolean;
 }
 
 export interface SearchCandidate {

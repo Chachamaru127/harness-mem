@@ -2,7 +2,12 @@ import { describe, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { createEmbeddingProviderRegistry, detectLanguage, selectModelByLanguage } from "../../src/embedding/registry";
+import {
+  createEmbeddingProviderRegistry,
+  detectLanguage,
+  resolveEmbeddingShadowProviders,
+  selectModelByLanguage,
+} from "../../src/embedding/registry";
 import { createAdaptiveEmbeddingProvider } from "../../src/embedding/adaptive-provider";
 import { createFallbackEmbeddingProvider } from "../../src/embedding/fallback";
 import { MODEL_CATALOG } from "../../src/embedding/model-catalog";
@@ -137,6 +142,13 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(ruriEntry?.dimension).toBe(512);
   });
 
+  test("model catalog に bge-m3 が登録されている", () => {
+    const bgeM3Entry = MODEL_CATALOG.find((m) => m.id === "bge-m3");
+    expect(bgeM3Entry).toBeDefined();
+    expect(bgeM3Entry?.language).toBe("multilingual");
+    expect(bgeM3Entry?.dimension).toBe(1024);
+  });
+
   test("detectLanguage: 日本語テキストを ja と判定する", () => {
     expect(detectLanguage("今日はとても良い天気です")).toBe("ja");
     expect(detectLanguage("データベースはPostgreSQLを使用しています")).toBe("ja");
@@ -232,6 +244,69 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
       });
       expect(registry.provider.name).toBe("fallback");
       expect(registry.warnings).toEqual([]);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: provider=local は bge-m3 を local ONNX provider として解決する", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-bge-m3-provider-"));
+    const modelDir = join(modelsDir, "bge-m3");
+    mkdirSync(join(modelDir, "onnx"), { recursive: true });
+    writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+    writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "local",
+        dimension: 1024,
+        localModelId: "bge-m3",
+        localModelsDir: modelsDir,
+      });
+      expect(registry.provider.name).toBe("local");
+      expect(registry.provider.model).toBe("bge-m3");
+      expect(registry.provider.dimension).toBe(1024);
+      expect(registry.warnings).toEqual([]);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: embedding shadow candidates are local-only and require separate vector tables", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-shadow-candidates-"));
+    const installModel = (modelId: string) => {
+      const modelDir = join(modelsDir, modelId);
+      mkdirSync(join(modelDir, "onnx"), { recursive: true });
+      writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+      writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+    };
+    installModel("ruri-v3-30m");
+
+    try {
+      // S154-502: the default shadow set is the 2026 generation; judged or
+      // demoted models (ruri / bge-m3) remain reachable via explicit modelIds.
+      const candidates = resolveEmbeddingShadowProviders({
+        currentVectorModel: "local:multilingual-e5",
+        currentVectorDimension: 384,
+        localModelsDir: modelsDir,
+      });
+      expect(candidates.map((candidate) => candidate.model_id)).toEqual([
+        "qwen3-embedding-0.6b",
+        "granite-embedding-311m-r2",
+      ]);
+      expect(candidates.every((candidate) => candidate.provider === "local")).toBe(true);
+      expect(candidates.every((candidate) => candidate.inference === "onnx")).toBe(true);
+      expect(candidates.every((candidate) => candidate.local_only === true)).toBe(true);
+      expect(candidates.every((candidate) => candidate.separate_vector_table_required === true)).toBe(true);
+
+      const explicit = resolveEmbeddingShadowProviders({
+        currentVectorModel: "local:multilingual-e5",
+        currentVectorDimension: 384,
+        localModelsDir: modelsDir,
+        modelIds: ["ruri-v3-30m", "bge-m3"],
+      });
+      expect(explicit.find((candidate) => candidate.model_id === "ruri-v3-30m")?.status).toBe("ready");
+      expect(explicit.find((candidate) => candidate.model_id === "bge-m3")?.status).toBe("not_installed");
     } finally {
       rmSync(modelsDir, { recursive: true, force: true });
     }

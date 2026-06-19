@@ -15,6 +15,8 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
   private core: HarnessMemCore | null = null;
   private tempDir: string | null = null;
   private readonly prepared = new Set<string>();
+  /** Dedupe seeded memories across cases that share the same row corpus. */
+  private readonly seededMemoryKeys = new Set<string>();
   /** Dedupe passage embedding primes across cases (real-data v2 has repeated corpus). */
   private readonly primedPassages = new Set<string>();
 
@@ -76,13 +78,43 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     return `${context.project_prefix}:${caseRow.project}`;
   }
 
+  /** Shared row session for MemoryAgentBench; per-case session for other datasets. */
+  private benchSessionId(caseRow: BenchmarkCase): string {
+    const mabMemory = caseRow.memories.find((memory) => /^mab-.+-m\d+$/.test(memory.id));
+    if (mabMemory) {
+      return `bench-${mabMemory.id.replace(/-m\d+$/, "")}`;
+    }
+    if (caseRow.case_id.startsWith("mab-") && caseRow.source_split) {
+      const prefix = `mab-${caseRow.source_split}-`;
+      if (caseRow.case_id.startsWith(prefix)) {
+        const row = caseRow.case_id.slice(prefix.length).split("-")[0];
+        if (row) return `bench-mab-${caseRow.source_split}-${row}`;
+      }
+    }
+    return `bench-${caseRow.case_id}`;
+  }
+
+  /** @internal benchmark tests only */
+  benchSessionIdForCase(caseRow: BenchmarkCase): string {
+    return this.benchSessionId(caseRow);
+  }
+
+  /** @internal benchmark tests only */
+  seededMemoryKeyCount(): number {
+    return this.seededMemoryKeys.size;
+  }
+
   async prepareCase(caseRow: BenchmarkCase, context: AdapterRunContext): Promise<void> {
     const key = `${context.competitor_id}:${caseRow.case_id}`;
     if (this.prepared.has(key)) return;
 
     const core = await this.ensureCore();
     const project = this.scopedProject(caseRow, context);
+    const sessionId = this.benchSessionId(caseRow);
     for (const memory of caseRow.memories) {
+      const memoryKey = `${project}:${memory.id}`;
+      if (this.seededMemoryKeys.has(memoryKey)) continue;
+
       const passageKey = `${memory.content.length}:${memory.content.slice(0, 256)}`;
       if (!this.primedPassages.has(passageKey)) {
         await core.primeEmbedding(memory.content, "passage");
@@ -92,13 +124,14 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
         event_id: memory.id,
         platform: "cursor",
         project,
-        session_id: `bench-${caseRow.case_id}`,
+        session_id: sessionId,
         event_type: "user_prompt",
         ts: memory.timestamp ?? new Date().toISOString(),
         payload: { content: memory.content },
         tags: caseRow.workspace_id ? [`workspace:${caseRow.workspace_id}`] : [],
         privacy_tags: [],
       });
+      this.seededMemoryKeys.add(memoryKey);
     }
     this.prepared.add(key);
   }
@@ -108,16 +141,25 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     const project = this.scopedProject(caseRow, context);
     await core.primeEmbedding(caseRow.query, "query");
     const started = performance.now();
-    const response = core.search({
+    const useLlmRerank = process.env.HARNESS_MEM_LLM_RERANK === "1";
+    // S154-703: HARNESS_MEM_BENCH_REAL_PATH=1 runs the real prepared-search path
+    // WITHOUT the reranker, so rerank A/Bs can separate "leaving the safe_mode
+    // substring scan" from the reranker's own contribution.
+    const useRealPath = useLlmRerank || process.env.HARNESS_MEM_BENCH_REAL_PATH === "1";
+    const request = {
       query: caseRow.query,
       project,
-      session_id: `bench-${caseRow.case_id}`,
+      session_id: this.benchSessionId(caseRow),
       limit: 10,
       strict_project: true,
-      safe_mode: true,
+      safe_mode: !useRealPath,
       vector_search: false,
+      graph_weight: 0,
       question_kind: "hybrid",
-    });
+    } as const;
+    const response = useRealPath
+      ? await core.searchPrepared(request)
+      : core.search(request);
     const latency_ms = performance.now() - started;
     const items = ((response.items ?? []) as Array<Record<string, unknown>>);
     const hits = items.map((item, index) => ({
@@ -144,6 +186,7 @@ export class HarnessMemAdapter implements MemoryBenchmarkAdapter {
     }
     this.tempDir = null;
     this.prepared.clear();
+    this.seededMemoryKeys.clear();
     this.primedPassages.clear();
   }
 }

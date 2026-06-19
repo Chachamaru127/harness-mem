@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, statSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, statSync, readdirSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { findModelById, type ModelCatalogEntry } from "./model-catalog";
@@ -46,28 +46,117 @@ function dirSizeBytes(dir: string): number {
   return total;
 }
 
-async function downloadFile(url: string, destPath: string): Promise<void> {
+// S154-504: redirects are followed MANUALLY. Bun's automatic redirect
+// handling hangs on the HF LFS 302 to cas-bridge.xethub.hf.co (observed
+// 2026-06-12: auto-follow stalls indefinitely while a manual two-step fetch
+// retrieves the same 33MB file in ~0.6s).
+async function fetchFollowingRedirects(
+  url: string,
+  signal: AbortSignal,
+  maxRedirects = 5
+): Promise<Response> {
+  let currentUrl = url;
+  for (let hop = 0; hop <= maxRedirects; hop += 1) {
+    const response = await fetch(currentUrl, {
+      headers: { "User-Agent": "harness-mem/1.0" },
+      redirect: "manual",
+      signal,
+    });
+    if ([301, 302, 303, 307, 308].includes(response.status)) {
+      const location = response.headers.get("location");
+      if (!location) {
+        throw new Error(`HTTP ${response.status} redirect without Location from ${currentUrl}`);
+      }
+      currentUrl = new URL(location, currentUrl).toString();
+      continue;
+    }
+    return response;
+  }
+  throw new Error(`too many redirects fetching ${url}`);
+}
+
+// S154-504: streaming download with bounded memory — the body is consumed
+// chunk-by-chunk through a FileSink so whole model files (bge-m3 2.27GB /
+// qwen3 fp32 2.4GB) never sit fully in RSS. Bun.write(path, Response) is NOT
+// used: against the HF CDN it hangs without consuming the body (observed
+// 2026-06-12, same Bun version that streams fine via reader+FileSink).
+// expectedBytes (from the HF tree listing) makes partial downloads
+// fail-closed: size mismatch deletes the file and throws instead of leaving
+// a truncated model that "installs".
+async function downloadFile(url: string, destPath: string, expectedBytes?: number): Promise<void> {
   const destDir = dirname(destPath);
   mkdirSync(destDir, { recursive: true });
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10 * 60 * 1000); // 10 min timeout
+  const timeoutId = setTimeout(() => controller.abort(), 30 * 60 * 1000); // 30 min timeout
 
   try {
-    const response = await fetch(url, {
-      headers: { "User-Agent": "harness-mem/1.0" },
-      signal: controller.signal,
-    });
+    const response = await fetchFollowingRedirects(url, controller.signal);
 
     if (!response.ok) {
       throw new Error(`HTTP ${response.status} fetching ${url}`);
     }
+    if (!response.body) {
+      throw new Error(`empty response body fetching ${url}`);
+    }
 
-    const buffer = await response.arrayBuffer();
-    await Bun.write(destPath, buffer);
+    const sink = Bun.file(destPath).writer({ highWaterMark: 4 * 1024 * 1024 });
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const pending = sink.write(value);
+        if (typeof pending !== "number") {
+          await pending;
+        }
+      }
+      await sink.end();
+    } catch (error) {
+      try {
+        await sink.end();
+      } catch {
+        // best-effort close before removing the partial file
+      }
+      rmSync(destPath, { force: true });
+      throw error;
+    }
+
+    if (typeof expectedBytes === "number" && expectedBytes > 0) {
+      const written = statSync(destPath).size;
+      if (written !== expectedBytes) {
+        rmSync(destPath, { force: true });
+        throw new Error(
+          `partial download for ${url}: wrote ${written} bytes, expected ${expectedBytes} (removed; re-run pull)`
+        );
+      }
+    }
   } finally {
     clearTimeout(timeoutId);
   }
+}
+
+interface HfTreeEntry {
+  path: string;
+  size?: number;
+}
+
+// HF tree listing for the repo's onnx/ directory. Used to discover the
+// ONNX external-data sidecar (`<file>_data`, required for >2GB protobuf
+// models such as qwen3-embedding fp32) and the expected file sizes.
+// Fail-closed: pull requires network anyway, so a failed listing aborts
+// instead of guessing whether a sidecar exists.
+async function listOnnxTree(repo: string): Promise<HfTreeEntry[]> {
+  const url = `https://huggingface.co/api/models/${repo}/tree/main/onnx`;
+  const response = await fetch(url, { headers: { "User-Agent": "harness-mem/1.0" } });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} listing ${url} (cannot verify ONNX file layout)`);
+  }
+  const entries = (await response.json()) as HfTreeEntry[];
+  if (!Array.isArray(entries)) {
+    throw new Error(`unexpected tree response for ${url}`);
+  }
+  return entries;
 }
 
 export class ModelManager {
@@ -128,19 +217,53 @@ export class ModelManager {
     for (const file of TOKENIZER_FILES) {
       const url = buildHuggingFaceUrl(entry.tokenizerRepo, file);
       const dest = join(modelDir, file);
-      if (existsSync(dest)) {
+      if (existsSync(dest) && statSync(dest).size > 0) {
         continue;
       }
       process.stderr.write(`[harness-mem] Downloading ${file} from ${entry.tokenizerRepo}...\n`);
       await downloadFile(url, dest);
     }
 
-    // Download ONNX model from onnxRepo (stored in onnx/model.onnx)
+    // S154-504: resolve the ONNX layout from the repo tree. Supports
+    // catalog onnxFile variants (e.g. model_quint8_avx2.onnx) and the
+    // external-data format (main file + `<file>_data` sidecar).
+    const onnxFile = entry.onnxFile ?? "model.onnx";
+    const tree = await listOnnxTree(entry.onnxRepo);
+    const mainEntry = tree.find((item) => item.path === `onnx/${onnxFile}`);
+    if (!mainEntry) {
+      throw new Error(
+        `onnx/${onnxFile} not found in ${entry.onnxRepo} (tree: ${tree.map((item) => item.path).join(", ") || "empty"})`
+      );
+    }
+    const sidecarEntry = tree.find((item) => item.path === `onnx/${onnxFile}_data`);
+
+    // The main file is always stored locally as onnx/model.onnx (what
+    // Transformers.js loads by default). The sidecar keeps its original
+    // filename because the ONNX protobuf references it by name.
     const onnxDest = join(modelDir, ONNX_FILE);
-    if (!existsSync(onnxDest)) {
-      const onnxUrl = buildHuggingFaceUrl(entry.onnxRepo, "onnx/model.onnx");
-      process.stderr.write(`[harness-mem] Downloading onnx/model.onnx from ${entry.onnxRepo} (~${Math.round(entry.sizeBytes / 1_000_000)}MB)...\n`);
-      await downloadFile(onnxUrl, onnxDest);
+    const needMain =
+      !existsSync(onnxDest) ||
+      (typeof mainEntry.size === "number" && statSync(onnxDest).size !== mainEntry.size);
+    if (needMain) {
+      const onnxUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}`);
+      process.stderr.write(
+        `[harness-mem] Downloading onnx/${onnxFile} from ${entry.onnxRepo} (~${Math.round((mainEntry.size ?? entry.sizeBytes) / 1_000_000)}MB)...\n`
+      );
+      await downloadFile(onnxUrl, onnxDest, mainEntry.size);
+    }
+
+    if (sidecarEntry) {
+      const sidecarDest = join(modelDir, "onnx", `${onnxFile}_data`);
+      const needSidecar =
+        !existsSync(sidecarDest) ||
+        (typeof sidecarEntry.size === "number" && statSync(sidecarDest).size !== sidecarEntry.size);
+      if (needSidecar) {
+        const sidecarUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}_data`);
+        process.stderr.write(
+          `[harness-mem] Downloading onnx/${onnxFile}_data from ${entry.onnxRepo} (~${Math.round((sidecarEntry.size ?? 0) / 1_000_000)}MB, external-data sidecar)...\n`
+        );
+        await downloadFile(sidecarUrl, sidecarDest, sidecarEntry.size);
+      }
     }
 
     return modelDir;

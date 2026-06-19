@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { maskTextInline, TsMaskCounters } from "./pii-mask-inline";
+import { normalizeDbPlatform } from "./codingmemory-platform";
 
 export interface CorpusRound {
   round_id: string;
@@ -9,6 +10,7 @@ export interface CorpusRound {
   project: string;
   timestamp: string;
   language_hint: "ja" | "en" | "mixed";
+  source_platform?: "claude" | "codex" | "cursor" | "mixed" | "unknown";
   turns: Array<{
     turn_id: string;
     observation_id: string;
@@ -48,7 +50,7 @@ export function exportMaskedCorpus(options: ExportCorpusOptions = {}): CorpusRou
   const rows = db
     .query(
       `
-      SELECT id, project, session_id, content_redacted, content, created_at,
+      SELECT id, project, session_id, platform, content_redacted, content, created_at,
              supersedes, observation_type
       FROM mem_observations
       WHERE archived_at IS NULL
@@ -61,6 +63,7 @@ export function exportMaskedCorpus(options: ExportCorpusOptions = {}): CorpusRou
     id: string;
     project: string;
     session_id: string;
+    platform: string;
     content_redacted: string;
     content: string;
     created_at: string;
@@ -95,12 +98,23 @@ export function exportMaskedCorpus(options: ExportCorpusOptions = {}): CorpusRou
         supersedes: row.supersedes ?? undefined,
         observation_type: row.observation_type,
       }));
+      const platforms = chunk
+        .map((row) => normalizeDbPlatform(row.platform))
+        .filter((value): value is NonNullable<typeof value> => value !== null);
+      const platformSet = new Set(platforms);
+      const source_platform =
+        platformSet.size === 0
+          ? undefined
+          : platformSet.size === 1
+            ? [...platformSet][0]
+            : "mixed";
       rounds.push({
         round_id: `${sessionId}-${i}`,
         session_id: sessionId,
         project: maskTextInline(chunk[0].project, counters),
         timestamp: chunk[0].created_at,
         language_hint: lang,
+        source_platform,
         turns,
       });
     }

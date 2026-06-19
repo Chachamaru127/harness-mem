@@ -82,4 +82,13 @@ describe("harness-mem backup evidence CLI contract", () => {
     expect(OFFLINE).toContain("admin.vector_cache_prune.execute");
     expect(OFFLINE).toContain("DELETE FROM mem_vectors");
   });
+
+  test("offline maintenance runner supports live-daemon coexistence hardening", () => {
+    expect(OFFLINE).toContain("configureBunCustomSqliteForSqliteVec");
+    expect(OFFLINE).toContain("executeTouchesVec0Sidecar");
+    expect(OFFLINE).toContain("deleteSqliteVecRowsForHardPurge");
+    expect(OFFLINE).toContain("--allow-running-daemon");
+    expect(OFFLINE).toContain("PRAGMA busy_timeout = 30000");
+    expect(OFFLINE).toContain("hard-purge vec0 sidecar deletes may be no-ops");
+  });
 });

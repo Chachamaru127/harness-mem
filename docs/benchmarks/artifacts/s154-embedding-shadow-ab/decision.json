@@ -1,0 +1,46 @@
+{
+  "schema_version": "s154-403-switch-decision.v2",
+  "active_model": "multilingual-e5",
+  "decisions": [
+    {
+      "candidate_model": "qwen3-embedding-0.6b",
+      "config": "native",
+      "decision": "switch",
+      "skip_reason": null,
+      "composite_delta": 0.1979,
+      "switch_delta_threshold": 0.05,
+      "effective_threshold": 0.0936,
+      "ci95_width": 0.0936
+    },
+    {
+      "candidate_model": "qwen3-embedding-0.6b",
+      "config": "mrl-384",
+      "decision": "switch",
+      "skip_reason": null,
+      "composite_delta": 0.1975,
+      "switch_delta_threshold": 0.05,
+      "effective_threshold": 0.0971,
+      "ci95_width": 0.0971
+    },
+    {
+      "candidate_model": "granite-embedding-311m-r2",
+      "config": "native",
+      "decision": "switch",
+      "skip_reason": null,
+      "composite_delta": 0.2043,
+      "switch_delta_threshold": 0.05,
+      "effective_threshold": 0.0879,
+      "ci95_width": 0.0879
+    },
+    {
+      "candidate_model": "granite-embedding-311m-r2",
+      "config": "mrl-384",
+      "decision": "switch",
+      "skip_reason": null,
+      "composite_delta": 0.2015,
+      "switch_delta_threshold": 0.05,
+      "effective_threshold": 0.0885,
+      "ci95_width": 0.0885
+    }
+  ]
+}

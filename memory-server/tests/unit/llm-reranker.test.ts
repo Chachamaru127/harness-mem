@@ -7,6 +7,7 @@ import { describe, expect, test, mock, beforeEach, afterEach } from "bun:test";
 import {
   llmRerank,
   buildLlmRerankerConfigFromEnv,
+  buildSearchLlmRerankerConfigFromEnv,
   combineScores,
   type LlmRerankerConfig,
   type LlmRerankCandidate,
@@ -57,6 +58,12 @@ describe("buildLlmRerankerConfigFromEnv", () => {
       HARNESS_MEM_LLM_MODEL: process.env.HARNESS_MEM_LLM_MODEL,
       HARNESS_MEM_LLM_API_KEY: process.env.HARNESS_MEM_LLM_API_KEY,
       HARNESS_MEM_LLM_TOP_K: process.env.HARNESS_MEM_LLM_TOP_K,
+      HARNESS_MEM_LLM_RERANK: process.env.HARNESS_MEM_LLM_RERANK,
+      HARNESS_MEM_LLM_RERANK_MODEL: process.env.HARNESS_MEM_LLM_RERANK_MODEL,
+      HARNESS_MEM_LLM_RERANK_TOP_K: process.env.HARNESS_MEM_LLM_RERANK_TOP_K,
+      HARNESS_MEM_LLM_RERANK_OLLAMA_HOST: process.env.HARNESS_MEM_LLM_RERANK_OLLAMA_HOST,
+      HARNESS_MEM_OLLAMA_HOST: process.env.HARNESS_MEM_OLLAMA_HOST,
+      HARNESS_MEM_FACT_LLM_MODEL: process.env.HARNESS_MEM_FACT_LLM_MODEL,
     };
   });
 
@@ -102,6 +109,24 @@ describe("buildLlmRerankerConfigFromEnv", () => {
     process.env.HARNESS_MEM_LLM_TOP_K = "10";
     const config = buildLlmRerankerConfigFromEnv();
     expect(config.topK).toBe(10);
+  });
+
+  test("HARNESS_MEM_LLM_RERANK=1 は local Ollama 既定の検索リランク config を返す", () => {
+    delete process.env.HARNESS_MEM_LLM_ENHANCE;
+    process.env.HARNESS_MEM_LLM_RERANK = "1";
+    const config = buildSearchLlmRerankerConfigFromEnv();
+    expect(config.enabled).toBe(true);
+    expect(config.provider).toBe("ollama");
+    expect(config.model).toBe("qwen3.5:9b");
+    expect(config.ollamaHost).toBe("http://127.0.0.1:11434");
+    expect(config.topK).toBe(10);
+  });
+
+  test("HARNESS_MEM_LLM_RERANK_TOP_K は 20 件までに bounded 化される", () => {
+    process.env.HARNESS_MEM_LLM_RERANK = "true";
+    process.env.HARNESS_MEM_LLM_RERANK_TOP_K = "999";
+    const config = buildSearchLlmRerankerConfigFromEnv();
+    expect(config.topK).toBe(20);
   });
 });
 
@@ -286,6 +311,71 @@ describe("llmRerank — Anthropic mock", () => {
     // obs-3: 0.6*0.2 + 0.4*0.3 = 0.24
     expect(result[0]!.id).toBe("obs-1");
     expect(result[0]!.score).toBeCloseTo(0.6 * 0.8 + 0.4 * 0.9, 4);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// llmRerank — Ollama モック
+// ---------------------------------------------------------------------------
+
+describe("llmRerank — Ollama mock", () => {
+  let originalFetch: typeof globalThis.fetch;
+
+  beforeEach(() => {
+    originalFetch = globalThis.fetch;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("Ollama /api/chat レスポンスに基づいて top-k を再ソートする", async () => {
+    let capturedUrl = "";
+    let capturedBody: unknown;
+    globalThis.fetch = mock(async (url: string | URL | Request, init?: RequestInit) => {
+      capturedUrl = String(url);
+      capturedBody = JSON.parse(init?.body as string);
+      return {
+        ok: true,
+        json: async () => ({
+          message: {
+            content: JSON.stringify([
+              { index: 0, score: 0.2 },
+              { index: 1, score: 0.99 },
+            ]),
+          },
+        }),
+      } as Response;
+    });
+
+    const result = await llmRerank("パーサー", sampleCandidates, {
+      enabled: true,
+      provider: "ollama",
+      model: "qwen3.5:9b",
+      ollamaHost: "http://127.0.0.1:11434",
+      topK: 2,
+    });
+
+    expect(capturedUrl).toBe("http://127.0.0.1:11434/api/chat");
+    expect((capturedBody as { model: string }).model).toBe("qwen3.5:9b");
+    expect((capturedBody as { think: boolean }).think).toBe(false);
+    expect(result.map((r) => r.id)).toEqual(["obs-2", "obs-1", "obs-3"]);
+  });
+
+  test("non-loopback Ollama host は fetch せず graceful degradation する", async () => {
+    globalThis.fetch = mock(async () => {
+      throw new Error("should not call non-loopback host");
+    });
+
+    const result = await llmRerank("クエリ", sampleCandidates, {
+      enabled: true,
+      provider: "ollama",
+      ollamaHost: "https://example.com",
+      topK: 2,
+    });
+
+    expect((globalThis.fetch as unknown as { mock: { calls: unknown[] } }).mock.calls).toHaveLength(0);
+    expect(result.map((r) => r.id)).toEqual(sampleCandidates.map((c) => c.id));
   });
 });
 

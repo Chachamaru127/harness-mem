@@ -2,19 +2,24 @@
  * llm-reranker.ts — S58-008
  *
  * 検索結果 top-k を LLM で再スコアリングするオプション機能。
- * HARNESS_MEM_LLM_ENHANCE=true の場合のみ有効。無効時は従来パイプラインのまま。
+ * Legacy: HARNESS_MEM_LLM_ENHANCE=true の場合のみ有効。
+ * S154-702: HARNESS_MEM_LLM_RERANK=true では local Ollama を既定にする。
  *
  * 外部 API は fetch を直接使用（SDK 依存なし）。
  * タイムアウト 5 秒。エラー時は graceful degradation（元スコアをそのまま返す）。
  */
 
 const LLM_RERANK_TIMEOUT_MS = 5_000;
+const DEFAULT_LOCAL_RERANK_MODEL = "qwen3.5:9b";
+const DEFAULT_OLLAMA_HOST = "http://127.0.0.1:11434";
+const LOCAL_RERANK_MAX_TOP_K = 20;
 
 export interface LlmRerankerConfig {
   enabled: boolean;
-  provider: "openai" | "anthropic";
+  provider: "openai" | "anthropic" | "ollama";
   model?: string;
   apiKey?: string;
+  ollamaHost?: string;
   topK?: number; // リランク対象の上位件数（デフォルト: 20）
 }
 
@@ -52,6 +57,29 @@ export function buildLlmRerankerConfigFromEnv(): LlmRerankerConfig {
     (provider === "anthropic" ? process.env.ANTHROPIC_API_KEY : process.env.OPENAI_API_KEY);
   const topK = process.env.HARNESS_MEM_LLM_TOP_K ? parseInt(process.env.HARNESS_MEM_LLM_TOP_K, 10) : undefined;
   return { enabled, provider, model, apiKey, topK };
+}
+
+function parsePositiveTopK(raw: string | undefined, fallback: number): number {
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) return fallback;
+  return Math.min(parsed, LOCAL_RERANK_MAX_TOP_K);
+}
+
+export function buildSearchLlmRerankerConfigFromEnv(): LlmRerankerConfig {
+  if (!parseEnabled(process.env.HARNESS_MEM_LLM_RERANK)) {
+    return buildLlmRerankerConfigFromEnv();
+  }
+  return {
+    enabled: true,
+    provider: "ollama",
+    model: process.env.HARNESS_MEM_LLM_RERANK_MODEL ?? process.env.HARNESS_MEM_FACT_LLM_MODEL ?? DEFAULT_LOCAL_RERANK_MODEL,
+    ollamaHost:
+      process.env.HARNESS_MEM_LLM_RERANK_OLLAMA_HOST ??
+      process.env.HARNESS_MEM_OLLAMA_HOST ??
+      DEFAULT_OLLAMA_HOST,
+    topK: parsePositiveTopK(process.env.HARNESS_MEM_LLM_RERANK_TOP_K, 10),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -177,6 +205,74 @@ ${docs}`;
     }
     const data = (await res.json()) as { content: Array<{ type: string; text: string }> };
     raw = data.content.find((b) => b.type === "text")?.text ?? "[]";
+  } finally {
+    clearTimeout(timer);
+  }
+
+  return parseLlmResponse(raw, candidates);
+}
+
+// ---------------------------------------------------------------------------
+// Ollama 実装（S154-702 local-first）
+// ---------------------------------------------------------------------------
+
+function isLoopbackHost(rawHost: string): boolean {
+  try {
+    const url = new URL(rawHost);
+    const hostname = url.hostname.toLowerCase();
+    return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]";
+  } catch {
+    return false;
+  }
+}
+
+async function rerankWithOllama(
+  query: string,
+  candidates: LlmRerankCandidate[],
+  config: LlmRerankerConfig
+): Promise<LlmRerankResult[]> {
+  const host = config.ollamaHost ?? DEFAULT_OLLAMA_HOST;
+  if (!isLoopbackHost(host)) {
+    throw new Error("LLM reranker: Ollama host must be loopback");
+  }
+
+  const model = config.model ?? DEFAULT_LOCAL_RERANK_MODEL;
+  const docs = candidates
+    .map((c, i) => `[${i}] Title: ${c.title}\nContent: ${c.content.slice(0, 400)}`)
+    .join("\n\n");
+  const prompt = `クエリ「${query}」との関連度を 0.0〜1.0 で評価してください。
+JSON 配列のみ返してください。形式: [{"index":0,"score":0.9}]
+
+記憶リスト:
+${docs}`;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), LLM_RERANK_TIMEOUT_MS);
+
+  let raw: string;
+  try {
+    const res = await fetch(new URL("/api/chat", host), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model,
+        stream: false,
+        format: "json",
+        think: false,
+        messages: [
+          { role: "system", content: "Return only JSON. Do not include explanation." },
+          { role: "user", content: prompt },
+        ],
+        options: { temperature: 0, num_predict: 128 },
+      }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(`Ollama API error: ${res.status} ${text}`);
+    }
+    const data = (await res.json()) as { message?: { content?: string; thinking?: string }; response?: string };
+    raw = data.message?.content ?? data.message?.thinking ?? data.response ?? "[]";
   } finally {
     clearTimeout(timer);
   }
@@ -326,6 +422,8 @@ export async function llmRerank(
   try {
     if (config.provider === "anthropic") {
       results = await rerankWithAnthropic(query, toRerank, config);
+    } else if (config.provider === "ollama") {
+      results = await rerankWithOllama(query, toRerank, config);
     } else {
       results = await rerankWithOpenAI(query, toRerank, config);
     }

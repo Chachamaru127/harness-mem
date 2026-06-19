@@ -32,10 +32,14 @@ import {
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
+  segmentJapaneseForFts,
   tokenize,
 } from "./core-utils.js";
 import {
   upsertSqliteVecRow,
+  quantizeToBits,
+  ensureBitVecTableForModel,
+  upsertBitVecRow,
   type VectorEngine,
 } from "../vector/providers";
 import type { StoredEvent } from "../projector/types";
@@ -206,6 +210,93 @@ function extractFirstUrl(value: string): string | null {
   return match[0].replace(/[.,;:!?]+$/, "");
 }
 
+/**
+ * S154-202: empty / boilerplate handoff patterns — checkpoints and session summaries
+ * that carry no substantive decision ("No explicit decisions captured", "決定事項なし",
+ * "特になし", "(none)"). Patterns are specific so substantive content that merely
+ * contains "なし" (e.g. "問題なし、修正済み") is NOT matched.
+ */
+const EMPTY_HANDOFF_PATTERNS: RegExp[] = [
+  /\bno (explicit )?decisions?\b.{0,24}\b(captured|recorded|made|noted|found|taken)\b/i,
+  /\bnothing (to (report|note|capture)|notable|significant)\b/i,
+  /^\s*\(?\s*(none|n\/?a|no decisions?|no notes?)\s*\.?\s*\)?\s*$/i,
+  /(決定事項|決定|変更点|主な決定)\s*(は\s*)?(特に\s*)?(なし|ありません|無し|無かった|なかった)/,
+  /特記事項\s*(は\s*)?(特に\s*)?(なし|ありません|無し)/,
+  /^\s*特に\s*(なし|ありません)\s*[。.]?\s*$/,
+  /^\s*（?\s*なし\s*）?\s*[。.]?\s*$/,
+];
+
+/** S154-202: true when a handoff/checkpoint content carries no substantive decision. */
+export function isEmptyHandoff(content: string): boolean {
+  const trimmed = (content ?? "").trim();
+  if (!trimmed) return true;
+  return EMPTY_HANDOFF_PATTERNS.some((pattern) => pattern.test(trimmed));
+}
+
+/** S154-202: diagnostic — count empty handoffs in a batch of contents. */
+export function countEmptyHandoffs(contents: string[]): number {
+  return contents.reduce((n, content) => n + (isEmptyHandoff(content) ? 1 : 0), 0);
+}
+
+/**
+ * S154-203: classify an observation into a memory type. Extracted as a pure,
+ * exported function (the private method delegates) so the classifier — and the
+ * "context" catch-all rate — is directly testable. Patterns are expanded
+ * conservatively over the original set to catch common dev-log content that
+ * previously fell through to "context": bugfix / root-cause → lesson, and
+ * needed/next-action phrasing → action.
+ */
+export function classifyObservationType(eventType: string, title: string, content: string): string {
+  if (eventType === "session_end") return "summary";
+  if (eventType === "session_start") return "context";
+  if (eventType === "tool_use") return "action";
+
+  const text = `${title} ${content}`.toLowerCase();
+
+  if (
+    /(decided|decide to|chose|choose|picked|switch(ed)? to|adopt(ed)?|going with|settled on|will use|let's use|方針|決定|決めた|することにし|採用|選定|選択)/.test(
+      text,
+    )
+  )
+    return "decision";
+  if (/(pattern|usually|consistently|repeatedly|every time|always|傾向|パターン|毎回|常に|いつも)/.test(text))
+    return "pattern";
+  if (/(prefer|dislike|avoid|rather|preference|好み|希望|避けたい|したくない)/.test(text)) return "preference";
+  if (
+    /(learned|lesson|realized|gotcha|mistake|fixed|bug\b|root cause|caused by|turned out|culprit|debug|crash(ed)?|学び|反省|気づき|教訓|修正|原因|不具合|判明|ハマっ|つまづ|つまず)/.test(
+      text,
+    )
+  )
+    return "lesson";
+  if (
+    /(next step|todo|next action|need(s)? to|should|plan to|will (add|implement|do|fix)|次対応|次の対応|アクション|やる|対応する|する予定|すべき|べき|予定)/.test(
+      text,
+    )
+  )
+    return "action";
+  return "context";
+}
+
+export interface ClassificationStats {
+  total: number;
+  by_type: Record<string, number>;
+  /** S154-203: fraction classified as the uninformative "context" catch-all. */
+  context_ratio: number;
+}
+
+/** S154-203: diagnostic — type distribution + context catch-all ratio over a batch. */
+export function classificationStats(
+  items: Array<{ eventType: string; title: string; content: string }>,
+): ClassificationStats {
+  const by_type: Record<string, number> = {};
+  for (const item of items) {
+    const type = classifyObservationType(item.eventType, item.title, item.content);
+    by_type[type] = (by_type[type] ?? 0) + 1;
+  }
+  const total = items.length;
+  return { total, by_type, context_ratio: total > 0 ? (by_type.context ?? 0) / total : 0 };
+}
+
 function buildContentDedupeHash(event: EventEnvelope, observationType: string, content: string): string | null {
   const normalizedContent = normalizeDedupeText(content);
   if (!normalizedContent) {
@@ -213,6 +304,21 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   }
 
   const eventType = (event.event_type || "unknown").toString().trim().toLowerCase();
+
+  // S154-202: collapse all empty handoffs in a session onto one canonical hash so the
+  // existing content-dedupe path suppresses the 2nd+ — they never accumulate as memory.
+  // observation_type is canonicalized here because boilerplate text can trip the
+  // keyword classifier (e.g. "決定事項なし" → "decision"); empty handoffs of any
+  // induced type must still collapse together.
+  if (isEmptyHandoff(content)) {
+    return hashJsonBasis({
+      session_id: (event.session_id || "unknown").toString().trim(),
+      event_type: eventType,
+      observation_type: "empty_handoff",
+      basis_kind: "empty_handoff",
+      basis_value: "",
+    });
+  }
   let basisValue = normalizedContent;
   let basisKind = "content";
   const payload = event.payload ?? {};
@@ -507,18 +613,8 @@ export class EventRecorder {
   }
 
   private classifyObservation(eventType: string, title: string, content: string): string {
-    if (eventType === "session_end") return "summary";
-    if (eventType === "session_start") return "context";
-    if (eventType === "tool_use") return "action";
-
-    const text = `${title} ${content}`.toLowerCase();
-
-    if (/(decided|chose|picked|switched to|方針|決定|採用|選択)/.test(text)) return "decision";
-    if (/(pattern|usually|consistently|repeatedly|傾向|パターン|毎回|常に)/.test(text)) return "pattern";
-    if (/(prefer|dislike|avoid|rather|preference|好み|希望|避けたい)/.test(text)) return "preference";
-    if (/(learned|lesson|realized|gotcha|mistake|学び|反省|気づき|教訓)/.test(text)) return "lesson";
-    if (/(next step|todo|next action|次対応|次の対応|アクション)/.test(text)) return "action";
-    return "context";
+    // S154-203: delegate to the exported, testable classifier.
+    return classifyObservationType(eventType, title, content);
   }
 
   /**
@@ -600,6 +696,26 @@ export class EventRecorder {
         });
         if (!ok) {
           this.deps.setVecTableReady(false);
+        }
+
+        // s154-B: binary companion upsert (HARNESS_MEM_BINARY_PREFILTER=1, default-OFF)
+        if (process.env.HARNESS_MEM_BINARY_PREFILTER === "1" && ok) {
+          try {
+            const floatVec = JSON.parse(vectorJson) as number[];
+            const bits = quantizeToBits(floatVec);
+            // Ensure bit tables exist (idempotent DDL)
+            ensureBitVecTableForModel(
+              this.deps.db,
+              variant.model,
+              this.deps.config.vectorDimension,
+            );
+            upsertBitVecRow(this.deps.db, observationId, bits, updatedAt, {
+              model: variant.model,
+              vectorDimension: this.deps.config.vectorDimension,
+            });
+          } catch {
+            // Bit companion is best-effort; float path already succeeded
+          }
         }
       }
     }
@@ -1223,6 +1339,8 @@ export class EventRecorder {
         const branch = typeof event.branch === "string" && event.branch.trim()
           ? event.branch.trim()
           : null;
+        const titleFts = observationBase.title ? segmentJapaneseForFts(observationBase.title) : null;
+        const contentFts = segmentJapaneseForFts(redactedContent);
 
         this.deps.db
           .query(`
@@ -1233,12 +1351,15 @@ export class EventRecorder {
               signal_score, user_id, team_id,
               event_time, observed_at, valid_from, valid_to, supersedes, invalidated_at,
               thread_id, topic, expires_at, branch,
+              title_fts, content_fts,
               created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(id) DO UPDATE SET
               title = excluded.title,
               content = excluded.content,
               content_redacted = excluded.content_redacted,
+              title_fts = excluded.title_fts,
+              content_fts = excluded.content_fts,
               content_dedupe_hash = excluded.content_dedupe_hash,
               raw_text = excluded.raw_text,
               observation_type = excluded.observation_type,
@@ -1286,6 +1407,8 @@ export class EventRecorder {
             topic,
             expiresAt,
             branch,
+            titleFts,
+            contentFts,
             timestamp,
             current
           );

@@ -842,6 +842,13 @@ export class SessionManager {
       request.session_id,
       "finalize"
     );
+    // S154-201: also enqueue a local-default "dreaming" consolidation pass so the
+    // background synthesis path fires after every session finalize.
+    this.deps.enqueueConsolidation(
+      request.project || basename(process.cwd()),
+      request.session_id,
+      "dreaming"
+    );
 
     // §78-E04: Procedural skill synthesis — detect and optionally persist
     const skillSuggestion = this.detectSkillFromSession(request.session_id);

@@ -1,0 +1,369 @@
+{
+  "schema_version": "cjk-heldout-generalization.v1",
+  "description": "Held-out developer-memory CJK generalization cases for S154-C. Vocabulary is deliberately disjoint from CJK_LEXICAL_READING_RULES patterns (きおく/さくいん/けんさく/あっしゅく/なおす/ほうしん/せっけい/きょうかい/ひょう), CJK_DUAL_QUERY_RULES patterns (再ランク/候補/融合/係数/二重クエリ/正規化/英語/関数名/保持), and all queries in cjk-discrimination.json. Tests whether NFKC normalization generalizes to unseen vocabulary.",
+  "cases": [
+    {
+      "id": "heldout-nfkc-001",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "halfwidth_katakana",
+      "query": "ｾｯｼｮﾝﾄｰｸﾝ",
+      "target_id": "heldout-nfkc-001-e-target",
+      "entries": [
+        {
+          "id": "heldout-nfkc-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "halfwidth_katakana"],
+          "content": "セッショントークンの有効期限をリフレッシュするときはJWTのexpクレームを更新する。"
+        },
+        {
+          "id": "heldout-nfkc-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "コネクションプールの上限を超えた接続はキューに積まれ、タイムアウト後に破棄される。"
+        },
+        {
+          "id": "heldout-nfkc-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "ミドルウェアのリトライ処理はバックオフ係数と最大試行回数で制御する。"
+        },
+        {
+          "id": "heldout-nfkc-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "パイプラインのステージ数はスループットと遅延のトレードオフで決まる。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-nfkc-002",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "fullwidth_ascii",
+      "query": "ＳＴＡＲＴＵＰＴＩＭＥ",
+      "target_id": "heldout-nfkc-002-e-target",
+      "entries": [
+        {
+          "id": "heldout-nfkc-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "fullwidth_ascii"],
+          "content": "STARTUPTIME の計測は process.hrtime.bigint() を起動直後と初期化完了時点で取得して差分を出す。"
+        },
+        {
+          "id": "heldout-nfkc-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "BUILDTIME の短縮はesbuildのバンドルキャッシュとtreeshakingで達成する。"
+        },
+        {
+          "id": "heldout-nfkc-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "RUNTIME のメモリ上限はNode.jsの--max-old-space-sizeフラグで指定する。"
+        },
+        {
+          "id": "heldout-nfkc-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "TESTTIME のフィクスチャ展開はbeforeAllで一度だけ実行しキャッシュする。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-nfkc-003",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "halfwidth_katakana_compound",
+      "query": "ﾃﾞｰﾀﾊﾞｰｽｽｷｰﾏ",
+      "target_id": "heldout-nfkc-003-e-target",
+      "entries": [
+        {
+          "id": "heldout-nfkc-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "halfwidth_katakana_compound"],
+          "content": "データベーススキーマのマイグレーションはALTER TABLEをトランザクション内で実行し、ロールバックスクリプトを先に用意する。"
+        },
+        {
+          "id": "heldout-nfkc-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "クラウドストレージのバケット命名規則はリージョンプレフィックスを付けてグローバル一意にする。"
+        },
+        {
+          "id": "heldout-nfkc-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "インメモリキャッシュのTTL設定はデータの更新頻度と整合性要件に応じて調整する。"
+        },
+        {
+          "id": "heldout-nfkc-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "ワーカースレッドのライフサイクルはシャットダウン時にグレースフルに終了させる。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-nfkc-004",
+      "slice": "nfkc_fixable",
+      "normalization_kind": "fullwidth_ascii_digits",
+      "query": "ＥＲＲＯＲ５０３",
+      "target_id": "heldout-nfkc-004-e-target",
+      "entries": [
+        {
+          "id": "heldout-nfkc-004-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "nfkc_fixable", "fullwidth_ascii_digits"],
+          "content": "ERROR503 is returned when the upstream service is temporarily unavailable due to rate limiting."
+        },
+        {
+          "id": "heldout-nfkc-004-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "ERROR404 indicates the requested resource path could not be resolved by the router."
+        },
+        {
+          "id": "heldout-nfkc-004-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "ERROR500 represents an unhandled exception that should be caught at the boundary layer."
+        },
+        {
+          "id": "heldout-nfkc-004-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "nfkc_fixable"],
+          "content": "STATUS200 confirms a successful round-trip including payload validation and schema check."
+        }
+      ]
+    },
+    {
+      "id": "heldout-ortho-001",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "okurigana_variation",
+      "query": "しょりじかんはかるほうほう",
+      "target_id": "heldout-ortho-001-e-target",
+      "entries": [
+        {
+          "id": "heldout-ortho-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "okurigana_variation"],
+          "content": "処理時間計る方法はperformance.now()をイベントループの前後に置き、差分をミリ秒で記録する。"
+        },
+        {
+          "id": "heldout-ortho-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "処理時間の上限を超えた場合はタイムアウトエラーをスローしてリトライを中断する。"
+        },
+        {
+          "id": "heldout-ortho-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "時間計測ツールの精度はOSのクロック分解能に依存し、Windowsでは粗い場合がある。"
+        },
+        {
+          "id": "heldout-ortho-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "バッチ処理の実行ログにはジョブID、開始時刻、終了時刻を必ず記録する。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-ortho-002",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "okurigana_variation",
+      "query": "えらーしょりのながれかくにんする",
+      "target_id": "heldout-ortho-002-e-target",
+      "entries": [
+        {
+          "id": "heldout-ortho-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "okurigana_variation"],
+          "content": "エラー処理の流れ確認するにはスタックトレースとコンテキストログを突き合わせて根本原因を特定する。"
+        },
+        {
+          "id": "heldout-ortho-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "エラーコードの体系はRFC準拠で定義し、ユーザー向けメッセージと分離して管理する。"
+        },
+        {
+          "id": "heldout-ortho-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "処理フローの確認はシーケンス図で可視化し、各ステップの入出力を明示する。"
+        },
+        {
+          "id": "heldout-ortho-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "ログ集計ダッシュボードでアラート閾値を超えた場合にSlack通知を送る設定をした。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-ortho-003",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "kanji_to_kana",
+      "query": "つながりのかくにんてじゅん",
+      "target_id": "heldout-ortho-003-e-target",
+      "entries": [
+        {
+          "id": "heldout-ortho-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "kanji_to_kana"],
+          "content": "つながりの確認手順はping疎通、DNSルックアップ、TLSハンドシェイクの順に行う。"
+        },
+        {
+          "id": "heldout-ortho-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "接続確認の自動化はCI/CDパイプラインのヘルスチェックステップに組み込む。"
+        },
+        {
+          "id": "heldout-ortho-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "ネットワーク診断ツールのtracerouteはホップ数とレイテンシを記録して問題箇所を絞り込む。"
+        },
+        {
+          "id": "heldout-ortho-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "VPNトンネルのMTU設定は1280バイトに下げてフラグメンテーションを回避する。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-ortho-004",
+      "slice": "non_nfkc_orthographic",
+      "normalization_kind": "compound_word_boundary",
+      "query": "てすとじっこうわくぐみ",
+      "target_id": "heldout-ortho-004-e-target",
+      "entries": [
+        {
+          "id": "heldout-ortho-004-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "non_nfkc_orthographic", "compound_word_boundary"],
+          "content": "テスト実行枠組みはvitest/bunのtestランナーを使い、CIのmatrixでNode/Bunを並列実行する。"
+        },
+        {
+          "id": "heldout-ortho-004-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "テストカバレッジのレポートはlcovフォーマットで出力しCodecovにアップロードする。"
+        },
+        {
+          "id": "heldout-ortho-004-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "実行環境の分離はDockerコンテナを使い、ホストのパッケージに依存しない再現性を確保する。"
+        },
+        {
+          "id": "heldout-ortho-004-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "non_nfkc_orthographic"],
+          "content": "枠組み設計の見直しはアーキテクチャレビューの場で議論し、変更点を設計書に反映する。"
+        }
+      ]
+    },
+    {
+      "id": "heldout-mixed-001",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "query": "セッション管理の仕組み",
+      "target_id": "heldout-mixed-001-e-target",
+      "entries": [
+        {
+          "id": "heldout-mixed-001-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Session management uses signed JWT cookies with short expiry and a refresh-token rotation strategy."
+        },
+        {
+          "id": "heldout-mixed-001-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Connection pooling limits concurrent database handles and recycles them after idle timeout."
+        },
+        {
+          "id": "heldout-mixed-001-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Schema migration rollback scripts are versioned alongside forward migrations in the repo."
+        },
+        {
+          "id": "heldout-mixed-001-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Startup latency profiling captures cold and warm boot times separately for each module."
+        }
+      ]
+    },
+    {
+      "id": "heldout-mixed-002",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "query": "バッファ溢れを防ぐ対策",
+      "target_id": "heldout-mixed-002-e-target",
+      "entries": [
+        {
+          "id": "heldout-mixed-002-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Buffer overflow prevention relies on bounded channel capacity, backpressure signaling, and drop policies."
+        },
+        {
+          "id": "heldout-mixed-002-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Network packet fragmentation is mitigated by adjusting MTU settings on VPN interfaces."
+        },
+        {
+          "id": "heldout-mixed-002-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Error handling boundaries catch unhandled exceptions and emit structured diagnostic events."
+        },
+        {
+          "id": "heldout-mixed-002-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Test runner parallelism reduces CI wall-clock time by distributing suite files across workers."
+        }
+      ]
+    },
+    {
+      "id": "heldout-mixed-003",
+      "slice": "mixed_en_ja",
+      "normalization_kind": "ja_to_en_query_expansion",
+      "query": "マイグレーション手順の自動化",
+      "target_id": "heldout-mixed-003-e-target",
+      "entries": [
+        {
+          "id": "heldout-mixed-003-e-target",
+          "role": "target",
+          "tags": ["developer-memory", "synthetic", "mixed_en_ja", "ja_to_en_query_expansion"],
+          "content": "Migration automation pipelines apply schema changes in transaction blocks with pre-flight checks and rollback scripts."
+        },
+        {
+          "id": "heldout-mixed-003-e-d1",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Deployment pipelines validate artifact checksums before promoting builds to production."
+        },
+        {
+          "id": "heldout-mixed-003-e-d2",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Session token rotation is triggered on every authenticated request to limit exposure windows."
+        },
+        {
+          "id": "heldout-mixed-003-e-d3",
+          "role": "distractor",
+          "tags": ["developer-memory", "synthetic", "distractor", "mixed_en_ja"],
+          "content": "Startup profiling instruments module initialization phases to surface slow dependencies."
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1362 @@
+{
+  "name": "bilingual-v2",
+  "schema_version": "s154-500-bilingual.v2",
+  "description": "S154-500 ceiling-removal fixture: 13 topic clusters, cross-lingual targets compete against same-language same-topic hard negatives in one shared pool. Slices: ja = ja-content_en-query + en-content_ja-query, mixed = mixed-content_mixed-query.",
+  "pool_size": 156,
+  "samples": [
+    {
+      "id": "v2-deploy-ja1",
+      "cluster": "deploy",
+      "pattern": "ja-content_en-query",
+      "content": "金曜のリリースでカナリアデプロイを 5% から 25% に引き上げた",
+      "query": "how much production traffic does the canary stage take now",
+      "relevant_ids": [
+        "v2-deploy-ja1"
+      ]
+    },
+    {
+      "id": "v2-deploy-ja2",
+      "cluster": "deploy",
+      "pattern": "ja-content_en-query",
+      "content": "ロールバック手順を自動化し、失敗時は直前のイメージタグへ戻すようにした",
+      "query": "what happens automatically when a release fails",
+      "relevant_ids": [
+        "v2-deploy-ja2"
+      ]
+    },
+    {
+      "id": "v2-deploy-en1",
+      "cluster": "deploy",
+      "pattern": "en-content_ja-query",
+      "content": "Blue-green switchover now waits for health checks on all pods before flipping the router.",
+      "query": "全部のポッドが正常になるまで切り替えを待つ仕組みはどれ",
+      "relevant_ids": [
+        "v2-deploy-en1"
+      ]
+    },
+    {
+      "id": "v2-deploy-en2",
+      "cluster": "deploy",
+      "pattern": "en-content_ja-query",
+      "content": "Release pipeline tags every production deploy with the git SHA and the on-call owner.",
+      "query": "リリースに git の識別子と担当者を紐づける仕組み",
+      "relevant_ids": [
+        "v2-deploy-en2"
+      ]
+    },
+    {
+      "id": "v2-deploy-mx1",
+      "cluster": "deploy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "staging の deploy は 15 時以降 freeze、本番は金曜 NG にした",
+      "query": "リリースしてはいけない時間帯のルール どうなってた",
+      "relevant_ids": [
+        "v2-deploy-mx1"
+      ]
+    },
+    {
+      "id": "v2-deploy-mx2",
+      "cluster": "deploy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "deploy 後の smoke test を GitHub Actions の workflow_dispatch で手動 trigger できるようにした",
+      "query": "リリース直後の動作確認を手で起動するやり方",
+      "relevant_ids": [
+        "v2-deploy-mx2"
+      ]
+    },
+    {
+      "id": "v2-deploy-mx3",
+      "cluster": "deploy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "Argo Rollouts の analysis template で error rate 1% 超なら自動 abort する設定を入れた",
+      "query": "失敗率が上がったら自動で配信を止める設定",
+      "relevant_ids": [
+        "v2-deploy-mx3"
+      ]
+    },
+    {
+      "id": "v2-deploy-mx4",
+      "cluster": "deploy",
+      "pattern": "mixed-content_mixed-query",
+      "content": "helm chart の values を環境別に分離し、prod は values-prod.yaml だけ読む",
+      "query": "環境ごとの設定ファイルの分け方 release config",
+      "relevant_ids": [
+        "v2-deploy-mx4"
+      ]
+    },
+    {
+      "id": "v2-auth-ja1",
+      "cluster": "auth",
+      "pattern": "ja-content_en-query",
+      "content": "JWT の有効期限を 30 分から 15 分に短縮し、refresh token は 7 日にした",
+      "query": "how long do login credentials stay valid before re-issue",
+      "relevant_ids": [
+        "v2-auth-ja1"
+      ]
+    },
+    {
+      "id": "v2-auth-ja2",
+      "cluster": "auth",
+      "pattern": "ja-content_en-query",
+      "content": "ログイン失敗が 5 回続いたら 10 分間アカウントをロックする仕様にした",
+      "query": "what protects accounts from repeated wrong passwords",
+      "relevant_ids": [
+        "v2-auth-ja2"
+      ]
+    },
+    {
+      "id": "v2-auth-en1",
+      "cluster": "auth",
+      "pattern": "en-content_ja-query",
+      "content": "OAuth callback now validates the state parameter against a server-side nonce store.",
+      "query": "OAuth の戻り先で state を検証する話",
+      "relevant_ids": [
+        "v2-auth-en1"
+      ]
+    },
+    {
+      "id": "v2-auth-en2",
+      "cluster": "auth",
+      "pattern": "en-content_ja-query",
+      "content": "Session cookies switched to SameSite=Strict with a 24 hour sliding expiration.",
+      "query": "セッション cookie の SameSite 設定はどうした",
+      "relevant_ids": [
+        "v2-auth-en2"
+      ]
+    },
+    {
+      "id": "v2-auth-mx1",
+      "cluster": "auth",
+      "pattern": "mixed-content_mixed-query",
+      "content": "password reset の token は single-use にして、使用後は即 revoke する",
+      "query": "パスワード再設定の使い捨てリンクの扱い",
+      "relevant_ids": [
+        "v2-auth-mx1"
+      ]
+    },
+    {
+      "id": "v2-auth-mx2",
+      "cluster": "auth",
+      "pattern": "mixed-content_mixed-query",
+      "content": "MFA の backup code を 8 桁 10 個に変更、再生成で旧 code は全部無効",
+      "query": "二段階認証の予備コードの仕様 どう変えた",
+      "relevant_ids": [
+        "v2-auth-mx2"
+      ]
+    },
+    {
+      "id": "v2-auth-mx3",
+      "cluster": "auth",
+      "pattern": "mixed-content_mixed-query",
+      "content": "API key の scope を read / write / admin の 3 段階に分けて発行する",
+      "query": "外部連携キーの権限を段階に分けた話",
+      "relevant_ids": [
+        "v2-auth-mx3"
+      ]
+    },
+    {
+      "id": "v2-auth-mx4",
+      "cluster": "auth",
+      "pattern": "mixed-content_mixed-query",
+      "content": "SSO は SAML をやめて OIDC に統一、IdP は Okta のまま",
+      "query": "社内ログイン統合の方式選定 どっちにした",
+      "relevant_ids": [
+        "v2-auth-mx4"
+      ]
+    },
+    {
+      "id": "v2-database-ja1",
+      "cluster": "database",
+      "pattern": "ja-content_en-query",
+      "content": "注文テーブルに複合インデックス (user_id, created_at) を追加して一覧クエリを 40 倍速くした",
+      "query": "what made the order list query dramatically faster",
+      "relevant_ids": [
+        "v2-database-ja1"
+      ]
+    },
+    {
+      "id": "v2-database-ja2",
+      "cluster": "database",
+      "pattern": "ja-content_en-query",
+      "content": "マイグレーションは expand-contract 方式にして、カラム削除は 2 リリース後に行う",
+      "query": "how do we remove columns safely across releases",
+      "relevant_ids": [
+        "v2-database-ja2"
+      ]
+    },
+    {
+      "id": "v2-database-en1",
+      "cluster": "database",
+      "pattern": "en-content_ja-query",
+      "content": "Connection pool max was raised from 20 to 50 after the queue wait p95 exceeded 200ms.",
+      "query": "DB への同時接続の上限を増やした経緯",
+      "relevant_ids": [
+        "v2-database-en1"
+      ]
+    },
+    {
+      "id": "v2-database-en2",
+      "cluster": "database",
+      "pattern": "en-content_ja-query",
+      "content": "Read replicas now serve all analytics queries; the primary only takes writes and OLTP reads.",
+      "query": "分析クエリの読み取り先はレプリカに逃した？",
+      "relevant_ids": [
+        "v2-database-en2"
+      ]
+    },
+    {
+      "id": "v2-database-mx1",
+      "cluster": "database",
+      "pattern": "mixed-content_mixed-query",
+      "content": "slow query log の閾値を 500ms にして、毎朝 CI が top10 を報告する",
+      "query": "遅いクエリを毎朝チェックする仕組み",
+      "relevant_ids": [
+        "v2-database-mx1"
+      ]
+    },
+    {
+      "id": "v2-database-mx2",
+      "cluster": "database",
+      "pattern": "mixed-content_mixed-query",
+      "content": "VACUUM ANALYZE を週末 batch に移して、平日の autovacuum 負荷を下げた",
+      "query": "テーブル掃除の重い処理をいつ動かすことにした",
+      "relevant_ids": [
+        "v2-database-mx2"
+      ]
+    },
+    {
+      "id": "v2-database-mx3",
+      "cluster": "database",
+      "pattern": "mixed-content_mixed-query",
+      "content": "partition は月単位、13 ヶ月より古い partition は自動 drop する",
+      "query": "古いデータの区画をどう自動で消すか",
+      "relevant_ids": [
+        "v2-database-mx3"
+      ]
+    },
+    {
+      "id": "v2-database-mx4",
+      "cluster": "database",
+      "pattern": "mixed-content_mixed-query",
+      "content": "ORM の N+1 を防ぐため、関連 fetch は明示的な preload 必須にする lint を入れた",
+      "query": "関連データの取りすぎを防ぐ開発ルール",
+      "relevant_ids": [
+        "v2-database-mx4"
+      ]
+    },
+    {
+      "id": "v2-cache-ja1",
+      "cluster": "cache",
+      "pattern": "ja-content_en-query",
+      "content": "商品詳細のキャッシュ TTL を 3600 秒から 300 秒に短くして価格反映を速くした",
+      "query": "why do price updates show up faster now",
+      "relevant_ids": [
+        "v2-cache-ja1"
+      ]
+    },
+    {
+      "id": "v2-cache-ja2",
+      "cluster": "cache",
+      "pattern": "ja-content_en-query",
+      "content": "キャッシュの無効化はイベント駆動にして、在庫更新の Kafka メッセージで purge する",
+      "query": "how does stale product data get removed when stock changes",
+      "relevant_ids": [
+        "v2-cache-ja2"
+      ]
+    },
+    {
+      "id": "v2-cache-en1",
+      "cluster": "cache",
+      "pattern": "en-content_ja-query",
+      "content": "Redis cluster moved to three shards with replicas, and hot keys are tracked hourly.",
+      "query": "Redis のシャード構成はいくつに分けた",
+      "relevant_ids": [
+        "v2-cache-en1"
+      ]
+    },
+    {
+      "id": "v2-cache-en2",
+      "cluster": "cache",
+      "pattern": "en-content_ja-query",
+      "content": "Cache stampede protection uses a probabilistic early refresh with 60 second jitter.",
+      "query": "キャッシュ stampede 対策はどうやってる",
+      "relevant_ids": [
+        "v2-cache-en2"
+      ]
+    },
+    {
+      "id": "v2-cache-mx1",
+      "cluster": "cache",
+      "pattern": "mixed-content_mixed-query",
+      "content": "session cache だけ Redis 7 の RESP3 に上げて client-side caching を有効化",
+      "query": "ログイン情報のキャッシュをクライアント側でも持つ話",
+      "relevant_ids": [
+        "v2-cache-mx1"
+      ]
+    },
+    {
+      "id": "v2-cache-mx2",
+      "cluster": "cache",
+      "pattern": "mixed-content_mixed-query",
+      "content": "CDN の edge cache は HTML を 60 秒、静的 asset を 1 年にした",
+      "query": "配信エッジでのページとアセットの保持時間",
+      "relevant_ids": [
+        "v2-cache-mx2"
+      ]
+    },
+    {
+      "id": "v2-cache-mx3",
+      "cluster": "cache",
+      "pattern": "mixed-content_mixed-query",
+      "content": "cache hit rate の SLO を 92% にして Grafana の panel で常時監視",
+      "query": "キャッシュ命中率の目標値と監視場所",
+      "relevant_ids": [
+        "v2-cache-mx3"
+      ]
+    },
+    {
+      "id": "v2-cache-mx4",
+      "cluster": "cache",
+      "pattern": "mixed-content_mixed-query",
+      "content": "メモリ逼迫時は LRU でなく LFU に切り替える設定を eviction policy に入れた",
+      "query": "メモリが足りない時の追い出し方針の変更",
+      "relevant_ids": [
+        "v2-cache-mx4"
+      ]
+    },
+    {
+      "id": "v2-api-limits-ja1",
+      "cluster": "api-limits",
+      "pattern": "ja-content_en-query",
+      "content": "公開 API のレート制限を 100 req/min から 60 req/min に下げ、超過は 429 を返す",
+      "query": "what rate limit does the public API enforce now",
+      "relevant_ids": [
+        "v2-api-limits-ja1"
+      ]
+    },
+    {
+      "id": "v2-api-limits-ja2",
+      "cluster": "api-limits",
+      "pattern": "ja-content_en-query",
+      "content": "タイムアウトは gateway 30 秒、上流サービス 10 秒の段階構成にした",
+      "query": "how are timeouts staged between gateway and upstream",
+      "relevant_ids": [
+        "v2-api-limits-ja2"
+      ]
+    },
+    {
+      "id": "v2-api-limits-en1",
+      "cluster": "api-limits",
+      "pattern": "en-content_ja-query",
+      "content": "Burst quota allows 20 extra requests per 10 seconds before throttling kicks in.",
+      "query": "バーストの追加許容はどれくらいにした",
+      "relevant_ids": [
+        "v2-api-limits-en1"
+      ]
+    },
+    {
+      "id": "v2-api-limits-en2",
+      "cluster": "api-limits",
+      "pattern": "en-content_ja-query",
+      "content": "Per-tenant quotas are enforced at the API gateway using a sliding window counter in Redis.",
+      "query": "テナント別クォータはどこで数えている",
+      "relevant_ids": [
+        "v2-api-limits-en2"
+      ]
+    },
+    {
+      "id": "v2-api-limits-mx1",
+      "cluster": "api-limits",
+      "pattern": "mixed-content_mixed-query",
+      "content": "webhook の retry は exponential backoff で最大 5 回、間隔は 1m から 16m",
+      "query": "外部通知の再送回数と間隔のルール",
+      "relevant_ids": [
+        "v2-api-limits-mx1"
+      ]
+    },
+    {
+      "id": "v2-api-limits-mx2",
+      "cluster": "api-limits",
+      "pattern": "mixed-content_mixed-query",
+      "content": "GraphQL の query depth を 10 に制限し、complexity score 1000 超は reject",
+      "query": "重い問い合わせ構造を弾く基準 query 制限",
+      "relevant_ids": [
+        "v2-api-limits-mx2"
+      ]
+    },
+    {
+      "id": "v2-api-limits-mx3",
+      "cluster": "api-limits",
+      "pattern": "mixed-content_mixed-query",
+      "content": "idempotency key を 24h 保持して、同一 key の POST は前回 response を返す",
+      "query": "二重送信されても課金が一回になる仕組み",
+      "relevant_ids": [
+        "v2-api-limits-mx3"
+      ]
+    },
+    {
+      "id": "v2-api-limits-mx4",
+      "cluster": "api-limits",
+      "pattern": "mixed-content_mixed-query",
+      "content": "rate limit の header は X-RateLimit-Remaining と Reset を必ず返す",
+      "query": "残り回数をレスポンスで知らせるヘッダの話",
+      "relevant_ids": [
+        "v2-api-limits-mx4"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-ja1",
+      "cluster": "ci-testing",
+      "pattern": "ja-content_en-query",
+      "content": "flaky テストを隔離レーンに移し、3 回連続成功するまで本線に戻さない運用にした",
+      "query": "how do unstable tests get back into the main pipeline",
+      "relevant_ids": [
+        "v2-ci-testing-ja1"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-ja2",
+      "cluster": "ci-testing",
+      "pattern": "ja-content_en-query",
+      "content": "CI の所要時間を 28 分から 9 分に短縮、テスト分割を 4 並列にした",
+      "query": "what made the build pipeline three times faster",
+      "relevant_ids": [
+        "v2-ci-testing-ja2"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-en1",
+      "cluster": "ci-testing",
+      "pattern": "en-content_ja-query",
+      "content": "Coverage gate fails the build below 80 percent on changed files only, not the whole repo.",
+      "query": "カバレッジのゲートは変更ファイルだけにかかる？",
+      "relevant_ids": [
+        "v2-ci-testing-en1"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-en2",
+      "cluster": "ci-testing",
+      "pattern": "en-content_ja-query",
+      "content": "Nightly E2E suite runs against a production-like seeded environment with anonymized data.",
+      "query": "毎晩の自動テストはどんな環境で走る",
+      "relevant_ids": [
+        "v2-ci-testing-en2"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-mx1",
+      "cluster": "ci-testing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "PR の merge 条件に required check として typecheck と lint を追加",
+      "query": "マージ前に必須にしたチェックは何",
+      "relevant_ids": [
+        "v2-ci-testing-mx1"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-mx2",
+      "cluster": "ci-testing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "test の retry は CI でのみ 1 回許可、local では retry 禁止にした",
+      "query": "テストのやり直しを許す場所と禁止する場所",
+      "relevant_ids": [
+        "v2-ci-testing-mx2"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-mx3",
+      "cluster": "ci-testing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "snapshot test の更新は --ci flag で fail させ、意図的更新だけ通す",
+      "query": "UI の期待値ファイルの更新を事故らせない方法",
+      "relevant_ids": [
+        "v2-ci-testing-mx3"
+      ]
+    },
+    {
+      "id": "v2-ci-testing-mx4",
+      "cluster": "ci-testing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "contract test を provider 側 pipeline にも追加して双方向で検証",
+      "query": "API 互換性の検証を両側でやる話",
+      "relevant_ids": [
+        "v2-ci-testing-mx4"
+      ]
+    },
+    {
+      "id": "v2-observability-ja1",
+      "cluster": "observability",
+      "pattern": "ja-content_en-query",
+      "content": "分散トレーシングのサンプリング率を 1% から 10% に上げ、エラー時は 100% 記録する",
+      "query": "what sampling rate does tracing use now",
+      "relevant_ids": [
+        "v2-observability-ja1"
+      ]
+    },
+    {
+      "id": "v2-observability-ja2",
+      "cluster": "observability",
+      "pattern": "ja-content_en-query",
+      "content": "アラートのオンコール通知を severity 別に分け、P1 だけ電話、P2 は Slack にした",
+      "query": "which alerts page by phone versus chat",
+      "relevant_ids": [
+        "v2-observability-ja2"
+      ]
+    },
+    {
+      "id": "v2-observability-en1",
+      "cluster": "observability",
+      "pattern": "en-content_ja-query",
+      "content": "Log retention moved to 30 days hot and 13 months cold storage in the lake.",
+      "query": "ログの保持期間 ホットとコールドの構成",
+      "relevant_ids": [
+        "v2-observability-en1"
+      ]
+    },
+    {
+      "id": "v2-observability-en2",
+      "cluster": "observability",
+      "pattern": "en-content_ja-query",
+      "content": "Dashboards now derive RED metrics from OTel spans instead of hand-instrumented counters.",
+      "query": "ダッシュボードのメトリクスは span 由来に変えた？",
+      "relevant_ids": [
+        "v2-observability-en2"
+      ]
+    },
+    {
+      "id": "v2-observability-mx1",
+      "cluster": "observability",
+      "pattern": "mixed-content_mixed-query",
+      "content": "p95 latency の SLO を 250ms にして、error budget 消費を weekly review",
+      "query": "応答速度の目標と予算消費のレビュー運用",
+      "relevant_ids": [
+        "v2-observability-mx1"
+      ]
+    },
+    {
+      "id": "v2-observability-mx2",
+      "cluster": "observability",
+      "pattern": "mixed-content_mixed-query",
+      "content": "structured logging へ移行し、message は JSON の msg field に統一",
+      "query": "ログ形式の統一はどう決めた",
+      "relevant_ids": [
+        "v2-observability-mx2"
+      ]
+    },
+    {
+      "id": "v2-observability-mx3",
+      "cluster": "observability",
+      "pattern": "mixed-content_mixed-query",
+      "content": "metrics の cardinality 爆発を防ぐため user_id label を禁止にした",
+      "query": "メトリクスのラベル爆発を防ぐ禁止事項",
+      "relevant_ids": [
+        "v2-observability-mx3"
+      ]
+    },
+    {
+      "id": "v2-observability-mx4",
+      "cluster": "observability",
+      "pattern": "mixed-content_mixed-query",
+      "content": "OTel collector を sidecar から DaemonSet に変えて CPU を 35% 削減",
+      "query": "計測エージェントの配置変更で何が減った",
+      "relevant_ids": [
+        "v2-observability-mx4"
+      ]
+    },
+    {
+      "id": "v2-search-ja1",
+      "cluster": "search",
+      "pattern": "ja-content_en-query",
+      "content": "検索の同義語辞書を手動管理から月次の自動抽出に切り替えた",
+      "query": "how is the search synonym list maintained now",
+      "relevant_ids": [
+        "v2-search-ja1"
+      ]
+    },
+    {
+      "id": "v2-search-ja2",
+      "cluster": "search",
+      "pattern": "ja-content_en-query",
+      "content": "ゼロヒット率を 12% から 4% に下げるためスペル補正を導入した",
+      "query": "did spell correction reduce zero-hit searches",
+      "relevant_ids": [
+        "v2-search-ja2"
+      ]
+    },
+    {
+      "id": "v2-search-en1",
+      "cluster": "search",
+      "pattern": "en-content_ja-query",
+      "content": "Hybrid retrieval fuses BM25 and vector scores with reciprocal rank fusion at K of 60.",
+      "query": "BM25 とベクトルの融合はどうやってる",
+      "relevant_ids": [
+        "v2-search-en1"
+      ]
+    },
+    {
+      "id": "v2-search-en2",
+      "cluster": "search",
+      "pattern": "en-content_ja-query",
+      "content": "Index rebuilds are blue-green: build the new index aside and swap the alias atomically.",
+      "query": "インデックス再構築の alias 切替方式",
+      "relevant_ids": [
+        "v2-search-en2"
+      ]
+    },
+    {
+      "id": "v2-search-mx1",
+      "cluster": "search",
+      "pattern": "mixed-content_mixed-query",
+      "content": "search の ranking に freshness boost を入れ、30 日以内の文書を 1.2 倍",
+      "query": "新しい文書を検索で優遇する仕組み",
+      "relevant_ids": [
+        "v2-search-mx1"
+      ]
+    },
+    {
+      "id": "v2-search-mx2",
+      "cluster": "search",
+      "pattern": "mixed-content_mixed-query",
+      "content": "クエリの言語判定を fastText に変え、誤判定が 8% から 2% に減った",
+      "query": "検索クエリが何語かの判定précisionを上げた話",
+      "relevant_ids": [
+        "v2-search-mx2"
+      ]
+    },
+    {
+      "id": "v2-search-mx3",
+      "cluster": "search",
+      "pattern": "mixed-content_mixed-query",
+      "content": "facet の集計は search 結果と別 query に分離して latency を半減",
+      "query": "絞り込み件数の計算を分けて速くした話",
+      "relevant_ids": [
+        "v2-search-mx3"
+      ]
+    },
+    {
+      "id": "v2-search-mx4",
+      "cluster": "search",
+      "pattern": "mixed-content_mixed-query",
+      "content": "autocomplete は edge n-gram で index し、2 文字から候補を出す",
+      "query": "入力補完は何文字目から出る",
+      "relevant_ids": [
+        "v2-search-mx4"
+      ]
+    },
+    {
+      "id": "v2-billing-ja1",
+      "cluster": "billing",
+      "pattern": "ja-content_en-query",
+      "content": "請求書の発行を月末締め翌 3 営業日から翌 1 営業日に前倒しした",
+      "query": "when do customers receive their invoice after the month closes",
+      "relevant_ids": [
+        "v2-billing-ja1"
+      ]
+    },
+    {
+      "id": "v2-billing-ja2",
+      "cluster": "billing",
+      "pattern": "ja-content_en-query",
+      "content": "返金処理は 180 日以内のみ自動、それ以降は経理承認フローに回す",
+      "query": "which refunds still need a human sign-off",
+      "relevant_ids": [
+        "v2-billing-ja2"
+      ]
+    },
+    {
+      "id": "v2-billing-en1",
+      "cluster": "billing",
+      "pattern": "en-content_ja-query",
+      "content": "Stripe webhooks are verified with the signing secret and replayed events are deduplicated by id.",
+      "query": "Stripe の webhook 検証と重複対策",
+      "relevant_ids": [
+        "v2-billing-en1"
+      ]
+    },
+    {
+      "id": "v2-billing-en2",
+      "cluster": "billing",
+      "pattern": "en-content_ja-query",
+      "content": "Proration for mid-cycle plan changes is calculated daily and credited on the next invoice.",
+      "query": "プラン変更の日割り計算のタイミング",
+      "relevant_ids": [
+        "v2-billing-en2"
+      ]
+    },
+    {
+      "id": "v2-billing-mx1",
+      "cluster": "billing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "trial の期間を 14 日から 30 日に延長、credit card 登録は不要にした",
+      "query": "無料 trial の条件をどう緩和した",
+      "relevant_ids": [
+        "v2-billing-mx1"
+      ]
+    },
+    {
+      "id": "v2-billing-mx2",
+      "cluster": "billing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "dunning は 3 回 retry して失敗したら subscription を past_due にする",
+      "query": "支払い失敗が続いた契約の扱い",
+      "relevant_ids": [
+        "v2-billing-mx2"
+      ]
+    },
+    {
+      "id": "v2-billing-mx3",
+      "cluster": "billing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "税率計算を Stripe Tax に移管し、自前の tax table を廃止",
+      "query": "消費税の計算を外部サービスに任せた件",
+      "relevant_ids": [
+        "v2-billing-mx3"
+      ]
+    },
+    {
+      "id": "v2-billing-mx4",
+      "cluster": "billing",
+      "pattern": "mixed-content_mixed-query",
+      "content": "usage-based 課金の metering は 5 分粒度で集計して日次確定",
+      "query": "従量課金の使用量集計の粒度",
+      "relevant_ids": [
+        "v2-billing-mx4"
+      ]
+    },
+    {
+      "id": "v2-frontend-ja1",
+      "cluster": "frontend",
+      "pattern": "ja-content_en-query",
+      "content": "バンドルサイズを 2.1MB から 780KB に削減、未使用の chart ライブラリを動的 import にした",
+      "query": "what shrank the JavaScript payload so much",
+      "relevant_ids": [
+        "v2-frontend-ja1"
+      ]
+    },
+    {
+      "id": "v2-frontend-ja2",
+      "cluster": "frontend",
+      "pattern": "ja-content_en-query",
+      "content": "画像は AVIF を優先し、非対応ブラウザには WebP をフォールバックで配信する",
+      "query": "which image format do we serve by default now",
+      "relevant_ids": [
+        "v2-frontend-ja2"
+      ]
+    },
+    {
+      "id": "v2-frontend-en1",
+      "cluster": "frontend",
+      "pattern": "en-content_ja-query",
+      "content": "Source maps are uploaded to the error tracker on every release and stripped from public assets.",
+      "query": "source map はどこに上げて公開からは外す？",
+      "relevant_ids": [
+        "v2-frontend-en1"
+      ]
+    },
+    {
+      "id": "v2-frontend-en2",
+      "cluster": "frontend",
+      "pattern": "en-content_ja-query",
+      "content": "The build switched from webpack to Vite, cutting cold dev-server start from 40s to 3s.",
+      "query": "開発サーバーの起動が一瞬になった変更",
+      "relevant_ids": [
+        "v2-frontend-en2"
+      ]
+    },
+    {
+      "id": "v2-frontend-mx1",
+      "cluster": "frontend",
+      "pattern": "mixed-content_mixed-query",
+      "content": "LCP を 3.8s から 2.1s に改善、hero image の preload と font swap が効いた",
+      "query": "最大コンテンツ描画の改善で効いた施策",
+      "relevant_ids": [
+        "v2-frontend-mx1"
+      ]
+    },
+    {
+      "id": "v2-frontend-mx2",
+      "cluster": "frontend",
+      "pattern": "mixed-content_mixed-query",
+      "content": "CSS は Tailwind に統一し、styled-components は新規禁止にした",
+      "query": "スタイルの書き方の標準をどっちに寄せた",
+      "relevant_ids": [
+        "v2-frontend-mx2"
+      ]
+    },
+    {
+      "id": "v2-frontend-mx3",
+      "cluster": "frontend",
+      "pattern": "mixed-content_mixed-query",
+      "content": "hydration error の上位 3 件を直して console noise を 90% 削減",
+      "query": "画面初期化の不整合エラーを減らした話",
+      "relevant_ids": [
+        "v2-frontend-mx3"
+      ]
+    },
+    {
+      "id": "v2-frontend-mx4",
+      "cluster": "frontend",
+      "pattern": "mixed-content_mixed-query",
+      "content": "feature flag の評価を client から edge middleware に移して FOUC を解消",
+      "query": "機能フラグの評価場所を移してチラつきを消した",
+      "relevant_ids": [
+        "v2-frontend-mx4"
+      ]
+    },
+    {
+      "id": "v2-queue-ja1",
+      "cluster": "queue",
+      "pattern": "ja-content_en-query",
+      "content": "Kafka のコンシューマーグループを再設計し、リバランス停止時間を 30 秒から 2 秒にした",
+      "query": "what shortened the consumer group pause during scaling",
+      "relevant_ids": [
+        "v2-queue-ja1"
+      ]
+    },
+    {
+      "id": "v2-queue-ja2",
+      "cluster": "queue",
+      "pattern": "ja-content_en-query",
+      "content": "DLQ に落ちたメッセージは 24 時間ごとにバッチで再処理し、3 回失敗で破棄する",
+      "query": "what happens to messages that keep failing",
+      "relevant_ids": [
+        "v2-queue-ja2"
+      ]
+    },
+    {
+      "id": "v2-queue-en1",
+      "cluster": "queue",
+      "pattern": "en-content_ja-query",
+      "content": "Message ordering is guaranteed per partition key, and consumers are idempotent by design.",
+      "query": "メッセージの順番はどの単位で保証される",
+      "relevant_ids": [
+        "v2-queue-en1"
+      ]
+    },
+    {
+      "id": "v2-queue-en2",
+      "cluster": "queue",
+      "pattern": "en-content_ja-query",
+      "content": "Backpressure now pauses the producer when consumer lag exceeds 100k messages.",
+      "query": "ラグが溜まったら producer を止める仕組み",
+      "relevant_ids": [
+        "v2-queue-en2"
+      ]
+    },
+    {
+      "id": "v2-queue-mx1",
+      "cluster": "queue",
+      "pattern": "mixed-content_mixed-query",
+      "content": "outbox pattern を導入し、DB commit と message 発行の整合を保証",
+      "query": "DB 書き込みとイベント送信のズレを防ぐ設計",
+      "relevant_ids": [
+        "v2-queue-mx1"
+      ]
+    },
+    {
+      "id": "v2-queue-mx2",
+      "cluster": "queue",
+      "pattern": "mixed-content_mixed-query",
+      "content": "retention を 7 日に延ばし、replay 用の compacted topic を追加",
+      "query": "過去メッセージを後から流し直す準備",
+      "relevant_ids": [
+        "v2-queue-mx2"
+      ]
+    },
+    {
+      "id": "v2-queue-mx3",
+      "cluster": "queue",
+      "pattern": "mixed-content_mixed-query",
+      "content": "consumer の lag alert は 10k で warning、50k で critical",
+      "query": "処理遅延の警告レベルの段階",
+      "relevant_ids": [
+        "v2-queue-mx3"
+      ]
+    },
+    {
+      "id": "v2-queue-mx4",
+      "cluster": "queue",
+      "pattern": "mixed-content_mixed-query",
+      "content": "schema registry を導入して Avro の後方互換チェックを CI に追加",
+      "query": "メッセージ形式の互換性チェックをどこに入れた",
+      "relevant_ids": [
+        "v2-queue-mx4"
+      ]
+    },
+    {
+      "id": "v2-secrets-ja1",
+      "cluster": "secrets",
+      "pattern": "ja-content_en-query",
+      "content": "API キーのローテーションを 90 日自動化し、旧キーは 7 日間の猶予後に失効させる",
+      "query": "how often do external service keys get replaced automatically",
+      "relevant_ids": [
+        "v2-secrets-ja1"
+      ]
+    },
+    {
+      "id": "v2-secrets-ja2",
+      "cluster": "secrets",
+      "pattern": "ja-content_en-query",
+      "content": "本番の環境変数を Vault に移行し、デプロイ時に動的 inject する方式にした",
+      "query": "where do production settings get injected from now",
+      "relevant_ids": [
+        "v2-secrets-ja2"
+      ]
+    },
+    {
+      "id": "v2-secrets-en1",
+      "cluster": "secrets",
+      "pattern": "en-content_ja-query",
+      "content": "Database credentials are short-lived: each service leases a 4 hour credential from Vault.",
+      "query": "DB 資格情報の短命リースは何時間",
+      "relevant_ids": [
+        "v2-secrets-en1"
+      ]
+    },
+    {
+      "id": "v2-secrets-en2",
+      "cluster": "secrets",
+      "pattern": "en-content_ja-query",
+      "content": "Secret scanning blocks any commit containing a private key or a bearer token pattern.",
+      "query": "秘密鍵入りコミットをブロックするスキャン",
+      "relevant_ids": [
+        "v2-secrets-en2"
+      ]
+    },
+    {
+      "id": "v2-secrets-mx1",
+      "cluster": "secrets",
+      "pattern": "mixed-content_mixed-query",
+      "content": "KMS の key を envelope encryption に変え、data key は 24h で rotate",
+      "query": "暗号鍵の入れ子構造と更新間隔",
+      "relevant_ids": [
+        "v2-secrets-mx1"
+      ]
+    },
+    {
+      "id": "v2-secrets-mx2",
+      "cluster": "secrets",
+      "pattern": "mixed-content_mixed-query",
+      "content": "CI の secret は OIDC federation にして長期 token を全廃",
+      "query": "CI の認証から長生きする資格情報をなくした話",
+      "relevant_ids": [
+        "v2-secrets-mx2"
+      ]
+    },
+    {
+      "id": "v2-secrets-mx3",
+      "cluster": "secrets",
+      "pattern": "mixed-content_mixed-query",
+      "content": "breakglass 手順を整備し、緊急 access は 2 人承認 + 全操作録画",
+      "query": "緊急時アクセスの承認と記録のルール",
+      "relevant_ids": [
+        "v2-secrets-mx3"
+      ]
+    },
+    {
+      "id": "v2-secrets-mx4",
+      "cluster": "secrets",
+      "pattern": "mixed-content_mixed-query",
+      "content": "third-party の webhook secret は per-tenant に分離して漏洩影響を局所化",
+      "query": "取引先ごとの通知用の鍵を分けた理由",
+      "relevant_ids": [
+        "v2-secrets-mx4"
+      ]
+    },
+    {
+      "id": "v2-storage-ja1",
+      "cluster": "storage",
+      "pattern": "ja-content_en-query",
+      "content": "アップロード上限を 25MB から 100MB に拡大し、分割アップロードを必須にした",
+      "query": "how big can user uploads be now",
+      "relevant_ids": [
+        "v2-storage-ja1"
+      ]
+    },
+    {
+      "id": "v2-storage-ja2",
+      "cluster": "storage",
+      "pattern": "ja-content_en-query",
+      "content": "S3 のライフサイクルで 90 日後に IA、1 年後に Glacier へ移行する設定を入れた",
+      "query": "when do old files move to cheaper storage tiers",
+      "relevant_ids": [
+        "v2-storage-ja2"
+      ]
+    },
+    {
+      "id": "v2-storage-en1",
+      "cluster": "storage",
+      "pattern": "en-content_ja-query",
+      "content": "Presigned URLs expire in 15 minutes and are scoped to a single object key and method.",
+      "query": "署名付き URL の有効範囲と寿命",
+      "relevant_ids": [
+        "v2-storage-en1"
+      ]
+    },
+    {
+      "id": "v2-storage-en2",
+      "cluster": "storage",
+      "pattern": "en-content_ja-query",
+      "content": "Virus scanning quarantines uploads until the async scan completes, then publishes them.",
+      "query": "アップロードのウイルススキャンと隔離の流れ",
+      "relevant_ids": [
+        "v2-storage-en2"
+      ]
+    },
+    {
+      "id": "v2-storage-mx1",
+      "cluster": "storage",
+      "pattern": "mixed-content_mixed-query",
+      "content": "画像の thumbnail 生成を Lambda から ECS batch に移して cold start を解消",
+      "query": "サムネイル生成の実行基盤を移した話",
+      "relevant_ids": [
+        "v2-storage-mx1"
+      ]
+    },
+    {
+      "id": "v2-storage-mx2",
+      "cluster": "storage",
+      "pattern": "mixed-content_mixed-query",
+      "content": "CDN の origin を S3 直結から CloudFront OAC に変更",
+      "query": "配信の取得元の構成を何に変えた",
+      "relevant_ids": [
+        "v2-storage-mx2"
+      ]
+    },
+    {
+      "id": "v2-storage-mx3",
+      "cluster": "storage",
+      "pattern": "mixed-content_mixed-query",
+      "content": "不要 object の cleanup job が月 2TB を削除、storage cost を 18% 削減",
+      "query": "不要ファイル削除でどれくらい節約できた",
+      "relevant_ids": [
+        "v2-storage-mx3"
+      ]
+    },
+    {
+      "id": "v2-storage-mx4",
+      "cluster": "storage",
+      "pattern": "mixed-content_mixed-query",
+      "content": "EXIF の位置情報は upload 時に必ず strip する",
+      "query": "写真の位置情報の扱い",
+      "relevant_ids": [
+        "v2-storage-mx4"
+      ]
+    }
+  ],
+  "distractors": [
+    {
+      "id": "v2-deploy-d1",
+      "cluster": "deploy",
+      "lang": "en",
+      "content": "Canary deployment traffic was held at 5 percent for the entire quarter due to capacity concerns."
+    },
+    {
+      "id": "v2-deploy-d2",
+      "cluster": "deploy",
+      "lang": "en",
+      "content": "The rollback runbook still requires manual approval from the release manager for database changes."
+    },
+    {
+      "id": "v2-deploy-d3",
+      "cluster": "deploy",
+      "lang": "ja",
+      "content": "デプロイ通知を Slack の #release チャンネルに送る bot を追加した"
+    },
+    {
+      "id": "v2-deploy-d4",
+      "cluster": "deploy",
+      "lang": "mixed",
+      "content": "deploy の頻度を週1から daily に変える提案は capacity review 待ちで保留中"
+    },
+    {
+      "id": "v2-auth-d1",
+      "cluster": "auth",
+      "lang": "en",
+      "content": "JWT expiry remains at 30 minutes for the legacy mobile clients until the next forced upgrade."
+    },
+    {
+      "id": "v2-auth-d2",
+      "cluster": "auth",
+      "lang": "en",
+      "content": "Login throttling delays each failed attempt by two seconds but never locks the account."
+    },
+    {
+      "id": "v2-auth-d3",
+      "cluster": "auth",
+      "lang": "ja",
+      "content": "認証サービスの負荷試験は毎月第一火曜に実施している"
+    },
+    {
+      "id": "v2-auth-d4",
+      "cluster": "auth",
+      "lang": "mixed",
+      "content": "OAuth の token introspection endpoint は rate limit の対象外にしている"
+    },
+    {
+      "id": "v2-database-d1",
+      "cluster": "database",
+      "lang": "en",
+      "content": "The composite index proposal on (status, updated_at) was rejected because writes degraded 15 percent."
+    },
+    {
+      "id": "v2-database-d2",
+      "cluster": "database",
+      "lang": "en",
+      "content": "Connection pool size stays at 20 in the staging environment to mirror the smaller instance class."
+    },
+    {
+      "id": "v2-database-d3",
+      "cluster": "database",
+      "lang": "ja",
+      "content": "データベースのバックアップは 6 時間ごとのスナップショットで運用している"
+    },
+    {
+      "id": "v2-database-d4",
+      "cluster": "database",
+      "lang": "mixed",
+      "content": "migration の dry-run を CI で必須にする案は schema diff tool の選定待ち"
+    },
+    {
+      "id": "v2-cache-d1",
+      "cluster": "cache",
+      "lang": "en",
+      "content": "Product cache TTL remains 3600 seconds for the partner API because contracts pin hourly pricing."
+    },
+    {
+      "id": "v2-cache-d2",
+      "cluster": "cache",
+      "lang": "en",
+      "content": "The invalidation cron job that scanned the whole keyspace nightly was finally removed."
+    },
+    {
+      "id": "v2-cache-d3",
+      "cluster": "cache",
+      "lang": "ja",
+      "content": "キャッシュサーバーの OS パッチ適用は隔週メンテナンス枠で行う"
+    },
+    {
+      "id": "v2-cache-d4",
+      "cluster": "cache",
+      "lang": "mixed",
+      "content": "Redis の memory 使用量 alert は 80% で warning、90% で page にしている"
+    },
+    {
+      "id": "v2-api-limits-d1",
+      "cluster": "api-limits",
+      "lang": "en",
+      "content": "The public API rate limit was 100 requests per minute throughout the beta period."
+    },
+    {
+      "id": "v2-api-limits-d2",
+      "cluster": "api-limits",
+      "lang": "en",
+      "content": "Internal service-to-service calls are exempt from rate limiting inside the mesh."
+    },
+    {
+      "id": "v2-api-limits-d3",
+      "cluster": "api-limits",
+      "lang": "ja",
+      "content": "API ドキュメントの自動生成は OpenAPI 3.1 ベースに移行済み"
+    },
+    {
+      "id": "v2-api-limits-d4",
+      "cluster": "api-limits",
+      "lang": "mixed",
+      "content": "429 応答時の Retry-After は固定 60 秒でなく残り window 秒数を返す案を検討中"
+    },
+    {
+      "id": "v2-ci-testing-d1",
+      "cluster": "ci-testing",
+      "lang": "en",
+      "content": "The flaky test dashboard ranks suites by failure rate over the trailing seven days."
+    },
+    {
+      "id": "v2-ci-testing-d2",
+      "cluster": "ci-testing",
+      "lang": "en",
+      "content": "CI runtime was 28 minutes before the test sharding project started."
+    },
+    {
+      "id": "v2-ci-testing-d3",
+      "cluster": "ci-testing",
+      "lang": "ja",
+      "content": "テスト環境のデータリセットは毎晩 2 時に自動実行される"
+    },
+    {
+      "id": "v2-ci-testing-d4",
+      "cluster": "ci-testing",
+      "lang": "mixed",
+      "content": "E2E の browser matrix は Chrome と Safari に絞り、Firefox は weekly に移した"
+    },
+    {
+      "id": "v2-observability-d1",
+      "cluster": "observability",
+      "lang": "en",
+      "content": "Trace sampling stayed at 1 percent for cost reasons during the first half of the year."
+    },
+    {
+      "id": "v2-observability-d2",
+      "cluster": "observability",
+      "lang": "en",
+      "content": "The pager rotation tool was migrated but escalation policies were kept unchanged."
+    },
+    {
+      "id": "v2-observability-d3",
+      "cluster": "observability",
+      "lang": "ja",
+      "content": "監視ダッシュボードの閲覧権限を SRE チーム外にも開放した"
+    },
+    {
+      "id": "v2-observability-d4",
+      "cluster": "observability",
+      "lang": "mixed",
+      "content": "log の PII masking は ingestion 側で行い、application 側の対応は不要にした"
+    },
+    {
+      "id": "v2-search-d1",
+      "cluster": "search",
+      "lang": "en",
+      "content": "The synonym dictionary was curated by hand for two years before automation was proposed."
+    },
+    {
+      "id": "v2-search-d2",
+      "cluster": "search",
+      "lang": "en",
+      "content": "Zero-hit searches were 12 percent of traffic when the audit started."
+    },
+    {
+      "id": "v2-search-d3",
+      "cluster": "search",
+      "lang": "ja",
+      "content": "検索ログの保存期間は 90 日に設定している"
+    },
+    {
+      "id": "v2-search-d4",
+      "cluster": "search",
+      "lang": "mixed",
+      "content": "vector index の HNSW パラメータ調整は次の四半期に持ち越し"
+    },
+    {
+      "id": "v2-billing-d1",
+      "cluster": "billing",
+      "lang": "en",
+      "content": "Invoices used to be issued three business days after month-end close."
+    },
+    {
+      "id": "v2-billing-d2",
+      "cluster": "billing",
+      "lang": "en",
+      "content": "The webhook handler previously trusted events without verifying the Stripe signature."
+    },
+    {
+      "id": "v2-billing-d3",
+      "cluster": "billing",
+      "lang": "ja",
+      "content": "請求関連の問い合わせは専用キューでサポートが一次対応する"
+    },
+    {
+      "id": "v2-billing-d4",
+      "cluster": "billing",
+      "lang": "mixed",
+      "content": "年額 plan の割引率を 15% から 20% に上げる案は pricing committee で審議中"
+    },
+    {
+      "id": "v2-frontend-d1",
+      "cluster": "frontend",
+      "lang": "en",
+      "content": "Bundle size was 2.1MB at the start of the performance initiative."
+    },
+    {
+      "id": "v2-frontend-d2",
+      "cluster": "frontend",
+      "lang": "en",
+      "content": "The webpack configuration is still kept in the repo for the legacy admin app."
+    },
+    {
+      "id": "v2-frontend-d3",
+      "cluster": "frontend",
+      "lang": "ja",
+      "content": "フロントエンドのデザイントークンは Figma と同期している"
+    },
+    {
+      "id": "v2-frontend-d4",
+      "cluster": "frontend",
+      "lang": "mixed",
+      "content": "Storybook の visual regression は Chromatic で PR ごとに実行"
+    },
+    {
+      "id": "v2-queue-d1",
+      "cluster": "queue",
+      "lang": "en",
+      "content": "Rebalances froze consumption for thirty seconds before the cooperative protocol rollout."
+    },
+    {
+      "id": "v2-queue-d2",
+      "cluster": "queue",
+      "lang": "en",
+      "content": "The DLQ was previously drained manually whenever an engineer remembered to check it."
+    },
+    {
+      "id": "v2-queue-d3",
+      "cluster": "queue",
+      "lang": "ja",
+      "content": "メッセージ基盤の容量計画は四半期ごとに見直している"
+    },
+    {
+      "id": "v2-queue-d4",
+      "cluster": "queue",
+      "lang": "mixed",
+      "content": "Kafka の broker を 3 から 5 台に増やす作業は network 帯域の確認待ち"
+    },
+    {
+      "id": "v2-secrets-d1",
+      "cluster": "secrets",
+      "lang": "en",
+      "content": "API keys were rotated manually twice a year before the automation project."
+    },
+    {
+      "id": "v2-secrets-d2",
+      "cluster": "secrets",
+      "lang": "en",
+      "content": "A quarterly audit reviews who accessed which secrets through the Vault audit log."
+    },
+    {
+      "id": "v2-secrets-d3",
+      "cluster": "secrets",
+      "lang": "ja",
+      "content": "セキュリティ研修の受講率は全社で 97% に達した"
+    },
+    {
+      "id": "v2-secrets-d4",
+      "cluster": "secrets",
+      "lang": "mixed",
+      "content": "secret の命名規約を SCREAMING_SNAKE_CASE に統一する PR がレビュー中"
+    },
+    {
+      "id": "v2-storage-d1",
+      "cluster": "storage",
+      "lang": "en",
+      "content": "The upload limit was 25MB for years and large files failed with opaque errors."
+    },
+    {
+      "id": "v2-storage-d2",
+      "cluster": "storage",
+      "lang": "en",
+      "content": "Lifecycle rules previously kept every object in the standard tier indefinitely."
+    },
+    {
+      "id": "v2-storage-d3",
+      "cluster": "storage",
+      "lang": "ja",
+      "content": "ファイルストレージの月次レポートを経営会議に提出している"
+    },
+    {
+      "id": "v2-storage-d4",
+      "cluster": "storage",
+      "lang": "mixed",
+      "content": "S3 bucket の public access block は organization policy で強制済み"
+    }
+  ]
+}

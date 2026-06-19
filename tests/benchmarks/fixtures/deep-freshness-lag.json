@@ -1,0 +1,12 @@
+[
+  { "id": "lag-01", "older_content": "The default database is MySQL 5.7.", "newer_content": "The default database has been migrated to PostgreSQL 14.", "concept_tag": "database-engine" },
+  { "id": "lag-02", "older_content": "The API server listens on port 3000.", "newer_content": "The API server was moved to port 8080 after the port conflict.", "concept_tag": "api-server-port" },
+  { "id": "lag-03", "older_content": "Authentication is handled by JWT tokens.", "newer_content": "Authentication was switched to session cookies after the security audit.", "concept_tag": "auth-mechanism" },
+  { "id": "lag-04", "older_content": "The cache layer uses Redis 6.", "newer_content": "The cache layer was migrated to Valkey after Redis license change.", "concept_tag": "cache-backend" },
+  { "id": "lag-05", "older_content": "We deploy using Docker Swarm.", "newer_content": "We migrated deployment from Docker Swarm to Kubernetes.", "concept_tag": "deploy-orchestrator" },
+  { "id": "lag-06", "older_content": "The embedding model is multilingual-e5.", "newer_content": "The embedding model was upgraded to BGE-M3 after benchmarking.", "concept_tag": "embedding-model" },
+  { "id": "lag-07", "older_content": "The frontend framework is Vue 2.", "newer_content": "The frontend was rewritten in React 18 during the Q2 migration.", "concept_tag": "frontend-framework" },
+  { "id": "lag-08", "older_content": "CI/CD runs on Jenkins.", "newer_content": "CI/CD was migrated from Jenkins to GitHub Actions.", "concept_tag": "ci-system" },
+  { "id": "lag-09", "older_content": "The message queue is RabbitMQ.", "newer_content": "The message queue was replaced with Apache Kafka for higher throughput.", "concept_tag": "message-queue" },
+  { "id": "lag-10", "older_content": "The search engine is Elasticsearch.", "newer_content": "The search engine was replaced by OpenSearch after the fork.", "concept_tag": "search-engine" }
+]
