@@ -3032,7 +3032,18 @@ export class HarnessMemCore {
       };
     }
 
-    if (this.embeddingHealth.status === "healthy") {
+    // §155-A03: 嘘 ready の修正。local ONNX provider は init 前から
+    // status: "healthy" を返すが details は "lazy initialization pending" のまま、
+    // という設計だった。details が warming/lazy/prime-required を示している間は
+    // ready=false に倒し、health/readiness の契約を正直化する。
+    const detailsRaw = this.embeddingHealth.details || "";
+    const detailsLowered = detailsRaw.toLowerCase();
+    const isWarmingFromDetails =
+      detailsLowered.includes("lazy initialization pending") ||
+      detailsLowered.includes("is still warming up") ||
+      detailsLowered.includes("requires async prime");
+
+    if (this.embeddingHealth.status === "healthy" && !isWarmingFromDetails) {
       return {
         required: true,
         ready: true,
@@ -3043,8 +3054,8 @@ export class HarnessMemCore {
       };
     }
 
-    const details = this.embeddingHealth.details || "local embedding provider is not ready";
-    const lowered = details.toLowerCase();
+    const details = detailsRaw || "local embedding provider is not ready";
+    const lowered = detailsLowered;
     const failed =
       lowered.includes("failed to load") ||
       lowered.includes("failed to initialize") ||

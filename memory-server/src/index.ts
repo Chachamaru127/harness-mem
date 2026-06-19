@@ -21,6 +21,24 @@ const server = startHarnessMemServer(core, config);
 
 console.error(`[harness-memd] listening on http://${config.bindHost}:${config.bindPort}`);
 
+// §155-A02: HARNESS_MEM_EMBEDDING_EAGER=1 で起動時に embedding model を同期 load する。
+// lazy mode (既定) では初回 search query 時に model load が走り、その間 daemon が
+// 重い consolidation と被ると SQLITE_BUSY + warm-up で long-tail のハングを起こす経路を踏みやすい。
+// eager mode では起動時に load を済ませるので、以降の search は確実に応答できる。
+if (process.env.HARNESS_MEM_EMBEDDING_EAGER === "1") {
+  const eagerStartedAt = Date.now();
+  console.error(`[harness-memd] eager embedding warm-up start (HARNESS_MEM_EMBEDDING_EAGER=1)`);
+  try {
+    await core.primeEmbedding("__eager_warmup__", "passage");
+    await core.primeEmbedding("__eager_warmup__", "query");
+    const elapsed = Date.now() - eagerStartedAt;
+    console.error(`[harness-memd] eager embedding warm-up complete in ${elapsed}ms`);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[harness-memd] eager embedding warm-up failed (continuing with lazy): ${message}`);
+  }
+}
+
 let shuttingDown = false;
 const gracefulShutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;

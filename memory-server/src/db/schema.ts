@@ -13,7 +13,12 @@ export function configureDatabase(
   db.exec("PRAGMA journal_mode=WAL;");
   db.exec("PRAGMA synchronous=NORMAL;");
   db.exec("PRAGMA foreign_keys=ON;");
-  db.exec("PRAGMA busy_timeout=5000;");
+  // §155-A01: consolidation worker と search-worker の SQLITE_BUSY 衝突で
+  // daemon が SIGTERM サイクルに入る事象に対応。busy_timeout を 5s → 30s に拡大し、
+  // env で override 可能に。consolidation の長い transaction (~数秒) 中の search を
+  // 切断ではなく待機に倒す。
+  const busyTimeout = parsePragmaInt(env.HARNESS_MEM_SQLITE_BUSY_TIMEOUT) ?? 30000;
+  db.exec(`PRAGMA busy_timeout=${busyTimeout};`);
 
   const cacheSize = parsePragmaInt(env.HARNESS_MEM_SQLITE_CACHE_SIZE);
   if (cacheSize !== null) {
