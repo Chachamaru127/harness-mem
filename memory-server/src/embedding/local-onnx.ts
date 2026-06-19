@@ -349,6 +349,11 @@ export function createLocalOnnxEmbeddingProvider(options: LocalOnnxOptions): Emb
           env.localModelPath = modelPath;
           env.allowRemoteModels = false;
           env.useBrowserCache = false;
+          // §154-720: transformers.js v4 で新設された filesystem cache (Node/Bun 環境)
+          // を OFF。ON だとローカル ~/.cache 等に過去 run のベクターが残り、parity
+          // 計測時に古い snapshot を読んで drift 偽陰性になるリスクがある。
+          // (TransformersEnvironment.useFSCache, v4 新設プロパティ)
+          (env as { useFSCache?: boolean }).useFSCache = false;
 
           tokenizer = await AutoTokenizer.from_pretrained(modelPath);
           model = await AutoModel.from_pretrained(modelPath, {
