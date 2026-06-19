@@ -7,6 +7,45 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.27.5] - 2026-06-19
+
+### Fixed
+
+- **§155 codex MCP ハング根因 3 層の本質修正**: harness_mem_search が codex 経由で長時間ハングする事象に対し、(L1) Bun.serve `idleTimeout` を 10s デフォルトから 255s に拡大 (`server.ts:447`)、(A01) SQLite `busy_timeout` を 5s から 30s に拡大し `HARNESS_MEM_SQLITE_BUSY_TIMEOUT` で env override 可能化 (`schema.ts:16`)、(A02) `HARNESS_MEM_EMBEDDING_EAGER=1` で起動時 embedding 同期 warm-up (`index.ts:22`)、(A03) `embedding_ready` の嘘表示を厳格化 (details に warming 文字列を含む間は false) (`harness-mem-core.ts:3035`)、(A04) consolidation scheduler の unhandled rejection を `.catch()` でガードし SQLITE_BUSY による daemon SIGTERM crashloop を防止 (`ingest-coordinator.ts:539`)。修正後 daemon 6 分連続稼働 SIGTERM=0 / SQLITE_BUSY=0、codex exec から harness_mem_search 3 回連続成功 (34s/24s/20s) を確認。
+- **§154-512 forget-maintenance live-daemon coexistence**: forget-maintenance CLI の custom-sqlite preflight と `busy_timeout` 設定により、live daemon と並行実行しても SQLITE_BUSY 衝突を起こさない構成に修正。
+- **§154-303 temporal path guards / fact containment**: future-valid active facts の路径と有効性を尊重する修正。
+- **§154-152 CJK discrimination gate hardening**: review 指摘を反映した CJK discrimination gate の強化。
+- **§154-310 deep-freshness 実 system bench**: fixture-value theater を排し、実 system を駆動する deep-freshness 計測に修正。
+
+### Added
+
+- **§154 granite-embedding-311m-r2 mrl-384 default 切替** (510 flag wiring / 511 re-embed backfill / 512 flip + rollback drill): `embedding_default_model` flag を provider init に配線、live-faithful source (`raw_text ?? content_redacted`) で resume + verification 付き re-embed backfill、PROVIDER=adaptive→auto flip + rollback drill を完走。
+- **§154-B binary 粗選別 (DENSE-leg only, default-OFF)**: DENSE leg 限定の binary coarse selector + float rerank、default OFF で safe-onboard。
+- **§154-C JA held-out generalization gate (report-only)**: overfit debt を測定する held-out 一般化ゲート (report-only)。
+- **§154-403 deterministic embedding switch decision gate**: 切替判定の deterministic gate。
+- **§154-402 vector-isolated embedding A/B 計測**: vector-isolated mode での shadow A/B 計測。
+- **§154-305 enforce gate / §154-304 flagship freshness KPI 表示昇格**: developer-domain manifest に flagship freshness gate を enforce。
+- **§154-900 hermes external-channel egress policy gate**: hermes business 用の external-channel egress policy gate。
+- **§154-211 local LLM model matrix**: skip 理由付きの local LLM model matrix 記録。
+
+### Changed
+
+- **D29 改訂 (paired bootstrap CI95)**: D29 decision に paired bootstrap CI95 を採用し `ci_lower_bound_enabled` を追加。
+- **§154-500..505 switch-gate ceiling 撤去 + 2026 embedding 候補オンボーディング**: 切替ゲート上限を撤去し、2026 年世代の embedding 候補群を計測オンボード。
+- **§154-703 LLM rerank default OFF (decomposed A/B)**: decomposed A/B 結果を踏まえ LLM rerank の default を OFF に確定。
+- **§154-511 embed live-faithful source**: char slice ではなく `raw_text ?? content_redacted` を embed source に採用。
+
+### Docs
+
+- **北極星 serverization+enterprise 戦略 (Codex-reviewed)**: server 化 + 法人課金戦略を整理し、managed-tier scope boundary を Spec に明文化。
+- **Pro tier=C decision**: Pro 階級の tier 判定を C に確定し、rollback drill reversibility と unverified claims のトーンを軟化。
+- **plan stocktake cleanup**: 9 件の stale-WIP section を closure し §F backlog を追加。
+
+### Verification
+
+- §155 修正後の検証: daemon (PID 53842) 6 分連続稼働 SIGTERM=0 / SQLITE_BUSY=0、codex exec から harness_mem_search 3 回連続成功 (34s/24s/20s、全て < 60s、ハングなし)。
+- Review: claude-code-harness:reviewer agent による 5-point 独立レビューで APPROVE。
+
 ## [0.27.4] - 2026-06-05
 
 ### Fixed
@@ -2947,7 +2986,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.4...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.5...HEAD
+[0.27.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.4...v0.27.5
 [0.27.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.3...v0.27.4
 [0.27.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.2...v0.27.3
 [0.27.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.1...v0.27.2
