@@ -255,7 +255,9 @@ async function llmRerankTop10(query: string, top10: Array<{ id: string; content:
     if (!raw) throw new Error("llm_rerank_empty_response");
     const parsed = JSON.parse(raw) as LlmRerankResponse;
     if (!Array.isArray(parsed.ranking)) throw new Error("llm_rerank_malformed_ranking");
-    // Restore any missing ids at the tail (caller may sort partial output)
+    // §154-710 Codex re-review fix: partial/empty ranking は silent baseline 化を
+    // 防ぐため補完前に reject する。LLM が完全 10 件をカバーしない応答は
+    // 「rerank 不完全」= measurement 汚染と扱い、tail 補完で隠蔽しない。
     const seen = new Set<string>();
     const ordered: string[] = [];
     for (const id of parsed.ranking) {
@@ -263,8 +265,11 @@ async function llmRerankTop10(query: string, top10: Array<{ id: string; content:
         ordered.push(id); seen.add(id);
       }
     }
-    for (const t of top10) if (!seen.has(t.id)) ordered.push(t.id);
-    if (ordered.length !== top10.length) throw new Error("llm_rerank_partial_coverage");
+    if (ordered.length !== top10.length) {
+      throw new Error(
+        `llm_rerank_partial_coverage (returned ${ordered.length}/${top10.length} valid ids — fail-closed: refuses silent tail completion to preserve baseline order)`,
+      );
+    }
     return ordered;
   } finally {
     clearTimeout(timer);
