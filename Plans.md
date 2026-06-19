@@ -915,8 +915,39 @@ Stocktake (2026-06-18, workflow `whewoxoem`) で §128/130/89/90/115/122 を cc:
 | S110-007 | envelope signals に PII を含めない指針を `inject/envelope.ts` JSDoc + `docs/inject-envelope.md` に明文化（doc only） | §110 | 低 |
 | S112-005 | Hermes 実機 E2E 動作確認（install→plugin→session→event 観測） | §112 | 低 (tier-3) |
 | S112-007 | Hermes tier 昇格 criteria 文書化 | §112 | 低 (tier-3) |
+| S155-X01 | 旧 stdio バイナリ `bin/harness-mcp-darwin-arm64` の port 37889 残接続の出所追跡。未使用なら起動経路を遮断（cron/launchd/旧 codex 設定どこから来てるか） | §155 | 低 |
+| S155-X02 | `~/.zshenv:282` の unmatched `"` 修復。mcp-gateway launchd 起動時に毎回 stderr 汚染している（動作には支障なし） | §155 | 低 |
 
 生きている本体 WIP は §154 のみ。上記は次の minor release doc window 等でまとめてクローズ可。
+
+## §155 Codex MCP ハング根因の本質修正 (2026-06-19) — cc:TODO
+
+策定日: 2026-06-19
+背景: 別 worktree からの codex review が `harness/harness_mem_search` 呼び出しで無限ハングする事象を本セッションで根因特定。daemon (port 37888) で 3 層の問題が同時発生する: (L1) Bun.serve の idleTimeout が 10s デフォルトで client は SSE 待ちを続け実質ハング、(L2) granite-embedding-311m-r2 が「lazy initialization pending」のまま warm up が永続化、(L3) consolidation worker と search-worker の SQLITE_BUSY 衝突で daemon プロセス自体が SIGTERM サイクル (crashloop) に入る。
+L1 は本セッションで `memory-server/src/server.ts:447` に `idleTimeout: 255` を追加して暫定対応済 (即時ハング → 応答待ち最大 4 分に緩和)。本セクションは L2/L3 の本質修正と、ready 表示の嘘の修正、SIGTERM クラッシュ防御を扱う。
+
+`team_validation_mode: subagent`（Architecture / QA / Skeptic で SQLite 並行性 + ONNX 同期 load + health 契約の整合を独立レビュー）
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 155-A01 | consolidation worker と search-worker の SQLITE_BUSY 衝突を `PRAGMA journal_mode=WAL` + `PRAGMA busy_timeout=30000` を全 connection 起動時に確実適用。env override 可 (`HARNESS_MEM_SQLITE_BUSY_TIMEOUT`)。実装: `memory-server/src/db/schema.ts:16` (全 daemon DB は `configureDatabase()` 経由なので 1 箇所で網羅) | 新 daemon 起動後 6 分連続稼働で SIGTERM=0 / SQLITE_BUSY=0、e2e search 3 回成功 | - | cc:完了 [3d82138] |
+| 155-A02 | granite-embedding-311m-r2 の eager-load オプション (`HARNESS_MEM_EMBEDDING_EAGER=1`) を起動時に同期完了させる経路を追加。lazy=既定維持。実装: `memory-server/src/index.ts:22` で `await core.primeEmbedding('__eager_warmup__', 'passage'/'query')` | env=1 で起動時に warm-up complete ログが出る (logic 確認、launchd plist 反映は別判断) / env=0 で既存挙動維持 | - | cc:完了 [3d82138] |
+| 155-A03 | `health` の `embedding_ready` 判定を厳格化。details に `lazy initialization pending`/`is still warming up`/`requires async prime` を含む間は `embedding_ready: false` / `state: warming` を返す。実装: `memory-server/src/core/harness-mem-core.ts:3035` の `getEmbeddingReadiness()` 内分岐 | 新 daemon の `/v1/health` で `embedding_ready=False state=warming details='...lazy initialization pending'` を確認済 | - | cc:完了 [3d82138] |
+| 155-A04 | consolidation scheduler の `void runConsolidation(...).finally()` に `.catch()` を追加して `SQLITE_BUSY` などの promise rejection で daemon を kill しない。retry ではなく WARN ログ + 次サイクル待ち。実装: `memory-server/src/core/ingest-coordinator.ts:539` | 新 daemon (53842) で 6 分間 SIGTERM=0 (修正前は 60s 周期で SIGTERM サイクル) | 155-A01 | cc:完了 [3d82138] |
+| 155-A05 | 上記修正後の codex review 経路 e2e 再現テスト。`codex exec` で `harness_mem_search` を 3 回連続呼び (granite cold start 含む) | 3 回とも応答 OK got 3 results、所要 34s/24s/20s、ハングなし | 155-A01, 155-A02, 155-A03, 155-A04 | cc:完了 [3d82138] |
+| 155-A06 | 本セッションの 5 修正 (idleTimeout + busy_timeout + .catch + health 厳格化 + eager) を decisions.md に Why 付き 1 エントリで記録 (D47) | decisions.md に D47 追加済、commit hash は本 commit で確定 | - | cc:完了 [3d82138] |
+
+### Non-goals / stop line
+
+- harness MCP gateway (port 37889 別プロセス, pid 33202) のロジック改修は本セクションでは扱わない。daemon 側の応答健全化が先。
+- 別エンベディングモデル (multilingual-e5 / ruri-v3-30m) の warm up 改善は本セクションのスコープ外 (s154 系で扱う)。
+
+### 観測した一次証拠 (修復後の回帰テスト用)
+
+- `daemon.launchd.log`: `[Bun.serve]: request timed out after 10 seconds. Pass idleTimeout to configure.`
+- `daemon.launchd.log`: `SQLiteError: database is locked / errno: 5, code: "SQLITE_BUSY" / at upsertFactsForSession (consolidation/worker.ts:691)` → `received SIGTERM, draining queue and shutting down → listening on ...` の crashloop が複数回
+- `daemon.launchd.log`: `local model granite-embedding-311m-r2 unavailable for sync embed: local ONNX model granite-embedding-311m-r2 is still warming up` がログ末尾まで継続
+- codex hung job log: `~/.claude/plugins/data/codex-openai-codex/state/fix-harness-fingerprint-p-7918ec463b07421a/jobs/review-mqjaf3h3-mr3ora.log` で `Calling harness/harness_mem_search.` のあと 5 時間応答なし → user cancel
 
 ## §154 北極星: Bilingual Coding-Memory Freshness — cc:WIP (本体29/30完了。残=154-205 human-gate + Phase 8 計測深化 2026-06-12起票)
 
