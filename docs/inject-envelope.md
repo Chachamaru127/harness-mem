@@ -13,6 +13,7 @@ document is the implementation-facing companion.
 
 - [Why an envelope](#why-an-envelope)
 - [Envelope shape (case C: structured + prose)](#envelope-shape-case-c-structured--prose)
+- [`signals[]` design guidance — PII never goes in (S110-007)](#signals-design-guidance--pii-never-goes-in-s110-007)
 - [Invariants and validation](#invariants-and-validation)
 - [Four inject paths in v0.20.0](#four-inject-paths-in-v0200)
 - [`inject_traces` table schema](#inject_traces-table-schema)
@@ -77,6 +78,40 @@ interface InjectEnvelope {
 - **`prose`** — the natural-language form. By contract, every signal in
   `structured.signals[]` must appear verbatim in `prose`. This is what
   ties the prose back to the structured side and avoids drift.
+
+## `signals[]` design guidance — PII never goes in (S110-007)
+
+`signals[]` は consume detector で「次ターン発話 / tool call に含まれたか」を grep するための語彙であり、同時に `inject_traces.signals_json` に persist される。**PII / 秘密情報は signals に絶対に入れない**。
+
+許容するもの (structural label):
+- observation ID (`E12`)、decision ID (`D8`)、trace ID
+- file path (`src/inject/envelope.ts`)、function name (`validateProseContainsSignals`)
+- 固定 tag (`risk_warn`、`recall_chain`)
+- branch name、project key
+- salient noun (技術用語、API 名、固有 module 名)
+
+入れてはいけないもの:
+- メールアドレス / 電話番号
+- API key / token / 秘密値
+- 顧客本名 / 個人特定情報
+- 自由文の本文 fragment
+
+理由:
+- signals 列は永続化され consume detector で grep される。PII を載せると顧客本文と同じ persistence 制約 (ZDR / retention) を signals 列にも適用する必要が出る。
+- envelope の設計前提は「structural label に限定して persistence 境界を軽く保つ」こと。
+- 防御 layer として claude-code-harness 側 `client-redaction.yaml` に defensive note 済 — emitter 側が誤って PII を渡しても client 経路で削られる。本セクションは「最初から入れない」設計指針の正本 (envelope.ts JSDoc と同期)。
+
+emitter 側チェック例:
+
+```ts
+// ❌ NG: 顧客メールを signals に乗せている
+signals: [observationId, customerEmail]
+
+// ✅ OK: observation_id だけで参照可能、メールは prose にも入れない
+signals: [observationId, "user-account-link"]
+```
+
+prose 側も同じ: `validateProseContainsSignals` は signals が prose に存在することを要求するため、signals に PII を入れると prose にも PII が混入する。
 
 ## Invariants and validation
 
