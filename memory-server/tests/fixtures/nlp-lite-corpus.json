@@ -1,0 +1,103 @@
+{
+  "_comment": "§F-1 (S78-C02b) ground-truth fixture corpus. Each observation is hand-labeled with the expected entity types and (where applicable) the expected relation kinds for selected entity pairs. Used by the A/B harness in scripts/nlp-lite-ab.ts.",
+  "observations": [
+    {
+      "id": "obs-001",
+      "text": "Refactored worker.ts to fix the RaceCondition. Deployed via deploy.sh on Docker.",
+      "entities": {
+        "worker.ts":      "technology",
+        "RaceCondition":  "other",
+        "deploy.sh":      "technology",
+        "Docker":         "technology",
+        "Refactored":     "action"
+      },
+      "relations": {
+        "refactored::worker.ts": "fixes",
+        "deploy.sh::docker":     "generic"
+      }
+    },
+    {
+      "id": "obs-002",
+      "text": "Server uses Redis for the session store and depends on Postgres.",
+      "entities": {
+        "Server":   "other",
+        "Redis":    "technology",
+        "Postgres": "technology"
+      },
+      "relations": {
+        "server::redis":    "uses",
+        "server::postgres": "uses"
+      }
+    },
+    {
+      "id": "obs-003",
+      "text": "Alice opened a PR. The PR fixes the auth bug in TypeScript.",
+      "entities": {
+        "Alice":      "person",
+        "PR":         "other",
+        "TypeScript": "technology"
+      },
+      "relations": {
+        "pr::typescript": "generic"
+      }
+    },
+    {
+      "id": "obs-004",
+      "text": "Vector is an embedding produced by the encoder. ReactRouter imports history.",
+      "entities": {
+        "Vector":       "other",
+        "ReactRouter":  "technology",
+        "history":      "other"
+      },
+      "relations": {
+        "vector::embedding":     "is_a",
+        "reactrouter::history":  "uses"
+      }
+    },
+    {
+      "id": "obs-005",
+      "text": "fix(auth): handle missing token in middleware.ts",
+      "entities": {
+        "middleware.ts": "technology"
+      },
+      "relations": {}
+    },
+    {
+      "id": "obs-006",
+      "text": "Bob deployed v3 to production. Met with Dr. Smith about Kubernetes.",
+      "entities": {
+        "Bob":         "person",
+        "deployed":    "action",
+        "v3":          "technology",
+        "Smith":       "person",
+        "Kubernetes":  "technology"
+      },
+      "relations": {}
+    },
+    {
+      "id": "obs-007",
+      "text": "AuthService extends BaseService and uses MemoryError to signal failure.",
+      "entities": {
+        "AuthService":  "other",
+        "BaseService":  "other",
+        "MemoryError":  "other"
+      },
+      "relations": {
+        "authservice::baseservice": "generic",
+        "authservice::memoryerror": "uses"
+      }
+    },
+    {
+      "id": "obs-008",
+      "text": "patch resolves bug #42 in queue_worker.py. Tested with pytest.",
+      "entities": {
+        "patch":         "other",
+        "queue_worker.py": "technology",
+        "Tested":        "action"
+      },
+      "relations": {
+        "patch::bug": "fixes"
+      }
+    }
+  ]
+}

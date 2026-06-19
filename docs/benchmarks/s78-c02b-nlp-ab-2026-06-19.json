@@ -1,0 +1,154 @@
+{
+  "schema": "harness-mem/nlp-lite-ab/v1",
+  "generated_at": "2026-06-19T06:35:10.441Z",
+  "corpus": {
+    "path": "memory-server/tests/fixtures/nlp-lite-corpus.json",
+    "observation_count": 8,
+    "entity_label_count": 26,
+    "relation_label_count": 10,
+    "measured": true,
+    "synthetic": false
+  },
+  "entity_type": {
+    "measured": true,
+    "synthetic": false,
+    "baseline": {
+      "strategy": "constant: every entity classified as 'other'",
+      "per_class": {
+        "person": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 3
+        },
+        "technology": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 11
+        },
+        "action": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 3
+        },
+        "other": {
+          "precision": 0.346,
+          "recall": 1,
+          "f1": 0.514,
+          "support": 9
+        }
+      },
+      "macro_f1": 0.129
+    },
+    "treatment": {
+      "strategy": "classifyEntityType heuristic (§F-1)",
+      "per_class": {
+        "person": {
+          "precision": 0.75,
+          "recall": 1,
+          "f1": 0.857,
+          "support": 3
+        },
+        "technology": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 11
+        },
+        "action": {
+          "precision": 0.75,
+          "recall": 1,
+          "f1": 0.857,
+          "support": 3
+        },
+        "other": {
+          "precision": 1,
+          "recall": 0.778,
+          "f1": 0.875,
+          "support": 9
+        }
+      },
+      "macro_f1": 0.897
+    },
+    "mean_latency_us": 9.662
+  },
+  "relation_kind": {
+    "measured": true,
+    "synthetic": false,
+    "baseline": {
+      "strategy": "constant: every relation classified as 'generic'",
+      "per_class": {
+        "is_a": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 1
+        },
+        "uses": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 4
+        },
+        "fixes": {
+          "precision": 0,
+          "recall": 0,
+          "f1": 0,
+          "support": 2
+        },
+        "generic": {
+          "precision": 0.3,
+          "recall": 1,
+          "f1": 0.462,
+          "support": 3
+        }
+      },
+      "macro_f1": 0.115
+    },
+    "treatment": {
+      "strategy": "classifyRelationKind heuristic (§F-1)",
+      "per_class": {
+        "is_a": {
+          "precision": 1,
+          "recall": 1,
+          "f1": 1,
+          "support": 1
+        },
+        "uses": {
+          "precision": 1,
+          "recall": 0.5,
+          "f1": 0.667,
+          "support": 4
+        },
+        "fixes": {
+          "precision": 1,
+          "recall": 0.5,
+          "f1": 0.667,
+          "support": 2
+        },
+        "generic": {
+          "precision": 0.5,
+          "recall": 1,
+          "f1": 0.667,
+          "support": 3
+        }
+      },
+      "macro_f1": 0.75
+    },
+    "mean_latency_us": 37.692
+  },
+  "go_mcp_cold_start": {
+    "measured": true,
+    "synthetic": false,
+    "source": "mcp-server-go/internal/tools/coldstart_test.go::TestColdStart_HarnessMemSubset",
+    "method": "median of 11 AllTools() constructor calls, darwin/arm64 go1.26.1, in-process",
+    "samples": 11,
+    "median_ms": 0.0177,
+    "min_ms": 0.0129,
+    "max_ms": 0.0793,
+    "target_ms": 5,
+    "note": "Measures tool-registry construction cost — the dominant cold-start work for a stdio MCP. Does not include OS process exec; full stdio handshake adds ~1-3ms of static linker time on top, still well within target."
+  }
+}

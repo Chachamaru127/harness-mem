@@ -12,6 +12,7 @@ import { NotionConnector } from "./sync/notion-connector";
 import { GoogleDriveConnector } from "./sync/gdrive-connector";
 import type { ConnectorConfig } from "./sync/types";
 import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
+import { classifyEntityType, type RelationKind } from "./core/nlp-lite";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
@@ -2069,10 +2070,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             .all(String(limit));
         }
 
+        // §F-1 (S78-C02b): enrich each entity with a semantic `type`
+        // (person|technology|action|other) and normalize each relation's
+        // `kind` to one of is_a|uses|fixes|generic.  Pre-§F-1 rows in
+        // mem_relations carry the literal "co-occurs" — surface those as
+        // "generic" so the API contract stays uniform.
+        const validKinds: Set<RelationKind> = new Set(["is_a", "uses", "fixes", "generic"]);
         return rawJsonResponse({
           ok: true,
-          entities: entityRows.map((r) => ({ id: r.name.toLowerCase(), label: r.name, kind: r.entity_type })),
-          relations: relationRows,
+          entities: entityRows.map((r) => ({
+            id: r.name.toLowerCase(),
+            label: r.name,
+            kind: r.entity_type,
+            type: classifyEntityType(r.name),
+          })),
+          relations: relationRows.map((r) => ({
+            ...r,
+            kind: validKinds.has(r.kind as RelationKind)
+              ? (r.kind as RelationKind)
+              : "generic",
+          })),
         });
       }
 

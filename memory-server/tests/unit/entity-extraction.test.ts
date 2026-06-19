@@ -51,10 +51,13 @@ describe("extractEntitiesAndRelations (unit)", () => {
     expect(labels).toContain("RaceCondition");
   });
 
-  test("generates co-occurs relations between entities", () => {
+  test("generates relations between entities with §F-1 semantic kinds", () => {
     const { entities, relations } = extractEntitiesAndRelations(OBSERVATION);
     expect(relations.length).toBeGreaterThan(0);
-    expect(relations.every((r) => r.kind === "co-occurs")).toBe(true);
+    // §F-1: kind is one of is_a|uses|fixes|generic (the pre-§F-1 literal
+    // "co-occurs" is now folded into "generic").
+    const allowed = new Set(["is_a", "uses", "fixes", "generic"]);
+    expect(relations.every((r) => allowed.has(r.kind))).toBe(true);
     // Every src/dst should correspond to a known entity id
     const entityIds = new Set(entities.map((e) => e.id));
     for (const rel of relations) {
@@ -94,9 +97,10 @@ describe("entity extraction integrated into ingest", () => {
       )
       .all();
 
-    // At least one co-occurrence relation should have been inserted
+    // At least one relation should have been inserted; §F-1 kinds only.
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((r) => r.kind === "co-occurs")).toBe(true);
+    const allowed = new Set(["is_a", "uses", "fixes", "generic"]);
+    expect(rows.every((r) => allowed.has(r.kind))).toBe(true);
 
     // Sanity: src/dst should look like lowercased entity labels
     const allIds = rows.flatMap((r) => [r.src, r.dst]);
