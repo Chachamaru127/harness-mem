@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "scope": "real-granite-embedded-in-memory-parity",
+  "claim_boundary": "Measures binary-prefilter recall parity using actual granite-embedded vectors sampled from the live harness-mem DB (read-only). The bit table is built in-memory only; the live daemon is not touched. D2 honored: this measures real-granite vector behavior, not synthetic clustered fixtures, but bitK and corpus size remain artifact-scoped.",
+  "feature_branch": "feat/s154-zdr-bquality",
+  "measured_at": "2026-06-19",
+  "source": "live DB read-only sample at ~/.harness-mem/harness-mem.db (model=local:granite-embedding-311m-r2)",
+  "runtime": {
+    "sqlite_vec_native": true,
+    "bun_version": "1.3.10"
+  },
+  "corpus": {
+    "kind": "real-granite-embedded-sample",
+    "total_in_db": 378024,
+    "sampled_N": 500,
+    "DIM": 384
+  },
+  "measurements": [
+    {
+      "label": "pool_gt_N",
+      "bitK": 800,
+      "K": 10,
+      "num_queries": 50,
+      "recall_at_10_off": 1,
+      "recall_at_10_on": 1,
+      "parity_ratio": 1,
+      "dod_threshold": 0.95,
+      "dod_met": true
+    },
+    {
+      "label": "pool_lt_N",
+      "bitK": 250,
+      "K": 10,
+      "num_queries": 50,
+      "recall_at_10_off": 1,
+      "recall_at_10_on": 0.998,
+      "parity_ratio": 0.998,
+      "dod_threshold": 0.95,
+      "dod_met": true
+    }
+  ],
+  "rollout_gate": {
+    "flag": "HARNESS_MEM_BINARY_PREFILTER",
+    "default": "OFF",
+    "live_daemon_touched": false,
+    "verdict": "real-granite parity ≥ 0.95 in both pool>N and pool<N regimes — ready for staged flag ON discussion"
+  }
+}
