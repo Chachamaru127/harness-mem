@@ -918,7 +918,7 @@ Stocktake (2026-06-18, workflow `whewoxoem`) で §128/130/89/90/115/122 を cc:
 | S155-X01 | 旧 stdio バイナリ `bin/harness-mcp-darwin-arm64` の port 37889 残接続の出所追跡。未使用なら起動経路を遮断（cron/launchd/旧 codex 設定どこから来てるか） | §155 | 低 |
 | S155-X02 | `~/.zshenv:282` の unmatched `"` 修復。mcp-gateway launchd 起動時に毎回 stderr 汚染している（動作には支障なし） | §155 | 低 |
 | S154-FU01 | §154-512 rollback drill の probes fixture を live project key で埋めて result-diff 比較を実行。本旨 (機構 reversibility) は別途検証済のため低優先 | §154-512 | 低 |
-| S154-FU02 | **D39 改訂提案 (decisions.md 末尾) 採択時のみ**: s108 manifest に deep freshness enforce gate 追加 (data/deep-freshness-thresholds.json 消費)。`flagship_freshness >= 0.95` を shallow + deep 3 metric の合成 ALL PASS に拡張。**人間 Risk Gate** (Skeptic [3] 助言で本体 154-311 から分離) | §154-311 | 採択時 中 / 否決時 アーカイブ |
+| S154-FU02 | **D39-Revision 部分採択 (2026-06-19)** → 実装タスク: s108 manifest に deep freshness gate 追加 (`data/deep-freshness-thresholds.json` の `gate_consumer_contract` 消費)。green 判定 = shallow Freshness@k ≥ 0.95 AND (tense_rewrite enforce + supersession enforce)。lag は warn-only (gate に参加せず WARN ログ + artifact 記録のみ)。`flagship-kpi.ts buildDeepFreshnessSubBlock` を gate 合成判定に拡張、s108-developer-domain-manifest.ts に新 gate 追加、既存 shallow 0.95 / dev 0.77 / temporal 0.82 非回帰確認 | §154-311 | cc:TODO (中優先 / 次セッション着手) |
 
 生きている本体 WIP は §154 のみ。上記は次の minor release doc window 等でまとめてクローズ可。
 
