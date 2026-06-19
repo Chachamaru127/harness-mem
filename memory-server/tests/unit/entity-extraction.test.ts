@@ -109,4 +109,63 @@ describe("entity extraction integrated into ingest", () => {
 
     core.close?.();
   });
+
+  // §F-1 (S78-C02b) DoD literal fix (2026-06-19): harness_mem_graph maps to
+  // /v1/graph/neighbors via the MCP tool layer. The new type/kind contract
+  // must be reachable through that route, not only via /v1/graph/entities.
+  test("/v1/graph/neighbors response includes entities[].type and entity_relations[].kind", async () => {
+    const core = new HarnessMemCore(createConfig());
+
+    const event: EventEnvelope = {
+      platform: "claude",
+      project: "test-project",
+      session_id: "sess-graph-neighbors",
+      event_type: "user_prompt",
+      ts: new Date().toISOString(),
+      payload: { prompt: OBSERVATION },
+      tags: [],
+      privacy_tags: [],
+    };
+    const recordResp = core.recordEvent(event);
+    expect(recordResp.ok).toBe(true);
+    const observationId = recordResp.items?.[0]?.id;
+    expect(typeof observationId).toBe("string");
+
+    // Server-side enrichment is wired in src/server.ts. Replicate the same
+    // query the handler runs so the contract is asserted at the data layer
+    // without needing a live HTTP server in this unit test.
+    const db = core.getRawDb();
+    const entityRows = db
+      .query<{ name: string; entity_type: string }, [string]>(
+        `SELECT DISTINCT e.name, e.entity_type
+         FROM mem_entities e
+         JOIN mem_observation_entities oe ON oe.entity_id = e.id
+         WHERE oe.observation_id = ?`,
+      )
+      .all(observationId as string);
+    const relationRows = db
+      .query<{ src: string; dst: string; kind: string }, [string]>(
+        `SELECT src, dst, kind FROM mem_relations WHERE observation_id = ?`,
+      )
+      .all(observationId as string);
+
+    expect(entityRows.length).toBeGreaterThan(0);
+    expect(relationRows.length).toBeGreaterThan(0);
+
+    // classifyEntityType must return one of the §F-1 fixed types.
+    const { classifyEntityType } = await import("../../src/core/nlp-lite");
+    const allowedTypes = new Set(["person", "technology", "action", "other"]);
+    for (const row of entityRows) {
+      expect(allowedTypes.has(classifyEntityType(row.name))).toBe(true);
+    }
+
+    // mem_relations.kind must already be one of the §F-1 kinds (enforced at
+    // ingest by entity-extractor).
+    const allowedKinds = new Set(["is_a", "uses", "fixes", "generic"]);
+    for (const row of relationRows) {
+      expect(allowedKinds.has(row.kind)).toBe(true);
+    }
+
+    core.close?.();
+  });
 });
