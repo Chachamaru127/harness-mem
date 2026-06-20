@@ -935,8 +935,8 @@ Stocktake (2026-06-18, workflow `whewoxoem`) で §128/130/89/90/115/122 を cc:
 | S110-007 | envelope signals に PII を含めない指針を `inject/envelope.ts` JSDoc + `docs/inject-envelope.md` に明文化（doc only） | §110 | 低 | cc:完了 [b8d3be4, PR #126] |
 | S112-005 | Hermes 実機 E2E 動作確認（install→plugin→session→event 観測） | §112 | 低 (tier-3) | cc:WIP (partial) [13a61e1, PR #126] — HTTP smoke PASS、Python plugin install は PyPI 未公開で blocker |
 | S112-007 | Hermes tier 昇格 criteria 文書化 | §112 | 低 (tier-3) | cc:完了 [13a61e1, PR #126] |
-| S155-X01 | 旧 stdio バイナリ `bin/harness-mcp-darwin-arm64` の port 37889 残接続の出所追跡。未使用なら起動経路を遮断（cron/launchd/旧 codex 設定どこから来てるか） | §155 | 低 | cc:TODO |
-| S155-X02 | `~/.zshenv:282` の unmatched `"` 修復。mcp-gateway launchd 起動時に毎回 stderr 汚染している（動作には支障なし） | §155 | 低 | cc:TODO |
+| S155-X01 | 旧 stdio バイナリ `bin/harness-mcp-darwin-arm64` の port 37889 残接続の出所追跡。未使用なら起動経路を遮断 | §155 | 低 | cc:完了 (no-op、前提誤り) — 調査結果: `bin/harness-mcp-darwin-arm64` (7.7MB) は現役 Go MCP frontend で、`bin/harness-mcp-server` から exec される正規構成 (README/README_ja/docs にも明記)。port 37889 への接続は granite live daemon の正常通信、「未使用」前提は不成立。削除すると README claim と build artifact 整合が壊れる |
+| S155-X02 | `~/.zshenv:282` の unmatched `"` 修復。mcp-gateway launchd 起動時に毎回 stderr 汚染 | §155 | 低 | cc:完了 (no-op、既に解消) — 2026-06-20 再診で `~/.zshenv` は 37 行に縮小済、`bash -n` / `zsh -n` parse error なし。当時の :282 unmatched quote は別タイミングで既に修復されていた |
 | S154-FU01 | §154-512 rollback drill の probes fixture を live project key で埋めて result-diff 比較を実行。本旨 (機構 reversibility) は別途検証済のため低優先 | §154-512 | 低 | cc:TODO |
 | S154-FU02 | **D39-Revision 部分採択 (2026-06-19)** → 実装タスク: s108 manifest に deep freshness gate 追加 (`data/deep-freshness-thresholds.json` の `gate_consumer_contract` 消費)。green 判定 = shallow Freshness@k ≥ 0.95 AND (tense_rewrite enforce + supersession enforce)。lag は warn-only (gate に参加せず WARN ログ + artifact 記録のみ)。`flagship-kpi.ts buildDeepFreshnessSubBlock` を gate 合成判定に拡張、s108-developer-domain-manifest.ts に新 gate 追加、既存 shallow 0.95 / dev 0.77 / temporal 0.82 非回帰確認 | §154-311 | cc:TODO (中優先 / 次セッション着手) |
 
