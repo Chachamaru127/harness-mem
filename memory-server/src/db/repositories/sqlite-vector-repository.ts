@@ -15,7 +15,7 @@ import type {
   VectorRow,
   UpsertVectorInput,
 } from "./IVectorRepository.js";
-import { deleteSqliteVecRow, upsertSqliteVecRow } from "../../vector/providers.js";
+import { deleteBitVecRow, deleteSqliteVecRow, upsertSqliteVecRow } from "../../vector/providers.js";
 
 export class SqliteVectorRepository implements IVectorRepository {
   constructor(
@@ -170,6 +170,10 @@ export class SqliteVectorRepository implements IVectorRepository {
       deleteSqliteVecRow(this.db, observationId);
       for (const model of models) {
         deleteSqliteVecRow(this.db, observationId, model);
+        // Codex must-fix (2026-06-19): bit vec0 row uses a separate rowid
+        // from the float vec0 row. FK cascade on bit_map alone leaves the
+        // bit virtual-table row orphaned. Explicit delete required.
+        deleteBitVecRow(this.db, observationId, model);
       }
     }
   }

@@ -1409,6 +1409,11 @@ export function getConfig(): Config {
   const ollamaEmbedModel = (process.env.HARNESS_MEM_OLLAMA_EMBED_MODEL || "nomic-embed-text").trim();
   const proApiKey = (process.env.HARNESS_MEM_PRO_API_KEY || "").trim();
   const proApiUrl = (process.env.HARNESS_MEM_PRO_API_URL || "").trim();
+  // Pro=C: operators can override the model name passed to their self-hosted
+  // endpoint; default lives inside pro-api-provider (granite-embedding-311m-r2).
+  const proApiModel = (process.env.HARNESS_MEM_PRO_API_MODEL || "").trim();
+  const proApiZdrEnforcedRaw = (process.env.HARNESS_MEM_PRO_ZDR_ENFORCED || "").trim().toLowerCase();
+  const proApiZdrEnforced = proApiZdrEnforcedRaw === "1" || proApiZdrEnforcedRaw === "true";
   const adaptiveDefaults = loadAdaptiveThresholdDefaults();
   const adaptiveJaThreshold = Number(
     process.env.HARNESS_MEM_ADAPTIVE_JA_THRESHOLD || adaptiveDefaults.jaThreshold
@@ -1633,6 +1638,8 @@ export function getConfig(): Config {
     ollamaEmbedModel,
     proApiKey,
     proApiUrl,
+    proApiModel: proApiModel || undefined,
+    proApiZdrEnforced,
     adaptiveJaThreshold: Number.isFinite(adaptiveJaThreshold)
       ? Math.max(0, Math.min(1, adaptiveJaThreshold))
       : adaptiveDefaults.jaThreshold,

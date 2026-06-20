@@ -10,6 +10,20 @@
  *   1. kind は VALID_KINDS のいずれか（実行時に throw で防御）
  *   2. trace_id は inj_YYYY-MM-DD_<suffix> 形式で全 envelope ユニーク
  *   3. prose に signals 全語が含まれることを validateProseContainsSignals で別途検証
+ *
+ * signals[] 設計指針 (S110-007, 2026-06-19):
+ *   - signals[] には PII / 秘密情報を入れない。
+ *   - 許容: structural label (observation_id, decision id, file path,
+ *     function name, fixed tag, branch name, salient noun).
+ *   - 不可: メール / 電話番号 / API key / 秘密の token / 顧客本名 / 自由文.
+ *   - 理由: signals は inject_traces.signals_json に persist され、consume
+ *     detector で「次ターン発話 / tool call に含まれたか」を grep する。
+ *     PII を含めると顧客本文と同じ persistence 制約 (ZDR / retention) を
+ *     signals 列にも適用する必要が出る。structural label 限定で
+ *     persistence 境界を軽く保つのが本 envelope の前提。
+ *   - 防御 layer は claude-code-harness 側 `client-redaction.yaml` に
+ *     defensive note 済 — emitter 側が PII を signals に渡しても client
+ *     経路で削られる。本 JSDoc は「最初から入れない」設計指針の正本。
  */
 
 const VALID_KINDS = [

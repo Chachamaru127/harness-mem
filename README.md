@@ -181,7 +181,7 @@ Beyond Claude Code / Codex / Cursor, harness-mem ships ready-to-use integrations
 | LangChain | Python adapter | [`integrations/langchain/`](integrations/langchain/) |
 | CrewAI | Python adapter | [`python-sdk/harness_mem/crewai_memory.py`](python-sdk/harness_mem/crewai_memory.py) |
 | Vercel AI SDK | TypeScript adapter | [`sdk/src/vercel-ai.ts`](sdk/src/vercel-ai.ts) |
-| **Hermes Agent** (Nous Research) | MCP integration _(experimental, tier 3)_ | [`integrations/hermes/`](integrations/hermes/) |
+| **Hermes Agent** (Nous Research) | MCP integration _(experimental, tier 3 — [tier 昇格 criteria](Plans.md#hermes-tier-criteria))_ | [`integrations/hermes/`](integrations/hermes/) |
 
 The Hermes integration reuses the existing stdio MCP server — no extra binary or wrapper code. **Important**: This is a *cross-tool continuity bridge*, not a replacement for Hermes' built-in `MEMORY.md` / `USER.md` / `skills/` memory layer (Hermes does not expose a memory-backend swap API). See [`docs/integrations/hermes.md`](docs/integrations/hermes.md) for the full positioning explanation, setup, and troubleshooting.
 

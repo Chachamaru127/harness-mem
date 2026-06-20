@@ -8,6 +8,11 @@ import {
 const DEFAULT_PRO_API_CACHE_SIZE = 256;
 const DEFAULT_PRO_API_TIMEOUT_MS = 5000;
 
+// Pro=C decision (2026-06-18): Pro default routes to a self-hosted granite
+// endpoint (the same model family as the free local leg), not a third-party
+// embedding service. Operators can override via HARNESS_MEM_PRO_API_MODEL.
+const DEFAULT_PRO_API_MODEL = "granite-embedding-311m-r2";
+
 type EmbeddingMode = "query" | "passage";
 
 interface ProApiSyncResponse {
@@ -26,6 +31,12 @@ interface ProApiProviderOptions {
   fallback?: EmbeddingProvider;
   fetchImpl?: typeof fetch;
   syncRequestImpl?: (url: string, init: { headers: Record<string, string>; body: string }) => ProApiSyncResponse;
+  // ZDR enforcement (Codex must-fix #4, 2026-06-19):
+  // When true, the provider treats retention=0 as an executable contract:
+  // no in-memory cache (so no payload accumulates in process memory beyond
+  // the single in-flight call), error messages do not include input text,
+  // and metrics carry no payload. Independent of the data policy doc.
+  zdrEnforced?: boolean;
 }
 
 function normalizeVector(vector: number[], dimension: number): number[] {
@@ -99,7 +110,8 @@ export function createProApiEmbeddingProvider(options: ProApiProviderOptions): E
   const apiKey = (options.apiKey || "").trim();
   const apiUrl = (options.apiUrl || options.baseUrl || "").trim();
   const fallback = options.fallback;
-  const model = (options.model || "text-embedding-3-large").trim() || "text-embedding-3-large";
+  const model = (options.model || DEFAULT_PRO_API_MODEL).trim() || DEFAULT_PRO_API_MODEL;
+  const zdrEnforced = options.zdrEnforced === true;
   const timeoutMs = Number.isFinite(options.timeoutMs)
     ? Math.max(250, Math.floor(Number(options.timeoutMs)))
     : DEFAULT_PRO_API_TIMEOUT_MS;
@@ -113,17 +125,24 @@ export function createProApiEmbeddingProvider(options: ProApiProviderOptions): E
   let cacheEvictions = 0;
   const embeddingCache = new Map<string, number[]>();
   const inflightComputations = new Map<string, Promise<number[]>>();
+  const initialHealthSuffix = zdrEnforced ? " [zdr=enforced]" : "";
   let lastHealth: EmbeddingHealth = {
     status: apiUrl && apiKey ? "healthy" : "degraded",
     details:
       apiUrl && apiKey
-        ? `pro api provider initialized: ${model}`
+        ? `pro api provider initialized: ${model}${initialHealthSuffix}`
         : !apiUrl
           ? "HARNESS_MEM_PRO_API_URL is not set; pro embeddings unavailable"
           : "HARNESS_MEM_PRO_API_KEY is not set; pro embeddings unavailable",
   };
 
   function getCachedEmbedding(cacheKey: string): number[] | null {
+    // ZDR enforcement: never read from cache. The cache key contains the
+    // input text, so honoring retention=0 requires zero accumulation here.
+    if (zdrEnforced) {
+      cacheMisses += 1;
+      return null;
+    }
     const cached = embeddingCache.get(cacheKey);
     if (!cached) {
       cacheMisses += 1;
@@ -136,6 +155,10 @@ export function createProApiEmbeddingProvider(options: ProApiProviderOptions): E
   }
 
   function setCachedEmbedding(cacheKey: string, embedding: number[]): void {
+    if (zdrEnforced) {
+      // No-op: retention=0 means no payload (keys carry text) at rest in memory.
+      return;
+    }
     if (embeddingCache.has(cacheKey)) {
       embeddingCache.delete(cacheKey);
     }
@@ -197,7 +220,7 @@ export function createProApiEmbeddingProvider(options: ProApiProviderOptions): E
 
     lastHealth = {
       status: "healthy",
-      details: `pro api embeddings: ${model}`,
+      details: `pro api embeddings: ${model}${zdrEnforced ? " [zdr=enforced]" : ""}`,
     };
     return normalizeVector(embedding, dimension);
   }

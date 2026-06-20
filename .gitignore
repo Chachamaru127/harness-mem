@@ -83,3 +83,12 @@ bin/harness-mcp-darwin-*
 bin/harness-mcp-linux-*
 bin/harness-mcp-windows-*
 mcp-server-go/bin/
+
+# Local Python editable-install metadata (integrations/hermes/plugin)
+integrations/hermes/plugin/*.egg-info/
+
+# Worker worktrees created by harness/claude-worker topology
+memory-server/.harness-worktrees/
+
+# Live progress snapshot artifact
+out/progress-snapshot.html
