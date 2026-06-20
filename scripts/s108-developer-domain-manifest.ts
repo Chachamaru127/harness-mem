@@ -71,6 +71,8 @@ interface ReconciliationReport {
     japanese_temporal: boolean;
     current_stale_regressions: boolean;
     cjk_discrimination: boolean;
+    /** S154-FU02: deep freshness enforce gate (tense_rewrite + supersession via gate_consumer_contract). */
+    deep_freshness_enforce: boolean;
   };
   artifacts: {
     report_json: string | null;
@@ -204,11 +206,6 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
     computeSupersessionReal(supInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
     computeTenseRewriteReal(trInputs, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
   ]);
-  const deepFreshnessSubBlock = buildDeepFreshnessSubBlock({
-    freshness_lag: dfbLag,
-    supersession: dfbSup,
-    tense_rewrite: dfbTr,
-  });
 
   // S154-305: enforce the flagship KPI threshold on the recorded full-CI measurement.
   // The freshness value is produced by run-ci's knowledge-update benchmark and recorded
@@ -217,6 +214,15 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
   const manifestResults = manifest.results as Record<string, unknown> | undefined;
   const rawFreshness = Number(manifestResults?.freshness);
   const flagshipFreshness = Number.isFinite(rawFreshness) ? rawFreshness : 0;
+
+  // S154-FU02: build deep freshness sub-block with gate judgment.
+  // shallow_freshness is required to evaluate the composite gate (green_definition).
+  const deepFreshnessSubBlock = buildDeepFreshnessSubBlock({
+    freshness_lag: dfbLag,
+    supersession: dfbSup,
+    tense_rewrite: dfbTr,
+    shallow_freshness: flagshipFreshness,
+  });
   const flagshipKpi = {
     ...buildFlagshipKpi(flagshipFreshness),
     freshness_source: Number.isFinite(rawFreshness)
@@ -265,6 +271,9 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
       japanese_temporal: temporal.gates.japanese_temporal_slice.passed,
       current_stale_regressions: temporal.gates.current_stale_answer_regressions.passed,
       cjk_discrimination: cjk.overall_passed && cjkRegressions === 0 && cjkBaseline !== null,
+      // S154-FU02: green = all enforce_metrics pass AND shallow freshness >= 0.95.
+      // yellow (skipped metrics) is treated as pass to avoid blocking CI when Ollama unavailable.
+      deep_freshness_enforce: deepFreshnessSubBlock.gate_verdict !== "red",
     },
     artifacts: {
       report_json: writeArtifacts ? rel(reportPath) : null,
