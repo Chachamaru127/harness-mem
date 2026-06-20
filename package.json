@@ -1,6 +1,6 @@
 {
   "name": "@chachamaru127/harness-mem",
-  "version": "0.27.5",
+  "version": "0.28.0",
   "description": "Memory bridge for Claude Code and Codex — local-first, zero-cost coding memory runtime",
   "homepage": "https://github.com/Chachamaru127/harness-mem",
   "repository": {
@@ -47,7 +47,7 @@
     ".cursor/hooks/"
   ],
   "dependencies": {
-    "@huggingface/transformers": "3.8.1",
+    "@huggingface/transformers": "^4.0.0",
     "sharp": "0.34.5"
   },
   "optionalDependencies": {

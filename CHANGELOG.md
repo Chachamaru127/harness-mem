@@ -7,6 +7,31 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-06-20
+
+### Added
+
+- **§154-W1 Pro tier=C: granite route 接続**: Pro provider hook を granite-embedding-311m-r2 mrl-384 route に再ポイント。Pro tier = granite quality (D31 tier 設計の C grade) で正式接続。
+- **§154-W2 ZDR enforcement on Pro provider + 7 controls 文書**: `HARNESS_MEM_PRO_ZDR_ENFORCED=1` で Pro provider のリクエスト時 retention=0 が強制される。違反時 fail-closed。7 controls (data retention / training / human review / audit / PII / multi-tenant / customer-managed key) を `docs/security/pro-zdr.md` に明文化。
+- **§154-W3 Binary prefilter pool<N parity stress + safety guard**: DENSE leg binary 粗選別 (default-OFF) の pool<N (候補数不足) ケースで safety guard を追加し、bit-row orphan を防止。real-granite parity 再測で pool>N=1.000 / pool<N=0.998 を artifact 記録。
+- **§78-C02b Entity/relation NLP-lite**: regex マッチを entity type / relation kind 判別に拡張し、A/B で精度 delta を記録。
+- **§78-E02b Branch merge workflow**: feature → main の observation 昇格に dry-run / conflict modes (skip / overwrite / merge) を実装。
+- **§110-007 Envelope signals PII 指針** (doc only): `inject/envelope.ts` JSDoc + `docs/inject-envelope.md` に「signals[] に PII を含めない」設計指針を明文化。
+- **§112-005/007 Hermes E2E partial PASS + tier criteria**: Hermes v0.16.0 で `harness_mem` daemon に対し HTTP API 経由 session_start/end smoke 2/2 PASS。Python plugin install は PyPI publish 待ち (Hermes は internal-compatible tier 維持)。
+- **§154-311 Deep freshness 3-run 安定 + 閾値外部化**: Ollama qwen3.5:9b の決定論 (temperature=0 / seed=42 / num_predict=256) を deep-freshness-bench に固定。3-run 実証で tense_rewrite / supersession の spread=0 (決定的)、lag のみ非決定的 (12210ms spread) を artifact で確認。`data/deep-freshness-thresholds.json` に閾値外部化 (Skeptic 案 A simplified: 決定的 metric は worst-of-3 - 0.05 headroom / 非決定的 lag は absolute ceiling)。D39 改訂提案を decisions.md にドラフト記録。
+- **§154-710 順序感応 rerank gate (stage 分離)**: `scripts/s154-rerank-order-gate.ts` 新設 (487 lines)。`retrieval_stage` (recall@10) と `rerank_stage` (top1 / MRR@10 delta) を分離した固定 schema artifact 記録 = recall@10 を rerank 採否判定に使わないことを schema レベル可視化。`HARNESS_MEM_LLM_RERANK` parseEnabled (presence-only ではなく 1/true/yes/on enabled check)、Ollama 接続性 fail-closed、partial/empty LLM ranking fail-closed throw (Codex re-review fix)、recall@10 不変 schema assertion。`onnx-cross-encoder.ts` に `isReady()` getter 追加で silent simple-v1 fallback を呼び出し側から検出可能化。
+- **§154-720 transformers.js v3.8.1 → v4.2.0**: runtime 更新 + `env.useFSCache=false` (v4 新設プロパティで stale キャッシュ干渉防止)。e5-small parity worst_cosine=1.0 (drift <1e-6) 完全一致で劣化なし。
+- **§154-FU02 Deep freshness gate judgment**: D39-Revision 部分採択 (2026-06-19 人間承認) の実装。`buildDeepFreshnessSubBlock` が `data/deep-freshness-thresholds.json` の `gate_consumer_contract` を消費して green/yellow/red 判定を返す。green = shallow ≥0.95 AND (tense_rewrite enforce + supersession enforce) ALL PASS。yellow = shallow 未定 or 任意 enforce skip (fail-open、Ollama 不在等の CI blocker 化を回避)。red = shallow fail or 任意 enforce 明示 fail。lag は warn-only (gate 非参加、WARN ログ + artifact 記録のみ)。`s108-developer-domain-manifest.ts` に `deep_freshness_enforce` gate 追加。`shallow_freshness` optional 化 + `skip_handling` doc 整備で standalone bench でも誤情報を吐かない。
+- **§154-711 Cross-encoder rerank (opt-in 既定 OFF)**: 既存 `rerank/onnx-cross-encoder.ts` を bge-reranker-v2-m3 ONNX int8 対応に拡張、ms-marco-MiniLM-L6-v2 default は維持。`autoDownload` default false 化 + `env.allowRemoteModels=false` で egress 0、取得は 154-504 の `modelType=reranker` pull 経路に一本化。`scripts/s154-rerank-order-gate.ts` に `--cross-encoder` 分岐 + `crossEncoderRerankTop` 内の `isReady()` per-sample guard (D40 silent-fallback prohibition) + CPU top-50 rerank の p50/p95 実測専用 artifact path。`bge-reranker-v2-m3` catalog entry 追加 (Xenova ONNX int8, multilingual, ~280MB)。軽量 fallback `japanese-reranker-xsmall-v2` は HF 実在未検証で deferred。
+
+### Changed
+
+- (no breaking change in 0.28.0)
+
+### Docs
+
+- **§F Backlog cleanup (S155-X01 / S155-X02)**: 残 2 件を no-op cc:完了 化。X01 (旧 stdio バイナリ追跡) は前提誤り (バイナリは現役 Go MCP frontend、port 37889 は granite live daemon の正常通信)。X02 (`~/.zshenv:282` unmatched quote) は既に解消 (zshenv 37 行に縮小済、`bash -n` / `zsh -n` parse error なし)。
+
 ## [0.27.5] - 2026-06-19
 
 ### Fixed

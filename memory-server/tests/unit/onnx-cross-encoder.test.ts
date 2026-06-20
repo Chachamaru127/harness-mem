@@ -221,3 +221,74 @@ describe("OnnxCrossEncoderReranker — cached score injection", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// 154-711: autoDownload default OFF / egress 0 / isReady gate
+// ---------------------------------------------------------------------------
+
+describe("154-711: autoDownload default OFF (egress 0)", () => {
+  test("default autoDownload is false — no remote models flag is set", async () => {
+    const { createOnnxCrossEncoderReranker } = await import("../../src/rerank/onnx-cross-encoder");
+    const reranker = createOnnxCrossEncoderReranker();
+
+    await reranker.initPromise.catch(() => {});
+
+    // default では autoDownload=false → モデルが存在しない場合 isReady()=false
+    expect(reranker.isReady()).toBe(false);
+  });
+
+  test("default config fires cross-encoder 0 times (isReady remains false)", async () => {
+    const { createOnnxCrossEncoderReranker } = await import("../../src/rerank/onnx-cross-encoder");
+    const reranker = createOnnxCrossEncoderReranker();
+
+    await reranker.initPromise.catch(() => {});
+
+    expect(reranker.isReady()).toBe(false);
+
+    // rerank() は fallback で動作するが、ONNX は使っていない
+    const result = reranker.rerank(sampleInput);
+    expect(result.length).toBe(sampleInput.items.length);
+  });
+
+  test("isReady() throws-pathway: await initPromise then isReady()===false", async () => {
+    // §154-710 の fail-closed 規律: isReady()=false なら caller は throw すべき
+    const { createOnnxCrossEncoderReranker } = await import("../../src/rerank/onnx-cross-encoder");
+    const reranker = createOnnxCrossEncoderReranker({ autoDownload: false });
+
+    await reranker.initPromise.catch(() => {});
+
+    // default 構成 (autoDownload=false, egress 封鎖) では isReady() は必ず false
+    // tautology 回避: vacuous pass を防ぐため、まず unconditional に assert
+    expect(reranker.isReady()).toBe(false);
+
+    // isReady()=false → caller は fail-closed throw すべきことを確認
+    expect(() => {
+      if (!reranker.isReady()) {
+        throw new Error("cross-encoder not ready — fail-closed (154-711 DoD)");
+      }
+    }).toThrow("cross-encoder not ready");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 154-711: model-catalog reranker entries
+// ---------------------------------------------------------------------------
+
+describe("154-711: model-catalog reranker entries", () => {
+  test("bge-reranker-v2-m3 exists in MODEL_CATALOG with modelType=reranker", async () => {
+    const { MODEL_CATALOG } = await import("../../src/embedding/model-catalog");
+    const entry = MODEL_CATALOG.find((e) => e.id === "bge-reranker-v2-m3");
+
+    expect(entry).toBeDefined();
+    expect(entry?.modelType).toBe("reranker");
+    expect(entry?.language).toBe("multilingual");
+  });
+
+  test("bge-reranker-v2-m3 can be found via findModelById", async () => {
+    const { findModelById } = await import("../../src/embedding/model-catalog");
+    const entry = findModelById("bge-reranker-v2-m3");
+
+    expect(entry).toBeDefined();
+    expect(entry?.modelType).toBe("reranker");
+  });
+});

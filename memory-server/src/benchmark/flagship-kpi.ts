@@ -46,8 +46,60 @@ export function buildFlagshipKpi(freshnessAtK: number): FlagshipKpi {
 // S154-310: deep freshness sub-block (report-only, depth:"deep")
 // IMPORTANT: does NOT affect `depth: "shallow"` on FlagshipKpi (D39 preserved).
 // --------------------------------------------------------------------------
+// S154-FU02: gate judgment added. Thresholds are consumed from
+// data/deep-freshness-thresholds.json (gate_consumer_contract).
+// --------------------------------------------------------------------------
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { FreshnessLagResult, SupersessionResult, TenseRewriteResult } from "./deep-freshness-bench.js";
+
+const THRESHOLDS_CONFIG_PATH = resolve(
+  import.meta.dir,
+  "../../../data/deep-freshness-thresholds.json",
+);
+const THRESHOLDS_SOURCE_RELPATH = "data/deep-freshness-thresholds.json";
+
+interface DeepFreshnessThresholds {
+  gate_consumer_contract: {
+    enforce_metrics: string[];
+    warn_only_metrics: string[];
+    green_definition: string;
+    lag_handling: string;
+  };
+  thresholds: {
+    tense_rewrite: {
+      gate_mode: string;
+      accuracy_min: number;
+      fp_rate_max: number;
+    };
+    supersession: {
+      gate_mode: string;
+      precision_min: number;
+      recall_min: number;
+      f1_min: number;
+    };
+    freshness_lag: {
+      gate_mode: string;
+      p50_ms_ceiling: number;
+      p95_ms_ceiling: number;
+    };
+  };
+}
+
+function loadThresholds(): DeepFreshnessThresholds {
+  const raw = readFileSync(THRESHOLDS_CONFIG_PATH, "utf8");
+  return JSON.parse(raw) as DeepFreshnessThresholds;
+}
+
+export type DeepFreshnessGateVerdict = "green" | "yellow" | "red";
+
+export interface DeepFreshnessGateDetail {
+  /** null when shallow_freshness was not provided (standalone bench without CI manifest). */
+  shallow_ok: boolean | null;
+  tense_rewrite_ok: boolean | null;
+  supersession_ok: boolean | null;
+}
 
 export interface DeepFreshnessSubBlock {
   /** Distinguishes this from the shallow flagship metric. */
@@ -58,13 +110,69 @@ export interface DeepFreshnessSubBlock {
   supersession: SupersessionResult;
   freshness_lag: FreshnessLagResult;
   measured_by: "scripts/s154-deep-freshness-bench.ts";
+  /** S154-FU02: composite gate verdict derived from gate_consumer_contract. */
+  gate_verdict: DeepFreshnessGateVerdict;
+  gate_detail: DeepFreshnessGateDetail;
+  /** true when freshness_lag exceeds warn-only ceiling (does NOT affect gate_verdict). */
+  lag_warn: boolean;
+  /** Path to the config file that defines the thresholds consumed here. */
+  thresholds_source: string;
 }
 
 export function buildDeepFreshnessSubBlock(params: {
   tense_rewrite: TenseRewriteResult;
   supersession: SupersessionResult;
   freshness_lag: FreshnessLagResult;
+  /** shallow Freshness@k value (from FlagshipKpi). Optional — undefined when bench runs standalone without a CI manifest. Undefined → shallow check is skipped and verdict downgrades to yellow per gate_consumer_contract.skip_handling. */
+  shallow_freshness?: number;
 }): DeepFreshnessSubBlock {
+  const cfg = loadThresholds();
+  const tr = cfg.thresholds.tense_rewrite;
+  const sup = cfg.thresholds.supersession;
+  const lag = cfg.thresholds.freshness_lag;
+
+  const shallowOk: boolean | null =
+    params.shallow_freshness === undefined
+      ? null
+      : params.shallow_freshness >= FLAGSHIP_FRESHNESS_GREEN_THRESHOLD;
+
+  // enforce_metrics gate — skipped metrics → yellow (indeterminate), failed → red
+  let tenseRewriteOk: boolean | null = null;
+  if (params.tense_rewrite.status === "measured") {
+    tenseRewriteOk =
+      params.tense_rewrite.accuracy >= tr.accuracy_min &&
+      params.tense_rewrite.false_positive_rate <= tr.fp_rate_max;
+  }
+
+  let supersessionOk: boolean | null = null;
+  if (params.supersession.status === "measured") {
+    supersessionOk =
+      params.supersession.precision >= sup.precision_min &&
+      params.supersession.recall >= sup.recall_min &&
+      params.supersession.f1 >= sup.f1_min;
+  }
+
+  // Verdict logic per gate_consumer_contract.green_definition:
+  //   green = shallow >= 0.95 AND enforce_metrics ALL PASS
+  //   yellow = shallow unknown OR any enforce metric skipped (indeterminate)
+  //   red = shallow fail OR any enforce metric explicitly failed
+  let gateVerdict: DeepFreshnessGateVerdict;
+  if (shallowOk === false || tenseRewriteOk === false || supersessionOk === false) {
+    gateVerdict = "red";
+  } else if (shallowOk === null || tenseRewriteOk === null || supersessionOk === null) {
+    gateVerdict = "yellow";
+  } else {
+    gateVerdict = "green";
+  }
+
+  // warn-only lag check — does NOT participate in gate_verdict
+  let lagWarn = false;
+  if (params.freshness_lag.status === "measured") {
+    lagWarn =
+      params.freshness_lag.p50_ms > lag.p50_ms_ceiling ||
+      params.freshness_lag.p95_ms > lag.p95_ms_ceiling;
+  }
+
   return {
     depth: "deep",
     report_only: true,
@@ -72,5 +180,13 @@ export function buildDeepFreshnessSubBlock(params: {
     supersession: params.supersession,
     freshness_lag: params.freshness_lag,
     measured_by: "scripts/s154-deep-freshness-bench.ts",
+    gate_verdict: gateVerdict,
+    gate_detail: {
+      shallow_ok: shallowOk,
+      tense_rewrite_ok: tenseRewriteOk,
+      supersession_ok: supersessionOk,
+    },
+    lag_warn: lagWarn,
+    thresholds_source: THRESHOLDS_SOURCE_RELPATH,
   };
 }
