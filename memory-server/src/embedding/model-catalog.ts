@@ -178,6 +178,36 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     sizeBytes: 1_250_000_000,
     language: "multilingual",
   },
+  // ---------------------------------------------------------------------------
+  // S154-711: Cross-encoder reranker entries (modelType: "reranker")
+  // Pull pipeline は embedding と同じ経路 (154-504 pull API) を使用する。
+  // dimension/pooling は reranker には不適用だが catalog schema 上は必須のため
+  // dummy 値 (1) を設定している (parseEmbeddingDefaultModelFlag は dimension > 0
+  // を要求するが、reranker entry は embedding default flag 候補ではない)。
+  // ---------------------------------------------------------------------------
+  {
+    id: "bge-reranker-v2-m3",
+    displayName: "BGE Reranker v2 M3 (Multilingual, ONNX int8)",
+    // Xenova の ONNX 変換版。onnx/model_quantized.onnx が int8 quantized。
+    // HF tree: https://huggingface.co/Xenova/bge-reranker-v2-m3/tree/main/onnx
+    // ONNX int8 実在確認: sandbox 内 egress 制限により直接確認不可。
+    // Xenova/bge-reranker-v2-m3 は Xenova の標準変換パターンと同型のため
+    // model_quantized.onnx の存在を期待するが、pull 時に確認すること。
+    onnxRepo: "Xenova/bge-reranker-v2-m3",
+    tokenizerRepo: "Xenova/bge-reranker-v2-m3",
+    onnxFile: "model_quantized.onnx",
+    dimension: 1,
+    modelType: "reranker",
+    maxSeqLength: 512,
+    // BAAI/bge-reranker-v2-m3 本体は 568M パラメータ (約 1.1GB fp32)。
+    // int8 quantized は約 280MB 相当。
+    sizeBytes: 280_000_000,
+    language: "multilingual",
+  },
+  // japanese-reranker-xsmall-v2 (MIT, CPU 15.3ms/pair) は sandbox 外確認が必要。
+  // 確認方法: `curl https://huggingface.co/api/models/Xenova/japanese-reranker-cross-encoder-xsmall-v2/tree/main/onnx`
+  // 不在の場合は本エントリを追加せず PR notes に記録する。
+  // (154-711 TODO: egress 許可後に実在確認してから add)
 ];
 
 export function findModelById(id: string): ModelCatalogEntry | undefined {

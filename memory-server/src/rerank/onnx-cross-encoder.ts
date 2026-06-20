@@ -114,7 +114,9 @@ export interface OnnxCrossEncoderReranker extends Reranker {
 export function createOnnxCrossEncoderReranker(options: OnnxCrossEncoderOptions = {}): OnnxCrossEncoderReranker {
   const modelId = options.modelId ?? DEFAULT_MODEL_ID;
   const modelPath = options.modelPath ?? path.join(MODELS_DIR, modelId.replace(/\//g, "--"));
-  const autoDownload = options.autoDownload ?? true;
+  // §154-711: default を false に変更 — 取得は 154-504 の pull に一本化する。
+  // env.allowRemoteModels=false を維持して外部 egress をゼロに保つ。
+  const autoDownload = options.autoDownload ?? false;
 
   const fallback = createSimpleReranker();
 

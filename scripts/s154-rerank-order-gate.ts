@@ -40,6 +40,11 @@ import {
   createEmbeddingProviderRegistry,
   type EmbeddingProvider,
 } from "../memory-server/src/embedding/registry.js";
+import {
+  createOnnxCrossEncoderReranker,
+  type OnnxCrossEncoderReranker,
+} from "../memory-server/src/rerank/onnx-cross-encoder.js";
+import type { RerankOutputItem } from "../memory-server/src/rerank/types.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -57,6 +62,11 @@ const OLLAMA_HOST = process.env["HARNESS_MEM_OLLAMA_HOST"] ?? "http://127.0.0.1:
 const OLLAMA_MODEL = process.env["HARNESS_MEM_FACT_LLM_MODEL"] ?? "qwen3.5:9b";
 const OLLAMA_TIMEOUT_MS = 15_000;
 const BASELINE_EMBEDDING_MODEL = "multilingual-e5-small";
+// §154-711: cross-encoder path。デフォルトは bge-reranker-v2-m3 (multilingual)。
+const CROSS_ENCODER_MODEL_ID =
+  process.env["HARNESS_MEM_CROSS_ENCODER_MODEL_ID"] ?? "cross-encoder/ms-marco-MiniLM-L6-v2";
+// CPU top-N rerank のレイテンシ計測対象件数
+const LATENCY_TOP_N = 50;
 
 // D41 規律: metric は CJK_GATE_METRICS の "recall" / "top1" / "mrr" のみ流用 (新規禁止)
 export const RERANK_GATE_METRICS = ["recall_at_10", "top1", "mrr_at_10"] as const;
@@ -99,11 +109,22 @@ interface RetrievalStage {
   per_slice: Record<string, SliceMetrics>;
 }
 
+interface OnnxCrossEncoderLatency {
+  /** CPU top-50 rerank の p50 レイテンシ (ms/pair) */
+  p50_ms: number;
+  /** CPU top-50 rerank の p95 レイテンシ (ms/pair) */
+  p95_ms: number;
+  /** 計測サンプル数 */
+  n_samples: number;
+}
+
 interface RerankStage {
   baseline_path: "embedding-only";
-  candidate_path: "ollama-llm-rerank";
-  provider_identity: { provider: string; model: string; host: string };
+  candidate_path: "ollama-llm-rerank" | "onnx-cross-encoder";
+  provider_identity: { provider: string; model: string; host: string } | { provider: "onnx-local"; model: string };
   per_slice: Record<string, { top1_delta: number; mrr_at_10_delta: number; n: number }>;
+  /** §154-711: cross-encoder path のみ。CPU top-50 rerank の実測レイテンシ。 */
+  latency?: OnnxCrossEncoderLatency;
 }
 
 interface PreconditionCheck {
@@ -114,7 +135,7 @@ interface PreconditionCheck {
 
 interface OrderGateReport {
   schema_version: "s154-rerank-order-gate.v1";
-  task_id: "S154-710";
+  task_id: "S154-710" | "S154-711";
   generated_at: string;
   fixtures: Array<{ name: string; schema_version: string; samples_count: number }>;
   retrieval_stage: RetrievalStage;
@@ -310,12 +331,85 @@ function partitionBilingualBySlice(samples: BilingualSample[]): Record<string, B
 }
 
 // ---------------------------------------------------------------------------
+// §154-711: ONNX Cross-Encoder candidate path
+// ---------------------------------------------------------------------------
+
+/**
+ * §154-711: ONNX cross-encoder で top-N 件を rerank し、結果の順序を返す。
+ * isReady()=false なら fail-closed throw (D40 規律: silent fallback 混入禁止)。
+ */
+async function crossEncoderRerankTop(
+  reranker: OnnxCrossEncoderReranker,
+  query: string,
+  top10: Array<{ id: string; content: string }>,
+): Promise<string[]> {
+  if (!reranker.isReady()) {
+    throw new Error(
+      "cross-encoder not ready — fail-closed (154-711 per-sample guard, D40 silent-fallback prohibition)",
+    );
+  }
+  const inputItems = top10.map((it, idx) => ({
+    id: it.id,
+    score: 0,
+    created_at: new Date().toISOString(),
+    title: "",
+    content: it.content,
+    source_index: idx,
+  }));
+
+  const result: RerankOutputItem[] = reranker.rerank({ query, items: inputItems });
+  return result.map((r) => r.id);
+}
+
+/**
+ * §154-711: CPU top-50 rerank のレイテンシを計測する。
+ * n_samples 件のクエリ×top-50 ペアに対してレイテンシを収集し、p50/p95 を返す。
+ */
+async function measureCrossEncoderLatency(
+  reranker: OnnxCrossEncoderReranker,
+  samples: BilingualSample[],
+  poolItems: Array<{ id: string; content: string }>,
+  poolVectors: number[][],
+  queryVectors: number[][],
+  nSamples: number,
+): Promise<OnnxCrossEncoderLatency> {
+  const measured: number[] = [];
+  const evalCount = Math.min(nSamples, samples.length);
+
+  for (let i = 0; i < evalCount; i++) {
+    const sample = samples[i];
+    const qvec = queryVectors[i];
+    // top-LATENCY_TOP_N を cosine で取得
+    const scored = poolItems.map((p, pi) => ({ id: p.id, score: cosine(qvec, poolVectors[pi]) }));
+    const topN = scored.sort((a, b) => b.score - a.score).slice(0, LATENCY_TOP_N).map((r) => {
+      const item = poolItems.find((it) => it.id === r.id)!;
+      return { id: item.id, content: item.content };
+    });
+
+    // レイテンシ計測 (rerank 全体 / topN 件 → per-pair ms)
+    const t0 = performance.now();
+    await crossEncoderRerankTop(reranker, sample.query, topN);
+    const elapsed = performance.now() - t0;
+    // per-pair レイテンシ
+    measured.push(elapsed / topN.length);
+  }
+
+  measured.sort((a, b) => a - b);
+  const p50 = measured[Math.floor(measured.length * 0.5)] ?? 0;
+  const p95 = measured[Math.floor(measured.length * 0.95)] ?? 0;
+
+  return { p50_ms: Math.round(p50 * 100) / 100, p95_ms: Math.round(p95 * 100) / 100, n_samples: measured.length };
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const noWrite = argv.includes("--no-write");
+  // §154-711: --cross-encoder フラグで ONNX cross-encoder candidate path を選択
+  const useCrossEncoder = argv.includes("--cross-encoder");
   const artifactDir = (() => {
     const i = argv.indexOf("--artifact-dir");
     return i !== -1 && argv[i + 1] ? resolve(argv[i + 1]) : DEFAULT_ARTIFACT_DIR;
@@ -325,29 +419,53 @@ async function main(): Promise<void> {
   const bilingual = JSON.parse(readFileSync(BILINGUAL_V2_PATH, "utf8")) as BilingualFixture;
   process.stderr.write(`[rerank-order-gate] fixtures loaded: bilingual=${bilingual.samples.length}\n`);
 
-  // 2. Provider identity assert (LLM rerank candidate path)
-  // §154-710 Codex fix: presence-only ではなく enabled パース (production parity)
-  if (!parseEnabled(process.env["HARNESS_MEM_LLM_RERANK"])) {
-    const report: OrderGateReport = {
-      schema_version: "s154-rerank-order-gate.v1",
-      task_id: "S154-710",
-      generated_at: new Date().toISOString(),
-      fixtures: [{ name: bilingual.schema_version ?? "bilingual-v2", schema_version: bilingual.schema_version ?? "?", samples_count: bilingual.samples.length }],
-      retrieval_stage: { baseline_path: "embedding-only", embedding_model: BASELINE_EMBEDDING_MODEL, per_slice: {} },
-      rerank_stage: { status: "skipped", skip_reason: "HARNESS_MEM_LLM_RERANK not enabled (parseEnabled: 1/true/yes/on のいずれかが必要)" },
-      precondition: { rank_below_top1_count: 0, required_min: PRECONDITION_MIN_RANK_BELOW_TOP1, passed: false },
-      exit_code: 1,
-      exit_reason: "HARNESS_MEM_LLM_RERANK not enabled (set 1/true/yes/on) — provider identity assert failed",
-    };
-    if (!noWrite) writeArtifact(artifactDir, report);
-    process.stderr.write(`[rerank-order-gate] exit 1: ${report.exit_reason}\n`);
-    process.exit(1);
-  }
+  // §154-711: cross-encoder path の場合はモデルロードを先行して実施
+  let crossEncoderReranker: OnnxCrossEncoderReranker | null = null;
+  if (useCrossEncoder) {
+    process.stderr.write(`[rerank-order-gate] cross-encoder path: loading model ${CROSS_ENCODER_MODEL_ID}...\n`);
+    // autoDownload=false: 取得は 154-504 の pull に一本化 (egress 0 維持)
+    crossEncoderReranker = createOnnxCrossEncoderReranker({
+      modelId: CROSS_ENCODER_MODEL_ID,
+      autoDownload: false,
+    });
+    // モデルロード完了を待機
+    await crossEncoderReranker.initPromise.catch(() => {
+      // load 失敗は後段の isReady() check で fail-closed
+    });
 
-  // 3. Ollama reachability
-  if (!(await ollamaReachable())) {
-    process.stderr.write(`[rerank-order-gate] exit 1: Ollama unreachable at ${OLLAMA_HOST}\n`);
-    process.exit(1);
+    // §154-711 DoD: isReady()=false なら fail-closed throw (D40 規律: silent fallback 禁止)
+    if (!crossEncoderReranker.isReady()) {
+      process.stderr.write(
+        `[rerank-order-gate] exit 1: cross-encoder not ready — model=${CROSS_ENCODER_MODEL_ID} not loaded (autoDownload=false; run pull first)\n`
+      );
+      process.exit(1);
+    }
+    process.stderr.write(`[rerank-order-gate] cross-encoder ready: ${CROSS_ENCODER_MODEL_ID}\n`);
+  } else {
+    // 2. Provider identity assert (LLM rerank candidate path)
+    // §154-710 Codex fix: presence-only ではなく enabled パース (production parity)
+    if (!parseEnabled(process.env["HARNESS_MEM_LLM_RERANK"])) {
+      const report: OrderGateReport = {
+        schema_version: "s154-rerank-order-gate.v1",
+        task_id: "S154-710",
+        generated_at: new Date().toISOString(),
+        fixtures: [{ name: bilingual.schema_version ?? "bilingual-v2", schema_version: bilingual.schema_version ?? "?", samples_count: bilingual.samples.length }],
+        retrieval_stage: { baseline_path: "embedding-only", embedding_model: BASELINE_EMBEDDING_MODEL, per_slice: {} },
+        rerank_stage: { status: "skipped", skip_reason: "HARNESS_MEM_LLM_RERANK not enabled (parseEnabled: 1/true/yes/on のいずれかが必要)" },
+        precondition: { rank_below_top1_count: 0, required_min: PRECONDITION_MIN_RANK_BELOW_TOP1, passed: false },
+        exit_code: 1,
+        exit_reason: "HARNESS_MEM_LLM_RERANK not enabled (set 1/true/yes/on) — provider identity assert failed",
+      };
+      if (!noWrite) writeArtifact(artifactDir, report);
+      process.stderr.write(`[rerank-order-gate] exit 1: ${report.exit_reason}\n`);
+      process.exit(1);
+    }
+
+    // 3. Ollama reachability
+    if (!(await ollamaReachable())) {
+      process.stderr.write(`[rerank-order-gate] exit 1: Ollama unreachable at ${OLLAMA_HOST}\n`);
+      process.exit(1);
+    }
   }
 
   // 4. Baseline retrieval (embedding + cosine)
@@ -389,7 +507,7 @@ async function main(): Promise<void> {
     const baselineSlices = computeBaselineSlices(bilingual.samples, baselineRanked);
     const report: OrderGateReport = {
       schema_version: "s154-rerank-order-gate.v1",
-      task_id: "S154-710",
+      task_id: useCrossEncoder ? "S154-711" : "S154-710",
       generated_at: new Date().toISOString(),
       fixtures: [{ name: "bilingual-v2", schema_version: bilingual.schema_version, samples_count: bilingual.samples.length }],
       retrieval_stage: { baseline_path: "embedding-only", embedding_model: BASELINE_EMBEDDING_MODEL, per_slice: baselineSlices },
@@ -402,27 +520,67 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // 7. Candidate (LLM rerank ON): top-10 を qwen3.5:9b で並べ替え、metrics 再計算
-  process.stderr.write(`[rerank-order-gate] LLM rerank on top-10 for ${bilingual.samples.length} queries...\n`);
+  // 7. Candidate rerank: LLM または ONNX cross-encoder で top-10 を並べ替え
   const candidateScores: QueryScore[] = [];
-  for (let i = 0; i < bilingual.samples.length; i += 1) {
-    const sample = bilingual.samples[i];
-    const entry = baselineRanked[i];
-    let rerankedIds: string[];
-    try {
-      rerankedIds = await llmRerankTop10(sample.query, entry.top10);
-    } catch (err) {
-      // §154-710 Codex fix: silent fallback 禁止。LLM call 失敗 = exit 1 で
-      // measurement の汚染を防ぐ (D40 規律: silent fallback は帰属汚染源)。
-      const msg = err instanceof Error ? err.message : String(err);
-      process.stderr.write(`[rerank-order-gate] exit 1: LLM rerank failed at sample=${sample.id} (${msg}) — fail-closed (no silent baseline fallback)\n`);
-      process.exit(1);
+  let crossEncoderLatency: OnnxCrossEncoderLatency | undefined;
+
+  if (useCrossEncoder && crossEncoderReranker) {
+    // §154-711: ONNX cross-encoder path
+    process.stderr.write(`[rerank-order-gate] cross-encoder rerank on top-10 for ${bilingual.samples.length} queries...\n`);
+
+    for (let i = 0; i < bilingual.samples.length; i += 1) {
+      const sample = bilingual.samples[i];
+      const entry = baselineRanked[i];
+      let rerankedIds: string[];
+      try {
+        rerankedIds = await crossEncoderRerankTop(crossEncoderReranker, sample.query, entry.top10);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[rerank-order-gate] exit 1: cross-encoder rerank failed at sample=${sample.id} (${msg}) — fail-closed\n`);
+        process.exit(1);
+      }
+      // top-10 内の並び替え + tail (rank > 10) は順序維持
+      const top10Set = new Set(rerankedIds);
+      const tail = entry.ranked.slice(TOP_K).filter((r) => !top10Set.has(r.id));
+      const combinedRanked = [...rerankedIds.map((id) => ({ id })), ...tail];
+      candidateScores.push(scoreFromRanking(combinedRanked, sample.relevant_ids));
     }
-    // Build a ranked list with rerank order then the rest (rank > 10 unchanged)
-    const top10Set = new Set(rerankedIds);
-    const tail = entry.ranked.slice(TOP_K).filter((r) => !top10Set.has(r.id));
-    const combinedRanked = [...rerankedIds.map((id) => ({ id })), ...tail];
-    candidateScores.push(scoreFromRanking(combinedRanked, sample.relevant_ids));
+
+    // §154-711 DoD: CPU top-50 rerank の p50/p95 実測 (最重要 deliverable)
+    process.stderr.write(`[rerank-order-gate] measuring latency (top-${LATENCY_TOP_N}, ${bilingual.samples.length} queries)...\n`);
+    crossEncoderLatency = await measureCrossEncoderLatency(
+      crossEncoderReranker,
+      bilingual.samples,
+      poolItems,
+      poolVectors,
+      queryVectors,
+      bilingual.samples.length,
+    );
+    process.stderr.write(
+      `[rerank-order-gate] latency: p50=${crossEncoderLatency.p50_ms}ms/pair p95=${crossEncoderLatency.p95_ms}ms/pair n=${crossEncoderLatency.n_samples}\n`
+    );
+  } else {
+    // §154-710: LLM rerank path (original)
+    process.stderr.write(`[rerank-order-gate] LLM rerank on top-10 for ${bilingual.samples.length} queries...\n`);
+    for (let i = 0; i < bilingual.samples.length; i += 1) {
+      const sample = bilingual.samples[i];
+      const entry = baselineRanked[i];
+      let rerankedIds: string[];
+      try {
+        rerankedIds = await llmRerankTop10(sample.query, entry.top10);
+      } catch (err) {
+        // §154-710 Codex fix: silent fallback 禁止。LLM call 失敗 = exit 1 で
+        // measurement の汚染を防ぐ (D40 規律: silent fallback は帰属汚染源)。
+        const msg = err instanceof Error ? err.message : String(err);
+        process.stderr.write(`[rerank-order-gate] exit 1: LLM rerank failed at sample=${sample.id} (${msg}) — fail-closed (no silent baseline fallback)\n`);
+        process.exit(1);
+      }
+      // Build a ranked list with rerank order then the rest (rank > 10 unchanged)
+      const top10Set = new Set(rerankedIds);
+      const tail = entry.ranked.slice(TOP_K).filter((r) => !top10Set.has(r.id));
+      const combinedRanked = [...rerankedIds.map((id) => ({ id })), ...tail];
+      candidateScores.push(scoreFromRanking(combinedRanked, sample.relevant_ids));
+    }
   }
 
   // 8. Build per-slice metrics
@@ -455,23 +613,39 @@ async function main(): Promise<void> {
   }
 
   // 10. Build report
+  const rerankStage: RerankStage = useCrossEncoder
+    ? {
+        baseline_path: "embedding-only",
+        candidate_path: "onnx-cross-encoder",
+        provider_identity: { provider: "onnx-local", model: CROSS_ENCODER_MODEL_ID },
+        per_slice: deltaSlices,
+        latency: crossEncoderLatency,
+      }
+    : {
+        baseline_path: "embedding-only",
+        candidate_path: "ollama-llm-rerank",
+        provider_identity: { provider: "ollama", model: OLLAMA_MODEL, host: OLLAMA_HOST },
+        per_slice: deltaSlices,
+      };
+
   const report: OrderGateReport = {
     schema_version: "s154-rerank-order-gate.v1",
-    task_id: "S154-710",
+    task_id: useCrossEncoder ? "S154-711" : "S154-710",
     generated_at: new Date().toISOString(),
     fixtures: [{ name: "bilingual-v2", schema_version: bilingual.schema_version, samples_count: bilingual.samples.length }],
     retrieval_stage: { baseline_path: "embedding-only", embedding_model: BASELINE_EMBEDDING_MODEL, per_slice: baselineSlices },
-    rerank_stage: {
-      baseline_path: "embedding-only",
-      candidate_path: "ollama-llm-rerank",
-      provider_identity: { provider: "ollama", model: OLLAMA_MODEL, host: OLLAMA_HOST },
-      per_slice: deltaSlices,
-    },
+    rerank_stage: rerankStage,
     precondition: { rank_below_top1_count: rankBelowTop1, required_min: PRECONDITION_MIN_RANK_BELOW_TOP1, passed: true },
     exit_code: 0,
   };
 
-  if (!noWrite) writeArtifact(artifactDir, report);
+  if (!noWrite) {
+    writeArtifact(artifactDir, report);
+    // §154-711 DoD: cross-encoder path では専用 artifact も出力する
+    if (useCrossEncoder) {
+      writeCrossEncoderArtifact(ROOT_DIR, report);
+    }
+  }
   process.stderr.write(`[rerank-order-gate] exit 0\n`);
   process.exit(0);
 }
@@ -494,6 +668,19 @@ function writeArtifact(dir: string, report: OrderGateReport): void {
   const file = join(dir, "report.json");
   writeFileSync(file, JSON.stringify(report, null, 2) + "\n", "utf8");
   process.stderr.write(`[rerank-order-gate] artifact: ${file}\n`);
+}
+
+/**
+ * §154-711 DoD: CPU top-50 rerank p50/p95 実測 artifact を専用パスに書き出す。
+ * artifact path: docs/benchmarks/artifacts/s154-rerank/cross-encoder-cpu-{date}.json
+ */
+function writeCrossEncoderArtifact(rootDir: string, report: OrderGateReport): void {
+  const dir = join(rootDir, "docs/benchmarks/artifacts/s154-rerank");
+  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+  const date = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const file = join(dir, `cross-encoder-cpu-${date}.json`);
+  writeFileSync(file, JSON.stringify(report, null, 2) + "\n", "utf8");
+  process.stderr.write(`[rerank-order-gate] cross-encoder artifact: ${file}\n`);
 }
 
 void main().catch((err) => {
