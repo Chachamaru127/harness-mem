@@ -49,7 +49,8 @@
     "enforce_metrics": ["tense_rewrite", "supersession"],
     "warn_only_metrics": ["freshness_lag"],
     "green_definition": "shallow Freshness@k >= 0.95 AND (enforce_metrics の全 sub-metric が閾値 ALL PASS)",
-    "lag_handling": "閾値違反時は WARN ログ + artifact 記録のみ。gate 判定 (green/yellow/red) には参加しない。"
+    "lag_handling": "閾値違反時は WARN ログ + artifact 記録のみ。gate 判定 (green/yellow/red) には参加しない。",
+    "skip_handling": "shallow_freshness が undefined の時 (スタンドアロン bench 実行など CI manifest 経路を持たない場合)、shallow check は skip され gate_verdict は yellow に下がる (fail-open)。enforce metric の status が measured 以外の時も同様に yellow 扱い (Ollama 不在等で CI blocker 化を回避)。yellow=pass-open、red のみが明示 fail。"
   },
   "note": "tense/sup は決定的 metric (Ollama temperature/seed/num_predict 固定) のため worst-of-3 - 0.05 headroom (Skeptic 案 A simplified)。lag は LLM round-trip 込み wall time = 非決定的、Skeptic 案 A 'ms スケール absolute ceiling' を採用。data/composite-score-weights.json と同様の外部 config 化 (コード固定値禁止 = 捏造防止)。enforce gate (s108 manifest 追加) は本 config を消費する別タスク (S154-FU02) で実施 — 人間 Risk Gate のため分離。**D39-Revision 部分採択 (2026-06-19): tense/sup は enforce、lag は warn-only**。"
 }

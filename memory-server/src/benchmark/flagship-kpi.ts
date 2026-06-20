@@ -95,7 +95,8 @@ function loadThresholds(): DeepFreshnessThresholds {
 export type DeepFreshnessGateVerdict = "green" | "yellow" | "red";
 
 export interface DeepFreshnessGateDetail {
-  shallow_ok: boolean;
+  /** null when shallow_freshness was not provided (standalone bench without CI manifest). */
+  shallow_ok: boolean | null;
   tense_rewrite_ok: boolean | null;
   supersession_ok: boolean | null;
 }
@@ -122,15 +123,18 @@ export function buildDeepFreshnessSubBlock(params: {
   tense_rewrite: TenseRewriteResult;
   supersession: SupersessionResult;
   freshness_lag: FreshnessLagResult;
-  /** shallow Freshness@k value (from FlagshipKpi). Required for green gate evaluation. */
-  shallow_freshness: number;
+  /** shallow Freshness@k value (from FlagshipKpi). Optional — undefined when bench runs standalone without a CI manifest. Undefined → shallow check is skipped and verdict downgrades to yellow per gate_consumer_contract.skip_handling. */
+  shallow_freshness?: number;
 }): DeepFreshnessSubBlock {
   const cfg = loadThresholds();
   const tr = cfg.thresholds.tense_rewrite;
   const sup = cfg.thresholds.supersession;
   const lag = cfg.thresholds.freshness_lag;
 
-  const shallowOk = params.shallow_freshness >= FLAGSHIP_FRESHNESS_GREEN_THRESHOLD;
+  const shallowOk: boolean | null =
+    params.shallow_freshness === undefined
+      ? null
+      : params.shallow_freshness >= FLAGSHIP_FRESHNESS_GREEN_THRESHOLD;
 
   // enforce_metrics gate — skipped metrics → yellow (indeterminate), failed → red
   let tenseRewriteOk: boolean | null = null;
@@ -150,12 +154,12 @@ export function buildDeepFreshnessSubBlock(params: {
 
   // Verdict logic per gate_consumer_contract.green_definition:
   //   green = shallow >= 0.95 AND enforce_metrics ALL PASS
-  //   yellow = any enforce metric skipped (indeterminate)
+  //   yellow = shallow unknown OR any enforce metric skipped (indeterminate)
   //   red = shallow fail OR any enforce metric explicitly failed
   let gateVerdict: DeepFreshnessGateVerdict;
-  if (!shallowOk || tenseRewriteOk === false || supersessionOk === false) {
+  if (shallowOk === false || tenseRewriteOk === false || supersessionOk === false) {
     gateVerdict = "red";
-  } else if (tenseRewriteOk === null || supersessionOk === null) {
+  } else if (shallowOk === null || tenseRewriteOk === null || supersessionOk === null) {
     gateVerdict = "yellow";
   } else {
     gateVerdict = "green";

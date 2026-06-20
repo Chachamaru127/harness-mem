@@ -119,6 +119,34 @@ describe("S154-FU02 deep freshness gate judgment", () => {
     });
     expect(block.thresholds_source).toContain("deep-freshness-thresholds.json");
   });
+
+  test("yellow when shallow_freshness is omitted (standalone bench without CI manifest)", () => {
+    const block = buildDeepFreshnessSubBlock({
+      tense_rewrite: measuredTenseRewrite,
+      supersession: measuredSupersession,
+      freshness_lag: measuredLag,
+    });
+    expect(block.gate_verdict).toBe("yellow");
+    expect(block.gate_detail.shallow_ok).toBeNull();
+    expect(block.gate_detail.tense_rewrite_ok).toBe(true);
+    expect(block.gate_detail.supersession_ok).toBe(true);
+  });
+
+  test("red overrides yellow when shallow_freshness omitted but an enforce metric fails", () => {
+    const block = buildDeepFreshnessSubBlock({
+      tense_rewrite: {
+        status: "measured" as const,
+        n: 32,
+        accuracy: 0.80,
+        false_positive_rate: 0.0,
+      },
+      supersession: measuredSupersession,
+      freshness_lag: measuredLag,
+    });
+    expect(block.gate_verdict).toBe("red");
+    expect(block.gate_detail.shallow_ok).toBeNull();
+    expect(block.gate_detail.tense_rewrite_ok).toBe(false);
+  });
 });
 
 describe("S154-304 flagship KPI display promotion", () => {
