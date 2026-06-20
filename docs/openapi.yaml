@@ -2925,6 +2925,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /v1/admin/branch-merge:
+    post:
+      summary: Branch merge workflow (§F-2 / S78-E02b)
+      description: |
+        Promote observations from a feature branch to a target branch
+        (typically `main`). Defaults to `dry_run=true` — mutates only when
+        the caller explicitly sets both `dry_run: false` AND `apply: true`.
+        Every invocation writes a summary row to `mem_audit_log`;
+        mutating invocations also write per-conflict resolution rows.
+      operationId: branchMerge
+      tags: [Admin]
+      security:
+        - harnessMemToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [source_branch, target_branch, mode]
+              properties:
+                source_branch:
+                  type: string
+                  description: Feature branch name to merge FROM
+                target_branch:
+                  type: string
+                  description: Target branch name to merge INTO (typically "main")
+                mode:
+                  type: string
+                  enum: [overwrite, append, skip]
+                  description: |
+                    Conflict resolution:
+                    - skip: keep source on source_branch when target has same content_redacted
+                    - overwrite: delete conflicting target row, then promote source
+                    - append: always promote source (allow duplicates)
+                dry_run:
+                  type: boolean
+                  default: true
+                  description: If true (default), no mutation occurs.
+                apply:
+                  type: boolean
+                  default: false
+                  description: Must be true (and dry_run=false) to mutate.
+                project:
+                  type: string
+                  description: Optional project filter
+                actor:
+                  type: string
+                  description: Optional actor recorded in audit log (default "system")
+      responses:
+        "200":
+          description: Branch merge plan or applied result
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /v1/admin/audit-log:
     get:
       summary: Audit log

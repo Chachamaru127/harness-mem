@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "scope": "synthetic-in-suite-parity",
+  "claim_boundary": "Measures binary-prefilter recall parity against a synthetic clustered fixture inside the unit test suite. NOT a generalization claim about real granite-embedded corpora; D2 (self-seed fixture cannot back external-advantage claims) is honored. Real-granite re-measurement is a separate gate before flipping HARNESS_MEM_BINARY_PREFILTER=1 in production.",
+  "feature_branch": "feat/s154-zdr-bquality",
+  "measured_at": "2026-06-19",
+  "source_test": "memory-server/tests/unit/binary-prefilter.test.ts",
+  "source_describe": "Recall parity: binary prefilter ON vs OFF (real sqlite-vec parity)",
+  "runtime": {
+    "sqlite_vec_native": true,
+    "bun_version": "1.3.10"
+  },
+  "corpus": {
+    "kind": "synthetic-clustered",
+    "N": 500,
+    "DIM": 64,
+    "clusters": 10,
+    "noise_amplitude": 0.4,
+    "deterministic_seed": "LCG (1664525 / 1013904223 / per-doc 31337)"
+  },
+  "search": {
+    "K": 10,
+    "num_queries": 50,
+    "bitK_formula": "min(sqliteVecKMax*8, max(internalLimit*16, 200))",
+    "bitK_resolved": 800,
+    "pool_ratio_vs_K": "80x"
+  },
+  "results": {
+    "recall_at_10_off": 1.000,
+    "recall_at_10_on": 1.000,
+    "parity_ratio": 1.000,
+    "dod_threshold": 0.95,
+    "dod_met": true
+  },
+  "pool_lt_N_stress": {
+    "test_name": "pool<N stress: BM25-unique hit surfaces through union even when binary prefilter ON",
+    "corpus_N": 300,
+    "bitK_resolved": 200,
+    "pool_ratio": "0.67x (pool < N)",
+    "verdict": "PASS — BM25/RRF union path surfaces lexical-unique target even when its vector would not be in the Hamming-top-bitK dense candidate set. Confirms binary prefilter restricts only the float-dense leg and does not clip lexical/graph union candidates.",
+    "covers_codex_concern": "candidate-union retention under pool<N regime"
+  },
+  "rollout_gate": {
+    "flag": "HARNESS_MEM_BINARY_PREFILTER",
+    "default": "OFF",
+    "production_on_prerequisites": [
+      "Real-granite-embedded corpus parity re-measurement (binary ON vs OFF recall delta)",
+      "Codex independent review verdict recorded",
+      "pool<N parity stress test GREEN in CI (this commit)"
+    ],
+    "status": "default-OFF maintained; preparatory parity recorded"
+  }
+}

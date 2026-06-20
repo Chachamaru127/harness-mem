@@ -390,6 +390,50 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(provider.health().status).toBe("healthy");
   });
 
+  test("pro api provider は zdrEnforced=true で in-memory cache を作らない (at-rest で content が残らない)", async () => {
+    let calls = 0;
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      zdrEnforced: true,
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(JSON.stringify({ embedding: [0.1, 0.2, 0.3, 0.4] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      },
+    });
+
+    // Two prime calls with the same input — without ZDR, the second call hits
+    // the cache. With ZDR enforced, every call goes through and nothing
+    // accumulates: entries stays 0, hits stays 0.
+    await provider.primeQuery?.("incident postmortem text");
+    await provider.primeQuery?.("incident postmortem text");
+    const stats = provider.cacheStats?.();
+
+    expect(calls).toBe(2);
+    expect(stats?.entries).toBe(0);
+    expect(stats?.hits).toBe(0);
+    expect(provider.health().details).toContain("zdr=enforced");
+  });
+
+  test("pro api provider は zdrEnforced=true でも error message に入力テキストを混入させない", async () => {
+    const secret = "ZDR_INPUT_TEXT_THAT_MUST_NOT_LEAK_5b7c9";
+    const provider = createProApiEmbeddingProvider({
+      dimension: 4,
+      apiKey: "test-key",
+      apiUrl: "https://example.test/embeddings",
+      zdrEnforced: true,
+      fetchImpl: async () => new Response("boom", { status: 503 }),
+    });
+
+    await expect(provider.prime?.(secret)).rejects.toThrow();
+    expect(provider.health().details).not.toContain(secret);
+    expect(provider.health().details).not.toContain("ZDR_INPUT_TEXT");
+  });
+
   test("pro api provider は障害時に degraded を返す", async () => {
     const provider = createProApiEmbeddingProvider({
       dimension: 4,
@@ -403,7 +447,7 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
     expect(provider.health().details).toContain("503");
   });
 
-  test("registry: adaptive provider は Pro API が設定されると general route に pro-api を使う", () => {
+  test("registry: adaptive provider は Pro API が設定されても adaptive leg を Pro 化せず警告だけ出す (Pro=C: Pro は granite route の背後)", () => {
     const modelsDir = mkdtempSync(join(tmpdir(), "hmem-adaptive-pro-provider-"));
     const installModel = (modelId: string) => {
       const modelDir = join(modelsDir, modelId);
@@ -422,8 +466,81 @@ describe("IMP-008: 埋め込みプロバイダー拡張", () => {
         proApiKey: "pro-key",
         proApiUrl: "https://example.test/embeddings",
       });
+      expect(registry.warnings.some((w) => w.includes("auto/local granite path"))).toBe(true);
+      expect(registry.provider.primaryModelFor?.("deploy rollback plan")).not.toContain("pro-api");
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: granite route + Pro env で granite leg が Pro エンドポイントに格上げされる (Pro=C)", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-granite-pro-"));
+    const modelId = "granite-embedding-311m-r2";
+    const modelDir = join(modelsDir, modelId);
+    mkdirSync(join(modelDir, "onnx"), { recursive: true });
+    writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+    writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "auto",
+        localModelId: modelId,
+        dimension: 64,
+        localModelsDir: modelsDir,
+        proApiKey: "pro-key",
+        proApiUrl: "https://example.test/embeddings",
+      });
       expect(registry.warnings).toEqual([]);
-      expect(registry.provider.primaryModelFor?.("deploy rollback plan")).toContain("adaptive:general:pro-api:");
+      expect(registry.provider.name).toBe("pro-api");
+      // default Pro model matches the active granite catalog entry, not a third-party
+      expect(registry.provider.model).toBe(modelId);
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: granite route で Pro env 未設定なら無料 local granite を維持 (live default 不変)", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-granite-local-"));
+    const modelId = "granite-embedding-311m-r2";
+    const modelDir = join(modelsDir, modelId);
+    mkdirSync(join(modelDir, "onnx"), { recursive: true });
+    writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+    writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "auto",
+        localModelId: modelId,
+        dimension: 64,
+        localModelsDir: modelsDir,
+        // no proApiKey / proApiUrl
+      });
+      expect(registry.warnings).toEqual([]);
+      expect(registry.provider.name).not.toBe("pro-api");
+    } finally {
+      rmSync(modelsDir, { recursive: true, force: true });
+    }
+  });
+
+  test("registry: 非 granite (ruri) ルートで Pro env を立てても Pro 化しない (Pro は granite 限定)", () => {
+    const modelsDir = mkdtempSync(join(tmpdir(), "hmem-ruri-pro-skip-"));
+    const modelId = "ruri-v3-30m";
+    const modelDir = join(modelsDir, modelId);
+    mkdirSync(join(modelDir, "onnx"), { recursive: true });
+    writeFileSync(join(modelDir, "tokenizer.json"), "{}");
+    writeFileSync(join(modelDir, "onnx", "model.onnx"), "fake");
+
+    try {
+      const registry = createEmbeddingProviderRegistry({
+        providerName: "auto",
+        localModelId: modelId,
+        dimension: 64,
+        localModelsDir: modelsDir,
+        proApiKey: "pro-key",
+        proApiUrl: "https://example.test/embeddings",
+      });
+      expect(registry.warnings.some((w) => w.includes("only wired into the granite route"))).toBe(true);
+      expect(registry.provider.name).not.toBe("pro-api");
     } finally {
       rmSync(modelsDir, { recursive: true, force: true });
     }

@@ -12,6 +12,7 @@ import { NotionConnector } from "./sync/notion-connector";
 import { GoogleDriveConnector } from "./sync/gdrive-connector";
 import type { ConnectorConfig } from "./sync/types";
 import { EmbeddingReadinessError, HarnessMemCore } from "./core/harness-mem-core";
+import { classifyEntityType, type RelationKind } from "./core/nlp-lite";
 import { SqliteTeamRepository } from "./db/repositories/SqliteTeamRepository.js";
 import type { ITeamRepository } from "./db/repositories/ITeamRepository.js";
 import { createLeaseStore, type LeaseStore } from "./lease/lease-store";
@@ -1596,6 +1597,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
           }));
         }
 
+        // §F-2 (S78-E02b): branch merge workflow — promote feature-branch observations to target
+        if (request.method === "POST" && url.pathname === "/v1/admin/branch-merge") {
+          const body = await parseRequestJson(request);
+          const sourceBranch = typeof body.source_branch === "string" ? body.source_branch : "";
+          const targetBranch = typeof body.target_branch === "string" ? body.target_branch : "";
+          const mode = typeof body.mode === "string" ? body.mode : "";
+          const { branchMerge } = await import("./admin/branch-merge.js");
+          const db = (core as unknown as { db: import("bun:sqlite").Database }).db;
+          const result = await branchMerge(db, {
+            source_branch: sourceBranch,
+            target_branch: targetBranch,
+            mode: mode as "overwrite" | "append" | "skip",
+            dry_run: parseBooleanLike(body.dry_run, true),
+            apply: parseBooleanLike(body.apply, false),
+            project: typeof body.project === "string" ? body.project : undefined,
+            actor: typeof body.actor === "string" ? body.actor : undefined,
+          });
+          return rawJsonResponse(result, result.ok ? 200 : 400);
+        }
+
         if (request.method === "POST" && url.pathname === "/v1/admin/forget/hard-purge") {
           const body = await parseRequestJson(request);
           const targetIds = toStringArray(body.target_ids).length > 0
@@ -1988,7 +2009,68 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
         const relation = url.searchParams.get("relation") || undefined;
         const depthRaw = url.searchParams.get("depth");
         const depth = depthRaw ? Math.min(Math.max(parseInt(depthRaw, 10) || 1, 1), 5) : 1;
-        return jsonResponse(core.getLinks({ observation_id: observationId, relation, depth, user_id: neighborsAccess.user_id, team_id: neighborsAccess.team_id }));
+        const linkResult = core.getLinks({ observation_id: observationId, relation, depth, user_id: neighborsAccess.user_id, team_id: neighborsAccess.team_id });
+
+        // §F-1 (S78-C02b) DoD literal fix (2026-06-19): `harness_mem_graph`
+        // MCP tool routes to /v1/graph/neighbors. Enrich the response with
+        // entity-level `type` and relation-level semantic `kind` attached to
+        // the observations in scope, so the MCP tool surface itself carries
+        // the new contract instead of only /v1/graph/entities.
+        // Additive — existing neighbors fields are unchanged.
+        try {
+          const db = core.getRawDb();
+          // Collect all observation ids in the neighbor closure (the link
+          // result returns observation graph entries — use them as the scope).
+          const scopeIds = new Set<string>([observationId]);
+          const rawResult = linkResult as unknown as { items?: Array<{ id?: string; observation_id?: string }> };
+          for (const item of rawResult.items ?? []) {
+            if (typeof item.id === "string") scopeIds.add(item.id);
+            if (typeof item.observation_id === "string") scopeIds.add(item.observation_id);
+          }
+          if (scopeIds.size > 0) {
+            const idList = [...scopeIds];
+            const placeholders = idList.map(() => "?").join(",");
+            const entityRows = db
+              .query<{ name: string; entity_type: string }, string[]>(
+                `SELECT DISTINCT e.name, e.entity_type
+                 FROM mem_entities e
+                 JOIN mem_observation_entities oe ON oe.entity_id = e.id
+                 WHERE oe.observation_id IN (${placeholders})
+                 LIMIT 200`,
+              )
+              .all(...idList);
+            const relationRows = db
+              .query<{ src: string; dst: string; kind: string; strength: number; observation_id: string }, string[]>(
+                `SELECT src, dst, kind, strength, observation_id
+                 FROM mem_relations
+                 WHERE observation_id IN (${placeholders})
+                 ORDER BY id DESC
+                 LIMIT 200`,
+              )
+              .all(...idList);
+
+            const validKinds: Set<RelationKind> = new Set(["is_a", "uses", "fixes", "generic"]);
+            const enriched = {
+              ...(linkResult as Record<string, unknown>),
+              entities: entityRows.map((r) => ({
+                id: r.name.toLowerCase(),
+                label: r.name,
+                kind: r.entity_type,
+                type: classifyEntityType(r.name),
+              })),
+              entity_relations: relationRows.map((r) => ({
+                ...r,
+                kind: validKinds.has(r.kind as RelationKind)
+                  ? (r.kind as RelationKind)
+                  : "generic",
+              })),
+            };
+            return jsonResponse(enriched);
+          }
+        } catch {
+          // graceful fallback — return unenriched neighbors result
+        }
+        return jsonResponse(linkResult);
       }
 
       // S78-C02: GET /v1/graph/entities — return extracted entities + co-occurrence relations
@@ -2054,10 +2136,26 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
             .all(String(limit));
         }
 
+        // §F-1 (S78-C02b): enrich each entity with a semantic `type`
+        // (person|technology|action|other) and normalize each relation's
+        // `kind` to one of is_a|uses|fixes|generic.  Pre-§F-1 rows in
+        // mem_relations carry the literal "co-occurs" — surface those as
+        // "generic" so the API contract stays uniform.
+        const validKinds: Set<RelationKind> = new Set(["is_a", "uses", "fixes", "generic"]);
         return rawJsonResponse({
           ok: true,
-          entities: entityRows.map((r) => ({ id: r.name.toLowerCase(), label: r.name, kind: r.entity_type })),
-          relations: relationRows,
+          entities: entityRows.map((r) => ({
+            id: r.name.toLowerCase(),
+            label: r.name,
+            kind: r.entity_type,
+            type: classifyEntityType(r.name),
+          })),
+          relations: relationRows.map((r) => ({
+            ...r,
+            kind: validKinds.has(r.kind as RelationKind)
+              ? (r.kind as RelationKind)
+              : "generic",
+          })),
         });
       }
 

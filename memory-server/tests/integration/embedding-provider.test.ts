@@ -306,7 +306,7 @@ describe("embedding provider integration", () => {
     }
   });
 
-  test("adaptive provider stores pro-api model labels when Pro API route succeeds", async () => {
+  test("adaptive provider with Pro env emits deprecation warning and does NOT call Pro endpoint (Pro=C: Pro is wired behind granite route only)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-adaptive-pro-success-"));
     const modelsDir = join(dir, "empty-models");
     mkdirSync(modelsDir, { recursive: true });
@@ -362,8 +362,14 @@ describe("embedding provider integration", () => {
         .map((row) => row.model);
       db.close(false);
 
-      expect(fetchCalls).toBeGreaterThan(0);
-      expect(storedModels).toEqual(["adaptive:general:pro-api:text-embedding-3-large"]);
+      // Pro=C (2026-06-19): Pro is no longer wired into adaptive; the fake
+      // Pro endpoint must NOT receive any request when provider=adaptive.
+      expect(fetchCalls).toBe(0);
+      // Stored model is the free local general label (fallback hash, since
+      // multilingual-e5 is not installed in empty-models dir).
+      expect(storedModels.length).toBe(1);
+      expect(storedModels[0]!).not.toContain("pro-api");
+      expect(storedModels[0]!).toContain("adaptive:");
     } finally {
       core.shutdown("test");
       if (previousProvider === undefined) {
@@ -471,9 +477,15 @@ describe("embedding provider integration", () => {
       const firstModel = rows.find((row) => row.observation_id === "obs_adaptive-pro-recovery-001")?.model;
       const secondModel = rows.find((row) => row.observation_id === "obs_adaptive-pro-recovery-002")?.model;
 
-      expect(fetchCalls).toBe(2);
-      expect(firstModel).toBe("adaptive:general:fallback:local-hash-v3");
-      expect(secondModel).toBe("adaptive:general:pro-api:text-embedding-3-large");
+      // Pro=C (2026-06-19): adaptive no longer routes through the Pro endpoint;
+      // both observations use the free local general label and Pro fetch is
+      // never invoked. The adaptive provider's backoff/recovery machinery
+      // continues to be exercised at the unit level via stub providers.
+      expect(fetchCalls).toBe(0);
+      expect(firstModel).not.toContain("pro-api");
+      expect(secondModel).not.toContain("pro-api");
+      expect(firstModel).toContain("adaptive:");
+      expect(secondModel).toContain("adaptive:");
     } finally {
       Date.now = originalNow;
       core.shutdown("test");

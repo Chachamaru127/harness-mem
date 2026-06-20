@@ -2203,11 +2203,21 @@ export class ObservationStore {
                     )
                     .all(queryBits, bitK);
 
-                  if (bitRows.length > 0) {
+                  // Codex must-fix (2026-06-19, W3 follow-up): pool<N safety.
+                  // Hamming top-bitK is computed globally (no project / privacy
+                  // / TTL filtering). When bitK is configured small (e.g.
+                  // HARNESS_MEM_SQLITE_VEC_K_MAX=1 yields bitK<=8) and bitRows
+                  // returns fewer candidates than internalLimit, downstream
+                  // project/privacy filters can silently truncate below what
+                  // a float single-pass would have surfaced. The prefilter is
+                  // an optimization, not a correctness gate — fall through to
+                  // float single-pass when the pool is too thin to safely
+                  // absorb filter shrinkage.
+                  if (bitRows.length > 0 && bitRows.length >= internalLimit) {
                     candidateObservationIds = bitRows.map((r) => r.observation_id);
                     binaryPrefilterFired = true;
                   }
-                  // bit table empty → fall through to float single-pass
+                  // bit table empty or pool < internalLimit → fall through to float single-pass
                 }
               } catch {
                 // bit prefilter failed → graceful fallback to float single-pass

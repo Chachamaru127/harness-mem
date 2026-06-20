@@ -122,6 +122,53 @@ function createLocalOrFallbackProvider(
   });
 }
 
+// S154 Pro=C (2026-06-19): Pro upgrade fires only when the active local model
+// is granite AND both Pro env vars are set. The Pro endpoint is expected to
+// serve the same granite model family (default model name carried inside
+// pro-api-provider), so the route stays JA-EN cross-lingual instead of falling
+// to a third-party 1-language model. When Pro env is incomplete or the model
+// is not granite, the local ONNX provider is returned unchanged.
+function isGraniteModel(modelId: string): boolean {
+  return modelId.startsWith("granite-embedding");
+}
+
+function wrapWithProIfGraniteAndConfigured(
+  localProvider: EmbeddingProvider,
+  modelId: string,
+  options: EmbeddingRegistryOptions,
+  warnings: string[]
+): EmbeddingProvider {
+  const hasProApi = Boolean(options.proApiKey && options.proApiUrl);
+
+  if (!isGraniteModel(modelId)) {
+    if (options.proApiKey || options.proApiUrl) {
+      warnings.push(
+        `Pro embedding endpoint is only wired into the granite route. Active model "${modelId}" is not granite; ignoring HARNESS_MEM_PRO_API_KEY/URL.`
+      );
+    }
+    return localProvider;
+  }
+
+  if ((options.proApiKey || options.proApiUrl) && !hasProApi) {
+    warnings.push(
+      "HARNESS_MEM_PRO_API_KEY and HARNESS_MEM_PRO_API_URL must both be set to enable the Pro granite endpoint. Falling back to free local granite."
+    );
+  }
+
+  if (!hasProApi) {
+    return localProvider;
+  }
+
+  return createProApiEmbeddingProvider({
+    dimension: options.dimension,
+    apiKey: options.proApiKey,
+    baseUrl: options.proApiUrl,
+    model: options.proApiModel || modelId,
+    zdrEnforced: options.proApiZdrEnforced,
+    fallback: localProvider,
+  });
+}
+
 export function resolveEmbeddingShadowProviders(
   options: EmbeddingShadowProviderOptions
 ): EmbeddingShadowProviderCandidate[] {
@@ -284,29 +331,24 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
       { fallbackTo: fallback }
     );
   } else if (providerName === "adaptive") {
+    // S154 / Pro=C (2026-06-19): Pro upgrade no longer fires on the adaptive
+    // English leg. Pro now lives behind the granite route (auto/local
+    // providers). Adaptive runs free local providers on both legs; if the
+    // operator sets HARNESS_MEM_PRO_API_KEY/URL with provider=adaptive, surface
+    // a warning pointing them at provider=auto.
     const japaneseProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "ruri-v3-30m");
     const freeGeneralProvider = createLocalOrFallbackProvider(manager, warnings, fallback, "multilingual-e5");
-    const hasProApi = Boolean(options.proApiKey && options.proApiUrl);
-    const generalProvider = hasProApi
-      ? createProApiEmbeddingProvider({
-          dimension: options.dimension,
-          apiKey: options.proApiKey,
-          baseUrl: options.proApiUrl,
-          model: options.openaiEmbedModel || "text-embedding-3-large",
-          fallback: freeGeneralProvider,
-        })
-      : freeGeneralProvider;
 
-    if ((options.proApiKey || options.proApiUrl) && !hasProApi) {
+    if (options.proApiKey || options.proApiUrl) {
       warnings.push(
-        "HARNESS_MEM_PRO_API_KEY and HARNESS_MEM_PRO_API_URL must both be set to enable the Pro adaptive path. Falling back to the free secondary model."
+        "HARNESS_MEM_PRO_API_KEY/URL are now wired into the auto/local granite path, not adaptive. " +
+        "Set HARNESS_MEM_EMBEDDING_PROVIDER=auto (the live default) to use the Pro granite endpoint."
       );
     }
 
     provider = createAdaptiveEmbeddingProvider({
       japaneseProvider,
-      generalProvider,
-      generalFallbackProvider: hasProApi ? freeGeneralProvider : undefined,
+      generalProvider: freeGeneralProvider,
       dimension: options.dimension,
       jaThreshold: options.adaptiveJaThreshold ?? DEFAULT_ADAPTIVE_JA_THRESHOLD,
       codeThreshold: options.adaptiveCodeThreshold ?? DEFAULT_ADAPTIVE_CODE_THRESHOLD,
@@ -317,7 +359,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         `Unknown local model id "${modelId}". Falling back to "fallback". Run 'harness-mem model list' to see available models.`
       );
     } else if (modelPath) {
-      provider = createLocalOnnxEmbeddingProvider({
+      const localProvider = createLocalOnnxEmbeddingProvider({
         modelId,
         modelPath,
         dimension: localDimension,
@@ -330,6 +372,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         passagePrefix: catalogEntry.passagePrefix,
         fallback,
       });
+      provider = wrapWithProIfGraniteAndConfigured(localProvider, modelId, options, warnings);
     }
   } else if (providerName === "local") {
     if (!catalogEntry) {
@@ -342,7 +385,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         `Run 'harness-mem model pull ${modelId}' to download it. Falling back to "fallback".`
       );
     } else {
-      provider = createLocalOnnxEmbeddingProvider({
+      const localProvider = createLocalOnnxEmbeddingProvider({
         modelId,
         modelPath,
         dimension: localDimension,
@@ -355,6 +398,7 @@ export function createEmbeddingProviderRegistry(options: EmbeddingRegistryOption
         passagePrefix: catalogEntry.passagePrefix,
         fallback,
       });
+      provider = wrapWithProIfGraniteAndConfigured(localProvider, modelId, options, warnings);
     }
   }
 

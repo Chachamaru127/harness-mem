@@ -678,6 +678,24 @@ export const memoryTools: Tool[] = [
     annotations: { readOnlyHint: true },
   },
   {
+    name: "harness_mem_admin_branch_merge",
+    description: "§F-2 (S78-E02b): Promote observations from a feature branch to a target branch. Defaults to dry_run=true; pass dry_run=false AND apply=true to actually mutate. Modes: 'skip' (keep source on source_branch if target has same content), 'overwrite' (delete conflicting target row then promote), 'append' (always promote, allow duplicates). Every invocation writes an audit log row.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        source_branch: { type: "string", description: "Feature branch name to merge FROM" },
+        target_branch: { type: "string", description: "Target branch name to merge INTO (typically 'main')" },
+        mode: { type: "string", enum: ["overwrite", "append", "skip"], description: "Conflict resolution mode" },
+        dry_run: { type: "boolean", description: "If true (default), no mutation occurs. Must be explicitly false to mutate." },
+        apply: { type: "boolean", description: "Must be true (and dry_run false) to actually mutate. Default false." },
+        project: { type: "string", description: "Optional project filter — restrict merge to a single project" },
+        actor: { type: "string", description: "Optional actor recorded in audit log (default 'system')" },
+      },
+      required: ["source_branch", "target_branch", "mode"],
+    },
+    annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false },
+  },
+  {
     name: "harness_mem_admin_audit_log",
     description: "Get audit log entries for retrieval/admin actions.",
     inputSchema: {
@@ -1395,6 +1413,25 @@ async function handleMemoryToolInner(
 
       case "harness_mem_admin_consolidation_status": {
         const response = await callMemoryApi("/v1/admin/consolidation/status", null, "GET");
+        return successResult(response);
+      }
+
+      case "harness_mem_admin_branch_merge": {
+        const sourceBranch = toStringOrUndefined(input.source_branch);
+        const targetBranch = toStringOrUndefined(input.target_branch);
+        const mode = toStringOrUndefined(input.mode);
+        if (!sourceBranch || !targetBranch || !mode) {
+          return errorResult("source_branch, target_branch, mode are required");
+        }
+        const response = await callMemoryApi("/v1/admin/branch-merge", {
+          source_branch: sourceBranch,
+          target_branch: targetBranch,
+          mode,
+          dry_run: toBoolean(input.dry_run, true),
+          apply: toBoolean(input.apply, false),
+          project: toStringOrUndefined(input.project),
+          actor: toStringOrUndefined(input.actor),
+        });
         return successResult(response);
       }
 

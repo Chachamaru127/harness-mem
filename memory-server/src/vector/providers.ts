@@ -205,6 +205,51 @@ export interface BitVecUpsertOptions {
 }
 
 /**
+ * Delete a bit-quantized companion row.
+ * Codex must-fix (2026-06-19): the float vec0 row and the bit vec0 row use
+ * SEPARATE rowids (each allocated by its own virtual table). FK cascade on
+ * the bit_map table removes the map entry but leaves the bit virtual-table
+ * row orphaned. Call this from the observation-delete path alongside the
+ * float deleteSqliteVecRow.
+ * Returns true on success, false on any failure (graceful degradation).
+ */
+export function deleteBitVecRow(
+  db: Database,
+  observationId: string,
+  model?: string,
+): boolean {
+  if (!model) {
+    return false;
+  }
+  try {
+    const tableName = getBitTableName(model);
+    const mapTableName = getBitMapTableName(model);
+
+    const tableCount = db
+      .query<{ count: number }, [string, string]>(
+        `SELECT COUNT(*) AS count FROM sqlite_master WHERE type IN ('table', 'shadow') AND name IN (?, ?)`
+      )
+      .get(tableName, mapTableName);
+    if (Number(tableCount?.count ?? 0) < 2) {
+      return false;
+    }
+
+    const mapRow = db
+      .query<{ rowid: number }, [string]>(`SELECT rowid FROM ${mapTableName} WHERE observation_id = ?`)
+      .get(observationId);
+    if (typeof mapRow?.rowid !== "number") {
+      return false;
+    }
+
+    db.query(`DELETE FROM ${tableName} WHERE rowid = ?`).run(mapRow.rowid);
+    db.query(`DELETE FROM ${mapTableName} WHERE rowid = ?`).run(mapRow.rowid);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Upsert a bit-quantized companion row.
  * Returns true on success, false on any failure (graceful degradation).
  */

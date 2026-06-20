@@ -553,6 +553,139 @@ describe("HARNESS_MEM_BINARY_PREFILTER flag OFF (default)", () => {
 // 7. DENSE-leg only: lexical/graph union preserved when flag ON
 // ---------------------------------------------------------------------------
 describe("DENSE-leg isolation: lexical candidates not clipped by binary prefilter", () => {
+  // s154-W3 (2026-06-19, Codex follow-up): existing parity test stresses pool > N
+  // (bitK=800 against N=500, 80x oversampling). It does NOT exercise the case
+  // where the bit-prefilter pool is SMALLER than the corpus (pool < N), which
+  // is the regime where binary prefilter could plausibly clip BM25/RRF union
+  // candidates that the dense leg would otherwise score. This test stresses
+  // pool < N: corpus N=300 > bitK=200, and asserts a lexical-only hit still
+  // surfaces via the BM25/RRF union path even when its vector is unlikely to
+  // sit in the Hamming-top-200 dense candidates.
+  test("pool<N stress: BM25-unique hit surfaces through union even when binary prefilter ON", () => {
+    const savedFlag = process.env.HARNESS_MEM_BINARY_PREFILTER;
+    process.env.HARNESS_MEM_BINARY_PREFILTER = "1";
+    const savedVecPath = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+    if (canRunRealSqliteVec) {
+      process.env.HARNESS_MEM_SQLITE_VEC_PATH = VEC0_PATH!;
+    }
+
+    const config = createConfig("dense-leg-pool-lt-N");
+    const core = new HarnessMemCore(config);
+    try {
+      // Filler corpus: 300 observations whose content shares many high-
+      // frequency tokens with the BM25 search vocabulary, so the lexical-
+      // unique target is unlikely to dominate by raw vector proximity alone.
+      // Default bitK = min(sqliteVecKMax * 8, max(internalLimit * 16, 200)) → 200.
+      const N = 300;
+      for (let i = 0; i < N; i++) {
+        core.recordEvent({
+          platform: "claude",
+          project: "test-project",
+          session_id: "s1",
+          event_type: "user_prompt",
+          ts: new Date().toISOString(),
+          payload: {
+            prompt: `daily standup note about deploy review release pipeline iteration ${i} normal work`,
+          },
+          tags: [],
+          privacy_tags: [],
+        });
+      }
+
+      // BM25-unique target: a token that appears nowhere else in the corpus.
+      core.recordEvent({
+        platform: "claude",
+        project: "test-project",
+        session_id: "s1",
+        event_type: "user_prompt",
+        ts: new Date().toISOString(),
+        payload: { prompt: "qqzzx_unique_marker_98765 isolated lexical anchor for pool<N stress" },
+        tags: [],
+        privacy_tags: [],
+      });
+
+      // Query is dominated by the unique token. With N > bitK, even if the
+      // dense leg's binary-prefiltered candidate set does not include the
+      // target, BM25 must still surface it through the union merge.
+      const result = core.search({
+        query: "qqzzx_unique_marker_98765",
+        project: "test-project",
+        limit: 10,
+      });
+
+      expect(result.ok).toBe(true);
+      const items = result.items as Array<{ content?: string }>;
+      const found = items.some((obs) => obs.content?.includes("qqzzx_unique_marker_98765"));
+      expect(found).toBe(true);
+    } finally {
+      if (savedFlag !== undefined) process.env.HARNESS_MEM_BINARY_PREFILTER = savedFlag;
+      else delete process.env.HARNESS_MEM_BINARY_PREFILTER;
+      if (canRunRealSqliteVec) {
+        if (savedVecPath !== undefined) process.env.HARNESS_MEM_SQLITE_VEC_PATH = savedVecPath;
+        else delete process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+      }
+      core.shutdown("test");
+    }
+  });
+
+  test("Codex W3 must-fix: tight bitK (pool < internalLimit) skips prefilter to avoid silent truncation", () => {
+    // Codex repro: HARNESS_MEM_SQLITE_VEC_K_MAX=1 → bitK <= 8 while a normal
+    // search with limit=20 has internalLimit≈100. Without the safety guard,
+    // the global Hamming top-8 feeds the float KNN, and project/privacy
+    // filters can silently truncate below limit. With the guard, the
+    // prefilter falls through to float single-pass.
+    const savedFlag = process.env.HARNESS_MEM_BINARY_PREFILTER;
+    const savedKMax = process.env.HARNESS_MEM_SQLITE_VEC_K_MAX;
+    const savedVecPath = process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+    process.env.HARNESS_MEM_BINARY_PREFILTER = "1";
+    process.env.HARNESS_MEM_SQLITE_VEC_K_MAX = "1";
+    if (canRunRealSqliteVec) {
+      process.env.HARNESS_MEM_SQLITE_VEC_PATH = VEC0_PATH!;
+    }
+
+    const config = createConfig("tight-bitk-guard");
+    const core = new HarnessMemCore(config);
+    try {
+      for (let i = 0; i < 50; i++) {
+        core.recordEvent({
+          platform: "claude",
+          project: "test-project",
+          session_id: "s1",
+          event_type: "user_prompt",
+          ts: new Date().toISOString(),
+          payload: { prompt: `tight pool guard target observation number ${i}` },
+          tags: [],
+          privacy_tags: [],
+        });
+      }
+
+      const result = core.search({
+        query: "tight pool guard target",
+        project: "test-project",
+        limit: 20,
+        debug: true,
+        strict_project: false,
+      });
+      expect(result.ok).toBe(true);
+
+      const debug = result.meta?.debug as Record<string, unknown> | undefined;
+      // Guard fires → binary_prefilter_active must NOT be true.
+      expect(debug?.binary_prefilter_active).not.toBe(true);
+      // Float single-pass still returns hits.
+      expect((result.items as unknown[]).length).toBeGreaterThan(0);
+    } finally {
+      if (savedFlag !== undefined) process.env.HARNESS_MEM_BINARY_PREFILTER = savedFlag;
+      else delete process.env.HARNESS_MEM_BINARY_PREFILTER;
+      if (savedKMax !== undefined) process.env.HARNESS_MEM_SQLITE_VEC_K_MAX = savedKMax;
+      else delete process.env.HARNESS_MEM_SQLITE_VEC_K_MAX;
+      if (canRunRealSqliteVec) {
+        if (savedVecPath !== undefined) process.env.HARNESS_MEM_SQLITE_VEC_PATH = savedVecPath;
+        else delete process.env.HARNESS_MEM_SQLITE_VEC_PATH;
+      }
+      core.shutdown("test");
+    }
+  });
+
   test("lexical-only hits appear in results even when binary prefilter is ON", () => {
     const savedFlag = process.env.HARNESS_MEM_BINARY_PREFILTER;
     process.env.HARNESS_MEM_BINARY_PREFILTER = "1";

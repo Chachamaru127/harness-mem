@@ -506,6 +506,10 @@ export interface Config {
   localModelsDir?: string;
   proApiKey?: string;
   proApiUrl?: string;
+  /** Pro=C: model name forwarded to the self-hosted Pro embedding endpoint. */
+  proApiModel?: string;
+  /** Codex must-fix #4: when true, Pro provider enforces retention=0 at runtime. */
+  proApiZdrEnforced?: boolean;
   adaptiveJaThreshold?: number;
   adaptiveCodeThreshold?: number;
   captureEnabled: boolean;

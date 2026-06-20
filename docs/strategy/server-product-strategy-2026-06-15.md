@@ -167,6 +167,18 @@ Binary + MRL + decay keeps the laptop default (sqlite-vec) viable well past toda
 
 **Architecture: stateless embedding endpoint, persistence stays in the customer's store.** Mirror OpenAI's own ZDR line — `/embeddings` can be ZDR but vector stores/files cannot, because they require state ("Data controls in the OpenAI platform"). harness-mem already separates the stateless embed call from the persistent sqlite-vec index. Enforce it: the Pro embedding service processes in-memory only — no request/response logging, no embedding-text disk cache (the provider's existing cache must be memory-bounded and content-free at rest), retention=0 as a documented boundary — while the vector index lives in the customer's own storage (their VPS / their BigQuery). That is exactly the boundary enterprise buyers audit.
 
+**Seven controls the Enterprise tier audits (implemented 2026-06-19, S154-W2).** retention=0 is operationalized as an executable contract, not a slogan. Set `HARNESS_MEM_PRO_ZDR_ENFORCED=1` on the Pro provider to engage:
+
+1. request/response ログ無し (input text never appears in log/error/health surfaces)
+2. 埋め込みテキストのディスクキャッシュ無し (the in-memory cache is also disabled because keys carry text)
+3. crash dump・metrics に payload を載せない (only HTTP status / latency / counts)
+4. backup は payload 除外 (周辺 observation store の運用責任として明文化)
+5. support-access 境界の明文化 (harness-mem 提供側は顧客 VPS / BigQuery の payload に到達経路を持たない)
+6. subprocessor への no-train flow-down (自前ホスト構成では subprocessor list は空)
+7. ZDR enforcement フラグ = 実行される契約 (cache 無効化 / error message サニタイズ / health 表記に `[zdr=enforced]` が unit test で検証される)
+
+詳細と検証ポイント: `docs/pro-api-data-policy.md` §9。
+
 **Third-party fallback, if ever used:** keep it optional and clearly labeled. Among the majors, Voyage AI appears to offer self-serve ZDR (assumption — verify against current Voyage docs; do not assert "only") (dashboard opt-out, payment method only, no sales gate — but irreversible via dashboard), making it the right overflow provider for a one-person shop ("FAQ — Voyage AI"). Do not headline "we don't train on your data" — every provider already guarantees that by default; it is table stakes, not a differentiator. Headline local-first / data-never-leaves plus a written no-training clause flowing down to sub-processors.
 
 ### 4. Enterprise pillar (c): log/data storage on VPS + BigQuery
