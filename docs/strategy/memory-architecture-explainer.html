@@ -62,7 +62,7 @@
 <div class="wrap">
 
   <h1>harness-mem の記憶アーキテクチャ</h1>
-  <p class="lede">記憶をどう保存し、どう取り出すか。そして LLM(=文章を理解・生成する AI)を、今どこで使い、他プロダクトはどこに足すのか。コードで確認した実態ベース。</p>
+  <p class="lede">記憶をどう保存し、どう取り出すか。そして LLM(=文章を理解・生成する AI)を、今どこで使い、他プロダクトはどこに足すのか。コードで確認した実態ベース。<b>2026-06-21 更新</b>: 北極星の現在地と今の稼働スペックを末尾に追加。</p>
 
   <div class="legend">
     <span><i class="dot" style="background:var(--data)"></i>データ・保存</span>
@@ -83,7 +83,7 @@
     <div class="arrow">↓</div>
     <div class="stage">意味を数字に（保存時に1回）</div>
     <div class="row">
-      <div class="box b-embed"><div class="t"><span class="tag t-embed">embed</span>adaptive 埋め込み</div><div class="d">日本語/英語/コードを見て経路を選ぶ <code>ruri | openai | ensemble</code>。文の意味をベクトル(数字列)化</div></div>
+      <div class="box b-embed"><div class="t"><span class="tag t-embed">embed</span>granite mrl-384 (現行 default)</div><div class="d"><code>granite-embedding-311m-r2 @ 384次元</code>。日英 cross-lingual に強い IBM 製モデル。<b>2026-06-15 切替済</b> (旧 e5-small から flip、154-512 で rollback drill 完了)。fallback として <code>multilingual-e5-small</code> を保持</div></div>
     </div>
     <div class="arrow">↓</div>
     <div class="stage">4つの形で保存</div>
@@ -180,7 +180,57 @@
     </p>
   </div>
 
-  <p class="note" style="margin-top:28px">出典: 実コード確認 — <code>observation-store.ts</code>(bm25:1808 / RRF:4210 / rerank:3009) / <code>embedding/adaptive-provider.ts</code> / <code>consolidation/extractor.ts:394</code> / <code>contradiction-detector.ts</code> / <code>answer/compiler.ts</code>(temporal_state)。計画: Plans.md §154 / Spec.md North Star節。</p>
+  <!-- ============ 北極星に対する現在地 ============ -->
+  <h2>⑥ 北極星に対しての現在地（2026-06-21）</h2>
+  <p class="note">D42 旗艦KPI = <b>Bilingual Coding-Memory Freshness@k</b>。日英×ツール横断×dev+business の 4 軸交点に立つ。moat は機能でなく <b>measurement ownership</b>(評価軸を自分で定義し測り続ける)。</p>
+
+  <table>
+    <tr><th>領域</th><th>状態</th><th>備考</th></tr>
+    <tr><td>北極星 D42 策定</td><td><b style="color:var(--embed)">✅ SSOT 採用</b></td><td>2026-06-07 策定 → 2026-06-11 decisions.md D42 promote</td></tr>
+    <tr><td>granite mrl-384 切替 (510/511/512)</td><td><b style="color:var(--embed)">✅ live (PID 53842)</b></td><td>2026-06-15 flip → 2026-06-16 dev-domain 非回帰 PASS → 2026-06-18 rollback drill PASS</td></tr>
+    <tr><td>flagship freshness 浅鮮度 (shallow)</td><td><b style="color:var(--embed)">✅ 0.99</b></td><td>green 閾値 0.95 を超過 (granite live で再測)</td></tr>
+    <tr><td>developer-domain</td><td><b style="color:var(--embed)">✅ 0.7708</b></td><td>green 閾値 0.77 を超過</td></tr>
+    <tr><td>temporal (時制)</td><td><b style="color:var(--embed)">✅ 0.8575</b></td><td>green 閾値 0.82 を超過</td></tr>
+    <tr><td>§154 Phase 8 (深鮮度+rerank)</td><td><b style="color:var(--embed)">✅ 全完了</b></td><td>310/311/710/711/720 + FU02 出荷済 (v0.28.0)</td></tr>
+    <tr><td>D39-Revision 深鮮度 gate 実装 (FU02)</td><td><b style="color:var(--embed)">✅ 実装済</b></td><td>tense_rewrite + supersession enforce、lag は warn-only (gate 非参加)</td></tr>
+    <tr><td>cross-encoder rerank (154-711)</td><td><b class="now">opt-in OFF</b></td><td>bge-reranker-v2-m3 ONNX int8 接続済、CPU p50/p95 計測経路 ready。MRR@10 delta gate 通過時のみ default ON 化</td></tr>
+    <tr><td>人間 Risk Gate (154-205)</td><td><b style="color:var(--warn)">⏳ pending</b></td><td>外部送信承認 (Hermes business / OpenAI 経路) は明示判断待ち</td></tr>
+  </table>
+
+  <div class="insight">
+    <div class="t">残るのは「人間判断 1 件」のみ</div>
+    <p style="margin:6px 0 0; font-size:13.5px;">
+      技術側 (Phase 1〜8、29/30 タスク) は完了。北極星 4 軸 (cross-tool / local / 日英 / dev+business) のうち、技術 3 軸は green。残るは <b>154-205 外部送信承認</b>(ユーザー判断) と、measurement ownership を続ける運用継続。
+    </p>
+  </div>
+
+  <!-- ============ 今の mem スペック ============ -->
+  <h2>⑦ 今の mem スペック（実機ベース）</h2>
+  <table>
+    <tr><th>項目</th><th>値</th><th>備考</th></tr>
+    <tr><td>バージョン</td><td><b>v0.28.1</b> (2026-06-21)</td><td>release workflow unblock fix を含む。v0.28.0 は §154 Phase 8 全完出荷</td></tr>
+    <tr><td>稼働 daemon</td><td><code>bun memory-server/src/index.ts</code> PID 53842</td><td>2026-06-15 起動以降 SIGTERM=0、SQLITE_BUSY=0</td></tr>
+    <tr><td>埋め込みモデル</td><td><b>granite-embedding-311m-r2 @ 384</b></td><td>flag=`granite-embedding-311m-r2@384`、PROVIDER=auto</td></tr>
+    <tr><td>fallback 埋め込み</td><td><code>multilingual-e5-small</code></td><td>flip 失敗時の自動 fallback 経路維持</td></tr>
+    <tr><td>vector store</td><td><code>sqlite-vec</code> + 二値粗選別 (DENSE leg, opt-in)</td><td>binary prefilter は default OFF、pool&lt;N 安全ガード済</td></tr>
+    <tr><td>全文索引</td><td>SQLite <code>FTS5 + bm25()</code></td><td>CJK tokenizer + 日英辞書 (query-expander)</td></tr>
+    <tr><td>関係グラフ</td><td><code>mem_relations</code> + bi-temporal (<code>valid_from/valid_to</code>)</td><td>NLP-lite entity/relation 判別 (S78-C02b で v3 化)</td></tr>
+    <tr><td>cross-encoder rerank</td><td><code>onnx-cross-encoder</code> ms-marco default / bge-reranker-v2-m3 opt-in</td><td>autoDownload=false / egress 0、取得は 154-504 pull 経由</td></tr>
+    <tr><td>transformers runtime</td><td><code>@huggingface/transformers ^4.0.0</code> (4.2.0)</td><td>v3.8.1 から bump 済 (154-720)、e5 parity worst_cosine=1.0</td></tr>
+    <tr><td>consolidation LLM</td><td>Ollama <code>qwen3.5:9b</code> (loopback)</td><td>temperature=0/seed=42/num_predict=256 で決定論固定</td></tr>
+    <tr><td>取り出し p95 目標</td><td>~5ms (vector path)</td><td>recall 経路は LLM 不使用、生成は呼び出し側エージェントが担当</td></tr>
+    <tr><td>Pro tier hook</td><td>Pro=C grade (granite route)</td><td>ZDR enforcement (<code>HARNESS_MEM_PRO_ZDR_ENFORCED=1</code>) で retention=0 強制</td></tr>
+    <tr><td>release page</td><td>v0.28.1 で workflow 経路正常化</td><td>v0.27.5 / v0.28.0 の Release page は欠落 (test fail で github-release step skipped、本 release で復旧)</td></tr>
+  </table>
+
+  <div class="insight" style="border-left-color:var(--embed)">
+    <div class="t" style="color:var(--embed)">moat の実態: 競合は「測ってすらいない」</div>
+    <p style="margin:6px 0 0; font-size:13.5px;">
+      上位勢 (OMEGA / Mastra) は英語専用埋め込み、Mem0 / Supermemory / Zep / Letta / Cognee は日本語を LLM NER 任せ、OpenAI Dreaming (2026-06) も多言語言及ゼロ。<b>日本語ベンチ不在そのものが参入障壁</b>。harness-mem は granite + 日英 fixture (bilingual-v2 / dev-workflow-v2) + Freshness@k で評価軸を自分で押さえ続ける。
+    </p>
+  </div>
+
+  <p class="note" style="margin-top:28px">出典: 実コード確認 — <code>observation-store.ts</code>(bm25:1808 / RRF:4210 / rerank:3009) / <code>embedding/registry.ts</code>(granite-route) / <code>consolidation/extractor.ts:394</code> / <code>contradiction-detector.ts</code> / <code>answer/compiler.ts</code>(temporal_state) / <code>flagship-kpi.ts</code>(D39 gate)。SSOT: <code>.claude/memory/decisions.md</code> D42 / Plans.md §154 / CHANGELOG v0.28.0/v0.28.1。daemon health: PID 53842, 2026-06-15 以降 stable。</p>
 
 </div>
 </body>
