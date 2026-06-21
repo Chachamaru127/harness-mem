@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-06-21
+
+### Fixed
+
+- **release workflow unblock — Plans.md archive 対応**: `memory-server/tests/unit/hard-purge.test.ts:1217` の `expect(plans).toContain("S127-004")` が `4bbe587` での Plans.md archive 後 fail し続けていた。test を Plans.md + `docs/archive/Plans-s108-s149-2026-06-11.md` の結合に対する assert に変更。**v0.27.5 と v0.28.0 で github-release step が publish-npm gate fail により dependency-skip され GitHub Release page が 1.5 ヶ月生成されていなかった根本原因の修正**。本 release v0.28.1 から release workflow が自動で github-release step に進む。
+
 ## [0.28.0] - 2026-06-20
 
 ### Added
