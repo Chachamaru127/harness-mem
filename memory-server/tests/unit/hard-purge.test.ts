@@ -1212,9 +1212,19 @@ describe("S127-004 hard purge risk gates", () => {
     }
   });
 
-  test("Plans.md marks S127-004 complete", () => {
-    const plans = readFileSync(join(import.meta.dir, "../../../Plans.md"), "utf8");
-    expect(plans).toContain("S127-004");
-    expect(plans).toMatch(/S127-004[\s\S]*?cc:完了/);
+  test("Plans.md (or archive) marks S127-004 complete", () => {
+    // S127-004 は 4bbe587 で `docs/archive/Plans-s108-s149-2026-06-11.md` に
+    // archive 済。Plans.md と archive 両方を読み、どちらかに完了マーカーがあれば
+    // pass。archive 後の Plans.md だけを読むと FAIL する (release-time の
+    // publish-npm gate を 1.5 ヶ月止めていた根本原因)。
+    const root = join(import.meta.dir, "../../..");
+    const plans = readFileSync(join(root, "Plans.md"), "utf8");
+    const archive = readFileSync(
+      join(root, "docs/archive/Plans-s108-s149-2026-06-11.md"),
+      "utf8",
+    );
+    const combined = `${plans}\n${archive}`;
+    expect(combined).toContain("S127-004");
+    expect(combined).toMatch(/S127-004[\s\S]*?cc:完了/);
   });
 });
