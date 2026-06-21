@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.2] - 2026-06-21
+
+### Fixed
+
+- **release workflow unblock #2 — api-contract snapshot regen**: PR #131 で publish-npm gate 1 件目 (Plans.md archive S127-004) を解消後、2 件目 `memory-server/tests/integration/api-contract.test.ts:206` の snapshot mismatch が露呈。154-701 query_rewrite 実装時に response に追加した `query_rewrite` field (`added_token_count` / `applied` / `degraded_reason` / `enabled` / `latency_ms` / `model` / `original_query_hash` / `provider` / `rewritten_query_hash` 等) が test snapshot に未反映だった。`bun test --update-snapshots` で再生成。本 release で release workflow が完全に正常化し、GitHub Release page が自動生成される。
+
+### Docs
+
+- **memory architecture HTML 更新**: `docs/strategy/memory-architecture-explainer.html` を 2026-06-21 時点に更新。① embedding 記述を granite-embedding-311m-r2 mrl-384 (2026-06-15 切替済) に修正。⑥ 北極星に対しての現在地 (D42 / granite live / flagship 各値 / Phase 8 完了) と ⑦ 今の mem スペック (v0.28.x / PID 53842 / sqlite-vec / transformers v4.2 / Pro tier ZDR) を新セクションとして追加。
+
 ## [0.28.1] - 2026-06-21
 
 ### Fixed
