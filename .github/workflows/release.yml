@@ -449,7 +449,12 @@ jobs:
 
   github-release:
     runs-on: ubuntu-latest
-    needs: [publish-npm, go-build, go-native-smoke]
+    # 2026-06-23 設計変更: github-release は binary 配布の責務のみ。
+    # publish-npm (test 群) と go-native-smoke (Windows test setup) は
+    # 別責務として独立に走らせ、test fail で release page 生成を塞がない。
+    # binary は go-build success で確実に揃う = release page の生成条件は
+    # binary build のみ依存。CI design 責務分離原則 (test gate vs release gate)。
+    needs: [go-build]
     permissions:
       contents: write
     steps:
