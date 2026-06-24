@@ -128,4 +128,42 @@ describe("S154-202 empty handoffs collapse instead of accumulating", () => {
       core.shutdown("test");
     }
   });
+
+  // §91-003 regression: a partial-finalize empty handoff and a full-finalize empty
+  // handoff in the SAME session must NOT collapse onto each other. If they did, a
+  // full finalize whose summary is also empty would be content-deduped to a prior
+  // partial empty handoff, and resume_pack would keep returning the stale partial.
+  // Partial empties still collapse among themselves; full empties collapse among
+  // themselves; but partial and full are distinct dedupe buckets.
+  test("partial vs full empty session_end handoffs do not collapse onto each other", () => {
+    const core = new HarnessMemCore(createConfig("partial-full"));
+    const project = "empty-partial-full";
+    const session = "s-pf";
+    const emptySummary = "No explicit decisions captured.";
+    const sessionEnd = (tags: string[], isPartial: boolean): EventEnvelope => ({
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: "2026-06-08T10:00:00.000Z",
+      payload: { summary: emptySummary, ...(isPartial ? { is_partial: true } : {}) },
+      tags,
+      privacy_tags: [],
+    });
+    try {
+      // 2 partial empties collapse to 1, 2 full empties collapse to 1 → 2 total.
+      core.recordEvent(sessionEnd(["finalized", "partial"], true));
+      core.recordEvent(sessionEnd(["finalized", "partial"], true));
+      core.recordEvent(sessionEnd(["finalized"], false));
+      core.recordEvent(sessionEnd(["finalized"], false));
+
+      const db = (core as unknown as { db: Database }).db;
+      const total = db
+        .query(`SELECT COUNT(*) AS n FROM mem_observations WHERE project = ? AND session_id = ?`)
+        .get(project, session) as { n: number };
+      expect(total.n).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
 });

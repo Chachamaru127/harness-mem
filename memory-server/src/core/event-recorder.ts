@@ -310,13 +310,22 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   // observation_type is canonicalized here because boilerplate text can trip the
   // keyword classifier (e.g. "決定事項なし" → "decision"); empty handoffs of any
   // induced type must still collapse together.
+  //
+  // §91-003 fix: partial-finalize and full-finalize empty handoffs must NOT collapse
+  // onto each other. Without the partial discriminator, a full finalize whose summary
+  // is also empty gets content-deduped to a prior partial empty handoff, so resume_pack
+  // keeps returning the stale partial (is_partial=true) even though a full finalize ran.
+  // Partial empties still collapse among themselves (S154-202 intent); partial≠full.
   if (isEmptyHandoff(content)) {
+    const isPartialFinalize =
+      normalizeTags(event.tags).includes("partial") ||
+      (event.payload as Record<string, unknown> | undefined)?.["is_partial"] === true;
     return hashJsonBasis({
       session_id: (event.session_id || "unknown").toString().trim(),
       event_type: eventType,
       observation_type: "empty_handoff",
       basis_kind: "empty_handoff",
-      basis_value: "",
+      basis_value: isPartialFinalize ? "partial" : "",
     });
   }
   let basisValue = normalizedContent;
