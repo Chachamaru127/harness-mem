@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.3] - 2026-06-23
+
+### Fixed
+
+- **release workflow 構造修正 — github-release を test 群から責務分離**: v0.27.5/v0.28.0/v0.28.1/v0.28.2 で連続して publish-npm gate fail により github-release step が dependency-skip され続けていた根本問題を解消。`github-release.needs` を `[publish-npm, go-build, go-native-smoke]` から `[go-build]` のみに変更 (PR #135)。CI design 原則 = test gate と release gate の責務分離。test fail で release page 生成を永久に止めるのは設計欠陥のため。本 release から binary 配布の Release page が test 修正サイクルと独立に常時生成される。test 層 (publish-npm) は引き続き fail 表示が残るが、これは別 PR で順次対応する負債 (現状 3 件確認: hard-purge.test.ts S127-004 ✅修正済 / api-contract.test.ts snapshot ✅修正済 / resume-pack-partial.test.ts §91-003 (b) ⏳ 未対応)。
+
 ## [0.28.2] - 2026-06-21
 
 ### Fixed
