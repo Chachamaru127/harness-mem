@@ -317,9 +317,18 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   // keeps returning the stale partial (is_partial=true) even though a full finalize ran.
   // Partial empties still collapse among themselves (S154-202 intent); partial≠full.
   if (isEmptyHandoff(content)) {
+    // §91-003 amend (Skeptic review): the real producer (session-manager.ts:949)
+    // emits is_partial inside event.metadata, NOT event.payload. tag check covers
+    // production traffic, but check metadata + payload for defense-in-depth so
+    // a future refactor that drops the tag still discriminates correctly.
+    // metadata/payload may arrive as a JSON string from DB-bound paths, so
+    // unwrap via parseJsonSafe (matches the convention at lines 376 / 603).
+    const parsedMetadata = parseJsonSafe(event.metadata);
+    const parsedPayload = parseJsonSafe(event.payload);
     const isPartialFinalize =
       normalizeTags(event.tags).includes("partial") ||
-      (event.payload as Record<string, unknown> | undefined)?.["is_partial"] === true;
+      parsedMetadata?.["is_partial"] === true ||
+      parsedPayload?.["is_partial"] === true;
     return hashJsonBasis({
       session_id: (event.session_id || "unknown").toString().trim(),
       event_type: eventType,
