@@ -1,0 +1,64 @@
+{
+  "schema_version": "s154-512-rollback-capture.v1",
+  "task_id": "S154-512",
+  "mode": "capture",
+  "captured_at": "2026-06-25T09:12:46.408Z",
+  "embedding_flag_note": "Record current mem_meta embedding_default_model in operator notes when capturing.",
+  "db_path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+  "probes": [
+    {
+      "label": "ja-deployment",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
+      "query": "本番環境 デプロイ",
+      "limit": 10,
+      "observation_ids": [
+        "obs_00mqmbcm1e286aac1a1a0a8707",
+        "obs_00mqng1i5p70a99ae552117e66",
+        "obs_00mqmbcme99d2a68af61723cbb",
+        "obs_00mqng1i8l071a3f1217d2ca0c",
+        "obs_00mqmba1j12def57320af648e6",
+        "obs_00mqng1hxm7778b4a77e7b1f79",
+        "obs_00mqjlbbww991087dff0836b96",
+        "obs_00mqei50jf6f15ac4d6a7e5f29",
+        "obs_00mq453s0teea1a67d2a67a67f",
+        "obs_00mp267c5n34437f30db9ad569"
+      ]
+    },
+    {
+      "label": "ja-embedding-decision",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
+      "query": "embedding 切替",
+      "limit": 10,
+      "observation_ids": [
+        "obs_00mqta21er7b6ab149610a26ae",
+        "obs_00mqt36gii414b961387f79750",
+        "obs_00mqt3567d5ceffd9190e08716",
+        "obs_00mqt7uhe4f31fa3b63db12a2d",
+        "obs_00mqnnq3rn2eb6fdfc2f25d7b2",
+        "obs_00mqt9wtcg4b94a4db6cb08709",
+        "obs_00mqt9oa10b03f1b9bf3b33076",
+        "obs_00mqt9lpfc1cf3236d8e809417",
+        "obs_00mqs49dh8dcf20cec9cb53d2f",
+        "obs_00mqt81ucq952ba6054d814935"
+      ]
+    },
+    {
+      "label": "mixed-code-token",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
+      "query": "scoreFusion rerank",
+      "limit": 10,
+      "observation_ids": [
+        "obs_00mqt0jesqf1b080092d45b0e3",
+        "obs_00mqt7k74s7fa8106055993bc0",
+        "obs_00mqt0czck7ff564a9393e8f66",
+        "obs_00mqt0lze7fda87bd1310b83fc",
+        "obs_00mqt0owvlf1b478145ea10cb9",
+        "obs_00mqt0adt8b92335c02693d1dc",
+        "obs_00mqt0ados503ad7187cffcf9d",
+        "obs_00mqt7k73m89f0182772ac74aa",
+        "obs_00mqroqnib845367a868f229d0",
+        "obs_00mqropd60a755a6455d33f539"
+      ]
+    }
+  ]
+}

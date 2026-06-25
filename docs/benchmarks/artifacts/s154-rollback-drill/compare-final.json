@@ -1,0 +1,13 @@
+[partial-finalize-scheduler] INFO: scheduler disabled (partial_finalize_enabled=false); not starting 
+[reindex-vectors-scheduler] INFO: scheduler disabled (reindex_vectors_enabled=false); not starting 
+{
+  "schema_version": "s154-512-rollback-compare.v1",
+  "task_id": "S154-512",
+  "mode": "compare",
+  "compared_at": "2026-06-25T09:14:27.800Z",
+  "baseline_path": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem/docs/benchmarks/artifacts/s154-rollback-drill/baseline-granite-20260625.json",
+  "db_path": "/Users/tachibanashuuta/.harness-mem/harness-mem.db",
+  "probe_count": 3,
+  "mismatches": [],
+  "passed": true
+}

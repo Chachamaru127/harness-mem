@@ -4,19 +4,19 @@
   "probes": [
     {
       "label": "ja-deployment",
-      "project": "__REPLACE_WITH_PROJECT__",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
       "query": "本番環境 デプロイ",
       "limit": 10
     },
     {
       "label": "ja-embedding-decision",
-      "project": "__REPLACE_WITH_PROJECT__",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
       "query": "embedding 切替",
       "limit": 10
     },
     {
       "label": "mixed-code-token",
-      "project": "__REPLACE_WITH_PROJECT__",
+      "project": "/Users/tachibanashuuta/LocalWork/Code/CC-harness/harness-mem",
       "query": "scoreFusion rerank",
       "limit": 10
     }
