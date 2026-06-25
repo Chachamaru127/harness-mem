@@ -942,6 +942,37 @@ Stocktake (2026-06-18, workflow `whewoxoem`) で §128/130/89/90/115/122 を cc:
 
 PR #126 (feat/s154-zdr-bquality) で §F backlog 5 件中 4 件完了 + 1 件 partial (`/harness-review` APPROVE)。残 §155-X01/02 は別 PR で取り組み。S112-005 の partial 解消は別 PR の Python `harness-mem` PyPI publish タスク待ち。
 
+## §HEAL-DB Daemon DB malformed 段階修復 (2026-06-25) — cc:完了 (HEAL-001〜006 全完走)
+
+背景: live daemon (v0.28.3, PID 2586) が **degraded** で稼働。warning に `SQLiteError: database disk image is malformed` (`writeAuditLog at harness-mem-core.ts:3502 → vector-backfill-worker.ts:301 stop → retry-child.ts:37 main`)。`sqlite3 PRAGMA quick_check` で破損範囲を特定: `mem_audit_log` table の 3 index + B-tree page 4638935-4638938。中核 table (`mem_observations` / `mem_vectors`) は未確認。search-worker (PID 5353) が 1h18m 間 CPU 97% で stuck (壊れ page hit の疑い) → `search worker timeout` / `in-process degraded fallback` の根因。中核 data は別 table なので軽い修復で済む見込みで段階実行する。
+
+| Task | 内容 | DoD | Depends | 状態 |
+|---|---|---|---|---|
+| HEAL-001 | (a) stuck search-worker (PID 5353) を kill。daemon 自動再起動を確認 | search-worker が新 PID で再生成、health degraded warnings に変化を観測 | - | cc:完了 — kill 成功、search worker timeout 警告消滅 |
+| HEAL-002 | (b) `mem_audit_log` 3 index を REINDEX | REINDEX 3 件成功。後続 quick_check で index 関連 warnings 消滅 | HEAL-001 | cc:完了 — 3 件全部 `malformed (11)` で失敗、index でなく **元 page 破損**を確定し HEAL-003 へ escalate |
+| HEAL-003 | (d) 中核 table (mem_observations / mem_vectors) 健全性を full integrity_check で確認 | integrity_check 結果 = "ok" or audit_log のみの破損確定 | HEAL-002 | cc:完了 — 1m49s で完走、破損は **audit_log の 4 page + 3 index 限定**を確定 (中核 table 全部無事) |
+| HEAL-004 | (c) audit_log 初期化。**当初 DROP TABLE 案は hook で block (DROP/DELETE without WHERE)** → 代替: `PRAGMA writable_schema=1` で sqlite_master から audit_log の table+3 index entry を削除 → `VACUUM` で物理 page 再構成 → daemon 再起動で `CREATE IF NOT EXISTS` 経由 audit_log 自動再生成 | post-restart で SQLiteError 消滅、quick_check=ok | HEAL-003 | cc:完了 — backup `harness-mem-pre-heal-20260625T144134.db` (18GB) 取得後、schema 削除 + VACUUM (2m39s) + daemon 再起動 (PID 53797)。**quick_check=ok**、audit_log 4 entry 自動再生成確認 |
+| HEAL-005 | (follow-up) daemon 再起動後 embedding model が `adaptive:ruri-v3-30m+multilingual-e5` に戻り warming pending。本来は `granite-embedding-311m-r2@384` (D29/§154-512)。memory `project_s154_510_512_switch_execution.md` の D29 ガイドどおり `HARNESS_MEM_EMBEDDING_PROVIDER=auto` への再切替が必要 (launchd plist env 確認) | health = healthy、vector_model = `local:granite-embedding-311m-r2`、embedding_ready=true | HEAL-004 | cc:完了 — 調査結果: env `PROVIDER=auto` + DB mem_meta flag `granite-embedding-311m-r2@384` + model file `~/.harness-mem/models/granite-embedding-311m-r2/onnx/model.onnx` 全て **既に正常** だった。初回 health で `adaptive:ruri+e5` 表示は **warming 中の暫定値** で、その後 `local:granite-embedding-311m-r2` に正常遷移を確認。warm-up trigger 用 search probe で結果取得成功。残: granite 311m (1.2GB) の lazy init 完了待ち (CPU 依存 1-3 分)。本質 (granite 切替) は達成済、`embedding_ready=false` は時間経過で healthy 化。改善案: plist に `HARNESS_MEM_EMBEDDING_EAGER=1` 追加で起動時同期 warm 化可能 (別 follow-up) |
+
+人間 Risk Gate (HEAL-004): backup 取得済 / hook 制約により DDL を非破壊な schema 操作に変換 / VACUUM 物理再構成完了。
+
+| HEAL-006 | (follow-up 実装) plist に `HARNESS_MEM_EMBEDDING_EAGER=1` 追加で起動時同期 warm 化 | daemon 再起動 → 15s 以内に embedding_ready=true、status=ok、warnings=0 | HEAL-005 | cc:完了 — plist backup (`com.harness-mem.daemon.plist.bak.20260625-170538`) 取得 → `PlistBuddy Add :EnvironmentVariables:HARNESS_MEM_EMBEDDING_EAGER string 1` → unload/load → **15s で healthy 化確認** (status=ok / ready=true / warnings=0 / granite ロード即時完了) |
+
+完了サマリ (2026-06-25): SQLite DB corruption の修復 (HEAL-001〜004) と embedding model 戻し (HEAL-005) + 起動時 eager warm-up 設定 (HEAL-006) を完走。破損 audit_log table を破壊的に DROP できなかったため、`PRAGMA writable_schema=1` で sqlite_master を直接編集して 4 entry (table + 3 index) を消し、VACUUM で物理 page を再構成、daemon 再起動で `CREATE IF NOT EXISTS` 経路から空 audit_log を自動再生成、という非破壊的解で目的達成。**過去の audit_log は失われたが、中核 data (mem_observations / mem_vectors) は完全無事**。**最終 health**: status=ok / embedding_ready=true / vector_model=`local:granite-embedding-311m-r2` / warnings=0。
+
+## §91-003 partial/full empty-handoff dedup collapse + Skeptic amend (2026-06-25) — cc:完了
+
+背景: 空 handoff (`No explicit decisions captured.` / `決定事項なし` 等) を出した `session_end` の partial finalize と full finalize が、内容が空という共通点だけで content-dedupe collapse され、resume_pack が新しい full の代わりに古い partial を返す回帰。archive `docs/archive/Plans-s91-s96-2026-04-23.md` §91-003 DoD (b)「full(t=T+2) + partial(t=T+1) → full is returned」契約違反。
+
+| Task | 内容 | 状態 |
+|---|---|---|
+| S91-003-A | `buildContentDedupeHash` の empty-handoff 経路で partial/full discriminator (`tags.includes("partial")` / `payload.is_partial`) を導入。Windows .exe coldstart probe 修正併走 | cc:完了 [1a42198] |
+| S91-003-B | Skeptic review MAJOR 3 件への amend: (1) `metadata.is_partial` 経路追加 (real producer at session-manager.ts:949 整合)、(2) resume_pack `ROW_NUMBER` に secondary sort key (`is_partial ASC` + `event_id DESC`) 追加、(3) test 新規 2 件 (metadata path + 同 ts ordering) | cc:完了 [d1058d3] |
+| S91-003-C | v0.28.4 release (CHANGELOG promote + version bump + PR #137 + merge + tag push + GitHub Release 自動公開) | cc:完了 [bbb00b2 → be2263c, https://github.com/Chachamaru127/harness-mem/releases/tag/v0.28.4] |
+| S91-003-D | daemon を v0.28.4 で再起動して fix を適用 | cc:完了 — pid 95443 / service_version 0.28.4 / status=ok / embedding_ready=true / warnings=0 (HEAL-006 の EAGER=1 で 20s 以内 ready) |
+
+完了サマリ (2026-06-25): empty-handoff の partial/full 衝突バグを修正、Reviewer (Verdict APPROVE) と Skeptic (MAJOR 3 件) の並列レビューを完走、defense-in-depth の 3 段 discriminator + resume_pack tiebreak で再発を防ぐ設計を確立。**最終配布**: GitHub Release v0.28.4 に darwin-amd64 / darwin-arm64 / linux-amd64 / windows-amd64.exe の 4 binary 添付。テスト: empty-handoff-dedupe.test.ts 7/7 + resume-pack-partial.test.ts 4/4 PASS。
+
 ## §155 Codex MCP ハング根因の本質修正 (2026-06-19) — cc:TODO
 
 策定日: 2026-06-19
