@@ -310,13 +310,31 @@ function buildContentDedupeHash(event: EventEnvelope, observationType: string, c
   // observation_type is canonicalized here because boilerplate text can trip the
   // keyword classifier (e.g. "決定事項なし" → "decision"); empty handoffs of any
   // induced type must still collapse together.
+  //
+  // §91-003 fix: partial-finalize and full-finalize empty handoffs must NOT collapse
+  // onto each other. Without the partial discriminator, a full finalize whose summary
+  // is also empty gets content-deduped to a prior partial empty handoff, so resume_pack
+  // keeps returning the stale partial (is_partial=true) even though a full finalize ran.
+  // Partial empties still collapse among themselves (S154-202 intent); partial≠full.
   if (isEmptyHandoff(content)) {
+    // §91-003 amend (Skeptic review): the real producer (session-manager.ts:949)
+    // emits is_partial inside event.metadata, NOT event.payload. tag check covers
+    // production traffic, but check metadata + payload for defense-in-depth so
+    // a future refactor that drops the tag still discriminates correctly.
+    // metadata/payload may arrive as a JSON string from DB-bound paths, so
+    // unwrap via parseJsonSafe (matches the convention at lines 376 / 603).
+    const parsedMetadata = parseJsonSafe(event.metadata);
+    const parsedPayload = parseJsonSafe(event.payload);
+    const isPartialFinalize =
+      normalizeTags(event.tags).includes("partial") ||
+      parsedMetadata?.["is_partial"] === true ||
+      parsedPayload?.["is_partial"] === true;
     return hashJsonBasis({
       session_id: (event.session_id || "unknown").toString().trim(),
       event_type: eventType,
       observation_type: "empty_handoff",
       basis_kind: "empty_handoff",
-      basis_value: "",
+      basis_value: isPartialFinalize ? "partial" : "",
     });
   }
   let basisValue = normalizedContent;

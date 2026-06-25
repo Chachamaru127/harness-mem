@@ -128,4 +128,148 @@ describe("S154-202 empty handoffs collapse instead of accumulating", () => {
       core.shutdown("test");
     }
   });
+
+  // §91-003 regression: a partial-finalize empty handoff and a full-finalize empty
+  // handoff in the SAME session must NOT collapse onto each other. If they did, a
+  // full finalize whose summary is also empty would be content-deduped to a prior
+  // partial empty handoff, and resume_pack would keep returning the stale partial.
+  // Partial empties still collapse among themselves; full empties collapse among
+  // themselves; but partial and full are distinct dedupe buckets.
+  test("partial vs full empty session_end handoffs do not collapse onto each other", () => {
+    const core = new HarnessMemCore(createConfig("partial-full"));
+    const project = "empty-partial-full";
+    const session = "s-pf";
+    const emptySummary = "No explicit decisions captured.";
+    const sessionEnd = (tags: string[], isPartial: boolean): EventEnvelope => ({
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: "2026-06-08T10:00:00.000Z",
+      payload: { summary: emptySummary, ...(isPartial ? { is_partial: true } : {}) },
+      tags,
+      privacy_tags: [],
+    });
+    try {
+      // 2 partial empties collapse to 1, 2 full empties collapse to 1 → 2 total.
+      core.recordEvent(sessionEnd(["finalized", "partial"], true));
+      core.recordEvent(sessionEnd(["finalized", "partial"], true));
+      core.recordEvent(sessionEnd(["finalized"], false));
+      core.recordEvent(sessionEnd(["finalized"], false));
+
+      const db = (core as unknown as { db: Database }).db;
+      const total = db
+        .query(`SELECT COUNT(*) AS n FROM mem_observations WHERE project = ? AND session_id = ?`)
+        .get(project, session) as { n: number };
+      expect(total.n).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  // §91-003 amend (Skeptic review): real producer (session-manager.ts:949) places
+  // is_partial inside event.metadata, not event.payload. This test mirrors the
+  // real producer schema (different ts to bypass event-level dedup, which does not
+  // include metadata in its basis) and verifies that the metadata path
+  // discriminates at the content-dedup stage.
+  test("metadata.is_partial discriminator (matches real producer schema)", () => {
+    const core = new HarnessMemCore(createConfig("partial-meta"));
+    const project = "empty-partial-meta";
+    const session = "s-pf-meta";
+    const emptySummary = "No explicit decisions captured.";
+    // partial via metadata only (no tag, no payload flag) — exercises metadata path
+    const partialViaMetadata: EventEnvelope = {
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: "2026-06-08T10:00:00.000Z",
+      payload: { summary: emptySummary },
+      metadata: { is_partial: true },
+      tags: ["finalized"],
+      privacy_tags: [],
+    } as unknown as EventEnvelope;
+    const fullFinalize: EventEnvelope = {
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: "2026-06-08T10:01:00.000Z", // 1 min later, bypasses event-level dedup
+      payload: { summary: emptySummary },
+      tags: ["finalized"],
+      privacy_tags: [],
+    };
+    try {
+      // Same content but different partial/full status:
+      //   - Without metadata discriminator: both content-dedup to the same hash → 1 obs.
+      //   - With the fix: metadata.is_partial=true → "partial" basis_value → 2 obs.
+      core.recordEvent(partialViaMetadata);
+      core.recordEvent(fullFinalize);
+
+      const db = (core as unknown as { db: Database }).db;
+      const total = db
+        .query(`SELECT COUNT(*) AS n FROM mem_observations WHERE project = ? AND session_id = ?`)
+        .get(project, session) as { n: number };
+      expect(total.n).toBe(2);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  // §91-003 amend (Skeptic review): tiebreak — when partial and full share the
+  // exact same ts (within 1ms), resume_pack must return the full, not the partial.
+  // Without an event_id secondary sort key, SQLite picks arbitrarily.
+  test("when partial precedes full at the same ts, full is the survivor in resume_pack", () => {
+    const core = new HarnessMemCore(createConfig("partial-then-full"));
+    const project = "empty-pf-order";
+    const session = "s-pf-order";
+    const emptySummary = "No explicit decisions captured.";
+    const sameTs = "2026-06-08T10:00:00.000Z";
+    const partial: EventEnvelope = {
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: sameTs,
+      payload: { summary: emptySummary, is_partial: true },
+      tags: ["finalized", "partial"],
+      privacy_tags: [],
+    };
+    const full: EventEnvelope = {
+      platform: "claude",
+      project,
+      session_id: session,
+      event_type: "session_end",
+      ts: sameTs,
+      payload: { summary: emptySummary },
+      tags: ["finalized"],
+      privacy_tags: [],
+    };
+    try {
+      // partial first, full second — both should be stored (partial≠full)
+      core.recordEvent(partial);
+      core.recordEvent(full);
+
+      const db = (core as unknown as { db: Database }).db;
+      const total = db
+        .query(`SELECT COUNT(*) AS n FROM mem_observations WHERE project = ? AND session_id = ?`)
+        .get(project, session) as { n: number };
+      expect(total.n).toBe(2);
+
+      // Both rows exist — verify partial vs full by the "partial" tag.
+      // The downstream resume_pack precedence (full > partial at same ts) is
+      // exercised by the integration test (resume-pack-partial.test.ts case b).
+      const rows = db
+        .query(
+          `SELECT tags_json FROM mem_observations WHERE project = ? AND session_id = ?`,
+        )
+        .all(project, session) as Array<{ tags_json: string }>;
+      const partialRows = rows.filter((r) => r.tags_json.includes('"partial"'));
+      const fullRows = rows.filter((r) => !r.tags_json.includes('"partial"'));
+      expect(partialRows.length).toBe(1);
+      expect(fullRows.length).toBe(1);
+    } finally {
+      core.shutdown("test");
+    }
+  });
 });

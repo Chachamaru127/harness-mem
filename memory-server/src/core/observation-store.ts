@@ -5895,6 +5895,14 @@ export class ObservationStore {
 
         // Use ROW_NUMBER() window function (supported in SQLite 3.25+) to select
         // the most-recent session_end obs per session, then pick the newest across sessions.
+        //
+        // §91-003 amend (Skeptic review): when partial and full share the exact
+        // same created_at (common in tests, possible in production when both
+        // fire within the same millisecond), `ORDER BY created_at DESC` alone is
+        // arbitrary — SQLite can pick the partial. Secondary sort keys:
+        //   1. is_partial ASC  → full (0) wins over partial (1) at same ts
+        //   2. o.event_id DESC → deterministic final tiebreak (event_id is
+        //      monotonic ULID-style so DESC = newer-first)
         const sql = `
           SELECT session_id, summary, ended_at, is_partial
           FROM (
@@ -5903,7 +5911,12 @@ export class ObservationStore {
               json_extract(o.content_redacted, '$.summary') AS summary,
               o.created_at AS ended_at,
               CASE WHEN o.tags_json LIKE '%"partial"%' THEN 1 ELSE 0 END AS is_partial,
-              ROW_NUMBER() OVER (PARTITION BY o.session_id ORDER BY o.created_at DESC) AS rn
+              ROW_NUMBER() OVER (
+                PARTITION BY o.session_id
+                ORDER BY o.created_at DESC,
+                         CASE WHEN o.tags_json LIKE '%"partial"%' THEN 1 ELSE 0 END ASC,
+                         o.event_id DESC
+              ) AS rn
             FROM mem_observations o
             JOIN mem_events e ON e.event_id = o.event_id
             ${correlationJoin}

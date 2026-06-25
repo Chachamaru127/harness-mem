@@ -71,7 +71,11 @@ func TestColdStart_StdioBoot(t *testing.T) {
 	moduleRoot := filepath.Clean(filepath.Join(filepath.Dir(thisFile), "..", ".."))
 
 	// Build the binary into a tempdir so we exec the same code under test.
+	// Windows requires the .exe extension or exec cannot locate the binary.
 	binPath := filepath.Join(t.TempDir(), "harness-mcp-server-coldstart")
+	if runtime.GOOS == "windows" {
+		binPath += ".exe"
+	}
 	buildCmd := exec.Command("go", "build", "-o", binPath, ".")
 	buildCmd.Dir = moduleRoot
 	if buildOut, err := buildCmd.CombinedOutput(); err != nil {

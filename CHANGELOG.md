@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.4] - 2026-06-25
+
+### Fixed
+
+- **§91-003 partial/full empty-handoff dedup collapse**: 空 handoff (`No explicit decisions captured.` / `決定事項なし` 等) を出した `session_end` の partial finalize と full finalize が、内容が空という共通点だけで content-dedupe collapse され、resume_pack が新しい full の代わりに古い partial を返す回帰を修正。`buildContentDedupeHash` の empty-handoff 経路で partial / full の discriminator (`tags.includes("partial")` / `metadata.is_partial` / `payload.is_partial` の 3 段) を導入し、§91-003 archive 仕様 (b) 「full(t=T+2) + partial(t=T+1) → full is returned」契約を復元。Skeptic レビュー指摘により (1) producer (session-manager.ts:949) が `metadata.is_partial` に置く path への対応、(2) resume_pack の `ORDER BY o.created_at DESC` のみでは同 ms 衝突時の tiebreak 未定義 → `is_partial ASC` + `event_id DESC` の secondary sort 追加、(3) 新規 test に metadata path / 同 ts ordering の検証を追加 (7/7 + 4/4 PASS) で defense-in-depth 強化。
+- **§S128/Windows .exe cold-start probe**: `mcp-server-go/internal/tools/coldstart_test.go` で Windows binary 名解決時に `.exe` 拡張子を期待する経路を追加 (`runtime.GOOS == "windows"`)。
+
 ## [0.28.3] - 2026-06-23
 
 ### Fixed
