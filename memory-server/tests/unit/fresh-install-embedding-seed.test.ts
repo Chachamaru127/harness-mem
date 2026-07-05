@@ -173,6 +173,20 @@ describe("fresh install embedding default seed", () => {
     });
   });
 
+  test("legacy empty DB without marker is treated as existing install and does not seed", () => {
+    const { db, dbPath, modelsDir } = openPreparedDb("legacy-empty");
+    db.close();
+
+    withEnv({ HARNESS_MEM_EMBEDDING_MODEL: undefined, HARNESS_MEM_DISABLE_FRESH_INSTALL_SEED: undefined }, () => {
+      const core = new HarnessMemCore(coreConfig(dbPath, modelsDir));
+      const raw = core.getRawDb();
+      expect(getMeta(raw, EMBEDDING_DEFAULT_MODEL_KEY)).toBe(null);
+      expect(getEmbeddingDefaultModel(raw)).toBe(INCUMBENT_EMBEDDING_MODEL);
+      expect(getMeta(raw, INSTALLATION_MARKER_META_KEY)).toBeTruthy();
+      expect(seedAuditCount(raw)).toBe(0);
+    });
+  });
+
   test("marker present with empty observations does not re-seed after truncate", () => {
     const { db, dbPath, modelsDir } = openPreparedDb("marker-truncate");
     setMeta(db, INSTALLATION_MARKER_META_KEY, "2026-07-05T00:00:00.000Z");

@@ -1770,8 +1770,9 @@ export class HarnessMemCore {
     this.db = (this.storage as SqliteStorageAdapter).raw;
 
     this.configureDatabase();
+    const hadHarnessSchemaBeforeInit = this.hasHarnessSchema();
     this.initSchema();
-    this.seedFreshInstallEmbeddingDefault();
+    this.seedFreshInstallEmbeddingDefault(hadHarnessSchemaBeforeInit);
     this.initVectorEngine();
     this.initEmbeddingProvider();
     this.initReranker();
@@ -2562,6 +2563,15 @@ export class HarnessMemCore {
     configureDb(this.db);
   }
 
+  private hasHarnessSchema(): boolean {
+    const row = this.db
+      .query(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('mem_meta', 'mem_observations') LIMIT 1",
+      )
+      .get() as { name: string } | null;
+    return Boolean(row);
+  }
+
   private initSchema(): void {
     initDbSchema(this.db);
     migrateDbSchema(this.db);
@@ -2569,7 +2579,7 @@ export class HarnessMemCore {
     this.migrateLegacyProjectAliases();
   }
 
-  private seedFreshInstallEmbeddingDefault(): void {
+  private seedFreshInstallEmbeddingDefault(hadHarnessSchemaBeforeInit: boolean): void {
     const enabledByConfig = this.config.freshInstallEmbeddingSeedEnabled !== false;
     if (!enabledByConfig || envFlag("HARNESS_MEM_DISABLE_FRESH_INSTALL_SEED", false)) {
       return;
@@ -2586,16 +2596,14 @@ export class HarnessMemCore {
     const flagRow = this.db
       .query("SELECT value FROM mem_meta WHERE key = ?")
       .get(EMBEDDING_DEFAULT_MODEL_KEY) as { value: string } | null;
-    const obsRow = this.db.query("SELECT COUNT(*) AS count FROM mem_observations").get() as { count: number };
-    const observationCount = Number(obsRow.count ?? 0);
-    const fresh = !flagRow && observationCount === 0;
+    const fresh = !flagRow && !hadHarnessSchemaBeforeInit;
 
     if (fresh) {
       const previous = setEmbeddingDefaultModel(this.db, REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG);
       this.writeAuditLog("admin.embedding_default_model.seed", "mem_meta", REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG, {
         previous,
         reason: "fresh_install",
-        observation_count: observationCount,
+        schema_existed_before_init: hadHarnessSchemaBeforeInit,
       });
     }
 
