@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, statSync, readdirSync, rmSync } from "node:fs";
+import { createReadStream, existsSync, mkdirSync, statSync, readdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join, dirname } from "node:path";
 import { homedir } from "node:os";
 import { findModelById, type ModelCatalogEntry } from "./model-catalog";
@@ -21,8 +22,8 @@ const TOKENIZER_FILES = [
 
 const ONNX_FILE = join("onnx", "model.onnx");
 
-function buildHuggingFaceUrl(repo: string, filePath: string): string {
-  return `https://huggingface.co/${repo}/resolve/main/${filePath}`;
+function buildHuggingFaceUrl(repo: string, filePath: string, revision?: string): string {
+  return `https://huggingface.co/${repo}/resolve/${revision ?? "main"}/${filePath}`;
 }
 
 function dirSizeBytes(dir: string): number {
@@ -136,6 +137,47 @@ async function downloadFile(url: string, destPath: string, expectedBytes?: numbe
   }
 }
 
+async function sha256File(path: string): Promise<string> {
+  const hash = createHash("sha256");
+  const stream = createReadStream(path);
+  for await (const chunk of stream) {
+    hash.update(chunk as Buffer);
+  }
+  return hash.digest("hex");
+}
+
+function removeOnnxArtifacts(modelDir: string, onnxFile: string): void {
+  rmSync(join(modelDir, ONNX_FILE), { force: true });
+  const sidecars = new Set([`${onnxFile}_data`, "model.onnx_data"]);
+  for (const sidecar of sidecars) {
+    rmSync(join(modelDir, "onnx", sidecar), { force: true });
+  }
+}
+
+async function verifyFileSha256(path: string, expectedSha256: string, label: string): Promise<void> {
+  const expected = expectedSha256.trim().toLowerCase();
+  if (!/^[a-f0-9]{64}$/.test(expected)) {
+    throw new Error(`invalid catalog sha256 for ${label}: ${expectedSha256}`);
+  }
+  const actual = await sha256File(path);
+  if (actual !== expected) {
+    rmSync(path, { force: true });
+    throw new Error(`sha256 mismatch for ${label}: expected ${expected}, got ${actual} (removed; re-run pull)`);
+  }
+}
+
+function warnIfUnpinned(entry: ModelCatalogEntry): void {
+  const missing: string[] = [];
+  if (!entry.revision) missing.push("revision");
+  if (!entry.sha256) missing.push("sha256");
+  if (missing.length === 0) return;
+  process.stderr.write(
+    `[harness-mem] Warning: model catalog entry ${entry.id} is missing ${missing.join(
+      "+"
+    )}; using legacy mutable/checksum-less Hugging Face pull behavior.\n`
+  );
+}
+
 interface HfTreeEntry {
   path: string;
   size?: number;
@@ -146,8 +188,8 @@ interface HfTreeEntry {
 // models such as qwen3-embedding fp32) and the expected file sizes.
 // Fail-closed: pull requires network anyway, so a failed listing aborts
 // instead of guessing whether a sidecar exists.
-async function listOnnxTree(repo: string): Promise<HfTreeEntry[]> {
-  const url = `https://huggingface.co/api/models/${repo}/tree/main/onnx`;
+async function listOnnxTree(repo: string, revision?: string): Promise<HfTreeEntry[]> {
+  const url = `https://huggingface.co/api/models/${repo}/tree/${revision ?? "main"}/onnx`;
   const response = await fetch(url, { headers: { "User-Agent": "harness-mem/1.0" } });
   if (!response.ok) {
     throw new Error(`HTTP ${response.status} listing ${url} (cannot verify ONNX file layout)`);
@@ -212,10 +254,11 @@ export class ModelManager {
 
     const modelDir = this.getModelDir(modelId);
     mkdirSync(modelDir, { recursive: true });
+    warnIfUnpinned(entry);
 
     // Download tokenizer files from tokenizerRepo
     for (const file of TOKENIZER_FILES) {
-      const url = buildHuggingFaceUrl(entry.tokenizerRepo, file);
+      const url = buildHuggingFaceUrl(entry.tokenizerRepo, file, entry.revision);
       const dest = join(modelDir, file);
       if (existsSync(dest) && statSync(dest).size > 0) {
         continue;
@@ -228,7 +271,7 @@ export class ModelManager {
     // catalog onnxFile variants (e.g. model_quint8_avx2.onnx) and the
     // external-data format (main file + `<file>_data` sidecar).
     const onnxFile = entry.onnxFile ?? "model.onnx";
-    const tree = await listOnnxTree(entry.onnxRepo);
+    const tree = await listOnnxTree(entry.onnxRepo, entry.revision);
     const mainEntry = tree.find((item) => item.path === `onnx/${onnxFile}`);
     if (!mainEntry) {
       throw new Error(
@@ -245,11 +288,19 @@ export class ModelManager {
       !existsSync(onnxDest) ||
       (typeof mainEntry.size === "number" && statSync(onnxDest).size !== mainEntry.size);
     if (needMain) {
-      const onnxUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}`);
+      const onnxUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}`, entry.revision);
       process.stderr.write(
         `[harness-mem] Downloading onnx/${onnxFile} from ${entry.onnxRepo} (~${Math.round((mainEntry.size ?? entry.sizeBytes) / 1_000_000)}MB)...\n`
       );
       await downloadFile(onnxUrl, onnxDest, mainEntry.size);
+    }
+    if (entry.sha256) {
+      try {
+        await verifyFileSha256(onnxDest, entry.sha256, `${entry.id}:onnx/${onnxFile}`);
+      } catch (error) {
+        removeOnnxArtifacts(modelDir, onnxFile);
+        throw error;
+      }
     }
 
     if (sidecarEntry) {
@@ -258,7 +309,7 @@ export class ModelManager {
         !existsSync(sidecarDest) ||
         (typeof sidecarEntry.size === "number" && statSync(sidecarDest).size !== sidecarEntry.size);
       if (needSidecar) {
-        const sidecarUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}_data`);
+        const sidecarUrl = buildHuggingFaceUrl(entry.onnxRepo, `onnx/${onnxFile}_data`, entry.revision);
         process.stderr.write(
           `[harness-mem] Downloading onnx/${onnxFile}_data from ${entry.onnxRepo} (~${Math.round((sidecarEntry.size ?? 0) / 1_000_000)}MB, external-data sidecar)...\n`
         );
