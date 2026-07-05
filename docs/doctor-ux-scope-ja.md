@@ -25,6 +25,7 @@
 - daemon、hook wiring、client config、version drift のように concern ごとにまとまった出力にする。
 - 最初に失敗した項目について、次に取るべき action をその場で出す。
 - `--fix` が何を直したかを、ユーザーが説明できる程度に明示する。
+- migration notice は failure ではなく warning check として扱い、copy/paste 可能な fix command を出す。例: `embedding_model.status="warn:granite_migration_available"` は壊れた install ではなく degraded guidance。
 - 英語と日本語の文言をそろえ、同じ失敗が両方の surface で同じ意味になるようにする。
 
 ## このノートの対象外

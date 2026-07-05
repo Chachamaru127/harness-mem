@@ -25,6 +25,7 @@ It is a scope note, not an implementation plan.
 - Group output by concern: daemon, hook wiring, client config, version drift.
 - Show the exact next action for the first failing item.
 - Make repair output explicit enough that users can tell what `--fix` changed.
+- Keep migration notices as warning checks with copy/paste fix commands; for example `embedding_model.status="warn:granite_migration_available"` is degraded guidance, not a broken install.
 - Keep English and Japanese wording aligned so the same failure means the same thing in both surfaces.
 
 ## Out of scope for this note

@@ -7,6 +7,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- **§156 Granite default for fresh installs + existing-user migration notice**: fresh `harness-mem setup` now prepares the pinned `granite-embedding-311m-r2` local model when online, supports `--skip-model-pull`, skips real downloads in CI/sandbox/offline paths with a warning, and syncs LaunchAgent embedding env. Existing installations are not auto-flipped; `/health`, startup logs, and `doctor --json` now surface a dismissible `embedding_model` migration notice with pull/backfill/flag-flip/rollback commands.
+
 ## [0.28.4] - 2026-06-25
 
 ### Fixed

@@ -32,12 +32,24 @@ describe("harness-mem model config", () => {
   test("model use persists local provider and model into config", async () => {
     const tmpHome = mkdtempSync(join(tmpdir(), "hmem-model-config-"));
     installFakeModel(tmpHome, "multilingual-e5");
+    const launchAgentsDir = join(tmpHome, "Library", "LaunchAgents");
+    mkdirSync(launchAgentsDir, { recursive: true });
+    writeFileSync(join(launchAgentsDir, "com.harness-mem.daemon.plist"), "<plist><dict></dict></plist>");
+
+    const fakeBin = join(tmpHome, "bin");
+    const plutilLog = join(tmpHome, "plutil.log");
+    mkdirSync(fakeBin, { recursive: true });
+    const fakePlutil = join(fakeBin, "plutil");
+    writeFileSync(fakePlutil, "#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" >> \"$PLUTIL_LOG\"\nexit 0\n");
+    chmodSync(fakePlutil, 0o755);
 
     try {
       const result = await runHarnessMem(["model", "use", "multilingual-e5"], {
         ...process.env,
         HOME: tmpHome,
         HARNESS_MEM_HOME: tmpHome,
+        PATH: `${fakeBin}:${process.env.PATH ?? ""}`,
+        PLUTIL_LOG: plutilLog,
       });
 
       expect(result.code).toBe(0);
@@ -45,6 +57,10 @@ describe("harness-mem model config", () => {
       expect(config.embedding_provider).toBe("local");
       expect(config.embedding_model).toBe("multilingual-e5");
       expect(result.stdout).toContain("Restart daemon to apply");
+
+      const plutilCalls = readFileSync(plutilLog, "utf8");
+      expect(plutilCalls).toContain("EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER -string local");
+      expect(plutilCalls).toContain("EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL -string multilingual-e5");
     } finally {
       rmSync(tmpHome, { recursive: true, force: true });
     }

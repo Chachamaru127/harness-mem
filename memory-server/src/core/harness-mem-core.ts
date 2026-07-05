@@ -82,6 +82,7 @@ import { IngestCoordinator } from "./ingest-coordinator";
 import {
   ConfigManager,
   EMBEDDING_DEFAULT_MODEL_KEY,
+  INCUMBENT_EMBEDDING_MODEL,
   INSTALLATION_MARKER_META_KEY,
   REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG,
   setEmbeddingDefaultModel,
@@ -225,6 +226,16 @@ const DEFAULT_RECALL_PROJECTION_REFRESH_CHILD_QUEUE_MAX = 1;
 const DEFAULT_RECALL_PROJECTION_REFRESH_DEBOUNCE_MS = 1_000;
 const DEFAULT_RECALL_PROJECTION_REFRESH_LIMIT = 5_000;
 const DEFAULT_RUNTIME_WARNING_TTL_MS = 60_000;
+const GRANITE_MIGRATION_NOTICE_DEFAULT_RATE_LIMIT_MS = 24 * 60 * 60 * 1000;
+const GRANITE_MIGRATION_NOTICE_MESSAGE =
+  "Granite embedding migration recommended: shadow A/B cleared composite +0.20; ja cross-lingual 0.54->0.96.";
+const GRANITE_MIGRATION_FIX_COMMAND =
+  "harness-mem model pull granite-embedding-311m-r2 --yes && " +
+  "harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset && " +
+  "bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384 && " +
+  "scripts/harness-memd restart";
+const GRANITE_MIGRATION_ROLLBACK_COMMAND =
+  "bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5 && scripts/harness-memd restart";
 const DEFAULT_REPEAT_RECALL_CACHE_TTL_MS = 60_000;
 const MAX_REPEAT_RECALL_CACHE_TTL_MS = 300_000;
 const REPEAT_RECALL_CACHE_CAPACITY = 128;
@@ -1702,6 +1713,8 @@ export class HarnessMemCore {
   private embeddingHealth: EmbeddingHealth = { status: "healthy", details: "not-initialized" };
   private embeddingWarnings: string[] = [];
   private runtimeWarnings: Array<{ message: string; expiresAtMs: number }> = [];
+  private lastGraniteMigrationHealthNoticeAtMs = 0;
+  private lastGraniteMigrationStartupNoticeAtMs = 0;
   private vectorModelVersion = VECTOR_MODEL_VERSION;
   private reranker: Reranker | null = null;
   private rerankerEnabled = false;
@@ -1776,6 +1789,7 @@ export class HarnessMemCore {
     this.initVectorEngine();
     this.initEmbeddingProvider();
     this.initReranker();
+    this.emitGraniteMigrationStartupNotice();
 
     this.initManagedBackend();
     this.initModules();
@@ -8323,6 +8337,99 @@ export class HarnessMemCore {
     return response;
   }
 
+  private readEmbeddingDefaultModelFlag(): string | null {
+    if (!this.tableExists("mem_meta")) return null;
+    const row = this.db
+      .query("SELECT value FROM mem_meta WHERE key = ?")
+      .get(EMBEDDING_DEFAULT_MODEL_KEY) as { value: string } | null;
+    return typeof row?.value === "string" && row.value.trim() ? row.value.trim() : null;
+  }
+
+  private hasMigrationNoticeObservationData(): boolean {
+    if (!this.tableExists("mem_observations")) return false;
+    const row = this.db
+      .query("SELECT 1 AS present FROM mem_observations WHERE archived_at IS NULL LIMIT 1")
+      .get() as { present: number } | null;
+    return !!row;
+  }
+
+  private hasOperatorEmbeddingModelPin(): boolean {
+    const envModel = (process.env.HARNESS_MEM_EMBEDDING_MODEL || "").trim();
+    if (envModel) return true;
+    const configuredModel = (this.config.embeddingModel || "").trim();
+    return configuredModel !== "" && configuredModel !== INCUMBENT_EMBEDDING_MODEL && configuredModel !== "adaptive";
+  }
+
+  private graniteMigrationNoticeRateLimitMs(): number {
+    const raw = Number(process.env.HARNESS_MEM_GRANITE_MIGRATION_NOTICE_RATE_LIMIT_MS || "");
+    if (Number.isFinite(raw) && raw >= 0) return raw;
+    return GRANITE_MIGRATION_NOTICE_DEFAULT_RATE_LIMIT_MS;
+  }
+
+  private shouldEmitGraniteMigrationNotice(kind: "health" | "startup"): boolean {
+    const now = Date.now();
+    const rateLimitMs = this.graniteMigrationNoticeRateLimitMs();
+    if (kind === "health") {
+      if (now - this.lastGraniteMigrationHealthNoticeAtMs < rateLimitMs) return false;
+      this.lastGraniteMigrationHealthNoticeAtMs = now;
+      return true;
+    }
+    if (now - this.lastGraniteMigrationStartupNoticeAtMs < rateLimitMs) return false;
+    this.lastGraniteMigrationStartupNoticeAtMs = now;
+    return true;
+  }
+
+  private currentEmbeddingMigrationState(flag: string | null): string {
+    if (this.embeddingProvider.name === "fallback") return "synthetic_fallback";
+    if (flag === INCUMBENT_EMBEDDING_MODEL) return "incumbent_flag";
+    if (!flag) return "incumbent_or_unset";
+    return "operator_or_reference_flag";
+  }
+
+  private buildGraniteMigrationNotice(): Record<string, unknown> {
+    const provider = (this.config.embeddingProvider || "").trim().toLowerCase();
+    const providerEligible = provider === "auto" || provider === "local" || provider === "adaptive";
+    const flag = this.readEmbeddingDefaultModelFlag();
+    const flagEligible = flag === null || flag === INCUMBENT_EMBEDDING_MODEL;
+
+    if (this.config.graniteMigrationNoticeDismissedAt) {
+      return { required: false, reason: "dismissed", dismissed_at: this.config.graniteMigrationNoticeDismissedAt };
+    }
+    if (!providerEligible) {
+      return { required: false, reason: "provider_not_eligible", provider };
+    }
+    if (this.hasOperatorEmbeddingModelPin()) {
+      return { required: false, reason: "operator_model_pin" };
+    }
+    if (!flagEligible) {
+      return { required: false, reason: "default_flag_not_incumbent", current_flag: flag };
+    }
+    if (!this.hasMigrationNoticeObservationData()) {
+      return { required: false, reason: "no_observations" };
+    }
+
+    const readiness = this.getEmbeddingReadiness();
+    return {
+      required: true,
+      reason: "existing_install_on_incumbent",
+      message: GRANITE_MIGRATION_NOTICE_MESSAGE,
+      current_provider: this.embeddingProvider.name,
+      current_model: this.embeddingProvider.model,
+      current_state: this.currentEmbeddingMigrationState(flag),
+      embedding_readiness_state: readiness.state,
+      reference_default: REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG,
+      fix_command: GRANITE_MIGRATION_FIX_COMMAND,
+      rollback_command: GRANITE_MIGRATION_ROLLBACK_COMMAND,
+    };
+  }
+
+  private emitGraniteMigrationStartupNotice(): void {
+    const notice = this.buildGraniteMigrationNotice();
+    if (notice.required !== true || !this.shouldEmitGraniteMigrationNotice("startup")) return;
+    process.stderr.write(`[harness-mem][notice] ${notice.message}\n`);
+    process.stderr.write(`[harness-mem][notice] Migration: ${notice.fix_command}\n`);
+  }
+
   health(options: { includeCounts?: boolean } = {}): ApiResponse {
     const startedAt = performance.now();
     this.refreshEmbeddingHealth();
@@ -8343,6 +8450,11 @@ export class HarnessMemCore {
 
     const managedDegraded = this.managedRequired && (!this.managedBackend || !this.managedBackend.isConnected());
     const embeddingDegraded = embeddingReadiness.required && !embeddingReadiness.ready;
+    const embeddingMigrationNotice = this.buildGraniteMigrationNotice();
+    const embeddingMigrationWarnings =
+      embeddingMigrationNotice.required === true && this.shouldEmitGraniteMigrationNotice("health")
+        ? [String(embeddingMigrationNotice.message || GRANITE_MIGRATION_NOTICE_MESSAGE)]
+        : [];
 
     return makeResponse(
       startedAt,
@@ -8366,6 +8478,7 @@ export class HarnessMemCore {
           embedding_readiness_state: embeddingReadiness.state,
           embedding_readiness_retryable: embeddingReadiness.retryable,
           telemetry: getTelemetryStatus(),
+          embedding_migration_notice: embeddingMigrationNotice,
           features: {
             capture: this.config.captureEnabled,
             retrieval: this.config.retrievalEnabled,
@@ -8414,6 +8527,7 @@ export class HarnessMemCore {
           warnings: [
             ...this.embeddingWarnings,
             ...this.currentRuntimeWarnings(),
+            ...embeddingMigrationWarnings,
             ...(embeddingDegraded
               ? [
                   embeddingReadiness.state === "failed"

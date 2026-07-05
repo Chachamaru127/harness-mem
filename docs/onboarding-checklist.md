@@ -14,11 +14,13 @@ Pass condition: every item below is `Yes`.
 - [ ] I ran `harness-mem setup` with the intended client list.
 - [ ] The command completed without path or permission errors.
 - [ ] The setup wrote client wiring into my user-scoped config files.
+- [ ] Granite model preparation completed, or setup clearly warned that it was skipped and I know to run `harness-mem model pull granite-embedding-311m-r2 --yes` later.
 
 ## 3. Run doctor
 
 - [ ] I ran `harness-mem doctor` for the same clients I set up.
 - [ ] The output is green, or the remaining warnings are explained.
+- [ ] If `embedding_model` reports `warn:granite_migration_available`, I either ran the migration steps or intentionally dismissed/deferred them.
 - [ ] If something failed, I can name the exact client and config file involved.
 
 ## 4. Confirm the first real session
