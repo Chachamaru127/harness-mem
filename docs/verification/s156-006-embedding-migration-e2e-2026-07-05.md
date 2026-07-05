@@ -50,10 +50,11 @@ TMPDIR="$PWD/.tmp" bun test \
   tests/harness-mem-model-config.test.ts \
   tests/harness-mem-setup-granite.test.ts \
   tests/harness-mem-doctor-embedding-notice.test.ts \
+  tests/harness-memd-embedding-env.test.ts \
   memory-server/tests/unit/granite-migration-notice.test.ts
 ```
 
-Result: 10 pass / 0 fail.
+Result: 66 pass / 0 fail for the full targeted embedding suite after the review fixes.
 
 Coverage:
 
@@ -62,3 +63,4 @@ Coverage:
 - notice is silent for openai provider, env model pin, dismissed config, obs=0, and already-granite flag
 - doctor JSON records `embedding_model.status="warn:granite_migration_available"` on every run
 - `model use` now syncs LaunchAgent embedding provider/model env
+- `model use-default` restores provider `auto` and clears the LaunchAgent model pin so adaptive/local operators can apply the `embedding_default_model` flag

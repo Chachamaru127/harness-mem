@@ -233,9 +233,12 @@ const GRANITE_MIGRATION_FIX_COMMAND =
   "harness-mem model pull granite-embedding-311m-r2 --yes && " +
   "harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset && " +
   "bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384 && " +
+  "harness-mem model use-default && " +
   "scripts/harness-memd restart";
 const GRANITE_MIGRATION_ROLLBACK_COMMAND =
-  "bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5 && scripts/harness-memd restart";
+  "bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5 && " +
+  "harness-mem model use-default && " +
+  "scripts/harness-memd restart";
 const DEFAULT_REPEAT_RECALL_CACHE_TTL_MS = 60_000;
 const MAX_REPEAT_RECALL_CACHE_TTL_MS = 300_000;
 const REPEAT_RECALL_CACHE_CAPACITY = 128;

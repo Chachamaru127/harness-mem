@@ -114,6 +114,8 @@ describe("Granite migration notice", () => {
       expect(notice.required).toBe(true);
       expect(notice.fix_command).toContain("harness-mem model pull granite-embedding-311m-r2 --yes");
       expect(notice.fix_command).toContain("s154-granite-flag-set.ts");
+      expect(notice.fix_command).toContain("harness-mem model use-default");
+      expect(notice.rollback_command).toContain("harness-mem model use-default");
       expect(warnings.some((warning) => warning.includes("Granite embedding migration recommended"))).toBe(true);
     } finally {
       core.shutdown("test");

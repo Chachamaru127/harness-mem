@@ -37,6 +37,7 @@ vector backfill を行う準備ができたら、次を順に実行します。
 harness-mem model pull granite-embedding-311m-r2 --yes
 harness-mem admin-vector-backfill start --model granite-embedding-311m-r2 --dimension 384 --reset
 bun run scripts/s154-granite-flag-set.ts --execute --to granite-embedding-311m-r2@384
+harness-mem model use-default
 scripts/harness-memd restart
 ```
 
@@ -44,6 +45,7 @@ rollback は incumbent model に戻します。
 
 ```bash
 bun run scripts/s154-granite-flag-set.ts --execute --to multilingual-e5
+harness-mem model use-default
 scripts/harness-memd restart
 ```
 

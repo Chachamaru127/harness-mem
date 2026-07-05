@@ -179,6 +179,7 @@ Commands:
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
+  model use-default          Use the embedding_default_model flag through provider=auto.
   model use-adaptive         Set adaptive local routing (ruri-v3-30m + multilingual-e5).
   model status [<id>]        Show install status of a model (or all installed).
   work import-plans          Import Plans.md into the WorkGraph model. Dry-run by default; --write is explicit.
@@ -7381,6 +7382,7 @@ model_impl() {
       echo ""
       echo "To download a model: harness-mem model pull <id>"
       echo "To activate:         harness-mem model use <id>"
+      echo "To use default flag: harness-mem model use-default"
       echo "To enable adaptive:  harness-mem model use-adaptive"
       ;;
 
@@ -7473,6 +7475,18 @@ model_impl() {
       echo "  Config updated: ${CONFIG_PATH}"
       echo "  embedding_provider=local"
       echo "  embedding_model=${model_id}"
+      echo "  Restart daemon to apply: scripts/harness-memd restart"
+      ;;
+
+    use-default)
+      write_embedding_provider "auto"
+      write_embedding_model "multilingual-e5"
+      sync_launchagent_embedding_env "auto" "" "clear-model-pin"
+      log "Active embedding config set to provider=auto (default flag enabled)"
+      echo ""
+      echo "  Config updated: ${CONFIG_PATH}"
+      echo "  embedding_provider=auto"
+      echo "  embedding_model=multilingual-e5 (incumbent fallback; not exported as a model pin by harness-memd)"
       echo "  Restart daemon to apply: scripts/harness-memd restart"
       ;;
 
