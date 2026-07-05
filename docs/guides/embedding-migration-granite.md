@@ -17,7 +17,7 @@ If setup skipped the pull, the daemon can still run through the fail-safe chain:
 harness-mem model pull granite-embedding-311m-r2 --yes
 ```
 
-Raw daemon starts only honor the `embedding_default_model` flag when the provider is `auto`, `local`, or `adaptive`. If `HARNESS_MEM_EMBEDDING_PROVIDER` is unset in a raw launch, the raw default remains `fallback` and the flag is ignored.
+Raw daemon starts only honor the `embedding_default_model` flag when the provider is `auto` or `local`. If `HARNESS_MEM_EMBEDDING_PROVIDER` is unset in a raw launch, the raw default remains `fallback` and the flag is ignored. If you previously used `adaptive`, run `harness-mem model use-default` as part of the migration so the flag can take effect.
 
 ## Existing Installs
 
