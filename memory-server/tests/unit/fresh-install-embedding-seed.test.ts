@@ -228,6 +228,25 @@ describe("fresh install embedding default seed", () => {
     });
   });
 
+  test("raw fallback provider ignores the seeded flag and stays synthetic", () => {
+    const dir = makeTempDir("raw-fallback");
+    const dbPath = join(dir, "harness-mem.db");
+    const modelsDir = join(dir, "models");
+    installFakeModel(modelsDir, INCUMBENT_EMBEDDING_MODEL);
+    installFakeModel(modelsDir, "granite-embedding-311m-r2");
+
+    withEnv({ HARNESS_MEM_EMBEDDING_MODEL: undefined, HARNESS_MEM_DISABLE_FRESH_INSTALL_SEED: undefined }, () => {
+      const core = new HarnessMemCore(coreConfig(dbPath, modelsDir, { embeddingProvider: "fallback" }));
+      const raw = core.getRawDb();
+      expect(getMeta(raw, EMBEDDING_DEFAULT_MODEL_KEY)).toBe(REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG);
+      expect(core.getEmbeddingRuntimeInfo().provider).toMatchObject({
+        name: "fallback",
+        model: "local-hash-v3",
+        dimension: 384,
+      });
+    });
+  });
+
   test("rollback is an explicit incumbent write, not row deletion", () => {
     const dir = makeTempDir("rollback");
     const dbPath = join(dir, "harness-mem.db");

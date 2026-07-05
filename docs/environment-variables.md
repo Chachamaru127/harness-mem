@@ -89,7 +89,7 @@ SQLite データベースの設定です。
 
 | 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
 |--------|-------------|------|------|----------|
-| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`adaptive` / `openai` / `ollama` / `local` / `fallback` から選択。`adaptive` は検索文を見て「日本語優先」「英語/コード優先」「両方検索して合成」のどれを使うか自動で切り替える | `core/core-utils.ts`, `embedding/registry.ts` |
+| `HARNESS_MEM_EMBEDDING_PROVIDER` | `fallback` | No | 埋め込みプロバイダー。`auto` / `adaptive` / `openai` / `ollama` / `local` / `fallback` から選択。`embedding_default_model` flag による granite 既定化を使うには `auto` または `local` が必要で、raw daemon 起動で未設定のままなら `fallback` の synthetic embedding が使われる | `core/core-utils.ts`, `embedding/registry.ts` |
 | `HARNESS_MEM_EMBEDDING_MODEL` | `multilingual-e5` | No | ローカル埋め込みモデルのID。`auto` を指定すると言語に応じて自動選択。`adaptive` では route ごとの固定構成を優先するため、この値は主に `local` / `fallback` / benchmark 側の既定に影響する | `embedding/registry.ts` |
 | `HARNESS_MEM_LOCAL_MODELS_DIR` | `~/.harness-mem/models` | No | ローカル ONNX モデルの格納ディレクトリ。`local` と `adaptive` がローカルモデルを探す場所を上書きしたいときに使う。Adaptive の Free 経路ではここから日本語モデルと汎用モデルを探す | `core/core-utils.ts`, `embedding/model-manager.ts` |
 | `HARNESS_MEM_OPENAI_EMBED_MODEL` | `text-embedding-3-small` | No | OpenAI 埋め込みモデル名。`HARNESS_MEM_EMBEDDING_PROVIDER=openai` の場合に使用 | `core/core-utils.ts` |
