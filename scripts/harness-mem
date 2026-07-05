@@ -72,6 +72,8 @@ SKIP_START=0
 SKIP_SMOKE=0
 SKIP_QUALITY=0
 SKIP_MODEL_PULL=0
+SETUP_MODEL_PULL_STATUS="ok"
+SETUP_MODEL_PULL_FIX=""
 INLINE_PLUGIN=0
 QUIET=0
 IMPORT_SOURCE=""
@@ -6594,8 +6596,8 @@ setup_impl() {
   fi
 
   setup_pull_granite_default_model
-  _setup_record "model_pull" "ok" ""
-  sync_launchagent_embedding_env "$(read_embedding_provider)" "$(read_embedding_model)"
+  _setup_record "model_pull" "$SETUP_MODEL_PULL_STATUS" "$SETUP_MODEL_PULL_FIX"
+  sync_launchagent_embedding_env "$(read_embedding_provider)" "" "clear-model-pin"
   _setup_record "embedding_plist_env" "ok" ""
 
   if is_platform_enabled codex; then
@@ -7263,11 +7265,14 @@ setup_pull_granite_default_model() {
 
   if [ "$SKIP_MODEL_PULL" -eq 1 ]; then
     warn "Skipping Granite model pull (--skip-model-pull). Running with fallback precision until: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="skipped:skip_model_pull"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
     return 0
   fi
 
   if model_is_installed "$model_id"; then
     log "Granite default model ready: ${model_id}"
+    SETUP_MODEL_PULL_STATUS="ok:installed"
     return 0
   fi
 
@@ -7275,10 +7280,13 @@ setup_pull_granite_default_model() {
     success)
       create_mock_model_install "$model_id"
       log "Granite default model ready (mock): ${model_id}"
+      SETUP_MODEL_PULL_STATUS="ok:mock"
       return 0
       ;;
     offline)
       warn "Granite model pull skipped: offline or Hugging Face unreachable. Running with fallback precision; later run: harness-mem model pull ${model_id} --yes"
+      SETUP_MODEL_PULL_STATUS="warn:offline"
+      SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
       return 0
       ;;
     fail-if-called)
@@ -7288,25 +7296,33 @@ setup_pull_granite_default_model() {
 
   if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ] || [ "${HARNESS_MEM_SANDBOX:-}" = "1" ]; then
     warn "Skipping Granite model pull in CI/sandbox. Later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="skipped:ci_sandbox"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
     return 0
   fi
 
   log "Preparing Granite default embedding model (${model_id}, ~1.2GB download; requires network/Hugging Face)."
   if ! setup_huggingface_reachable; then
     warn "Granite model pull skipped: offline or Hugging Face unreachable. Running with fallback precision; later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="warn:offline"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
     return 0
   fi
 
   if model_impl pull "$model_id" --yes; then
     log "Granite default model ready: ${model_id}"
+    SETUP_MODEL_PULL_STATUS="ok:pulled"
   else
     warn "Granite model pull failed; setup continues with fallback precision. Later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="warn:pull_failed"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
   fi
 }
 
 sync_launchagent_embedding_env() {
   local provider="$1"
-  local model="$2"
+  local model="${2:-}"
+  local model_mode="${3:-pin-model}"
   local plist="${HOME}/Library/LaunchAgents/com.harness-mem.daemon.plist"
 
   [ -f "$plist" ] || return 0
@@ -7316,23 +7332,23 @@ sync_launchagent_embedding_env() {
   fi
 
   local ok=1
-  for key in HARNESS_MEM_EMBEDDING_PROVIDER HARNESS_MEM_EMBEDDING_MODEL; do
-    local value="$provider"
-    if [ "$key" = "HARNESS_MEM_EMBEDDING_MODEL" ]; then
-      value="$model"
-    fi
-
-    if plutil -replace "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
-      continue
-    fi
-
+  if ! plutil -replace "EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER" -string "$provider" "$plist" >/dev/null 2>&1; then
     plutil -insert EnvironmentVariables -xml '<dict/>' "$plist" >/dev/null 2>&1 || true
-    if plutil -insert "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
-      continue
+    if ! plutil -insert "EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER" -string "$provider" "$plist" >/dev/null 2>&1; then
+      ok=0
     fi
+  fi
 
-    ok=0
-  done
+  if [ "$model_mode" = "clear-model-pin" ]; then
+    plutil -remove "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" "$plist" >/dev/null 2>&1 || true
+  elif [ -n "$model" ]; then
+    if ! plutil -replace "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" -string "$model" "$plist" >/dev/null 2>&1; then
+      plutil -insert EnvironmentVariables -xml '<dict/>' "$plist" >/dev/null 2>&1 || true
+      if ! plutil -insert "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" -string "$model" "$plist" >/dev/null 2>&1; then
+        ok=0
+      fi
+    fi
+  fi
 
   if [ "$ok" -eq 1 ]; then
     log "LaunchAgent embedding env synced: ${plist}"

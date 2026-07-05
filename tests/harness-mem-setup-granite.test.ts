@@ -66,7 +66,8 @@ describe("harness-mem setup granite model pull", () => {
       expect(config.embedding_provider).toBe("auto");
       const plutilCalls = readFileSync(plutilLog, "utf8");
       expect(plutilCalls).toContain("EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER -string auto");
-      expect(plutilCalls).toContain("EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL -string multilingual-e5");
+      expect(plutilCalls).toContain("-remove EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL");
+      expect(plutilCalls).not.toContain("EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL -string multilingual-e5");
     } finally {
       rmSync(home, { recursive: true, force: true });
     }
