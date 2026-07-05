@@ -9,7 +9,7 @@
 - 約 1.2 GB の download と Hugging Face network requirement を事前に知らせる
 - offline、CI、sandbox では warning を出して skip する
 - `--skip-model-pull` で明示 opt-out できる
-- LaunchAgent plist がある場合、embedding env を `HARNESS_MEM_EMBEDDING_PROVIDER=auto` と `HARNESS_MEM_EMBEDDING_MODEL=multilingual-e5` に同期する
+- LaunchAgent plist がある場合、embedding env を `HARNESS_MEM_EMBEDDING_PROVIDER=auto` に同期し、既定の `HARNESS_MEM_EMBEDDING_MODEL` pin を削除する。これにより seed 済みの `embedding_default_model` flag が Granite を選択できる
 
 pull が skip されても daemon は fail-safe chain で動きます。優先順は Granite、既存の `multilingual-e5`、最後に synthetic fallback です。後から有効化するには次を実行します。
 

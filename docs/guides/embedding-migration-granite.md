@@ -9,7 +9,7 @@ New `harness-mem setup` runs a Granite model preparation step after dependency/r
 - announces the ~1.2 GB download and Hugging Face network requirement;
 - skips with a warning when offline or in CI/sandbox;
 - can be disabled with `--skip-model-pull`;
-- syncs the LaunchAgent embedding environment to `HARNESS_MEM_EMBEDDING_PROVIDER=auto` and `HARNESS_MEM_EMBEDDING_MODEL=multilingual-e5` when a plist exists.
+- syncs the LaunchAgent embedding environment to `HARNESS_MEM_EMBEDDING_PROVIDER=auto` and clears the default `HARNESS_MEM_EMBEDDING_MODEL` pin when a plist exists, so the seeded `embedding_default_model` flag can select Granite.
 
 If setup skipped the pull, the daemon can still run through the fail-safe chain: Granite when installed, incumbent `multilingual-e5` when present, then synthetic fallback. Pull later with:
 
