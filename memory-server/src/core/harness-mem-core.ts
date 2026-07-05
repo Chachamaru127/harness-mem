@@ -79,7 +79,15 @@ import {
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
 import { IngestCoordinator } from "./ingest-coordinator";
-import { ConfigManager, type ReindexVectorsOptions, type RepairSqliteVecMapOptions } from "./config-manager";
+import {
+  ConfigManager,
+  EMBEDDING_DEFAULT_MODEL_KEY,
+  INSTALLATION_MARKER_META_KEY,
+  REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG,
+  setEmbeddingDefaultModel,
+  type ReindexVectorsOptions,
+  type RepairSqliteVecMapOptions,
+} from "./config-manager";
 import { AnalyticsService } from "./analytics";
 import { createPartialFinalizeScheduler, type PartialFinalizeScheduler } from "./partial-finalize-scheduler";
 import { createReindexVectorsScheduler, type ReindexVectorsScheduler } from "./reindex-vectors-scheduler";
@@ -1763,6 +1771,7 @@ export class HarnessMemCore {
 
     this.configureDatabase();
     this.initSchema();
+    this.seedFreshInstallEmbeddingDefault();
     this.initVectorEngine();
     this.initEmbeddingProvider();
     this.initReranker();
@@ -2558,6 +2567,41 @@ export class HarnessMemCore {
     migrateDbSchema(this.db);
     this.ftsEnabled = initFtsFromDb(this.db);
     this.migrateLegacyProjectAliases();
+  }
+
+  private seedFreshInstallEmbeddingDefault(): void {
+    const enabledByConfig = this.config.freshInstallEmbeddingSeedEnabled !== false;
+    if (!enabledByConfig || envFlag("HARNESS_MEM_DISABLE_FRESH_INSTALL_SEED", false)) {
+      return;
+    }
+
+    const marker = this.db
+      .query("SELECT value FROM mem_meta WHERE key = ?")
+      .get(INSTALLATION_MARKER_META_KEY) as { value: string } | null;
+    if (marker) {
+      return;
+    }
+
+    const now = nowIso();
+    const flagRow = this.db
+      .query("SELECT value FROM mem_meta WHERE key = ?")
+      .get(EMBEDDING_DEFAULT_MODEL_KEY) as { value: string } | null;
+    const obsRow = this.db.query("SELECT COUNT(*) AS count FROM mem_observations").get() as { count: number };
+    const observationCount = Number(obsRow.count ?? 0);
+    const fresh = !flagRow && observationCount === 0;
+
+    if (fresh) {
+      const previous = setEmbeddingDefaultModel(this.db, REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG);
+      this.writeAuditLog("admin.embedding_default_model.seed", "mem_meta", REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG, {
+        previous,
+        reason: "fresh_install",
+        observation_count: observationCount,
+      });
+    }
+
+    this.db
+      .query("INSERT OR IGNORE INTO mem_meta(key, value, updated_at) VALUES (?, ?, ?)")
+      .run(INSTALLATION_MARKER_META_KEY, now, now);
   }
 
   private buildProjectNormalizationRoots(): string[] {
