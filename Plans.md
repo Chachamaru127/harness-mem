@@ -19,6 +19,12 @@
 
 **§75 + §76 Go MCP Migration — 完了**（2026-04-10）/ §74 Search Precision & Recall Granularity — 完了 / §73 Codex bootstrap reproducibility — 完了
 
+- benchmark SSOT: `generated_at=2026-05-27T07:20:23.753Z`, `git_sha=eb88c96`
+- Japanese companion current: `overall_f1_mean=0.6580`
+- Japanese historical baseline: `overall_f1_mean=0.8020`
+
+（この 3 行は `tests/benchmark-claim-ssot.test.ts` の release publish gate が Plans.md に要求する正本参照。2026-06-11 の maintenance archive (4bbe587) で誤って archive 側へ移動し、v0.27.5〜v0.28.5 の npm publish が gate failure で停止していた。値の正本は `memory-server/src/benchmark/results/ci-run-manifest-latest.json` と `docs/benchmarks/artifacts/{s43-ja-release-v2,s40-ja-baseline}-latest/summary.json`）
+
 ## §128 Recall Runtime Architecture — cc:完了 [enforce gate f35c21d / closeout a6808bd; post-完了 regression は §130/S130-009a が吸収]
 
 策定日: 2026-05-22
