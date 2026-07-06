@@ -1428,6 +1428,15 @@ export function getConfig(): Config {
   // restarts without requiring shell rc changes (harness-mem-ui / external
   // `harness-memd restart` calls no longer drop the flag).
   const userConfig = loadUserConfig();
+  const userNotices =
+    userConfig.notices && typeof userConfig.notices === "object" && !Array.isArray(userConfig.notices)
+      ? (userConfig.notices as Record<string, unknown>)
+      : {};
+  const graniteMigrationNoticeDismissedAt =
+    typeof userNotices.granite_migration_dismissed_at === "string" &&
+    userNotices.granite_migration_dismissed_at.trim()
+      ? userNotices.granite_migration_dismissed_at.trim()
+      : undefined;
   const partialFinalizeEnabledRaw = (process.env.HARNESS_MEM_PARTIAL_FINALIZE_ENABLED || "").trim().toLowerCase();
   const partialFinalizeEnabled = partialFinalizeEnabledRaw !== ""
     ? (partialFinalizeEnabledRaw === "true" || partialFinalizeEnabledRaw === "1")
@@ -1640,6 +1649,7 @@ export function getConfig(): Config {
     proApiUrl,
     proApiModel: proApiModel || undefined,
     proApiZdrEnforced,
+    graniteMigrationNoticeDismissedAt,
     adaptiveJaThreshold: Number.isFinite(adaptiveJaThreshold)
       ? Math.max(0, Math.min(1, adaptiveJaThreshold))
       : adaptiveDefaults.jaThreshold,

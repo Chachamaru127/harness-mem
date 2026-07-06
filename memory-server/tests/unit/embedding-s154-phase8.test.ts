@@ -9,9 +9,12 @@
  * - 504: pull pipeline — streaming download with size verification,
  *        external-data sidecar discovery via the HF tree listing,
  *        onnxFile variant support, partial-download fail-closed.
+ * - 156-002: pull supply-chain hardening — pinned HF revision URLs and
+ *        sha256 verification for catalog-pinned model artifacts.
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -47,6 +50,8 @@ describe("S154-502: 2026-generation candidate onboarding", () => {
     expect(entry?.pooling).toBe("cls");
     expect(entry?.queryPrefix).toBeUndefined();
     expect(entry?.passagePrefix).toBeUndefined();
+    expect(entry?.revision).toBe("44399559930365213510b1ee2eb15ded83374f0e");
+    expect(entry?.sha256).toBe("75f9f258bf5013f5fe8a4dad61dd0fd16ac0cbaa7a106e3d3f41c2d04a42d541");
   });
 
   test("bge-m3 prefix contamination is removed and pooling is official CLS", () => {
@@ -231,7 +236,7 @@ describe("S154-504: pull pipeline (streaming + external-data + fail-closed)", ()
     globalThis.fetch = (async (input: RequestInfo | URL) => {
       const url = String(input);
       requested.push(url);
-      if (url.includes("/tree/main/onnx")) {
+      if (url.includes("/tree/") && url.endsWith("/onnx")) {
         if (options.treeStatus && options.treeStatus !== 200) {
           return new Response("err", { status: options.treeStatus });
         }
@@ -244,6 +249,20 @@ describe("S154-504: pull pipeline (streaming + external-data + fail-closed)", ()
       return new Response(match[1].body, { status: 200 });
     }) as typeof fetch;
     return requested;
+  }
+
+  function sha256Text(body: string): string {
+    return createHash("sha256").update(body).digest("hex");
+  }
+
+  function temporarilySetCatalogSha256(modelId: string, sha256: string): () => void {
+    const entry = findModelById(modelId);
+    if (!entry) throw new Error(`missing catalog entry ${modelId}`);
+    const original = entry.sha256;
+    entry.sha256 = sha256;
+    return () => {
+      entry.sha256 = original;
+    };
   }
 
   const tokenizerFiles = {
@@ -312,6 +331,7 @@ describe("S154-504: pull pipeline (streaming + external-data + fail-closed)", ()
   test("single-file model (no sidecar in tree) downloads only the main file", async () => {
     tempDir = mkdtempSync(join(tmpdir(), "s154-504-"));
     const mainBody = "GRANITE";
+    const restoreSha = temporarilySetCatalogSha256("granite-embedding-311m-r2", sha256Text(mainBody));
     const requested = installFakeHub({
       onnxTree: [
         { path: "onnx/model.onnx", size: mainBody.length },
@@ -323,10 +343,90 @@ describe("S154-504: pull pipeline (streaming + external-data + fail-closed)", ()
       },
     });
 
-    const manager = new ModelManager(tempDir);
-    const modelDir = await manager.pullModel("granite-embedding-311m-r2");
-    expect(readFileSync(join(modelDir, "onnx", "model.onnx"), "utf8")).toBe(mainBody);
-    expect(existsSync(join(modelDir, "onnx", "model.onnx_data"))).toBe(false);
-    expect(requested.some((url) => url.includes("model_quint8_avx2"))).toBe(false);
+    try {
+      const manager = new ModelManager(tempDir);
+      const modelDir = await manager.pullModel("granite-embedding-311m-r2");
+      expect(readFileSync(join(modelDir, "onnx", "model.onnx"), "utf8")).toBe(mainBody);
+      expect(existsSync(join(modelDir, "onnx", "model.onnx_data"))).toBe(false);
+      expect(requested.some((url) => url.includes("model_quint8_avx2"))).toBe(false);
+    } finally {
+      restoreSha();
+    }
+  });
+
+  test("unpinned entries keep legacy main URLs but emit a warning", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "s156-002-"));
+    const mainBody = "E5";
+    const requested = installFakeHub({
+      onnxTree: [{ path: "onnx/model.onnx", size: mainBody.length }],
+      files: {
+        ...tokenizerFiles,
+        "onnx/model.onnx": { body: mainBody },
+      },
+    });
+    const writes: string[] = [];
+    const realWrite = process.stderr.write.bind(process.stderr);
+    process.stderr.write = ((chunk: string | Uint8Array) => {
+      writes.push(String(chunk));
+      return true;
+    }) as typeof process.stderr.write;
+
+    try {
+      const manager = new ModelManager(tempDir);
+      await manager.pullModel("multilingual-e5");
+    } finally {
+      process.stderr.write = realWrite as typeof process.stderr.write;
+    }
+
+    expect(requested.some((url) => url.includes("/resolve/main/onnx/model.onnx"))).toBe(true);
+    expect(writes.some((line) => line.includes("missing revision+sha256"))).toBe(true);
+  });
+
+  test("pinned catalog entries use resolve/<revision>/ URLs", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "s156-002-"));
+    const mainBody = "GRANITE";
+    const restoreSha = temporarilySetCatalogSha256("granite-embedding-311m-r2", sha256Text(mainBody));
+    const requested = installFakeHub({
+      onnxTree: [{ path: "onnx/model.onnx", size: mainBody.length }],
+      files: {
+        ...tokenizerFiles,
+        "onnx/model.onnx": { body: mainBody },
+      },
+    });
+
+    try {
+      const manager = new ModelManager(tempDir);
+      await manager.pullModel("granite-embedding-311m-r2");
+
+      const granite = findModelById("granite-embedding-311m-r2");
+      expect(granite?.revision).toMatch(/^[a-f0-9]{40}$/);
+      expect(requested.some((url) => url.includes(`/tree/${granite?.revision}/onnx`))).toBe(true);
+      expect(requested.some((url) => url.includes(`/resolve/${granite?.revision}/onnx/model.onnx`))).toBe(true);
+    } finally {
+      restoreSha();
+    }
+  });
+
+  test("same-size artifact replacement is detected by sha256 and removed fail-closed", async () => {
+    tempDir = mkdtempSync(join(tmpdir(), "s156-002-"));
+    const expectedBody = "GRANITE";
+    const replacementBody = "MALWARE";
+    expect(replacementBody.length).toBe(expectedBody.length);
+    const restoreSha = temporarilySetCatalogSha256("granite-embedding-311m-r2", sha256Text(expectedBody));
+    installFakeHub({
+      onnxTree: [{ path: "onnx/model.onnx", size: replacementBody.length }],
+      files: {
+        ...tokenizerFiles,
+        "onnx/model.onnx": { body: replacementBody },
+      },
+    });
+
+    try {
+      const manager = new ModelManager(tempDir);
+      await expect(manager.pullModel("granite-embedding-311m-r2")).rejects.toThrow(/sha256 mismatch/);
+      expect(existsSync(join(tempDir, "granite-embedding-311m-r2", "onnx", "model.onnx"))).toBe(false);
+    } finally {
+      restoreSha();
+    }
   });
 });

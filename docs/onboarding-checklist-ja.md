@@ -14,11 +14,13 @@
 - [ ] 想定したクライアント一覧で `harness-mem setup` を実行した。
 - [ ] path や権限のエラーなしで完了した。
 - [ ] ユーザー単位の config ファイルにクライアント配線が書き込まれた。
+- [ ] Granite model preparation が完了した、または skip warning の理由を理解し、後から `harness-mem model pull granite-embedding-311m-r2 --yes` を実行できる。
 
 ## 3. doctor の実行
 
 - [ ] setup と同じクライアントに対して `harness-mem doctor` を実行した。
 - [ ] 出力が green である、または残っている警告の理由を説明できる。
+- [ ] `embedding_model` が `warn:granite_migration_available` の場合、移行手順を実行した、または意図して dismiss / defer した。
 - [ ] 失敗した場合、どのクライアントとどの config ファイルかを特定できる。
 
 ## 4. 実際の初回セッション確認

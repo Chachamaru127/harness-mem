@@ -410,6 +410,8 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 
 Harness-mem also includes an `adaptive` embedding mode for teams that mix Japanese, English, and code in the same project.
 
+Fresh setup prepares the pinned Granite default (`granite-embedding-311m-r2@384`) when the network is available. Offline/CI/sandbox installs skip the pull with a warning and keep running through the fallback chain; use `--skip-model-pull` to opt out explicitly. Existing installs are not auto-flipped: `/health`, `doctor`, and startup logs show a dismissible migration notice instead. See [`docs/guides/embedding-migration-granite.md`](docs/guides/embedding-migration-granite.md).
+
 What it does:
 
 - Route A: Japanese-heavy queries go to the Japanese model.
@@ -547,7 +549,7 @@ What this does **not** claim:
 
 | Command | Purpose |
 |---|---|
-| `setup` | Configure tool wiring and start daemon + Mem UI (interactive by default) |
+| `setup` | Configure tool wiring, prepare the Granite default model when available, and start daemon + Mem UI (interactive by default) |
 | `doctor` | Validate wiring/health and optionally repair with `--fix` |
 | `recall` | Switch contextual recall mode (`on`, `quiet`, `off`, `status`) |
 | `versions` | Snapshot local vs upstream tool versions |
@@ -563,6 +565,8 @@ harness-mem doctor --json --read-only
 harness-mem doctor --json --strict-exit
 harness-mem doctor --fix --plan
 ```
+
+Existing installs that still use the incumbent embedding default may report `embedding_model.status="warn:granite_migration_available"`. That is degraded guidance with a migration command, not a broken install.
 
 Release-readiness helpers:
 
@@ -658,7 +662,7 @@ messages.
 ```
 
 `harness-mem doctor` probes both `/v1/lease/acquire` and `/v1/signal/read` so
-mis-configured daemons surface early.
+mis-configured daemons surface early. `doctor --read-only` skips those write-style probes.
 
 ---
 
@@ -811,3 +815,5 @@ On **2029-03-08**, the license automatically converts to **Apache License 2.0**.
 - *What happens after 2029?* — The license converts to Apache 2.0. No action needed.
 
 **Metadata note**: The repository root is BUSL-1.1. Some distributable subpackages keep their own package-level SPDX fields (for example MIT in `sdk/`, `mcp-server/`, and `vscode-extension/`). If a GitHub repo header or API shows `Other` / `NOASSERTION`, treat [`LICENSE`](LICENSE) and each package's `package.json` as the authoritative source.
+
+**Third-party model note**: The default Granite embedding artifact is fetched from Hugging Face at a pinned revision and SHA-256 checked after download. The upstream model card declares Apache 2.0, and the pinned tree currently has no separate NOTICE file.

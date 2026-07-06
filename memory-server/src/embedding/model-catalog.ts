@@ -31,6 +31,10 @@ export interface ModelCatalogEntry {
   maxSeqLength?: number;
   /** ONNX filename under onnx/ on the repo (default "model.onnx"). */
   onnxFile?: string;
+  /** Hugging Face commit sha used for pinned resolve/tree URLs. */
+  revision?: string;
+  /** SHA-256 of the primary ONNX artifact stored locally as onnx/model.onnx. */
+  sha256?: string;
   /** Catalog entry kind (default "embedding"). Rerankers share the pull pipeline. */
   modelType?: ModelType;
   sizeBytes: number;
@@ -175,6 +179,8 @@ export const MODEL_CATALOG: ModelCatalogEntry[] = [
     // (config_sentence_transformers.json prompts are empty strings).
     pooling: "cls",
     maxSeqLength: 512,
+    revision: "44399559930365213510b1ee2eb15ded83374f0e",
+    sha256: "75f9f258bf5013f5fe8a4dad61dd0fd16ac0cbaa7a106e3d3f41c2d04a42d541",
     sizeBytes: 1_250_000_000,
     language: "multilingual",
   },

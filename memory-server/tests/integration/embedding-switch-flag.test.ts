@@ -45,6 +45,7 @@ function createConfig(name: string): Config {
     cursorIngestEnabled: false,
     antigravityIngestEnabled: false,
     consolidationEnabled: false,
+    freshInstallEmbeddingSeedEnabled: false,
   };
 }
 

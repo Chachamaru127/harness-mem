@@ -558,6 +558,10 @@ export interface Config {
   teamId?: string;
   /** テスト時に false を設定し、バックグラウンドワーカー（heartbeat, WAL checkpoint 等）を無効化する */
   backgroundWorkersEnabled?: boolean;
+  /** S156-001: fresh install embedding default seed. Defaults on unless env disables it. */
+  freshInstallEmbeddingSeedEnabled?: boolean;
+  /** S156-004: dismiss timestamp for existing-install Granite migration notice. */
+  graniteMigrationNoticeDismissedAt?: string;
   /** GRAPH-003: グラフ探索の最大ホップ数（環境変数 HARNESS_MEM_GRAPH_MAX_HOPS、デフォルト3、上限5） */
   graphMaxHops?: number;
   /** §91-002 (XR-004): 定期 partial finalize scheduler を有効にするか (既定 false = opt-in) */
