@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.6] - 2026-07-06
+
+### Fixed
+
+- **npm publish gate repair (v0.27.5〜v0.28.5 corrective release)**: the tag-triggered Release workflow's `publish-npm` job had been failing since v0.27.5 (last npm publish: v0.27.4), so npm users never received 0.28.x. Root causes fixed: (1) benchmark SSOT proof lines were archived out of `Plans.md` by the 2026-06-11 maintenance commit, breaking `tests/benchmark-claim-ssot.test.ts` — restored; (2) two pre-existing type errors in `memory-server/src/server.ts` graph-neighbors enrichment failed the typecheck gate — fixed by removing an invalid `ApiResponse` cast; (3) `.claude-plugin/plugin.json` / `marketplace.json` versions were stuck at 0.27.5, failing the version-consistency gate — synced to the package version; (4) `tests/release-workflow-contract.test.ts` still expected the pre-2026-06-23 `github-release` job dependencies — updated to the documented design (binary distribution independent of test gates). No runtime behavior change beyond the type fix.
+
 ## [0.28.5] - 2026-07-06
 
 ### Changed
@@ -3046,7 +3052,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.5...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.6...HEAD
+[0.28.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.5...v0.28.6
 [0.28.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.4...v0.28.5
 [0.27.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.4...v0.27.5
 [0.27.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.3...v0.27.4
