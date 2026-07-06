@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.7] - 2026-07-07
+
+### Fixed
+
+- **Release gate recalibration (follow-up to the v0.28.6 corrective release)**: two test-only fixes so the `publish-npm` job can pass end-to-end. (1) `S56-003 Migration Recall@10` floor 0.40 → 0.30: s154-152 (`c8f98c1`) introduced `segmentJapaneseForFts` for `title_fts`/`content_fts`, which deterministically shifts BM25 ranking for the 10-query fixture (4/10 → 3/10, CI and local agree); JA discrimination is guarded by the §154 gates, and the fixture keeps a catastrophic-regression floor until its redesign (S156-FU10). (2) `environment API integration` first-collection test timeout 5s → 20s: cold CI runners exceeded bun's default 5s once (run 28828289193). No runtime behavior change.
+
 ## [0.28.6] - 2026-07-06
 
 ### Fixed
@@ -3052,7 +3058,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.6...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.7...HEAD
+[0.28.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.6...v0.28.7
 [0.28.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.5...v0.28.6
 [0.28.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.4...v0.28.5
 [0.27.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.4...v0.27.5
