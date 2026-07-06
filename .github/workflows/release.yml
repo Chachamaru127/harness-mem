@@ -155,6 +155,10 @@ jobs:
     needs: [go-build, package-install-smoke]
     permissions:
       contents: read
+      # OIDC trusted publishing (2026-07-06): npm publish はトークンではなく
+      # GitHub Actions の OIDC token で認証する (npmjs.com 側の trusted publisher
+      # 設定: repo Chachamaru127/harness-mem / workflow release.yml)。
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -165,8 +169,14 @@ jobs:
         uses: actions/setup-node@v5
         with:
           node-version: 20
-          registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
+
+      - name: Upgrade npm for OIDC trusted publishing (requires >= 11.5.1)
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install -g npm@latest
+          npm --version
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -362,10 +372,8 @@ jobs:
       - name: Dry-run package check
         run: npm pack --dry-run
 
-      - name: Publish to npm
+      - name: Publish to npm (OIDC trusted publishing)
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   go-build:
     runs-on: ubuntu-latest
