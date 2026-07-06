@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.28.5] - 2026-07-06
+
 ### Changed
 
 - **§156 Granite default for fresh installs + existing-user migration notice**: fresh `harness-mem setup` now prepares the pinned `granite-embedding-311m-r2` local model when online, supports `--skip-model-pull`, skips real downloads in CI/sandbox/offline paths with a warning, and syncs LaunchAgent embedding env. Existing installations are not auto-flipped; `/health`, startup logs, and `doctor --json` now surface a dismissible `embedding_model` migration notice with pull/backfill/flag-flip/rollback commands.
@@ -3044,7 +3046,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.5...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.5...HEAD
+[0.28.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.4...v0.28.5
 [0.27.5]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.4...v0.27.5
 [0.27.4]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.3...v0.27.4
 [0.27.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.27.2...v0.27.3
