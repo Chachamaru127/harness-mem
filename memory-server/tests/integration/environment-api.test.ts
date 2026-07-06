@@ -128,7 +128,9 @@ describe("environment API integration", () => {
       runtime.stop();
       rmSync(stateDir, { recursive: true, force: true });
     }
-  });
+    // コールド CI ランナーでは初回の環境スナップショット収集が bun test の
+    // 既定 5s を超えることがある (v0.28.6 run 28828289193 で実測 5000.10ms)。
+  }, 20_000);
 
   test("returns degraded ai_tools data when snapshots are missing", async () => {
     const prevToken = process.env.HARNESS_MEM_ADMIN_TOKEN;
