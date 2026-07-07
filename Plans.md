@@ -1210,6 +1210,7 @@ L1 は本セッションで `memory-server/src/server.ts:447` に `idleTimeout: 
 | S156-FU10 | **S56-003 migration fixture 再設計** — `tests/benchmarks/memory-durability.test.ts` の migration カテゴリは 10 問 fixture で margin が floor ぴったりだったため、s154-152 (c8f98c1) の `segmentJapaneseForFts` 導入による決定論的順位変化 (4/10→3/10) で publish gate を破壊した。v0.28.7 で floor を 0.30 に再校正済 (壊滅検知のみ)。fixture を現行 FTS 仕様で再校正し、margin ≥ 2 問を確保して floor を 0.40 に戻す。英語グロス追加だけでは順位が動かないことは実測済 (2026-07-07) | v0.28.6 release | 中 | cc:TODO |
 | S156-FU11 | **setup-granite bash テストの bun install 経路モック** — `tests/harness-mem-setup-granite.test.ts` は bun が PATH に無い環境で実インストーラー (ネットワーク) を起動して false fail する。setup スクリプトの bun install step をテストからモック/short-circuit する | v0.28.6 検証 | 低 | cc:TODO |
 | S156-FU12 | **ローカル `npm test` が tests/benchmarks を実行しない件の調査** — 2026-07-06 のローカル full run ログに benchmarks 系ファイルの実行痕跡ゼロ (CI では実行される)。`run-bun-test-safe.sh` 側の環境条件 skip を特定し、ローカル pre-flight と CI の gate 差を解消する | v0.28.6 検証 | 中 | cc:TODO |
+| S156-FU13 | **bilingual-50 の 0.82 が実品質劣化か fixture 粒度 artifact かの判定** — s154-152 FTS segmentation で bilingual-50 が 0.86→0.82 (macOS/Linux 一致の決定論的変化)。v0.28.8 で gate を 0.82 に ratchet (docs/benchmarks/bilingual-baseline-2026-07-07.md)。granite default (§156 の出荷デフォルト) で再測定し、実劣化なら fixture を margin ≥ 2 問で再設計 (S56-003 の S156-FU10 と同処置)。dev-domain bilingual は 0.90 で緑を維持している点が判断材料 | v0.28.8 release | 中 | cc:TODO |
 
 ## アーカイブ (完了 / 休止セクション)
 
