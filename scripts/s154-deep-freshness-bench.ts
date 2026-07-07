@@ -147,7 +147,7 @@ async function main(): Promise<void> {
   console.log(`[deep-freshness-bench]   lag: ${freshness_lag.status}${freshness_lag.status === "measured" ? ` p50=${freshness_lag.p50_ms}ms p95=${freshness_lag.p95_ms}ms n=${freshness_lag.n}` : ` (${freshness_lag.skip_reason})`}`);
 
   console.log("[deep-freshness-bench] ② measuring supersession...");
-  const supersession = await computeSupersessionReal(supInputs, ollamaAdjudicator);
+  const supersession = await computeSupersessionReal(supInputs, ollamaAdjudicator, undefined, ollamaOpts);
   console.log(`[deep-freshness-bench]   supersession: ${supersession.status}${supersession.status === "measured" ? ` precision=${supersession.precision} recall=${supersession.recall} f1=${supersession.f1} n=${supersession.n}` : ` (${supersession.skip_reason})`}`);
 
   console.log("[deep-freshness-bench] ① measuring tense-rewrite...");

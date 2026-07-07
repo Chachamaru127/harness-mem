@@ -20,7 +20,9 @@ describe("S125 WorkGraph enforce readiness pack", () => {
       expect(result.gate_runs.every((run) => run.passed)).toBe(true);
       expect(result.real_plans_dry_run.writes).toBe(0);
       expect(result.real_plans_dry_run.plans_import_fidelity).toBeGreaterThanOrEqual(0.97);
-      expect(result.real_plans_dry_run.required_task_ids_present).toEqual(["S125-016", "S108-017"]);
+      // S108-017 was archived out of Plans.md by 4bbe587 (2026-06-11 maintenance);
+      // anchors must be rows living in the current Plans.md.
+      expect(result.real_plans_dry_run.required_task_ids_present).toEqual(["S125-016"]);
       expect(result.real_plans_dry_run.passed).toBe(true);
       expect(result.overall_passed).toBe(true);
     } finally {
