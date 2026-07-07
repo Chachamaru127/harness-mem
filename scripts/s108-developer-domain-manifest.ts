@@ -203,7 +203,7 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
   try { trInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-tense-rewrite.json"), "utf8")) as TenseRewriteInput[]; } catch { /* no fixture */ }
   const [dfbLag, dfbSup, dfbTr] = await Promise.all([
     computeFreshnessLagReal(lagInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
-    computeSupersessionReal(supInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+    computeSupersessionReal(supInputs, dfbAdjudicator, undefined, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
     computeTenseRewriteReal(trInputs, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
   ]);
 

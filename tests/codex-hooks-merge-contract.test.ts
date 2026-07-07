@@ -13,7 +13,13 @@ async function runHarnessMem(
   const proc = Bun.spawn(["bash", SCRIPT, ...args], {
     stdout: "pipe",
     stderr: "pipe",
-    env,
+    env: {
+      // 156-003 の setup granite pull step が、mock/CI env なしのローカル実行で
+      // 実 1.2GB ダウンロードに入りタイムアウトする (このファイルは hooks merge の
+      // 契約テストであり model pull の対象外)。offline mock で決定論化する。
+      HARNESS_MEM_SETUP_MODEL_PULL_MOCK: "offline",
+      ...env,
+    },
   });
   const stdoutPromise = new Response(proc.stdout).text();
   const stderrPromise = new Response(proc.stderr).text();

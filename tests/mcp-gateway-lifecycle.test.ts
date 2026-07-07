@@ -17,7 +17,13 @@ async function runHarnessMem(
   const proc = Bun.spawn(["bash", SCRIPT, ...args], {
     stdout: "pipe",
     stderr: "pipe",
-    env,
+    env: {
+      // このファイルは MCP gateway lifecycle の契約テストで model pull は対象外。
+      // 156-003 の setup granite pull step がローカル (非 CI) 実行で実 1.2GB DL に
+      // 入りタイムアウトするため offline mock で決定論化する (codex-hooks と同じ)。
+      HARNESS_MEM_SETUP_MODEL_PULL_MOCK: "offline",
+      ...env,
+    },
   });
   const stdout = await new Response(proc.stdout).text();
   const stderr = await new Response(proc.stderr).text();

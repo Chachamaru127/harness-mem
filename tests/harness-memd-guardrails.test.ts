@@ -133,12 +133,14 @@ describe("harness-memd guardrails", () => {
     const child = readFileSync(SEARCH_CHILD, "utf8");
     const worker = readFileSync(SEARCH_WORKER, "utf8");
 
-    expect(core).toContain("shouldRunSearchOutOfProcess(request");
+    // s154-701 (e4e02f3): the offload decision and the offloaded call both take
+    // effectiveRequest (post query-rewrite); the offload contract itself is unchanged.
+    expect(core).toContain("shouldRunSearchOutOfProcess(effectiveRequest");
     expect(core).toContain("HARNESS_MEM_SEARCH_OFFLOAD");
     expect(core).toContain("HARNESS_MEM_SEARCH_CHILD_PROCESS");
     expect(core).toContain("HARNESS_MEM_SEARCH_WORKER_PROCESS");
     expect(core).toContain("shouldUsePersistentSearchWorker");
-    expect(core).toContain("runSearchOutOfProcess(request)");
+    expect(core).toContain("runSearchOutOfProcess(effectiveRequest)");
     expect(core).toContain("runSearchWithPersistentWorker(request)");
     expect(core).toContain("searchWithSafeFallback");
     expect(core).toContain("fallback = await this.runSearchWithOneShotChild(safeRequest)");
