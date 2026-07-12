@@ -262,6 +262,7 @@ export function initSchema(db: Database): void {
       correlation_id TEXT,
       user_id TEXT NOT NULL DEFAULT 'default',
       team_id TEXT DEFAULT NULL,
+      metadata_json TEXT NOT NULL DEFAULT '{}',
       created_at TEXT NOT NULL,
       FOREIGN KEY(session_id) REFERENCES mem_sessions(session_id) ON DELETE CASCADE
     );
@@ -938,6 +939,12 @@ export function migrateSchema(db: Database): void {
 
   try {
     db.exec(`ALTER TABLE mem_events ADD COLUMN team_id TEXT DEFAULT NULL`);
+  } catch {
+    // already exists
+  }
+
+  try {
+    db.exec(`ALTER TABLE mem_events ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'`);
   } catch {
     // already exists
   }

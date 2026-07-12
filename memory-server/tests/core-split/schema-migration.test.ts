@@ -284,6 +284,87 @@ describe("schema migration", () => {
     }
   });
 
+  test("H156-004: fresh schema includes mem_events.metadata_json with default {}", () => {
+    const db = createTempDb();
+    try {
+      initSchema(db);
+      migrateSchema(db);
+
+      const columns = columnNames(db, "mem_events");
+      expect(columns).toContain("metadata_json");
+
+      db.query(
+        `INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at)
+         VALUES ('sess-h156', 'codex', 'proj-h156', '2026-07-12T00:00:00.000Z', '2026-07-12T00:00:00.000Z', '2026-07-12T00:00:00.000Z')`,
+      ).run();
+      db.query(
+        `INSERT INTO mem_events(
+          event_id, platform, project, session_id, event_type, ts,
+          payload_json, tags_json, privacy_tags_json, dedupe_hash, created_at
+        ) VALUES ('evt-h156-default', 'codex', 'proj-h156', 'sess-h156', 'user_prompt',
+          '2026-07-12T00:00:00.000Z', '{}', '[]', '[]', 'dedupe-h156-default', '2026-07-12T00:00:00.000Z')`,
+      ).run();
+
+      const row = db
+        .query<{ metadata_json: string }, []>(`SELECT metadata_json FROM mem_events WHERE event_id = 'evt-h156-default'`)
+        .get();
+      expect(row?.metadata_json).toBe("{}");
+    } finally {
+      db.close();
+    }
+  });
+
+  test("H156-004: legacy mem_events without metadata_json migrates additively", () => {
+    const db = createTempDb();
+    try {
+      db.exec(`
+        CREATE TABLE mem_sessions (
+          session_id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          project TEXT NOT NULL,
+          started_at TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        );
+        CREATE TABLE mem_events (
+          event_id TEXT PRIMARY KEY,
+          platform TEXT NOT NULL,
+          project TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          event_type TEXT NOT NULL,
+          ts TEXT NOT NULL,
+          payload_json TEXT NOT NULL,
+          tags_json TEXT NOT NULL,
+          privacy_tags_json TEXT NOT NULL,
+          dedupe_hash TEXT NOT NULL UNIQUE,
+          observation_id TEXT,
+          created_at TEXT NOT NULL
+        );
+        INSERT INTO mem_sessions(session_id, platform, project, started_at, created_at, updated_at)
+          VALUES ('legacy-h156', 'codex', 'legacy-h156', '2026-07-12T00:00:00.000Z', '2026-07-12T00:00:00.000Z', '2026-07-12T00:00:00.000Z');
+        INSERT INTO mem_events(
+          event_id, platform, project, session_id, event_type, ts,
+          payload_json, tags_json, privacy_tags_json, dedupe_hash, created_at
+        ) VALUES (
+          'legacy-h156-event', 'codex', 'legacy-h156', 'legacy-h156', 'user_prompt',
+          '2026-07-12T00:00:00.000Z', '{}', '[]', '[]', 'legacy-h156-dedupe', '2026-07-12T00:00:00.000Z'
+        );
+      `);
+
+      initSchema(db);
+      migrateSchema(db);
+      migrateSchema(db);
+
+      expect(columnNames(db, "mem_events")).toContain("metadata_json");
+      const row = db
+        .query<{ metadata_json: string }, []>(`SELECT metadata_json FROM mem_events WHERE event_id = 'legacy-h156-event'`)
+        .get();
+      expect(row?.metadata_json).toBe("{}");
+    } finally {
+      db.close();
+    }
+  });
+
   test("S108-007 temporal anchor columns and observed_at backfill are idempotent", () => {
     const db = createTempDb();
     try {
