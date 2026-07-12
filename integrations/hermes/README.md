@@ -11,6 +11,14 @@ harness-mem との接続には **2 レイヤー** がある。どちらも **追
 
 Layer 1 は stdio MCP サーバー (`mcp-server/` または `mcp-server-go/`) を **そのまま** 接続できる。Layer 2 は `integrations/hermes/provider/` の MemoryProvider plugin を `~/.hermes/plugins/harness_mem` に配置する。両方とも **同じ harness-mem daemon / SQLite DB** を使う。
 
+### 事実抽出 LLM ポリシー（consolidation）
+
+Layer 2 MemoryProvider は **thin bridge** で、LLM 事実抽出は **行いません**。consolidation daemon がポリシーを所有します。既定は `heuristic` 抽出。LLM 抽出は `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` が必要で、未設定の provider は `ollama`（loopback のみ）。外部クラウド provider は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` と credential の両方が必要。非 loopback Ollama は allow flag があっても拒否されます。
+
+詳細: [`docs/environment-variables.md`](../../docs/environment-variables.md)（LLM セクション）。
+
+**H156-006 docs 同期時点:** live cloud E2E および H156-007 optional loopback Ollama live smoke は **未実行** です。
+
 ## このintegrationの位置付け
 
 **これは何か**:

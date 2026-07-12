@@ -69,6 +69,23 @@ Plans.md §69-92 では Hermes 統合は **tier 3 (experimental)**。tier 1 (Cla
 
 Layer 1 / Layer 2 は **同じ daemon と DB** を共有する。Layer 2 provider は LLM extraction を **行わない**（thin bridge — consolidation は memory-server 側）。
 
+### 事実抽出 LLM ポリシー（consolidation / H156-001）
+
+Hermes MemoryProvider は **thin bridge** であり、LLM による事実抽出は **行いません**。consolidation daemon（`memory-server/src/consolidation/`）が事実抽出ポリシーを所有します。
+
+| 項目 | 現行契約 |
+|---|---|
+| 既定モード | `heuristic`（ルールベース）。LLM 抽出は `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` の明示が必要 |
+| LLM モード provider 既定 | 未設定時 `ollama`（loopback のみ） |
+| 外部クラウド (`openai` / `anthropic` / `gemini`) | `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`（trim 後が正確に `1`）と各 credential の**両方**が必要 |
+| 非 loopback Ollama | `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても拒否 |
+| 適用経路 | 通常抽出と差分抽出の両方。ブロック時は空結果のうえ heuristic にフォールバック |
+| 監査 | provider / model / byte 数等のメタデータのみ。prompt・response 本文・secret は記録しない |
+
+環境変数の詳細は [`docs/environment-variables.md`](../environment-variables.md) の LLM セクションを参照。
+
+**本 docs 同期 (H156-006) の検証範囲:** 上記は H156-001 実装後の **現行契約** を文書化したものです。live cloud E2E は実施していません。H156-007 の optional loopback Ollama live smoke も **未実行** です（本タスクでは実行手順を追加しません）。
+
 - **Hermes 側**: 標準 MCP クライアント。`~/.hermes/config.yaml` の `mcp_servers` で stdio サーバーを宣言。
 - **harness-mem stdio MCP frontend**: 設定済みの `harness_mem_*` ツールを公開。Hermes からは stdio server として見えるが、実体はクライアント session ごとに起動する frontend process。Go binary を優先し、必要なら Node.js MCP server に fallback する。
 - **harness-memd**: SQLite DB (`~/.harness-mem/harness-mem.db`) を所有する TypeScript/Bun の HTTP memory daemon。既定では `127.0.0.1:37888` で待受けする。
