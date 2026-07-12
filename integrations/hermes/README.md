@@ -322,9 +322,10 @@ plugins:
 
 MemoryProvider を外す場合:
 
-1. 有効化前に取った config バックアップを restore **または** `hermes config set memory.provider builtin`（S112-008 E2E で使用した以前の provider 名）
-2. `~/.hermes/config.yaml` の `memory.provider` が意図した値に戻ったことを確認
-3. （任意）deactivate 後に `rm -rf ~/.hermes/plugins/harness_mem`
+1. **推奨:** 有効化直前に取った config バックアップを restore する（`~/.hermes/config.yaml.bak.harness_mem_provider.<YYYYMMDDHHMMSS>` — `<YYYYMMDDHHMMSS>` は各自のバックアップのタイムスタンプに置き換える）
+2. **代替:** 有効化前の provider 名を記録済みの場合のみ、`hermes config set memory.provider <previous_provider>` を実行する（`<previous_provider>` は有効化前の実際の値に置き換える。推測しない）
+3. Hermes 再起動後、`~/.hermes/config.yaml` の `memory.provider` がバックアップまたは記録した有効化前の値と一致することを確認する
+4. **（任意）** deactivate 完了後に `rm -rf ~/.hermes/plugins/harness_mem`
 
 詳細・`RuntimeError: Event loop is closed` の扱いは [`docs/integrations/hermes.md`](../../docs/integrations/hermes.md) を参照。
 

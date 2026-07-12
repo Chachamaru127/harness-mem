@@ -207,30 +207,36 @@ hermes chat -q "Hermes provider live smoke. Please reply exactly: ACK $MARKER" \
 
 MemoryProvider を無効化する手順:
 
-**A. config を以前の provider に戻す**
+**A. 有効化前バックアップから restore（推奨）**
 
-S112-008 E2E では有効化前の provider 名 `builtin` を使用:
-
-```bash
-hermes config set memory.provider builtin
-```
-
-**B. 有効化前バックアップから restore**
+有効化直前に取った config バックアップを restore する:
 
 ```bash
 cp ~/.hermes/config.yaml.bak.harness_mem_provider.<YYYYMMDDHHMMSS> ~/.hermes/config.yaml
 ```
 
-`<YYYYMMDDHHMMSS>` は **各自が有効化前に取った** バックアップのタイムスタンプに置き換える。
+`<YYYYMMDDHHMMSS>` は **各自が有効化前に取った** バックアップのタイムスタンプに置き換える。特定の過去タイムスタンプを universal path としてコピーしない。
+
+**B. 以前の provider 名を明示設定（代替）**
+
+有効化前の `memory.provider` 値を operator が記録済み、または正確に把握している場合のみ:
+
+```bash
+hermes config set memory.provider <previous_provider>
+```
+
+`<previous_provider>` は有効化前の実際の値に置き換える。repo や docs から推測しない。
 
 **C. rollback 後の確認**
 
-- `~/.hermes/config.yaml` の `memory.provider` が意図した値（例: `builtin`）になっている
-- Hermes 再起動後、`discover_memory_providers()` / active provider が期待どおり
+Hermes 再起動後、以下を確認する:
+
+- `~/.hermes/config.yaml` の `memory.provider` がバックアップまたは記録した有効化前の値と一致している
+- `discover_memory_providers()` / active provider が期待どおり
 
 **D. （任意）plugin ディレクトリ削除**
 
-deactivate 後、不要なら:
+deactivate 完了後、不要なら:
 
 ```bash
 rm -rf ~/.hermes/plugins/harness_mem
