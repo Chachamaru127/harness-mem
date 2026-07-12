@@ -12,9 +12,23 @@
 
 ---
 
+## Planning Quality Contract (2026-07-09 sync)
+
+**Spec delta:** root `Spec.md` now contains `Fact extraction LLM egress contract (must)`: heuristic remains the runtime default; LLM mode defaults to loopback-only Ollama; non-loopback Ollama is rejected even when the external allow flag is set; OpenAI / Anthropic / Gemini require both `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` and provider credentials; both extraction paths share the gate; audit is metadata-only; live cloud E2E is prohibited.
+
+**team_validation_mode:** `manual-pass`. Product / Architecture / Security / QA / Skeptic review is represented by the self-review findings below. The original plan had three factual errors and has been corrected: `shutdown()` already exists, `HARNESS_MEM_ALLOW_EXTERNAL_LLM` is not implemented, and LLM mode currently defaults to `openai`.
+
+**formatter_baseline:** `partial_configured`. Root `package.json` has `bun run test` and benchmark gates; no generic `lint` / `format` script was confirmed during planning. Each source-changing task therefore carries targeted pytest / bun test / `git diff --check` validation. Adding a new repo-wide formatter is out of scope for this hardening plan.
+
+**Plans.md sync:** canonical task ledger entry is `Plans.md` §156. This detailed plan is the implementation brief; §156 is the status source.
+
+**Risk gates:** do not read secrets, do not run live cloud LLM calls, do not mutate live Hermes config/plugin without explicit approval, and do not put LLM extraction logic inside the Hermes provider.
+
+---
+
 ## 0. Self-Review Findings
 
-### Finding A — Task 1 は「未実装」ではない
+### Finding A — H156-002 は「未実装」ではない
 
 `integrations/hermes/provider/harness_mem/__init__.py` には既に存在する。
 
@@ -26,7 +40,7 @@ def shutdown(self) -> None:
 
 初版 plan の「`shutdown()` を追加する / Expected FAIL because not implemented」は誤り。
 
-正しい Task 1:
+正しい H156-002:
 
 - 既存 `shutdown()` の regression test を追加する
 - 必要なら `_lock` で thread 参照を読み、timeout を 5s vs 10s で明文化する
@@ -120,7 +134,34 @@ cross-tool coding memory を優先
 
 ## 3. Tasks
 
-### Task 1: Add regression coverage for existing `shutdown()` flush
+### Canonical Task Mapping
+
+| Plans.md ID | Detailed task | Required order |
+|---|---|---|
+| H156-000 | Current-behavior preflight and baseline capture | first |
+| H156-001 | LLM local-first default, loopback enforcement, and cloud gate | after H156-000 |
+| H156-002 | Existing `shutdown()` regression coverage | after H156-000 |
+| H156-003 | Stable bounded `prefetch()` post-ranking | after H156-002 |
+| H156-004 | `metadata: null` investigation and safe allowlist | after H156-000 |
+| H156-005 | Layer 2 MemoryProvider setup / rollback docs | after H156-002, H156-003 |
+| H156-006 | Canonical LLM status and environment-variable docs | after H156-001 |
+| H156-007 | Optional loopback Ollama live smoke | after H156-001, H156-006 |
+| H156-008 | Future setup automation design note | after H156-005 |
+
+### H156-000: Current-behavior preflight and baseline capture
+
+**Objective:** implementation前に、self-reviewで確定したcurrent behaviorと今回追加したsecurity gapを根拠行・baseline testで固定する。
+
+**DoD:**
+
+- `shutdown()` は既存である
+- fact provider default は現状 `openai`
+- `HARNESS_MEM_ALLOW_EXTERNAL_LLM` は未実装である
+- `callOllama()` は現状任意HTTP(S) hostを許可し、remote Ollamaをexternal auditしない
+- provider tests 9件、LLM/egress tests 16件、`git diff --check` がPASS
+- evidenceをH156-000 closeoutまたはPlans.md statusへ記録
+
+### H156-002: Add regression coverage for existing `shutdown()` flush
 
 **Objective:** 既に存在する `shutdown()` の取りこぼし防止をテストで固定する。必要なら `_lock` 読みと timeout 方針を整理する。
 
@@ -199,7 +240,7 @@ Expected: all pass.
 
 ---
 
-### Task 2: Reduce `prefetch()` noise without over-filtering
+### H156-003: Reduce `prefetch()` noise without over-filtering
 
 **Objective:** marker などの直接ヒットを優先し、関係ない Hermes state / backfill dump を過剰に混ぜない。ただし cross-tool relevant memory は消さない。
 
@@ -217,10 +258,12 @@ Do **not** hard-filter to only `tags=["hermes", "turn"]`.
 
 Prefer:
 
-1. provider-side deterministic post-ranking
-2. boost direct `hermes/turn` hits that match query tokens
-3. demote obvious `hermes_state_db` / backfill tool-call dumps that do not match query tokens
-4. keep strongly relevant cross-tool observations
+1. provider-side deterministic, bounded, stable post-ranking
+2. preserve daemon order as the tie-break and do not let tag boosts dominate a strongly relevant server result
+3. boost direct `hermes/turn` hits only when normalized query evidence matches
+4. demote obvious `hermes_state_db` / backfill tool-call dumps that do not match query evidence
+5. keep strongly relevant cross-tool observations
+6. support Japanese no-space queries; whitespace-only tokenization is not sufficient
 
 **Step 1: Inspect search item fields**
 
@@ -236,6 +279,12 @@ def test_prefetch_prefers_direct_hermes_turn_hits():
 
 def test_prefetch_does_not_drop_cross_tool_relevant_items():
     ...
+
+def test_prefetch_handles_japanese_query_without_spaces():
+    ...
+
+def test_prefetch_preserves_daemon_order_on_equal_post_rank_score():
+    ...
 ```
 
 Fixture mix:
@@ -249,10 +298,13 @@ Expected:
 - direct hermes turn appears high
 - weak backfill is not preferred over direct turn
 - relevant cross-tool item is retained
+- unrelated `hermes/turn` does not outrank a strong cross-tool result by tag alone
+- Japanese no-space query gets deterministic matching behavior
+- equal post-rank scores preserve the daemon's original order
 
 **Step 3: Implement minimal scoring helper**
 
-Example:
+Non-normative sketch only; implementation must satisfy the bounded/stable/Japanese tests above rather than copy a whitespace-only scorer:
 
 ```python
 def _prefetch_item_score(item: dict, query: str) -> int:
@@ -287,7 +339,7 @@ hermes chat -q "Hermes provider prefetch noise smoke. Please reply exactly: ACK 
 
 ---
 
-### Task 3: Investigate `metadata: null` on provider-created search results
+### H156-004: Investigate `metadata: null` on provider-created search results
 
 **Objective:** provider が `metadata={"source":"hermes_memory_provider"}` を送っているのに search 結果が `metadata: null` になる理由を特定する。
 
@@ -327,14 +379,16 @@ bun test memory-server/tests/integration/<target>.test.ts
 
 ---
 
-### Task 4: Enforce LLM local-first default + external cloud gate  **[SAFETY]**
+### H156-001: Enforce LLM local-first default + external cloud gate  **[SAFETY]**
 
 **Objective:** desired policy を code で強制する。
 
 1. LLM mode の provider default を `openai` から `ollama` に変更する
-2. external provider (`openai` / `anthropic` / `gemini`) は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` がない限り呼ばない
-3. local ollama は gate の対象外
-4. unit test で cloud call を mock し、live cloud は呼ばない
+2. Ollama は `localhost` / `127.0.0.1` / `::1` のloopback HTTP(S)だけ許可する
+3. non-loopback Ollama は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても拒否し、fetch 0にする
+4. external provider (`openai` / `anthropic` / `gemini`) は allow flag + provider credentialの両方がない限り呼ばない
+5. `extractFacts()`→`llmExtract()` と `llmExtractWithDiff()` の両経路に同一gateを適用する
+6. unit test でcloud callをmockし、live cloudは呼ばない
 
 **Priority:** Highest among remaining safety work
 **Risk:** High if skipped
@@ -345,21 +399,29 @@ bun test memory-server/tests/integration/<target>.test.ts
 - Possibly modify: `memory-server/src/consolidation/worker.ts` if call path also needs guard
 - Modify/Add tests:
   - `memory-server/tests/unit/llm-multi-provider.test.ts`
-  - and/or `memory-server/tests/unit/external-egress-audit.test.ts`
+  - `memory-server/tests/unit/external-egress-audit.test.ts`
+  - both files must isolate `HARNESS_MEM_ALLOW_EXTERNAL_LLM` in `ENV_KEYS`
 
 **Step 1: Write failing tests first**
 
 Required cases:
 
 1. `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` + no provider env
-   → uses `ollama` (or at least does not call cloud)
-2. `provider=openai` + API key set + **no** `HARNESS_MEM_ALLOW_EXTERNAL_LLM`
+   → uses loopback `ollama`; cloud fetch 0
+2. `provider=ollama` + `HARNESS_MEM_OLLAMA_HOST=https://ollama.example.com`
+   → fetch 0 with allow flag absent **and** present
+3. `provider=openai` + API key set + **no** `HARNESS_MEM_ALLOW_EXTERNAL_LLM`
    → does **not** call OpenAI; returns empty / falls back safely
-3. `provider=openai` + API key set + `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`
+4. `provider=openai` + API key set + `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`
    → may call mocked OpenAI path
-4. `provider=ollama`
-   → not blocked by external gate
-5. audit rows (if any) do **not** contain prompt/response body
+5. `provider=ollama` + loopback host
+   → allowed without external gate
+6. `extractFacts()` blocked path
+   → no external fetch and deterministic heuristic fallback
+7. `llmExtractWithDiff()` blocked path
+   → no external fetch and empty diff result
+8. both test files add `HARNESS_MEM_ALLOW_EXTERNAL_LLM` to `ENV_KEYS` setup/cleanup
+9. audit/log output does **not** contain prompt, response body, API key, token, or secret
 
 **Step 2: Run tests RED**
 
@@ -378,6 +440,8 @@ function externalLlmAllowed(): boolean {
   return (process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM || "").trim() === "1";
 }
 ```
+
+Add a shared loopback validator following existing `query-rewrite.ts` / `llm-reranker.ts` behavior. `callOllama()` must return without fetch for non-loopback hosts. Do not treat remote Ollama as local or as an allow-flag exception.
 
 Change defaults:
 
@@ -414,11 +478,11 @@ bun test memory-server/tests/unit/external-egress-audit.test.ts
 
 **Step 5: Do not run live cloud**
 
-Cloud paths are mock-only. Live extraction smoke, if any, uses local Ollama only.
+Cloud paths are mock-only. Live extraction smoke, if any, uses loopback Ollama only.
 
 ---
 
-### Task 5: Documentation update for Layer 2 MemoryProvider
+### H156-005: Documentation update for Layer 2 MemoryProvider
 
 **Objective:** E2E で通った Hermes MemoryProvider 手順を再現可能にする。
 
@@ -476,7 +540,7 @@ git diff --check
 
 ---
 
-### Task 6: Documentation update for accurate LLM status
+### H156-006: Documentation update for accurate LLM status
 
 **Objective:** docs で current vs target を混同しない。
 
@@ -487,9 +551,10 @@ git diff --check
 
 - Modify: `docs/integrations/hermes.md`
 - Modify: `integrations/hermes/README.md`
+- Modify: `docs/environment-variables.md`（canonical default / new flag / loopback rule / variable index）
 - Reference: `.hermes/plans/2026-07-07_192525-hermes-provider-local-first-llm-extraction.md`
 
-**Required accurate wording after Task 4 lands:**
+**Required accurate wording after H156-001 lands:**
 
 ```text
 LLM fact extraction is NOT implemented in the Hermes provider.
@@ -502,14 +567,15 @@ Fact extraction lives in memory-server/src/consolidation/.
 Default extractor mode is heuristic.
 LLM mode is explicit via HARNESS_MEM_FACT_EXTRACTOR_MODE=llm.
 LLM provider default is ollama (local-first).
-Cloud providers (openai/anthropic/gemini) require HARNESS_MEM_ALLOW_EXTERNAL_LLM=1.
+Ollama fact extraction is loopback-only; non-loopback Ollama is rejected even when the external allow flag is set.
+Cloud providers (openai/anthropic/gemini) require both HARNESS_MEM_ALLOW_EXTERNAL_LLM=1 and the provider credential.
 Audit records metadata only; never prompt/response body.
 Live Ollama extraction E2E is optional and separate.
 ```
 
-**Before Task 4 lands, docs must not claim the cloud gate exists.**
+**Before H156-001 lands, docs must not claim the cloud gate exists.**
 
-If docs are written before Task 4, use:
+If docs are written before H156-001, use:
 
 ```text
 Current:
@@ -517,33 +583,36 @@ Current:
 - LLM mode provider default is currently openai unless changed
 - external cloud gate is not yet enforced
 
-Target / after Task 4:
+Target / after H156-001:
 - LLM mode provider default = ollama
-- external cloud providers require HARNESS_MEM_ALLOW_EXTERNAL_LLM=1
+- Ollama fact extraction = loopback-only; remote rejected
+- external cloud providers require HARNESS_MEM_ALLOW_EXTERNAL_LLM=1 plus provider credential
 ```
 
 **Verification:**
 
 - docs do not instruct putting API keys into repo files
 - docs do not claim live Ollama E2E has passed unless run
-- docs do not claim cloud gate exists before Task 4 merges
+- docs do not claim cloud gate exists before H156-001 merges
+- `docs/environment-variables.md` and its variable index contain `HARNESS_MEM_ALLOW_EXTERNAL_LLM`, default=`ollama`, and loopback-only semantics
 
 ---
 
-### Task 7 (optional): Live Ollama LLM extraction smoke against real Hermes turns
+### H156-007 (optional): Live loopback Ollama LLM extraction smoke against real Hermes turns
 
-**Objective:** Hermes turn → consolidation → local Ollama fact extraction → fact/search の live path を確認する。
+**Objective:** Hermes turn → consolidation → loopback Ollama fact extraction → fact/search の live path を確認する。
 
 **Priority:** Medium
 **Risk:** Medium (local model availability)
 
-**Do only after Task 4.**
+**Do only after H156-001 and H156-006.**
 
 Steps:
 
 1. Confirm Ollama is running
 2. Confirm model exists (e.g. `qwen3.5:9b` or documented default)
-3. Set:
+3. Confirm host is exactly loopback (`localhost`, `127.0.0.1`, or `::1`); abort otherwise
+4. Set:
 
 ```bash
 HARNESS_MEM_FACT_EXTRACTOR_MODE=llm
@@ -553,16 +622,16 @@ HARNESS_MEM_OLLAMA_HOST=http://127.0.0.1:11434
 # do NOT set HARNESS_MEM_ALLOW_EXTERNAL_LLM
 ```
 
-4. Record a fact-rich Hermes turn
-5. Trigger consolidation
-6. Verify facts/search
-7. Verify no external egress audit row
+5. Record a fact-rich Hermes turn
+6. Trigger consolidation
+7. Verify facts/search
+8. Verify no external egress audit row
 
-Non-goal: do not call OpenAI/Anthropic/Gemini live.
+Non-goal: do not call remote Ollama or OpenAI/Anthropic/Gemini live.
 
 ---
 
-### Task 8 (future): Setup automation sketch
+### H156-008 (future): Setup automation sketch
 
 **Objective:** future `harness-mem setup --platform hermes` の設計メモ。実装はこの plan の必須完了条件にしない。
 
@@ -595,8 +664,8 @@ Safety:
 |---|---|---|
 | Provider unit | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest integrations/hermes/provider/tests/test_provider.py -v --tb=short` | PASS |
 | Bridge regression | `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest integrations/hermes/plugin/tests/test_plugin.py -v --tb=short` | PASS |
-| LLM multi-provider unit | `export PATH="$HOME/.bun/bin:$PATH"; bun test memory-server/tests/unit/llm-multi-provider.test.ts` | PASS |
-| External egress unit | `export PATH="$HOME/.bun/bin:$PATH"; bun test memory-server/tests/unit/external-egress-audit.test.ts` | PASS |
+| LLM multi-provider unit | `export PATH="$HOME/.bun/bin:$PATH"; bun test memory-server/tests/unit/llm-multi-provider.test.ts` | both extraction paths gated; remote Ollama fetch 0; PASS |
+| External egress unit | `export PATH="$HOME/.bun/bin:$PATH"; bun test memory-server/tests/unit/external-egress-audit.test.ts` | ambient allow env isolated; cloud allow/deny + metrics-only audit PASS |
 | Markdown whitespace | `git diff --check` | PASS |
 | Live provider discovery | Python loader from `~/.hermes/hermes-agent` | `available=True` |
 | Live record/search | marker smoke + `/v1/search` | marker observation hit |
@@ -635,13 +704,19 @@ RuntimeError: Event loop is closed
 
 This already happened in plan v1.
 
-**Mitigation:** Task 4 must land before docs claim cloud gate / ollama default as current behavior.
+**Mitigation:** H156-001 must land before docs claim cloud gate / ollama default as current behavior.
 
 ### Risk 6: Enabling LLM mode currently risks cloud egress
 
 Current code default provider is `openai` when mode=llm.
 
-**Mitigation:** Task 4 is safety-critical and should precede optional live extraction docs.
+**Mitigation:** H156-001 is safety-critical and should precede optional live extraction docs.
+
+### Risk 7: Remote Ollama is mislabeled as local
+
+`HARNESS_MEM_OLLAMA_HOST` currently accepts any HTTP(S) host while egress classification assumes Ollama is loopback.
+
+**Mitigation:** H156-001 adds an explicit loopback validator and tests non-loopback fetch=0 with the allow flag both absent and present.
 
 ---
 
@@ -674,13 +749,14 @@ External egress audit: partial / path-dependent; do not overclaim full coverage 
 Live Hermes→Ollama extraction E2E: not run
 ```
 
-### Target after Task 4
+### Target after H156-001
 
 ```text
 Default mode: heuristic
 LLM mode provider default: ollama
 External cloud providers: blocked unless HARNESS_MEM_ALLOW_EXTERNAL_LLM=1
-Local ollama: allowed without external gate
+Loopback ollama: allowed without external gate
+Non-loopback ollama: rejected regardless of allow flag
 Audit: metadata only, no prompt/response body
 ```
 
@@ -688,26 +764,23 @@ Audit: metadata only, no prompt/response body
 
 ## 7. Recommended Execution Order
 
-1. **Task 4** — LLM local-first default + external cloud gate **[SAFETY FIRST]**
-2. **Task 1** — shutdown regression test / optional tighten
-3. **Task 2** — prefetch noise reduction
-4. **Task 3** — metadata null investigation
-5. **Task 5** — MemoryProvider docs
-6. **Task 6** — accurate LLM status docs
-7. **Task 7** — optional live Ollama extraction smoke
-8. **Task 8** — future setup automation sketch
+1. **H156-000 → H156-001** — current behaviorを固定してからlocal-first / loopback / cloud gateを実装 **[SAFETY FIRST]**
+2. **H156-002 → H156-003** — shutdown regressionとstable bounded prefetch hardening
+3. **H156-004** — metadata null investigation
+4. **H156-005 → H156-006** — MemoryProvider docsとcanonical LLM/env docs
+5. **H156-007 / H156-008** — optional follow-ups
 
-### Why Task 4 is first
+### Why H156-001 is first after preflight
 
 Provider E2E は既に通っている。
 今いちばん危険なのは「LLM を有効にした瞬間に、ドキュメント上の local-first と違う挙動で cloud に出る可能性」である。
 
 ### Minimal useful stop points
 
-- Stop after Task 4 if only safety fix is needed.
-- Stop after Task 1+2+4 if operational hardening is enough.
-- Stop after Task 5+6 if documentation must be published.
-- Task 7/8 are optional follow-ups.
+- Stop after H156-001 if only the safety fix is needed.
+- Stop after H156-001+H156-002+H156-003 if operational hardening is enough.
+- Stop after H156-005+H156-006 if documentation must be published.
+- H156-007/H156-008 are optional follow-ups.
 
 ---
 
@@ -717,4 +790,4 @@ Provider E2E は既に通っている。
 ただしアーキテクチャ方針自体は正しい。
 
 修正後の plan は実行してよい。
-特に Task 4 は、docs に cloud gate を書く前に必ず実装する。
+特に H156-001 は、docs に cloud gate を current behavior として書く前に必ず実装する。

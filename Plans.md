@@ -1177,6 +1177,49 @@ L1 は本セッションで `memory-server/src/server.ts:447` に `idleTimeout: 
 
 **loop自律性:** 154-403切替(154-400で閾値config定数化→3分岐決定的判定)と 154-900 Hermes(154-305 gate passed=true 3-runで機械判定)は人間ゲートなし。**残る人間ゲートは 154-205(外部送信承認)のみで意図的隔離**(Risk Gate)。dreaming は local default で動くため dev フェーズ(154-001/1xx/2xx/3xx/4xx)は外部送信なしで loop自律実行可能、154-205 は dev 完走をブロックしない。
 
+## §156 Hermes MemoryProvider Post-E2E Hardening — cc:TODO (2026-07-09 起票)
+
+詳細 plan: `.hermes/plans/2026-07-08_171500-hermes-provider-post-e2e-hardening.md`
+Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-plan-checkpoint.md`
+
+背景: S112-008 で Hermes MemoryProvider Layer 2 の実機 E2E は成功済み。live config は `memory.provider=harness_mem`、live plugin は `~/.hermes/plugins/harness_mem`。smoke marker `hm_provider_live_smoke_20260708_165739_purple_dragon_7788` は live session `20260708_165742_49e528` / observation `obs_00mrbscxqh1fb9a76cf55be7c2` と、別 session `20260708_170910_4774a8` の recall で確認済み。
+
+`Spec delta`: root `Spec.md` の `Fact extraction LLM egress contract (must)` に product contract を追加済み。default extractor mode=`heuristic`、LLM mode provider default=`ollama`、Ollama は loopback-only、非loopback Ollama は allow flag の有無にかかわらず拒否、`openai` / `anthropic` / `gemini` は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` と provider credential の両方がある時だけ許可、両 extraction path への同一 gate、metrics-only audit、live cloud E2E 禁止を正本化した。
+
+`team_validation_mode`: manual-pass（Product / Architecture / Security / QA / Skeptic の 5 視点を plan self-review で通過。初版の事実誤認 3 件は修正済み: `shutdown()` は既存、`HARNESS_MEM_ALLOW_EXTERNAL_LLM` は未実装、LLM mode provider default は現状 `openai`）。
+
+`formatter_baseline`: partial_configured。確認済み evidence: root `package.json` は `bun run test` / `benchmark:*` を持つが、汎用 `lint` / `format` script は未確認。実装 task は各 DoD で targeted pytest / targeted bun test / `git diff --check` を必須にし、汎用 formatter 導入は本 § の Required scope には入れない。
+
+### Task Plan
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| H156-000 | **現状 preflight + baseline 固定** `[tdd:skip:planning-preflight]` — §156 実装前に current behavior を再確認し、初版 plan の事実誤認が再混入しないようにする | `shutdown()` 既存、provider default=`openai`、`HARNESS_MEM_ALLOW_EXTERNAL_LLM` 未実装、`callOllama()` が現状任意 HTTP(S) host を許可し remote Ollama を external audit しないことを根拠行付きで実装前メモへ残す。provider 9件 + LLM/egress 16件の baseline testと `git diff --check` PASS | - | cc:TODO |
+| H156-001 | **LLM local-first default + external cloud gate** `[tdd:required][feature:security]` — LLM mode provider default を `ollama` にし、Ollama は loopback-only、`openai` / `anthropic` / `gemini` は明示 allow + credential の両方を必須にする | RED→GREENで (1) provider env なし→loopback Ollama、(2) nonloopback Ollama→allow flag 有無にかかわらず fetch 0、(3) cloud + credential + allowなし→fetch 0、(4) allow=`1`→mocked cloud pathのみ許可、(5) blocked pathは安全な空結果/heuristic fallback、(6) audit/logに本文・secret非含有を確認。`extractFacts()`→`llmExtract()` と `llmExtractWithDiff()` の両経路をtestし、両test fileの`ENV_KEYS`へ`HARNESS_MEM_ALLOW_EXTERNAL_LLM`を追加してambient envを隔離。対象bun tests PASS、live cloud禁止 | H156-000 | cc:TODO |
+| H156-002 | **既存 `shutdown()` flush regression coverage** `[tdd:required]` — 未実装追加ではなく、既存 bounded join の契約を test で固定する | `integrations/hermes/provider/tests/test_provider.py` に pending sync thread の `join(timeout=...)` regression test を追加し、`PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest integrations/hermes/provider/tests/test_provider.py -v --tb=short` PASS。timeout 方針は 5s/10s のどちらかを test で明文化 | H156-000 | cc:TODO |
+| H156-003 | **`prefetch()` noise reduction without hard filtering** `[tdd:required]` — direct Hermes turn hit を優先しつつ、強く関連する cross-tool memory は落とさない bounded stable post-rank を入れる | daemon元順位を同点tie-breakとして保持し、tag boostだけで強いserver relevanceを覆さない。direct marker上位、weak backfill降格、strong cross-tool保持、日本語空白なしquery、unrelated `hermes/turn`、同一入力の決定的順序をtest。hard filter禁止、provider suite PASS | H156-002 | cc:TODO |
+| H156-004 | **provider-created search result `metadata: null` 調査 + safe allowlist** `[tdd:required]` — provider が `metadata={source:hermes_memory_provider}` を送るのに search 結果で null になる理由を確定する | outcome を 4 分岐のどれかに分類: intentional privacy omission / stored-but-not-selected / provider payload shape / ingest mapping。返す場合は allowlist key のみ（例: `source`）で、prompt・response・API key・token・secret を返さない test PASS | H156-000 | cc:TODO |
+| H156-005 | **Layer 2 MemoryProvider docs + rollback 手順** `[tdd:skip:docs-only]` — S112-008 E2E の再現手順、setup、discovery、smoke、rollback を docs に固定する | `integrations/hermes/README.md` and/or `docs/integrations/hermes.md` に Layer 1 MCP vs Layer 2 MemoryProvider、`rsync` install、`hermes config set memory.provider harness_mem`、discovery/live smoke/search/rollback、`RuntimeError: Event loop is closed` の非ブロッキング扱いを記載。`git diff --check` PASS | H156-002, H156-003 | cc:TODO |
+| H156-006 | **LLM status docs current vs target 同期** `[tdd:skip:docs-only]` — canonical docs で desired policy と current behavior を混同しない | H156-001 完了後、`docs/integrations/hermes.md`、`integrations/hermes/README.md`、`docs/environment-variables.md` と同ファイルのvariable indexを同期。default=`ollama`、loopback-only、remote Ollama拒否、cloud allow semantics、新env、API keyをrepo fileへ置かない、live cloud/Ollama実施状況を正確に記載。H156-001前はcurrent=`openai`/gate未実装と明記 | H156-001 | cc:TODO |
+| H156-007 | **Optional live Ollama extraction smoke** `[tdd:skip:operation]` — Hermes turn → consolidation → loopback Ollama fact extraction → fact/search の live path を任意確認する | H156-001 完了後、hostが`127.0.0.1`/`localhost`/`::1`のloopbackであることをpreflightし、`HARNESS_MEM_ALLOW_EXTERNAL_LLM`は未設定で実行。fact/search、external egress audit 0を記録。remote OllamaとOpenAI/Anthropic/Gemini liveは禁止 | H156-001, H156-006 | cc:TODO |
+| H156-008 | **Future setup automation sketch** `[tdd:skip:design-note]` — `harness-mem setup --platform hermes` の dry-run/apply 設計だけを残し、必須実装 scope にしない | daemon health、Hermes home 検出、provider copy、config backup、dry-run default、`--apply` mutation、discovery check、rollback print の設計メモを docs/plan に残す。実装は別 § に切り出し可能 | H156-005 | cc:TODO |
+
+### Recommended Execution Order
+
+1. H156-000 → H156-001 — preflight で事実誤認を再確認してから safety gate を実装する。docs に cloud gate を current として書く前に H156-001 を必ず完了する。
+2. H156-002 → H156-003 — provider operational hardening。
+3. H156-004 — metadata null は privacy risk を見ながら小さく確定。
+4. H156-005 → H156-006 — docs は current/target を分けて同期。
+5. H156-007 / H156-008 — optional follow-up。
+
+### Stop Lines
+
+- live cloud LLM は実行しない。
+- nonloopback Ollama は local とみなさず、allow flag の有無にかかわらず拒否する。
+- Hermes provider に LLM extraction 本体を入れない。fact extraction は `memory-server/src/consolidation/` に置く。
+- `.env` / API key / OAuth token / secret は読まない、docs に書かない。
+- `~/.hermes/config.yaml` や live plugin の変更は、別途明示承認なしに実行しない。
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
@@ -1184,7 +1227,7 @@ L1 は本セッションで `memory-server/src/server.ts:447` に `idleTimeout: 
 2026-04-23 のメンテナンス（v0.15.0 リリース後）で §91〜§96 を `docs/archive/Plans-s91-s96-2026-04-23.md` に移動しました。
 2026-05-10 のメンテナンス（v0.20.0 リリース後）で §77 / §98 / §99 / §101 / §102 / §103 / §105 / §106 / §107 / §S109 を `docs/archive/Plans-s77-s109-2026-05-10.md` に移動しました（Plans.md 832 → 535 行）。
 2026-06-11 のメンテナンスで §108 / §111 / §113 / §114 / §116〜§118 / §123 / §124 / §126 / §127 / §129 / §131〜§149 の完了33セクションを `docs/archive/Plans-s108-s149-2026-06-11.md` に移動しました（Plans.md 1859 → 1053 行）。§150〜§153 は §154 が参照する直近完了のため残置。
-Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + §122 + §125 + §128 + §130 + §150〜§154）だけをフォアグラウンドで扱う方針です。
+Plans.md は working plan（§78 + §89 + §90 + §97 + §110 + §112 + §115 + §122 + §125 + §128 + §130 + §150〜§156）だけをフォアグラウンドで扱う方針です。
 
 参照:
 

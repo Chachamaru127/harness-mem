@@ -678,6 +678,29 @@ When the local observation store exceeds 100k active rows:
 
 Companion implementation plan: `Plans.md` §145 Large DB Search Timeout Fix.
 
+### Fact extraction LLM egress contract (must)
+
+- Fact extraction MUST remain `heuristic` by default. LLM extraction is enabled
+  only when `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` is set explicitly.
+- In LLM mode, an unset `HARNESS_MEM_FACT_LLM_PROVIDER` MUST resolve to `ollama`,
+  and the Ollama endpoint MUST be loopback-only (`localhost`, `127.0.0.1`, or
+  `::1` over HTTP/HTTPS). A non-loopback Ollama endpoint is rejected even when
+  `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`; it MUST NOT receive memory content.
+- External fact providers (`openai`, `anthropic`, `gemini`) MUST make no network
+  request unless both `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` and the provider-specific
+  credential are present. A blocked or unavailable LLM path MUST fall back safely
+  without disabling heuristic extraction.
+- The gate MUST cover both extraction entry paths: `extractFacts()` / `llmExtract()`
+  and `llmExtractWithDiff()`. An ambient environment variable MUST NOT make tests
+  or default runtime behavior opt in accidentally.
+- External-call audit records MAY contain provider, model, byte counts, observation
+  counts, and blocked reason only. Prompt, response body, API key, token, and secret
+  content MUST NOT be logged or persisted in audit metadata.
+- Live cloud-provider E2E is prohibited for this contract. Cloud paths are verified
+  with deterministic mocks; optional live extraction smoke is loopback Ollama only.
+
+Companion implementation plan: `Plans.md` §156 Hermes MemoryProvider Post-E2E Hardening.
+
 ## Non-Goals
 
 - Do not turn harness-mem into a managed memory service by default.
