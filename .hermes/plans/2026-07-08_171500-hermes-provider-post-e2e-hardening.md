@@ -343,6 +343,15 @@ hermes chat -q "Hermes provider prefetch noise smoke. Please reply exactly: ACK 
 
 **Objective:** provider が `metadata={"source":"hermes_memory_provider"}` を送っているのに search 結果が `metadata: null` になる理由を特定する。
 
+**Root-cause classification (2026-07-12 locked): `ingest mapping gap`**
+
+- provider は `event.metadata.source=hermes_memory_provider` を正しく送信する。
+- `/v1/events/record` は `EventEnvelope.metadata` を受理する。
+- `mem_events` insert は `payload_json` 等のみを保存し、`event.metadata` を永続化しない。
+- `mem_observations` / `loadObservations()` / 通常 search DTO に復元経路がない。
+- `provider payload shape` と `intentional privacy omission` は主因ではない。`stored-but-not-selected` は未保存に起因する二次症状。
+- 修正は full metadata bag を保存せず、`source` allowlist のみを `mem_events.metadata_json` に永続化し、通常 search item の `metadata` へ再allowlistして返す。
+
 **Priority:** Medium
 **Risk:** Medium (privacy)
 
