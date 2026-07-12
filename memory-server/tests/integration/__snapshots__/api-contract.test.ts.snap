@@ -300,6 +300,7 @@ exports[`API contract snapshot major endpoints keep stable response shape 1`] = 
         "id": "string",
         "invalidated_at": "null",
         "memory_type": "string",
+        "metadata": "null",
         "observation_type": "string",
         "observed_at": "string",
         "platform": "string",

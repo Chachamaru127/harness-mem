@@ -6,7 +6,7 @@
  * - POSTGRES_URL がない場合はスキップ（CI Docker 不要ケース）
  */
 import { describe, expect, test } from "bun:test";
-import { POSTGRES_INIT_SQL, POSTGRES_VECTOR_INDEX_SQL } from "../../src/db/postgres-schema";
+import { POSTGRES_INIT_SQL, POSTGRES_MIGRATE_SQL, POSTGRES_VECTOR_INDEX_SQL } from "../../src/db/postgres-schema";
 import {
   buildPgVectorUpsertSql,
   buildPgVectorSearchSql,
@@ -27,6 +27,24 @@ describe("POSTGRES_INIT_SQL", () => {
 
   test("mem_observations の FTS インデックスが含まれる", () => {
     expect(POSTGRES_INIT_SQL).toContain("USING GIN(search_vector)");
+  });
+
+  test("H156-004: mem_events.metadata_json が INIT に含まれる", () => {
+    expect(POSTGRES_INIT_SQL).toContain("metadata_json JSONB NOT NULL DEFAULT '{}'");
+    const memEventsBlock = POSTGRES_INIT_SQL.match(
+      /CREATE TABLE IF NOT EXISTS mem_events \([\s\S]*?\);/
+    )?.[0];
+    expect(memEventsBlock).toBeDefined();
+    expect(memEventsBlock).toContain("metadata_json JSONB NOT NULL DEFAULT '{}'");
+  });
+});
+
+describe("POSTGRES_MIGRATE_SQL", () => {
+  test("H156-004: mem_events.metadata_json の idempotent 追加が含まれる", () => {
+    expect(POSTGRES_MIGRATE_SQL).toContain("table_name = 'mem_events' AND column_name = 'metadata_json'");
+    expect(POSTGRES_MIGRATE_SQL).toContain(
+      "ALTER TABLE mem_events ADD COLUMN metadata_json JSONB NOT NULL DEFAULT '{}'"
+    );
   });
 });
 
