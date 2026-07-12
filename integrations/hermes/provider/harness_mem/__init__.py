@@ -42,6 +42,68 @@ _DEFAULT_TIMEOUT_SEC = 8.0
 _MIN_QUERY_LEN = 3
 
 
+def _normalize_match_text(text: str) -> str:
+    return "".join(str(text).lower().split())
+
+
+def _query_bigrams(query_norm: str) -> List[str]:
+    if len(query_norm) < 2:
+        return []
+    return [query_norm[i : i + 2] for i in range(len(query_norm) - 1)]
+
+
+def _required_bigram_matches(query_norm: str, bigram_count: int) -> int:
+    if bigram_count <= 0:
+        return 0
+    if len(query_norm) <= 3:
+        return min(2, bigram_count)
+    return max(2, (bigram_count + 1) // 2)
+
+
+def _has_query_evidence(query: str, title: str, content: str) -> bool:
+    query_norm = _normalize_match_text(query)
+    if len(query_norm) < _MIN_QUERY_LEN:
+        return False
+    text_norm = _normalize_match_text(f"{title} {content}")
+    if not text_norm:
+        return False
+    if query_norm in text_norm:
+        return True
+    bigrams = _query_bigrams(query_norm)
+    if not bigrams:
+        return False
+    matches = sum(1 for bg in bigrams if bg in text_norm)
+    return matches >= _required_bigram_matches(query_norm, len(bigrams))
+
+
+def _prefetch_item_score(item: Dict[str, Any], query: str) -> int:
+    raw_tags = item.get("tags") or []
+    tags = {str(tag).strip().lower() for tag in raw_tags if tag}
+    title = str(item.get("title", ""))
+    content = str(item.get("content", ""))
+    evidence = _has_query_evidence(query, title, content)
+
+    score = 0
+    if evidence:
+        score += 10
+    if "hermes" in tags and "turn" in tags:
+        if evidence:
+            score += 5
+        else:
+            score -= 3
+    if ("hermes_state_db" in tags or "backfill" in tags) and not evidence:
+        score -= 5
+    return score
+
+
+def _rank_prefetch_items(items: List[Any], query: str) -> List[Dict[str, Any]]:
+    indexed: List[tuple[int, Dict[str, Any]]] = [
+        (idx, item) for idx, item in enumerate(items) if isinstance(item, dict)
+    ]
+    indexed.sort(key=lambda pair: (-_prefetch_item_score(pair[1], query), pair[0]))
+    return [item for _, item in indexed]
+
+
 SEARCH_SCHEMA = {
     "name": "harness_mem_search",
     "description": "Search harness-mem local-first cross-tool coding memory for relevant context.",
@@ -165,8 +227,9 @@ class HarnessMemMemoryProvider(MemoryProvider):
         items = result.get("items") if isinstance(result, dict) else None
         if not isinstance(items, list) or not items:
             return ""
+        ranked_items = _rank_prefetch_items(items, query.strip())
         lines = ["## harness-mem Context"]
-        for item in items[:5]:
+        for item in ranked_items[:5]:
             if not isinstance(item, dict):
                 continue
             obs_id = str(item.get("id", "")).strip()

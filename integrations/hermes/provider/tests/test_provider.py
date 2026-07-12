@@ -175,6 +175,176 @@ class TestPrefetch:
         assert "Use local-first memory." in context
 
 
+class TestPrefetchPostRanking:
+    """H156-003: deterministic bounded post-ranking without hard filtering."""
+
+    @staticmethod
+    def _prefetch_items(module, monkeypatch, items, query):
+        recorder = URLopenerRecorder({"ok": True, "items": items})
+        monkeypatch.setattr(module.request, "urlopen", recorder)
+        provider = module.HarnessMemMemoryProvider()
+        provider.initialize("sess-rank")
+        return provider.prefetch(query, session_id="sess-rank")
+
+    @staticmethod
+    def _item_ids(context: str) -> list[str]:
+        ids = []
+        for line in context.splitlines():
+            if line.startswith("- ["):
+                end = line.find("]")
+                if end > 3:
+                    ids.append(line[3:end])
+        return ids
+
+    def test_prefetch_direct_matching_hermes_turn_rises_above_weak_backfill(self, monkeypatch):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "weak-backfill",
+                "title": "Hermes state dump",
+                "content": "tool_call backfill payload unrelated noise",
+                "tags": ["hermes", "hermes_state_db", "backfill"],
+            },
+            {
+                "id": "direct-turn",
+                "title": "Hermes turn",
+                "content": "User: explain purple_dragon_auth\nAssistant: use OAuth2 flow",
+                "tags": ["hermes", "turn"],
+            },
+        ]
+        context = self._prefetch_items(module, monkeypatch, items, "purple_dragon_auth")
+        ranked = self._item_ids(context)
+        assert ranked.index("direct-turn") < ranked.index("weak-backfill")
+
+    def test_prefetch_strong_relevant_cross_tool_retained(self, monkeypatch):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "cross-strong",
+                "title": "Codex decision",
+                "content": "purple_dragon_auth must use PKCE for mobile clients",
+                "tags": ["codex", "decision"],
+            },
+            {
+                "id": "weak-backfill",
+                "title": "Hermes state dump",
+                "content": "unrelated backfill blob",
+                "tags": ["hermes", "hermes_state_db", "backfill"],
+            },
+        ]
+        context = self._prefetch_items(module, monkeypatch, items, "purple_dragon_auth")
+        ranked = self._item_ids(context)
+        assert "cross-strong" in ranked
+        assert ranked.index("cross-strong") < ranked.index("weak-backfill")
+
+    def test_prefetch_unrelated_hermes_turn_cannot_outrank_strong_cross_tool_by_tag_alone(
+        self, monkeypatch
+    ):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "unrelated-turn",
+                "title": "Hermes turn",
+                "content": "User: weather chat\nAssistant: sunny today",
+                "tags": ["hermes", "turn"],
+            },
+            {
+                "id": "cross-strong",
+                "title": "Cursor note",
+                "content": "purple_dragon_auth rollout checklist and PKCE validation",
+                "tags": ["cursor", "checkpoint"],
+            },
+        ]
+        context = self._prefetch_items(module, monkeypatch, items, "purple_dragon_auth")
+        ranked = self._item_ids(context)
+        assert ranked.index("cross-strong") < ranked.index("unrelated-turn")
+
+    def test_prefetch_japanese_no_space_query_deterministic_and_relevant_item_ranked(
+        self, monkeypatch
+    ):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "weak-backfill",
+                "title": "Hermes state dump",
+                "content": "無関係なバックフィルデータ",
+                "tags": ["hermes", "hermes_state_db", "backfill"],
+            },
+            {
+                "id": "jp-relevant",
+                "title": "設計決定",
+                "content": "認証方式はOAuth2とPKCEを採用する",
+                "tags": ["claude", "decision"],
+            },
+        ]
+        query = "認証方式"
+        context = self._prefetch_items(module, monkeypatch, items, query)
+        ranked = self._item_ids(context)
+        assert ranked.index("jp-relevant") < ranked.index("weak-backfill")
+        context_repeat = self._prefetch_items(module, monkeypatch, items, query)
+        assert self._item_ids(context_repeat) == ranked
+
+    def test_prefetch_equal_post_rank_scores_preserve_daemon_order(self, monkeypatch):
+        module = load_provider_module()
+        items = [
+            {"id": "first", "title": "Alpha", "content": "shared_topic alpha detail", "tags": ["a"]},
+            {"id": "second", "title": "Beta", "content": "shared_topic beta detail", "tags": ["b"]},
+            {"id": "third", "title": "Gamma", "content": "shared_topic gamma detail", "tags": ["c"]},
+        ]
+        context = self._prefetch_items(module, monkeypatch, items, "shared_topic")
+        assert self._item_ids(context) == ["first", "second", "third"]
+
+    def test_prefetch_identical_input_yields_identical_order(self, monkeypatch):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "weak-backfill",
+                "title": "dump",
+                "content": "noise",
+                "tags": ["hermes", "backfill"],
+            },
+            {
+                "id": "match-turn",
+                "title": "Hermes turn",
+                "content": "stable_marker_xyz discussion",
+                "tags": ["hermes", "turn"],
+            },
+            {
+                "id": "cross",
+                "title": "note",
+                "content": "stable_marker_xyz from codex",
+                "tags": ["codex"],
+            },
+        ]
+        query = "stable_marker_xyz"
+        first = self._item_ids(self._prefetch_items(module, monkeypatch, items, query))
+        second = self._item_ids(self._prefetch_items(module, monkeypatch, items, query))
+        assert first == second
+
+    def test_prefetch_no_hard_filter_weak_item_remains_in_output_when_within_bound(
+        self, monkeypatch
+    ):
+        module = load_provider_module()
+        items = [
+            {
+                "id": "relevant",
+                "title": "Match",
+                "content": "bounded_filter_marker in primary doc",
+                "tags": ["codex"],
+            },
+            {
+                "id": "weak-only",
+                "title": "Weak backfill",
+                "content": "generic hermes dump with no query overlap",
+                "tags": ["hermes", "hermes_state_db", "backfill"],
+            },
+        ]
+        context = self._prefetch_items(module, monkeypatch, items, "bounded_filter_marker")
+        ranked = self._item_ids(context)
+        assert "weak-only" in ranked
+        assert len(ranked) == 2
+
+
 class TestOnSessionEnd:
     def test_on_session_end_skips_consolidation_by_default(self, monkeypatch):
         module = load_provider_module()
