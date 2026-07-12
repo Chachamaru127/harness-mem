@@ -16,6 +16,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+# shutdown() must join an alive pending _sync_thread with this wall-clock cap (seconds).
+SHUTDOWN_JOIN_TIMEOUT_SECONDS = 10.0
+
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 PROVIDER_INIT = REPO_ROOT / "integrations" / "hermes" / "provider" / "harness_mem" / "__init__.py"
@@ -202,6 +205,33 @@ class TestOnSessionEnd:
         assert call["body"]["project"] == "repo-project"
         assert call["body"]["session_id"] == "sess-123"
         assert call["body"]["limit"] == 50
+
+
+class TestShutdown:
+    def test_shutdown_joins_alive_pending_sync_thread_with_10_second_timeout(self):
+        """Regression: shutdown() waits up to SHUTDOWN_JOIN_TIMEOUT_SECONDS for _sync_thread."""
+        module = load_provider_module()
+        provider = module.HarnessMemMemoryProvider()
+
+        class SpySyncThread:
+            def __init__(self):
+                self.join_calls: list[float | None] = []
+
+            def is_alive(self) -> bool:
+                return True
+
+            def join(self, timeout: float | None = None) -> None:
+                self.join_calls.append(timeout)
+
+        spy_thread = SpySyncThread()
+        provider._sync_thread = spy_thread
+
+        provider.shutdown()
+
+        assert spy_thread.join_calls == [SHUTDOWN_JOIN_TIMEOUT_SECONDS]
+        assert spy_thread.join_calls[0] == 10.0, (
+            "shutdown join timeout policy is 10.0 seconds for alive pending _sync_thread"
+        )
 
 
 class TestTools:
