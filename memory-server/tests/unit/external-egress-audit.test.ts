@@ -17,6 +17,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
+  extractFacts,
   llmExtractWithDiff,
   isExternalLlmProvider,
   type ExtractFactInput,
@@ -32,6 +33,7 @@ const ENV_KEYS = [
   "HARNESS_MEM_ANTHROPIC_API_KEY",
   "HARNESS_MEM_GEMINI_API_KEY",
   "HARNESS_MEM_OLLAMA_HOST",
+  "HARNESS_MEM_ALLOW_EXTERNAL_LLM",
 ];
 
 const cleanupPaths: string[] = [];
@@ -45,15 +47,17 @@ const FACTS_JSON = JSON.stringify({
 });
 
 /** Deterministic provider mock: returns the shape the active provider expects. */
-function installProviderMock(): void {
+function installProviderMock(): { fetchCount: () => number } {
+  let calls = 0;
   globalThis.fetch = async (url: string | URL | Request, opts?: RequestInit): Promise<Response> => {
     const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
     const portMatch = urlStr.match(/:(\d+)/);
     // Pass through OS-assigned high-port local test services; intercept provider ports.
-    if ((urlStr.includes("127.0.0.1") || urlStr.includes("localhost")) && portMatch && Number(portMatch[1]) >= 30000) {
+    if ((urlStr.includes("127.0.0.1") || urlStr.includes("localhost") || urlStr.includes("[::1]")) && portMatch && Number(portMatch[1]) >= 30000) {
       return originalFetch(url, opts);
     }
-    const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "openai").trim().toLowerCase();
+    calls += 1;
+    const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "ollama").trim().toLowerCase();
     let body: string;
     if (provider === "anthropic") body = JSON.stringify({ content: [{ type: "text", text: FACTS_JSON }] });
     else if (provider === "gemini") body = JSON.stringify({ candidates: [{ content: { parts: [{ text: FACTS_JSON }] } }] });
@@ -61,6 +65,7 @@ function installProviderMock(): void {
     else body = JSON.stringify({ choices: [{ message: { content: FACTS_JSON } }] });
     return new Response(body, { status: 200, headers: { "content-type": "application/json" } });
   };
+  return { fetchCount: () => calls };
 }
 
 beforeEach(() => {
@@ -105,6 +110,7 @@ describe("S154-110 extractor egress classification", () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
     process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test";
     process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
     const result = await llmExtractWithDiff(SAMPLE, NO_EXISTING);
     expect(result.egress).toBeDefined();
     expect(result.egress!.provider).toBe("openai");
@@ -117,6 +123,7 @@ describe("S154-110 extractor egress classification", () => {
   });
 
   test("anthropic and gemini also set egress with their provider id", async () => {
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "anthropic";
     process.env.HARNESS_MEM_ANTHROPIC_API_KEY = "sk-ant";
     expect((await llmExtractWithDiff(SAMPLE, NO_EXISTING)).egress?.provider).toBe("anthropic");
@@ -136,8 +143,54 @@ describe("S154-110 extractor egress classification", () => {
 
   test("external provider without an API key makes no call and no egress", async () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai"; // no API key
+    const tracker = installProviderMock();
     const result = await llmExtractWithDiff(SAMPLE, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(0);
     expect(result.egress).toBeUndefined();
+  });
+
+  test("external provider with API key but no allow flag makes no call and no egress", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test";
+    const tracker = installProviderMock();
+    const result = await llmExtractWithDiff(SAMPLE, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(0);
+    expect(result.egress).toBeUndefined();
+    expect(result.new_facts).toEqual([]);
+  });
+
+  test("non-loopback ollama makes fetch 0 with allow flag absent and present", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "ollama";
+    process.env.HARNESS_MEM_OLLAMA_HOST = "https://ollama.example.com:11434";
+
+    let fetchCalled = false;
+    globalThis.fetch = async () => {
+      fetchCalled = true;
+      return new Response("", { status: 500 });
+    };
+    await llmExtractWithDiff(SAMPLE, NO_EXISTING);
+    expect(fetchCalled).toBe(false);
+
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+    fetchCalled = false;
+    await llmExtractWithDiff(SAMPLE, NO_EXISTING);
+    expect(fetchCalled).toBe(false);
+  });
+
+  test("egress and audit metadata never contain prompt, body, API key, token, or secret", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-super-secret-token";
+    process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+
+    const result = await llmExtractWithDiff(SAMPLE, NO_EXISTING);
+    const serialized = JSON.stringify(result.egress ?? {});
+    expect(serialized).not.toContain("PostgreSQL");
+    expect(serialized).not.toContain("sk-super-secret-token");
+    expect(serialized).not.toContain("token");
+    expect(serialized).not.toContain("secret");
+    expect(serialized).not.toContain("prompt");
+    expect(serialized).not.toContain("body");
   });
 });
 
@@ -202,6 +255,7 @@ describe("S154-110 consolidation egress audit", () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
     process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test";
     process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
     const core = new HarnessMemCore(createConfig("openai"));
     try {
       seedEvent(core, "egress-openai", "s1");
@@ -231,6 +285,56 @@ describe("S154-110 consolidation egress audit", () => {
       seedEvent(core, "egress-ollama", "s1");
       await core.runConsolidation({ project: "egress-ollama", session_id: "s1" });
       expect(externalRows(core)).toHaveLength(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("llm mode with default provider uses loopback ollama and records ZERO external rows", async () => {
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    // provider unset → ollama default
+    const core = new HarnessMemCore(createConfig("llm-default-ollama"));
+    try {
+      seedEvent(core, "egress-llm-default", "s1");
+      await core.runConsolidation({ project: "egress-llm-default", session_id: "s1" });
+      expect(externalRows(core)).toHaveLength(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("blocked cloud extractFacts path records ZERO external.llm.call rows", async () => {
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test";
+    const core = new HarnessMemCore(createConfig("blocked-cloud"));
+    try {
+      seedEvent(core, "egress-blocked", "s1");
+      await core.runConsolidation({ project: "egress-blocked", session_id: "s1" });
+      expect(externalRows(core)).toHaveLength(0);
+    } finally {
+      core.shutdown("test");
+    }
+  });
+
+  test("audit row never contains prompt, body, API key, token, or secret", async () => {
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-super-secret-token";
+    process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+    const core = new HarnessMemCore(createConfig("audit-secrecy"));
+    try {
+      seedEvent(core, "egress-secrecy", "s1");
+      await core.runConsolidation({ project: "egress-secrecy", session_id: "s1" });
+      const rows = externalRows(core);
+      expect(rows.length).toBeGreaterThanOrEqual(1);
+      const serialized = JSON.stringify(rows[0].details);
+      expect(serialized).not.toContain("PostgreSQL");
+      expect(serialized).not.toContain("sk-super-secret-token");
+      expect(serialized).not.toContain("prompt");
+      expect(serialized).not.toContain("body");
+      expect(serialized).not.toContain("secret");
     } finally {
       core.shutdown("test");
     }
