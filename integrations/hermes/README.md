@@ -17,7 +17,7 @@ Layer 2 MemoryProvider は **thin bridge** で、LLM 事実抽出は **行いま
 
 詳細: [`docs/environment-variables.md`](../../docs/environment-variables.md)（LLM セクション）。
 
-**H156-006 docs 同期時点:** live cloud E2E および H156-007 optional loopback Ollama live smoke は **未実行** です。
+**検証状況:** live cloud E2E は未実施です。H156-007 の loopback Ollama live smoke は、isolated daemon + temporary DB で実行済みです（fact extraction/search 成功、external LLM egress 0件）。
 
 ## このintegrationの位置付け
 
