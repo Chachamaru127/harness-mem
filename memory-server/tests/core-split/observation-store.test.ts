@@ -1899,6 +1899,146 @@ describe("S43-005: temporal retrieval alignment", () => {
   });
 });
 
+function insertObservationWithEventMetadata(
+  db: Database,
+  opts: {
+    id: string;
+    event_id: string;
+    project?: string;
+    session_id?: string;
+    title: string;
+    content: string;
+    metadata_json?: string;
+    created_at?: string;
+  },
+): void {
+  const now = opts.created_at || "2026-07-12T00:00:00.000Z";
+  const project = opts.project || "proj-obs";
+  const sessionId = opts.session_id || "test-session-001";
+  const metadataJson = opts.metadata_json ?? "{}";
+
+  db.query(
+    `INSERT OR IGNORE INTO mem_sessions (session_id, platform, project, started_at, created_at, updated_at)
+     VALUES (?, 'claude', ?, ?, ?, ?)`,
+  ).run(sessionId, project, now, now, now);
+
+  db.query(
+    `INSERT OR IGNORE INTO mem_events (
+      event_id, platform, project, session_id, event_type, ts,
+      payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, metadata_json, created_at
+    ) VALUES (?, 'claude', ?, ?, 'user_prompt', ?, ?, '[]', '[]', ?, ?, ?, ?)`,
+  ).run(
+    opts.event_id,
+    project,
+    sessionId,
+    now,
+    JSON.stringify({ prompt: opts.content }),
+    `hash_${opts.event_id}`,
+    opts.id,
+    metadataJson,
+    now,
+  );
+
+  db.query(
+    `INSERT OR IGNORE INTO mem_observations (
+      id, event_id, platform, project, session_id, title, content, content_redacted,
+      observation_type, tags_json, privacy_tags_json, signal_score, created_at, updated_at
+    ) VALUES (?, ?, 'claude', ?, ?, ?, ?, ?, 'context', '[]', '[]', 0, ?, ?)`,
+  ).run(opts.id, opts.event_id, project, sessionId, opts.title, opts.content, opts.content, now, now);
+}
+
+describe("observation-store: H156-004 search metadata contract", () => {
+  test("normal search returns metadata.source for allowlisted persisted source", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-search-source",
+      event_id: "evt-h156-search-source",
+      project: "proj-h156",
+      session_id: "sess-h156-search",
+      title: "hermes provider metadata sentinel",
+      content: "hermes provider metadata sentinel body",
+      metadata_json: JSON.stringify({ source: "hermes_memory_provider" }),
+      created_at: "2026-07-12T00:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "hermes provider metadata sentinel",
+      project: "proj-h156",
+      limit: 5,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-search-source") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toEqual({ source: "hermes_memory_provider" });
+  });
+
+  test("normal search returns metadata null when persisted metadata has no allowlisted source", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-search-null",
+      event_id: "evt-h156-search-null",
+      project: "proj-h156-null",
+      session_id: "sess-h156-null",
+      title: "metadata null sentinel",
+      content: "metadata null sentinel body",
+      metadata_json: "{}",
+      created_at: "2026-07-12T00:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "metadata null sentinel",
+      project: "proj-h156-null",
+      limit: 5,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-search-null") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toBeNull();
+  });
+
+  test("normal search does not leak secret or non-allowlisted metadata keys", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-search-secret",
+      event_id: "evt-h156-search-secret",
+      project: "proj-h156-secret",
+      session_id: "sess-h156-secret",
+      title: "metadata secret sentinel",
+      content: "metadata secret sentinel body",
+      metadata_json: JSON.stringify({
+        source: "hermes_memory_provider",
+        api_key: "sk-should-not-return",
+        token: "tok-should-not-return",
+        secret: "secret-should-not-return",
+        prompt: "prompt-should-not-return",
+        response: "response-should-not-return",
+        nested: { leak: true },
+      }),
+      created_at: "2026-07-12T00:00:00.000Z",
+    });
+
+    const res = store.search({
+      query: "metadata secret sentinel",
+      project: "proj-h156-secret",
+      limit: 5,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-search-secret") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toEqual({ source: "hermes_memory_provider" });
+    expect(JSON.stringify(item?.metadata)).not.toMatch(/api_key|token|secret|prompt|response|nested|leak/i);
+  });
+});
+
 describe("observation-store: searchInProcessDegraded", () => {
   test("returns bounded lexical matches with degradation labels", () => {
     const { store, db } = makeStore();
@@ -1923,6 +2063,96 @@ describe("observation-store: searchInProcessDegraded", () => {
     );
     expect(res.meta.in_process_degraded).toBe(true);
     expect(String((res.items[0] as { content?: string }).content || "")).toContain("degraded sentinel");
+  });
+
+  test("H156-004: degraded search returns metadata.source for allowlisted persisted source", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-degraded-source",
+      event_id: "evt-h156-degraded-source",
+      project: "proj-degraded-meta",
+      session_id: "sess-degraded-meta",
+      title: "degraded metadata sentinel",
+      content: "degraded metadata sentinel body",
+      metadata_json: JSON.stringify({ source: "hermes_memory_provider" }),
+      created_at: "2026-06-02T00:00:00.000Z",
+    });
+
+    const res = store.searchInProcessDegraded({
+      query: "degraded metadata sentinel",
+      project: "proj-degraded-meta",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-degraded-source") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toEqual({ source: "hermes_memory_provider" });
+  });
+
+  test("H156-004: degraded search returns metadata null without allowlisted source", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-degraded-null",
+      event_id: "evt-h156-degraded-null",
+      project: "proj-degraded-null",
+      session_id: "sess-degraded-null",
+      title: "degraded null metadata sentinel",
+      content: "degraded null metadata sentinel body",
+      metadata_json: "{}",
+      created_at: "2026-06-02T00:00:00.000Z",
+    });
+
+    const res = store.searchInProcessDegraded({
+      query: "degraded null metadata sentinel",
+      project: "proj-degraded-null",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-degraded-null") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toBeNull();
+  });
+
+  test("H156-004: degraded search does not leak secret or non-allowlisted metadata keys", () => {
+    const { store, db } = makeStore();
+    insertObservationWithEventMetadata(db, {
+      id: "obs-h156-degraded-secret",
+      event_id: "evt-h156-degraded-secret",
+      project: "proj-degraded-secret",
+      session_id: "sess-degraded-secret",
+      title: "degraded secret metadata sentinel",
+      content: "degraded secret metadata sentinel body",
+      metadata_json: JSON.stringify({
+        source: "hermes_memory_provider",
+        api_key: "sk-should-not-return",
+        token: "tok-should-not-return",
+        secret: "secret-should-not-return",
+        prompt: "prompt-should-not-return",
+        response: "response-should-not-return",
+        nested: { leak: true },
+      }),
+      created_at: "2026-06-02T00:00:00.000Z",
+    });
+
+    const res = store.searchInProcessDegraded({
+      query: "degraded secret metadata sentinel",
+      project: "proj-degraded-secret",
+      limit: 3,
+    });
+
+    expect(res.ok).toBe(true);
+    const item = res.items.find((entry) => entry.id === "obs-h156-degraded-secret") as
+      | Record<string, unknown>
+      | undefined;
+    expect(item).toBeDefined();
+    expect(item?.metadata).toEqual({ source: "hermes_memory_provider" });
+    expect(JSON.stringify(item?.metadata)).not.toMatch(/api_key|token|secret|prompt|response|nested|leak/i);
   });
 
   test("normalizes scope.project like the normal search path", () => {

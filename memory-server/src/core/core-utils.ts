@@ -119,6 +119,26 @@ export function parseArrayJson(value: unknown): string[] {
   }
 }
 
+/** H156-004: persist only allowlisted event metadata key `source` at record time. */
+export function persistableEventMetadataJson(metadata: unknown): string {
+  const parsed = parseJsonSafe(metadata);
+  const source = parsed.source;
+  if (typeof source === "string" && source.trim()) {
+    return JSON.stringify({ source: source.trim() });
+  }
+  return "{}";
+}
+
+/** H156-004: shape search response metadata; re-allowlist even if persistence already filtered. */
+export function shapeSearchEventMetadata(metadataJson: unknown): { source: string } | null {
+  const parsed = parseJsonSafe(metadataJson);
+  const source = parsed.source;
+  if (typeof source === "string" && source.trim()) {
+    return { source: source.trim() };
+  }
+  return null;
+}
+
 // ---------------------------------------------------------------------------
 // ApiResponse 生成
 // ---------------------------------------------------------------------------
@@ -1228,7 +1248,8 @@ export function loadObservations(
             o.updated_at,
             o.user_id,
             o.team_id,
-            e.event_type
+            e.event_type,
+            e.metadata_json AS event_metadata_json
           FROM mem_observations o
           LEFT JOIN mem_events e ON e.event_id = o.event_id
           WHERE o.id IN (${placeholders})

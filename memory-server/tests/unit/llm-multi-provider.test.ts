@@ -13,7 +13,12 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { llmExtractWithDiff, type ExtractFactInput, type ExistingFact } from "../../src/consolidation/extractor";
+import {
+  extractFacts,
+  llmExtractWithDiff,
+  type ExtractFactInput,
+  type ExistingFact,
+} from "../../src/consolidation/extractor";
 
 const MOCK_FACTS_RESPONSE = JSON.stringify({
   facts: [
@@ -46,6 +51,7 @@ const ENV_KEYS = [
   "HARNESS_MEM_GEMINI_API_KEY",
   "HARNESS_MEM_OLLAMA_HOST",
   "HARNESS_MEM_FACT_EXTRACTOR_MODE",
+  "HARNESS_MEM_ALLOW_EXTERNAL_LLM",
 ];
 
 let originalFetch: typeof globalThis.fetch;
@@ -70,21 +76,24 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
 });
 
-function mockFetch(responseBody: string, status = 200) {
+function mockFetch(responseBody: string, status = 200): { fetchCount: () => number } {
   const _originalFetch = globalThis.fetch;
+  let calls = 0;
   globalThis.fetch = async (url: string | URL | Request, opts?: RequestInit): Promise<Response> => {
     const urlStr = typeof url === "string" ? url : url instanceof URL ? url.toString() : url.url;
     // 並列統合テスト（OS 割当ポート ≥ 30000）はパススルー
     // ollama (11434) 等のモック対象サービスポートはインターセプト
-    if (urlStr.includes("127.0.0.1") || urlStr.includes("localhost")) {
+    if (urlStr.includes("127.0.0.1") || urlStr.includes("localhost") || urlStr.includes("[::1]")) {
       const portMatch = urlStr.match(/:(\d+)/);
       if (portMatch && Number(portMatch[1]) >= 30000) {
         return _originalFetch(url, opts);
       }
     }
+    calls += 1;
     const body = responseBody;
     return new Response(body, { status });
   };
+  return { fetchCount: () => calls };
 }
 
 describe("COMP-004: LLM マルチプロバイダー", () => {
@@ -92,6 +101,7 @@ describe("COMP-004: LLM マルチプロバイダー", () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
     process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test-key";
     process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
 
     mockFetch(
       JSON.stringify({
@@ -124,6 +134,7 @@ describe("COMP-004: LLM マルチプロバイダー", () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "anthropic";
     process.env.HARNESS_MEM_ANTHROPIC_API_KEY = "sk-ant-test-key";
     process.env.HARNESS_MEM_FACT_LLM_MODEL = "claude-haiku-4-5-20251001";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
 
     mockFetch(
       JSON.stringify({
@@ -140,6 +151,7 @@ describe("COMP-004: LLM マルチプロバイダー", () => {
     process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "gemini";
     process.env.HARNESS_MEM_GEMINI_API_KEY = "gemini-test-key";
     process.env.HARNESS_MEM_FACT_LLM_MODEL = "gemini-2.0-flash";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
 
     mockFetch(
       JSON.stringify({
@@ -204,5 +216,163 @@ describe("COMP-004: LLM マルチプロバイダー", () => {
     expect(result.new_facts).toEqual([]);
     expect(result.supersedes).toEqual([]);
     expect(result.deleted_fact_ids).toEqual([]);
+  });
+});
+
+describe("H156-001: LLM egress gate", () => {
+  test("default provider unset resolves to loopback ollama", async () => {
+    // HARNESS_MEM_FACT_LLM_PROVIDER unset → ollama default host
+    const tracker = mockFetch(
+      JSON.stringify({
+        message: { content: MOCK_FACTS_RESPONSE },
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(1);
+    expect(result.new_facts.length).toBeGreaterThan(0);
+  });
+
+  test("non-loopback ollama rejected with fetch 0 when allow flag absent", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "ollama";
+    process.env.HARNESS_MEM_OLLAMA_HOST = "https://ollama.example.com:11434";
+
+    let fetchCalled = false;
+    const _origFetch = globalThis.fetch;
+    globalThis.fetch = async (url: string | URL | Request, opts?: RequestInit): Promise<Response> => {
+      fetchCalled = true;
+      return new Response("", { status: 500 });
+    };
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(fetchCalled).toBe(false);
+    expect(result.new_facts).toEqual([]);
+    globalThis.fetch = _origFetch;
+  });
+
+  test("non-loopback ollama rejected with fetch 0 even when allow flag present", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "ollama";
+    process.env.HARNESS_MEM_OLLAMA_HOST = "https://ollama.example.com:11434";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+
+    let fetchCalled = false;
+    const _origFetch = globalThis.fetch;
+    globalThis.fetch = async (url: string | URL | Request, opts?: RequestInit): Promise<Response> => {
+      fetchCalled = true;
+      return new Response("", { status: 500 });
+    };
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(fetchCalled).toBe(false);
+    expect(result.new_facts).toEqual([]);
+    globalThis.fetch = _origFetch;
+  });
+
+  test("cloud provider with credential but no allow flag makes fetch 0", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test-key";
+    process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        choices: [{ message: { content: MOCK_FACTS_RESPONSE } }],
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(0);
+    expect(result.new_facts).toEqual([]);
+    expect(result.supersedes).toEqual([]);
+    expect(result.deleted_fact_ids).toEqual([]);
+  });
+
+  test("cloud provider with credential and allow=1 may call mocked path", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test-key";
+    process.env.HARNESS_MEM_FACT_LLM_MODEL = "gpt-4o-mini";
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        choices: [{ message: { content: MOCK_FACTS_RESPONSE } }],
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(1);
+    expect(result.new_facts.length).toBeGreaterThan(0);
+  });
+
+  test("loopback ollama allowed without external gate", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "ollama";
+    process.env.HARNESS_MEM_OLLAMA_HOST = "http://127.0.0.1:11434";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        message: { content: MOCK_FACTS_RESPONSE },
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(1);
+    expect(result.new_facts.length).toBeGreaterThan(0);
+  });
+
+  test("extractFacts blocked cloud path falls back to heuristic without fetch", async () => {
+    process.env.HARNESS_MEM_FACT_EXTRACTOR_MODE = "llm";
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test-key";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        choices: [{ message: { content: MOCK_FACTS_RESPONSE } }],
+      })
+    );
+
+    const facts = await extractFacts(SAMPLE_INPUT);
+    expect(tracker.fetchCount()).toBe(0);
+    expect(facts.length).toBeGreaterThan(0);
+    expect(facts[0].fact_type).toBe("decision");
+  });
+
+  test("llmExtractWithDiff blocked cloud path returns empty diff without fetch", async () => {
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "anthropic";
+    process.env.HARNESS_MEM_ANTHROPIC_API_KEY = "sk-ant-test";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        content: [{ type: "text", text: MOCK_FACTS_RESPONSE }],
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(0);
+    expect(result.new_facts).toEqual([]);
+    expect(result.supersedes).toEqual([]);
+    expect(result.deleted_fact_ids).toEqual([]);
+  });
+
+  test("ambient HARNESS_MEM_ALLOW_EXTERNAL_LLM is isolated by ENV_KEYS cleanup", async () => {
+    process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM = "1";
+    // beforeEach deletes ENV_KEYS; simulate fresh test isolation
+    for (const key of ENV_KEYS) {
+      if (key !== "HARNESS_MEM_ALLOW_EXTERNAL_LLM") {
+        delete process.env[key];
+      }
+    }
+    delete process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM;
+
+    process.env.HARNESS_MEM_FACT_LLM_PROVIDER = "openai";
+    process.env.HARNESS_MEM_OPENAI_API_KEY = "sk-test-key";
+
+    const tracker = mockFetch(
+      JSON.stringify({
+        choices: [{ message: { content: MOCK_FACTS_RESPONSE } }],
+      })
+    );
+
+    const result = await llmExtractWithDiff(SAMPLE_INPUT, NO_EXISTING);
+    expect(tracker.fetchCount()).toBe(0);
+    expect(result.new_facts).toEqual([]);
   });
 });

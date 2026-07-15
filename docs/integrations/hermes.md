@@ -6,29 +6,40 @@ Quickstart は [`integrations/hermes/README.md`](../../integrations/hermes/READM
 
 ## Positioning — この統合の役割
 
-本統合は **Hermesの記憶層を置き換えるものではない**。Hermes は built-in でファイルベースの記憶 (`~/.hermes/MEMORY.md`, `USER.md`, `skills/`) と FTS5 SQLite session search を持っており、これらは公式docs上 **外部に差し替えるAPIが存在しない**。
+本統合は **Hermes の記憶層を置き換えるものではない**。Hermes は built-in でファイルベースの記憶 (`~/.hermes/MEMORY.md`, `USER.md`, `skills/`) と FTS5 SQLite session search を持っており、これらは **Layer 2 を有効化しても継続** する。
+
+harness-mem との接続は **2 レイヤー** で、いずれも **追加経路**:
+
+| レイヤー | 接続 | 動作 |
+|---|---|---|
+| **Layer 1 — MCP** | `mcp_servers.harness_mem`（stdio / HTTP） | モデルが `harness_mem_search` / `harness_mem_record_checkpoint` 等を **明示 tool call** |
+| **Layer 2 — MemoryProvider** | `memory.provider=harness_mem` + `~/.hermes/plugins/harness_mem` | `sync_turn()` / `prefetch()` / `on_session_end()` + provider ツール 3 種 |
+
+Layer 2 は Hermes 公式の [MemoryProvider plugin API](https://hermes-agent.nousresearch.com/docs/developer-guide/memory-provider-plugin) を使う。実装は `integrations/hermes/provider/`。Layer 1 MCP 設定は Layer 2 と **独立** — 併用可能。
 
 代わりに本統合が提供するのは:
 
-1. **読み取り**: Claude Code / Codex / Cursor が harness-mem に蓄積した記憶を、Hermes が `harness_mem_search` などで参照できる
-2. **書き込み**: Hermes 側で明示的に `harness_mem_record_checkpoint` を呼ぶことで、他ツールから見える記録を残せる
-3. **共有**: 同一 `HARNESS_MEM_PROJECT_KEY` を持つ複数ツール間で観測データを共有できる
+1. **読み取り (Layer 1 / 2)**: Claude Code / Codex / Cursor が harness-mem に蓄積した記憶を、Hermes が `harness_mem_search` または Layer 2 `prefetch()` で参照できる
+2. **書き込み (Layer 1 / 2)**: 明示 `harness_mem_record_checkpoint` / provider `harness_mem_record`、または Layer 2 `sync_turn()` による turn 記録
+3. **共有**: 同一 `HARNESS_MEM_PROJECT_KEY` を持つ複数ツール間で観測データを共有できる（同一 daemon / DB）
 
-つまり、harness-mem は Hermes にとって「**追加の MCP ツールセット**」であり、built-in memory の代替ではない。Hermes 自身が `MEMORY.md` を更新しても、それは harness-mem には自動同期されない。
+Hermes 自身が `MEMORY.md` を更新しても、それは harness-mem には自動同期されない（Layer 2 の `on_memory_write` mirror は opt-in 的で、built-in 全文同期ではない）。
 
 ### memory layer 役割分担
 
-| Hermes built-in | harness-mem |
-|---|---|
-| Hermes 自身のキャラクター・学習 (USER.md / skills) | 横断ツールの作業記憶 (observations / events) |
-| プロンプト先頭注入で常時利用 | tool call で明示的に query |
-| LLM が直接編集 | `record_*` で構造化記録 |
+| Hermes built-in | harness-mem Layer 1 (MCP) | harness-mem Layer 2 (MemoryProvider) |
+|---|---|---|
+| Hermes 自身のキャラクター・学習 (USER.md / skills) | 横断ツールの作業記憶 (observations / events) | 同上 + turn 自動同期・prefetch |
+| プロンプト先頭注入で常時利用 | tool call で明示的に query | `prefetch()` で turn 前注入 + provider ツール |
+| LLM が直接編集 | `record_*` で構造化記録 | `sync_turn()` + `harness_mem_record` |
 
 ### tier 指定
 
 Plans.md §69-92 では Hermes 統合は **tier 3 (experimental)**。tier 1 (Claude Code + Codex) と異なり、自動 hook 連携や first-turn continuity の保証はない。手動運用前提。
 
 ## アーキテクチャ概要
+
+### Layer 1 — MCP
 
 ```
 ┌─────────────┐  stdio MCP   ┌──────────────────────┐  HTTP   ┌──────────────┐
@@ -40,6 +51,40 @@ Plans.md §69-92 では Hermes 統合は **tier 3 (experimental)**。tier 1 (Cla
                                                                      ▼
                                               ~/.harness-mem/harness-mem.db
 ```
+
+### Layer 2 — MemoryProvider
+
+```
+┌─────────────┐  HTTP (urllib)  ┌──────────────┐
+│ Hermes      │ ──────────────▶ │ harness-memd │ ──▶ ~/.harness-mem/harness-mem.db
+│ MemoryProvider               │  :37888      │
+│ (harness_mem)│                └──────────────┘
+│  sync_turn() │ POST /v1/events/record
+│  prefetch()  │ POST /v1/search (safe_mode)
+│  tools       │ harness_mem_search / record / status
+└─────────────┘
+  plugin path: ~/.hermes/plugins/harness_mem
+  config: memory.provider=harness_mem
+```
+
+Layer 1 / Layer 2 は **同じ daemon と DB** を共有する。Layer 2 provider は LLM extraction を **行わない**（thin bridge — consolidation は memory-server 側）。
+
+### 事実抽出 LLM ポリシー（consolidation / H156-001）
+
+Hermes MemoryProvider は **thin bridge** であり、LLM による事実抽出は **行いません**。consolidation daemon（`memory-server/src/consolidation/`）が事実抽出ポリシーを所有します。
+
+| 項目 | 現行契約 |
+|---|---|
+| 既定モード | `heuristic`（ルールベース）。LLM 抽出は `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` の明示が必要 |
+| LLM モード provider 既定 | 未設定時 `ollama`（loopback のみ） |
+| 外部クラウド (`openai` / `anthropic` / `gemini`) | `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`（trim 後が正確に `1`）と各 credential の**両方**が必要 |
+| 非 loopback Ollama | `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても拒否 |
+| 適用経路 | 通常抽出と差分抽出の両方。ブロック時は空結果のうえ heuristic にフォールバック |
+| 監査 | provider / model / byte 数等のメタデータのみ。prompt・response 本文・secret は記録しない |
+
+環境変数の詳細は [`docs/environment-variables.md`](../environment-variables.md) の LLM セクションを参照。
+
+**検証状況:** 上記は H156-001 実装後の **現行契約** を文書化したものです。live cloud E2E は実施していません。H156-007 の loopback Ollama live smoke は、isolated daemon + temporary DB で実行済みです（fact extraction/search 成功、external LLM egress 0件）。
 
 - **Hermes 側**: 標準 MCP クライアント。`~/.hermes/config.yaml` の `mcp_servers` で stdio サーバーを宣言。
 - **harness-mem stdio MCP frontend**: 設定済みの `harness_mem_*` ツールを公開。Hermes からは stdio server として見えるが、実体はクライアント session ごとに起動する frontend process。Go binary を優先し、必要なら Node.js MCP server に fallback する。
@@ -84,6 +129,137 @@ which harness-mem || ls -la ~/.harness-mem/runtime/harness-mem
 ```
 
 開発時など runtime 配置をしていない環境では `bunx` 経由で起動する on-demand spawn 方式（`integrations/hermes/examples/hermes-config-full.yaml` 参照）を選ぶ。
+
+## Layer 2 MemoryProvider 運用
+
+Quickstart は [`integrations/hermes/README.md`](../../integrations/hermes/README.md) の「Layer 2 (MemoryProvider)」を参照。本節は setup・discovery・live smoke・rollback・トラブルシューティングを詳述する。
+
+S112-008 実機 E2E で Layer 2 は **turn 記録・search・prefetch・別 session recall** まで成功済み。以下はその再現手順。live session ID / observation ID / 過去 marker 値は docs に固定しない。
+
+### 前提
+
+- harness-mem daemon ready: `~/.harness-mem/runtime/harness-mem doctor`
+- Hermes Agent install 済み（MemoryProvider API 対応版）
+- operator 承認のうえ config を変更する（自動化 script は本タスク scope 外）
+
+### config バックアップ（有効化前必須）
+
+`hermes config set` はローカル `~/.hermes/config.yaml` を **mutate** する。必ず事前バックアップ:
+
+```bash
+cp ~/.hermes/config.yaml \
+  ~/.hermes/config.yaml.bak.harness_mem_provider.$(date +%Y%m%d%H%M%S)
+```
+
+パターン: `~/.hermes/config.yaml.bak.harness_mem_provider.<YYYYMMDDHHMMSS>`
+
+**警告:** 過去 E2E で生成された特定タイムスタンプ付きファイル名を universal path としてコピーしない。各自の環境で新しいバックアップを取る。
+
+### provider 配置と有効化
+
+リポジトリ root から:
+
+```bash
+mkdir -p "$HOME/.hermes/plugins/harness_mem"
+rsync -a --delete integrations/hermes/provider/harness_mem/ "$HOME/.hermes/plugins/harness_mem/"
+hermes config set memory.provider harness_mem
+```
+
+docs に API key / token 等の **秘密情報は含めない**。必要な env（`HARNESS_MEM_PROJECT_KEY` 等）は Hermes 実行環境で Layer 1 と同様に設定する。
+
+Layer 2 provider が参照する主な env:
+
+| 変数 | 既定値 | 説明 |
+|---|---|---|
+| `HARNESS_MEM_URL` | `http://127.0.0.1:37888` | daemon ベース URL |
+| `HARNESS_MEM_TOKEN` | (空) | 任意。設定時は `X-harness-mem-token` ヘッダ |
+| `HARNESS_MEM_PROJECT_KEY` | `default` | メモリ空間キー。他ツールと揃える |
+| `HARNESS_MEM_HERMES_CONSOLIDATE_ON_END` | `0` | `1` のときのみ `on_session_end` で consolidation |
+
+完全な env 一覧は [`docs/environment-variables.md`](../environment-variables.md)（Layer 2 専用 flag の canonical 更新は別タスク）。
+
+### discovery / load 検証
+
+S112-008 実機 E2E で確認済みの期待値:
+
+| 確認項目 | 期待結果 |
+|---|---|
+| plugin 配置 | `~/.hermes/plugins/harness_mem` に `__init__.py` / `plugin.yaml` |
+| config | `memory.provider=harness_mem` |
+| `discover_memory_providers()` | `harness_mem` が **available** |
+| `load_memory_provider("harness_mem")` | `HarnessMemMemoryProvider` インスタンス |
+| provider ツール | `harness_mem_search`, `harness_mem_record`, `harness_mem_status` |
+
+repo checkpoint には `discover_memory_providers()` を呼ぶ固定 CLI コマンドは記録されていない。Hermes の MemoryProvider discovery 手順（Python REPL / Hermes 内部 API）で上表を確認する。
+
+provider 契約の offline 回帰:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 python3 -m pytest \
+  integrations/hermes/provider/tests/test_provider.py -v --tb=short
+```
+
+### live smoke / search / prefetch チェックリスト
+
+以前の live E2E で以下の流れが成功している。各 run では **新しい非 secret marker** を使う（過去の marker / session / observation ID を再利用しない）。
+
+1. **daemon ready** — `~/.harness-mem/runtime/harness-mem doctor` が healthy
+2. **Hermes session 開始** — MemoryProvider が load された状態
+3. **marker 記録** — 一意の非 secret 文字列を turn 同期または `harness_mem_record` で記録
+4. **search** — 同 session で `harness_mem_search` が marker を hit
+5. **prefetch** — 次 turn の prefetch ブロックに `## harness-mem Context` が含まれ、関連 item が載る
+6. **別 session recall** — 新 session を開き、prefetch または search 経由で marker を recall
+
+checkpoint で使われた live smoke パターン（marker は run ごとに生成）:
+
+```bash
+MARKER="hm_provider_live_smoke_$(date +%Y%m%d_%H%M%S)_your_unique_token"
+hermes chat -q "Hermes provider live smoke. Please reply exactly: ACK $MARKER" \
+  -Q --max-turns 3 --source cli
+```
+
+続けて daemon 側 search で marker が見えることを確認する（例: `harness-mem search` CLI または provider `harness_mem_search`）。prefetch は次 turn 開始時に `## harness-mem Context` 見出し付きブロックとして注入される。
+
+### rollback
+
+MemoryProvider を無効化する手順:
+
+**A. 有効化前バックアップから restore（推奨）**
+
+有効化直前に取った config バックアップを restore する:
+
+```bash
+cp ~/.hermes/config.yaml.bak.harness_mem_provider.<YYYYMMDDHHMMSS> ~/.hermes/config.yaml
+```
+
+`<YYYYMMDDHHMMSS>` は **各自が有効化前に取った** バックアップのタイムスタンプに置き換える。特定の過去タイムスタンプを universal path としてコピーしない。
+
+**B. 以前の provider 名を明示設定（代替）**
+
+有効化前の `memory.provider` 値を operator が記録済み、または正確に把握している場合のみ:
+
+```bash
+hermes config set memory.provider <previous_provider>
+```
+
+`<previous_provider>` は有効化前の実際の値に置き換える。repo や docs から推測しない。
+
+**C. rollback 後の確認**
+
+Hermes 再起動後、以下を確認する:
+
+- `~/.hermes/config.yaml` の `memory.provider` がバックアップまたは記録した有効化前の値と一致している
+- `discover_memory_providers()` / active provider が期待どおり
+
+**D. （任意）plugin ディレクトリ削除**
+
+deactivate 完了後、不要なら:
+
+```bash
+rm -rf ~/.hermes/plugins/harness_mem
+```
+
+harness-mem DB 内の observation は削除されない。Layer 1 MCP 設定は rollback の影響を受けない。
 
 ## 環境変数
 
@@ -229,6 +405,25 @@ tools:
 これらは Hermes プラグインから手動で呼ぶより、CLI (`harness-mem ...`) から実行する方が安全。
 
 ## トラブルシューティング
+
+### 0. Layer 2 — `RuntimeError: Event loop is closed`
+
+症状: Hermes 終了時または MCP cleanup 時に stderr に:
+
+```text
+RuntimeError: Event loop is closed
+```
+
+S112-008 live E2E では、**record / search / prefetch が成功し memory write も確認できた場合**、この警告は Hermes MCP cleanup の **非ブロッキングノイズ** として観測された。
+
+**対処の切り分け:**
+
+| 状況 | 扱い |
+|---|---|
+| `harness_mem_search` / prefetch が成功し、daemon に observation がある | 多くは無視してよい cleanup ノイズ |
+| search 空、prefetch 空、daemon に write が無い | **相関 failure** として調査（daemon 到達性、`memory.provider`、plugin 配置、env） |
+
+write 欠落と同時に出る場合は「無害な警告」と決め打ちしない。
 
 ### 1. Hermes 起動時に MCP サーバーが見つからない
 
@@ -401,7 +596,9 @@ pytest
 
 ## 既知の制約
 
-- **Hermes built-in memory との並行運用**: Hermes は組み込みメモリ層 (procedural memory) を持つ。本統合では harness-mem を **追加の MCP ツール** として並行運用する形になる。built-in memory を harness-mem で置換する Python adapter は今回スコープ外（将来検討、`integrations/hermes/README.md` "Out of Scope" 参照）。
+- **Hermes built-in memory との並行運用**: Hermes は組み込みメモリ層 (procedural memory) を持つ。Layer 1 MCP と Layer 2 MemoryProvider は **追加経路** であり、built-in の `MEMORY.md` / `USER.md` / `skills/` を置き換えない。Layer 2 実装は `integrations/hermes/provider/`。
+- **Layer 1 と Layer 2 の独立性**: `memory.provider=harness_mem` は Layer 1 の `mcp_servers.harness_mem` を自動無効化しない。必要に応じて併用する。
+- **lifecycle hook bridge との区別**: `integrations/hermes/plugin/`（`harness-mem-hermes-bridge`）は session 境界 hook bridge。Layer 2 MemoryProvider（`integrations/hermes/provider/`）とは別レイヤー。
 - **Backfill は過去データの取り込み**: `harness-mem ingest-hermes-state` は `~/.hermes/state.db` に既にある履歴を取り込む one-shot 処理。Hermes の per-message hook を追加するものではない。
 - **Hermes の HTTP MCP transport は opt-in**: local Streamable HTTP MCP gateway (`harness-mem mcp-gateway start`, `127.0.0.1:37889/mcp`) と Hermes 用 `url:` config 生成 (`harness-mem mcp-config --transport http --client hermes --write`) は使える。ただし Hermes は Claude/Codex の HTTP default 対象ではなく、既定案内は stdio fallback を維持する。
 - **on-demand spawn と複数クライアント**: 方式 B（`bunx` で Hermes 起動時に spawn）を選ぶと、Hermes セッション間でも独立 daemon になる場合がある。複数ツールでメモリ共有する用途では方式 A（別プロセス常駐）を推奨。

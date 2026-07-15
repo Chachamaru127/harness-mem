@@ -1,0 +1,5 @@
+name: harness_mem
+version: 0.1.0
+description: "harness-mem — local-first cross-tool coding memory (Claude Code / Codex / Cursor / Hermes)."
+external_dependencies: []
+hooks: []

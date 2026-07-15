@@ -55,6 +55,7 @@ export const POSTGRES_INIT_SQL = `
     correlation_id TEXT,
     user_id TEXT NOT NULL DEFAULT 'default',
     team_id TEXT DEFAULT NULL,
+    metadata_json JSONB NOT NULL DEFAULT '{}',
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
   );
 
@@ -453,6 +454,15 @@ export const POSTGRES_MIGRATE_SQL = `
 
   CREATE INDEX IF NOT EXISTS idx_pg_obs_branch
     ON mem_observations(branch) WHERE branch IS NOT NULL;
+
+  DO $$ BEGIN
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_name = 'mem_events' AND column_name = 'metadata_json'
+    ) THEN
+      ALTER TABLE mem_events ADD COLUMN metadata_json JSONB NOT NULL DEFAULT '{}';
+    END IF;
+  END $$;
 
   CREATE TABLE IF NOT EXISTS mem_work_items (
     work_id TEXT PRIMARY KEY,

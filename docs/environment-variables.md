@@ -2,7 +2,7 @@
 
 harness-mem で使用する全環境変数の一覧です。
 
-最終更新: 2026-07-05
+最終更新: 2026-07-12
 
 ---
 
@@ -65,17 +65,20 @@ SQLite データベースの設定です。
 
 コンソリデーション（記憶の統合・事実抽出）に使用する言語モデルの設定です。
 
+**事実抽出の現行ポリシー (H156-001 以降):** ランタイムの事実抽出は既定で `heuristic`（ルールベース）です。LLM 抽出は `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` を明示した場合のみ有効になります。LLM モードでは未設定の `HARNESS_MEM_FACT_LLM_PROVIDER` は `ollama` に解決されます。事実抽出向け Ollama (`HARNESS_MEM_OLLAMA_HOST`) は loopback のみ（`localhost` / `127.0.0.1` / `::1`、HTTP/HTTPS）。非 loopback は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても拒否されます。外部プロバイダー (`openai` / `anthropic` / `gemini`) は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1`（trim 後が正確に `1` のときのみ）と各プロバイダーの credential の**両方**が必要です。ゲートは通常抽出 (`extractFacts` / `llmExtract`) と差分抽出 (`llmExtractWithDiff`) の両方に適用され、ブロックまたは利用不可時は空結果のうえ heuristic に安全にフォールバックします。監査・ログはメタデータのみ（provider / model / byte 数 / observation 数 / blocked reason）。prompt・response 本文・API key・token・secret 内容は記録しません。H156-001 以前は LLM モードの provider 既定が `openai` で、外部 LLM 許可ゲートは存在しませんでした。
+
 | 変数名 | デフォルト値 | 必須 | 説明 | 使用箇所 |
 |--------|-------------|------|------|----------|
 | `HARNESS_MEM_LLM_PROVIDER` | 自動検出 | No | 使用するLLMプロバイダー。`openai` / `anthropic` / `ollama` から選択。未設定の場合は API キーの有無で自動決定 | `llm/registry.ts` |
-| `HARNESS_MEM_FACT_LLM_PROVIDER` | `openai` | No | 事実抽出に使用するプロバイダー。`openai` / `anthropic` / `gemini` / `ollama` から選択 | `consolidation/extractor.ts` |
+| `HARNESS_MEM_FACT_LLM_PROVIDER` | `ollama` | No | 事実抽出に使用するプロバイダー（`HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` のときのみ有効）。`openai` / `anthropic` / `gemini` / `ollama` から選択。未設定時は `ollama` | `consolidation/extractor.ts` |
 | `HARNESS_MEM_FACT_LLM_MODEL` | プロバイダー依存 | No | 事実抽出に使用するモデル名。デフォルト: openai=`gpt-4o-mini`, anthropic=`claude-haiku-4-5-20251001`, gemini=`gemini-2.0-flash`, ollama=`llama3.2` | `consolidation/extractor.ts`, `llm/ollama-provider.ts` |
 | `HARNESS_MEM_FACT_EXTRACTOR_MODE` | `heuristic` | No | 事実抽出モード。`heuristic`（ルールベース）または `llm`（LLM使用） | `consolidation/worker.ts`, `consolidation/extractor.ts` |
+| `HARNESS_MEM_ALLOW_EXTERNAL_LLM` | 未設定（空） | No | 外部クラウド LLM への事実抽出 egress を opt-in するゲート。trim 後が正確に `1` のときのみ `openai` / `anthropic` / `gemini` が許可される（各 provider の credential も必須）。`true` やその他の値は opt-in にならない。remote Ollama を許可しない | `consolidation/extractor.ts` |
 | `HARNESS_MEM_OPENAI_API_KEY` | `""` | No* | OpenAI API キー（`OPENAI_API_KEY` より優先される）。LLM または embedding に openai を使う場合は必須 | `llm/registry.ts`, `llm/openai-provider.ts`, `core/core-utils.ts`, `consolidation/extractor.ts` |
 | `OPENAI_API_KEY` | `""` | No* | OpenAI API キー（`HARNESS_MEM_OPENAI_API_KEY` のフォールバック） | `llm/registry.ts`, `llm/openai-provider.ts`, `ingest/audio-ingester.ts` |
 | `HARNESS_MEM_ANTHROPIC_API_KEY` | `""` | No* | Anthropic API キー。`HARNESS_MEM_FACT_LLM_PROVIDER=anthropic` の場合に必須 | `consolidation/extractor.ts` |
 | `HARNESS_MEM_GEMINI_API_KEY` | `""` | No* | Google Gemini API キー。`HARNESS_MEM_FACT_LLM_PROVIDER=gemini` の場合に必須 | `consolidation/extractor.ts` |
-| `HARNESS_MEM_OLLAMA_HOST` | `http://127.0.0.1:11434` | No | Ollama サーバーエンドポイント（LLM用） | `consolidation/extractor.ts`, `llm/ollama-provider.ts` |
+| `HARNESS_MEM_OLLAMA_HOST` | `http://127.0.0.1:11434` | No | 事実抽出 LLM 用 Ollama エンドポイント（`HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` かつ provider=`ollama` のとき）。HTTP/HTTPS の loopback のみ許可（`localhost` / `127.0.0.1` / `::1`）。非 loopback は `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` があっても hard reject され、memory 内容は送信されない | `consolidation/extractor.ts`, `llm/ollama-provider.ts` |
 | `HARNESS_MEM_CONSOLIDATION_ENABLED` | `true` | No | コンソリデーション（記憶の定期統合）を有効にするか | `core/core-utils.ts` |
 | `HARNESS_MEM_CONSOLIDATION_INTERVAL_MS` | `60000` | No | コンソリデーションの実行間隔（ミリ秒）。範囲: 5000〜600000 | `core/core-utils.ts` |
 
@@ -280,6 +283,7 @@ SQLite データベースの設定です。
 | `GITHUB_TOKEN` | Sync |
 | `HARNESS_CLIENT` | Session |
 | `HARNESS_MEM_ADMIN_TOKEN` | Security |
+| `HARNESS_MEM_ALLOW_EXTERNAL_LLM` | LLM |
 | `HARNESS_MEM_ANTHROPIC_API_KEY` | LLM |
 | `HARNESS_MEM_ANTIGRAVITY_BACKFILL_HOURS` | Ingestion |
 | `HARNESS_MEM_ANTIGRAVITY_INGEST_INTERVAL_MS` | Ingestion |

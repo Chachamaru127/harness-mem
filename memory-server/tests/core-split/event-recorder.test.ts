@@ -413,6 +413,74 @@ describe("event-recorder: recordEvent", () => {
     expect(res.error).toContain("requires async prime");
   });
 
+  test("H156-004: allowlisted source のみ metadata_json に永続化する", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "evt-h156-source-001",
+        metadata: {
+          source: "hermes_memory_provider",
+          api_key: "sk-secret-should-drop",
+          token: "tok-secret-should-drop",
+          secret: "secret-should-drop",
+          prompt: "prompt-should-drop",
+          response: "response-should-drop",
+          nested: { leak: "must-not-persist" },
+        },
+      }),
+    );
+    expect(res.ok).toBe(true);
+
+    const row = db
+      .query<{ metadata_json: string }, [string]>(
+        `SELECT metadata_json FROM mem_events WHERE event_id = ?`,
+      )
+      .get("evt-h156-source-001");
+    expect(row?.metadata_json).toBe(JSON.stringify({ source: "hermes_memory_provider" }));
+  });
+
+  test("H156-004: source が無い metadata は metadata_json='{}' として永続化する", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "evt-h156-no-source-001",
+        metadata: { api_key: "sk-drop", prompt: "drop-me" },
+      }),
+    );
+    expect(res.ok).toBe(true);
+
+    const row = db
+      .query<{ metadata_json: string }, [string]>(
+        `SELECT metadata_json FROM mem_events WHERE event_id = ?`,
+      )
+      .get("evt-h156-no-source-001");
+    expect(row?.metadata_json).toBe("{}");
+  });
+
+  test("H156-004: 空文字 source は metadata_json='{}' として永続化する", () => {
+    const recorder = makeRecorder();
+    const db = (recorder as unknown as { deps: EventRecorderDeps }).deps.db;
+
+    const res = recorder.recordEvent(
+      makeEvent({
+        event_id: "evt-h156-empty-source-001",
+        metadata: { source: "   " },
+      }),
+    );
+    expect(res.ok).toBe(true);
+
+    const row = db
+      .query<{ metadata_json: string }, [string]>(
+        `SELECT metadata_json FROM mem_events WHERE event_id = ?`,
+      )
+      .get("evt-h156-empty-source-001");
+    expect(row?.metadata_json).toBe("{}");
+  });
+
   test("checkpoint でも permanent な write embedding failure はエラーにする", () => {
     const recorder = makeRecorder(
       { vectorDimension: 4 },

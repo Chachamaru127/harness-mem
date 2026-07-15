@@ -80,6 +80,7 @@ import {
   parseArrayJson,
   generateSearchReason,
   recencyScore,
+  shapeSearchEventMetadata,
   visibilityFilterSql,
   archivedFilterSql,
   type RankingWeights,
@@ -4710,6 +4711,7 @@ export class ObservationStore {
         temporal_anchor_kind: temporalContract.anchor_kind,
         tags,
         privacy_tags: privacyTags,
+        metadata: shapeSearchEventMetadata(observation.event_metadata_json),
         decay_tier: decayTier,
         access_count: Number(observation.access_count ?? 0),
         reason: generateSearchReason(entry),
@@ -5111,6 +5113,7 @@ export class ObservationStore {
           created_at: observation.created_at,
           tags: parseArrayJson(observation.tags_json),
           privacy_tags: privacyTags,
+          metadata: shapeSearchEventMetadata(observation.event_metadata_json),
           rank: index + 1,
           scores: {
             lexical: Number(score.toFixed(6)),

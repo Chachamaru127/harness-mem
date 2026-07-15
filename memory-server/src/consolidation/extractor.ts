@@ -51,6 +51,23 @@ export function isExternalLlmProvider(provider: string): boolean {
   return provider === "openai" || provider === "anthropic" || provider === "gemini";
 }
 
+function externalLlmAllowed(): boolean {
+  return (process.env.HARNESS_MEM_ALLOW_EXTERNAL_LLM || "").trim() === "1";
+}
+
+function isLoopbackHost(rawHost: string): boolean {
+  try {
+    const url = new URL(rawHost);
+    const hostname = url.hostname.toLowerCase();
+    return (
+      (url.protocol === "http:" || url.protocol === "https:") &&
+      (hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1" || hostname === "[::1]")
+    );
+  } catch {
+    return false;
+  }
+}
+
 function makeEgress(
   provider: string,
   model: string,
@@ -303,6 +320,9 @@ async function callOllama(
     process.stderr.write(`[harness-mem][warn] HARNESS_MEM_OLLAMA_HOST must use http or https scheme, got: ${host}\n`);
     return null;
   }
+  if (!isLoopbackHost(host)) {
+    return null;
+  }
   const body = JSON.stringify({
     model,
     stream: false,
@@ -426,7 +446,11 @@ async function callGemini(
 }
 
 async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
-  const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "openai").trim().toLowerCase();
+  const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "ollama").trim().toLowerCase();
+
+  if (isExternalLlmProvider(provider) && !externalLlmAllowed()) {
+    return [];
+  }
 
   const systemPrompt = "Return JSON object only.";
   const prompt = [
@@ -481,14 +505,18 @@ async function llmExtract(input: ExtractFactInput): Promise<FactCandidate[]> {
 
 /**
  * LLM モードで既存ファクトとの差分を含むファクト抽出を行う。
- * プロバイダは HARNESS_MEM_FACT_LLM_PROVIDER 環境変数で切り替える（openai | ollama、デフォルト: openai）。
+ * プロバイダは HARNESS_MEM_FACT_LLM_PROVIDER 環境変数で切り替える（openai | ollama | anthropic | gemini、デフォルト: ollama）。
  * 接続失敗時は graceful に空配列を返す。
  */
 export async function llmExtractWithDiff(
   input: ExtractFactInput,
   existingFacts: ExistingFact[]
 ): Promise<FactDiffResult> {
-  const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "openai").trim().toLowerCase();
+  const provider = (process.env.HARNESS_MEM_FACT_LLM_PROVIDER || "ollama").trim().toLowerCase();
+
+  if (isExternalLlmProvider(provider) && !externalLlmAllowed()) {
+    return { new_facts: [], supersedes: [], deleted_fact_ids: [] };
+  }
 
   const existingFactsJson =
     existingFacts.length > 0

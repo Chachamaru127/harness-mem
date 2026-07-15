@@ -32,6 +32,7 @@ import {
   normalizeVectorDimension,
   nowIso,
   parseJsonSafe,
+  persistableEventMetadataJson,
   segmentJapaneseForFts,
   tokenize,
 } from "./core-utils.js";
@@ -1231,6 +1232,7 @@ export class EventRecorder {
 
     const dedupeHash = (event.dedupe_hash || buildDedupeHash(event)).trim();
     const eventId = (event.event_id || generateEventId()).trim();
+    const persistedMetadataJson = persistableEventMetadataJson(event.metadata);
 
     const observationBase = this.buildObservationFromEvent(event, redactedPayload);
     // S78-E01: Strip <private>...</private> blocks before embedding and storage.
@@ -1288,8 +1290,8 @@ export class EventRecorder {
             INSERT OR IGNORE INTO mem_events(
               event_id, platform, project, session_id, event_type, ts,
               payload_json, tags_json, privacy_tags_json, dedupe_hash, observation_id, correlation_id,
-              user_id, team_id, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              user_id, team_id, metadata_json, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `)
           .run(
             eventId,
@@ -1306,6 +1308,7 @@ export class EventRecorder {
             event.correlation_id ?? null,
             userId,
             teamId,
+            persistedMetadataJson,
             current
           );
 
