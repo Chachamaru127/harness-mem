@@ -60,8 +60,12 @@ const ROOT_DIR = resolve(import.meta.dir, "..");
 const DEFAULT_ARTIFACT_DIR = join(ROOT_DIR, "docs/benchmarks/artifacts/s125-workgraph-enforce-readiness-2026-05-27");
 // Real Plans.md contains historical warning-only rows; keep the release gate
 // strict on writes and required task ids while allowing current import fidelity.
+// Required anchors must be rows that live in the CURRENT Plans.md — completed
+// sections get archived (docs/archive/) by maintenance, so archived task ids
+// cannot serve as anchors (S108-017 was archived by 4bbe587 on 2026-06-11 and
+// silently broke this gate for every release after v0.27.4).
 const FIDELITY_FLOOR = 0.97;
-const REQUIRED_TASK_IDS = ["S125-016", "S108-017"];
+const REQUIRED_TASK_IDS = ["S125-016"];
 
 function normalizeRuns(value: number | undefined): number {
   if (value === undefined) return 3;

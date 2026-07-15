@@ -80,7 +80,10 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("npm run benchmark:developer-domain");
     expect(workflow).toContain("go-native-smoke:");
     expect(workflow).toContain("name: Go MCP native smoke (${{ matrix.label }})");
-    expect(workflow).toContain("needs: [publish-npm, go-build, go-native-smoke]");
+    // 2026-06-23 設計変更: github-release は binary 配布の責務のみ (go-build のみ依存)。
+    // test gate (publish-npm) の失敗で release page 生成を塞がない。
+    expect(workflow).toContain("needs: [go-build]");
+    expect(workflow).not.toContain("needs: [publish-npm, go-build, go-native-smoke]");
     expect(workflow).not.toContain("name: Run memory server quality gates");
     expect(workflow).not.toContain("cd memory-server\n          bun run test");
   });

@@ -1,40 +1,12 @@
 {
   "entries": [
     {
-      "timestamp": "2026-04-10T08:10:51.560Z",
-      "f1": 0.591674128340795,
-      "freshness": 1,
-      "temporal": 0.6458333333333334,
-      "bilingual": 0.88,
-      "cat1": 0.5897595158464723,
-      "embedding": {
-        "mode": "onnx",
-        "provider": "local",
-        "model": "multilingual-e5",
-        "vectorDimension": 384
-      }
-    },
-    {
-      "timestamp": "2026-04-18T00:00:00.000Z",
-      "note": "§77/§78-A03 baseline: bilingual_recall working target is 0.88 (v0.9.0 target 0.90 deferred pending M1/Linux determinism check via embedding-determinism-matrix CI job). @huggingface/transformers exact-pinned to 3.8.1.",
-      "f1": null,
-      "freshness": null,
-      "temporal": null,
-      "bilingual": 0.88,
-      "cat1": null,
-      "embedding": {
-        "mode": "onnx",
-        "provider": "local",
-        "model": "multilingual-e5",
-        "vectorDimension": 384
-      }
-    },
-    {
-      "timestamp": "2026-05-27T07:20:23.739Z",
-      "f1": 0.6137539004205671,
+      "timestamp": "2026-07-07T02:05:35.051Z",
+      "note": "v0.28.8 rebaseline: s154-152 (c8f98c1, segmentJapaneseForFts for title_fts/content_fts) deterministically shifted BM25 ranking; bilingual-50 recall 0.88-0.90 -> 0.82 (Layer 1 floor 0.80 still met). JA/bilingual quality guarded by §154 gates (dev-domain bilingual 0.90 / CJK min_top1 1.0 / flagship freshness 0.99). Same family as the S56-003 fixture recalibration (S156-FU10). Pre-segmentation history preserved in ci-score-history.json.bak-pre-v0.28.8.",
+      "f1": 0.6081983448650116,
       "freshness": 0.99,
-      "temporal": 0.7097222222222221,
-      "bilingual": 0.9,
+      "temporal": 0.7347222222222222,
+      "bilingual": 0.82,
       "cat1": 0.6042522694696608,
       "embedding": {
         "mode": "onnx",

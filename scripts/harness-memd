@@ -165,6 +165,19 @@ read_embedding_model() {
   fi
 }
 
+should_export_embedding_model_env() {
+  local provider="$1"
+  local model="$2"
+
+  if [ -n "${HARNESS_MEM_EMBEDDING_MODEL+x}" ]; then
+    return 0
+  fi
+  if [ "$provider" = "auto" ] && [ "$model" = "multilingual-e5" ]; then
+    return 1
+  fi
+  return 0
+}
+
 has_launchctl() {
   command -v launchctl >/dev/null 2>&1
 }
@@ -915,19 +928,24 @@ start_daemon() {
   if [ "$backend_mode" != "local" ] && [ -n "$managed_endpoint" ]; then
     log "  managed endpoint: ${managed_endpoint}"
   fi
+  local -a daemon_env=(
+    env
+    "HARNESS_MEM_DB_PATH=$DB_PATH"
+    "HARNESS_MEM_HOST=$HOST"
+    "HARNESS_MEM_PORT=$PORT"
+    "HARNESS_MEM_CODEX_PROJECT_ROOT=$PROJECT_ROOT"
+    "HARNESS_MEM_BACKEND_MODE=$backend_mode"
+    "HARNESS_MEM_MANAGED_ENDPOINT=$managed_endpoint"
+    "HARNESS_MEM_MANAGED_API_KEY=$managed_api_key"
+    "HARNESS_MEM_EMBEDDING_PROVIDER=$embedding_provider"
+  )
+  if should_export_embedding_model_env "$embedding_provider" "$embedding_model"; then
+    daemon_env+=(HARNESS_MEM_EMBEDDING_MODEL="$embedding_model")
+  fi
+
   (
     cd "$REPO_ROOT"
-    spawn_detached_command "$PID_FILE" "$LOG_FILE" env \
-      HARNESS_MEM_DB_PATH="$DB_PATH" \
-      HARNESS_MEM_HOST="$HOST" \
-      HARNESS_MEM_PORT="$PORT" \
-      HARNESS_MEM_CODEX_PROJECT_ROOT="$PROJECT_ROOT" \
-      HARNESS_MEM_BACKEND_MODE="$backend_mode" \
-      HARNESS_MEM_MANAGED_ENDPOINT="$managed_endpoint" \
-      HARNESS_MEM_MANAGED_API_KEY="$managed_api_key" \
-      HARNESS_MEM_EMBEDDING_PROVIDER="$embedding_provider" \
-      HARNESS_MEM_EMBEDDING_MODEL="$embedding_model" \
-      bun run "$DAEMON_ENTRY"
+    spawn_detached_command "$PID_FILE" "$LOG_FILE" "${daemon_env[@]}" bun run "$DAEMON_ENTRY"
   )
 
   local new_pid

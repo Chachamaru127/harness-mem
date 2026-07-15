@@ -107,12 +107,28 @@ benchmark; the North Star roadmap of record is `docs/strategy/northstar-2026-06-
 
 ### Embedding migration — shadow-first / non-destructive (must)
 
-- A new embedding model (BGE-M3 / Ruri) is built in parallel as a shadow,
-  measurement-only path. The incumbent (multilingual-e5 / 384dim) stays the
-  default. The 14GB incumbent index MUST NOT be destroyed.
+- A new embedding model is built in parallel as a shadow, measurement-only
+  path first. The 14GB incumbent index MUST NOT be destroyed.
 - Switch the default only when shadow metrics clear a deterministic threshold,
   keeping both vector tables resident so rollback is immediate. If the threshold
   is not cleared, keep the incumbent.
+- The 2026-06 shadow A/B cleared the threshold (D45: composite +0.20, ja
+  cross-lingual 0.54→0.96). The reference default is now
+  `granite-embedding-311m-r2@384` (local ONNX, MRL-truncated to the 384-dim
+  store), applied in two tiers:
+  - **Fresh installs** (no installation marker in `mem_meta`, no
+    `embedding_default_model` flag): the flag is seeded to
+    `granite-embedding-311m-r2@384` at first schema init. If the model is not
+    yet pulled or the host is offline, the existing fail-safe chain
+    (incumbent multilingual-e5 → synthetic fallback) applies and the degraded
+    state MUST be visible in health/doctor output.
+  - **Existing installs**: the default is NOT flipped automatically. Doctor /
+    health / startup surfaces show a migration notice (rate-limited or
+    dismissible, silent when the operator has pinned a model or uses
+    openai/ollama providers) that guides pull → backfill → flag flip.
+- Model artifacts pulled as a default MUST be revision-pinned and
+  integrity-verified (fail-closed); size-only verification is not sufficient
+  for a default model.
 - New-model inference defaults to local (ONNX); external embedding APIs are a
   Risk Gate.
 

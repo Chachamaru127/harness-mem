@@ -2051,7 +2051,7 @@ export function startHarnessMemServer(core: HarnessMemCore, config: Config) {
 
             const validKinds: Set<RelationKind> = new Set(["is_a", "uses", "fixes", "generic"]);
             const enriched = {
-              ...(linkResult as Record<string, unknown>),
+              ...linkResult,
               entities: entityRows.map((r) => ({
                 id: r.name.toLowerCase(),
                 label: r.name,

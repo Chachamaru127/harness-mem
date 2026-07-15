@@ -13,7 +13,6 @@ const ROOT_LOCK_PACKAGES = [
   "@protobufjs/codegen",
   "@protobufjs/eventemitter",
   "@protobufjs/fetch",
-  "@protobufjs/inquire",
   "@protobufjs/utf8",
 ] as const;
 

@@ -127,13 +127,14 @@ package 更新が成功したあと、harness-mem は過去の `setup` で覚え
 `harness-mem setup` が行うこと:
 
 1. 依存チェック (`bun`, `node`, `curl`, `jq`, `ripgrep`)
-2. tool wiring (`codex`, `opencode`, `cursor`, `claude`, `antigravity`)
-3. daemon 起動 (`harness-memd`)
-4. Mem UI 起動 (`http://127.0.0.1:37901` 既定)
-5. smoke test (`--skip-smoke` で省略可)
-6. search quality check (`--skip-quality` で省略可)
-7. 任意の Claude-mem import と、検証済み cutover 後の停止
-8. version snapshot (`local` と `upstream`)
+2. Granite default embedding model の準備 (`granite-embedding-311m-r2`; offline / CI / sandbox / `--skip-model-pull` では warning を出して skip)
+3. tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
+4. daemon 起動 (`harness-memd`)
+5. Mem UI 起動 (既定は `http://127.0.0.1:37901`)
+6. smoke test (`--skip-smoke` で skip)
+7. search quality check (`--skip-quality` で skip)
+8. 任意の Claude-mem import と verified cutover 後の停止
+9. version snapshot (local vs upstream)
 
 `--platform` を指定しない場合は対話式です。
 
@@ -250,6 +251,7 @@ Codex だけを対象にします。Hermes YAML を書く場合は `--client her
 harness-mem setup
 harness-mem setup --platform codex,cursor
 harness-mem setup --platform opencode,cursor --skip-quality
+harness-mem setup --skip-model-pull
 ```
 
 Options:
@@ -258,9 +260,12 @@ Options:
 - `--skip-start`
 - `--skip-smoke`
 - `--skip-quality`
+- `--skip-model-pull`
 - `--skip-version-check`
 - `--project <path>`
 - `--quiet`
+
+fresh setup は network が使える場合、pin 済み Granite embedding model を準備します。pull が skip されても fail-safe chain で起動し、後から `harness-mem model pull granite-embedding-311m-r2 --yes` で有効化できます。既存 installation は自動 flip せず migration notice を出します。詳細は [`guides/embedding-migration-granite-ja.md`](./guides/embedding-migration-granite-ja.md) を参照してください。
 
 ### `doctor`
 

@@ -292,9 +292,21 @@ export async function computeSupersessionReal(
   inputs: SupersessionInput[],
   adjudicator: ContradictionAdjudicator,
   configOverride?: Config,
+  ollamaOpts?: OllamaOptions,
 ): Promise<SupersessionResult> {
   if (inputs.length === 0) {
     return { status: "skipped", skip_reason: "no supersession inputs provided" };
+  }
+
+  // S154-FU02 fail-open contract: when the adjudicator LLM is absent the gate
+  // must go yellow (skipped), not "measured 0/0/0" (which reads as red).
+  // Callers using a real Ollama adjudicator pass ollamaOpts to enable the
+  // probe; fake-adjudicator tests omit it and measure as before.
+  if (ollamaOpts) {
+    const unreachable = await ollamaUnreachableReason(ollamaOpts);
+    if (unreachable) {
+      return { status: "skipped", skip_reason: unreachable };
+    }
   }
 
   const dbDir = mkdtempSync(join(tmpdir(), "harness-mem-dfb-sup-"));
@@ -455,6 +467,31 @@ async function callOllamaTenseRewrite(
  * Measures tense-rewrite accuracy by sending each case to real qwen3.5:9b.
  * Skips if Ollama is unreachable.
  */
+/**
+ * Probes Ollama /api/tags. Returns a skip reason string when unreachable,
+ * or null when the host responds. Shared by the tense-rewrite and
+ * supersession benches so both degrade to "skipped" (yellow, fail-open)
+ * instead of mis-measuring 0 when the adjudicator LLM is absent.
+ */
+async function ollamaUnreachableReason(opts: OllamaOptions): Promise<string | null> {
+  try {
+    const tagUrl = new URL("/api/tags", opts.ollamaHost);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    try {
+      const resp = await fetch(tagUrl, { signal: controller.signal });
+      if (!resp.ok) {
+        return `ollama_unreachable: HTTP ${resp.status}`;
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (err) {
+    return `ollama_unreachable: ${String(err)}`;
+  }
+  return null;
+}
+
 export async function computeTenseRewriteReal(
   inputs: TenseRewriteInput[],
   opts: OllamaOptions,
@@ -463,21 +500,9 @@ export async function computeTenseRewriteReal(
     return { status: "skipped", skip_reason: "no tense-rewrite inputs provided" };
   }
 
-  // Check Ollama reachability
-  try {
-    const tagUrl = new URL("/api/tags", opts.ollamaHost);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 5_000);
-    try {
-      const resp = await fetch(tagUrl, { signal: controller.signal });
-      if (!resp.ok) {
-        return { status: "skipped", skip_reason: `ollama_unreachable: HTTP ${resp.status}` };
-      }
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch (err) {
-    return { status: "skipped", skip_reason: `ollama_unreachable: ${String(err)}` };
+  const unreachable = await ollamaUnreachableReason(opts);
+  if (unreachable) {
+    return { status: "skipped", skip_reason: unreachable };
   }
 
   const results: Array<{ correct: boolean; is_fp: boolean }> = [];

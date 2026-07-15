@@ -1,6 +1,7 @@
 # Bilingual-50 Baseline Rebaseline — 2026-06-05
 
-Status: accepted for release gate rebaseline
+Status: superseded by `bilingual-baseline-2026-07-07.md` (0.86 → 0.82 after the
+s154-152 FTS segmentation). Retained for history.
 
 ## Summary
 

@@ -2,7 +2,7 @@
 # Unified Harness Memory helper CLI.
 #
 # Usage:
-#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality]
+#   scripts/harness-mem setup [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--skip-start] [--skip-smoke] [--skip-quality] [--skip-model-pull]
 #   scripts/harness-mem doctor [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--fix]
 #   scripts/harness-mem smoke [--project <path>]
 #   scripts/harness-mem uninstall [--project <path>] [--platform <all|codex|opencode|claude|cursor|antigravity|comma-list>] [--purge-db]
@@ -71,6 +71,9 @@ PURGE_DB=0
 SKIP_START=0
 SKIP_SMOKE=0
 SKIP_QUALITY=0
+SKIP_MODEL_PULL=0
+SETUP_MODEL_PULL_STATUS="ok"
+SETUP_MODEL_PULL_FIX=""
 INLINE_PLUGIN=0
 QUIET=0
 IMPORT_SOURCE=""
@@ -176,6 +179,7 @@ Commands:
   model list                 List available models in the catalog.
   model pull <id> [--yes]    Download a model (~size confirmation required).
   model use <id>             Set active local embedding model in config.
+  model use-default          Use the embedding_default_model flag through provider=auto.
   model use-adaptive         Set adaptive local routing (ruri-v3-30m + multilingual-e5).
   model status [<id>]        Show install status of a model (or all installed).
   work import-plans          Import Plans.md into the WorkGraph model. Dry-run by default; --write is explicit.
@@ -232,6 +236,7 @@ Command options:
     --skip-start        Do not start daemon
     --skip-smoke        Do not run smoke test
     --skip-quality      Do not run search quality test
+    --skip-model-pull   Do not pull the Granite default embedding model during setup
     --mcp-transport http|stdio
                         New Claude/Codex setup defaults to http; existing stdio wiring is preserved unless explicit.
     (no --platform)     Interactive setup prompt:
@@ -753,6 +758,9 @@ parse_options() {
         ;;
       --skip-quality)
         SKIP_QUALITY=1
+        ;;
+      --skip-model-pull)
+        SKIP_MODEL_PULL=1
         ;;
       --auto-update)
         shift
@@ -5865,10 +5873,34 @@ _doctor_print_process_advisory() {
   ' 2>/dev/null || true
 }
 
+_doctor_check_embedding_migration_notice() {
+  local health_json="${1:-}"
+  local required message fix
+  if [ -z "$health_json" ] || ! check_cmd jq; then
+    _doctor_record "embedding_model" "skipped" "daemon health unavailable"
+    return 0
+  fi
+  if ! printf '%s' "$health_json" | jq -e . >/dev/null 2>&1; then
+    _doctor_record "embedding_model" "skipped" "daemon health unavailable"
+    return 0
+  fi
+
+  required="$(printf '%s' "$health_json" | jq -r '.items[0].embedding_migration_notice.required // false' 2>/dev/null || echo "false")"
+  if [ "$required" = "true" ]; then
+    message="$(printf '%s' "$health_json" | jq -r '.items[0].embedding_migration_notice.message // "Granite embedding migration recommended"' 2>/dev/null || echo "Granite embedding migration recommended")"
+    fix="$(printf '%s' "$health_json" | jq -r '.items[0].embedding_migration_notice.fix_command // "harness-mem model pull granite-embedding-311m-r2 --yes"' 2>/dev/null || echo "harness-mem model pull granite-embedding-311m-r2 --yes")"
+    warn "$message"
+    _doctor_record "embedding_model" "warn:granite_migration_available" "$fix"
+  else
+    _doctor_record "embedding_model" "ok" ""
+  fi
+}
+
 doctor_impl() {
   local failed=0
   # JSON出力用チェック結果配列
   local -a doctor_checks=()
+  local _doctor_health_json=""
 
   # ヘルパー: チェック結果を記録する
   # 引数: name status fix
@@ -6024,8 +6056,13 @@ doctor_impl() {
           "$HARNESS_ROOT/scripts/harness-memd" cleanup-stale --quiet >/dev/null 2>&1 || true
       fi
 
-      if [ "$READ_ONLY_MODE" -eq 1 ] && ! curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
-        _doctor_record "daemon" "skipped" "read-only mode did not start harness-memd"
+      if [ "$READ_ONLY_MODE" -eq 1 ]; then
+        if curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+          log "Daemon endpoint reachable in read-only doctor mode: ${health_url}"
+          _doctor_record "daemon" "ok:reachable_read_only" ""
+        else
+          _doctor_record "daemon" "skipped" "read-only mode did not start harness-memd"
+        fi
       elif HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
         HARNESS_MEM_HOST="$MEM_HOST" \
         HARNESS_MEM_PORT="$MEM_PORT" \
@@ -6052,6 +6089,7 @@ doctor_impl() {
     if _doctor_health_json="$(curl --silent --show-error --fail --max-time 2 "$health_url" 2>/dev/null)"; then
       _doctor_current_db="$(echo "$_doctor_health_json" | jq -r '.items[0].db_path // ""' 2>/dev/null || echo "")"
     fi
+    _doctor_check_embedding_migration_notice "$_doctor_health_json"
     # Fall back to configured DB_PATH if /health lookup failed.
     if [ -z "$_doctor_current_db" ]; then
       _doctor_current_db="${HARNESS_MEM_DB_PATH:-${DB_PATH:-}}"
@@ -6066,7 +6104,7 @@ doctor_impl() {
     #
     # S81-A04 (Codex round 6 P2.3): forward the caller's bearer token when
     # set so the probe does not get a 401 on auth-enabled daemons.
-      if [ "$READ_ONLY_MODE" -eq 1 ] && ! curl --silent --show-error --fail --max-time 1 "$health_url" >/dev/null 2>&1; then
+      if [ "$READ_ONLY_MODE" -eq 1 ]; then
         _doctor_record "lease_primitive" "skipped" "read-only mode did not start harness-memd"
         _doctor_record "signal_primitive" "skipped" "read-only mode did not start harness-memd"
       else
@@ -6292,7 +6330,7 @@ doctor_impl() {
 _doctor_status_result() {
   local status="${1:-}"
   case "$status" in
-    ok:reachable_with_warnings|degraded|warn|warning) printf 'warn' ;;
+    ok:reachable_with_warnings|degraded|warn|warn:*|warning|warning:*) printf 'warn' ;;
     ok|ok:*) printf 'pass' ;;
     skipped|skip|not_installed) printf 'skip' ;;
     *) printf 'fail' ;;
@@ -6558,6 +6596,11 @@ setup_impl() {
     fi
   fi
 
+  setup_pull_granite_default_model
+  _setup_record "model_pull" "$SETUP_MODEL_PULL_STATUS" "$SETUP_MODEL_PULL_FIX"
+  sync_launchagent_embedding_env "$(read_embedding_provider)" "" "clear-model-pin"
+  _setup_record "embedding_plist_env" "ok" ""
+
   if is_platform_enabled codex; then
     if setup_codex_wiring 2>/dev/null; then
       _setup_record "codex_wiring" "ok" ""
@@ -6666,7 +6709,35 @@ setup_impl() {
   if [ "$SKIP_START" -ne 0 ]; then
     doctor_post_args+=(--read-only)
   fi
-  if HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+  if [ "$SKIP_START" -ne 0 ]; then
+    jq -n \
+      --arg timestamp "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+      '{
+        schema_version: "doctor.v2",
+        status: "skipped",
+        overall_status: "skipped",
+        all_green: false,
+        failed_count: 0,
+        warn_count: 0,
+        skip_count: 1,
+        checked_count: 1,
+        timestamp: $timestamp,
+        checks: [
+          {
+            name: "doctor_post_check",
+            status: "skipped:setup_skip_start",
+            result: "skip",
+            severity: "info",
+            reason_code: "doctor_post_check_skipped",
+            fix: "harness-mem doctor --read-only --json",
+            repair: {command: "harness-mem doctor --read-only --json", risk: "low"}
+          }
+        ]
+      }' > "$doctor_artifact"
+    _setup_record "doctor_post_check" "skipped" "harness-mem doctor --read-only --json"
+    log "Doctor artifact saved: $doctor_artifact"
+  elif HARNESS_MEM_CODEX_PROJECT_ROOT="$TARGET_DIR" \
+     HARNESS_MEM_ENABLE_UI=false \
      HARNESS_MEM_HOST="$MEM_HOST" \
      HARNESS_MEM_PORT="$MEM_PORT" \
      HARNESS_MEM_DB_PATH="$DB_PATH" \
@@ -7162,6 +7233,7 @@ MODEL_CATALOG_DIMS=(
   "1024"
   "768"
 )
+GRANITE_DEFAULT_MODEL_ID="granite-embedding-311m-r2"
 
 model_dir_for_id() {
   local model_id="$1"
@@ -7175,9 +7247,83 @@ model_is_installed() {
   [ -f "${dir}/tokenizer.json" ] && [ -f "${dir}/onnx/model.onnx" ]
 }
 
+create_mock_model_install() {
+  local model_id="$1"
+  local dir
+  dir="$(model_dir_for_id "$model_id")"
+  mkdir -p "${dir}/onnx"
+  printf '{}\n' > "${dir}/tokenizer.json"
+  printf 'mock-model:%s\n' "$model_id" > "${dir}/onnx/model.onnx"
+}
+
+setup_huggingface_reachable() {
+  local timeout_sec="${HARNESS_MEM_SETUP_MODEL_PULL_TIMEOUT_SEC:-5}"
+  curl -fsI --max-time "$timeout_sec" "https://huggingface.co" >/dev/null 2>&1
+}
+
+setup_pull_granite_default_model() {
+  local model_id="$GRANITE_DEFAULT_MODEL_ID"
+
+  if [ "$SKIP_MODEL_PULL" -eq 1 ]; then
+    warn "Skipping Granite model pull (--skip-model-pull). Running with fallback precision until: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="skipped:skip_model_pull"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
+    return 0
+  fi
+
+  if model_is_installed "$model_id"; then
+    log "Granite default model ready: ${model_id}"
+    SETUP_MODEL_PULL_STATUS="ok:installed"
+    return 0
+  fi
+
+  case "${HARNESS_MEM_SETUP_MODEL_PULL_MOCK:-}" in
+    success)
+      create_mock_model_install "$model_id"
+      log "Granite default model ready (mock): ${model_id}"
+      SETUP_MODEL_PULL_STATUS="ok:mock"
+      return 0
+      ;;
+    offline)
+      warn "Granite model pull skipped: offline or Hugging Face unreachable. Running with fallback precision; later run: harness-mem model pull ${model_id} --yes"
+      SETUP_MODEL_PULL_STATUS="warn:offline"
+      SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
+      return 0
+      ;;
+    fail-if-called)
+      fail "setup model pull was called despite HARNESS_MEM_SETUP_MODEL_PULL_MOCK=fail-if-called"
+      ;;
+  esac
+
+  if [ "${CI:-}" = "true" ] || [ "${CI:-}" = "1" ] || [ "${HARNESS_MEM_SANDBOX:-}" = "1" ]; then
+    warn "Skipping Granite model pull in CI/sandbox. Later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="skipped:ci_sandbox"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
+    return 0
+  fi
+
+  log "Preparing Granite default embedding model (${model_id}, ~1.2GB download; requires network/Hugging Face)."
+  if ! setup_huggingface_reachable; then
+    warn "Granite model pull skipped: offline or Hugging Face unreachable. Running with fallback precision; later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="warn:offline"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
+    return 0
+  fi
+
+  if model_impl pull "$model_id" --yes; then
+    log "Granite default model ready: ${model_id}"
+    SETUP_MODEL_PULL_STATUS="ok:pulled"
+  else
+    warn "Granite model pull failed; setup continues with fallback precision. Later run: harness-mem model pull ${model_id} --yes"
+    SETUP_MODEL_PULL_STATUS="warn:pull_failed"
+    SETUP_MODEL_PULL_FIX="harness-mem model pull ${model_id} --yes"
+  fi
+}
+
 sync_launchagent_embedding_env() {
   local provider="$1"
-  local model="$2"
+  local model="${2:-}"
+  local model_mode="${3:-pin-model}"
   local plist="${HOME}/Library/LaunchAgents/com.harness-mem.daemon.plist"
 
   [ -f "$plist" ] || return 0
@@ -7187,23 +7333,23 @@ sync_launchagent_embedding_env() {
   fi
 
   local ok=1
-  for key in HARNESS_MEM_EMBEDDING_PROVIDER HARNESS_MEM_EMBEDDING_MODEL; do
-    local value="$provider"
-    if [ "$key" = "HARNESS_MEM_EMBEDDING_MODEL" ]; then
-      value="$model"
-    fi
-
-    if plutil -replace "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
-      continue
-    fi
-
+  if ! plutil -replace "EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER" -string "$provider" "$plist" >/dev/null 2>&1; then
     plutil -insert EnvironmentVariables -xml '<dict/>' "$plist" >/dev/null 2>&1 || true
-    if plutil -insert "EnvironmentVariables.${key}" -string "$value" "$plist" >/dev/null 2>&1; then
-      continue
+    if ! plutil -insert "EnvironmentVariables.HARNESS_MEM_EMBEDDING_PROVIDER" -string "$provider" "$plist" >/dev/null 2>&1; then
+      ok=0
     fi
+  fi
 
-    ok=0
-  done
+  if [ "$model_mode" = "clear-model-pin" ]; then
+    plutil -remove "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" "$plist" >/dev/null 2>&1 || true
+  elif [ -n "$model" ]; then
+    if ! plutil -replace "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" -string "$model" "$plist" >/dev/null 2>&1; then
+      plutil -insert EnvironmentVariables -xml '<dict/>' "$plist" >/dev/null 2>&1 || true
+      if ! plutil -insert "EnvironmentVariables.HARNESS_MEM_EMBEDDING_MODEL" -string "$model" "$plist" >/dev/null 2>&1; then
+        ok=0
+      fi
+    fi
+  fi
 
   if [ "$ok" -eq 1 ]; then
     log "LaunchAgent embedding env synced: ${plist}"
@@ -7236,6 +7382,7 @@ model_impl() {
       echo ""
       echo "To download a model: harness-mem model pull <id>"
       echo "To activate:         harness-mem model use <id>"
+      echo "To use default flag: harness-mem model use-default"
       echo "To enable adaptive:  harness-mem model use-adaptive"
       ;;
 
@@ -7322,11 +7469,24 @@ model_impl() {
 
       write_embedding_provider "local"
       write_embedding_model "$model_id"
+      sync_launchagent_embedding_env "local" "$model_id"
       log "Active embedding config set to local:${model_id}"
       echo ""
       echo "  Config updated: ${CONFIG_PATH}"
       echo "  embedding_provider=local"
       echo "  embedding_model=${model_id}"
+      echo "  Restart daemon to apply: scripts/harness-memd restart"
+      ;;
+
+    use-default)
+      write_embedding_provider "auto"
+      write_embedding_model "multilingual-e5"
+      sync_launchagent_embedding_env "auto" "" "clear-model-pin"
+      log "Active embedding config set to provider=auto (default flag enabled)"
+      echo ""
+      echo "  Config updated: ${CONFIG_PATH}"
+      echo "  embedding_provider=auto"
+      echo "  embedding_model=multilingual-e5 (incumbent fallback; not exported as a model pin by harness-memd)"
       echo "  Restart daemon to apply: scripts/harness-memd restart"
       ;;
 

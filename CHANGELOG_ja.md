@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+### ユーザー向け要約
+
+- **§156 fresh install の Granite default と既存ユーザー向け移行 notice を追加**。新規 `harness-mem setup` は online 時に pin 済み `granite-embedding-311m-r2` を準備し、`--skip-model-pull`、offline / CI / sandbox skip warning、LaunchAgent embedding env 同期に対応した。既存 installation は自動切替せず、`/health`、起動ログ、`doctor --json` の `embedding_model` warning で pull / backfill / flag flip / rollback 手順を案内する。
+
 ## [0.27.4] - 2026-06-05
 
 ### ユーザー向け要約

@@ -145,13 +145,14 @@ After a successful package update, harness-mem also runs a quiet post-update rep
 `harness-mem setup` performs:
 
 1. Dependency checks (`bun`, `node`, `curl`, `jq`, `ripgrep`)
-2. Tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
-3. Daemon start (`harness-memd`)
-4. Mem UI start (`http://127.0.0.1:37901` by default)
-5. Smoke test (unless `--skip-smoke`)
-6. Search quality checks (unless `--skip-quality`)
-7. Optional Claude-mem import + optional stop after verified cutover
-8. Version snapshot (local vs upstream)
+2. Granite default embedding model preparation (`granite-embedding-311m-r2`; skipped with a warning when offline, CI, sandboxed, or `--skip-model-pull`)
+3. Tool wiring (Codex, OpenCode, Cursor, Claude, Antigravity)
+4. Daemon start (`harness-memd`)
+5. Mem UI start (`http://127.0.0.1:37901` by default)
+6. Smoke test (unless `--skip-smoke`)
+7. Search quality checks (unless `--skip-quality`)
+8. Optional Claude-mem import + optional stop after verified cutover
+9. Version snapshot (local vs upstream)
 
 When `--platform` is omitted, setup is interactive:
 
@@ -291,6 +292,7 @@ Configure wiring, start daemon/UI, and run verification checks.
 harness-mem setup
 harness-mem setup --platform codex,cursor
 harness-mem setup --platform opencode,cursor --skip-quality
+harness-mem setup --skip-model-pull
 ```
 
 Options:
@@ -299,9 +301,12 @@ Options:
 - `--skip-start`
 - `--skip-smoke`
 - `--skip-quality`
+- `--skip-model-pull`
 - `--skip-version-check`
 - `--project <path>`
 - `--quiet`
+
+Fresh setup prepares the pinned Granite embedding model when the network is available. If the pull is skipped, harness-mem still starts with the fail-safe chain and you can enable Granite later with `harness-mem model pull granite-embedding-311m-r2 --yes`. Existing installs get a migration notice instead of an automatic flip; see [`guides/embedding-migration-granite.md`](./guides/embedding-migration-granite.md).
 
 ### `doctor`
 

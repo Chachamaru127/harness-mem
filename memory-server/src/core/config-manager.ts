@@ -55,6 +55,8 @@ import {
 // tables (both stay resident per S154-401), so rollback is one atomic write.
 export const EMBEDDING_DEFAULT_MODEL_KEY = "embedding_default_model";
 export const INCUMBENT_EMBEDDING_MODEL = "multilingual-e5";
+export const REFERENCE_DEFAULT_EMBEDDING_MODEL_FLAG = "granite-embedding-311m-r2@384";
+export const INSTALLATION_MARKER_META_KEY = "installation_marker_at";
 
 export function getEmbeddingDefaultModel(db: Database): string {
   const row = db
