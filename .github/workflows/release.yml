@@ -175,7 +175,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm install -g npm@latest
+          npm install -g npm@11.5.1
           npm --version
 
       - name: Setup Bun
