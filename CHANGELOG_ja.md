@@ -7,9 +7,19 @@
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-16
+
 ### ユーザー向け要約
 
-- **§156 fresh install の Granite default と既存ユーザー向け移行 notice を追加**。新規 `harness-mem setup` は online 時に pin 済み `granite-embedding-311m-r2` を準備し、`--skip-model-pull`、offline / CI / sandbox skip warning、LaunchAgent embedding env 同期に対応した。既存 installation は自動切替せず、`/health`、起動ログ、`doctor --json` の `embedding_model` warning で pull / backfill / flag flip / rollback 手順を案内する。
+- **Hermes MemoryProvider Layer 2連携を追加**。Hermesの会話をharness-memへ安全に記録し、関連する記憶を事前取得できる。終了時の待機は上限付きで、導入・確認・ロールバック手順も文書化した。
+- **事実抽出をlocal-first化**。既定は従来どおりheuristic。LLM抽出を明示した場合はloopbackのOllamaを既定とし、OpenAI・Anthropic・Geminiは外部利用の明示許可とcredentialの両方がある場合だけ使用する。
+- **検索結果の出どころを安全に保持**。`metadata.source`だけをallowlistし、任意metadata、API key、token、secretは保存も返却もしない。
+- **Hermes関連の検索順位を改善**。直接関係するHermesの記憶を安定して優先しつつ、関連する他ツールの記憶はhard filterで捨てない。日本語の連続文字列にも対応する。
+
+### 検証
+
+- Hermes Provider 17件、LLM・metadata security 130件がPASS。
+- 隔離したloopback Ollamaで、会話記録→consolidation→fact生成→検索を実機確認。外部送信auditは0件で、live cloud LLMは使用していない。
 
 ## [0.27.4] - 2026-06-05
 
@@ -1051,7 +1061,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.8...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
 [0.25.6]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.5...v0.25.6

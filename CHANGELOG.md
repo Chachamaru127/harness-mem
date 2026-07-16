@@ -7,6 +7,34 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-07-16
+
+### Added
+
+- **Hermes MemoryProvider Layer 2 integration**: added a discoverable Hermes provider with bounded background sync, prefetch, shutdown handling, installation guidance, rollback instructions, and end-to-end coverage.
+- **Hermes-aware memory ranking and provenance**: direct Hermes hits are stably prioritized without hard-filtering useful cross-tool memories, including continuous Japanese text matching, while the allowlisted `metadata.source` identifies safe provenance in normal and degraded search paths.
+
+### Changed
+
+- **Fact extraction is local-first and safe by default**: heuristic extraction remains the default. When LLM extraction is explicitly enabled, the default provider is local Ollama on loopback; blocked or unavailable LLM paths fall back deterministically to heuristic extraction or an empty diff.
+- **Event metadata persistence is allowlist-only**: only `source` is persisted through event, observation, and search projections. Arbitrary metadata is neither stored nor returned.
+
+### Security
+
+- **Fact-extraction egress is fail-closed**: Ollama accepts only `localhost`, `127.0.0.1`, or `::1`; non-loopback Ollama is rejected even when external LLM use is allowed. OpenAI, Anthropic, and Gemini require both an explicit external-LLM allow flag and provider credentials.
+- **Audit output excludes sensitive content**: egress audit records contain metadata such as provider and payload size, but not conversation bodies, API keys, tokens, or secrets.
+
+### Fixed
+
+- **Provider shutdown regression coverage**: the existing bounded `join(timeout=10.0)` behavior is now pinned by tests so pending sync work cannot block shutdown indefinitely.
+- **Hermes event provenance no longer disappears after ingest**: fixed the event-to-observation mapping gap and added fresh/migrated SQLite plus PostgreSQL schema parity for allowlisted source metadata.
+
+### Verification
+
+- Hermes Provider: 17 tests passed.
+- LLM and metadata security suites: 130 tests passed with 0 failures.
+- Isolated loopback Ollama smoke: conversation record → consolidation → one fact → search passed with zero external-egress audit entries. No live cloud LLM was used.
+
 ## [0.28.9] - 2026-07-07
 
 ### Fixed
@@ -3076,7 +3104,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...HEAD
+[0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.28.9]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.8...v0.28.9
 [0.28.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.7...v0.28.8
 [0.28.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.6...v0.28.7
