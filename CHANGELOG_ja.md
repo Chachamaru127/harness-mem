@@ -7,6 +7,12 @@
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-07-17
+
+### 修正
+
+- **Node 20のrelease runnerでnpm OIDC公開経路を復旧**。`npm@latest`がNode 22以上を要求するnpm 12へ進んで公開が停止する問題を、Node 20互換のnpm `11.5.1`固定で解消した。
+
 ## [0.29.0] - 2026-07-16
 
 ### ユーザー向け要約
@@ -1061,7 +1067,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...HEAD
+[0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
 [0.25.7]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.6...v0.25.7
