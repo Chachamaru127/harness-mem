@@ -58,6 +58,12 @@ describe("release workflow contract", () => {
     expect(workflow).toContain("chmod +x bin/harness-mcp-*");
     expect(workflow).toContain("name: Install release runner prerequisites");
     expect(workflow).toContain("sudo apt-get install -y jq ripgrep");
+    // npm 12 requires Node 22+, while the publish job intentionally uses Node 20.
+    // Keep OIDC trusted publishing on the minimum compatible npm release.
+    expect(workflow).toContain("node-version: 20");
+    expect(workflow).toContain("npm install -g npm@11.5.1");
+    expect(workflow).not.toContain("npm install -g npm@latest");
+    expect(workflow).toContain("id-token: write");
     expect(workflow).toContain("name: Install MCP server dependencies");
     expect(workflow).toContain("cd mcp-server");
     expect(workflow).toContain("npm ci");

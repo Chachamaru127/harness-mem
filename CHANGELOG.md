@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-07-17
+
+### Fixed
+
+- **Restored npm OIDC publishing on the Node 20 release runner**: pinned the release workflow to npm `11.5.1` instead of `npm@latest`, preventing npm 12's Node 22+ engine requirement from stopping package publication.
+
 ## [0.29.0] - 2026-07-16
 
 ### Added
@@ -3104,7 +3110,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...HEAD
+[0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.28.9]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.8...v0.28.9
 [0.28.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.7...v0.28.8
