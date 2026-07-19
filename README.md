@@ -4,10 +4,10 @@
   <img src="https://raw.githubusercontent.com/Chachamaru127/harness-mem/main/docs/assets/readme/hero.png" alt="Harness-mem — one local memory shared between Claude Code and Codex" width="820" />
 </p>
 
-<p align="center"><strong>Local project memory for AI coding sessions — a continuity runtime, not a generic memory API.</strong></p>
+<p align="center"><strong>Local project memory for AI coding sessions — a continuity runtime for Claude Code, Codex, Cursor, and Hermes.</strong></p>
 
 <p align="center">
-  Harness-mem keeps a single local SQLite memory <em>per project</em> so the next Claude Code or Codex session opens on the thread you were already working on, instead of a blank slate. ~5ms cold start. Zero cloud, zero API keys.
+  Harness-mem keeps one local SQLite memory <em>per project</em>, so the next agent opens on the thread you were already working on instead of a blank slate. Claude Code and Codex get first-turn continuity; Cursor and Hermes can join the same memory lane through MCP and MemoryProvider integrations. ~5ms MCP cold start. Local-first by default.
 </p>
 
 <p align="center">
@@ -35,6 +35,7 @@
 - [Measured](#measured)
 - [Install](#install)
 - [How it works](#how-it-works)
+- [Hermes + local LLM fact extraction](#hermes--local-llm-fact-extraction)
 - [Compare with alternatives](#compare-with-alternatives)
 - [Adaptive Retrieval Engine](#adaptive-retrieval-engine)
 - [Measured Proof](#measured-proof) — full benchmark gate
@@ -56,14 +57,15 @@
 
 ### 30-second version
 
-Harness-mem gives Claude Code and Codex the same local project memory, so the next session can open on the thread you were already working on instead of a blank slate. Cursor can also be wired as a supported local client for MCP search and hook-based conversation capture. It is built for people who switch tools inside the same project and do not want to re-explain the same decisions twice.
+Harness-mem gives your AI coding tools the same local project memory. Claude Code and Codex get the strongest continuity path: a fresh session can start from the chain you were already working on. Cursor can join through user-scoped hooks and MCP search. Hermes can join through MCP tools and an optional MemoryProvider plugin, so the command tower can see the same developer-workflow memory without replacing its own built-in memories.
 
 ### Why people install it
 
 - **Resume the actual thread**: the next Claude Code or Codex turn can start from the current project chain, not a generic memory dump.
+- **Share one memory lane across agents**: Claude Code, Codex, Cursor, OpenCode, and Hermes can read the same project-scoped observations through one daemon.
 - **Keep memory local**: project data stays in local SQLite unless you explicitly configure an external integration.
-- **Share one runtime**: Claude Code and Codex CLI use the same daemon, database, and setup / doctor flow.
-- **Stay honest about scope**: Cursor is supported for user-scoped MCP plus hook ingest/search, but Tier 1 continuity is optimized for Claude Code + Codex.
+- **Use local LLMs safely**: fact extraction defaults to `heuristic`; when you opt into LLM extraction, Ollama is loopback-only by default and cloud providers require an explicit allow flag plus credentials.
+- **Stay honest about scope**: Claude Code + Codex are Tier 1; Cursor is Tier 2; Hermes and OpenCode are experimental / opt-in paths.
 
 ### 3-minute setup path
 
@@ -79,12 +81,14 @@ If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run 
 - **Local-first**: the database lives on your machine at `~/.harness-mem/harness-mem.db`.
 - **Privacy**: there is no cloud memory service, no API keys, and no off-machine upload just to remember context.
 - **Private tags**: wrap any text in `<private>...</private>` and it is automatically stripped before storage — use this to keep secrets out of memory without disabling memory entirely.
+- **Local LLM guardrails**: `HARNESS_MEM_FACT_EXTRACTOR_MODE=llm` uses loopback Ollama unless you deliberately opt into a cloud provider. Non-loopback Ollama is rejected.
 - **Project isolation**: each project keeps its own memory lane, so one repo does not bleed into another.
 
 ### Support tiers
 
 - **Strongest path: Claude Code + Codex**: this is the main experience we optimize for. Shared local runtime, first-turn continuity, and the clearest install / doctor flow.
 - **Supported path: Cursor**: `setup --platform cursor` wires user-scoped `~/.cursor/hooks.json` and `~/.cursor/mcp.json` (`mcpServers.harness-mem`) for hook ingest and MCP search. It is supported, but not a Tier 1 continuity parity claim.
+- **Command-tower path: Hermes Agent**: Hermes can use Layer 1 MCP tools for explicit search/record calls and Layer 2 MemoryProvider for turn sync + prefetch. This is an opt-in experimental integration, not a replacement for Hermes' built-in `MEMORY.md`, `USER.md`, or skills.
 - **Experimental path: OpenCode**: usable, but not the same parity promise.
 - **Codex App dogfood**: this maintainer setup also works from Codex App through the same local Codex config path. That is recorded as local dogfood, not a blanket Tier 1 App claim.
 
@@ -93,6 +97,8 @@ If Cursor is part of your workflow, use `--platform codex,claude,cursor` or run 
 - **You use Claude Code and Codex** → harness-mem gives both tools the same local project runtime. On supported hook paths, the first turn stays chain-first (`what we were just doing`) and can also surface a short `Also Recently in This Project` teaser for nearby context.
 - **You care about privacy** → everything stays in `~/.harness-mem/harness-mem.db`. Zero cloud calls. No API keys required.
 - **You also use Cursor** → run Cursor setup/doctor to enable hook ingest and MCP search. Cursor remains tier 2 rather than the main continuity path.
+- **You run Hermes as a local command tower** → add the Hermes MCP config or MemoryProvider plugin so Hermes can search the same project memory while keeping Hermes' own built-in memory layer intact.
+- **You want better fact extraction without cloud egress** → keep the default `heuristic` mode for zero-LLM extraction, or explicitly enable local Ollama for consolidation when you want richer facts.
 
 ---
 
@@ -158,6 +164,7 @@ Pick the path that matches your stack. That's the whole decision.
 | **Claude Code + Codex** _(recommended first run)_ | `npx -y --package @chachamaru127/harness-mem harness-mem setup --platform codex,claude` → `npx -y --package @chachamaru127/harness-mem harness-mem doctor --platform codex,claude` |
 | **Claude Code + Codex** _(persistent CLI)_ | `npm install -g @chachamaru127/harness-mem` → `harness-mem setup --platform codex,claude` → `harness-mem doctor --platform codex,claude` |
 | **Cursor as an additional local client** | `harness-mem setup --platform cursor` → `harness-mem doctor --platform cursor` → reload/restart Cursor if MCP discovery is cached |
+| **Hermes Agent as a command tower** | `harness-mem mcp-config --transport http --client hermes --write` for Layer 1 MCP, or follow [`integrations/hermes/`](integrations/hermes/) for the optional MemoryProvider plugin |
 
 ### Claude-harness companion mode
 
@@ -181,9 +188,14 @@ Beyond Claude Code / Codex / Cursor, harness-mem ships ready-to-use integrations
 | LangChain | Python adapter | [`integrations/langchain/`](integrations/langchain/) |
 | CrewAI | Python adapter | [`python-sdk/harness_mem/crewai_memory.py`](python-sdk/harness_mem/crewai_memory.py) |
 | Vercel AI SDK | TypeScript adapter | [`sdk/src/vercel-ai.ts`](sdk/src/vercel-ai.ts) |
-| **Hermes Agent** (Nous Research) | MCP integration _(experimental, tier 3 — [tier 昇格 criteria](Plans.md#hermes-tier-criteria))_ | [`integrations/hermes/`](integrations/hermes/) |
+| **Hermes Agent** (Nous Research) | MCP tools + optional MemoryProvider plugin _(experimental, tier 3 — [tier 昇格 criteria](Plans.md#hermes-tier-criteria))_ | [`integrations/hermes/`](integrations/hermes/) |
 
-The Hermes integration reuses the existing stdio MCP server — no extra binary or wrapper code. **Important**: This is a *cross-tool continuity bridge*, not a replacement for Hermes' built-in `MEMORY.md` / `USER.md` / `skills/` memory layer (Hermes does not expose a memory-backend swap API). See [`docs/integrations/hermes.md`](docs/integrations/hermes.md) for the full positioning explanation, setup, and troubleshooting.
+The Hermes integration has two layers:
+
+1. **Layer 1 — MCP**: expose `harness_mem_search`, `harness_mem_timeline`, `harness_mem_get_observations`, and record/checkpoint tools to Hermes as explicit tool calls.
+2. **Layer 2 — MemoryProvider**: install `integrations/hermes/provider/` so Hermes can sync turns, prefetch project context, and expose lightweight provider tools.
+
+**Important**: this is a *cross-tool continuity bridge*, not a replacement for Hermes' built-in `MEMORY.md` / `USER.md` / `skills/` memory layer. Hermes' built-in memory continues to work; harness-mem adds the shared developer-workflow memory used by Claude Code, Codex, Cursor, and other clients. See [`integrations/hermes/README.md`](integrations/hermes/README.md) for the quickstart and [`docs/integrations/hermes.md`](docs/integrations/hermes.md) for setup, rollback, and troubleshooting.
 
 ### About `harness-mem setup`
 
@@ -300,7 +312,8 @@ SQLite owners.
 - **One local SQLite database** at `~/.harness-mem/harness-mem.db` stores every observation, session thread, embedding, and fact chain.
 - **Per-client stdio MCP frontends** are launched by the MCP client. `bin/harness-mcp-server` prefers `bin/harness-mcp-{os}-{arch}` for the Go frontend, but can fall back to `mcp-server/dist/index.js`; either frontend speaks stdio to the client, then proxies requests to the daemon on `:37888`.
 - **Three hook paths** wire the tools in: `SessionStart` (first-turn continuity), `UserPromptSubmit` (contextual recall), and `Stop` (session finalization).
-- **The memory server** (TypeScript) does embeddings, hybrid search, rerank, and the adaptive JA/EN/code routing. It is intentionally kept in TypeScript because that's where the ML stack lives. The MCP frontend layer is only the front desk.
+- **The memory server** (TypeScript) does embeddings, hybrid search, rerank, adaptive JA/EN/code routing, and consolidation. Fact extraction is local-first: `heuristic` by default, optional loopback Ollama for richer extraction, cloud only with explicit allow + credentials.
+- **Hermes can join at two layers**: MCP tools for explicit search/record calls, or the MemoryProvider plugin for turn sync and prefetch. Both layers use the same daemon and SQLite DB as Claude Code / Codex.
 
 Large MCP search responses now also return `structuredContent`, so newer Claude / Codex clients can consume machine-readable results instead of only long JSON text.
 
@@ -366,6 +379,33 @@ A memory hint that the agent never acts on is just noise. harness-mem packages e
 
 ---
 
+## Hermes + local LLM fact extraction
+
+Hermes support is now visible in the main path because it solves a different problem than Claude Code / Codex hooks: it lets a local command-tower agent query and contribute to the same developer-workflow memory without giving up Hermes' own built-in memory.
+
+| Layer | What Hermes gets | When to use it |
+|---|---|---|
+| **Layer 1 — MCP** | Explicit `harness_mem_*` tools for search, timeline, observation details, resume packs, and checkpoint records | You want Hermes to look things up or save a checkpoint when the model chooses a tool call |
+| **Layer 2 — MemoryProvider** | Turn sync, prefetch injection, `harness_mem_search`, `harness_mem_record`, and `harness_mem_status` provider tools | You want Hermes sessions to participate in the same project memory lifecycle |
+
+Fact extraction is controlled by the harness-mem daemon, not by the Hermes plugin. The safe default is `heuristic`. If you explicitly enable LLM extraction, the default provider is **local Ollama on loopback**:
+
+```bash
+export HARNESS_MEM_FACT_EXTRACTOR_MODE=llm
+export HARNESS_MEM_FACT_LLM_PROVIDER=ollama
+export HARNESS_MEM_OLLAMA_HOST=http://127.0.0.1:11434
+```
+
+Cloud LLM extraction is locked behind two gates: `HARNESS_MEM_ALLOW_EXTERNAL_LLM=1` and the relevant provider credential. Non-loopback Ollama is rejected even if an allow flag is present. The loopback Ollama live smoke for Hermes MemoryProvider was run against an isolated daemon and temporary DB: record → consolidation → fact extraction → search passed, with external LLM egress audit at 0.
+
+Start here:
+
+- [`integrations/hermes/README.md`](integrations/hermes/README.md) — quickstart, Layer 1 vs Layer 2, smoke checklist
+- [`docs/integrations/hermes.md`](docs/integrations/hermes.md) — architecture, rollback, troubleshooting
+- [`docs/environment-variables.md`](docs/environment-variables.md) — fact extraction and local/cloud LLM policy
+
+---
+
 ## Compare with alternatives
 
 Claude's built-in memory only works inside Claude. [claude-mem](https://github.com/thedotmack/claude-mem) adds persistence but is still locked to Claude Code. [Mem0](https://github.com/mem0ai/mem0) offers cross-app memory but requires cloud infrastructure and custom API integration. harness-mem takes a different path: one local project-scoped runtime, one SQLite database, and first-turn continuity across Claude Code and Codex with no cloud dependency.
@@ -387,9 +427,9 @@ Claude's built-in memory only works inside Claude. [claude-mem](https://github.c
 | | harness-mem | Claude built-in memory | claude-mem | Mem0 |
 |---|:---:|:---:|:---:|:---:|
 | **Domain** | developer-workflow | generic-agent | generic-agent | general-lifelog |
-| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · OpenCode (experimental) | Claude only | Claude only | Custom API integration |
+| **Supported tools** | Claude Code, Codex (Tier 1) · Cursor (Tier 2) · Hermes and OpenCode (experimental) | Claude only | Claude only | Custom API integration |
 | **Data storage** | Local SQLite | Anthropic cloud | Local SQLite + Chroma | Cloud (self-host on paid plan) |
-| **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths | N/A | N/A | Manual wiring per app |
+| **Cross-tool memory** | Shared project-scoped local runtime + first-turn continuity on supported hook paths + Hermes MCP/MemoryProvider bridge | N/A | N/A | Manual wiring per app |
 | **Setup** | `harness-mem setup` (1 command) | Built-in | npm install + config | SDK integration required |
 | **Search** | Hybrid (lexical + vector + nugget + recency + tag + graph + fact chain) | Undisclosed | FTS5 + Chroma vector | Vector-centric |
 | **MCP server cold start** | ~5ms median (Go binary, measured) | — | — | — |
@@ -625,6 +665,7 @@ The Mem UI includes an `Environment` tab that explains internal servers, install
 | **Tier 1** | Codex CLI | v0.116.0+; verified through v0.130.0 | SessionStart + UserPromptSubmit + Stop hooks, MCP, memory citation, structured MCP result, rules. v0.130.0 additive metadata and paged thread summary ingest are tolerated; remote-control and plugin sharing remain Codex-owned |
 | **Dogfood** | Codex App | Maintainer local setup | Uses the same local Codex config path in this setup. Kept as dogfood until an App-specific reproducible smoke exists |
 | **Tier 2** | Cursor | Latest | User-scoped `~/.cursor/hooks.json` + `~/.cursor/mcp.json` (`mcpServers.harness-mem`), hook spool ingest, MCP search, and setup/doctor support. May require Cursor MCP reload/new session after setup |
+| **Tier 3** | Hermes Agent | Docs-backed integration | MCP tools + optional MemoryProvider plugin. Experimental command-tower bridge; not a replacement for Hermes built-in memory |
 | **Tier 3** | OpenCode | Latest | Experimental. Community-contributed |
 
 ---
