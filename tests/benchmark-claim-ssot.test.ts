@@ -253,6 +253,14 @@ describe("benchmark / claim SSOT", () => {
     expect(archivePlans).not.toContain(".tmp/locomo/locomo10.failure-backlog.judged.json");
   });
 
+  test("CodingMemory smoke installs its Python PII test dependency", () => {
+    const workflow = readText(".github", "workflows", "codingmemory-bench-smoke.yml");
+
+    expect(workflow).toContain("uses: actions/setup-python@v6");
+    expect(workflow).toContain('python-version: "3.11"');
+    expect(workflow).toContain('python -m pip install "pytest>=8,<9"');
+  });
+
   test("deprecated alias is sealed at both root and deep artifact paths", () => {
     for (const artifact of [deprecatedAliasSummary, deprecatedAliasScore, deprecatedAliasSlice]) {
       expect(artifact).toContain("\"schema_version\": \"deprecated-artifact-alias-v1\"");
