@@ -32,7 +32,7 @@ const BANNED_PHRASES = [
 ];
 
 const CURRENT_LEAD_TAGLINE =
-  "Local project memory for AI coding sessions — a continuity runtime, not a generic memory API.";
+  "Local project memory for AI coding sessions — a continuity runtime for Claude Code, Codex, Cursor, and Hermes.";
 
 describe("S108-012 README claim ceiling", () => {
   const readmeEn = read("README.md");
@@ -73,7 +73,7 @@ describe("S108-012 README claim ceiling", () => {
     // The JA README leads with a Japanese gloss, then echoes the canonical EN tagline
     // on its claim map for cross-language traceability.
     expect(readmeJa).toContain(
-      "AI コーディングセッション向けのローカルなプロジェクトメモリ"
+      "Claude Code、Codex、Cursor、Hermes のためのローカルなプロジェクト記憶"
     );
     expect(claimsJa).toContain(CURRENT_LEAD_TAGLINE);
   });
