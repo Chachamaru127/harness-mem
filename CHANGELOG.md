@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-07-21
+
+### Documentation
+
+- **Made Hermes MemoryProvider visible from the repository and npm entrypoint**: refreshed the English and Japanese root READMEs with a clearer cross-agent value proposition, Layer 1 MCP vs Layer 2 MemoryProvider guidance, installation paths, architecture, support tiers, and links to the detailed Hermes quickstart and operations guide.
+- **Documented local-first fact extraction at the point of adoption**: added the `heuristic` default, explicit loopback Ollama configuration, external-cloud allow + credential gate, non-loopback Ollama rejection, and the isolated live-smoke result so operators can understand the privacy boundary before enabling LLM extraction.
+
 ## [0.29.1] - 2026-07-17
 
 ### Fixed
@@ -3110,7 +3117,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...HEAD
+[0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.28.9]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.8...v0.28.9

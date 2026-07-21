@@ -7,6 +7,13 @@
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-07-21
+
+### ドキュメント
+
+- **GitHubとnpmの入口からHermes MemoryProviderを理解できるREADMEへ更新**。英語・日本語のルートREADMEに、cross-agentの価値、Layer 1 MCP / Layer 2 MemoryProvider、導入経路、architecture、support tier、詳細ガイドへの導線を追加した。
+- **local-first事実抽出の安全境界を導入前に確認できるようにした**。`heuristic`既定、loopback Ollamaの明示設定、外部クラウドのallow + credential gate、非loopback Ollama拒否、隔離live smokeの実測結果をREADMEへ追加した。
+
 ## [0.29.1] - 2026-07-17
 
 ### 修正
@@ -1067,7 +1074,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...HEAD
+[0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
 [0.25.8]: https://github.com/Chachamaru127/harness-mem/compare/v0.25.7...v0.25.8
