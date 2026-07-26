@@ -100,6 +100,33 @@ export function resolveIngestTickBudgetMs(): number {
   return raw > 0 ? raw : Infinity;
 }
 
+/**
+ * §159-003c: 60 秒周期 job のどれが event loop を占有しているかを、本番環境で
+ * A/B なしに特定するための閾値 (ms)。
+ *
+ * これらの job は同期実行なので、1 tick の所要時間がそのまま /health の無応答時間に
+ * なる。閾値を超えた tick だけを記録することで、平常時のログを汚さずに犯人を絞れる。
+ *
+ * `HARNESS_MEM_SLOW_TICK_LOG_MS` の解釈は `HARNESS_MEM_INGEST_TICK_BUDGET_MS` と同型
+ * (正整数=閾値 / 0 以下=記録しない / 未指定・不正=既定値)。
+ */
+/**
+ * §159-003c: 1 tick で 1 ファイルから読み込む最大バイト数。
+ * claude_code 経路が元から使っていた 2MB を、codex 経路にも揃えた
+ * (codex は残り全体を読んでいたため、1 ファイルで tick が数秒〜十数秒になり得た)。
+ */
+export const DEFAULT_INGEST_MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
+
+export const DEFAULT_SLOW_TICK_LOG_MS = 1000;
+
+export function resolveSlowTickLogMs(): number {
+  const rawText = process.env.HARNESS_MEM_SLOW_TICK_LOG_MS?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_SLOW_TICK_LOG_MS;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw)) return DEFAULT_SLOW_TICK_LOG_MS;
+  return raw > 0 ? raw : Infinity;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -489,6 +516,27 @@ export class IngestCoordinator {
 
   constructor(private readonly deps: IngestCoordinatorDeps) {}
 
+  /**
+   * §159-003c: 同期 tick の所要時間を測り、閾値超過だけを記録する。
+   *
+   * これらの job は event loop 上で同期実行されるため、所要時間 = /health が
+   * 応答できない時間。既存の `try { ... } catch {}` と同じく例外は飲み込む
+   * (post-shutdown の DB エラーで daemon を落とさないため)。
+   */
+  private runTick(label: string, fn: () => void): void {
+    const startedAt = Date.now();
+    try {
+      fn();
+    } catch {
+      /* ignore post-shutdown DB errors */
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= resolveSlowTickLogMs()) {
+        console.warn(`[ingest] slow tick: ${label} blocked the event loop for ${elapsed}ms`);
+      }
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // タイマー管理
   // ---------------------------------------------------------------------------
@@ -505,35 +553,35 @@ export class IngestCoordinator {
     if (config.codexHistoryEnabled) {
       this.ingestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestCodexHistory(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("codex", () => this.ingestCodexHistoryTick());
       }, config.codexIngestIntervalMs);
     }
 
     if (config.opencodeIngestEnabled !== false) {
       this.opencodeIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestOpencodeHistory(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("opencode", () => this.ingestOpencodeHistory());
       }, clampLimit(Number(config.opencodeIngestIntervalMs || DEFAULT_OPENCODE_INGEST_INTERVAL_MS), DEFAULT_OPENCODE_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.cursorIngestEnabled !== false) {
       this.cursorIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestCursorHistory(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("cursor", () => this.ingestCursorHistory());
       }, clampLimit(Number(config.cursorIngestIntervalMs || DEFAULT_CURSOR_INGEST_INTERVAL_MS), DEFAULT_CURSOR_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.antigravityIngestEnabled !== false) {
       this.antigravityIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestAntigravityHistory(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("antigravity", () => this.ingestAntigravityHistory());
       }, clampLimit(Number(config.antigravityIngestIntervalMs || DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS), DEFAULT_ANTIGRAVITY_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
     if (config.geminiIngestEnabled !== false) {
       this.geminiIngestTimer = setInterval(() => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestGeminiHistory(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("gemini", () => this.ingestGeminiHistory());
       }, clampLimit(Number(config.geminiIngestIntervalMs || DEFAULT_GEMINI_INGEST_INTERVAL_MS), DEFAULT_GEMINI_INGEST_INTERVAL_MS, 1000, 300000));
     }
 
@@ -541,7 +589,7 @@ export class IngestCoordinator {
       const ccInterval = clampLimit(Number(config.claudeCodeIngestIntervalMs || DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS), DEFAULT_CLAUDE_CODE_INGEST_INTERVAL_MS, 1000, 300000);
       const runClaudeCodeIngest = () => {
         if (this.deps.isShuttingDown()) return;
-        try { this.ingestClaudeCodeSessions(); } catch { /* ignore post-shutdown DB errors */ }
+        this.runTick("claude_code", () => this.ingestClaudeCodeSessions());
       };
       // S115-003: 大規模履歴では起動直後の同期 scan が readiness/search を塞ぐため、
       // 最初の取り込みも通常 interval まで遅らせる。
@@ -563,6 +611,9 @@ export class IngestCoordinator {
         // Bun の uncaughtException 扱いで daemon プロセスを殺し、launchd が
         // 再起動を繰り返す crashloop を引き起こしていた。次サイクル (60s 後) で
         // 自然に再試行されるので、ここでは WARN ログだけ残して swallow する。
+        // §159-003c: consolidation は async だが、内部の同期 DB 処理が event loop を
+        // 占有する。所要時間 (await 込み) を測っておき、閾値超過だけ記録する。
+        const consolidationStartedAt = Date.now();
         void this.deps
           .runConsolidation({ reason: "scheduler", limit: 10 })
           .catch((err: unknown) => {
@@ -574,13 +625,17 @@ export class IngestCoordinator {
           })
           .finally(() => {
             consolidationRunning = false;
+            const elapsed = Date.now() - consolidationStartedAt;
+            if (elapsed >= resolveSlowTickLogMs()) {
+              console.warn(`[ingest] slow tick: consolidation took ${elapsed}ms`);
+            }
           });
       }, clampLimit(Number(config.consolidationIntervalMs || 60000), 60000, 5000, 600000));
     }
 
     this.retryTimer = setInterval(() => {
       if (this.deps.isShuttingDown()) return;
-      try { this.deps.processRetryQueue(); } catch { /* ignore post-shutdown DB errors */ }
+      this.runTick("retry_queue", () => this.deps.processRetryQueue());
     }, 15000);
 
     this.checkpointTimer = setInterval(() => {
@@ -1083,8 +1138,16 @@ export class IngestCoordinator {
   // Codex ingest メソッド（core から移動）
   // ---------------------------------------------------------------------------
 
-  private ingestCodexSessionsRollouts(): CodexIngestSummary {
+  private ingestCodexSessionsRollouts(options?: {
+    budgetMs?: number;
+    maxBytesPerFile?: number;
+  }): CodexIngestSummary {
     const summary = emptyCodexIngestSummary();
+    // §159-003c: 本番実測でこの tick が 11.9〜15.0 秒 event loop を塞いでいた
+    // (`[ingest] slow tick: codex ...`)。claude_code と同型の budget を入れる。
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
+    const maxBytesPerFile = options?.maxBytesPerFile ?? DEFAULT_INGEST_MAX_BYTES_PER_FILE;
     const sessionsRoot = resolveHomePath(this.deps.config.codexSessionsRoot);
     if (!existsSync(sessionsRoot)) {
       return summary;
@@ -1128,10 +1191,20 @@ export class IngestCoordinator {
         continue;
       }
 
+      // §159-003c: 読み込み前に budget を判定する。ファイル一覧の走査 (stat + offset
+      // 参照) は毎 tick 完走させ、末尾のファイルが永久に処理されない状態を避ける。
+      if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
+
       let chunk = "";
       try {
         const buffer = readFileSync(rolloutPath);
-        chunk = buffer.subarray(offset).toString("utf8");
+        // 1 tick で読む量に上限を設ける (元は残り全体を読んでいた)。offset は永続化
+        // されるので、上限で切っても次 tick が続きから再開する。
+        const remaining = buffer.subarray(offset);
+        const slice = Number.isFinite(maxBytesPerFile)
+          ? remaining.subarray(0, maxBytesPerFile)
+          : remaining;
+        chunk = slice.toString("utf8");
       } catch {
         continue;
       }
@@ -1156,7 +1229,18 @@ export class IngestCoordinator {
         lastAssistantContent: context.lastAssistantContent,
       };
       let nextOffset = offset + parsedChunk.consumedBytes;
+      let budgetExhausted = false;
+      let processed = 0;
       for (const entry of parsedChunk.events) {
+        // §159-003c: insert ループも budget で打ち切る。中断位置は既存の失敗時と同じく
+        // entry.lineOffset で保存する。1 件目では抜けない (offset が進まず同じ chunk を
+        // 読み直し続けるため)。
+        if (processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) {
+          nextOffset = Math.max(offset, entry.lineOffset);
+          budgetExhausted = true;
+          break;
+        }
+        processed += 1;
         const result = this.deps.recordEvent(
           {
             platform: "codex",
@@ -1200,6 +1284,7 @@ export class IngestCoordinator {
 
       this.storeCodexRolloutContext(sourceKey, committedContext);
       this.updateIngestOffset(sourceKey, nextOffset);
+      if (budgetExhausted) break;
     }
 
     return summary;
@@ -1272,6 +1357,18 @@ export class IngestCoordinator {
     return summary;
   }
 
+  /**
+   * §159-003c: 定期 tick 用の codex 取り込み。`ingestCodexHistory()` は明示 API で
+   * 完走させる契約なので、scheduler からはこちらを呼んで tick budget を効かせる。
+   * scheduler が公開 API をそのまま呼ぶと budget が無効化される (実測で 12〜16 秒の
+   * ブロックが残った) ため、経路を分けている。
+   */
+  private ingestCodexHistoryTick(): void {
+    if (!this.deps.config.codexHistoryEnabled) return;
+    this.ingestCodexSessionsRollouts();
+    this.ingestLegacyCodexHistoryFile();
+  }
+
   ingestCodexHistory(): ApiResponse {
     const startedAt = performance.now();
     const summary = emptyCodexIngestSummary();
@@ -1293,7 +1390,11 @@ export class IngestCoordinator {
       );
     }
 
-    mergeCodexIngestSummary(summary, this.ingestCodexSessionsRollouts());
+    // 明示 API は完走させる (§159-003c の budget は定期実行のみに効かせる)
+    mergeCodexIngestSummary(
+      summary,
+      this.ingestCodexSessionsRollouts({ budgetMs: Infinity, maxBytesPerFile: Infinity })
+    );
     mergeCodexIngestSummary(summary, this.ingestLegacyCodexHistoryFile());
 
     return makeResponse(
@@ -2404,7 +2505,23 @@ export class IngestCoordinator {
       });
 
       let imported = 0;
+      // §159-003c: 1 ファイル分の insert も budget で打ち切る。budget 判定を読み込み前に
+      // 置くだけでは、1 ファイルの recordEvent ループが丸ごと走り切るため実測で 1 tick
+      // 約 11 秒のブロックが残っていた。中断位置は event の lineOffset で保存する。
+      // 打ち切りは 2 件目以降のみ許す (1 件目で抜けると offset が進まず永久に同じ chunk を
+      // 読み直す)。
+      let resumeOffset: number | null = null;
+      let entryIndex = 0;
       for (const entry of parsedChunk.events) {
+        if (
+          entryIndex > 0 &&
+          Number.isFinite(budgetMs) &&
+          Date.now() - startedAtMs > budgetMs
+        ) {
+          resumeOffset = entry.lineOffset;
+          break;
+        }
+        entryIndex += 1;
         const result = this.deps.recordEvent(
           {
             platform: "claude",
@@ -2424,6 +2541,13 @@ export class IngestCoordinator {
       }
 
       summary.eventsImported += imported;
+
+      if (resumeOffset !== null) {
+        // 途中で抜けたので context は保存しない (chunk 全体を前提とした値のため)。
+        // 次 tick が resumeOffset から読み直す。
+        this.updateIngestOffset(sourceKey, Math.max(offset, resumeOffset));
+        break;
+      }
 
       this.storeClaudeCodeContext(sourceKey, {
         sessionId: parsedChunk.context.sessionId || fallbackSessionId,
