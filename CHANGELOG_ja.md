@@ -7,6 +7,18 @@
 
 ## [Unreleased]
 
+## [0.29.3] - 2026-07-26
+
+### 修正
+
+- **0.29.2 のドキュメント成果を npm に到達させた**。v0.29.2 は tag と GitHub Release まで進んだが npm 未公開だった。`publish-npm` が repository behavior gate で停止し、`tests/readme-claim-ceiling.test.ts` が実 README と Hermes 追加前の claim map を比較して fail していたため。claim map SSOT (`docs/readme-claims.md`、`docs/readme-claims-ja.md`) を Hermes を含む lead tagline に更新し、Layer 1 MCP / Layer 2 MemoryProvider の参加条件と事実抽出の egress contract の行を追加した。`github-release` は `go-build` にのみ依存するため、tag と release page だけが先に出る構造だった。
+- **CodingMemory bench smoke に Python テスト依存を追加**。`codingmemory-bench-smoke.yml` が Python 3.11 と `pytest>=8,<9` を導入する。`tests/benchmark-claim-ssot.test.ts` で pin し、同じ依存欠落が再発しないようにした。
+
+### 検証
+
+- リリース内容に対する repository behavior gate (`npm test`): 2369 passed。唯一の fail は `memory-server/tests/performance/repository-regression.test.ts` の `findMany` で、負荷依存のマイクロベンチ (ratio 1.317 / 上限 1.30)。再実行では 1.230、1.018 で pass し、本変更とは無関係。
+- README claim ceiling gate: 8 passed。
+
 ## [0.29.2] - 2026-07-21
 
 ### ドキュメント
@@ -1074,7 +1086,8 @@ v0.11.0 での対応:
 
 - 詳細な変更点、移行ノート、検証手順は [CHANGELOG.md](./CHANGELOG.md) を参照してください。
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...HEAD
+[0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
