@@ -1294,7 +1294,7 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 - 2026-07-15: operator が XR draft を承認（claude-code-harness Phase 115.4、HG-2 と同時）
 - 2026-07-16: v5.1.0 公開後に本セクション起票（release 非ブロック条項どおり）
 
-## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (2/6 完了、159-004 と 159-001 を実施済み)
+## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (2/7 完了、159-004 と 159-001 を実施済み。159-003 は profiling で前提が変わり 003a/003b に分割)
 
 策定日: 2026-07-26（起票: v0.29.3 release session）
 背景: 1 セッション中に `daemon_unavailable` / `degraded` を 3 回観測した。§155 で扱った crashloop・`idleTimeout`・warm-up・SQLITE_BUSY とは別の残存経路であり、**daemon プロセスは生きているのに health だけが応答できない**状態が本体。原因は 2 系統に分かれる。(A) in-process の granite ONNX embedding が CPU 束縛で event loop を占有し `/health` が返せない。(B) shutdown の graceful path が返らず listen socket を保持したまま残る。加えて MCP client 側が (A) の最中に「daemon 不在」と誤認して別 daemon を起動しようとし、`Another harness-memd operation is in progress` のロック競合を起こす。
@@ -1318,12 +1318,33 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 | 159-004 | (B) 対策・実施済み。`gracefulShutdown` に force-exit watchdog を追加 (`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS`、既定 10s)。`core.shutdown()` の throw と telemetry flush の失敗で exit が塞がれないよう try/catch と `.catch()` を追加。`processRetryQueue(true)` を try/catch で囲み、失敗しても WAL checkpoint と `db.close()` へ進むようにする | (a) watchdog の env 上書きと既定値、期限切れ時の `process.exit(1)`、正常時の `clearTimeout` を pin、(b) script 側 SIGTERM→SIGKILL escalation も同時に pin、(c) 実機で正常停止が SIGTERM から 1 秒で完了し watchdog 未発火、(d) memory-server 全テスト非回帰 | - | cc:完了 [本 PR] |
 | 159-001 | (A) の user 影響を止める。MCP client の `EnsureDaemon` が health 不通時に **pid file とプロセス生存を確認**し、生存している場合は `startDaemonFunc()` を呼ばずに「busy」として待つ。不在時のみ従来どおり起動する。実装: `mcp-server-go/internal/proxy/httpclient.go` に `livingDaemonPid()` (HARNESS_MEM_HOME → `daemon.pid` → signal 0、Windows は FindProcess 判定) と `waitForHealthWithin()` を追加 | (a) 生存 pid がある間 auto-start を試行しない test、(b) busy から回復したら待機のみで成功する test、(c) pid file 欠落/不正/stale/生存の 4 分岐 test、(d) daemon 不在時の起動経路は非回帰、(e) 4 プラットフォームで build 通過 | - | cc:完了 [本 PR] |
 | 159-002 | probe 既定値の見直し。busy 待機予算は `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` (既定 10s) として 159-001 で導入済み。残りは `healthTimeout` 2500ms / `startupHealthTimeout` 5s の既定を実測から再評価する部分 | 変更後の既定値と根拠の実測を docs に記録 | 159-001 | cc:TODO |
-| 159-003 | (A) の根治。embedding を event loop から外す。`memory-server/src/tools/search-worker.ts` の worker 経路が前例 | consolidation と history backfill 実行中に `/health` が 200 を返し続けることを実測。embedding 品質は非回帰 (e5 parity / dev-domain gate) | - | cc:TODO |
+| 159-003a | (A) の発生源を A/B で確定する。**2026-07-26 の profiling で「embedding が塞いでいる」という当初仮説は否定された** (下記「(A) の profiling 結果」参照)。60 秒周期ジョブのうちどれが main thread を塞ぐかを、一時 HOME + 別 port + 一時 DB の standalone daemon で切り分ける。本番 DB は writer 衝突のため使わない。手順: `HARNESS_MEM_CONSOLIDATION_ENABLED=false` / `HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST=false` を個別に落として health を 1 秒間隔で 5 分 polling し、非 200 窓が消えるかを比較する | どの 60 秒ジョブが塞ぐかを 1 つに特定し、`sample` の main thread leaf 分布を添えて記録 | - | cc:TODO |
+| 159-003b | 159-003a で特定した経路を event loop から外す (out-of-process 化、または同期 DB 書き込みのバッチ境界で yield)。`memory-server/src/tools/search-worker.ts` の常駐 worker パターンと `shouldRunXOutOfProcess` 系フラグ規約が前例 | consolidation と history backfill 実行中に `/health` が 200 を返し続けることを実測 (1 秒間隔 5 分で非 200 が 0)。品質非回帰: `npm test` / e5 parity (cosine drift < 1e-6) / CJK gate / developer-domain gate の 4 本 | 159-003a | cc:TODO |
 | 159-005 | launchctl restart 経路 (`scripts/harness-memd:1283-1308`) と `offline_stop_daemon` に SIGKILL バックストップを追加。plist の `ExitTimeOut` に依存しない | `wait_for_health` 失敗後に pid を解決して `STOP_TIMEOUT_SEC` 待ち → SIGKILL する test | 159-004 | cc:TODO |
 | 159-006 | 切り分け手順を docs 化。「CPU 高 + R/U なら待つ / CPU 0 + S で無応答なら停止手順」の判定と、`daemon.log` と `daemon.launchd.log` の 2 系統がある注意点を書く | operator が degraded を見たときに kill 可否を自分で判断できる記述 | - | cc:TODO |
 
+### (A) の profiling 結果 (2026-07-26 実測、当初仮説の否定)
+
+159-001 完了後に daemon を再起動し、`/health` を 1 秒間隔で polling しながら `ps` の `%CPU` と `sample` (macOS) を取った。
+
+| 観測 | 実測値 |
+|---|---|
+| 非 200 の周期性 | **60 秒周期**。daemon 起動時刻 + n×60 秒の各分 :24〜:25 に開始 |
+| 1 窓の長さ | 7 → 8 → 13 → 13 サンプル (1 秒間隔) と**回を追って伸びる** |
+| 窓中の `%CPU` | 0.0〜110.9 (1 コア飽和) |
+| 窓中の子プロセス | 常駐 `search-worker.ts` に加えて one-shot child が 1〜2 個出現 = 一部処理は既に offload されている |
+| `sample` の main thread hot frame | `sqlite3_step` / `sqlite3VdbeExec` / `sqlite3BtreeInsert` / `pagerWalFrames` (**SQLite の書き込み経路**) |
+| 同 sample 内の言及回数 | `sqlite` 300 行 vs `onnxruntime` 38 行 |
+| プロセスの物理フットプリント | 4.9GB (peak 9.2GB) |
+| `reindex_vectors_enabled` | **false** (この環境では無効) |
+
+**当初仮説「in-process ONNX embedding が event loop を塞ぐ」は支持されなかった。** 支配的なのは 60 秒周期ジョブ (consolidation と 5 系統の history ingest がいずれも `*_interval_ms: 60000`) が main thread 上で行う同期 SQLite 書き込みで、`bun:sqlite` は同期 FFI なのでその間 HTTP サーバが応答できない。また、構造的な穴として事前調査で挙がっていた `ReindexVectorsScheduler` はこの環境では無効なため、今回の事象の原因ではない。
+
+したがって 159-003 は「embedding の worker 化」ではなく、**発生源の特定 (159-003a) → 特定した経路の event loop 退避 (159-003b)** に分割した。特定前に worker 化を実装すると、無効なスケジューラや hot でない経路を対象にしてしまう。
+
 ### Non-goals / stop line
 
+- **発生源が特定できていない状態で worker 化の実装を始めない** (159-003a → 003b の順を守る)。2026-07-26 時点で「embedding が犯人」という前提は profiling で否定されている。
 - 種別 (A) の最中に daemon を kill しない。待てば回復する。焦って再起動すると warm-up と backfill を最初からやり直し、同じ飢餓を自分で再発させる。
 - `harness-memd status` の `degraded` 表示だけで実障害と判定しない。health endpoint の応答で判定する。
 - §155 の対策 (WAL + busy_timeout 30s + consolidation の `.catch()` + eager warm-up + health 厳格化) は実装済みのため再実装しない。本セクションはその後に残った経路のみを扱う。
