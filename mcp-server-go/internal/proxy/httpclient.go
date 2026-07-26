@@ -11,9 +11,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -28,6 +31,10 @@ const (
 	healthRetryDelay     = 150 * time.Millisecond
 	healthCacheDuration  = 5 * time.Second
 	apiTimeout           = 30 * time.Second
+	// §159-001: 生存している daemon が health を返せていないときの待機予算。
+	// 起動を試みる代わりにここまで待ち、超えたら busy として明示エラーを返す。
+	busyHealthTimeout   = 10 * time.Second
+	busyHealthPollDelay = 500 * time.Millisecond
 )
 
 var healthProbePaths = []string{"/health/ready", "/health", "/v1/health"}
@@ -45,6 +52,8 @@ var (
 	healthOK        bool
 	healthChecked   time.Time
 	startDaemonFunc = startDaemon
+	// §159-001: テストから差し替えられるようにする (実 pid file を読ませない)。
+	livingDaemonPidFunc = livingDaemonPid
 )
 
 // ---- URL resolution ----
@@ -156,39 +165,111 @@ func EnsureDaemon() error {
 	}
 
 	if probeHealthWithTimeout(getDurationEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", startupHealthTimeout)) {
-		healthMu.Lock()
-		healthOK = true
-		healthChecked = time.Now()
-		healthMu.Unlock()
+		markHealthy()
 		return nil
+	}
+
+	// §159-001: health が返らない理由は「daemon 不在」と「daemon が生きているが応答
+	// できない」の 2 つある。後者で start を呼ぶと、既存 daemon を残したまま二重起動を
+	// 試みて harness-memd のロックと競合する ("Another harness-memd operation is in
+	// progress")。in-process の ONNX embedding が CPU を占有すると health が数分返らない
+	// ことを実測しているため、pid の生存を確認できる場合は起動せず busy として扱う。
+	if pid := livingDaemonPidFunc(); pid > 0 {
+		budget := getDurationEnv("HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS", busyHealthTimeout)
+		if waitForHealthWithin(budget) {
+			markHealthy()
+			return nil
+		}
+		return fmt.Errorf(
+			"daemon (pid %d) is running at %s but did not answer health within %s; it is likely busy (heavy embedding or consolidation) — retry shortly instead of restarting it",
+			pid, GetBaseURL(), budget,
+		)
 	}
 
 	// Try starting the daemon
 	if err := startDaemonFunc(); err != nil {
 		if probeHealthWithTimeout(getDurationEnv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", startupHealthTimeout)) {
-			healthMu.Lock()
-			healthOK = true
-			healthChecked = time.Now()
-			healthMu.Unlock()
+			markHealthy()
 			return nil
 		}
 		return fmt.Errorf("failed to start daemon and existing daemon health is unreachable at %s: %w", GetBaseURL(), err)
 	}
 
 	// Wait for health with retries
-	for i := range healthRetries {
+	for range healthRetries {
 		time.Sleep(healthRetryDelay)
 		if probeHealth() {
-			healthMu.Lock()
-			healthOK = true
-			healthChecked = time.Now()
-			healthMu.Unlock()
+			markHealthy()
 			return nil
 		}
-		_ = i
 	}
 
 	return fmt.Errorf("daemon started but health check failed after %d retries", healthRetries)
+}
+
+func markHealthy() {
+	healthMu.Lock()
+	healthOK = true
+	healthChecked = time.Now()
+	healthMu.Unlock()
+}
+
+// waitForHealthWithin polls health until it answers or the budget runs out.
+// Returns as soon as the daemon recovers so a busy burst does not cost the full budget.
+func waitForHealthWithin(budget time.Duration) bool {
+	deadline := time.Now().Add(budget)
+	for {
+		if probeHealth() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+		time.Sleep(busyHealthPollDelay)
+	}
+}
+
+// daemonStateDir resolves the daemon state directory the same way scripts/harness-memd does
+// (HARNESS_MEM_HOME, falling back to ~/.harness-mem).
+func daemonStateDir() string {
+	if home := strings.TrimSpace(os.Getenv("HARNESS_MEM_HOME")); home != "" {
+		return home
+	}
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(userHome, ".harness-mem")
+}
+
+// livingDaemonPid returns the pid recorded in the daemon pid file when that process is
+// still alive, or 0 when the file is missing, unreadable, malformed, or stale.
+func livingDaemonPid() int {
+	dir := daemonStateDir()
+	if dir == "" {
+		return 0
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "daemon.pid"))
+	if err != nil {
+		return 0
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil || pid <= 0 {
+		return 0
+	}
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return 0
+	}
+	// Windows: FindProcess already fails for a dead pid. Unix: FindProcess always
+	// succeeds, so liveness needs signal 0 (which Windows does not support).
+	if runtime.GOOS == "windows" {
+		return pid
+	}
+	if err := proc.Signal(syscall.Signal(0)); err != nil {
+		return 0
+	}
+	return pid
 }
 
 func startDaemon() error {
