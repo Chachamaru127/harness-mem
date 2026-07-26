@@ -39,19 +39,40 @@ if (process.env.HARNESS_MEM_EMBEDDING_EAGER === "1") {
   }
 }
 
+// §159-004: SIGTERM/SIGINT 受信後に強制終了へ落とすまでの猶予 (既定 10s)。
+const DEFAULT_SHUTDOWN_TIMEOUT_MS = 10_000;
+const shutdownTimeoutMs = (() => {
+  const raw = Number.parseInt(process.env.HARNESS_MEM_SHUTDOWN_TIMEOUT_MS ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_SHUTDOWN_TIMEOUT_MS;
+})();
+
 let shuttingDown = false;
 const gracefulShutdown = async (signal: string): Promise<void> => {
   if (shuttingDown) return;
   shuttingDown = true;
   console.error(`[harness-memd] received ${signal}, draining queue and shutting down`);
+  // §159-004: graceful path が返らないときの最終防衛線。core.shutdown や
+  // telemetry flush が完了しないと process.exit まで到達せず、listen socket を
+  // 保持したまま health 応答不能の daemon が残る (2026-07-26 に観測)。
+  // event loop が native 処理で塞がれている場合は timer 自体が発火しないので、
+  // その経路は scripts/harness-memd の SIGTERM → SIGKILL escalation が担う。
+  // watchdog は unref しない: event loop が空になっても確実に発火させる。
+  const watchdog = setTimeout(() => {
+    console.error(`[harness-memd] graceful shutdown did not finish in ${shutdownTimeoutMs}ms; forcing exit`);
+    process.exit(1);
+  }, shutdownTimeoutMs);
   server.stop(true);
   try {
     core.shutdown(signal);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[harness-memd] core.shutdown threw (continuing to exit): ${message}`);
   } finally {
-    const telemetry = await shutdownTelemetry(signal);
-    if (telemetry.exporter.last_flush_ok === false) {
+    const telemetry = await shutdownTelemetry(signal).catch(() => null);
+    if (telemetry?.exporter.last_flush_ok === false) {
       console.error(`[harness-memd] telemetry flush failed: ${telemetry.exporter.last_flush_error}`);
     }
+    clearTimeout(watchdog);
     process.exit(0);
   }
 };
