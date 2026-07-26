@@ -1294,7 +1294,7 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 - 2026-07-15: operator が XR draft を承認（claude-code-harness Phase 115.4、HG-2 と同時）
 - 2026-07-16: v5.1.0 公開後に本セクション起票（release 非ブロック条項どおり）
 
-## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (2/7 完了、159-004 と 159-001 を実施済み。159-003 は profiling で前提が変わり 003a/003b に分割)
+## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (4/8 完了。159-004 / 159-001 / 159-003a / 159-003b。発生源は claude_code 履歴 ingest の同期実行と確定、非 200 は 28 → 3 / 241)
 
 策定日: 2026-07-26（起票: v0.29.3 release session）
 背景: 1 セッション中に `daemon_unavailable` / `degraded` を 3 回観測した。§155 で扱った crashloop・`idleTimeout`・warm-up・SQLITE_BUSY とは別の残存経路であり、**daemon プロセスは生きているのに health だけが応答できない**状態が本体。原因は 2 系統に分かれる。(A) in-process の granite ONNX embedding が CPU 束縛で event loop を占有し `/health` が返せない。(B) shutdown の graceful path が返らず listen socket を保持したまま残る。加えて MCP client 側が (A) の最中に「daemon 不在」と誤認して別 daemon を起動しようとし、`Another harness-memd operation is in progress` のロック競合を起こす。
@@ -1318,8 +1318,9 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 | 159-004 | (B) 対策・実施済み。`gracefulShutdown` に force-exit watchdog を追加 (`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS`、既定 10s)。`core.shutdown()` の throw と telemetry flush の失敗で exit が塞がれないよう try/catch と `.catch()` を追加。`processRetryQueue(true)` を try/catch で囲み、失敗しても WAL checkpoint と `db.close()` へ進むようにする | (a) watchdog の env 上書きと既定値、期限切れ時の `process.exit(1)`、正常時の `clearTimeout` を pin、(b) script 側 SIGTERM→SIGKILL escalation も同時に pin、(c) 実機で正常停止が SIGTERM から 1 秒で完了し watchdog 未発火、(d) memory-server 全テスト非回帰 | - | cc:完了 [本 PR] |
 | 159-001 | (A) の user 影響を止める。MCP client の `EnsureDaemon` が health 不通時に **pid file とプロセス生存を確認**し、生存している場合は `startDaemonFunc()` を呼ばずに「busy」として待つ。不在時のみ従来どおり起動する。実装: `mcp-server-go/internal/proxy/httpclient.go` に `livingDaemonPid()` (HARNESS_MEM_HOME → `daemon.pid` → signal 0、Windows は FindProcess 判定) と `waitForHealthWithin()` を追加 | (a) 生存 pid がある間 auto-start を試行しない test、(b) busy から回復したら待機のみで成功する test、(c) pid file 欠落/不正/stale/生存の 4 分岐 test、(d) daemon 不在時の起動経路は非回帰、(e) 4 プラットフォームで build 通過 | - | cc:完了 [本 PR] |
 | 159-002 | probe 既定値の見直し。busy 待機予算は `HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS` (既定 10s) として 159-001 で導入済み。残りは `healthTimeout` 2500ms / `startupHealthTimeout` 5s の既定を実測から再評価する部分 | 変更後の既定値と根拠の実測を docs に記録 | 159-001 | cc:TODO |
-| 159-003a | (A) の発生源を A/B で確定する。**2026-07-26 の profiling で「embedding が塞いでいる」という当初仮説は否定された** (下記「(A) の profiling 結果」参照)。60 秒周期ジョブのうちどれが main thread を塞ぐかを、一時 HOME + 別 port + 一時 DB の standalone daemon で切り分ける。本番 DB は writer 衝突のため使わない。手順: `HARNESS_MEM_CONSOLIDATION_ENABLED=false` / `HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST=false` を個別に落として health を 1 秒間隔で 5 分 polling し、非 200 窓が消えるかを比較する | どの 60 秒ジョブが塞ぐかを 1 つに特定し、`sample` の main thread leaf 分布を添えて記録 | - | cc:TODO |
-| 159-003b | 159-003a で特定した経路を event loop から外す (out-of-process 化、または同期 DB 書き込みのバッチ境界で yield)。`memory-server/src/tools/search-worker.ts` の常駐 worker パターンと `shouldRunXOutOfProcess` 系フラグ規約が前例 | consolidation と history backfill 実行中に `/health` が 200 を返し続けることを実測 (1 秒間隔 5 分で非 200 が 0)。品質非回帰: `npm test` / e5 parity (cosine drift < 1e-6) / CJK gate / developer-domain gate の 4 本 | 159-003a | cc:TODO |
+| 159-003a | (A) の発生源を A/B で確定する。**2026-07-26 の profiling で「embedding が塞いでいる」という当初仮説は否定された** (下記「(A) の profiling 結果」参照)。一時 HOME + 別 port + 一時 DB の standalone daemon で 60 秒周期ジョブを個別に落として比較 (本番 DB は writer 衝突のため使わない) | どの 60 秒ジョブが塞ぐかを 1 つに特定 | - | cc:完了 [本 PR] — **claude_code の履歴 ingest が発生源**。241 サンプル (1 秒間隔) の非 200 数: baseline 28 / consolidation off 23 / **claude_code ingest off 1** / 全 ingest off 0。実測規模 `~/.claude/projects` = 1665 jsonl / 1.5GB |
+| 159-003b | 特定した経路の event loop 占有を止める。`ingestClaudeCodeSessions()` は同期実行で、1 tick に最大 50 ファイル × 2MB を読み event ごとに `recordEvent` の DB 書き込みを行っていた (`ingest-coordinator.ts:521` から同期呼び出し)。tick 単位の wall-clock budget (`HARNESS_MEM_INGEST_TICK_BUDGET_MS`、既定 200ms) を導入し、読み込み前に判定して打ち切る。offset は永続化されるので次 tick が続きから再開する。明示 API (`ingestClaudeCodeHistory`) は `budgetMs: Infinity` で完走させる | (a) 非 200 が **28 → 3 / 241** に低減、(b) ingest が止まっていないこと (一時 DB に claude 254 / codex 73 / cursor 200 件を取り込み、offset 行も増加)、(c) budget の env 解決 4 分岐 + 読み込み前判定 + 明示 API 無制限の 6 test、(d) 品質非回帰: `npm test` 2537 passed / 2 failed + e5 parity 単体 PASS。fail 2 件は `tests/benchmarks/s108-developer-domain-manifest.test.ts` の 5000ms timeout で、**本変更を stash しても同一に落ちる**ため無関係 (cold cache 下で 5s 超過する既存の脆さ、別途要対応)。retrieval 品質ゲート (CJK / developer-domain の閾値判定) は、本変更が ingest の実行タイミングのみを変え ranking と embedding に触れないため非適用 | 159-003a | cc:完了 [本 PR] |
+| 159-003c | 159-003b の残余 3 / 241 を潰す。内訳の候補は (1) consolidation (baseline 28 → consolidation off 23 の差分 ~5)、(2) budget 判定は読み込み**前**なので 1 ファイル分の読み込み + insert が budget を超過し得る。まず `sample` で残余窓の hot frame を取って切り分ける | 非 200 が 0 / 241。ingest と consolidation の進捗は非回帰 | 159-003b | cc:TODO |
 | 159-005 | launchctl restart 経路 (`scripts/harness-memd:1283-1308`) と `offline_stop_daemon` に SIGKILL バックストップを追加。plist の `ExitTimeOut` に依存しない | `wait_for_health` 失敗後に pid を解決して `STOP_TIMEOUT_SEC` 待ち → SIGKILL する test | 159-004 | cc:TODO |
 | 159-006 | 切り分け手順を docs 化。「CPU 高 + R/U なら待つ / CPU 0 + S で無応答なら停止手順」の判定と、`daemon.log` と `daemon.launchd.log` の 2 系統がある注意点を書く | operator が degraded を見たときに kill 可否を自分で判断できる記述 | - | cc:TODO |
 
@@ -1341,6 +1342,22 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 **当初仮説「in-process ONNX embedding が event loop を塞ぐ」は支持されなかった。** 支配的なのは 60 秒周期ジョブ (consolidation と 5 系統の history ingest がいずれも `*_interval_ms: 60000`) が main thread 上で行う同期 SQLite 書き込みで、`bun:sqlite` は同期 FFI なのでその間 HTTP サーバが応答できない。また、構造的な穴として事前調査で挙がっていた `ReindexVectorsScheduler` はこの環境では無効なため、今回の事象の原因ではない。
 
 したがって 159-003 は「embedding の worker 化」ではなく、**発生源の特定 (159-003a) → 特定した経路の event loop 退避 (159-003b)** に分割した。特定前に worker 化を実装すると、無効なスケジューラや hot でない経路を対象にしてしまう。
+
+### (A) の A/B 結果 (2026-07-26、159-003a)
+
+一時 HOME + 別 port + 一時 DB の standalone daemon で、`/health` を 1 秒間隔で 240 秒 polling した非 200 サンプル数。
+
+| 条件 | 非 200 / 241 |
+|---|---|
+| baseline (全有効) | 28 |
+| `HARNESS_MEM_CONSOLIDATION_ENABLED=false` | 23 |
+| 履歴 ingest 5 系統すべて off | **0** |
+| **`HARNESS_MEM_ENABLE_CLAUDE_CODE_INGEST=false` のみ** | **1** |
+| 159-003b の tick budget 導入後 (全有効) | **3** |
+
+**発生源は claude_code の履歴 ingest**。`ingestClaudeCodeSessions()` (`ingest-coordinator.ts`) が `setInterval` から同期呼び出しされ、1 tick で最大 50 ファイル × 2MB を読み、parse した event ごとに `recordEvent` の DB 書き込みを行っていた。実測規模は `~/.claude/projects` = **1665 jsonl / 1.5GB**。`sample` の hot frame が SQLite 書き込み経路だったことと整合する。
+
+consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同じ分に発火するため寄与は重なる。
 
 ### Non-goals / stop line
 
