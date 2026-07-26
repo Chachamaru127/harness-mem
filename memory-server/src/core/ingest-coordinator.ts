@@ -77,6 +77,29 @@ function normalizeProjectName(name: string): string {
   return trimmed;
 }
 
+/**
+ * §159-003b: 定期 ingest tick が event loop を占有してよい上限 (ms)。
+ *
+ * 履歴 ingest は同期実行なので、この時間を超えると /health も search も返せない。
+ *
+ * `HARNESS_MEM_INGEST_TICK_BUDGET_MS` の解釈:
+ * - 正の整数 → その値 (ms)
+ * - 0 以下の整数 → `Infinity` (制限なし。明示的に無効化したい運用のため)
+ * - 未指定 / 整数として解釈できない値 → 既定値
+ *
+ * 整数表記のみを受理する。`parseInt` は "50ms" を 50、"1.5" を 1 と解釈してしまい、
+ * 設定ミスを有効値として黙って受け入れるため使わない。
+ */
+export const DEFAULT_INGEST_TICK_BUDGET_MS = 200;
+
+export function resolveIngestTickBudgetMs(): number {
+  const rawText = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_INGEST_TICK_BUDGET_MS;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw)) return DEFAULT_INGEST_TICK_BUDGET_MS;
+  return raw > 0 ? raw : Infinity;
+}
+
 function normalizeString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -2285,8 +2308,11 @@ export class IngestCoordinator {
     maxFiles?: number;
     maxBytesPerFile?: number;
     replayFromStart?: boolean;
+    budgetMs?: number;
   }): { eventsImported: number; filesScanned: number; filesSkippedBackfill: number } {
     const summary = { eventsImported: 0, filesScanned: 0, filesSkippedBackfill: 0 };
+    const startedAtMs = Date.now();
+    const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
     const projectsRoot = resolveHomePath(
       this.deps.config.claudeCodeProjectsRoot || DEFAULT_CLAUDE_CODE_PROJECTS_ROOT
     );
@@ -2333,6 +2359,14 @@ export class IngestCoordinator {
       // バッチ上限: 実際にファイルを読み込む回数を制限してイベントループをブロックしない
       filesProcessed += 1;
       if (filesProcessed > MAX_FILES_PER_POLL) break;
+
+      // §159-003b: 経過時間でも打ち切る。本メソッドは同期実行なので、読み込みと
+      // recordEvent の DB 書き込みが続く間 event loop 全体が止まり /health も返せない
+      // (2026-07-26 実測: 1665 ファイル / 1.5GB の履歴で 1 tick あたり最大 40 秒)。
+      // offset は永続化されるため、途中で抜けても次 tick が続きから再開する。
+      // ファイル一覧の走査自体 (stat + offset 参照) は毎 tick 完走させ、
+      // 読み込み前にだけ判定することで、末尾のファイルが永久に処理されない状態を避ける。
+      if (Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs) break;
 
       let chunk = "";
       try {
@@ -2420,6 +2454,8 @@ export class IngestCoordinator {
       maxFiles: Infinity,
       maxBytesPerFile: Infinity,
       replayFromStart: true,
+      // 明示 API は完走させる (§159-003b の tick budget は定期実行のみに効かせる)
+      budgetMs: Infinity,
     });
     return makeResponse(
       startedAt,
