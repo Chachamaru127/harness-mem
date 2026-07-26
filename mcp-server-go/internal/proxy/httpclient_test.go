@@ -9,6 +9,9 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -195,6 +198,9 @@ func TestEnsureDaemon_ReusesExistingDaemonWhenStartFailsButHealthRecovers(t *tes
 	t.Setenv("HARNESS_MEM_PORT", port)
 	t.Setenv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", "200")
 
+	// §159-001: この test は「daemon 不在」経路を検証するため、pid 生存判定は 0 を返させる。
+	stubLivingDaemonPid(t, 0)
+
 	started := false
 	originalStart := startDaemonFunc
 	startDaemonFunc = func() error {
@@ -208,6 +214,148 @@ func TestEnsureDaemon_ReusesExistingDaemonWhenStartFailsButHealthRecovers(t *tes
 	}
 	if !started {
 		t.Fatal("expected startDaemonFunc to be called")
+	}
+}
+
+// stubLivingDaemonPid replaces the pid liveness probe so tests never read the real pid file.
+func stubLivingDaemonPid(t *testing.T, pid int) {
+	t.Helper()
+	original := livingDaemonPidFunc
+	livingDaemonPidFunc = func() int { return pid }
+	t.Cleanup(func() { livingDaemonPidFunc = original })
+}
+
+// unhealthyServerEnv points the client at a server that answers health with the given
+// status codes in order (the last one repeats), and returns nothing else.
+func unhealthyServerEnv(t *testing.T, statuses ...int) {
+	t.Helper()
+	var probes int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/health/ready" && r.URL.Path != "/health" && r.URL.Path != "/v1/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		idx := probes
+		probes++
+		if idx >= len(statuses) {
+			idx = len(statuses) - 1
+		}
+		w.WriteHeader(statuses[idx])
+	}))
+	t.Cleanup(srv.Close)
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse test server URL: %v", err)
+	}
+	host, port, err := net.SplitHostPort(u.Host)
+	if err != nil {
+		t.Fatalf("split host port: %v", err)
+	}
+	t.Setenv("HARNESS_MEM_REMOTE_URL", "")
+	t.Setenv("HARNESS_MEM_HOST", host)
+	t.Setenv("HARNESS_MEM_PORT", port)
+	t.Setenv("HARNESS_MEM_HEALTH_TIMEOUT_MS", "200")
+	t.Setenv("HARNESS_MEM_STARTUP_HEALTH_TIMEOUT_MS", "200")
+}
+
+// §159-001: 生存している daemon に対して二重起動を試みない。
+func TestEnsureDaemon_DoesNotStartWhenDaemonPidIsAlive(t *testing.T) {
+	resetHealthCache(t)
+	unhealthyServerEnv(t, http.StatusServiceUnavailable)
+	t.Setenv("HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS", "300")
+	stubLivingDaemonPid(t, 4242)
+
+	started := false
+	originalStart := startDaemonFunc
+	startDaemonFunc = func() error {
+		started = true
+		return nil
+	}
+	t.Cleanup(func() { startDaemonFunc = originalStart })
+
+	err := EnsureDaemon()
+	if err == nil {
+		t.Fatal("expected an error when the daemon stays unhealthy")
+	}
+	if started {
+		t.Fatal("startDaemonFunc must not be called while a daemon pid is alive")
+	}
+	if !strings.Contains(err.Error(), "busy") {
+		t.Fatalf("error should explain the daemon is busy, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "4242") {
+		t.Fatalf("error should name the live pid, got: %v", err)
+	}
+}
+
+// §159-001: busy から回復したら待機だけで成功し、起動は試みない。
+func TestEnsureDaemon_WaitsForBusyDaemonToRecover(t *testing.T) {
+	resetHealthCache(t)
+	// startup probe (1 回) は 503、その後の busy 待機で 200 に回復する。
+	unhealthyServerEnv(t, http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusServiceUnavailable, http.StatusOK)
+	t.Setenv("HARNESS_MEM_BUSY_HEALTH_TIMEOUT_MS", "5000")
+	stubLivingDaemonPid(t, 4243)
+
+	started := false
+	originalStart := startDaemonFunc
+	startDaemonFunc = func() error {
+		started = true
+		return nil
+	}
+	t.Cleanup(func() { startDaemonFunc = originalStart })
+
+	if err := EnsureDaemon(); err != nil {
+		t.Fatalf("EnsureDaemon() returned error: %v", err)
+	}
+	if started {
+		t.Fatal("startDaemonFunc must not be called while a daemon pid is alive")
+	}
+}
+
+// ---- livingDaemonPid ----
+
+func TestLivingDaemonPid_NoPidFile(t *testing.T) {
+	t.Setenv("HARNESS_MEM_HOME", t.TempDir())
+	if pid := livingDaemonPid(); pid != 0 {
+		t.Fatalf("expected 0 when pid file is missing, got %d", pid)
+	}
+}
+
+func TestLivingDaemonPid_MalformedAndNonPositive(t *testing.T) {
+	for _, content := range []string{"", "   ", "not-a-pid", "0", "-1"} {
+		dir := t.TempDir()
+		t.Setenv("HARNESS_MEM_HOME", dir)
+		if err := os.WriteFile(filepath.Join(dir, "daemon.pid"), []byte(content), 0o600); err != nil {
+			t.Fatalf("write pid file: %v", err)
+		}
+		if pid := livingDaemonPid(); pid != 0 {
+			t.Fatalf("content %q should yield 0, got %d", content, pid)
+		}
+	}
+}
+
+func TestLivingDaemonPid_StalePid(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HARNESS_MEM_HOME", dir)
+	// 実在し得ない pid (macOS/Linux の既定上限より大きい)
+	if err := os.WriteFile(filepath.Join(dir, "daemon.pid"), []byte("4194304\n"), 0o600); err != nil {
+		t.Fatalf("write pid file: %v", err)
+	}
+	if pid := livingDaemonPid(); pid != 0 {
+		t.Fatalf("stale pid should yield 0, got %d", pid)
+	}
+}
+
+func TestLivingDaemonPid_LivePid(t *testing.T) {
+	dir := t.TempDir()
+	t.Setenv("HARNESS_MEM_HOME", dir)
+	self := os.Getpid()
+	if err := os.WriteFile(filepath.Join(dir, "daemon.pid"), []byte(strconv.Itoa(self)+"\n"), 0o600); err != nil {
+		t.Fatalf("write pid file: %v", err)
+	}
+	if pid := livingDaemonPid(); pid != self {
+		t.Fatalf("expected live pid %d, got %d", self, pid)
 	}
 }
 
