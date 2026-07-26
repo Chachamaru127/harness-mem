@@ -23,11 +23,10 @@ afterEach(() => {
  * claude_code ingest だけを止めると 28 → 1 に落ちたため発生源として確定した。
  */
 describe("§159-003b ingest tick budget", () => {
-  test("既定値は正の有限値", () => {
+  test("既定値は 200ms", () => {
     delete process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS;
+    expect(DEFAULT_INGEST_TICK_BUDGET_MS).toBe(200);
     expect(resolveIngestTickBudgetMs()).toBe(DEFAULT_INGEST_TICK_BUDGET_MS);
-    expect(DEFAULT_INGEST_TICK_BUDGET_MS).toBeGreaterThan(0);
-    expect(Number.isFinite(DEFAULT_INGEST_TICK_BUDGET_MS)).toBe(true);
   });
 
   test("env で上書きできる", () => {
@@ -42,11 +41,17 @@ describe("§159-003b ingest tick budget", () => {
     }
   });
 
-  test("数値でない値は既定値に落ちる", () => {
-    for (const raw of ["", "   ", "abc"]) {
+  test("整数として解釈できない値は既定値に落ちる", () => {
+    // "50ms" や "1.5" を parseInt が 50 / 1 と解釈して黙って受理する挙動を防ぐ
+    for (const raw of ["", "   ", "abc", "50ms", "1.5", "1e3", "0x10", "--5"]) {
       process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = raw;
       expect(resolveIngestTickBudgetMs()).toBe(DEFAULT_INGEST_TICK_BUDGET_MS);
     }
+  });
+
+  test("前後の空白は許容する", () => {
+    process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS = "  120  ";
+    expect(resolveIngestTickBudgetMs()).toBe(120);
   });
 
   test("claude_code の定期 ingest は読み込み前に budget を判定する", () => {

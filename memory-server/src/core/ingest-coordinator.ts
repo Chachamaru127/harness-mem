@@ -81,12 +81,21 @@ function normalizeProjectName(name: string): string {
  * §159-003b: 定期 ingest tick が event loop を占有してよい上限 (ms)。
  *
  * 履歴 ingest は同期実行なので、この時間を超えると /health も search も返せない。
- * 0 以下や数値でない値は「制限なし」として扱う (明示的に無効化したい運用のため)。
+ *
+ * `HARNESS_MEM_INGEST_TICK_BUDGET_MS` の解釈:
+ * - 正の整数 → その値 (ms)
+ * - 0 以下の整数 → `Infinity` (制限なし。明示的に無効化したい運用のため)
+ * - 未指定 / 整数として解釈できない値 → 既定値
+ *
+ * 整数表記のみを受理する。`parseInt` は "50ms" を 50、"1.5" を 1 と解釈してしまい、
+ * 設定ミスを有効値として黙って受け入れるため使わない。
  */
 export const DEFAULT_INGEST_TICK_BUDGET_MS = 200;
 
 export function resolveIngestTickBudgetMs(): number {
-  const raw = Number.parseInt(process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS ?? "", 10);
+  const rawText = process.env.HARNESS_MEM_INGEST_TICK_BUDGET_MS?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_INGEST_TICK_BUDGET_MS;
+  const raw = Number(rawText);
   if (!Number.isFinite(raw)) return DEFAULT_INGEST_TICK_BUDGET_MS;
   return raw > 0 ? raw : Infinity;
 }
