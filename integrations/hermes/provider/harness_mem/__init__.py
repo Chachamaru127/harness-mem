@@ -40,6 +40,7 @@ _DEFAULT_BASE_URL = "http://127.0.0.1:37888"
 _DEFAULT_PROJECT = "default"
 _DEFAULT_TIMEOUT_SEC = 8.0
 _MIN_QUERY_LEN = 3
+_PROFILE_PROJECT_ALIASES = {"cjcore": "cj-command"}
 
 
 def _normalize_match_text(text: str) -> str:
@@ -188,7 +189,10 @@ class HarnessMemMemoryProvider(MemoryProvider):
     def initialize(self, session_id: str, **kwargs: Any) -> None:
         self._base_url = _env("HARNESS_MEM_URL", _DEFAULT_BASE_URL).rstrip("/")
         self._token = _env("HARNESS_MEM_TOKEN") or None
-        self._project = _env("HARNESS_MEM_PROJECT_KEY", _DEFAULT_PROJECT) or _DEFAULT_PROJECT
+        configured_project = _env("HARNESS_MEM_PROJECT_KEY")
+        profile_identity = str(kwargs.get("agent_identity", "") or "").strip()
+        profile_project = _PROFILE_PROJECT_ALIASES.get(profile_identity, profile_identity)
+        self._project = configured_project or profile_project or _DEFAULT_PROJECT
         self._session_id = session_id
         self._hermes_home = str(kwargs.get("hermes_home", "") or "")
         self._platform = str(kwargs.get("platform", "") or "")

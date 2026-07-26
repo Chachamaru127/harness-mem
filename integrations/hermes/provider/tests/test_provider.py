@@ -110,6 +110,30 @@ class TestAvailability:
         assert recorder.calls == []
 
 
+class TestProfileProjectRouting:
+    def test_named_hermes_profile_becomes_default_project_scope(self, monkeypatch):
+        module = load_provider_module()
+        recorder = URLopenerRecorder({"ok": True, "items": []})
+        monkeypatch.setattr(module.request, "urlopen", recorder)
+
+        provider = module.HarnessMemMemoryProvider()
+        provider.initialize("sess-canai", agent_identity="canai")
+        provider.prefetch("profile routing")
+
+        assert recorder.calls[0]["body"]["project"] == "canai"
+
+    def test_cjcore_profile_uses_command_tower_project_alias(self, monkeypatch):
+        module = load_provider_module()
+        recorder = URLopenerRecorder({"ok": True, "items": []})
+        monkeypatch.setattr(module.request, "urlopen", recorder)
+
+        provider = module.HarnessMemMemoryProvider()
+        provider.initialize("sess-cjcore", agent_identity="cjcore")
+        provider.prefetch("command tower")
+
+        assert recorder.calls[0]["body"]["project"] == "cj-command"
+
+
 class TestSyncTurn:
     def test_sync_turn_returns_quickly_and_records_searchable_event(self, monkeypatch):
         module = load_provider_module()
