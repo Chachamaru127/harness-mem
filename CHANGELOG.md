@@ -7,6 +7,18 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [0.29.3] - 2026-07-26
+
+### Fixed
+
+- **The 0.29.2 documentation work now reaches npm**: v0.29.2 was tagged and GitHub-released but never published, because `publish-npm` stopped at the repository behavior gate — `tests/readme-claim-ceiling.test.ts` compared the shipped README against a claim map that still described the pre-Hermes scope. The claim map SSOT (`docs/readme-claims.md`, `docs/readme-claims-ja.md`) now carries the Hermes-inclusive lead tagline plus explicit rows for Layer 1 MCP / Layer 2 MemoryProvider participation and the fact-extraction egress contract, so the gate passes and the same content ships as 0.29.3. `github-release` depends only on `go-build`, which is why the tag and release page appeared while the package did not.
+- **CodingMemory bench smoke installs its Python test dependency**: `codingmemory-bench-smoke.yml` sets up Python 3.11 and installs `pytest>=8,<9` for the PII test path, pinned by `tests/benchmark-claim-ssot.test.ts` so the dependency cannot silently disappear again.
+
+### Verification
+
+- Repository behavior gate (`npm test`) on the release content: 2369 passed. The only failure was `memory-server/tests/performance/repository-regression.test.ts` `findMany`, a load-sensitive micro-benchmark that measured ratio 1.317 against a 1.30 ceiling and passed on re-run (1.230, 1.018); it is unrelated to this change set.
+- README claim ceiling gate: 8 passed.
+
 ## [0.29.2] - 2026-07-21
 
 ### Documentation
@@ -3117,7 +3129,8 @@ Setup and feed browsing became easier through an interactive setup flow and inli
 - Run `harness-mem setup` and confirm interactive prompts appear in sequence.
 - Open feed UI and confirm card details expand inline.
 
-[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...HEAD
+[Unreleased]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.3...HEAD
+[0.29.3]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.2...v0.29.3
 [0.29.2]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.1...v0.29.2
 [0.29.1]: https://github.com/Chachamaru127/harness-mem/compare/v0.29.0...v0.29.1
 [0.29.0]: https://github.com/Chachamaru127/harness-mem/compare/v0.28.9...v0.29.0
