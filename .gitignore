@@ -88,6 +88,7 @@ mcp-server-go/bin/
 integrations/hermes/plugin/*.egg-info/
 
 # Worker worktrees created by harness/claude-worker topology
+.harness-worktrees/
 memory-server/.harness-worktrees/
 
 # Live progress snapshot artifact
