@@ -981,7 +981,7 @@ PR #126 (feat/s154-zdr-bquality) で §F backlog 5 件中 4 件完了 + 1 件 pa
 
 完了サマリ (2026-06-25): empty-handoff の partial/full 衝突バグを修正、Reviewer (Verdict APPROVE) と Skeptic (MAJOR 3 件) の並列レビューを完走、defense-in-depth の 3 段 discriminator + resume_pack tiebreak で再発を防ぐ設計を確立。**最終配布**: GitHub Release v0.28.4 に darwin-amd64 / darwin-arm64 / linux-amd64 / windows-amd64.exe の 4 binary 添付。テスト: empty-handoff-dedupe.test.ts 7/7 + resume-pack-partial.test.ts 4/4 PASS。
 
-## §155 Codex MCP ハング根因の本質修正 (2026-06-19) — cc:TODO
+## §155 Codex MCP ハング根因の本質修正 (2026-06-19) — cc:完了 (6/6 完了、2026-06-19 [3d82138])
 
 策定日: 2026-06-19
 背景: 別 worktree からの codex review が `harness/harness_mem_search` 呼び出しで無限ハングする事象を本セッションで根因特定。daemon (port 37888) で 3 層の問題が同時発生する: (L1) Bun.serve の idleTimeout が 10s デフォルトで client は SSE 待ちを続け実質ハング、(L2) granite-embedding-311m-r2 が「lazy initialization pending」のまま warm up が永続化、(L3) consolidation worker と search-worker の SQLITE_BUSY 衝突で daemon プロセス自体が SIGTERM サイクル (crashloop) に入る。
@@ -1293,6 +1293,45 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 - 2026-07-14: 二次根因調査で `codeintel.go:170-247` の instruction-stub 実装を特定
 - 2026-07-15: operator が XR draft を承認（claude-code-harness Phase 115.4、HG-2 と同時）
 - 2026-07-16: v5.1.0 公開後に本セクション起票（release 非ブロック条項どおり）
+
+## §159 daemon が生存しているのに health 応答不能になる残存経路 (2026-07-26) — cc:TODO (1/6 完了、159-004 のみ実施済み)
+
+策定日: 2026-07-26（起票: v0.29.3 release session）
+背景: 1 セッション中に `daemon_unavailable` / `degraded` を 3 回観測した。§155 で扱った crashloop・`idleTimeout`・warm-up・SQLITE_BUSY とは別の残存経路であり、**daemon プロセスは生きているのに health だけが応答できない**状態が本体。原因は 2 系統に分かれる。(A) in-process の granite ONNX embedding が CPU 束縛で event loop を占有し `/health` が返せない。(B) shutdown の graceful path が返らず listen socket を保持したまま残る。加えて MCP client 側が (A) の最中に「daemon 不在」と誤認して別 daemon を起動しようとし、`Another harness-memd operation is in progress` のロック競合を起こす。
+
+### 観測事実 (2026-07-26 実測)
+
+| 対象 | 実測値 | evidence |
+|---|---|---|
+| CPU 束縛中の daemon | `%CPU` 46% → 69%、`state=R`/`U`、`/health` は 8s タイムアウトでも無応答 | `ps -p <pid> -o %cpu,state`、`curl -m 8` |
+| 自力回復 | 約 6 分後に `http=200` / CPU 0% / `state=S` へ復帰。kill 不要 | 10 秒間隔 40 回のポーリング実測 |
+| 発生契機 | いずれも重い I/O 直後 (session 開始時、グローバル npm 更新直後、443MB worktree 削除直後)。eager warm-up + history ingest backfill (既定 24h) + consolidation (既定 60s 間隔) が重なる | `daemon.launchd.log` の `eager embedding warm-up complete in 5767ms` 等 |
+| MCP client の見切り | 通常 probe 2500ms (`HARNESS_MEM_HEALTH_TIMEOUT_MS` で上書き可)、startup probe 5s、起動後 retry 10 回 × 150ms | `mcp-server-go/internal/proxy/httpclient.go:25-28,103,146-192` |
+| 誤った auto-start | health 不通だと生存 pid を確認せず `startDaemonFunc()` を呼ぶ | 同 `:166`、エラー文言は `:175` |
+| shutdown の無保護区間 | `core.shutdown()` の `processRetryQueue(true)` が try/catch 無しで、例外時に WAL checkpoint と `db.close()` を丸ごとスキップ | `memory-server/src/core/harness-mem-core.ts:9481-9483` (修正前) |
+| script の SIGKILL 保証 | 非 launchctl 経路の `stop_daemon` のみ SIGTERM → `STOP_TIMEOUT_SEC`(既定 5s) → SIGKILL を持つ。launchctl restart 経路と `offline_stop_daemon` にはバックストップが無い | `scripts/harness-memd:49,999-1012,1019-1052,1283-1308` |
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| 159-004 | (B) 対策・実施済み。`gracefulShutdown` に force-exit watchdog を追加 (`HARNESS_MEM_SHUTDOWN_TIMEOUT_MS`、既定 10s)。`core.shutdown()` の throw と telemetry flush の失敗で exit が塞がれないよう try/catch と `.catch()` を追加。`processRetryQueue(true)` を try/catch で囲み、失敗しても WAL checkpoint と `db.close()` へ進むようにする | (a) watchdog の env 上書きと既定値、期限切れ時の `process.exit(1)`、正常時の `clearTimeout` を pin、(b) script 側 SIGTERM→SIGKILL escalation も同時に pin、(c) 実機で正常停止が SIGTERM から 1 秒で完了し watchdog 未発火、(d) memory-server 全テスト非回帰 | - | cc:完了 [本 PR] |
+| 159-001 | (A) の user 影響を止める。MCP client の `EnsureDaemon` が health 不通時に **pid file とプロセス生存を確認**し、生存している場合は `startDaemonFunc()` を呼ばずに「busy」として長い budget で待つ。不在時のみ従来どおり起動する | (a) 生存 daemon が CPU 束縛中に auto-start を試行しない test、(b) `Another harness-memd operation is in progress` が発生しない、(c) daemon 不在時の起動経路は非回帰 | - | cc:TODO |
+| 159-002 | probe 既定値の見直し。`healthTimeout` 2500ms / `startupHealthTimeout` 5s が (A) の実測(数分)に対して短すぎる。busy と unreachable を区別した上で、待機予算を実測から再設定する | 変更後の既定値と根拠の実測を docs に記録。busy 判定時の最大待機が env で調整可能 | 159-001 | cc:TODO |
+| 159-003 | (A) の根治。embedding を event loop から外す。`memory-server/src/tools/search-worker.ts` の worker 経路が前例 | consolidation と history backfill 実行中に `/health` が 200 を返し続けることを実測。embedding 品質は非回帰 (e5 parity / dev-domain gate) | - | cc:TODO |
+| 159-005 | launchctl restart 経路 (`scripts/harness-memd:1283-1308`) と `offline_stop_daemon` に SIGKILL バックストップを追加。plist の `ExitTimeOut` に依存しない | `wait_for_health` 失敗後に pid を解決して `STOP_TIMEOUT_SEC` 待ち → SIGKILL する test | 159-004 | cc:TODO |
+| 159-006 | 切り分け手順を docs 化。「CPU 高 + R/U なら待つ / CPU 0 + S で無応答なら停止手順」の判定と、`daemon.log` と `daemon.launchd.log` の 2 系統がある注意点を書く | operator が degraded を見たときに kill 可否を自分で判断できる記述 | - | cc:TODO |
+
+### Non-goals / stop line
+
+- 種別 (A) の最中に daemon を kill しない。待てば回復する。焦って再起動すると warm-up と backfill を最初からやり直し、同じ飢餓を自分で再発させる。
+- `harness-memd status` の `degraded` 表示だけで実障害と判定しない。health endpoint の応答で判定する。
+- §155 の対策 (WAL + busy_timeout 30s + consolidation の `.catch()` + eager warm-up + health 厳格化) は実装済みのため再実装しない。本セクションはその後に残った経路のみを扱う。
+
+### 経緯
+
+- 2026-06-19: §155 で crashloop / idleTimeout / warm-up / SQLITE_BUSY を修正 (6/6 完了、[3d82138])
+- 2026-07-26: v0.29.3 release session 中に 3 回再発。CPU 束縛による event loop 飢餓が主因で、自力回復することを実測。159-004 を同 session で実施し、残りを本セクションに起票
 
 ## アーカイブ (完了 / 休止セクション)
 

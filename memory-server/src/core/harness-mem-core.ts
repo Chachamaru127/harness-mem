@@ -9479,7 +9479,15 @@ export class HarnessMemCore {
     this.ingestCoord.stopTimers();
 
     if (!lightweightChild) {
-      this.processRetryQueue(true);
+      // §159-004: ここで throw すると WAL checkpoint と db.close() が丸ごとスキップされ、
+      // DB ハンドルを掴んだまま停止できない daemon が残る。retry queue の失敗は
+      // shutdown を止める理由にならないので、ログだけ残して後続へ進む。
+      try {
+        this.processRetryQueue(true);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`[harness-mem] shutdown: processRetryQueue failed (continuing): ${message}`);
+      }
     }
 
     // Shutdown managed backend (fire-and-forget, best effort)
