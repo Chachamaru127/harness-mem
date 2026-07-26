@@ -79,3 +79,61 @@ describe("§159-003b ingest tick budget", () => {
     expect(body).toContain("replayFromStart: true");
   });
 });
+
+/**
+ * §159-003c: 本番実測で codex tick が 11.9〜16.4 秒 event loop を塞いでいた
+ * (`[ingest] slow tick: codex blocked the event loop for ...`)。codex 経路は
+ * ファイルの残り全体を読み、件数・バイト上限も持っていなかった。
+ */
+describe("§159-003c codex ingest tick budget", () => {
+  test("codex rollouts は budget と読み込みバイト上限を持つ", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const start = source.indexOf("private ingestCodexSessionsRollouts");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, source.indexOf("private ingestLegacyCodexHistoryFile", start));
+
+    expect(body).toContain("resolveIngestTickBudgetMs()");
+    expect(body).toContain("DEFAULT_INGEST_MAX_BYTES_PER_FILE");
+    // 読み込み前の打ち切り
+    expect(body).toMatch(/Number\.isFinite\(budgetMs\) && Date\.now\(\) - startedAtMs > budgetMs\) break;/);
+    // insert ループ内の打ち切りと再開位置の保存
+    expect(body).toContain("nextOffset = Math.max(offset, entry.lineOffset)");
+    expect(body).toContain("budgetExhausted = true");
+    // 1 件目では抜けない (offset が進まず同じ chunk を読み直し続けるため)
+    expect(body).toContain("processed > 0");
+  });
+
+  test("読み込みは maxBytesPerFile で切り出す", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const start = source.indexOf("private ingestCodexSessionsRollouts");
+    const body = source.slice(start, source.indexOf("private ingestLegacyCodexHistoryFile", start));
+
+    expect(body).toContain("remaining.subarray(0, maxBytesPerFile)");
+  });
+
+  test("scheduler は budget 無制限の公開 API を呼ばない", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+
+    // 定期 tick は専用の private 経路を通す。公開 API (ingestCodexHistory) は
+    // budgetMs: Infinity で完走する契約なので、scheduler から呼ぶと budget が無効化される。
+    expect(source).toContain('this.runTick("codex", () => this.ingestCodexHistoryTick())');
+    expect(source).not.toContain('this.runTick("codex", () => this.ingestCodexHistory())');
+
+    const apiStart = source.indexOf("ingestCodexHistory(): ApiResponse");
+    const apiBody = source.slice(apiStart, apiStart + 1400);
+    expect(apiBody).toContain("budgetMs: Infinity");
+    expect(apiBody).toContain("maxBytesPerFile: Infinity");
+  });
+
+  test("遅い tick を記録する仕組みがある", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+
+    expect(source).toContain("HARNESS_MEM_SLOW_TICK_LOG_MS");
+    expect(source).toContain("private runTick(");
+    expect(source).toContain("blocked the event loop for");
+    // 各 60 秒 job が runTick を通ること
+    for (const label of ["codex", "opencode", "cursor", "gemini", "claude_code"]) {
+      expect(source).toContain(`this.runTick("${label}"`);
+    }
+  });
+});
