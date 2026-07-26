@@ -1257,6 +1257,43 @@ Checkpoint: `.hermes/checkpoints/2026-07-09_112627-hermes-provider-e2e-and-llm-p
 - `.env` / API key / OAuth token / secret は読まない、docs に書かない。
 - `~/.hermes/config.yaml` や live plugin の変更は、別途明示承認なしに実行しない。
 
+## §158 harness_lsp_* の実態合わせ — references/definition/hover は instruction stub、diagnostics は .ts/.tsx のみ (XR-005) — cc:TODO
+
+策定日: 2026-07-16（起票: claude-code-harness v5.1.0 release session、経路 A cross-repo handoff）
+親管理: 管理 repo `harness-governance-private/XR-Registry.md` の **XR-005**（cross-runtime, owner=harness-mem, impacted=claude-code-harness）
+背景: claude-code-harness 側の issue report (2026-07-12) で `harness_lsp_*` の実呼び出しが transcript 全期間 (tool_use 約 53,000 件) で 0 回であることが判明。一次根因は claude-code-harness の SKILL.md にトリガー規則が無いことで、Phase 115 (v5.1.0 同梱) で対処済み。2026-07-14 の二次調査で、根因がもう一段深いことが判明: `harness_lsp_references`/`harness_lsp_definition`/`harness_lsp_hover` は実 LSP を呼ばない instruction-text stub であり、`harness_lsp_diagnostics` の実診断は `.ts/.tsx` (tsc) のみ。tool description（"Find all references..." "Go to the definition..." "Get type information..."）は能動的な解析能力を謳っており、実装との乖離がある。claude-code-harness 側は暫定対処として、トリガー規則を実働する `harness_ast_search` に固定し、diagnostics DoD gate を `.ts/.tsx` 限定 + fail-open で運用する変更を Phase 115 で完了済み。本チケットは harness-mem 側 (mcp-server-go) の実装/description 修正を扱う。
+
+### 観測事実 (2026-07-14 調査、claude-code-harness 側で実施)
+
+| 対象 | tool description の主張 | 実装の実態 | evidence |
+|---|---|---|---|
+| `harness_lsp_references` | "Find all references to a symbol across the codebase" | 固定 instruction text のみ返す（実参照検索なし） | `mcp-server-go/internal/tools/codeintel.go:42-47`（description）, `:170-182`（`handleLspRefs`） |
+| `harness_lsp_definition` | "Go to the definition of a symbol" | 固定 instruction text のみ返す（実定義ジャンプなし） | 同ファイル `:49-54`, `:184-195` |
+| `harness_lsp_hover` | "Get type information and documentation for a symbol" | 固定 instruction text のみ返す（実型情報取得なし） | 同ファイル `:61-66`, `:235-247` |
+| `harness_lsp_diagnostics` | "Get code diagnostics (errors, warnings, hints) for a file" | `.ts/.tsx` のみ `npx tsc --noEmit` を実行。他言語は手順提示の固定文言のみ | 同ファイル `:56-59`, `:197-233` |
+| （対照）`harness_ast_search` | "Search code by structural patterns using AST-Grep" | 実際に `sg`（ast-grep）を実行し JSON 結果を整形して返す（実働） | 同ファイル `:35-40`, `:81-166` |
+
+### タスク
+
+| Task | 内容 | DoD | Depends | Status |
+|------|------|-----|---------|--------|
+| S158-001 | （必須・最小コスト）4 tool の description を実装の実態に合わせて書き換える。"Find/Go to/Get" 系の能動的表現を、実際に返す内容（fallback 手順の instruction text）と一致させる。`harness_lsp_diagnostics` の description には「`.ts/.tsx` のみ実診断、他言語は手順提示のみ」を明記 | (a) 4 tool の description が instruction-stub である旨を正確に反映、(b) 既存 caller（claude-code-harness skills 等）の呼び出し方・戻り値契約に breaking change なし、(c) 既存 mcp-server-go テスト green | - | cc:TODO |
+| S158-002 | （任意・拡張コスト、backlog）非 TS/TSX ファイルへの実診断拡張（例: `.go` は `go vet`/`golangci-lint`、`.py` は `ruff check`/`mypy`、`.sh` は `shellcheck`）。references/definition/hover の実 LSP 化（gopls/pyright 等との bridge）は本チケットのスコープ外、別途起票を検討 | 対象言語ごとに実コマンド実行結果が返る。コマンド不在時は既存 fallback 文言に fail-open | S158-001 | cc:TODO（必須ではない） |
+| S158-003 | （任意・minor）`handleLspDiag` の `out, _ := cmd.Output()` がエラーを握り潰している点について、`npx`/`tsc` 不在時に既存 fallback 文言へ確実に fail-open することを回帰テストで固定 | `npx` 不在シミュレーションで fallback 文言が返ることを確認する test 1 件追加 | - | cc:TODO（必須ではない） |
+
+### Non-goals / stop line
+
+- claude-code-harness 側では実装しない。claude-code-harness は Phase 115 (v5.1.0) で「トリガー規則を `harness_ast_search` に固定」「diagnostics DoD gate を `.ts/.tsx` 限定 + fail-open」という利用側の対処のみを完了済み。本チケットは harness-mem 側 (`mcp-server-go`) の実装/description 修正のみを扱う。
+- S158-001 と S158-002 はどちらも必須ではなく択一可（description 修正だけでも false-advertising リスクは解消する）。両方やるかは Owner (harness-mem) 判断。
+
+### 経緯
+
+- 2026-07-12: claude-code-harness 側 issue report で `harness_lsp_*` の実呼び出し 0 回が判明
+- 一次調査: 根因は claude-code-harness SKILL.md のトリガー欠落 → Phase 115 で解消（v5.1.0 同梱、pin test `tests/test-lsp-workflow-wiring.sh`）
+- 2026-07-14: 二次根因調査で `codeintel.go:170-247` の instruction-stub 実装を特定
+- 2026-07-15: operator が XR draft を承認（claude-code-harness Phase 115.4、HG-2 と同時）
+- 2026-07-16: v5.1.0 公開後に本セクション起票（release 非ブロック条項どおり）
+
 ## アーカイブ (完了 / 休止セクション)
 
 2026-04-13 のメンテナンスで §51〜§76 を `docs/archive/Plans-s51-s76-2026-04-13.md` に移動しました。
