@@ -111,11 +111,26 @@ export function resolveIngestTickBudgetMs(): number {
  * (正整数=閾値 / 0 以下=記録しない / 未指定・不正=既定値)。
  */
 /**
- * §159-003c: 1 tick で 1 ファイルから読み込む最大バイト数。
- * claude_code 経路が元から使っていた 2MB を、codex 経路にも揃えた
- * (codex は残り全体を読んでいたため、1 ファイルで tick が数秒〜十数秒になり得た)。
+ * §159-003c/d: 1 tick で 1 ファイルから読み込む最大バイト数。
+ *
+ * 元は claude_code が 2MB、codex と cursor は「残り全体」だった。2MB でも **read +
+ * utf8 変換 + parse がそれ自体で数秒かかる** ため、tick budget (既定 200ms) を
+ * insert ループに入れても超過が残った (2026-07-26 実測: codex 1.3〜3.3 秒 /
+ * cursor 1.1〜1.4 秒)。budget は「読み込み前」と「insert ループ内」でしか判定できず、
+ * read と parse の途中では抜けられないので、1 回に読む量自体を絞る必要がある。
+ *
+ * `HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE` で上書き可 (0 以下は制限なし)。offset は
+ * 永続化されるので、上限で切っても次 tick が続きから再開する。
  */
-export const DEFAULT_INGEST_MAX_BYTES_PER_FILE = 2 * 1024 * 1024;
+export const DEFAULT_INGEST_MAX_BYTES_PER_FILE = 512 * 1024;
+
+export function resolveIngestMaxBytesPerFile(): number {
+  const rawText = process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE?.trim() ?? "";
+  if (!/^[+-]?\d+$/.test(rawText)) return DEFAULT_INGEST_MAX_BYTES_PER_FILE;
+  const raw = Number(rawText);
+  if (!Number.isFinite(raw)) return DEFAULT_INGEST_MAX_BYTES_PER_FILE;
+  return raw > 0 ? raw : Infinity;
+}
 
 export const DEFAULT_SLOW_TICK_LOG_MS = 1000;
 
@@ -1147,7 +1162,7 @@ export class IngestCoordinator {
     // (`[ingest] slow tick: codex ...`)。claude_code と同型の budget を入れる。
     const startedAtMs = Date.now();
     const budgetMs = options?.budgetMs ?? resolveIngestTickBudgetMs();
-    const maxBytesPerFile = options?.maxBytesPerFile ?? DEFAULT_INGEST_MAX_BYTES_PER_FILE;
+    const maxBytesPerFile = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
     const sessionsRoot = resolveHomePath(this.deps.config.codexSessionsRoot);
     if (!existsSync(sessionsRoot)) {
       return summary;
@@ -1780,10 +1795,20 @@ export class IngestCoordinator {
       return summary;
     }
 
+    // §159-003d: 実測で cursor tick が 1.1〜1.4 秒 event loop を塞いでいた。件数上限
+    // (MAX_CURSOR_HOOK_EVENTS_PER_INGEST) は insert しか縛らず、read + utf8 変換 +
+    // parse は残り全体を対象にしていたため。1 回に読む量を絞る。
+    const startedAtMs = Date.now();
+    const budgetMs = resolveIngestTickBudgetMs();
+    const maxBytesPerFile = resolveIngestMaxBytesPerFile();
     let chunk = "";
     try {
       const buffer = readFileSync(eventsPath);
-      chunk = buffer.subarray(offset).toString("utf8");
+      const remaining = buffer.subarray(offset);
+      const slice = Number.isFinite(maxBytesPerFile)
+        ? remaining.subarray(0, maxBytesPerFile)
+        : remaining;
+      chunk = slice.toString("utf8");
     } catch {
       return summary;
     }
@@ -1799,7 +1824,11 @@ export class IngestCoordinator {
     let nextOffset = offset + parsedChunk.consumedBytes;
     let processed = 0;
     for (const entry of parsedChunk.events) {
-      if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST) {
+      // §159-003d: 件数上限に加えて時間でも打ち切る。既存の deferred 経路と同じ形で
+      // 中断位置を保存するので、次 tick が続きから再開する。
+      const overBudget =
+        processed > 0 && Number.isFinite(budgetMs) && Date.now() - startedAtMs > budgetMs;
+      if (processed >= MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget) {
         nextOffset = Math.max(offset, entry.lineOffset);
         summary.eventsDeferred = parsedChunk.events.length - processed;
         summary.retryOffset = nextOffset;
@@ -2422,7 +2451,7 @@ export class IngestCoordinator {
     const files = this.listClaudeCodeJsonlFiles(projectsRoot);
     const cutoffMs = Date.now() - Math.max(0, this.deps.config.claudeCodeBackfillHours || DEFAULT_CLAUDE_CODE_BACKFILL_HOURS) * 60 * 60 * 1000;
     const MAX_FILES_PER_POLL = options?.maxFiles ?? 50;
-    const MAX_BYTES_PER_FILE = options?.maxBytesPerFile ?? (2 * 1024 * 1024); // 2MB per file per poll
+    const MAX_BYTES_PER_FILE = options?.maxBytesPerFile ?? resolveIngestMaxBytesPerFile();
     const replayFromStart = options?.replayFromStart === true;
     let filesProcessed = 0;
 

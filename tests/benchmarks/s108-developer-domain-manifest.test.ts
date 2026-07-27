@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   CJK_BASELINE_FREEZE_MIN_TOP1,
+  isDeepFreshnessBenchEnabled,
   reconcileDeveloperDomainManifest,
   resolveCjkBaseline,
 } from "../../scripts/s108-developer-domain-manifest";
@@ -102,6 +103,88 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  /**
+   * §159 follow-up: この 2 件は 2026-07-26 まで既定 5s で timeout していた。原因は
+   * deep freshness bench が実 LLM (loopback Ollama) を呼ぶことで、Ollama を動かしている
+   * 開発機では reconcile 1 回が 200 秒級になる (実測 203206ms)。CI は Ollama 不在で即
+   * 接続拒否となり skipped 扱いで速いため露見していなかった。
+   *
+   * `npm test` の合否が開発機の LLM 有無に依存しないことを pin する。
+   */
+  describe("deep freshness bench toggle", () => {
+    const ORIGINAL = process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+    const ORIGINAL_NODE_ENV = process.env.NODE_ENV;
+
+    afterEach(() => {
+      if (ORIGINAL === undefined) delete process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+      else process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH = ORIGINAL;
+      if (ORIGINAL_NODE_ENV === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = ORIGINAL_NODE_ENV;
+    });
+
+    test("テスト実行時は既定でスキップする", () => {
+      delete process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+      process.env.NODE_ENV = "test";
+      expect(isDeepFreshnessBenchEnabled()).toBe(false);
+    });
+
+    test("テスト以外では既定で実行する (release gate 用)", () => {
+      delete process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+      process.env.NODE_ENV = "production";
+      expect(isDeepFreshnessBenchEnabled()).toBe(true);
+    });
+
+    test("env で明示的に上書きできる", () => {
+      process.env.NODE_ENV = "test";
+      for (const raw of ["1", "true", "TRUE"]) {
+        process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH = raw;
+        expect(isDeepFreshnessBenchEnabled()).toBe(true);
+      }
+      process.env.NODE_ENV = "production";
+      for (const raw of ["0", "false", "FALSE"]) {
+        process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH = raw;
+        expect(isDeepFreshnessBenchEnabled()).toBe(false);
+      }
+    });
+
+    test("スキップ時も deep freshness の 3 metric は skipped として報告される", async () => {
+      // 外部から HARNESS_MEM_DEEP_FRESHNESS_BENCH=1 や NODE_ENV≠test を継いだ場合に
+      // 実 bench (LLM 呼び出し) が走って timeout するのを防ぐため、前提を固定する。
+      delete process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+      process.env.NODE_ENV = "test";
+      const dir = mkdtempSync(join(tmpdir(), "harness-mem-s108-dfb-skip-"));
+      const manifestPath = join(dir, "ci-run-manifest-latest.json");
+      try {
+        writeFileSync(
+          manifestPath,
+          `${JSON.stringify({
+            generated_at: "2026-04-10T08:10:51.561Z",
+            git_sha: "test",
+            results: { all_passed: true, bilingual_recall: 0.88, freshness: 1, temporal: 0.6458 },
+          }, null, 2)}\n`,
+          "utf8",
+        );
+        const report = await reconcileDeveloperDomainManifest({
+          manifestPath,
+          codeTokenRuns: 1,
+          temporalMaxCases: 12,
+          writeArtifacts: false,
+          now: new Date("2026-05-27T00:00:00.000Z"),
+        });
+        const deep = (report.flagship_kpi as unknown as {
+          evidence?: { deep_freshness?: Record<string, { status?: string; skip_reason?: string }> };
+        }).evidence?.deep_freshness;
+        expect(deep).toBeDefined();
+        for (const key of ["freshness_lag", "supersession", "tense_rewrite"]) {
+          expect(deep?.[key]?.status).toBe("skipped");
+          expect(deep?.[key]?.skip_reason).toContain("HARNESS_MEM_DEEP_FRESHNESS_BENCH");
+        }
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    }, 60_000);
   });
 
   describe("resolveCjkBaseline freeze quality bar", () => {
