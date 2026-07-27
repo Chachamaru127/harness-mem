@@ -155,6 +155,15 @@ export function isDeepFreshnessBenchEnabled(): boolean {
   return process.env.NODE_ENV !== "test";
 }
 
+/** スキップ理由を実際の無効化要因に合わせて返す (env による明示無効化 / テスト実行時の既定)。 */
+export function deepFreshnessBenchSkipReason(): string {
+  const raw = process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH?.trim().toLowerCase();
+  if (raw === "0" || raw === "false") {
+    return "deep freshness bench disabled explicitly by HARNESS_MEM_DEEP_FRESHNESS_BENCH=0";
+  }
+  return "deep freshness bench disabled (NODE_ENV=test); set HARNESS_MEM_DEEP_FRESHNESS_BENCH=1 to run";
+}
+
 export async function reconcileDeveloperDomainManifest(options: Options = {}): Promise<ReconciliationReport> {
   const manifestPath = resolve(options.manifestPath ?? DEFAULT_MANIFEST_PATH);
   const artifactDir = resolve(options.artifactDir ?? DEFAULT_ARTIFACT_DIR);
@@ -224,7 +233,7 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
   try { trInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-tense-rewrite.json"), "utf8")) as TenseRewriteInput[]; } catch { /* no fixture */ }
   const deepFreshnessSkip = {
     status: "skipped" as const,
-    skip_reason: "deep freshness bench disabled (NODE_ENV=test); set HARNESS_MEM_DEEP_FRESHNESS_BENCH=1 to run",
+    skip_reason: deepFreshnessBenchSkipReason(),
   };
   const [dfbLag, dfbSup, dfbTr] = isDeepFreshnessBenchEnabled()
     ? await Promise.all([

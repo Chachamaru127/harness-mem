@@ -150,6 +150,10 @@ describe("S108-005b developer-domain manifest reconciliation", () => {
     });
 
     test("スキップ時も deep freshness の 3 metric は skipped として報告される", async () => {
+      // 外部から HARNESS_MEM_DEEP_FRESHNESS_BENCH=1 や NODE_ENV≠test を継いだ場合に
+      // 実 bench (LLM 呼び出し) が走って timeout するのを防ぐため、前提を固定する。
+      delete process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH;
+      process.env.NODE_ENV = "test";
       const dir = mkdtempSync(join(tmpdir(), "harness-mem-s108-dfb-skip-"));
       const manifestPath = join(dir, "ci-run-manifest-latest.json");
       try {
