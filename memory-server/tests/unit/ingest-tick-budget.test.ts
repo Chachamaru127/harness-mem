@@ -2,7 +2,9 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  DEFAULT_INGEST_MAX_BYTES_PER_FILE,
   DEFAULT_INGEST_TICK_BUDGET_MS,
+  resolveIngestMaxBytesPerFile,
   resolveIngestTickBudgetMs,
 } from "../../src/core/ingest-coordinator";
 
@@ -93,7 +95,7 @@ describe("§159-003c codex ingest tick budget", () => {
     const body = source.slice(start, source.indexOf("private ingestLegacyCodexHistoryFile", start));
 
     expect(body).toContain("resolveIngestTickBudgetMs()");
-    expect(body).toContain("DEFAULT_INGEST_MAX_BYTES_PER_FILE");
+    expect(body).toContain("resolveIngestMaxBytesPerFile()");
     // 読み込み前の打ち切り
     expect(body).toMatch(/Number\.isFinite\(budgetMs\) && Date\.now\(\) - startedAtMs > budgetMs\) break;/);
     // insert ループ内の打ち切りと再開位置の保存
@@ -123,6 +125,43 @@ describe("§159-003c codex ingest tick budget", () => {
     const apiBody = source.slice(apiStart, apiStart + 1400);
     expect(apiBody).toContain("budgetMs: Infinity");
     expect(apiBody).toContain("maxBytesPerFile: Infinity");
+  });
+
+  test("読み込みバイト上限は env で上書きでき、既定は 512KB", () => {
+    const original = process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE;
+    try {
+      delete process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE;
+      expect(DEFAULT_INGEST_MAX_BYTES_PER_FILE).toBe(512 * 1024);
+      expect(resolveIngestMaxBytesPerFile()).toBe(DEFAULT_INGEST_MAX_BYTES_PER_FILE);
+
+      process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE = "65536";
+      expect(resolveIngestMaxBytesPerFile()).toBe(65536);
+
+      for (const raw of ["0", "-1"]) {
+        process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE = raw;
+        expect(resolveIngestMaxBytesPerFile()).toBe(Infinity);
+      }
+      for (const raw of ["512kb", "1.5", ""]) {
+        process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE = raw;
+        expect(resolveIngestMaxBytesPerFile()).toBe(DEFAULT_INGEST_MAX_BYTES_PER_FILE);
+      }
+    } finally {
+      if (original === undefined) delete process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE;
+      else process.env.HARNESS_MEM_INGEST_MAX_BYTES_PER_FILE = original;
+    }
+  });
+
+  test("cursor 経路も読み込みを切り出し、時間でも打ち切る", () => {
+    const source = readFileSync(COORDINATOR, "utf8");
+    const start = source.indexOf("private ingestCursorHooksEvents");
+    expect(start).toBeGreaterThan(-1);
+    const body = source.slice(start, start + 5000);
+
+    expect(body).toContain("resolveIngestMaxBytesPerFile()");
+    expect(body).toContain("remaining.subarray(0, maxBytesPerFile)");
+    // 件数上限だけでなく時間でも抜ける
+    expect(body).toContain("MAX_CURSOR_HOOK_EVENTS_PER_INGEST || overBudget");
+    expect(body).toContain("nextOffset = Math.max(offset, entry.lineOffset)");
   });
 
   test("遅い tick を記録する仕組みがある", () => {

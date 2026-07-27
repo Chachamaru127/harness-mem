@@ -134,6 +134,27 @@ export function resolveCjkBaseline(
   };
 }
 
+/**
+ * S154-310 の deep freshness bench (freshness lag / supersession / tense rewrite) を
+ * 実行するかどうか。
+ *
+ * この bench は実 LLM (既定で loopback Ollama の qwen3.5:9b) を呼ぶ。CI は Ollama 不在で
+ * 即座に接続拒否となり `.catch()` で skipped になるため速いが、**Ollama を動かしている
+ * 開発機では reconcile 1 回が 200 秒級になる** (2026-07-26 実測 203206ms)。その結果
+ * `npm test` の合否が「開発機に Ollama があるか」に依存していた
+ * (`tests/benchmarks/s108-developer-domain-manifest.test.ts` の 2 件が既定 5s で timeout)。
+ *
+ * テスト実行時 (`NODE_ENV=test`) は既定でスキップし、release gate
+ * (`npm run benchmark:developer-domain`) では従来どおり実行する。
+ * `HARNESS_MEM_DEEP_FRESHNESS_BENCH=1|0` で明示的に上書きできる。
+ */
+export function isDeepFreshnessBenchEnabled(): boolean {
+  const raw = process.env.HARNESS_MEM_DEEP_FRESHNESS_BENCH?.trim().toLowerCase();
+  if (raw === "1" || raw === "true") return true;
+  if (raw === "0" || raw === "false") return false;
+  return process.env.NODE_ENV !== "test";
+}
+
 export async function reconcileDeveloperDomainManifest(options: Options = {}): Promise<ReconciliationReport> {
   const manifestPath = resolve(options.manifestPath ?? DEFAULT_MANIFEST_PATH);
   const artifactDir = resolve(options.artifactDir ?? DEFAULT_ARTIFACT_DIR);
@@ -201,11 +222,17 @@ export async function reconcileDeveloperDomainManifest(options: Options = {}): P
   try { lagInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-lag.json"), "utf8")) as LagContradictionInput[]; } catch { /* no fixture */ }
   try { supInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-supersession.json"), "utf8")) as SupersessionInput[]; } catch { /* no fixture */ }
   try { trInputs = JSON.parse(readFileSync(join(dfbFixtureBase, "deep-freshness-tense-rewrite.json"), "utf8")) as TenseRewriteInput[]; } catch { /* no fixture */ }
-  const [dfbLag, dfbSup, dfbTr] = await Promise.all([
-    computeFreshnessLagReal(lagInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
-    computeSupersessionReal(supInputs, dfbAdjudicator, undefined, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
-    computeTenseRewriteReal(trInputs, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
-  ]);
+  const deepFreshnessSkip = {
+    status: "skipped" as const,
+    skip_reason: "deep freshness bench disabled (NODE_ENV=test); set HARNESS_MEM_DEEP_FRESHNESS_BENCH=1 to run",
+  };
+  const [dfbLag, dfbSup, dfbTr] = isDeepFreshnessBenchEnabled()
+    ? await Promise.all([
+      computeFreshnessLagReal(lagInputs, dfbAdjudicator).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+      computeSupersessionReal(supInputs, dfbAdjudicator, undefined, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+      computeTenseRewriteReal(trInputs, ollamaOpts).catch(() => ({ status: "skipped" as const, skip_reason: "bench threw" })),
+    ])
+    : [deepFreshnessSkip, deepFreshnessSkip, deepFreshnessSkip];
 
   // S154-305: enforce the flagship KPI threshold on the recorded full-CI measurement.
   // The freshness value is produced by run-ci's knowledge-update benchmark and recorded

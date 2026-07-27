@@ -78,7 +78,7 @@ import {
 } from "./external-channel-policy";
 import { verifyObservation as verifyObservationTrace } from "./verify.js";
 import { SqliteObservationRepository } from "../db/repositories/SqliteObservationRepository.js";
-import { IngestCoordinator } from "./ingest-coordinator";
+import { IngestCoordinator, resolveSlowTickLogMs } from "./ingest-coordinator";
 import {
   ConfigManager,
   EMBEDDING_DEFAULT_MODEL_KEY,
@@ -2266,6 +2266,25 @@ export class HarnessMemCore {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * §159-003d: consolidation の中で event loop を塞いでいる同期区間を特定するための計測。
+   *
+   * `runConsolidation` は async なので総所要時間 (実測 185287ms) は待ち時間を含み、
+   * ブロック時間を表さない。同期区間だけを個別に測ることで犯人を絞る。
+   * 閾値は ingest の slow tick と共通 (`HARNESS_MEM_SLOW_TICK_LOG_MS`、既定 1000ms)。
+   */
+  private measureSyncSegment<T>(label: string, fn: () => T): T {
+    const startedAt = Date.now();
+    try {
+      return fn();
+    } finally {
+      const elapsed = Date.now() - startedAt;
+      if (elapsed >= resolveSlowTickLogMs()) {
+        console.warn(`[consolidation] slow sync segment: ${label} blocked the event loop for ${elapsed}ms`);
+      }
     }
   }
 
@@ -8774,18 +8793,36 @@ export class HarnessMemCore {
       limit: request.limit,
     };
 
+    // §159-003d: 同期区間ごとに所要時間を測る。materialize は 1 observation ごとに
+    // 同期 DB 書き込みを行うため、件数が多いとここで event loop が止まる。
+    let materializeMs = 0;
+    let materializeCount = 0;
     const stats: ConsolidationRunStats = await runConsolidationOnce(this.db, options, {
       allowLocalDreamingObservationWrites:
         this.config.backendMode !== "hybrid" && this.config.backendMode !== "managed",
-      materializeObservationDerivedData: (observationId) =>
-        this.eventRec.materializeObservationDerivedData(observationId),
+      materializeObservationDerivedData: (observationId) => {
+        const startedAtMs = Date.now();
+        try {
+          return this.eventRec.materializeObservationDerivedData(observationId);
+        } finally {
+          materializeMs += Date.now() - startedAtMs;
+          materializeCount += 1;
+        }
+      },
     });
-    this.maybeRunSearchDbMaintenance();
+    if (materializeCount > 0 && materializeMs >= resolveSlowTickLogMs()) {
+      console.warn(
+        `[consolidation] slow sync segment: materialize_observations blocked the event loop for ${materializeMs}ms (${materializeCount} observations)`,
+      );
+    }
+    this.measureSyncSegment("search_db_maintenance", () => this.maybeRunSearchDbMaintenance());
     try {
-      this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
-        ...stats,
-        reason: options.reason,
-      });
+      this.measureSyncSegment("audit_log", () =>
+        this.writeAuditLog("admin.consolidation.run", "consolidation", "", {
+          ...stats,
+          reason: options.reason,
+        }),
+      );
     } catch {
       // best effort
     }
