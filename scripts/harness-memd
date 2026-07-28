@@ -592,6 +592,59 @@ db_handle_pids() {
   lsof -nP -t "$DB_PATH" "${DB_PATH}-wal" "${DB_PATH}-shm" 2>/dev/null | sort -u || true
 }
 
+resolve_daemon_pid() {
+  local runtime_pid
+  runtime_pid="$(discover_daemon_pid_from_port || true)"
+  if [ -n "$runtime_pid" ] && is_pid_running "$runtime_pid"; then
+    echo "$runtime_pid"
+    return 0
+  fi
+
+  local file_pid
+  file_pid="$(read_pid_file)"
+  if [ -n "$file_pid" ] && is_expected_daemon_pid "$file_pid"; then
+    echo "$file_pid"
+    return 0
+  fi
+
+  local handle_pid
+  while IFS= read -r handle_pid; do
+    [ -n "$handle_pid" ] || continue
+    if is_expected_daemon_pid "$handle_pid"; then
+      echo "$handle_pid"
+      return 0
+    fi
+  done < <(db_handle_pids)
+
+  return 1
+}
+
+# 通常 stop 以外の launchctl / offline-stop 経路も launchd の
+# ExitTimeOut に依存させず、同じ上限で SIGKILL まで進める。
+stop_pid_with_escalation() {
+  local pid="${1:-}"
+  local timeout_sec="${2:-$STOP_TIMEOUT_SEC}"
+  if [ -z "$pid" ] || ! is_pid_running "$pid"; then
+    return 0
+  fi
+
+  kill -TERM "$pid" >/dev/null 2>&1 || true
+
+  local waited=0
+  while is_pid_running "$pid" && [ "$waited" -lt "$timeout_sec" ]; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+
+  if is_pid_running "$pid"; then
+    warn "Daemon did not exit in ${timeout_sec}s, sending SIGKILL"
+    kill -KILL "$pid" >/dev/null 2>&1 || true
+    sleep 0.5
+  fi
+
+  return 0
+}
+
 wait_for_db_handles_closed() {
   if ! command -v lsof >/dev/null 2>&1; then
     return 0
@@ -997,19 +1050,7 @@ stop_daemon() {
   fi
 
   log "Stopping harness-memd (pid=${pid})..."
-  kill -TERM "$pid" >/dev/null 2>&1 || true
-
-  local waited=0
-  while is_pid_running "$pid" && [ "$waited" -lt "$STOP_TIMEOUT_SEC" ]; do
-    sleep 1
-    waited=$((waited + 1))
-  done
-
-  if is_pid_running "$pid"; then
-    warn "Daemon did not exit in ${STOP_TIMEOUT_SEC}s, sending SIGKILL"
-    kill -KILL "$pid" >/dev/null 2>&1 || true
-    sleep 0.5
-  fi
+  stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"
 
   cleanup_runtime_artifacts
   log "harness-memd stopped"
@@ -1028,12 +1069,7 @@ offline_stop_daemon() {
   fi
 
   local pid
-  pid="$(read_pid_file)"
-  local runtime_pid
-  runtime_pid="$(discover_daemon_pid_from_port || true)"
-  if [ -z "$pid" ] && [ -n "$runtime_pid" ]; then
-    pid="$runtime_pid"
-  fi
+  pid="$(resolve_daemon_pid || true)"
   if [ -n "$pid" ] && is_pid_running "$pid"; then
     log "Stopping harness-memd runtime process (pid=${pid})..."
     kill -TERM "$pid" >/dev/null 2>&1 || true
@@ -1041,10 +1077,29 @@ offline_stop_daemon() {
 
   if ! wait_for_daemon_listener_closed; then
     warn "Daemon listener on port ${PORT} did not close in time"
-    return 1
+    pid="$(resolve_daemon_pid || true)"
+    if [ -n "$pid" ]; then
+      # bootout 後も listener を保持する穴を、通常 stop と同じ上限で塞ぐ。
+      stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"
+    fi
+    if ! wait_for_daemon_listener_closed; then
+      warn "Daemon listener on port ${PORT} remained open after SIGKILL escalation"
+      return 1
+    fi
   fi
   if ! wait_for_db_handles_closed; then
-    return 1
+    pid="$(resolve_daemon_pid || true)"
+    if [ -n "$pid" ]; then
+      # listener が閉じても DB handle を保持する drain 停止も強制終了する。
+      stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"
+    fi
+    if ! wait_for_db_handles_closed; then
+      return 1
+    fi
+  fi
+  if [ -n "$pid" ] && is_pid_running "$pid"; then
+    # socket と DB が閉じた後に process だけ残る場合も offline 状態にしない。
+    stop_pid_with_escalation "$pid" "$STOP_TIMEOUT_SEC"
   fi
   cleanup_runtime_artifacts
   log "harness-memd offline maintenance stop complete (port=${PORT}, db=${DB_PATH})"
@@ -1304,6 +1359,12 @@ main() {
           exit 0
         fi
         warn "launchctl restart did not restore health in time"
+        local failed_pid
+        failed_pid="$(resolve_daemon_pid || true)"
+        if [ -n "$failed_pid" ]; then
+          # job は loaded のままにし、SIGKILL 後の KeepAlive 再起動は launchd に任せる。
+          stop_pid_with_escalation "$failed_pid" "$STOP_TIMEOUT_SEC"
+        fi
         exit 1
       fi
       stop_daemon || true

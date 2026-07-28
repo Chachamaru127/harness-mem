@@ -806,6 +806,7 @@ Phase B (April 2026) added verbatim raw storage (`HARNESS_MEM_RAW_MODE=1`), hier
 ## Documentation
 
 - Setup reference: [`docs/harness-mem-setup.md`](docs/harness-mem-setup.md)
+- Daemon degraded health runbook (Japanese): [`docs/daemon-health-runbook.md`](docs/daemon-health-runbook.md)
 - Onboarding checklist: [`docs/onboarding-checklist.md`](docs/onboarding-checklist.md)
 - README claim map: [`docs/readme-claims.md`](docs/readme-claims.md)
 - Onboarding dry-run notes: [`docs/onboarding-dry-run.md`](docs/onboarding-dry-run.md)

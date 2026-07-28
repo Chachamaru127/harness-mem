@@ -31,6 +31,16 @@ type SessionStartRun = {
   payloads: Array<{ command: string; payload: Record<string, unknown> }>;
 };
 
+function normalizeSessionStartEnv(
+  inheritedEnv: Record<string, string | undefined>
+): Record<string, string | undefined> {
+  const env = { ...inheritedEnv };
+  // Claude Code 親プロセスの plugin slot は parity contract の入力ではない。
+  // Bun.spawn の暗黙継承から hook-common.sh に漏れると、警告と state 保存先が実行元依存になる。
+  delete env.CLAUDE_PLUGIN_DATA;
+  return env;
+}
+
 function normalize(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
@@ -62,7 +72,8 @@ function extractCodexAdditionalContext(stdout: string): string {
 async function runSessionStart(
   client: "claude" | "codex",
   resumeResponse: string,
-  continuityState?: Record<string, unknown>
+  continuityState?: Record<string, unknown>,
+  inheritedEnv: Record<string, string | undefined> = process.env
 ): Promise<SessionStartRun> {
   const tmp = mkdtempSync(join(tmpdir(), `harness-mem-session-start-${client}-`));
   const projectDir = join(tmp, "session-start-parity-project");
@@ -77,6 +88,7 @@ async function runSessionStart(
       ? join(hookDir, "memory-session-start.sh")
       : join(hookDir, "codex-session-start.sh");
   const escapedResumeResponse = resumeResponse.replace(/'/g, `'\\''`);
+  const env = normalizeSessionStartEnv(inheritedEnv);
 
   try {
     mkdirSync(libDir, { recursive: true });
@@ -117,6 +129,7 @@ printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
 
       const proc = Bun.spawn(["bash", scriptPath], {
         cwd: projectDir,
+        env,
         stdin: "ignore",
         stdout: "pipe",
         stderr: "pipe",
@@ -132,6 +145,7 @@ printf '%s\\n' '{"ok":true,"meta":{"count":0},"items":[]}'
       writeFileSync(inputPath, JSON.stringify({ session_id: "codex-current" }));
       const proc = Bun.spawn(["bash", scriptPath], {
         cwd: projectDir,
+        env,
         stdin: Bun.file(inputPath),
         stdout: "pipe",
         stderr: "pipe",
@@ -199,6 +213,38 @@ describe("session-start parity contract", () => {
     );
     expect(codex.rawStdout).toContain('"hookSpecificOutput"');
     expect(codex.rawStderr.trim()).toBe("");
+  });
+
+  test("parent CLAUDE_PLUGIN_DATA does not change Claude/Codex parity", async () => {
+    const resumeResponse = JSON.stringify({
+      ok: true,
+      meta: {
+        count: 1,
+        continuity_briefing: {
+          content:
+            "# Continuity Briefing\n\n## Current Focus\n- Keep the parity contract isolated from the parent launcher",
+        },
+      },
+      items: [],
+    });
+    const inheritedEnv = {
+      ...process.env,
+      CLAUDE_PLUGIN_DATA: "/tmp/dummy-plugin-data",
+      HARNESS_MEM_DB_PATH: undefined,
+      HARNESS_MEM_PLUGIN_DATA_WARNED: undefined,
+      HARNESS_MEM_SUPPRESS_PLUGIN_DATA_WARN: undefined,
+    };
+
+    const claude = await runSessionStart("claude", resumeResponse, undefined, inheritedEnv);
+    const codex = await runSessionStart("codex", resumeResponse, undefined, inheritedEnv);
+    const strippedClaude = stripArtifactIdentityHeader(claude.content);
+    const strippedCodex = stripArtifactIdentityHeader(codex.content);
+
+    expect(normalize(strippedClaude)).toBe(normalize(strippedCodex));
+    for (const run of [claude, codex]) {
+      expect(run.content).toContain("Keep the parity contract isolated");
+      expect(run.rawStderr.trim()).toBe("");
+    }
   });
 
     test("fallback resume-pack list is rendered identically for Claude and Codex", async () => {

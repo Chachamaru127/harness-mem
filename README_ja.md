@@ -787,6 +787,7 @@ Phase B（2026年4月）では、verbatim raw ストレージ（`HARNESS_MEM_RAW
 ## ドキュメント
 
 - セットアップリファレンス: [`docs/harness-mem-setup-ja.md`](docs/harness-mem-setup-ja.md)
+- daemon の degraded 切り分け runbook: [`docs/daemon-health-runbook.md`](docs/daemon-health-runbook.md)
 - 初見向け onboarding checklist: [`docs/onboarding-checklist-ja.md`](docs/onboarding-checklist-ja.md)
 - README claim map: [`docs/readme-claims-ja.md`](docs/readme-claims-ja.md)
 - 導入 dry-run メモ: [`docs/onboarding-dry-run-ja.md`](docs/onboarding-dry-run-ja.md)
