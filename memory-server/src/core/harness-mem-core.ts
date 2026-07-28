@@ -2613,6 +2613,45 @@ export class HarnessMemCore {
     migrateDbSchema(this.db);
     this.ftsEnabled = initFtsFromDb(this.db);
     this.migrateLegacyProjectAliases();
+    this.reconcileAbandonedConsolidationJobs();
+  }
+
+  /**
+   * §160-004: 起動時に `running` のまま残った consolidation job を回収する。
+   *
+   * consolidation は daemon プロセス内で走るので、SIGKILL / crash / launchd の
+   * 再起動で中断されると `mem_consolidation_queue` の行が `running` のまま残る。
+   * 誰も片付けないため単調に増え、`/v1/admin/consolidation/status` の
+   * `running_jobs` が実態と乖離する。
+   *
+   * 2026-07-28 の本番実測で 49 件の孤児 (最古 2026-05-17、最新 2026-07-26、
+   * うち 42 件は 2026-06-25 の 1 事故) が残っており、これを見た調査エージェントが
+   * 「worker pool がスタックしている」と誤診して本番 daemon の再起動を推奨した。
+   * 実際は 7 分で 3 件完了・pending 0 の健全な状態だった。
+   *
+   * 起動した時点で前プロセスの job は生きていないので、`failed` へ倒して
+   * 理由を残す。単一プロセス設計 (lock file で多重起動を防いでいる) が前提。
+   */
+  private reconcileAbandonedConsolidationJobs(): void {
+    try {
+      const result = this.db
+        .query(
+          `UPDATE mem_consolidation_queue
+             SET status = 'failed',
+                 finished_at = ?,
+                 error = 'abandoned: daemon restarted while job was running'
+           WHERE status = 'running'`,
+        )
+        .run(nowIso());
+      const changed = Number((result as { changes?: number }).changes ?? 0);
+      if (changed > 0) {
+        console.log(
+          `[harness-mem] reconciled ${changed} abandoned consolidation job(s) left in running state`,
+        );
+      }
+    } catch {
+      // best effort — 起動を止めない
+    }
   }
 
   private seedFreshInstallEmbeddingDefault(hadHarnessSchemaBeforeInit: boolean): void {

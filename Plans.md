@@ -1408,6 +1408,8 @@ consolidation の寄与は 28 → 23 の差分 (~5) で副次的。両者は同�
 | 160-002 | 160-001 で特定した区間の改善。候補は index 追加、FTS 挿入の遅延化、vector 書き込みの batch 化、cold cache 対策 (`PRAGMA mmap_size` 等)。**特定前に着手しない** | 本番 tick の最大ブロックが budget + 1 単位に収まる。検索品質は非回帰 (e5 parity / dev-domain / CJK) | 160-001 | cc:TODO |
 | 160-003 | `tests/session-start-parity-contract.test.ts` が**ローカル daemon の応答性に依存**している。2026-07-28 に daemon が catch-up でブロック中だと spawn した hook が 5s timeout し false fail した (daemon 平常時は 3 回連続 5 passed)。§159-008 で閉じた `CLAUDE_PLUGIN_DATA` 漏れとは別の依存 | 本番 daemon がブロック中でも同じ結果になる。hook が実 daemon に触れる経路を stub 化するか、port を隔離する | - | cc:TODO |
 
+| 160-004 | consolidation job が `running` のまま残り、誰も片付けないため単調に増える。daemon プロセス内で走るので SIGKILL / crash / launchd 再起動で中断されると回収されない。2026-07-28 の本番で **49 件の孤児** (最古 2026-05-17、最新 2026-07-26、うち 42 件は 2026-06-25 の 1 事故) が残っており、`/v1/admin/consolidation/status` の `running_jobs` が実態と乖離していた。**これを見た調査エージェントが「worker pool がスタック」と誤診し、本番 daemon の再起動を推奨した**(実際は 7 分で 3 件完了・pending 0 の健全な状態)。起動時に `failed` へ倒して理由を残す | (a) 起動時に `running` が 0 になり `error` に理由が残る、(b) `completed` / `pending` は変えない、(c) `running` が無ければ何も変えない (冪等)、(d) 2 test pass | - | cc:完了 [本 PR] |
+
 ### Non-goals / stop line
 
 - §159 の tick budget 機構を作り直さない。ループ構造は実測で妥当と確認済み (非 200 3 / 300、p95 14ms)。
