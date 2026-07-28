@@ -92,6 +92,42 @@ describe("§160-004 起動時に abandoned consolidation job を回収する", (
     }
   });
 
+  test("軽量 child プロセスでは回収しない (親の実行中 job を壊さない)", () => {
+    const dir = mkdtempSync(join(tmpdir(), "harness-mem-abandoned-child-"));
+    dirs.push(dir);
+    const dbPath = join(dir, "t.db");
+
+    const first = makeCore(dbPath);
+    first.shutdown("test");
+
+    // 親 daemon が実行中の job を模す
+    const db = new Database(dbPath);
+    db.query(
+      `INSERT INTO mem_consolidation_queue(project, session_id, reason, status, requested_at, started_at)
+       VALUES (?, ?, ?, 'running', ?, ?)`,
+    ).run("p", "s1", "finalize", "2026-07-28T00:00:00.000Z", "2026-07-28T00:00:01.000Z");
+    db.close(false);
+
+    // child は同じ DB に対して HarnessMemCore を作るが、回収してはいけない
+    const original = process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS;
+    process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS = "1";
+    let child: HarnessMemCore | null = null;
+    try {
+      child = makeCore(dbPath);
+      const verify = new Database(dbPath, { readonly: true });
+      const row = verify
+        .query(`SELECT status FROM mem_consolidation_queue`)
+        .get() as { status: string };
+      // running のまま = 親の job を壊していない
+      expect(row.status).toBe("running");
+      verify.close(false);
+    } finally {
+      child?.shutdown("test");
+      if (original === undefined) delete process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS;
+      else process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS = original;
+    }
+  });
+
   test("running が無ければ何も変えない (冪等)", () => {
     const dir = mkdtempSync(join(tmpdir(), "harness-mem-abandoned-noop-"));
     dirs.push(dir);
