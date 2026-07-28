@@ -1704,6 +1704,31 @@ function computeAntigravityWorkspaceRoots(config: {
   return [];
 }
 
+/**
+ * 現在のプロセスが「軽量 child」かどうか。
+ *
+ * search / checkpoint / event / retry / stats / recall / vector / materialize の
+ * 各 child は、親と同じ DB に対して `HarnessMemCore` を生成する。したがって
+ * child でも `initSchema()` や `shutdown()` が走る。**親 daemon の状態を書き換える
+ * 処理は child で実行してはならない** (例: 実行中 consolidation job の回収、
+ * retry queue の flush)。
+ *
+ * 判定は各 child が spawn 時に注入する env フラグで行う。
+ */
+export function isLightweightChildProcess(): boolean {
+  return (
+    process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1" ||
+    process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
+    process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
+    process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
+    process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
+    process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS === "1" ||
+    process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD === "1" ||
+    process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
+    process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1"
+  );
+}
+
 export class HarnessMemCore {
   private readonly storage: StorageAdapter;
   private readonly db: Database;
@@ -2633,6 +2658,13 @@ export class HarnessMemCore {
    * 理由を残す。単一プロセス設計 (lock file で多重起動を防いでいる) が前提。
    */
   private reconcileAbandonedConsolidationJobs(): void {
+    // 子プロセス (search / checkpoint / event / retry / stats / recall / vector /
+    // materialize) も同じ DB に対して HarnessMemCore を作るため initSchema が走る。
+    // そこで回収すると、**親 daemon が実行中の job を failed に誤更新する**。
+    // 回収は daemon 本体の起動時だけに限定する (2026-07-28 review 指摘)。
+    if (isLightweightChildProcess()) {
+      return;
+    }
     try {
       const result = this.db
         .query(
@@ -9520,16 +9552,7 @@ export class HarnessMemCore {
       return;
     }
     this.shuttingDown = true;
-    const lightweightChild =
-      process.env.HARNESS_MEM_SEARCH_CHILD_PROCESS === "1" ||
-      process.env.HARNESS_MEM_SEARCH_WORKER_PROCESS === "1" ||
-      process.env.HARNESS_MEM_CHECKPOINT_CHILD_PROCESS === "1" ||
-      process.env.HARNESS_MEM_EVENT_CHILD_PROCESS === "1" ||
-      process.env.HARNESS_MEM_RETRY_CHILD_PROCESS === "1" ||
-      process.env.HARNESS_MEM_PROJECTS_STATS_CHILD_PROCESS === "1" ||
-      process.env.HARNESS_MEM_RECALL_PROJECTION_REFRESH_CHILD === "1" ||
-      process.env.HARNESS_MEM_VECTOR_BACKFILL_CHILD === "1" ||
-      process.env.HARNESS_MEM_OBSERVATION_MATERIALIZE_CHILD === "1";
+    const lightweightChild = isLightweightChildProcess();
 
     for (const timer of this.recallProjectionRefreshTimers.values()) {
       clearTimeout(timer);
